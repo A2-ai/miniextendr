@@ -137,9 +137,11 @@ creating temporary library: …/__rv_R_mismatch
 Error in loadNamespace(x) : there is no package called 'testthat'
 ```
 
-Current pin: **R 4.6** (see `rproject.toml:r_version`). Switch your
-default with **rig** before running `just devtools-test` /
-`just rcmdinstall` / any recipe that loads the project library:
+Read the current pin from `rproject.toml:[project].r_version` at the start of
+every fresh shell; that file is the source of truth. Switch the default with
+**rig** to that exact version before running `just devtools-test` /
+`just rcmdinstall` / any recipe that loads the project library. For the current
+pin this is:
 
 ```bash
 rig default 4.6           # or `rig default 4.6-arm64` on macOS arm64
@@ -149,8 +151,9 @@ R --version | head -1     # verify 4.6.x
 **`rig default` may not stick across shells.** A fresh shell (every Bash-tool
 invocation is one) can resolve `R` back to the system default — the framework
 `Current` symlink flips — silently reverting mid-session and breaking installs
-with the `__rv_R_mismatch` safe-mode error above. Re-run `rig default 4.6` and
-re-check `R --version` at the **start of each batch** of R recipes, not just once.
+with the `__rv_R_mismatch` safe-mode error above. Re-read the pin, re-run
+`rig default <pinned-version>`, and re-check `R --version` at the **start of each
+batch** of R recipes, not just once.
 
 If you legitimately need to bump R, edit `rproject.toml` *and* mirror
 the change in this section. Don't try to work around a mismatch by
@@ -178,26 +181,31 @@ after macro changes). `just vendor` is the only CRAN release-prep step.
 ### Configure is mandatory
 
 Always `bash ./configure` (not bare `./configure` — `#!/bin/sh` causes spurious errors in `AC_CONFIG_COMMANDS` passthrough). Configure:
-1. **Self-repairs**: if `inst/vendor.tar.xz` is absent AND `cargo-revendor` is on PATH AND no `.git` ancestor exists, runs `cargo-revendor` to produce the tarball before mode detection. Skipped in dev-source trees so `just configure` stays fast.
-2. Generates `Makevars` from `.in` templates.
-3. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`.
-4. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`).
+1. Generates `Makevars` from `.in` templates.
+2. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`.
+3. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`).
+4. Does **not** create `inst/vendor.tar.xz` — that's an explicit tarball-producing workflow such as `just vendor`, `miniextendr_vendor()`, or `bootstrap.R` before `R CMD build`.
 
 ## The install-mode latch (`inst/vendor.tar.xz`)
 
 `rpkg/inst/vendor.tar.xz` is the **single signal** that flips `configure` into
 tarball mode (present → unpack + offline `[source]` replacement; absent → source
 mode with `[patch."git+url"]` to the workspace siblings). It is gitignored;
-`just vendor` regenerates it, and CI regenerates it per build. Recipes that
-**produce** it (`r-cmd-build`, `r-cmd-check`, `devtools-build`) trap-clean on
-exit; recipes that **consume** configure state (`rcmdinstall`, `devtools-test`,
-`devtools-load`, `devtools-install`) refuse to run while it is present (#441).
-Symptom of a leaked tarball: workspace-crate edits silently ignored, or
-`Cargo.lock` mismatch errors. Fix: `just clean-vendor-leak` (safe, idempotent);
-regression test `just test-bootstrap-vendor`; `minirextendr_doctor()` detects
-both the stale latch and a missing `.cargo/config.toml`. Mode table, the three
-auto-vendor triggers, and the CRAN canary rationale: the `miniextendr-build`
-skill and `docs/CRAN_COMPATIBILITY.md`.
+`just vendor` regenerates it, and CI regenerates it per build. Only
+tarball-producing workflows create it: `just vendor` / `miniextendr_vendor()`,
+and `bootstrap.R` under a build frontend that honors
+`Config/build/bootstrap: TRUE`. `configure` never vendors, so an artifact built
+without the tarball stays a source-mode artifact and is not CRAN-ready. Recipes
+that **produce** it (`r-cmd-build`, `r-cmd-check`, `devtools-build`) trap-clean
+on exit; recipes that **consume** configure state (`rcmdinstall`,
+`devtools-test`, `devtools-load`, `devtools-install`) refuse to run while it is
+present (#441). Symptom of a leaked tarball: workspace-crate edits silently
+ignored, or `Cargo.lock` mismatch errors. Fix: `just clean-vendor-leak` (safe,
+idempotent); regression test `just test-bootstrap-vendor`;
+`minirextendr_doctor()` detects both the stale latch and a missing
+`.cargo/config.toml`. Mode table, the tarball-producing triggers, and the CRAN
+canary rationale: the `miniextendr-build` skill and
+`docs/CRAN_COMPATIBILITY.md`.
 
 ## Development workflow
 

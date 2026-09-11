@@ -1815,8 +1815,8 @@ jobs:
           shared-key: roundtrip-e2e
           cache-on-failure: true
 
-      # cargo-revendor on PATH so the standalone build's auto-vendor (tarball
-      # mode) can seal inst/vendor.tar.xz mid-install.
+      # cargo-revendor on PATH so the standalone build's bootstrap.R can seal
+      # inst/vendor.tar.xz before R CMD build (configure itself never vendors).
       - name: Set up cargo-revendor (install only)
         uses: ./.github/actions/setup-vendor
         with:

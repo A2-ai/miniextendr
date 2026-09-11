@@ -81,9 +81,10 @@ the `cargo-config` or `unpack-vendor-tarball` command blocks.
 
 1. Verifies `DESCRIPTION` and `NAMESPACE` exist (guards against running from
    the monorepo root instead of `rpkg/`).
-2. Self-repair: if `inst/vendor.tar.xz` is absent, no `.git` ancestor exists,
-   and `cargo-revendor` is on PATH, invokes `cargo revendor` to produce the
-   tarball. Skipped in git-tracked source trees to keep `just configure` fast.
+2. Never vendors. `inst/vendor.tar.xz` is created only by tarball-producing
+   workflows (`just vendor` / `miniextendr_vendor()`, or `bootstrap.R` before
+   `R CMD build`); configure only consumes it. A `.git` ancestor matters solely
+   for the leaked-tarball guard (#1029).
 3. Detects install mode from `[ -f inst/vendor.tar.xz ]`.
 4. Discovers `cargo`, `rustc`, `sed`. Enforces rustc 1.85+ (edition 2024).
 5. Detects webR/wasm32 via `CC=emcc`.
@@ -148,18 +149,15 @@ The tarball has been gitignored since 2026-04-18. CI regenerates it per-build
 via `just vendor`. Locally, `just r-cmd-build` and `just r-cmd-check` produce
 the tarball transiently and trap-clean on exit.
 
-Three layered triggers converge on the latch:
+Two tarball-producing triggers create the latch:
 1. Maintainer's explicit `just vendor` / `miniextendr_vendor()`.
 2. `bootstrap.R` (invoked by pkgbuild during `devtools::build()`, `rcmdcheck`,
-   `r-lib/actions/check-r-package`) — runs configure in a staging directory
-   that has no `.git` ancestor, triggering auto-vendor.
-3. End-user install of a tarball that shipped without vendored dependencies —
-   configure auto-vendors at install time.
+   `r-lib/actions/check-r-package`) — vendors with `cargo-revendor` before
+   `R CMD build` seals the artifact.
 
-CRAN's offline build farm does not have `cargo-revendor`, so the auto-vendor
-branch is short-circuited there. A maintainer who ships a tarball without
-`inst/vendor.tar.xz` inside fails CRAN's offline check loudly; this is the
-intended canary. There is no `NOT_CRAN`, `FORCE_VENDOR`, or `PREPARE_CRAN`
+`configure` never vendors. A tarball shipped without `inst/vendor.tar.xz` is
+installed in source mode, so on CRAN's offline build farm cargo cannot fetch
+Rust dependencies and the check fails loudly; this is the intended canary. There is no `NOT_CRAN`, `FORCE_VENDOR`, or `PREPARE_CRAN`
 escape — see `docs/CRAN_COMPATIBILITY.md`.
 
 ### The latch leak (#441)

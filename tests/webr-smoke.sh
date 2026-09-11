@@ -404,10 +404,11 @@ RSCRIPT
         # (C_mxsmoke_add vs C_miniextendr_add), so both packages sharing
         # one Emscripten side-module GOT must dispatch to their own
         # implementations. Phase 3 asserts exactly that.
-        # configure auto-vendors (tarball mode, freezing published git
-        # sources instead of this checkout) only when the tree has no .git
-        # ancestor AND cargo-revendor is on PATH. This image ships no
-        # cargo-revendor; git-init the scaffold so the guard holds anyway.
+        # configure never vendors, so a missing .git ancestor no longer flips
+        # the mode; but the leaked-tarball guard (#1029) only arms in
+        # git-tracked trees. git-init the scaffold so a leaked
+        # inst/vendor.tar.xz fails loudly instead of freezing published git
+        # sources in place of this checkout.
         git init -q "$SCAFFOLD_PKG_DIR"
 
         # Scaffold leg — native install + roxygen pass (wrappers,
@@ -496,12 +497,12 @@ RSCRIPT
         # C_mxsmoke_add / C_miniextendr_add), so all three packages sharing
         # one Emscripten side-module GOT must dispatch to their own
         # implementations. Phase 3 asserts exactly that.
-        # Auto-vendor guard: unlike create_miniextendr_package() (which
+        # Source-mode guard: unlike create_miniextendr_package() (which
         # needs the explicit git init above for mxsmoke), the monorepo
         # scaffolder git-inits the workspace root itself
         # (usethis::use_git()), so the rpkg subdir already has a .git
         # ancestor — assert it so a scaffolder regression cannot silently
-        # flip configure into tarball mode.
+        # disarm the leaked-tarball guard (#1029).
         test -d "$MONO_ROOT_DIR/.git"
 
         # Monorepo scaffold leg — native install + roxygen pass (wrappers,
