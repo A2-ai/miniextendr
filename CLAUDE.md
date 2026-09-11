@@ -496,6 +496,7 @@ Claude Code sandbox blocks compilation. For any compiling command
 - **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Resolve everything by hand **except regenerated artifacts** — never hand-merge their hunks; take either side (`git checkout --theirs` / `git add`) then regenerate:
   - `rpkg/inst/vendor.tar.xz` (binary tarball) → `just vendor`, amended into the vendor-refresh commit.
   - `patches/templates.patch` (rpkg→templates delta, a generated diff) → `just templates-approve`, then verify with `just templates-check`.
+  - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just force-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
 
 ### Using Codex for reviews
 
