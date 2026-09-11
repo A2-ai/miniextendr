@@ -51,6 +51,7 @@
 //! These modules require specific Cargo features to be enabled:
 //!
 //! - `rayon_tests`: Parallel iteration tests (feature: `rayon`)
+//! - `serde_error_tests`: serde-classed Result errors + `serde_error(..)` options (feature: `serde`)
 //! - `serde_r_tests`: Serde R serialization tests (feature: `serde`)
 //! - `ndarray_tests`: N-dimensional array tests (feature: `ndarray`)
 //! - `vctrs_tests`: vctrs compatibility tests (feature: `vctrs`)
@@ -144,6 +145,7 @@ mod box_slice_tests;
 mod bytes_adapter_tests;
 mod call_attribution_demo;
 mod class_system_matrix;
+mod classed_result_tests;
 mod coerce_tests;
 mod collect_tests;
 #[cfg(feature = "serde")]
@@ -166,6 +168,7 @@ mod dataframe_derive_alignment_tests;
 mod dataframe_enum_payload_matrix;
 mod dataframe_examples;
 mod dataframe_group_tests;
+mod dataframe_option_scalar_tests;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;
 mod dataframe_reader_enum_roundtrip_test;
@@ -220,6 +223,7 @@ mod lifecycle_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 mod macro_equivalence;
+mod match_arg_foreign_tests;
 mod match_arg_impl_tests;
 mod match_arg_tests;
 #[cfg(feature = "md5")]
@@ -255,6 +259,7 @@ mod r_wrapper_attrs;
 #[cfg(feature = "rand")]
 mod rand_adapter_tests;
 mod rarray_tests;
+mod raw_ident_tests;
 #[cfg(feature = "rayon")]
 mod rayon_tests;
 mod rdata_sidecar_tests;
@@ -263,11 +268,14 @@ mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
+mod s3_nonsyntactic_tests;
 mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
 mod s7_tests;
 mod scatter_complex_raw_test;
+#[cfg(feature = "serde")]
+mod serde_error_tests;
 #[cfg(feature = "serde_json")]
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]

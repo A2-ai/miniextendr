@@ -4,6 +4,7 @@
 //! across all class systems (Env, R6, S7, S3, S4).
 
 use crate::miniextendr_impl::ParsedMethod;
+use crate::miniextendr_impl::ReceiverKind;
 
 // region: Shared R error-check helpers
 //
@@ -62,9 +63,21 @@ pub fn condition_check_inline_block(call_expr: &str, inner: &str, indent: &str) 
 /// - `final_return`: The expression to return (typically `".val"` or `"invisible(.val)"`)
 /// - `indent`: Leading whitespace for the body lines (e.g., `"  "` for 2-space)
 pub fn standalone_body(call_expr: &str, final_return: &str, indent: &str) -> String {
+    standalone_body_with_call_default(call_expr, final_return, indent, "sys.call()")
+}
+
+/// [`standalone_body`] with an explicit raise fallback: `sys.call()` for the
+/// wrapper's own frame, `.mx_call` for `call = caller` wrappers (see
+/// `crate::r_wrapper_builder::CallAttribution::raise_default`).
+pub fn standalone_body_with_call_default(
+    call_expr: &str,
+    final_return: &str,
+    indent: &str,
+    call_default: &str,
+) -> String {
     format!(
         ".val <- {call_expr}\n\
-         {indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))\n\
+         {indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, {call_default}))\n\
          {indent}{final_return}"
     )
 }
@@ -130,14 +143,23 @@ impl ReturnStrategy {
     ///   unchanged (#1284).
     /// - All other methods use `Direct`.
     pub fn for_method(method: &ParsedMethod) -> Self {
-        // In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
-        // `&mut self -> ()` mutators both return the receiver object.
-        let is_self_ref_builder = method.returns_self_ref() && method.env.is_instance();
+        // In-place builders (`&mut self -> &mut Self` / `&self -> Self`), their
+        // fallible forms (`-> Result<&mut Self, E>` / `Option<&mut Self>`, #1433),
+        // `&mut self -> ()` mutators, and consuming steps (`self -> Self` /
+        // `Result<Self, E>` / `Option<Self>`, #1432: the C wrapper writes the
+        // result back into the same handle) all return the receiver object.
+        let is_self_ref_builder = method.env.is_instance()
+            && (method.returns_self_ref()
+                || method.returns_result_self_ref()
+                || method.returns_option_self_ref());
         let is_unit_mutator = method.env.is_mut() && method.returns_unit();
-        if method.returns_self() || method.returns_result_self() || method.returns_option_self() {
-            ReturnStrategy::ReturnSelf
-        } else if is_self_ref_builder || is_unit_mutator {
+        let returns_self_shaped =
+            method.returns_self() || method.returns_result_self() || method.returns_option_self();
+        let is_consuming_builder = method.env == ReceiverKind::Value && returns_self_shaped;
+        if is_consuming_builder || is_self_ref_builder || is_unit_mutator {
             ReturnStrategy::ChainableMutation
+        } else if returns_self_shaped {
+            ReturnStrategy::ReturnSelf
         } else if method.returns_other_class().is_some() {
             ReturnStrategy::ReturnOtherClass
         } else if method.returns_other_class_list().is_some() {

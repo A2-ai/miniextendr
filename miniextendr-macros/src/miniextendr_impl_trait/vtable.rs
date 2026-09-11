@@ -149,7 +149,6 @@ pub(super) fn generate_vtable_static(
     let (impl_doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
         &raw_impl_tags,
         &type_ident.to_string(),
-        crate::roxygen::next_impl_tag_block_id(),
         impl_item.impl_token.span,
     );
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(&impl_doc_tags, "noRd");
@@ -305,6 +304,7 @@ pub(super) fn generate_vtable_static(
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
                 source_file: file!(),
+                source_line: #source_line_lit,
                 content: concat!(
                     "# Generated from Rust impl `",
                     stringify!(#trait_name),
@@ -405,11 +405,11 @@ fn generate_concrete_vtable_shims(
                     } else {
                         format_ident!("arg{}", i)
                     };
-                    let name_str = name.to_string();
+                    let name_str = crate::naming::ident_name(&name);
 
                     // Handle &Self params: extract ExternalPtr<ConcreteType>
                     if is_self_ref_type(&pt.ty) {
-                        let extptr_name = format_ident!("__extptr_{}", name);
+                        let extptr_name = format_ident!("__extptr_{}", crate::naming::unraw(&name));
                         quote::quote! {
                             let #extptr_name: ::miniextendr_api::ExternalPtr<#concrete_type> = unsafe {
                                 ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
@@ -525,10 +525,18 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                     (false, false)
                 }
             });
-            let attrs = parse_trait_method_attrs(&method.attrs)?;
+            let mut attrs = parse_trait_method_attrs(&method.attrs)?;
+            // `Option<T>` scalar choices params are the optional form (#1473).
+            crate::miniextendr_fn::finalize_method_param_attrs(
+                &mut attrs.per_param,
+                &method.sig.inputs,
+                &attrs.defaults,
+            )?;
 
-            // Extract @param tags from method doc comments
+            // Extract @param tags (and a per-method @rdname override) from
+            // method doc comments
             let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
+            let rdname = crate::roxygen::rdname_value(&all_tags).map(str::to_owned);
             let param_tags: Vec<String> = all_tags
                 .into_iter()
                 .filter(|tag| tag.starts_with("@param"))
@@ -547,6 +555,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 unwrap_in_r: attrs.unwrap_in_r,
                 param_defaults: attrs.defaults,
                 param_tags,
+                rdname,
                 skip: attrs.skip,
                 r_name: attrs.r_name,
                 strict: attrs.strict,
@@ -964,7 +973,7 @@ pub(super) fn generate_trait_method_c_wrapper(
             {
                 // Track this param for dereferencing in the call expression
                 if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    self_ref_params.insert(pat_ident.ident.to_string());
+                    self_ref_params.insert(crate::naming::ident_name(&pat_ident.ident));
                 }
                 // Replace &Self with ExternalPtr<ConcreteType>
                 let pat = &pt.pat;
@@ -1017,7 +1026,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         let self_extraction = if method.is_mut {
             quote::quote! {
                 let mut self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                 };
                 let self_ref = self_ptr.downcast_mut::<#type_ident>()
                     .unwrap_or_else(|| panic!(
@@ -1030,7 +1039,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         } else {
             quote::quote! {
                 let self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                 };
                 let self_ref = self_ptr.downcast_ref::<#type_ident>()
                     .unwrap_or_else(|| panic!(

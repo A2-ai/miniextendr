@@ -79,6 +79,7 @@ pub(crate) fn analyze_return_type(
     rust_ident: &syn::Ident,
     unwrap_in_r: bool,
     strict: bool,
+    err_parts: &crate::c_wrapper_builder::ErrPartsMode,
 ) -> ReturnTypeAnalysis {
     let mut returns_sexp = false;
     let mut is_invisible = false;
@@ -130,7 +131,7 @@ pub(crate) fn analyze_return_type(
                     is_invisible: &mut is_invisible,
                     post_call_statements: &mut post_call_statements,
                 };
-                analyze_result_type(p, &mut ctx, unwrap_in_r);
+                analyze_result_type(p, &mut ctx, unwrap_in_r, err_parts);
             }
 
             // -> T (any other type)
@@ -213,8 +214,10 @@ fn analyze_result_type(
     type_path: &syn::TypePath,
     ctx: &mut AnalysisCtx,
     unwrap_in_r: bool,
+    err_parts: &crate::c_wrapper_builder::ErrPartsMode,
 ) -> proc_macro2::TokenStream {
     let rust_result_ident = ctx.rust_result_ident;
+    let err_parts = err_parts.expr();
     let seg = type_path.path.segments.last().unwrap();
     let ok_ty = crate::first_type_argument(seg);
     let err_ty = crate::second_type_argument(seg);
@@ -263,9 +266,9 @@ fn analyze_result_type(
             match #rust_result_ident {
                 Ok(()) => ::miniextendr_api::SEXP::nil(),
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ) },
+                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, Some(__miniextendr_call),
+                        ) },
             }
         }
     } else if ok_is_sexp {
@@ -276,9 +279,9 @@ fn analyze_result_type(
             match #rust_result_ident {
                 Ok(v) => v,
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ) },
+                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, Some(__miniextendr_call),
+                        ) },
             }
         }
     } else {
@@ -288,9 +291,9 @@ fn analyze_result_type(
             match #rust_result_ident {
                 Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &format!("{:?}", e), ::miniextendr_api::error_value::kind::RESULT_ERR, ::core::option::Option::None, Some(__miniextendr_call),
-                ) },
+                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, Some(__miniextendr_call),
+                        ) },
             }
         }
     }
