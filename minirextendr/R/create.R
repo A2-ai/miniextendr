@@ -47,8 +47,8 @@ create_miniextendr_package <- function(path, open = interactive(),
     check_name = check_name
   )
 
-  # Set project to the new package
-  usethis::proj_set(path)
+  # Select the new package even when it is nested inside the active project.
+  usethis::proj_set(path, force = TRUE)
 
   # Add miniextendr scaffolding
   use_miniextendr(template_type = "rpkg")
