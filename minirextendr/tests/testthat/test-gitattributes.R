@@ -62,8 +62,14 @@ test_that("new and existing monorepos protect custom package subdirectories", {
         rpkg_name = "r bindings", open = FALSE
       ))
     } else {
-      writeLines(c("[package]", 'name = "attr-core"', 'version = "0.1.0"'),
+      # `use_miniextendr()` reads the workspace with `cargo metadata`, which
+      # needs a library target to select, so give the crate a `src/lib.rs`.
+      writeLines(c("[package]", 'name = "attr-core"', 'version = "0.1.0"',
+                   'edition = "2024"'),
                  file.path(tmp, "Cargo.toml"))
+      dir.create(file.path(tmp, "src"))
+      writeLines("pub fn add(a: u64, b: u64) -> u64 { a + b }",
+                 file.path(tmp, "src", "lib.rs"))
       suppressMessages(use_miniextendr(path = tmp, rpkg_name = "r bindings",
                                        claude_skills = FALSE))
     }
