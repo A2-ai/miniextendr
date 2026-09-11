@@ -226,6 +226,17 @@ one silently win. Keep `postfix` when the name should follow the Rust name,
 also rejects `postfix` together with `generic = "..."`. See
 [VISIBILITY.md](VISIBILITY.md#postfix-state-the-internal-entry-point-convention-once).
 
+### "Cargo.toml: [package.metadata.miniextendr] `noexport_postfix` must be ..."
+
+The crate-level default for internal entry points is read from the crate's
+manifest at expansion time. The value must be a single-line TOML string that
+is a valid R identifier fragment (letters, digits, `_`, `.`), set once, in a
+`[package.metadata.miniextendr]` table (or as a dotted key under `[package]` /
+`[package.metadata]`); an inline table `miniextendr = { ... }` is rejected.
+The error is reported on the first `noexport` / `internal` function that would
+have used the default. See
+[VISIBILITY.md](VISIBILITY.md#crate-level-default-from-the-manifest).
+
 ### "`postfix` cannot be used with `s3(generic = ..., class = ...)`"
 
 Standalone S3 methods are always named `generic.class`, so there is nothing for

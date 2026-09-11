@@ -4,7 +4,7 @@
 # silently bundle it instead of running bootstrap fresh — this test catches that.
 #
 # Requirements:
-#   - cargo-revendor on PATH (bootstrap.R invokes it for auto-vendor)
+#   - cargo-revendor on PATH (bootstrap.R invokes it to vendor before R CMD build)
 #
 # This test deletes any pre-existing inst/vendor.tar.xz before building, so
 # it is safe to run even when a leftover tarball is present in the source tree.

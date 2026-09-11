@@ -58,6 +58,18 @@ NULL
 #' @name relabel
 NULL
 
+#' Number of values held by an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name size
+NULL
+
+#' Optionally relabel an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name maybe_relabel
+NULL
+
 #' Add via S3 dispatch
 #' @param x An object.
 #' @param ... Additional arguments.

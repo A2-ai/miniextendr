@@ -28,7 +28,11 @@ when a prior \verb{R CMD build} or check run leaves the file behind in your
 source tree.
 
 Call this function after any unexpected tarball-mode install to restore
-normal source-mode dev iteration.
+normal source-mode dev iteration. If \code{Cargo.toml} still contains paths into
+\verb{vendor/} (for example after \verb{cargo revendor --freeze}), the affected
+dependency and patch entries are reported with repair instructions. Restore
+their original source paths from before freezing; those paths cannot be
+reconstructed from a frozen manifest alone.
 }
 \seealso{
 \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} to create the tarball intentionally,

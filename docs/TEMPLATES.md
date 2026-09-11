@@ -26,7 +26,7 @@ Templates are stored in `minirextendr/inst/templates/` and come in two flavors:
 Templates are not exact copies of the example package (`rpkg/`) - they have legitimate differences for standalone projects:
 
 - **Conditional monorepo detection** - Check if miniextendr-api exists before using path overrides
-- **Standalone vendoring** - Run cargo vendor for transitive deps when not in monorepo
+- **Standalone tarball production** - Bootstrap can freeze path-dependency siblings into the release vendor tarball
 - **Extra flexibility** - Handle cases where rpkg assumptions don't hold
 
 The approved differences are tracked in `patches/templates.patch`.
@@ -152,6 +152,7 @@ The following files in rpkg/ have corresponding template versions:
 | rpkg/ | Template Location |
 |-------|-------------------|
 | `.Rbuildignore` | `inst/templates/*/Rbuildignore` |
+| `.gitattributes` | `inst/templates/rpkg/gitattributes`, `inst/templates/monorepo/rpkg/gitattributes`; `inst/templates/monorepo/gitattributes` is the workspace-root variant with `**/` patterns |
 | `bootstrap.R` | `inst/templates/*/bootstrap.R` |
 | `build.rs` | `inst/templates/*/build.rs` |
 | `cleanup`, `cleanup.win`, `cleanup.ucrt` | `inst/templates/*/cleanup*` |
@@ -225,12 +226,10 @@ Templates should be as close to rpkg as possible. Only add template-specific log
 
 When adding template-specific logic, add comments explaining why it differs from rpkg:
 
-```bash
-dnl Standalone scaffolded project - no monorepo available
-if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-  # This logic is template-specific - rpkg always has monorepo
-  echo "configure: running cargo vendor (standalone project)"
-fi
+```r
+# bootstrap.R: this runs only while a build frontend is producing a tarball.
+# configure.ac never creates inst/vendor.tar.xz.
+system2("cargo", c("revendor", "--freeze", "--compress", "inst/vendor.tar.xz"))
 ```
 
 ### Run templates-check Before Committing

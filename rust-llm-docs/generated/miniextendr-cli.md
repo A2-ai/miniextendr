@@ -231,7 +231,7 @@ fn pairs(self: &Self) -> &[(&'static str, String)]
 #### `with_crate`
 
 ```rust
-fn with_crate(self: Self, crate_name: &str) -> Self
+fn with_crate(self: Self, crate_name: &str, crate_path: &str, example: bool) -> Self
 ```
 
 #### `with_rpkg`
@@ -384,7 +384,7 @@ pub enum InitCmd
   - Create a new R package with miniextendr.
 - `Monorepo { dest: String, package: Option<String>, crate_name: Option<String>, rpkg_name: Option<String>, local_path: Option<String>, miniextendr_version: String }`
   - Create a Rust workspace with embedded R package.
-- `Use { template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
+- `Use { crate_name: Option<String>, template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
   - Add miniextendr scaffolding to an existing project.
 
 ### `cli::RenderCmd`
@@ -727,8 +727,10 @@ Apply a scaffold plan rooted at `root`, reading templates from
 filtered patterns outright (byte-identical to the R fresh-file path, see
 minirextendr #1151); over an existing package (`init use`) the patterns
 are appended with dedupe, mirroring `usethis::use_build_ignore()` /
-`use_git_ignore()`. Every other file is overwritten — the template is the
-source of truth, matching `use_template()`'s delete-first behavior.
+`use_git_ignore()`. Git attributes always append missing lines, preserving
+user rules even when re-scaffolding a monorepo. Other files are overwritten:
+the template is the source of truth, matching `use_template()`'s delete-first
+behavior.
 
 ### `scaffold::desc_ensure_r_floor`
 
@@ -890,6 +892,14 @@ pub const EMBEDDED: &[(&str, &str)] = _;
 Every file under `minirextendr/inst/templates/` plus the bundled autoconf
 helper scripts under `minirextendr/inst/scripts/`, embedded verbatim at
 compile time. Keys are paths relative to `minirextendr/inst/`.
+
+### `scaffold::GITATTRIBUTES`
+
+```rust
+pub const GITATTRIBUTES: PlanEntry = _;
+```
+
+Generated-file merge rules, shared by all scaffold layouts.
 
 ### `scaffold::MONOREPO_ROOT_PLAN`
 

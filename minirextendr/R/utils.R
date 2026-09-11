@@ -599,33 +599,65 @@ to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
-#' Get package name from Cargo.toml
+#' Select a Rust library from Cargo workspace metadata
 #'
 #' @param cargo_path Path to Cargo.toml file
-#' @return Package name from Cargo.toml, with hyphens replaced by dots for R
+#' @param crate_name Optional workspace package to expose to R
+#' @return Cargo metadata for the selected library package
 #' @noRd
-get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml")) {
+get_monorepo_crate <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml"),
+                                crate_name = NULL) {
   if (!file.exists(cargo_path)) {
     cli::cli_abort(c(
       "No {.file Cargo.toml} found at {.path {cargo_path}}.",
-      "i" = "The {.val monorepo} template reads the crate name from a Rust workspace {.file Cargo.toml} at the project root.",
-      "i" = "For a standalone R package, pass {.code template_type = \"rpkg\"}."
+      "i" = "The {.val monorepo} template needs a Rust crate or workspace at the project root.",
+      "i" = 'For a standalone R package, pass {.code template_type = "rpkg"}.'
     ))
   }
-
-  lines <- readLines(cargo_path, warn = FALSE)
-
-  # Look for: name = "package-name"
-  name_line <- grep('^name\\s*=\\s*"', lines, value = TRUE)[1]
-  if (is.na(name_line)) {
-    cli::cli_abort("Could not find package name in Cargo.toml")
+  if (!requireNamespace("jsonlite", quietly = TRUE)) {
+    cli::cli_abort('Monorepo scaffolding requires {.pkg jsonlite}. Run {.code install.packages("jsonlite")}.')
   }
 
-  # Extract name from: name = "my-crate"
-  name <- sub('^name\\s*=\\s*"([^"]+)".*$', '\\1', name_line)
+  # Let Cargo resolve workspace members and custom library targets.
+  # Keep stderr separate: Cargo diagnostics are not part of the JSON document.
+  diagnostics <- tempfile("cargo-metadata-")
+  on.exit(unlink(diagnostics), add = TRUE)
+  output <- suppressWarnings(system2("cargo", c(
+    "metadata", "--no-deps", "--format-version", "1", "--manifest-path",
+    shQuote(normalizePath(cargo_path, winslash = "/", mustWork = TRUE))
+  ), stdout = TRUE, stderr = diagnostics))
+  if (!is.null(attr(output, "status"))) {
+    cli::cli_abort(c("Could not read the Rust workspace with {.code cargo metadata}.",
+                    "i" = paste(readLines(diagnostics, warn = FALSE), collapse = "\n")))
+  }
+  metadata <- jsonlite::fromJSON(paste(output, collapse = "\n"), simplifyVector = FALSE)
+  packages <- Filter(function(pkg) pkg$id %in% metadata$workspace_members &&
+    any(vapply(pkg$targets, function(target) {
+      any(target$crate_types %in% c("lib", "rlib"))
+    }, logical(1))), metadata$packages)
+  names <- vapply(packages, `[[`, character(1), "name")
 
-  # Convert Rust naming (hyphens) to R naming (dots)
-  gsub("-", ".", name)
+  if (!is.null(crate_name)) {
+    selected <- which(names == crate_name)
+    if (!length(selected)) {
+      cli::cli_abort(c("No workspace library package named {.val {crate_name}}.",
+                      "i" = "Available library packages: {.val {names}}."))
+    }
+  } else {
+    selected <- which(vapply(packages, function(pkg) {
+      identical(normalizePath(pkg$manifest_path, winslash = "/"),
+                normalizePath(cargo_path, winslash = "/"))
+    }, logical(1)))
+    if (!length(selected)) selected <- seq_along(packages)
+    if (length(selected) != 1L) {
+      cli::cli_abort(c(
+        "Select one Rust library package to expose to R.",
+        "i" = "Available library packages: {.val {names}}.",
+        "i" = 'Pass {.code crate_name = "<package-name>"} to {.fn use_miniextendr}.'
+      ))
+    }
+  }
+  packages[[selected]]
 }
 
 #' Standard template data for current project

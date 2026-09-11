@@ -1381,21 +1381,32 @@ fn run_verify(
     Ok(())
 }
 
-/// Find workspace root by walking up from a directory
+/// Ask Cargo for the owning workspace, including an implicit single-package
+/// workspace and explicit `package.workspace` links outside the parent tree.
 pub fn find_workspace_root(dir: &std::path::Path) -> Result<std::path::PathBuf> {
-    let mut dir = dir.canonicalize()?;
-    loop {
-        let cargo_toml = dir.join("Cargo.toml");
-        if cargo_toml.exists() {
-            let content = std::fs::read_to_string(&cargo_toml)?;
-            if content.contains("[workspace]") {
-                return Ok(dir);
-            }
-        }
-        if !dir.pop() {
-            anyhow::bail!("no workspace root found");
-        }
+    let output = std::process::Command::new("cargo")
+        .args([
+            "locate-project",
+            "--workspace",
+            "--message-format",
+            "plain",
+            "--manifest-path",
+        ])
+        .arg(dir.join("Cargo.toml"))
+        .output()
+        .context("failed to run cargo locate-project")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "cargo locate-project failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
+    let manifest = std::path::PathBuf::from(String::from_utf8(output.stdout)?.trim());
+    manifest
+        .parent()
+        .context("workspace manifest has no parent directory")?
+        .canonicalize()
+        .context("failed to canonicalize workspace root")
 }
 
 /// Merge two package lists, deduplicating by name
@@ -1505,6 +1516,35 @@ fn bootstrap_vendor_from_source_root(
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn workspace_root_accepts_standalone_packages_and_virtual_members() {
+        let root = TempDir::new().unwrap();
+        let member = root.path().join("core");
+        std::fs::create_dir_all(member.join("src")).unwrap();
+        std::fs::write(member.join("src/lib.rs"), "pub fn hello() {}\n").unwrap();
+        std::fs::write(
+            member.join("Cargo.toml"),
+            r#"[package]
+name = "core"
+version = "0.1.0"
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            find_workspace_root(&member).unwrap(),
+            member.canonicalize().unwrap()
+        );
+        std::fs::write(
+            root.path().join("Cargo.toml"),
+            "[workspace]\nmembers = [\"core\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            find_workspace_root(&member).unwrap(),
+            root.path().canonicalize().unwrap()
+        );
+    }
 
     /// Build a minimal Cli with all flags at their defaults. We parse with a
     /// dummy manifest path so clap doesn't run auto-discovery.

@@ -304,6 +304,7 @@ pub(super) fn generate_vtable_static(
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
                 source_file: file!(),
+                source_line: #source_line_lit,
                 content: concat!(
                     "# Generated from Rust impl `",
                     stringify!(#trait_name),
@@ -524,7 +525,13 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                     (false, false)
                 }
             });
-            let attrs = parse_trait_method_attrs(&method.attrs)?;
+            let mut attrs = parse_trait_method_attrs(&method.attrs)?;
+            // `Option<T>` scalar choices params are the optional form (#1473).
+            crate::miniextendr_fn::finalize_method_param_attrs(
+                &mut attrs.per_param,
+                &method.sig.inputs,
+                &attrs.defaults,
+            )?;
 
             // Extract @param tags (and a per-method @rdname override) from
             // method doc comments

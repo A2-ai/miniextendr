@@ -233,10 +233,11 @@ the template.
   project-specific logic in `tools/*.R`, not in `configure.ac` or
   `Makevars.in` directly. Scaffold-managed files are always refreshed.
 
-- **`bootstrap.R` is the auto-vendor trigger.** When devtools or pkgbuild
-  invokes `R CMD build` on a source tree, `bootstrap.R` runs configure in a
-  staging directory with no `.git` ancestor. If `cargo-revendor` is on PATH,
-  auto-vendor fires. This is expected and correct behavior, not a bug.
+- **`bootstrap.R` is the vendoring trigger.** When devtools or pkgbuild
+  invokes `R CMD build` on a source tree, `bootstrap.R` runs configure (with
+  `MINIEXTENDR_BOOTSTRAP=1`) and, if `cargo-revendor` is on PATH, vendors into
+  `inst/vendor.tar.xz` before the tarball is sealed. Configure itself never
+  vendors. This is expected and correct behavior, not a bug.
 
 - **Regression tests in `minirextendr/tests/testthat/` grep function source.**
   These tests use `deparse(body())` to check that template strings appear

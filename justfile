@@ -236,9 +236,42 @@ clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    just clippy-rpkg {{cargo_flags}}
     cargo clippy --benches --tests --examples --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
+
+# Run clippy on rpkg's standalone Rust workspace. Explicit patch overrides keep
+# this independent of configure-generated .cargo/config.toml, while the trap
+# preserves the committed tarball-shaped lockfile even when clippy fails.
+[script("bash")]
+clippy-rpkg *cargo_flags:
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
+    cd "$root/rpkg/src/rust"
+    CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --all-targets --workspace \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
+        {{cargo_flags}}
+
+# Same explicit patch overrides as `clippy-rpkg`, so this needs neither
+# configure nor a generated .cargo/config.toml, and the trap restores the
+# tarball-shaped lockfile the overrides rewrite. `just test` runs this as its
+# rpkg leg and CI's rust-tests job calls it directly (#1474), so the two cannot
+# drift. No `--locked`: the path overrides change the lock on purpose.
+# Run the `#[cfg(test)]` modules of rpkg/src/rust (standalone workspace) with local framework patches
+[script("bash")]
+test-rpkg *cargo_flags:
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
+    cd "$root/rpkg/src/rust"
+    CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
+        {{cargo_flags}}
 
 # Run miniextendr-lint on rpkg (checks #[miniextendr] consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
@@ -362,11 +395,8 @@ test *args:
         (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/$pkg/rust-target" cargo test --manifest-path="$root/tests/cross-package/$pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args)
     }
     leg_rpkg() {
-        (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast $cargo_flags \
-            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
-            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
-            --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
-            -- --no-capture $test_args)
+        # Shared with CI's rust-tests job (#1474); see the `test-rpkg` recipe.
+        just test-rpkg $cargo_flags -- --no-capture $test_args
     }
     leg_ui() {
         just test-ui
@@ -1080,13 +1110,16 @@ templates-sources:
     rpkg/configure.ucrt	rpkg/configure.ucrt
     rpkg/configure.win	rpkg/configure.win
     rpkg/gitignore	rpkg/.gitignore
+    rpkg/gitattributes	rpkg/.gitattributes
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
+    rpkg/Rbuildignore	rpkg/.Rbuildignore
     rpkg/stub.c	rpkg/src/stub.c
     rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
+    monorepo/gitattributes	rpkg/.gitattributes
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
@@ -1097,8 +1130,10 @@ templates-sources:
     monorepo/rpkg/configure.ucrt	rpkg/configure.ucrt
     monorepo/rpkg/configure.win	rpkg/configure.win
     monorepo/rpkg/gitignore	rpkg/.gitignore
+    monorepo/rpkg/gitattributes	rpkg/.gitattributes
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
+    monorepo/rpkg/Rbuildignore	rpkg/.Rbuildignore
     monorepo/rpkg/stub.c	rpkg/src/stub.c
     monorepo/rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R

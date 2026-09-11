@@ -44,7 +44,21 @@ const MULTILINE_TAGS: &[&str] = &[
     "field",
     "value", // synonym for return
     "prop",  // S7 property documentation (roxygen2 8.0.0+)
+    // Tags whose *name* is a single word but whose text may wrap onto the
+    // next `///` line. Dropping the wrapped part silently truncated them (#1476).
+    "describeIn",
+    "family",
+    "inherit",
+    "inheritParams",
+    "inheritSection",
+    "keywords",
+    "concept",
 ];
+
+/// Tags whose wrapped continuation lines are joined back onto one line with a
+/// space instead of a newline: roxygen2 wants these on a single line, but a
+/// long `@title` in a Rust doc comment still gets wrapped by the author.
+const JOINED_TAGS: &[&str] = &["title"];
 
 /// Check if a tag name supports multi-line content.
 fn is_multiline_tag(tag: &str) -> bool {
@@ -54,6 +68,15 @@ fn is_multiline_tag(tag: &str) -> bool {
         .and_then(|rest| rest.split_whitespace().next())
         .unwrap_or("");
     MULTILINE_TAGS.contains(&tag_name)
+}
+
+/// Check if a tag's continuation lines are joined with a space (see [`JOINED_TAGS`]).
+fn is_joined_tag(tag: &str) -> bool {
+    let tag_name = tag
+        .strip_prefix('@')
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or("");
+    JOINED_TAGS.contains(&tag_name)
 }
 
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
@@ -150,11 +173,16 @@ fn explicit_roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
                 tags.push(trimmed.to_string());
             } else if !trimmed.is_empty()
                 && let Some(last) = tags.last_mut()
-                && is_multiline_tag(last)
             {
-                // Continuation line for the current multi-line tag.
-                last.push('\n');
-                last.push_str(trimmed);
+                if is_multiline_tag(last) {
+                    // Continuation line for the current multi-line tag.
+                    last.push('\n');
+                    last.push_str(trimmed);
+                } else if is_joined_tag(last) {
+                    // Wrapped single-line tag: fold back onto one line.
+                    last.push(' ');
+                    last.push_str(trimmed);
+                }
             }
             // Leading prose (before any @tag) is captured separately by
             // `leading_prose_from_attrs` and promoted to @description in
@@ -707,6 +735,18 @@ pub(crate) fn strip_method_tags(
     type_name: &str,
     span: proc_macro2::Span,
 ) -> (Vec<String>, proc_macro2::TokenStream) {
+    strip_tags_in(tags, type_name, span, METHOD_ONLY_TAGS)
+}
+
+/// Shared body of [`strip_method_tags`] and [`strip_method_tags_r6`]: drop
+/// every tag whose name is in `method_only` and emit one warning const scope
+/// per dropped tag. The two public entry points differ only in the tag table.
+fn strip_tags_in(
+    tags: &[String],
+    type_name: &str,
+    span: proc_macro2::Span,
+    method_only: &[&str],
+) -> (Vec<String>, proc_macro2::TokenStream) {
     use quote::quote_spanned;
 
     let mut filtered = Vec::new();
@@ -717,7 +757,8 @@ pub(crate) fn strip_method_tags(
             filtered.push(tag.clone());
             continue;
         };
-        if !METHOD_ONLY_TAGS.contains(&name) {
+        if !method_only.contains(&name) {
+            // Keeps unrecognised tags (and, for R6, @param) without warning.
             filtered.push(tag.clone());
             continue;
         }
@@ -876,41 +917,7 @@ pub(crate) fn strip_method_tags_r6(
     type_name: &str,
     span: proc_macro2::Span,
 ) -> (Vec<String>, proc_macro2::TokenStream) {
-    use quote::quote_spanned;
-
-    let mut filtered = Vec::new();
-    let mut warnings = proc_macro2::TokenStream::new();
-
-    for tag in tags {
-        let Some(name) = roxygen_tag_name(tag) else {
-            filtered.push(tag.clone());
-            continue;
-        };
-        if !METHOD_ONLY_TAGS_R6.contains(&name) {
-            // Keeps @param (and any unrecognised tags) without warning.
-            filtered.push(tag.clone());
-            continue;
-        }
-        let msg = format!(
-            "miniextendr: @{} on impl block `{}` has no effect — move it to the method. Tag: {}",
-            name,
-            type_name,
-            tag.trim()
-        );
-        warnings.extend(quote_spanned! { span =>
-            const _: () = {
-                #[deprecated(note = #msg)]
-                #[doc(hidden)]
-                #[allow(dead_code)]
-                const _MINIEXTENDR_IMPL_METHOD_TAG_WARN: () = ();
-                #[doc(hidden)]
-                #[allow(dead_code)]
-                const _MINIEXTENDR_IMPL_METHOD_TAG_USE: () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN;
-            };
-        });
-    }
-
-    (filtered, warnings)
+    strip_tags_in(tags, type_name, span, METHOD_ONLY_TAGS_R6)
 }
 
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.

@@ -639,3 +639,35 @@ pub fn new_oven_temperature(x: Vec<f64>) -> miniextendr_api::AsVctrs<ProducerOve
     miniextendr_api::AsVctrs(ProducerOvenTemp { values: x })
 }
 // endregion
+
+// region: crate-level noexport postfix (#1454)
+
+/// Internal entry point named through the crate default: `Cargo.toml` sets
+/// `[package.metadata.miniextendr] noexport_postfix = "_impl"`, so the R
+/// wrapper is `producer_internal_probe_impl` while the C symbol keeps the
+/// Rust name.
+#[miniextendr(noexport)]
+pub fn producer_internal_probe() -> i32 {
+    1454
+}
+
+/// The per-item `postfix` wins over the crate default.
+#[miniextendr(noexport, postfix = "_own")]
+pub fn producer_internal_probe_explicit() -> i32 {
+    1
+}
+
+/// `r_name` wins over the crate default.
+#[miniextendr(noexport, r_name = "producer_internal_probe_renamed")]
+pub fn producer_internal_probe_r_name() -> i32 {
+    2
+}
+
+/// Exported functions keep their Rust name; the default is for internal entry
+/// points only.
+#[miniextendr]
+pub fn producer_exported_probe() -> i32 {
+    3
+}
+
+// endregion
