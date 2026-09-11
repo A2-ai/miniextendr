@@ -3,9 +3,7 @@
 # These tests verify that the scaffolding functions create valid projects
 # that can be built with the miniextendr toolchain.
 
-# -----------------------------------------------------------------------------
-# Shared helpers
-# -----------------------------------------------------------------------------
+# region: Shared helpers
 
 # Build a cdylib, generate R wrappers, and roxygenise.
 # Returns invisible(TRUE) on success, stops on failure.
@@ -14,9 +12,8 @@ generate_r_wrappers <- function(pkg_path) {
   features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
                         value = TRUE)
   features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
-  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
-  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
+  crate_name <- minirextendr:::to_rust_name(pkg_name)
 
   cdylib_result <- system2(
     "cargo",
@@ -90,6 +87,8 @@ skip_e2e <- function() {
   skip_if_not(nzchar(Sys.which("R")), "R not available")
   skip_if_no_local_repo()
 }
+
+# endregion
 
 # -----------------------------------------------------------------------------
 # Templates patch sync check

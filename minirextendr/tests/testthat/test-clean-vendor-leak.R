@@ -51,3 +51,39 @@ test_that("miniextendr_clean_vendor_leak is idempotent", {
   expect_true(isFALSE(result2))
   expect_false(file.exists(tarball))
 })
+
+test_that("frozen manifest detection reports dependency and patch paths together", {
+  root <- withr::local_tempdir()
+  rust <- file.path(root, "src", "rust")
+  dir.create(rust, recursive = TRUE)
+  writeLines(c(
+    '[package]', 'name = "fixture"',
+    '[dependencies]', 'core = { path = "../../vendor/core", version = "*" }',
+    'live = { path = "../../../live" }',
+    '[build-dependencies.helper]', 'path = "../../vendor/helper"',
+    '[patch.crates-io]', 'core = { path = "../../vendor/core" }',
+    'separate = { path = "../../vendor-other/separate" }'
+  ), file.path(rust, "Cargo.toml"))
+  entries <- minirextendr:::frozen_manifest_entries(root)
+  expect_identical(vapply(entries, `[[`, character(1), "crate"), c("core", "helper", "core"))
+  expect_identical(vapply(entries, `[[`, character(1), "section"),
+                   c("dependencies", "build-dependencies", "patch.crates-io"))
+})
+
+test_that("cleanup reports frozen entries even when the tarball is already absent", {
+  root <- make_minimal_project()
+  withr::defer(unlink(root, recursive = TRUE))
+  dir.create(file.path(root, "src", "rust"), recursive = TRUE)
+  manifest <- file.path(root, "src", "rust", "Cargo.toml")
+  original <- c('[dependencies]', 'core = { path = "../../vendor/core" }',
+                '[patch.crates-io]', 'core = { path = "../../vendor/core" }')
+  writeLines(original, manifest)
+  reported <- NULL
+  testthat::local_mocked_bindings(
+    report_frozen_manifest = function(entries) reported <<- entries,
+    .package = "minirextendr"
+  )
+  expect_false(miniextendr_clean_vendor_leak(root))
+  expect_length(reported, 2L)
+  expect_identical(readLines(manifest), original)
+})

@@ -175,6 +175,7 @@ miniextendr_configure <- function(path = ".") {
 miniextendr_build <- function(path = ".", install = TRUE) {
   with_project(path)
   cli::cli_h1("miniextendr build workflow")
+  report_minirextendr_installation()
 
   pkg_path <- usethis::proj_get()
   has_devtools <- requireNamespace("devtools", quietly = TRUE)

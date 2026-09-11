@@ -280,8 +280,10 @@ pub fn rewrite_local_path_deps(
         // Check [dependencies], [build-dependencies], [dev-dependencies]
         for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
             if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
-                for pkg in local_pkgs.iter() {
-                    if let Some(dep) = table.get_mut(&pkg.name)
+                for (alias, dep) in table.iter_mut() {
+                    if let Some(pkg) = local_pkgs
+                        .iter()
+                        .find(|pkg| pkg.name == dependency_package_name(alias.get(), dep))
                         && add_path_to_dep(dep, &pkg.name)
                     {
                         changed = true;
@@ -1014,8 +1016,10 @@ pub fn freeze_manifest(
     let mut frozen_path_deps: std::collections::HashSet<String> = std::collections::HashSet::new();
     for section in &["dependencies", "build-dependencies"] {
         if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
-            for pkg in local_pkgs.iter() {
-                if let Some(dep) = table.get_mut(&pkg.name)
+            for (alias, dep) in table.iter_mut() {
+                if let Some(pkg) = local_pkgs
+                    .iter()
+                    .find(|pkg| pkg.name == dependency_package_name(alias.get(), dep))
                     && dep_declares_path(dep)
                 {
                     rewrite_dep_to_vendor(dep, &pkg.name, &vendor_rel);
@@ -1126,10 +1130,10 @@ pub fn freeze_manifest(
         }
     }
     if !patch_table.is_empty() {
-        doc.insert("patch", toml_edit::Item::Table(toml_edit::Table::new()));
-        if let Some(patch) = doc.get_mut("patch").and_then(|v| v.as_table_mut()) {
-            patch.insert("crates-io", toml_edit::Item::Table(patch_table));
-        }
+        let mut patch = toml_edit::Table::new();
+        patch.set_implicit(true);
+        patch.insert("crates-io", toml_edit::Item::Table(patch_table));
+        doc.insert("patch", toml_edit::Item::Table(patch));
     }
 
     std::fs::write(manifest_path, doc.to_string())?;
@@ -1159,6 +1163,14 @@ fn dep_declares_path(dep: &toml_edit::Item) -> bool {
         toml_edit::Item::Table(t) => t.contains_key("path") && !t.contains_key("git"),
         _ => false,
     }
+}
+
+/// Cargo dependency keys can be aliases; filesystem slots use the package name.
+pub(crate) fn dependency_package_name<'a>(alias: &'a str, dep: &'a toml_edit::Item) -> &'a str {
+    dep.as_table_like()
+        .and_then(|table| table.get("package"))
+        .and_then(toml_edit::Item::as_str)
+        .unwrap_or(alias)
 }
 
 /// Rewrite a dependency entry to point at vendor/
@@ -1713,6 +1725,68 @@ external = { git = "https://example.com/ext" }
     }
 
     #[test]
+    fn freeze_and_vendor_rewrites_preserve_renamed_path_dependencies() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        let binding = vendor.join("binding");
+        std::fs::create_dir_all(&binding).unwrap();
+        std::fs::create_dir_all(vendor.join("core")).unwrap();
+        let manifest = binding.join("Cargo.toml");
+        std::fs::write(
+            &manifest,
+            r#"[package]
+name = "binding"
+version = "0.1.0"
+[dependencies]
+core_library = { package = "core", path = "../../../core", optional = true }
+[build-dependencies.build_core]
+package = "core"
+path = "../../../core"
+"#,
+        )
+        .unwrap();
+        let packages = vec![LocalPackage {
+            name: "core".into(),
+            version: "0.1.0".into(),
+            path: dir.path().join("core"),
+            manifest_path: dir.path().join("core/Cargo.toml"),
+        }];
+        freeze_manifest(&manifest, &vendor, &packages, false, false, Verbosity(0)).unwrap();
+        let frozen: toml_edit::DocumentMut =
+            std::fs::read_to_string(&manifest).unwrap().parse().unwrap();
+        for (section, alias) in [
+            ("dependencies", "core_library"),
+            ("build-dependencies", "build_core"),
+        ] {
+            assert_eq!(frozen[section][alias]["package"].as_str(), Some("core"));
+            assert_eq!(frozen[section][alias]["path"].as_str(), Some("../core"));
+            assert_eq!(frozen[section][alias]["version"].as_str(), Some("*"));
+        }
+        assert_eq!(
+            frozen["dependencies"]["core_library"]["optional"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(
+            frozen["patch"]["crates-io"]["core"]["path"].as_str(),
+            Some("../core")
+        );
+        let mut stale = frozen;
+        stale["dependencies"]["core_library"]["path"] = toml_edit::value("/old/core");
+        std::fs::write(&manifest, stale.to_string()).unwrap();
+        rewrite_local_path_deps(&vendor, &packages, Verbosity(0)).unwrap();
+        let repaired: toml_edit::DocumentMut =
+            std::fs::read_to_string(&manifest).unwrap().parse().unwrap();
+        assert_eq!(
+            repaired["dependencies"]["core_library"]["path"].as_str(),
+            Some("../core")
+        );
+        assert_eq!(
+            repaired["dependencies"]["core_library"]["package"].as_str(),
+            Some("core")
+        );
+    }
+
+    #[test]
     fn freeze_manifest_non_strict_succeeds_on_external_git() {
         // Same fixture but strict=false: freeze proceeds, leaving the
         // external git dep in place. The verified property here is that
@@ -1905,6 +1979,8 @@ miniextendr-macros-core = { path = "/tmp/mc" }
 
         freeze_manifest(&manifest, &vendor, &[], false, false, Verbosity(0)).unwrap();
         let result = std::fs::read_to_string(&manifest).unwrap();
+        assert!(!result.lines().any(|line| line.trim() == "[patch]"));
+        assert!(result.contains("[patch.crates-io]"));
         let api = result.find("miniextendr-api =").unwrap();
         let lint = result.find("miniextendr-lint =").unwrap();
         let macros = result.find("miniextendr-macros =").unwrap();

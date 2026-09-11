@@ -415,7 +415,7 @@ test_that("B4: auto-detect falls back to rpkg for an R package nested in a Rust 
   )
 
   # With the fix the standalone (rpkg) branch runs; before it, the monorepo
-  # branch aborted at get_package_name_from_cargo() with "Cargo.toml".
+  # branch aborted at get_monorepo_crate() with "Cargo.toml".
   expect_error(
     suppressMessages(suppressWarnings(
       use_miniextendr(path = pkg, template_type = "auto", claude_skills = FALSE)
@@ -427,6 +427,8 @@ test_that("B4: auto-detect falls back to rpkg for an R package nested in a Rust 
 test_that("B4: auto-detect stays monorepo when the project dir has its own Cargo.toml", {
   tmp <- withr::local_tempdir()
   # Rust workspace root that IS the project dir — a real monorepo entry point.
+  dir.create(file.path(tmp, "src"))
+  writeLines("pub fn hello() {}", file.path(tmp, "src", "lib.rs"))
   writeLines(c("[package]", 'name = "my-crate"', 'version = "0.1.0"'),
              file.path(tmp, "Cargo.toml"))
 

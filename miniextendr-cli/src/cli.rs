@@ -148,6 +148,9 @@ pub enum InitCmd {
     },
     /// Add miniextendr scaffolding to an existing project.
     Use {
+        /// Rust workspace library package to expose (required when ambiguous).
+        #[arg(long)]
+        crate_name: Option<String>,
         /// Template type: auto, rpkg, or monorepo.
         #[arg(long, default_value = "auto")]
         template_type: String,

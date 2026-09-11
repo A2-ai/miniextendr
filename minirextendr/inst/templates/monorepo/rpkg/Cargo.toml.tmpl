@@ -1,5 +1,5 @@
 [package]
-name = "{{package_rs}}"
+name = "{{package_rs}}-r"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -8,6 +8,7 @@ publish = false
 [workspace]
 
 [lib]
+name = "{{package_rs}}"
 path = "lib.rs"
 crate-type = ["staticlib"]
 
@@ -18,9 +19,9 @@ connections = ["miniextendr-api/connections"]
 
 [dependencies]
 miniextendr-api = { git = "https://github.com/A2-ai/miniextendr" }
-# Core Rust library (workspace sibling). `cargo revendor --freeze` rewrites this
-# path to vendor/ at build time so the shipped tarball is self-contained.
-{{crate_name}} = { path = "../../../{{crate_name}}" }
+# Core Rust library. The alias also lets crates named `core` coexist with
+# Rust standard-library paths in generated code. Vendoring freezes this path.
+core_library = { package = "{{crate_name}}", path = "{{{crate_path}}}" }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/A2-ai/miniextendr" }

@@ -176,3 +176,36 @@ test_that("miniextendr_doctor passes cleanly when no relative path deps exist", 
     label = "doctor should pass the relative-path check when no relative deps"
   )
 })
+
+
+test_that("doctor reports frozen dependencies and patches instead of unrelated advice", {
+  tmp <- make_doctor_pkg(c(
+    '[package]', 'name = "mypkg"', 'version = "0.1.0"',
+    '[dependencies]', 'miniextendr-api = "*"',
+    'core_library = { package = "core", path = "../../vendor/core" }',
+    '[patch.crates-io]', 'core = { path = "../../vendor/core" }'
+  ))
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  messages <- capture_messages(result <- miniextendr_doctor(tmp))
+  expect_true("vendor-bound Cargo.toml [dependencies]: core_library" %in% result$warn)
+  expect_true("vendor-bound Cargo.toml [patch.crates-io]: core" %in% result$warn)
+  expect_false(any(grepl("relative path dep in", result$warn, fixed = TRUE)))
+  expect_false("no relative path deps in [dependencies]" %in% result$pass)
+  expect_false(any(grepl("Use an absolute path", messages, fixed = TRUE)))
+})
+
+test_that("doctor warns about multiple installed copies", {
+  tmp <- make_doctor_pkg(c('[package]', 'name = "mypkg"',
+                           '[dependencies]', 'miniextendr-api = "*"'))
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  local_mocked_bindings(minirextendr_installations = function(...) list(
+    list(path = "/workspace/rv/minirextendr", version = "0.2.0", sha = "abc123"),
+    list(path = "/user/minirextendr", version = "0.2.0", sha = NA_character_)
+  ), .package = "minirextendr")
+  messages <- capture_messages(result <- miniextendr_doctor(tmp))
+  expect_true("multiple minirextendr installations" %in% result$warn)
+  text <- paste(messages, collapse = " ")
+  expect_match(text, "abc123", fixed = TRUE)
+  expect_match(text, "/workspace/rv/minirextendr", fixed = TRUE)
+  expect_match(text, "/user/minirextendr", fixed = TRUE)
+})

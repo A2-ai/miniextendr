@@ -114,6 +114,8 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     Package = tools::toTitleCase(package),
     crate_name = crate_name,
     crate_name_rs = to_rust_name(crate_name),
+    crate_path = paste0("../../../", crate_name),
+    core_example_prefix = "",
     rpkg_name = rpkg_name,
     features_var = "CARGO_FEATURES",
     year = format(Sys.Date(), "%Y")
@@ -170,10 +172,11 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
 
   cli::cli_h1("Monorepo created!")
   cli::cli_alert_info("Next steps:")
+  build_call <- paste0("minirextendr::miniextendr_build(path = ", encodeString(rpkg_name, quote = '"'), ")")
   cli::cli_bullets(c(
     " " = "1. Edit {.path {crate_name}/src/lib.rs} for your main Rust library",
     " " = "2. Edit {.path {rpkg_name}/src/rust/lib.rs} for R-exposed functions",
-    " " = "3. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
+    " " = "3. Run {.code {build_call}} from this workspace root to compile, generate R wrappers + NAMESPACE, and install"
   ))
 
   if (open) {
@@ -304,7 +307,10 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #'   from directory structure based on whether Cargo.toml or DESCRIPTION exists),
 #'   `"rpkg"` for a standalone R package, or `"monorepo"` for a Rust workspace.
 #' @param rpkg_name Name of the R package subdirectory for monorepo template
-#'   (default: derived from package name). Only used when template_type is "monorepo".
+#'   (default: "rpkg"). Only used when template_type is "monorepo".
+#' @param crate_name Rust workspace package to expose to R. Defaults to the root
+#'   library package, or the sole library member of a virtual workspace. Required
+#'   for virtual workspaces with multiple libraries. Only used for monorepos.
 #' @param miniextendr_version Version of miniextendr to vendor (default: "main").
 #'   For monorepo projects, vendoring is only needed for CRAN submission.
 #' @param local_path Optional path to local miniextendr repository. If provided,
@@ -320,7 +326,7 @@ use_miniextendr <- function(path = ".",
                             template_type = c("auto", "rpkg", "monorepo"),
                             rpkg_name = NULL,
                             miniextendr_version = "main", local_path = NULL,
-                            claude_skills = TRUE) {
+                            claude_skills = TRUE, crate_name = NULL) {
   template_type <- match.arg(template_type)
   with_project(path)
   # Warn if the package directory being scaffolded is not at a git workspace
@@ -393,13 +399,21 @@ use_miniextendr <- function(path = ".",
 
   # Handle monorepo differently: create rpkg/ subdirectory
   if (template_type == "monorepo") {
-    # Derive package name from Cargo.toml (convert my-crate → my.crate)
-    package_name <- get_package_name_from_cargo()
-    rpkg_name <- rpkg_name %||% package_name
+    core <- get_monorepo_crate(crate_name = crate_name)
+    package_name <- gsub("[-_]", ".", core$name)
+    rpkg_name <- rpkg_name %||% "rpkg"
     cli::cli_alert_info("Detected Rust project - creating R package in {.path {rpkg_name}/} subdirectory")
     cli::cli_alert_info("Using package name: {.val {package_name}}")
 
-    data <- template_data(package = package_name, rpkg_name = rpkg_name)
+    data <- template_data(package = package_name, rpkg_name = rpkg_name,
+                          crate_name = core$name)
+    data$crate_name_rs <- to_rust_name(core$name)
+    data$crate_path <- as.character(fs::path_rel(
+      dirname(core$manifest_path), usethis::proj_path(rpkg_name, "src", "rust")
+    ))
+    # Existing libraries have arbitrary APIs; only the newly created core
+    # template is known to provide hello().
+    data$core_example_prefix <- "// "
     create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
 
     # Auto-run autoconf if available
@@ -424,9 +438,10 @@ use_miniextendr <- function(path = ".",
 
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")
+    build_call <- paste0("minirextendr::miniextendr_build(path = ", encodeString(rpkg_name, quote = '"'), ")")
     cli::cli_bullets(c(
       " " = "1. Edit {.path {rpkg_name}/src/rust/lib.rs} to add R-exposed functions",
-      " " = "2. {.code cd {rpkg_name} && minirextendr::miniextendr_build()} to compile, generate R wrappers + NAMESPACE, and install"
+      " " = "2. Run {.code {build_call}} from this workspace root to compile, generate R wrappers + NAMESPACE, and install"
     ))
 
     return(invisible(TRUE))

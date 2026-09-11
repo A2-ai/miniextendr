@@ -231,7 +231,7 @@ fn pairs(self: &Self) -> &[(&'static str, String)]
 #### `with_crate`
 
 ```rust
-fn with_crate(self: Self, crate_name: &str) -> Self
+fn with_crate(self: Self, crate_name: &str, crate_path: &str, example: bool) -> Self
 ```
 
 #### `with_rpkg`
@@ -384,7 +384,7 @@ pub enum InitCmd
   - Create a new R package with miniextendr.
 - `Monorepo { dest: String, package: Option<String>, crate_name: Option<String>, rpkg_name: Option<String>, local_path: Option<String>, miniextendr_version: String }`
   - Create a Rust workspace with embedded R package.
-- `Use { template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
+- `Use { crate_name: Option<String>, template_type: String, rpkg_name: Option<String>, miniextendr_version: String, local_path: Option<String> }`
   - Add miniextendr scaffolding to an existing project.
 
 ### `cli::RenderCmd`
