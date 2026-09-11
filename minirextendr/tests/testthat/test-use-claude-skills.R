@@ -41,6 +41,7 @@ test_that("use_claude_skills() installs skills, .Rbuildignore, and AGENTS.md", {
 
   rbuildignore <- readLines(file.path(tmp, ".Rbuildignore"), warn = FALSE)
   expect_true("^\\.claude$" %in% rbuildignore)
+  expect_true("^AGENTS\\.md$" %in% rbuildignore)
 
   agents <- file.path(tmp, "AGENTS.md")
   expect_true(file.exists(agents))
@@ -74,6 +75,7 @@ test_that("use_claude_skills() re-run overwrites stale copies, keeps user files"
   # .Rbuildignore not duplicated
   rbuildignore <- readLines(file.path(tmp, ".Rbuildignore"), warn = FALSE)
   expect_identical(sum(rbuildignore == "^\\.claude$"), 1L)
+  expect_identical(sum(rbuildignore == "^AGENTS\\.md$"), 1L)
 })
 
 test_that("use_miniextendr(claude_skills = FALSE) opts out", {
@@ -124,4 +126,5 @@ test_that("scaffolded package excludes .claude from the built tarball", {
   expect_length(tarball, 1L)
   contents <- untar(tarball, list = TRUE)
   expect_false(any(grepl("\\.claude", contents)))
+  expect_false("tarpkg/AGENTS.md" %in% contents)
 })

@@ -29,7 +29,7 @@ templates), so stale copies never linger. Skill directories you added
 yourself under \verb{.claude/skills/} are left untouched.
 
 When the project root is an R package (a \code{DESCRIPTION} is present),
-\verb{^\\.claude$} is added to \code{.Rbuildignore} so the skills never ship in the
-tarball. An \code{AGENTS.md} stub pointing non-Claude agents at the skill set is
+\verb{.claude/} and \code{AGENTS.md} are added to \code{.Rbuildignore} so agent guidance
+never ships in the tarball. An \code{AGENTS.md} stub pointing non-Claude agents at the skill set is
 written only if the file does not already exist -- it is user-owned content.
 }

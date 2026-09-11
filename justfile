@@ -1112,6 +1112,7 @@ templates-sources:
     rpkg/gitignore	rpkg/.gitignore
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
+    rpkg/Rbuildignore	rpkg/.Rbuildignore
     rpkg/stub.c	rpkg/src/stub.c
     rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
@@ -1129,6 +1130,7 @@ templates-sources:
     monorepo/rpkg/gitignore	rpkg/.gitignore
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
+    monorepo/rpkg/Rbuildignore	rpkg/.Rbuildignore
     monorepo/rpkg/stub.c	rpkg/src/stub.c
     monorepo/rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R

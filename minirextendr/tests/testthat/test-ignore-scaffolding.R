@@ -161,3 +161,30 @@ test_that("standalone path appends and dedupes into a pre-existing ignore file",
   expect_false(any(duplicated(rb_after)))
   expect_false(any(duplicated(gi_after)))
 })
+
+
+test_that("both ignore templates exclude agent notes from built packages", {
+  skip_if_not_installed("pkgbuild")
+  for (template in c("rpkg", "monorepo/rpkg")) {
+    root <- withr::local_tempdir()
+    package <- file.path(root, "agentpkg")
+    suppressMessages(usethis::create_package(package, open = FALSE))
+    template_file <- system.file(
+      "templates", template, "Rbuildignore", package = "minirextendr", mustWork = TRUE
+    )
+    file.copy(template_file, file.path(package, ".Rbuildignore"))
+    writeLines("Agent instructions", file.path(package, "AGENTS.md"))
+    writeLines("Claude instructions", file.path(package, "CLAUDE.md"))
+    writeLines("Package README", file.path(package, "README.md"))
+
+    archive <- pkgbuild::build(
+      package, dest_path = root, binary = FALSE,
+      vignettes = FALSE, manual = FALSE, quiet = TRUE
+    )
+    contents <- utils::untar(archive, list = TRUE)
+    expect_true("agentpkg/DESCRIPTION" %in% contents, info = template)
+    expect_true("agentpkg/README.md" %in% contents, info = template)
+    expect_false("agentpkg/AGENTS.md" %in% contents, info = template)
+    expect_false("agentpkg/CLAUDE.md" %in% contents, info = template)
+  }
+})

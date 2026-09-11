@@ -423,7 +423,8 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   lib_path <- install_to_templib(pkg_path, tmp)
 
   withr::with_libpaths(lib_path, action = "prefix", {
-    library(testpkg)
+    # Load the generated fixture by its computed package name.
+    library(basename(pkg_path), character.only = TRUE)
     expect_equal(add(1, 2), 3)
     expect_equal(hello("Test"), "Hello, Test!")
     expect_equal(join_strings(c("a", "b", "c")), "a, b, c")
@@ -699,7 +700,7 @@ test_that("miniextendr_build() exports a newly added function in a single pass (
 
     # And it actually resolves + runs (the wrapper is wired, not just named).
     expect_true(exists("mx_new_fn", envir = asNamespace("spexport")))
-    expect_equal(spexport::mx_new_fn(21), 42)
+    expect_equal(getExportedValue("spexport", "mx_new_fn")(21), 42)
 
     detach("package:spexport", character.only = TRUE, unload = TRUE)
   })
@@ -774,7 +775,7 @@ test_that("miniextendr_build() heals a removed/renamed export in a single pass (
       function(lib) {
         .libPaths(c(lib, .libPaths()))
         exports <- getNamespaceExports("sprename")
-        value <- tryCatch(sprename::add_renamed(2, 3),
+        value <- tryCatch(getExportedValue("sprename", "add_renamed")(2, 3),
                           error = function(e) conditionMessage(e))
         list(exports = exports, value = value)
       },
