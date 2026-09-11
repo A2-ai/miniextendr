@@ -50,6 +50,16 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
 
   results <- list(pass = character(), warn = character(), fail = character())
 
+  cli::cli_h2("minirextendr installation")
+  copies <- report_minirextendr_installation()
+  if (length(copies) > 1L) {
+    cli::cli_alert_warning("Multiple minirextendr copies are available; starting R in another directory may select a different copy.")
+    for (copy in copies[-1L]) {
+      cli::cli_alert_info("Version {copy$version}: {.path {copy$path}}")
+    }
+    results$warn <- c(results$warn, "multiple minirextendr installations")
+  }
+
   # -- Toolchain checks --
   cli::cli_h2("Toolchain")
 
@@ -114,10 +124,19 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
       results$fail <- c(results$fail, "Cargo.toml missing miniextendr-api")
     }
 
-    # Check for relative path = ... entries in [dependencies] only.
-    # [patch.crates-io] relative paths are written by use_vendor_lib() and are
-    # intentional -- do NOT flag them.
-    rel_path_deps <- parse_relative_path_deps(cargo_contents)
+    # Diagnose vendor-bound entries before generic relative dependencies so
+    # interrupted freezes include their patch entries and recovery guidance.
+    frozen <- frozen_manifest_entries(usethis::proj_get())
+    if (length(frozen)) {
+      report_frozen_manifest(frozen)
+      results$warn <- c(results$warn, vapply(frozen, function(entry) {
+        paste0("vendor-bound Cargo.toml [", entry$section, "]: ", entry$crate)
+      }, character(1)))
+    }
+    frozen_deps <- Filter(function(entry) entry$section == "dependencies", frozen)
+    frozen_names <- vapply(frozen_deps, `[[`, character(1), "crate")
+    rel_path_deps <- Filter(function(entry) !entry$crate %in% frozen_names,
+                            parse_relative_path_deps(cargo_contents))
     if (length(rel_path_deps) > 0L) {
       for (dep_info in rel_path_deps) {
         cli::cli_alert_warning(
@@ -134,7 +153,7 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
           paste0("relative path dep in [dependencies]: ", dep_info$crate)
         )
       }
-    } else {
+    } else if (!length(frozen)) {
       results$pass <- c(results$pass, "no relative path deps in [dependencies]")
     }
   }

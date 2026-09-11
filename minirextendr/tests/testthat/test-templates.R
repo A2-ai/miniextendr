@@ -3,9 +3,7 @@
 # These tests verify that the scaffolding functions create valid projects
 # that can be built with the miniextendr toolchain.
 
-# -----------------------------------------------------------------------------
-# Shared helpers
-# -----------------------------------------------------------------------------
+# region: Shared helpers
 
 # Build a cdylib, generate R wrappers, and roxygenise.
 # Returns invisible(TRUE) on success, stops on failure.
@@ -14,9 +12,8 @@ generate_r_wrappers <- function(pkg_path) {
   features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
                         value = TRUE)
   features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  cargo_lines <- readLines(file.path(rust_dir, "Cargo.toml"))
-  name_line <- grep("^name\\s*=", cargo_lines, value = TRUE)[1]
-  crate_name <- gsub("-", "_", gsub(".*\"(.+)\".*", "\\1", name_line))
+  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
+  crate_name <- minirextendr:::to_rust_name(pkg_name)
 
   cdylib_result <- system2(
     "cargo",
@@ -90,6 +87,8 @@ skip_e2e <- function() {
   skip_if_not(nzchar(Sys.which("R")), "R not available")
   skip_if_no_local_repo()
 }
+
+# endregion
 
 # -----------------------------------------------------------------------------
 # Templates patch sync check
@@ -407,7 +406,8 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   lib_path <- install_to_templib(pkg_path, tmp)
 
   withr::with_libpaths(lib_path, action = "prefix", {
-    library(testpkg)
+    # Load the generated fixture by its computed package name.
+    library(basename(pkg_path), character.only = TRUE)
     expect_equal(add(1, 2), 3)
     expect_equal(hello("Test"), "Hello, Test!")
     expect_equal(join_strings(c("a", "b", "c")), "a, b, c")
@@ -682,7 +682,7 @@ test_that("miniextendr_build() exports a newly added function in a single pass (
 
     # And it actually resolves + runs (the wrapper is wired, not just named).
     expect_true(exists("mx_new_fn", envir = asNamespace("spexport")))
-    expect_equal(spexport::mx_new_fn(21), 42)
+    expect_equal(getExportedValue("spexport", "mx_new_fn")(21), 42)
 
     detach("package:spexport", character.only = TRUE, unload = TRUE)
   })
@@ -757,7 +757,7 @@ test_that("miniextendr_build() heals a removed/renamed export in a single pass (
       function(lib) {
         .libPaths(c(lib, .libPaths()))
         exports <- getNamespaceExports("sprename")
-        value <- tryCatch(sprename::add_renamed(2, 3),
+        value <- tryCatch(getExportedValue("sprename", "add_renamed")(2, 3),
                           error = function(e) conditionMessage(e))
         list(exports = exports, value = value)
       },

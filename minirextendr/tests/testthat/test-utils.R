@@ -133,12 +133,12 @@ test_that("detect_project_type identifies rpkg inside monorepo (workspace)", {
   expect_equal(minirextendr:::detect_project_type(file.path(tmp, "rpkg")), "monorepo")
 })
 
-test_that("get_package_name_from_cargo() abort names the path and suggests rpkg", {
+test_that("get_monorepo_crate() abort names the path and suggests rpkg", {
   tmp <- withr::local_tempdir()
   missing <- file.path(tmp, "Cargo.toml")
 
   err <- tryCatch(
-    minirextendr:::get_package_name_from_cargo(missing),
+    minirextendr:::get_monorepo_crate(missing),
     error = function(e) e
   )
   expect_s3_class(err, "rlang_error")

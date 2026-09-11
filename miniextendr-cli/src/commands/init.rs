@@ -36,11 +36,18 @@ pub fn dispatch(cmd: &InitCmd, ctx: &ProjectContext, quiet: bool) -> Result<()> 
             quiet,
         ),
         InitCmd::Use {
+            crate_name,
             template_type,
             rpkg_name,
             miniextendr_version: _,
             local_path: _,
-        } => init_use(ctx, template_type, rpkg_name.as_deref(), quiet),
+        } => init_use(
+            ctx,
+            template_type,
+            rpkg_name.as_deref(),
+            crate_name.as_deref(),
+            quiet,
+        ),
     }
 }
 
@@ -132,7 +139,7 @@ fn init_monorepo(
     }
 
     let data = TemplateData::new(&pkg_name)
-        .with_crate(&crate_name)
+        .with_crate(&crate_name, &format!("../../../{crate_name}"), true)
         .with_rpkg(&rpkg_name);
 
     // Workspace root: Cargo.toml, .gitignore, tools/bump-version.R, core crate.
@@ -164,6 +171,7 @@ fn init_use(
     ctx: &ProjectContext,
     template_type: &str,
     rpkg_name: Option<&str>,
+    crate_name: Option<&str>,
     quiet: bool,
 ) -> Result<()> {
     let root = &ctx.root;
@@ -191,40 +199,24 @@ fn init_use(
     };
 
     match template_type {
-        "monorepo" => init_use_monorepo(root, rpkg_name, quiet),
+        "monorepo" => init_use_monorepo(root, rpkg_name, crate_name, quiet),
         _ => init_use_rpkg(root, quiet),
     }
 }
 
 /// `init use` in a Rust workspace: create the R package subdirectory.
-fn init_use_monorepo(root: &Path, rpkg_name: Option<&str>, quiet: bool) -> Result<()> {
-    // Mirror get_package_name_from_cargo(): crate name from the root
-    // Cargo.toml, hyphens become dots for the R package name.
-    let cargo_toml = root.join("Cargo.toml");
-    let content = std::fs::read_to_string(&cargo_toml)
-        .with_context(|| format!("failed to read {}", cargo_toml.display()))?;
-    let crate_name = content
-        .lines()
-        .find_map(|line| {
-            let rest = line.strip_prefix("name")?.trim_start().strip_prefix('=')?;
-            rest.trim().strip_prefix('"')?.split('"').next()
-        })
-        .with_context(|| {
-            format!(
-                "could not find a package name in {} — the monorepo template reads the crate \
-                 name from the workspace Cargo.toml",
-                cargo_toml.display()
-            )
-        })?
-        .to_string();
-    let pkg_name = crate_name.replace('-', ".");
-    let rpkg_name = rpkg_name.map(str::to_string).unwrap_or_else(|| {
-        if pkg_name == crate_name {
-            "rpkg".to_string()
-        } else {
-            pkg_name.clone()
-        }
-    });
+fn init_use_monorepo(
+    root: &Path,
+    rpkg_name: Option<&str>,
+    crate_name: Option<&str>,
+    quiet: bool,
+) -> Result<()> {
+    let core = select_workspace_library(root, crate_name)?;
+    let pkg_name = core.name.replace(['-', '_'], ".");
+    let rpkg_name = rpkg_name.unwrap_or("rpkg");
+    let core_dir = core.manifest_path.parent().unwrap();
+    let rust_dir = root.canonicalize()?.join(rpkg_name).join("src/rust");
+    let crate_path = relative_path(core_dir, &rust_dir)?;
 
     if !quiet {
         eprintln!("Detected Rust project — creating R package in {rpkg_name}/");
@@ -232,9 +224,9 @@ fn init_use_monorepo(root: &Path, rpkg_name: Option<&str>, quiet: bool) -> Resul
     }
 
     let data = TemplateData::new(&pkg_name)
-        .with_crate(&crate_name)
-        .with_rpkg(&rpkg_name);
-    let rpkg_root = root.join(&rpkg_name);
+        .with_crate(&core.name, &crate_path, false)
+        .with_rpkg(rpkg_name);
+    let rpkg_root = root.join(rpkg_name);
     scaffold_rpkg_at(&rpkg_root, "templates/monorepo/rpkg", &data)?;
     run_autoconf(&rpkg_root, quiet);
     write_miniextendr_yml(root, quiet)?;
@@ -244,6 +236,97 @@ fn init_use_monorepo(root: &Path, rpkg_name: Option<&str>, quiet: bool) -> Resul
         eprintln!("Next: cd {rpkg_name} && miniextendr workflow build");
     }
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+struct WorkspaceLibrary {
+    id: String,
+    name: String,
+    manifest_path: std::path::PathBuf,
+    targets: Vec<LibraryTarget>,
+}
+
+#[derive(serde::Deserialize)]
+struct LibraryTarget {
+    crate_types: Vec<String>,
+}
+
+fn select_workspace_library(root: &Path, name: Option<&str>) -> Result<WorkspaceLibrary> {
+    #[derive(serde::Deserialize)]
+    struct Metadata {
+        packages: Vec<WorkspaceLibrary>,
+        workspace_members: Vec<String>,
+    }
+    let manifest = root.join("Cargo.toml").canonicalize()?;
+    let output = std::process::Command::new("cargo")
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
+        .arg(&manifest)
+        .output()
+        .context("failed to run cargo metadata")?;
+    if !output.status.success() {
+        bail!(
+            "cargo metadata failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    let metadata: Metadata = serde_json::from_slice(&output.stdout)?;
+    let mut packages: Vec<_> = metadata
+        .packages
+        .into_iter()
+        .filter(|pkg| {
+            metadata.workspace_members.contains(&pkg.id)
+                && pkg.targets.iter().any(|target| {
+                    target
+                        .crate_types
+                        .iter()
+                        .any(|kind| matches!(kind.as_str(), "lib" | "rlib"))
+                })
+        })
+        .collect();
+    for package in &mut packages {
+        package.manifest_path = package.manifest_path.canonicalize()?;
+    }
+    let available = packages
+        .iter()
+        .map(|pkg| pkg.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let selected = match name {
+        Some(name) => packages.iter().position(|pkg| pkg.name == name),
+        None => packages
+            .iter()
+            .position(|pkg| pkg.manifest_path == manifest)
+            .or_else(|| (packages.len() == 1).then_some(0)),
+    };
+    let selected = selected.with_context(|| format!(
+        "Select a workspace library with --crate-name <package-name>. Available libraries: {available}"
+    ))?;
+    Ok(packages.swap_remove(selected))
+}
+
+fn relative_path(target: &Path, base: &Path) -> Result<String> {
+    let target = std::path::absolute(target)?;
+    let base = std::path::absolute(base)?;
+    let target: Vec<_> = target.components().collect();
+    let base: Vec<_> = base.components().collect();
+    let common = target.iter().zip(&base).take_while(|(a, b)| a == b).count();
+    if common == 0 {
+        bail!("The R package and Rust library must be on the same filesystem root");
+    }
+    let mut relative = std::path::PathBuf::new();
+    for _ in common..base.len() {
+        relative.push("..");
+    }
+    for component in &target[common..] {
+        relative.push(component.as_os_str());
+    }
+    Ok(relative.to_string_lossy().replace('\\', "/"))
 }
 
 /// `init use` in an R package directory: add scaffolding in place.
@@ -705,7 +788,7 @@ mod tests {
         .unwrap();
 
         let data = TemplateData::new("my.proj")
-            .with_crate("my-proj")
+            .with_crate("my-proj", "../../../my-proj", true)
             .with_rpkg("my.proj");
         let subs: Vec<(&str, &str)> = data.pairs().iter().map(|(k, v)| (*k, v.as_str())).collect();
 
@@ -724,7 +807,15 @@ mod tests {
         // Embedded R package uses the monorepo/rpkg templates (sibling path
         // dependency present, monorepo-flavored configure.ac).
         let rpkg_cargo = read(&root, "my.proj/src/rust/Cargo.toml");
-        assert!(rpkg_cargo.contains("my-proj = { path = \"../../../my-proj\" }"));
+        let manifest: toml::Value = toml::from_str(&rpkg_cargo).unwrap();
+        assert_eq!(manifest["package"]["name"].as_str(), Some("my_proj-r"));
+        assert_eq!(manifest["lib"]["name"].as_str(), Some("my_proj"));
+        let core = &manifest["dependencies"]["core_library"];
+        assert_eq!(core["package"].as_str(), Some("my-proj"));
+        assert_eq!(core["path"].as_str(), Some("../../../my-proj"));
+        let rust = read(&root, "my.proj/src/rust/lib.rs");
+        assert!(rust.contains("\npub fn core_greeting()"));
+        assert!(rust.contains("core_library::hello()"));
         let configure_ac = read(&root, "my.proj/configure.ac");
         assert_eq!(
             configure_ac,
@@ -853,15 +944,47 @@ mod tests {
         )
         .unwrap();
 
-        init_use_monorepo(&root, None, true).unwrap();
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "pub fn add() {}\n").unwrap();
+        init_use_monorepo(&root, None, None, true).unwrap();
 
         // Package name derived from the crate name (dashes -> dots), R
         // package scaffolded into a sibling subdirectory.
-        let desc = read(&root, "my.core/DESCRIPTION");
+        let desc = read(&root, "rpkg/DESCRIPTION");
         assert!(desc.contains("Package: my.core"));
-        let cargo = read(&root, "my.core/src/rust/Cargo.toml");
-        assert!(cargo.contains("my-core = { path = \"../../../my-core\" }"));
+        let cargo = read(&root, "rpkg/src/rust/Cargo.toml");
+        assert!(cargo.contains("core_library = { package = \"my-core\", path = \"../../..\" }"));
         assert!(root.join("miniextendr.yml").is_file());
+    }
+
+    #[test]
+    fn init_use_virtual_workspace_selects_library_and_preserves_core() {
+        let scratch = Scratch::new("virtual-use");
+        let root = scratch.path();
+        for name in ["first", "second"] {
+            let member = root.join("crates").join(name);
+            std::fs::create_dir_all(member.join("src")).unwrap();
+            std::fs::write(member.join("src/lib.rs"), "pub fn add() {}\n").unwrap();
+            std::fs::write(
+                member.join("Cargo.toml"),
+                format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"3\"\n",
+        )
+        .unwrap();
+        let error = init_use_monorepo(root, None, None, true).unwrap_err();
+        assert!(error.to_string().contains("--crate-name"));
+        assert!(!root.join("rpkg").exists());
+        init_use_monorepo(root, None, Some("second"), true).unwrap();
+        let manifest = read(root, "rpkg/src/rust/Cargo.toml");
+        assert!(manifest.contains("name = \"second-r\""));
+        assert!(manifest.contains("path = \"../../../crates/second\""));
+        assert!(read(root, "rpkg/src/rust/lib.rs").contains("//     core_library::hello()"));
+        assert_eq!(read(root, "crates/second/src/lib.rs"), "pub fn add() {}\n");
     }
 
     #[test]

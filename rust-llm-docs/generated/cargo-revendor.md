@@ -276,7 +276,8 @@ integrity (via the `files` map).
 fn find_workspace_root(dir: &std::path::Path) -> anyhow::Result<std::path::PathBuf>
 ```
 
-Find workspace root by walking up from a directory
+Ask Cargo for the owning workspace, including an implicit single-package
+workspace and explicit `package.workspace` links outside the parent tree.
 
 ### `metadata::check_duplicate_sources`
 

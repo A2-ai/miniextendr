@@ -10,7 +10,8 @@ use_miniextendr(
   rpkg_name = NULL,
   miniextendr_version = "main",
   local_path = NULL,
-  claude_skills = TRUE
+  claude_skills = TRUE,
+  crate_name = NULL
 )
 }
 \arguments{
@@ -21,7 +22,7 @@ from directory structure based on whether Cargo.toml or DESCRIPTION exists),
 \code{"rpkg"} for a standalone R package, or \code{"monorepo"} for a Rust workspace.}
 
 \item{rpkg_name}{Name of the R package subdirectory for monorepo template
-(default: derived from package name). Only used when template_type is "monorepo".}
+(default: "rpkg"). Only used when template_type is "monorepo".}
 
 \item{miniextendr_version}{Version of miniextendr to vendor (default: "main").
 For monorepo projects, vendoring is only needed for CRAN submission.}
@@ -34,6 +35,10 @@ development and testing before the package is published.}
 via \code{\link[=use_claude_skills]{use_claude_skills()}} (default \code{TRUE}). The skills are agent-facing
 documentation only — they are \code{.Rbuildignore}d and never affect the built
 package.}
+
+\item{crate_name}{Rust workspace package to expose to R. Defaults to the root
+library package, or the sole library member of a virtual workspace. Required
+for virtual workspaces with multiple libraries. Only used for monorepos.}
 }
 \value{
 Invisibly returns TRUE
