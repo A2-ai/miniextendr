@@ -2,7 +2,8 @@
 
 miniextendr provides four macros for raising structured R conditions from Rust.
 They ride the tagged-condition transport that every `#[miniextendr]` function
-uses.
+uses. A [deferred form](#deferred-conditions-a-warning-and-a-value) signals a
+warning, message or condition *and* still returns the call's value.
 
 ## Quick reference
 
@@ -18,8 +19,9 @@ for programmatic catching (one string or a vector, most specific first), and an
 optional `data = ...` argument to attach structured named fields readable as
 `e$<name>` in handlers.
 `Result<T, E>` returns get the same treatment through the
-[`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait,
-or, for error enums that already derive `serde::Serialize`, through
+[`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait
+(hand-written or [derived](#deriving-rconditionerror)), or, for error enums
+that already derive `serde::Serialize`, through
 [the serde shape](#deriving-the-classes-from-a-serde-error-type).
 
 > **Import note.** `error!` and `condition!` are shadowed by the crate-root
@@ -41,6 +43,11 @@ The `class` slot carries the optional user-supplied class. When non-NULL it is
 prepended to the standard layered vector. The `data` slot carries the optional
 named-list payload; the R helper splices its fields into the condition object
 alongside `message` / `call` / `kind`.
+
+Deferred conditions take a shorter route: `defer_warning` & co. push the same
+payload onto a queue instead of panicking, and the generated C wrapper drains
+the queue once the body has returned, handing each entry (as the same tagged
+SEXP) to the same R helper from Rust before the value reaches R.
 
 ## Class layering
 
@@ -275,6 +282,85 @@ withCallingHandlers(
 # NULL
 ```
 
+## Deferred conditions: a warning and a value
+
+`warning!()`, `message!()` and `condition!()` unwind the Rust function: R sees
+the signal and the call returns `invisible(NULL)`. When the result is still
+worth returning ("here are the rows, two were dropped"), queue the condition
+instead of raising it. The generated wrapper signals everything queued during
+the call after the Rust body has returned, in queue order, and then hands the
+value to R:
+
+```rust
+use miniextendr_api::condition::RConditionError;
+use miniextendr_api::{defer_warning, miniextendr};
+
+#[derive(Debug, RConditionError)]
+#[condition(class = "pkg_warning")]
+pub enum PkgWarning {
+    #[condition(message = "dropped {dropped} of {total} rows")]
+    Truncated { dropped: i32, total: i32 },
+}
+
+#[miniextendr]
+pub fn trim(n: i32) -> i32 {
+    defer_warning(PkgWarning::Truncated { dropped: 2, total: n });
+    n - 2
+}
+```
+
+```r
+trim(5L)
+# [1] 3
+# Warning message:
+# In trim(5L) : dropped 2 of 5 rows
+
+w <- tryCatch(trim(5L), pkg_warning_truncated = function(w) w)
+class(w)
+# [1] "pkg_warning_truncated" "pkg_warning" "rust_warning" "simpleWarning" "warning" "condition"
+w$dropped
+# [1] 2
+suppressWarnings(trim(5L))
+# [1] 3
+withCallingHandlers(trim(5L), warning = function(w) invokeRestart("muffleWarning"))
+# [1] 3
+```
+
+What R sees is what `warning()` called from an R function would produce,
+because that is what runs: the same R helper that re-raises the panicking
+macros' conditions signals each queued one. Class layering, `w$<name>` data
+fields and `conditionCall()` (the wrapper's call) are identical to the
+immediate forms. `tryCatch(warning = )` exits before the value is returned;
+calling handlers that muffle keep it.
+
+| Function | Macro | R signal |
+|---|---|---|
+| `defer_warning(payload)` | `defer_warning!(class = …, data = …, "fmt")` | `warning()` |
+| `defer_message(payload)` | `defer_message!(…)` | `message()` |
+| `defer_condition(payload)` | `defer_condition!(…)` | `signalCondition()` |
+
+The functions take any `RConditionError` payload: a
+[derived](#deriving-rconditionerror) or hand-written type, or an `RError`
+built on the spot. The macros take the `warning!` grammar (`class = …`, then
+`data = …`, then the format message). `defer_message` honours the payload's
+classes, layered in front of `rust_message`, which the `message!` macro has
+no syntax for.
+
+**Ordering.** Queued conditions are signalled after the Rust body finished and
+before R sees its outcome. A deferred warning followed by `rust_error!` or an
+`Err` return is signalled first and the error second; several deferred
+conditions keep their queue order; nested calls (R code evaluated from Rust
+that calls another `#[miniextendr]` function) flush only what they queued
+themselves.
+
+**Where it works.** Every `#[miniextendr]` function and method, including
+`#[miniextendr(worker)]` bodies (the queue is a `Mutex`: the push happens on
+the worker, the signal on R's main thread once the result is back), `rng`
+wrappers and trait-ABI vtable shims. Code that runs under no such boundary
+(ALTREP callbacks, finalizers) has its conditions signalled by the next
+boundary that completes in the same package; use `error!` there. Flushing at
+those guard sites is tracked in #1518.
+
 ## Classed `Result` errors with `RConditionError` and `RError`
 
 A `#[miniextendr]` function or method returning `Result<T, E>` raises `Err(e)`
@@ -361,6 +447,45 @@ pub fn parse_port(s: &str) -> Result<i32, RError> {
 `RError` implements `Display` (the message) but not `std::error::Error`, which
 keeps the blanket `From<E: Error>` coherent; it works with
 `#[miniextendr(unwrap_in_r)]` too.
+
+### Deriving `RConditionError`
+
+`#[derive(RConditionError)]` writes the impl above from the type's shape:
+
+```rust
+use miniextendr_api::condition::RConditionError;
+
+#[derive(Debug, RConditionError)]
+#[condition(class = "pkg_error")]
+pub enum PkgError {
+    #[condition(message = "field `{field}` is missing")]
+    MissingField { field: String },
+    #[condition(message = "{value} exceeds the maximum {max}")]
+    OutOfRange { value: f64, max: f64 },
+}
+```
+
+- **Classes.** The family is `#[condition(class = "…")]` on the type, else the
+  type name in snake_case (`PkgError` → `pkg_error`). Each variant reports
+  `c(<member>, <family>)`; the member is the same attribute on the variant,
+  else `<family>_<variant in snake_case>` (`pkg_error_out_of_range`). A struct
+  reports `c(<family>)`.
+- **Message.** `#[condition(message = "…")]` on a struct or variant is a
+  `format!` string with the fields in scope (tuple fields as `_0`, `_1`, …).
+  Without it the message is the type's `Display` rendering, so a thiserror
+  `#[error("…")]` stays the single source of the text.
+- **Data.** Every field becomes a `data` entry under its own name, converted
+  with `RValue::from(field.clone())` (the
+  [supported value types](#supported-data-value-types)).
+  `#[condition(rename = "…")]` changes the name, `#[condition(skip)]` leaves
+  the field out, and `#[condition(debug)]` attaches the `Debug` rendering
+  (`RValue::debug`) for a type without an R mapping. Tuple fields need
+  `rename` or `skip`. The reserved slots `message`, `call` and `kind` are
+  compile errors, as are generic types.
+
+The same derive serves
+[deferred conditions](#deferred-conditions-a-warning-and-a-value) and
+`Result<T, E>` returns.
 
 ### Deriving the classes from a serde error type
 

@@ -8,25 +8,25 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Any` | 100 | 0 |
-| `Borrow` | 100 | 0 |
-| `BorrowMut` | 100 | 0 |
-| `Freeze` | 100 | 0 |
-| `From` | 100 | 0 |
-| `Into` | 100 | 0 |
-| `RefUnwindSafe` | 100 | 0 |
-| `Send` | 100 | 0 |
-| `Sync` | 100 | 0 |
-| `TryFrom` | 100 | 0 |
-| `TryInto` | 100 | 0 |
-| `Unpin` | 100 | 0 |
-| `UnsafeUnpin` | 100 | 0 |
-| `UnwindSafe` | 100 | 0 |
+| `Any` | 105 | 0 |
+| `Borrow` | 105 | 0 |
+| `BorrowMut` | 105 | 0 |
+| `Freeze` | 105 | 0 |
+| `From` | 105 | 0 |
+| `Into` | 105 | 0 |
+| `RefUnwindSafe` | 105 | 0 |
+| `Send` | 105 | 0 |
+| `Sync` | 105 | 0 |
+| `TryFrom` | 105 | 0 |
+| `TryInto` | 105 | 0 |
+| `Unpin` | 105 | 0 |
+| `UnsafeUnpin` | 105 | 0 |
+| `UnwindSafe` | 105 | 0 |
 | `Debug` | 33 | 33 |
 | `Clone` | 24 | 24 |
 | `CloneToUninit` | 24 | 0 |
 | `ToOwned` | 24 | 0 |
-| `Default` | 20 | 20 |
+| `Default` | 22 | 22 |
 | `Eq` | 14 | 14 |
 | `PartialEq` | 14 | 14 |
 | `StructuralPartialEq` | 14 | 14 |
@@ -104,10 +104,12 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:186 |
 
-## `Default` — 20 impls
+## `Default` — 22 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
+| `ContainerAttrs` | `` | concrete | 1 | miniextendr-macros/src/condition_derive.rs:41 |
+| `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/condition_derive.rs:76 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:34 |
 | `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:128 |
 | `RFactorAttrs` | `` | concrete | 1 | miniextendr-macros/src/factor_derive.rs:61 |

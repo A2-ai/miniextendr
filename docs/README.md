@@ -42,7 +42,8 @@ framework.
 - **[Type Conversions](TYPE_CONVERSIONS.md)** -- `TryFromSexp` / `IntoR`
   system, `NamedList`, `RValue`
 - **[Conditions](CONDITIONS.md)** -- Structured `error!`, `warning!`,
-  `message!`, and `condition!` signals with typed data payloads
+  `message!`, and `condition!` signals with typed data payloads; deferred
+  conditions that accompany a returned value; `#[derive(RConditionError)]`
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`,
   `REnv` for calling R from Rust
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`,

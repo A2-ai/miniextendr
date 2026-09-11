@@ -24,6 +24,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - `method_return_builder.rs` (+ dir) — same for impl methods.
 - `rust_conversion_builder.rs` (+ dir) — TryFromSexp glue for argument conversion.
 - `dataframe_derive.rs` (+ dir) — `#[derive(DataFrameRow)]`; supports nested enums/structs, HashMap/BTreeMap (parallel `_keys`/`_values` via `unzip`), `as_factor`/`as_list` attrs.
+- `condition_derive.rs` — `#[derive(RConditionError)]`: class vector (`#[condition(class)]` on type/variant, snake_case defaults, variant = `<family>_<variant>`), message (`#[condition(message = "fmt")]` else `Display`), `data` from fields (`rename`/`skip`/`debug`; tuple fields need `rename`/`skip`; `message`/`call`/`kind` rejected). Generated code drives `defer_*` and `Result` Err arms (#1448).
 - `match_arg_derive.rs` + `match_arg_keys.rs` — match.arg codegen; placeholder→choices written at link time via `MX_MATCH_ARG_CHOICES`.
 - `r_preconditions.rs` — R-side preconditions (`match.arg`, `stopifnot`, …) emitted into wrapper bodies.
 - `roxygen.rs` (+ dir) — doc-comment forwarding; class-system doc builders consume this.

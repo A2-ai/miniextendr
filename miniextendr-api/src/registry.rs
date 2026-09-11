@@ -1335,6 +1335,56 @@ fn resolve_list_return_wrappers(
 
 // endregion
 
+/// R source of the `.miniextendr_raise_condition` helper as a bare
+/// `function(.val, .call_default)` expression.
+///
+/// Two consumers: [`write_r_wrappers_to_file`] binds it under that name at the
+/// top of the generated wrappers file, and
+/// [`crate::deferred_condition`] evaluates it once (in the base namespace) to
+/// signal queued conditions from Rust without depending on any package
+/// namespace. Keeping one source guarantees identical class layering and
+/// `data` splicing on both paths.
+///
+/// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
+/// re-raises the tagged Rust condition value as the matching R condition:
+/// `stop()` for the error kinds, `warning()` / `message()` /
+/// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_default) {
+  .msg <- .val$error
+  .call <- (if (is.null(.val$call)) .call_default else .val$call)
+  .class <- .val$class
+  # `.val$data` is an optional named list of structured fields (from the
+  # macros' `data = ...` form). When present, splice its named elements into
+  # the condition object alongside message/call/kind so handlers can read
+  # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
+  # data fields; a malformed (non-list / unnamed) payload is ignored.
+  .data <- .val$data
+  .cond_fields <- function(base) {
+    if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
+      base
+    } else {
+      utils::modifyList(base, .data)
+    }
+  }
+  switch(.val$kind,
+    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
+      class = c(.class, "rust_error", "simpleError", "error", "condition"))),
+    warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = "warning")),
+      class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
+    message = message(structure(.cond_fields(list(message = paste0(.msg, "\n"), call = NULL, kind = "message")),
+      class = c(.class, "rust_message", "simpleMessage", "message", "condition"))),
+    condition = signalCondition(structure(.cond_fields(list(message = .msg, call = .call, kind = "condition")),
+      class = c(.class, "rust_condition", "simpleCondition", "condition"))),
+    panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),
+      class = c("rust_error", "simpleError", "error", "condition"))),
+    # result_err / none_err / conversion / other: an error whose class vector and
+    # data (if any) come from the Rust side, e.g. a `Result<T, E: RConditionError>`.
+    stop(structure(.cond_fields(list(message = .msg, call = .call, kind = .val$kind)),
+      class = c(.class, "rust_error", "simpleError", "error", "condition")))
+  )
+  invisible(NULL)
+}"#;
+
 /// Write all R wrapper entries to a file.
 ///
 /// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
@@ -1362,42 +1412,12 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # lambda contexts that pass `.call = NULL` to `.Call`). For error/panic kinds `stop()` longjmps;
 # for warning/message/condition the helper signals and returns invisible(NULL),
 # which the wrapper's surrounding `return(...)` propagates as its result.
-.miniextendr_raise_condition <- function(.val, .call_default) {
-  .msg <- .val$error
-  .call <- (if (is.null(.val$call)) .call_default else .val$call)
-  .class <- .val$class
-  # `.val$data` is an optional named list of structured fields (from the
-  # macros' `data = ...` form). When present, splice its named elements into
-  # the condition object alongside message/call/kind so handlers can read
-  # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
-  # data fields; a malformed (non-list / unnamed) payload is ignored.
-  .data <- .val$data
-  .cond_fields <- function(base) {
-    if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
-      base
-    } else {
-      utils::modifyList(base, .data)
-    }
-  }
-  switch(.val$kind,
-    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = \"error\")),
-      class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),
-    warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = \"warning\")),
-      class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))),
-    message = message(structure(.cond_fields(list(message = paste0(.msg, \"\\n\"), call = NULL, kind = \"message\")),
-      class = c(.class, \"rust_message\", \"simpleMessage\", \"message\", \"condition\"))),
-    condition = signalCondition(structure(.cond_fields(list(message = .msg, call = .call, kind = \"condition\")),
-      class = c(.class, \"rust_condition\", \"simpleCondition\", \"condition\"))),
-    panic = stop(structure(list(message = .msg, call = .call, kind = \"panic\"),
-      class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"))),
-    # result_err / none_err / conversion / other: an error whose class vector and
-    # data (if any) come from the Rust side, e.g. a `Result<T, E: RConditionError>`.
-    stop(structure(.cond_fields(list(message = .msg, call = .call, kind = .val$kind)),
-      class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\")))
-  )
-  invisible(NULL)
-}
-
+",
+    );
+    content.push_str(".miniextendr_raise_condition <- ");
+    content.push_str(RAISE_CONDITION_HELPER_FN);
+    content.push_str(
+        "
 # Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
 # Base R keeps only the elements that match as long as one of them does, so a
 # misspelled entry silently shortens the selection and the per-element check on

@@ -567,61 +567,50 @@ pub fn with_r_unwind_protect_shim<F>(f: F) -> SEXP
 where
     F: FnOnce() -> SEXP,
 {
-    match run_r_unwind_protect(f) {
+    // Conditions queued with `defer_warning` & co. inside the shim are signalled
+    // at this boundary: the consumer's queue is a different static (every
+    // package links its own copy of this crate), so nothing may be left behind.
+    let deferred_mark = crate::deferred_condition::mark();
+    let result = match run_r_unwind_protect(f) {
         Ok(result) => result,
         Err(payload) => {
             // region: RCondition recognition — same as the tagged-SEXP path
             if payload.is::<crate::condition::RCondition>() {
-                use crate::error_value::kind;
                 // Take ownership of the payload so the `data` Vec can be moved
                 // into `make_rust_condition_value` (consumed when materialised).
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
-                let (kind, message, class, data) = match cond {
-                    crate::condition::RCondition::Error {
-                        message,
-                        class,
-                        data,
-                    } => (kind::ERROR, message, class, data),
-                    crate::condition::RCondition::Warning {
-                        message,
-                        class,
-                        data,
-                    } => (kind::WARNING, message, class, data),
-                    crate::condition::RCondition::Message { message, data } => {
-                        (kind::MESSAGE, message, Vec::new(), data)
-                    }
-                    crate::condition::RCondition::Condition {
-                        message,
-                        class,
-                        data,
-                    } => (kind::CONDITION, message, class, data),
-                };
+                let (kind, message, class, data) = cond.into_parts();
                 // SAFETY: on the R main thread inside R_UnwindProtect.
-                return unsafe {
+                unsafe {
                     crate::error_value::make_rust_condition_value_with_data(
                         &message, kind, &class, None, data,
                     )
-                };
+                }
+            } else {
+                // Generic panic path — fold the hook-captured `(at file:line)` into
+                // the message (this shim runs on the panicking thread).
+                let msg = panic_message_with_location(payload.as_ref());
+                crate::panic_telemetry::fire(
+                    &msg,
+                    crate::panic_telemetry::PanicSource::UnwindProtect,
+                );
+                // SAFETY: on the R main thread inside R_UnwindProtect.
+                unsafe {
+                    crate::error_value::make_rust_condition_value(
+                        &msg,
+                        crate::error_value::kind::PANIC,
+                        None,
+                        None,
+                    )
+                }
             }
             // endregion
-
-            // Generic panic path — fold the hook-captured `(at file:line)` into
-            // the message (this shim runs on the panicking thread).
-            let msg = panic_message_with_location(payload.as_ref());
-            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::UnwindProtect);
-            // SAFETY: on the R main thread inside R_UnwindProtect.
-            unsafe {
-                crate::error_value::make_rust_condition_value(
-                    &msg,
-                    crate::error_value::kind::PANIC,
-                    None,
-                    None,
-                )
-            }
         }
-    }
+    };
+    // SAFETY: vtable shims run on R's main thread, inside the consumer's `.Call`.
+    unsafe { crate::deferred_condition::finish(deferred_mark, result, None) }
 }
 
 /// Run a closure under `R_UnwindProtect`, returning a tagged condition SEXP on
@@ -650,32 +639,12 @@ where
         Err(payload) => {
             // region: RCondition recognition — must come before generic panic path
             if payload.is::<crate::condition::RCondition>() {
-                use crate::error_value::kind;
                 // Take ownership so the `data` payload can be moved into
                 // `make_rust_condition_value` (consumed during materialisation).
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
-                let (kind, message, class, data) = match cond {
-                    crate::condition::RCondition::Error {
-                        message,
-                        class,
-                        data,
-                    } => (kind::ERROR, message, class, data),
-                    crate::condition::RCondition::Warning {
-                        message,
-                        class,
-                        data,
-                    } => (kind::WARNING, message, class, data),
-                    crate::condition::RCondition::Message { message, data } => {
-                        (kind::MESSAGE, message, Vec::new(), data)
-                    }
-                    crate::condition::RCondition::Condition {
-                        message,
-                        class,
-                        data,
-                    } => (kind::CONDITION, message, class, data),
-                };
+                let (kind, message, class, data) = cond.into_parts();
                 // No panic telemetry for user-raised conditions — they are intentional.
                 // SAFETY: on the R main thread inside R_UnwindProtect.
                 return unsafe {

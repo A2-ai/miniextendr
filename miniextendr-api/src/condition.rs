@@ -176,7 +176,9 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 /// Raised by the `error!()`, `warning!()`, `message!()`, and `condition!()`
 /// macros via `std::panic::panic_any`. Caught by `with_r_unwind_protect`
 /// before the generic panic→string path and forwarded to R as a tagged SEXP
-/// with `rust_*` class layering.
+/// with `rust_*` class layering. The `defer_*` family
+/// ([`crate::deferred_condition`]) queues the same payloads instead of
+/// panicking, so the call still returns its value.
 ///
 /// This type is `#[doc(hidden)]` because users interact with the macros,
 /// not the enum directly.
@@ -198,9 +200,12 @@ pub enum RCondition {
         class: Vec<String>,
         data: Option<ConditionData>,
     },
-    /// Raised by `message!(...)`.
+    /// Raised by `message!(...)`, and queued by [`crate::defer_message()`]. Only
+    /// the typed-payload path fills `class` (the macro has no `class =` form);
+    /// the R helper layers it in front of `rust_message` like the other kinds.
     Message {
         message: String,
+        class: Vec<String>,
         data: Option<ConditionData>,
     },
     /// Raised by `condition!(...)` / `condition!(class = "...", ...)`.
@@ -209,6 +214,37 @@ pub enum RCondition {
         class: Vec<String>,
         data: Option<ConditionData>,
     },
+}
+
+impl RCondition {
+    /// Split into `(kind, message, class, data)`: the arguments of
+    /// [`crate::error_value::make_rust_condition_value_with_data`].
+    #[doc(hidden)]
+    pub fn into_parts(self) -> (&'static str, String, Vec<String>, Option<ConditionData>) {
+        use crate::error_value::kind;
+        match self {
+            RCondition::Error {
+                message,
+                class,
+                data,
+            } => (kind::ERROR, message, class, data),
+            RCondition::Warning {
+                message,
+                class,
+                data,
+            } => (kind::WARNING, message, class, data),
+            RCondition::Message {
+                message,
+                class,
+                data,
+            } => (kind::MESSAGE, message, class, data),
+            RCondition::Condition {
+                message,
+                class,
+                data,
+            } => (kind::CONDITION, message, class, data),
+        }
+    }
 }
 
 // endregion
@@ -504,6 +540,8 @@ macro_rules! rust_error {
 /// # See also
 ///
 /// - [`crate::error!`] — fatal sibling; aborts the call instead of continuing.
+/// - [`crate::defer_warning!`] / [`crate::defer_warning()`] — queue the warning
+///   and still return the value (signalled when the call returns).
 /// - [`crate::message!`] / [`crate::condition!`] — softer signal kinds (muffled
 ///   by `suppressMessages` / silent without handler, respectively).
 /// - [`std::panic!`] — escape hatch when "continue after this" is not a sensible
@@ -590,12 +628,14 @@ macro_rules! message {
     (data = $data:tt, $($arg:tt)*) => {
         ::std::panic::panic_any($crate::condition::RCondition::Message {
             message: ::std::format!($($arg)*),
+            class: ::std::vec::Vec::new(),
             data: $crate::__mx_condition_data!($data),
         })
     };
     ($($arg:tt)*) => {
         ::std::panic::panic_any($crate::condition::RCondition::Message {
             message: ::std::format!($($arg)*),
+            class: ::std::vec::Vec::new(),
             data: ::std::option::Option::None,
         })
     };
@@ -887,6 +927,14 @@ pub trait RConditionError {
         None
     }
 }
+
+/// `#[derive(RConditionError)]`: the trait impl generated from a type's shape
+/// (`#[condition(class = "…")]`, `#[condition(message = "…")]`, and the
+/// `rename` / `skip` / `debug` field options). Re-exported here so one
+/// `use miniextendr_api::condition::RConditionError;` brings the trait and
+/// the derive together.
+#[doc(inline)]
+pub use miniextendr_macros::RConditionError;
 
 /// A ready-made classed error value for `Result<T, RError>` returns.
 ///
@@ -1383,7 +1431,11 @@ impl RCondition {
                 class,
                 data,
             },
-            kind_const::MESSAGE => RCondition::Message { message: msg, data },
+            kind_const::MESSAGE => RCondition::Message {
+                message: msg,
+                class,
+                data,
+            },
             kind_const::CONDITION => RCondition::Condition {
                 message: msg,
                 class,
@@ -2094,7 +2146,7 @@ mod condition_macro_tests {
     fn message_with_data() {
         let cond = catch(|| crate::message!(data = ("step", 2), "step {}", 2));
         match cond {
-            RCondition::Message { message, data } => {
+            RCondition::Message { message, data, .. } => {
                 assert_eq!(message, "step 2");
                 assert_data(&data, &[("step", RValue::Integer(vec![Some(2)]))]);
             }
