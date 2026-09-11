@@ -319,13 +319,13 @@ impl Person {
     }
 
     /// Implements print.Person - &mut self triggers invisible(x) return
-    #[miniextendr(generic = "print")]
+    #[miniextendr(s3(generic = "print"))]
     pub fn show(&mut self) {
         println!("Person: {}, age {}", self.name, self.age);
     }
 
     /// Implements format.Person
-    #[miniextendr(generic = "format")]
+    #[miniextendr(s3(generic = "format"))]
     pub fn fmt(&self) -> String {
         format!("{} ({})", self.name, self.age)
     }
@@ -432,7 +432,7 @@ impl Gene {
         self.chromosome
     }
 
-    #[miniextendr(generic = "show")]
+    #[miniextendr(s4(generic = "show"))]
     pub fn display(&self) {
         println!("Gene {} on chr{}", self.symbol, self.chromosome);
     }
@@ -514,7 +514,7 @@ impl Point {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
-    #[miniextendr(generic = "base::print")]
+    #[miniextendr(s7(generic = "base::print"))]
     pub fn show(&self) {
         println!("Point({}, {})", self.x, self.y);
     }
@@ -746,6 +746,52 @@ pub fn increment(&mut self) {
 
 Modifies the underlying data in place. The R object reference remains valid.
 
+### Consuming Receivers (`self`)
+
+Methods taking `self` by value are supported on every class system; what the
+wrapper does depends on the return type:
+
+| Signature | Wrapper behaviour | R result |
+|---|---|---|
+| `fn step(self, ..) -> Self` | moves the value out, calls, writes the result back into the **same** handle | the receiver object (identity preserved, like `&mut Self`) |
+| `fn step(self, ..) -> Result<Self, E>` / `-> Option<Self>` | calls on a **clone** (`T: Clone` required), overwrites the handle only on `Ok` / `Some` | the receiver object; `Err` / `None` raise and leave the object untouched |
+| `fn finish(self, ..) -> T` (anything else) | moves the value out and converts `T` as usual; the handle is left **consumed** | the converted value; later use of the object errors with "was consumed" |
+
+```rust
+#[derive(Clone, ExternalPtr)]
+pub struct Pipeline { steps: Vec<String> }
+
+#[miniextendr(s3)]
+impl Pipeline {
+    pub fn new() -> Self { Pipeline { steps: vec![] } }
+    pub fn with_step(mut self, name: String) -> Self { self.steps.push(name); self }
+    pub fn try_step(mut self, name: String) -> Result<Self, String> {
+        if name.is_empty() { return Err("empty step".into()); }
+        self.steps.push(name);
+        Ok(self)
+    }
+    pub fn run(self) -> i32 { self.steps.len() as i32 }
+}
+```
+
+```r
+p <- new_pipeline() |> with_step("load") |> try_step("fit")
+try_step(p, "")     # Error: empty step   (p still has two steps)
+run(p)              # 2; p is now consumed
+with_step(p, "x")   # Error: this `Pipeline` object was consumed ...
+```
+
+`self: Self` is the same as `self`. `self: Box<Self>` / `Rc<Self>` and the
+other smart-pointer receivers are rejected (the handle stores the value
+itself). The former `#[miniextendr(constructor)]` escape hatch on a `self`
+method is an error: a constructor has no receiver. The R6 finalizer is never
+inferred from a `self` receiver any more; mark it with `r6(finalize)`.
+
+Fallible in-place steps, `&mut self -> Result<&mut Self, E>` and
+`-> Option<&mut Self>`, are recognised alongside `&mut self -> &mut Self`:
+success hands back the same handle, failure raises through the normal error
+paths.
+
 ---
 
 ## Multiple Impl Blocks
@@ -843,22 +889,82 @@ means a typo worth surfacing.
 
 ---
 
-## Impl-Block Doc Tag Policy
+## Help Pages and Doc Tags
 
-The generator strips the following roxygen tags from doc comments on
-impl-block methods and emits a deprecation warning at build time:
+### One page per class, `@rdname` to split
 
-- `@param`: supplied by the method signature (use `#' @param name desc`
-  at the class level instead)
-- `@return` / `@returns`: most class systems combine multiple methods
-  into one Rd page; per-method return tags would conflict
-- `@examples`: same reason
-- `@export`: export visibility is controlled by `#[miniextendr(...)]`
-  attributes, not roxygen
+Every generated wrapper for a class (constructor, instance method, static
+method, `as.*` coercion, S7 `convert`, trait-impl method) is documented with
+`@rdname <Class>`, so a class renders as a single help page listing all of its
+methods. That is the right default for a handful of accessors; for a
+15-verb builder it means one long page.
 
-S4's structural tags (`@exportClass`, `@exportMethod`,
-`@exportPattern`) pass through unchanged. Tag-name matching is exact on the
-first whitespace-delimited token).
+A method-level `@rdname` splits a method onto its own page. The generator
+honours it wherever it would otherwise inject the class default, and never
+emits both:
+
+```rust
+#[miniextendr(s3)]
+impl Pipeline {
+    /// Run the pipeline.
+    ///
+    /// Long-form documentation that deserves its own page.
+    /// @rdname run_pipeline
+    /// @param inputs Numeric inputs.
+    pub fn run(&self, inputs: Vec<f64>) -> Result<Output, String> { /* ... */ }
+}
+```
+
+renders `man/run_pipeline.Rd` for `run.Pipeline` while the rest of the class
+stays on `man/Pipeline.Rd`. Applies to all class systems and to
+`#[miniextendr] impl Trait for Type` blocks. The S4/S7 *generics* the
+generator emits alongside a method stay on the class page, as do trait
+consts. The S3 generic guard is documented under the method's own
+`generic.Class` name (so classes sharing a generic don't collide on
+`\alias{generic}`), which is the same alias the method produces; it therefore
+moves to the split page with the method, otherwise `R CMD check` reports the
+alias as duplicated across the two pages. A method-level `@name` is honoured
+the same way.
+
+Method prose is emitted as `@description` (the class page supplies the
+`@title`), so a split page would have no title and roxygen2 would skip it.
+The generator therefore adds `@title <R name>` (`run.Pipeline` above) to a
+split method unless the doc comment carries its own `@title`.
+
+Exception: R6 *instance* methods. They are emitted as `Class$set("public",
+...)` blocks, which roxygen2 folds into the class block (its R6 support
+introspects the generator and renders every method in the class page's
+Methods section). A method-level `@rdname` there would fail with "Block must
+contain only one @rdname", so the generator drops it; R6 static methods
+(`Class$fn`) split like any other.
+
+### Impl-block doc tags
+
+Roxygen tags on the **impl block's own** `///` comment describe the class, so
+the following are stripped from that comment (with a build-time deprecation
+warning) because they only make sense on a method:
+
+- `@param`: a class has no arguments; document constructor arguments on the
+  constructor (`new`) method, or at the class level for R6 where roxygen2
+  8.0.0 inherits class-level `@param` into every method (so it is *kept* for
+  R6 impl blocks).
+- `@return` / `@returns`: an impl block returns nothing.
+- `@examples`: examples belong on the method they demonstrate.
+- `@export`: export visibility is controlled by `#[miniextendr(internal)]` /
+  `#[miniextendr(noexport)]`, not by roxygen.
+
+Tags on **method** doc comments are not stripped: `@param`, `@return`,
+`@examples`, `@rdname`, `@name`, `@seealso`, and so on flow through to the
+generated wrapper verbatim (undocumented parameters get an auto-generated
+`@param name (undocumented)` line). The one exception is class systems whose
+methods are registered by assignment (S4 `setMethod()`, S7 `S7::method()`),
+where per-method `@param` would document arguments roxygen2 cannot see in
+`\usage`; those generators drop method `@param` tags to keep `R CMD check`
+quiet.
+
+S4's structural tags (`@exportClass`, `@exportMethod`, `@exportPattern`) pass
+through unchanged. Tag-name matching is exact on the first
+whitespace-delimited token.
 
 ---
 
