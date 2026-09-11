@@ -207,6 +207,7 @@ mod r_macro;
 mod vctrs_derive;
 mod vctrs_generics;
 
+mod crate_config;
 mod naming;
 pub(crate) use naming::r_wrapper_const_ident_for;
 
@@ -1192,6 +1193,26 @@ pub fn miniextendr(
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
+    // Crate-level default for internal entry points (#1454):
+    // `[package.metadata.miniextendr] noexport_postfix = "..."` in the crate's
+    // Cargo.toml applies to every `noexport` / `internal` free function that
+    // names itself neither via `r_name` nor via its own `postfix`. Exported
+    // functions and S3 methods keep their names. Precedence:
+    // `r_name` > `postfix` > crate default > Rust name.
+    let effective_postfix = match &fn_postfix {
+        Some(postfix) => Some(postfix.clone()),
+        None if (noexport || internal) && fn_r_name.is_none() && !is_s3_method => {
+            match crate::crate_config::crate_config() {
+                Ok(config) => config.noexport_postfix,
+                Err(err) => {
+                    return syn::Error::new(proc_macro2::Span::call_site(), err.to_string())
+                        .into_compile_error()
+                        .into();
+                }
+            }
+        }
+        None => None,
+    };
     let r_wrapper_ident_str: String;
     let s3_method_comment: String;
 
@@ -1215,9 +1236,9 @@ pub fn miniextendr(
     } else if let Some(ref custom_name) = fn_r_name {
         r_wrapper_ident_str = custom_name.clone();
         s3_method_comment = String::new();
-    } else if let Some(ref postfix) = fn_postfix {
-        // `postfix = "_impl"`: the R wrapper is `<rust_name><postfix>`; the C
-        // symbol keeps the Rust name.
+    } else if let Some(ref postfix) = effective_postfix {
+        // `postfix = "_impl"` (or the crate default): the R wrapper is
+        // `<rust_name><postfix>`; the C symbol keeps the Rust name.
         r_wrapper_ident_str = format!("{}{postfix}", crate::naming::ident_name(rust_ident));
         s3_method_comment = String::new();
     } else if abi.is_some() {

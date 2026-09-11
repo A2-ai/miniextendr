@@ -11,6 +11,13 @@ publish = false
 path = "lib.rs"
 crate-type = ["staticlib"]
 
+# Crate-level default for internal entry points (#1454): every `noexport` /
+# `internal` free function without its own `r_name` / `postfix` gets this
+# suffix on its R wrapper. Exercised by `producer_internal_probe` and
+# tests/testthat/test-noexport-postfix.R.
+[package.metadata.miniextendr]
+noexport_postfix = "_impl"
+
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)
 # is always built — its S3 methods are what consumer.pkg dispatches on.

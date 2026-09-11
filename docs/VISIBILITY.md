@@ -55,7 +55,7 @@ fn internal_helper(x: i32) -> i32 {
 | `internal` | Omit `@export`; add `@keywords internal`; appears in `?help` only when searched directly |
 | `export` | Force `@export` on a non-`pub` function |
 | `r_name = "..."` | Rename the R wrapper (e.g. `r_name = "is.widget"`); does not affect NAMESPACE membership |
-| `postfix = "..."` | Append a suffix to the Rust name for the R wrapper (`postfix = "_impl"` on `fn f` gives `f_impl`); states the "hand-written `f()` delegates to generated `f_impl()`" convention once. Exclusive with `r_name` and `s3(...)` |
+| `postfix = "..."` | Append a suffix to the Rust name for the R wrapper (`postfix = "_impl"` on `fn f` gives `f_impl`); states the "hand-written `f()` delegates to generated `f_impl()`" convention once. Exclusive with `r_name` and `s3(...)`. A crate-wide default for `noexport` / `internal` functions lives in `Cargo.toml` (see [below](#crate-level-default-from-the-manifest)) |
 | `call = caller` | Attribute conditions to the wrapper's caller (the hand-written R function delegating to this internal entry point) instead of the wrapper's own call. Requires `noexport` or `internal` |
 | `c_symbol = "..."` | Rename the C symbol used in `.Call()` and `R_CallMethodDef`. The value is used verbatim — no crate prefix is added, so **you** own its cross-package uniqueness on webR (see `docs/WEBR.md`) |
 
@@ -192,9 +192,43 @@ The value is appended verbatim to the Rust identifier and must be a valid R
 identifier fragment (letters, digits, `_`, `.`). The C symbol is unchanged.
 Inherent impl methods accept it too (`obj$bump_impl()` on R6/Env,
 `bump_impl.Widget` on S3, the generic name on S4/S7); trait impls take their R
-names from the trait declaration and do not. There is no crate-level default:
-proc-macro invocations share no state, so the attribute is per item (#1454
-sketches a `[package.metadata]` alternative).
+names from the trait declaration and do not.
+
+#### Crate-level default from the manifest
+
+A package whose hand-written R layer delegates to many internal entry points
+repeats `postfix = "_impl"` on every one of them. The default belongs in the
+crate's `Cargo.toml`, the one file every `#[miniextendr]` expansion can see
+(proc-macro invocations share no state, so `miniextendr_init!` cannot carry
+it):
+
+```toml
+[package.metadata.miniextendr]
+noexport_postfix = "_impl"
+```
+
+```rust
+#[miniextendr(noexport)]          // R wrapper: summarise_widget_impl
+pub fn summarise_widget(x: i32) -> i32 { x * 2 }
+
+#[miniextendr(noexport, postfix = "_rs")]   // per-item postfix wins: parse_widget_rs
+pub fn parse_widget(x: i32) -> i32 { x }
+
+#[miniextendr]                    // exported: keeps its Rust name
+pub fn widget_version() -> i32 { 1 }
+```
+
+The default applies to `noexport` and `internal` **free functions** only.
+Exported functions keep their Rust names, S3 methods are always
+`generic.class`, and impl methods are named per impl block. Precedence for an
+internal free function is `r_name` > `postfix` > crate default > Rust name.
+The macro reads the manifest through `CARGO_MANIFEST_DIR` at expansion time;
+Cargo refingerprints the package when `Cargo.toml` changes, so an edit takes
+effect on the next build. Write the key as a table header (or a dotted key
+under `[package]` / `[package.metadata]`); inline tables
+(`miniextendr = { ... }`) are rejected with a compile error, as is a value
+that is not a valid R identifier fragment. The manifest is the crate's own:
+workspace roots are not consulted.
 
 ### call = caller: attribute conditions to the hand-written caller
 
