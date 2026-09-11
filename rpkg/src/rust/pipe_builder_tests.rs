@@ -6,16 +6,16 @@
 //!
 //! ```r
 //! greeting <- new_greetingbuilder() |>
-//!   builder_set_name("World") |>
-//!   builder_set_punctuation("!") |>
-//!   builder_set_loud(TRUE)
-//! builder_build(greeting)   # "HELLO, WORLD!"
+//!   set_name("World") |>
+//!   set_punctuation("!") |>
+//!   set_loud(TRUE)
+//! build(greeting)   # "HELLO, WORLD!"
 //! ```
 //!
 //! works end-to-end. Each `&mut self -> &mut Self` step mutates the underlying
 //! Rust value in place and the C wrapper returns the *same* ExternalPtr handle
 //! (no clone), so the S3 object the user piped in flows unchanged through the
-//! chain. The terminal `builder_build()` reads `&self` and returns a `String`,
+//! chain. The terminal `build()` reads `&self` and returns a `String`,
 //! converted to R via the usual `IntoR` path.
 
 use miniextendr_api::miniextendr;
@@ -30,7 +30,7 @@ pub struct GreetingBuilder {
 
 /// Builder for a greeting string, demonstrating functional pipe chaining.
 ///
-/// The `builder_set_*` methods return `&mut Self`, so they compose under R's
+/// The `set_*` methods return `&mut Self`, so they compose under R's
 /// native pipe operator `|>` as free functions taking the object first.
 #[allow(clippy::new_without_default)]
 #[miniextendr(s3)]
@@ -69,6 +69,12 @@ impl GreetingBuilder {
     ///
     /// Takes `&self` (not `self`) so the R object remains valid afterwards, and
     /// returns a different type (`String`) converted to R via `IntoR`.
+    ///
+    /// Documented on its own help page (`man/greeting_build.Rd`, reached via
+    /// `?build.GreetingBuilder`) rather than the shared `GreetingBuilder` page:
+    /// a method-level `@rdname` is honoured by the generator instead of being
+    /// overwritten by the class default.
+    /// @rdname greeting_build
     pub fn build(&self) -> String {
         let name = if self.name.is_empty() {
             "world"
@@ -573,6 +579,199 @@ impl EnvPipeBuilder {
 
     /// Terminal accessor: read the accumulated total.
     pub fn total(&self) -> i32 {
+        self.total
+    }
+}
+// endregion
+
+// region: consuming `self` builders (#1432) and fallible in-place steps (#1433)
+//
+// Libraries often write builders as `fn step(mut self, ..) -> Self` /
+// `-> Result<Self, E>`. The wrapper supports them without a bridge type:
+// `-> Self` moves the value out of the R handle, calls the step, and writes the
+// result back into the SAME handle (identity preserved, like `&mut Self`);
+// `-> Result<Self, E>` / `Option<Self>` run on a clone and overwrite only on
+// success, so a failed step leaves the R object untouched; any other return is
+// a terminal consume after which the handle errors on use.
+
+/// S3 consuming builder over an integer total.
+#[derive(Clone, miniextendr_api::ExternalPtr)]
+pub struct ConsumingBuilder {
+    total: i32,
+}
+
+/// Consuming builder exposed as pipe-friendly S3 free functions.
+#[allow(clippy::new_without_default)]
+#[miniextendr(s3)]
+impl ConsumingBuilder {
+    /// Start at zero.
+    pub fn new() -> Self {
+        ConsumingBuilder { total: 0 }
+    }
+
+    /// `self -> Self`: add `amount`, written back into the same R object.
+    /// @param amount Amount to add.
+    pub fn with_amount(mut self, amount: i32) -> Self {
+        self.total += amount;
+        self
+    }
+
+    /// `self -> Result<Self, E>`: negative amounts are rejected and the
+    /// object is left unchanged.
+    /// @param amount Amount to add (must be non-negative).
+    pub fn try_amount(mut self, amount: i32) -> Result<Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// `self -> Option<Self>`: `None` when the total would exceed 100.
+    /// @param amount Amount to add.
+    pub fn maybe_amount(mut self, amount: i32) -> Option<Self> {
+        let next = self.total.checked_add(amount)?;
+        if next > 100 {
+            return None;
+        }
+        self.total = next;
+        Some(self)
+    }
+
+    /// `&mut self -> Result<&mut Self, E>` (#1433): fallible in-place step.
+    /// @param amount Amount to add (must be non-negative).
+    pub fn checked_bump(&mut self, amount: i32) -> Result<&mut Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// `&mut self -> Option<&mut Self>` (#1433).
+    /// @param amount Amount to add.
+    pub fn maybe_bump(&mut self, amount: i32) -> Option<&mut Self> {
+        let next = self.total.checked_add(amount)?;
+        if next > 100 {
+            return None;
+        }
+        self.total = next;
+        Some(self)
+    }
+
+    /// Read the total without consuming.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+
+    /// Terminal consume: returns the total and leaves the handle consumed.
+    pub fn finish(self) -> i32 {
+        self.total
+    }
+}
+
+/// R6 consuming builder.
+#[derive(Clone, miniextendr_api::ExternalPtr)]
+pub struct R6ConsumingBuilder {
+    total: i32,
+}
+
+/// Chains as `b$with_amount(1L)$try_amount(2L)$total()`.
+#[allow(clippy::new_without_default)]
+#[miniextendr(r6)]
+impl R6ConsumingBuilder {
+    /// Start at zero.
+    pub fn new() -> Self {
+        R6ConsumingBuilder { total: 0 }
+    }
+
+    /// `self -> Self` step.
+    /// @param amount Amount to add.
+    pub fn with_amount(mut self, amount: i32) -> Self {
+        self.total += amount;
+        self
+    }
+
+    /// `self -> Result<Self, E>` step.
+    /// @param amount Amount to add (must be non-negative).
+    pub fn try_amount(mut self, amount: i32) -> Result<Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// Fallible in-place step (#1433).
+    /// @param amount Amount to add (must be non-negative).
+    pub fn checked_bump(&mut self, amount: i32) -> Result<&mut Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// Read the total.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+
+    /// Terminal consume.
+    pub fn finish(self) -> i32 {
+        self.total
+    }
+}
+
+/// Env consuming builder.
+#[derive(Clone, miniextendr_api::ExternalPtr)]
+pub struct EnvConsumingBuilder {
+    total: i32,
+}
+
+/// Chains as `b$with_amount(1L)$try_amount(2L)$total()`.
+#[allow(clippy::new_without_default)]
+#[miniextendr(env)]
+impl EnvConsumingBuilder {
+    /// Start at zero.
+    pub fn new() -> Self {
+        EnvConsumingBuilder { total: 0 }
+    }
+
+    /// `self -> Self` step.
+    /// @param amount Amount to add.
+    pub fn with_amount(mut self, amount: i32) -> Self {
+        self.total += amount;
+        self
+    }
+
+    /// `self -> Result<Self, E>` step.
+    /// @param amount Amount to add (must be non-negative).
+    pub fn try_amount(mut self, amount: i32) -> Result<Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// Fallible in-place step (#1433).
+    /// @param amount Amount to add (must be non-negative).
+    pub fn checked_bump(&mut self, amount: i32) -> Result<&mut Self, String> {
+        if amount < 0 {
+            return Err(format!("amount must be non-negative, got {amount}"));
+        }
+        self.total += amount;
+        Ok(self)
+    }
+
+    /// Read the total.
+    pub fn total(&self) -> i32 {
+        self.total
+    }
+
+    /// Terminal consume.
+    pub fn finish(self) -> i32 {
         self.total
     }
 }

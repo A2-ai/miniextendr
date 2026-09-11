@@ -44,7 +44,21 @@ const MULTILINE_TAGS: &[&str] = &[
     "field",
     "value", // synonym for return
     "prop",  // S7 property documentation (roxygen2 8.0.0+)
+    // Tags whose *name* is a single word but whose text may wrap onto the
+    // next `///` line. Dropping the wrapped part silently truncated them (#1476).
+    "describeIn",
+    "family",
+    "inherit",
+    "inheritParams",
+    "inheritSection",
+    "keywords",
+    "concept",
 ];
+
+/// Tags whose wrapped continuation lines are joined back onto one line with a
+/// space instead of a newline: roxygen2 wants these on a single line, but a
+/// long `@title` in a Rust doc comment still gets wrapped by the author.
+const JOINED_TAGS: &[&str] = &["title"];
 
 /// Check if a tag name supports multi-line content.
 fn is_multiline_tag(tag: &str) -> bool {
@@ -54,6 +68,15 @@ fn is_multiline_tag(tag: &str) -> bool {
         .and_then(|rest| rest.split_whitespace().next())
         .unwrap_or("");
     MULTILINE_TAGS.contains(&tag_name)
+}
+
+/// Check if a tag's continuation lines are joined with a space (see [`JOINED_TAGS`]).
+fn is_joined_tag(tag: &str) -> bool {
+    let tag_name = tag
+        .strip_prefix('@')
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or("");
+    JOINED_TAGS.contains(&tag_name)
 }
 
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
@@ -150,11 +173,16 @@ fn explicit_roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
                 tags.push(trimmed.to_string());
             } else if !trimmed.is_empty()
                 && let Some(last) = tags.last_mut()
-                && is_multiline_tag(last)
             {
-                // Continuation line for the current multi-line tag.
-                last.push('\n');
-                last.push_str(trimmed);
+                if is_multiline_tag(last) {
+                    // Continuation line for the current multi-line tag.
+                    last.push('\n');
+                    last.push_str(trimmed);
+                } else if is_joined_tag(last) {
+                    // Wrapped single-line tag: fold back onto one line.
+                    last.push(' ');
+                    last.push_str(trimmed);
+                }
             }
             // Leading prose (before any @tag) is captured separately by
             // `leading_prose_from_attrs` and promoted to @description in
@@ -220,6 +248,27 @@ pub(crate) fn has_roxygen_tag(tags: &[String], tag: &str) -> bool {
     } else {
         tag_names(tags).contains(tag)
     }
+}
+
+/// The topic named by the tag list's own `@rdname` tag, if it has one.
+///
+/// Class generators default every method onto the class page (`@rdname
+/// <Class>`); a method-level `/// @rdname other` splits it onto its own page.
+/// Every emission path that injects the class default must consult this first
+/// so a user-supplied topic is honoured once, not duplicated by the default.
+pub(crate) fn rdname_value(tags: &[String]) -> Option<&str> {
+    tags.iter().find_map(|t| {
+        let rest = t.trim_start().strip_prefix("@rdname")?;
+        let value = rest.trim();
+        (rest.starts_with(char::is_whitespace) && !value.is_empty()).then_some(value)
+    })
+}
+
+/// Push `#' @rdname <topic>`: the method's own `@rdname` when present, else
+/// `default` (the class page).
+pub(crate) fn push_rdname_or_default(lines: &mut Vec<String>, tags: &[String], default: &str) {
+    let topic = rdname_value(tags).unwrap_or(default);
+    lines.push(format!("#' @rdname {topic}"));
 }
 
 /// Build a roxygen `@source` traceability line for a class method.
@@ -655,27 +704,10 @@ const METHOD_ONLY_TAGS_R6: &[&str] = &["return", "returns", "examples", "export"
 /// Extract the tag name from a roxygen line (everything between `@` and the
 /// first whitespace character). Returns `None` for lines that don't start with
 /// a tag.
-fn roxygen_tag_name(tag: &str) -> Option<&str> {
+pub(crate) fn roxygen_tag_name(tag: &str) -> Option<&str> {
     let rest = tag.trim_start().strip_prefix('@')?;
     let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
     Some(&rest[..end])
-}
-
-/// Monotonic per-crate counter used to disambiguate the compile-warning const
-/// names emitted by [`strip_method_tags`] / [`strip_method_tags_r6`].
-///
-/// The const name is keyed on the type name, but two `#[miniextendr] impl Foo`
-/// blocks on the *same* type (e.g. an inherent impl plus a trait impl, or two
-/// inherent impls) each restart their per-block `warning_id` at 0, so without a
-/// per-block disambiguator they emit identically-named consts and collide with
-/// `error[E0428]: the name ... is defined multiple times` (#1118). Every call
-/// site draws a fresh block id from this counter so the names stay unique
-/// within a crate compilation — the exact scope const names must be unique in,
-/// since the statics reset per rustc process (one process per crate).
-pub(crate) fn next_impl_tag_block_id() -> usize {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static IMPL_TAG_WARN_BLOCK: AtomicUsize = AtomicUsize::new(0);
-    IMPL_TAG_WARN_BLOCK.fetch_add(1, Ordering::Relaxed)
 }
 
 /// Filter out method-specific roxygen tags from impl-block-level docs and emit
@@ -687,9 +719,13 @@ pub(crate) fn next_impl_tag_block_id() -> usize {
 /// put them on impl blocks, the tags leak into the class-level Rd file where
 /// R CMD check warns about "documented arguments not in \\usage" and similar.
 ///
-/// `block_id` is a per-impl-block disambiguator (see [`next_impl_tag_block_id`])
-/// that keeps the emitted warning-const names unique across multiple impl
-/// blocks on the same type (#1118).
+/// Each stripped tag's warning is wrapped in its own anonymous
+/// `const _: () = { ... };` block (same pattern as [`doc_conflict_warnings`]),
+/// so the inner const names can stay fixed — an anonymous const block is a
+/// fresh item scope every expansion, so two `#[miniextendr] impl Foo` blocks
+/// on the *same* type (e.g. an inherent impl plus a trait impl) never collide
+/// with `error[E0428]: the name ... is defined multiple times`, without any
+/// per-block disambiguator (#1118).
 ///
 /// Returns the filtered tags and a TokenStream of deprecation warnings for
 /// each stripped tag. The caller should append the warnings to its output so
@@ -697,21 +733,32 @@ pub(crate) fn next_impl_tag_block_id() -> usize {
 pub(crate) fn strip_method_tags(
     tags: &[String],
     type_name: &str,
-    block_id: usize,
     span: proc_macro2::Span,
+) -> (Vec<String>, proc_macro2::TokenStream) {
+    strip_tags_in(tags, type_name, span, METHOD_ONLY_TAGS)
+}
+
+/// Shared body of [`strip_method_tags`] and [`strip_method_tags_r6`]: drop
+/// every tag whose name is in `method_only` and emit one warning const scope
+/// per dropped tag. The two public entry points differ only in the tag table.
+fn strip_tags_in(
+    tags: &[String],
+    type_name: &str,
+    span: proc_macro2::Span,
+    method_only: &[&str],
 ) -> (Vec<String>, proc_macro2::TokenStream) {
     use quote::quote_spanned;
 
     let mut filtered = Vec::new();
     let mut warnings = proc_macro2::TokenStream::new();
-    let mut warning_id: usize = 0;
 
     for tag in tags {
         let Some(name) = roxygen_tag_name(tag) else {
             filtered.push(tag.clone());
             continue;
         };
-        if !METHOD_ONLY_TAGS.contains(&name) {
+        if !method_only.contains(&name) {
+            // Keeps unrecognised tags (and, for R6, @param) without warning.
             filtered.push(tag.clone());
             continue;
         }
@@ -721,23 +768,16 @@ pub(crate) fn strip_method_tags(
             type_name,
             tag.trim()
         );
-        let suffix = format!(
-            "{}_{}_{}",
-            type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
-            block_id,
-            warning_id
-        );
-        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
-        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
-        warning_id += 1;
         warnings.extend(quote_spanned! { span =>
-            #[deprecated(note = #msg)]
-            #[doc(hidden)]
-            #[allow(dead_code, non_upper_case_globals)]
-            const #ident: () = ();
-            #[doc(hidden)]
-            #[allow(dead_code, non_upper_case_globals)]
-            const #use_ident: () = #ident;
+            const _: () = {
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const _MINIEXTENDR_IMPL_METHOD_TAG_WARN: () = ();
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const _MINIEXTENDR_IMPL_METHOD_TAG_USE: () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN;
+            };
         });
     }
 
@@ -868,57 +908,16 @@ pub(crate) fn formal_name(formal: &str) -> &str {
 /// stripped with a compile-time warning. No warning is generated for `@param`.
 ///
 /// Returns `(filtered_tags, warnings)` — same shape as [`strip_method_tags`].
-/// `block_id` is the per-impl-block disambiguator (see
-/// [`next_impl_tag_block_id`]) that keeps warning-const names unique (#1118).
+/// Each stripped tag's warning is wrapped in its own anonymous
+/// `const _: () = { ... };` block, so no per-impl-block disambiguator is
+/// needed to keep warning-const names unique (#1118) — see
+/// [`strip_method_tags`] for the full rationale.
 pub(crate) fn strip_method_tags_r6(
     tags: &[String],
     type_name: &str,
-    block_id: usize,
     span: proc_macro2::Span,
 ) -> (Vec<String>, proc_macro2::TokenStream) {
-    use quote::quote_spanned;
-
-    let mut filtered = Vec::new();
-    let mut warnings = proc_macro2::TokenStream::new();
-    let mut warning_id: usize = 0;
-
-    for tag in tags {
-        let Some(name) = roxygen_tag_name(tag) else {
-            filtered.push(tag.clone());
-            continue;
-        };
-        if !METHOD_ONLY_TAGS_R6.contains(&name) {
-            // Keeps @param (and any unrecognised tags) without warning.
-            filtered.push(tag.clone());
-            continue;
-        }
-        let msg = format!(
-            "miniextendr: @{} on impl block `{}` has no effect — move it to the method. Tag: {}",
-            name,
-            type_name,
-            tag.trim()
-        );
-        let suffix = format!(
-            "{}_{}_{}",
-            type_name.replace(|c: char| !c.is_alphanumeric(), "_"),
-            block_id,
-            warning_id
-        );
-        let ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_{}", suffix);
-        let use_ident = quote::format_ident!("_MINIEXTENDR_IMPL_METHOD_TAG_USE_{}", suffix);
-        warning_id += 1;
-        warnings.extend(quote_spanned! { span =>
-            #[deprecated(note = #msg)]
-            #[doc(hidden)]
-            #[allow(dead_code, non_upper_case_globals)]
-            const #ident: () = ();
-            #[doc(hidden)]
-            #[allow(dead_code, non_upper_case_globals)]
-            const #use_ident: () = #ident;
-        });
-    }
-
-    (filtered, warnings)
+    strip_tags_in(tags, type_name, span, METHOD_ONLY_TAGS_R6)
 }
 
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.

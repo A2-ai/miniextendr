@@ -80,12 +80,12 @@
 //! | `self: &ExternalPtr<Self>` | `ExternalPtrRef` | Instance method (immutable, full ExternalPtr access) |
 //! | `self: &mut ExternalPtr<Self>` | `ExternalPtrRefMut` | Instance method (mutable, full ExternalPtr access) |
 //! | `self: ExternalPtr<Self>` | `ExternalPtrValue` | Instance method (owned ExternalPtr, full access) |
-//! | `self` | `Value` | Consuming method (not supported in v1) |
+//! | `self` | `Value` | Consuming method: `-> Self` writes the result back into the same handle; `-> Result<Self, E>` / `Option<Self>` run on a clone (`T: Clone`) and overwrite on success; any other return consumes the handle (later use errors) |
 //! | (none) | `None` | Static method or constructor |
 //!
 //! Special methods:
-//! - **Constructor**: Returns `Self`, marked with `#[miniextendr(constructor)]` or named `new`
-//! - **Finalizer**: R6 only, marked with `#[miniextendr(r6(finalize))]`
+//! - **Constructor**: Returns `Self` with no receiver, marked with `#[miniextendr(constructor)]` or named `new`
+//! - **Finalizer**: R6 only, marked with `#[miniextendr(r6(finalize))]` (never inferred from the receiver)
 //! - **Private**: R6 only, marked with `#[miniextendr(r6(private))]`
 //!
 //! ## Shared Builders
@@ -378,7 +378,10 @@ pub enum ReceiverKind {
     Ref,
     /// `&mut self` - mutable borrow
     RefMut,
-    /// `self` - consuming (not supported in v1)
+    /// `self` (or `self: Self`) - consuming. The C wrapper moves the value out
+    /// of the R handle: `-> Self` writes the result back (same handle, in-place
+    /// semantics), `-> Result<Self, E>` / `-> Option<Self>` run on a clone and
+    /// overwrite on success, anything else leaves the handle consumed.
     Value,
     /// `self: &ExternalPtr<Self>` — immutable borrow of the wrapping ExternalPtr
     ExternalPtrRef,
@@ -389,12 +392,14 @@ pub enum ReceiverKind {
 }
 
 impl ReceiverKind {
-    /// Returns true if this is an instance method (has self).
+    /// Returns true if this is an instance method (has self), including the
+    /// consuming `self` receiver.
     pub fn is_instance(&self) -> bool {
         matches!(
             self,
             ReceiverKind::Ref
                 | ReceiverKind::RefMut
+                | ReceiverKind::Value
                 | ReceiverKind::ExternalPtrRef
                 | ReceiverKind::ExternalPtrRefMut
                 | ReceiverKind::ExternalPtrValue
@@ -604,6 +609,9 @@ pub struct MethodAttrs {
     pub dots_spec: Option<proc_macro2::TokenStream>,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
+    /// Build the `Err` arm's condition from the error's serde output
+    /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
+    pub serde_error: Option<crate::miniextendr_fn::SerdeErrorSpec>,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -657,6 +665,10 @@ pub struct MethodAttrs {
     /// than the Rust method. The C symbol is still derived from the Rust name.
     /// Cannot be combined with `generic = "..."` on the same method.
     pub r_name: Option<String>,
+    /// Append a fixed suffix to the Rust method name for the R-facing name
+    /// (`#[miniextendr(postfix = "_impl")]` on `fn bump` yields `bump_impl`).
+    /// Exclusive with `r_name` and `generic`; the C symbol is unchanged.
+    pub postfix: Option<String>,
     /// R code to inject at the very top of the method body (before all built-in checks).
     pub r_entry: Option<String>,
     /// R code to inject after all built-in checks, immediately before `.Call()`.
@@ -1247,6 +1259,31 @@ impl ParsedMethod {
             ));
         }
 
+        // postfix derives the R name from the Rust name; it cannot combine
+        // with another naming source.
+        if attrs.postfix.is_some() && attrs.r_name.is_some() {
+            return Err(syn::Error::new(
+                span,
+                "`postfix` and `r_name` both set the R method name; use one of them.",
+            ));
+        }
+        if attrs.postfix.is_some() && attrs.generic.is_some() {
+            return Err(syn::Error::new(
+                span,
+                "`postfix` and `generic` cannot be used on the same method. \
+                 Generic dispatch names the R method after the generic.",
+            ));
+        }
+
+        // serde_error classes the raised condition; unwrap_in_r never raises.
+        if attrs.serde_error.is_some() && attrs.unwrap_in_r {
+            return Err(syn::Error::new(
+                span,
+                "`serde_error` cannot be used with `unwrap_in_r`: `unwrap_in_r` returns the \
+                 `Result` to R as a value, so there is no raised condition to class.",
+            ));
+        }
+
         // r_name and generic are mutually exclusive
         if attrs.r_name.is_some() && attrs.generic.is_some() {
             return Err(syn::Error::new(
@@ -1330,6 +1367,9 @@ impl ParsedMethod {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
+                        } else if inner.path.is_ident("serde_error") {
+                            method_attrs.serde_error =
+                                Some(crate::miniextendr_fn::parse_serde_error_nested(&inner)?);
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1390,6 +1430,18 @@ impl ParsedMethod {
                                 return Err(syn::Error::new_spanned(value, "r_name must not be empty"));
                             }
                             method_attrs.r_name = Some(val);
+                        } else if inner.path.is_ident("postfix") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            let val = value.value();
+                            crate::miniextendr_fn::validate_postfix(&val, &value)?;
+                            method_attrs.postfix = Some(val);
+                        } else if inner.path.is_ident("call") {
+                            return Err(inner.error(
+                                "`call = caller` is only supported on standalone `#[miniextendr]` \
+                                 functions (the internal-entry-point pattern); class methods keep \
+                                 their own call attribution",
+                            ));
                         } else if inner.path.is_ident("r_entry") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1440,7 +1492,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix"
                             ));
                         }
                         Ok(())
@@ -1547,6 +1599,9 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("serde_error") {
+                    method_attrs.serde_error =
+                        Some(crate::miniextendr_fn::parse_serde_error_nested(&meta)?);
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
                     method_attrs.as_coercion_span = Some(meta.path.span());
@@ -1678,6 +1733,18 @@ impl ParsedMethod {
                         return Err(syn::Error::new_spanned(value, "r_name must not be empty"));
                     }
                     method_attrs.r_name = Some(val);
+                } else if meta.path.is_ident("postfix") {
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let value: syn::LitStr = meta.input.parse()?;
+                    let val = value.value();
+                    crate::miniextendr_fn::validate_postfix(&val, &value)?;
+                    method_attrs.postfix = Some(val);
+                } else if meta.path.is_ident("call") {
+                    return Err(meta.error(
+                        "`call = caller` is only supported on standalone `#[miniextendr]` \
+                         functions (the internal-entry-point pattern); class methods keep \
+                         their own call attribution",
+                    ));
                 } else if meta.path.is_ident("r_entry") {
                     let _: syn::Token![=] = meta.input.parse()?;
                     let value: syn::LitStr = meta.input.parse()?;
@@ -1746,7 +1813,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, as, lifecycle, r_name, r_entry, r_post_checks, r_on_exit, noexport, internal, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -1893,7 +1960,7 @@ impl ParsedMethod {
             .iter()
             .filter_map(|arg| match arg {
                 syn::FnArg::Typed(pt) => match pt.pat.as_ref() {
-                    syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
+                    syn::Pat::Ident(pat_ident) => Some(crate::naming::ident_name(&pat_ident.ident)),
                     _ => None,
                 },
                 _ => None,
@@ -1934,7 +2001,7 @@ impl ParsedMethod {
                 if let syn::FnArg::Typed(pat_type) = input
                     && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
                 {
-                    Some(pat_ident.ident.to_string())
+                    Some(crate::naming::ident_name(&pat_ident.ident))
                 } else {
                     None
                 }
@@ -1969,7 +2036,7 @@ impl ParsedMethod {
             let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
                 continue;
             };
-            let param_name = pat_ident.ident.to_string();
+            let param_name = crate::naming::ident_name(&pat_ident.ident);
 
             // Validate Missing nesting and Missing<Dots>
             crate::miniextendr_fn::validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
@@ -2009,12 +2076,20 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
+        // `Option<T>` scalar match_arg/choices params are the optional form
+        // (#1473); `Missing<T>` ones and defaults on `Option<T>` are rejected.
+        crate::miniextendr_fn::finalize_method_param_attrs(
+            &mut method_attrs.per_param,
+            &item.sig.inputs,
+            &param_defaults,
+        )?;
+
         // Validate: Missing<T> parameters must not have defaults
         for arg in item.sig.inputs.iter() {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
-                let name = pat_ident.ident.to_string();
+                let name = crate::naming::ident_name(&pat_ident.ident);
                 if crate::r_wrapper_builder::is_missing_type(pt.ty.as_ref())
                     && param_defaults.contains_key(&name)
                 {
@@ -2033,31 +2108,32 @@ impl ParsedMethod {
             }
         }
 
-        // Validate: `self` by value (consuming) methods are not fully supported
-        // They're either: constructor (returns Self), finalizer (marked or inferred), or error
+        // Consuming `self` receivers (#1432): supported for every return shape
+        // (see `ReceiverKind::Value`). Two things stay rejected: a receiver type
+        // the wrapper cannot hand over (`self: Box<Self>` / `Rc<Self>` ...), and
+        // the `constructor` marker, which describes receiverless `fn new()`.
         if env == ReceiverKind::Value {
-            let returns_self = matches!(&item.sig.output, syn::ReturnType::Type(_, ty)
-                if matches!(ty.as_ref(), syn::Type::Path(p)
-                    if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
-
-            // Allow if: constructor (returns Self) or explicitly marked as finalize
-            let is_allowed = returns_self || method_attrs.constructor || method_attrs.r6.finalize;
-
-            if !is_allowed {
+            if let Some(syn::FnArg::Receiver(r)) = item.sig.inputs.first()
+                && r.colon_token.is_some()
+                && !matches!(r.ty.as_ref(), syn::Type::Path(tp)
+                    if tp.path.segments.last().is_some_and(|seg| seg.ident == "Self")
+                        && tp.path.segments.len() == 1)
+            {
+                return Err(syn::Error::new_spanned(
+                    &r.ty,
+                    "unsupported receiver type: the R handle stores the value itself, so a \
+                     method can take `self`, `self: Self`, `&self`, `&mut self`, or an \
+                     `ExternalPtr<Self>` receiver — not a smart pointer around `Self`",
+                ));
+            }
+            if method_attrs.constructor {
                 return Err(syn::Error::new(
                     item.sig.fn_token.span,
                     format!(
-                        "method `{}` takes `self` by value (consuming), which is not fully supported.\n\
-                         \n\
-                         Methods that consume `self` cannot be called from R because R uses reference \
-                         semantics via ExternalPtr - the R object would remain alive after the Rust \
-                         value is consumed.\n\
-                         \n\
-                         Options:\n\
-                         1. Use `&self` or `&mut self` instead of `self`\n\
-                         2. If this is a finalizer (cleanup method), add `#[miniextendr(finalize)]`\n\
-                         3. If this returns a new Self (builder pattern), add `#[miniextendr(constructor)]`",
-                        item.sig.ident
+                        "method `{}` takes `self` and is marked `constructor`; a constructor has no \
+                         receiver (`fn new(...) -> Self`). A consuming builder step needs no marker: \
+                         `fn {}(self, ...) -> Self` writes its result back into the same R object.",
+                        item.sig.ident, item.sig.ident
                     ),
                 ));
             }
@@ -2099,10 +2175,14 @@ impl ParsedMethod {
             || (self.env == ReceiverKind::None && self.ident == "new" && self.returns_self())
     }
 
-    /// Returns true if this is likely a finalizer.
-    /// Inferred from: consumes self (by value) + doesn't return Self.
+    /// Returns true if this method is the R6 finalizer.
+    ///
+    /// Only the explicit `#[miniextendr(r6(finalize))]` marker qualifies. It
+    /// used to be inferred from "takes `self` by value and does not return
+    /// `Self`", which silently hid consuming methods on every class system
+    /// (#1432).
     pub fn is_finalizer(&self) -> bool {
-        self.method_attrs.r6.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
+        self.method_attrs.r6.finalize
     }
 
     /// Returns true if this method should be an R6 active binding.
@@ -2113,12 +2193,16 @@ impl ParsedMethod {
 
     /// R-facing method name.
     ///
-    /// Returns `r_name` if set, otherwise the Rust ident as a string.
+    /// Returns `r_name` if set, otherwise the Rust ident with `postfix`
+    /// appended when given, otherwise the Rust ident as a string.
     pub fn r_method_name(&self) -> String {
-        self.method_attrs
-            .r_name
-            .clone()
-            .unwrap_or_else(|| self.ident.to_string())
+        if let Some(r_name) = &self.method_attrs.r_name {
+            return r_name.clone();
+        }
+        match &self.method_attrs.postfix {
+            Some(postfix) => format!("{}{postfix}", crate::naming::ident_name(&self.ident)),
+            None => crate::naming::ident_name(&self.ident),
+        }
     }
 
     /// C wrapper identifier for this method.
@@ -2387,10 +2471,52 @@ impl ParsedMethod {
     /// with in-place value semantics (no clone). See
     /// [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`].
     pub fn returns_self_ref(&self) -> bool {
-        matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
-            if matches!(ty.as_ref(), syn::Type::Reference(r)
-                if matches!(r.elem.as_ref(), syn::Type::Path(p)
-                    if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false))))
+        matches!(&self.sig.output, syn::ReturnType::Type(_, ty) if Self::is_self_ref_type(ty))
+    }
+
+    /// `&Self` / `&mut Self` test shared by the bare and wrapped forms.
+    fn is_self_ref_type(ty: &syn::Type) -> bool {
+        matches!(ty, syn::Type::Reference(r)
+            if matches!(r.elem.as_ref(), syn::Type::Path(p)
+                if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
+    }
+
+    /// First type argument of `Wrapper<..>` when the output's last path segment
+    /// is `wrapper` (`Result` / `Option`).
+    fn wrapped_output_arg(&self, wrapper: &str) -> Option<&syn::Type> {
+        let syn::ReturnType::Type(_, ty) = &self.sig.output else {
+            return None;
+        };
+        let syn::Type::Path(p) = ty.as_ref() else {
+            return None;
+        };
+        let seg = p.path.segments.last()?;
+        if seg.ident != wrapper {
+            return None;
+        }
+        let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+            return None;
+        };
+        match ab.args.first()? {
+            syn::GenericArgument::Type(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    /// `-> Result<&Self, E>` / `-> Result<&mut Self, E>`: a fallible in-place
+    /// builder step (#1433). `Ok` hands back the same handle like
+    /// [`Self::returns_self_ref`]; `Err` raises through the normal `Result`
+    /// error path.
+    pub fn returns_result_self_ref(&self) -> bool {
+        self.wrapped_output_arg("Result")
+            .is_some_and(Self::is_self_ref_type)
+    }
+
+    /// `-> Option<&Self>` / `-> Option<&mut Self>`: the `Option` sibling of
+    /// [`Self::returns_result_self_ref`]; `None` raises the usual absence error.
+    pub fn returns_option_self_ref(&self) -> bool {
+        self.wrapped_output_arg("Option")
+            .is_some_and(Self::is_self_ref_type)
     }
 
     /// Returns true if this method has no return type (returns unit `()`).
@@ -2508,6 +2634,15 @@ impl ParsedImpl {
                     attrs.class_system,
                     fn_item.sig.ident.span(),
                 )?;
+                if method.method_attrs.serde_error.is_some()
+                    && !output_is_result(&fn_item.sig.output)
+                {
+                    return Err(syn::Error::new(
+                        fn_item.sig.ident.span(),
+                        "`#[miniextendr(serde_error(..))]` requires a `Result<T, E>` return type: it \
+                         classes the condition raised from the `Err` arm",
+                    ));
+                }
                 methods.push(method);
             }
         }
@@ -2522,8 +2657,9 @@ impl ParsedImpl {
         //
         // Instance-method receivers (&self, &mut self, etc.) are equally broken: the vctrs
         // S3 dispatch passes the R object (an S3-classed base vector — REALSXP, INTSXP, etc.)
-        // as `self_sexp`. The C wrapper then calls `ErasedExternalPtr::from_sexp(self_sexp)`,
-        // which panics because the base vector is not an ExternalPtr.  There is no Rust `Self`
+        // as `self_sexp`. The C wrapper's receiver prelude (`resolve_receiver`, then
+        // `ErasedExternalPtr::from_sexp`) panics because the base vector is not an ExternalPtr
+        // and carries no `.ptr`.  There is no Rust `Self`
         // stored anywhere — the vector payload IS the R object.  Instance methods must be
         // expressed as static methods receiving the vector data by parameter.
         if attrs.class_system == ClassSystem::Vctrs {
@@ -2596,23 +2732,20 @@ impl ParsedImpl {
             .cloned()
             .collect();
         let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
-        // Per-block disambiguator so two inherent impl blocks on the same type
-        // don't emit colliding warning consts (#1118).
-        let tag_block_id = crate::roxygen::next_impl_tag_block_id();
         // For R6: keep class-level @param tags (roxygen2 8.0.0 inherits them into
-        // all methods); for other class systems use the stricter filter.
+        // all methods); for other class systems use the stricter filter. Each
+        // stripped tag's warning lives in its own anonymous `const _: () = { .. };`
+        // scope (#1118), so no per-block disambiguator is needed here.
         let (doc_tags, param_warnings) = if attrs.class_system == ClassSystem::R6 {
             crate::roxygen::strip_method_tags_r6(
                 &raw_doc_tags,
                 &type_ident.to_string(),
-                tag_block_id,
                 item_impl.impl_token.span,
             )
         } else {
             crate::roxygen::strip_method_tags(
                 &raw_doc_tags,
                 &type_ident.to_string(),
-                tag_block_id,
                 item_impl.impl_token.span,
             )
         };
@@ -2744,7 +2877,7 @@ impl ParsedImpl {
                 explicit_prop == prop_name
             } else {
                 // Try to match by stripping "set_" prefix from method name
-                let method_name = m.ident.to_string();
+                let method_name = crate::naming::ident_name(&m.ident);
                 method_name.strip_prefix("set_").unwrap_or(&method_name) == prop_name
             }
         })
@@ -2864,6 +2997,24 @@ pub fn generate_method_c_wrapper(
         })
         .collect();
 
+    /// How a consuming (`self` by value) receiver is handled (#1432).
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum ValueMode {
+        /// `-> Self`: move out, call, write the result back into the same slot.
+        WriteBack,
+        /// `-> Result<Self, E>` / `-> Option<Self>`: call on a clone, overwrite on success.
+        Fallible,
+        /// Any other return: move out, call, leave the slot consumed.
+        Terminal,
+    }
+    let value_mode = if method.returns_self() {
+        ValueMode::WriteBack
+    } else if method.returns_result_self() || method.returns_option_self() {
+        ValueMode::Fallible
+    } else {
+        ValueMode::Terminal
+    };
+
     // Generate self extraction for instance methods
     // SEXP is now Send+Sync, so this works for both main and worker threads
     let pre_call = if method.env.is_instance() {
@@ -2871,25 +3022,55 @@ pub fn generate_method_c_wrapper(
             ReceiverKind::RefMut => {
                 quote! {
                     let mut self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
-                    let self_ref = self_ptr.downcast_mut::<#type_ident>()
-                        .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                    let self_ref = match self_ptr.downcast_mut::<#type_ident>() {
+                        Some(r) => r,
+                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                    };
                 }
             }
             ReceiverKind::Ref => {
                 quote! {
                     let self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
-                    let self_ref = self_ptr.downcast_ref::<#type_ident>()
-                        .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                    let self_ref = match self_ptr.downcast_ref::<#type_ident>() {
+                        Some(r) => r,
+                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                    };
                 }
             }
+            ReceiverKind::Value => match value_mode {
+                // `self -> Result<Self, E>` / `Option<Self>`: keep the stored
+                // value; the call runs on a clone and the slot is overwritten
+                // only on success (`T: Clone`, see `ConsumingFallible`).
+                ValueMode::Fallible => quote! {
+                    let mut self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    };
+                    let self_slot = match self_ptr.downcast_mut::<#type_ident>() {
+                        Some(r) => r,
+                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                    };
+                },
+                // `self -> Self` and terminal `self -> T`: move the value out,
+                // leaving the `ConsumedSlot` marker until (and unless) the
+                // result is written back.
+                ValueMode::WriteBack | ValueMode::Terminal => quote! {
+                    let mut self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    };
+                    let __mx_taken = match self_ptr.take_for_consuming::<#type_ident>() {
+                        Some(v) => v,
+                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                    };
+                },
+            },
             ReceiverKind::ExternalPtrRef => {
                 quote! {
                     let __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                             .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
                     };
                 }
@@ -2897,7 +3078,7 @@ pub fn generate_method_c_wrapper(
             ReceiverKind::ExternalPtrRefMut => {
                 quote! {
                     let mut __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                             .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
                     };
                 }
@@ -2905,7 +3086,7 @@ pub fn generate_method_c_wrapper(
             ReceiverKind::ExternalPtrValue => {
                 quote! {
                     let __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(self_sexp)
+                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                             .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
                     };
                 }
@@ -2917,11 +3098,37 @@ pub fn generate_method_c_wrapper(
         vec![]
     };
 
+    // Fallible in-place builders (#1433): `&mut self -> Result<&mut Self, E>` /
+    // `Option<&mut Self>` (and the `&self` forms). The returned borrow is
+    // dropped and the wrapper returns the same handle on success.
+    let fallible_self_ref = method.env.is_instance()
+        && !matches!(method.env, ReceiverKind::Value)
+        && (method.returns_result_self_ref() || method.returns_option_self_ref());
+
     // Generate call expression
     let call_expr = match method.env {
+        ReceiverKind::Ref | ReceiverKind::RefMut if fallible_self_ref => {
+            quote! { self_ref.#method_ident(#(#rust_args),*).map(|_| ()) }
+        }
         ReceiverKind::Ref | ReceiverKind::RefMut => {
             quote! { self_ref.#method_ident(#(#rust_args),*) }
         }
+        ReceiverKind::Value => match value_mode {
+            ValueMode::WriteBack => quote! {{
+                let __mx_out = #type_ident::#method_ident(__mx_taken, #(#rust_args),*);
+                self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
+            }},
+            ValueMode::Fallible => quote! {
+                #type_ident::#method_ident(
+                    ::miniextendr_api::externalptr::clone_for_consuming::<#type_ident>(&*self_slot),
+                    #(#rust_args),*
+                )
+                .map(|__mx_v| { *self_slot = __mx_v; })
+            },
+            ValueMode::Terminal => {
+                quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) }
+            }
+        },
         ReceiverKind::ExternalPtrRef => {
             quote! { #type_ident::#method_ident(&__self_ptr, #(#rust_args),*) }
         }
@@ -2931,13 +3138,28 @@ pub fn generate_method_c_wrapper(
         ReceiverKind::ExternalPtrValue => {
             quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) }
         }
-        ReceiverKind::None | ReceiverKind::Value => {
+        ReceiverKind::None => {
             quote! { #type_ident::#method_ident(#(#rust_args),*) }
         }
     };
 
     // Determine return handling strategy
-    let return_handling = if method.returns_self() {
+    let return_handling = if method.env == ReceiverKind::Value && value_mode == ValueMode::WriteBack
+    {
+        // `self -> Self`: the call expression already wrote the result back;
+        // hand back the same handle (in-place semantics, like `&mut Self`).
+        ReturnHandling::SelfHandle
+    } else if (method.env == ReceiverKind::Value && value_mode == ValueMode::Fallible)
+        || fallible_self_ref
+    {
+        // Fallible in-place step: the call expression yields `Result<(), E>` /
+        // `Option<()>`; raise on failure, same handle on success.
+        if method.returns_result_self() || method.returns_result_self_ref() {
+            ReturnHandling::SelfHandleResult
+        } else {
+            ReturnHandling::SelfHandleOption
+        }
+    } else if method.returns_self() {
         ReturnHandling::ExternalPtr
     } else if method.returns_self_ref() && method.env.is_instance() {
         // In-place builder (`&mut self -> &mut Self` / `&self -> Self`): the
@@ -2960,6 +3182,9 @@ pub fn generate_method_c_wrapper(
         .call_expr(call_expr)
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
+        .err_parts(crate::c_wrapper_builder::ErrPartsMode::from_spec(
+            method.method_attrs.serde_error.as_ref(),
+        ))
         .cfg_attrs(parsed_impl.cfg_attrs.clone())
         .type_context(type_ident.clone());
 
@@ -2987,9 +3212,13 @@ pub fn generate_method_c_wrapper(
     // in `match_arg_vec_from_sexp` for the Vec/slice/array/Box<[_]> conversion path.
     // Scalar match_arg doesn't need this — R's match.arg() validated the choice and
     // `TryFromSexp for EnumType` (auto-generated by `#[derive(MatchArg)]`) decodes it.
+    // `Option<T>` scalar match_arg (#1473) likewise bypasses `TryFromSexp`: no
+    // `Option<UserEnum>` impl can exist downstream (orphan rule).
     for (rust_name, attrs) in &method.method_attrs.per_param {
         if attrs.match_arg && attrs.several_ok {
             builder = builder.match_arg_several_ok(rust_name.clone());
+        } else if attrs.match_arg && attrs.optional {
+            builder = builder.match_arg_optional(rust_name.clone());
         }
     }
 
@@ -3042,16 +3271,11 @@ fn generate_method_match_arg_helpers(
         let Some(param_ty) = find_param_type(&method.sig.inputs, rust_name) else {
             continue;
         };
-        // For several_ok, unwrap the container (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode])
-        // so the helper returns the inner enum's CHOICES, not the container type.
+        // several_ok containers (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode]) and the
+        // `Option<Mode>` scalar form both wrap the enum; the helper must return the
+        // enum's CHOICES, not the wrapper's.
         let several_ok = attrs.several_ok;
-        let choices_ty = if several_ok {
-            crate::classify_several_ok_container(param_ty)
-                .map(|(_, inner)| inner.clone())
-                .unwrap_or_else(|| param_ty.clone())
-        } else {
-            param_ty.clone()
-        };
+        let choices_ty = crate::match_arg_choices_ty(param_ty, several_ok).clone();
 
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
 
@@ -3104,6 +3328,7 @@ fn generate_method_match_arg_helpers(
             &doc_entry_ident,
             &doc_placeholder,
             several_ok,
+            attrs.optional,
             &choices_ty,
         );
 
@@ -3150,7 +3375,7 @@ fn find_param_type<'a>(
     for arg in inputs {
         if let syn::FnArg::Typed(pt) = arg
             && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-            && pat_ident.ident == name
+            && crate::naming::unraw(&pat_ident.ident) == name
         {
             return Some(pt.ty.as_ref());
         }
@@ -3315,8 +3540,21 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
             if !method.doc_tags.is_empty() {
                 crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
             }
-            lines.push(format!("#' @name {}", s3_method_name));
-            lines.push(format!("#' @rdname {}", class_name));
+            // The method's own doc tags were pushed verbatim above, so only
+            // inject the defaults a user did not supply (same rule as
+            // `MethodDocBuilder`): a method-level `@rdname` splits the
+            // coercion onto its own page instead of being duplicated.
+            if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+                lines.push(format!("#' @name {}", s3_method_name));
+            }
+            if crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
+                // Own page: needs a title (see `MethodDocBuilder::build`).
+                if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title") {
+                    lines.push(format!("#' @title {}", s3_method_name));
+                }
+            } else {
+                lines.push(format!("#' @rdname {}", class_name));
+            }
             lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
         }
 
@@ -3659,6 +3897,7 @@ pub fn expand_impl(
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Class,
                 source_file: file!(),
+                source_line: #source_line_lit,
                 content: concat!(
                     "# Generated from Rust impl `",
                     stringify!(#type_ident),
