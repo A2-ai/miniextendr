@@ -2299,6 +2299,19 @@ The generated R wrapper uses `base::match.arg()` for validation before
 the main `.Call()`, giving users familiar R error messages and partial
 matching.
 
+An `Option<T>` parameter (`#[miniextendr(match_arg)] mode: Option<Mode>`)
+is the optional form: the R formal defaults to `NULL`, `NULL` converts to
+`None`, and any other value is matched as usual. The generated C wrapper
+decodes it with [`match_arg_option_from_sexp`] (there is no
+`TryFromSexp for Option<T>` blanket: that slot belongs to the newtype
+forwarding impls in [`crate::newtype`], and a downstream crate cannot add
+one for its own enum under the orphan rule), so a hand-written `MatchArg`
+impl needs nothing extra.
+
+`several_ok` parameters are validated strictly on the R side: every element
+has to match a choice, and `NULL` selects every choice (the same fallback
+[`match_arg_vec_from_sexp`] applies).
+
 ### `missing`
 
 `pub mod missing;`
@@ -5872,6 +5885,43 @@ scalars. Useful for API responses, config files, logging, or `jsonlite` interop.
 
 Requires the `serde_json` feature.
 
+### `serde::rvalue_ser`
+
+`pub mod rvalue_ser;`
+
+Serializer for converting Rust values to [`RValue`] via serde.
+
+The owned, `Send` counterpart of [`super::ser::RSerializer`]: the same type
+mapping, but the output is an [`RValue`] tree instead of a live `SEXP`, so it
+can be built on any thread and travel through `panic_any`. This is what
+condition `data =` payloads and `#[miniextendr(serde_error)]` need: a
+serialized error's fields have to cross the unwind (and possibly the
+worker→main thread) boundary before any R object exists.
+
+#### Type mapping
+
+| Rust | [`RValue`] |
+|---|---|
+| `bool` | `Logical([Some(b)])` |
+| `i8` / `i16` / `i32` / `u8` / `u16` | `Integer([Some(v)])` |
+| `i64` / `u32` / `u64` | `Integer` when the value fits `i32` and is not `NA_integer_`, else `Double` |
+| `f32` / `f64` | `Double([v])` |
+| `char` / `str` / `String` | `Character([Some(s)])` |
+| `serialize_bytes` | `Raw` |
+| `()` / unit struct / `None` | `Null` |
+| unit enum variant | `Character([Some("Variant")])` |
+| newtype struct | transparent |
+| newtype / tuple / struct enum variant | `List([("Variant", payload)])` |
+| sequence of same-kind scalars | one atomic vector |
+| other sequences, tuples | unnamed `List` |
+| struct, map with string keys | named `List` |
+
+`None` becomes `Null`, not a typed `NA`: the serializer never sees the
+inner type of an absent `Option`. A `Vec<Option<T>>` therefore becomes a
+list with `NULL` holes, exactly as [`RSerializer::to_sexp`] renders it.
+
+[`RSerializer::to_sexp`]: super::ser::RSerializer::to_sexp
+
 ### `sexp`
 
 `pub mod sexp;`
@@ -7695,6 +7745,8 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 
 ### `pub use match_arg::match_arg_from_sexp;`
 
+### `pub use match_arg::match_arg_option_from_sexp;`
+
 ### `pub use match_arg::match_arg_vec_from_sexp;`
 
 ### `pub use match_arg::match_arg_vec_into_sexp;`
@@ -8727,6 +8779,10 @@ with [`RRng`]. Enable with `features = ["rand_distr"]`.
 ### `pub use rust_decimal_impl::RDecimalOps;`
 
 ### `pub use rvalue::RValue;`
+
+### `pub use rvalue_ser::RValueSerializer;`
+
+### `pub use rvalue_ser::to_rvalue;`
 
 ### `pub use ser::RSerializer;`
 
@@ -11131,6 +11187,95 @@ fn rust_type_name(self: &Self) -> &'static str
 ```
 
 Get the Rust type name of the wrapped error (for programmatic matching).
+
+### `condition::RError`
+
+```rust
+pub struct RError
+```
+
+A ready-made classed error value for `Result<T, RError>` returns.
+
+Carries a message, an optional class vector, structured fields and an
+optional field-name prefix, and implements [`RConditionError`]. Any
+`std::error::Error` converts into it with `?` / [`From`] (the message keeps
+the `caused by:` chain, like [`AsRError`]), after which the builder methods
+add the R-facing parts:
+
+```ignore
+use miniextendr_api::condition::RError;
+
+#[miniextendr]
+pub fn parse_port(s: &str) -> Result<i32, RError> {
+    let port: i32 = s
+        .parse()
+        .map_err(|e| RError::from(e).class(["pkg_bad_port", "pkg_error"]).data("input", s))?;
+    Ok(port)
+}
+```
+
+```r
+e <- tryCatch(parse_port("x"), pkg_bad_port = function(e) e)
+e$input          # "x"
+class(e)[1:2]    # "pkg_bad_port" "pkg_error"
+```
+
+`RError` deliberately does **not** implement `std::error::Error`: that
+keeps the blanket `From<E: Error>` coherent. It does implement `Display`
+(the message), so it also works with `#[miniextendr(unwrap_in_r)]`.
+
+**Inherent associated items:**
+
+#### `class`
+
+```rust
+fn class(self: Self, class: impl ConditionClass) -> Self
+```
+
+Append user classes (most specific first). Accepts one string or a
+vector, see [`ConditionClass`].
+
+#### `classes`
+
+```rust
+fn classes(self: &Self) -> &[String]
+```
+
+The user classes, most specific first.
+
+#### `data`
+
+```rust
+fn data(self: Self, name: impl Into<String>, value: impl Into<crate::RValue>) -> Self
+```
+
+Attach a structured field readable as `e$<name>`. Any value with an
+[`RValue`](crate::RValue) `From` impl works. The name must not be
+`message`, `call` or `kind`; see [`RESERVED_CONDITION_FIELDS`].
+
+#### `fields`
+
+```rust
+fn fields(self: &Self) -> &ConditionData
+```
+
+The structured fields as attached (unprefixed).
+
+#### `message_str`
+
+```rust
+fn message_str(self: &Self) -> &str
+```
+
+The message.
+
+#### `new`
+
+```rust
+fn new(message: impl Into<String>) -> Self
+```
+
+A classless error with `message`.
 
 ### `connection::ConnectionCapabilities`
 
@@ -13904,6 +14049,23 @@ Must be called from the R main thread.
 
 Panics if `name` contains a null byte.
 
+### `externalptr::ConsumedSlot`
+
+```rust
+pub struct ConsumedSlot
+```
+
+Marker left in an `EXTPTRSXP` slot while a consuming (`self` by value)
+method runs, and left behind for good if that method panics.
+
+`#[miniextendr]` methods taking bare `self` move the stored value out of
+the R handle with [`ExternalPtr::<()>::take_for_consuming`], call the
+method, and either write the result back
+([`ExternalPtr::<()>::restore_after_consuming`], for `self -> Self`) or
+leave the slot consumed (terminal `self -> T`). A slot holding this marker
+makes every later method call on the handle fail with a "consumed" error
+instead of a type mismatch; the finaliser drops the marker like any value.
+
 ### `externalptr::ExternalPtr`
 
 ```rust
@@ -14187,6 +14349,14 @@ Check whether the stored `Box<dyn Any>` contains a `T`.
 
 Uses `Any::is` for authoritative runtime type checking.
 
+#### `is_consumed`
+
+```rust
+fn is_consumed(self: &Self) -> bool
+```
+
+Whether the slot holds the [`ConsumedSlot`] marker.
+
 #### `is_null`
 
 ```rust
@@ -14376,6 +14546,17 @@ The caller must not use the original and the alias to create overlapping
 mutable references (`as_mut`). In typical use (returning from a method),
 the borrow of the original ends when the method returns, so this is safe.
 
+#### `restore_after_consuming`
+
+```rust
+fn restore_after_consuming<T: TypedExternal>(self: &mut Self, value: T)
+```
+
+Put a value back into a slot emptied by [`Self::take_for_consuming`]
+(the write-back half of `self -> Self`). Replaces whatever the slot
+holds; the `TypedExternal` tag in the `prot` slot is unchanged because
+the type is the same.
+
 #### `set_protected`
 
 ```rust
@@ -14427,6 +14608,19 @@ Skips thread safety checks for performance-critical paths.
 
 Must be called from the R main thread. Only use in ALTREP callbacks
 or other contexts where you're certain you're on the main thread.
+
+#### `take_for_consuming`
+
+```rust
+fn take_for_consuming<T: TypedExternal>(self: &mut Self) -> Option<T>
+```
+
+Move the stored `T` out of the handle, leaving [`ConsumedSlot`] behind.
+
+Returns `None` when the slot does not hold a `T` (wrong type, null, or
+already consumed); the slot is untouched in that case. The outer
+`Box<Box<dyn Any>>` cell stays allocated, so the finaliser and every
+other accessor keep working on the marker.
 
 #### `type_name`
 
@@ -20196,6 +20390,8 @@ choice descriptions.
   - Placeholder string in the `@param` roxygen tag, e.g.
 - `several_ok`: `bool`
   - `true` for `several_ok` params (emits "One or more of …");
+- `optional`: `bool`
+  - `true` for an `Option<T>`-typed scalar param (#1473): the R formal
 - `choices_str`: `fn() -> String`
   - Function that returns the choices as a comma-separated quoted string,
 
@@ -20215,6 +20411,8 @@ R wrapper code with priority for ordering.
   - R source code fragment.
 - `source_file`: `&'static str`
   - Source file path (from `file!()`). Used to derive a default `@rdname`
+- `source_line`: `u32`
+  - Line the generating item starts on in `source_file`. Together with the
 
 ### `registry::SidecarPropEntry`
 
@@ -20720,6 +20918,72 @@ fn parse_config(json: FromJson<Config>) -> i32 {
 **Fields:**
 
 - `0`: `T`
+
+### `serde::rvalue_ser::RValueMap`
+
+```rust
+pub struct RValueMap
+```
+
+Map accumulator; keys must serialize to a single string.
+
+### `serde::rvalue_ser::RValueSeq`
+
+```rust
+pub struct RValueSeq
+```
+
+Sequence / tuple accumulator: sequences coalesce homogeneous scalars, tuples
+always stay lists.
+
+### `serde::rvalue_ser::RValueSerializer`
+
+```rust
+pub struct RValueSerializer
+```
+
+Serializer that converts Rust values to an owned [`RValue`] tree.
+
+```
+use miniextendr_api::RValue;
+use miniextendr_api::serde::Serialize;
+
+#[derive(Serialize)]
+struct Point { x: f64, tag: String }
+
+let v = RValue::from_serde(&Point { x: 1.5, tag: "a".into() }).unwrap();
+match v {
+    RValue::List(fields) => {
+        assert_eq!(fields[0].0.as_deref(), Some("x"));
+        assert!(matches!(&fields[0].1, RValue::Double(d) if d == &[1.5]));
+    }
+    other => panic!("expected a named list, got {other:?}"),
+}
+```
+
+### `serde::rvalue_ser::RValueStruct`
+
+```rust
+pub struct RValueStruct
+```
+
+Struct accumulator → named list in field order.
+
+### `serde::rvalue_ser::RValueStructVariant`
+
+```rust
+pub struct RValueStructVariant
+```
+
+`Enum::Variant { a, b }` → `List([("Variant", List([("a", ..), ("b", ..)]))])`.
+
+### `serde::rvalue_ser::RValueTupleVariant`
+
+```rust
+pub struct RValueTupleVariant
+```
+
+`Enum::Variant(a, b)` → `List([("Variant", List([a, b]))])`.
 
 ### `serde::ser::MapSerializer`
 
@@ -23943,6 +24207,15 @@ borrows across the `Send` boundary a condition payload crosses.
 assert_eq!(RValue::debug(0..=100).as_str(), Some("0..=100"));
 ```
 
+#### `from_serde`
+
+```rust
+fn from_serde<T: ?Sized + Serialize>(value: &T) -> Result<Self, RSerdeError>
+```
+
+Build an [`RValue`] from any `Serialize` value; see [`to_rvalue`] and
+the [module docs](self) for the type mapping.
+
 #### `is_null`
 
 ```rust
@@ -26002,6 +26275,104 @@ alternative on the inbound side: [`crate::from_r::TryFromSexp`].
 - `type Error`
   - Error returned when coercion fails.
 
+### `condition::ConditionClass`
+
+```rust
+pub trait ConditionClass
+```
+
+What the condition macros' `class = …` (and [`RError::class`]) accept: one
+class or several, as `&str` / `String` / arrays / `Vec` / slices.
+
+The classes are prepended in order to the `rust_*` layering, so put the most
+specific first: `class = ["pkg_error_missing_field", "pkg_error"]` renders
+as `c("pkg_error_missing_field", "pkg_error", "rust_error", …)` and both
+`tryCatch(pkg_error_missing_field = …)` and `tryCatch(pkg_error = …)` match.
+
+**Required methods:**
+
+- `fn into_condition_class(self: Self) -> Vec<String>`
+  - The class vector, most specific first.
+
+### `condition::RConditionError`
+
+```rust
+pub trait RConditionError
+```
+
+Give a `Result<T, E>` error type an R class vector and structured fields.
+
+Every `#[miniextendr]` function or method returning `Result<T, E>` raises
+`Err(e)` as an R error. Implement this trait for `E` (or return
+[`RError`], which implements it) and the `Err` arm raises
+`c(<class()…>, "rust_error", "simpleError", "error", "condition")` with
+every `data()` field readable as `e$<name>`, so a thiserror-style error enum
+can keep `?` composition *and* give R handlers something to dispatch on.
+
+Without an impl, the `Err` arm falls back in two steps. Under the `serde`
+feature an `E: serde::Serialize + Display` is classed from its serde shape
+(see [`serde_err_parts`]: variant → member class, fields → data, `Display`
+→ message). Anything else is a bare `rust_error` whose message is
+`format!("{e:?}")`.
+
+```ignore
+use miniextendr_api::condition::{ConditionData, RConditionError};
+
+#[derive(Debug, thiserror::Error)]
+pub enum PkgError {
+    #[error("column `{column}` is missing")]
+    MissingColumn { column: String },
+    #[error("{value} exceeds {max}")]
+    TooLarge { value: f64, max: f64 },
+}
+
+impl RConditionError for PkgError {
+    fn message(&self) -> String { self.to_string() }
+    fn class(&self) -> Vec<String> {
+        let member = match self {
+            PkgError::MissingColumn { .. } => "pkg_error_missing_column",
+            PkgError::TooLarge { .. } => "pkg_error_too_large",
+        };
+        vec![member.into(), "pkg_error".into()]
+    }
+    fn data(&self) -> Option<ConditionData> {
+        Some(match self {
+            PkgError::MissingColumn { column } => vec![("column".into(), column.clone().into())],
+            PkgError::TooLarge { value, max } => vec![("value".into(), (*value).into()), ("max".into(), (*max).into())],
+        })
+    }
+}
+
+#[miniextendr]
+pub fn check(value: f64) -> Result<f64, PkgError> { /* uses `?` freely */ }
+```
+
+```r
+tryCatch(check(1e9), pkg_error_too_large = function(e) e$max)   # member
+tryCatch(check(1e9), pkg_error = function(e) conditionMessage(e)) # family
+```
+
+Detection is by trait, not by attribute: the generated `Err` arm probes
+`E: RConditionError` first and falls back to the `Debug` rendering
+otherwise, so existing `Result<T, String>` / `Result<T, MyDebugError>`
+functions are unchanged. The condition's `kind` stays `"result_err"`.
+
+`data()` field names must not be `message`, `call` or `kind` (see
+[`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
+`rust_error` explaining the clash, so rename such a field at the source.
+
+**Required methods:**
+
+- `fn message(self: &Self) -> String`
+  - The condition message (`conditionMessage(e)`).
+
+**Provided methods:**
+
+- `fn class(self: &Self) -> Vec<String>`
+  - User classes, most specific first; empty for none.
+- `fn data(self: &Self) -> Option<ConditionData>`
+  - Structured fields spliced into the condition object (`e$<name>`).
+
 ### `connection::RConnectionImpl`
 
 ```rust
@@ -26399,6 +26770,22 @@ returns it directly.
 
 - `fn into_dataframe_split(self: Self) -> List`
   - Partition the rows by variant into one `data.frame` per variant.
+
+### `externalptr::ConsumingFallible`
+
+```rust
+pub trait ConsumingFallible: Clone
+```
+
+Bound for the receiver of a **fallible** consuming method
+(`self -> Result<Self, E>` / `self -> Option<Self>`).
+
+The generated wrapper calls the method on a clone of the stored value and
+only overwrites the R handle on `Ok` / `Some`, so a failed step leaves the
+R object exactly as it was, which is what an interactive R user expects
+from `obj |> add_step(-1)` erroring. Blanket-implemented for every
+`T: Clone`; the `on_unimplemented` text below is what rustc prints when
+the type is not `Clone`.
 
 ### `externalptr::IntoExternalPtr`
 
@@ -31059,6 +31446,50 @@ Uses cached class vector + tzone string — zero allocations after first call.
 
 `sexp` must be a valid REALSXP. Must be called on R's main thread.
 
+### `condition::check_condition_data`
+
+```rust
+fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData>
+```
+
+Apply [`check_condition_field_name`] to every field of a payload.
+
+### `condition::check_condition_field_name`
+
+```rust
+fn check_condition_field_name(name: String) -> String
+```
+
+Runtime half of the reserved-name check, for computed field names (the
+macros' `expr` path and [`RConditionError::data`] on user types). Panics
+when `name` is reserved; the panic becomes a plain `rust_error` in R,
+replacing the former silent overwrite.
+
+### `condition::is_reserved_condition_field`
+
+```rust
+const fn is_reserved_condition_field(name: &str) -> bool
+```
+
+`true` for [`RESERVED_CONDITION_FIELDS`]. `const` so the macros can reject a
+literal field name at compile time:
+
+```compile_fail
+# use miniextendr_api as mx;
+# fn f() {
+mx::rust_error!(data = ("kind", 1), "boom");
+# }
+```
+
+Any other name is fine, so the fix for a clash is a rename at the source:
+
+```
+# use miniextendr_api as mx;
+# fn f() {
+mx::rust_error!(data = ("rule", 1), "boom");
+# }
+```
+
 ### `condition::repanic_if_rust_error`
 
 ```rust
@@ -31356,7 +31787,7 @@ body performs raw R allocation (`Rf_allocVector`, `SET_VECTOR_ELT`,
 ### `error_value::make_rust_condition_value_with_data`
 
 ```rust
-unsafe fn make_rust_condition_value_with_data(message: &str, kind: &str, class: Option<&str>, call: Option<crate::SEXP>, data: Option<crate::condition::ConditionData>) -> crate::SEXP
+unsafe fn make_rust_condition_value_with_data(message: &str, kind: &str, class: &[String], call: Option<crate::SEXP>, data: Option<crate::condition::ConditionData>) -> crate::SEXP
 ```
 
 Build a tagged condition-value SEXP for transport across the Rust→R boundary.
@@ -31391,12 +31822,31 @@ This discipline was established by PR #344 commit `af6b4875` to fix a
 
 * `message` - Human-readable condition message
 * `kind` - Condition kind — one of the constants in [`kind`].
-* `class` - Optional user-supplied class name to prepend to the layered vector
+* `class` - User-supplied classes to prepend to the layered vector, most
+  specific first (`c(<class…>, "rust_error", …)`); empty for none.
 * `call` - Optional R call SEXP for error context. When `None`, uses `R_NilValue`.
 * `data` - Optional named condition-data payload (from the macros' `data =
   ...` form). When `Some`, each `(name, value)` becomes a named element of a
   list stored in slot `[4]`; the R helper splices these into the condition
   object so handlers can read `e$<name>`. When `None`, slot `[4]` is `NULL`.
+
+### `error_value::result_err_condition_value`
+
+```rust
+unsafe fn result_err_condition_value(parts: crate::condition::ErrParts, call: Option<crate::SEXP>) -> crate::SEXP
+```
+
+Build the tagged value for a `Result<T, E>::Err` from the parts the
+generated wrapper probed off `e` (see
+[`crate::__mx_result_err_parts!`]): `kind = "result_err"`, the error's
+class vector (empty for the plain `Debug` fallback) and its structured
+fields.
+
+#### Safety
+
+Same contract as [`make_rust_condition_value_with_data`]: R main thread,
+valid allocation context. Every generated `Err` arm runs inside the
+wrapper's `with_r_unwind_protect` closure, which satisfies it.
 
 ### `expression::dollar_extract`
 
@@ -31614,6 +32064,52 @@ Skips thread safety checks for performance-critical ALTREP callbacks.
 
 - `x` must be a valid ALTREP SEXP
 - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+
+### `externalptr::clone_for_consuming`
+
+```rust
+fn clone_for_consuming<T: ConsumingFallible>(value: &T) -> T
+```
+
+Clone the stored value for a fallible consuming step (see
+[`ConsumingFallible`]). Free function so codegen can name the bound.
+
+### `externalptr::handle_downcast_failed`
+
+```rust
+fn handle_downcast_failed<T: TypedExternal>(ptr: &ExternalPtr<()>) -> never
+```
+
+Panic with the right message when a handle's stored value is not a `T`:
+"consumed" if a previous `self`-by-value step failed, type mismatch
+otherwise. Used by generated method preludes instead of a bare `expect`.
+
+### `externalptr::resolve_receiver`
+
+```rust
+fn resolve_receiver<T: TypedExternal>(sexp: crate::SEXP) -> crate::SEXP
+```
+
+Resolve an instance-method receiver to the bare `EXTPTRSXP` it carries.
+
+Generated method preludes call this on `self_sexp` before
+`ErasedExternalPtr::from_sexp` / `ExternalPtr::<T>::wrap_sexp`. A bare
+pointer, the shape every generated constructor returns (classed or not),
+passes through after one `TYPEOF` compare. Anything else goes through the
+same class-handle unwrap as `ExternalPtr<T>` arguments: an R6 / S4 / S7
+handle, an environment or a list carrying the pointer in `.ptr`, or any
+object with a `.ptr` attribute. An S3 class whose object is a list with
+R-side state next to the handle, `structure(list(.ptr = <ptr>, log = ...),
+class = "Foo")`, therefore dispatches into `#[miniextendr(s3)] impl Foo`
+methods unchanged (#1469).
+
+Panics (the framework converts it to an R error) when no pointer can be
+recovered, naming `T` and the receiver's `SEXPTYPE`. Type safety is still
+decided by the `Any::downcast` that follows; this only widens the accepted
+R-side shape.
+
+Runs on R's main thread: generated preludes execute before any worker
+hand-off.
 
 ### `factor::build_factor`
 
@@ -31925,6 +32421,23 @@ Extract a single string from an R SEXP and match it against a `MatchArg` type.
 
 Used by the generated `TryFromSexp for T` implementation (single-value `match.arg`).
 
+### `match_arg::match_arg_option_from_sexp`
+
+```rust
+fn match_arg_option_from_sexp<T: MatchArg>(sexp: crate::SEXP) -> Result<Option<T>, MatchArgError>
+```
+
+Optional form of [`match_arg_from_sexp`] for `Option<T>` parameters (#1473).
+
+`NULL` is `None` (the R formal of an `Option<T>` choice parameter defaults
+to `NULL`, meaning no choice was made); anything else goes through the same
+exact-or-partial matching as the plain type and becomes `Some`.
+
+Used by the generated C wrapper for `#[miniextendr(match_arg)] x: Option<T>`
+parameters instead of `TryFromSexp`, because `Option<T>` cannot carry a
+`TryFromSexp` impl for a downstream enum (orphan rule) and a `T: MatchArg`
+blanket would collide with the newtype blanket in [`crate::newtype`].
+
 ### `match_arg::match_arg_vec_from_sexp`
 
 ```rust
@@ -31937,7 +32450,10 @@ the choices of a `MatchArg` type.
 Used by the generated C wrapper for `match_arg + several_ok` parameters
 (`match.arg` with `several.ok = TRUE`).
 
-NULL input returns all variants (matching R's `match.arg` default with `several.ok = TRUE`).
+NULL input returns all variants. The R prelude's strict `several_ok`
+helper maps `NULL` the same way and rejects any element that matches no
+choice before the value reaches this function, so the per-element check
+here is the second line of defence, not the only one (#1472).
 
 Note: factors (INTSXP) are not handled here — the R wrapper coerces factors
 to character before the `.Call()` boundary.
@@ -33756,10 +34272,12 @@ Encode a POD value to raw bytes.
 fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>>
 ```
 
-Collect all R wrapper entries, sorted by priority and deduplicated.
+Collect all R wrapper entries, sorted and deduplicated.
 
-Within each priority group, S7 class definitions are topologically sorted
-so parents are defined before children (S7 `parent = X` requires X to exist).
+Entries are ordered by `sort_wrapper_entries`: priority first, then source
+file, then source line. Within each priority group, S7 class definitions are
+additionally topologically sorted so parents are defined before children
+(S7 `parent = X` requires X to exist).
 
 Host-only — wasm32 doesn't run wrapper-gen.
 
@@ -34756,6 +35274,14 @@ Same as [`dataframe_to_vec`].
 
 Same as [`dataframe_to_vec`] — single-underscore nested-struct path
 matching.
+
+### `serde::rvalue_ser::to_rvalue`
+
+```rust
+fn to_rvalue<T: ?Sized + Serialize>(value: &T) -> Result<crate::rvalue::RValue, super::error::RSerdeError>
+```
+
+Serialize any `Serialize` value into an [`RValue`].
 
 ### `serde::traits::from_r`
 
@@ -41719,7 +42245,9 @@ Rides the tagged-condition transport that every `#[miniextendr]` function uses.
 The raised condition has class `c("rust_error", "simpleError", "error", "condition")`.
 
 An optional `class = "name"` form prepends a custom class for programmatic catching:
-`c("name", "rust_error", "simpleError", "error", "condition")`.
+`c("name", "rust_error", "simpleError", "error", "condition")`. `class` also
+takes a vector (`class = ["pkg_error_missing_field", "pkg_error"]`, or any
+[`ConditionClass`] value) so handlers can catch the family or the member.
 
 #### Structured `data = ...` payloads
 
@@ -41753,6 +42281,12 @@ tryCatch(validate(150L), validation_error = function(e) c(e$value, e$min, e$max)
 
 Argument order is fixed: `class = ...` (optional), then `data = ...`
 (optional), then the format message.
+
+Field names `message`, `call` and `kind` are the condition's own slots and
+are rejected (at compile time for literal / bare-identifier names, at
+runtime otherwise); give the field another name (`rule` instead of `kind`,
+say). A downstream error type with such a field renames it where the
+payload is built (`#[serde(rename)]`, a different key).
 
 **Supported value types**: scalars and `Vec`s of `i32`, `f64`, `bool`, and
 `String` (plus `&str` / `Vec<&str>`, converted to owned); their NA-aware
@@ -42528,6 +43062,16 @@ pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
 ```
 
 Unknown sortedness value (INT_MIN in R).
+
+### `condition::RESERVED_CONDITION_FIELDS`
+
+```rust
+pub const RESERVED_CONDITION_FIELDS: &[&str] = _;
+```
+
+Condition-data field names that would overwrite the condition object's own
+slots when the R helper splices `data` in (`utils::modifyList` over
+`list(message, call, kind)`).
 
 ### `connection::EXPECTED_CONNECTIONS_VERSION`
 

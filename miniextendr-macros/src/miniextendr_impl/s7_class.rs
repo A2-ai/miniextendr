@@ -292,7 +292,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let attrs = &method.method_attrs;
 
         if attrs.s7.getter || attrs.s7.setter || attrs.s7.validate {
-            let method_ident = method.ident.to_string();
+            let method_ident = crate::naming::ident_name(&method.ident);
             let prop_name = attrs
                 .s7
                 .prop
@@ -686,7 +686,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S7 generics + methods
     // Skip methods that are property getters/setters (they're handled as S7 properties)
     for ctx in parsed_impl.instance_method_contexts() {
-        let method_ident = ctx.method.ident.to_string();
+        let method_ident = crate::naming::ident_name(&ctx.method.ident);
         if property_method_idents.contains(&method_ident) {
             continue;
         }
@@ -1096,7 +1096,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
                 lines.push(format!("#' @name convert-{}-to-{}", from_type, class_name));
-                lines.push(format!("#' @rdname {}", class_name));
+                // Convert methods emit scaffolding only (no method prose), but a
+                // method-level `@rdname` still decides which page they land on;
+                // a split page needs its own `@title` (see `MethodDocBuilder`).
+                crate::roxygen::push_rdname_or_default(&mut lines, &method.doc_tags, &class_name);
+                if crate::roxygen::rdname_value(&method.doc_tags).is_some()
+                    && !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title")
+                {
+                    lines.push(format!("#' @title convert-{}-to-{}", from_type, class_name));
+                }
                 lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 // Add @aliases convert so roxygen2 emits \alias{convert} in the
                 // merged .Rd file. Without this, R CMD check warns:
@@ -1147,7 +1155,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
                 lines.push(format!("#' @name convert-{}-to-{}", class_name, to_type));
-                lines.push(format!("#' @rdname {}", class_name));
+                crate::roxygen::push_rdname_or_default(&mut lines, &method.doc_tags, &class_name);
+                if crate::roxygen::rdname_value(&method.doc_tags).is_some()
+                    && !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title")
+                {
+                    lines.push(format!("#' @title convert-{}-to-{}", class_name, to_type));
+                }
                 lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 // Add @aliases convert so roxygen2 emits \alias{convert} in the
                 // merged .Rd file. Without this, R CMD check warns:

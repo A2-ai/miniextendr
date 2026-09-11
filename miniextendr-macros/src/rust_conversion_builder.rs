@@ -27,6 +27,9 @@ pub struct RustConversionBuilder {
     strict: bool,
     /// Parameter names with `match_arg + several_ok` — use `match_arg_vec_from_sexp` instead of `TryFromSexp`.
     match_arg_several_ok_params: Vec<String>,
+    /// `Option<T>`-typed scalar `match_arg` parameter names — use
+    /// `match_arg_option_from_sexp` instead of `TryFromSexp` (#1473).
+    match_arg_optional_params: Vec<String>,
 }
 
 impl RustConversionBuilder {
@@ -37,6 +40,7 @@ impl RustConversionBuilder {
             coerce_params: Vec::new(),
             strict: false,
             match_arg_several_ok_params: Vec::new(),
+            match_arg_optional_params: Vec::new(),
         }
     }
 
@@ -65,6 +69,18 @@ impl RustConversionBuilder {
     /// instead of `TryFromSexp` for converting STRSXP → `Vec<EnumType>`.
     pub fn with_match_arg_several_ok(mut self, param_name: String) -> Self {
         self.match_arg_several_ok_params.push(param_name);
+        self
+    }
+
+    /// Mark a parameter as an `Option<T>` scalar `match_arg` — uses
+    /// `match_arg_option_from_sexp` instead of `TryFromSexp` for converting
+    /// NULL / STRSXP → `Option<EnumType>`. There is no `TryFromSexp for
+    /// Option<T>` a downstream crate could provide for its own enum (orphan
+    /// rule), and a `T: MatchArg` blanket would collide with the newtype
+    /// blanket in `miniextendr_api::newtype`, so the wrapper calls the
+    /// helper directly.
+    pub fn with_match_arg_optional(mut self, param_name: String) -> Self {
+        self.match_arg_optional_params.push(param_name);
         self
     }
 
@@ -201,6 +217,8 @@ impl RustConversionBuilder {
             return (vec![], vec![]);
         };
         let ident = &pat_ident.ident;
+        // `r#`-free spelling for synthesized bindings (`__storage_where`).
+        let plain = crate::naming::unraw(ident);
         let ty = pat_type.ty.as_ref();
 
         match ty {
@@ -214,7 +232,7 @@ impl RustConversionBuilder {
 
             // Reference types: &T, &mut T
             syn::Type::Reference(r) => {
-                let param_name = ident.to_string();
+                let param_name = crate::naming::ident_name(ident);
                 let is_dots = matches!(
                     r.elem.as_ref(),
                     syn::Type::Path(tp)
@@ -238,7 +256,7 @@ impl RustConversionBuilder {
                         crate::classify_several_ok_container(ty)
                 {
                     let is_mut = r.mutability.is_some();
-                    let storage_ident = quote::format_ident!("__storage_{}", ident);
+                    let storage_ident = quote::format_ident!("__storage_{}", plain);
                     let error_msg = format!(
                         "failed to convert parameter '{}' to &{}[{}]: invalid choice",
                         param_name,
@@ -284,7 +302,7 @@ impl RustConversionBuilder {
 
                 if is_dots {
                     // &Dots: create wrapper with storage (main thread only - requires SEXP)
-                    let storage_ident = quote::format_ident!("{}_storage", ident);
+                    let storage_ident = quote::format_ident!("{}_storage", plain);
                     let stmt = quote! {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #sexp_ident };
                         let #ident = &#storage_ident;
@@ -323,7 +341,7 @@ impl RustConversionBuilder {
                         // Worker path: convert to owned String, then borrow using the
                         // Borrow trait. The String moves into the worker closure (it is
                         // Send); a borrowed view over R's CHARSXP pool is not.
-                        let owned_ident = quote::format_ident!("__owned_{}", ident);
+                        let owned_ident = quote::format_ident!("__owned_{}", plain);
                         // Owned conversion: SEXP -> String
                         let string_ty: syn::Type = syn::parse_quote!(String);
                         let try_expr = quote_spanned! {span=>
@@ -360,7 +378,7 @@ impl RustConversionBuilder {
 
             // All other types
             _ => {
-                let param_name = ident.to_string();
+                let param_name = crate::naming::ident_name(ident);
 
                 // Strict mode: use checked input helpers for lossy types
                 if self.strict
@@ -375,6 +393,25 @@ impl RustConversionBuilder {
                     let stmt = quote_spanned! {span=>
                         let #ident: #ty = #strict_expr;
                     };
+                    return (vec![stmt], vec![]);
+                }
+
+                // Option<T> match_arg (#1473): NULL → None, else the scalar match.
+                if self
+                    .match_arg_optional_params
+                    .contains(&param_name.to_string())
+                    && let Some(inner_ty) = crate::option_inner_type(ty)
+                {
+                    let span = ty.span();
+                    let error_msg = format!(
+                        "failed to convert parameter '{}' to Option<{}>: invalid choice",
+                        param_name,
+                        quote!(#inner_ty)
+                    );
+                    let try_expr = quote_spanned! {span=>
+                        ::miniextendr_api::match_arg_option_from_sexp::<#inner_ty>(#sexp_ident)
+                    };
+                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 
@@ -422,7 +459,7 @@ impl RustConversionBuilder {
                             // match_arg validation + error reporting), then convert length-check
                             // separately via a direct panic (caught by the framework).
                             let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
-                            let vec_ident = quote::format_ident!("__vec_{}", ident);
+                            let vec_ident = quote::format_ident!("__vec_{}", plain);
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
@@ -444,7 +481,7 @@ impl RustConversionBuilder {
                             return (vec![vec_stmt, arr_stmt], vec![]);
                         }
                         crate::SeveralOkContainer::BorrowedSlice => {
-                            let storage_ident = quote::format_ident!("__storage_{}", ident);
+                            let storage_ident = quote::format_ident!("__storage_{}", plain);
                             let error_msg = format!(
                                 "failed to convert parameter '{}' to &[{}]: invalid choice",
                                 param_name,

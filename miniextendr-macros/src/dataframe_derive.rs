@@ -268,6 +268,18 @@ pub(super) enum FieldTypeKind<'a> {
         key_ty: &'a syn::Type,
         val_ty: &'a syn::Type,
     },
+    /// `Option<scalar>` (`Option<f64>`, `Option<String>`, …): one NA-able
+    /// column. The companion stores the full `Vec<Option<T>>`, whose `IntoR`
+    /// writes `None` as the typed `NA` and whose `TryFromSexp` reads `NA` back
+    /// as `None`; the inner type is never needed separately.
+    ///
+    /// Only the **struct** path accepts this shape. Enum variant fields are
+    /// already wrapped in `Option` (absent for other variants), so an
+    /// `Option<scalar>` field there would need `Vec<Option<Option<T>>>`, which
+    /// has no conversion; `enum_expansion.rs` rejects it with a pointer to the
+    /// bare scalar. Non-scalar `Option<…>` payloads (maps, structs, collections)
+    /// are still rejected in `classify_field_type` (#484).
+    OptionScalar,
     /// A struct-typed field whose inner type implements `DataFrameRow`.
     ///
     /// Flattened into `<field>_<inner_col>` prefixed columns by default.
@@ -353,11 +365,26 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
             "Option", "Cow", "Rc", "Arc", "RefCell", "Cell", "Mutex", "RwLock",
         ];
         let name = seg.ident.to_string();
+        // `Option<scalar>` is the NA contract (`None` ⇄ `NA`), not a wrapper to
+        // see through: `Vec<Option<T>>` has `IntoR` / `TryFromSexp` for every
+        // name in `OPTION_SCALAR_NAMES`, so it is a plain single column (#1437).
+        if name == "Option"
+            && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+            && is_option_scalar_inner(inner)
+        {
+            return Ok(FieldTypeKind::OptionScalar);
+        }
         if REJECTED_WRAPPERS.contains(&name.as_str()) {
+            let hint = if name == "Option" {
+                "`Option<…>` is supported only around a scalar (`Option<f64>`, \
+                 `Option<String>`, …), where it is the NA-able column contract. "
+            } else {
+                ""
+            };
             return Err(syn::Error::new_spanned(
                 ty,
                 format!(
-                    "DataFrameRow does not support `{name}<…>` directly as a field type. \
+                    "DataFrameRow does not support `{name}<…>` directly as a field type. {hint}\
                      Use `#[dataframe(as_list)]` to opt into an explicit opaque list-column, \
                      or unwrap to the inner type (e.g. store the inner value directly, using \
                      a sentinel / empty collection for the absent case)."
@@ -458,6 +485,31 @@ pub(super) fn classify_field_type(ty: &syn::Type) -> syn::Result<FieldTypeKind<'
 pub(super) const READER_SCALAR_NAMES: &[&str] = &[
     "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "String",
 ];
+
+/// Scalar types accepted inside `Option<…>` as a struct-path field (#1437):
+/// every `T` here has `IntoR for Vec<Option<T>>` (typed `NA` for `None`) in
+/// `miniextendr-api::into_r`. The reader side is gated separately by
+/// [`is_reader_scalar_ty`], so `Option<u64>` / `Option<usize>` fields are
+/// write-only, like their bare counterparts.
+pub(super) const OPTION_SCALAR_NAMES: &[&str] = &[
+    "bool", "f32", "f64", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "isize", "usize",
+    "String",
+];
+
+/// True if `ty` is a bare ident from [`OPTION_SCALAR_NAMES`] (no path prefix,
+/// no generic args), i.e. a valid `Option<…>` payload for a single NA-able column.
+pub(super) fn is_option_scalar_inner(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty
+        && tp.qself.is_none()
+        && tp.path.leading_colon.is_none()
+        && tp.path.segments.len() == 1
+        && let Some(seg) = tp.path.segments.last()
+        && matches!(seg.arguments, syn::PathArguments::None)
+    {
+        return OPTION_SCALAR_NAMES.contains(&seg.ident.to_string().as_str());
+    }
+    false
+}
 
 /// True if `ty` is a bare known-scalar ident (no `Option`, no generic args).
 ///
@@ -769,8 +821,8 @@ fn resolve_struct_field(
     let col_name_str = field_attrs
         .rename
         .clone()
-        .unwrap_or_else(|| rust_name.to_string());
-    let col_name = format_ident!("{}", col_name_str);
+        .unwrap_or_else(|| crate::naming::ident_name(&rust_name));
+    let col_name = crate::naming::name_ident(&col_name_str);
 
     let tuple_index = if is_tuple {
         Some(syn::Index::from(index))
@@ -892,7 +944,8 @@ fn resolve_struct_field(
                 tuple_index,
             }))))
         }
-        kind @ (FieldTypeKind::Scalar | FieldTypeKind::Map { .. }) => {
+        kind
+        @ (FieldTypeKind::Scalar | FieldTypeKind::OptionScalar | FieldTypeKind::Map { .. }) => {
             if field_attrs.width.is_some() {
                 return Err(syn::Error::new_spanned(
                     ty,
@@ -1290,7 +1343,7 @@ fn derive_struct_dataframe(
         .filter_map(|rf| {
             if let ResolvedField::AutoExpandVec(data) = rf {
                 Some(AutoExpandCol {
-                    df_field: format_ident!("{}", data.col_name_str),
+                    df_field: crate::naming::name_ident(&data.col_name_str),
                     container_ty: data.container_ty.clone(),
                 })
             } else {
@@ -1676,7 +1729,7 @@ fn derive_struct_dataframe(
                     let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__arr_{}", data.rust_name);
+                let bind = format_ident!("__arr_{}", crate::naming::unraw(&data.rust_name));
                 let pushes: Vec<TokenStream> = (0..data.len)
                     .map(|i| {
                         let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
@@ -1696,7 +1749,7 @@ fn derive_struct_dataframe(
                     let rust_name = &data.rust_name;
                     quote! { row.#rust_name }
                 };
-                let bind = format_ident!("__vec_{}", data.rust_name);
+                let bind = format_ident!("__vec_{}", crate::naming::unraw(&data.rust_name));
                 let pushes: Vec<TokenStream> = (0..data.width)
                     .map(|i| {
                         let col_ident = format_ident!("{}_{}", data.base_name, i + 1);
@@ -1912,7 +1965,7 @@ fn derive_struct_dataframe(
                 continue;
             }
             let name = &fc.df_field;
-            let w_name = format_ident!("__w_{}", name);
+            let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
                     ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
@@ -1921,7 +1974,7 @@ fn derive_struct_dataframe(
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
-            let w_name = format_ident!("__w_{}", name);
+            let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
                     ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
@@ -1950,7 +2003,7 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let w_name = format_ident!("__w_{}", data.col_name);
+                    let w_name = format_ident!("__w_{}", crate::naming::unraw(&data.col_name));
                     quote! { #w_name.write(__i, #access); }
                 }
                 ResolvedField::ExpandedFixed(data) => {
@@ -1960,7 +2013,7 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__arr_{}", data.rust_name);
+                    let bind = format_ident!("__arr_{}", crate::naming::unraw(&data.rust_name));
                     let writes: Vec<TokenStream> = (0..data.len)
                         .map(|i| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
@@ -1980,7 +2033,7 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let bind = format_ident!("__vec_{}", data.rust_name);
+                    let bind = format_ident!("__vec_{}", crate::naming::unraw(&data.rust_name));
                     let writes: Vec<TokenStream> = (0..data.width)
                         .map(|i| {
                             let w_name = format_ident!("__w_{}_{}", data.base_name, i + 1);
@@ -1999,7 +2052,7 @@ fn derive_struct_dataframe(
                         let rust_name = &data.rust_name;
                         quote! { __row.#rust_name }
                     };
-                    let w_name = format_ident!("__w_{}", data.col_name);
+                    let w_name = format_ident!("__w_{}", crate::naming::unraw(&data.col_name));
                     quote! { #w_name.write(__i, #access); }
                 }
                 // Struct fields (#485) are collected in the sequential pre-pass
@@ -2303,8 +2356,8 @@ fn derive_struct_dataframe(
             match rf {
                 ResolvedField::Single(data) => {
                     let rust_name = &data.rust_name;
-                    let col_var = format_ident!("__col_{}", rust_name);
-                    let it_var = format_ident!("__it_{}", rust_name);
+                    let col_var = format_ident!("__col_{}", crate::naming::unraw(rust_name));
+                    let it_var = format_ident!("__it_{}", crate::naming::unraw(rust_name));
                     match &data.list_elem_ty {
                         // Un-annotated owned collection: opaque list-column (VECSXP). Read
                         // each row's element back via `Vec<elem>: TryFromSexp`, then
@@ -2377,8 +2430,10 @@ fn derive_struct_dataframe(
                     let mut it_nexts: Vec<TokenStream> = Vec::new();
                     let mut idx_clones: Vec<TokenStream> = Vec::new();
                     for k in 1..=data.len {
-                        let col_var = format_ident!("__ef_{}_{}", rust_name, k);
-                        let it_var = format_ident!("__efit_{}_{}", rust_name, k);
+                        let col_var =
+                            format_ident!("__ef_{}_{}", crate::naming::unraw(rust_name), k);
+                        let it_var =
+                            format_ident!("__efit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
                         extracts.push(pull_col(&col_var, &col_name_str, elem_ty));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
@@ -2398,8 +2453,10 @@ fn derive_struct_dataframe(
                     let mut it_nexts: Vec<TokenStream> = Vec::new();
                     let mut idx_clones: Vec<TokenStream> = Vec::new();
                     for k in 1..=data.width {
-                        let col_var = format_ident!("__ev_{}_{}", rust_name, k);
-                        let it_var = format_ident!("__evit_{}_{}", rust_name, k);
+                        let col_var =
+                            format_ident!("__ev_{}_{}", crate::naming::unraw(rust_name), k);
+                        let it_var =
+                            format_ident!("__evit_{}_{}", crate::naming::unraw(rust_name), k);
                         let col_name_str = format!("{}_{}", data.base_name, k);
                         extracts.push(pull_col(&col_var, &col_name_str, &opt_ty));
                         seq_decls.push(quote! { let mut #it_var = #col_var.into_iter(); });
@@ -2423,7 +2480,7 @@ fn derive_struct_dataframe(
                 ResolvedField::AutoExpandVec(data) => {
                     let rust_name = &data.rust_name;
                     let elem_ty = &data.elem_ty;
-                    let cols_var = format_ident!("__aev_{}", rust_name);
+                    let cols_var = format_ident!("__aev_{}", crate::naming::unraw(rust_name));
                     let col_name_str = &data.col_name_str;
                     extracts.push(quote! {
                         let #cols_var: Vec<Vec<::core::option::Option<#elem_ty>>> = {
@@ -2477,8 +2534,8 @@ fn derive_struct_dataframe(
                 ResolvedField::Struct(data) => {
                     let rust_name = &data.rust_name;
                     let inner_ty = &data.inner_ty;
-                    let vec_var = format_ident!("__sf_{}", rust_name);
-                    let it_var = format_ident!("__sfit_{}", rust_name);
+                    let vec_var = format_ident!("__sf_{}", crate::naming::unraw(rust_name));
+                    let it_var = format_ident!("__sfit_{}", crate::naming::unraw(rust_name));
                     let base = &data.col_name_str;
                     let prefix_lit = format!("{}_", data.col_name_str);
                     extracts.push(quote! {
@@ -3019,7 +3076,7 @@ impl<'a> ColumnRegistry<'a> {
         } else {
             let idx = self.columns.len();
             self.columns.push(ResolvedColumn {
-                col_name: format_ident!("{}", col_name),
+                col_name: crate::naming::name_ident(col_name),
                 ty: col_ty.clone(),
                 present_in: vec![variant_idx],
                 string_coerced: false,
@@ -3258,6 +3315,79 @@ mod tests {
     /// Stringify the derive output (whitespace-normalised) for substring assertions.
     fn expand(input: DeriveInput) -> String {
         derive_dataframe_row(input).unwrap().to_string()
+    }
+
+    /// `Option<scalar>` struct fields are a single NA-able column (#1437): the
+    /// derive accepts them, keeps the full `Option<T>` as the companion element
+    /// type, and still emits the readers (the reader gate already knew the shape).
+    #[test]
+    fn option_scalar_struct_field_is_single_nullable_column() {
+        let code = expand(syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            struct Obs {
+                id: i32,
+                weight: Option<f64>,
+                label: Option<String>,
+                flag: Option<bool>,
+            }
+        });
+        assert!(code.contains("weight"), "column kept, got:\n{code}");
+        assert!(
+            code.contains("Option < f64 >"),
+            "companion stores Option<f64>, got:\n{code}"
+        );
+        assert!(code.contains("fn try_from_dataframe"));
+        assert!(code.contains("fn try_from_dataframe_par"));
+    }
+
+    /// The #484 footgun stays closed: `Option` around a map / struct / collection
+    /// is still rejected, now with a hint naming the supported scalar shape.
+    #[test]
+    fn option_non_scalar_struct_field_still_rejected() {
+        for field_ty in [
+            quote::quote!(Option<HashMap<String, i32>>),
+            quote::quote!(Option<Inner>),
+            quote::quote!(Option<Vec<f64>>),
+            quote::quote!(Option<std::string::String>),
+        ] {
+            let input: DeriveInput = syn::parse_quote! {
+                #[derive(DataFrameRow)]
+                struct Row {
+                    id: i32,
+                    payload: #field_ty,
+                }
+            };
+            let err = derive_dataframe_row(input)
+                .expect_err("Option<non-scalar> must be rejected")
+                .to_string();
+            assert!(
+                err.contains("does not support `Option<…>`")
+                    && err.contains("supported only around a scalar"),
+                "message must name the supported shape, got: {err}"
+            );
+        }
+    }
+
+    /// Enum variant fields already become `Option<T>` columns (absent for the
+    /// other variants), so an `Option<scalar>` field there is rejected with a
+    /// pointer to the bare scalar instead of failing on `Vec<Option<Option<T>>>`.
+    #[test]
+    fn option_scalar_enum_variant_field_rejected() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[derive(DataFrameRow)]
+            #[dataframe(tag = "kind")]
+            enum Event {
+                Click { x: f64, note: Option<String> },
+                Key { code: i32 },
+            }
+        };
+        let err = derive_dataframe_row(input)
+            .expect_err("Option<scalar> in enum variant must be rejected")
+            .to_string();
+        assert!(
+            err.contains("already become `Option<T>` columns"),
+            "got: {err}"
+        );
     }
 
     /// Scalar named struct: the baseline `try_from_dataframe_par` shape (#765).

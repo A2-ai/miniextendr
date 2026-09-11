@@ -13,9 +13,14 @@ uses.
 | `message!(...)` | `message()` | `rust_message` | prints, continues |
 | `condition!(...)` | `signalCondition()` | `rust_condition` | silent no-op |
 
-All four support an optional `class = "name"` argument to prepend a custom class
-for programmatic catching, and an optional `data = ...` argument to attach
-structured named fields readable as `e$<name>` in handlers.
+All four support an optional `class = ...` argument to prepend custom classes
+for programmatic catching (one string or a vector, most specific first), and an
+optional `data = ...` argument to attach structured named fields readable as
+`e$<name>` in handlers.
+`Result<T, E>` returns get the same treatment through the
+[`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait,
+or, for error enums that already derive `serde::Serialize`, through
+[the serde shape](#deriving-the-classes-from-a-serde-error-type).
 
 > **Import note.** `error!` and `condition!` are shadowed by the crate-root
 > modules `error` / `condition`, so `use miniextendr_api::*;` (or a direct
@@ -49,7 +54,15 @@ class(e)
 # With class = "my_err":
 class(e)
 # error!(class = "my_err", "...") → c("my_err", "rust_error", "simpleError", "error", "condition")
+
+# With a class vector (member first, family second), so handlers can catch either:
+# error!(class = ["pkg_error_missing_field", "pkg_error"], "...")
+#   → c("pkg_error_missing_field", "pkg_error", "rust_error", "simpleError", "error", "condition")
 ```
+
+`class =` accepts anything implementing `ConditionClass`: `&str`, `String`,
+`[&str; N]`, `Vec<String>`, slices. The same vector form is available on
+`warning!` and `condition!`.
 
 ## Runnable examples
 
@@ -153,9 +166,41 @@ are materialised on R's main thread at the unwind boundary. Consequently,
 `data = ...` works identically from worker-thread and main-thread code, but a
 live `SEXP` or arbitrary `IntoR` value cannot ride along.
 
-Reserved names: fields named `message`, `call`, or `kind` would override the
-condition's own slots (the R helper splices via `utils::modifyList`) — avoid
-them.
+#### Reserved names
+
+`message`, `call` and `kind` are the condition's own slots (the R helper
+splices `data` over them with `utils::modifyList`), so they are **rejected**
+as field names: at compile time when the name is a literal or a bare
+identifier (`data = ("kind", 1)`, `data = { kind = 1 }`), at runtime otherwise
+(a plain `rust_error` explaining the clash, instead of the former silent
+overwrite).
+
+There is no escape hatch, deliberately: `message` and `call` are what R's
+`conditionMessage()` / `conditionCall()` read, and `kind` is the framework's
+transport tag, so a field with one of those names is a naming clash to fix
+where the payload is built (a different key, `#[serde(rename)]` on a derived
+struct, a rename in your `RConditionError::data()` impl). Renaming every field
+with a prefix to rescue one would make `e$<name>` access inconsistent across
+conditions. When the payload is an error type's own serde shape that other
+consumers read, do the renaming at the condition boundary instead:
+`#[miniextendr(serde_error(skip(..), rename(..)))]` drops or renames payload
+fields, and a `message` field that merely echoes `Display` is dropped with no
+option (see
+[Payload fields named `message`](#payload-fields-named-message)).
+
+```rust
+error!(
+    class = "pkg_sparse_rule",
+    data = { rule = kind, column = column },
+    "sparse rule on `{column}`"
+);
+```
+
+```r
+e <- tryCatch(f(), pkg_sparse_rule = function(e) e)
+e$rule      # the field
+e$kind      # still "error" (the transport tag)
+```
 
 ### `warning!()`
 
@@ -229,6 +274,203 @@ withCallingHandlers(
 # progress: step 3
 # NULL
 ```
+
+## Classed `Result` errors with `RConditionError` and `RError`
+
+A `#[miniextendr]` function or method returning `Result<T, E>` raises `Err(e)`
+as an R error whose `kind` is `"result_err"`. The `Err` arm picks the class
+vector and data in three steps, the first that applies winning:
+
+1. `E` implements `miniextendr_api::condition::RConditionError` (this section).
+2. The API crate's `serde` feature is on and `E: serde::Serialize + Display`
+   ([derived from the serde shape](#deriving-the-classes-from-a-serde-error-type)).
+3. Otherwise a bare `rust_error` whose message is `format!("{e:?}")`.
+
+To give R handlers something to dispatch on without giving up `?` composition,
+implement `RConditionError` for the error type:
+
+```rust
+use miniextendr_api::condition::{ConditionData, RConditionError};
+
+#[derive(Debug, thiserror::Error)]
+pub enum PkgError {
+    #[error("field `{field}` is missing")]
+    MissingField { field: String },
+    #[error("{value} exceeds the maximum {max}")]
+    OutOfRange { value: f64, max: f64 },
+}
+
+impl RConditionError for PkgError {
+    fn message(&self) -> String { self.to_string() }
+    fn class(&self) -> Vec<String> {
+        let member = match self {
+            PkgError::MissingField { .. } => "pkg_error_missing_field",
+            PkgError::OutOfRange { .. } => "pkg_error_out_of_range",
+        };
+        vec![member.into(), "pkg_error".into()]
+    }
+    fn data(&self) -> Option<ConditionData> {
+        Some(match self {
+            PkgError::MissingField { field } => vec![("field".into(), field.as_str().into())],
+            PkgError::OutOfRange { value, max } =>
+                vec![("value".into(), (*value).into()), ("max".into(), (*max).into())],
+        })
+    }
+}
+
+#[miniextendr]
+pub fn check(value: f64) -> Result<f64, PkgError> {
+    if value > 100.0 { return Err(PkgError::OutOfRange { value, max: 100.0 }); }
+    Ok(value)
+}
+```
+
+```r
+e <- tryCatch(check(150), error = function(e) e)
+class(e)
+# [1] "pkg_error_out_of_range" "pkg_error" "rust_error" "simpleError" "error" "condition"
+e$value; e$max
+# [1] 150
+# [1] 100
+tryCatch(check(150), pkg_error = function(e) "family handler")
+# [1] "family handler"
+```
+
+Detection is by trait, not by attribute: the generated `Err` arm probes
+`E: RConditionError` first and falls back to the `Debug` rendering otherwise,
+so existing `Result<T, String>` functions behave exactly as before. `kind`
+stays `"result_err"`. Field names follow the reserved-name rule above; a
+reserved name from `data()` raises a `rust_error` describing the clash.
+
+For one-off cases, `RError` is a ready-made classed value. Any
+`std::error::Error` converts into it with `?` or `From` (the message keeps the
+`caused by:` chain), and builders add the R-facing parts:
+
+```rust
+use miniextendr_api::condition::RError;
+
+#[miniextendr]
+pub fn parse_port(s: &str) -> Result<i32, RError> {
+    let port: i32 = s
+        .parse()
+        .map_err(|e| RError::from(e).class(["pkg_bad_port", "pkg_error"]).data("input", s))?;
+    Ok(port)
+}
+```
+
+`RError` implements `Display` (the message) but not `std::error::Error`, which
+keeps the blanket `From<E: Error>` coherent; it works with
+`#[miniextendr(unwrap_in_r)]` too.
+
+### Deriving the classes from a serde error type
+
+When the error type already derives `serde::Serialize` (for logging, JSON
+transport, or a downstream client), the same information drives the R
+condition without an `RConditionError` impl and without any attribute: with the
+API crate's `serde` feature enabled, every `Result<T, E>` whose
+`E: Serialize + Display` serializes the `Err` value. The enum variant becomes
+the member class `<prefix>_<variant>`, the variant's fields become `e$<name>`,
+and the message comes from `Display`. `#[miniextendr(serde_error(..))]` exists
+only to carry options (`tag`, `prefix`, `skip`, `rename`); the bare flag is a
+compile error, since it would switch nothing on.
+
+```rust
+#[derive(Debug, thiserror::Error, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EngineError {
+    #[error("field `{field}` is missing")]
+    MissingField { field: String },
+    #[error("{value} exceeds the maximum {max}")]
+    OutOfRange { value: f64, max: f64 },
+}
+
+#[miniextendr]
+pub fn check(value: f64) -> Result<f64, EngineError> {
+    if value > 100.0 { return Err(EngineError::OutOfRange { value, max: 100.0 }); }
+    Ok(value)
+}
+```
+
+```r
+e <- tryCatch(check(150), error = function(e) e)
+class(e)
+# [1] "mypkg_error_out_of_range" "mypkg_error" "rust_error" "simpleError" "error" "condition"
+e$value; e$max
+# [1] 150
+# [1] 100
+```
+
+- The family class defaults to `<crate>_error`, from the Rust crate name at
+  compile time. Override it with `serde_error(prefix = "engine")`.
+- Internally tagged enums (`#[serde(tag = "kind")]`) have the tag field
+  consumed as the variant, so it never collides with the framework's own
+  `e$kind` (`"result_err"`). Name a different tag with
+  `serde_error(tag = "type")`. Externally tagged enums (serde's default)
+  report the variant name verbatim (`mypkg_error_OutOfRange`; add
+  `#[serde(rename_all = "snake_case")]` for snake_case).
+- Struct variants contribute their fields. A newtype variant with a struct
+  payload contributes that struct's fields; any other newtype or tuple payload
+  lands under `e$value`. Unit variants carry classes only. A value that
+  serializes without variant information (a plain struct, a string) gets just
+  the family class. `Result<T, String>` and `Result<T, &str>` therefore raise
+  `c("mypkg_error", "rust_error", …)` with the text as the message, no data.
+- Values follow the `RValue` mapping (`RValue::from_serde`, see
+  [SERDE_R.md](SERDE_R.md#owned-values-rvaluefrom_serde)): scalars,
+  homogeneous `Vec<T>` as atomic vectors, nested structs as named lists,
+  `None` as `NULL`. The reserved names above apply to the payload fields; a
+  clash raises a `rust_error` describing it, exactly as for `data()`, with
+  the exceptions below.
+- `serde_error(..)` needs a `Result` return type and cannot be combined with
+  `unwrap_in_r`; both are compile errors, as is the bare `serde_error` flag.
+
+#### Payload fields named `message`
+
+A wrapped parser or foreign error is usually `Variant { message: String }`,
+and renaming that field at the source changes a serialization other consumers
+read. Three rules keep the zero-boilerplate path open for that shape:
+
+```rust
+#[derive(Debug, thiserror::Error, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ParserError {
+    #[error("line {line}: {message}")]
+    Parse { message: String, line: u32 },
+    #[error("{message}")]
+    Wrapped { message: String },
+}
+
+#[miniextendr(serde_error(skip("message")))]
+pub fn parse(text: String) -> Result<f64, ParserError> { /* ... */ }
+
+#[miniextendr(serde_error(rename(message = "detail")))]
+pub fn parse_keep(text: String) -> Result<f64, ParserError> { /* ... */ }
+```
+
+- `serde_error(skip("message", ...))` drops the named payload fields before
+  the reserved-name check. `Parse` reaches R as `mypkg_error_parse` with
+  `e$line` and the `Display` text as `conditionMessage(e)`; the wrapped text
+  survives only where `Display` includes it.
+- `serde_error(rename(message = "detail", ...))` splices the field under the
+  new name (`e$detail`). The source may be an identifier or, for a serde-renamed
+  field whose name is not one, a string literal: `rename("kebab-name" = "kebab")`.
+  A target may not be `message`, `call` or `kind`, and two pairs may not share
+  a target; both are compile errors. A target the variant already carries
+  (`rename(message = "line")` on `Parse`) would give the condition two `line`
+  fields of which `e$line` reads only the first, so it raises a `rust_error`
+  naming the field and the rename at raise time (#1459).
+- With no option, a `message` field whose value is exactly the `Display` text
+  is dropped as redundant with the condition's own `message` slot. `Wrapped`
+  above therefore needs nothing; `Parse` (whose `Display` adds the line) still
+  raises the reserved-name error unless skipped or renamed.
+
+Both options name the field as it serializes and are a no-op for variants
+that lack it, so one attribute covers an enum whose variants differ. The macro
+cannot see the error type's fields at expansion time; only the option grammar
+is checked there. A field named `call` or `kind` has no equality rule and
+must be skipped or renamed.
+- Choose `RConditionError` when the message or class vector needs to differ
+  from the serde shape (it takes precedence); the serde path is the
+  zero-boilerplate default for enums that are already serde-tagged.
 
 ## Trait-ABI and ALTREP error class layering
 
