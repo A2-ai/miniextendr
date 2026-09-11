@@ -183,6 +183,15 @@ tarball, then `just configure` to regenerate `.cargo/config.toml`.
 `miniextendr_doctor()` detects both the stale tarball and a missing
 `config.toml` and prints the fix.
 
+If `cargo revendor --freeze` rewrote `src/rust/Cargo.toml` (a package with a
+path-dependency sibling) and nothing restored it, both tools also put the
+manifest back from the pre-freeze snapshot cargo-revendor leaves next to it,
+`src/rust/.Cargo.toml.prefreeze` (written only when the freeze changes the
+manifest, never over an existing snapshot, gitignored and Rbuildignored,
+deleted once restored; #1509). `miniextendr_doctor()` says whether that
+snapshot is available or the paths must be repaired by hand. `Cargo.lock` is
+left for cargo to re-resolve on the next build.
+
 Dev-consume recipes (`just rcmdinstall`, `just devtools-test`,
 `just devtools-load`, `just devtools-install`) will abort with an error if the
 tarball is present in the source tree, preventing silent tarball-mode iteration.

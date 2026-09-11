@@ -963,6 +963,26 @@ pub fn generate_cargo_config(
     Ok(config)
 }
 
+/// File name of the pre-freeze snapshot [`freeze_manifest`] leaves next to the
+/// manifest (`src/rust/.Cargo.toml.prefreeze` for an R package).
+///
+/// `--freeze` rewrites `Cargo.toml` in place and, by design, nothing in this
+/// process restores it: the sealed tarball must carry the frozen shape. The
+/// original bytes therefore have to survive on disk for a later recovery
+/// (`miniextendr_clean_vendor_leak()`, `just clean-vendor-leak`) after an
+/// interrupted build; the in-memory snapshots those tools keep die with the
+/// process (#1509). The file is written only when the freeze changes the
+/// manifest, and only if no snapshot is present yet, so freezing an
+/// already-frozen manifest again cannot overwrite the true pre-freeze copy.
+/// Packages gitignore and Rbuildignore it; the recovery tools delete it once
+/// the manifest is restored.
+pub const PREFREEZE_SIDECAR_NAME: &str = ".Cargo.toml.prefreeze";
+
+/// Path of the pre-freeze snapshot for `manifest_path` (same directory).
+pub fn prefreeze_sidecar_path(manifest_path: &Path) -> std::path::PathBuf {
+    manifest_path.with_file_name(PREFREEZE_SIDECAR_NAME)
+}
+
 /// Freeze: rewrite Cargo.toml so sources resolve from vendor/.
 ///
 /// 1. Rewrites manifest-declared `path =` deps to vendor/ path deps. Deps
@@ -1136,7 +1156,21 @@ pub fn freeze_manifest(
         doc.insert("patch", toml_edit::Item::Table(patch));
     }
 
-    std::fs::write(manifest_path, doc.to_string())?;
+    let frozen = doc.to_string();
+    if frozen != content {
+        // Persist the original bytes before the rewrite so an interrupted build
+        // stays recoverable from disk (#1509). An existing snapshot is kept: it
+        // is the true pre-freeze copy when a frozen manifest is frozen again.
+        let sidecar = prefreeze_sidecar_path(manifest_path);
+        if !sidecar.exists() {
+            std::fs::write(&sidecar, &content)
+                .with_context(|| format!("failed to write {}", sidecar.display()))?;
+            if v.info() {
+                eprintln!("  Saved pre-freeze manifest to {}", sidecar.display());
+            }
+        }
+    }
+    std::fs::write(manifest_path, frozen)?;
 
     if v.info() {
         eprintln!(
@@ -1722,6 +1756,54 @@ external = { git = "https://example.com/ext" }
             msg.contains("--strict-freeze") && msg.contains("external"),
             "expected strict-freeze error naming the dep, got:\n{msg}"
         );
+    }
+
+    #[test]
+    fn freeze_manifest_writes_prefreeze_sidecar_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let vendor = dir.path().join("vendor");
+        let binding = vendor.join("binding");
+        std::fs::create_dir_all(&binding).unwrap();
+        std::fs::create_dir_all(vendor.join("core")).unwrap();
+        let manifest = binding.join("Cargo.toml");
+        // Deliberately odd formatting: the snapshot must be byte-exact.
+        let original = "[package]\nname = \"binding\"\nversion = \"0.1.0\"\r\n\n[dependencies]\ncore   = { path = \"../../../core\" }  # sibling\n";
+        std::fs::write(&manifest, original).unwrap();
+        let packages = vec![LocalPackage {
+            name: "core".into(),
+            version: "0.1.0".into(),
+            path: dir.path().join("core"),
+            manifest_path: dir.path().join("core/Cargo.toml"),
+        }];
+        let sidecar = prefreeze_sidecar_path(&manifest);
+        assert_eq!(sidecar, binding.join(".Cargo.toml.prefreeze"));
+        assert!(!sidecar.exists());
+
+        freeze_manifest(&manifest, &vendor, &packages, false, false, Verbosity(0)).unwrap();
+        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), original);
+        let frozen = std::fs::read_to_string(&manifest).unwrap();
+        assert_ne!(frozen, original);
+        assert!(frozen.contains("../core"));
+
+        // Freezing the frozen manifest again keeps the first snapshot.
+        freeze_manifest(&manifest, &vendor, &packages, false, false, Verbosity(0)).unwrap();
+        assert_eq!(std::fs::read_to_string(&sidecar).unwrap(), original);
+        assert_eq!(std::fs::read_to_string(&manifest).unwrap(), frozen);
+    }
+
+    #[test]
+    fn freeze_manifest_without_changes_writes_no_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = dir.path().join("Cargo.toml");
+        let original =
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n\n[dependencies]\ncfg-if = \"1\"\n";
+        std::fs::write(&manifest, original).unwrap();
+        let vendor = dir.path().join("vendor");
+        std::fs::create_dir_all(&vendor).unwrap();
+
+        freeze_manifest(&manifest, &vendor, &[], false, false, Verbosity(0)).unwrap();
+        assert_eq!(std::fs::read_to_string(&manifest).unwrap(), original);
+        assert!(!prefreeze_sidecar_path(&manifest).exists());
     }
 
     #[test]

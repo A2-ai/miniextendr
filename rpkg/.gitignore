@@ -37,6 +37,11 @@ src/rust/target/
 inst/vendor.tar.xz
 inst/.vendor.tar.xz.cksum
 
+# Pre-freeze snapshot of src/rust/Cargo.toml, written by `cargo revendor
+# --freeze` so `miniextendr_clean_vendor_leak()` / `just clean-vendor-leak` can
+# restore the manifest after an interrupted build (#1509). Never tracked.
+src/rust/.Cargo.toml.prefreeze
+
 # Intermediary files from configure.ac
 .vendor-tarball-staging/
 

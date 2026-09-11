@@ -203,7 +203,11 @@ present (#441). Symptom of a leaked tarball: workspace-crate edits silently
 ignored, or `Cargo.lock` mismatch errors. Fix: `just clean-vendor-leak` (safe,
 idempotent); regression test `just test-bootstrap-vendor`;
 `minirextendr_doctor()` detects both the stale latch and a missing
-`.cargo/config.toml`. Mode table, the tarball-producing triggers, and the CRAN
+`.cargo/config.toml`. A manifest left frozen by `cargo revendor --freeze` is
+restored from the `src/rust/.Cargo.toml.prefreeze` snapshot cargo-revendor
+writes before rewriting it (#1509); both cleanup tools do this, the file is
+gitignored + Rbuildignored, and never edit it by hand. Mode table, the
+tarball-producing triggers, and the CRAN
 canary rationale: the `miniextendr-build` skill and
 `docs/CRAN_COMPATIBILITY.md`.
 

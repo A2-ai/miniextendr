@@ -127,11 +127,18 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
     # Diagnose vendor-bound entries before generic relative dependencies so
     # interrupted freezes include their patch entries and recovery guidance.
     frozen <- frozen_manifest_entries(usethis::proj_get())
+    prefreeze_present <- file.exists(prefreeze_sidecar_path(usethis::proj_get()))
     if (length(frozen)) {
-      report_frozen_manifest(frozen)
+      report_frozen_manifest(frozen, snapshot = prefreeze_present)
       results$warn <- c(results$warn, vapply(frozen, function(entry) {
         paste0("vendor-bound Cargo.toml [", entry$section, "]: ", entry$crate)
       }, character(1)))
+    } else if (prefreeze_present) {
+      # The manifest was restored by other means; the snapshot is stale.
+      cli::cli_alert_warning(
+        "{.path src/rust/.Cargo.toml.prefreeze} is present but {.path src/rust/Cargo.toml} is not vendor-bound; {.code miniextendr_clean_vendor_leak()} removes the stale snapshot."
+      )
+      results$warn <- c(results$warn, "stale src/rust/.Cargo.toml.prefreeze snapshot")
     }
     frozen_deps <- Filter(function(entry) entry$section == "dependencies", frozen)
     frozen_names <- vapply(frozen_deps, `[[`, character(1), "crate")

@@ -71,6 +71,9 @@ vendor_crates_io <- function(path = ".") {
       # travel in the tarball. It mutates src/rust/Cargo.{toml,lock} in place;
       # the manifest stays frozen so the subsequent `R CMD build` seals it (see
       # miniextendr_vendor()'s closing guidance for restoring source shape).
+      # cargo-revendor keeps the pre-freeze bytes in
+      # src/rust/.Cargo.toml.prefreeze (#1509), which is what
+      # miniextendr_clean_vendor_leak() restores from.
       # Inert for a git-only package with no path sibling to rewrite.
       "--freeze"
     ),
