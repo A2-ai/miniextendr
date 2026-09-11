@@ -4,11 +4,47 @@
 //! consumer (e.g. a registration-chasing linter) can compute the exact same
 //! identifiers from a source `syn::Ident`.
 
+use syn::ext::IdentExt;
+
+// region: raw identifiers
+//
+// Rust keywords are ordinary R names (`type`, `where`, `match`, `mod`, ...),
+// so users spell them as raw identifiers: `fn r#match(r#where: &str)`. The
+// `r#` prefix is Rust surface syntax only — `Display` for `syn::Ident` keeps it
+// (`"r#where"`), which is neither a valid R name, nor a valid C symbol
+// fragment, nor accepted by `syn::Ident::new` / `format_ident!`. Every place
+// that turns a user identifier into a *name* (R formals, R function/method
+// names, list/data-frame column names, C symbols, HashMap keys, synthesized
+// Rust bindings) must go through `ident_name` / `unraw` instead of
+// `to_string()` / direct interpolation. Token positions (`quote! { #ident }`)
+// keep the raw ident — `r#where` is what the Rust side needs.
+
+/// The user's identifier as a plain name: `r#where` → `"where"`, `x` → `"x"`.
+pub(crate) fn ident_name(ident: &syn::Ident) -> String {
+    ident.unraw().to_string()
+}
+
+/// The user's identifier without its `r#` prefix, for `format_ident!` /
+/// `quote!` interpolation into *synthesized* identifiers (`__storage_where`).
+/// Not for emitting the identifier itself — `where` is not a valid binding.
+pub(crate) fn unraw(ident: &syn::Ident) -> syn::Ident {
+    ident.unraw()
+}
+
+/// A *name* (a column / list-element name, from a user field or a `rename`)
+/// as a Rust identifier for a generated struct field or binding. Keywords come
+/// back raw so `type` emits `r#type` instead of an unparsable token stream.
+pub(crate) fn name_ident(name: &str) -> syn::Ident {
+    syn::parse_str::<syn::Ident>(name)
+        .unwrap_or_else(|_| syn::Ident::new_raw(name, proc_macro2::Span::call_site()))
+}
+// endregion
+
 /// Identifier for the generated `const &str` holding the R wrapper source.
 ///
 /// Returns `R_WRAPPER_{RUST_IDENT}` (uppercased).
 pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let upper = rust_ident.to_string().to_uppercase();
+    let upper = ident_name(rust_ident).to_uppercase();
     quote::format_ident!("R_WRAPPER_{upper}")
 }
 
@@ -60,6 +96,7 @@ pub(crate) fn crate_prefix() -> String {
 /// own cross-package uniqueness).
 pub(crate) fn bare_fn_c_wrapper_ident(rust_ident: &syn::Ident) -> syn::Ident {
     let prefix = crate_prefix();
+    let rust_ident = unraw(rust_ident);
     quote::format_ident!("C_{prefix}_{rust_ident}")
 }
 
@@ -71,6 +108,7 @@ pub(crate) fn impl_method_c_wrapper_ident(
     method_ident: &syn::Ident,
 ) -> syn::Ident {
     let prefix = crate_prefix();
+    let method_ident = unraw(method_ident);
     if let Some(label) = label {
         quote::format_ident!("C_{prefix}_{type_ident}_{label}_{method_ident}")
     } else {
@@ -88,6 +126,7 @@ pub(crate) fn trait_member_c_wrapper_string(
     member_ident: &syn::Ident,
 ) -> String {
     let prefix = crate_prefix();
+    let member_ident = unraw(member_ident);
     format!("C_{prefix}_{type_ident}__{trait_name}__{member_ident}")
 }
 
@@ -139,6 +178,7 @@ pub(crate) fn vtshim_ident(
     method_ident: &syn::Ident,
 ) -> syn::Ident {
     let prefix = crate_prefix();
+    let method_ident = unraw(method_ident);
     quote::format_ident!("__vtshim_{prefix}_{type_ident}__{trait_name}__{method_ident}")
 }
 // endregion
@@ -177,6 +217,67 @@ pub(crate) fn apply_rename_all(name: &str, rename_all: Option<&str>) -> String {
         _ => name.to_string(),
     }
 }
+
+// region: R definition names
+
+/// R's reserved words: never usable as a bare name on the left of `<-`.
+const R_RESERVED_WORDS: &[&str] = &[
+    "if",
+    "else",
+    "repeat",
+    "while",
+    "function",
+    "for",
+    "next",
+    "break",
+    "TRUE",
+    "FALSE",
+    "NULL",
+    "Inf",
+    "NaN",
+    "NA",
+    "NA_integer_",
+    "NA_real_",
+    "NA_character_",
+    "NA_complex_",
+    "in",
+];
+
+/// Whether `name` is a syntactic R name: ASCII letters, digits, `.` and `_`
+/// only; starts with a letter, or with a `.` that is not followed by a digit;
+/// and is not a reserved word. Anything else (`[.foo`, `$.foo`, `==.foo`,
+/// `%in%.foo`) has to be backtick-quoted in source.
+pub(crate) fn is_syntactic_r_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        Some('.') => {
+            if chars.next().is_some_and(|c| c.is_ascii_digit()) {
+                return false;
+            }
+        }
+        _ => return false,
+    }
+    name.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
+        && !R_RESERVED_WORDS.contains(&name)
+}
+
+/// The left-hand side of a generated `<name> <- function(...)` definition.
+///
+/// Syntactic names pass through unchanged so the common output stays readable;
+/// a non-syntactic one (an S3 method on `[`, `$`, `==`, ...) is wrapped in
+/// backticks, which R accepts for any name. Without this the wrapper file did
+/// not parse (#1475).
+pub(crate) fn r_def_name(name: &str) -> String {
+    if is_syntactic_r_name(name) {
+        name.to_string()
+    } else {
+        format!("`{}`", name.replace('`', "\\`"))
+    }
+}
+
+// endregion
 
 #[cfg(test)]
 mod tests {
@@ -238,6 +339,44 @@ mod tests {
             vtshim_ident(&ty, &tr, &m).to_string(),
             "__vtshim_miniextendr_macros_Counter__Resettable__reset"
         );
+    }
+
+    #[test]
+    fn raw_identifiers_lose_their_prefix_in_names() {
+        let raw: syn::Ident = syn::parse_quote!(r#where);
+        let plain: syn::Ident = syn::parse_quote!(x);
+        assert_eq!(raw.to_string(), "r#where", "Display keeps the prefix");
+        assert_eq!(ident_name(&raw), "where");
+        assert_eq!(ident_name(&plain), "x");
+        assert_eq!(unraw(&raw).to_string(), "where");
+        assert_eq!(
+            quote::format_ident!("__storage_{}", unraw(&raw)),
+            "__storage_where"
+        );
+        // The C symbol / const-name formatters unraw internally.
+        assert_eq!(
+            bare_fn_c_wrapper_ident(&syn::parse_quote!(r#match)).to_string(),
+            "C_miniextendr_macros_match"
+        );
+        assert_eq!(
+            r_wrapper_const_ident_for(&syn::parse_quote!(r#match)).to_string(),
+            "R_WRAPPER_MATCH"
+        );
+        let ty: syn::Ident = syn::parse_quote!(Row);
+        assert_eq!(
+            impl_method_c_wrapper_ident(&ty, None, &syn::parse_quote!(r#type)).to_string(),
+            "C_miniextendr_macros_Row__type"
+        );
+    }
+
+    #[test]
+    fn name_ident_makes_keywords_raw() {
+        assert_eq!(name_ident("type").to_string(), "r#type");
+        assert_eq!(name_ident("where").to_string(), "r#where");
+        assert_eq!(name_ident("value").to_string(), "value");
+        // Round-trips: a raw ident's name maps back to the same raw ident.
+        let raw: syn::Ident = syn::parse_quote!(r#type);
+        assert_eq!(name_ident(&ident_name(&raw)), raw);
     }
 
     #[test]

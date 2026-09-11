@@ -46,7 +46,7 @@
 /// (like vctrs) may use named arguments that must match the original name.
 pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
     syn::Ident::new(
-        &normalize_r_arg_string(&rust_ident.to_string()),
+        &normalize_r_arg_string(&crate::naming::ident_name(rust_ident)),
         rust_ident.span(),
     )
 }
@@ -133,9 +133,7 @@ impl<'a> RArgumentBuilder<'a> {
     /// Rust side -- R formals always emit plain `...`.
     pub fn with_dots(mut self, named_dots: Option<String>) -> Self {
         self.has_dots = true;
-        self.named_dots = named_dots.map(|s| {
-            normalize_r_arg_ident(&syn::Ident::new(&s, proc_macro2::Span::call_site())).to_string()
-        });
+        self.named_dots = named_dots.map(|s| normalize_r_arg_string(&s));
         self
     }
 
@@ -319,6 +317,74 @@ pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
 // endregion
 
 // region: DotCallBuilder - .Call() invocation formatting
+
+/// Which frame a generated wrapper hands to `.Call(.., .call = ..)` and uses as
+/// the raise fallback (`.miniextendr_raise_condition(.val, <default>)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CallAttribution {
+    /// `.call = match.call()`: the wrapper's own call, formals matched (default).
+    #[default]
+    Wrapper,
+    /// `.call = .mx_call`, where the wrapper body first binds
+    /// `.mx_parent <- sys.parent()`, the parent frame's function (`.mx_def`)
+    /// and call (`.mx_pc`), then
+    /// `.mx_call <- match.call(.mx_def, .mx_pc, envir = parent.frame(2L))`:
+    /// the caller's call with the caller's formals matched. `envir` is the
+    /// frame the caller's call was evaluated in (the caller's caller, two
+    /// frames up from the wrapper), which is where a literal `...` in that
+    /// call is bound: a `function(...)` helper forwarding into the caller, or
+    /// `lapply()`'s `FUN(X[[i]], ...)`. `match.call`'s own default,
+    /// `parent.frame(2L)` evaluated inside `match.call`, is the caller's frame,
+    /// which has no `...`, so every call through such a helper failed with
+    /// `... used in a situation where it does not exist` (#1462). It falls back to
+    /// the wrapper's own `match.call()` when there is no parent frame (top
+    /// level) or the parent frame is not a closure: `eval()`'d code such as a
+    /// testthat block or `source()` has the `eval` primitive as its frame
+    /// function, and `match.call()` rejects a non-closure definition. For a
+    /// `noexport` entry point behind a hand-written R function
+    /// (`#[miniextendr(noexport, call = caller)]`). Every `sys.*` lookup is a
+    /// plain statement in the wrapper's own frame, never a promise forced by
+    /// `match.call` (where `sys.call(0)` would resolve to `match.call`'s frame).
+    Caller,
+    /// `.call = NULL`: `no_call_attribution` / `fast`; the raise helper falls
+    /// back to the wrapper's `sys.call()`.
+    None,
+}
+
+impl CallAttribution {
+    /// The `.call = ...` argument for the `.Call()` line.
+    pub fn dot_call_arg(self) -> &'static str {
+        match self {
+            CallAttribution::Wrapper => ".call = match.call()",
+            CallAttribution::Caller => ".call = .mx_call",
+            CallAttribution::None => ".call = NULL",
+        }
+    }
+
+    /// The fallback call handed to `.miniextendr_raise_condition`.
+    pub fn raise_default(self) -> &'static str {
+        match self {
+            CallAttribution::Caller => ".mx_call",
+            CallAttribution::Wrapper | CallAttribution::None => "sys.call()",
+        }
+    }
+
+    /// Statements the wrapper body needs before the `.Call()` line: empty except
+    /// for [`CallAttribution::Caller`], which binds `.mx_call`. Each line ends
+    /// with a newline plus `indent`, so the result can be prepended to a body
+    /// whose first line is already positioned.
+    pub fn prelude(self, indent: &str) -> String {
+        match self {
+            CallAttribution::Caller => format!(
+                ".mx_parent <- sys.parent()\n{indent}\
+                 .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)\n{indent}\
+                 .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)\n{indent}\
+                 .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()\n{indent}"
+            ),
+            CallAttribution::Wrapper | CallAttribution::None => String::new(),
+        }
+    }
+}
 
 /// Builder for formatting `.Call()` invocations in R wrapper code.
 ///

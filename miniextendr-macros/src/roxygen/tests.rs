@@ -557,6 +557,77 @@ fn test_push_multiline_tag() {
 }
 
 #[test]
+fn test_describein_keeps_continuation_lines() {
+    // `@describeIn topic description` may wrap; the wrapped part is the rest
+    // of the description and must not be dropped (#1476).
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@describeIn new_bag Number of values in the bag,"]),
+        syn::parse_quote!(#[doc = "  as an integer scalar."]),
+        syn::parse_quote!(#[doc = "@export"]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert_eq!(
+        tags,
+        vec![
+            "@describeIn new_bag Number of values in the bag,\nas an integer scalar.",
+            "@export"
+        ]
+    );
+}
+
+#[test]
+fn test_wrapped_single_word_tags_keep_continuation() {
+    for tag in [
+        "@family",
+        "@inherit",
+        "@inheritParams",
+        "@inheritSection",
+        "@keywords",
+        "@concept",
+    ] {
+        let first = format!("{tag} alpha");
+        let attrs: Vec<syn::Attribute> = vec![
+            syn::parse_quote!(#[doc = #first]),
+            syn::parse_quote!(#[doc = "  beta"]),
+        ];
+        let tags = roxygen_tags_from_attrs(&attrs);
+        assert_eq!(tags, vec![format!("{tag} alpha\nbeta")], "tag {tag}");
+    }
+}
+
+#[test]
+fn test_title_continuation_joined_onto_one_line() {
+    // A wrapped @title stays a single roxygen line (roxygen2 wants one line),
+    // instead of losing the wrapped words.
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@title A rather long title that the author"]),
+        syn::parse_quote!(#[doc = "  wrapped onto a second line"]),
+        syn::parse_quote!(#[doc = "@param x A value."]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert_eq!(
+        tags,
+        vec![
+            "@title A rather long title that the author wrapped onto a second line",
+            "@param x A value."
+        ]
+    );
+    // Rendering keeps it on one `#'` line.
+    assert!(!format_roxygen_tags(&tags[..1]).trim_end().contains('\n'));
+}
+
+#[test]
+fn test_rdname_stays_single_line() {
+    // `@rdname` takes a bare topic name; a following prose line is not part of it.
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@rdname topic"]),
+        syn::parse_quote!(#[doc = "stray prose"]),
+    ];
+    let tags = roxygen_tags_from_attrs(&attrs);
+    assert_eq!(tags, vec!["@rdname topic"]);
+}
+
+#[test]
 fn test_has_roxygen_tag_multiline() {
     // Tag name detection should work even with multiline content
     let tags = vec!["@description First\nSecond".to_string()];
@@ -676,7 +747,7 @@ fn strip_method_tags_drops_param_return_examples_export() {
     .collect();
 
     let span = proc_macro2::Span::call_site();
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, span);
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", span);
     assert_eq!(
         kept,
         vec![
@@ -701,7 +772,7 @@ fn strip_method_tags_preserves_export_variants() {
     .map(|s| (*s).to_string())
     .collect();
 
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, proc_macro2::Span::call_site());
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
     assert_eq!(
         kept,
         vec![
@@ -719,39 +790,39 @@ fn strip_method_tags_leaves_prose_untouched() {
         .map(|s| (*s).to_string())
         .collect();
 
-    let (kept, _warnings) = strip_method_tags(&tags, "MyType", 0, proc_macro2::Span::call_site());
+    let (kept, _warnings) = strip_method_tags(&tags, "MyType", proc_macro2::Span::call_site());
     assert_eq!(kept, tags);
 }
 
 #[test]
-fn strip_method_tags_disambiguates_warning_consts_per_block() {
+fn strip_method_tags_wraps_each_warning_in_its_own_anonymous_const_scope() {
     // #1118: two impl blocks on the same type each strip a method-only tag.
-    // With a per-block `block_id` the emitted warning-const names must differ,
-    // otherwise the two consts collide with E0428 when spliced side-by-side.
+    // Previously this needed a per-block `block_id` disambiguator baked into
+    // the const names, or the two emissions collided with E0428 once spliced
+    // side by side. Wrapping each warning in its own `const _: () = { .. };`
+    // block gives every emission a fresh, anonymous item scope instead — so
+    // two calls produce textually *identical* tokens and still never collide.
     let tags: Vec<String> = vec!["@param x an input".to_string()];
     let span = proc_macro2::Span::call_site();
 
-    let (_, warn_block0) = strip_method_tags(&tags, "MyType", 0, span);
-    let (_, warn_block1) = strip_method_tags(&tags, "MyType", 1, span);
+    let (_, warnings_a) = strip_method_tags(&tags, "MyType", span);
+    let (_, warnings_b) = strip_method_tags(&tags, "MyType", span);
 
-    let s0 = warn_block0.to_string();
-    let s1 = warn_block1.to_string();
+    let sa = warnings_a.to_string();
+    let sb = warnings_b.to_string();
 
-    // Each block emits exactly one nudge const, and the names carry the block id.
-    assert!(
-        s0.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"),
-        "block 0 const name unexpected: {s0}"
+    assert_eq!(
+        sa, sb,
+        "no per-block disambiguator needed — anonymous scoping does the work"
     );
     assert!(
-        s1.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_1_0"),
-        "block 1 const name unexpected: {s1}"
+        sa.contains("const _"),
+        "warning must be wrapped in an anonymous const scope: {sa}"
     );
-    assert_ne!(s0, s1, "warning consts from different blocks must differ");
-
-    // next_impl_tag_block_id() must hand out distinct ids so callers never reuse.
-    let a = crate::roxygen::next_impl_tag_block_id();
-    let b = crate::roxygen::next_impl_tag_block_id();
-    assert_ne!(a, b);
+    assert!(
+        sa.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN"),
+        "WARN const missing: {sa}"
+    );
 }
 
 #[test]
@@ -764,30 +835,24 @@ fn strip_method_tags_activates_use_const_referencing_warn_ident() {
     let tags: Vec<String> = vec!["@param x an input".to_string()];
     let span = proc_macro2::Span::call_site();
 
-    let (_, warnings) = strip_method_tags(&tags, "MyType", 0, span);
+    let (_, warnings) = strip_method_tags(&tags, "MyType", span);
     let s = warnings.to_string();
 
     assert!(
-        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"),
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN"),
         "WARN const missing: {s}"
     );
     assert!(
-        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0"),
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE"),
         "USE const missing: {s}"
     );
     // The USE const's initializer must read the WARN const by name, so
     // referencing it trips rustc's `deprecated` lint on the WARN const.
     assert!(
         s.contains(
-            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyType_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyType_0_0"
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN"
         ),
         "USE const must initialize from the WARN const's value: {s}"
-    );
-    // Both consts carry `non_upper_case_globals` (names embed mixed-case type
-    // names) alongside `dead_code`.
-    assert!(
-        s.matches("non_upper_case_globals").count() >= 2,
-        "expected non_upper_case_globals on both consts: {s}"
     );
 }
 
@@ -798,21 +863,21 @@ fn strip_method_tags_r6_activates_use_const_for_stripped_tags() {
     let tags: Vec<String> = vec!["@return something".to_string()];
     let span = proc_macro2::Span::call_site();
 
-    let (kept, warnings) = strip_method_tags_r6(&tags, "MyR6Type", 0, span);
+    let (kept, warnings) = strip_method_tags_r6(&tags, "MyR6Type", span);
     assert!(kept.is_empty(), "@return must still be stripped for R6");
 
     let s = warnings.to_string();
     assert!(
-        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"),
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_WARN"),
         "WARN const missing: {s}"
     );
     assert!(
-        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0"),
+        s.contains("_MINIEXTENDR_IMPL_METHOD_TAG_USE"),
         "USE const missing: {s}"
     );
     assert!(
         s.contains(
-            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE_MyR6Type_0_0 : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN_MyR6Type_0_0"
+            "const _MINIEXTENDR_IMPL_METHOD_TAG_USE : () = _MINIEXTENDR_IMPL_METHOD_TAG_WARN"
         ),
         "USE const must initialize from the WARN const's value: {s}"
     );

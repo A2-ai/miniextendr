@@ -141,7 +141,8 @@ RFactor derive internally.
 ## MatchArg: enum as string parameter
 
 Maps a Rust enum to R character strings with `match.arg()` validation. Supports
-partial matching and defaults to the first variant when `NULL` is passed.
+partial matching and defaults to the first variant when `NULL` is passed (an
+`Option<T>` parameter is the exception; see "Optional Choice" below).
 
 ```rust
 #[derive(Copy, Clone, MatchArg)]
@@ -194,6 +195,49 @@ run("Saf")        # partial match → "Safe"
 run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
 ```
 
+### Optional Choice: `Option<T>`
+
+With a plain `T`, an omitted argument and an explicit `NULL` both resolve to
+the first choice, so "no choice was made" cannot be expressed. Declare the
+parameter as `Option<T>` for that (#1473):
+
+```rust
+#[miniextendr]
+pub fn run(#[miniextendr(match_arg)] mode: Option<Mode>) -> String {
+    match mode {
+        Some(mode) => format!("running {mode:?}"),
+        None => "engine decides".into(),
+    }
+}
+```
+
+The R formal defaults to `NULL` instead of the choice vector, the prelude
+names the choices explicitly and skips `match.arg()` for `NULL`, and the
+auto-generated `@param` line ends in ", or NULL for no choice". `NULL` arrives
+as `None`; any other value is matched exactly as for the plain type:
+
+```r
+run <- function(mode = NULL) {
+  mode <- if (is.factor(mode)) as.character(mode) else mode
+  if (!is.null(mode)) mode <- base::match.arg(mode, c("Fast", "Safe", "Debug"))
+  .Call(C_mypkg_run, mode)
+}
+
+run()             # None
+run(NULL)         # None
+run("Sa")         # Some(Safe)
+run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
+```
+
+The same works for `choices(...)` on an `Option<String>` / `Option<&str>`
+parameter. A `default = "..."` on an `Option<T>` choice parameter is a compile
+error (the formal is `NULL` by definition; drop the `Option` to make a choice
+the default). `Missing<T>` is not accepted for a scalar choice parameter, since
+the choice list lives in the R formal default, which `Missing<T>` forbids.
+The generated C wrapper decodes the argument with
+`match_arg_option_from_sexp`, so any `MatchArg` type works, derived or
+hand-written.
+
 ### Rename Variants
 
 Same syntax as RFactor but with `#[match_arg(...)]`:
@@ -221,6 +265,76 @@ pub enum Priority {
 #[derive(Copy, Clone)]
 pub enum Mode { Fast, Safe, Debug }
 ```
+
+### For an Enum You Do Not Own (Newtype)
+
+`#[derive(MatchArg)]` has to sit on the enum's declaration, so it cannot be
+attached to an enum from a crate that does not depend on miniextendr (the
+usual shape when an R package wraps an existing Rust library). Wrap the
+foreign enum in a newtype and implement the three traits the derive would
+have emitted. `MatchArg` (`miniextendr_api::match_arg::MatchArg`) is
+public, and so are the helpers the derive leans on:
+
+```rust
+use miniextendr_api::match_arg::MatchArg;
+use miniextendr_api::{IntoR, SEXP, SexpError, TryFromSexp};
+
+// Owned by the wrapped library; no miniextendr types anywhere near it.
+use wrapped::Interp;
+
+#[derive(Copy, Clone)]
+pub struct InterpChoice(pub Interp);
+
+impl MatchArg for InterpChoice {
+    const CHOICES: &'static [&'static str] = &["linear", "cubic", "nearest"];
+
+    fn from_choice(choice: &str) -> Option<Self> {
+        Some(InterpChoice(match choice {
+            "linear" => Interp::Linear,
+            "cubic" => Interp::Cubic,
+            "nearest" => Interp::Nearest,
+            _ => return None,
+        }))
+    }
+
+    fn to_choice(self) -> &'static str {
+        match self.0 {
+            Interp::Linear => "linear",
+            Interp::Cubic => "cubic",
+            Interp::Nearest => "nearest",
+        }
+    }
+}
+
+impl TryFromSexp for InterpChoice {
+    type Error = SexpError;
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
+    }
+}
+
+impl IntoR for InterpChoice {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> { Ok(self.into_sexp()) }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> { self.try_into_sexp() }
+    fn into_sexp(self) -> SEXP { self.to_choice().into_sexp() }
+}
+
+#[miniextendr]
+pub fn interpolate(#[miniextendr(match_arg)] method: InterpChoice) -> f64 {
+    wrapped::run(method.0)
+}
+```
+
+Everything downstream of the trait is shared with derived enums: the
+`match.arg()` prelude, the choices spliced into the formal default
+(`function(method = c("linear", "cubic", "nearest"))`), partial matching,
+factor input, `several_ok` (`Vec<InterpChoice>`), the `Vec<T>` return path
+(via the blanket `IntoRVecElement` bridge), impl-block `match_arg(param)`
+attributes, and the auto-injected `@param` choices text. `to_choice` is an
+exhaustive `match`, so adding a variant to the wrapped enum without updating
+the newtype is a compile error rather than silent drift.
+`rpkg/src/rust/match_arg_foreign_tests.rs` is the reference fixture.
 
 ### Inline String Choices
 
@@ -259,9 +373,31 @@ Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, `[T; N]`, and
 is a compile error (no choice list to validate against). `several_ok` on a
 scalar type (e.g. `Mode` without a `Vec`) is also a compile error.
 
-Default behavior when the R caller omits the argument: the full choice list,
-matching `base::match.arg`. Pass a single string to get partial matching,
-pass a character vector to get multiple exact/partial matches.
+An omitted argument, and an explicit `NULL`, select the full choice list.
+Pass a single string to get partial matching, or a character vector to select
+several choices; each element is matched exactly or as a unique prefix.
+
+Validation is stricter than `base::match.arg(several.ok = TRUE)`, which keeps
+the elements that match and silently drops the rest as long as one element
+matched (so `f(c("alpha", "zzz"))` would behave like `f("alpha")`). The
+generated prelude routes `several_ok` parameters through an internal helper
+that requires every element to match and reports the first that does not,
+with its position (#1472):
+
+```r
+pick_modes <- function(modes = c("Fast", "Safe", "Debug")) {
+  modes <- if (is.factor(modes)) as.character(modes) else modes
+  modes <- .miniextendr_match_arg_several(modes, c("Fast", "Safe", "Debug"), "modes")
+  .Call(C_mypkg_pick_modes, modes)
+}
+
+pick_modes(c("Fast", "zzz"))
+#> Error in pick_modes(c("Fast", "zzz")) :
+#>   'modes' element 2 ("zzz") should be one of "Fast", "Safe", "Debug"
+```
+
+The Rust side (`match_arg_vec_from_sexp`) still checks every element against
+`MatchArg::CHOICES`, so a value that bypasses the wrapper is caught too.
 
 ### On Impl-Block Methods
 
@@ -337,7 +473,9 @@ This is provided by a blanket `impl<T: MatchArg> IntoR for Vec<T>` in
 
 `MatchArg` is the base trait for all enum-like types. `RFactor` requires `MatchArg`
 as a supertrait, so any `RFactor` type also has `MatchArg::CHOICES`, `from_choice()`,
-and `to_choice()`. Use `MatchArg` as a bound for generic code over both systems:
+and `to_choice()`. It can also be implemented by hand on a newtype (see
+[For an Enum You Do Not Own](#for-an-enum-you-do-not-own-newtype)). Use `MatchArg`
+as a bound for generic code over both systems:
 
 ```rust
 use miniextendr_api::MatchArg;
@@ -359,7 +497,7 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 |---------|---------|----------|
 | R storage | `factor(1, levels=c(...))` | `"Fast"` (character) |
 | Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
-| Default on NULL | Error | First choice |
+| Default on NULL | Error | First choice (`Option<T>`: `None`; `several_ok`: all choices) |
 | Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | `Vec<T>` return + `several_ok` inputs |
 | Partial matching | No | Yes (`"F"` → `"Fast"`) |
 | Factor input | Native | Converted to character first |

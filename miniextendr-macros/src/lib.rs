@@ -221,7 +221,8 @@ compile_error!(
 
 pub(crate) use type_inspect::{
     SeveralOkContainer, classify_several_ok_container, first_type_argument,
-    is_main_thread_bound_input, is_main_thread_bound_return, is_sexp_type, second_type_argument,
+    is_main_thread_bound_input, is_main_thread_bound_return, is_option_type, is_sexp_type,
+    match_arg_choices_ty, option_inner_type, second_type_argument,
 };
 pub(crate) use util::{extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc};
 
@@ -419,15 +420,10 @@ fn build_match_arg_helpers(
     match_arg_param_info
         .iter()
         .map(|(r_param, rust_name, param_ty)| {
-            // For several_ok, the param type is e.g. Vec<Mode>/Box<[Mode]>/[Mode; N]/&[Mode]
-            // — extract inner Mode for choices_sexp.
-            let choices_ty: &syn::Type = if parsed.has_several_ok(rust_name) {
-                classify_several_ok_container(param_ty)
-                    .map(|(_, t)| t)
-                    .unwrap_or(param_ty)
-            } else {
-                param_ty
-            };
+            // several_ok containers and the `Option<T>` scalar form both wrap the
+            // `MatchArg` type; resolve it the same way the impl path does.
+            let choices_ty: &syn::Type =
+                match_arg_choices_ty(param_ty, parsed.has_several_ok(rust_name));
             let helper_fn_name = crate::match_arg_keys::choices_helper_c_name(c_ident_str, r_param);
             let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
             let helper_def_ident =
@@ -529,6 +525,9 @@ fn build_match_arg_helpers(
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 /// - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
+/// - `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —
+///   options for the serde-classed `Err` arm. The path itself is automatic under the
+///   API crate's `serde` feature for every `Result<T, E>` with `E: Serialize + Display`.
 /// - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
 /// - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
 /// - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper
@@ -751,8 +750,10 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
+        serde_error,
         no_preconditions,
         no_call_attribution,
+        call_caller,
         return_pref,
         return_pref_span,
         s3_generic,
@@ -767,6 +768,7 @@ pub fn miniextendr(
         doc,
         c_symbol,
         r_name: fn_r_name,
+        postfix: fn_postfix,
         r_entry,
         r_post_checks,
         r_on_exit,
@@ -877,12 +879,25 @@ pub fn miniextendr(
     // - Whether result should be invisible
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
+    // `serde_error` only has an `Err` arm to act on when the fn returns `Result`.
+    if serde_error.is_some() && !return_type_analysis::output_is_result(output) {
+        return syn::Error::new_spanned(
+            output,
+            "`#[miniextendr(serde_error(..))]` requires a `Result<T, E>` return type: it classes \
+             the condition raised from the `Err` arm",
+        )
+        .into_compile_error()
+        .into();
+    }
+    let err_parts = c_wrapper_builder::ErrPartsMode::from_spec(serde_error.as_ref());
+
     let return_analysis = return_type_analysis::analyze_return_type(
         output,
         &rust_result_ident,
         rust_ident,
         unwrap_in_r,
         strict,
+        &err_parts,
     );
 
     let returns_sexp = return_analysis.returns_sexp;
@@ -961,16 +976,21 @@ pub fn miniextendr(
     // Build individual per-parameter coerce and match_arg_several_ok lists
     let mut coerce_params_list: Vec<String> = Vec::new();
     let mut match_arg_several_ok_params_list: Vec<String> = Vec::new();
+    let mut match_arg_optional_params_list: Vec<String> = Vec::new();
     for input in inputs.iter() {
         if let syn::FnArg::Typed(pt) = input
             && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
         {
-            let param_name = pat_ident.ident.to_string();
+            let param_name = crate::naming::ident_name(&pat_ident.ident);
             if parsed.has_coerce_attr(&param_name) {
                 coerce_params_list.push(param_name.clone());
             }
             if parsed.has_match_arg_attr(&param_name) && parsed.has_several_ok(&param_name) {
                 match_arg_several_ok_params_list.push(param_name);
+            } else if parsed.has_match_arg_attr(&param_name)
+                && parsed.is_optional_choice(&param_name)
+            {
+                match_arg_optional_params_list.push(param_name);
             }
         }
     }
@@ -1028,6 +1048,7 @@ pub fn miniextendr(
             .call_expr(fn_call_expr)
             .thread_strategy(thread_strategy)
             .return_handling(fn_return_handling)
+            .err_parts(err_parts)
             .cfg_attrs(cfg_attrs.clone())
             .vis(vis.clone())
             .generics(generics.clone())
@@ -1049,6 +1070,9 @@ pub fn miniextendr(
     for param in match_arg_several_ok_params_list {
         c_wrapper_builder = c_wrapper_builder.match_arg_several_ok(param);
     }
+    for param in match_arg_optional_params_list {
+        c_wrapper_builder = c_wrapper_builder.match_arg_optional(param);
+    }
     if check_interrupt {
         c_wrapper_builder = c_wrapper_builder.check_interrupt();
     }
@@ -1065,7 +1089,8 @@ pub fn miniextendr(
     // Build R formal parameters and call arguments using shared builder
     let mut arg_builder = RArgumentBuilder::new(inputs);
     if has_dots {
-        arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
+        arg_builder =
+            arg_builder.with_dots(named_dots.clone().map(|id| crate::naming::ident_name(&id)));
     }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
     let mut merged_defaults = parsed.param_defaults();
@@ -1088,16 +1113,28 @@ pub fn miniextendr(
             None => String::new(),
         };
         let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
-        merged_defaults.insert(r_name.clone(), placeholder.clone());
+        if parsed.is_optional_choice(match_arg_param) {
+            // `Option<T>` (#1473): the formal is `NULL` (no choice); the prelude
+            // spells the choices out through the same placeholder instead.
+            merged_defaults.insert(r_name.clone(), "NULL".to_string());
+        } else {
+            merged_defaults.insert(r_name.clone(), placeholder.clone());
+        }
         match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
     }
-    // Add c("a", "b", "c") default for choices params (idiomatic R match.arg pattern)
+    // Add c("a", "b", "c") default for choices params (idiomatic R match.arg
+    // pattern); an `Option<T>` choices param defaults to `NULL` instead (#1473).
     for (param_name, choices) in parsed.choices_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
-        merged_defaults
-            .entry(r_name)
-            .or_insert_with(|| format!("c({})", quoted.join(", ")));
+        let optional = parsed.is_optional_choice(param_name);
+        merged_defaults.entry(r_name).or_insert_with(|| {
+            if optional {
+                "NULL".to_string()
+            } else {
+                format!("c({})", quoted.join(", "))
+            }
+        });
     }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
@@ -1109,13 +1146,24 @@ pub fn miniextendr(
     // instead of `match.call()` — saves ~1200 ns/call. The R-side
     // .miniextendr_raise_condition helper falls back to sys.call() so the
     // error UX is preserved (positional args instead of named).
+    let call_attribution = if no_call_attribution {
+        r_wrapper_builder::CallAttribution::None
+    } else if call_caller {
+        r_wrapper_builder::CallAttribution::Caller
+    } else {
+        r_wrapper_builder::CallAttribution::Wrapper
+    };
     if uses_internal_c_wrapper {
-        let call_arg = if no_call_attribution {
-            ".call = NULL".to_string()
-        } else {
-            ".call = match.call()".to_string()
-        };
-        r_call_args_strs.insert(0, call_arg);
+        r_call_args_strs.insert(0, call_attribution.dot_call_arg().to_string());
+    } else if call_caller {
+        // `extern "C-unwind"` fns have no generated call slot to redirect.
+        return syn::Error::new_spanned(
+            &parsed.item().sig.ident,
+            "`call = caller` needs the generated call slot; an `extern \"C-unwind\"` function \
+             has no `.call` argument to attribute",
+        )
+        .into_compile_error()
+        .into();
     }
 
     // Build the R body string consistently
@@ -1133,7 +1181,14 @@ pub fn miniextendr(
         } else {
             ".val"
         };
-        crate::method_return_builder::standalone_body(&call_expr, final_return, "  ")
+        let body = crate::method_return_builder::standalone_body_with_call_default(
+            &call_expr,
+            final_return,
+            "  ",
+            call_attribution.raise_default(),
+        );
+        // `call = caller` binds `.mx_call` in the wrapper's own frame first.
+        format!("{}{body}", call_attribution.prelude("  "))
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
@@ -1143,7 +1198,9 @@ pub fn miniextendr(
     if is_s3_method {
         // For S3 methods, function name is generic.class
         // generic defaults to Rust function name if not specified
-        let generic = s3_generic.clone().unwrap_or_else(|| rust_ident.to_string());
+        let generic = s3_generic
+            .clone()
+            .unwrap_or_else(|| crate::naming::ident_name(rust_ident));
         // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
         // validates that s3(...) always has class specified
         let class = s3_class.as_ref().expect("s3_class validated at parse time");
@@ -1158,11 +1215,16 @@ pub fn miniextendr(
     } else if let Some(ref custom_name) = fn_r_name {
         r_wrapper_ident_str = custom_name.clone();
         s3_method_comment = String::new();
+    } else if let Some(ref postfix) = fn_postfix {
+        // `postfix = "_impl"`: the R wrapper is `<rust_name><postfix>`; the C
+        // symbol keeps the Rust name.
+        r_wrapper_ident_str = format!("{}{postfix}", crate::naming::ident_name(rust_ident));
+        s3_method_comment = String::new();
     } else if abi.is_some() {
-        r_wrapper_ident_str = format!("unsafe_{}", rust_ident);
+        r_wrapper_ident_str = format!("unsafe_{}", crate::naming::ident_name(rust_ident));
         s3_method_comment = String::new();
     } else {
-        r_wrapper_ident_str = rust_ident.to_string();
+        r_wrapper_ident_str = crate::naming::ident_name(rust_ident);
         s3_method_comment = String::new();
     };
 
@@ -1207,7 +1269,7 @@ pub fn miniextendr(
         if parsed.is_dots_param(&pat_ident.ident) {
             continue;
         }
-        let rust_name = pat_ident.ident.to_string();
+        let rust_name = crate::naming::ident_name(&pat_ident.ident);
         let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
         let already_documented = crate::roxygen::param_documented(&roxygen_tags, &r_name);
         if already_documented {
@@ -1221,7 +1283,15 @@ pub fn miniextendr(
             } else {
                 "One of"
             };
-            roxygen_tags.push(format!("@param {r_name} {prefix} {}.", quoted.join(", ")));
+            let suffix = if parsed.is_optional_choice(&rust_name) {
+                ", or NULL for no choice"
+            } else {
+                ""
+            };
+            roxygen_tags.push(format!(
+                "@param {r_name} {prefix} {}{suffix}.",
+                quoted.join(", ")
+            ));
         } else if parsed.has_match_arg_attr(&rust_name) {
             let doc_placeholder =
                 crate::match_arg_keys::param_doc_placeholder(&c_ident.to_string(), &r_name);
@@ -1288,7 +1358,7 @@ pub fn miniextendr(
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
-                let rust_name = pat_ident.ident.to_string();
+                let rust_name = crate::naming::ident_name(&pat_ident.ident);
                 if parsed.has_match_arg_attr(&rust_name) {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
@@ -1309,12 +1379,24 @@ pub fn miniextendr(
                 "{param} <- if (is.factor({param})) as.character({param}) else {param}",
                 param = r_param,
             ));
-            // match.arg pulls the choice list off the formal default (which the
-            // write-time pass has populated as `c("a", "b", ...)`), so no
-            // explicit second arg is needed.
+            // The plain scalar form lets match.arg pull the choice list off the
+            // formal default (populated by the write-time pass as
+            // `c("a", "b", ...)`). The other two forms need the list spelled out,
+            // so they reuse the same placeholder; the write pass substitutes
+            // every occurrence.
+            let placeholder =
+                crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), r_param);
             if parsed.has_several_ok(rust_name) {
+                // Strict several_ok (#1472): every element must match; NULL
+                // selects every choice. See `.miniextendr_match_arg_several`.
                 lines.push(format!(
-                    "{param} <- base::match.arg({param}, several.ok = TRUE)",
+                    "{param} <- .miniextendr_match_arg_several({param}, {placeholder}, \"{param}\")",
+                    param = r_param,
+                ));
+            } else if parsed.is_optional_choice(rust_name) {
+                // `Option<T>` (#1473): NULL means no choice and skips match.arg.
+                lines.push(format!(
+                    "if (!is.null({param})) {param} <- base::match.arg({param}, {placeholder})",
                     param = r_param,
                 ));
             } else {
@@ -1336,13 +1418,22 @@ pub fn miniextendr(
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
-                let rust_name = pat_ident.ident.to_string();
-                if parsed.choices_for_param(&rust_name).is_some() {
+                let rust_name = crate::naming::ident_name(&pat_ident.ident);
+                if let Some(choices) = parsed.choices_for_param(&rust_name) {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+                    let quoted: Vec<String> =
+                        choices.iter().map(|c| format!("\"{}\"", c)).collect();
+                    let quoted = quoted.join(", ");
                     if parsed.has_several_ok(&rust_name) {
+                        // Strict several_ok (#1472); the literal list is known here.
                         lines.push(format!(
-                            "{r_name} <- match.arg({r_name}, several.ok = TRUE)"
+                            "{r_name} <- .miniextendr_match_arg_several({r_name}, c({quoted}), \"{r_name}\")"
+                        ));
+                    } else if parsed.is_optional_choice(&rust_name) {
+                        // `Option<T>` (#1473): the formal is NULL, so name the list.
+                        lines.push(format!(
+                            "if (!is.null({r_name})) {r_name} <- match.arg({r_name}, c({quoted}))"
                         ));
                     } else {
                         lines.push(format!("{r_name} <- match.arg({r_name})"));
@@ -1439,7 +1530,7 @@ pub fn miniextendr(
             internal_comment,
             no_rd_comment,
             export_comment,
-            r_wrapper_ident_str,
+            crate::naming::r_def_name(&r_wrapper_ident_str),
             formals_joined,
             prelude,
             r_wrapper_return_str
@@ -1453,7 +1544,7 @@ pub fn miniextendr(
             internal_comment,
             no_rd_comment,
             export_comment,
-            r_wrapper_ident_str,
+            crate::naming::r_def_name(&r_wrapper_ident_str),
             formals_joined,
             r_wrapper_return_str
         )
@@ -1508,14 +1599,10 @@ pub fn miniextendr(
         let (_, _, param_ty) = match_arg_param_info
             .iter()
             .find(|(_, rn, _)| rn == rust_param)?;
-        let ty: &syn::Type = if parsed.has_several_ok(rust_param) {
-            classify_several_ok_container(param_ty)
-                .map(|(_, t)| t)
-                .unwrap_or(param_ty)
-        } else {
-            param_ty
-        };
-        Some(ty)
+        Some(match_arg_choices_ty(
+            param_ty,
+            parsed.has_several_ok(rust_param),
+        ))
     };
 
     let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
@@ -1546,6 +1633,7 @@ pub fn miniextendr(
             .filter_map(|(doc_placeholder, rust_param)| {
                 let choices_ty = choices_ty_for(rust_param)?;
                 let several_ok_lit = parsed.has_several_ok(rust_param);
+                let optional_lit = parsed.is_optional_choice(rust_param);
                 let entry_ident = syn::Ident::new(
                     &format!(
                         "match_arg_param_doc_entry_{}",
@@ -1558,6 +1646,7 @@ pub fn miniextendr(
                     &entry_ident,
                     doc_placeholder,
                     several_ok_lit,
+                    optional_lit,
                     choices_ty,
                 ))
             })
@@ -1591,6 +1680,7 @@ pub fn miniextendr(
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Function,
                 source_file: file!(),
+                source_line: #source_line_lit,
                 content: concat!(
                     "# Generated from Rust fn `",
                     stringify!(#rust_ident),
