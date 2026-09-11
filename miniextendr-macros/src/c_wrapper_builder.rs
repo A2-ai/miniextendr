@@ -682,7 +682,7 @@ impl CWrapperContext {
     /// 1. `GetRNGstate()` (if `rng` enabled)
     /// 2. `catch_unwind` around the entire body
     /// 3. Pre-closure conversions on the main thread (produces owned values)
-    /// 4. `run_on_worker` (returns `Result<T, String>`) with a
+    /// 4. `run_on_worker` (returns `Result<T, WorkerError>`) with a
     ///    `move` closure containing in-closure conversions and the call expression
     /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
     /// 6. `PutRNGstate()` (if `rng` enabled)
@@ -733,26 +733,13 @@ impl CWrapperContext {
             (TokenStream::new(), TokenStream::new())
         };
 
-        // Panic error handling: return tagged error value (the only mode).
-        //
-        // #1245 Gap 2 (not fixed here): this block is reused below for the
-        // OUTER `Err(payload) => #panic_error_handling` arm — the defensive
-        // case where the whole worker-dispatch closure panics directly
-        // (rather than `run_on_worker` returning `Err`, which is handled
-        // separately just above and already carries a location-folded
-        // message per #1245 Gap 1). This site stringifies via
-        // `panic_payload_to_string` (no location fold), so a panic reaching
-        // it loses its `(at file:line)` suffix. Near-no-op in practice — the
-        // panics that actually reach it are framework-internal (e.g.
-        // re-entrant `run_on_worker`), not user code. Fixing it properly
-        // would need `panic_message_with_location` made `pub`.
+        // Pre-call and dispatch failures use the same typed transport as
+        // caught worker failures, including their original panic location.
         let panic_error_handling = quote! {
-            unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                ::miniextendr_api::error_value::kind::PANIC,
-                ::core::option::Option::None,
+            ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                || ::std::panic::resume_unwind(payload),
                 Some(__miniextendr_call),
-            ) }
+            )
         };
 
         // run_on_worker returns Result; Err → tagged error value.
@@ -778,10 +765,8 @@ impl CWrapperContext {
                         Ok(__miniextendr_result) => {
                             #return_conversion
                         }
-                        Err(__panic_msg) => {
-                            unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                &__panic_msg, ::miniextendr_api::error_value::kind::PANIC, ::core::option::Option::None, Some(__miniextendr_call),
-                            ) }
+                        Err(__worker_error) => {
+                            __worker_error.into_r_value(Some(__miniextendr_call))
                         }
                     }
                 }));

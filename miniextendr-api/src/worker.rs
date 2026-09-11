@@ -43,7 +43,7 @@
 //! Without the `worker-thread` cargo feature, all calls execute inline on
 //! R's main thread:
 //! - `with_r_thread(f)` runs `f()` directly (panics if not on main thread)
-//! - `run_on_worker(f)` runs `f()` directly, returns `Ok(f())`
+//! - `run_on_worker(f)` catches panics inline, preserving structured conditions
 //!
 //! With the feature enabled, a dedicated worker thread is spawned at init time.
 //! `with_r_thread` routes calls from the worker back to main, and `run_on_worker`
@@ -178,9 +178,80 @@ pub fn panic_message_to_r_error(msg: String, call: Option<SEXP>) -> ! {
     }
 }
 
+/// Owned failure transported between the worker and R's main thread.
+///
+/// Conditions retain their kind, classes, and Send-safe data. Generic panic
+/// messages have their source location folded on the originating thread.
+#[doc(hidden)]
+#[derive(Debug)]
+pub enum WorkerError {
+    /// A generic panic, with its final source-location-aware message.
+    Panic(String),
+    /// An intentional Rust-origin R condition, not panic telemetry.
+    Condition(crate::condition::RCondition),
+}
+
+impl std::fmt::Display for WorkerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use crate::condition::RCondition;
+        let message = match self {
+            Self::Panic(message)
+            | Self::Condition(RCondition::Error { message, .. })
+            | Self::Condition(RCondition::Warning { message, .. })
+            | Self::Condition(RCondition::Message { message, .. })
+            | Self::Condition(RCondition::Condition { message, .. }) => message,
+        };
+        f.write_str(message)
+    }
+}
+
+impl WorkerError {
+    /// Capture a caught payload on its originating thread, before transport.
+    fn from_panic(payload: Box<dyn std::any::Any + Send>) -> Self {
+        let payload = match payload.downcast::<crate::condition::RCondition>() {
+            Ok(condition) => {
+                let _ = crate::backtrace::take_last_panic_location();
+                return Self::Condition(*condition);
+            }
+            Err(payload) => payload,
+        };
+        match payload.downcast::<crate::unwind_protect::PreLocatedPanic>() {
+            Ok(prelocated) => {
+                let _ = crate::backtrace::take_last_panic_location();
+                Self::Panic(prelocated.0)
+            }
+            Err(payload) => Self::Panic(crate::unwind_protect::panic_message_with_location(
+                payload.as_ref(),
+            )),
+        }
+    }
+
+    /// Materialize the tagged condition on R's main thread.
+    ///
+    /// Generic panic telemetry was already emitted by `run_on_worker`.
+    /// Intentional conditions reuse the main-thread typed transport.
+    #[doc(hidden)]
+    pub fn into_r_value(self, call: Option<SEXP>) -> SEXP {
+        match self {
+            Self::Condition(condition) => crate::unwind_protect::with_r_unwind_protect(
+                || std::panic::resume_unwind(Box::new(condition)),
+                call,
+            ),
+            Self::Panic(message) => unsafe {
+                crate::error_value::make_rust_condition_value(
+                    &message,
+                    crate::error_value::kind::PANIC,
+                    None,
+                    call,
+                )
+            },
+        }
+    }
+}
+
 /// Run a closure on the worker thread with proper cleanup on panic.
 ///
-/// Returns `Ok(T)` on success, `Err(String)` if the closure panicked.
+/// Returns `Ok(T)` on success, preserving caught conditions in `Err(WorkerError)`.
 /// The caller handles the error (either tagged error value or `Rf_errorcall`).
 ///
 /// Without the `worker-thread` feature, runs inline on the current thread.
@@ -202,7 +273,7 @@ pub fn panic_message_to_r_error(msg: String, call: Option<SEXP>) -> ! {
 /// Release builds skip the check (one fewer atomic load per dispatch);
 /// the `.Call` invariant is relied on instead.
 #[doc(hidden)]
-pub fn run_on_worker<F, T>(f: F) -> Result<T, String>
+pub fn run_on_worker<F, T>(f: F) -> Result<T, WorkerError>
 where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
@@ -222,34 +293,17 @@ where
     // under webR's wasm-exception unwinding that escapes R entirely and
     // reaches the JS host as an uncaught `WebAssembly.Exception`, killing the
     // session (observed in tier-3 via `unsafe_C_test_worker_panic_simple`).
-    // The message rules mirror `worker_channel::fold_panic_message`:
-    // `RCondition` payloads stringify verbatim, generic panics fold in the
-    // recorded `(at file:line)` location — same thread, so the take-once
-    // location slot is valid here too.
     #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
-    {
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-            Ok(val) => Ok(val),
-            Err(payload) => {
-                let msg = if payload.is::<crate::condition::RCondition>() {
-                    crate::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned()
-                } else {
-                    crate::unwind_protect::panic_message_with_location(payload.as_ref())
-                };
-                crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Worker);
-                Err(msg)
-            }
-        }
-    }
+    let result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(WorkerError::from_panic);
 
     #[cfg(all(feature = "worker-thread", not(target_family = "wasm")))]
-    {
-        let result = worker_channel::dispatch_to_worker(f);
-        if let Err(ref msg) = result {
-            crate::panic_telemetry::fire(msg, crate::panic_telemetry::PanicSource::Worker);
-        }
-        result
+    let result = worker_channel::dispatch_to_worker(f);
+
+    if let Err(WorkerError::Panic(ref message)) = result {
+        crate::panic_telemetry::fire(message, crate::panic_telemetry::PanicSource::Worker);
     }
+    result
 }
 
 /// Initialize the miniextendr runtime.
@@ -393,7 +447,7 @@ mod worker_channel {
     use std::sync::mpsc::{self, Receiver, SyncSender};
     use std::thread;
 
-    use super::Sendable;
+    use super::{Sendable, WorkerError};
     use crate::sys;
     use crate::{Rboolean, SEXP};
 
@@ -465,15 +519,15 @@ mod worker_channel {
     // Type-erased main thread work: closure that returns boxed result
     type MainThreadWork = Sendable<Box<dyn FnOnce() -> Box<dyn Any + Send> + 'static>>;
 
-    // Response from main thread: Ok(result) or Err(panic_message)
-    type MainThreadResponse = Result<Box<dyn Any + Send>, String>;
+    // Response from main thread: value, generic panic, or structured condition.
+    type MainThreadResponse = Result<Box<dyn Any + Send>, WorkerError>;
 
     /// Messages from worker to main thread
     enum WorkerMessage<T> {
         /// Worker requests main thread to execute some work, then send response back
         WorkRequest(MainThreadWork),
         /// Worker is done, here's the final result
-        Done(Result<T, String>),
+        Done(Result<T, WorkerError>),
     }
 
     type TypeErasedWorkerMessage = WorkerMessage<Box<dyn Any + Send>>;
@@ -518,45 +572,24 @@ mod worker_channel {
                 Ok(boxed) => *boxed
                     .downcast::<R>()
                     .expect("type mismatch in `with_r_thread` response"),
-                Err(panic_msg) => {
-                    // `panic_msg` is already final: the main-thread stringify
-                    // point in `dispatch_to_worker` (below) folded the *true*
-                    // origin location into it before sending it back over the
-                    // channel. Re-panicking here (needed to unwind out of
-                    // `run_on_worker`) must NOT let this thread's panic hook
-                    // fold ITS OWN call site (this line, in `worker.rs`) on
-                    // top — wrap in `PreLocatedPanic` so the catch in
-                    // `dispatch_to_worker` uses the message verbatim (#1245).
-                    std::panic::panic_any(crate::unwind_protect::PreLocatedPanic(format!(
-                        "panic in `with_r_thread`: {panic_msg}"
+                Err(WorkerError::Condition(condition)) => {
+                    // Relay the owned condition without a new panic hook or prefix.
+                    std::panic::resume_unwind(Box::new(condition))
+                }
+                Err(WorkerError::Panic(message)) => {
+                    // Main already folded the true origin. Resume without firing
+                    // a hook at this transport site and preserve the existing prefix.
+                    std::panic::resume_unwind(Box::new(crate::unwind_protect::PreLocatedPanic(
+                        format!("panic in `with_r_thread`: {message}"),
                     )))
                 }
             }
         })
     }
 
-    /// Stringify a caught panic payload for cross-thread transport, folding in
-    /// the *current* thread's recorded panic location for generic panics.
-    ///
-    /// User conditions (`error!`/`warning!`/`message!`/`condition!`) travel as
-    /// `RCondition` payloads and must stay location-free — stringified
-    /// verbatim. Genuine generic panics get the `(at file:line)` suffix via
-    /// [`crate::unwind_protect::panic_message_with_location`], which reads the
-    /// current thread's take-once slot — correct only because every call site
-    /// below runs on the same thread whose hook caught this exact panic
-    /// (main thread for both uses in `dispatch_to_worker`'s main-thread event
-    /// loop, #1245).
-    fn fold_panic_message(payload: &(dyn Any + Send)) -> String {
-        if payload.is::<crate::condition::RCondition>() {
-            crate::unwind_protect::panic_payload_to_string(payload).into_owned()
-        } else {
-            crate::unwind_protect::panic_message_with_location(payload)
-        }
-    }
-
     /// Dispatch a closure to the worker thread.
-    /// Returns Ok(T) or Err(panic_message).
-    pub(super) fn dispatch_to_worker<F, T>(f: F) -> Result<T, String>
+    /// Returns Ok(T) or an owned panic/condition.
+    pub(super) fn dispatch_to_worker<F, T>(f: F) -> Result<T, WorkerError>
     where
         F: FnOnce() -> T + Send + 'static,
         T: Send + 'static,
@@ -603,11 +636,11 @@ mod worker_channel {
             match guard.as_ref() {
                 Some(state) => state.tx.clone(),
                 None => {
-                    return Err(
+                    return Err(WorkerError::Panic(
                         "miniextendr worker is not running (runtime not initialized, \
                          or package has been unloaded)"
                             .to_string(),
-                    );
+                    ));
                 }
             }
         };
@@ -646,42 +679,10 @@ mod worker_channel {
             // Send final result back to the main thread's recv loop. The capacity-1
             // buffer ensures this doesn't block even if the main thread already exited
             // the loop (e.g., after an R longjmp consumed the last WorkRequest).
-            let to_send: Result<Box<dyn Any + Send>, String> = match result {
+            let to_send: Result<Box<dyn Any + Send>, WorkerError> = match result {
                 Ok(val) => Ok(Box::new(val)),
-                Err(payload) => {
-                    // Fold the panic location HERE, on the worker (origin)
-                    // thread: the hook fired on the worker for this panic, so
-                    // its take-once slot holds the real `panic!` site. The main
-                    // side then treats the already-final message verbatim
-                    // (`make_rust_condition_value(&__panic_msg, PANIC, …)` in the
-                    // generated worker wrapper) — no second fold, no clobber.
-                    //
-                    // Only genuine generic panics get the `(at …)` suffix. User
-                    // conditions (error!/warning!/message!/condition!) travel as
-                    // `RCondition` payloads and must stay location-free — mirror
-                    // the main-thread RCondition branch by stringifying verbatim.
-                    //
-                    // `PreLocatedPanic` is a THIRD case (#1245): the re-panic in
-                    // `route_to_main_thread` (a `with_r_thread` closure that
-                    // panicked on the MAIN thread, relayed back here) already
-                    // carries a final, correctly-folded message from the true
-                    // origin. This thread's panic hook still fired for the
-                    // `panic_any` relay call itself, though, and recorded ITS
-                    // OWN call site (in `worker.rs`, not the user's) into this
-                    // thread's take-once slot — stale. Use the payload's
-                    // message verbatim and drain-and-discard that stale slot so
-                    // it can't leak into a later, unrelated fold on this same
-                    // (reused) worker thread.
-                    let msg = if let Some(pre) =
-                        payload.downcast_ref::<crate::unwind_protect::PreLocatedPanic>()
-                    {
-                        let _ = crate::backtrace::take_last_panic_location();
-                        pre.0.clone()
-                    } else {
-                        fold_panic_message(&*payload)
-                    };
-                    Err(msg)
-                }
+                // Capture on the origin thread before crossing either channel.
+                Err(payload) => Err(WorkerError::from_panic(payload)),
             };
             let _ = worker_tx.send(WorkerMessage::Done(to_send));
         });
@@ -756,7 +757,7 @@ mod worker_channel {
                             #[cfg(not(feature = "nonapi"))]
                             let error_msg = "R error occurred".to_string();
 
-                            let _ = response_tx.send(Err(error_msg));
+                            let _ = response_tx.send(Err(WorkerError::Panic(error_msg)));
                             std::panic::panic_any(RErrorMarker);
                         }
                     }
@@ -790,7 +791,7 @@ mod worker_channel {
                                     // This IS the real panic origin thread (main) —
                                     // fold its location in now (#1245), before the
                                     // message crosses back to the worker.
-                                    Err(fold_panic_message(&*payload))
+                                    Err(WorkerError::from_panic(payload))
                                 } else {
                                     // Normal completion - return the result
                                     Ok(data
@@ -808,7 +809,7 @@ mod worker_channel {
                                 // Rust panic - return as error response. Also
                                 // the real origin thread (main) — fold its
                                 // location in now (#1245).
-                                Err(fold_panic_message(&*payload))
+                                Err(WorkerError::from_panic(payload))
                             }
                         }
                     };
@@ -940,7 +941,10 @@ mod tests {
                 run_on_worker(|| 42).unwrap();
             });
 
-            let msg = result.expect_err("re-entry should surface as Err");
+            let WorkerError::Panic(msg) = result.expect_err("re-entry should surface as Err")
+            else {
+                panic!("re-entry must produce a generic panic");
+            };
             assert!(
                 msg.contains("re-entr") || msg.contains("Re-entr"),
                 "expected re-entry error, got: {msg}"
@@ -992,7 +996,7 @@ mod tests {
 
     // region: Feature-gated tests: no worker-thread (stubs)
 
-    #[cfg(not(feature = "worker-thread"))]
+    #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     mod stub_tests {
         use super::*;
 
@@ -1012,7 +1016,91 @@ mod tests {
         #[test]
         fn stub_run_on_worker_inline() {
             let result = run_on_worker(|| 123);
-            assert_eq!(result, Ok(123));
+            assert_eq!(result.unwrap(), 123);
+        }
+
+        #[test]
+        fn stub_conditions_keep_kind_classes_and_data() {
+            use crate::condition::RCondition;
+            for expected_kind in 0..4 {
+                let error = run_on_worker::<_, ()>(move || {
+                    let message = "inline condition".to_string();
+                    let class = vec!["inline_class".to_string()];
+                    let data = Some(vec![(
+                        "values".to_string(),
+                        crate::RValue::from(vec![Some(1_i32), None, Some(3)]),
+                    )]);
+                    let condition = match expected_kind {
+                        0 => RCondition::Error {
+                            message,
+                            class,
+                            data,
+                        },
+                        1 => RCondition::Warning {
+                            message,
+                            class,
+                            data,
+                        },
+                        2 => RCondition::Message { message, data },
+                        _ => RCondition::Condition {
+                            message,
+                            class,
+                            data,
+                        },
+                    };
+                    std::panic::panic_any(condition);
+                })
+                .unwrap_err();
+                let WorkerError::Condition(condition) = error else {
+                    panic!("inline condition became a generic panic: {error}");
+                };
+                let (kind, message, class, data) = match condition {
+                    RCondition::Error {
+                        message,
+                        class,
+                        data,
+                    } => (0, message, class, data),
+                    RCondition::Warning {
+                        message,
+                        class,
+                        data,
+                    } => (1, message, class, data),
+                    RCondition::Message { message, data } => (2, message, vec![], data),
+                    RCondition::Condition {
+                        message,
+                        class,
+                        data,
+                    } => (3, message, class, data),
+                };
+                assert_eq!(kind, expected_kind);
+                assert_eq!(message, "inline condition");
+                assert_eq!(
+                    class,
+                    if kind == 2 {
+                        vec![]
+                    } else {
+                        vec!["inline_class"]
+                    }
+                );
+                let data = data.unwrap();
+                assert_eq!(data[0].0, "values");
+                let crate::RValue::Integer(values) = &data[0].1 else {
+                    panic!("condition vector changed type");
+                };
+                assert_eq!(values, &[Some(1), None, Some(3)]);
+                assert_eq!(run_on_worker(|| 42).unwrap(), 42);
+            }
+        }
+
+        #[test]
+        fn stub_panics_remain_caught_errors() {
+            let WorkerError::Panic(message) = run_on_worker::<_, ()>(|| {
+                panic!("inline generic panic");
+            })
+            .unwrap_err() else {
+                panic!("generic panic became a condition");
+            };
+            assert!(message.starts_with("inline generic panic"));
         }
 
         /// Without `worker-thread`, `with_r_thread` must panic when called from

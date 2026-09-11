@@ -2697,9 +2697,9 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 /// loop not re-armed, thread-locals not cleared, a wedged channel), this second
 /// dispatch would hang, panic, or return the wrong value.
 ///
-/// Shape: the fn returns `SEXP`, so the macro picks the **MainThread** strategy —
-/// the body is the thread that drives `dispatch_to_worker`'s event loop. It
-/// dispatches a closure to the worker, which routes a trivial computation back
+/// `no_worker` keeps the body on the main thread even with `worker-default`,
+/// because it drives `dispatch_to_worker`'s event loop itself. It dispatches a
+/// closure to the worker, which routes a trivial computation back
 /// to the main thread via `with_r_thread`, then returns the sum. We assert the
 /// arithmetic is correct so a partially-corrupted worker (stale thread-local
 /// channels from the prior aborted job) surfaces as a wrong answer rather than a
@@ -2708,7 +2708,7 @@ pub fn gc_stress_with_r_thread_stop() -> SEXP {
 /// No arguments — also picked up by the fast `gctorture(TRUE)` no-arg sweep
 /// (#430): it holds no SEXPs across allocations itself, but exercising the worker
 /// dispatch under GC pressure is cheap insurance.
-#[miniextendr(noexport)]
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_worker_roundtrip() -> i32 {
     use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
@@ -2887,7 +2887,7 @@ pub fn gc_stress_serde_ser() {
 /// back to verify integrity.
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr(noexport)]
+#[miniextendr(noexport, no_worker)]
 pub fn gc_stress_condition_data() {
     use miniextendr_api::RValue;
     use miniextendr_api::condition::ConditionData;
