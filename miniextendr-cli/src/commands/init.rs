@@ -228,6 +228,13 @@ fn init_use_monorepo(
         .with_rpkg(rpkg_name);
     let rpkg_root = root.join(rpkg_name);
     scaffold_rpkg_at(&rpkg_root, "templates/monorepo/rpkg", &data)?;
+    scaffold::apply_plan(
+        root,
+        "templates/monorepo",
+        &[scaffold::GITATTRIBUTES],
+        &data,
+        false,
+    )?;
     run_autoconf(&rpkg_root, quiet);
     write_miniextendr_yml(root, quiet)?;
 
@@ -804,6 +811,11 @@ mod tests {
             assert_eq!(got, expected, "{} differs from canonical", dest.display());
         }
 
+        assert_eq!(
+            read(&root, "my.proj/.gitattributes"),
+            disk_template("templates/monorepo/rpkg/gitattributes")
+        );
+
         // Embedded R package uses the monorepo/rpkg templates (sibling path
         // dependency present, monorepo-flavored configure.ac).
         let rpkg_cargo = read(&root, "my.proj/src/rust/Cargo.toml");
@@ -866,6 +878,11 @@ mod tests {
         .unwrap();
         std::fs::write(root.join("NAMESPACE"), "export(existing_fn)\n").unwrap();
         std::fs::write(root.join(".Rbuildignore"), "^custom$\n").unwrap();
+        std::fs::write(
+            root.join(".gitattributes"),
+            "# User rules\n*.R text eol=lf\n",
+        )
+        .unwrap();
 
         init_use_rpkg(&root, true).unwrap();
 
@@ -898,10 +915,17 @@ mod tests {
             "existing patterns kept"
         );
         assert!(rbuildignore.contains("^src/rust/target$"));
+        let attributes = read(&root, ".gitattributes");
+        assert!(attributes.starts_with("# User rules\n*.R text eol=lf\n"));
+        assert!(attributes.contains("NAMESPACE -merge\n"));
+        assert!(attributes.contains("R/*-wrappers.R -merge\n"));
+        assert!(attributes.contains("configure -merge\n"));
+        assert!(attributes.contains("man/*.Rd -merge\n"));
         // Idempotence: rerunning must not duplicate patterns.
         init_use_rpkg(&root, true).unwrap();
         let again = read(&root, ".Rbuildignore");
         assert_eq!(again.matches("^src/rust/target$").count(), 1);
+        assert_eq!(read(&root, ".gitattributes"), attributes);
 
         // Build-system files landed and are canonical.
         assert!(read(&root, "configure.ac").starts_with("AC_INIT([existing.pkg]"));

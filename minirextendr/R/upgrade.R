@@ -5,10 +5,13 @@
 #' Comprehensively upgrades an existing miniextendr package to the latest
 #' build system templates, vendored crates, and package metadata. This replaces
 #' the old `miniextendr_update()` with a more thorough upgrade that covers
-#' configure.ac, DESCRIPTION, .gitignore, .Rbuildignore, build.rs, and
+#' configure.ac, DESCRIPTION, .gitignore, .gitattributes, .Rbuildignore, build.rs, and
 #' generated C files.
 #'
 #' User-authored files (lib.rs, Cargo.toml, R/ code) are never touched.
+#' Missing generated-file merge rules are appended to `.gitattributes`,
+#' preserving existing rules. On a generated-file conflict, regenerate from
+#' the merged sources and stage the result with `git add`.
 #'
 #' In a monorepo layout (workspace root containing an rpkg subdirectory),
 #' `upgrade_miniextendr_package()` automatically detects the rpkg subdir and
@@ -96,6 +99,7 @@ upgrade_miniextendr_package <- function(path = ".",
   use_miniextendr_description()
   use_miniextendr_rbuildignore()
   upgrade_gitignore()
+  use_miniextendr_gitattributes()
 
   # --- configure.ac ---
   if (configure_ac) {
@@ -203,7 +207,8 @@ check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
     "tools/config.guess",
     "tools/config.sub",
     ".Rbuildignore",
-    ".gitignore"
+    ".gitignore",
+    ".gitattributes"
   )
 
   out <- run_command("git", c("status", "--porcelain", "--", scaffolding_files),

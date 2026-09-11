@@ -46,11 +46,14 @@ Invisibly returns TRUE on success.
 Comprehensively upgrades an existing miniextendr package to the latest
 build system templates, vendored crates, and package metadata. This replaces
 the old \code{miniextendr_update()} with a more thorough upgrade that covers
-configure.ac, DESCRIPTION, .gitignore, .Rbuildignore, build.rs, and
+configure.ac, DESCRIPTION, .gitignore, .gitattributes, .Rbuildignore, build.rs, and
 generated C files.
 }
 \details{
 User-authored files (lib.rs, Cargo.toml, R/ code) are never touched.
+Missing generated-file merge rules are appended to \code{.gitattributes},
+preserving existing rules. On a generated-file conflict, regenerate from
+the merged sources and stage the result with \verb{git add}.
 
 In a monorepo layout (workspace root containing an rpkg subdirectory),
 \code{upgrade_miniextendr_package()} automatically detects the rpkg subdir and

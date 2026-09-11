@@ -176,3 +176,18 @@ use_miniextendr_gitignore <- function(path = ".") {
 
   invisible(TRUE)
 }
+
+#' Protect generated files from textual Git merges
+#'
+#' Appends missing template rules to .gitattributes, preserving user rules.
+#' Unlike a custom merge driver, -merge needs no per-clone Git configuration.
+#'
+#' @param path Project directory; defaults to the active project.
+#' @param subdir Optional template subdirectory for the embedded R package.
+#' @noRd
+use_miniextendr_gitattributes <- function(path = ".", subdir = NULL) {
+  with_project(path)
+  lines <- readLines(template_path("gitattributes", subdir = subdir))
+  usethis::write_union(usethis::proj_path(".gitattributes"), lines)
+  invisible(TRUE)
+}

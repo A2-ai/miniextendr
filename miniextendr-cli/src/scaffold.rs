@@ -64,6 +64,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/rpkg/configure.ucrt"),
     tpl!("templates/rpkg/configure.win"),
     tpl!("templates/rpkg/gitignore"),
+    tpl!("templates/rpkg/gitattributes"),
     tpl!("templates/rpkg/inst_include/mx_abi.h"),
     tpl!("templates/rpkg/lib.rs"),
     tpl!("templates/rpkg/package.R"),
@@ -76,6 +77,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     // Monorepo template: workspace root + core crate.
     tpl!("templates/monorepo/Cargo.toml.tmpl"),
     tpl!("templates/monorepo/gitignore"),
+    tpl!("templates/monorepo/gitattributes"),
     tpl!("templates/monorepo/my-crate/Cargo.toml.tmpl"),
     tpl!("templates/monorepo/my-crate/src/lib.rs"),
     tpl!("templates/monorepo/tools/bump-version.R"),
@@ -93,6 +95,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/monorepo/rpkg/configure.ucrt"),
     tpl!("templates/monorepo/rpkg/configure.win"),
     tpl!("templates/monorepo/rpkg/gitignore"),
+    tpl!("templates/monorepo/rpkg/gitattributes"),
     tpl!("templates/monorepo/rpkg/inst_include/mx_abi.h"),
     tpl!("templates/monorepo/rpkg/lib.rs"),
     tpl!("templates/monorepo/rpkg/package.R"),
@@ -350,6 +353,14 @@ pub struct PlanEntry {
     pub exec: bool,
 }
 
+/// Generated-file merge rules, shared by all scaffold layouts.
+pub const GITATTRIBUTES: PlanEntry = PlanEntry {
+    template: "gitattributes",
+    dest: Dest::Path(".gitattributes"),
+    render: Render::Verbatim,
+    exec: false,
+};
+
 /// The R-package scaffold surface, mirroring `use_miniextendr()`'s standalone
 /// path and `create_rpkg_subdirectory()`'s monorepo path (which write the
 /// same files from `templates/rpkg/` and `templates/monorepo/rpkg/`
@@ -357,6 +368,7 @@ pub struct PlanEntry {
 /// are [`Render::Mustache`], `fs::file_copy()` entries are
 /// [`Render::Verbatim`], ignore files are [`Render::IgnoreFilter`].
 pub const RPKG_PLAN: &[PlanEntry] = &[
+    GITATTRIBUTES,
     PlanEntry {
         template: "configure.ac",
         dest: Dest::Path("configure.ac"),
@@ -478,6 +490,7 @@ pub const RPKG_PLAN: &[PlanEntry] = &[
 /// mustache render (it substitutes `{{rpkg_name}}`), unlike the rpkg ignore
 /// files, and `tools/bump-version.R` uses `copy_template()` semantics.
 pub const MONOREPO_ROOT_PLAN: &[PlanEntry] = &[
+    GITATTRIBUTES,
     PlanEntry {
         template: "Cargo.toml.tmpl",
         dest: Dest::Path("Cargo.toml"),
@@ -543,8 +556,10 @@ pub fn dest_rel(entry: &PlanEntry, data: &TemplateData) -> Result<PathBuf> {
 /// filtered patterns outright (byte-identical to the R fresh-file path, see
 /// minirextendr #1151); over an existing package (`init use`) the patterns
 /// are appended with dedupe, mirroring `usethis::use_build_ignore()` /
-/// `use_git_ignore()`. Every other file is overwritten — the template is the
-/// source of truth, matching `use_template()`'s delete-first behavior.
+/// `use_git_ignore()`. Git attributes always append missing lines, preserving
+/// user rules even when re-scaffolding a monorepo. Other files are overwritten:
+/// the template is the source of truth, matching `use_template()`'s delete-first
+/// behavior.
 pub fn apply_plan(
     root: &Path,
     prefix: &str,
@@ -557,15 +572,17 @@ pub fn apply_plan(
         let content = embedded(&template_rel);
         let dest = root.join(dest_rel(entry, data)?);
 
-        if entry.render == Render::IgnoreFilter && !fresh && dest.is_file() {
+        let rendered = render(&template_rel, content, entry.render, data)?;
+        let append =
+            entry.template == "gitattributes" || (entry.render == Render::IgnoreFilter && !fresh);
+        if append && dest.is_file() {
             let existing = std::fs::read_to_string(&dest)
                 .with_context(|| format!("failed to read {}", dest.display()))?;
-            let merged = merge_ignore_lines(&existing, &ignore_patterns(content));
+            let merged = merge_ignore_lines(&existing, &rendered.lines().collect::<Vec<_>>());
             write_file(&dest, &merged, entry.exec)?;
             continue;
         }
 
-        let rendered = render(&template_rel, content, entry.render, data)?;
         write_file(&dest, &rendered, entry.exec)?;
     }
     Ok(())

@@ -125,6 +125,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   cli::cli_h2("Creating workspace root")
   use_template("Cargo.toml.tmpl", save_as = "Cargo.toml", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
+  use_miniextendr_gitattributes()
 
   # Standalone version-sync helper: `Rscript tools/bump-version.R --sync`
   # keeps DESCRIPTION / Cargo.toml / configure.ac versions in lockstep.
@@ -280,6 +281,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   gitignore_path <- usethis::proj_path(rpkg_name, ".gitignore")
   writeLines(mx_ignore_patterns("gitignore", subdir = "rpkg"), gitignore_path)
   bullet_created(file.path(rpkg_name, ".gitignore"))
+  use_miniextendr_gitattributes(path = rpkg_path, subdir = "rpkg")
 
   invisible(TRUE)
 }
@@ -415,6 +417,7 @@ use_miniextendr <- function(path = ".",
     # template is known to provide hello().
     data$core_example_prefix <- "// "
     create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
+    use_miniextendr_gitattributes()
 
     # Auto-run autoconf if available
     if (nzchar(Sys.which("autoconf"))) {
@@ -478,6 +481,7 @@ use_miniextendr <- function(path = ".",
   use_miniextendr_namespace()
   use_miniextendr_rbuildignore()
   use_miniextendr_gitignore()
+  use_miniextendr_gitattributes()
 
   # Auto-run autoconf if available
   has_configure <- FALSE

@@ -1117,6 +1117,7 @@ templates-sources:
     rpkg/configure.ucrt	rpkg/configure.ucrt
     rpkg/configure.win	rpkg/configure.win
     rpkg/gitignore	rpkg/.gitignore
+    rpkg/gitattributes	rpkg/.gitattributes
     rpkg/Makevars.in	rpkg/src/Makevars.in
     rpkg/Makevars.win	rpkg/src/Makevars.win
     rpkg/Rbuildignore	rpkg/.Rbuildignore
@@ -1125,6 +1126,7 @@ templates-sources:
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
+    monorepo/gitattributes	rpkg/.gitattributes
     # The embedded R package uses same sources as rpkg/ template
     monorepo/rpkg/bootstrap.R	rpkg/bootstrap.R
     monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
@@ -1135,6 +1137,7 @@ templates-sources:
     monorepo/rpkg/configure.ucrt	rpkg/configure.ucrt
     monorepo/rpkg/configure.win	rpkg/configure.win
     monorepo/rpkg/gitignore	rpkg/.gitignore
+    monorepo/rpkg/gitattributes	rpkg/.gitattributes
     monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
     monorepo/rpkg/Makevars.win	rpkg/src/Makevars.win
     monorepo/rpkg/Rbuildignore	rpkg/.Rbuildignore
