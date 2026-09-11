@@ -389,10 +389,20 @@ unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
 ///   excludes S7 objects even though both share the `S4SXP`/`OBJSXP`
 ///   `SEXPTYPE` — S7's `new_object(S7_object(), ...)` base never sets the S4
 ///   bit.
+/// - **List**: a generic vector with a `.ptr` element (`x[[".ptr"]]`), the
+///   shape of a hand-built S3 object that keeps R-side state next to the
+///   handle: `structure(list(.ptr = <ptr>, log = ...), class = "Foo")`
+///   (#1469). The `.ptr` spelling matches the env / R6 / S7 convention.
 /// - **Anything else carrying a `.ptr` attribute**: S7 stores properties as
 ///   plain attributes on its base object (see `s7_class.rs`), so
 ///   `Rf_getAttrib(x, ".ptr")` recovers the pointer without going through
-///   S7's `@`/`prop()` dispatch machinery.
+///   S7's `@`/`prop()` dispatch machinery. A list without a `.ptr` element
+///   falls through to this check too (an S7 class over `class_list` is a
+///   `VECSXP` with its properties as attributes).
+///
+/// Both the `ExternalPtr<T>` argument conversion and, via
+/// `resolve_receiver`, every generated instance-method prelude go through
+/// this function.
 ///
 /// Returns `Some(inner)` only when the unwrapped value is itself an
 /// `EXTPTRSXP` — anything else (e.g. a `.ptr`-named field that isn't a
@@ -429,9 +439,80 @@ pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
             return (slot.type_of() == SEXPTYPE::EXTPTRSXP).then_some(slot);
         }
 
+        if sexp.type_of() == SEXPTYPE::VECSXP {
+            if let Some(elt) = list_element(sexp, ".ptr") {
+                if elt.type_of() == SEXPTYPE::EXTPTRSXP {
+                    return Some(elt);
+                }
+            }
+        }
+
         let attr = sexp.get_attr(Rf_install(c".ptr".as_ptr()));
         (attr.type_of() == SEXPTYPE::EXTPTRSXP).then_some(attr)
     }
+}
+
+/// The element of a generic vector bound to `name`: the first match in
+/// `names(x)`, like `x[[name]]`. `None` when `x` has no character names or
+/// no element by that name.
+///
+/// # Safety
+///
+/// Must be called from R's main thread; `sexp` must be a `VECSXP`.
+unsafe fn list_element(sexp: SEXP, name: &str) -> Option<SEXP> {
+    let names = sexp.get_names();
+    if names.type_of() != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let n = names.len().min(sexp.len());
+    for i in 0..n {
+        let i = isize::try_from(i).ok()?;
+        if names.string_elt_str(i) == Some(name) {
+            return Some(sexp.vector_elt(i));
+        }
+    }
+    None
+}
+
+/// Resolve an instance-method receiver to the bare `EXTPTRSXP` it carries.
+///
+/// Generated method preludes call this on `self_sexp` before
+/// `ErasedExternalPtr::from_sexp` / `ExternalPtr::<T>::wrap_sexp`. A bare
+/// pointer, the shape every generated constructor returns (classed or not),
+/// passes through after one `TYPEOF` compare. Anything else goes through the
+/// same class-handle unwrap as `ExternalPtr<T>` arguments: an R6 / S4 / S7
+/// handle, an environment or a list carrying the pointer in `.ptr`, or any
+/// object with a `.ptr` attribute. An S3 class whose object is a list with
+/// R-side state next to the handle, `structure(list(.ptr = <ptr>, log = ...),
+/// class = "Foo")`, therefore dispatches into `#[miniextendr(s3)] impl Foo`
+/// methods unchanged (#1469).
+///
+/// Panics (the framework converts it to an R error) when no pointer can be
+/// recovered, naming `T` and the receiver's `SEXPTYPE`. Type safety is still
+/// decided by the `Any::downcast` that follows; this only widens the accepted
+/// R-side shape.
+///
+/// Runs on R's main thread: generated preludes execute before any worker
+/// hand-off.
+#[inline]
+pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
+    if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
+        return sexp;
+    }
+    match unsafe { unwrap_class_handle(sexp) } {
+        Some(inner) => inner,
+        None => receiver_not_a_handle::<T>(sexp),
+    }
+}
+
+#[cold]
+fn receiver_not_a_handle<T: TypedExternal>(sexp: SEXP) -> ! {
+    panic!(
+        "expected a `{}` object (an external pointer, or an R6/S4/S7 handle, \
+         environment, or list carrying one in `.ptr`), got {:?}",
+        ExternalPtr::<T>::type_name(),
+        sexp.type_of()
+    )
 }
 // endregion
 
@@ -1526,6 +1607,111 @@ impl ExternalPtr<()> {
         any_box.downcast_mut::<T>()
     }
 }
+
+// region: Consuming (`self` by value) method support
+
+/// Marker left in an `EXTPTRSXP` slot while a consuming (`self` by value)
+/// method runs, and left behind for good if that method panics.
+///
+/// `#[miniextendr]` methods taking bare `self` move the stored value out of
+/// the R handle with [`ExternalPtr::<()>::take_for_consuming`], call the
+/// method, and either write the result back
+/// ([`ExternalPtr::<()>::restore_after_consuming`], for `self -> Self`) or
+/// leave the slot consumed (terminal `self -> T`). A slot holding this marker
+/// makes every later method call on the handle fail with a "consumed" error
+/// instead of a type mismatch; the finaliser drops the marker like any value.
+#[derive(Debug)]
+pub struct ConsumedSlot;
+
+/// Bound for the receiver of a **fallible** consuming method
+/// (`self -> Result<Self, E>` / `self -> Option<Self>`).
+///
+/// The generated wrapper calls the method on a clone of the stored value and
+/// only overwrites the R handle on `Ok` / `Some`, so a failed step leaves the
+/// R object exactly as it was, which is what an interactive R user expects
+/// from `obj |> add_step(-1)` erroring. Blanket-implemented for every
+/// `T: Clone`; the `on_unimplemented` text below is what rustc prints when
+/// the type is not `Clone`.
+#[diagnostic::on_unimplemented(
+    message = "a fallible consuming method (`self -> Result<Self, E>` / `Option<Self>`) needs `{Self}: Clone`",
+    note = "the wrapper calls the method on a clone so a failed step leaves the R object untouched; derive or implement `Clone`, or take `&mut self` and return `Result<&mut Self, E>` instead"
+)]
+pub trait ConsumingFallible: Clone {}
+impl<T: Clone> ConsumingFallible for T {}
+
+/// Clone the stored value for a fallible consuming step (see
+/// [`ConsumingFallible`]). Free function so codegen can name the bound.
+#[inline]
+pub fn clone_for_consuming<T: ConsumingFallible>(value: &T) -> T {
+    value.clone()
+}
+
+/// Panic with the right message when a handle's stored value is not a `T`:
+/// "consumed" if a previous `self`-by-value step failed, type mismatch
+/// otherwise. Used by generated method preludes instead of a bare `expect`.
+#[cold]
+pub fn handle_downcast_failed<T: TypedExternal>(ptr: &ExternalPtr<()>) -> ! {
+    if ptr.is_consumed() {
+        panic!(
+            "this `{}` object was consumed by a `self`-by-value method that did not return \
+             a new value (it returned a plain result or panicked) and can no longer be used",
+            ExternalPtr::<T>::type_name()
+        );
+    }
+    panic!(
+        "expected ExternalPtr<{}>, found `{}`",
+        ExternalPtr::<T>::type_name(),
+        ptr.stored_type_name().unwrap_or("<unknown>")
+    );
+}
+
+impl ExternalPtr<()> {
+    /// Whether the slot holds the [`ConsumedSlot`] marker.
+    pub fn is_consumed(&self) -> bool {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
+            return false;
+        }
+        let any_box: &Box<dyn Any> = unsafe { &*any_raw };
+        any_box.is::<ConsumedSlot>()
+    }
+
+    /// Move the stored `T` out of the handle, leaving [`ConsumedSlot`] behind.
+    ///
+    /// Returns `None` when the slot does not hold a `T` (wrong type, null, or
+    /// already consumed); the slot is untouched in that case. The outer
+    /// `Box<Box<dyn Any>>` cell stays allocated, so the finaliser and every
+    /// other accessor keep working on the marker.
+    pub fn take_for_consuming<T: TypedExternal>(&mut self) -> Option<T> {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        if any_raw.is_null() {
+            return None;
+        }
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        if !any_box.is::<T>() {
+            return None;
+        }
+        let taken = std::mem::replace(any_box, Box::new(ConsumedSlot));
+        let boxed: Box<T> = taken.downcast::<T>().expect("checked is::<T> above");
+        Some(*boxed)
+    }
+
+    /// Put a value back into a slot emptied by [`Self::take_for_consuming`]
+    /// (the write-back half of `self -> Self`). Replaces whatever the slot
+    /// holds; the `TypedExternal` tag in the `prot` slot is unchanged because
+    /// the type is the same.
+    pub fn restore_after_consuming<T: TypedExternal>(&mut self, value: T) {
+        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        assert!(
+            !any_raw.is_null(),
+            "restore_after_consuming on a null external pointer"
+        );
+        let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+        *any_box = Box::new(value);
+    }
+}
+
+// endregion
 
 /// Error returned when type checking fails in `try_from_sexp_with_error`.
 ///

@@ -146,6 +146,12 @@ struct TraitMethod {
     param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen `@param` tags extracted from method doc comments.
     param_tags: Vec<String>,
+    /// Topic from a method-level `/// @rdname other` doc tag. When set, the
+    /// method's own R wrapper block (S3 method, S4 `setMethod`, env/R6 namespace
+    /// member, S7 shortcut, static function) is documented on that page instead
+    /// of the type's shared `@rdname <Type>` page. Generics and consts stay on
+    /// the type page.
+    rdname: Option<String>,
     /// When true, this method is excluded from C wrappers, R wrappers, and vtable shims.
     /// The method is still kept in the emitted impl block (it's a real trait method).
     skip: bool,
@@ -181,7 +187,7 @@ impl TraitMethod {
     fn r_method_name(&self) -> String {
         self.r_name
             .clone()
-            .unwrap_or_else(|| self.ident.to_string())
+            .unwrap_or_else(|| crate::naming::ident_name(&self.ident))
     }
 
     /// Generates the C wrapper function identifier: `C_{crate}_{Type}__{Trait}__{method}`.
@@ -363,7 +369,6 @@ pub fn expand_miniextendr_impl_trait(
         let (doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
             &raw_tags,
             &concrete_type.to_token_stream().to_string(),
-            crate::roxygen::next_impl_tag_block_id(),
             impl_item.impl_token.span,
         );
         let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
@@ -666,7 +671,7 @@ impl syn::parse::Parse for TpieMethod {
         input.parse::<syn::Token![;]>()?;
 
         Ok(TpieMethod {
-            r_name: r_name_ident.to_string(),
+            r_name: crate::naming::ident_name(&r_name_ident),
             sig,
         })
     }
@@ -801,6 +806,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 unwrap_in_r: false,
                 param_defaults: Default::default(),
                 param_tags: vec![],
+                rdname: None,
                 skip: false,
                 strict: false,
                 lifecycle: None,
@@ -887,6 +893,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
                 source_file: file!(),
+                source_line: #source_line_lit,
                 content: concat!(
                     "# Generated from Rust impl `",
                     stringify!(#trait_name),

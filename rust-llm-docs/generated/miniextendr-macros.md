@@ -211,8 +211,12 @@ both the `extern "C-unwind"` wrapper and the corresponding `R_CallMethodDef` con
   - Override for the `call_method_def` constant name. If `None`, defaults to
 - `strict`: `bool`
   - When `true`, uses `checked_into_sexp_*` for lossy return types (`i64`, `u64`,
+- `err_parts`: `ErrPartsMode`
+  - How `Err` values become condition parts. Set by `#[miniextendr(serde_error)]`.
 - `match_arg_several_ok_params`: `Vec<String>`
   - Parameter names with `#[miniextendr(match_arg, several_ok)]` — use
+- `match_arg_optional_params`: `Vec<String>`
+  - `Option<T>`-typed scalar `match_arg` parameter names — converted via
 - `preserve_param_names`: `bool`
   - When `true`, preserve original parameter names from `inputs` in the C wrapper
 - `vis`: `syn::Visibility`
@@ -330,6 +334,15 @@ fn coerce_all(self: Self) -> Self
 
 Enables coercing conversion for all parameters via `Rf_coerceVector`.
 
+#### `err_parts`
+
+```rust
+fn err_parts(self: Self, mode: ErrPartsMode) -> Self
+```
+
+Choose how `Err` values become condition parts (default: the
+`RConditionError`/`Debug` probe). See [`ErrPartsMode`].
+
 #### `generics`
 
 ```rust
@@ -358,6 +371,18 @@ fn inputs(self: Self, inputs: syn::punctuated::Punctuated<syn::FnArg, $crate::to
 
 Sets the function parameters (excluding `self` receiver).
 Each input becomes a `SEXP` argument in the C wrapper.
+
+#### `match_arg_optional`
+
+```rust
+fn match_arg_optional(self: Self, param_name: String) -> Self
+```
+
+Record a parameter as an `Option<T>` scalar `match_arg` (#1473).
+
+Passed through to `RustConversionBuilder::with_match_arg_optional`, which
+converts the parameter with `match_arg_option_from_sexp::<Inner>` so `NULL`
+becomes `None` and any other value is matched against `MatchArg::CHOICES`.
 
 #### `match_arg_several_ok`
 
@@ -817,6 +842,8 @@ Per-method attributes for class system customization.
   - `typed_list!(...)` spec from `#[miniextendr(dots = typed_list!(...))]` on
 - `unwrap_in_r`: `bool`
   - Return `Result<T, E>` to R without unwrapping.
+- `serde_error`: `Option<crate::miniextendr_fn::SerdeErrorSpec>`
+  - Build the `Err` arm's condition from the error's serde output
 - `defaults`: `std::collections::HashMap<String, String>`
   - Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
 - `defaults_span`: `Option<proc_macro2::Span>`
@@ -833,6 +860,8 @@ Per-method attributes for class system customization.
   - vctrs protocol method override.
 - `r_name`: `Option<String>`
   - Override R method name.
+- `postfix`: `Option<String>`
+  - Append a fixed suffix to the Rust method name for the R-facing name
 - `r_entry`: `Option<String>`
   - R code to inject at the very top of the method body (before all built-in checks).
 - `r_post_checks`: `Option<String>`
@@ -1124,8 +1153,12 @@ Inferred from: no env + named "new" + returns Self.
 fn is_finalizer(self: &Self) -> bool
 ```
 
-Returns true if this is likely a finalizer.
-Inferred from: consumes self (by value) + doesn't return Self.
+Returns true if this method is the R6 finalizer.
+
+Only the explicit `#[miniextendr(r6(finalize))]` marker qualifies. It
+used to be inferred from "takes `self` by value and does not return
+`Self`", which silently hid consuming methods on every class system
+(#1432).
 
 #### `is_private`
 
@@ -1157,7 +1190,8 @@ fn r_method_name(self: &Self) -> String
 
 R-facing method name.
 
-Returns `r_name` if set, otherwise the Rust ident as a string.
+Returns `r_name` if set, otherwise the Rust ident with `postfix`
+appended when given, otherwise the Rust ident as a string.
 
 #### `returns_option_self`
 
@@ -1172,6 +1206,15 @@ exactly like a bare `Self` return (wrapped class object via
 `None` via the normal `Option` error path (see
 [`crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr`]).
 Symmetric with [`Self::returns_result_self`].
+
+#### `returns_option_self_ref`
+
+```rust
+fn returns_option_self_ref(self: &Self) -> bool
+```
+
+`-> Option<&Self>` / `-> Option<&mut Self>`: the `Option` sibling of
+[`Self::returns_result_self_ref`]; `None` raises the usual absence error.
 
 #### `returns_other_class`
 
@@ -1260,6 +1303,17 @@ is treated exactly like a bare `Self` return (wrapped class object via
 [`crate::ReturnStrategy::for_method`]); the C wrapper still raises on
 `Err` via the normal `Result` error path (see
 [`crate::c_wrapper_builder::ReturnHandling::ResultExternalPtr`]).
+
+#### `returns_result_self_ref`
+
+```rust
+fn returns_result_self_ref(self: &Self) -> bool
+```
+
+`-> Result<&Self, E>` / `-> Result<&mut Self, E>`: a fallible in-place
+builder step (#1433). `Ok` hands back the same handle like
+[`Self::returns_self_ref`]; `Err` raises through the normal `Result`
+error path.
 
 #### `returns_self`
 
@@ -2261,6 +2315,20 @@ Add a single parameter name that should use coercion.
 `param_name` is matched against the identifier in the function signature.
 Can be called multiple times to add several parameters.
 
+#### `with_match_arg_optional`
+
+```rust
+fn with_match_arg_optional(self: Self, param_name: String) -> Self
+```
+
+Mark a parameter as an `Option<T>` scalar `match_arg` — uses
+`match_arg_option_from_sexp` instead of `TryFromSexp` for converting
+NULL / STRSXP → `Option<EnumType>`. There is no `TryFromSexp for
+Option<T>` a downstream crate could provide for its own enum (orphan
+rule), and a `T: MatchArg` blanket would collide with the newtype
+blanket in `miniextendr_api::newtype`, so the wrapper calls the
+helper directly.
+
 #### `with_match_arg_several_ok`
 
 ```rust
@@ -2354,6 +2422,40 @@ Parsed typed_list! macro input.
 
 ## Enums
 
+### `c_wrapper_builder::ErrPartsMode`
+
+```rust
+pub enum ErrPartsMode
+```
+
+How the generated `Err` arm turns an error value into condition parts
+(message, class vector, structured data).
+
+**Variants:**
+
+- `Probe { prefix: String }`
+  - Autoref-specialisation probe (`__mx_result_err_parts!`): `RConditionError`
+- `Serde { tag: String, prefix: String, skip: Vec<String>, rename: Vec<(String, String)> }`
+  - `#[miniextendr(serde_error(..))]`: serialize the error with serde; the enum
+
+**Inherent associated items:**
+
+#### `expr`
+
+```rust
+fn expr(self: &Self) -> TokenStream
+```
+
+The expression yielding an `ErrParts` from the bound error `e`.
+
+#### `from_spec`
+
+```rust
+fn from_spec(spec: Option<&crate::miniextendr_fn::SerdeErrorSpec>) -> Self
+```
+
+Resolve a parsed `serde_error` spec (or its absence) into a mode.
+
 ### `c_wrapper_builder::ReturnHandling`
 
 ```rust
@@ -2377,6 +2479,10 @@ the Rust value back to R and how errors/None values are surfaced.
   - Returns `Self` -- wraps the value in an `ExternalPtr` via `ExternalPtr::new`.
 - `SelfHandle`
   - Returns `&Self` / `&mut Self` (an in-place builder) -- evaluates the call
+- `SelfHandleResult`
+  - Fallible in-place step whose call expression yields `Result<(), E>`
+- `SelfHandleOption`
+  - `Option` sibling of [`SelfHandleResult`](Self::SelfHandleResult): the
 - `IntoR`
   - Returns an arbitrary type `T: IntoR` -- converts via `IntoR::into_sexp`.
 - `OptionUnit`
@@ -2634,7 +2740,7 @@ Receiver kind for methods.
 - `RefMut`
   - `&mut self` - mutable borrow
 - `Value`
-  - `self` - consuming (not supported in v1)
+  - `self` (or `self: Self`) - consuming. The C wrapper moves the value out
 - `ExternalPtrRef`
   - `self: &ExternalPtr<Self>` — immutable borrow of the wrapping ExternalPtr
 - `ExternalPtrRefMut`
@@ -2650,7 +2756,8 @@ Receiver kind for methods.
 fn is_instance(self: &Self) -> bool
 ```
 
-Returns true if this is an instance method (has self).
+Returns true if this is an instance method (has self), including the
+consuming `self` receiver.
 
 #### `is_mut`
 
@@ -2676,6 +2783,53 @@ Kind of vctrs class being created.
   - Record type with named fields (new_rcrd)
 - `ListOf`
   - Homogeneous list with ptype (new_list_of)
+
+### `r_wrapper_builder::CallAttribution`
+
+```rust
+pub enum CallAttribution
+```
+
+Which frame a generated wrapper hands to `.Call(.., .call = ..)` and uses as
+the raise fallback (`.miniextendr_raise_condition(.val, <default>)`).
+
+**Variants:**
+
+- `Wrapper`
+  - `.call = match.call()`: the wrapper's own call, formals matched (default).
+- `Caller`
+  - `.call = .mx_call`, where the wrapper body first binds
+- `None`
+  - `.call = NULL`: `no_call_attribution` / `fast`; the raise helper falls
+
+**Inherent associated items:**
+
+#### `dot_call_arg`
+
+```rust
+fn dot_call_arg(self: Self) -> &'static str
+```
+
+The `.call = ...` argument for the `.Call()` line.
+
+#### `prelude`
+
+```rust
+fn prelude(self: Self, indent: &str) -> String
+```
+
+Statements the wrapper body needs before the `.Call()` line: empty except
+for [`CallAttribution::Caller`], which binds `.mx_call`. Each line ends
+with a newline plus `indent`, so the result can be prepended to a body
+whose first line is already positioned.
+
+#### `raise_default`
+
+```rust
+fn raise_default(self: Self) -> &'static str
+```
+
+The fallback call handed to `.miniextendr_raise_condition`.
 
 ### `typed_list::ParsedTypeSpec`
 
@@ -3224,6 +3378,16 @@ Used for top-level `#[miniextendr]` functions (not class methods).
 - `call_expr`: The `.Call()` expression to evaluate
 - `final_return`: The expression to return (typically `".val"` or `"invisible(.val)"`)
 - `indent`: Leading whitespace for the body lines (e.g., `"  "` for 2-space)
+
+### `method_return_builder::standalone_body_with_call_default`
+
+```rust
+fn standalone_body_with_call_default(call_expr: &str, final_return: &str, indent: &str, call_default: &str) -> String
+```
+
+[`standalone_body`] with an explicit raise fallback: `sys.call()` for the
+wrapper's own frame, `.mx_call` for `call = caller` wrappers (see
+`crate::r_wrapper_builder::CallAttribution::raise_default`).
 
 ### `miniextendr_impl::env_class::generate_env_r_wrapper`
 
@@ -4285,6 +4449,9 @@ Use `@exact;` prefix for strict mode (reject extra fields).
 - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
+- `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —
+  options for the serde-classed `Err` arm. The path itself is automatic under the
+  API crate's `serde` feature for every `Result<T, E>` with `E: Serialize + Display`.
 - `#[miniextendr(dots = typed_list!(...))]` — validate dots, create `dots_typed`
 - `#[miniextendr(internal)]` — adds `@keywords internal` to R wrapper
 - `#[miniextendr(noexport)]` — suppresses `@export` from R wrapper

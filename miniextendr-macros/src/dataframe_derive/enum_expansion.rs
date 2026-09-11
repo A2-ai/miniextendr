@@ -87,8 +87,10 @@ pub(super) fn derive_enum_dataframe(
                         skipped.push(rust_name);
                         continue;
                     }
-                    let col_name_str = fa.rename.unwrap_or_else(|| rust_name.to_string());
-                    let binding = format_ident!("__v_{}", rust_name);
+                    let col_name_str = fa
+                        .rename
+                        .unwrap_or_else(|| crate::naming::ident_name(&rust_name));
+                    let binding = format_ident!("__v_{}", crate::naming::unraw(&rust_name));
 
                     if fa.as_list {
                         // Struct-typed fields with `as_list` must be converted via `into_list()`
@@ -105,7 +107,7 @@ pub(super) fn derive_enum_dataframe(
                             Some(FieldTypeKind::Struct { .. })
                         );
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
-                            col_name: format_ident!("{}", col_name_str),
+                            col_name: crate::naming::name_ident(&col_name_str),
                             binding: binding.clone(),
                             rust_name: rust_name.clone(),
                             ty: f.ty.clone(),
@@ -120,7 +122,7 @@ pub(super) fn derive_enum_dataframe(
                             FieldTypeKind::Struct { .. } => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
-                                        col_name: format_ident!("{}", col_name_str),
+                                        col_name: crate::naming::name_ident(&col_name_str),
                                         binding: binding.clone(),
                                         rust_name: rust_name.clone(),
                                         ty: f.ty.clone(),
@@ -177,7 +179,7 @@ pub(super) fn derive_enum_dataframe(
                                 } else {
                                     resolved.push(EnumResolvedField::Single(Box::new(
                                         EnumSingleFieldData {
-                                            col_name: format_ident!("{}", col_name_str),
+                                            col_name: crate::naming::name_ident(&col_name_str),
                                             binding: binding.clone(),
                                             rust_name: rust_name.clone(),
                                             ty: f.ty.clone(),
@@ -236,7 +238,7 @@ pub(super) fn derive_enum_dataframe(
                             FieldTypeKind::Scalar => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
-                                        col_name: format_ident!("{}", col_name_str),
+                                        col_name: crate::naming::name_ident(&col_name_str),
                                         binding: binding.clone(),
                                         rust_name: rust_name.clone(),
                                         ty: f.ty.clone(),
@@ -244,6 +246,9 @@ pub(super) fn derive_enum_dataframe(
                                         is_factor: false,
                                     },
                                 )));
+                            }
+                            FieldTypeKind::OptionScalar => {
+                                return Err(option_scalar_in_variant_error(&f.ty));
                             }
                         }
                     }
@@ -338,8 +343,10 @@ pub(super) fn derive_enum_dataframe(
                     if fa.skip {
                         continue;
                     }
-                    let col_name_str = fa.rename.unwrap_or_else(|| rust_name.to_string());
-                    let binding = format_ident!("__v_{}", rust_name);
+                    let col_name_str = fa
+                        .rename
+                        .unwrap_or_else(|| crate::naming::ident_name(&rust_name));
+                    let binding = format_ident!("__v_{}", crate::naming::unraw(&rust_name));
 
                     // Tuple enum fields: same expansion logic
                     if fa.as_list {
@@ -351,7 +358,7 @@ pub(super) fn derive_enum_dataframe(
                             Some(FieldTypeKind::Struct { .. })
                         );
                         resolved.push(EnumResolvedField::Single(Box::new(EnumSingleFieldData {
-                            col_name: format_ident!("{}", col_name_str),
+                            col_name: crate::naming::name_ident(&col_name_str),
                             binding,
                             rust_name,
                             ty: f.ty.clone(),
@@ -363,7 +370,7 @@ pub(super) fn derive_enum_dataframe(
                             FieldTypeKind::Struct { .. } => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
-                                        col_name: format_ident!("{}", col_name_str),
+                                        col_name: crate::naming::name_ident(&col_name_str),
                                         binding,
                                         rust_name,
                                         ty: f.ty.clone(),
@@ -420,7 +427,7 @@ pub(super) fn derive_enum_dataframe(
                                 } else {
                                     resolved.push(EnumResolvedField::Single(Box::new(
                                         EnumSingleFieldData {
-                                            col_name: format_ident!("{}", col_name_str),
+                                            col_name: crate::naming::name_ident(&col_name_str),
                                             binding,
                                             rust_name,
                                             ty: f.ty.clone(),
@@ -479,7 +486,7 @@ pub(super) fn derive_enum_dataframe(
                             FieldTypeKind::Scalar => {
                                 resolved.push(EnumResolvedField::Single(Box::new(
                                     EnumSingleFieldData {
-                                        col_name: format_ident!("{}", col_name_str),
+                                        col_name: crate::naming::name_ident(&col_name_str),
                                         binding,
                                         rust_name,
                                         ty: f.ty.clone(),
@@ -487,6 +494,9 @@ pub(super) fn derive_enum_dataframe(
                                         is_factor: false,
                                     },
                                 )));
+                            }
+                            FieldTypeKind::OptionScalar => {
+                                return Err(option_scalar_in_variant_error(&f.ty));
                             }
                         }
                     }
@@ -636,7 +646,7 @@ pub(super) fn derive_enum_dataframe(
                 } else {
                     let idx = auto_expand_cols.len();
                     auto_expand_cols.push(EnumAutoExpandCol {
-                        df_field: format_ident!("{}", auto_data.base_name),
+                        df_field: crate::naming::name_ident(&auto_data.base_name),
                         base_name: auto_data.base_name.clone(),
                         elem_ty: auto_data.elem_ty.clone(),
                         container_ty: auto_data.container_ty.clone(),
@@ -670,7 +680,7 @@ pub(super) fn derive_enum_dataframe(
             {
                 struct_col_index.insert(data.base_name.clone(), true);
                 struct_cols.push(EnumStructCol {
-                    df_field: format_ident!("{}", data.base_name),
+                    df_field: crate::naming::name_ident(&data.base_name),
                     base_name: data.base_name.clone(),
                     inner_ty: data.inner_ty.clone(),
                 });
@@ -1416,7 +1426,7 @@ pub(super) fn derive_enum_dataframe(
         }
         for col in &columns {
             let name = &col.col_name;
-            let w_name = format_ident!("__w_{}", name);
+            let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
                     ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
@@ -1425,7 +1435,7 @@ pub(super) fn derive_enum_dataframe(
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
-            let w_name = format_ident!("__w_{}", name);
+            let w_name = format_ident!("__w_{}", crate::naming::unraw(name));
             writer_decls.push(quote! {
                 let #w_name = unsafe {
                     ::miniextendr_api::rayon_bridge::ColumnWriter::new(&mut #name)
@@ -1452,7 +1462,7 @@ pub(super) fn derive_enum_dataframe(
                     .iter()
                     .map(|col| {
                         let col_name = &col.col_name;
-                        let w_name = format_ident!("__w_{}", col_name);
+                        let w_name = format_ident!("__w_{}", crate::naming::unraw(col_name));
                         if col.present_in.contains(&variant_idx) {
                             let col_name_str = col_name.to_string();
                             for erf in &vi.fields {
@@ -1528,7 +1538,7 @@ pub(super) fn derive_enum_dataframe(
                 let auto_expand_writes: Vec<TokenStream> = auto_expand_cols
                     .iter()
                     .map(|ac| {
-                        let w_name = format_ident!("__w_{}", ac.df_field);
+                        let w_name = format_ident!("__w_{}", crate::naming::unraw(&ac.df_field));
                         if ac.present_in.contains(&variant_idx) {
                             for erf in &vi.fields {
                                 if let EnumResolvedField::AutoExpandVec(data) = erf
@@ -2011,6 +2021,21 @@ pub(super) fn derive_enum_dataframe(
 /// For multi-variant enums, returns a named R list of data.frames (one per variant,
 /// named with snake_case variant names). Each partition data.frame has only that
 /// variant's columns (non-optional types — no NA fill from other variants).
+/// Error for an `Option<scalar>` field inside an enum variant (#1437).
+///
+/// Enum variant fields are stored as `Vec<Option<T>>` (absent for the other
+/// variants), so `Option<T>` here would need `Vec<Option<Option<T>>>`. Point
+/// at the bare scalar rather than letting the missing conversion surface later.
+fn option_scalar_in_variant_error(ty: &syn::Type) -> syn::Error {
+    syn::Error::new_spanned(
+        ty,
+        "DataFrameRow enum variant fields already become `Option<T>` columns \
+         (absent for the other variants), so `Option<scalar>` is not supported here. \
+         Use the bare scalar (`f64`, `String`, …) and express absence by omitting the \
+         field from the variant, or `#[dataframe(as_list)]` for an opaque list-column.",
+    )
+}
+
 fn generate_split_method(
     row_name: &syn::Ident,
     variant_infos: &[VariantInfo],
@@ -2074,7 +2099,11 @@ fn generate_split_method(
                 for erf in &vi.fields {
                     match erf {
                         EnumResolvedField::Single(data) => {
-                            let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                            let buf = format_ident!(
+                                "__s_{}_{}",
+                                snake,
+                                crate::naming::unraw(&data.col_name)
+                            );
                             let ty = &data.ty;
                             // For needs_into_list fields, ty is already List (the stored type).
                             buf_decls.push(quote! {
@@ -2136,7 +2165,7 @@ fn generate_split_method(
                         let binding = erf.binding();
                         match erf {
                             EnumResolvedField::Single(data) => {
-                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                let buf = format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
                                 vec![quote! { #buf.push(#binding); }]
                             }
                             EnumResolvedField::ExpandedFixed(data) => (0..data.len)
@@ -2237,7 +2266,11 @@ fn generate_split_method(
                         if let Some(f) = first_non_dynamic {
                             match f {
                                 EnumResolvedField::Single(data) => {
-                                    let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                    let buf = format_ident!(
+                                        "__s_{}_{}",
+                                        snake,
+                                        crate::naming::unraw(&data.col_name)
+                                    );
                                     quote! { #buf.len() }
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
@@ -2295,7 +2328,7 @@ fn generate_split_method(
                         .iter()
                         .flat_map(|erf| match erf {
                             EnumResolvedField::Single(data) => {
-                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                let buf = format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
                                 let col_str = data.col_name.to_string();
                                 let ty = &data.ty;
                                 if data.needs_into_list {
@@ -2452,7 +2485,11 @@ fn generate_split_method(
                     let len_expr: TokenStream = if let Some(erf) = vi.fields.first() {
                         match erf {
                             EnumResolvedField::Single(data) => {
-                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                let buf = format_ident!(
+                                    "__s_{}_{}",
+                                    snake,
+                                    crate::naming::unraw(&data.col_name)
+                                );
                                 quote! { #buf.len() }
                             }
                             EnumResolvedField::ExpandedFixed(data) => {
@@ -2490,7 +2527,7 @@ fn generate_split_method(
                         .iter()
                         .flat_map(|erf| match erf {
                             EnumResolvedField::Single(data) => {
-                                let buf = format_ident!("__s_{}_{}", snake, data.col_name);
+                                let buf = format_ident!("__s_{}_{}", snake, crate::naming::unraw(&data.col_name));
                                 let col_str = data.col_name.to_string();
                                 let ty = &data.ty;
                                 if data.needs_into_list {
@@ -2780,7 +2817,7 @@ fn build_enum_reader(
 
     for col in columns {
         let col_name_str = col.col_name.to_string();
-        let col_var = format_ident!("__col_{}", col.col_name);
+        let col_var = format_ident!("__col_{}", crate::naming::unraw(&col.col_name));
         let ty = &col.ty;
 
         // Skip Struct columns — they are handled separately via sub-frame densify.
@@ -3066,7 +3103,7 @@ fn build_enum_reader(
 
             let expr = match erf {
                 EnumResolvedField::Single(data) => {
-                    let col_var = format_ident!("__col_{}", data.col_name);
+                    let col_var = format_ident!("__col_{}", crate::naming::unraw(&data.col_name));
                     let col_name_str = data.col_name.to_string();
                     if data.is_factor {
                         quote! {
@@ -3186,7 +3223,7 @@ fn build_enum_reader(
                 let positional_exprs: Vec<TokenStream> = vi.fields.iter().map(|erf| {
                     match erf {
                         EnumResolvedField::Single(data) => {
-                            let col_var = format_ident!("__col_{}", data.col_name);
+                            let col_var = format_ident!("__col_{}", crate::naming::unraw(&data.col_name));
                             let col_name_str = data.col_name.to_string();
                             if data.is_factor {
                                 quote! {

@@ -76,7 +76,7 @@ fn active_setter_precondition_checks(setter: &ParsedMethod) -> Vec<String> {
 
     let mut per_param = setter.method_attrs.per_param.clone();
     if let syn::Pat::Ident(pat_ident) = value_arg.pat.as_mut() {
-        let rust_name = pat_ident.ident.to_string();
+        let rust_name = crate::naming::ident_name(&pat_ident.ident);
         if rust_name != "value" {
             if let Some(attrs) = per_param.remove(&rust_name) {
                 per_param.insert("value".to_string(), attrs);
@@ -486,7 +486,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !has_description {
             lines.push(format!("#' @description Method `{}`.", r_name));
         }
+        // roxygen2 folds a `Class$set("public", ...)` block into the class
+        // block, so a method-level `@rdname` / `@name` here would make it
+        // "contain only one @rdname" and fail. R6 instance methods always
+        // document on the class page (static methods can still split, #1438).
         for tag in &ctx.method.doc_tags {
+            if crate::roxygen::roxygen_tag_name(tag).is_some_and(|n| n == "rdname" || n == "name") {
+                continue;
+            }
             for line in tag.lines() {
                 let line = if line.starts_with("@title ") {
                     line.replacen("@title ", "@description ", 1)

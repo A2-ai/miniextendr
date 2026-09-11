@@ -58,6 +58,18 @@ NULL
 #' @name relabel
 NULL
 
+#' Number of values held by an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name size
+NULL
+
+#' Optionally relabel an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name maybe_relabel
+NULL
+
 #' Add via S3 dispatch
 #' @param x An object.
 #' @param ... Additional arguments.
@@ -156,4 +168,80 @@ NULL
 #' @param x An object.
 #' @param ... Additional arguments.
 #' @name peek
+NULL
+
+# ConsumingBuilder fixture generics (consuming `self` receivers and fallible
+# in-place builders). Same pattern as above: exported by the auto-generated
+# wrappers under @rdname ConsumingBuilder, aliased here for R CMD check.
+
+#' Add an amount, consuming and returning the builder
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name with_amount
+NULL
+
+#' Add an amount, rejecting negative values
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name try_amount
+NULL
+
+#' Add an amount, returning NULL past the cap
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name maybe_amount
+NULL
+
+#' Add an amount in place, rejecting negative values
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name checked_bump
+NULL
+
+#' Add an amount in place, returning NULL past the cap
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name maybe_bump
+NULL
+
+#' Read the running total
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name total
+NULL
+
+#' Consume the builder and return its total
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name finish
+NULL
+
+# ClassedChecker fixture generic (classed `Result` errors). Exported by the
+# auto-generated wrappers under @rdname ClassedChecker, aliased here for
+# R CMD check.
+
+#' Check a value against the bound, raising a classed error past it
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name check_bound
+NULL
+
+# SerdeChecker fixture generic (serde-classed `Result` error from an S3
+# method). Exported by the auto-generated wrappers under @rdname SerdeChecker,
+# aliased here for R CMD check.
+
+#' Check a value against the bound, raising a serde-derived classed error past it
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name check_value
+NULL
+
+# SerdeChecker fixture generic (`serde_error(skip(...))` on an S3 method,
+# #1457). Exported by the auto-generated wrappers under @rdname SerdeChecker,
+# aliased here for R CMD check.
+
+#' Parse text as a number, raising a classed error without the parser's `message` field
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name parse_value
 NULL
