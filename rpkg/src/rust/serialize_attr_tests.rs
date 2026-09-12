@@ -19,7 +19,11 @@ fn record(value: i32) -> SerializedRecord {
     }
 }
 
-/// Return a serde-only record through the attribute.
+/// Serde return attribute and type parity.
+/// @examples
+/// stopifnot(identical(serialized_record_attr(4L), serialized_record_type(4L)))
+/// serialized_result_attr(TRUE) # list(Err = "example failure"), not an R error
+/// withVisible(serialized_invisible_attr())
 /// @param value Integer stored in the record.
 #[miniextendr(serialize)]
 pub fn serialized_record_attr(value: i32) -> SerializedRecord {
@@ -27,12 +31,14 @@ pub fn serialized_record_attr(value: i32) -> SerializedRecord {
 }
 
 /// The equivalent return-type spelling.
+/// @param value Integer stored in the record (early-return fixtures use its absolute value).
 #[miniextendr]
 pub fn serialized_record_type(value: i32) -> AsSerialize<SerializedRecord> {
     AsSerialize(record(value))
 }
 
 /// Serialize after the worker returns its owned Rust payload.
+/// @param value Integer stored in the record (early-return fixtures use its absolute value).
 #[cfg(feature = "worker-thread")]
 #[miniextendr(worker, serialize)]
 pub fn serialized_record_worker(value: i32) -> SerializedRecord {
@@ -40,6 +46,7 @@ pub fn serialized_record_worker(value: i32) -> SerializedRecord {
 }
 
 /// Early returns remain ordinary Rust returns.
+/// @param value Integer stored in the record (early-return fixtures use its absolute value).
 #[miniextendr(serialize)]
 pub fn serialized_record_early(value: i32) -> SerializedRecord {
     if value < 0 {
@@ -60,12 +67,14 @@ pub fn serialized_result_attr(fail: bool) -> Result<SerializedRecord, String> {
 }
 
 /// The equivalent complete-Result type spelling.
+/// @param fail Whether to return the Err variant.
 #[miniextendr]
 pub fn serialized_result_type(fail: bool) -> AsSerialize<Result<SerializedRecord, String>> {
     AsSerialize(serialized_result_attr(fail))
 }
 
 /// Keep normal boundary errors by wrapping only the successful payload.
+/// @param fail Whether to return the Err variant.
 #[miniextendr]
 pub fn serialized_result_payload(fail: bool) -> Result<AsSerialize<SerializedRecord>, String> {
     serialized_result_attr(fail).map(AsSerialize)
@@ -79,6 +88,7 @@ pub fn serialized_option_attr(present: bool) -> Option<SerializedRecord> {
 }
 
 /// The equivalent complete-Option type spelling.
+/// @param present Whether to include a record.
 #[miniextendr]
 pub fn serialized_option_type(present: bool) -> AsSerialize<Option<SerializedRecord>> {
     AsSerialize(serialized_option_attr(present))
@@ -128,8 +138,15 @@ pub struct SerializeHost {
     value: i32,
 }
 
+/// A class with ordinary and serialized return methods.
 #[miniextendr(env)]
 impl SerializeHost {
+    /// Construct a class instance for serialization examples.
+    /// @param value Integer stored in the instance.
+    /// @examples
+    /// obj <- SerializeHost$new(5L)
+    /// obj$snapshot() # list(value = 5L, label = "value-5")
+    /// obj$self_data() # list(value = 5L), rather than another handle
     pub fn new(value: i32) -> Self {
         Self { value }
     }
@@ -169,11 +186,14 @@ impl SerializeValues for SerializeHost {
 }
 
 /// Exercise the concrete trait vtable and its Rust View conversion.
-/// @param obj A SerializeHost instance.
+/// @param value Integer stored in the trait-ABI instance.
 #[miniextendr(no_worker)]
-pub fn serialized_trait_view(obj: miniextendr_api::SEXP) -> Vec<i32> {
+pub fn serialized_trait_view(value: i32) -> Vec<i32> {
     unsafe {
-        let sexp = miniextendr_api::externalptr::resolve_receiver::<SerializeHost>(obj);
-        SerializeValuesView::from_sexp(sexp).values()
+        let erased = __mx_wrap_serializehost(SerializeHost { value });
+        let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
+            miniextendr_api::trait_abi::ccall::mx_wrap(erased),
+        );
+        SerializeValuesView::from_sexp(sexp.get()).values()
     }
 }

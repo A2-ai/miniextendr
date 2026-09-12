@@ -884,7 +884,7 @@ Traits with impls: 9
 | `AsJsonVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:131 |
 | `AsJson<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:34 |
 | `AsJsonPretty<T>` | `<T>` | concrete | 3 | miniextendr-api/src/serde/json_string.rs:58 |
-| `AsSerialize<T>` | `<T>` | concrete | 2 | miniextendr-api/src/serde/traits.rs:262 |
+| `AsSerialize<T>` | `<T>` | concrete | 2 | miniextendr-api/src/serde/traits.rs:268 |
 | `StrVec<'_>` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:485 |
 | `ProtectedStrVec` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:727 |
 | `Invisible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:123 |
