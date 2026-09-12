@@ -32,7 +32,6 @@ test_that("real preclean and clean installs reuse the opted-in Cargo cache", {
   for (command in c("cargo", "autoconf")) {
     skip_if_not(nzchar(Sys.which(command)), paste(command, "unavailable"))
   }
-  skip_if_not_installed("processx")
   repo <- find_miniextendr_repo()
   withr::local_envvar(c(CARGO_TARGET_DIR = NA_character_, RUSTC_WRAPPER = "",
     CARGO_PROFILE = "dev", CARGO_TERM_COLOR = "never", R_INSTALL_PKG = NA_character_,
@@ -45,11 +44,13 @@ test_that("real preclean and clean installs reuse the opted-in Cargo cache", {
   dir.create(lib)
   run_r <- function(args, keep = NA_character_) {
     result <- withr::with_envvar(c(MINIEXTENDR_KEEP_TARGET = keep),
-      processx::run(file.path(R.home("bin"), "R"), c("CMD", args),
-                    wd = root, error_on_status = FALSE))
-    output <- paste(result$stdout, result$stderr, sep = "\n")
-    expect_identical(result$status, 0L, info = output)
-    if (result$status != 0L) stop(output)
+      withr::with_dir(root, system2(file.path(R.home("bin"), "R"),
+        shQuote(c("CMD", args)), stdout = TRUE, stderr = TRUE)))
+    status <- attr(result, "status")
+    if (is.null(status)) status <- 0L
+    output <- paste(result, collapse = "\n")
+    expect_identical(status, 0L, info = output)
+    if (status != 0L) stop(output)
     output
   }
   install <- function(flags = character(), keep = NA_character_) {
