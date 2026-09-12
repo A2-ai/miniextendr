@@ -29,3 +29,15 @@ successful formatting and test run.
 cover source-referenced include files, but trimming changes the shipped file
 set. Bootstrap retains its existing defaults; the README explains the explicit
 stripping option alongside the compression example.
+
+The complete network-enabled integration run exposed an obsolete assertion
+that expected Cargo.lock registry checksums to be stripped, although the
+current implementation deliberately preserves them for directory-source
+verification. The assertion and test name now reflect that contract.
+
+A 28-crate clap/serde_json fixture measured compression alone on macOS arm64,
+three samples per mode: BSD tar median 5.22 s default versus 0.56 s at level 1,
+2,891,852 versus 3,432,220 bytes (about 19% larger). GNU tar on the same host
+measured 4.53 s versus 0.10 s, 2,919,172 versus 3,473,312 bytes. These timings
+isolate compression on one unchanged vendor tree; they do not conflate a full
+vendor pass with the new cache-hit recompression path.
