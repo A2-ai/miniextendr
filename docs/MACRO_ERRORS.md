@@ -299,6 +299,23 @@ option exists to avoid. Pick another name. The same family covers
 `serde_error names `a` in both skip and rename`: each field appears in at most
 one place.
 
+### "tuple field 0 of variant `E::Raw` needs a `data` name"
+
+`#[derive(RConditionError)]` turns every field into a `data` entry named after
+the field, and a tuple field has no name. Give it one with
+`#[condition(rename = "name")]`, or drop it from the payload with
+`#[condition(skip)]`. Named fields never hit this. See
+[CONDITIONS.md](CONDITIONS.md#deriving-rconditionerror).
+
+### "`kind` is one of the condition's own slots (`message`, `call`, `kind`)"
+
+A `#[derive(RConditionError)]` field (or its `rename` target) may not be
+called `message`, `call` or `kind`: the R condition object owns those slots.
+Rename the field with `#[condition(rename = "…")]` or exclude it with
+`#[condition(skip)]`. The same derive also rejects duplicate `data` names,
+`message = "…"` on an enum (put it on the variants), `skip` combined with
+`rename` / `debug`, generic types and unions.
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

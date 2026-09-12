@@ -1233,6 +1233,94 @@ depends on rayon: `with_r_thread`, `Sendable`, `RNativeType`, the PROTECT
 discipline, and the assembly step are all rayon-independent. The `Send + Sync`
 bounds on the fill closures are simply unused when rayon is absent.
 
+### `deferred_condition`
+
+`pub mod deferred_condition;`
+
+Conditions that accompany a returned value (`defer_warning` & co.).
+Deferred conditions: signal an R warning, message or condition **and**
+still return a value.
+
+[`crate::warning!`], [`crate::message!`] and [`crate::condition!`] unwind
+the Rust function: R sees the signal, the call returns `invisible(NULL)`.
+That is the right shape for "stop here, but softly", not for "here is the
+result, and by the way …". The `defer_*` family queues the condition
+instead; the generated C wrapper signals everything queued during the call
+once the Rust body has returned, in queue order, and then hands the value
+to R.
+
+```ignore
+use miniextendr_api::{defer_warning, miniextendr};
+use miniextendr_api::condition::RConditionError;
+
+#[derive(Debug, RConditionError)]
+#[condition(class = "pkg_warning")]
+enum PkgWarning {
+    #[condition(message = "dropped {dropped} of {total} rows")]
+    Truncated { dropped: i32, total: i32 },
+}
+
+#[miniextendr]
+fn trim(n: i32) -> i32 {
+    defer_warning(PkgWarning::Truncated { dropped: 2, total: n });
+    n - 2
+}
+```
+
+```r
+trim(5L)
+# [1] 3
+# Warning message:
+# In trim(5L) : dropped 2 of 5 rows
+w <- tryCatch(trim(5L), pkg_warning_truncated = function(w) w)
+w$dropped               # 2
+suppressWarnings(trim(5L))   # 3
+```
+
+#### What R sees
+
+Exactly what `warning()` / `message()` / `signalCondition()` called from
+an R function would produce, because that is what runs: the same R helper
+the generated wrappers use for the panicking macros re-raises each queued
+condition. Class layering (`c(<classes…>, "rust_warning", "simpleWarning",
+"warning", "condition")`), `data` fields as `w$<name>` and
+`conditionCall()` (the wrapper's call) are identical to the immediate
+forms. `tryCatch(warning = )` exits the call before the value is returned;
+`withCallingHandlers` + `invokeRestart("muffleWarning")` keeps it;
+`suppressWarnings()` / `suppressMessages()` work as usual.
+
+#### Ordering
+
+Queued conditions are signalled after the Rust body finished and before R
+sees its outcome, so a deferred warning followed by `rust_error!` (or an
+`Err` return) is signalled first and the error second, and two deferred
+conditions keep their queue order. Nested calls (R code evaluated from
+Rust that calls back into another `#[miniextendr]` function) flush only
+what they queued themselves.
+
+#### Payloads
+
+[`defer_warning()`], [`defer_message()`] and [`defer_condition()`] take any
+[`RConditionError`] value: a `#[derive(RConditionError)]` enum or struct
+(class from the type and variant names, message from a `format!` string or
+`Display`, fields as `data`), or a hand-built [`crate::condition::RError`].
+The [`defer_warning!`](crate::defer_warning!) /
+[`defer_message!`](crate::defer_message!) /
+[`defer_condition!`](crate::defer_condition!) macros take the
+[`crate::warning!`] grammar (`class = …`, `data = …`, format message) for
+one-off conditions.
+
+#### Threads and boundaries
+
+The queue is a process-wide `Mutex`, so `#[miniextendr(worker)]` bodies
+push from the worker thread; the signalling always happens on R's main
+thread after the worker result is back. Every generated `.Call` entry
+point and every trait-ABI vtable shim flushes what was queued inside it.
+Code that runs under no such boundary (ALTREP callbacks, finalizers) has
+its conditions signalled by the next boundary that completes in the same
+package; use the panicking macros or `error!` there (flushing at those
+guard sites is issue #1518).
+
 ### `dots`
 
 `pub mod dots;`
@@ -7503,6 +7591,12 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 
 ### `pub use de::RDeserializer;`
 
+### `pub use deferred_condition::defer_condition;`
+
+### `pub use deferred_condition::defer_message;`
+
+### `pub use deferred_condition::defer_warning;`
+
 ### `pub use either;`
 
 ### `pub use either::Either;`
@@ -7794,6 +7888,16 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use miniextendr_macros::PreferRNativeType;`
 
 ### `pub use miniextendr_macros::PreferVctrs;`
+
+### `pub use miniextendr_macros::RConditionError;`
+
+### `pub use miniextendr_macros::RConditionError;`
+
+`#[derive(RConditionError)]`: the trait impl generated from a type's shape
+(`#[condition(class = "…")]`, `#[condition(message = "…")]`, and the
+`rename` / `skip` / `debug` field options). Re-exported here so one
+`use miniextendr_api::condition::RConditionError;` brings the trait and
+the derive together.
 
 ### `pub use miniextendr_macros::RFactor;`
 
@@ -31709,6 +31813,41 @@ Plain Rust — no SEXP contact, so the result is `Send` (given `T: Send`) and
 safe to iterate with rayon. Keys order by `Ord`; give NA-able keys a home by
 keying on `Option<T>` (`None` sorts first) or a custom enum.
 
+### `deferred_condition::defer_condition`
+
+```rust
+fn defer_condition(payload: impl RConditionError)
+```
+
+Queue a plain condition (`signalCondition()`: silent without a handler)
+to be signalled when the current `#[miniextendr]` call returns.
+
+### `deferred_condition::defer_message`
+
+```rust
+fn defer_message(payload: impl RConditionError)
+```
+
+Queue a message (`message()`, muffled by `suppressMessages()`) to be
+emitted when the current `#[miniextendr]` call returns.
+
+Unlike [`crate::message!`], the payload's classes are honoured: they are
+layered in front of `rust_message` so handlers can dispatch on them.
+
+### `deferred_condition::defer_warning`
+
+```rust
+fn defer_warning(payload: impl RConditionError)
+```
+
+Queue a warning to be signalled when the current `#[miniextendr]` call
+returns; the call still returns its value.
+
+`payload` supplies the message, the user classes (prepended to
+`rust_warning`) and the `data` fields (`w$<name>`). See the
+[module docs](self) for the R-side behaviour and [`defer_warning!`](crate::defer_warning!)
+for the macro form.
+
 ### `encoding::encoding_info`
 
 ```rust
@@ -42237,6 +42376,49 @@ withCallingHandlers(
 # progress: processed 42 items
 ```
 
+### `defer_condition!`
+
+Queue a plain R condition (`rust_condition` layering, silent without a
+handler) and return normally; signalled when the surrounding
+`#[miniextendr]` call returns.
+
+Same grammar as [`crate::defer_warning!`]. Useful for progress or audit
+events a caller may opt into with `withCallingHandlers()`.
+
+### `defer_message!`
+
+Queue an R message (`rust_message` layering, muffled by
+`suppressMessages()`) and return normally; emitted when the surrounding
+`#[miniextendr]` call returns.
+
+Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
+`class = …` part is accepted and layered in front of `rust_message`.
+
+### `defer_warning!`
+
+Queue an R warning with `rust_warning` class layering and return normally;
+the surrounding `#[miniextendr]` call signals it after its value is
+computed.
+
+Same grammar as [`crate::warning!`]: optional `class = …` (one class or a
+vector, most specific first), optional `data = …` (a pair, a bracketed
+list of pairs, or `{ name = value }` sugar), then the `format!` message.
+For a typed payload use [`crate::defer_warning()`] with a
+`#[derive(RConditionError)]` type.
+
+```ignore
+use miniextendr_api::defer_warning;
+
+#[miniextendr]
+fn parse_all(xs: Vec<String>) -> Vec<i32> {
+    let (ok, bad): (Vec<_>, Vec<_>) = xs.iter().map(|s| s.parse::<i32>()).partition(Result::is_ok);
+    if !bad.is_empty() {
+        defer_warning!(class = "pkg_unparsed", data = ("n", bad.len() as i32), "{} values could not be parsed", bad.len());
+    }
+    ok.into_iter().map(Result::unwrap).collect()
+}
+```
+
 ### `error!`
 
 Raise an R error from Rust with `rust_error` class layering.
@@ -42805,6 +42987,8 @@ warning!(class = "truncation", data = ("dropped", n), "dropped {n} rows");
 #### See also
 
 - [`crate::error!`] — fatal sibling; aborts the call instead of continuing.
+- [`crate::defer_warning!`] / [`crate::defer_warning()`] — queue the warning
+  and still return the value (signalled when the call returns).
 - [`crate::message!`] / [`crate::condition!`] — softer signal kinds (muffled
   by `suppressMessages` / silent without handler, respectively).
 - [`std::panic!`] — escape hatch when "continue after this" is not a sensible

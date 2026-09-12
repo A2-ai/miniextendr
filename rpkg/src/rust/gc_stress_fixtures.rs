@@ -3296,3 +3296,26 @@ pub fn gc_stress_rvalue_roundtrip() {
 }
 
 // endregion
+
+// region: deferred conditions (#1448)
+
+/// Deferred conditions: three typed conditions with `data` fields queued
+/// during the call and signalled by `deferred_condition::finish` after the
+/// value is built. The value and each tagged condition list are rooted across
+/// the `Rf_eval` of the R helper; this drives that path under gctorture.
+/// Plain conditions (not warnings) so the sweep stays quiet.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_deferred_conditions() -> Vec<i32> {
+    for i in 0..3 {
+        miniextendr_api::defer_condition!(
+            class = "gc_stress_deferred",
+            data = { index = i, label = format!("item {i}") },
+            "deferred {i}"
+        );
+    }
+    vec![1, 2, 3]
+}
+
+// endregion

@@ -245,3 +245,19 @@ NULL
 #' @param ... Additional arguments.
 #' @name parse_value
 NULL
+
+# DeferredCounter fixture generics (deferred conditions from S3 methods,
+# #1448). Exported by the auto-generated wrappers under @rdname
+# DeferredCounter, aliased here for R CMD check.
+
+#' Nudge the counter up by one, warning once it passes the limit
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name nudge
+NULL
+
+#' Copy the counter, emitting a deferred message
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name fork
+NULL

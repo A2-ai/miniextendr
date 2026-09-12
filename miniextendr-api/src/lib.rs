@@ -256,12 +256,13 @@ pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 // The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
 // the `IntoR` / `TryFromSexp` traits — `#[derive(IntoR)]` (macro namespace) and the trait
-// (type namespace) coexist, exactly like serde's `Serialize`.
+// (type namespace) coexist, exactly like serde's `Serialize`. `RConditionError` follows
+// suit (trait in `condition`, derive re-exported here and in `condition`).
 #[doc(inline)]
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
     AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferDataFrame, PreferExternalPtr,
-    PreferList, PreferRNativeType, RFactor, TryFromList, TryFromSexp,
+    PreferList, PreferRNativeType, RConditionError, RFactor, TryFromList, TryFromSexp,
 };
 
 pub mod altrep;
@@ -752,6 +753,9 @@ pub use r_coerce::{
 
 pub mod condition;
 pub use condition::{AsRError, RCondition};
+/// Conditions that accompany a returned value (`defer_warning` & co.).
+pub mod deferred_condition;
+pub use deferred_condition::{defer_condition, defer_message, defer_warning};
 pub mod convert;
 /// Support for R `...` arguments represented as a validated list.
 pub mod dots;

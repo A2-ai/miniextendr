@@ -177,6 +177,7 @@ mod method_return_builder;
 /// Helpers for shaping method return handling (R vs Rust wrapper code).
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
+mod condition_derive;
 mod dataframe_derive;
 mod lifecycle;
 mod list_derive;
@@ -2622,6 +2623,33 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     match_arg_derive::derive_match_arg(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `RConditionError` for an error or warning payload type: the R class
+/// vector, the message and the `data` fields handlers read as `e$<name>`.
+///
+/// - `#[condition(class = "…")]` on the type sets the family class (default:
+///   the type name in snake_case); on an enum variant it sets the member class
+///   (default: `<family>_<variant in snake_case>`). Variants report
+///   `c(<member>, <family>)`, structs `c(<family>)`.
+/// - `#[condition(message = "…")]` on a struct or a variant is a `format!`
+///   string over the fields (tuple fields are `_0`, `_1`, …). Without it the
+///   message is the type's `Display` rendering.
+/// - Every field becomes a `data` entry under its own name, converted with
+///   `RValue::from(field.clone())`. `#[condition(rename = "…")]`,
+///   `#[condition(skip)]` and `#[condition(debug)]` (attach the `Debug`
+///   rendering instead) adjust that; tuple fields need `rename` or `skip`. The
+///   reserved slots `message`, `call` and `kind` are rejected at compile time.
+///
+/// Works with [`defer_warning`](https://docs.rs/miniextendr-api) & co. for
+/// conditions that accompany a value and with `Result<T, E>` returns for
+/// classed errors. Generic types are not supported.
+#[proc_macro_derive(RConditionError, attributes(condition))]
+pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    condition_derive::derive_r_condition_error(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
