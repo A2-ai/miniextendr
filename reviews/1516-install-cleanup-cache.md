@@ -23,3 +23,5 @@ Acceptance passes 62 assertions (0 failures/warnings/skips): the context matrix,
 R CMD check caught an undeclared processx test dependency; the fixture now uses base-R system2 instead. The shipped-skill audit reported known generated/optional paths as warnings even though a clean scaffold should lack them. Those two existing allowlisted categories remain visible as INFO; missing ordinary paths, missing symbols, and invalid line references retain their original severity.
 
 The dependency-inventory regression and R CMD check both identified the same processx reference; removing it fixes both findings. The corrected targeted run passes 71 assertions with 0 failures/warnings/skips. The skill audit reports 0 BLOCKING, 0 WARN, 7 INFO on a real scaffold; an empty-layout negative probe still exits 1 and reports the required src/rust/Cargo.toml as BLOCKING.
+
+Final verification: all just check/test/fmt gates and six Clippy configurations pass; templates, AGENTS, shipped skills, and site build pass. The corrected built-tarball R CMD check on R 4.6.1 reports 0 errors, 0 warnings, 0 notes.
