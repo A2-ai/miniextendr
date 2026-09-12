@@ -4614,3 +4614,38 @@ fn conversion_markers_resolve_self_in_class_references() {
     );
     assert!(!generate_s7_r_wrapper(&parsed).contains(".__MX_CLASS_REF_Self__"));
 }
+
+#[test]
+fn s7_conversion_docs_do_not_claim_the_external_generic() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn from_source(source: ExternalPtr<Source>) -> ConvertFrom<Self> { unimplemented!() }
+                pub fn to_source(&self) -> ConvertTo<Source> { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(!wrapper.contains("#' @aliases convert\n"));
+    for (name, direction) in [
+        ("convert-Source-to-Target", "from"),
+        ("convert-Target-to-Source", "to"),
+    ] {
+        let block = wrapper
+            .split(&format!("#' @name {name}\n"))
+            .nth(1)
+            .unwrap()
+            .split("S7::method(convert,")
+            .next()
+            .unwrap();
+        assert!(block.contains("#' @usage NULL"), "{block}");
+        assert!(
+            block.contains(&format!(
+                "#' @section Conversion {direction} `.__MX_CLASS_REF_Source__`:"
+            )),
+            "{block}"
+        );
+        assert!(!block.contains("#' @param"), "{block}");
+    }
+}

@@ -11,3 +11,15 @@ The exact-output parity test initially compared source-position comments as well
 A replacement Rust test run was started before the prior failing run had fully exited, so both wrote the same log and introduced NUL gaps. The replacement process passed, but its log was unsuitable as verification evidence. Waited for both processes to exit and reran the final suite into a new, dedicated log. Subsequent retries must wait for completion before reusing a log path.
 
 Direct checkRd validation initially omitted the package-level UTF-8 declaration and reported non-ASCII S7 shortcut prose. Matched the R tools package checker by passing def_enc = TRUE (DESCRIPTION declares UTF-8). S7 constructors explicitly copy parameter tags, while impl-level method tags are rejected by the existing tag warning. Placed the new example on the ordinary to_source method, whose MethodDocBuilder emits it into the class help page. The intermediate impl placement warning was removed.
+
+
+The first built-tarball check exposed two warnings that direct example execution
+cannot catch: conversion registrations claimed the imported `convert` alias on
+each class page, and their generated generic usages lacked `from`/`to` parameter
+docs. The old single internal conversion fixture concealed both problems.
+Conversion registrations now document the exact `S7::convert(from, Target)` call
+in a class-page section linked to the generic's documentation, with `@usage NULL`
+on that registration block. Ordinary Rust shortcut usages remain documented.
+A macro regression covers both directions and checks that no class page claims
+the external generic's alias. The full package documentation checks and a fresh
+tarball check verify the combined generated pages.
