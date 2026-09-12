@@ -187,6 +187,7 @@ mod dots_tests;
 mod either_adapter_tests;
 mod encoding_tests;
 mod error_in_r_tests;
+mod explicit_wrap_tests;
 mod export_control_tests;
 mod expression_tests;
 mod externalptr_any_tests;

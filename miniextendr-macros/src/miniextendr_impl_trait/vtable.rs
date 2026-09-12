@@ -454,7 +454,12 @@ fn generate_concrete_vtable_shims(
         // around the real return; `method.sig.output` is already peeled, so
         // unwrap it here before the conversion below.
         let unwrap_marker = |call: TokenStream| -> TokenStream {
-            crate::type_inspect::prepare_return_value(call, method.invisible, method.serialize)
+            let call =
+                crate::type_inspect::prepare_return_value(call, method.invisible, method.serialize);
+            match &method.return_wrap {
+                Some(wrap) => wrap.prepare_value(call),
+                None => call,
+            }
         };
         let invocation = unwrap_marker(quote::quote! {
             <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
@@ -561,6 +566,13 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
             let mut sig = method.sig.clone();
+            let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
+            if return_wrap.is_some() && (attrs.serialize || attrs.unwrap_in_r) {
+                return Err(syn::Error::new_spanned(
+                    &method.sig.output,
+                    "explicit class wrapping cannot be combined with serialize or unwrap_in_r",
+                ));
+            }
             sig.output = crate::type_inspect::serialize_return_type(&output, attrs.serialize);
 
             methods.push(TraitMethod {
@@ -576,6 +588,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 rng: attrs.rng,
                 unwrap_in_r: attrs.unwrap_in_r,
                 serialize: attrs.serialize,
+                return_wrap,
                 param_defaults: attrs.defaults,
                 param_tags,
                 rdname,
@@ -613,6 +626,7 @@ struct TraitMethodAttrs {
     unwrap_in_r: bool,
     /// Serialize the complete return value through `AsSerialize<T>`.
     serialize: bool,
+    wrap: Option<ClassSystem>,
     /// Exclude this method from all generated wrappers (C, R, vtable shims).
     skip: bool,
     /// Parameter default values: keys are parameter names, values are R expressions.
@@ -652,6 +666,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut rng = false;
     let mut unwrap_in_r = false;
     let mut serialize = false;
+    let mut wrap = None;
     let mut skip = false;
     let mut strict = false;
     let mut defaults = std::collections::HashMap::new();
@@ -688,6 +703,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
                         unwrap_in_r = true;
+                    } else if inner.path.is_ident("wrap") {
+                        let value: syn::LitStr = inner.value()?.parse()?;
+                        wrap = Some(crate::return_wrap::parse_system(&value)?);
                     } else if inner.path.is_ident("serialize") {
                         serialize = true;
                     } else if inner.path.is_ident("no_shortcut") {
@@ -712,6 +730,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
                 unwrap_in_r = true;
+            } else if meta.path.is_ident("wrap") {
+                let value: syn::LitStr = meta.value()?.parse()?;
+                wrap = Some(crate::return_wrap::parse_system(&value)?);
             } else if meta.path.is_ident("serialize") {
                 serialize = true;
             } else if meta.path.is_ident("skip") {
@@ -895,6 +916,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         rng,
         unwrap_in_r,
         serialize,
+        wrap,
         skip,
         strict,
         defaults,
@@ -1101,6 +1123,10 @@ pub(super) fn generate_trait_method_c_wrapper(
             method.invisible,
             method.serialize,
         );
+        let call_expr = match &method.return_wrap {
+            Some(wrap) => wrap.prepare_value(call_expr),
+            None => call_expr,
+        };
 
         builder = builder
             .pre_call(vec![self_extraction])
@@ -1116,6 +1142,10 @@ pub(super) fn generate_trait_method_c_wrapper(
             method.invisible,
             method.serialize,
         );
+        let call_expr = match &method.return_wrap {
+            Some(wrap) => wrap.prepare_value(call_expr),
+            None => call_expr,
+        };
 
         builder = builder.call_expr(call_expr);
     }

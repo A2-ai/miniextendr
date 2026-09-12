@@ -1,0 +1,41 @@
+error: unknown class system: r8
+ --> tests/ui/fn_wrap_invalid.rs:3:15
+  |
+3 | #[miniextendr(wrap = "r8")]
+  |               ^^^^
+
+error: the WrapAs* marker and `wrap` attribute select different class systems
+ --> tests/ui/fn_wrap_invalid.rs:7:22
+  |
+7 | pub fn conflict() -> miniextendr_api::WrapAsR6<i32> { miniextendr_api::WrapAsR6(0) }
+  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: WrapAs* must be closest to the named class type; put containers and visibility outside it
+  --> tests/ui/fn_wrap_invalid.rs:10:46
+   |
+10 | pub fn nested() -> miniextendr_api::WrapAsR6<Vec<i32>> { miniextendr_api::WrapAsR6(vec![]) }
+   |                                              ^^^^^^^^
+
+error: WrapAs* markers are return-position only
+  --> tests/ui/fn_wrap_invalid.rs:13:24
+   |
+13 | pub fn argument(value: miniextendr_api::WrapAsR6<i32>) -> i32 { value.0 }
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: explicit class wrapping cannot be combined with serialize or unwrap_in_r
+  --> tests/ui/fn_wrap_invalid.rs:16:24
+   |
+16 | pub fn serialization() -> i32 { 0 }
+   |                        ^^^^^^
+
+error: explicit class wrapping cannot be combined with serialize or unwrap_in_r
+  --> tests/ui/fn_wrap_invalid.rs:19:23
+   |
+19 | pub fn result_value() -> Result<i32, String> { Ok(0) }
+   |                       ^^^^^^^^^^^^^^^^^^^^^^
+
+error: explicit class wrapping requires a generated Rust-to-R wrapper, not an extern function
+  --> tests/ui/fn_wrap_invalid.rs:22:67
+   |
+22 | pub unsafe extern "C-unwind" fn raw(value: miniextendr_api::SEXP) -> miniextendr_api::SEXP { value }
+   |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^

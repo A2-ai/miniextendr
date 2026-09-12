@@ -6809,6 +6809,26 @@ R FFI APIs. Typically done in `R_init_<pkgname>()`.
 - [`crate::sys`] — checked vs `*_unchecked` FFI surface.
 - [`crate::ffi_guard`] — guard taxonomy across boundaries.
 
+### `wrap_as`
+
+`pub mod wrap_as;`
+
+Explicit R class-system return markers.
+Explicit R class-system return markers.
+
+`WrapAsR6<T>` and its siblings select the constructor used by the generated
+R wrapper. The matching attribute is `#[miniextendr(wrap = "r6")]`.
+Both forms leave Rust-to-R value conversion to `T`; they only select the
+R-side wrapping expression. See `docs/MINIEXTENDR_ATTRIBUTE.md` for examples.
+
+Markers are recognized by their last path segment. Type aliases and renamed
+imports do not select wrapping. Put `Invisible`/`Visible` outside the whole
+return, and `Option`, `Result`, or `Vec` outside the class marker.
+
+The named target must have a compatible R class definition. Explicit wrapping
+does not consult the class registry or verify the selected system; a mismatch
+is reported by R when the generated constructor or method is used.
+
 ---
 
 ## Re-exports
@@ -7601,6 +7621,18 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use crate::typed_list;`
 
 ### `pub use crate::with_r_thread;`
+
+### `pub use crate::wrap_as::WrapAsEnv;`
+
+### `pub use crate::wrap_as::WrapAsR6;`
+
+### `pub use crate::wrap_as::WrapAsS3;`
+
+### `pub use crate::wrap_as::WrapAsS4;`
+
+### `pub use crate::wrap_as::WrapAsS7;`
+
+### `pub use crate::wrap_as::WrapAsVctrs;`
 
 ### `pub use dataframe::BuiltDataFrame;`
 
@@ -9224,6 +9256,18 @@ with [`RRng`]. Enable with `features = ["rand_distr"]`.
 ### `pub use worker::is_r_main_thread;`
 
 ### `pub use worker::with_r_thread;`
+
+### `pub use wrap_as::WrapAsEnv;`
+
+### `pub use wrap_as::WrapAsR6;`
+
+### `pub use wrap_as::WrapAsS3;`
+
+### `pub use wrap_as::WrapAsS4;`
+
+### `pub use wrap_as::WrapAsS7;`
+
+### `pub use wrap_as::WrapAsVctrs;`
 
 ### `pub use zstd::DEFAULT_COMPRESSION_LEVEL;`
 
@@ -23585,6 +23629,186 @@ Pre-extracted view of one `MX_TRAIT_DISPATCH` entry.
 - `concrete_tag`: `crate::abi::mx_tag`
 - `trait_tag`: `crate::abi::mx_tag`
 - `vtable_symbol`: `String`
+
+### `wrap_as::WrapAsEnv`
+
+```rust
+pub struct WrapAsEnv<T>
+```
+
+Return `T` with its Env dispatch class.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::WrapAsR6`
+
+```rust
+pub struct WrapAsR6<T>
+```
+
+Return `T` through its R6 constructor (`T$new(.ptr = value)`).
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::WrapAsS3`
+
+```rust
+pub struct WrapAsS3<T>
+```
+
+Return `T` with its named S3 class.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::WrapAsS4`
+
+```rust
+pub struct WrapAsS4<T>
+```
+
+Return `T` through `methods::new("T", ptr = value)`.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::WrapAsS7`
+
+```rust
+pub struct WrapAsS7<T>
+```
+
+Return `T` through its S7 constructor (`T(.ptr = value)`).
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::WrapAsVctrs`
+
+```rust
+pub struct WrapAsVctrs<T>
+```
+
+Return `T` with its named vctrs class, preserving its existing class hierarchy.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
 
 ---
 

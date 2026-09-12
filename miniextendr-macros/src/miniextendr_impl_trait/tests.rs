@@ -88,6 +88,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         rng: false,
         unwrap_in_r: false,
         serialize: false,
+        return_wrap: None,
         param_defaults: Default::default(),
         param_tags: vec![],
         rdname: None,
@@ -1073,5 +1074,37 @@ fn test_trait_method_rdname_override_all_systems() {
                 "split S3 guard must not carry the filler title, got:\n{result}"
             );
         }
+    }
+}
+
+#[test]
+fn explicit_cross_class_returns_work_in_every_trait_wrapper_generator() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let mut instance = make_test_method("build", true);
+        instance.return_wrap =
+            crate::return_wrap::resolve(&syn::parse_quote!(-> WrapAsR6<Board>), None)
+                .unwrap()
+                .0;
+        let mut factory = make_test_method("create", false);
+        factory.return_wrap = instance.return_wrap.clone();
+        let wrapper = generate_trait_r_wrapper(
+            &format_ident!("Factory"),
+            &format_ident!("Builder"),
+            &[instance, factory],
+            &[],
+            opts(system, false, false, false),
+        )
+        .unwrap();
+        assert!(
+            wrapper.matches("Board$new(.ptr = .val)").count() >= 2,
+            "{system:?}: {wrapper}"
+        );
     }
 }
