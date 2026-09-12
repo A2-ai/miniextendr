@@ -75,7 +75,7 @@ test_that("devtools installs path siblings without freezing the source or making
   run("autoconf", character(), "autoconf")
   run("bash", "./configure", "configure")
   script <- file.path(root, "install.R")
-  writeLines(sprintf('devtools::install(%s, build = TRUE, dependencies = FALSE, upgrade = "never", reload = FALSE, quiet = FALSE)',
+  writeLines(sprintf('devtools::install(%s, build = TRUE, dependencies = FALSE, upgrade = FALSE, reload = FALSE, quiet = FALSE)',
                      deparse(pkg)), script)
   for (i in 1:2) {
     output <- run(file.path(R.home("bin"), "Rscript"), shQuote(script), paste0("dev-install-", i))

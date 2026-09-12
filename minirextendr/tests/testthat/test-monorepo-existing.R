@@ -24,6 +24,7 @@ test_that("existing root and virtual workspaces produce distinct binding package
       writeLines(c("[workspace]", 'members = ["crates/*"]', 'resolver = "3"'),
                  file.path(root, "Cargo.toml"))
     }
+    writeLines("caller-owned/", file.path(root, ".gitignore"))
     manifest_before <- readLines(file.path(core, "Cargo.toml"))
     messages <- capture_messages(use_miniextendr(
       path = root, template_type = "monorepo", claude_skills = FALSE
@@ -31,6 +32,8 @@ test_that("existing root and virtual workspaces produce distinct binding package
     messages <- gsub("[[:space:]]+", " ", paste(messages, collapse = " "))
     expect_match(messages, "from this workspace root", fixed = TRUE)
     expect_true(any(grepl('path = "rpkg"', messages, fixed = TRUE)))
+    root_ignores <- readLines(file.path(root, ".gitignore"))
+    expect_true(all(c("caller-owned/", "rpkg/rust-target/", "rpkg/src/rust/vendor/") %in% root_ignores))
     rust_dir <- file.path(root, "rpkg", "src", "rust")
     metadata <- jsonlite::fromJSON(paste(system2("cargo", c(
       "metadata", "--no-deps", "--format-version", "1", "--manifest-path",
@@ -109,13 +112,15 @@ test_that("existing monorepos build twice and restore their path dependencies (#
                  file.path(root, "Cargo.toml"))
     }
     # A source checkout uses the workspace dependency; bootstrap.R still
-    # freezes it when building the tarball during miniextendr_build().
+    # stages it when building the development artifact during miniextendr_build().
     expect_identical(system2("git", c("-C", shQuote(root), "init", "--quiet")), 0L)
+    # Cargo applies Git ignores only once the package manifest is tracked.
+    # Model an existing Rust project, rather than an entirely untracked tree.
+    expect_identical(system2("git", c("-C", shQuote(root), "add", ".")), 0L)
     suppressMessages(use_miniextendr(root, template_type = "monorepo", claude_skills = FALSE))
     rpkg <- file.path(root, "rpkg")
     suppressMessages(use_local_miniextendr(repo, path = rpkg))
-    lib <- file.path(root, "library")
-    dir.create(lib)
+    lib <- withr::local_tempdir()
     rust_source <- file.path(rpkg, "src", "rust", "lib.rs")
     cat('\n/// Add through the existing library.\n/// @param a First number.\n/// @param b Second number.\n/// @return Their sum.\n#[miniextendr]\npub fn core_sum(a: i32, b: i32) -> i32 {\n    core_library::add(a, b)\n}\n',
         file = rust_source, append = TRUE)
@@ -126,11 +131,16 @@ test_that("existing monorepos build twice and restore their path dependencies (#
     manifest <- file.path(rpkg, "src", "rust", "Cargo.toml")
     before <- readLines(manifest)
     for (iteration in seq_len(2L)) {
-      callr::r(function(repo, rpkg, lib) {
+      build_log <- capture.output(callr::r(function(repo, rpkg, lib) {
         pkgload::load_all(file.path(repo, "minirextendr"), quiet = TRUE)
         .libPaths(c(lib, .libPaths()))
         minirextendr::miniextendr_build(path = rpkg)
-      }, args = list(repo = repo, rpkg = rpkg, lib = lib), show = TRUE)
+      }, args = list(repo = repo, rpkg = rpkg, lib = lib), show = TRUE))
+      expect_false(any(grepl("Warning", build_log, fixed = TRUE)),
+                   info = paste(build_log, collapse = "\n"))
+      bundled <- list.files(file.path(rpkg, "src", "rust", "vendor"),
+                            recursive = TRUE, all.files = TRUE)
+      expect_false(any(grepl("rust-target|dev-vendor-backup", bundled)))
       expect_identical(readLines(manifest), before,
                        info = paste("manifest restored after build", iteration))
       expect_false(file.exists(file.path(rpkg, "inst", "vendor.tar.xz")))

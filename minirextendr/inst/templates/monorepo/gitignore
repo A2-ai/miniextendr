@@ -3,6 +3,11 @@
 
 # R package build artifacts
 {{rpkg_name}}/src/rust/target/
+{{rpkg_name}}/rust-target/
+{{rpkg_name}}/src/rust/vendor/
+{{rpkg_name}}/src/rust/.Cargo.toml.dev
+{{rpkg_name}}/src/rust/.dev-bootstrap.rds
+{{rpkg_name}}/src/rust/.dev-vendor-backup-*/
 {{rpkg_name}}/vendor/
 {{rpkg_name}}/src/rust/.cargo/
 {{rpkg_name}}/src/Makevars

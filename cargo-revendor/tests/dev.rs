@@ -9,7 +9,7 @@ fn dev_bundle_relocates_path_chain_and_preserves_source_manifest() {
         "pub fn value() -> i32 { 1 }\n",
     );
     let project = common::create_workspace(
-        "[workspace]\nmembers = [\"app\", \"core\", \"leaf\"]\nresolver = \"2\"\n[workspace.package]\nversion = \"0.2.0\"\nedition = \"2021\"\n",
+        "[workspace]\nmembers = [\"app\", \"core\", \"leaf\"]\nexclude = [\"unused-test-helper\"]\nresolver = \"2\"\n[workspace.package]\nversion = \"0.2.0\"\nedition = \"2021\"\n",
         &[
             (
                 "app",
@@ -31,6 +31,41 @@ fn dev_bundle_relocates_path_chain_and_preserves_source_manifest() {
             ),
         ],
     );
+    let core_manifest = project.root().join("core/Cargo.toml");
+    let mut core = std::fs::read_to_string(&core_manifest).unwrap();
+    core.push_str("\n[dev-dependencies]\nunused-test-helper = { path = \"../unused-test-helper\" }\n\n[build-dependencies]\nleaf-value = { path = \"../leaf\" }\n");
+    core.push_str(&format!(
+        "\n[dependencies.remote-value]\ngit = {:?}\n",
+        git.url()
+    ));
+    std::fs::write(core_manifest, core).unwrap();
+    let unused = project.root().join("unused-test-helper");
+    std::fs::create_dir(&unused).unwrap();
+    std::fs::write(unused.join("Cargo.toml"), "[package]\nname = \"unused-test-helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[lib]\npath = \"lib.rs\"\n[workspace]\n").unwrap();
+    std::fs::write(unused.join("lib.rs"), "pub fn unused() {}\n").unwrap();
+    std::fs::write(
+        project.root().join("core/build.rs"),
+        "fn main() { println!(\"cargo:rustc-env=LEAF_VALUE={}\", leaf_value::value()); }\n",
+    )
+    .unwrap();
+    std::fs::write(project.root().join("core/fixture.txt"), "included payload").unwrap();
+    std::fs::write(project.root().join("core/lib.rs"),
+        "const _: &str = include_str!(\"fixture.txt\");\npub fn value() -> i32 { leaf_value::value() }\n").unwrap();
+    std::fs::write(project.root().join("core/.gitignore"), "ignored-output/\n").unwrap();
+    std::fs::create_dir(project.root().join("core/ignored-output")).unwrap();
+    std::fs::write(
+        project.root().join("core/ignored-output/artifact"),
+        "do not bundle",
+    )
+    .unwrap();
+    assert!(
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(project.root())
+            .status()
+            .unwrap()
+            .success()
+    );
     let app = project.root().join("app");
     let manifest = app.join("Cargo.toml");
     let before = std::fs::read(&manifest).unwrap();
@@ -49,15 +84,20 @@ fn dev_bundle_relocates_path_chain_and_preserves_source_manifest() {
     assert_eq!(std::fs::read(&manifest).unwrap(), before);
     assert!(!app.join(".Cargo.toml.prefreeze").exists());
     assert!(!vendor.join(".cargo-config.toml").exists());
+    assert!(!vendor.join("core-value-0.2.0/ignored-output").exists());
     let names: std::collections::BTreeSet<_> = std::fs::read_dir(&vendor)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     assert_eq!(
         names,
-        ["core-value-0.2.0", "leaf-value-0.2.0"]
-            .map(String::from)
-            .into()
+        [
+            "core-value-0.2.0",
+            "leaf-value-0.2.0",
+            "unused-test-helper-0.1.0"
+        ]
+        .map(String::from)
+        .into()
     );
     std::fs::write(vendor.join("caller-owned"), "recover me").unwrap();
     invoke();

@@ -163,7 +163,7 @@ struct Cli {
 
     /// Prepare path dependencies and a separate portable development manifest.
     /// The source Cargo.toml stays unchanged; existing output is backed up.
-    #[arg(long, conflicts_with_all = ["freeze", "strict_freeze", "compress", "verify", "external_only", "local_only", "stamp_lock", "source_root", "sync"])]
+    #[arg(long, conflicts_with_all = ["freeze", "strict_freeze", "compress", "verify", "external_only", "local_only", "stamp_lock", "source_root", "sync", "strip_all", "strip_tests", "strip_benches", "strip_examples", "strip_bins", "strip_toml_sections", "blank_md", "source_marker", "json", "flat_dirs"])]
     dev: bool,
 
     /// Blank .md files in vendor/ before compression

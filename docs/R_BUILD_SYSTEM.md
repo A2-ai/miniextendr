@@ -257,6 +257,50 @@ any code that modifies it (`miniextendr_saved_IFS=$IFS` / `IFS=$miniextendr_save
 This prevents corrupting autoconf 2.72's internal state, which relies on `IFS`
 being set to its default value.
 
+## Development bootstrap
+
+For local installs from a package with path-dependency siblings:
+
+```r
+withr::with_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"), {
+  devtools::install("path/to/rpkg", build = TRUE, upgrade = FALSE)
+})
+```
+
+`minirextendr::miniextendr_build()` selects this mode for its own installs unless
+you explicitly set a bootstrap mode or already have a distribution vendor
+archive. Install the current `cargo-revendor` before using it:
+
+```sh
+cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked
+```
+
+Bootstrap packages only path dependencies, including their transitive path
+siblings, into uncompressed `src/rust/vendor/<name>-<version>/` directories.
+Cargo package resolves workspace inheritance. Registry and Git dependencies
+continue to resolve normally; this mode does not make an offline release
+artifact, generate source replacement, or compress `inst/vendor.tar.xz`.
+
+The source `Cargo.toml` stays byte-for-byte unchanged. Bootstrap prepares
+`.Cargo.toml.dev` and `.dev-bootstrap.rds` beside it. R CMD build runs cleanup
+inside its temporary copy, where the portable manifest is activated. Cleanup
+checks both the recorded origin path and source digest, so running cleanup in
+the checkout leaves its manifest alone and stale preparation fails clearly.
+Configure never rewrites either source manifest.
+
+Replaced dev output and staging files are retained under
+`src/rust/.dev-vendor-backup-*` for recovery. They are gitignored and excluded
+from package artifacts; remove unwanted backups with your usual trash utility.
+The current dev sidecars must reach R's build-copy cleanup and therefore are
+only gitignored. Cleanup consumes them before the artifact is sealed.
+
+Ordinary bootstrap calls still default to distribution mode. Unset the variable
+(or set it to `dist`) to produce `inst/vendor.tar.xz` with the existing full
+vendor/freeze workflow. Bootstrap retires prior dev staging into the same
+backup area before preparing that distribution artifact.
+
+Development bundles follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. Bootstrap never stages files in Git.
+
 ## See Also
 
 - [LINKING.md](LINKING.md): how miniextendr links to libR (engine vs package)
