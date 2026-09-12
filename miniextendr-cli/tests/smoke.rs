@@ -135,6 +135,7 @@ fn init_package_scaffolds_canonical_build_system() {
         "tools/config.guess",
         "tools/build-html-reference.R",
         "tools/lock-shape-check.R",
+        "tools/vendor-cache.R",
         ".Rbuildignore",
         ".gitignore",
         "R/smoke.pkg-package.R",
