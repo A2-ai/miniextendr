@@ -32,6 +32,7 @@
 
 mod cache;
 mod checksum;
+mod dev;
 mod manifest_guard;
 mod metadata;
 mod package;
@@ -164,6 +165,11 @@ struct Cli {
     /// Omit to preserve the system tar default.
     #[arg(long, requires = "compress", conflicts_with_all = ["verify", "local_only"], value_parser = clap::value_parser!(u8).range(0..=9))]
     compression_level: Option<u8>,
+
+    /// Prepare path dependencies and a separate portable development manifest.
+    /// The source Cargo.toml stays unchanged; existing output is backed up.
+    #[arg(long, conflicts_with_all = ["freeze", "strict_freeze", "compress", "verify", "external_only", "local_only", "stamp_lock", "source_root", "sync"])]
+    dev: bool,
 
     /// Blank .md files in vendor/ before compression
     #[arg(long)]
@@ -427,6 +433,10 @@ fn main() -> Result<()> {
                 .unwrap_or_else(|_| std::env::current_dir().unwrap().join(p))
         })
         .collect();
+
+    if cli.dev {
+        return dev::prepare(&manifest_path, &output, cli.allow_dirty, v);
+    }
 
     // Stamp-lock only: don't vendor; just reconstruct the git+url#sha source
     // attribution for framework crates in an already-resolved lock.

@@ -73,6 +73,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/rpkg/tools/bump-version.R"),
     tpl!("templates/rpkg/tools/detect-features.R"),
     tpl!("templates/rpkg/tools/lock-shape-check.R"),
+    tpl!("templates/rpkg/tools/dev-bootstrap.R"),
     tpl!("templates/rpkg/win.def.in"),
     // Monorepo template: workspace root + core crate.
     tpl!("templates/monorepo/Cargo.toml.tmpl"),
@@ -103,6 +104,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/monorepo/rpkg/stub.c"),
     tpl!("templates/monorepo/rpkg/tools/detect-features.R"),
     tpl!("templates/monorepo/rpkg/tools/lock-shape-check.R"),
+    tpl!("templates/monorepo/rpkg/tools/dev-bootstrap.R"),
     tpl!("templates/monorepo/rpkg/win.def.in"),
 ];
 
@@ -463,6 +465,12 @@ pub const RPKG_PLAN: &[PlanEntry] = &[
         template: "package.R",
         dest: Dest::PackageDoc,
         render: Render::Mustache,
+        exec: false,
+    },
+    PlanEntry {
+        template: "tools/dev-bootstrap.R",
+        dest: Dest::Path("tools/dev-bootstrap.R"),
+        render: Render::Verbatim,
         exec: false,
     },
     PlanEntry {
