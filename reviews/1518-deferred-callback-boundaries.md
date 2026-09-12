@@ -38,3 +38,16 @@ FFI-guard and worker-longjmp files, with GC stress enabled. This includes nested
 R error recovery, condition-handler re-entry, exiting handlers on SEXP results,
 `warn = 2`, repeated identical conditions, finalizer suppression, and the no-argument
 GC fixture. The worker suite also survived 2,000 longjmp/reuse cycles.
+
+Final review of `RCustomConnection::build` found another allocation window: it called
+open before rooting the SEXP returned by `R_new_custom_connection`. R source
+`src/main/connections.c` confirms that function unprotects the result before returning.
+Since open can now signal, the builder protects its connection until it returns. A
+regression forces GC from the open-condition handler; a no-argument fixture exercises
+open and close under the automatic GC sweep. An additional ALTREP test covers a
+queued-condition callback returning C NULL to request R's sum fallback.
+
+The first full vendored tarball check (before the connection-open follow-up) passed
+with 0 errors, 0 warnings and one CRAN incoming note: new submission and tarball size
+(24,698,775 bytes). Its full R tests and examples passed; GC stress was run separately
+in the targeted files. The final targeted run also passed the connection-open GC regression and the C NULL sum-fallback regression (124 deferred-condition expectations), plus the ALTREP, connection, FFI-guard and 2,000-cycle worker-longjmp suites.

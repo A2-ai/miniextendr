@@ -3336,3 +3336,21 @@ pub fn gc_stress_deferred_guard_result() -> miniextendr_api::SEXP {
 }
 
 // endregion
+
+// region: deferred connection open rooting (#1518)
+
+/// The builder must root its new connection while open() signals conditions.
+#[cfg(feature = "connections")]
+#[miniextendr(noexport)]
+pub fn gc_stress_deferred_connection_open() {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::{OwnedProtect, sys};
+    unsafe {
+        let connection =
+            OwnedProtect::new(crate::deferred_condition_tests::deferred_guard_connection());
+        let expr = OwnedProtect::new(RCall::new("close").arg(connection.get()).build());
+        sys::Rf_eval(expr.get(), sys::R_BaseEnv);
+    }
+}
+
+// endregion
