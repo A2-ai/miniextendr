@@ -93,7 +93,11 @@ pub(crate) fn configure(
     match kind {
         ConversionKind::To => {
             if marker.is_some() {
-                let target = wrap.target().to_owned();
+                let target = if wrap.target() == "Self" {
+                    crate::naming::ident_name(implementing_type)
+                } else {
+                    wrap.target().to_owned()
+                };
                 if attrs
                     .s7
                     .convert_to
@@ -121,6 +125,11 @@ pub(crate) fn configure(
             }
             if marker.is_some() {
                 let source = source_class(&params[0].ty).ok_or_else(|| error("ConvertFrom needs a named source class parameter, such as ExternalPtr<Source> or &Source"))?;
+                let source = if source == "Self" {
+                    crate::naming::ident_name(implementing_type)
+                } else {
+                    source
+                };
                 if attrs
                     .s7
                     .convert_from

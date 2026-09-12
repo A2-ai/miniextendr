@@ -16,7 +16,7 @@ error: WrapAs* must be closest to the named class type; put containers and visib
 10 | pub fn nested() -> miniextendr_api::WrapAsR6<Vec<i32>> { miniextendr_api::WrapAsR6(vec![]) }
    |                                              ^^^^^^^^
 
-error: WrapAs* markers are return-position only
+error: class return markers are return-position only
   --> tests/ui/fn_wrap_invalid.rs:13:24
    |
 13 | pub fn argument(value: miniextendr_api::WrapAsR6<i32>) -> i32 { value.0 }

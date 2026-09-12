@@ -6821,6 +6821,13 @@ R wrapper. The matching attribute is `#[miniextendr(wrap = "r6")]`.
 Both forms leave Rust-to-R value conversion to `T`; they only select the
 R-side wrapping expression. See `docs/MINIEXTENDR_ATTRIBUTE.md` for examples.
 
+`ConvertTo<T>` and `ConvertFrom<T>` additionally register an inherent S7
+method with `S7::convert`. `ConvertTo<T>` names the target payload;
+`ConvertFrom<Self>` infers the source from its static method's sole typed
+parameter. Both use the existing S7 class-name resolver, including registered
+R class renames, and have matching `s7(convert_to = "Target")` /
+`s7(convert_from = "Source")` attributes.
+
 Markers are recognized by their last path segment. Type aliases and renamed
 imports do not select wrapping. Put `Invisible`/`Visible` outside the whole
 return, and `Option`, `Result`, or `Vec` outside the class marker.
@@ -7621,6 +7628,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use crate::typed_list;`
 
 ### `pub use crate::with_r_thread;`
+
+### `pub use crate::wrap_as::ConvertFrom;`
+
+### `pub use crate::wrap_as::ConvertTo;`
 
 ### `pub use crate::wrap_as::WrapAsEnv;`
 
@@ -9256,6 +9267,10 @@ with [`RRng`]. Enable with `features = ["rand_distr"]`.
 ### `pub use worker::is_r_main_thread;`
 
 ### `pub use worker::with_r_thread;`
+
+### `pub use wrap_as::ConvertFrom;`
+
+### `pub use wrap_as::ConvertTo;`
 
 ### `pub use wrap_as::WrapAsEnv;`
 
@@ -23629,6 +23644,66 @@ Pre-extracted view of one `MX_TRAIT_DISPATCH` entry.
 - `concrete_tag`: `crate::abi::mx_tag`
 - `trait_tag`: `crate::abi::mx_tag`
 - `vtable_symbol`: `String`
+
+### `wrap_as::ConvertFrom`
+
+```rust
+pub struct ConvertFrom<T>
+```
+
+Return the enclosing S7 class from a static conversion method. Its sole typed source parameter determines the `s7(convert_from = "Source")` registration.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
+
+### `wrap_as::ConvertTo`
+
+```rust
+pub struct ConvertTo<T>
+```
+
+Return an S7 target class and register the inherent method with `S7::convert`. The equivalent attribute is `s7(convert_to = "Target")`.
+
+**Fields:**
+
+- `0`: `T`
+
+**Inherent associated items:**
+
+#### `into_inner`
+
+```rust
+fn into_inner(self: Self) -> T
+```
+
+Recover the Rust value.
+
+#### `new`
+
+```rust
+const fn new(value: T) -> Self
+```
+
+Wrap a value for an explicit R return class.
 
 ### `wrap_as::WrapAsEnv`
 

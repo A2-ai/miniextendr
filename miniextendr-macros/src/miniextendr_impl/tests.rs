@@ -4563,9 +4563,16 @@ fn s7_conversion_marker_and_attribute_spellings_emit_identical_r_wrappers() {
         );
         let typed = parse_impl(ClassSystem::S7, syn::parse_str(&typed).unwrap());
         let attributed = parse_impl(ClassSystem::S7, syn::parse_str(&attributed).unwrap());
+        let without_source_positions = |wrapper: String| {
+            wrapper
+                .lines()
+                .filter(|line| !line.starts_with("# Target::"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
         assert_eq!(
-            generate_s7_r_wrapper(&typed),
-            generate_s7_r_wrapper(&attributed)
+            without_source_positions(generate_s7_r_wrapper(&typed)),
+            without_source_positions(generate_s7_r_wrapper(&attributed))
         );
         assert!(
             generate_s7_r_wrapper(&typed)
@@ -4589,4 +4596,21 @@ fn convert_from_accepts_a_named_enclosing_return_and_borrowed_source() {
         Some("Source")
     );
     assert!(generate_s7_r_wrapper(&parsed).contains("Target(.ptr = .val)"));
+}
+
+#[test]
+fn conversion_markers_resolve_self_in_class_references() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn identity(&self) -> ConvertTo<Self> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(
+        parsed.methods[0].method_attrs.s7.convert_to.as_deref(),
+        Some("Target")
+    );
+    assert!(!generate_s7_r_wrapper(&parsed).contains(".__MX_CLASS_REF_Self__"));
 }
