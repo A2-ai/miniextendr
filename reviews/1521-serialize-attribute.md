@@ -34,3 +34,10 @@ The rooting helper lives in `gc_protect`, not `gc`; corrected the initial fixtur
 The adjacent trait tests use internal fixtures; running `test_file` without
 `package = "miniextendr"` hid those names. The targeted runner now requests the
 same package test environment as the normal suite.
+
+The built-tarball check found a real Env documentation generator bug: when
+`@examples` was the last method tag, the appended `\describe` parameter prose
+stayed inside the code block, producing an invalid Rd file and R examples.
+`MethodDocBuilder` now starts `@details` before appended parameters after
+`@examples` or `@examplesIf`. A shared-builder regression and the installed
+constructor example cover the fix.
