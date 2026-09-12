@@ -109,7 +109,8 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
   withr::local_envvar(c(
     R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
     CARGO_PROFILE = "dev", CARGO_FEATURES = "", CARGO_BUILD_TARGET = NA,
-    CARGO_TARGET_DIR = target, VENDOR_OUT = NA,
+    # Compile-count assertions parse text logs; CI otherwise forces ANSI colors.
+    CARGO_TERM_COLOR = "never", CARGO_TARGET_DIR = target, VENDOR_OUT = NA,
     MINIEXTENDR_FORCE_WRAPPER_GEN = NA, ROXYGEN_PKG = NA
   ))
   suppressMessages(create_miniextendr_package(pkg, open = FALSE, rstudio = FALSE))
