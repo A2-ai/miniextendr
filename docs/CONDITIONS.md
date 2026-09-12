@@ -388,6 +388,28 @@ conditions keep their queue order; nested calls (R code evaluated from Rust
 that calls another `#[miniextendr]` function) flush only what they queued
 themselves.
 
+**Warning placement.** Conditions queued before a failure still signal. If a
+body must not warn on failure, collect warning payloads locally and queue them only after its last
+fallible step (including any `?`). Moving a warning before a later `?` changes
+that behavior: returning `Err` does not cancel the queued warning.
+
+```rust
+use miniextendr_api::{defer_warning, miniextendr};
+
+#[miniextendr]
+pub fn parse_trimmed(text: String) -> Result<i32, std::num::ParseIntError> {
+    let trimmed = text.trim();
+    let value = trimmed.parse::<i32>()?;
+    if trimmed != text {
+        defer_warning!(class = "pkg_trimmed", "removed surrounding whitespace");
+    }
+    Ok(value)
+}
+```
+
+Here, `parse_trimmed(" bad ")` errors without warning;
+`parse_trimmed(" 42 ")` warns about the whitespace and returns `42L`.
+
 **Where it works.** Every `#[miniextendr]` function and method, including
 `#[miniextendr(worker)]` bodies (the queue is a `Mutex`: the push happens on
 the worker, the signal on R's main thread once the result is back), `rng`

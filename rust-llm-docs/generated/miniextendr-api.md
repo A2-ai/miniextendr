@@ -1298,6 +1298,30 @@ conditions keep their queue order. Nested calls (R code evaluated from
 Rust that calls back into another `#[miniextendr]` function) flush only
 what they queued themselves.
 
+#### Warning placement
+
+Conditions queued before a failure still signal. If a body must not warn on
+failure, collect warning payloads locally and queue them only after its last
+fallible step (including any `?`). Moving a warning before a later `?` changes
+that behavior: returning `Err` does not cancel the queued warning.
+
+```no_run
+use miniextendr_api::{defer_warning, miniextendr};
+
+#[miniextendr]
+pub fn parse_trimmed(text: String) -> Result<i32, std::num::ParseIntError> {
+    let trimmed = text.trim();
+    let value = trimmed.parse::<i32>()?;
+    if trimmed != text {
+        defer_warning!(class = "pkg_trimmed", "removed surrounding whitespace");
+    }
+    Ok(value)
+}
+```
+
+Here, parsing `" bad "` returns an error without a warning; parsing `" 42 "`
+queues the whitespace warning and returns `42`.
+
 #### Payloads
 
 [`defer_warning()`], [`defer_message()`] and [`defer_condition()`] take any
@@ -31974,6 +31998,9 @@ returns; the call still returns its value.
 [module docs](self) for the R-side behaviour and [`defer_warning!`](crate::defer_warning!)
 for the macro form.
 
+A later `Err` does not cancel this warning. To avoid warnings on failure,
+queue after the last fallible step; see [warning placement](self#warning-placement).
+
 ### `encoding::encoding_info`
 
 ```rust
@@ -42531,6 +42558,9 @@ vector, most specific first), optional `data = …` (a pair, a bracketed
 list of pairs, or `{ name = value }` sugar), then the `format!` message.
 For a typed payload use [`crate::defer_warning()`] with a
 `#[derive(RConditionError)]` type.
+
+A later `Err` does not cancel this warning. To avoid warnings on failure,
+queue after the last fallible step; see [warning placement](crate::deferred_condition#warning-placement).
 
 ```ignore
 use miniextendr_api::defer_warning;
