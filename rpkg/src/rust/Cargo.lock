@@ -2047,7 +2047,7 @@ dependencies = [
 [[package]]
 name = "miniextendr-api"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#9ee92487bdf7f3b0733089c78e2e377cc797a072"
+source = "git+https://github.com/A2-ai/miniextendr#4714ece760e6dc07f0b0da909abae999179ee235"
 dependencies = [
  "aho-corasick",
  "arrow-array",
@@ -2098,7 +2098,7 @@ dependencies = [
 [[package]]
 name = "miniextendr-lint"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#9ee92487bdf7f3b0733089c78e2e377cc797a072"
+source = "git+https://github.com/A2-ai/miniextendr#4714ece760e6dc07f0b0da909abae999179ee235"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2108,7 +2108,7 @@ dependencies = [
 [[package]]
 name = "miniextendr-macros"
 version = "0.1.0"
-source = "git+https://github.com/A2-ai/miniextendr#9ee92487bdf7f3b0733089c78e2e377cc797a072"
+source = "git+https://github.com/A2-ai/miniextendr#4714ece760e6dc07f0b0da909abae999179ee235"
 dependencies = [
  "proc-macro2",
  "quote",
