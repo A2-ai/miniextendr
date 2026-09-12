@@ -881,6 +881,21 @@ The same placeholder (`.__MX_CLASS_REF_<Type>__`) powers R6 `inherit =` and S7
 `convert_from` / `convert_to`. Unregistered names produce a compile-time warning
 and fall through to the bare identifier - which will fail at R load.
 
+### Explicit Return Class Systems
+
+A return can choose its class system directly with `WrapAsR6<Board>` or
+`#[miniextendr(wrap = "r6")]` on a function or method returning `Board`.
+The corresponding markers for S7, S4, S3, Env, and Vctrs use the same shared
+wrapping decision. For example, an Env factory returning an R6 board emits
+`Board$new(.ptr = .val)`, and a trait factory can use `WrapAsR6<Self>`.
+
+Explicit wrapping uses the final Rust type-name segment as the R class name
+(`Self` uses the implementing class name), without a registry lookup. The
+selected system and name must match the target's R definition. See
+[explicit cross-class return wrapping](MINIEXTENDR_ATTRIBUTE.md#explicit-cross-class-return-wrapping)
+for both spellings, container/error behavior, visibility composition, and
+vctrs class preservation.
+
 ### S7 Property Class Constraints
 
 When an S7 `getter` method returns another `#[miniextendr]` type, the generated
