@@ -32,6 +32,9 @@
 # Vendor compression stamp file (dev-only)
 ^inst/\.vendor\.tar\.xz\.cksum$
 
+# Pre-freeze manifest snapshot (dev-only recovery aid, #1509)
+^src/rust/\.Cargo\.toml\.prefreeze$
+
 # Vendor directory (ships via inst/vendor.tar.xz, not as loose files)
 ^vendor$
 

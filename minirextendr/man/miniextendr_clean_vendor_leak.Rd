@@ -11,8 +11,9 @@ miniextendr_clean_vendor_leak(path = ".")
 directory.}
 }
 \value{
-Invisibly returns \code{TRUE} if the file was removed, \code{FALSE} if it
-was already absent.
+Invisibly returns \code{TRUE} if a leaked tarball was removed or the
+manifest was restored from its snapshot, \code{FALSE} if there was nothing to
+clean.
 }
 \description{
 \code{inst/vendor.tar.xz} is the single signal that flips \code{./configure} into
@@ -28,11 +29,16 @@ when a prior \verb{R CMD build} or check run leaves the file behind in your
 source tree.
 
 Call this function after any unexpected tarball-mode install to restore
-normal source-mode dev iteration. If \code{Cargo.toml} still contains paths into
-\verb{vendor/} (for example after \verb{cargo revendor --freeze}), the affected
-dependency and patch entries are reported with repair instructions. Restore
-their original source paths from before freezing; those paths cannot be
-reconstructed from a frozen manifest alone.
+normal source-mode dev iteration. If \code{src/rust/Cargo.toml} is still frozen
+(its dependency and patch entries point into \verb{vendor/}, as written by
+\verb{cargo revendor --freeze}) and the pre-freeze snapshot that cargo-revendor
+leaves next to it, \code{src/rust/.Cargo.toml.prefreeze}, is present, the
+manifest is restored from that snapshot byte for byte and the snapshot is
+removed. Without a snapshot the affected entries are reported with repair
+instructions: their original source paths cannot be reconstructed from a
+frozen manifest alone. \code{Cargo.lock} is not touched; cargo re-resolves it on
+the next build (or restore it from version control together with the
+manifest).
 }
 \seealso{
 \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} to create the tarball intentionally,

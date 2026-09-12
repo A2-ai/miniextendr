@@ -202,10 +202,21 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   # crates.io deps).
   rust_manifest <- fs::path(pkg_path, "src", "rust", "Cargo.toml")
   rust_lock <- fs::path(pkg_path, "src", "rust", "Cargo.lock")
+  rust_prefreeze <- fs::path(pkg_path, "src", "rust", ".Cargo.toml.prefreeze")
   vendor_tarball <- fs::path(pkg_path, "inst", "vendor.tar.xz")
   snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
   snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
   tarball_preexisting <- fs::file_exists(vendor_tarball)
+  # A snapshot left by an earlier, never-restored freeze (#1509) means the
+  # manifest we just read is the FROZEN one; restoring it later would only
+  # re-freeze. Point at the fix and leave that snapshot alone.
+  prefreeze_preexisting <- fs::file_exists(rust_prefreeze)
+  if (prefreeze_preexisting) {
+    cli::cli_warn(c(
+      "Pre-existing {.path src/rust/.Cargo.toml.prefreeze}: an earlier {.code cargo revendor --freeze} was never restored.",
+      "i" = "Run {.code miniextendr_clean_vendor_leak()} first to restore {.path src/rust/Cargo.toml} from that snapshot."
+    ))
+  }
   if (tarball_preexisting) {
     # A pre-existing latch is never deleted mid-build (it may be a deliberate
     # release-prep artifact) -- but with it in place every step runs in
@@ -221,7 +232,14 @@ miniextendr_build <- function(path = ".", install = TRUE) {
     ))
   }
   restore_dev_tree <- function() {
-    if (!is.null(snap_manifest)) writeLines(snap_manifest, rust_manifest)
+    if (!is.null(snap_manifest)) {
+      writeLines(snap_manifest, rust_manifest)
+      # bootstrap.R's `cargo revendor --freeze` left a pre-freeze snapshot for
+      # out-of-process recovery (#1509); the in-memory snapshot just written
+      # back is authoritative, so a snapshot created during this build is now
+      # stale. One that pre-existed is somebody else's recovery aid: keep it.
+      if (!prefreeze_preexisting && fs::file_exists(rust_prefreeze)) fs::file_delete(rust_prefreeze)
+    }
     if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
     if (!tarball_preexisting && fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
     invisible(TRUE)
@@ -684,7 +702,8 @@ miniextendr_vendor <- function(path = ".") {
     "i" = "Run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
     " " = "{.code unlink(\"inst/vendor.tar.xz\")}",
     "i" = "If your package has a local path-dependency sibling, vendoring also froze {.path src/rust/Cargo.toml} (and {.path Cargo.lock}) to resolve against {.path vendor/}. After the build, restore source shape:",
-    " " = "{.code git checkout src/rust/Cargo.toml src/rust/Cargo.lock}"
+    " " = "{.code miniextendr_clean_vendor_leak()} (restores {.path Cargo.toml} from the {.path src/rust/.Cargo.toml.prefreeze} snapshot cargo-revendor left; cargo re-resolves {.path Cargo.lock} on the next build)",
+    " " = "or {.code git checkout src/rust/Cargo.toml src/rust/Cargo.lock}"
   ))
 
   invisible(tarball)

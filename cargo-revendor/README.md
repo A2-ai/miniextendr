@@ -225,6 +225,15 @@ test fixtures sometimes carry extra licenses.
 | `--freeze` | Rewrite `Cargo.toml` so every source resolves from `vendor/`. See dedicated section below. |
 | `--strict-freeze` | Fail fast if any external `git = "..."` dependency would survive the freeze pass. Requires `--freeze`. Useful as a CI guard. |
 
+When the freeze changes the manifest, the original bytes are saved next to it
+as `.Cargo.toml.prefreeze` (never over an existing snapshot, so re-freezing a
+frozen manifest keeps the true pre-freeze copy). Nothing in cargo-revendor
+restores from it: the sealed tarball must carry the frozen shape. It exists
+so a later recovery step (`miniextendr_clean_vendor_leak()` in minirextendr,
+`just clean-vendor-leak` in the monorepo) can undo an interrupted build from
+disk; delete it once the manifest is restored, and keep it out of version
+control and out of the R tarball.
+
 ### Compression
 
 | Flag | Description |

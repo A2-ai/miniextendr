@@ -682,6 +682,13 @@ clean-vendor-leak:
     else
         echo "No tarball leak to clean."
     fi
+    # `cargo revendor --freeze` leaves the pre-freeze manifest next to Cargo.toml
+    # (#1509); rpkg has no path-dependency sibling, so this only fires when a
+    # freeze actually rewrote the manifest.
+    if [ -f rpkg/src/rust/.Cargo.toml.prefreeze ]; then
+        mv rpkg/src/rust/.Cargo.toml.prefreeze rpkg/src/rust/Cargo.toml
+        echo "Restored rpkg/src/rust/Cargo.toml from its pre-freeze snapshot."
+    fi
 
 # Internal: abort if rpkg/inst/vendor.tar.xz is present.
 # Used as a dep by dev-consume recipes (rcmdinstall, devtools-test,

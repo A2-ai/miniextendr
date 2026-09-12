@@ -87,3 +87,59 @@ test_that("cleanup reports frozen entries even when the tarball is already absen
   expect_length(reported, 2L)
   expect_identical(readLines(manifest), original)
 })
+
+test_that("cleanup restores a frozen manifest byte for byte from the pre-freeze snapshot", {
+  root <- make_minimal_project()
+  withr::defer(unlink(root, recursive = TRUE))
+  rust <- file.path(root, "src", "rust")
+  dir.create(rust, recursive = TRUE)
+  manifest <- file.path(rust, "Cargo.toml")
+  sidecar <- file.path(rust, ".Cargo.toml.prefreeze")
+  # CRLF, odd spacing and a comment: the restore must not normalise anything.
+  original <- charToRaw(paste0(
+    '[package]\r\nname = "fixture"\r\n\r\n',
+    '[dependencies]\r\ncore   = { path = "../../../core" }  # sibling\r\n'
+  ))
+  writeBin(original, sidecar)
+  writeLines(c(
+    '[package]', 'name = "fixture"', '',
+    '[dependencies]', 'core = { path = "../../vendor/core", version = "*" }', '',
+    '[patch.crates-io]', 'core = { path = "../../vendor/core" }'
+  ), manifest)
+  expect_length(minirextendr:::frozen_manifest_entries(root), 2L)
+
+  expect_true(miniextendr_clean_vendor_leak(root))
+  expect_identical(readBin(manifest, "raw", n = 1e6), original)
+  expect_false(file.exists(sidecar))
+  expect_length(minirextendr:::frozen_manifest_entries(root), 0L)
+
+  # Nothing left to clean.
+  expect_false(miniextendr_clean_vendor_leak(root))
+})
+
+test_that("a stale pre-freeze snapshot next to a restored manifest is removed", {
+  root <- make_minimal_project()
+  withr::defer(unlink(root, recursive = TRUE))
+  rust <- file.path(root, "src", "rust")
+  dir.create(rust, recursive = TRUE)
+  manifest <- file.path(rust, "Cargo.toml")
+  sidecar <- file.path(rust, ".Cargo.toml.prefreeze")
+  original <- c('[dependencies]', 'core = { path = "../../../core" }')
+  writeLines(original, manifest)
+  writeLines(c('[dependencies]', 'core = { path = "../../../elsewhere" }'), sidecar)
+
+  expect_false(miniextendr_clean_vendor_leak(root))
+  expect_false(file.exists(sidecar))
+  expect_identical(readLines(manifest), original)
+})
+
+test_that("the frozen-manifest report points at the snapshot when one exists", {
+  entries <- list(list(section = "dependencies", crate = "core", path = "../../vendor/core"))
+  report <- function(snapshot) {
+    # One string; cli wraps alerts at the console width.
+    paste(cli::cli_fmt(minirextendr:::report_frozen_manifest(entries, snapshot = snapshot)), collapse = " ")
+  }
+  expect_match(report(TRUE), "miniextendr_clean_vendor_leak()", fixed = TRUE)
+  expect_no_match(report(TRUE), "no\\s+pre-freeze\\s+snapshot")
+  expect_match(report(FALSE), "no\\s+pre-freeze\\s+snapshot")
+})
