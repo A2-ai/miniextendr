@@ -135,6 +135,7 @@ fn init_package_scaffolds_canonical_build_system() {
         "inst/include/mx_abi.h",
         "tools/config.guess",
         "tools/lock-shape-check.R",
+        "tools/vendor-cache.R",
         ".Rbuildignore",
         ".gitignore",
         "miniextendr.yml",

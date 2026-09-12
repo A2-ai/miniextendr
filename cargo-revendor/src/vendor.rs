@@ -1013,7 +1013,10 @@ pub fn freeze_manifest(
         manifest_path.parent().context("manifest has no parent")?,
     );
 
-    // Step 1: Rewrite manifest-declared path deps to vendor/ path deps.
+    // Step 1: Resolve manifest-declared path deps through the vendor patch table.
+    // Keep their source location in one place: a direct path on the dependency
+    // would bypass configure's absolute cache patch and make every extracted
+    // tarball a different Cargo package ID (#1513).
     //
     // Only deps the manifest itself declares as a path dependency
     // (`foo = { path = "..." }`) are rewritten. A dep declared `git = "..."`
@@ -1042,7 +1045,7 @@ pub fn freeze_manifest(
                     .find(|pkg| pkg.name == dependency_package_name(alias.get(), dep))
                     && dep_declares_path(dep)
                 {
-                    rewrite_dep_to_vendor(dep, &pkg.name, &vendor_rel);
+                    rewrite_dep_for_vendor_patch(dep);
                     frozen_path_deps.insert(pkg.name.clone());
                 }
             }
@@ -1207,37 +1210,13 @@ pub(crate) fn dependency_package_name<'a>(alias: &'a str, dep: &'a toml_edit::It
         .unwrap_or(alias)
 }
 
-/// Rewrite a dependency entry to point at vendor/
-fn rewrite_dep_to_vendor(dep: &mut toml_edit::Item, name: &str, vendor_rel: &str) {
-    let path_val = format!("{}/{}", vendor_rel, name);
-    match dep {
-        toml_edit::Item::Value(toml_edit::Value::InlineTable(table)) => {
-            table.remove("git");
-            table.remove("branch");
-            table.remove("tag");
-            table.remove("rev");
-            if !table.contains_key("version") {
-                table.insert("version", toml_edit::value("*").into_value().unwrap());
-            }
-            table.insert("path", toml_edit::value(&path_val).into_value().unwrap());
-        }
-        toml_edit::Item::Table(table) => {
-            table.remove("git");
-            table.remove("branch");
-            table.remove("tag");
-            table.remove("rev");
-            if !table.contains_key("version") {
-                table.insert("version", toml_edit::value("*"));
-            }
-            table.insert("path", toml_edit::value(&path_val));
-        }
-        toml_edit::Item::Value(toml_edit::Value::String(_)) => {
-            let mut inline = toml_edit::InlineTable::new();
-            inline.insert("version", toml_edit::value("*").into_value().unwrap());
-            inline.insert("path", toml_edit::value(&path_val).into_value().unwrap());
-            *dep = toml_edit::Item::Value(toml_edit::Value::InlineTable(inline));
-        }
-        _ => {}
+/// Keep dependency options and aliases while resolving through `[patch.crates-io]`.
+/// The caller has already established that this entry is a path dependency.
+fn rewrite_dep_for_vendor_patch(dep: &mut toml_edit::Item) {
+    let table = dep.as_table_like_mut().expect("path dependency is a table");
+    table.remove("path");
+    if !table.contains_key("version") {
+        table.insert("version", toml_edit::value("*"));
     }
 }
 
@@ -1841,7 +1820,7 @@ path = "../../../core"
             ("build-dependencies", "build_core"),
         ] {
             assert_eq!(frozen[section][alias]["package"].as_str(), Some("core"));
-            assert_eq!(frozen[section][alias]["path"].as_str(), Some("../core"));
+            assert!(frozen[section][alias].get("path").is_none());
             assert_eq!(frozen[section][alias]["version"].as_str(), Some("*"));
         }
         assert_eq!(
