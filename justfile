@@ -1152,6 +1152,7 @@ templates-sources:
     rpkg/tools/build-html-reference.R	rpkg/tools/build-html-reference.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/tools/vendor-cache.R	rpkg/tools/vendor-cache.R
+    rpkg/tools/dev-bootstrap.R	rpkg/tools/dev-bootstrap.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
     monorepo/gitattributes	rpkg/.gitattributes
@@ -1174,6 +1175,7 @@ templates-sources:
     monorepo/rpkg/tools/build-html-reference.R	rpkg/tools/build-html-reference.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     monorepo/rpkg/tools/vendor-cache.R	rpkg/tools/vendor-cache.R
+    monorepo/rpkg/tools/dev-bootstrap.R	rpkg/tools/dev-bootstrap.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF
 

@@ -207,6 +207,11 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
   snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
   tarball_preexisting <- fs::file_exists(vendor_tarball)
+  # The development loop needs portable path siblings, not a distribution
+  # vendor archive. Honor an explicit caller mode or pre-existing release latch.
+  if (!tarball_preexisting && !nzchar(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE"))) {
+    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"))
+  }
   # A snapshot left by an earlier, never-restored freeze (#1509) means the
   # manifest we just read is the FROZEN one; restoring it later would only
   # re-freeze. Point at the fix and leave that snapshot alone.
