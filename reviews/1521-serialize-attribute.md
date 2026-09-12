@@ -30,3 +30,7 @@ now constructs the derive-generated `__mx_wrap_serializehost` object and uses
 `ccall::mx_wrap`, matching the producer-package tests, and roots it for the
 whole View call. This exercises the concrete serialized vtable shim.
 The rooting helper lives in `gc_protect`, not `gc`; corrected the initial fixture import after Clippy caught it.
+
+The adjacent trait tests use internal fixtures; running `test_file` without
+`package = "miniextendr"` hid those names. The targeted runner now requests the
+same package test environment as the normal suite.
