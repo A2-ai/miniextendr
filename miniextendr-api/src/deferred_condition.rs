@@ -76,10 +76,15 @@
 //! push from the worker thread; the signalling always happens on R's main
 //! thread after the worker result is back. Every generated `.Call` entry
 //! point and every trait-ABI vtable shim flushes what was queued inside it.
-//! Code that runs under no such boundary (ALTREP callbacks, finalizers) has
-//! its conditions signalled by the next boundary that completes in the same
-//! package; use the panicking macros or `error!` there (flushing at those
-//! guard sites is issue #1518).
+//! ALTREP `RUnwind` / `RustUnwind` callbacks and connection I/O callbacks also
+//! signal locally, with `conditionCall() = NULL`; raising guards use their
+//! explicit `call` argument. An R-origin error discards the abandoned queue.
+//!
+//! External-pointer finalizers and connection close/destroy/Drop callbacks
+//! suppress deferred conditions: R finalization removes the caller's handlers.
+//! No R signalling or delayed delivery is attempted from destructors guarded
+//! by `drop_catching_panic`. Unguarded raw FFI / `AltrepGuard::Unsafe` callbacks
+//! must not queue conditions; choose a guarded callback instead.
 
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
@@ -88,18 +93,24 @@ use crate::{SEXP, SexpExt};
 
 // region: Queue
 
-/// Conditions queued during the current `.Call` (and any enclosing ones).
+/// Conditions queued during the current guarded callback (and enclosing calls).
 ///
 /// A plain static rather than a thread-local so worker-thread pushes land in
-/// the same queue the main thread drains. R is single-threaded and the main
-/// thread blocks while a worker body runs, so the queue is never contended.
+/// the same queue the main thread drains. The mutex is released before any R
+/// signalling, so handlers can re-enter Rust without retaining the queue lock.
 static PENDING: Mutex<Vec<RCondition>> = Mutex::new(Vec::new());
+
+std::thread_local! {
+    // Suppression belongs to this destructor's thread, not unrelated worker
+    // threads that may still be queueing diagnostics during an R-thread visit.
+    static SUPPRESSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 fn pending() -> MutexGuard<'static, Vec<RCondition>> {
     PENDING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Queue a warning to be signalled when the current `#[miniextendr]` call
+/// Queue a warning to be signalled when the current guarded call or callback
 /// returns; the call still returns its value.
 ///
 /// `payload` supplies the message, the user classes (prepended to
@@ -115,7 +126,7 @@ pub fn defer_warning(payload: impl RConditionError) {
 }
 
 /// Queue a message (`message()`, muffled by `suppressMessages()`) to be
-/// emitted when the current `#[miniextendr]` call returns.
+/// emitted when the current guarded call or callback returns.
 ///
 /// Unlike [`crate::message!`], the payload's classes are honoured: they are
 /// layered in front of `rust_message` so handlers can dispatch on them.
@@ -128,7 +139,7 @@ pub fn defer_message(payload: impl RConditionError) {
 }
 
 /// Queue a plain condition (`signalCondition()`: silent without a handler)
-/// to be signalled when the current `#[miniextendr]` call returns.
+/// to be signalled when the current guarded call or callback returns.
 pub fn defer_condition(payload: impl RConditionError) {
     defer(RCondition::Condition {
         message: payload.message(),
@@ -140,7 +151,9 @@ pub fn defer_condition(payload: impl RConditionError) {
 /// Queue an already-built condition payload. Used by the `defer_*!` macros.
 #[doc(hidden)]
 pub fn defer(condition: RCondition) {
-    pending().push(condition);
+    if SUPPRESSED.get() == 0 {
+        pending().push(condition);
+    }
 }
 
 /// The queue position at the start of a call. Pair with [`finish`].
@@ -154,11 +167,40 @@ pub fn mark() -> usize {
 /// below `mark` belong to enclosing calls and stay.
 #[doc(hidden)]
 pub fn take_pending(mark: usize) -> Vec<RCondition> {
+    // A nested guard inside a finalizer must not drain concurrent worker
+    // entries either: they belong to a later, signal-capable boundary.
+    if SUPPRESSED.get() != 0 {
+        return Vec::new();
+    }
     let mut queue = pending();
     if queue.len() <= mark {
         return Vec::new();
     }
     queue.split_off(mark)
+}
+
+/// Discard conditions whose Rust/R call was abandoned by an R longjmp.
+pub(crate) fn discard(mark: usize) {
+    if SUPPRESSED.get() == 0 {
+        pending().truncate(mark);
+    }
+}
+
+/// Finalization has no caller condition handlers. Suppress queues throughout
+/// the destructor, including any nested framework boundaries, without R calls.
+pub(crate) struct Suppress(std::marker::PhantomData<std::rc::Rc<()>>);
+
+impl Suppress {
+    pub(crate) fn new() -> Self {
+        SUPPRESSED.set(SUPPRESSED.get() + 1);
+        Self(std::marker::PhantomData)
+    }
+}
+
+impl Drop for Suppress {
+    fn drop(&mut self) {
+        SUPPRESSED.set(SUPPRESSED.get() - 1);
+    }
 }
 
 // endregion
@@ -204,12 +246,30 @@ pub unsafe fn finish(mark: usize, value: SEXP, call: Option<SEXP>) -> SEXP {
     if outcome.is_nil() { value } else { outcome }
 }
 
+/// Flush a non-raising callback's conditions after its Rust guard has finished.
+/// R objects in `value` must already be rooted (the same contract as `or_raise`).
+pub(crate) fn finish_guarded<R>(mark: usize, value: R) -> R {
+    let queued = take_pending(mark);
+    if queued.is_empty() {
+        return value;
+    }
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        move || {
+            // SAFETY: callback boundary is on R's main thread; this closure is
+            // inside R_UnwindProtect, including the owned result's destructor.
+            unsafe { signal_now(queued, None) };
+            value
+        },
+        None,
+    )
+}
+
 /// Materialise each queued condition and hand it to the R helper.
 ///
 /// # Safety
 ///
 /// Main thread, inside `R_UnwindProtect` (handlers may longjmp).
-unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
+pub(crate) unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
     let helper = raise_condition_helper();
     let call_sexp = call.unwrap_or(SEXP::nil());
     for condition in queued {
@@ -258,7 +318,7 @@ fn raise_condition_helper() -> SEXP {
 // region: Macros
 
 /// Queue an R warning with `rust_warning` class layering and return normally;
-/// the surrounding `#[miniextendr]` call signals it after its value is
+/// the surrounding guarded call or callback signals it after its value is
 /// computed.
 ///
 /// Same grammar as [`crate::warning!`]: optional `class = …` (one class or a
@@ -293,7 +353,7 @@ macro_rules! defer_warning {
 
 /// Queue an R message (`rust_message` layering, muffled by
 /// `suppressMessages()`) and return normally; emitted when the surrounding
-/// `#[miniextendr]` call returns.
+/// guarded call or callback returns.
 ///
 /// Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 /// `class = …` part is accepted and layered in front of `rust_message`.
@@ -311,7 +371,7 @@ macro_rules! defer_message {
 
 /// Queue a plain R condition (`rust_condition` layering, silent without a
 /// handler) and return normally; signalled when the surrounding
-/// `#[miniextendr]` call returns.
+/// guarded call or callback returns.
 ///
 /// Same grammar as [`crate::defer_warning!`]. Useful for progress or audit
 /// events a caller may opt into with `withCallingHandlers()`.
@@ -419,6 +479,66 @@ mod tests {
             assert_eq!(parts[0].1, "step 1");
             assert_eq!(parts[1].0, kind::CONDITION);
             assert_eq!(parts[1].2, vec!["member", "family"]);
+        });
+    }
+
+    #[test]
+    fn finalizer_suppression_nests_and_preserves_the_enclosing_queue() {
+        with_empty_queue(|| {
+            crate::defer_warning!("outer");
+            {
+                let _outer = Suppress::new();
+                crate::defer_warning!("finalizer");
+                {
+                    let _inner = Suppress::new();
+                    crate::defer_message!("nested finalizer");
+                }
+                crate::defer_condition!("still suppressed");
+            }
+            crate::defer_message!("after");
+            let messages: Vec<_> = take_pending(0)
+                .into_iter()
+                .map(|condition| condition.into_parts().1)
+                .collect();
+            assert_eq!(messages, ["outer", "after"]);
+        });
+    }
+
+    #[test]
+    fn finalizer_suppression_does_not_drop_another_threads_conditions() {
+        with_empty_queue(|| {
+            {
+                let _suppressed = Suppress::new();
+                std::thread::spawn(|| crate::defer_warning!("worker"))
+                    .join()
+                    .unwrap();
+                crate::defer_warning!("finalizer");
+                assert!(take_pending(0).is_empty());
+                discard(0);
+                assert_eq!(mark(), 1);
+            }
+            let remaining = take_pending(0);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(
+                remaining.into_iter().next().unwrap().into_parts().1,
+                "worker"
+            );
+        });
+    }
+
+    #[test]
+    fn abandoned_inner_queue_does_not_discard_outer_conditions() {
+        with_empty_queue(|| {
+            crate::defer_warning!("outer");
+            let inner = mark();
+            crate::defer_warning!("abandoned");
+            discard(inner);
+            let remaining = take_pending(0);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(
+                remaining.into_iter().next().unwrap().into_parts().1,
+                "outer"
+            );
         });
     }
 

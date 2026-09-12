@@ -232,3 +232,157 @@ impl DeferredCounter {
 }
 
 // endregion
+
+// region: Callback boundaries (#1518)
+
+/// ALTREP callbacks run directly from R, outside the constructor's .Call.
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(class = "DeferredGuardAltrep", manual)]
+pub struct DeferredGuardAltrep {
+    mode: i32,
+}
+
+impl miniextendr_api::altrep_data::AltrepLen for DeferredGuardAltrep {
+    fn len(&self) -> usize {
+        3
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for DeferredGuardAltrep {
+    fn elt(&self, i: usize) -> i32 {
+        defer_warning!(
+            class = "guard_warning",
+            data = { index = i32::try_from(i).unwrap() },
+            "callback warning"
+        );
+        defer_message!(class = "guard_message", "callback message");
+        match self.mode {
+            1 => rust_error!(class = "guard_error", "callback error"),
+            2 => panic!("callback panic"),
+            3 => unsafe {
+                let message = miniextendr_api::OwnedProtect::new(
+                    miniextendr_api::IntoR::into_sexp("R callback error"),
+                );
+                let expr = miniextendr_api::OwnedProtect::new(
+                    miniextendr_api::expression::RCall::new("stop")
+                        .arg(message.get())
+                        .build(),
+                );
+                miniextendr_api::sys::Rf_eval(expr.get(), miniextendr_api::sys::R_BaseEnv);
+            },
+            _ => {}
+        }
+        i32::try_from(i).unwrap() + 10
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        // Both entries must survive: deduplication would change queue semantics.
+        defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
+        defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
+        if self.mode == 4 { None } else { Some(33) }
+    }
+}
+
+/// Create an ALTREP whose element callback defers a warning and message.
+/// @param mode Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.
+#[miniextendr]
+pub fn deferred_guard_altrep(mode: i32) -> miniextendr_api::SEXP {
+    use miniextendr_api::IntoR;
+    DeferredGuardAltrep { mode }.into_sexp()
+}
+
+/// Check that a low-level raising guard signals before the enclosing .Call.
+/// @param panic_inner Whether the inner callback panics after queueing its warning.
+#[miniextendr]
+pub fn deferred_guard_nested(panic_inner: bool) -> i32 {
+    defer_condition!(class = "guard_outer", "outer");
+    miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise(
+        || {
+            defer_warning!(class = "guard_inner", "inner");
+            if panic_inner {
+                rust_error!(class = "guard_inner_error", "inner error");
+            }
+            7
+        },
+        None,
+    )
+}
+
+/// Number of unsignalled entries, including entries below this .Call's mark.
+#[miniextendr]
+pub fn deferred_pending_count() -> i32 {
+    i32::try_from(miniextendr_api::deferred_condition::mark()).unwrap()
+}
+
+static DEFERRED_FINALIZED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct DeferredFinalizer;
+
+impl Drop for DeferredFinalizer {
+    fn drop(&mut self) {
+        defer_warning!(class = "guard_finalizer", "must not escape finalization");
+        DEFERRED_FINALIZED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// An external pointer whose destructor attempts to queue a warning.
+#[miniextendr]
+pub fn deferred_finalizer_pointer() -> miniextendr_api::SEXP {
+    use miniextendr_api::IntoR;
+    miniextendr_api::ExternalPtr::new(DeferredFinalizer).into_sexp()
+}
+
+/// Number of completed deferred-warning finalizers.
+#[miniextendr]
+pub fn deferred_finalized_count() -> i32 {
+    DEFERRED_FINALIZED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(feature = "connections")]
+struct DeferredConnection;
+
+#[cfg(feature = "connections")]
+impl miniextendr_api::connection::RConnectionImpl for DeferredConnection {
+    fn open(&mut self) -> bool {
+        defer_condition!(class = "guard_connection_open", "connection open");
+        true
+    }
+
+    fn write(&mut self, bytes: &[u8]) -> usize {
+        defer_warning!(
+            class = "guard_connection",
+            data = { bytes = i32::try_from(bytes.len()).unwrap() },
+            "connection write"
+        );
+        bytes.len()
+    }
+    fn close(&mut self) {
+        defer_warning!("connection close must not escape finalization");
+    }
+    fn destroy(&mut self) {
+        defer_warning!("connection destroy must not escape finalization");
+    }
+}
+
+#[cfg(feature = "connections")]
+impl Drop for DeferredConnection {
+    fn drop(&mut self) {
+        defer_warning!("connection drop must not escape finalization");
+    }
+}
+
+/// Connection writes signal locally; close, destroy and Drop suppress queues.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn deferred_guard_connection() -> miniextendr_api::SEXP {
+    miniextendr_api::connection::RCustomConnection::new()
+        .description("deferred conditions")
+        .mode("wb")
+        .class_name("deferredConnection")
+        .can_write(true)
+        .text(false)
+        .build(DeferredConnection)
+}
+
+// endregion

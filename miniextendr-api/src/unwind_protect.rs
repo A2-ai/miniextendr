@@ -365,6 +365,7 @@ where
         }
     }
 
+    let deferred_mark = crate::deferred_condition::mark();
     unsafe {
         let token = get_continuation_token();
 
@@ -415,6 +416,9 @@ where
                     // R error - drain log records before re-raising so worker
                     // thread output is not lost even on error exits.
                     drain_log_queue_if_available();
+                    // No signalling while resuming an R error or exiting handler.
+                    // Conditions from the abandoned call must not survive it.
+                    crate::deferred_condition::discard(deferred_mark);
                     // Continue R's unwind (diverges, never returns)
                     R_ContinueUnwind(token);
                 } else {
@@ -454,6 +458,12 @@ where
 ///
 /// * `f` - The closure to execute
 /// * `call` - Optional R call SEXP for better error messages
+///
+/// Deferred conditions are signalled before the outcome is returned or raised.
+/// Any R objects held by the generic return value must remain rooted during
+/// signalling. Return an [`crate::OwnedProtect`] for a freshly allocated SEXP,
+/// then call its `get()` after this guard returns. ALTREP's SEXP trampolines do
+/// this automatically. An R-origin error discards this call's queued conditions.
 pub fn with_r_unwind_protect_or_raise<F, R>(f: F, call: Option<SEXP>) -> R
 where
     F: FnOnce() -> R,
@@ -486,7 +496,30 @@ pub(crate) fn with_r_unwind_protect_sourced<F, R>(
 where
     F: FnOnce() -> R,
 {
-    match run_r_unwind_protect(f) {
+    let deferred_mark = crate::deferred_condition::mark();
+    let outcome = run_r_unwind_protect(f);
+    // Preserve the original panic site before condition handlers can re-enter
+    // Rust and overwrite the panic hook's thread-local location.
+    let panic_message = outcome.as_ref().err().and_then(|payload| {
+        (!payload.is::<crate::condition::RCondition>())
+            .then(|| panic_message_with_location(payload.as_ref()))
+    });
+    let queued = crate::deferred_condition::take_pending(deferred_mark);
+    let (outcome, panic_message) = if queued.is_empty() {
+        (outcome, panic_message)
+    } else {
+        // Move both the outcome and saved panic text INTO this guard: an
+        // exiting R handler must drop all their Rust resources too.
+        // SEXP-bearing outcomes must own their roots.
+        match run_r_unwind_protect(move || {
+            unsafe { crate::deferred_condition::signal_now(queued, call) };
+            (outcome, panic_message)
+        }) {
+            Ok(outcome) => outcome,
+            Err(payload) => (Err(payload), None),
+        }
+    };
+    match outcome {
         Ok(result) => result,
         Err(payload) => {
             // region: RCondition recognition for the raising-variant path
@@ -534,7 +567,8 @@ where
                 // runs on the panicking thread for the ALTREP/FFI-guard path).
                 // Fire telemetry and raise via Approach 3 with rust_error class so
                 // tryCatch(rust_error = h, ...) matches even for plain panics.
-                let msg = panic_message_with_location(payload.as_ref());
+                let msg =
+                    panic_message.unwrap_or_else(|| panic_message_with_location(payload.as_ref()));
                 crate::panic_telemetry::fire(&msg, source);
                 unsafe { raise_rust_condition_via_stop(&msg, &[], call, None) }
             }

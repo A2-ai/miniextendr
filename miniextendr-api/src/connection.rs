@@ -679,6 +679,8 @@ unsafe extern "C-unwind" fn open_trampoline<T: RConnectionImpl>(conn: *mut Rconn
 
 /// Close callback trampoline.
 unsafe extern "C-unwind" fn close_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
+    // R also calls close from its connection finalizer, without caller handlers.
+    let _conditions = crate::deferred_condition::Suppress::new();
     catch_connection_panic((), || {
         let state = unsafe { get_state::<T>(conn) };
         state.close();
@@ -688,18 +690,18 @@ unsafe extern "C-unwind" fn close_trampoline<T: RConnectionImpl>(conn: *mut Rcon
 
 /// Destroy callback trampoline - drops the Rust state.
 unsafe extern "C-unwind" fn destroy_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
-    let private = unsafe { (*conn).private };
-    if !private.is_null() {
-        // Give the implementation a chance to do cleanup (panic-safe)
-        catch_connection_panic((), || {
-            let state = unsafe { &mut *private.cast::<T>() };
-            state.destroy();
-        });
-
-        // Always drop the boxed state, even if destroy() panicked
-        let _ = unsafe { Box::from_raw(private.cast::<T>()) };
-        unsafe { (*conn).private = std::ptr::null_mut() };
-    }
+    crate::externalptr::drop_catching_panic(|| {
+        let private = unsafe { (*conn).private };
+        if !private.is_null() {
+            // Finalization suppresses deferred conditions through destroy AND Drop.
+            catch_connection_panic((), || {
+                let state = unsafe { &mut *private.cast::<T>() };
+                state.destroy();
+            });
+            unsafe { (*conn).private = std::ptr::null_mut() };
+            drop(unsafe { Box::from_raw(private.cast::<T>()) });
+        }
+    });
 }
 
 /// Read callback trampoline.
@@ -1024,6 +1026,9 @@ impl RCustomConnection {
                 self.class_name.as_ptr(),
                 &mut conn_ptr,
             );
+            // open() can defer a condition; signalling may allocate or run GC
+            // before this connection is returned to an R stack frame.
+            let _connection_root = crate::OwnedProtect::new(sexp);
 
             if conn_ptr.is_null() {
                 // Clean up the boxed state
