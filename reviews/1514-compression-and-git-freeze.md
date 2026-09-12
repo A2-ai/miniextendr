@@ -41,3 +41,29 @@ three samples per mode: BSD tar median 5.22 s default versus 0.56 s at level 1,
 measured 4.53 s versus 0.10 s, 2,919,172 versus 3,473,312 bytes. These timings
 isolate compression on one unchanged vendor tree; they do not conflate a full
 vendor pass with the new cache-hit recompression path.
+
+The full suite also caught source_root_wins_over_patch_config: a configured
+Git patch makes Cargo metadata report a local path (source=None), which skipped
+the explicit source-root override applied to Git sources. Local dependencies
+now honor the same pre-prioritized overrides with version checking. The existing
+fixture distinguishes source-root and config copies by their actual source bytes.
+
+The external-only integration then exposed bootstrap stubs left in its output:
+the old cleanup removed only non-dependency stubs despite promising external
+sources only. Bootstrap now returns the exact newly seeded members; this pass
+rewrites and removes only those entries, preserving any existing local crate
+directories. This avoids broad deletion of caller-visible local-pass outputs.
+
+Inspection also clarified that regenerate_lockfile normally copies the already
+vendored lock; it does not always resolve the graph again. Documentation and
+comments therefore attribute offline verification to the empty-Cargo-home
+regression, not that lock-copy step.
+
+Final validation: just revendor-test-all passes 185 tests with none ignored.
+The regular suite (123 tests) also passes with GNU tar selected through PATH,
+including every compression preset/offline extraction case. just fmt and all
+six sequential Clippy gates pass: the repository recipe, three root CI feature
+configurations, full-feature rpkg, and standalone cargo-revendor, all with
+-D warnings. Final CLI validation rejects presets in verify/local-only modes,
+which do not perform full-pass compression; its regular suite and standalone
+Clippy were rerun successfully after that validation change.

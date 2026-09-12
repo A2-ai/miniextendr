@@ -239,8 +239,8 @@ control and out of the R tarball.
 | Flag | Description |
 |---|---|
 | `--compress <PATH>` | After vendoring, compress `vendor/` to a `.tar.xz` at the given path. Relative paths resolve from CWD. |
-| `--compression-level <0..9>` | XZ preset: 0 is fastest, 9 favors size. Requires `--compress`. Omit to retain the system tar default. |
-| `--blank-md` | Truncate `.md` files in `vendor/` to zero bytes before compression. Reduces tarball size by 5 to 15 percent on typical dep graphs. The on-disk `vendor/` directory is unaffected. |
+| `--compression-level <0..9>` | XZ preset: 0 is fastest, 9 favors size. Requires full mode and `--compress`. Omit to retain the system tar default. |
+| `--blank-md` | Truncate `.md` files in `vendor/` to zero bytes before compression. Reduces tarball size by 5 to 15 percent on typical dep graphs. Also updates the on-disk `vendor/` files and their checksums. Source-referenced Markdown is preserved. |
 
 ### Phase modes
 
@@ -335,9 +335,9 @@ contents and compression defaults; selecting faster compression does not
 silently trim shipped files.
 
 At `-v`, Git dependencies retained by freeze are reported as using vendored
-source replacement. This expected mode is informational. The subsequent
-offline lockfile regeneration still fails if dependencies cannot resolve.
-Cargo's emitted source mappings retain Git revision/branch/tag selectors;
+source replacement. This expected mode is informational. Cargo's emitted source mappings retain
+Git revision/branch/tag selectors, and a regression builds extracted archives
+offline with an empty Cargo home;
 `--strict-freeze` still rejects every remaining Git declaration.
 
 ## Caching

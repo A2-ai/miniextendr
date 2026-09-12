@@ -88,7 +88,8 @@ pub fn discover_workspace_members(workspace_root: &Path) -> Result<Vec<LocalPack
 /// where `--source-root` points at the workspace containing the git dep).
 /// Any git dep whose name matches an entry in `git_overrides` is treated as
 /// local and vendored from the local path rather than fetched from git.
-/// Pass `&[]` when `--source-root` is not in use.
+/// The same precedence applies when a config patch has already made the Git
+/// dependency look local in metadata. Pass `&[]` when no overrides are in use.
 ///
 /// Returns an error if a git dep matches a `git_overrides` entry by name but
 /// the resolved git version differs from the local version — a version mismatch
@@ -151,19 +152,24 @@ pub fn partition_packages(
             }).unwrap_or(false);
 
         if is_local {
-            local.push(LocalPackage {
+            // A discovered [patch] makes a Git dependency look like a local
+            // path in metadata. The already-prioritized explicit source root
+            // must still win over that inferred location.
+            let override_pkg =
+                resolve_source_override(&pkg.name, &pkg.version.to_string(), git_overrides)?;
+            local.push(override_pkg.cloned().unwrap_or_else(|| LocalPackage {
                 name: pkg.name.clone(),
                 version: pkg.version.to_string(),
                 path: pkg_dir.unwrap_or_default(),
                 manifest_path: pkg.manifest_path.clone().into(),
-            });
+            }));
         } else if pkg.source.is_some() {
             // Reclassify git deps that are available in the local source root.
             // With git-dep declarations (git = "https://..."), cargo metadata
             // sets source = "git+...", but --source-root can point at the local
             // checkout. Without this override, cargo-revendor would fetch from
             // github instead of using the local edit.
-            match resolve_git_override(&pkg.name, &pkg.version.to_string(), git_overrides)? {
+            match resolve_source_override(&pkg.name, &pkg.version.to_string(), git_overrides)? {
                 Some(override_pkg) => local.push(override_pkg.clone()),
                 None => external.push(pkg.name.clone()),
             }
@@ -173,29 +179,29 @@ pub fn partition_packages(
     Ok((local, external))
 }
 
-/// Look up a git dep in the override list, checking that versions match.
+/// Look up a dependency in the override list, checking that versions match.
 ///
-/// Returns `Ok(Some(pkg))` when the git dep is overridden by a local source-root
+/// Returns `Ok(Some(pkg))` when the dependency is overridden by a local source-root
 /// member of the same name **and** the same version. Returns `Ok(None)` when no
 /// override exists (dep should be treated as external). Returns `Err` when a
 /// name match is found but the versions differ — this indicates the local
 /// checkout is not the same code the lockfile pinned, which would produce a
 /// broken vendor tree.
-fn resolve_git_override<'a>(
+fn resolve_source_override<'a>(
     name: &str,
-    git_version: &str,
+    resolved_version: &str,
     overrides: &'a [LocalPackage],
 ) -> Result<Option<&'a LocalPackage>> {
     let Some(candidate) = overrides.iter().find(|o| o.name == name) else {
         return Ok(None);
     };
 
-    if candidate.version != git_version {
+    if candidate.version != resolved_version {
         bail!(
-            "git dep `{name}` resolves to v{git_version} in Cargo.lock \
+            "dependency `{name}` resolves to v{resolved_version} in Cargo.lock \
              but the local source-root has v{local} — versions must match \
              for `--source-root` override to be safe. \
-             Update the local crate or pin the git dep to a matching revision.",
+             Update the local crate or select a dependency with a matching version.",
             local = candidate.version,
         );
     }
@@ -726,13 +732,13 @@ mod tests {
 
     // endregion
 
-    // region: resolve_git_override tests
+    // region: resolve_source_override tests
 
     #[test]
     fn git_override_no_match_returns_none() {
         // Dep is not in overrides — should stay external.
         let overrides = vec![local_pkg("miniextendr-api", "0.5.0")];
-        let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
+        let result = resolve_source_override("serde", "1.0.0", &overrides).unwrap();
         assert!(
             result.is_none(),
             "unrelated dep should not match any override"
@@ -741,7 +747,7 @@ mod tests {
 
     #[test]
     fn git_override_empty_list_returns_none() {
-        let result = resolve_git_override("miniextendr-api", "0.5.0", &[]).unwrap();
+        let result = resolve_source_override("miniextendr-api", "0.5.0", &[]).unwrap();
         assert!(result.is_none(), "empty override list should never match");
     }
 
@@ -751,7 +757,7 @@ mod tests {
             local_pkg("miniextendr-api", "0.5.0"),
             local_pkg("miniextendr-macros", "0.5.0"),
         ];
-        let result = resolve_git_override("miniextendr-api", "0.5.0", &overrides)
+        let result = resolve_source_override("miniextendr-api", "0.5.0", &overrides)
             .unwrap()
             .expect("should match");
         assert_eq!(result.name, "miniextendr-api");
@@ -764,7 +770,7 @@ mod tests {
         // Silently vendoring would produce a build that doesn't match
         // the lockfile — cargo-revendor must refuse.
         let overrides = vec![local_pkg("miniextendr-api", "0.6.0")];
-        let err = resolve_git_override("miniextendr-api", "0.5.0", &overrides).unwrap_err();
+        let err = resolve_source_override("miniextendr-api", "0.5.0", &overrides).unwrap_err();
         let msg = err.to_string();
         assert!(
             msg.contains("miniextendr-api"),
@@ -789,7 +795,7 @@ mod tests {
             local_pkg("miniextendr-api", "0.6.0"),
         ];
         // Matches first entry — version must equal the git dep's version.
-        let result = resolve_git_override("miniextendr-api", "0.5.0", &overrides)
+        let result = resolve_source_override("miniextendr-api", "0.5.0", &overrides)
             .unwrap()
             .expect("should match first entry");
         assert_eq!(result.version, "0.5.0");
@@ -800,7 +806,7 @@ mod tests {
         // A dep named "serde" shouldn't match an override for "miniextendr-api"
         // even if versions happen to be equal.
         let overrides = vec![local_pkg("miniextendr-api", "1.0.0")];
-        let result = resolve_git_override("serde", "1.0.0", &overrides).unwrap();
+        let result = resolve_source_override("serde", "1.0.0", &overrides).unwrap();
         assert!(result.is_none());
     }
 

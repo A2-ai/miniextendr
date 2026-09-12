@@ -274,41 +274,51 @@ pub fn rewrite_local_path_deps(
             continue;
         }
 
-        let content = std::fs::read_to_string(&cargo_toml)?;
-        let mut doc: toml_edit::DocumentMut = content
-            .parse()
-            .with_context(|| format!("failed to parse {}", cargo_toml.display()))?;
+        rewrite_crate_path_deps(&cargo_toml, local_pkgs, v)?;
+    }
 
-        let mut changed = false;
+    Ok(())
+}
 
-        // Check [dependencies], [build-dependencies], [dev-dependencies]
-        for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
-            if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
-                for (alias, dep) in table.iter_mut() {
-                    if let Some(pkg) = local_pkgs
-                        .iter()
-                        .find(|pkg| pkg.name == dependency_package_name(alias.get(), dep))
-                        && add_path_to_dep(dep, &pkg.name)
-                    {
-                        changed = true;
-                        if v.info() {
-                            eprintln!(
-                                "  Rewrote {}.{} in {}/Cargo.toml",
-                                section,
-                                pkg.name,
-                                entry.file_name().to_string_lossy()
-                            );
-                        }
+/// Rewrite one crate manifest; callers select exactly which entries to change.
+pub fn rewrite_crate_path_deps(
+    cargo_toml: &Path,
+    local_pkgs: &[LocalPackage],
+    v: crate::Verbosity,
+) -> Result<()> {
+    let content = std::fs::read_to_string(cargo_toml)?;
+    let mut doc: toml_edit::DocumentMut = content
+        .parse()
+        .with_context(|| format!("failed to parse {}", cargo_toml.display()))?;
+
+    let mut changed = false;
+
+    // Check [dependencies], [build-dependencies], [dev-dependencies]
+    for section in &["dependencies", "build-dependencies", "dev-dependencies"] {
+        if let Some(table) = doc.get_mut(section).and_then(|v| v.as_table_mut()) {
+            for (alias, dep) in table.iter_mut() {
+                if let Some(pkg) = local_pkgs
+                    .iter()
+                    .find(|pkg| pkg.name == dependency_package_name(alias.get(), dep))
+                    && add_path_to_dep(dep, &pkg.name)
+                {
+                    changed = true;
+                    if v.info() {
+                        eprintln!(
+                            "  Rewrote {}.{} in {}/Cargo.toml",
+                            section,
+                            pkg.name,
+                            cargo_toml.parent().unwrap().display()
+                        );
                     }
                 }
             }
         }
-
-        if changed {
-            std::fs::write(&cargo_toml, doc.to_string())?;
-        }
     }
 
+    if changed {
+        std::fs::write(cargo_toml, doc.to_string())?;
+    }
     Ok(())
 }
 
@@ -1075,8 +1085,8 @@ pub fn freeze_manifest(
     // entries. These can't be resolved from `vendor/` by the frozen manifest
     // alone; they rely on `.cargo/config.toml` source replacement for offline
     // builds. `--strict-freeze` converts this into a hard error; otherwise
-    // report the designed source-replacement mode at -v. regenerate_lockfile
-    // subsequently verifies that the complete frozen graph resolves offline.
+    // report the designed source-replacement mode at -v. Clean-cache offline
+    // builds verify the emitted replacement mappings in the regression suite.
     let remaining_git = collect_remaining_git_deps(&doc);
     if !remaining_git.is_empty() {
         if strict {

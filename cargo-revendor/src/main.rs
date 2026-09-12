@@ -160,9 +160,9 @@ struct Cli {
     #[arg(long)]
     compress: Option<PathBuf>,
 
-    /// XZ compression level (0 fastest, 9 smallest); requires --compress.
+    /// XZ compression level (0 fastest, 9 smallest); requires full mode and --compress.
     /// Omit to preserve the system tar default.
-    #[arg(long, requires = "compress", value_parser = clap::value_parser!(u8).range(0..=9))]
+    #[arg(long, requires = "compress", conflicts_with_all = ["verify", "local_only"], value_parser = clap::value_parser!(u8).range(0..=9))]
     compression_level: Option<u8>,
 
     /// Blank .md files in vendor/ before compression
@@ -931,9 +931,13 @@ fn run_external_only(
     // resolve any frozen path = "../../vendor/<name>" entries in Cargo.toml.
     // After metadata, we know the actual local_pkgs subset; the extra stubs
     // (workspace members that aren't rpkg deps) are cleaned up below.
-    if !source_root_members.is_empty() {
-        bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
-        vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
+    let seeded = bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
+    for pkg in &seeded {
+        vendor::rewrite_crate_path_deps(
+            &output.join(&pkg.name).join("Cargo.toml"),
+            &source_root_members,
+            v,
+        )?;
     }
 
     // Step 1b: Load metadata; derive local and patch package lists.
@@ -996,27 +1000,12 @@ fn run_external_only(
         eprintln!("  Merged external deps into {}", output.display());
     }
 
-    // Step 8.5: Remove ALL bootstrap stubs from output.
-    // bootstrap_vendor_from_source_root seeds ALL workspace members so that
-    // cargo metadata can resolve frozen path deps. After metadata resolution
-    // we know which subset are actual deps (local_pkgs). Non-dep members
-    // (e.g. bench/cli/engine siblings) are only ever stubs and must not
-    // appear in the external-only output.
-    let non_dep_members: Vec<_> = patch_pkgs
-        .iter()
-        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
-        .collect();
-    for pkg in &non_dep_members {
-        for dir_name in &[pkg.name.clone(), format!("{}-{}", pkg.name, pkg.version)] {
-            let p = output.join(dir_name);
-            if p.is_dir() {
-                if v.debug() {
-                    eprintln!("  --external-only: removing local stub {dir_name} from output");
-                }
-                std::fs::remove_dir_all(&p)
-                    .with_context(|| format!("failed to remove non-dep stub {}", p.display()))?;
-            }
-        }
+    // Step 8.5: Remove only stubs created by this invocation. Existing local
+    // crate directories belong to the local pass and must remain untouched.
+    for pkg in &seeded {
+        let path = output.join(&pkg.name);
+        std::fs::remove_dir_all(&path)
+            .with_context(|| format!("failed to remove bootstrap stub {}", path.display()))?;
     }
 
     // Step 9: Generate .cargo/config.toml (rescans all of output, so local
@@ -1485,8 +1474,8 @@ fn bootstrap_vendor_from_source_root(
     vendor: &std::path::Path,
     source_root_members: &[metadata::LocalPackage],
     v: crate::Verbosity,
-) -> Result<()> {
-    let mut seeded = 0usize;
+) -> Result<Vec<metadata::LocalPackage>> {
+    let mut seeded = Vec::new();
     for pkg in source_root_members {
         let dir = vendor.join(&pkg.name);
         if dir.join("Cargo.toml").is_file() {
@@ -1516,14 +1505,15 @@ fn bootstrap_vendor_from_source_root(
                 dir.display()
             )
         })?;
-        seeded += 1;
+        seeded.push(pkg.clone());
     }
-    if v.info() && seeded > 0 {
+    if v.info() && !seeded.is_empty() {
         eprintln!(
-            "  bootstrapped {seeded} workspace crate(s) into vendor/ so metadata can resolve"
+            "  bootstrapped {} workspace crate(s) into vendor/ so metadata can resolve",
+            seeded.len()
         );
     }
-    Ok(())
+    Ok(seeded)
 }
 
 // region: unit tests
@@ -1585,6 +1575,20 @@ version = "0.1.0"
         }
         for args in [
             vec!["--compression-level", "1"],
+            vec![
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                "1",
+                "--verify",
+            ],
+            vec![
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                "1",
+                "--local-only",
+            ],
             vec!["--compress", "vendor.tar.xz", "--compression-level", "10"],
             vec!["--compress", "vendor.tar.xz", "--compression-level", "-1"],
             vec!["--compress", "vendor.tar.xz", "--compression-level", "fast"],
