@@ -31,7 +31,10 @@ Cargo features and profile. It excludes generated `wasm_registry.rs` and build
 output directories. All recorded paths are relative to the package, so copying
 the package or resetting its timestamps does not invalidate the record.
 
-The native tarball fast path requires a matching record. Missing, corrupt, or
+The native tarball fast path and the source-mode roxygen reuse optimization
+require a matching record. This lets `minirextendr_build()` recover from a
+deferred stale-tarball failure: its documentation step regenerates changed
+source wrappers before reconciling NAMESPACE. Missing, corrupt, or
 mismatched records trigger generation from the freshly linked library.
 Vendoring can rewrite Cargo files; those changes also require verification,
 even when the resulting wrappers are identical. If the existing R wrapper

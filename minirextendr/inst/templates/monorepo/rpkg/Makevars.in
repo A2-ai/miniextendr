@@ -155,8 +155,9 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 #             && force-document), so re-deriving them mid-document is redundant
 #             work (Rscript + dyn.load of the full .so). Name-match against
 #             @PACKAGE_NAME@ so documenting some OTHER package never suppresses
-#             a legitimate wrapper-gen here, and keep the #1022 [ -s ] guard so
-#             a missing/empty wrappers.R still falls back to full generation.
+#             a legitimate wrapper-gen here. Require matching fingerprints too:
+#             after a deferred stale-tarball failure, document() must regenerate
+#             changed source wrappers before reconciling NAMESPACE (#1512).
 #   dev     : load $(SHLIB) + generate wrappers (normal dev/CI flow).
 $(WRAPPERS_R): $(SHLIB)
 	@set -e; \
@@ -166,7 +167,7 @@ $(WRAPPERS_R): $(SHLIB)
 	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" check "$(ABS_TOP_SRCDIR)" "$(WRAPPERS_R)"; then \
 	  echo "tarball install: using pre-shipped R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen, #1022)"; \
 	  touch '$(WRAPPERS_R)'; \
-	elif [ "$(IS_TARBALL_INSTALL)" != "true" ] && [ "$$ROXYGEN_PKG" = "@PACKAGE_NAME@" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
+	elif [ "$(IS_TARBALL_INSTALL)" != "true" ] && [ "$$ROXYGEN_PKG" = "@PACKAGE_NAME@" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" check "$(ABS_TOP_SRCDIR)" "$(WRAPPERS_R)"; then \
 	  echo "roxygenise pass (ROXYGEN_PKG=@PACKAGE_NAME@): reusing existing R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen)"; \
 	  touch '$(WRAPPERS_R)'; \
 	else \
