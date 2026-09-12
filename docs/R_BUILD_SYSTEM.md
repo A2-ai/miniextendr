@@ -257,6 +257,31 @@ any code that modifies it (`miniextendr_saved_IFS=$IFS` / `IFS=$miniextendr_save
 This prevents corrupting autoconf 2.72's internal state, which relies on `IFS`
 being set to its default value.
 
+## Keep the Cargo cache during development installs
+
+Avoid `R CMD INSTALL --preclean` / `--clean` in the development loop: they
+invoke `cleanup` and normally erase `rust-target`, `src/rust/target`, and
+`ra-target`, making the next Cargo build cold. If another tool requires those
+flags, set `MINIEXTENDR_KEEP_TARGET=1` for that source install. The opt-in spares
+only those target directories during R CMD INSTALL; configure files are still
+refreshed, and R CMD build still cleans its staged tree. Leave the variable
+unset for a deliberate full clean rebuild.
+
+```sh
+# These cleanup flags normally erase the Cargo cache; the opt-in retains it.
+MINIEXTENDR_KEEP_TARGET=1 R CMD INSTALL --preclean --clean path/to/rpkg
+```
+
+`just rcmdinstall` does not add either flag, and `miniextendr_build()` does not
+request them. Scaffolded DESCRIPTION files set `Config/build/never-clean: true`
+so pkgbuild also avoids adding preclean automatically. A plain install remains
+the preferred development command.
+
+R sets `R_INSTALL_PKG` while installing, including before and after configure.
+The cleanup script requires that marker as well as the opt-in; simply running
+`./cleanup` or building a package still removes targets. Existing tarball-mode
+Makevars cleanup remains unchanged.
+
 ## See Also
 
 - [LINKING.md](LINKING.md): how miniextendr links to libR (engine vs package)
