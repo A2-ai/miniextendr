@@ -1544,7 +1544,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      # The shared-cache regression builds and installs a real vendored tarball.
+      # The shared-cache and stale-wrapper regressions build and install real
+      # vendored tarballs.
       # Use this checkout's tool so the test runs instead of skipping on PATH.
       - name: Set up cargo-revendor (install only)
         uses: ./.github/actions/setup-vendor

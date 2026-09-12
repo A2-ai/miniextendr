@@ -130,6 +130,7 @@ test_that("a stale S3 tarball fails before R accepts a dangling registration", {
   old <- unname(tools::md5sum(wrappers))
   # Exercise the actual pkgbuild/bootstrap pipeline and its copy semantics.
   tarball <- devtools::build(pkg, path = root, binary = FALSE, vignettes = FALSE, manual = FALSE)
+  expect_true("freshprobe/tools/wrapper-inputs.rds" %in% utils::untar(tarball, list = TRUE))
   expect_identical(unname(tools::md5sum(wrappers)), old)
   result <- install(tarball, "stale-tarball-install")
   expect_false(identical(result$status, 0L), info = result$output)
