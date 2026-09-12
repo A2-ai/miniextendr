@@ -82,8 +82,7 @@ pub(crate) fn resolve(
     }
     let mut leaf = ty.as_ref();
     let mut containers = Vec::new();
-    loop {
-        let Type::Path(path) = leaf else { break };
+    while let Type::Path(path) = leaf {
         let segment = path.path.segments.last().expect("type path has a segment");
         let container = match segment.ident.to_string().as_str() {
             "Option" => Container::Option,
@@ -94,20 +93,20 @@ pub(crate) fn resolve(
         let PathArguments::AngleBracketed(args) = &segment.arguments else {
             break;
         };
-        if container == Container::Result {
-            if let Some(GenericArgument::Type(error)) = args.args.iter().nth(1) {
-                if contains_marker(error) {
-                    return Err(syn::Error::new_spanned(
-                        error,
-                        "WrapAs* belongs on the successful Result payload",
-                    ));
-                }
-                if matches!(error, Type::Tuple(tuple) if tuple.elems.is_empty()) {
-                    return Err(syn::Error::new_spanned(
-                        error,
-                        "explicit class wrapping does not support Result<T, ()>; use a non-unit error type",
-                    ));
-                }
+        if container == Container::Result
+            && let Some(GenericArgument::Type(error)) = args.args.iter().nth(1)
+        {
+            if contains_marker(error) {
+                return Err(syn::Error::new_spanned(
+                    error,
+                    "WrapAs* belongs on the successful Result payload",
+                ));
+            }
+            if matches!(error, Type::Tuple(tuple) if tuple.elems.is_empty()) {
+                return Err(syn::Error::new_spanned(
+                    error,
+                    "explicit class wrapping does not support Result<T, ()>; use a non-unit error type",
+                ));
             }
         }
         let Some(GenericArgument::Type(inner)) = args.args.first() else {
@@ -129,7 +128,7 @@ pub(crate) fn resolve(
             "explicit class wrapping supports T, Option<T>, Result<T, E>, Vec<T>, Option<Vec<T>>, or Result<Vec<T>, E>",
         ));
     }
-    let marker = if let Type::Path(path) = &*leaf {
+    let marker = if let Type::Path(path) = leaf {
         path.path
             .segments
             .last()
@@ -163,7 +162,7 @@ pub(crate) fn resolve(
         None => (attribute.ok_or_else(|| syn::Error::new_spanned(ty, "place WrapAs* directly around the class payload, inside Option, Result, or Vec"))?, leaf.clone()),
     };
     let leaf = &payload;
-    let Type::Path(path) = &*leaf else {
+    let Type::Path(path) = leaf else {
         return Err(syn::Error::new_spanned(
             leaf,
             "explicit wrapping requires an owned, named class type",
@@ -252,15 +251,10 @@ impl ReturnWrap {
                 format!("structure({value}, class = unique(c(\"{target}\", class({value}))))")
             }
         };
-        let result = if self.containers.contains(&Container::Vec) {
+        if self.containers.contains(&Container::Vec) {
             format!("lapply({value}, function(.item) {})", wrap(".item"))
         } else {
             wrap(value)
-        };
-        if self.containers.first() == Some(&Container::Option) {
-            format!("if (is.null({value})) NULL else {result}")
-        } else {
-            result
         }
     }
 }
@@ -306,6 +300,57 @@ mod tests {
                     b.unwrap().r_expression(".val", None)
                 );
             }
+        }
+    }
+    #[test]
+    fn rejects_misplaced_markers_and_conflicting_systems() {
+        for (output, message) in [
+            ("-> WrapAsR6<Vec<Board>>", "closest to the named class"),
+            (
+                "-> Result<Board, WrapAsR6<Problem>>",
+                "successful Result payload",
+            ),
+            (
+                "-> Option<Option<WrapAsR6<Board>>>",
+                "supports T, Option<T>",
+            ),
+            ("-> Result<WrapAsR6<Board>, ()>", "non-unit error type"),
+            (
+                "-> (WrapAsR6<Board>, i32)",
+                "directly around the class payload",
+            ),
+            ("-> WrapAsR6<&Board>", "owned, named class type"),
+            ("-> WrapAsR6<WrapAsS7<Board>>", "closest to the named class"),
+        ] {
+            let output = syn::parse_str(output).unwrap();
+            assert!(
+                resolve(&output, None)
+                    .unwrap_err()
+                    .to_string()
+                    .contains(message)
+            );
+        }
+        let output = syn::parse_quote!(-> WrapAsR6<Board>);
+        assert!(
+            resolve(&output, Some(ClassSystem::S7))
+                .unwrap_err()
+                .to_string()
+                .contains("different class systems")
+        );
+        assert!(resolve(&output, Some(ClassSystem::R6)).is_ok());
+    }
+
+    #[test]
+    fn explicit_self_and_qualified_targets_do_not_use_registry_placeholders() {
+        for (output, target) in [
+            ("-> WrapAsR6<Self>", "ActualClass"),
+            ("-> WrapAsR6<other::Board>", "Board"),
+        ] {
+            let (plan, _) = resolve(&syn::parse_str(output).unwrap(), None).unwrap();
+            assert_eq!(
+                plan.unwrap().r_expression(".val", Some("ActualClass")),
+                format!("{target}$new(.ptr = .val)")
+            );
         }
     }
 }

@@ -1086,7 +1086,13 @@ pub fn miniextendr(
         }
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
-        let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
+        let auto = if return_wrap.is_some() {
+            // Explicit class returns unwrap Option before converting its payload.
+            // Arbitrary Option<Class> / Option<Vec<Class>> have no IntoR impl.
+            c_wrapper_builder::detect_return_handling(output)
+        } else {
+            c_wrapper_builder::detect_return_handling_standalone_fn(output)
+        };
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
         // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
         // variants have no bare T to wrap and now hard-error instead of silently ignoring

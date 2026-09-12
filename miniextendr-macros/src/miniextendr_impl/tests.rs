@@ -4496,3 +4496,54 @@ fn serialize_methods_bypass_class_and_result_wrapping_in_every_class_system() {
         );
     }
 }
+
+#[test]
+fn explicit_return_wrap_overrides_the_enclosing_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let code = syn::parse_quote! {
+            impl Factory {
+                pub fn build() -> WrapAsR6<Board> { unimplemented!() }
+                #[miniextendr(wrap = "r6")]
+                pub fn build_attr() -> Board { unimplemented!() }
+                pub fn many() -> Result<Vec<WrapAsR6<Board>>, String> { unimplemented!() }
+            }
+        };
+        let parsed = parse_impl(system, code);
+        for method in &parsed.methods {
+            let plan = method.return_wrap.as_ref().unwrap();
+            assert!(
+                plan.r_expression(".val", Some("Factory"))
+                    .contains("Board$new(.ptr =")
+            );
+            assert!(!method.returns_self());
+        }
+        assert!(c_wrapper_tokens(&parsed, "many").contains("__mx_result_err_parts"));
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        assert!(
+            wrapper.contains("Board$new(.ptr = .val)"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(
+            wrapper.contains("lapply(.val, function(.item) Board$new(.ptr = .item))"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(
+            !wrapper.contains("__MX_WRAP"),
+            "explicit returns must not request registry resolution"
+        );
+    }
+}
