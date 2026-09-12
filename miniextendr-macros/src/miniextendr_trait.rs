@@ -1246,15 +1246,21 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
         }
     }
 
-    // Extract return type
+    // Extract return type. A visibility marker (`Invisible<T>` / `Visible<T>`,
+    // #1213) only steers the implementing package's R wrapper; the View and
+    // the vtable bounds work on the inner type.
     let return_type = match &method.sig.output {
         syn::ReturnType::Default => None,
         syn::ReturnType::Type(_, ty) => {
+            if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return") {
+                return Err(err);
+            }
+            let (_, ty) = crate::type_inspect::peel_visibility_marker(ty);
             // Check if it's unit type ()
-            if matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty()) {
+            if matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()) {
                 None
             } else {
-                Some((**ty).clone())
+                Some(ty.clone())
             }
         }
     };

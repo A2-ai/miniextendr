@@ -777,6 +777,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
             let body_lines = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
+                .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method)
                 .build_s7_body();
@@ -936,6 +937,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
             let body_lines = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
+                .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method)
                 .build_s7_body();
@@ -1014,6 +1016,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
             let shortcut_body = crate::MethodReturnBuilder::new(shortcut_call)
                 .with_strategy(strategy)
+                .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method)
                 .with_chain_var("self".to_string())
@@ -1058,6 +1061,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method)
             .build_s7_inline();
@@ -1128,6 +1132,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let strategy = crate::ReturnStrategy::for_method(method);
             let return_expr = crate::MethodReturnBuilder::new(call_with_from)
                 .with_strategy(strategy)
+                .with_invisible(method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(method)
                 .build_s7_inline();

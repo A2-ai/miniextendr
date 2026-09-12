@@ -299,6 +299,18 @@ option exists to avoid. Pick another name. The same family covers
 `serde_error names `a` in both skip and rename`: each field appears in at most
 one place.
 
+### "the return type's visibility marker and the `invisible` / `visible` attribute disagree"
+
+`Invisible<T>` / `Visible<T>` on the return type and the `invisible` /
+`visible` attribute (on a function, or `#[miniextendr(invisible)]` /
+`#[miniextendr(r6(invisible))]` & co. on a method) are two spellings of one
+decision, so `#[miniextendr(visible)] fn f() -> Invisible<i32>` has no
+meaning. Keep one spelling, or make them agree. The same family covers
+`visibility markers cannot be nested` (`Invisible<Visible<T>>`: use a single
+marker) and `` `Invisible<T>` / `Visible<T>` mark the return type only ``
+(a marker as a parameter type). See
+[MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#return-visibility-markers-and-defaults).
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

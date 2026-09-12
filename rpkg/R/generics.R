@@ -245,3 +245,25 @@ NULL
 #' @param ... Additional arguments.
 #' @name parse_value
 NULL
+
+# VisibilityGauge fixture generics (return-visibility markers on S3 methods,
+# #1213). Exported by the auto-generated wrappers under @rdname
+# VisibilityGauge, aliased here for R CMD check.
+
+#' Nudge the gauge up by one, returning the gauge visibly
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name nudge_gauge
+NULL
+
+#' Nudge the gauge up by one, returning the gauge invisibly
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name quiet_nudge_gauge
+NULL
+
+#' The gauge level, returned invisibly
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name gauge_level
+NULL

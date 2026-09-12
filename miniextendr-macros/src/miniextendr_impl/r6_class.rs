@@ -401,6 +401,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method)
             .with_indent(6);
@@ -550,6 +551,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method)
             .with_indent(2); // top-level `$set` closure body indents 2 spaces
@@ -591,6 +593,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let getter_strategy = crate::ReturnStrategy::for_method(ctx.method);
             let getter_builder = crate::MethodReturnBuilder::new(getter_call)
                 .with_strategy(getter_strategy)
+                .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method)
                 .with_indent(4);
@@ -634,6 +637,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
             let return_builder = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
+                .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
                 .with_return_class_from_method(ctx.method)
                 .with_indent(2); // top-level `$set` closure body indents 2 spaces
@@ -682,6 +686,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method);
         lines.extend(return_builder.build_r6_body());

@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3052
+assertion_line: 3245
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Temperature R6 Class
@@ -51,7 +51,7 @@ Temperature$set("public", "set_celsius", function(value) {
   )
   .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  invisible(self)
+  self
 })
 
 Temperature$set("active", "celsius", function(value) {

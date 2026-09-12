@@ -112,7 +112,8 @@ pub enum ReturnStrategy {
     ReturnOtherClassList,
     /// The method is a `&mut self` method returning `()`. The wrapper calls the
     /// `.Call()` for its side effect and returns the receiver (`self`/`x`) for
-    /// method chaining (e.g., `invisible(self)` for R6).
+    /// method chaining. The receiver is returned visibly unless the method is
+    /// marked `Invisible<..>` / `invisible` (#1213).
     ChainableMutation,
     /// Default strategy: return the `.Call()` result directly without wrapping.
     Direct,
@@ -130,10 +131,15 @@ impl ReturnStrategy {
     ///   bare-`Self` case — and gets the same class-wrapping tail.
     /// - In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
     ///   `&mut self -> ()` methods use `ChainableMutation`. Both return the
-    ///   receiver object (`x` / `invisible(self)`) so the call composes under
-    ///   the native pipe (`obj |> set_a(1) |> set_b(2)`); the C wrapper hands
-    ///   back the same ExternalPtr handle (see
+    ///   receiver object (`x` / `self`, visibly unless marked invisible) so the
+    ///   call composes under the native pipe (`obj |> set_a(1) |> set_b(2)`);
+    ///   the C wrapper hands back the same ExternalPtr handle (see
     ///   [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`]).
+    ///
+    /// A visibility marker on the return type (`Invisible<Self>`,
+    /// `Invisible<()>`, ...) is peeled at parse time
+    /// ([`ParsedMethod::sig`] holds the inner type), so it never changes the
+    /// strategy; it only sets [`MethodReturnBuilder::with_invisible`].
     /// - Bare capitalized return types that are not known primitives/containers
     ///   use `ReturnOtherClass`; write-time registry lookup wraps registered
     ///   classes and leaves false positives unchanged.
@@ -219,6 +225,10 @@ pub struct MethodReturnBuilder {
     /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
     /// `"x"` for S3). Defaults to `"self"` if not set.
     chain_var: Option<String>,
+    /// Wrap the final expression in `invisible(...)` (#1213). Set from a
+    /// return-type marker (`Invisible<T>`) or the `invisible` method option;
+    /// nothing is invisible by default.
+    invisible: bool,
     /// Number of leading spaces for each generated line.
     indent: usize,
 }
@@ -232,7 +242,38 @@ impl MethodReturnBuilder {
             class_name: None,
             return_class: None,
             chain_var: None,
+            invisible: false,
             indent: 2,
+        }
+    }
+
+    /// Wrap the method's final expression in `invisible(...)` (marker or
+    /// `invisible` option, see [`ParsedMethod::is_invisible`]).
+    pub fn with_invisible(mut self, invisible: bool) -> Self {
+        self.invisible = invisible;
+        self
+    }
+
+    /// Wrap the last generated line's expression in `invisible(...)` when the
+    /// builder is marked invisible. Every tail ends with the expression the
+    /// wrapper returns, so this is the single place visibility is applied.
+    fn apply_visibility(&self, mut lines: Vec<String>) -> Vec<String> {
+        if self.invisible
+            && let Some(last) = lines.last_mut()
+        {
+            let expr = last.trim_start();
+            let indent = &last[..last.len() - expr.len()];
+            *last = format!("{indent}invisible({expr})");
+        }
+        lines
+    }
+
+    /// Inline-expression counterpart of [`Self::apply_visibility`].
+    fn apply_visibility_expr(&self, expr: String) -> String {
+        if self.invisible {
+            format!("invisible({expr})")
+        } else {
+            expr
         }
     }
 
@@ -346,7 +387,7 @@ impl MethodReturnBuilder {
                 lines.extend((tails.direct_tail)(&indent));
             }
         }
-        lines
+        self.apply_visibility(lines)
     }
 
     // endregion
@@ -375,7 +416,8 @@ impl MethodReturnBuilder {
 
 /// Specialized builders for different class systems.
 impl MethodReturnBuilder {
-    /// Build R6-style return (uses invisible(self) for chaining).
+    /// Build R6-style return (chains via `self`; `invisible(self)` only when
+    /// the method is marked invisible, #1213).
     pub fn build_r6_body(&self) -> Vec<String> {
         self.build_with_tails(ReturnTails {
             self_tail: Box::new(|indent, class_name| {
@@ -385,7 +427,7 @@ impl MethodReturnBuilder {
                 );
                 vec![format!("{}{}$new(.ptr = .val)", indent, class_name)]
             }),
-            chain_tail: Box::new(|indent| vec![format!("{}invisible(self)", indent)]),
+            chain_tail: Box::new(|indent| vec![format!("{}self", indent)]),
             direct_tail: Box::new(|indent| vec![format!("{}.val", indent)]),
         })
     }
@@ -473,6 +515,7 @@ impl MethodReturnBuilder {
             ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
+        let inner = self.apply_visibility_expr(inner);
         condition_check_inline_block(&self.call_expr, &inner, "    ")
     }
 
@@ -494,6 +537,7 @@ impl MethodReturnBuilder {
             ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
             ReturnStrategy::Direct => ".val".to_string(),
         };
+        let inner = self.apply_visibility_expr(inner);
         condition_check_inline_block(&self.call_expr, &inner, "    ")
     }
 }

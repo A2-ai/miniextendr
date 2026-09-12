@@ -425,6 +425,11 @@ impl ReceiverKind {
 /// Defaults cannot be specified for `self` parameters (compile error).
 #[derive(Debug)]
 pub struct ParsedMethod {
+    /// Return-type visibility marker (#1213): `Some(true)` for
+    /// `-> Invisible<T>`, `Some(false)` for `-> Visible<T>`. The marker is
+    /// peeled from [`Self::sig`] at parse time, so every return-shape
+    /// predicate sees `T`; the C wrapper unwraps the newtype before conversion.
+    pub visibility_marker: Option<bool>,
     /// The method's name (e.g., `new`, `get`, `set_value`).
     pub ident: syn::Ident,
     /// How this method receives `self`: `&self`, `&mut self`, by value, or not at all (static).
@@ -534,6 +539,11 @@ pub struct MethodAttrs {
     pub ignore: bool,
     /// Mark as constructor
     pub constructor: bool,
+    /// `invisible` / `visible` method option (#1213): `Some(true)` makes the R
+    /// wrapper return `invisible(...)`, `Some(false)` forces a visible return.
+    /// Same decision as an `Invisible<T>` / `Visible<T>` return-type marker;
+    /// the two must not disagree. Nothing is invisible by default.
+    pub force_invisible: Option<bool>,
     /// R6-specific method markers. All R6 boolean flags live here.
     /// Only consumed by the R6 class generator and R6-aware accessor methods
     /// (`ParsedMethod::is_active`, `is_private`, `is_finalizer`).
@@ -1334,6 +1344,10 @@ impl ParsedMethod {
                     meta.parse_nested_meta(|inner| {
                         if inner.path.is_ident("ignore") {
                             method_attrs.ignore = true;
+                        } else if inner.path.is_ident("invisible") {
+                            method_attrs.force_invisible = Some(true);
+                        } else if inner.path.is_ident("visible") {
+                            method_attrs.force_invisible = Some(false);
                         } else if inner.path.is_ident("constructor") {
                             method_attrs.constructor = true;
                         } else if inner.path.is_ident("finalize") {
@@ -1492,7 +1506,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -1797,6 +1811,10 @@ impl ParsedMethod {
                     method_attrs.noexport = true;
                 } else if meta.path.is_ident("internal") {
                     method_attrs.internal = true;
+                } else if meta.path.is_ident("invisible") {
+                    method_attrs.force_invisible = Some(true);
+                } else if meta.path.is_ident("visible") {
+                    method_attrs.force_invisible = Some(false);
                 } else if meta.path.is_ident("dots") {
                     // `dots = typed_list!(...)` — attribute sugar mirroring the
                     // standalone-fn path (`miniextendr_fn.rs`): capture the
@@ -1813,7 +1831,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -2139,10 +2157,35 @@ impl ParsedMethod {
             }
         }
 
+        // Return-visibility marker (#1213): validate, record, and strip it from
+        // the signature the codegen sees.
+        let mut sig = Self::sig_without_env(&item.sig);
+        let visibility_marker = match &item.sig.output {
+            syn::ReturnType::Type(_, ty) => {
+                if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return") {
+                    return Err(err);
+                }
+                let (marker, peeled) =
+                    crate::type_inspect::peel_return_visibility(&item.sig.output);
+                sig.output = peeled;
+                marker
+            }
+            syn::ReturnType::Default => None,
+        };
+        if let (Some(marker), Some(attr)) = (visibility_marker, method_attrs.force_invisible)
+            && marker != attr
+        {
+            return Err(syn::Error::new_spanned(
+                &item.sig.output,
+                "the return type's visibility marker and the `invisible` / `visible` method option disagree; keep one of them (or make them agree)",
+            ));
+        }
+
         Ok(ParsedMethod {
+            visibility_marker,
             ident: item.sig.ident.clone(),
             env,
-            sig: Self::sig_without_env(&item.sig),
+            sig,
             vis: item.vis.clone(),
             doc_tags,
             method_attrs,
@@ -2527,6 +2570,16 @@ impl ParsedMethod {
                 matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty())
             }
         }
+    }
+
+    /// Whether the R wrapper returns this method's value with `invisible()`
+    /// (#1213): an `Invisible<T>` return-type marker or the `invisible` method
+    /// option. Methods are visible by default, including the receiver-returning
+    /// chainable tails.
+    pub fn is_invisible(&self) -> bool {
+        self.visibility_marker
+            .or(self.method_attrs.force_invisible)
+            .unwrap_or(false)
     }
 }
 
@@ -3105,42 +3158,58 @@ pub fn generate_method_c_wrapper(
         && !matches!(method.env, ReceiverKind::Value)
         && (method.returns_result_self_ref() || method.returns_option_self_ref());
 
-    // Generate call expression
+    // Generate call expression. A visibility marker (`Invisible<T>` /
+    // `Visible<T>`, #1213) is a transparent newtype around the real return:
+    // unwrap it (`.0`) before the conversion, which was analysed on the inner
+    // type (`method.sig.output` is already peeled).
+    let unwrap_marker = |call: TokenStream| -> TokenStream {
+        if method.visibility_marker.is_some() {
+            quote! { (#call).0 }
+        } else {
+            call
+        }
+    };
     let call_expr = match method.env {
         ReceiverKind::Ref | ReceiverKind::RefMut if fallible_self_ref => {
-            quote! { self_ref.#method_ident(#(#rust_args),*).map(|_| ()) }
+            let call = unwrap_marker(quote! { self_ref.#method_ident(#(#rust_args),*) });
+            quote! { #call.map(|_| ()) }
         }
         ReceiverKind::Ref | ReceiverKind::RefMut => {
-            quote! { self_ref.#method_ident(#(#rust_args),*) }
+            unwrap_marker(quote! { self_ref.#method_ident(#(#rust_args),*) })
         }
         ReceiverKind::Value => match value_mode {
-            ValueMode::WriteBack => quote! {{
-                let __mx_out = #type_ident::#method_ident(__mx_taken, #(#rust_args),*);
-                self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
-            }},
-            ValueMode::Fallible => quote! {
-                #type_ident::#method_ident(
-                    ::miniextendr_api::externalptr::clone_for_consuming::<#type_ident>(&*self_slot),
-                    #(#rust_args),*
-                )
-                .map(|__mx_v| { *self_slot = __mx_v; })
-            },
+            ValueMode::WriteBack => {
+                let call = unwrap_marker(
+                    quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) },
+                );
+                quote! {{
+                    let __mx_out = #call;
+                    self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
+                }}
+            }
+            ValueMode::Fallible => {
+                let call = unwrap_marker(quote! {
+                    #type_ident::#method_ident(
+                        ::miniextendr_api::externalptr::clone_for_consuming::<#type_ident>(&*self_slot),
+                        #(#rust_args),*
+                    )
+                });
+                quote! { #call.map(|__mx_v| { *self_slot = __mx_v; }) }
+            }
             ValueMode::Terminal => {
-                quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) }
+                unwrap_marker(quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) })
             }
         },
         ReceiverKind::ExternalPtrRef => {
-            quote! { #type_ident::#method_ident(&__self_ptr, #(#rust_args),*) }
+            unwrap_marker(quote! { #type_ident::#method_ident(&__self_ptr, #(#rust_args),*) })
         }
         ReceiverKind::ExternalPtrRefMut => {
-            quote! { #type_ident::#method_ident(&mut __self_ptr, #(#rust_args),*) }
+            unwrap_marker(quote! { #type_ident::#method_ident(&mut __self_ptr, #(#rust_args),*) })
         }
         ReceiverKind::ExternalPtrValue => {
-            quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) }
+            unwrap_marker(quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) })
         }
-        ReceiverKind::None => {
-            quote! { #type_ident::#method_ident(#(#rust_args),*) }
-        }
+        ReceiverKind::None => unwrap_marker(quote! { #type_ident::#method_ident(#(#rust_args),*) }),
     };
 
     // Determine return handling strategy
@@ -3581,6 +3650,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_invisible(method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(method);
         lines.extend(return_builder.build_s3_body());

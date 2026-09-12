@@ -1,0 +1,5 @@
+error: the return type's visibility marker and the `invisible` / `visible` attribute disagree; keep one of them (or make them agree)
+ --> tests/ui/fn_visibility_marker_attr_conflict.rs:5:19
+  |
+5 | pub fn disagree() -> miniextendr_api::Invisible<i32> {
+  |                   ^

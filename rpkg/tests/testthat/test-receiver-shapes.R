@@ -12,8 +12,9 @@ test_that("S3 methods accept a list wrapper carrying the handle in `.ptr`", {
   x <- structure(list(.ptr = new_countertraits3(5L), log = character()), class = "CounterTraitS3")
   expect_equal(get_value(x), 5L)
   # `&mut self` mutates the Rust value behind the shared pointer; the wrapper
-  # returns the receiver invisibly, as for a bare handle.
-  expect_invisible(custom_add.CounterTraitS3(x, 3L))
+  # returns the receiver (visibly, as every unmarked receiver tail since #1213),
+  # as for a bare handle.
+  expect_visible(custom_add.CounterTraitS3(x, 3L))
   expect_equal(get_value(x), 8L)
   # R-side state lives in the list and is untouched by the Rust side.
   x$log <- c(x$log, "added 3")

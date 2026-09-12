@@ -26,6 +26,94 @@ pub(crate) fn second_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type>
     nth_type_argument(seg, 1)
 }
 
+/// Peel a return-visibility marker (`Invisible<T>` / `Visible<T>`, matched
+/// on the last path segment like `Dots` / `Missing`).
+///
+/// Returns `(Some(true), &T)` for `Invisible<T>`, `(Some(false), &T)` for
+/// `Visible<T>`, and `(None, ty)` for anything else, including a bare
+/// `Invisible` with no type argument (left alone; the fail-safe direction is
+/// "not a marker", and `IntoR` on the marker types keeps the conversion
+/// correct). Nested markers are the caller's error to report; see
+/// [`visibility_marker_error`].
+pub(crate) fn peel_visibility_marker(ty: &syn::Type) -> (Option<bool>, &syn::Type) {
+    let syn::Type::Path(p) = ty else {
+        return (None, ty);
+    };
+    let Some(seg) = p.path.segments.last() else {
+        return (None, ty);
+    };
+    let invisible = match seg.ident.to_string().as_str() {
+        "Invisible" => true,
+        "Visible" => false,
+        _ => return (None, ty),
+    };
+    match first_type_argument(seg) {
+        Some(inner) => (Some(invisible), inner),
+        None => (None, ty),
+    }
+}
+
+/// [`peel_visibility_marker`] over a whole `syn::ReturnType`: returns the
+/// marker's decision and an owned return type with the marker removed, so the
+/// rest of the analysis (`Option`/`Result` shapes, `Self`, thread strategy)
+/// sees exactly what it would without the marker.
+pub(crate) fn peel_return_visibility(output: &syn::ReturnType) -> (Option<bool>, syn::ReturnType) {
+    match output {
+        syn::ReturnType::Type(arrow, ty) => {
+            let (marker, inner) = peel_visibility_marker(ty);
+            match marker {
+                Some(_) => (
+                    marker,
+                    syn::ReturnType::Type(*arrow, Box::new(inner.clone())),
+                ),
+                None => (None, output.clone()),
+            }
+        }
+        syn::ReturnType::Default => (None, output.clone()),
+    }
+}
+
+/// Resolve the wrapper's visibility from the three sources, most explicit
+/// first: a return-type marker, then the `invisible` / `visible` attribute,
+/// then the shape default. A marker and an attribute that disagree are an
+/// error at `span`.
+pub(crate) fn resolve_visibility(
+    marker: Option<bool>,
+    attr: Option<bool>,
+    shape_default: bool,
+    span: proc_macro2::Span,
+) -> syn::Result<bool> {
+    match (marker, attr) {
+        (Some(m), Some(a)) if m != a => Err(syn::Error::new(
+            span,
+            "the return type's visibility marker and the `invisible` / `visible` attribute disagree; keep one of them (or make them agree)",
+        )),
+        (Some(m), _) => Ok(m),
+        (None, Some(a)) => Ok(a),
+        (None, None) => Ok(shape_default),
+    }
+}
+
+/// The error for a marker that cannot be honoured: a nested marker
+/// (`Invisible<Visible<T>>`) or a marker in argument position.
+pub(crate) fn visibility_marker_error(ty: &syn::Type, what: &str) -> Option<syn::Error> {
+    let (marker, inner) = peel_visibility_marker(ty);
+    marker?;
+    if what == "argument" {
+        return Some(syn::Error::new_spanned(
+            ty,
+            "`Invisible<T>` / `Visible<T>` mark the return type only; they cannot be used as a parameter type",
+        ));
+    }
+    if peel_visibility_marker(inner).0.is_some() {
+        return Some(syn::Error::new_spanned(
+            ty,
+            "visibility markers cannot be nested; use a single `Invisible<T>` or `Visible<T>` around the return type",
+        ));
+    }
+    None
+}
+
 /// Returns `true` if `ty` is syntactically `SEXP`.
 #[inline]
 pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {

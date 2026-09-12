@@ -43,8 +43,8 @@ Generates:
 |-----------|--------|
 | `internal` | Add `@keywords internal`, suppress `@export` |
 | `noexport` | Suppress `@export` only |
-| `invisible` | Wrap R return in `invisible()` |
-| `visible` | Force visible return (override default) |
+| `invisible` | Wrap R return in `invisible()` (same as an `Invisible<T>` return type) |
+| `visible` | Force visible return (same as a `Visible<T>` return type) |
 | `doc = "..."` | Custom roxygen block (replaces auto-generated) |
 
 ```rust
@@ -52,8 +52,64 @@ Generates:
 pub fn helper() -> i32 { 42 }
 
 #[miniextendr(invisible)]
-pub fn set_option(key: String, value: i32) { /* ... */ }
+pub fn set_option(key: String, value: i32) -> i32 { /* ... */ }
 ```
+
+##### Return visibility: markers and defaults
+
+Nothing is invisible unless it says so, with one carve-out: a bare function
+whose R value is `NULL` (no return type, `-> ()`, `Option<()>`,
+`Result<(), E>` on success) returns `invisible(NULL)`, because a side-effect
+call should not print `NULL`. Everything else is visible, **including the
+receiver a method hands back for chaining** (`&mut self -> ()`,
+`&mut self -> &mut Self`, `self -> Self`): `obj$mutate()` prints the object
+at the console, like an R function returning `self` would; `obj$a()$b()` and
+`obj |> a() |> b()` keep working either way.
+
+Two spellings change the decision and do the identical codegen: the return
+type markers `Invisible<T>` / `Visible<T>` (`miniextendr_api::{Invisible,
+Visible}`, transparent newtypes around the real value, `IntoR` forwards to
+`T`) and the attribute `invisible` / `visible` (on a function, or on a method
+as `#[miniextendr(invisible)]` / `#[miniextendr(r6(invisible))]` & co.). A
+marker and an attribute that disagree are a compile error; markers are
+return-position only and cannot be nested.
+
+```rust
+use miniextendr_api::{Invisible, Visible, miniextendr};
+
+#[miniextendr]
+pub fn quiet_value() -> Invisible<i32> { Invisible(42) }   // withVisible()$visible == FALSE
+
+#[miniextendr]
+pub fn loud_null() -> Visible<()> { Visible(()) }          // prints NULL
+
+#[miniextendr(r6)]
+impl Counter {
+    pub fn tick(&mut self) {}                                 // chainable, prints the counter
+    pub fn tick_quietly(&mut self) -> Invisible<()> { Invisible(()) } // chainable, silent
+    pub fn add(&mut self, k: i32) -> Invisible<&mut Self> { self.n += k; Invisible(self) }
+    pub fn copy(&self) -> Invisible<Self> { Invisible(self.clone()) } // invisible classed copy
+}
+```
+
+The marker is peeled before any other analysis, so `Invisible<Option<T>>`
+keeps `Option`'s `None`-raises rule, `Invisible<Result<T, E>>` still raises
+on `Err`, and `Invisible<Self>` still wraps the handle in the class. Trait
+methods take the marker in the impl's signature (which must match the trait's
+declaration): `fn poke(&mut self) -> Invisible<()>`. Exempt from all of this:
+derive-generated sidecar and active-binding setters stay invisible (they have
+no return type to mark; #1343 tracks a surface for them).
+
+Two syntactic limits, shared with `Dots` and `Missing<T>`: a type alias or a
+`use Invisible as Quiet` rename defeats the last-segment detection. The miss
+is fail-safe (the value converts through the marker's `IntoR`; only the
+visibility falls back to the default).
+
+**Migrating from the old default.** Before #1213, R6 and Env chainable
+tails and every trait-impl void method were `invisible(self)` /
+`invisible(x)` implicitly. A package that relied on the silence adds
+`#[miniextendr(invisible)]` or returns `Invisible<()>` /
+`Invisible<&mut Self>` on those methods; pipes and `$`-chains need no change.
 
 #### Threading
 

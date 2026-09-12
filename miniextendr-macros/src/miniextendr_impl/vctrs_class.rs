@@ -317,6 +317,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method)
             .with_chain_var("x".to_string());
@@ -383,6 +384,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method);
         lines.extend(return_builder.build_s3_body());
