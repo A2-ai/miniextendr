@@ -1538,7 +1538,7 @@ jobs:
       - name: Install current cargo-revendor for bootstrap regressions
         uses: ./.github/actions/setup-vendor
         with:
-          install-only: 'true'
+          configure-and-vendor: 'false'
 
       - name: Run tests
         working-directory: minirextendr
