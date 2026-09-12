@@ -105,6 +105,9 @@ pub fn prepare(
                     }
                 }
             }
+        } else if archive.is_dir() {
+            copy_package_files(pkg, &copied, allow_dirty)?;
+            crate::vendor::resolve_workspace_inheritance(&copied, &archive, v)?;
         } else {
             crate::vendor::extract_crate_archive(&archive, &unpack, &pkg.name, None, v)?;
         }
@@ -160,6 +163,43 @@ pub fn prepare(
             "  Prepared {} path dependencies for development (no registry/Git vendor or xz)",
             selected.len()
         );
+    }
+    Ok(())
+}
+
+// `cargo package --list` applies Cargo's include/exclude and VCS rules even
+// when an unpublished dependency prevents creation of the normalized archive.
+// A directory walk would also copy ignored targets and earlier dev bundles.
+fn copy_package_files(pkg: &Package, destination: &Path, allow_dirty: bool) -> Result<()> {
+    let mut command = std::process::Command::new("cargo");
+    command
+        .args(["package", "--list", "--manifest-path"])
+        .arg(&pkg.manifest_path);
+    if allow_dirty {
+        command.arg("--allow-dirty");
+    }
+    let listing = command
+        .output()
+        .context("failed to list development crate files")?;
+    if !listing.status.success() {
+        bail!(
+            "unable to list source files for {}: {}",
+            pkg.name,
+            String::from_utf8_lossy(&listing.stderr)
+        );
+    }
+    let source = pkg.manifest_path.parent().unwrap().as_std_path();
+    for relative in std::str::from_utf8(&listing.stdout)?.lines() {
+        let original = source.join(relative);
+        // Cargo lists synthetic packaging files too (Cargo.toml.orig,
+        // .cargo_vcs_info.json, and sometimes Cargo.lock).
+        if !original.is_file() {
+            continue;
+        }
+        let target = destination.join(relative);
+        std::fs::create_dir_all(target.parent().unwrap())?;
+        std::fs::copy(&original, &target)
+            .with_context(|| format!("copying development source {}", original.display()))?;
     }
     Ok(())
 }

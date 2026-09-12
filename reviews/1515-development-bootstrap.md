@@ -33,3 +33,21 @@ Both R templates retain their own bootstrap logic, both scaffolders ship the
 base-R helper, and miniextendr_build selects dev mode unless the caller supplied
 an explicit mode or a release archive was already present. Distribution mode
 remains the default for ordinary bootstrap calls.
+
+The first R acceptance run stopped before bootstrap: the installed devtools
+requires a logical upgrade argument, not the older string "never". The fixture
+and usage example now use upgrade=FALSE.
+
+The R acceptance fixture passes 34 assertions (0 failures/warnings/skips):
+two direct devtools::install runs preserve Cargo.toml and produce no vendor
+archive; the namespace returns 7; removing the dev opt-in builds and installs
+the default offline distribution artifact, excluding dev sidecars and backups.
+The separate helper test checks source/staged-copy separation and stale hashes.
+
+Validation also caught a misspelled Clap conflict argument (`exclude`, which this CLI does not define); removing it restored parser validation. The root-crate monorepo fixture exposed nested `rust-target` output entering Cargo packages. Adding ignore patterns alone did not fix it: a focused `cargo package --list` probe showed Cargo ignores those rules while the source manifest is untracked; staging Cargo.toml immediately excluded the sentinel. The existing-project fixture now tracks its initial Rust sources, like the standalone Rust fixtures. Root scaffold ignores also cover the build tree and development staging, existing-project scaffolding appends them without replacing caller rules, and the private test library lives outside the source crate. Assertions inspect child-process warnings and bundled paths.
+
+A Git dependency without a registry version deliberately exercises the development copy fallback. The old recursive fallback would include ignored build output. Development copies now use `cargo package --list` for Cargo’s include/exclude and Git-ignore selection, then resolve workspace inheritance in the staged manifest. The relocated fixture preserves build scripts, build/test path dependencies, and an `include_str!` asset while excluding the ignored artifact. All 122 default cargo-revendor tests pass.
+
+Cargo’s standard file-selection rules remain authoritative, including explicit `package.include`/`package.exclude`; see https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields. For a source tree whose manifest is not tracked by Git, specify package includes/excludes if it contains generated output. No Git index is modified by development bootstrap.
+
+Final repeated-monorepo acceptance: 52 assertions, 0 failures/warnings/skips, across root-crate and virtual-workspace layouts. Both installs in each layout preserve the source manifest, retain runtime calls, produce no vendor archive, and exclude build output and recovery backups.

@@ -222,6 +222,7 @@ test fixtures sometimes carry extra licenses.
 
 | Flag | Description |
 |---|---|
+| `--dev` | Prepare uncompressed path dependencies and a separate portable manifest for R development staging. Mutually exclusive with distribution freeze/compress modes. |
 | `--freeze` | Rewrite `Cargo.toml` so every source resolves from `vendor/`. See dedicated section below. |
 | `--strict-freeze` | Fail fast if any external `git = "..."` dependency would survive the freeze pass. Requires `--freeze`. Useful as a CI guard. |
 
@@ -343,6 +344,29 @@ source replacement. This expected mode is informational. Cargo's emitted source 
 Git revision/branch/tag selectors, and a regression builds extracted archives
 offline with an empty Cargo home;
 `--strict-freeze` still rejects every remaining Git declaration.
+
+## Development package staging
+
+```sh
+cargo revendor --dev --manifest-path src/rust/Cargo.toml --output src/rust/vendor
+```
+
+This mode prepares an uncompressed bundle of manifest-declared path dependencies
+and their path siblings, plus `src/rust/.Cargo.toml.dev`. Cargo package resolves
+workspace inheritance. The source Cargo.toml remains unchanged; registry and Git
+dependencies retain normal resolution, and no vendor source replacement or xz
+archive is created. A relocated Rust regression covers dependency aliases,
+workspace fields, transitive paths, and an ordinary Git dependency.
+
+The output must be a directory inside the source crate. Existing output is
+retained in a `.dev-vendor-backup-*` directory beside it for recovery. R scaffolds
+ignore those backups. Their bootstrap/cleanup helpers activate the portable
+manifest only inside R CMD build's staged copy; configure does not mutate it.
+Select `MINIEXTENDR_BOOTSTRAP_MODE=dev` to use this through ordinary R build tools.
+See [the R build guide](../docs/R_BUILD_SYSTEM.md#development-bootstrap) for the
+installation example and backup cleanup behavior.
+
+Development bundles follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. Bootstrap never stages files in Git.
 
 ## Caching
 
