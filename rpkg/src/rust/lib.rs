@@ -281,6 +281,8 @@ mod serde_error_tests;
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
 mod serde_r_tests;
+#[cfg(feature = "serde")]
+mod serialize_attr_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;

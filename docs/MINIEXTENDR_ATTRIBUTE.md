@@ -141,6 +141,7 @@ pub fn inspect_sexp(x: miniextendr_api::sys::SEXP) -> i32 { /* ... */ }
 |-----------|--------|
 | `coerce` | Auto-coerce R types (e.g., double → int) |
 | `no_coerce` | Reject type mismatches |
+| `serialize` | Return the complete value through serde, equivalent to `AsSerialize<T>`; requires the `serde` feature (see [serde return transport](SERDE_R.md#returning-serde-values)) |
 | `strict` | Panic on lossy conversions (i64/u64 overflow) |
 | `no_strict` | Allow lossy conversions |
 | `prefer = "..."` | Return type preference: `"list"`, `"externalptr"`, `"vector"`, `"native"`, `"auto"` |
@@ -414,6 +415,7 @@ impl Person {
 | `worker` / `no_worker` | Thread override |
 | `check_interrupt` | Insert interrupt check |
 | `coerce` / `no_coerce` | Type coercion override |
+| `serialize` | Convert the complete return value through `AsSerialize<T>` |
 | `rng` | RNG state management |
 | `unwrap_in_r` | Return `Result<T, E>` as a list with `$value`/`$error` instead of raising on `Err` |
 | `r_name = "..."` | Override R method name |

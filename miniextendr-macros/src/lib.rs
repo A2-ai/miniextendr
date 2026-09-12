@@ -528,6 +528,8 @@ fn build_match_arg_helpers(
 ///   method tails are visible unless marked (#1213).
 /// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
+///   (requires the API `serde` feature); composes with return visibility markers
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 /// - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
 /// - `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —
@@ -755,6 +757,7 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
+        serialize,
         serde_error,
         no_preconditions,
         no_call_attribution,
@@ -844,8 +847,17 @@ pub fn miniextendr(
         }
         crate::type_inspect::peel_return_visibility(output)
     };
-    let output = &peeled_output;
+    let converted_output = crate::type_inspect::serialize_return_type(&peeled_output, serialize);
+    let output = &converted_output;
     let abi = parsed.abi();
+    if serialize && abi.is_some() {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "`serialize` requires a generated Rust-to-R conversion and cannot be used on an extern function",
+        )
+        .into_compile_error()
+        .into();
+    }
     let attrs = parsed.attrs();
     let vis = parsed.vis();
     let generics = parsed.generics();
@@ -1023,11 +1035,11 @@ pub fn miniextendr(
     // Build the call expression: rust_ident(rust_input_1, rust_input_2, ...).
     // A visibility marker is a transparent newtype: unwrap it so the return
     // conversion works on the inner value (the analysis above saw the inner type).
-    let fn_call_expr = if visibility_marker.is_some() {
-        quote::quote! { (#rust_ident(#(#rust_inputs),*)).0 }
-    } else {
-        quote::quote! { #rust_ident(#(#rust_inputs),*) }
-    };
+    let fn_call_expr = crate::type_inspect::prepare_return_value(
+        quote::quote! { #rust_ident(#(#rust_inputs),*) },
+        visibility_marker,
+        serialize,
+    );
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
