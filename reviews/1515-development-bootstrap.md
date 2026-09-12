@@ -51,3 +51,7 @@ A Git dependency without a registry version deliberately exercises the developme
 Cargo’s standard file-selection rules remain authoritative, including explicit `package.include`/`package.exclude`; see https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields. For a source tree whose manifest is not tracked by Git, specify package includes/excludes if it contains generated output. No Git index is modified by development bootstrap.
 
 Final repeated-monorepo acceptance: 52 assertions, 0 failures/warnings/skips, across root-crate and virtual-workspace layouts. Both installs in each layout preserve the source manifest, retain runtime calls, produce no vendor archive, and exclude build output and recovery backups.
+
+The final CI wiring review caught an incorrect composite-action input (`install-only`). The action actually exposes `configure-and-vendor`; setting it to false installs the current CLI without triggering unrelated root-package vendoring. All setup-vendor call inputs were checked against the action declaration.
+
+Final gates: just fmt/fmt-check/check/test, the Clippy recipe plus all five explicit CI configurations (`-D warnings`), template/AGENTS checks, and the site build pass. The built minirextendr tarball reports 0 errors, 0 warnings, 0 notes under R 4.6.1 with CI=true and NOT_CRAN=true.
