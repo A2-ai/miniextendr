@@ -622,6 +622,8 @@ pub struct MethodAttrs {
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub serde_error: Option<crate::miniextendr_fn::SerdeErrorSpec>,
+    /// Serialize the complete return value through `AsSerialize<T>`.
+    pub serialize: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -1285,6 +1287,13 @@ impl ParsedMethod {
             ));
         }
 
+        if attrs.serialize && (attrs.unwrap_in_r || attrs.serde_error.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`serialize` cannot be combined with `unwrap_in_r` or `serde_error`: it serializes the complete return value, including any Result variant",
+            ));
+        }
+
         // serde_error classes the raised condition; unwrap_in_r never raises.
         if attrs.serde_error.is_some() && attrs.unwrap_in_r {
             return Err(syn::Error::new(
@@ -1381,6 +1390,8 @@ impl ParsedMethod {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
+                        } else if inner.path.is_ident("serialize") {
+                            method_attrs.serialize = true;
                         } else if inner.path.is_ident("serde_error") {
                             method_attrs.serde_error =
                                 Some(crate::miniextendr_fn::parse_serde_error_nested(&inner)?);
@@ -1506,7 +1517,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -1613,6 +1624,8 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("serialize") {
+                    method_attrs.serialize = true;
                 } else if meta.path.is_ident("serde_error") {
                     method_attrs.serde_error =
                         Some(crate::miniextendr_fn::parse_serde_error_nested(&meta)?);
@@ -1831,7 +1844,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -2180,6 +2193,9 @@ impl ParsedMethod {
                 "the return type's visibility marker and the `invisible` / `visible` method option disagree; keep one of them (or make them agree)",
             ));
         }
+
+        sig.output =
+            crate::type_inspect::serialize_return_type(&sig.output, method_attrs.serialize);
 
         Ok(ParsedMethod {
             visibility_marker,
@@ -3163,11 +3179,11 @@ pub fn generate_method_c_wrapper(
     // unwrap it (`.0`) before the conversion, which was analysed on the inner
     // type (`method.sig.output` is already peeled).
     let unwrap_marker = |call: TokenStream| -> TokenStream {
-        if method.visibility_marker.is_some() {
-            quote! { (#call).0 }
-        } else {
-            call
-        }
+        crate::type_inspect::prepare_return_value(
+            call,
+            method.visibility_marker,
+            method.method_attrs.serialize,
+        )
     };
     let call_expr = match method.env {
         ReceiverKind::Ref | ReceiverKind::RefMut if fallible_self_ref => {

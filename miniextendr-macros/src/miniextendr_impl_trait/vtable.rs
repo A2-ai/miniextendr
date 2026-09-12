@@ -454,11 +454,7 @@ fn generate_concrete_vtable_shims(
         // around the real return; `method.sig.output` is already peeled, so
         // unwrap it here before the conversion below.
         let unwrap_marker = |call: TokenStream| -> TokenStream {
-            if method.invisible.is_some() {
-                quote::quote! { (#call).0 }
-            } else {
-                call
-            }
+            crate::type_inspect::prepare_return_value(call, method.invisible, method.serialize)
         };
         let invocation = unwrap_marker(quote::quote! {
             <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
@@ -565,7 +561,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
             let (invisible, output) =
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
             let mut sig = method.sig.clone();
-            sig.output = output;
+            sig.output = crate::type_inspect::serialize_return_type(&output, attrs.serialize);
 
             methods.push(TraitMethod {
                 ident: method.sig.ident.clone(),
@@ -579,6 +575,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 check_interrupt: attrs.check_interrupt,
                 rng: attrs.rng,
                 unwrap_in_r: attrs.unwrap_in_r,
+                serialize: attrs.serialize,
                 param_defaults: attrs.defaults,
                 param_tags,
                 rdname,
@@ -614,6 +611,8 @@ struct TraitMethodAttrs {
     rng: bool,
     /// Return `Result<T, E>` to R without unwrapping (R wrapper receives the result variant).
     unwrap_in_r: bool,
+    /// Serialize the complete return value through `AsSerialize<T>`.
+    serialize: bool,
     /// Exclude this method from all generated wrappers (C, R, vtable shims).
     skip: bool,
     /// Parameter default values: keys are parameter names, values are R expressions.
@@ -652,6 +651,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut check_interrupt = false;
     let mut rng = false;
     let mut unwrap_in_r = false;
+    let mut serialize = false;
     let mut skip = false;
     let mut strict = false;
     let mut defaults = std::collections::HashMap::new();
@@ -688,12 +688,14 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
                         unwrap_in_r = true;
+                    } else if inner.path.is_ident("serialize") {
+                        serialize = true;
                     } else if inner.path.is_ident("no_shortcut") {
                         no_shortcut = true;
                     } else {
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
-                             `check_interrupt`, `unwrap_in_r`, or `no_shortcut`",
+                             `check_interrupt`, `unwrap_in_r`, `serialize`, or `no_shortcut`",
                         ));
                     }
                     Ok(())
@@ -710,6 +712,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
                 unwrap_in_r = true;
+            } else if meta.path.is_ident("serialize") {
+                serialize = true;
             } else if meta.path.is_ident("skip") {
                 skip = true;
             } else if meta.path.is_ident("no_shortcut") {
@@ -867,13 +871,20 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
-                     `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `no_shortcut`, `r_name`, \
+                     `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
                      `choices`, `choices_several_ok`",
                 ));
             }
             Ok(())
         })?;
+    }
+
+    if serialize && unwrap_in_r {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "`serialize` cannot be combined with `unwrap_in_r`: it serializes the complete return value, including any Result variant",
+        ));
     }
 
     Ok(TraitMethodAttrs {
@@ -883,6 +894,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         check_interrupt,
         rng,
         unwrap_in_r,
+        serialize,
         skip,
         strict,
         defaults,
@@ -1084,11 +1096,11 @@ pub(super) fn generate_trait_method_c_wrapper(
             <#type_ident as #trait_path>::#method_ident(self_ref, #(#call_args),*)
         };
         // Unwrap a visibility-marker newtype (#1213); the output type is peeled.
-        let call_expr = if method.invisible.is_some() {
-            quote::quote! { (#call_expr).0 }
-        } else {
-            call_expr
-        };
+        let call_expr = crate::type_inspect::prepare_return_value(
+            call_expr,
+            method.invisible,
+            method.serialize,
+        );
 
         builder = builder
             .pre_call(vec![self_extraction])
@@ -1099,11 +1111,11 @@ pub(super) fn generate_trait_method_c_wrapper(
         let call_expr = quote::quote! {
             <#type_ident as #trait_path>::#method_ident(#(#call_args),*)
         };
-        let call_expr = if method.invisible.is_some() {
-            quote::quote! { (#call_expr).0 }
-        } else {
-            call_expr
-        };
+        let call_expr = crate::type_inspect::prepare_return_value(
+            call_expr,
+            method.invisible,
+            method.serialize,
+        );
 
         builder = builder.call_expr(call_expr);
     }

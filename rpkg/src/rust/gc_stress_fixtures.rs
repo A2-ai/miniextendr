@@ -3319,3 +3319,10 @@ pub fn gc_stress_deferred_conditions() -> Vec<i32> {
 }
 
 // endregion
+
+/// Exercise serde return conversion at the generated boundary under GC pressure.
+#[cfg(feature = "serde")]
+#[miniextendr(noexport, no_worker, serialize)]
+pub fn gc_stress_serialized_return() -> crate::serialize_attr_tests::SerializedRecord {
+    crate::serialize_attr_tests::serialized_record_attr(41)
+}

@@ -933,7 +933,14 @@ impl<'a> MethodDocBuilder<'a> {
                     // Only add blank separator if the previous line isn't @title
                     // (roxygen2 treats blank lines after @title as multi-paragraph titles)
                     let last_is_title = lines.last().is_some_and(|l| l.contains("@title"));
-                    if !last_is_title {
+                    let last_is_examples = other_refs
+                        .last()
+                        .is_some_and(|tag| tag.trim_start().starts_with("@examples"));
+                    if last_is_examples {
+                        // End the code block before appending prose parameters.
+                        // A blank line alone remains inside @examples/@examplesIf.
+                        lines.push("#' @details".to_string());
+                    } else if !last_is_title {
                         lines.push("#'".to_string());
                     }
                     lines.push("#' \\describe{".to_string());
@@ -1125,6 +1132,28 @@ impl ParsedImplExt for ParsedImpl {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn env_parameter_details_end_examples_blocks() {
+        let type_ident: syn::Ident = syn::parse_quote!(Example);
+        for examples in [
+            "@examples\nExample$new(1L)",
+            "@examplesIf TRUE\nExample$new(1L)",
+        ] {
+            let tags = vec![
+                "@param value Integer input.".to_owned(),
+                examples.to_owned(),
+            ];
+            let docs = super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
+                .with_params_as_details()
+                .build()
+                .join("\n");
+            assert!(
+                docs.contains("Example$new(1L)\n#' @details\n#' \\describe{"),
+                "{docs}"
+            );
+        }
+    }
+
     use super::ClassDocBuilder;
 
     #[test]

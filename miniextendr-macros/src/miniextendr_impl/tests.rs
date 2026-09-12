@@ -4434,3 +4434,65 @@ fn s7_convert_methods_honour_method_rdname() {
 }
 
 // endregion
+
+#[test]
+fn serialize_methods_bypass_class_and_result_wrapping_in_every_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let mut code: syn::ItemImpl = syn::parse_quote! {
+                impl Example {
+                    #[miniextendr(serialize)]
+                    pub fn snapshot(&self) -> Self { unimplemented!() }
+                    #[miniextendr(serialize)]
+                    pub fn fallible(&self) -> Result<Self, String> { unimplemented!() }
+                    #[miniextendr(serialize)]
+                    pub fn quiet(&self) -> Invisible<Self> { unimplemented!() }
+                    #[miniextendr(env(serialize))]
+                    pub fn nested(&self) -> Payload { unimplemented!() }
+                }
+        };
+        if matches!(system, ClassSystem::Vctrs) {
+            for item in &mut code.items {
+                if let syn::ImplItem::Fn(method) = item {
+                    method.sig.inputs = method
+                        .sig
+                        .inputs
+                        .iter()
+                        .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+                        .cloned()
+                        .collect();
+                }
+            }
+        }
+        let parsed = parse_impl(system, code);
+        for name in ["snapshot", "fallible", "quiet", "nested"] {
+            let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+            assert!(!method.returns_self(), "{system:?}: {name}");
+            assert!(method.wrapped_output_arg("Result").is_none());
+            let tokens = c_wrapper_tokens(&parsed, name);
+            assert!(
+                tokens.contains("serde :: AsSerialize"),
+                "{system:?}: {tokens}"
+            );
+            assert!(
+                !tokens.contains("__mx_result_err_parts"),
+                "{system:?}: {tokens}"
+            );
+        }
+        assert_eq!(
+            parsed
+                .methods
+                .iter()
+                .find(|m| m.ident == "quiet")
+                .unwrap()
+                .visibility_marker,
+            Some(true)
+        );
+    }
+}
