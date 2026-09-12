@@ -1316,10 +1316,15 @@ The queue is a process-wide `Mutex`, so `#[miniextendr(worker)]` bodies
 push from the worker thread; the signalling always happens on R's main
 thread after the worker result is back. Every generated `.Call` entry
 point and every trait-ABI vtable shim flushes what was queued inside it.
-Code that runs under no such boundary (ALTREP callbacks, finalizers) has
-its conditions signalled by the next boundary that completes in the same
-package; use the panicking macros or `error!` there (flushing at those
-guard sites is issue #1518).
+ALTREP `RUnwind` / `RustUnwind` callbacks and connection I/O callbacks also
+signal locally, with `conditionCall() = NULL`; raising guards use their
+explicit `call` argument. An R-origin error discards the abandoned queue.
+
+External-pointer finalizers and connection close/destroy/Drop callbacks
+suppress deferred conditions: R finalization removes the caller's handlers.
+No R signalling or delayed delivery is attempted from destructors guarded
+by `drop_catching_panic`. Unguarded raw FFI / `AltrepGuard::Unsafe` callbacks
+must not queue conditions; choose a guarded callback instead.
 
 ### `dots`
 
@@ -1833,7 +1838,7 @@ manual ALTREP, raw FFI shims).
 
 - [`GuardMode::CatchUnwind`]: Wraps the closure in `catch_unwind`. On panic,
   fires telemetry and raises an R error via `Rf_error` (diverges).
-  Used by worker and connection trampolines.
+  Used by ALTREP `RustUnwind` callbacks.
 
 - [`GuardMode::RUnwind`]: Uses `R_UnwindProtect` to catch both Rust panics
   and R longjmps. Used by ALTREP callbacks that call R APIs. Routes
@@ -31946,7 +31951,7 @@ fn defer_condition(payload: impl RConditionError)
 ```
 
 Queue a plain condition (`signalCondition()`: silent without a handler)
-to be signalled when the current `#[miniextendr]` call returns.
+to be signalled when the current guarded call or callback returns.
 
 ### `deferred_condition::defer_message`
 
@@ -31955,7 +31960,7 @@ fn defer_message(payload: impl RConditionError)
 ```
 
 Queue a message (`message()`, muffled by `suppressMessages()`) to be
-emitted when the current `#[miniextendr]` call returns.
+emitted when the current guarded call or callback returns.
 
 Unlike [`crate::message!`], the payload's classes are honoured: they are
 layered in front of `rust_message` so handlers can dispatch on them.
@@ -31966,7 +31971,7 @@ layered in front of `rust_message` so handlers can dispatch on them.
 fn defer_warning(payload: impl RConditionError)
 ```
 
-Queue a warning to be signalled when the current `#[miniextendr]` call
+Queue a warning to be signalled when the current guarded call or callback
 returns; the call still returns its value.
 
 `payload` supplies the message, the user classes (prepended to
@@ -32460,6 +32465,10 @@ On panic:
 - For [`GuardMode::CatchUnwind`]: raises R error via `Rf_error` (diverges — never returns).
 - For [`GuardMode::RUnwind`]: delegates to `with_r_unwind_protect_sourced`.
 
+Deferred conditions signal on R's main thread before return (or panic
+conversion). Use this boundary on the main thread. Any SEXP held in the
+generic result must be rooted, e.g. by returning `OwnedProtect`.
+
 #### Parameters
 
 - `f`: The closure to execute.
@@ -32487,6 +32496,9 @@ This is needed for connection trampolines where panicking through R/C frames
 is UB but raising an R error is also undesirable (the caller expects a return
 value indicating failure).
 
+Deferred conditions are signalled on R's main thread after the callback.
+R handlers may exit (including `options(warn = 2)`); the Rust panic fallback
+is unchanged. Finalizer callbacks must suppress conditions instead.
 Telemetry is fired before returning the fallback.
 
 ### `gc_protect::tls::current_count`
@@ -42225,6 +42237,12 @@ re-panics at the View boundary.
 * `f` - The closure to execute
 * `call` - Optional R call SEXP for better error messages
 
+Deferred conditions are signalled before the outcome is returned or raised.
+Any R objects held by the generic return value must remain rooted during
+signalling. Return an [`crate::OwnedProtect`] for a freshly allocated SEXP,
+then call its `get()` after this guard returns. ALTREP's SEXP trampolines do
+this automatically. An R-origin error discards this call's queued conditions.
+
 ### `unwind_protect::with_r_unwind_protect_shim`
 
 ```rust
@@ -42506,7 +42524,7 @@ withCallingHandlers(
 
 Queue a plain R condition (`rust_condition` layering, silent without a
 handler) and return normally; signalled when the surrounding
-`#[miniextendr]` call returns.
+guarded call or callback returns.
 
 Same grammar as [`crate::defer_warning!`]. Useful for progress or audit
 events a caller may opt into with `withCallingHandlers()`.
@@ -42515,7 +42533,7 @@ events a caller may opt into with `withCallingHandlers()`.
 
 Queue an R message (`rust_message` layering, muffled by
 `suppressMessages()`) and return normally; emitted when the surrounding
-`#[miniextendr]` call returns.
+guarded call or callback returns.
 
 Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 `class = …` part is accepted and layered in front of `rust_message`.
@@ -42523,7 +42541,7 @@ Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 ### `defer_warning!`
 
 Queue an R warning with `rust_warning` class layering and return normally;
-the surrounding `#[miniextendr]` call signals it after its value is
+the surrounding guarded call or callback signals it after its value is
 computed.
 
 Same grammar as [`crate::warning!`]: optional `class = …` (one class or a

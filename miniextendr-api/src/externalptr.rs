@@ -2036,6 +2036,10 @@ impl Drop for AbortIfUnwinding {
 /// invocation" crash. Instead, this function uses a drop-guard whose `Drop`
 /// impl calls `std::thread::panicking()` — a cheap, allocation-free TLS read.
 ///
+/// Deferred conditions queued by this destructor (including nested guards)
+/// are suppressed on this thread. Finalization has no caller handlers to
+/// receive them, and retaining them would strand or misattribute diagnostics.
+///
 /// This helper is `#[doc(hidden)]` because it is called from macro-generated
 /// code and is not part of the public API.
 #[doc(hidden)]
