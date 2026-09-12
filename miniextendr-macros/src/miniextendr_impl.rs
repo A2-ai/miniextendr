@@ -430,6 +430,8 @@ pub struct ParsedMethod {
     /// peeled from [`Self::sig`] at parse time, so every return-shape
     /// predicate sees `T`; the C wrapper unwraps the newtype before conversion.
     pub visibility_marker: Option<bool>,
+    /// Explicit target class wrapping, shared by marker and attribute spellings.
+    pub return_wrap: Option<crate::return_wrap::ReturnWrap>,
     /// The method's name (e.g., `new`, `get`, `set_value`).
     pub ident: syn::Ident,
     /// How this method receives `self`: `&self`, `&mut self`, by value, or not at all (static).
@@ -624,6 +626,8 @@ pub struct MethodAttrs {
     pub serde_error: Option<crate::miniextendr_fn::SerdeErrorSpec>,
     /// Serialize the complete return value through `AsSerialize<T>`.
     pub serialize: bool,
+    /// Explicit return class system (`wrap = "r6"` and siblings).
+    pub wrap: Option<ClassSystem>,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -1390,6 +1394,9 @@ impl ParsedMethod {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
+                        } else if inner.path.is_ident("wrap") {
+                            let value: syn::LitStr = inner.value()?.parse()?;
+                            method_attrs.wrap = Some(crate::return_wrap::parse_system(&value)?);
                         } else if inner.path.is_ident("serialize") {
                             method_attrs.serialize = true;
                         } else if inner.path.is_ident("serde_error") {
@@ -1624,6 +1631,9 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("wrap") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    method_attrs.wrap = Some(crate::return_wrap::parse_system(&value)?);
                 } else if meta.path.is_ident("serialize") {
                     method_attrs.serialize = true;
                 } else if meta.path.is_ident("serde_error") {
@@ -2194,11 +2204,18 @@ impl ParsedMethod {
             ));
         }
 
-        sig.output =
-            crate::type_inspect::serialize_return_type(&sig.output, method_attrs.serialize);
+        let (return_wrap, output) = crate::return_wrap::resolve(&sig.output, method_attrs.wrap)?;
+        if return_wrap.is_some() && (method_attrs.serialize || method_attrs.unwrap_in_r) {
+            return Err(syn::Error::new_spanned(
+                &item.sig.output,
+                "explicit class wrapping cannot be combined with serialize or unwrap_in_r",
+            ));
+        }
+        sig.output = crate::type_inspect::serialize_return_type(&output, method_attrs.serialize);
 
         Ok(ParsedMethod {
             visibility_marker,
+            return_wrap,
             ident: item.sig.ident.clone(),
             env,
             sig,
@@ -3179,11 +3196,15 @@ pub fn generate_method_c_wrapper(
     // unwrap it (`.0`) before the conversion, which was analysed on the inner
     // type (`method.sig.output` is already peeled).
     let unwrap_marker = |call: TokenStream| -> TokenStream {
-        crate::type_inspect::prepare_return_value(
+        let call = crate::type_inspect::prepare_return_value(
             call,
             method.visibility_marker,
             method.method_attrs.serialize,
-        )
+        );
+        match &method.return_wrap {
+            Some(wrap) => wrap.prepare_value(call),
+            None => call,
+        }
     };
     let call_expr = match method.env {
         ReceiverKind::Ref | ReceiverKind::RefMut if fallible_self_ref => {

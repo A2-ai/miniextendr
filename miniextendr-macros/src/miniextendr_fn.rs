@@ -287,6 +287,12 @@ pub(crate) fn get_missing_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 /// - `Missing<Missing<T>>` (nested Missing)
 /// - `Missing<Dots>` or `Missing<&Dots>`
 pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> syn::Result<()> {
+    if crate::return_wrap::contains_marker(ty) {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "WrapAs* markers are return-position only",
+        ));
+    }
     if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "argument") {
         return Err(err);
     }
@@ -1254,6 +1260,7 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) unwrap_in_r: bool,
     /// Serialize the complete return value through `AsSerialize<T>`.
     pub(crate) serialize: bool,
+    pub(crate) wrap: Option<crate::miniextendr_impl::ClassSystem>,
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub(crate) serde_error: Option<SerdeErrorSpec>,
@@ -1724,6 +1731,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut rng = false;
         let mut unwrap_in_r = false;
         let mut serialize = false;
+        let mut wrap = None;
         let mut serde_error: Option<SerdeErrorSpec> = None;
         let mut no_preconditions: Option<bool> = None;
         let mut no_call_attribution: Option<bool> = None;
@@ -1818,6 +1826,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     }
                 }
                 syn::Meta::NameValue(nv) => {
+                    if nv.path.is_ident("wrap") {
+                        let value = parse_lit_str(&nv, "wrap")?;
+                        wrap = Some(crate::return_wrap::parse_system(&syn::LitStr::new(
+                            &value,
+                            nv.path.span(),
+                        ))?);
+                        continue;
+                    }
                     // Check for boolean flag options: option = true / option = false
                     if let syn::Expr::Lit(syn::ExprLit {
                         lit: syn::Lit::Bool(lit_bool),
@@ -2192,6 +2208,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             rng,
             unwrap_in_r,
             serialize,
+            wrap,
             serde_error,
             no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
             // An explicit `call = caller` overrides the `fast-default` feature's

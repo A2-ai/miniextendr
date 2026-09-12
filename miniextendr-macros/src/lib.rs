@@ -161,6 +161,7 @@ mod c_wrapper_builder;
 mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
+mod return_wrap;
 mod type_inspect;
 mod typed_dataframe;
 mod typed_list;
@@ -758,6 +759,7 @@ pub fn miniextendr(
         rng,
         unwrap_in_r,
         serialize,
+        wrap,
         serde_error,
         no_preconditions,
         no_call_attribution,
@@ -847,6 +849,21 @@ pub fn miniextendr(
         }
         crate::type_inspect::peel_return_visibility(output)
     };
+    let (return_wrap, peeled_output) = match crate::return_wrap::resolve(&peeled_output, wrap) {
+        Ok(resolved) => resolved,
+        Err(error) => return error.into_compile_error().into(),
+    };
+    if return_wrap.is_some() && (serialize || unwrap_in_r) {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "explicit class wrapping cannot be combined with serialize or unwrap_in_r",
+        )
+        .into_compile_error()
+        .into();
+    }
+    if return_wrap.is_some() && parsed.abi().is_some() {
+        return syn::Error::new_spanned(parsed.output(), "explicit class wrapping requires a generated Rust-to-R wrapper, not an extern function").into_compile_error().into();
+    }
     let converted_output = crate::type_inspect::serialize_return_type(&peeled_output, serialize);
     let output = &converted_output;
     let abi = parsed.abi();
@@ -1040,6 +1057,10 @@ pub fn miniextendr(
         visibility_marker,
         serialize,
     );
+    let fn_call_expr = match &return_wrap {
+        Some(wrap) => wrap.prepare_value(fn_call_expr),
+        None => fn_call_expr,
+    };
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).
@@ -1219,14 +1240,17 @@ pub fn miniextendr(
     };
     let r_wrapper_return_str = {
         // Capture result, check for tagged condition value, raise R condition if present.
+        let final_return = return_wrap
+            .as_ref()
+            .map_or_else(|| ".val".to_owned(), |wrap| wrap.r_expression(".val", None));
         let final_return = if is_invisible_return_type {
-            "invisible(.val)"
+            format!("invisible({final_return})")
         } else {
-            ".val"
+            final_return
         };
         let body = crate::method_return_builder::standalone_body_with_call_default(
             &call_expr,
-            final_return,
+            &final_return,
             "  ",
             call_attribution.raise_default(),
         );

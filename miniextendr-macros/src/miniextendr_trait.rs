@@ -1237,6 +1237,12 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
     let mut param_names = Vec::new();
     for (i, arg) in method.sig.inputs.iter().skip(skip_count).enumerate() {
         if let syn::FnArg::Typed(pat_type) = arg {
+            if crate::return_wrap::contains_marker(&pat_type.ty) {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    "WrapAs* markers are return-position only",
+                ));
+            }
             param_types.push((*pat_type.ty).clone());
             if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                 param_names.push(pat_ident.ident.clone());
@@ -1256,6 +1262,12 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
                 return Err(err);
             }
             let (_, ty) = crate::type_inspect::peel_visibility_marker(ty);
+            let output: syn::ReturnType = syn::parse_quote!(-> #ty);
+            let (_, output) = crate::return_wrap::resolve(&output, None)?;
+            let syn::ReturnType::Type(_, ty) = output else {
+                unreachable!()
+            };
+            let ty = ty.as_ref();
             // Check if it's unit type ()
             if matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()) {
                 None

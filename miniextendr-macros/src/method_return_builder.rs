@@ -222,6 +222,8 @@ pub struct MethodReturnBuilder {
     /// write-time resolver maps this Rust name to the registered target class
     /// and constructor syntax, or falls back to the bare value on miss.
     return_class: Option<String>,
+    /// Explicit constructor selection, before automatic return-shape tails.
+    explicit_wrap: Option<crate::return_wrap::ReturnWrap>,
     /// Variable name to return for `ChainableMutation` strategy (e.g., `"self"` for R6,
     /// `"x"` for S3). Defaults to `"self"` if not set.
     chain_var: Option<String>,
@@ -241,6 +243,7 @@ impl MethodReturnBuilder {
             strategy: ReturnStrategy::Direct,
             class_name: None,
             return_class: None,
+            explicit_wrap: None,
             chain_var: None,
             invisible: false,
             indent: 2,
@@ -299,6 +302,9 @@ impl MethodReturnBuilder {
     /// [`ReturnStrategy::ReturnOtherClass`] or
     /// [`ReturnStrategy::ReturnOtherClassList`].
     pub fn with_return_class_from_method(mut self, method: &ParsedMethod) -> Self {
+        if let Some(wrap) = &method.return_wrap {
+            return self.with_explicit_wrap(wrap.clone());
+        }
         match self.strategy {
             ReturnStrategy::ReturnOtherClass => {
                 let return_class = method
@@ -314,6 +320,12 @@ impl MethodReturnBuilder {
             }
             _ => {}
         }
+        self
+    }
+
+    /// Select an explicit class constructor from a marker or wrap attribute.
+    pub fn with_explicit_wrap(mut self, wrap: crate::return_wrap::ReturnWrap) -> Self {
+        self.explicit_wrap = Some(wrap);
         self
     }
 
@@ -370,6 +382,13 @@ impl MethodReturnBuilder {
 
         let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
         lines.extend(condition_check_lines(&indent));
+        if let Some(wrap) = &self.explicit_wrap {
+            lines.push(format!(
+                "{indent}{}",
+                wrap.r_expression(".val", self.class_name.as_deref())
+            ));
+            return self.apply_visibility(lines);
+        }
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
                 lines.extend((tails.self_tail)(&indent, class_name));
@@ -502,18 +521,22 @@ impl MethodReturnBuilder {
     /// inline (suitable for S7 property definitions / convert methods that
     /// require a single expression).
     pub fn build_s7_inline(&self) -> String {
-        let inner = match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                format!("{}(.ptr = .val)", class_name)
+        let inner = if let Some(wrap) = &self.explicit_wrap {
+            wrap.r_expression(".val", self.class_name.as_deref())
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("{}(.ptr = .val)", class_name)
+                }
+                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
+                ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
+                ReturnStrategy::Direct => ".val".to_string(),
             }
-            ReturnStrategy::ChainableMutation => "x".to_string(),
-            ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
-            ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
-            ReturnStrategy::Direct => ".val".to_string(),
         };
         let inner = self.apply_visibility_expr(inner);
         condition_check_inline_block(&self.call_expr, &inner, "    ")
@@ -524,18 +547,22 @@ impl MethodReturnBuilder {
     /// Returns a multi-line block expression that performs the condition check
     /// inline.
     pub fn build_s4_inline(&self) -> String {
-        let inner = match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                format!("methods::new(\"{}\", ptr = .val)", class_name)
+        let inner = if let Some(wrap) = &self.explicit_wrap {
+            wrap.r_expression(".val", self.class_name.as_deref())
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("methods::new(\"{}\", ptr = .val)", class_name)
+                }
+                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
+                ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
+                ReturnStrategy::Direct => ".val".to_string(),
             }
-            ReturnStrategy::ChainableMutation => "x".to_string(),
-            ReturnStrategy::ReturnOtherClass => self.return_other_class_expr(),
-            ReturnStrategy::ReturnOtherClassList => self.return_other_class_list_expr(),
-            ReturnStrategy::Direct => ".val".to_string(),
         };
         let inner = self.apply_visibility_expr(inner);
         condition_check_inline_block(&self.call_expr, &inner, "    ")
