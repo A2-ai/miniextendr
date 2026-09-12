@@ -288,14 +288,18 @@ or workspace context.
 
 Specifically, freeze:
 
-1. Rewrites `path = "..."` entries for local workspace crates to point at
-   `vendor/<name>-<version>/`.
+1. Removes direct `path = "..."` entries for local workspace crates while
+   preserving aliases, options, and version requirements (adding `"*"` when
+   absent). Their locations live in the patch table below, so configure can
+   redirect them to a shared vendor cache without editing the manifest.
 2. Strips `[patch.*]` sections that reference external sources. Those
    patches were how the unfrozen build resolved git overrides; once
    everything lives in `vendor/`, patches are noise that confuses cargo.
-3. Adds `[patch.crates-io]` entries for local vendored dependencies so
-   transitive deps from external crates resolve to the vendored copy
-   instead of attempting a registry fetch.
+3. Adds relative `[patch.crates-io]` entries for local vendored dependencies
+   (flat `vendor/<name>/` slots). Both direct and transitive dependencies resolve
+   to those copies instead of attempting a registry fetch. A shared-cache
+   configure can override these paths in `.cargo/config.toml`; an ordinary
+   tarball install keeps the portable relative paths.
 4. Regenerates `Cargo.lock` from the frozen manifest with `--offline`. This
    normalizes the lockfile into the shape it will have at build time and
    surfaces any unresolvable refs immediately.
@@ -365,9 +369,10 @@ issue tracker:
   drop, including on panic and `?` propagation. The only uncovered case
   is `SIGKILL` and `std::process::abort()`, where Drop does not run.
 - **Stale frozen vendor after merging main.** A frozen `Cargo.toml`
-  carries `path = "../../vendor/..."` entries that go stale when the
-  workspace diverges. To recover, reset the frozen path deps to `"*"`,
-  delete `vendor/` and `Cargo.lock`, and re-run.
+  carries relative vendor patches that can become stale when the workspace
+  diverges. In miniextendr projects, use `just clean-vendor-leak` or
+  `miniextendr_clean_vendor_leak()` to restore the original manifest from
+  `.Cargo.toml.prefreeze` before rebuilding. Never edit that snapshot by hand.
 - **Crates that `include_str!()` from `tests/` or `examples/`.** Use
   `--strip-toml-sections` rather than `--strip-all` so the directories
   stay on disk and `cargo check --offline` keeps working.

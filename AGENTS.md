@@ -296,7 +296,12 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 
 `just vendor-sync-check` verifies vendored copies match workspace sources; `just vendor` refreshes.
 
-**Stale vendor freeze recovery**: `just vendor --freeze` writes `path = "../../vendor/..."` into `rpkg/src/rust/Cargo.toml` `[dependencies]` and `[patch.crates-io]`. After merging main, the frozen vendor/ can go stale and `cargo metadata` fails. Fix: reset frozen path deps back to `"*"`, delete `rpkg/vendor/` + `rpkg/src/rust/Cargo.lock`, run `just configure`.
+`cargo revendor --freeze` removes direct dependency paths and records relative
+vendor paths in `[patch.crates-io]`. This lets configure redirect them to a
+shared `VENDOR_OUT` cache without editing the manifest (#1513). Recover a stale
+freeze with `just clean-vendor-leak` or `miniextendr_clean_vendor_leak()`, which
+restore the original manifest from `.Cargo.toml.prefreeze`; never edit the
+snapshot by hand.
 
 ### Template sync (rpkg → templates)
 

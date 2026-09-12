@@ -278,10 +278,21 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 dnl ---- Cargo target/profile configuration ----
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
-: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+CARGO_TARGET_DIR_USER_SET=false
+if test -n "$CARGO_TARGET_DIR"; then
+  CARGO_TARGET_DIR_USER_SET=true
+  mkdir -p "$CARGO_TARGET_DIR" || AC_MSG_ERROR([Cannot create CARGO_TARGET_DIR])
+  CARGO_TARGET_DIR="$(cd "$CARGO_TARGET_DIR" && pwd)"
+else
+  CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"
+fi
+AC_SUBST([CARGO_TARGET_DIR_USER_SET])
 AC_SUBST([CARGO_TARGET_DIR])
 
-CARGO_TARGET_DIR_CARGO="$abs_top_srcdir_cargo/rust-target"
+CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR"
+if test "x$CYGPATH" != "xno"; then
+  CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$CARGO_TARGET_DIR")"
+fi
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
@@ -389,8 +400,19 @@ AC_SUBST([NATIVE_PKG_CPPFLAGS])
 AC_CONFIG_SRCDIR([src/rust/lib.rs])
 
 dnl ---- vendor directory paths (used in tarball mode only) ----
-VENDOR_OUT="$abs_top_srcdir/vendor"
-VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
+AC_ARG_VAR([VENDOR_OUT], [Shared vendor cache root (optional; entries are keyed by vendor.tar.xz contents)])
+VENDOR_OUT_USER_SET=false
+if test -n "$VENDOR_OUT" && test "$IS_TARBALL_INSTALL" = "true"; then
+  VENDOR_OUT_USER_SET=true
+  VENDOR_OUT=$("${R_HOME}/bin/Rscript" "$abs_top_srcdir_cargo/tools/vendor-cache.R" prepare "$abs_top_srcdir_cargo" "$VENDOR_OUT") || AC_MSG_ERROR([Failed to prepare shared vendor cache])
+else
+  VENDOR_OUT="$abs_top_srcdir/vendor"
+fi
+VENDOR_OUT_CARGO="$VENDOR_OUT"
+if test "x$CYGPATH" != "xno"; then
+  VENDOR_OUT_CARGO="$($CYGPATH -m "$VENDOR_OUT")"
+fi
+AC_SUBST([VENDOR_OUT_USER_SET])
 AC_SUBST([VENDOR_OUT])
 AC_SUBST([VENDOR_OUT_CARGO])
 
@@ -809,6 +831,10 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo ""
       echo "@<:@build@:>@"
       echo "target-dir = \"$CARGO_TARGET_DIR_CARGO\""
+      if test "$VENDOR_OUT_USER_SET" = "true"; then
+        echo ""
+        "$R_HOME/bin/Rscript" "$abs_top_srcdir_cargo/tools/vendor-cache.R" config "$abs_top_srcdir_cargo" "$VENDOR_OUT_CARGO" || exit 1
+      fi
     } > "$RPKG_CFG"
     echo "configure: wrote $RPKG_CFG (tarball mode)"
 
@@ -844,6 +870,9 @@ AC_CONFIG_COMMANDS([cargo-config],
   fi
 ],
 [IS_TARBALL_INSTALL="$IS_TARBALL_INSTALL"
+ VENDOR_OUT_USER_SET="$VENDOR_OUT_USER_SET"
+ R_HOME="$R_HOME"
+ abs_top_srcdir_cargo="$abs_top_srcdir_cargo"
  MONOREPO_ROOT="$MONOREPO_ROOT"
  MONOREPO_ROOT_CARGO="$MONOREPO_ROOT_CARGO"
  VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO"
