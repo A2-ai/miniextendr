@@ -16,6 +16,44 @@ miniextendr adds a Rust step: Cargo builds a static library (`.a`) which R's
 linker folds into the final shared library alongside a minimal C anchor.
 `R_init_*` and all registered entry points are defined in Rust.
 
+## Pre-shipped wrapper freshness
+
+A native tarball install can reuse `R/<package>-wrappers.R` without loading the
+shared library for generation (#1022). Its size alone cannot establish that it
+matches the Rust sources: adding an S3 method after generation previously
+allowed an install to succeed with a missing-method warning (#1512).
+
+`tools/wrapper-freshness.R` records content fingerprints after a successful
+native generation pass. The generated `tools/wrapper-inputs.rds` travels in the
+package tarball and is gitignored. It binds the wrapper bytes to the package's
+Rust source paths and contents, `Cargo.toml`, `Cargo.lock`, and the configured
+Cargo features and profile. It excludes generated `wasm_registry.rs` and build
+output directories. All recorded paths are relative to the package, so copying
+the package or resetting its timestamps does not invalidate the record.
+
+The native tarball fast path requires a matching record. Missing, corrupt, or
+mismatched records trigger generation from the freshly linked library.
+Vendoring can rewrite Cargo files; those changes also require verification,
+even when the resulting wrappers are identical. If the existing R wrapper
+changes, installation stops with its filename and recovery instructions before
+R's namespace load check. Generation compares a temporary copy, preserving the
+shipped wrapper on failure so a repeated install cannot bypass the check.
+`MINIEXTENDR_FORCE_WRAPPER_GEN=1` still forces generation and performs the same
+consistency check.
+
+For example, after adding a `summary.my_class` Rust method, regenerate wrappers
+and documentation in the original source package before producing the tarball:
+
+```r
+minirextendr::miniextendr_build("path/to/package")
+devtools::build("path/to/package")
+```
+
+The fingerprint is separate from the R wrapper. The generator still leaves
+unchanged R code, timestamps, and source-position comments alone. This guard
+applies to the native tarball fast path; wasm uses its existing host-generated
+wrapper and registry snapshot workflow.
+
 ## Makefile Include Chain
 
 R's build system is a hierarchy of makefiles included in a specific order.

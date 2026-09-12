@@ -1124,6 +1124,7 @@ templates-sources:
     rpkg/stub.c	rpkg/src/stub.c
     rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
+    rpkg/tools/wrapper-freshness.R	rpkg/tools/wrapper-freshness.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
     monorepo/gitattributes	rpkg/.gitattributes
@@ -1144,6 +1145,7 @@ templates-sources:
     monorepo/rpkg/stub.c	rpkg/src/stub.c
     monorepo/rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
+    monorepo/rpkg/tools/wrapper-freshness.R	rpkg/tools/wrapper-freshness.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF
 

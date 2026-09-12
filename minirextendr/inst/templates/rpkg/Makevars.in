@@ -141,10 +141,11 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 #             install/build that produced the tarball regenerates it), so
 #             skip loading $(SHLIB) for wrapper-gen entirely (#1022).
 #             LOAD-BEARING GUARD: skip only when R/<pkg>-wrappers.R exists AND is
-#             non-empty ([ -s ]). If it is absent or empty (a tarball stripped of
-#             its wrappers, a truncated download, etc.), FALL BACK to full
-#             wrapper-gen rather than installing a wrapper-less, silently-broken
-#             package. Set MINIEXTENDR_FORCE_WRAPPER_GEN to force regeneration
+#             verified against generation-time content fingerprints (#1512).
+#             Missing or mismatched fingerprints FALL BACK to full wrapper-gen.
+#             If regeneration changes an existing tarball wrapper, stop before
+#             loading it: the author must reconcile NAMESPACE and rebuild.
+#             Set MINIEXTENDR_FORCE_WRAPPER_GEN to force regeneration
 #             even when the shipped wrappers are valid (debugging only).
 #   roxygen : the compile was triggered by roxygen2::roxygenise() (devtools::
 #             document()) recompiling via pkgload::load_all. roxygen2 >= 7.3.0
@@ -162,17 +163,17 @@ $(WRAPPERS_R): $(SHLIB)
 	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
 	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/@PACKAGE_NAME@-wrappers.R + src/rust/wasm_registry.rs expected)"; \
 	  touch '$(WRAPPERS_R)'; \
-	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
+	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" check "$(ABS_TOP_SRCDIR)" "$(WRAPPERS_R)"; then \
 	  echo "tarball install: using pre-shipped R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen, #1022)"; \
 	  touch '$(WRAPPERS_R)'; \
-	elif [ "$$ROXYGEN_PKG" = "@PACKAGE_NAME@" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
+	elif [ "$(IS_TARBALL_INSTALL)" != "true" ] && [ "$$ROXYGEN_PKG" = "@PACKAGE_NAME@" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && [ -s '$(WRAPPERS_R)' ]; then \
 	  echo "roxygenise pass (ROXYGEN_PKG=@PACKAGE_NAME@): reusing existing R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen)"; \
 	  touch '$(WRAPPERS_R)'; \
 	else \
 	  if [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -n "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
 	    echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from $(SHLIB) (tarball mode override)..."; \
 	  elif [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
-	    echo "tarball install: pre-shipped R/@PACKAGE_NAME@-wrappers.R absent or empty — falling back to full wrapper-gen (#1022 guard)..." >&2; \
+	    echo "tarball install: pre-shipped R/@PACKAGE_NAME@-wrappers.R missing, changed, or unverified — falling back to full wrapper-gen (#1022 guard)..." >&2; \
 	  else \
 	    echo "Generating R wrappers + wasm_registry.rs..."; \
 	  fi; \
@@ -184,7 +185,7 @@ $(WRAPPERS_R): $(SHLIB)
 	    _wrappers=$$(cygpath -m "$$_wrappers"); \
 	    _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
 	  fi; \
-	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_shlib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_shlib') }))"; \
+	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" generate "$(ABS_TOP_SRCDIR)" "$$_wrappers" "$$_shlib" "$$_wasm_registry" "$(IS_TARBALL_INSTALL)"; \
 	fi
 
 clean:
