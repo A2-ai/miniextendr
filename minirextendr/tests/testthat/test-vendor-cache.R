@@ -144,10 +144,20 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
   expect_true("cacheprobe/tools/vendor-cache.R" %in% utils::untar(tarball, list = TRUE))
   dir.create(cache)
   writeLines("keep me", file.path(cache, "caller-owned"))
+  extracted <- file.path(root, c("first", "second"))
+  for (directory in extracted) {
+    dir.create(directory)
+    utils::untar(tarball, exdir = directory)
+  }
+  packages <- file.path(extracted, "cacheprobe")
+  sources <- unlist(lapply(packages, function(package) file.path(package, "src/rust",
+    c("Cargo.toml", "Cargo.lock", "lib.rs"))), use.names = FALSE)
+  before <- tools::md5sum(sources)
   withr::local_envvar(c(VENDOR_OUT = cache))
-  first <- install(tarball, "first-shared-install")
+  first <- install(packages[[1L]], "first-shared-install")
   expect_true(dir.exists(target))
-  second <- install(tarball, "second-shared-install")
+  second <- install(packages[[2L]], "second-shared-install")
+  expect_identical(tools::md5sum(sources), before)
   lines <- strsplit(second$output, "\n", fixed = TRUE)[[1L]]
   compiled <- grep("^[[:space:]]*Compiling ", lines, value = TRUE)
   expect_identical(length(compiled), 1L, info = second$output)
@@ -162,4 +172,12 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
   run(file.path(R.home("bin"), "Rscript"), shQuote(probe), "verify-runtime")
   message(sprintf("Shared vendor install times: first %.2fs; second %.2fs (%d crate rebuilt)",
                   first$elapsed, second$elapsed, length(compiled)))
+  # The same newly frozen tarball still installs without either cache opt-in.
+  ordinary <- withr::with_envvar(c(VENDOR_OUT = NA, CARGO_TARGET_DIR = NA),
+    install(tarball, "ordinary-tarball-install"))
+  expect_match(ordinary$output, "using pre-shipped", fixed = TRUE)
+  expect_false(grepl("warning:", ordinary$output, fixed = TRUE), info = ordinary$output)
+  run(file.path(R.home("bin"), "Rscript"), shQuote(probe), "verify-ordinary-runtime")
+  expect_true(dir.exists(target))
+  expect_identical(readLines(file.path(cache, "caller-owned")), "keep me")
 })

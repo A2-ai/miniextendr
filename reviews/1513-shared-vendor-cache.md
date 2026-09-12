@@ -34,10 +34,28 @@ extractions. Changed archives get separate entries; cleanup never deletes
 caller-owned entries or unrelated files. The helper is included in both R
 scaffolds and the Rust CLI's embedded catalog and common scaffold plan.
 
-Validation so far: `just revendor-test` passes. The real two-install fixture
+Focused validation: `just revendor-test` passes. The real two-install fixture
 (including a local core crate with a build script and the framework) rebuilds
 only the package on its second install, returns the expected value in a fresh R
 process, and retains the wrapper skip. All 34 cache/cleanup assertions pass with
 no warnings. On macOS arm64, R 4.6.1, Cargo dev profile: first install 15.63s,
 second install 3.32s. These are local fixture measurements, not release-profile
 or cross-platform performance guarantees.
+
+The expanded regression passes all 42 assertions, including byte-identical
+Cargo.toml, Cargo.lock, and Rust sources after two explicitly extracted package
+installs; ordinary tarball installation and runtime behavior without either
+cache setting; and caller-cache preservation. The repeat measurement was
+16.40s then 3.55s, again with one crate rebuilt. Template, instruction-file, and
+site checks pass. An early test assertion used an unsupported `info` argument
+on `expect_length`; `expect_identical(length(...), ..., info = ...)` supplies
+the intended full Cargo log on a rebuild-count mismatch.
+
+Final broader validation passes: built-tarball `CI=true NOT_CRAN=true just
+minirextendr-check` reports 0 errors, 0 warnings, and 0 notes; the existing
+monorepo #1429 regression passes 40 assertions, including both layouts and
+manifest restoration after repeated builds. The separate source-monorepo smoke
+test passes too. `just test` passes every leg, and all sequential Clippy gates
+pass with `-D warnings`: the repository recipe, three root CI configurations,
+full-feature rpkg, and standalone cargo-revendor. `just configure`, formatting,
+template synchronization, instruction-file checks, and site checks pass.
