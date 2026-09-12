@@ -1240,7 +1240,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// NameValue bool, parenthesized bool) all read from the same list and can't
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
-     rng, unwrap_in_r, serde_error, strict, no_strict, \
+     rng, unwrap_in_r, serialize, serde_error, strict, no_strict, \
      no_preconditions, no_call_attribution, fast, no_fast, \
      internal, noexport, export";
 
@@ -1305,6 +1305,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub(crate) unwrap_in_r: bool,
+    /// Serialize the complete return value through `AsSerialize<T>`.
+    pub(crate) serialize: bool,
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub(crate) serde_error: Option<SerdeErrorSpec>,
@@ -1771,6 +1773,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut coerce_all: Option<bool> = None;
         let mut rng = false;
         let mut unwrap_in_r = false;
+        let mut serialize = false;
         let mut serde_error: Option<SerdeErrorSpec> = None;
         let mut no_preconditions: Option<bool> = None;
         let mut no_call_attribution: Option<bool> = None;
@@ -1822,6 +1825,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             rng = true;
                         } else if ident == "unwrap_in_r" {
                             unwrap_in_r = true;
+                        } else if ident == "serialize" {
+                            serialize = true;
                         } else if ident == "serde_error" {
                             return Err(syn::Error::new_spanned(&path, SERDE_ERROR_BARE_HELP));
                         } else if ident == "worker" {
@@ -1889,6 +1894,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 rng = val;
                             } else if ident == "unwrap_in_r" {
                                 unwrap_in_r = val;
+                            } else if ident == "serialize" {
+                                serialize = val;
                             } else if ident == "serde_error" {
                                 return Err(syn::Error::new_spanned(&nv, SERDE_ERROR_BARE_HELP));
                             } else if ident == "strict" {
@@ -2243,6 +2250,13 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             ));
         }
 
+        if serialize && (unwrap_in_r || serde_error.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`serialize` cannot be combined with `unwrap_in_r` or `serde_error`: it serializes the complete return value, including any Result variant",
+            ));
+        }
+
         // Validate: `serde_error` classes the raised condition; `unwrap_in_r`
         // never raises (the Result is returned as a value), so combining them
         // is a contradiction.
@@ -2261,6 +2275,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             coerce_all: coerce_all.unwrap_or(cfg!(feature = "coerce-default")),
             rng,
             unwrap_in_r,
+            serialize,
             serde_error,
             no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
             call_attribution,

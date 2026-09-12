@@ -186,6 +186,12 @@ use crate::into_r::IntoR;
 /// return a `Serialize` type from a `#[miniextendr]` function and have it
 /// automatically converted to an R list.
 ///
+/// `#[miniextendr(serialize)]` is the attribute spelling: return plain `T`
+/// from the Rust body and let the boundary wrap it. An outer `Invisible<T>`
+/// composes as `Invisible<AsSerialize<T>>`. Both spellings serialize a complete
+/// `Result` or `Option` as data; use `Result<AsSerialize<T>, E>` to keep errors
+/// at the ordinary boundary instead. Requires the `serde` feature.
+///
 /// # Example
 ///
 /// ```rust,ignore
