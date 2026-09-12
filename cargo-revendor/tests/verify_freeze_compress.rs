@@ -420,6 +420,138 @@ cfg-if = "1"
 
 // endregion
 
+// region: explicit compression levels (#1514)
+
+/// A local Git source exercises freeze/source replacement without network.
+/// Every preset tested must produce the same extracted bytes and build with an
+/// empty Cargo home, proving that the informational message covers a real
+/// offline resolution path rather than a warm Git cache.
+#[test]
+fn compression_levels_preserve_offline_git_freeze() {
+    let git = common::create_local_git_crate(
+        "compression-dep",
+        "[package]\nname = \"compression-dep\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        "pub fn value() -> u32 { 7 }\n",
+    );
+    let proj = create_simple_crate(
+        &format!(
+            "[package]\nname = \"compression-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [lib]\npath = \"lib.rs\"\n\
+             [dependencies]\ncompression-dep = {{ git = {:?}, rev = {:?} }}\n",
+            git.url(),
+            git.rev
+        ),
+        "pub fn value() -> u32 { compression_dep::value() }\n",
+    );
+    let vendor = proj.root().join("vendor");
+    for level in [None, Some("0"), Some("1"), Some("9")] {
+        let archive = proj.root().join("vendor.tar.xz");
+        let mut cmd = revendor_cmd();
+        cmd.current_dir(proj.root()).args([
+            "revendor",
+            "--manifest-path",
+            "Cargo.toml",
+            "--output",
+            "vendor",
+            "--freeze",
+            "--compress",
+            "vendor.tar.xz",
+            "--force",
+            "-v",
+        ]);
+        if let Some(level) = level {
+            cmd.args(["--compression-level", level]);
+        }
+        let result = cmd.assert().success();
+        let stderr = String::from_utf8_lossy(&result.get_output().stderr);
+        assert!(
+            stderr.contains("use vendored source replacement after freeze"),
+            "{stderr}"
+        );
+        assert!(!stderr.contains("warning:"), "{stderr}");
+        let extracted = tempfile::tempdir().unwrap();
+        extract_tarball(&archive, extracted.path());
+        let mut diffs = diff_trees(&vendor, &extracted.path().join("vendor"));
+        diffs.retain(|d| {
+            !matches!(d,
+                TreeDiff::OnlyInA(p) | TreeDiff::OnlyInB(p) | TreeDiff::ContentDiff(p)
+                    if p.starts_with(".revendor-cache")
+            )
+        });
+        assert!(diffs.is_empty(), "level {level:?}: {diffs:?}");
+        std::fs::create_dir(extracted.path().join(".cargo")).unwrap();
+        let mut config: toml_edit::DocumentMut =
+            std::fs::read_to_string(vendor.join(".cargo-config.toml"))
+                .unwrap()
+                .parse()
+                .unwrap();
+        let extracted_vendor = extracted
+            .path()
+            .join("vendor")
+            .to_str()
+            .unwrap()
+            .replace('\\', "/");
+        config["source"]["vendored-sources"]["directory"] = toml_edit::value(extracted_vendor);
+        std::fs::write(
+            extracted.path().join(".cargo/config.toml"),
+            config.to_string(),
+        )
+        .unwrap();
+        for file in ["Cargo.toml", "Cargo.lock", "lib.rs"] {
+            std::fs::copy(proj.root().join(file), extracted.path().join(file)).unwrap();
+        }
+        let cargo_home = tempfile::tempdir().unwrap();
+        let build = std::process::Command::new("cargo")
+            .args(["check", "--offline", "--locked"])
+            .current_dir(extracted.path())
+            .env("CARGO_HOME", cargo_home.path())
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+    }
+    let cache_hit = revendor_cmd()
+        .current_dir(proj.root())
+        .args([
+            "revendor",
+            "--manifest-path",
+            "Cargo.toml",
+            "--output",
+            "vendor",
+            "--compress",
+            "cached.tar.xz",
+            "--compression-level",
+            "1",
+            "-v",
+        ])
+        .assert()
+        .success();
+    assert!(String::from_utf8_lossy(&cache_hit.get_output().stderr).contains("inputs unchanged"));
+    assert!(proj.root().join("cached.tar.xz").is_file());
+    revendor_cmd()
+        .current_dir(proj.root())
+        .args([
+            "revendor",
+            "--manifest-path",
+            "Cargo.toml",
+            "--output",
+            "vendor",
+            "--freeze",
+            "--strict-freeze",
+            "--force",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "--strict-freeze: 1 external git dep",
+        ));
+}
+
+// endregion
+
 // region: --compress round-trip (C1-C3)
 
 /// **C1** — compressing `vendor/` and extracting the resulting tarball

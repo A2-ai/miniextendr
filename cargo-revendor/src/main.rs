@@ -160,6 +160,11 @@ struct Cli {
     #[arg(long)]
     compress: Option<PathBuf>,
 
+    /// XZ compression level (0 fastest, 9 smallest); requires full mode and --compress.
+    /// Omit to preserve the system tar default.
+    #[arg(long, requires = "compress", conflicts_with_all = ["verify", "local_only"], value_parser = clap::value_parser!(u8).range(0..=9))]
+    compression_level: Option<u8>,
+
     /// Blank .md files in vendor/ before compression
     #[arg(long)]
     blank_md: bool,
@@ -463,6 +468,21 @@ fn main() -> Result<()> {
     }
 }
 
+/// An explicit level also recompresses a cache hit; callers must not need
+/// --force (and another vendor pass) just to change an archive's preset.
+fn compress_if_requested(cli: &Cli, output: &std::path::Path, v: Verbosity) -> Result<()> {
+    if let Some(ref tarball_path) = cli.compress {
+        let tarball = if tarball_path.is_absolute() {
+            tarball_path.clone()
+        } else {
+            std::env::current_dir()?.join(tarball_path)
+        };
+        vendor::compress_vendor(output, &tarball, cli.blank_md, cli.compression_level, v)?;
+    }
+
+    Ok(())
+}
+
 /// Stamp-lock only (`--stamp-lock`): rewrite framework crates' `source =` line
 /// in an already-resolved Cargo.lock to `git+<url>#<sha>`, without vendoring.
 ///
@@ -657,6 +677,9 @@ fn run_full(
         if v.info() {
             eprintln!("cargo-revendor: vendor/ is up to date (inputs unchanged)");
         }
+        if cli.compression_level.is_some() {
+            compress_if_requested(cli, output, v)?;
+        }
         if cli.json {
             let count = std::fs::read_dir(output)
                 .map(|d| {
@@ -831,14 +854,7 @@ fn run_full(
     }
 
     // Step 13: Compress to tarball (relative paths resolve from CWD)
-    if let Some(ref tarball_path) = cli.compress {
-        let tarball = if tarball_path.is_absolute() {
-            tarball_path.clone()
-        } else {
-            std::env::current_dir()?.join(tarball_path)
-        };
-        vendor::compress_vendor(output, &tarball, cli.blank_md, v)?;
-    }
+    compress_if_requested(cli, output, v)?;
 
     // Step 14: Save cache (all three files for full mode)
     cache::save_cache(lockfile, sync_manifests, output, &local_crate_paths)?;
@@ -915,9 +931,13 @@ fn run_external_only(
     // resolve any frozen path = "../../vendor/<name>" entries in Cargo.toml.
     // After metadata, we know the actual local_pkgs subset; the extra stubs
     // (workspace members that aren't rpkg deps) are cleaned up below.
-    if !source_root_members.is_empty() {
-        bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
-        vendor::rewrite_local_path_deps(output, &source_root_members, v)?;
+    let seeded = bootstrap_vendor_from_source_root(output, &source_root_members, v)?;
+    for pkg in &seeded {
+        vendor::rewrite_crate_path_deps(
+            &output.join(&pkg.name).join("Cargo.toml"),
+            &source_root_members,
+            v,
+        )?;
     }
 
     // Step 1b: Load metadata; derive local and patch package lists.
@@ -980,27 +1000,12 @@ fn run_external_only(
         eprintln!("  Merged external deps into {}", output.display());
     }
 
-    // Step 8.5: Remove ALL bootstrap stubs from output.
-    // bootstrap_vendor_from_source_root seeds ALL workspace members so that
-    // cargo metadata can resolve frozen path deps. After metadata resolution
-    // we know which subset are actual deps (local_pkgs). Non-dep members
-    // (e.g. bench/cli/engine siblings) are only ever stubs and must not
-    // appear in the external-only output.
-    let non_dep_members: Vec<_> = patch_pkgs
-        .iter()
-        .filter(|p| !local_pkgs.iter().any(|l| l.name == p.name))
-        .collect();
-    for pkg in &non_dep_members {
-        for dir_name in &[pkg.name.clone(), format!("{}-{}", pkg.name, pkg.version)] {
-            let p = output.join(dir_name);
-            if p.is_dir() {
-                if v.debug() {
-                    eprintln!("  --external-only: removing local stub {dir_name} from output");
-                }
-                std::fs::remove_dir_all(&p)
-                    .with_context(|| format!("failed to remove non-dep stub {}", p.display()))?;
-            }
-        }
+    // Step 8.5: Remove only stubs created by this invocation. Existing local
+    // crate directories belong to the local pass and must remain untouched.
+    for pkg in &seeded {
+        let path = output.join(&pkg.name);
+        std::fs::remove_dir_all(&path)
+            .with_context(|| format!("failed to remove bootstrap stub {}", path.display()))?;
     }
 
     // Step 9: Generate .cargo/config.toml (rescans all of output, so local
@@ -1469,8 +1474,8 @@ fn bootstrap_vendor_from_source_root(
     vendor: &std::path::Path,
     source_root_members: &[metadata::LocalPackage],
     v: crate::Verbosity,
-) -> Result<()> {
-    let mut seeded = 0usize;
+) -> Result<Vec<metadata::LocalPackage>> {
+    let mut seeded = Vec::new();
     for pkg in source_root_members {
         let dir = vendor.join(&pkg.name);
         if dir.join("Cargo.toml").is_file() {
@@ -1500,14 +1505,15 @@ fn bootstrap_vendor_from_source_root(
                 dir.display()
             )
         })?;
-        seeded += 1;
+        seeded.push(pkg.clone());
     }
-    if v.info() && seeded > 0 {
+    if v.info() && !seeded.is_empty() {
         eprintln!(
-            "  bootstrapped {seeded} workspace crate(s) into vendor/ so metadata can resolve"
+            "  bootstrapped {} workspace crate(s) into vendor/ so metadata can resolve",
+            seeded.len()
         );
     }
-    Ok(())
+    Ok(seeded)
 }
 
 // region: unit tests
@@ -1550,6 +1556,48 @@ version = "0.1.0"
     /// dummy manifest path so clap doesn't run auto-discovery.
     fn base_cli() -> Cli {
         Cli::parse_from(["cargo-revendor", "revendor", "--manifest-path", "/dev/null"])
+    }
+
+    #[test]
+    fn compression_level_requires_archive_and_accepts_only_xz_presets() {
+        assert_eq!(base_cli().compression_level, None);
+        for level in ["0", "1", "9"] {
+            let cli = Cli::try_parse_from([
+                "cargo-revendor",
+                "revendor",
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                level,
+            ])
+            .unwrap();
+            assert_eq!(cli.compression_level, Some(level.parse().unwrap()));
+        }
+        for args in [
+            vec!["--compression-level", "1"],
+            vec![
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                "1",
+                "--verify",
+            ],
+            vec![
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                "1",
+                "--local-only",
+            ],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "10"],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "-1"],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "fast"],
+        ] {
+            assert!(
+                Cli::try_parse_from(["cargo-revendor", "revendor"].into_iter().chain(args))
+                    .is_err()
+            );
+        }
     }
 
     fn tmp_output() -> (TempDir, std::path::PathBuf) {

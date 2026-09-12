@@ -1169,7 +1169,7 @@ path = "lib.rs"
 
 #[test]
 #[ignore] // network
-fn generates_cargo_config_and_stripped_lockfile() {
+fn generates_cargo_config_and_preserves_lockfile_checksums() {
     let proj = create_simple_crate(
         r#"[package]
 name = "testpkg"
@@ -1208,12 +1208,11 @@ cfg-if = "1"
         "config should reference vendored-sources"
     );
 
-    // Check Cargo.lock was stripped and copied
-    let lock = std::fs::read_to_string(vendor.join("Cargo.lock"))
-        .expect("should copy stripped Cargo.lock");
+    // Preserve registry checksums for Cargo directory-source verification.
+    let lock = std::fs::read_to_string(vendor.join("Cargo.lock")).expect("should copy Cargo.lock");
     assert!(
-        !lock.contains("checksum = "),
-        "Cargo.lock should have checksums stripped"
+        lock.contains("checksum = "),
+        "Cargo.lock should retain registry checksums"
     );
     assert!(
         lock.contains("cfg-if"),
