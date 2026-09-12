@@ -59,3 +59,11 @@ test passes too. `just test` passes every leg, and all sequential Clippy gates
 pass with `-D warnings`: the repository recipe, three root CI configurations,
 full-feature rpkg, and standalone cargo-revendor. `just configure`, formatting,
 template synchronization, instruction-file checks, and site checks pass.
+
+CI's first minirextendr run failed the exact rebuild-count assertion because
+its global CARGO_TERM_COLOR=always inserted ANSI sequences before Compiling.
+The captured log showed only cacheprobe compiling, but the anchored plain-text
+regex counted zero. The fixture now sets CARGO_TERM_COLOR=never locally, and
+passes all 42 assertions with the outer environment set to always to
+reproduce CI's setting (0 failures/warnings/skips).
+The build/cache behavior itself required no change.
