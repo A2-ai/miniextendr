@@ -369,9 +369,10 @@ issue tracker:
   drop, including on panic and `?` propagation. The only uncovered case
   is `SIGKILL` and `std::process::abort()`, where Drop does not run.
 - **Stale frozen vendor after merging main.** A frozen `Cargo.toml`
-  carries `path = "../../vendor/..."` entries that go stale when the
-  workspace diverges. To recover, reset the frozen path deps to `"*"`,
-  delete `vendor/` and `Cargo.lock`, and re-run.
+  carries relative vendor patches that can become stale when the workspace
+  diverges. In miniextendr projects, use `just clean-vendor-leak` or
+  `miniextendr_clean_vendor_leak()` to restore the original manifest from
+  `.Cargo.toml.prefreeze` before rebuilding. Never edit that snapshot by hand.
 - **Crates that `include_str!()` from `tests/` or `examples/`.** Use
   `--strip-toml-sections` rather than `--strip-all` so the directories
   stay on disk and `cargo check --offline` keeps working.
