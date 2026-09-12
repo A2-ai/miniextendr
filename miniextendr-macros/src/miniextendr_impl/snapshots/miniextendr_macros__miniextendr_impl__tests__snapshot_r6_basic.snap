@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3009
+assertion_line: 3202
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Counter R6 Class
@@ -52,7 +52,7 @@ Counter$set("public", "get", function() {
 Counter$set("public", "increment", function() {
   .val <- .Call(C_miniextendr_macros_Counter__increment, .call = match.call(), private$.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
-  invisible(self)
+  self
 })
 
 # Counter::from_value (1:1)

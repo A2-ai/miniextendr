@@ -197,6 +197,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let body_lines = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
+            .with_invisible(method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(method)
             .build_s4_body();
@@ -240,6 +241,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
             .with_return_class_from_method(ctx.method)
             .build_s4_inline();

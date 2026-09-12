@@ -513,6 +513,14 @@ Generate a .cargo/config.toml for source replacement.
 Returns the config content as a string. Also writes it to
 `<vendor_dir>/../src/rust/.cargo/config.toml` if that path exists.
 
+### `vendor::prefreeze_sidecar_path`
+
+```rust
+fn prefreeze_sidecar_path(manifest_path: &std::path::Path) -> std::path::PathBuf
+```
+
+Path of the pre-freeze snapshot for `manifest_path` (same directory).
+
 ### `vendor::regenerate_lockfile`
 
 ```rust
@@ -676,3 +684,23 @@ pub const CACHE_FILE_EXTERNAL: &str = ".revendor-cache-external";
 ```rust
 pub const CACHE_FILE_LOCAL: &str = ".revendor-cache-local";
 ```
+
+### `vendor::PREFREEZE_SIDECAR_NAME`
+
+```rust
+pub const PREFREEZE_SIDECAR_NAME: &str = ".Cargo.toml.prefreeze";
+```
+
+File name of the pre-freeze snapshot [`freeze_manifest`] leaves next to the
+manifest (`src/rust/.Cargo.toml.prefreeze` for an R package).
+
+`--freeze` rewrites `Cargo.toml` in place and, by design, nothing in this
+process restores it: the sealed tarball must carry the frozen shape. The
+original bytes therefore have to survive on disk for a later recovery
+(`miniextendr_clean_vendor_leak()`, `just clean-vendor-leak`) after an
+interrupted build; the in-memory snapshots those tools keep die with the
+process (#1509). The file is written only when the freeze changes the
+manifest, and only if no snapshot is present yet, so freezing an
+already-frozen manifest again cannot overwrite the true pre-freeze copy.
+Packages gitignore and Rbuildignore it; the recovery tools delete it once
+the manifest is restored.

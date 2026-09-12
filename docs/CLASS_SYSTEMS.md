@@ -349,10 +349,12 @@ impl Person {
         Person { name, age }
     }
 
-    /// Implements print.Person - &mut self triggers invisible(x) return
+    /// Implements print.Person - `&mut self` hands back `x`; the
+    /// `Invisible<()>` marker makes that `invisible(x)` (#1213)
     #[miniextendr(s3(generic = "print"))]
-    pub fn show(&mut self) {
+    pub fn show(&mut self) -> Invisible<()> {
         println!("Person: {}, age {}", self.name, self.age);
+        Invisible(())
     }
 
     /// Implements format.Person
@@ -545,9 +547,11 @@ impl Point {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
+    /// `&mut self` hands back `x`; `Invisible<()>` makes it `invisible(x)` (#1213)
     #[miniextendr(s7(generic = "base::print"))]
-    pub fn show(&self) {
+    pub fn show(&mut self) -> Invisible<()> {
         println!("Point({}, {})", self.x, self.y);
+        Invisible(())
     }
 }
 ```

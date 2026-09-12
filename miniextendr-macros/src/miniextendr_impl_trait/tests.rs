@@ -78,6 +78,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
     TraitMethod {
         ident,
         sig,
+        invisible: None,
         has_self,
         is_mut: false,
         worker: false,
@@ -484,9 +485,10 @@ fn test_s7_trait_impl_no_shortcut_suppresses_shortcut() {
     );
 }
 
-/// Void trait-impl shortcut methods chain via `invisible(self)`.
+/// Void trait-impl shortcut methods chain via `self`, visibly (#1213); an
+/// `Invisible<()>` return marks the tail `invisible(self)`.
 #[test]
-fn test_s7_trait_impl_void_shortcut_returns_invisible_self() {
+fn test_s7_trait_impl_void_shortcut_returns_self() {
     let type_ident = format_ident!("Foo");
     let trait_name = format_ident!("Bar");
     let ident = format_ident!("bump");
@@ -511,8 +513,45 @@ fn test_s7_trait_impl_void_shortcut_returns_invisible_self() {
         result
     );
     assert!(
+        result.contains("  self\n"),
+        "void shortcut should return `self`, got:\n{}",
+        result
+    );
+    assert!(
+        !result.contains("invisible("),
+        "unmarked void shortcut must be visible (#1213), got:\n{}",
+        result
+    );
+
+    // `-> Invisible<()>` (already peeled at parse time; `invisible` records it).
+    let mut quiet = make_test_method("hush", true);
+    quiet.sig = syn::parse_quote!(fn hush(&mut self));
+    quiet.is_mut = true;
+    quiet.invisible = Some(true);
+    // `-> Invisible<i32>`: the converted value is returned invisibly.
+    let mut peek = make_test_method("peek", true);
+    peek.invisible = Some(true);
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[quiet, peek],
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+    assert!(
         result.contains("  invisible(self)"),
-        "void shortcut should return invisible(self), got:\n{}",
+        "marked void shortcut should return invisible(self), got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("invisible(x)"),
+        "marked void generic method should return invisible(x), got:\n{}",
+        result
+    );
+    assert!(
+        result.contains("invisible(.val)"),
+        "marked value method should return invisible(.val), got:\n{}",
         result
     );
 }

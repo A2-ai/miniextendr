@@ -632,7 +632,8 @@ Returns a vector of strings, one per line (without trailing newlines).
 fn build_r6_body(self: &Self) -> Vec<String>
 ```
 
-Build R6-style return (uses invisible(self) for chaining).
+Build R6-style return (chains via `self`; `invisible(self)` only when
+the method is marked invisible, #1213).
 
 #### `build_s3_body`
 
@@ -720,6 +721,15 @@ fn with_indent(self: Self, indent: usize) -> Self
 ```
 
 Set indentation level (number of spaces).
+
+#### `with_invisible`
+
+```rust
+fn with_invisible(self: Self, invisible: bool) -> Self
+```
+
+Wrap the method's final expression in `invisible(...)` (marker or
+`invisible` option, see [`ParsedMethod::is_invisible`]).
 
 #### `with_return_class`
 
@@ -814,6 +824,8 @@ Per-method attributes for class system customization.
   - Skip this method
 - `constructor`: `bool`
   - Mark as constructor
+- `force_invisible`: `Option<bool>`
+  - `invisible` / `visible` method option (#1213): `Some(true)` makes the R
 - `r6`: `R6MethodAttrs`
   - R6-specific method markers. All R6 boolean flags live here.
 - `as_coercion`: `Option<String>`
@@ -1089,6 +1101,8 @@ Defaults cannot be specified for `self` parameters (compile error).
 
 **Fields:**
 
+- `visibility_marker`: `Option<bool>`
+  - Return-type visibility marker (#1213): `Some(true)` for
 - `ident`: `syn::Ident`
   - The method's name (e.g., `new`, `get`, `set_value`).
 - `env`: `ReceiverKind`
@@ -1159,6 +1173,17 @@ Only the explicit `#[miniextendr(r6(finalize))]` marker qualifies. It
 used to be inferred from "takes `self` by value and does not return
 `Self`", which silently hid consuming methods on every class system
 (#1432).
+
+#### `is_invisible`
+
+```rust
+fn is_invisible(self: &Self) -> bool
+```
+
+Whether the R wrapper returns this method's value with `invisible()`
+(#1213): an `Invisible<T>` return-type marker or the `invisible` method
+option. Methods are visible by default, including the receiver-returning
+chainable tails.
 
 #### `is_private`
 
@@ -2669,10 +2694,15 @@ Determine the return strategy for a parsed method.
   bare-`Self` case — and gets the same class-wrapping tail.
 - In-place builders (`&mut self -> &mut Self` / `&self -> Self`) and
   `&mut self -> ()` methods use `ChainableMutation`. Both return the
-  receiver object (`x` / `invisible(self)`) so the call composes under
-  the native pipe (`obj |> set_a(1) |> set_b(2)`); the C wrapper hands
-  back the same ExternalPtr handle (see
+  receiver object (`x` / `self`, visibly unless marked invisible) so the
+  call composes under the native pipe (`obj |> set_a(1) |> set_b(2)`);
+  the C wrapper hands back the same ExternalPtr handle (see
   [`crate::c_wrapper_builder::ReturnHandling::SelfHandle`]).
+
+A visibility marker on the return type (`Invisible<Self>`,
+`Invisible<()>`, ...) is peeled at parse time
+([`ParsedMethod::sig`] holds the inner type), so it never changes the
+strategy; it only sets [`MethodReturnBuilder::with_invisible`].
 - Bare capitalized return types that are not known primitives/containers
   use `ReturnOtherClass`; write-time registry lookup wraps registered
   classes and leaves false positives unchanged.
@@ -4477,6 +4507,9 @@ Use `@exact;` prefix for strict mode (reject extra fields).
 
 - `#[miniextendr(worker)]` — opt into worker-thread execution
 - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
+  (identical to an `Invisible<T>` / `Visible<T>` return type; the two must agree).
+  Only unit-`NULL` returns are invisible by default; receiver-returning
+  method tails are visible unless marked (#1213).
 - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize

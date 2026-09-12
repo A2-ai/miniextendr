@@ -169,7 +169,8 @@ fn title_if_split(
 /// Env-class trait methods use a namespace hierarchy: `Type$Trait$method(x, ...)`.
 /// Instance methods take `x` as the first parameter (the self object) and are
 /// stamped with `.__mx_instance__` attribute for `$` dispatch detection.
-/// Void instance methods return `invisible(x)` for pipe-friendly chaining.
+/// Void instance methods return the receiver `x` for pipe-friendly chaining
+/// (invisibly only when marked `Invisible<..>`, #1213).
 ///
 /// Static methods and constants also live under `Type$Trait$name`.
 ///
@@ -255,8 +256,8 @@ fn generate_trait_env_r_wrapper(
         lines.push(format!("{target} <- function({full_params}) {{"));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::Env));
-        if method.has_self && method.returns_unit() {
-            lines.push("  invisible(x)".to_string());
+        if method.has_self {
+            finish_instance_body(&mut lines, method, "x");
         }
         lines.push("}".to_string());
 
@@ -303,7 +304,8 @@ fn generate_trait_env_r_wrapper(
 /// - S7 method registration if the generic is an S7 generic
 ///
 /// Static methods and constants use `Type$Trait$name` namespace (env-style).
-/// Void instance methods return `invisible(x)` for pipe-friendly chaining.
+/// Void instance methods return the receiver `x` for pipe-friendly chaining
+/// (invisibly only when marked `Invisible<..>`, #1213).
 ///
 /// Also used for `ClassSystem::Vctrs` since vctrs uses S3 under the hood.
 fn generate_trait_s3_r_wrapper(
@@ -401,10 +403,7 @@ fn generate_trait_s3_r_wrapper(
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &generic_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
-        // Void instance methods return invisible(x) for pipe-friendly chaining
-        if method.returns_unit() {
-            lines.push("  invisible(x)".to_string());
-        }
+        finish_instance_body(&mut lines, method, "x");
         lines.push("}".to_string());
 
         // Additionally register as S7 method if the generic is S7
@@ -584,10 +583,7 @@ fn generate_trait_s4_r_wrapper(
         let s4_call = ctx.instance_call(".ptr");
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(ctx.method_body_lines(&s4_call, ClassSystem::S4));
-        // Void instance methods return invisible(x) for pipe-friendly chaining
-        if method.returns_unit() {
-            lines.push("  invisible(x)".to_string());
-        }
+        finish_instance_body(&mut lines, method, "x");
         lines.push("})".to_string());
         lines.push(String::new());
     }
@@ -743,10 +739,7 @@ fn generate_trait_s7_r_wrapper(
         let s7_call = ctx.instance_call(".ptr");
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(ctx.method_body_lines(&s7_call, ClassSystem::S7));
-        // Void instance methods return invisible(x) for pipe-friendly chaining
-        if method.returns_unit() {
-            lines.push("  invisible(x)".to_string());
-        }
+        finish_instance_body(&mut lines, method, "x");
         lines.push("}".to_string());
         lines.push(String::new());
 
@@ -816,10 +809,7 @@ fn generate_trait_s7_r_wrapper(
             ));
             ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
             lines.extend(ctx.method_body_lines(&shortcut_call, ClassSystem::S7));
-            // Void instance methods return invisible(self) for pipe-friendly chaining
-            if method.returns_unit() {
-                lines.push("  invisible(self)".to_string());
-            }
+            finish_instance_body(&mut lines, method, "self");
             lines.push("}".to_string());
             lines.push(String::new());
         }
@@ -988,10 +978,7 @@ fn generate_trait_r6_r_wrapper(
         lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
         lines.extend(ctx.method_body_lines(&call, ClassSystem::R6));
-        // Void instance methods return invisible(x) for pipe-friendly chaining
-        if method.returns_unit() {
-            lines.push("  invisible(x)".to_string());
-        }
+        finish_instance_body(&mut lines, method, "x");
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1043,4 +1030,23 @@ fn generate_trait_r6_r_wrapper(
     }
 
     lines.join("\n")
+}
+
+/// Close an instance-method body (#1213).
+///
+/// A void method hands back its receiver (`x` / `self`) so calls chain under
+/// the pipe; the receiver is returned visibly, like every other return. A
+/// method whose declared return is `Invisible<..>` wraps its final expression
+/// (the receiver, or the converted `.val` / classed value) in `invisible()`.
+fn finish_instance_body(lines: &mut Vec<String>, method: &super::TraitMethod, receiver: &str) {
+    if method.returns_unit() {
+        lines.push(format!("  {receiver}"));
+    }
+    if method.is_invisible()
+        && let Some(last) = lines.last_mut()
+    {
+        let expr = last.trim_start();
+        let indent = &last[..last.len() - expr.len()];
+        *last = format!("{indent}invisible({expr})");
+    }
 }

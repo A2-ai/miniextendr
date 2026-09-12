@@ -209,25 +209,29 @@ handle errors with "was consumed". See
 > generics or base-R functions in the importing package.
 
 All of the above works on every impl-block class system (S3, Env, R6, S4,
-S7): R6 and Env chain through `invisible(self)`, S4 and S7 return the
-receiver from the generated generic. `rpkg/src/rust/pipe_builder_tests.rs`
-is the cross-system fixture.
+S7): each returns the receiver from the generated generic or method, visibly
+unless the method is marked `Invisible<..>` / `#[miniextendr(invisible)]`
+(see [Return visibility](MINIEXTENDR_ATTRIBUTE.md#return-visibility-markers-and-defaults)).
+`rpkg/src/rust/pipe_builder_tests.rs` is the cross-system fixture.
 
 ## Implementing `print`
 
 R convention: `print()` displays output and returns `invisible(x)` so the object
 can be used in pipelines without double-printing.
 
-**Recommended pattern: use `&mut self` returning `()`:**
+**Recommended pattern: `&mut self` returning `Invisible<()>`:**
 
 ```rust
+use miniextendr_api::Invisible;
+
 #[miniextendr(s3(generic = "print"))]
-pub fn show(&mut self) {
+pub fn show(&mut self) -> Invisible<()> {
     println!("Person: {}, age {}", self.name, self.age);
+    Invisible(())
 }
 ```
 
-This generates the `ChainableMutation` return strategy:
+This generates the `ChainableMutation` return strategy with the invisible tail:
 
 ```r
 print.Person <- function(x, ...) {
@@ -236,10 +240,13 @@ print.Person <- function(x, ...) {
 }
 ```
 
-The `&mut self` + void return triggers `invisible(x)` after the `.Call()`. This
-matches the R convention where `print()` returns the object invisibly.
+`&mut self` + void return hands back `x` after the `.Call()`; the
+`Invisible<()>` marker (or `#[miniextendr(s3(invisible))]`) makes that tail
+`invisible(x)`, matching the R convention where `print()` returns the object
+invisibly. Without the marker the method returns `x` visibly, which for a
+`print` method means the object prints twice at the console.
 
-**Why `&mut self`?** The `invisible(x)` pattern is only generated for `&mut self`
+**Why `&mut self`?** The receiver tail is only generated for `&mut self`
 methods returning `()`. With `&self` returning `()`, the generated code would be
 a bare `.Call(...)` returning `NULL`, which is functional but doesn't follow R convention.
 If your print method doesn't actually mutate, using `&mut self` is a pragmatic
@@ -501,7 +508,8 @@ are merged).
 | Method | Receiver | Return | Generated R | R Convention |
 |--------|----------|--------|-------------|--------------|
 | `format` | `&self` | `String` | `.Call(...)` | Returns formatted string (visible) |
-| `print` | `&mut self` | `()` | `.Call(...); invisible(x)` | Returns self invisibly |
+| `print` | `&mut self` | `Invisible<()>` | `.Call(...); invisible(x)` | Returns self invisibly |
+| `print` | `&mut self` | `()` | `.Call(...); x` | Returns self visibly (prints twice at the console) |
 | `print` | `&self` | `()` | `.Call(...)` | Returns NULL (works but unconventional) |
 | custom | `&self` | any | `.Call(...)` | Returns value directly |
 | custom | `&mut self` | `()` | `.Call(...); x` | Chainable mutation |

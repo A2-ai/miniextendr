@@ -523,6 +523,9 @@ fn build_match_arg_helpers(
 ///
 /// - `#[miniextendr(worker)]` — opt into worker-thread execution
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]` — control return visibility
+///   (identical to an `Invisible<T>` / `Visible<T>` return type; the two must agree).
+///   Only unit-`NULL` returns are invisible by default; receiver-returning
+///   method tails are visible unless marked (#1213).
 /// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
@@ -829,7 +832,19 @@ pub fn miniextendr(
     // Extract references to parsed components
     let rust_ident = parsed.ident();
     let inputs = parsed.inputs();
-    let output = parsed.output();
+    // Return-visibility markers (`Invisible<T>` / `Visible<T>`, #1213) are
+    // peeled here so every later analysis sees the inner type; the marker's
+    // decision is folded in below, next to the attribute form.
+    let (visibility_marker, peeled_output) = {
+        let output = parsed.output();
+        if let syn::ReturnType::Type(_, ty) = output
+            && let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return")
+        {
+            return err.into_compile_error().into();
+        }
+        crate::type_inspect::peel_return_visibility(output)
+    };
+    let output = &peeled_output;
     let abi = parsed.abi();
     let attrs = parsed.attrs();
     let vis = parsed.vis();
@@ -903,10 +918,18 @@ pub fn miniextendr(
     );
 
     let returns_sexp = return_analysis.returns_sexp;
-    let is_invisible_return_type = return_analysis.is_invisible;
 
-    // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
-    let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
+    // Marker (`Invisible<T>` / `Visible<T>`) > attribute (`invisible` /
+    // `visible`) > shape default (unit-`NULL` returns are invisible).
+    let is_invisible_return_type = match crate::type_inspect::resolve_visibility(
+        visibility_marker,
+        force_invisible,
+        return_analysis.is_invisible,
+        syn::spanned::Spanned::span(parsed.output()),
+    ) {
+        Ok(v) => v,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     // Check if any input parameter is main-thread-bound (SEXP or a !Send
     // framework wrapper like AltrepSexp — neither can move into the worker
@@ -997,8 +1020,14 @@ pub fn miniextendr(
         }
     }
 
-    // Build the call expression: rust_ident(rust_input_1, rust_input_2, ...)
-    let fn_call_expr = quote::quote! { #rust_ident(#(#rust_inputs),*) };
+    // Build the call expression: rust_ident(rust_input_1, rust_input_2, ...).
+    // A visibility marker is a transparent newtype: unwrap it so the return
+    // conversion works on the inner value (the analysis above saw the inner type).
+    let fn_call_expr = if visibility_marker.is_some() {
+        quote::quote! { (#rust_ident(#(#rust_inputs),*)).0 }
+    } else {
+        quote::quote! { #rust_ident(#(#rust_inputs),*) }
+    };
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
     // and handle unwrap_in_r (Result<T, E> → IntoR to pass result list to R).

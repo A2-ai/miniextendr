@@ -22,7 +22,7 @@ them.
 - "What does `condition_check_lines` do in constructors?"
 - "What is RWrapperPriority and why does the ordering matter?"
 - "How do I use vctrs with miniextendr?"
-- "What is `invisible(self)` in the generated R6 code?"
+- "Why does `obj$mutate()` print the object, and how do I make it silent?"
 
 ## Key concepts
 
@@ -46,7 +46,7 @@ Every class system maps Rust method receivers to R dispatch differently.
 | Rust receiver | Category | Generated as |
 |---|---|---|
 | `&self` | Instance (immutable) | Instance method on object |
-| `&mut self` | Instance (mutable) | Instance method, chainable (`invisible(self)` in R6) |
+| `&mut self` | Instance (mutable) | Instance method, chainable (returns `self` visibly; `Invisible<()>` / `invisible` option for silence) |
 | `self: &ExternalPtr<Self>` | Instance (full ExternalPtr access) | Same |
 | (none) / returns `Self` | Static or constructor | `Type$method()` or `new_type()` |
 
@@ -82,7 +82,7 @@ R6:
 
 This is distinct from the plain `&mut self -> ()` case in the table above:
 that one exists for regular mutators that don't need chaining and merely
-gets `invisible(self)` in R6 so a bare `obj$mutate()` doesn't print `NULL`;
+hands back `self` in R6 (visibly; mark it `Invisible<()>` to silence it);
 `&mut self -> &mut Self` is the idiom to reach for when you're deliberately
 designing a chainable/builder API, and it's the only form validated to
 preserve object identity across R6 chains and to compose under `|>` for the
@@ -179,8 +179,9 @@ R6 generates an `R6::R6Class(...)` definition with:
   class definition.
 
 For void instance methods (`-> ()` return type), the generated R method body ends
-with `invisible(self)` to support method chaining. See `method_return_builder.rs`
-`build_r6_body` around L260.
+with `self` to support method chaining, visibly; `-> Invisible<()>` or
+`#[miniextendr(r6(invisible))]` makes it `invisible(self)` (#1213). See
+`method_return_builder.rs` `build_r6_body` and `with_invisible`.
 
 The `DotCallBuilder` uses `.null_call_attribution()` for the R6 finalizer and
 deep_clone methods — `match.call()` in those contexts captures an internal
@@ -433,7 +434,8 @@ later, unpredictably.
 - `miniextendr-macros/src/r_class_formatter.rs` — Shared utilities: `ClassDocBuilder`,
   `MethodDocBuilder`, `MethodContext`, `emit_s3_generic_guard`, `should_export_from_tags`.
 - `miniextendr-macros/src/method_return_builder.rs` — `condition_check_lines`,
-  `condition_check_inline_block`, `ReturnStrategy`; `build_r6_body` (`invisible(self)`).
+  `condition_check_inline_block`, `ReturnStrategy`; `build_r6_body` (`self` tail),
+  `with_invisible` (marker / `invisible` option → `invisible(...)`).
 - `miniextendr-macros/src/r_wrapper_builder.rs` — `DotCallBuilder` at ~L390;
   `.null_call_attribution()` for lambda contexts.
 - `miniextendr-api/src/registry.rs` — `RWrapperPriority` enum (L210), `collect_r_wrappers`,
@@ -462,10 +464,10 @@ later, unpredictably.
   `methods` package, not `R_BaseEnv`. Access via `getNamespace("methods")`. The
   S4 generator emits `@importFrom methods ...` to ensure the package is attached.
 
-- **R6 `invisible(self)` for void methods**: instance methods that return `()`
-  in Rust emit `invisible(self)` in R for method chaining. This is correct and
-  intentional. Do not replace it with `invisible(NULL)` — that would break
-  chaining syntax (`obj$method1()$method2()`).
+- **R6 `self` tail for void methods**: instance methods that return `()` in
+  Rust hand back `self` in R for method chaining (visible; `Invisible<()>` or
+  the `invisible` option wraps it, #1213). Do not replace it with `NULL` /
+  `invisible(NULL)` — that would break chaining syntax (`obj$method1()$method2()`).
 
 - **Sidecar accessors must precede class definitions**: `#[r_data]` getter/setter
   wrappers (`RWrapperPriority::Sidecar`) must appear before class definitions that

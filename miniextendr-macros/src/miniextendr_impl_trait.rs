@@ -121,8 +121,13 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 struct TraitMethod {
     /// Rust method identifier (e.g., `value`, `increment`).
     ident: syn::Ident,
-    /// Full method signature including self receiver and all parameters.
+    /// Full method signature including self receiver and all parameters. A
+    /// return-visibility marker is already peeled (see `invisible`).
     sig: syn::Signature,
+    /// Return-type visibility marker (#1213): `Some(true)` for
+    /// `-> Invisible<T>`, `Some(false)` for `-> Visible<T>`, stripped from
+    /// `sig.output`. The C wrapper unwraps the newtype before conversion.
+    invisible: Option<bool>,
     /// Whether the method has a receiver (`&self`, `&mut self`).
     /// False for static/associated methods.
     has_self: bool,
@@ -208,10 +213,17 @@ impl TraitMethod {
         crate::naming::trait_member_c_wrapper_string(type_ident, trait_name, &self.ident)
     }
 
+    /// Whether the R wrapper returns this method's value with `invisible()`
+    /// (#1213): set by an `Invisible<T>` return-type marker on the method.
+    /// Trait methods are visible by default, void ones included.
+    fn is_invisible(&self) -> bool {
+        self.invisible == Some(true)
+    }
+
     /// Returns true if this method has no return type (returns unit `()`).
     ///
-    /// Used to decide whether the R wrapper should emit `invisible(x)` for
-    /// void instance methods (pipe-friendly chaining).
+    /// Used to decide whether the R wrapper should hand back the receiver
+    /// (`x` / `self`) for void instance methods (pipe-friendly chaining).
     fn returns_unit(&self) -> bool {
         match &self.sig.output {
             syn::ReturnType::Default => true,
@@ -793,9 +805,18 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
             });
 
+            // Peel a return-visibility marker (#1213) so the return-shape
+            // predicates and the C wrapper see the inner type.
+            let (invisible, sig) = {
+                let (marker, output) = crate::type_inspect::peel_return_visibility(&sig.output);
+                let mut sig = sig;
+                sig.output = output;
+                (marker, sig)
+            };
             TraitMethod {
                 ident: sig.ident.clone(),
                 sig,
+                invisible,
                 has_self,
                 is_mut,
                 worker: cfg!(feature = "worker-default"),

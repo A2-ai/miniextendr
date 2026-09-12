@@ -1,0 +1,5 @@
+error: `Invisible<T>` / `Visible<T>` mark the return type only; they cannot be used as a parameter type
+ --> tests/ui/fn_visibility_marker_in_argument.rs:5:24
+  |
+5 | pub fn takes_marker(x: miniextendr_api::Invisible<i32>) -> i32 {
+  |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

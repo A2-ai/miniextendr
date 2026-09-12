@@ -287,6 +287,9 @@ pub(crate) fn get_missing_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
 /// - `Missing<Missing<T>>` (nested Missing)
 /// - `Missing<Dots>` or `Missing<&Dots>`
 pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> syn::Result<()> {
+    if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "argument") {
+        return Err(err);
+    }
     if let Some(inner) = get_missing_inner_type(ty) {
         if is_missing_type(inner) {
             return Err(syn::Error::new(

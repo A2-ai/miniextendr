@@ -450,15 +450,28 @@ fn generate_concrete_vtable_shims(
         // Generate method call using fully-qualified syntax to avoid ambiguity
         // with generic trait paths like `RExtend<i32>::method()` where `<` would
         // be parsed as a comparison operator in expression position.
+        // A visibility marker (`Invisible<T>`, #1213) is a transparent newtype
+        // around the real return; `method.sig.output` is already peeled, so
+        // unwrap it here before the conversion below.
+        let unwrap_marker = |call: TokenStream| -> TokenStream {
+            if method.invisible.is_some() {
+                quote::quote! { (#call).0 }
+            } else {
+                call
+            }
+        };
+        let invocation = unwrap_marker(quote::quote! {
+            <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+        });
         let method_call = if method.is_mut {
             quote::quote! {
                 let self_ref = unsafe { &mut *data.cast::<#concrete_type>() };
-                <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+                #invocation
             }
         } else {
             quote::quote! {
                 let self_ref = unsafe { &*data.cast::<#concrete_type>().cast_const() };
-                <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+                #invocation
             }
         };
 
@@ -542,9 +555,22 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 .filter(|tag| tag.starts_with("@param"))
                 .collect();
 
+            // Validate and peel a return-visibility marker (#1213): the
+            // codegen sees the inner type, `.0` unwraps the value.
+            if let syn::ReturnType::Type(_, ty) = &method.sig.output
+                && let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return")
+            {
+                return Err(err);
+            }
+            let (invisible, output) =
+                crate::type_inspect::peel_return_visibility(&method.sig.output);
+            let mut sig = method.sig.clone();
+            sig.output = output;
+
             methods.push(TraitMethod {
                 ident: method.sig.ident.clone(),
-                sig: method.sig.clone(),
+                sig,
+                invisible,
                 has_self,
                 is_mut,
                 worker: attrs.worker,
@@ -1057,6 +1083,12 @@ pub(super) fn generate_trait_method_c_wrapper(
         let call_expr = quote::quote! {
             <#type_ident as #trait_path>::#method_ident(self_ref, #(#call_args),*)
         };
+        // Unwrap a visibility-marker newtype (#1213); the output type is peeled.
+        let call_expr = if method.invisible.is_some() {
+            quote::quote! { (#call_expr).0 }
+        } else {
+            call_expr
+        };
 
         builder = builder
             .pre_call(vec![self_extraction])
@@ -1066,6 +1098,11 @@ pub(super) fn generate_trait_method_c_wrapper(
         // Static method: call directly without self
         let call_expr = quote::quote! {
             <#type_ident as #trait_path>::#method_ident(#(#call_args),*)
+        };
+        let call_expr = if method.invisible.is_some() {
+            quote::quote! { (#call_expr).0 }
+        } else {
+            call_expr
         };
 
         builder = builder.call_expr(call_expr);

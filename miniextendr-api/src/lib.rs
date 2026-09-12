@@ -761,6 +761,9 @@ pub mod convert;
 pub mod dots;
 pub mod list;
 pub mod missing;
+/// Return-visibility markers (`Invisible<T>` / `Visible<T>`).
+pub mod visibility;
+pub use visibility::{Invisible, Visible};
 pub mod named_vector;
 pub mod rcow;
 pub mod rvalue;

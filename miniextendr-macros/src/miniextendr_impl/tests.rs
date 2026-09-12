@@ -1807,22 +1807,23 @@ fn returns_unit_method_in_r6() {
     let parsed = parse_impl(ClassSystem::R6, item_impl);
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // reset returns unit, should have invisible(self) for chaining
+    // reset returns unit, should hand back `self` for chaining
     assert!(wrapper.contains("Counter$set(\"public\", \"reset\", function()"));
 }
 
-/// Self-ref builders (`&mut self -> &mut Self`) on R6 must chain via
-/// `invisible(self)`, NOT `Class$new(.ptr = .val)`.
+/// Self-ref builders (`&mut self -> &mut Self`) on R6 must chain via the
+/// receiver (`self`), NOT `Class$new(.ptr = .val)`.
 ///
 /// R6 is already reference-semantic: the C wrapper returns the same
 /// `private$.ptr` handle, so re-wrapping with `Class$new(.ptr = .val)` would
 /// mint a *new* R6 environment around the same pointer — breaking object
 /// identity (`obj |> set_x(1) |> get_x()` would read through a different
 /// wrapper than `obj`). `ReturnStrategy::for_method` routes self-ref builders
-/// to `ChainableMutation`, whose R6 tail is `invisible(self)`. This test pins
-/// that wiring so a future regression that minted duplicate wrappers is caught.
+/// to `ChainableMutation`, whose R6 tail is `self` (visible unless the method
+/// is marked, #1213). This test pins that wiring so a future regression that
+/// minted duplicate wrappers is caught.
 #[test]
-fn method_return_builder_r6_self_ref_chains_invisible_self() {
+fn method_return_builder_r6_self_ref_chains_self() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Builder {
             pub fn new() -> Self { unimplemented!() }
@@ -1857,10 +1858,14 @@ fn method_return_builder_r6_self_ref_chains_invisible_self() {
         .next()
         .expect("set_width method body");
 
-    // The self-ref builder chains the receiver — `invisible(self)`.
+    // The self-ref builder chains the receiver — `self`, visibly (#1213).
     assert!(
-        body.lines().any(|l| l.trim() == "invisible(self)"),
-        "R6 self-ref builder should chain via `invisible(self)`, got:\n{body}"
+        body.lines().any(|l| l.trim() == "self"),
+        "R6 self-ref builder should chain via `self`, got:\n{body}"
+    );
+    assert!(
+        !body.contains("invisible("),
+        "unmarked receiver tails are visible (#1213), got:\n{body}"
     );
     // It must NOT mint a new R6 wrapper around the same pointer.
     assert!(
@@ -1877,6 +1882,144 @@ fn method_return_builder_r6_self_ref_chains_invisible_self() {
         crate::ReturnStrategy::for_method(new_method),
         crate::ReturnStrategy::ReturnSelf
     );
+}
+
+/// Body of one R6 `$set("public", <name>, function(...) { ... })` block.
+fn r6_method_body<'a>(wrapper: &'a str, name: &str) -> &'a str {
+    wrapper
+        .split(&format!("$set(\"public\", \"{name}\", function("))
+        .nth(1)
+        .unwrap_or_else(|| panic!("no R6 method `{name}` in:\n{wrapper}"))
+        .split("\n})")
+        .next()
+        .expect("method body")
+}
+
+/// #1213: receiver-returning tails are visible by default; `Invisible<()>`,
+/// `Invisible<&mut Self>`, `Invisible<Self>`, `Invisible<T>` and the
+/// `invisible` option (class-prefixed or top-level) wrap the tail in
+/// `invisible(...)`; `Visible<()>` is the explicit visible spelling. The
+/// marker is peeled before the return-shape predicates run.
+#[test]
+fn r6_visibility_markers_and_option_wrap_the_tail() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn tick(&mut self) {}
+            pub fn tick_quietly(&mut self) -> Invisible<()> { unimplemented!() }
+            #[miniextendr(r6(invisible))]
+            pub fn tick_attr(&mut self) {}
+            #[miniextendr(invisible)]
+            pub fn tick_attr_top(&mut self) {}
+            pub fn add(&mut self, k: i32) -> Invisible<&mut Self> { unimplemented!() }
+            pub fn peek(&self) -> ::miniextendr_api::Invisible<i32> { unimplemented!() }
+            pub fn snapshot(&self) -> Invisible<Self> { unimplemented!() }
+            pub fn loud_unit(&self) -> Visible<()> { unimplemented!() }
+            #[miniextendr(r6(invisible))]
+            pub fn agreeing(&self) -> Invisible<i32> { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let m = |name: &str| {
+        parsed
+            .methods
+            .iter()
+            .find(|m| m.ident == name)
+            .unwrap_or_else(|| panic!("method {name}"))
+    };
+
+    // Parse-time facts: the marker is recorded and peeled.
+    assert_eq!(m("tick").visibility_marker, None);
+    assert!(!m("tick").is_invisible());
+    assert_eq!(m("tick_quietly").visibility_marker, Some(true));
+    assert!(
+        m("tick_quietly").returns_unit(),
+        "marker peeled before returns_unit"
+    );
+    assert!(m("tick_attr").is_invisible());
+    assert!(m("tick_attr_top").is_invisible());
+    assert!(
+        m("add").returns_self_ref(),
+        "marker peeled before returns_self_ref"
+    );
+    assert!(
+        m("snapshot").returns_self(),
+        "marker peeled before returns_self"
+    );
+    assert_eq!(m("loud_unit").visibility_marker, Some(false));
+    assert!(!m("loud_unit").is_invisible());
+    assert!(m("agreeing").is_invisible());
+    for name in ["tick", "tick_quietly", "tick_attr", "tick_attr_top", "add"] {
+        assert_eq!(
+            crate::ReturnStrategy::for_method(m(name)),
+            crate::ReturnStrategy::ChainableMutation,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        crate::ReturnStrategy::for_method(m("snapshot")),
+        crate::ReturnStrategy::ReturnSelf
+    );
+
+    // Generated R: only the marked / opted-in methods wrap the tail.
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    let last = |name: &str| {
+        r6_method_body(&wrapper, name)
+            .lines()
+            .last()
+            .map(str::trim)
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(last("tick"), "self");
+    assert_eq!(last("tick_quietly"), "invisible(self)");
+    assert_eq!(last("tick_attr"), "invisible(self)");
+    assert_eq!(last("tick_attr_top"), "invisible(self)");
+    assert_eq!(last("add"), "invisible(self)");
+    assert_eq!(last("peek"), "invisible(.val)");
+    assert_eq!(last("snapshot"), "invisible(Counter$new(.ptr = .val))");
+    assert_eq!(last("loud_unit"), ".val");
+    assert_eq!(last("agreeing"), "invisible(.val)");
+
+    // The C wrapper unwraps the newtype before conversion (`.0`).
+    let tokens = c_wrapper_tokens(&parsed, "peek");
+    assert!(
+        tokens.contains(") . 0"),
+        "marker unwrapped in call glue: {tokens}"
+    );
+    let tokens = c_wrapper_tokens(&parsed, "tick");
+    assert!(!tokens.contains(") . 0"), "no marker, no unwrap: {tokens}");
+}
+
+/// #1213: a marker that cannot be honoured is a parse error.
+#[test]
+fn visibility_marker_conflicts_are_rejected() {
+    let parse = |code: syn::ItemImpl| ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), code);
+
+    let err = parse(syn::parse_quote! {
+        impl C {
+            #[miniextendr(r6(visible))]
+            pub fn f(&self) -> Invisible<i32> { unimplemented!() }
+        }
+    })
+    .expect_err("marker and option disagree");
+    assert!(err.to_string().contains("disagree"), "{err}");
+
+    let err = parse(syn::parse_quote! {
+        impl C {
+            pub fn f(&self) -> Invisible<Visible<i32>> { unimplemented!() }
+        }
+    })
+    .expect_err("nested markers");
+    assert!(err.to_string().contains("cannot be nested"), "{err}");
+
+    let err = parse(syn::parse_quote! {
+        impl C {
+            pub fn f(&self, x: Invisible<i32>) {}
+        }
+    })
+    .expect_err("marker in argument position");
+    assert!(err.to_string().contains("parameter type"), "{err}");
 }
 // endregion
 
@@ -3937,7 +4080,11 @@ fn consuming_self_fallible_clones_and_overwrites_on_success() {
         );
     }
     let wrapper = generate_r6_r_wrapper(&parsed);
-    assert!(wrapper.contains("invisible(self)"), "{wrapper}");
+    assert!(
+        !wrapper.contains("invisible(self)"),
+        "receiver tails are visible by default (#1213): {wrapper}"
+    );
+    assert!(wrapper.lines().any(|l| l.trim() == "self"), "{wrapper}");
 }
 
 /// A terminal `self -> T` moves the value out and converts the result; the

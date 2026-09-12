@@ -1,0 +1,5 @@
+error: visibility markers cannot be nested; use a single `Invisible<T>` or `Visible<T>` around the return type
+ --> tests/ui/fn_visibility_marker_nested.rs:5:20
+  |
+5 | pub fn nested() -> miniextendr_api::Invisible<miniextendr_api::Visible<i32>> {
+  |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
