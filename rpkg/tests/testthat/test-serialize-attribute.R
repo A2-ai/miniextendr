@@ -33,12 +33,12 @@ test_that("serialization composes with visibility and unit returns", {
 test_that("serialized methods bypass class wrapping and preserve trait transport", {
   skip_if_missing_feature("serde")
   obj <- SerializeHost$new(5L)
-  expect_identical(SerializeHost$snapshot(obj), SerializeHost$snapshot_type(obj))
-  expect_identical(SerializeHost$self_data(obj), list(value = 5L))
+  expect_identical(obj$snapshot(), obj$snapshot_type())
+  expect_identical(obj$self_data(), list(value = 5L))
   expect_identical(SerializeHost$SerializeValues$values(obj), c(5L, 6L))
-  expect_identical(serialized_trait_view(obj), c(5L, 6L))
-  expect_identical(SerializeHost$consume(obj), list(value = 5L))
-  expect_error(SerializeHost$snapshot(obj), "released|NULL|null|consumed")
+  expect_identical(serialized_trait_view(5L), c(5L, 6L))
+  expect_identical(obj$consume(), list(value = 5L))
+  expect_error(obj$snapshot(), "released|NULL|null|consumed")
 })
 
 test_that("serializer errors stay classed Rust errors", {
@@ -61,4 +61,5 @@ test_that("the serialized return boundary survives GC stress", {
   on.exit(gctorture(FALSE), add = TRUE)
   expect_identical(miniextendr:::gc_stress_serialized_return(),
                    list(value = 41L, label = "value-41"))
+  expect_identical(serialized_trait_view(41L), c(41L, 42L))
 })

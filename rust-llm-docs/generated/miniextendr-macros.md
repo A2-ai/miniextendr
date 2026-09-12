@@ -856,6 +856,8 @@ Per-method attributes for class system customization.
   - Return `Result<T, E>` to R without unwrapping.
 - `serde_error`: `Option<crate::miniextendr_fn::SerdeErrorSpec>`
   - Build the `Err` arm's condition from the error's serde output
+- `serialize`: `bool`
+  - Serialize the complete return value through `AsSerialize<T>`.
 - `defaults`: `std::collections::HashMap<String, String>`
   - Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
 - `defaults_span`: `Option<proc_macro2::Span>`
@@ -4512,6 +4514,8 @@ Use `@exact;` prefix for strict mode (reject extra fields).
   method tails are visible unless marked (#1213).
 - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+- `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
+  (requires the API `serde` feature); composes with return visibility markers
 - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
 - `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —

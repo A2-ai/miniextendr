@@ -13,3 +13,20 @@ The class-system unit probe initially used an instance receiver for vctrs, which
 correctly rejects instance methods because its R values are base vectors. The
 probe now uses static methods for that system, while retaining instance methods
 for the other five.
+
+The first installed-package run called an inherent Env method as
+`SerializeHost$snapshot(obj)` and failed with an unused argument. Existing
+Env wrappers bind `self` through the instance `$` dispatcher; only trait
+namespace methods accept an explicit receiver. Corrected the tests and
+examples to `obj$snapshot()` after inspecting the emitted signatures.
+
+The doc lint caught two mistakes in the new examples: an explicit title that
+differed from the first prose line, and examples attached to the impl instead
+of a method. Used the prose title and moved class examples onto `new`.
+
+The initial Rust View probe received an ordinary `ExternalPtr`, which does
+not carry the trait ABI header queried by `TraitView::from_sexp`. The fixture
+now constructs the derive-generated `__mx_wrap_serializehost` object and uses
+`ccall::mx_wrap`, matching the producer-package tests, and roots it for the
+whole View call. This exercises the concrete serialized vtable shim.
+The rooting helper lives in `gc_protect`, not `gc`; corrected the initial fixture import after Clippy caught it.
