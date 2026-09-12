@@ -1652,10 +1652,10 @@ Traits with impls: 219
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
 | `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1537 |
 | `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
-| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1199 |
-| `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1217 |
-| `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1235 |
-| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1363 |
+| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1202 |
+| `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1220 |
+| `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1238 |
+| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1366 |
 | `ConnectionCapabilities` | `` | concrete | 1 | miniextendr-api/src/connection.rs:192 |
 | `AsList<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:100 |
 | `AsFromStr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:1022 |
@@ -1779,9 +1779,9 @@ Traits with impls: 219
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
 | `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
-| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1199 |
-| `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1217 |
-| `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1235 |
+| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1202 |
+| `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1220 |
+| `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1238 |
 | `ConnectionCapabilities` | `` | concrete | 1 | miniextendr-api/src/connection.rs:192 |
 | `AsList<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:100 |
 | `AsFromStr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:1022 |
@@ -2067,9 +2067,9 @@ Traits with impls: 219
 | `LogicalCoerceError` | `` | concrete | 0 | miniextendr-api/src/coerce.rs:481 |
 | `CoerceError` | `` | concrete | 0 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 0 | miniextendr-api/src/coerce.rs:919 |
-| `RStdin` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1199 |
-| `RStdout` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1217 |
-| `RStderr` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1235 |
+| `RStdin` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1202 |
+| `RStdout` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1220 |
+| `RStderr` | `` | concrete | 0 | miniextendr-api/src/connection.rs:1238 |
 | `AsList<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:100 |
 | `AsExternalPtr<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:362 |
 | `AsRNative<T>` | `<T>` | concrete | 0 | miniextendr-api/src/convert.rs:414 |
@@ -2593,7 +2593,7 @@ Traits with impls: 219
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1456 |
+| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1459 |
 | `RCustomConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:845 |
 | `NamedDataFrameListBuilder` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:1537 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1867 |
@@ -2623,10 +2623,10 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1482 |
+| `RNullConnection` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1485 |
 | `BuiltDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:919 |
 | `GroupedDataFrame` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:169 |
-| `Suppress` | `` | concrete | 1 | miniextendr-api/src/deferred_condition.rs:193 |
+| `Suppress` | `` | concrete | 1 | miniextendr-api/src/deferred_condition.rs:200 |
 | `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1984 |
 | `AbortIfUnwinding` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:2009 |
 | `ExternalSlice<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:2158 |
@@ -3354,9 +3354,9 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RStdout` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1311 |
-| `RStderr` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1321 |
-| `RNullConnection` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1462 |
+| `RStdout` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1314 |
+| `RStderr` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1324 |
+| `RNullConnection` | `` | concrete | 2 | miniextendr-api/src/connection.rs:1465 |
 
 ## `AltrepClass` — 2 impls
 
@@ -3812,7 +3812,7 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1254 |
+| `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1257 |
 
 ## `SexpExt` — 1 impls
 

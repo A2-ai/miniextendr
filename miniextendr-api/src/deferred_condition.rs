@@ -96,8 +96,8 @@ use crate::{SEXP, SexpExt};
 /// Conditions queued during the current guarded callback (and enclosing calls).
 ///
 /// A plain static rather than a thread-local so worker-thread pushes land in
-/// the same queue the main thread drains. R is single-threaded and the main
-/// thread blocks while a worker body runs, so the queue is never contended.
+/// the same queue the main thread drains. The mutex is released before any R
+/// signalling, so handlers can re-enter Rust without retaining the queue lock.
 static PENDING: Mutex<Vec<RCondition>> = Mutex::new(Vec::new());
 
 std::thread_local! {
@@ -167,6 +167,11 @@ pub fn mark() -> usize {
 /// below `mark` belong to enclosing calls and stay.
 #[doc(hidden)]
 pub fn take_pending(mark: usize) -> Vec<RCondition> {
+    // A nested guard inside a finalizer must not drain concurrent worker
+    // entries either: they belong to a later, signal-capable boundary.
+    if SUPPRESSED.get() != 0 {
+        return Vec::new();
+    }
     let mut queue = pending();
     if queue.len() <= mark {
         return Vec::new();
@@ -176,7 +181,9 @@ pub fn take_pending(mark: usize) -> Vec<RCondition> {
 
 /// Discard conditions whose Rust/R call was abandoned by an R longjmp.
 pub(crate) fn discard(mark: usize) {
-    pending().truncate(mark);
+    if SUPPRESSED.get() == 0 {
+        pending().truncate(mark);
+    }
 }
 
 /// Finalization has no caller condition handlers. Suppress queues throughout
@@ -500,11 +507,16 @@ mod tests {
     #[test]
     fn finalizer_suppression_does_not_drop_another_threads_conditions() {
         with_empty_queue(|| {
-            let _suppressed = Suppress::new();
-            std::thread::spawn(|| crate::defer_warning!("worker"))
-                .join()
-                .unwrap();
-            crate::defer_warning!("finalizer");
+            {
+                let _suppressed = Suppress::new();
+                std::thread::spawn(|| crate::defer_warning!("worker"))
+                    .join()
+                    .unwrap();
+                crate::defer_warning!("finalizer");
+                assert!(take_pending(0).is_empty());
+                discard(0);
+                assert_eq!(mark(), 1);
+            }
             let remaining = take_pending(0);
             assert_eq!(remaining.len(), 1);
             assert_eq!(

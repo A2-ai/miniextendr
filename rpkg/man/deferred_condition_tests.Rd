@@ -82,9 +82,9 @@ deferred_nested(f)
 
 deferred_worker_value()
 
-deferred_guard_altrep(fail)
+deferred_guard_altrep(mode)
 
-deferred_guard_nested(fail)
+deferred_guard_nested(panic_inner)
 
 deferred_pending_count()
 
@@ -97,9 +97,13 @@ deferred_guard_connection()
 \arguments{
 \item{n}{Row count.}
 
-\item{fail}{Whether the inner callback panics after queueing its warning.}
+\item{fail}{Whether to return \code{Err}.}
 
 \item{f}{An R function of no arguments.}
+
+\item{mode}{Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.}
+
+\item{panic_inner}{Whether the inner callback panics after queueing its warning.}
 }
 \description{
 Returns \code{n - 2} and warns about the two dropped rows.
