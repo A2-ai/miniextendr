@@ -68,3 +68,14 @@ All sequential Clippy gates pass with `-D warnings`: `just clippy`, the three
 root CI configurations (`clippy_default`, `clippy_all`, `clippy_all_s7`, using
 the feature lists read from ci.yml), and `just clippy-rpkg --features full`.
 The recipes restored the committed Cargo.lock shape after checking.
+
+The first PR CI run caught a missed CLI integration: `embedded_covers_disk`
+failed because the two new template helpers were absent from the Rust CLI's
+`EMBEDDED` catalog. R scaffolding tests cannot cover the separate CLI renderer.
+Add both embeddings and the common `RPKG_PLAN` entry, so all CLI layouts copy
+the helper their Makevars invokes. The executable smoke test now also requires
+that file, alongside the existing canonical-template parity tests.
+
+After that correction, `just test` passes every leg (root, ndarray, producer,
+consumer, rpkg, and isolated UI snapshots). Formatting and all five sequential
+Clippy gates were rerun and pass.
