@@ -632,6 +632,7 @@ impl CWrapperContext {
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
+                    let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
                     unsafe { ::miniextendr_api::sys::GetRNGstate(); }
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         #unwind_protect_fn(
@@ -647,9 +648,16 @@ impl CWrapperContext {
                     }));
                     // PutRNGstate runs after catch_unwind, before error handling
                     unsafe { ::miniextendr_api::sys::PutRNGstate(); }
-                    match __result {
+                    let __miniextendr_value = match __result {
                         Ok(sexp) => sexp,
                         Err(payload) => { #rng_panic_handler },
+                    };
+                    unsafe {
+                        ::miniextendr_api::deferred_condition::finish(
+                            __miniextendr_deferred_mark,
+                            __miniextendr_value,
+                            Some(__miniextendr_call),
+                        )
                     }
                 }
             }
@@ -661,7 +669,8 @@ impl CWrapperContext {
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
-                    #unwind_protect_fn(
+                    let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                    let __miniextendr_value = #unwind_protect_fn(
                         || {
                             #alias_guard
                             #pre_call_checks
@@ -670,7 +679,14 @@ impl CWrapperContext {
                             #return_handling
                         },
                         Some(__miniextendr_call),
-                    )
+                    );
+                    unsafe {
+                        ::miniextendr_api::deferred_condition::finish(
+                            __miniextendr_deferred_mark,
+                            __miniextendr_value,
+                            Some(__miniextendr_call),
+                        )
+                    }
                 }
             }
         }
@@ -687,6 +703,8 @@ impl CWrapperContext {
     /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
     /// 6. `PutRNGstate()` (if `rng` enabled)
     /// 7. Panic handling: either tagged error value or `Rf_errorcall`
+    /// 8. Conditions queued with `defer_warning` & co. during the call are
+    ///    signalled (`deferred_condition::finish`) before the SEXP reaches R
     fn generate_worker_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let vis = &self.vis;
@@ -764,6 +782,7 @@ impl CWrapperContext {
             #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #alias_guard
@@ -786,11 +805,18 @@ impl CWrapperContext {
                     }
                 }));
                 #rng_put
-                match __miniextendr_panic_result {
+                let __miniextendr_value = match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
                     Err(payload) => {
                         #panic_error_handling
                     },
+                };
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        Some(__miniextendr_call),
+                    )
                 }
             }
         }

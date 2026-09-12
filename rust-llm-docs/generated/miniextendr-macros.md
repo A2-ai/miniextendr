@@ -3070,6 +3070,14 @@ historical `analyze_return_type` behavior) rather than [`ReturnHandling::OptionI
 (the default that preserves impl-method behavior). Use this when building a
 [`CWrapperContext`] for a standalone function.
 
+### `condition_derive::derive_r_condition_error`
+
+```rust
+fn derive_r_condition_error(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenStream>
+```
+
+Main entry point for `#[derive(RConditionError)]`.
+
 ### `dataframe_derive::derive_dataframe_row`
 
 ```rust
@@ -4240,6 +4248,30 @@ as the default `IntoR` path.
 struct Meters(f64);
 // IntoR produces a numeric scalar, not an ExternalPtr
 ```
+
+### `#[derive(RConditionError)]`
+
+Helper attributes: `condition`
+
+Derive `RConditionError` for an error or warning payload type: the R class
+vector, the message and the `data` fields handlers read as `e$<name>`.
+
+- `#[condition(class = "…")]` on the type sets the family class (default:
+  the type name in snake_case); on an enum variant it sets the member class
+  (default: `<family>_<variant in snake_case>`). Variants report
+  `c(<member>, <family>)`, structs `c(<family>)`.
+- `#[condition(message = "…")]` on a struct or a variant is a `format!`
+  string over the fields (tuple fields are `_0`, `_1`, …). Without it the
+  message is the type's `Display` rendering.
+- Every field becomes a `data` entry under its own name, converted with
+  `RValue::from(field.clone())`. `#[condition(rename = "…")]`,
+  `#[condition(skip)]` and `#[condition(debug)]` (attach the `Debug`
+  rendering instead) adjust that; tuple fields need `rename` or `skip`. The
+  reserved slots `message`, `call` and `kind` are rejected at compile time.
+
+Works with [`defer_warning`](https://docs.rs/miniextendr-api) & co. for
+conditions that accompany a value and with `Result<T, E>` returns for
+classed errors. Generic types are not supported.
 
 ### `#[derive(RFactor)]`
 

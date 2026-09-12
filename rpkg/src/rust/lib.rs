@@ -179,6 +179,7 @@ mod datafusion_tests;
 #[cfg(feature = "rust_decimal")]
 mod decimal_adapter_tests;
 mod default_tests;
+mod deferred_condition_tests;
 mod display_fromstr_tests;
 mod doc_attr_tests;
 mod dots_tests;
