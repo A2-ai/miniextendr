@@ -281,7 +281,11 @@ test_that("finalizers neither signal nor strand their deferred conditions", {
 
 test_that("connection writes flush locally and finalization suppresses queues", {
   skip_if_not(exists("deferred_guard_connection", mode = "function"))
-  con <- deferred_guard_connection()
+  opened <- collect_conditions(deferred_guard_connection())
+  expect_length(opened$conditions, 1L)
+  expect_s3_class(opened$conditions[[1L]], "guard_connection_open")
+  expect_null(conditionCall(opened$conditions[[1L]]))
+  con <- opened$value
   on.exit(try(close(con), silent = TRUE), add = TRUE)
   out <- collect_conditions(writeBin(as.raw(1:3), con))
   expect_length(out$conditions, 1L)
@@ -308,3 +312,24 @@ test_that("deferred ALTREP SEXP results survive gctorture and handler allocation
 })
 
 # endregion
+
+test_that("connection open signalling keeps the new connection alive under GC", {
+  skip_if_not(exists("deferred_guard_connection", mode = "function"))
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  opened <- withCallingHandlers(deferred_guard_connection(), guard_connection_open = function(c) gc())
+  close(opened)
+  miniextendr:::gc_stress_deferred_connection_open()
+  gctorture(FALSE)
+  expect_identical(deferred_pending_count(), 0L)
+})
+
+test_that("deferred conditions preserve an ALTREP C NULL fallback result", {
+  out <- collect_conditions(sum(deferred_guard_altrep(4L)))
+  expect_equal(out$value, 33)
+  expect_identical(vapply(out$conditions[1:2], function(c) class(c)[1L], ""),
+                   c("guard_sum", "guard_sum"))
+  expect_true(any(vapply(out$conditions, inherits, FALSE, what = "guard_warning")))
+  expect_identical(deferred_pending_count(), 0L)
+})

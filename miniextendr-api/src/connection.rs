@@ -1026,6 +1026,9 @@ impl RCustomConnection {
                 self.class_name.as_ptr(),
                 &mut conn_ptr,
             );
+            // open() can defer a condition; signalling may allocate or run GC
+            // before this connection is returned to an R stack frame.
+            let _connection_root = crate::OwnedProtect::new(sexp);
 
             if conn_ptr.is_null() {
                 // Clean up the boxed state

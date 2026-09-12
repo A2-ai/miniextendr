@@ -279,12 +279,12 @@ impl miniextendr_api::altrep_data::AltIntegerData for DeferredGuardAltrep {
         // Both entries must survive: deduplication would change queue semantics.
         defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
         defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
-        Some(33)
+        if self.fail == 4 { None } else { Some(33) }
     }
 }
 
 /// Create an ALTREP whose element callback defers a warning and message.
-/// @param fail Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error.
+/// @param fail Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.
 #[miniextendr]
 pub fn deferred_guard_altrep(fail: i32) -> miniextendr_api::SEXP {
     use miniextendr_api::IntoR;
@@ -344,6 +344,11 @@ struct DeferredConnection;
 
 #[cfg(feature = "connections")]
 impl miniextendr_api::connection::RConnectionImpl for DeferredConnection {
+    fn open(&mut self) -> bool {
+        defer_condition!(class = "guard_connection_open", "connection open");
+        true
+    }
+
     fn write(&mut self, bytes: &[u8]) -> usize {
         defer_warning!(
             class = "guard_connection",
