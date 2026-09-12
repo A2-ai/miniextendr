@@ -87,6 +87,14 @@ source mode because configure never vendors.
 `miniextendr_build()` detects and handles this (fresh-package bootstrap,
 `MINIEXTENDR_FORCE_WRAPPER_GEN`).
 
+Avoid `R CMD INSTALL --preclean` / `--clean` in the development loop: they
+invoke `cleanup` and normally erase `rust-target`, `src/rust/target`, and
+`ra-target`, making the next Cargo build cold. If another tool requires those
+flags, set `MINIEXTENDR_KEEP_TARGET=1` for that source install. The opt-in spares
+only those target directories during R CMD INSTALL; configure files are still
+refreshed, and R CMD build still cleans its staged tree. Leave the variable
+unset for a deliberate full clean rebuild.
+
 Health check when anything is confusing:
 
 ```r

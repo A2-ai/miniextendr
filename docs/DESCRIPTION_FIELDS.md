@@ -116,13 +116,16 @@ This tells `pkgbuild` not to add `--preclean` to `R CMD INSTALL`.
 
 Why that matters:
 
-- `--preclean` wipes previous build outputs before install
+- `--preclean` wipes previous build outputs before install; `--clean` removes them afterwards
 - Rust-backed packages can have expensive rebuild steps
 - removing all prior objects can make the edit-build-test loop slower than necessary
 
 For miniextendr packages, the intent is to preserve useful intermediate build state between installs unless there is a specific reason to do a full clean rebuild.
 
-This is a performance and workflow choice, not a semantic requirement of Rust itself.
+Avoid both flags in the dev loop. If another tool requires them,
+`MINIEXTENDR_KEEP_TARGET=1` preserves Cargo target directories during a source
+install; see [the cache-preservation example](R_BUILD_SYSTEM.md#keep-the-cargo-cache-during-development-installs).
+R CMD build still cleans its staged tree with that opt-in set.
 
 ## `Config/build/extra-sources: src/rust/Cargo.lock`
 
