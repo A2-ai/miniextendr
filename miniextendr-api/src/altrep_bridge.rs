@@ -72,11 +72,14 @@ where
 /// Root an SEXP result before the guard allocates to signal deferred conditions.
 #[inline(always)]
 fn guarded_altrep_sexp_call<T: Altrep>(f: impl FnOnce() -> SEXP) -> SEXP {
-    let result = guarded_altrep_call::<T, _, _>(|| {
-        // SAFETY: ALTREP callbacks run on R's main thread and return valid SEXPs.
-        unsafe { crate::OwnedProtect::new(f()) }
+    let (result, _root) = guarded_altrep_call::<T, _, _>(|| {
+        let result = f();
+        // A C NULL result requests R's fallback in e.g. Duplicate/Extract_subset.
+        // SAFETY: every other result is a valid SEXP, on R's main thread.
+        let root = (!result.is_null()).then(|| unsafe { crate::OwnedProtect::new(result) });
+        (result, root)
     });
-    result.get()
+    result
 }
 
 // region: ALTREP BASE TRAMPOLINES

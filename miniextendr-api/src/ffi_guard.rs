@@ -65,6 +65,9 @@ pub enum GuardMode {
 /// - For [`GuardMode::CatchUnwind`]: raises R error via `Rf_error` (diverges — never returns).
 /// - For [`GuardMode::RUnwind`]: delegates to `with_r_unwind_protect_sourced`.
 ///
+/// Deferred conditions signal before return (or panic conversion). Any SEXP
+/// held in the generic result must be rooted, e.g. by returning `OwnedProtect`.
+///
 /// # Parameters
 ///
 /// - `f`: The closure to execute.
@@ -120,7 +123,8 @@ where
     let mark = crate::deferred_condition::mark();
     let outcome = catch_unwind(AssertUnwindSafe(f))
         .map_err(|payload| panic_payload_to_string(payload.as_ref()).into_owned());
-    match crate::deferred_condition::finish_guarded(mark, outcome) {
+    let (outcome, fallback) = crate::deferred_condition::finish_guarded(mark, (outcome, fallback));
+    match outcome {
         Ok(val) => val,
         Err(msg) => {
             crate::panic_telemetry::fire(&msg, source);
