@@ -3319,3 +3319,20 @@ pub fn gc_stress_deferred_conditions() -> Vec<i32> {
 }
 
 // endregion
+
+// region: deferred callback return rooting (#1518)
+
+/// Exercise the ALTREP SEXP-returning sum guard while it signals conditions.
+/// No warning output, so this is safe for the automatic no-argument GC sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_deferred_guard_result() -> miniextendr_api::SEXP {
+    use miniextendr_api::expression::RCall;
+    use miniextendr_api::{OwnedProtect, sys};
+    unsafe {
+        let vector = OwnedProtect::new(crate::deferred_condition_tests::deferred_guard_altrep(0));
+        let expr = OwnedProtect::new(RCall::new("sum").arg(vector.get()).build());
+        sys::Rf_eval(expr.get(), sys::R_BaseEnv)
+    }
+}
+
+// endregion

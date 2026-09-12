@@ -76,10 +76,15 @@
 //! push from the worker thread; the signalling always happens on R's main
 //! thread after the worker result is back. Every generated `.Call` entry
 //! point and every trait-ABI vtable shim flushes what was queued inside it.
-//! Code that runs under no such boundary (ALTREP callbacks, finalizers) has
-//! its conditions signalled by the next boundary that completes in the same
-//! package; use the panicking macros or `error!` there (flushing at those
-//! guard sites is issue #1518).
+//! ALTREP `RUnwind` / `RustUnwind` callbacks and connection I/O callbacks also
+//! signal locally, with `conditionCall() = NULL`; raising guards use their
+//! explicit `call` argument. An R-origin error discards the abandoned queue.
+//!
+//! External-pointer finalizers and connection close/destroy/Drop callbacks
+//! suppress deferred conditions: R finalization removes the caller's handlers.
+//! No R signalling or delayed delivery is attempted from destructors guarded
+//! by `drop_catching_panic`. Unguarded raw FFI / `AltrepGuard::Unsafe` callbacks
+//! must not queue conditions; choose a guarded callback instead.
 
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
@@ -88,22 +93,20 @@ use crate::{SEXP, SexpExt};
 
 // region: Queue
 
-/// Conditions queued during the current `.Call` (and any enclosing ones).
+/// Conditions queued during the current guarded callback (and enclosing calls).
 ///
 /// A plain static rather than a thread-local so worker-thread pushes land in
 /// the same queue the main thread drains. R is single-threaded and the main
 /// thread blocks while a worker body runs, so the queue is never contended.
-struct Queue {
-    conditions: Vec<RCondition>,
-    suppressed: usize,
+static PENDING: Mutex<Vec<RCondition>> = Mutex::new(Vec::new());
+
+std::thread_local! {
+    // Suppression belongs to this destructor's thread, not unrelated worker
+    // threads that may still be queueing diagnostics during an R-thread visit.
+    static SUPPRESSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-static PENDING: Mutex<Queue> = Mutex::new(Queue {
-    conditions: Vec::new(),
-    suppressed: 0,
-});
-
-fn pending() -> MutexGuard<'static, Queue> {
+fn pending() -> MutexGuard<'static, Vec<RCondition>> {
     PENDING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -148,9 +151,8 @@ pub fn defer_condition(payload: impl RConditionError) {
 /// Queue an already-built condition payload. Used by the `defer_*!` macros.
 #[doc(hidden)]
 pub fn defer(condition: RCondition) {
-    let mut queue = pending();
-    if queue.suppressed == 0 {
-        queue.conditions.push(condition);
+    if SUPPRESSED.get() == 0 {
+        pending().push(condition);
     }
 }
 
@@ -158,7 +160,7 @@ pub fn defer(condition: RCondition) {
 #[doc(hidden)]
 #[inline]
 pub fn mark() -> usize {
-    pending().conditions.len()
+    pending().len()
 }
 
 /// Remove and return everything queued since `mark`, oldest first. Entries
@@ -166,31 +168,31 @@ pub fn mark() -> usize {
 #[doc(hidden)]
 pub fn take_pending(mark: usize) -> Vec<RCondition> {
     let mut queue = pending();
-    if queue.conditions.len() <= mark {
+    if queue.len() <= mark {
         return Vec::new();
     }
-    queue.conditions.split_off(mark)
+    queue.split_off(mark)
 }
 
 /// Discard conditions whose Rust/R call was abandoned by an R longjmp.
 pub(crate) fn discard(mark: usize) {
-    pending().conditions.truncate(mark);
+    pending().truncate(mark);
 }
 
 /// Finalization has no caller condition handlers. Suppress queues throughout
 /// the destructor, including any nested framework boundaries, without R calls.
-pub(crate) struct Suppress;
+pub(crate) struct Suppress(std::marker::PhantomData<std::rc::Rc<()>>);
 
 impl Suppress {
     pub(crate) fn new() -> Self {
-        pending().suppressed += 1;
-        Self
+        SUPPRESSED.set(SUPPRESSED.get() + 1);
+        Self(std::marker::PhantomData)
     }
 }
 
 impl Drop for Suppress {
     fn drop(&mut self) {
-        pending().suppressed -= 1;
+        SUPPRESSED.set(SUPPRESSED.get() - 1);
     }
 }
 
@@ -470,6 +472,61 @@ mod tests {
             assert_eq!(parts[0].1, "step 1");
             assert_eq!(parts[1].0, kind::CONDITION);
             assert_eq!(parts[1].2, vec!["member", "family"]);
+        });
+    }
+
+    #[test]
+    fn finalizer_suppression_nests_and_preserves_the_enclosing_queue() {
+        with_empty_queue(|| {
+            crate::defer_warning!("outer");
+            {
+                let _outer = Suppress::new();
+                crate::defer_warning!("finalizer");
+                {
+                    let _inner = Suppress::new();
+                    crate::defer_message!("nested finalizer");
+                }
+                crate::defer_condition!("still suppressed");
+            }
+            crate::defer_message!("after");
+            let messages: Vec<_> = take_pending(0)
+                .into_iter()
+                .map(|condition| condition.into_parts().1)
+                .collect();
+            assert_eq!(messages, ["outer", "after"]);
+        });
+    }
+
+    #[test]
+    fn finalizer_suppression_does_not_drop_another_threads_conditions() {
+        with_empty_queue(|| {
+            let _suppressed = Suppress::new();
+            std::thread::spawn(|| crate::defer_warning!("worker"))
+                .join()
+                .unwrap();
+            crate::defer_warning!("finalizer");
+            let remaining = take_pending(0);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(
+                remaining.into_iter().next().unwrap().into_parts().1,
+                "worker"
+            );
+        });
+    }
+
+    #[test]
+    fn abandoned_inner_queue_does_not_discard_outer_conditions() {
+        with_empty_queue(|| {
+            crate::defer_warning!("outer");
+            let inner = mark();
+            crate::defer_warning!("abandoned");
+            discard(inner);
+            let remaining = take_pending(0);
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(
+                remaining.into_iter().next().unwrap().into_parts().1,
+                "outer"
+            );
         });
     }
 
