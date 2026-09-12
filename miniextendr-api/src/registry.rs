@@ -1418,6 +1418,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str(RAISE_CONDITION_HELPER_FN);
     content.push_str(
         "
+
 # Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
 # Base R keeps only the elements that match as long as one of them does, so a
 # misspelled entry silently shortens the selection and the per-element check on
