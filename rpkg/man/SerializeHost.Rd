@@ -41,12 +41,13 @@ A class with ordinary and serialized return methods.
 
 Construct a class instance for serialization examples.
 }
+\details{
+\describe{
+\item{\code{value}}{Integer stored in the instance.}
+}
+}
 \examples{
 obj <- SerializeHost$new(5L)
 obj$snapshot() # list(value = 5L, label = "value-5")
 obj$self_data() # list(value = 5L), rather than another handle
-
-\describe{
-  \item{\code{value}}{Integer stored in the instance.}
-}
 }
