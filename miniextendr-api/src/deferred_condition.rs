@@ -93,9 +93,17 @@ use crate::{SEXP, SexpExt};
 /// A plain static rather than a thread-local so worker-thread pushes land in
 /// the same queue the main thread drains. R is single-threaded and the main
 /// thread blocks while a worker body runs, so the queue is never contended.
-static PENDING: Mutex<Vec<RCondition>> = Mutex::new(Vec::new());
+struct Queue {
+    conditions: Vec<RCondition>,
+    suppressed: usize,
+}
 
-fn pending() -> MutexGuard<'static, Vec<RCondition>> {
+static PENDING: Mutex<Queue> = Mutex::new(Queue {
+    conditions: Vec::new(),
+    suppressed: 0,
+});
+
+fn pending() -> MutexGuard<'static, Queue> {
     PENDING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
@@ -140,14 +148,17 @@ pub fn defer_condition(payload: impl RConditionError) {
 /// Queue an already-built condition payload. Used by the `defer_*!` macros.
 #[doc(hidden)]
 pub fn defer(condition: RCondition) {
-    pending().push(condition);
+    let mut queue = pending();
+    if queue.suppressed == 0 {
+        queue.conditions.push(condition);
+    }
 }
 
 /// The queue position at the start of a call. Pair with [`finish`].
 #[doc(hidden)]
 #[inline]
 pub fn mark() -> usize {
-    pending().len()
+    pending().conditions.len()
 }
 
 /// Remove and return everything queued since `mark`, oldest first. Entries
@@ -155,10 +166,32 @@ pub fn mark() -> usize {
 #[doc(hidden)]
 pub fn take_pending(mark: usize) -> Vec<RCondition> {
     let mut queue = pending();
-    if queue.len() <= mark {
+    if queue.conditions.len() <= mark {
         return Vec::new();
     }
-    queue.split_off(mark)
+    queue.conditions.split_off(mark)
+}
+
+/// Discard conditions whose Rust/R call was abandoned by an R longjmp.
+pub(crate) fn discard(mark: usize) {
+    pending().conditions.truncate(mark);
+}
+
+/// Finalization has no caller condition handlers. Suppress queues throughout
+/// the destructor, including any nested framework boundaries, without R calls.
+pub(crate) struct Suppress;
+
+impl Suppress {
+    pub(crate) fn new() -> Self {
+        pending().suppressed += 1;
+        Self
+    }
+}
+
+impl Drop for Suppress {
+    fn drop(&mut self) {
+        pending().suppressed -= 1;
+    }
 }
 
 // endregion
@@ -204,12 +237,30 @@ pub unsafe fn finish(mark: usize, value: SEXP, call: Option<SEXP>) -> SEXP {
     if outcome.is_nil() { value } else { outcome }
 }
 
+/// Flush a non-raising callback's conditions after its Rust guard has finished.
+/// R objects in `value` must already be rooted (the same contract as `or_raise`).
+pub(crate) fn finish_guarded<R>(mark: usize, value: R) -> R {
+    let queued = take_pending(mark);
+    if queued.is_empty() {
+        return value;
+    }
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        move || {
+            // SAFETY: callback boundary is on R's main thread; this closure is
+            // inside R_UnwindProtect, including the owned result's destructor.
+            unsafe { signal_now(queued, None) };
+            value
+        },
+        None,
+    )
+}
+
 /// Materialise each queued condition and hand it to the R helper.
 ///
 /// # Safety
 ///
 /// Main thread, inside `R_UnwindProtect` (handlers may longjmp).
-unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
+pub(crate) unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
     let helper = raise_condition_helper();
     let call_sexp = call.unwrap_or(SEXP::nil());
     for condition in queued {
