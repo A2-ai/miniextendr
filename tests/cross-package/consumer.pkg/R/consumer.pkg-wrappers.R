@@ -549,7 +549,7 @@ DoubleCounter$Counter$increment <- function(x) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__increment, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
@@ -563,7 +563,7 @@ DoubleCounter$Counter$add <- function(x, n) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__add, .call = match.call(), x, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$add, ".__mx_instance__") <- TRUE
 
@@ -573,7 +573,7 @@ DoubleCounter$Counter$panic_plain <- function(x) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__panic_plain, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$panic_plain, ".__mx_instance__") <- TRUE
 
@@ -587,7 +587,7 @@ DoubleCounter$Counter$error_with_class <- function(x, class_name) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__error_with_class, .call = match.call(), x, class_name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$error_with_class, ".__mx_instance__") <- TRUE
 
@@ -601,7 +601,7 @@ DoubleCounter$Counter$raise_error <- function(x, msg) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__raise_error, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$raise_error, ".__mx_instance__") <- TRUE
 
@@ -615,7 +615,7 @@ DoubleCounter$Counter$raise_warning <- function(x, msg) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__raise_warning, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$raise_warning, ".__mx_instance__") <- TRUE
 
@@ -629,7 +629,7 @@ DoubleCounter$Counter$raise_message <- function(x, msg) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__raise_message, .call = match.call(), x, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$raise_message, ".__mx_instance__") <- TRUE
 
@@ -645,7 +645,7 @@ DoubleCounter$Counter$raise_condition_classed <- function(x, class_name, msg) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__raise_condition_classed, .call = match.call(), x, class_name, msg)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$raise_condition_classed, ".__mx_instance__") <- TRUE
 
@@ -655,7 +655,7 @@ DoubleCounter$Counter$raise_error_with_data <- function(x) {
   .val <- .Call(C_consumer_pkg_DoubleCounter__Counter__raise_error_with_data, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
-  invisible(x)
+  x
 }
 attr(DoubleCounter$Counter$raise_error_with_data, ".__mx_instance__") <- TRUE
 

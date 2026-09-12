@@ -112,7 +112,7 @@ Test \code{unwrap_in_r}: the \code{Result} is converted to \code{list(error = ..
 
 \verb{Visible<()>}: a visible \code{NULL}.
 
-The marker is transparent to \code{Option} handling: a bare function's \code{None} is \code{NULL}, as without the marker.
+The marker is transparent to \code{Option} handling: a bare function's \verb{Option<i32>} \code{None} is \code{NA}, as without the marker.
 
 A marker and an agreeing attribute.
 }
