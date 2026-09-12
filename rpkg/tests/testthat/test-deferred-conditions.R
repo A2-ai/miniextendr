@@ -188,7 +188,7 @@ test_that("deferred conditions survive gctorture", {
 # region: callback guards (#1518)
 
 test_that("ALTREP conditions are local to element access with no borrowed call", {
-  x <- deferred_guard_altrep(0L)
+  x <- deferred_guard_altrep(mode = 0L)
   out <- collect_conditions(x[2L])
   expect_identical(out$value, 11L)
   expect_identical(vapply(out$conditions, function(c) class(c)[1L], ""),
@@ -225,6 +225,12 @@ test_that("exiting handlers and warn=2 leave no deferred entries", {
   w <- tryCatch(x[1L], guard_warning = identity)
   expect_s3_class(w, "guard_warning")
   expect_identical(deferred_pending_count(), 0L)
+  for (mode in 1:2) {
+    failing <- deferred_guard_altrep(mode)
+    exited <- tryCatch(failing[1L], guard_warning = identity)
+    expect_s3_class(exited, "guard_warning")
+    expect_identical(deferred_pending_count(), 0L)
+  }
   old <- options(warn = 2)
   on.exit(options(old), add = TRUE)
   expect_error(x[1L], "callback warning")
@@ -232,7 +238,7 @@ test_that("exiting handlers and warn=2 leave no deferred entries", {
 })
 
 test_that("nested guard order survives calling-handler re-entry", {
-  out <- collect_conditions(deferred_guard_nested(FALSE))
+  out <- collect_conditions(deferred_guard_nested(panic_inner = FALSE))
   expect_identical(out$value, 7L)
   expect_identical(vapply(out$conditions, function(c) class(c)[1L], ""),
                    c("guard_inner", "guard_outer"))

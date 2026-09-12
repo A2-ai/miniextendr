@@ -51,3 +51,9 @@ The first full vendored tarball check (before the connection-open follow-up) pas
 with 0 errors, 0 warnings and one CRAN incoming note: new submission and tarball size
 (24,698,775 bytes). Its full R tests and examples passed; GC stress was run separately
 in the targeted files. The final targeted run also passed the connection-open GC regression and the C NULL sum-fallback regression (124 deferred-condition expectations), plus the ALTREP, connection, FFI-guard and 2,000-cycle worker-longjmp suites.
+
+The fixtures share a generated Rd page. Reusing `fail` for a numeric ALTREP mode and
+for the nested guard's boolean flag overwrote the older Result fixture's argument
+description. The new parameters are named `mode` and `panic_inner`; named-argument
+calls in the R regressions verify their wrappers, and roxygen regenerates all three
+argument descriptions independently.

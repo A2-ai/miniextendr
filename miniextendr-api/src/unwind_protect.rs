@@ -500,25 +500,23 @@ where
     let outcome = run_r_unwind_protect(f);
     // Preserve the original panic site before condition handlers can re-enter
     // Rust and overwrite the panic hook's thread-local location.
-    let mut panic_message = outcome.as_ref().err().and_then(|payload| {
+    let panic_message = outcome.as_ref().err().and_then(|payload| {
         (!payload.is::<crate::condition::RCondition>())
             .then(|| panic_message_with_location(payload.as_ref()))
     });
     let queued = crate::deferred_condition::take_pending(deferred_mark);
-    let outcome = if queued.is_empty() {
-        outcome
+    let (outcome, panic_message) = if queued.is_empty() {
+        (outcome, panic_message)
     } else {
-        // Move the outcome INTO this guard: an exiting R handler must drop its
-        // Rust resources too. SEXP-bearing outcomes must own their roots.
+        // Move both the outcome and saved panic text INTO this guard: an
+        // exiting R handler must drop all their Rust resources too.
+        // SEXP-bearing outcomes must own their roots.
         match run_r_unwind_protect(move || {
             unsafe { crate::deferred_condition::signal_now(queued, call) };
-            outcome
+            (outcome, panic_message)
         }) {
             Ok(outcome) => outcome,
-            Err(payload) => {
-                panic_message = None;
-                Err(payload)
-            }
+            Err(payload) => (Err(payload), None),
         }
     };
     match outcome {

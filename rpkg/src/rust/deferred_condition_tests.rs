@@ -239,7 +239,7 @@ impl DeferredCounter {
 #[derive(miniextendr_api::AltrepInteger)]
 #[altrep(class = "DeferredGuardAltrep", manual)]
 pub struct DeferredGuardAltrep {
-    fail: i32,
+    mode: i32,
 }
 
 impl miniextendr_api::altrep_data::AltrepLen for DeferredGuardAltrep {
@@ -256,7 +256,7 @@ impl miniextendr_api::altrep_data::AltIntegerData for DeferredGuardAltrep {
             "callback warning"
         );
         defer_message!(class = "guard_message", "callback message");
-        match self.fail {
+        match self.mode {
             1 => rust_error!(class = "guard_error", "callback error"),
             2 => panic!("callback panic"),
             3 => unsafe {
@@ -279,27 +279,27 @@ impl miniextendr_api::altrep_data::AltIntegerData for DeferredGuardAltrep {
         // Both entries must survive: deduplication would change queue semantics.
         defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
         defer_condition!(class = "guard_sum", data = { total = 33 }, "callback sum");
-        if self.fail == 4 { None } else { Some(33) }
+        if self.mode == 4 { None } else { Some(33) }
     }
 }
 
 /// Create an ALTREP whose element callback defers a warning and message.
-/// @param fail Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.
+/// @param mode Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.
 #[miniextendr]
-pub fn deferred_guard_altrep(fail: i32) -> miniextendr_api::SEXP {
+pub fn deferred_guard_altrep(mode: i32) -> miniextendr_api::SEXP {
     use miniextendr_api::IntoR;
-    DeferredGuardAltrep { fail }.into_sexp()
+    DeferredGuardAltrep { mode }.into_sexp()
 }
 
 /// Check that a low-level raising guard signals before the enclosing .Call.
-/// @param fail Whether the inner callback panics after queueing its warning.
+/// @param panic_inner Whether the inner callback panics after queueing its warning.
 #[miniextendr]
-pub fn deferred_guard_nested(fail: bool) -> i32 {
+pub fn deferred_guard_nested(panic_inner: bool) -> i32 {
     defer_condition!(class = "guard_outer", "outer");
     miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise(
         || {
             defer_warning!(class = "guard_inner", "inner");
-            if fail {
+            if panic_inner {
                 rust_error!(class = "guard_inner_error", "inner error");
             }
             7
