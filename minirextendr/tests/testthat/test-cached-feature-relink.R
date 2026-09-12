@@ -103,7 +103,9 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
     verify(FALSE, paste0(layout, "-verify-default"))
     archive <- file.path(target, "debug", paste0("lib", package, ".a"))
     original_archive_time <- file.info(archive)$mtime
-    install(TRUE, paste0(layout, "-alternate"))
+    changed_output <- install(TRUE, paste0(layout, "-alternate"))
+    expect_match(changed_output, paste0("NOTE: ", package, "-wrappers.R changed"),
+                 fixed = TRUE)
     verify(TRUE, paste0(layout, "-verify-alternate"))
     install(FALSE, paste0(layout, "-cached-default"))
     # Establish that this is an old cached archive, not a new compilation.
@@ -117,7 +119,36 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
                  info = paste(layout, "no-op install relinked the shared library"))
     verify(FALSE, paste0(layout, "-verify-noop"))
 
+    # A body-only edit relinks the DLL without changing generated R code (#1530).
+    # The writer deliberately keeps identical content; make must still settle.
+    wrappers <- file.path(pkg, "R", paste0(package, "-wrappers.R"))
+    original_wrappers <- readLines(wrappers, warn = FALSE)
+    rust_source <- file.path(pkg, "src/rust/lib.rs")
+    code <- readLines(rust_source, warn = FALSE)
+    code <- sub('pub fn cache_enabled() -> bool { cfg!(feature = "alternate") }',
+                'pub fn cache_enabled() -> bool { let enabled = cfg!(feature = "alternate"); enabled }',
+                code, fixed = TRUE)
+    Sys.sleep(1) # Distinguish timestamps even on second-resolution filesystems.
+    writeLines(code, rust_source)
+    body_output <- install(FALSE, paste0(layout, "-body-edit"))
+    expect_gt(as.numeric(file.info(dll)$mtime), as.numeric(linked_time))
+    expect_match(body_output, "Checking R wrappers", fixed = TRUE)
+    expect_false(grepl(paste0("NOTE: ", package, "-wrappers.R changed"),
+                       body_output, fixed = TRUE))
+    expect_identical(readLines(wrappers, warn = FALSE), original_wrappers)
+    expect_gte(as.numeric(file.info(wrappers)$mtime), as.numeric(file.info(dll)$mtime))
+    settled_time <- file.info(wrappers)$mtime
+    linked_time <- file.info(dll)$mtime
+    for (attempt in 1:3) {
+      output <- install(FALSE, paste0(layout, "-settled-", attempt))
+      expect_false(grepl("Checking R wrappers", output, fixed = TRUE), info = output)
+      expect_equal(file.info(wrappers)$mtime, settled_time)
+      expect_equal(file.info(dll)$mtime, linked_time)
+    }
+    verify(FALSE, paste0(layout, "-verify-body-edit"))
+
     if (layout == "standalone") {
+      original_archive_time <- file.info(archive)$mtime
       # A record kept inside the selected Cargo target would miss the return
       # switch: that directory still contains its old default record/archive.
       withr::with_envvar(c(CARGO_TARGET_DIR = file.path(root, "other-target")), {
