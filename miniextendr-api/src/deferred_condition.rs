@@ -134,7 +134,7 @@ fn pending() -> MutexGuard<'static, Vec<RCondition>> {
     PENDING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Queue a warning to be signalled when the current `#[miniextendr]` call
+/// Queue a warning to be signalled when the current guarded call or callback
 /// returns; the call still returns its value.
 ///
 /// `payload` supplies the message, the user classes (prepended to
@@ -153,7 +153,7 @@ pub fn defer_warning(payload: impl RConditionError) {
 }
 
 /// Queue a message (`message()`, muffled by `suppressMessages()`) to be
-/// emitted when the current `#[miniextendr]` call returns.
+/// emitted when the current guarded call or callback returns.
 ///
 /// Unlike [`crate::message!`], the payload's classes are honoured: they are
 /// layered in front of `rust_message` so handlers can dispatch on them.
@@ -166,7 +166,7 @@ pub fn defer_message(payload: impl RConditionError) {
 }
 
 /// Queue a plain condition (`signalCondition()`: silent without a handler)
-/// to be signalled when the current `#[miniextendr]` call returns.
+/// to be signalled when the current guarded call or callback returns.
 pub fn defer_condition(payload: impl RConditionError) {
     defer(RCondition::Condition {
         message: payload.message(),
@@ -338,7 +338,7 @@ fn raise_condition_helper() -> SEXP {
 // region: Macros
 
 /// Queue an R warning with `rust_warning` class layering and return normally;
-/// the surrounding `#[miniextendr]` call signals it after its value is
+/// the surrounding guarded call or callback signals it after its value is
 /// computed.
 ///
 /// Same grammar as [`crate::warning!`]: optional `class = …` (one class or a
@@ -376,7 +376,7 @@ macro_rules! defer_warning {
 
 /// Queue an R message (`rust_message` layering, muffled by
 /// `suppressMessages()`) and return normally; emitted when the surrounding
-/// `#[miniextendr]` call returns.
+/// guarded call or callback returns.
 ///
 /// Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 /// `class = …` part is accepted and layered in front of `rust_message`.
@@ -394,7 +394,7 @@ macro_rules! defer_message {
 
 /// Queue a plain R condition (`rust_condition` layering, silent without a
 /// handler) and return normally; signalled when the surrounding
-/// `#[miniextendr]` call returns.
+/// guarded call or callback returns.
 ///
 /// Same grammar as [`crate::defer_warning!`]. Useful for progress or audit
 /// events a caller may opt into with `withCallingHandlers()`.

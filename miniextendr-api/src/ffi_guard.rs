@@ -14,7 +14,7 @@
 //!
 //! - [`GuardMode::CatchUnwind`]: Wraps the closure in `catch_unwind`. On panic,
 //!   fires telemetry and raises an R error via `Rf_error` (diverges).
-//!   Used by worker and connection trampolines.
+//!   Used by ALTREP `RustUnwind` callbacks.
 //!
 //! - [`GuardMode::RUnwind`]: Uses `R_UnwindProtect` to catch both Rust panics
 //!   and R longjmps. Used by ALTREP callbacks that call R APIs. Routes
@@ -65,8 +65,9 @@ pub enum GuardMode {
 /// - For [`GuardMode::CatchUnwind`]: raises R error via `Rf_error` (diverges — never returns).
 /// - For [`GuardMode::RUnwind`]: delegates to `with_r_unwind_protect_sourced`.
 ///
-/// Deferred conditions signal before return (or panic conversion). Any SEXP
-/// held in the generic result must be rooted, e.g. by returning `OwnedProtect`.
+/// Deferred conditions signal on R's main thread before return (or panic
+/// conversion). Use this boundary on the main thread. Any SEXP held in the
+/// generic result must be rooted, e.g. by returning `OwnedProtect`.
 ///
 /// # Parameters
 ///
