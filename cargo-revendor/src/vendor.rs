@@ -92,6 +92,10 @@ pub fn run_cargo_vendor(
         bail!("cargo vendor failed:\n{}", stderr.trim());
     }
 
+    // Cargo's emitted replacements retain Git rev/branch/tag selectors and
+    // transitive/synced sources that a scan of the root manifest cannot see.
+    std::fs::write(vendor_dir.join(".cargo-config.toml"), &output.stdout)?;
+
     Ok(())
 }
 
@@ -956,8 +960,26 @@ pub fn generate_cargo_config(
         crate::path_to_toml(&vendor_path)
     ));
 
-    // Write to vendor dir for reference
+    // Retain Cargo's authoritative mappings, including reference selectors.
+    // The final vendor directory above replaces its temporary staging path.
+    // Root-manifest mappings also cover framework Git deps patched to local
+    // crates during development, which cargo vendor omits from its output.
     let config_path = vendor_dir.join(".cargo-config.toml");
+    if config_path.exists() {
+        let cargo_config: toml_edit::DocumentMut =
+            std::fs::read_to_string(&config_path)?
+                .parse()
+                .context("failed to parse cargo vendor source replacements")?;
+        let mut final_config: toml_edit::DocumentMut = config.parse()?;
+        if let Some(sources) = cargo_config.get("source").and_then(|item| item.as_table()) {
+            for (name, source) in sources {
+                if final_config["source"].get(name).is_none() {
+                    final_config["source"][name] = source.clone();
+                }
+            }
+        }
+        config = final_config.to_string();
+    }
     std::fs::write(&config_path, &config)?;
 
     Ok(config)
@@ -1025,7 +1047,7 @@ pub fn freeze_manifest(
     // git deps are meant to resolve offline via source replacement
     // (vendor/.cargo-config.toml's `[source."git+<url>"]`), and downstream
     // lock-shape checks expect `git+<url>#<sha>` for them, not a path source.
-    // They are reported by the remaining-git warning below, as intended.
+    // They are reported as source-replaced dependencies at info verbosity.
     //
     // Local workspace crates always land at flat `vendor/<name>/` — single-
     // version by construction, so the #214 flat-slot non-determinism that
@@ -1053,7 +1075,8 @@ pub fn freeze_manifest(
     // entries. These can't be resolved from `vendor/` by the frozen manifest
     // alone; they rely on `.cargo/config.toml` source replacement for offline
     // builds. `--strict-freeze` converts this into a hard error; otherwise
-    // just warn at -v so users can spot the issue.
+    // report the designed source-replacement mode at -v. regenerate_lockfile
+    // subsequently verifies that the complete frozen graph resolves offline.
     let remaining_git = collect_remaining_git_deps(&doc);
     if !remaining_git.is_empty() {
         if strict {
@@ -1073,16 +1096,13 @@ pub fn freeze_manifest(
             );
         } else if v.info() {
             eprintln!(
-                "  warning: {} external git dep(s) remain after freeze:",
+                "  {} external git dep(s) use vendored source replacement after freeze:",
                 remaining_git.len()
             );
             for (name, url) in &remaining_git {
                 eprintln!("    - {name} (git = \"{url}\")");
             }
-            eprintln!(
-                "    Offline builds rely on vendor/.cargo-config.toml source replacement for these.\n\
-                 Pass --strict-freeze to turn this into a hard error."
-            );
+            eprintln!("    Offline builds use vendor/.cargo-config.toml for these dependencies.");
         }
     }
 
@@ -1473,6 +1493,7 @@ pub fn compress_vendor(
     vendor_dir: &Path,
     tarball_path: &Path,
     blank_md: bool,
+    compression_level: Option<u8>,
     v: crate::Verbosity,
 ) -> Result<()> {
     if let Some(parent) = tarball_path.parent() {
@@ -1520,8 +1541,25 @@ pub fn compress_vendor(
     if has_no_xattrs {
         cmd.arg("--no-xattrs");
     }
-    cmd.arg("-cJf")
-        .arg(tarball_path)
+    if let Some(level) = compression_level {
+        // BSD tar uses liblzma internally and ignores XZ_OPT. GNU tar invokes
+        // xz; an explicit compressor argument overrides its environment preset.
+        // Keep the no-option path exactly as before, including tar's defaults.
+        let version = std::process::Command::new("tar")
+            .arg("--version")
+            .output()
+            .context("failed to identify tar for --compression-level")?;
+        if String::from_utf8_lossy(&version.stdout).contains("bsdtar") {
+            cmd.arg(format!("--options=xz:compression-level={level}"));
+            cmd.arg("-cJf");
+        } else {
+            cmd.arg(format!("--use-compress-program=xz -{level}"));
+            cmd.arg("-cf");
+        }
+    } else {
+        cmd.arg("-cJf");
+    }
+    cmd.arg(tarball_path)
         .arg("-C")
         .arg(parent_dir)
         .arg(vendor_name.as_ref());

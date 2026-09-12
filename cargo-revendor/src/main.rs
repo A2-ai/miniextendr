@@ -160,6 +160,11 @@ struct Cli {
     #[arg(long)]
     compress: Option<PathBuf>,
 
+    /// XZ compression level (0 fastest, 9 smallest); requires --compress.
+    /// Omit to preserve the system tar default.
+    #[arg(long, requires = "compress", value_parser = clap::value_parser!(u8).range(0..=9))]
+    compression_level: Option<u8>,
+
     /// Blank .md files in vendor/ before compression
     #[arg(long)]
     blank_md: bool,
@@ -463,6 +468,21 @@ fn main() -> Result<()> {
     }
 }
 
+/// An explicit level also recompresses a cache hit; callers must not need
+/// --force (and another vendor pass) just to change an archive's preset.
+fn compress_if_requested(cli: &Cli, output: &std::path::Path, v: Verbosity) -> Result<()> {
+    if let Some(ref tarball_path) = cli.compress {
+        let tarball = if tarball_path.is_absolute() {
+            tarball_path.clone()
+        } else {
+            std::env::current_dir()?.join(tarball_path)
+        };
+        vendor::compress_vendor(output, &tarball, cli.blank_md, cli.compression_level, v)?;
+    }
+
+    Ok(())
+}
+
 /// Stamp-lock only (`--stamp-lock`): rewrite framework crates' `source =` line
 /// in an already-resolved Cargo.lock to `git+<url>#<sha>`, without vendoring.
 ///
@@ -657,6 +677,9 @@ fn run_full(
         if v.info() {
             eprintln!("cargo-revendor: vendor/ is up to date (inputs unchanged)");
         }
+        if cli.compression_level.is_some() {
+            compress_if_requested(cli, output, v)?;
+        }
         if cli.json {
             let count = std::fs::read_dir(output)
                 .map(|d| {
@@ -831,14 +854,7 @@ fn run_full(
     }
 
     // Step 13: Compress to tarball (relative paths resolve from CWD)
-    if let Some(ref tarball_path) = cli.compress {
-        let tarball = if tarball_path.is_absolute() {
-            tarball_path.clone()
-        } else {
-            std::env::current_dir()?.join(tarball_path)
-        };
-        vendor::compress_vendor(output, &tarball, cli.blank_md, v)?;
-    }
+    compress_if_requested(cli, output, v)?;
 
     // Step 14: Save cache (all three files for full mode)
     cache::save_cache(lockfile, sync_manifests, output, &local_crate_paths)?;
@@ -1550,6 +1566,34 @@ version = "0.1.0"
     /// dummy manifest path so clap doesn't run auto-discovery.
     fn base_cli() -> Cli {
         Cli::parse_from(["cargo-revendor", "revendor", "--manifest-path", "/dev/null"])
+    }
+
+    #[test]
+    fn compression_level_requires_archive_and_accepts_only_xz_presets() {
+        assert_eq!(base_cli().compression_level, None);
+        for level in ["0", "1", "9"] {
+            let cli = Cli::try_parse_from([
+                "cargo-revendor",
+                "revendor",
+                "--compress",
+                "vendor.tar.xz",
+                "--compression-level",
+                level,
+            ])
+            .unwrap();
+            assert_eq!(cli.compression_level, Some(level.parse().unwrap()));
+        }
+        for args in [
+            vec!["--compression-level", "1"],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "10"],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "-1"],
+            vec!["--compress", "vendor.tar.xz", "--compression-level", "fast"],
+        ] {
+            assert!(
+                Cli::try_parse_from(["cargo-revendor", "revendor"].into_iter().chain(args))
+                    .is_err()
+            );
+        }
     }
 
     fn tmp_output() -> (TempDir, std::path::PathBuf) {

@@ -239,6 +239,7 @@ control and out of the R tarball.
 | Flag | Description |
 |---|---|
 | `--compress <PATH>` | After vendoring, compress `vendor/` to a `.tar.xz` at the given path. Relative paths resolve from CWD. |
+| `--compression-level <0..9>` | XZ preset: 0 is fastest, 9 favors size. Requires `--compress`. Omit to retain the system tar default. |
 | `--blank-md` | Truncate `.md` files in `vendor/` to zero bytes before compression. Reduces tarball size by 5 to 15 percent on typical dep graphs. The on-disk `vendor/` directory is unaffected. |
 
 ### Phase modes
@@ -310,6 +311,34 @@ or point `CARGO_HOME` at it, for `cargo build --offline` to succeed.
 Pass `--strict-freeze` to fail fast when an external git dep would survive
 the freeze pass. CI gates that need to guarantee the manifest alone is
 buildable offline (without source replacement) should use `--strict-freeze`.
+
+## Faster local compression
+
+For a tarball that will be installed immediately, trade archive size for speed:
+
+```sh
+cargo revendor --freeze --compress inst/vendor.tar.xz --compression-level 1
+```
+
+The flag changes only compression, not the extracted vendor tree or freeze
+semantics. It also recompresses an unchanged cached vendor tree without
+requiring `--force`. Without it, the existing `tar -cJf` invocation is unchanged. BSD tar
+uses its built-in `xz:compression-level` option; GNU tar invokes `xz -N`.
+`XZ_OPT` alone is not portable because BSD tar compresses through liblzma.
+See the [BSD tar options](https://github.com/libarchive/libarchive/blob/master/tar/bsdtar.1)
+and [GNU tar compression interface](https://www.gnu.org/software/tar/manual/html_section/Compression.html).
+
+`--strip-all` is a separate opt-in: it removes test/bench/example/bin targets
+and development dependencies. It preserves directories referenced by source
+`include!`/`include_str!`/`include_bytes!` macros. Bootstrap retains its current
+contents and compression defaults; selecting faster compression does not
+silently trim shipped files.
+
+At `-v`, Git dependencies retained by freeze are reported as using vendored
+source replacement. This expected mode is informational. The subsequent
+offline lockfile regeneration still fails if dependencies cannot resolve.
+Cargo's emitted source mappings retain Git revision/branch/tag selectors;
+`--strict-freeze` still rejects every remaining Git declaration.
 
 ## Caching
 
