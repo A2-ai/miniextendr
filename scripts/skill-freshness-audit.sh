@@ -56,7 +56,8 @@
 #     `background/` reference tree; matched by EXTERNAL_PATH_PREFIXES -> WARN.
 #   * Generated / gitignored artifacts (`inst/vendor.tar.xz`,
 #     `R/miniextendr-wrappers.R`, `.cargo/config.toml`) won't exist in a clean
-#     tree; matched by GENERATED_PATH_SUFFIXES -> WARN, not BLOCKING.
+#     tree; matched by GENERATED_PATH_SUFFIXES -> INFO. Known optional scaffold
+#     files are INFO too. Their absence is expected, not a freshness warning.
 #
 # USAGE
 #   bash scripts/skill-freshness-audit.sh            # human report
@@ -208,6 +209,7 @@ path_exists() {
 
 total_block=0
 total_warn=0
+total_info=0
 audited=0
 
 for skill in $SKILLS_GLOB; do
@@ -217,6 +219,7 @@ for skill in $SKILLS_GLOB; do
 
     block_lines=()
     warn_lines=()
+    info_lines=()
 
     # ---- collect backtick tokens once -------------------------------------
     # Strip leading list-prefix; pull every `...` span. The single quotes are
@@ -277,11 +280,11 @@ for skill in $SKILLS_GLOB; do
                 continue
             fi
             if [ "$USER_LAYOUT" -eq 1 ] && in_list "$tok" "${OPTIONAL_SCAFFOLD_PATHS[@]}"; then
-                warn_lines+=("optional scaffold file (created by an opt-in helper or ./configure): $tok")
+                info_lines+=("optional scaffold file (created by an opt-in helper or ./configure): $tok")
                 continue
             fi
             if has_suffix "$tok" "${GENERATED_PATH_SUFFIXES[@]}"; then
-                warn_lines+=("generated/gitignored path (absent in clean tree): $tok")
+                info_lines+=("generated/gitignored path (absent in clean tree): $tok")
                 continue
             fi
             block_lines+=("MISSING PATH: $tok")
@@ -315,9 +318,13 @@ for skill in $SKILLS_GLOB; do
     nwarn=${#warn_lines[@]}
     total_block=$((total_block + nblock))
     total_warn=$((total_warn + nwarn))
+    total_info=$((total_info + ${#info_lines[@]}))
 
     if [ "$nblock" -eq 0 ] && [ "$nwarn" -eq 0 ]; then
         [ "$QUIET" -eq 1 ] || printf '%s== %-32s%s %sOK%s\n' "$c_dim" "$slug" "$c_reset" "$c_green" "$c_reset"
+        if [ "$QUIET" -ne 1 ]; then
+            for l in "${info_lines[@]}"; do printf '   %s[info]%s  %s\n' "$c_dim" "$c_reset" "$l"; done
+        fi
         continue
     fi
 
@@ -333,14 +340,15 @@ for skill in $SKILLS_GLOB; do
 
     for l in "${block_lines[@]}"; do printf '   %s[BLOCK]%s %s\n' "$c_red" "$c_reset" "$l"; done
     for l in "${warn_lines[@]}"; do printf '   %s[warn]%s  %s\n' "$c_yellow" "$c_reset" "$l"; done
+    for l in "${info_lines[@]}"; do printf '   %s[info]%s  %s\n' "$c_dim" "$c_reset" "$l"; done
 done
 
 printf '\n'
 printf -- '----------------------------------------\n'
-printf 'Audited %d skill(s): %s%d BLOCKING%s, %s%d WARN%s\n' \
+printf 'Audited %d skill(s): %s%d BLOCKING%s, %s%d WARN%s, %d INFO\n' \
     "$audited" \
     "$c_red" "$total_block" "$c_reset" \
-    "$c_yellow" "$total_warn" "$c_reset"
+    "$c_yellow" "$total_warn" "$c_reset" "$total_info"
 printf '%sContradiction check (CLAUDE.md vs skill restated facts) is manual — source wins.%s\n' "$c_dim" "$c_reset"
 
 if [ "$total_block" -gt 0 ]; then
