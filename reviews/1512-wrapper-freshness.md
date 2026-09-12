@@ -57,3 +57,14 @@ without the warnings from the aborted earlier run. The final focused wrapper
 suite passes all 37 assertions, including the actual tarball install and the
 sidecar-shipping assertion. Set `NOT_CRAN=true` for direct `test_file()` calls;
 without it, the compilation cases intentionally skip.
+
+Final built-tarball verification with `CI=true NOT_CRAN=true just minirextendr-check`
+completed with 0 errors, 0 warnings, and 0 notes on R 4.6.1 (macOS arm64).
+The existing monorepo #1429 end-to-end test passes all 40 assertions with the
+current cargo-revendor installed. `just fmt-check`, `just templates-check`,
+`just agents-md-check`, and `just site-check` also pass.
+
+All sequential Clippy gates pass with `-D warnings`: `just clippy`, the three
+root CI configurations (`clippy_default`, `clippy_all`, `clippy_all_s7`, using
+the feature lists read from ci.yml), and `just clippy-rpkg --features full`.
+The recipes restored the committed Cargo.lock shape after checking.
