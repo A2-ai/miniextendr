@@ -417,6 +417,11 @@ use_miniextendr <- function(path = ".",
     # template is known to provide hello().
     data$core_example_prefix <- "// "
     create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
+    # Cargo packages an ancestor root crate too. Keep nested R build output
+    # and development bundles out of that crate, preserving existing rules.
+    root_ignores <- gsub("{{rpkg_name}}", rpkg_name,
+                         mx_ignore_patterns("gitignore"), fixed = TRUE)
+    usethis::use_git_ignore(root_ignores, directory = ".")
     use_miniextendr_gitattributes()
 
     # Auto-run autoconf if available
