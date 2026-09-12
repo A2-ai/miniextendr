@@ -1195,6 +1195,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type_ref.clone())
+                .with_invisible(method.is_invisible())
+                .with_return_class_from_method(method)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.

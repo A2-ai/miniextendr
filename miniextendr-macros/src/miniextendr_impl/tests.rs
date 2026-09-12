@@ -4547,3 +4547,46 @@ fn explicit_return_wrap_overrides_the_enclosing_class_system() {
         );
     }
 }
+
+#[test]
+fn s7_conversion_marker_and_attribute_spellings_emit_identical_r_wrappers() {
+    for container in ["{}", "Result<{}, String>", "Option<{}>"] {
+        let marked_to = container.replace("{}", "ConvertTo<Source>");
+        let plain_to = container.replace("{}", "Source");
+        let marked_from = container.replace("{}", "ConvertFrom<Self>");
+        let plain_from = container.replace("{}", "Self");
+        let typed = format!(
+            "impl Target {{ pub fn from_source(source: ExternalPtr<Source>) -> {marked_from} {{ unimplemented!() }} pub fn to_source(&self) -> Invisible<{marked_to}> {{ unimplemented!() }} }}"
+        );
+        let attributed = format!(
+            "impl Target {{ #[miniextendr(s7(convert_from = \"Source\"))] pub fn from_source(source: ExternalPtr<Source>) -> {plain_from} {{ unimplemented!() }} #[miniextendr(s7(convert_to = \"Source\"), invisible)] pub fn to_source(&self) -> {plain_to} {{ unimplemented!() }} }}"
+        );
+        let typed = parse_impl(ClassSystem::S7, syn::parse_str(&typed).unwrap());
+        let attributed = parse_impl(ClassSystem::S7, syn::parse_str(&attributed).unwrap());
+        assert_eq!(
+            generate_s7_r_wrapper(&typed),
+            generate_s7_r_wrapper(&attributed)
+        );
+        assert!(
+            generate_s7_r_wrapper(&typed)
+                .contains("invisible(.__MX_CLASS_REF_Source__(.ptr = .val))")
+        );
+    }
+}
+
+#[test]
+fn convert_from_accepts_a_named_enclosing_return_and_borrowed_source() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn from_source(source: &other::Source) -> ConvertFrom<Target> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(
+        parsed.methods[0].method_attrs.s7.convert_from.as_deref(),
+        Some("Source")
+    );
+    assert!(generate_s7_r_wrapper(&parsed).contains("Target(.ptr = .val)"));
+}

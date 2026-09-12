@@ -567,6 +567,15 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 crate::type_inspect::peel_return_visibility(&method.sig.output);
             let mut sig = method.sig.clone();
             let (return_wrap, output) = crate::return_wrap::resolve(&output, attrs.wrap)?;
+            if return_wrap
+                .as_ref()
+                .is_some_and(|wrap| wrap.conversion.is_some())
+            {
+                return Err(syn::Error::new_spanned(
+                    &method.sig.output,
+                    "ConvertTo/ConvertFrom require an inherent S7 impl method",
+                ));
+            }
             if return_wrap.is_some() && (attrs.serialize || attrs.unwrap_in_r) {
                 return Err(syn::Error::new_spanned(
                     &method.sig.output,

@@ -290,7 +290,7 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
     if crate::return_wrap::contains_marker(ty) {
         return Err(syn::Error::new_spanned(
             ty,
-            "WrapAs* markers are return-position only",
+            "class return markers are return-position only",
         ));
     }
     if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "argument") {
