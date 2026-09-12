@@ -714,6 +714,14 @@ fn with_class_name(self: Self, class_name: String) -> Self
 
 Set the class name (for Self returns).
 
+#### `with_explicit_wrap`
+
+```rust
+fn with_explicit_wrap(self: Self, wrap: crate::return_wrap::ReturnWrap) -> Self
+```
+
+Select an explicit class constructor from a marker or wrap attribute.
+
 #### `with_indent`
 
 ```rust
@@ -858,6 +866,8 @@ Per-method attributes for class system customization.
   - Build the `Err` arm's condition from the error's serde output
 - `serialize`: `bool`
   - Serialize the complete return value through `AsSerialize<T>`.
+- `wrap`: `Option<ClassSystem>`
+  - Explicit return class system (`wrap = "r6"` and siblings).
 - `defaults`: `std::collections::HashMap<String, String>`
   - Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
 - `defaults_span`: `Option<proc_macro2::Span>`
@@ -1105,6 +1115,8 @@ Defaults cannot be specified for `self` parameters (compile error).
 
 - `visibility_marker`: `Option<bool>`
   - Return-type visibility marker (#1213): `Some(true)` for
+- `return_wrap`: `Option<crate::return_wrap::ReturnWrap>`
+  - Explicit target class wrapping, shared by marker and attribute spellings.
 - `ident`: `syn::Ident`
   - The method's name (e.g., `new`, `get`, `set_value`).
 - `env`: `ReceiverKind`
@@ -2241,6 +2253,12 @@ fn title(self: Self, title: impl Into<String>) -> Self
 ```
 
 Set the `@title` tag.
+
+### `return_wrap::ReturnWrap`
+
+```rust
+pub struct ReturnWrap
+```
 
 ### `rust_conversion_builder::RustConversionBuilder`
 

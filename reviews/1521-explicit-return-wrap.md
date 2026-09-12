@@ -12,3 +12,5 @@ CI-equivalent clippy caught four style diagnostics in the new parser (while-let,
 The first runtime sweep caught an incorrect test assumption: inherent Option<Vec<T>> methods raise on None, while free functions use the complete Option IntoR mapping (NULL for an absent vector). Kept the existing conversion paths; corrected the method assertion/docs and added both nullable free-function spellings to pin the distinction.
 
 Compiling those free-function cases then exposed the actual constraint: `Option<Vec<T>>: IntoR` only covers native elements (and selected explicit types), not arbitrary registered classes. Explicit free-function class wrapping now selects the same Option-unwrapping boundary as methods, raising on None. This supports both syntaxes without adding broad conversion impls; ordinary unmarked free functions retain their existing mapping. The tests and docs now state this explicit-return rule.
+
+The direct Rd example runner initially assumed every help page had examples. Rd2ex writes no file for a page without an examples section. The runner now validates every Rd page but extracts/sources only pages containing examples; no package change was needed.
