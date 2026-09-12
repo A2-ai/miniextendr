@@ -18,3 +18,7 @@ installs in all six layouts, alongside its real installed-library probes. It als
 checks that actual wrapper changes retain the documentation NOTE, while a body
 edit preserves wrapper contents and emits no change NOTE. No performance benefit
 is claimed; the defect is the rule remaining out of date and its repeated log line.
+
+The corrected rules passed all 251 assertions across six layouts, with no failures,
+warnings, or skips. Formatting, workspace checking, all six Clippy gates, template
+synchronization, and agent-file checks also passed.
