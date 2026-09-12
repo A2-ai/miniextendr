@@ -50,10 +50,21 @@ queued-condition callback returning C NULL to request R's sum fallback.
 The first full vendored tarball check (before the connection-open follow-up) passed
 with 0 errors, 0 warnings and one CRAN incoming note: new submission and tarball size
 (24,698,775 bytes). Its full R tests and examples passed; GC stress was run separately
-in the targeted files. The final targeted run also passed the connection-open GC regression and the C NULL sum-fallback regression (124 deferred-condition expectations), plus the ALTREP, connection, FFI-guard and 2,000-cycle worker-longjmp suites.
+in the targeted files. The final targeted run also passed the connection-open GC regression and the C NULL sum-fallback regression (128 deferred-condition expectations), plus the ALTREP, connection, FFI-guard and 2,000-cycle worker-longjmp suites.
 
 The fixtures share a generated Rd page. Reusing `fail` for a numeric ALTREP mode and
 for the nested guard's boolean flag overwrote the older Result fixture's argument
 description. The new parameters are named `mode` and `panic_inner`; named-argument
 calls in the R regressions verify their wrappers, and roxygen regenerates all three
 argument descriptions independently.
+
+A nested guard during finalization must also leave concurrent worker entries alone
+when draining or discarding. The suppression regression covers both operations.
+Exiting condition handlers during a pending Rust failure also drop the saved panic
+text inside the signalling guard, alongside the original outcome.
+
+The final vendored tarball check passed with 0 errors, 0 warnings and one CRAN
+incoming note (new submission; 24,697,753-byte tarball), including all examples and
+the full R test suite. Targeted GC-stress tests passed separately. All workspace
+check/test recipes, formatting, all six Clippy gates, template/agent sync, site
+build, and regenerated API-corpus verification passed.
