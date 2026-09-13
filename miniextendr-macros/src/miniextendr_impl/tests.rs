@@ -4434,3 +4434,26 @@ fn s7_convert_methods_honour_method_rdname() {
 }
 
 // endregion
+
+#[test]
+fn r6_active_binding_setter_honours_visibility_without_changing_default() {
+    for (option, output, invisible) in [
+        ("", "", true),
+        (", visible", "", false),
+        (", invisible", "", true),
+        ("", "-> Visible<()>", false),
+        ("", "-> Invisible<()>", true),
+    ] {
+        let input = syn::parse_str(&format!(
+            "impl Counter {{ #[miniextendr(r6(active))] pub fn count(&self) -> i32 {{ unimplemented!() }} #[miniextendr(r6(setter, prop = \"count\"){option})] pub fn set_count(&mut self, value: i32) {output} {{ unimplemented!() }} }}"
+        )).unwrap();
+        let wrapper = generate_r6_r_wrapper(&parse_impl(ClassSystem::R6, input));
+        let active = wrapper
+            .split("Counter$set(\"active\", \"count\"")
+            .nth(1)
+            .unwrap();
+        assert_eq!(active.contains("invisible(self)"), invisible, "{active}");
+        assert!(active.contains(".miniextendr_raise_condition(.val, sys.call())"));
+        assert!(active.contains("stopifnot("));
+    }
+}

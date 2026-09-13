@@ -96,9 +96,45 @@ The marker is peeled before any other analysis, so `Invisible<Option<T>>`
 keeps `Option`'s `None`-raises rule, `Invisible<Result<T, E>>` still raises
 on `Err`, and `Invisible<Self>` still wraps the handle in the class. Trait
 methods take the marker in the impl's signature (which must match the trait's
-declaration): `fn poke(&mut self) -> Invisible<()>`. Exempt from all of this:
-derive-generated sidecar and active-binding setters stay invisible (they have
-no return type to mark; #1343 tracks a surface for them).
+declaration): `fn poke(&mut self) -> Invisible<()>`.
+
+Generated standalone sidecar setters and R6 active-binding setters return the
+receiver invisibly by default. On a public sidecar field, use
+`#[r_data(setter = "visible")]` or `#[r_data(setter = "invisible")]` to choose
+explicitly; this can share the attribute with `prop_doc = "..."`. It controls
+both the standalone setter and the class-integrated setter. S7 property setters
+keep their existing visible default when the field option is absent.
+
+For an inherent R6 setter method, the existing `Visible<T>` / `Invisible<T>`
+return marker or `#[miniextendr(visible)]` / `#[miniextendr(invisible)]` option
+also controls the generated active-binding setter branch. A direct call via
+`activeBindingFunction("field", obj)(value)` returns `obj` with that visibility.
+An unmarked binding setter stays invisible even though an ordinary unmarked
+Rust method call is visible. R assignment (`obj$field <- value`) is always
+invisible, regardless of the setter's choice.
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(r6)]
+pub struct Settings {
+    #[r_data]
+    sidecar: RSidecar,
+    #[r_data(setter = "visible")]
+    pub label: String,
+}
+
+#[miniextendr(r6(r_data_accessors))]
+impl Settings {
+    pub fn new(label: String) -> Self { Self { sidecar: RSidecar, label } }
+}
+```
+
+```r
+obj <- Settings$new("before")
+set_label <- activeBindingFunction("label", obj)
+withVisible(set_label("after"))$visible  # TRUE; returns obj
+withVisible(obj$label <- "assigned")$visible  # FALSE: R assignment
+```
 
 Two syntactic limits, shared with `Dots` and `Missing<T>`: a type alias or a
 `use Invisible as Quiet` rename defeats the last-segment detection. The miss

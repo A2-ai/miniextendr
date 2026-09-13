@@ -51,6 +51,12 @@
 //! | S4 | `#[externalptr(s4)]` | Slot accessors |
 //! | S7 | `#[externalptr(s7)]` | Properties via `new_property()` |
 //!
+//! Standalone setters and R6 active-binding setters return the receiver invisibly
+//! by default. `#[r_data(setter = "visible")]` exposes that return value;
+//! `setter = "invisible"` explicitly requests the default. These options also
+//! control S7 property setters, whose unmarked return remains visible.
+//! R assignment itself stays invisible regardless of the setter's choice.
+//!
 //! Three field tiers are supported:
 //!
 //! 1. **Raw SEXP** (`SEXP`) - Direct SEXP access, no conversion
@@ -186,29 +192,44 @@ fn has_r_data_attr(field: &Field) -> bool {
     field.attrs.iter().any(|a| a.path().is_ident("r_data"))
 }
 
-/// Parse `prop_doc = "..."` from an `#[r_data(prop_doc = "...")]` attribute.
-///
-/// Returns `None` if the field has no `#[r_data]` attribute, no `prop_doc` key,
-/// or if the attribute has no parenthesized arguments (bare `#[r_data]`).
-fn parse_r_data_prop_doc(field: &Field) -> syn::Result<Option<String>> {
+/// Options for a sidecar field's generated documentation and setters.
+#[derive(Default)]
+struct RDataOptions {
+    prop_doc: Option<String>,
+    setter_invisible: Option<bool>,
+}
+
+/// Parse field-level `#[r_data(prop_doc = "...", setter = "visible")]` options.
+fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
+    let mut options = RDataOptions::default();
     for attr in &field.attrs {
-        if !attr.path().is_ident("r_data") {
+        if !attr.path().is_ident("r_data") || matches!(attr.meta, syn::Meta::Path(_)) {
             continue;
         }
-        // `#[r_data]` with no arguments — no prop_doc
-        if matches!(attr.meta, syn::Meta::Path(_)) {
-            return Ok(None);
-        }
-        let mut prop_doc = None;
         attr.parse_nested_meta(|meta| {
             if meta.path.is_ident("prop_doc") {
-                let value = meta.value()?;
-                let lit: syn::LitStr = value.parse()?;
-                prop_doc = Some(lit.value());
+                let lit: syn::LitStr = meta.value()?.parse()?;
+                options.prop_doc = Some(lit.value());
+                Ok(())
+            } else if meta.path.is_ident("setter") {
+                if options.setter_invisible.is_some() {
+                    return Err(meta.error("duplicate `setter` option"));
+                }
+                let lit: syn::LitStr = meta.value()?.parse()?;
+                options.setter_invisible = Some(match lit.value().as_str() {
+                    "visible" => false,
+                    "invisible" => true,
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            lit,
+                            "setter must be \"visible\" or \"invisible\"",
+                        ));
+                    }
+                });
                 Ok(())
             } else {
                 Err(meta.error(format!(
-                    "unknown key `{}`; supported: `prop_doc`",
+                    "unknown key `{}`; supported: `prop_doc`, `setter`",
                     meta.path
                         .get_ident()
                         .map(|i| i.to_string())
@@ -216,9 +237,16 @@ fn parse_r_data_prop_doc(field: &Field) -> syn::Result<Option<String>> {
                 )))
             }
         })?;
-        return Ok(prop_doc);
     }
-    Ok(None)
+    if options.setter_invisible.is_some()
+        && (is_rsidecar_type(field) || !is_pub(field) || field.ident.is_none())
+    {
+        return Err(syn::Error::new_spanned(
+            field,
+            "`setter` requires a public named sidecar slot, not the RSidecar selector",
+        ));
+    }
+    Ok(options)
 }
 
 /// Check if a field type is `RSidecar`.
@@ -286,6 +314,8 @@ struct SidecarSlot {
     /// Sourced from `#[r_data(prop_doc = "...")]`. `None` means no doc was supplied;
     /// a default fallback string is used at emit time.
     prop_doc: Option<String>,
+    /// Explicit setter visibility; each generated setter keeps its default when absent.
+    setter_invisible: Option<bool>,
 }
 
 /// Aggregated sidecar information extracted from struct field analysis.
@@ -365,20 +395,21 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
             continue;
         }
 
+        let options = parse_r_data_options(field)?;
         if is_rsidecar_type(field) {
             // RSidecar is the selector marker, not a slot
             selector_fields.push(field);
         } else if let Some(ref ident) = field.ident {
             // Any other type with #[r_data] becomes a slot
             let kind = slot_kind_for_type(&field.ty);
-            let prop_doc = parse_r_data_prop_doc(field)?;
             slots.push(SidecarSlot {
                 name: ident.clone(),
                 ty: field.ty.clone(),
                 index: slot_index,
                 is_public: is_pub(field),
                 kind,
-                prop_doc,
+                prop_doc: options.prop_doc,
+                setter_invisible: options.setter_invisible,
             });
             slot_index += 1;
         }
@@ -703,6 +734,7 @@ fn generate_r_wrapper_for_slot(
     field_name: &str,
     getter_c_name: &str,
     setter_c_name: &str,
+    setter_invisible: bool,
 ) -> String {
     // Only the roxygen title suffix differs between class systems.
     let suffix = match class_system {
@@ -722,7 +754,11 @@ fn generate_r_wrapper_for_slot(
     );
     let setter_body = crate::method_return_builder::standalone_body(
         &format!(".Call({setter_c_name}, x, value)"),
-        "invisible(x)",
+        if setter_invisible {
+            "invisible(x)"
+        } else {
+            "x"
+        },
         "  ",
     );
     format!(
@@ -740,7 +776,7 @@ fn generate_r_wrapper_for_slot(
 #' @rdname {type}
 #' @param x The {type} external pointer
 #' @param value The new value to set
-#' @return The {type} pointer (invisibly)
+#' @return The {type} pointer ({visibility})
 #' @export
 {r_setter} <- function(x, value) {{
   {setter_body}
@@ -753,6 +789,7 @@ fn generate_r_wrapper_for_slot(
         r_setter = r_setter_name,
         getter_body = getter_body,
         setter_body = setter_body,
+        visibility = if setter_invisible { "invisibly" } else { "visibly" },
     )
 }
 
@@ -814,7 +851,7 @@ fn generate_class_integration_r_code(
                      \x20   }} else {{\n\
                      \x20     .val <- .Call({setter_c}, private$.ptr, value)\n\
                      {setter_guard}\n\
-                     \x20     invisible(self)\n\
+                     \x20     {setter_return}\n\
                      \x20   }}\n\
                      \x20 }}, overwrite = TRUE)\n",
                     field = field,
@@ -822,6 +859,11 @@ fn generate_class_integration_r_code(
                     setter_c = setter_c,
                     getter_guard = guard("      "),
                     setter_guard = guard("      "),
+                    setter_return = if slot.setter_invisible.unwrap_or(true) {
+                        "invisible(self)"
+                    } else {
+                        "self"
+                    },
                 ));
             }
             code.push_str("}\n");
@@ -856,7 +898,7 @@ fn generate_class_integration_r_code(
                      \x20       setter = function(self, value) {{\n\
                      \x20         .val <- .Call({setter_c}, self@.ptr, value)\n\
                      {setter_guard}\n\
-                     \x20         self\n\
+                     \x20         {setter_return}\n\
                      \x20       }}\n\
                      \x20   ){comma}\n",
                     field = field,
@@ -864,6 +906,11 @@ fn generate_class_integration_r_code(
                     setter_c = setter_c,
                     getter_guard = guard("          "),
                     setter_guard = guard("          "),
+                    setter_return = if slot.setter_invisible.unwrap_or(false) {
+                        "invisible(self)"
+                    } else {
+                        "self"
+                    },
                     comma = comma,
                 ));
             }
@@ -1068,6 +1115,7 @@ NULL
             &field_name_str,
             &getter_c_name,
             &setter_c_name,
+            slot.setter_invisible.unwrap_or(true),
         ));
     }
 
@@ -1377,7 +1425,7 @@ mod tests {
         let setter_c = "C__mx_rdata_set_T_f";
 
         for cs in ALL_CLASS_SYSTEMS {
-            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c, true);
             // Correct form: no .call argument — the C function only accepts x (getter) or x, value (setter).
             assert!(
                 out.contains(&format!(".Call({getter_c}, x)")),
@@ -1405,7 +1453,7 @@ mod tests {
         let setter_c = "C__mx_rdata_set_T_f";
 
         for cs in ALL_CLASS_SYSTEMS {
-            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c);
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c, true);
             assert_eq!(
                 out.matches(".miniextendr_raise_condition(.val, sys.call())")
                     .count(),
@@ -1427,6 +1475,7 @@ mod tests {
             is_public: true,
             kind: super::SlotKind::ScalarInt,
             prop_doc: None,
+            setter_invisible: None,
         };
         let slots = [&slot];
 
@@ -1442,6 +1491,68 @@ mod tests {
                 !out.contains(".call = match.call()"),
                 "{cs:?} integration code must not pass .call = match.call():\n{out}"
             );
+        }
+    }
+
+    #[test]
+    fn field_setter_visibility_reaches_standalone_and_integrated_wrappers() {
+        for (attribute, explicit) in [
+            ("", None),
+            ("setter = \"visible\"", Some(false)),
+            ("setter = \"invisible\"", Some(true)),
+        ] {
+            let input: syn::DeriveInput = syn::parse_str(&format!(
+                "struct Example {{ #[r_data({attribute})] pub value: i32 }}"
+            ))
+            .unwrap();
+            for system in ALL_CLASS_SYSTEMS {
+                let info = super::parse_sidecar_info(&input, system).unwrap();
+                let slot = &info.slots[0];
+                assert_eq!(slot.setter_invisible, explicit);
+                let standalone = generate_r_wrapper_for_slot(
+                    system,
+                    "Example",
+                    "value",
+                    "get_value",
+                    "set_value",
+                    slot.setter_invisible.unwrap_or(true),
+                );
+                assert_eq!(
+                    standalone.contains("invisible(x)"),
+                    explicit.unwrap_or(true)
+                );
+                assert!(standalone.contains(if explicit == Some(false) {
+                    "pointer (visibly)"
+                } else {
+                    "pointer (invisibly)"
+                }));
+                let integrated = generate_class_integration_r_code(system, "Example", &[slot]);
+                match system {
+                    ClassSystem::R6 => assert_eq!(
+                        integrated.contains("invisible(self)"),
+                        explicit.unwrap_or(true)
+                    ),
+                    ClassSystem::S7 => assert_eq!(
+                        integrated.contains("invisible(self)"),
+                        explicit.unwrap_or(false)
+                    ),
+                    _ => assert!(integrated.is_empty()),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn setter_visibility_and_property_docs_can_share_or_split_attributes() {
+        for attrs in [
+            "#[r_data(prop_doc = \"A counter\", setter = \"visible\")]",
+            "#[r_data] #[r_data(setter = \"visible\", prop_doc = \"A counter\")]",
+        ] {
+            let input: syn::DeriveInput =
+                syn::parse_str(&format!("struct Example {{ {attrs} pub value: i32 }}")).unwrap();
+            let info = super::parse_sidecar_info(&input, ClassSystem::S7).unwrap();
+            assert_eq!(info.slots[0].prop_doc.as_deref(), Some("A counter"));
+            assert_eq!(info.slots[0].setter_invisible, Some(false));
         }
     }
 }
