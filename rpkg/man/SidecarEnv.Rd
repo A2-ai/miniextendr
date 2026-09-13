@@ -63,7 +63,7 @@ The SidecarEnv pointer (invisibly)
 
 The value of the \code{score} field
 
-The SidecarEnv pointer (invisibly)
+The SidecarEnv pointer (visibly)
 
 The value of the \code{flag} field
 

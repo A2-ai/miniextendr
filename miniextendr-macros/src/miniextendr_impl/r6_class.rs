@@ -621,7 +621,20 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .build();
             lines.push(format!("    .val <- {}", setter_call));
             lines.extend(crate::method_return_builder::condition_check_lines("    "));
-            lines.push("    invisible(self)".to_string());
+            // The generated assignment branch keeps its invisible default,
+            // while explicit method markers/options control direct binding calls.
+            let invisible = setter_method
+                .visibility_marker
+                .or(setter_method.method_attrs.force_invisible)
+                .unwrap_or(true);
+            lines.push(
+                if invisible {
+                    "    invisible(self)"
+                } else {
+                    "    self"
+                }
+                .to_string(),
+            );
 
             lines.push("  }".to_string());
             lines.push("})".to_string());

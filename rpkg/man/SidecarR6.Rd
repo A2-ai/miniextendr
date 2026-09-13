@@ -33,7 +33,7 @@ The SidecarR6 pointer (invisibly)
 
 The value of the \code{label} field
 
-The SidecarR6 pointer (invisibly)
+The SidecarR6 pointer (visibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarR6}.
@@ -45,7 +45,7 @@ R6 class registration for SidecarR6 with active binding sidecar accessors.
   \describe{
     \item{\code{value}}{Integer sidecar field (active binding).}
 
-    \item{\code{label}}{Character sidecar field (active binding).}
+    \item{\code{label}}{Character sidecar field (active binding); direct setter calls return visibly.}
   }
   \if{html}{\out{</div>}}
 }

@@ -40,7 +40,7 @@ The SidecarS4 pointer (invisibly)
 
 The value of the \code{slot_real} field
 
-The SidecarS4 pointer (invisibly)
+The SidecarS4 pointer (visibly)
 
 The value of the \code{slot_str} field
 
