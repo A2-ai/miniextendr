@@ -307,42 +307,62 @@ test_that("SidecarRawSexp func_val getter/setter works", {
 })
 
 # =============================================================================
-# Setter returns invisible(x) tests
+# Setter return visibility
 # =============================================================================
 
-test_that("SidecarEnv setters return invisible(x)", {
-  obj <- rdata_sidecar_env_new(count = 0L, score = 0.0, flag = FALSE, name = "")
-
-  # Setter should return the same object (invisibly)
-  result <- SidecarEnv_set_count(obj, 42L)
-  expect_identical(result, obj)
-
-  # Verify it's actually invisible (withVisible returns vis=FALSE)
-  vis_result <- withVisible(SidecarEnv_set_score(obj, 1.5))
-  expect_identical(vis_result$value, obj)
-  expect_false(vis_result$visible)
+test_that("sidecar field options control standalone setter visibility", {
+  cases <- list(
+    list(rdata_sidecar_env_new(0L, 0, FALSE, ""), SidecarEnv_set_count, 42L,
+         SidecarEnv_set_score, 1.5),
+    list(rdata_sidecar_r6_new(0L, ""), SidecarR6_set_value, 99L,
+         SidecarR6_set_label, "test"),
+    list(rdata_sidecar_s4_new(0L, 0, ""), SidecarS4_set_slot_int, 7L,
+         SidecarS4_set_slot_real, 2.5)
+  )
+  for (case in cases) {
+    quiet <- withVisible(case[[2]](case[[1]], case[[3]]))
+    expect_identical(quiet$value, case[[1]])
+    expect_false(quiet$visible)
+    loud <- withVisible(case[[4]](case[[1]], case[[5]]))
+    expect_identical(loud$value, case[[1]])
+    expect_true(loud$visible)
+  }
+  obj <- rdata_sidecar_env_new(0L, 0, FALSE, "")
+  expect_false(withVisible(SidecarEnv_set_flag(obj, TRUE))$visible)
+  expect_true(SidecarEnv_get_flag(obj))
 })
 
-test_that("SidecarR6 setters return invisible(x)", {
-  obj <- rdata_sidecar_r6_new(value = 0L, label = "")
-
-  result <- SidecarR6_set_value(obj, 99L)
-  expect_identical(result, obj)
-
-  vis_result <- withVisible(SidecarR6_set_label(obj, "test"))
-  expect_identical(vis_result$value, obj)
-  expect_false(vis_result$visible)
+test_that("R6 sidecar binding visibility differs from assignment visibility", {
+  obj <- SidecarR6$new(0L, "before")
+  quiet <- activeBindingFunction("value", obj)
+  loud <- activeBindingFunction("label", obj)
+  result <- withVisible(quiet(1L))
+  expect_false(result$visible)
+  expect_identical(result$value, obj)
+  result <- withVisible(loud("after"))
+  expect_true(result$visible)
+  expect_identical(result$value, obj)
+  expect_identical(obj$label, "after")
+  expect_false(withVisible(obj$label <- "assigned")$visible)
+  expect_identical(obj$label, "assigned")
+  expect_error(loud(1L))
+  expect_identical(obj$label, "assigned")
 })
 
-test_that("SidecarS4 setters return invisible(x)", {
-  obj <- rdata_sidecar_s4_new(slot_int = 0L, slot_real = 0.0, slot_str = "")
-
-  result <- SidecarS4_set_slot_int(obj, 7L)
-  expect_identical(result, obj)
-
-  vis_result <- withVisible(SidecarS4_set_slot_real(obj, 2.5))
-  expect_identical(vis_result$value, obj)
-  expect_false(vis_result$visible)
+test_that("S7 sidecar setter options preserve the unmarked property default", {
+  obj <- SidecarS7(1L, FALSE, "before")
+  for (case in list(list("prop_int", 2L, TRUE),
+                   list("prop_flag", TRUE, TRUE),
+                   list("prop_name", "after", FALSE))) {
+    setter <- SidecarS7@properties[[case[[1]]]]$setter
+    result <- withVisible(setter(obj, case[[2]]))
+    expect_identical(result$value, obj)
+    expect_identical(result$visible, case[[3]])
+  }
+  expect_identical(obj@prop_int, 2L)
+  expect_true(obj@prop_flag)
+  expect_identical(obj@prop_name, "after")
+  expect_false(withVisible(obj@prop_int <- 3L)$visible)
 })
 
 # =============================================================================

@@ -114,6 +114,9 @@ Rust method call is visible. R assignment (`obj$field <- value`) is always
 invisible, regardless of the setter's choice.
 
 ```rust
+use miniextendr_api::{ExternalPtr, miniextendr};
+use miniextendr_api::externalptr::RSidecar;
+
 #[derive(ExternalPtr)]
 #[externalptr(r6)]
 pub struct Settings {

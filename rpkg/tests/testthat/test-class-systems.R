@@ -488,3 +488,23 @@ test_that("S7OverrideShape constructor works with overridden class name", {
   expect_equal(shape_kind(s), "rectangle")
   expect_true(S7::S7_inherits(s, Shape))
 })
+
+
+test_that("R6 active setters honour markers and options on direct binding calls", {
+  obj <- R6Temperature$new(0)
+  for (case in list(list("celsius", 0, FALSE),
+                   list("fahrenheit", 32, TRUE),
+                   list("kelvin", 273.15, TRUE))) {
+    setter <- activeBindingFunction(case[[1]], obj)
+    result <- withVisible(setter(case[[2]]))
+    expect_identical(result$value, obj)
+    expect_identical(result$visible, case[[3]])
+  }
+  expect_true(withVisible(obj$set_fahrenheit(212))$visible)
+  expect_equal(obj$celsius, 100)
+  expect_false(withVisible(obj$fahrenheit <- 32)$visible)
+  expect_equal(obj$celsius, 0)
+  setter <- activeBindingFunction("kelvin", obj)
+  expect_error(setter(-1), "kelvin must be non-negative", fixed = TRUE)
+  expect_equal(obj$celsius, 0)
+})

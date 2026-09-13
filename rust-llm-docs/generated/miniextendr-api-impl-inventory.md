@@ -9,108 +9,115 @@ Traits with impls: 219
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
 | `TryFromSexp` | 469 | 469 |
-| `From` | 404 | 75 |
-| `IntoR` | 353 | 353 |
-| `TryFrom` | 333 | 11 |
-| `Borrow` | 323 | 1 |
-| `BorrowMut` | 323 | 1 |
-| `Any` | 322 | 0 |
-| `Conv` | 322 | 0 |
-| `FmtForward` | 322 | 0 |
-| `Freeze` | 322 | 0 |
-| `Into` | 322 | 0 |
-| `IntoEither` | 322 | 0 |
-| `Pipe` | 322 | 0 |
-| `Pointable` | 322 | 0 |
-| `RefUnwindSafe` | 322 | 1 |
-| `Same` | 322 | 0 |
-| `Send` | 322 | 10 |
-| `SupersetOf` | 322 | 0 |
-| `Sync` | 322 | 13 |
-| `Tap` | 322 | 0 |
-| `TryConv` | 322 | 0 |
-| `TryInto` | 322 | 0 |
-| `Unpin` | 322 | 0 |
-| `UnsafeUnpin` | 322 | 0 |
-| `UnwindSafe` | 322 | 0 |
-| `VZip` | 322 | 0 |
-| `Allocation` | 231 | 0 |
+| `From` | 410 | 77 |
+| `IntoR` | 355 | 355 |
+| `TryFrom` | 335 | 11 |
+| `Borrow` | 325 | 1 |
+| `BorrowMut` | 325 | 1 |
+| `Any` | 324 | 0 |
+| `Conv` | 324 | 0 |
+| `FmtForward` | 324 | 0 |
+| `Freeze` | 324 | 0 |
+| `Into` | 324 | 0 |
+| `IntoEither` | 324 | 0 |
+| `Pipe` | 324 | 0 |
+| `Pointable` | 324 | 0 |
+| `RefUnwindSafe` | 324 | 1 |
+| `Same` | 324 | 0 |
+| `Send` | 324 | 10 |
+| `SupersetOf` | 324 | 0 |
+| `Sync` | 324 | 13 |
+| `Tap` | 324 | 0 |
+| `TryConv` | 324 | 0 |
+| `TryInto` | 324 | 0 |
+| `Unpin` | 324 | 0 |
+| `UnsafeUnpin` | 324 | 0 |
+| `UnwindSafe` | 324 | 0 |
+| `VZip` | 324 | 0 |
+| `Allocation` | 233 | 0 |
 | `TypedExternal` | 181 | 181 |
-| `Equivalent` | 160 | 0 |
+| `Equivalent` | 168 | 0 |
 | `IntoRAs` | 135 | 135 |
-| `RDebug` | 111 | 1 |
-| `Debug` | 110 | 110 |
-| `ConsumingFallible` | 102 | 1 |
-| `RClone` | 102 | 1 |
-| `Clone` | 101 | 101 |
-| `CloneToUninit` | 101 | 0 |
-| `ToOwned` | 101 | 0 |
+| `RDebug` | 113 | 1 |
+| `Debug` | 112 | 112 |
+| `ConsumingFallible` | 104 | 1 |
+| `RClone` | 104 | 1 |
+| `Clone` | 103 | 103 |
+| `CloneToUninit` | 103 | 0 |
+| `ToOwned` | 103 | 0 |
 | `TryCoerce` | 95 | 93 |
 | `AltrepLen` | 64 | 64 |
-| `RCopy` | 59 | 1 |
-| `Copy` | 58 | 58 |
+| `RCopy` | 61 | 1 |
+| `Copy` | 60 | 60 |
 | `Coerce` | 53 | 53 |
+| `PartialEq` | 46 | 46 |
 | `AltVec` | 45 | 45 |
 | `Altrep` | 45 | 45 |
 | `InferBase` | 45 | 45 |
-| `PartialEq` | 44 | 44 |
-| `Scalar` | 43 | 0 |
-| `StructuralPartialEq` | 43 | 43 |
-| `DynEq` | 40 | 0 |
-| `Eq` | 40 | 40 |
+| `Scalar` | 45 | 0 |
+| `StructuralPartialEq` | 45 | 45 |
+| `DynEq` | 42 | 0 |
+| `Eq` | 42 | 42 |
 | `RegisterAltrep` | 33 | 33 |
 | `AltrepDataptr` | 27 | 27 |
 | `AltrepSerialize` | 27 | 27 |
-| `RDefault` | 25 | 1 |
-| `Default` | 24 | 24 |
+| `RDefault` | 27 | 1 |
+| `Default` | 26 | 26 |
 | `RDisplay` | 24 | 1 |
+| `Deref` | 23 | 23 |
 | `Display` | 23 | 23 |
 | `Drop` | 23 | 23 |
+| `Receiver` | 23 | 0 |
 | `ToString` | 23 | 0 |
-| `Deref` | 21 | 21 |
-| `Receiver` | 21 | 0 |
 | `Error` | 20 | 20 |
 | `RError` | 19 | 1 |
+| `RHash` | 18 | 1 |
+| `DynHash` | 17 | 0 |
+| `Hash` | 17 | 17 |
 | `AltIntegerData` | 16 | 16 |
 | `AltRealData` | 16 | 16 |
-| `RHash` | 16 | 1 |
-| `DynHash` | 15 | 0 |
-| `Hash` | 15 | 15 |
 | `MultiUnzip` | 13 | 0 |
 | `Serializer` | 12 | 12 |
 | `TraitView` | 12 | 12 |
 | `AltReal` | 11 | 11 |
+| `Rng` | 11 | 0 |
+| `RngCore` | 11 | 0 |
+| `TryRngCore` | 11 | 0 |
 | `AltInteger` | 10 | 10 |
 | `AltStringData` | 10 | 10 |
+| `CryptoRng` | 10 | 0 |
+| `DerefMut` | 10 | 10 |
 | `IteratorRandom` | 10 | 0 |
+| `TryCryptoRng` | 10 | 0 |
 | `AltString` | 9 | 9 |
 | `AtomicElement` | 9 | 9 |
 | `ConditionClass` | 9 | 9 |
 | `SerializeMap` | 9 | 9 |
 | `SerializeStruct` | 9 | 9 |
 | `AltRawData` | 8 | 8 |
-| `DerefMut` | 8 | 8 |
+| `Formattable` | 8 | 0 |
+| `Parsable` | 8 | 0 |
 | `AltLogicalData` | 7 | 7 |
 | `IntoIterator` | 7 | 2 |
 | `IoCaps` | 7 | 7 |
 | `RConnectionImpl` | 7 | 7 |
-| `Rng` | 7 | 0 |
-| `RngCore` | 7 | 0 |
-| `TryRngCore` | 7 | 0 |
+| `ROrd` | 7 | 1 |
+| `RPartialOrd` | 7 | 1 |
 | `WidensToF64` | 7 | 7 |
 | `AltComplexData` | 6 | 6 |
 | `AltRaw` | 6 | 6 |
 | `AsRef` | 6 | 6 |
-| `CryptoRng` | 6 | 0 |
+| `Comparable` | 6 | 0 |
 | `Deserializer` | 6 | 6 |
-| `Formattable` | 6 | 0 |
-| `Parsable` | 6 | 0 |
+| `Ord` | 6 | 6 |
+| `PartialOrd` | 6 | 6 |
 | `RNdArrayOps` | 6 | 6 |
 | `RSerialize` | 6 | 1 |
 | `RSerializeNative` | 6 | 1 |
+| `RngExt` | 6 | 0 |
 | `SerializeStructVariant` | 6 | 6 |
 | `SerializeTupleVariant` | 6 | 6 |
-| `TryCryptoRng` | 6 | 0 |
+| `TryRng` | 6 | 1 |
 | `AltLogical` | 5 | 5 |
 | `AltrepExtract` | 5 | 1 |
 | `ExactSizeIterator` | 5 | 5 |
@@ -119,18 +126,12 @@ Traits with impls: 219
 | `Itertools` | 5 | 0 |
 | `ProgressIterator` | 5 | 0 |
 | `RNativeType` | 5 | 5 |
-| `ROrd` | 5 | 1 |
-| `RPartialOrd` | 5 | 1 |
 | `SeqAccess` | 5 | 5 |
 | `Serialize` | 5 | 5 |
 | `TreeNodeIterator` | 5 | 0 |
 | `TryFromList` | 5 | 5 |
 | `AltComplex` | 4 | 4 |
-| `Comparable` | 4 | 0 |
-| `Ord` | 4 | 4 |
-| `PartialOrd` | 4 | 4 |
-| `RngExt` | 4 | 0 |
-| `TryRng` | 4 | 1 |
+| `NodeTrait` | 4 | 0 |
 | `WidensToI32` | 4 | 4 |
 | `AsNamedListExt` | 3 | 3 |
 | `AsNamedVectorExt` | 3 | 3 |
@@ -148,7 +149,6 @@ Traits with impls: 219
 | `FromDataFrame` | 2 | 2 |
 | `IntoDataFrame` | 2 | 2 |
 | `MapAccess` | 2 | 2 |
-| `NodeTrait` | 2 | 0 |
 | `Protector` | 2 | 2 |
 | `RDateTimeFormat` | 2 | 2 |
 | `RNdIndex` | 2 | 2 |
@@ -736,7 +736,7 @@ Traits with impls: 219
 - **miniextendr-api/src/optionals/jiff_impl.rs:874** (2 impls): `JiffTimestampVecMut`, `JiffTimestampVecRef`
 - **miniextendr-api/src/optionals/jiff_impl.rs:915** (2 impls): `JiffZonedVecMut`, `JiffZonedVecRef`
 
-## `From` — 75 impls
+## `From` — 77 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -815,8 +815,10 @@ Traits with impls: 219
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:330 |
 | `bool` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:339 |
 | `TypedListError` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:265 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:123 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:124 |
 
-## `IntoR` — 353 impls
+## `IntoR` — 355 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -1173,6 +1175,8 @@ Traits with impls: 219
 | `AsSerialize<T>` | `<T>` | concrete | 2 | miniextendr-api/src/serde/traits.rs:262 |
 | `StrVec<'_>` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:485 |
 | `ProtectedStrVec` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:727 |
+| `Invisible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:123 |
+| `Visible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:124 |
 
 ### `IntoR` — for-types sharing a source span (likely macro-expanded / co-located)
 
@@ -1632,7 +1636,7 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 2 | miniextendr-api/src/adapter_traits.rs:63 |
 
-## `Debug` — 110 impls
+## `Debug` — 112 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -1746,6 +1750,8 @@ Traits with impls: 219
 | `TypedEntry` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:75 |
 | `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
 ## `ConsumingFallible` — 1 impls
 
@@ -1759,7 +1765,7 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:386 |
 
-## `Clone` — 101 impls
+## `Clone` — 103 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -1864,6 +1870,8 @@ Traits with impls: 219
 | `TypedEntry` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:75 |
 | `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
 ## `TryCoerce` — 93 impls
 
@@ -2046,7 +2054,7 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 2 | miniextendr-api/src/adapter_traits.rs:480 |
 
-## `Copy` — 58 impls
+## `Copy` — 60 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -2108,6 +2116,8 @@ Traits with impls: 219
 | `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:971 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:187 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:63 |
 
 ## `Coerce` — 53 impls
 
@@ -2171,6 +2181,57 @@ Traits with impls: 219
 
 - **miniextendr-api/src/coerce.rs:212** (5 impls): `u8`, `u8`, `u8`, `u8`, `u8`
 - **miniextendr-api/src/coerce.rs:546** (5 impls): `i8`, `u16`, `u8`, `u8`, `u8`
+
+## `PartialEq` — 46 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `mx_tag` | `` | concrete | 1 | miniextendr-api/src/abi.rs:82 |
+| `RBase` | `` | concrete | 1 | miniextendr-api/src/altrep.rs:51 |
+| `Sortedness` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:131 |
+| `Logical` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:54 |
+| `AltrepGuard` | `` | concrete | 1 | miniextendr-api/src/altrep_traits.rs:60 |
+| `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
+| `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
+| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
+| `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
+| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1893 |
+| `RSidecar` | `` | concrete | 1 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
+| `GuardMode` | `` | concrete | 1 | miniextendr-api/src/ffi_guard.rs:48 |
+| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:88 |
+| `NullOnErr` | `` | concrete | 1 | miniextendr-api/src/into_r/result.rs:133 |
+| `StorageCoerceError` | `` | concrete | 1 | miniextendr-api/src/into_r_as.rs:59 |
+| `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:98 |
+| `NamedVector<M>` | `<M>` | concrete | 1 | miniextendr-api/src/named_vector.rs:191 |
+| `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:99 |
+| `GlobOptions` | `` | concrete | 1 | miniextendr-api/src/optionals/globset_impl.rs:49 |
+| `PanicSource` | `` | concrete | 1 | miniextendr-api/src/panic_telemetry.rs:48 |
+| `TermKind` | `` | concrete | 1 | miniextendr-api/src/progress.rs:67 |
+| `ProtectKey` | `` | concrete | 1 | miniextendr-api/src/protect_pool.rs:61 |
+| `Raw<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:197 |
+| `RawSlice<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:216 |
+| `RawTagged<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:245 |
+| `RawSliceTagged<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:265 |
+| `RawError` | `` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:69 |
+| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
+| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1296 |
+| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
+| `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
+| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
+| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
+| `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
+| `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
+| `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
+| `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:971 |
+| `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
+| `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
+| `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
 ## `AltVec` — 45 impls
 
@@ -2322,56 +2383,7 @@ Traits with impls: 219
 | `Array1<f64>` | `` | concrete | 3 | miniextendr-api/src/optionals/ndarray_impl.rs:3857 |
 | `Array1<i32>` | `` | concrete | 3 | miniextendr-api/src/optionals/ndarray_impl.rs:3858 |
 
-## `PartialEq` — 44 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `mx_tag` | `` | concrete | 1 | miniextendr-api/src/abi.rs:82 |
-| `RBase` | `` | concrete | 1 | miniextendr-api/src/altrep.rs:51 |
-| `Sortedness` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:131 |
-| `Logical` | `` | concrete | 1 | miniextendr-api/src/altrep_data/core.rs:54 |
-| `AltrepGuard` | `` | concrete | 1 | miniextendr-api/src/altrep_traits.rs:60 |
-| `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
-| `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
-| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
-| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1893 |
-| `RSidecar` | `` | concrete | 1 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
-| `GuardMode` | `` | concrete | 1 | miniextendr-api/src/ffi_guard.rs:48 |
-| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:88 |
-| `NullOnErr` | `` | concrete | 1 | miniextendr-api/src/into_r/result.rs:133 |
-| `StorageCoerceError` | `` | concrete | 1 | miniextendr-api/src/into_r_as.rs:59 |
-| `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:98 |
-| `NamedVector<M>` | `<M>` | concrete | 1 | miniextendr-api/src/named_vector.rs:191 |
-| `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:99 |
-| `GlobOptions` | `` | concrete | 1 | miniextendr-api/src/optionals/globset_impl.rs:49 |
-| `PanicSource` | `` | concrete | 1 | miniextendr-api/src/panic_telemetry.rs:48 |
-| `TermKind` | `` | concrete | 1 | miniextendr-api/src/progress.rs:67 |
-| `ProtectKey` | `` | concrete | 1 | miniextendr-api/src/protect_pool.rs:61 |
-| `Raw<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:197 |
-| `RawSlice<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:216 |
-| `RawTagged<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:245 |
-| `RawSliceTagged<T>` | `<T>` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:265 |
-| `RawError` | `` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:69 |
-| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
-| `ColumnType` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1296 |
-| `SchemaMode` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:1362 |
-| `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/serde/columnar.rs:818 |
-| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:65 |
-| `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
-| `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
-| `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
-| `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:971 |
-| `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
-| `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
-| `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
-
-## `StructuralPartialEq` — 43 impls
+## `StructuralPartialEq` — 45 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -2418,8 +2430,10 @@ Traits with impls: 219
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/typed_list.rs:119 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:63 |
 
-## `Eq` — 40 impls
+## `Eq` — 42 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -2463,6 +2477,8 @@ Traits with impls: 219
 | `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:971 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:63 |
 
 ## `RegisterAltrep` — 33 impls
 
@@ -2572,7 +2588,7 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:425 |
 
-## `Default` — 24 impls
+## `Default` — 26 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -2600,12 +2616,47 @@ Traits with impls: 219
 | `SEXP` | `` | concrete | 1 | miniextendr-api/src/sexp.rs:475 |
 | `RThreadBuilder` | `` | concrete | 1 | miniextendr-api/src/thread.rs:319 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
 ## `RDisplay` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:102 |
+
+## `Deref` — 23 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Coerced<T, R>` | `<T, R>` | concrete | 2 | miniextendr-api/src/coerce.rs:954 |
+| `BuiltDataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:911 |
+| `ExternalPtr<T>` | `<T>` | concrete | 2 | miniextendr-api/src/externalptr.rs:1807 |
+| `Factor<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:213 |
+| `FactorMut<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:309 |
+| `FactorVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:488 |
+| `FactorOptionVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:546 |
+| `Root<'a>` | `<'a>` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1063 |
+| `OwnedProtect` | `` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1151 |
+| `Protected<'a, T>` | `<'a, T>` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1265 |
+| `TlsRoot` | `` | concrete | 2 | miniextendr-api/src/gc_protect/tls.rs:221 |
+| `Altrep<T>` | `<T>` | concrete | 2 | miniextendr-api/src/into_r/altrep.rs:132 |
+| `RPrimitive<T>` | `<T>` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:150 |
+| `RStringArray` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:234 |
+| `RFlags<T>` | `<T>` | concrete | 2 | miniextendr-api/src/optionals/bitflags_impl.rs:117 |
+| `JiffTimestampVecMut` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
+| `JiffTimestampVecRef` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
+| `JiffZonedVecMut` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
+| `JiffZonedVecRef` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
+| `RCow<'_, T>` | `<T>` | concrete | 2 | miniextendr-api/src/rcow.rs:148 |
+| `ArenaGuard<'_>` | `` | concrete | 2 | miniextendr-api/src/refcount_protect.rs:575 |
+| `Invisible<T>` | `<T>` | concrete | 2 | miniextendr-api/src/visibility.rs:123 |
+| `Visible<T>` | `<T>` | concrete | 2 | miniextendr-api/src/visibility.rs:124 |
+
+### `Deref` — for-types sharing a source span (likely macro-expanded / co-located)
+
+- **miniextendr-api/src/optionals/jiff_impl.rs:874** (2 impls): `JiffTimestampVecMut`, `JiffTimestampVecRef`
+- **miniextendr-api/src/optionals/jiff_impl.rs:915** (2 impls): `JiffZonedVecMut`, `JiffZonedVecRef`
 
 ## `Display` — 23 impls
 
@@ -2663,37 +2714,6 @@ Traits with impls: 219
 | `StackCheckGuard` | `` | concrete | 1 | miniextendr-api/src/thread.rs:155 |
 | `RTxtProgressBar` | `` | concrete | 1 | miniextendr-api/src/txt_progress_bar.rs:157 |
 
-## `Deref` — 21 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `Coerced<T, R>` | `<T, R>` | concrete | 2 | miniextendr-api/src/coerce.rs:954 |
-| `BuiltDataFrame` | `` | concrete | 2 | miniextendr-api/src/dataframe.rs:911 |
-| `ExternalPtr<T>` | `<T>` | concrete | 2 | miniextendr-api/src/externalptr.rs:1807 |
-| `Factor<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:213 |
-| `FactorMut<'_>` | `` | concrete | 2 | miniextendr-api/src/factor.rs:309 |
-| `FactorVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:488 |
-| `FactorOptionVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:546 |
-| `Root<'a>` | `<'a>` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1063 |
-| `OwnedProtect` | `` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1151 |
-| `Protected<'a, T>` | `<'a, T>` | concrete | 2 | miniextendr-api/src/gc_protect.rs:1265 |
-| `TlsRoot` | `` | concrete | 2 | miniextendr-api/src/gc_protect/tls.rs:221 |
-| `Altrep<T>` | `<T>` | concrete | 2 | miniextendr-api/src/into_r/altrep.rs:132 |
-| `RPrimitive<T>` | `<T>` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:150 |
-| `RStringArray` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:234 |
-| `RFlags<T>` | `<T>` | concrete | 2 | miniextendr-api/src/optionals/bitflags_impl.rs:117 |
-| `JiffTimestampVecMut` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
-| `JiffTimestampVecRef` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
-| `JiffZonedVecMut` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
-| `JiffZonedVecRef` | `` | concrete | 2 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
-| `RCow<'_, T>` | `<T>` | concrete | 2 | miniextendr-api/src/rcow.rs:148 |
-| `ArenaGuard<'_>` | `` | concrete | 2 | miniextendr-api/src/refcount_protect.rs:575 |
-
-### `Deref` — for-types sharing a source span (likely macro-expanded / co-located)
-
-- **miniextendr-api/src/optionals/jiff_impl.rs:874** (2 impls): `JiffTimestampVecMut`, `JiffTimestampVecRef`
-- **miniextendr-api/src/optionals/jiff_impl.rs:915** (2 impls): `JiffZonedVecMut`, `JiffZonedVecRef`
-
 ## `Error` — 20 impls
 
 | for-type | generics | kind | #items | span |
@@ -2724,6 +2744,34 @@ Traits with impls: 219
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `T` | `<T>` | concrete | 3 | miniextendr-api/src/adapter_traits.rs:288 |
+
+## `RHash` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:148 |
+
+## `Hash` — 17 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `mx_tag` | `` | concrete | 1 | miniextendr-api/src/abi.rs:82 |
+| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
+| `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
+| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1916 |
+| `RSidecar` | `` | concrete | 1 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
+| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:88 |
+| `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:99 |
+| `ProtectKey` | `` | concrete | 1 | miniextendr-api/src/protect_pool.rs:61 |
+| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
+| `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
+| `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
+| `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
 ## `AltIntegerData` — 16 impls
 
@@ -2766,32 +2814,6 @@ Traits with impls: 219
 | `JiffZonedVec` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:959 |
 | `DVector<f64>` | `` | concrete | 3 | miniextendr-api/src/optionals/nalgebra_impl.rs:1625 |
 | `Array1<f64>` | `` | concrete | 3 | miniextendr-api/src/optionals/ndarray_impl.rs:3784 |
-
-## `RHash` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:148 |
-
-## `Hash` — 15 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `mx_tag` | `` | concrete | 1 | miniextendr-api/src/abi.rs:82 |
-| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:81 |
-| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1916 |
-| `RSidecar` | `` | concrete | 1 | miniextendr-api/src/externalptr/altrep_helpers.rs:173 |
-| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:88 |
-| `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:99 |
-| `ProtectKey` | `` | concrete | 1 | miniextendr-api/src/protect_pool.rs:61 |
-| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-| `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
-| `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
-| `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1493 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1517 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1537 |
 
 ## `Serializer` — 12 impls
 
@@ -2872,6 +2894,21 @@ Traits with impls: 219
 | `&[&str]` | `` | concrete | 1 | miniextendr-api/src/altrep_data/builtins.rs:977 |
 | `IterStringData<I>` | `<I> +1wc` | concrete | 1 | miniextendr-api/src/altrep_data/iter/coerce.rs:320 |
 | `StringArray` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:1955 |
+
+## `DerefMut` — 10 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:963 |
+| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1816 |
+| `FactorMut<'_>` | `` | concrete | 1 | miniextendr-api/src/factor.rs:318 |
+| `FactorVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/factor.rs:495 |
+| `FactorOptionVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/factor.rs:553 |
+| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:141 |
+| `JiffTimestampVecMut` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
+| `JiffZonedVecMut` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:123 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:124 |
 
 ## `AltString` — 9 impls
 
@@ -2956,19 +2993,6 @@ Traits with impls: 219
 | `IterRawData<I>` | `<I>` | concrete | 3 | miniextendr-api/src/altrep_data/iter/state.rs:411 |
 | `UInt8Array` | `` | concrete | 2 | miniextendr-api/src/optionals/arrow_impl.rs:1674 |
 
-## `DerefMut` — 8 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:963 |
-| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1816 |
-| `FactorMut<'_>` | `` | concrete | 1 | miniextendr-api/src/factor.rs:318 |
-| `FactorVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/factor.rs:495 |
-| `FactorOptionVec<T>` | `<T>` | concrete | 1 | miniextendr-api/src/factor.rs:553 |
-| `Altrep<T>` | `<T>` | concrete | 1 | miniextendr-api/src/into_r/altrep.rs:141 |
-| `JiffTimestampVecMut` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:874 |
-| `JiffZonedVecMut` | `` | concrete | 1 | miniextendr-api/src/optionals/jiff_impl.rs:915 |
-
 ## `AltLogicalData` — 7 impls
 
 | for-type | generics | kind | #items | span |
@@ -3011,6 +3035,18 @@ Traits with impls: 219
 | `IoWriteSeek<T>` | `<T>` | concrete | 3 | miniextendr-api/src/connection/io_adapters.rs:200 |
 | `IoReadWriteSeek<T>` | `<T>` | concrete | 4 | miniextendr-api/src/connection/io_adapters.rs:220 |
 | `IoBufRead<T>` | `<T>` | concrete | 2 | miniextendr-api/src/connection/io_adapters.rs:260 |
+
+## `ROrd` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:187 |
+
+## `RPartialOrd` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:228 |
 
 ## `WidensToF64` — 7 impls
 
@@ -3068,6 +3104,28 @@ Traits with impls: 219
 | `VectorElementDeserializer` | `<'de>` | concrete | 30 | miniextendr-api/src/serde/de.rs:770 |
 | `RDeserializer` | `<'de>` | concrete | 30 | miniextendr-api/src/serde/de.rs:89 |
 
+## `Ord` — 6 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
+| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1909 |
+| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
+| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
+
+## `PartialOrd` — 6 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
+| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1902 |
+| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
+| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
+| `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
+| `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
+
 ## `RNdArrayOps` — 6 impls
 
 | for-type | generics | kind | #items | span |
@@ -3112,6 +3170,12 @@ Traits with impls: 219
 | `RValueTupleVariant` | `` | concrete | 4 | miniextendr-api/src/serde/rvalue_ser.rs:396 |
 | `TaggedTupleVariant` | `` | concrete | 4 | miniextendr-api/src/serde/rvalue_ser.rs:760 |
 | `TupleVariantSerializer` | `` | concrete | 4 | miniextendr-api/src/serde/ser.rs:322 |
+
+## `TryRng` — 1 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `RRng` | `` | concrete | 4 | miniextendr-api/src/optionals/rand_impl.rs:129 |
 
 ## `AltLogical` — 5 impls
 
@@ -3169,18 +3233,6 @@ Traits with impls: 219
 | `RLogical` | `` | concrete | 4 | miniextendr-api/src/sexp_types.rs:273 |
 | `Rcomplex` | `` | concrete | 4 | miniextendr-api/src/sexp_types.rs:295 |
 
-## `ROrd` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:187 |
-
-## `RPartialOrd` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `T` | `<T>` | concrete | 1 | miniextendr-api/src/adapter_traits.rs:228 |
-
 ## `SeqAccess` — 5 impls
 
 | for-type | generics | kind | #items | span |
@@ -3219,30 +3271,6 @@ Traits with impls: 219
 | `Vec<crate::Rcomplex>` | `` | concrete | 4 | miniextendr-api/src/altrep_impl/builtins.rs:398 |
 | `Box<[crate::Rcomplex]>` | `` | concrete | 4 | miniextendr-api/src/altrep_impl/builtins.rs:471 |
 | `std::borrow::Cow<'static, [crate::Rcomplex]>` | `` | concrete | 4 | miniextendr-api/src/altrep_impl/builtins.rs:502 |
-
-## `Ord` — 4 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1909 |
-| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
-| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-
-## `PartialOrd` — 4 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `ExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/externalptr.rs:1902 |
-| `RWrapperPriority` | `` | concrete | 1 | miniextendr-api/src/registry.rs:209 |
-| `AsSerialize<T>` | `<T>` | concrete | 1 | miniextendr-api/src/serde/traits.rs:224 |
-
-## `TryRng` — 1 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `RRng` | `` | concrete | 4 | miniextendr-api/src/optionals/rand_impl.rs:129 |
 
 ## `WidensToI32` — 4 impls
 
