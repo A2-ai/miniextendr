@@ -1,0 +1,47 @@
+error: ConvertTo/ConvertFrom require an inherent S7 impl method
+ --> tests/ui/s7_conversion_markers_invalid.rs:4:15
+  |
+4 | pub fn free() -> miniextendr_api::ConvertTo<i32> { unimplemented!() }
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: S7 conversion markers and attributes require an inherent S7 impl
+ --> tests/ui/s7_conversion_markers_invalid.rs:9:9
+  |
+9 |     pub fn convert(&self) -> miniextendr_api::ConvertTo<Other> { unimplemented!() }
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: convert_to requires an instance method with no additional parameters
+  --> tests/ui/s7_conversion_markers_invalid.rs:15:9
+   |
+15 |     pub fn convert() -> miniextendr_api::ConvertTo<Other> { unimplemented!() }
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: convert_from requires a static method with exactly one source parameter
+  --> tests/ui/s7_conversion_markers_invalid.rs:21:9
+   |
+21 |     pub fn convert(&self) -> miniextendr_api::ConvertFrom<Self> { unimplemented!() }
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: convert_from must return Self or the enclosing class type
+  --> tests/ui/s7_conversion_markers_invalid.rs:27:9
+   |
+27 |     pub fn convert(source: &Other) -> miniextendr_api::ConvertFrom<Other> { unimplemented!() }
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: ConvertTo target and convert_to attribute disagree
+  --> tests/ui/s7_conversion_markers_invalid.rs:34:9
+   |
+34 |     pub fn convert(&self) -> miniextendr_api::ConvertTo<Other> { unimplemented!() }
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: S7 conversion returns one class instance, not a vector of class instances
+  --> tests/ui/s7_conversion_markers_invalid.rs:40:9
+   |
+40 |     pub fn convert(&self) -> Vec<miniextendr_api::ConvertTo<Other>> { unimplemented!() }
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: ConvertTo/ConvertFrom require an inherent S7 impl method
+  --> tests/ui/s7_conversion_markers_invalid.rs:45:26
+   |
+45 |     fn convert(&self) -> miniextendr_api::ConvertTo<Other>;
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

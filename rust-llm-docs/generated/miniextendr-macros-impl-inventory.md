@@ -8,36 +8,36 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Any` | 107 | 0 |
-| `Borrow` | 107 | 0 |
-| `BorrowMut` | 107 | 0 |
-| `Freeze` | 107 | 0 |
-| `From` | 107 | 0 |
-| `Into` | 107 | 0 |
-| `RefUnwindSafe` | 107 | 0 |
-| `Send` | 107 | 0 |
-| `Sync` | 107 | 0 |
-| `TryFrom` | 107 | 0 |
-| `TryInto` | 107 | 0 |
-| `Unpin` | 107 | 0 |
-| `UnsafeUnpin` | 107 | 0 |
-| `UnwindSafe` | 107 | 0 |
-| `Debug` | 35 | 35 |
-| `Clone` | 26 | 26 |
-| `CloneToUninit` | 26 | 0 |
-| `ToOwned` | 26 | 0 |
+| `Any` | 108 | 0 |
+| `Borrow` | 108 | 0 |
+| `BorrowMut` | 108 | 0 |
+| `Freeze` | 108 | 0 |
+| `From` | 108 | 0 |
+| `Into` | 108 | 0 |
+| `RefUnwindSafe` | 108 | 0 |
+| `Send` | 108 | 0 |
+| `Sync` | 108 | 0 |
+| `TryFrom` | 108 | 0 |
+| `TryInto` | 108 | 0 |
+| `Unpin` | 108 | 0 |
+| `UnsafeUnpin` | 108 | 0 |
+| `UnwindSafe` | 108 | 0 |
+| `Debug` | 36 | 36 |
+| `Clone` | 27 | 27 |
+| `CloneToUninit` | 27 | 0 |
+| `ToOwned` | 27 | 0 |
 | `Default` | 22 | 22 |
-| `Eq` | 15 | 15 |
-| `PartialEq` | 15 | 15 |
-| `StructuralPartialEq` | 15 | 15 |
+| `Eq` | 16 | 16 |
+| `PartialEq` | 16 | 16 |
+| `StructuralPartialEq` | 16 | 16 |
+| `Copy` | 13 | 13 |
 | `Parse` | 13 | 13 |
-| `Copy` | 12 | 12 |
 | `Display` | 2 | 2 |
 | `FromStr` | 2 | 2 |
 | `ToString` | 2 | 0 |
 | `ParsedImplExt` | 1 | 1 |
 
-## `Debug` — 35 impls
+## `Debug` — 36 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -73,11 +73,12 @@ Traits with impls: 28
 | `LowerArg` | `` | concrete | 1 | miniextendr-macros/src/r_macro/lowering.rs:79 |
 | `LowerAtom` | `` | concrete | 1 | miniextendr-macros/src/r_macro/lowering.rs:86 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
+| `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
+| `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:22 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
 | `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:307 |
 
-## `Clone` — 26 impls
+## `Clone` — 27 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -104,7 +105,8 @@ Traits with impls: 28
 | `TraitMethod` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl_trait.rs:120 |
 | `PreconditionOptions` | `` | concrete | 1 | miniextendr-macros/src/r_preconditions.rs:83 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
+| `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
+| `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:22 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
 | `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:307 |
 
@@ -135,7 +137,7 @@ Traits with impls: 28
 | `RoxygenBuilder` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:643 |
 | `RustConversionBuilder` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:656 |
 
-## `Eq` — 15 impls
+## `Eq` — 16 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -153,9 +155,10 @@ Traits with impls: 28
 | `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
 | `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
+| `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
 
-## `PartialEq` — 15 impls
+## `PartialEq` — 16 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -173,9 +176,10 @@ Traits with impls: 28
 | `VctrsKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:373 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
+| `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
 
-## `StructuralPartialEq` — 15 impls
+## `StructuralPartialEq` — 16 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -193,6 +197,25 @@ Traits with impls: 28
 | `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
 | `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
+| `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
+| `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
+
+## `Copy` — 13 impls
+
+| for-type | generics | kind | #items | span |
+|---|---|---|---|---|
+| `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
+| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
+| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
+| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
+| `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
+| `ReturnPref` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1687 |
+| `ClassSystem` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:263 |
+| `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
+| `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
+| `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
+| `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
 
 ## `Parse` — 13 impls
@@ -212,23 +235,6 @@ Traits with impls: 28
 | `ParsedTypeSpec` | `` | concrete | 1 | miniextendr-macros/src/typed_list.rs:121 |
 | `TypedListInput` | `` | concrete | 1 | miniextendr-macros/src/typed_list.rs:39 |
 | `ParsedEntry` | `` | concrete | 1 | miniextendr-macros/src/typed_list.rs:79 |
-
-## `Copy` — 12 impls
-
-| for-type | generics | kind | #items | span |
-|---|---|---|---|---|
-| `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
-| `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
-| `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
-| `ReturnPref` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1687 |
-| `ClassSystem` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:263 |
-| `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
-| `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
-| `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
 
 ## `Display` — 2 impls
 

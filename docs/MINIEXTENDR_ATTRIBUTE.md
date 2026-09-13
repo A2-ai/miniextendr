@@ -181,6 +181,50 @@ marker behavior. Different marker/attribute systems, nested wrapping markers,
 argument-position markers, and combinations with `serialize` or `unwrap_in_r`
 are compile errors. Raw `extern "C-unwind"` functions cannot use `wrap`.
 
+##### S7 conversion return markers
+
+`ConvertTo<T>` and `ConvertFrom<T>` add the type spellings of
+`s7(convert_to = "Target")` and `s7(convert_from = "Source")`. They are
+restricted to inherent S7 methods because these attributes register methods
+with `S7::convert()` as well as wrapping the returned class.
+
+```rust
+use miniextendr_api::{ConvertFrom, ConvertTo, ExternalPtr, miniextendr};
+
+#[miniextendr(s7)]
+impl Fahrenheit {
+    pub fn from_celsius(source: ExternalPtr<Celsius>) -> ConvertFrom<Self> {
+        ConvertFrom(Self { value: source.value * 9.0 / 5.0 + 32.0 })
+    }
+
+    pub fn to_celsius(&self) -> ConvertTo<Celsius> {
+        ConvertTo(Celsius { value: (self.value - 32.0) * 5.0 / 9.0 })
+    }
+}
+```
+
+`ConvertTo<T>` selects `T` as the target of an instance method with no
+additional parameters. `ConvertFrom<T>` keeps `T` as the returned payload
+(`Self` or the enclosing class type); its static method's sole source
+parameter supplies the source class name. That parameter may be a named
+class, a reference to it, or `ExternalPtr<Source>`. The equivalent attributes
+keep the plain return types and state the target/source name explicitly.
+
+Both spellings feed the existing S7 class-reference resolver, so registered
+R class renames work for conversion methods. Ordinary method calls and
+`S7::convert(from, to)` use the same return wrapping. This also distinguishes
+conversion markers from `WrapAsS7<T>`, which explicitly wraps a return without
+registering an S7 conversion.
+
+`Result<ConvertTo<T>, E>` / `Result<ConvertFrom<Self>, E>` preserve error
+transport; `Option` variants raise on `None`. Put `Invisible` or `Visible`
+outside the complete return. Visibility applies to both ordinary method
+calls and `S7::convert()`. Conversion returns represent one class instance,
+so vectors of class instances are rejected. Conflicting marker/attribute
+names, incompatible class systems, wrong source/receiver arity, and
+`serialize`/`unwrap_in_r` combinations are compile errors. As with the other
+return markers, renamed imports and type aliases do not select the syntax.
+
 #### Threading
 
 | Attribute | Effect |
