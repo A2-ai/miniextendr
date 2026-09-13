@@ -10,7 +10,6 @@
 \alias{AttributeConversion_to_source}
 \alias{AttributeConversion_from_source}
 \alias{convert-ConversionSource-to-AttributeConversion}
-\alias{convert}
 \alias{convert-AttributeConversion-to-ConversionSource}
 \title{AttributeConversion S7 Class}
 \source{
@@ -38,12 +37,6 @@ AttributeConversion_conversion_value(self, ...)
 AttributeConversion_to_source(self, ...)
 
 AttributeConversion_from_source(source)
-
-## S7 method for classes <miniextendr::ConvertInput>, <miniextendr::AttributeConversion>
-convert(from, to, ...)
-
-## S7 method for classes <miniextendr::AttributeConversion>, <miniextendr::ConvertInput>
-convert(from, to, ...)
 }
 \arguments{
 \item{value}{Integer stored in the object.}
@@ -52,7 +45,7 @@ convert(from, to, ...)
 
 \item{self}{A \code{AttributeConversion} object.}
 
-\item{...}{Additional arguments passed to the S7 convert generic.}
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
 \item{source}{Conversion input.}
 }
@@ -75,3 +68,15 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Register the source class explicitly.
 }
+\section{Conversion from \code{ConvertInput}}{
+
+\code{S7::convert(from, AttributeConversion)} converts a source object to this class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
+\section{Conversion to \code{ConvertInput}}{
+
+\code{S7::convert(from, ConvertInput)} converts an object of this class to the target class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+

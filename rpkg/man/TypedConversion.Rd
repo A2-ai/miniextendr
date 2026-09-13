@@ -10,7 +10,6 @@
 \alias{TypedConversion_to_source}
 \alias{TypedConversion_from_source}
 \alias{convert-ConversionSource-to-TypedConversion}
-\alias{convert}
 \alias{convert-TypedConversion-to-ConversionSource}
 \title{TypedConversion S7 Class}
 \source{
@@ -38,12 +37,6 @@ TypedConversion_conversion_value(self, ...)
 TypedConversion_to_source(self, ...)
 
 TypedConversion_from_source(source)
-
-## S7 method for classes <miniextendr::ConvertInput>, <miniextendr::TypedConversion>
-convert(from, to, ...)
-
-## S7 method for classes <miniextendr::TypedConversion>, <miniextendr::ConvertInput>
-convert(from, to, ...)
 }
 \arguments{
 \item{value}{Integer stored in the object.}
@@ -52,7 +45,7 @@ convert(from, to, ...)
 
 \item{self}{A \code{TypedConversion} object.}
 
-\item{...}{Additional arguments passed to the S7 convert generic.}
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
 \item{source}{Conversion input.}
 }
@@ -77,6 +70,18 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Infer the source class from the static method's parameter.
 }
+\section{Conversion from \code{ConvertInput}}{
+
+\code{S7::convert(from, TypedConversion)} converts a source object to this class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
+\section{Conversion to \code{ConvertInput}}{
+
+\code{S7::convert(from, ConvertInput)} converts an object of this class to the target class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
 \examples{
 input <- ConvertInput(12L)
 converted <- S7::convert(input, TypedConversion)
