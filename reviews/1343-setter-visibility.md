@@ -24,3 +24,12 @@ shares the global Cargo target directory and rebuilds dependency metadata with
 while unit tests and UI tests passed. Run the full test suite, lint gates, and
 corpus generation sequentially when they share that target directory. The final
 verification uses this ordering, with separate logs for each attempt.
+
+Moving that example while the install/document loop was already running left
+the old wrappers on disk: the roxygen pass compiled the corrected Rust but
+intentionally skipped wrapper generation and touched the existing file. A later
+no-change install then considered it current. The example-presence assertion
+caught this, despite runtime tests passing. Trashed the worktree's gitignored
+wrappers file, regenerated it through the normal install/document/install loop,
+and reran the documentation and runtime checks. Avoid editing source during the
+install/document loop; its generated-file timestamp contract assumes fixed input.

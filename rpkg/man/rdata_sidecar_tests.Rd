@@ -101,3 +101,10 @@ Test creating a SidecarRaw with a u8 scalar sidecar field.
 
 Test creating a SidecarPanicky whose \code{boom} getter panics on access.
 }
+\examples{
+obj <- SidecarR6$new(1L, "before")
+set_label <- activeBindingFunction("label", obj)
+result <- withVisible(set_label("after"))
+stopifnot(result$visible, identical(result$value, obj), obj$label == "after")
+stopifnot(!withVisible(obj$label <- "assigned")$visible)
+}

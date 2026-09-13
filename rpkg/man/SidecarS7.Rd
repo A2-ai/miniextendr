@@ -45,7 +45,7 @@ SidecarS7(prop_int, prop_flag, prop_name, .ptr = NULL)
 \value{
 The value of the \code{prop_int} field
 
-The SidecarS7 pointer (invisibly)
+The SidecarS7 pointer (visibly)
 
 The value of the \code{prop_flag} field
 
