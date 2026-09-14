@@ -1535,6 +1535,13 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # The shared-cache regression builds and installs a real vendored tarball.
+      # Use this checkout's tool so the test runs instead of skipping on PATH.
+      - name: Set up cargo-revendor (install only)
+        uses: ./.github/actions/setup-vendor
+        with:
+          configure-and-vendor: 'false'
+
       - name: Run tests
         working-directory: minirextendr
         env:

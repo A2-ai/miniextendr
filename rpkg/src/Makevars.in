@@ -4,6 +4,7 @@ ABS_RPKG_SRCDIR       = @ABS_RPKG_SRCDIR@
 CARGO                 = @CARGO@
 RUST_TOOLCHAIN        = @RUST_TOOLCHAIN@
 CARGO_TARGET_DIR      = @CARGO_TARGET_DIR@
+CARGO_TARGET_DIR_USER_SET = @CARGO_TARGET_DIR_USER_SET@
 CARGO_PROFILE         = @CARGO_PROFILE@
 CARGO_STATICLIB_NAME  = @CARGO_STATICLIB_NAME@
 ENV_RUSTFLAGS         = @ENV_RUSTFLAGS@
@@ -12,6 +13,7 @@ CARGO_BUILD_TARGET    = @CARGO_BUILD_TARGET@
 ABS_RPKG_SRC_CARGO    = @ABS_RPKG_SRC_CARGO@
 CARGO_LIBDIR          = @CARGO_LIBDIR@
 VENDOR_OUT            = @VENDOR_OUT@
+VENDOR_OUT_USER_SET   = @VENDOR_OUT_USER_SET@
 CARGO_OFFLINE_FLAG    = @CARGO_OFFLINE_FLAG@
 IS_TARBALL_INSTALL    = @IS_TARBALL_INSTALL@
 CARGO_FEATURES_FLAG   = @CARGO_FEATURES_FLAG@
@@ -58,18 +60,19 @@ all: $(SHLIB) $(WRAPPERS_R)
 	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
-	@# Tarball install: scrub vendor and target dirs after build to save space
-	@# in the installed package. Gate on IS_TARBALL_INSTALL so dev installs
-	@# don't blow away in-progress build state.
+	@# Only package-local generated directories are ours to clean. Preserve a
+	@# caller-selected cache, including one nested under a usual cleanup path.
 	@if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
 	  set -e; \
-	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
-	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
-	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
-	  if [ -d "$(ABS_TOP_SRCDIR)/rust-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/rust-target"; fi; \
-	  if [ -d "$(ABS_TOP_SRCDIR)/ra-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/ra-target"; fi; \
-	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/target"; fi; \
-	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/ra_target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/ra_target"; fi; \
+	  for dir in "$(ABS_TOP_SRCDIR)/vendor" "$(ABS_TOP_SRCDIR)/rust-target" "$(ABS_TOP_SRCDIR)/ra-target" "$(ABS_RPKG_SRCDIR)/rust/.cargo" "$(ABS_RPKG_SRCDIR)/rust/target" "$(ABS_RPKG_SRCDIR)/rust/ra_target"; do \
+	    if [ "$(CARGO_TARGET_DIR_USER_SET)" = "true" ]; then \
+	      case "$(CARGO_TARGET_DIR)" in "$$dir"|"$$dir"/*) continue ;; esac; \
+	    fi; \
+	    if [ "$(VENDOR_OUT_USER_SET)" = "true" ]; then \
+	      case "$(VENDOR_OUT)" in "$$dir"|"$$dir"/*) continue ;; esac; \
+	    fi; \
+	    if [ -d "$$dir" ]; then rm -rf "$$dir"; fi; \
+	  done; \
 	fi
 
 # Phony target to force Cargo invocation (no recipe - just triggers dependents)
@@ -90,6 +93,8 @@ $(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Vendor extraction (when in tarball-install mode) is handled by configure.
+# Shared-vendor builds pass package-specific C objects only to the root crate,
+# so their extraction paths do not invalidate every dependency via RUSTFLAGS.
 #
 # OBJECTS are passed to cargo as link-args so the Rust crate can reference
 # symbols from C shim files (bindgen-generated static inline wrappers).
@@ -107,11 +112,20 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	cd "$(ABS_RPKG_SRCDIR)/rust"; \
-	RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $(CARGO_BUILD_STD_FLAG) $$TARGET_OPT \
-	  --lib --profile $(CARGO_PROFILE) \
-	  --manifest-path $(CARGO_TOML) \
-	  --target-dir $(CARGO_TARGET_DIR); \
+	if [ "$(VENDOR_OUT_USER_SET)" = "true" ]; then \
+	  set --; \
+	  for obj in $(OBJECTS); do set -- "$$@" -C "link-arg=$(ABS_RPKG_SRC_CARGO)/$$obj"; done; \
+	  RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) rustc $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $(CARGO_BUILD_STD_FLAG) $$TARGET_OPT \
+	    --lib --profile $(CARGO_PROFILE) --manifest-path "$(CARGO_TOML)" \
+	    --target-dir "$(CARGO_TARGET_DIR)" -- "$$@"; \
+	else \
+	  RUSTFLAGS="$(ENV_RUSTFLAGS) $$LINK_ARGS" \
+	  $(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $(CARGO_BUILD_STD_FLAG) $$TARGET_OPT \
+	    --lib --profile $(CARGO_PROFILE) \
+	    --manifest-path $(CARGO_TOML) \
+	    --target-dir $(CARGO_TARGET_DIR); \
+	fi; \
 	test -f "$(CARGO_AR)"
 
 # Automatic R wrapper + wasm32 snapshot generation.

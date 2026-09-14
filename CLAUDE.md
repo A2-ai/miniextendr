@@ -425,6 +425,13 @@ The two agents trip on most:
 `just vendor-sync-check` verifies vendored copies match workspace sources;
 `just vendor` refreshes. See "The install-mode latch" above for the broader story.
 
+`cargo revendor --freeze` removes direct dependency paths and records relative
+vendor paths in `[patch.crates-io]`. This lets configure redirect them to a
+shared `VENDOR_OUT` cache without editing the manifest (#1513). Recover a stale
+freeze with `just clean-vendor-leak` or `miniextendr_clean_vendor_leak()`, which
+restore the original manifest from `.Cargo.toml.prefreeze`; never edit the
+snapshot by hand.
+
 ### Template sync (rpkg → templates)
 
 `minirextendr/inst/templates/` is **derived from `rpkg/`** (master source).

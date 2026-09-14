@@ -16,6 +16,41 @@ miniextendr adds a Rust step: Cargo builds a static library (`.a`) which R's
 linker folds into the final shared library alongside a minimal C anchor.
 `R_init_*` and all registered entry points are defined in Rust.
 
+## Reusing caches across tarball installs
+
+Set both `CARGO_TARGET_DIR` and `VENDOR_OUT` to retain compiled dependencies
+across installations of the same tarball from different extraction directories:
+
+```sh
+CARGO_TARGET_DIR="$HOME/.cache/miniextendr/target" \
+VENDOR_OUT="$HOME/.cache/miniextendr/vendor" \
+R CMD INSTALL mypackage_0.1.0.tar.gz
+```
+
+`VENDOR_OUT` is an optional cache root. Configure selects
+`<VENDOR_OUT>/<vendor-archive-md5>/vendor`, extracting the archive once and
+publishing the completed entry atomically. A different archive selects a new
+entry, so an unrelated package cannot accidentally reuse an old vendor tree.
+Both variables must have the same values on subsequent installs. Cargo's
+configured target directory follows the requested target directory too.
+
+Shared-cache tarballs should be produced with the matching cargo-revendor:
+`--freeze` records relative vendor paths in `[patch.crates-io]`, with the
+corresponding dependencies resolved through those patches. Configure writes
+absolute cache patches into `.cargo/config.toml`; it never rewrites the shipped
+Cargo manifest or lockfile. Shared-cache builds pass package-specific C objects
+only to the package crate, avoiding dependency rebuilds caused by changing
+extraction paths in global Rust flags.
+
+Tarball cleanup preserves caller-selected target and vendor caches, including
+ones under the usual package-local cleanup paths. Cache entries are retained
+until the caller removes them. The install-mode latch and wrapper-generation
+guards still apply. Without `VENDOR_OUT`, extraction stays in the package's
+`vendor/` directory and uses the ordinary build command. With neither variable
+set, package-local build directories are cleaned as before. This cache does
+not change the behavior of the separate `cleanup` script invoked by R's
+`--preclean` and `--clean` options.
+
 ## Makefile Include Chain
 
 R's build system is a hierarchy of makefiles included in a specific order.
