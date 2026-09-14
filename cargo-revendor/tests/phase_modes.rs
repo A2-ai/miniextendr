@@ -244,6 +244,33 @@ path = "lib.rs"
         !common::vendor_has(&vendor, "myhelper"),
         "myhelper (local) should not be in vendor/ after --external-only"
     );
+
+    // A subsequent external refresh must preserve an existing local-pass
+    // output, even when it differs from the source-root copy.
+    let local = vendor.join("myhelper");
+    std::fs::create_dir(&local).unwrap();
+    let manifest = std::fs::read(proj.root().join("myhelper/Cargo.toml")).unwrap();
+    std::fs::write(local.join("Cargo.toml"), &manifest).unwrap();
+    std::fs::write(local.join("lib.rs"), "// caller-owned local output\n").unwrap();
+    revendor_cmd()
+        .args([
+            "revendor",
+            "--manifest-path",
+            proj.root().join("rpkg/Cargo.toml").to_str().unwrap(),
+            "--output",
+            vendor.to_str().unwrap(),
+            "--source-root",
+            proj.root().to_str().unwrap(),
+            "--external-only",
+            "--force",
+        ])
+        .assert()
+        .success();
+    assert_eq!(std::fs::read(local.join("Cargo.toml")).unwrap(), manifest);
+    assert_eq!(
+        std::fs::read_to_string(local.join("lib.rs")).unwrap(),
+        "// caller-owned local output\n"
+    );
 }
 
 /// --local-only after --external-only: only flat dirs appear; versioned dirs
