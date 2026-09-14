@@ -14,7 +14,7 @@
 //!
 //! - [`GuardMode::CatchUnwind`]: Wraps the closure in `catch_unwind`. On panic,
 //!   fires telemetry and raises an R error via `Rf_error` (diverges).
-//!   Used by worker and connection trampolines.
+//!   Used by ALTREP `RustUnwind` callbacks.
 //!
 //! - [`GuardMode::RUnwind`]: Uses `R_UnwindProtect` to catch both Rust panics
 //!   and R longjmps. Used by ALTREP callbacks that call R APIs. Routes
@@ -65,6 +65,10 @@ pub enum GuardMode {
 /// - For [`GuardMode::CatchUnwind`]: raises R error via `Rf_error` (diverges — never returns).
 /// - For [`GuardMode::RUnwind`]: delegates to `with_r_unwind_protect_sourced`.
 ///
+/// Deferred conditions signal on R's main thread before return (or panic
+/// conversion). Use this boundary on the main thread. Any SEXP held in the
+/// generic result must be rooted, e.g. by returning `OwnedProtect`.
+///
 /// # Parameters
 ///
 /// - `f`: The closure to execute.
@@ -83,19 +87,19 @@ where
     F: FnOnce() -> R,
 {
     match mode {
-        GuardMode::CatchUnwind => match catch_unwind(AssertUnwindSafe(f)) {
-            Ok(val) => val,
-            Err(payload) => {
-                // Fold the hook-captured `(at file:line)` into the message, same
-                // as the `RUnwind` sibling below (which routes through
-                // `with_r_unwind_protect_sourced`). The panic and hook fired on
-                // this thread (ALTREP `RustUnwind` callbacks run on main), so the
-                // take-once slot holds the real `panic!` site.
-                let msg = crate::unwind_protect::panic_message_with_location(payload.as_ref());
-                crate::panic_telemetry::fire(&msg, source);
-                crate::error::r_stop(&msg)
+        GuardMode::CatchUnwind => {
+            let mark = crate::deferred_condition::mark();
+            let outcome = catch_unwind(AssertUnwindSafe(f)).map_err(|payload| {
+                crate::unwind_protect::panic_message_with_location(payload.as_ref())
+            });
+            match crate::deferred_condition::finish_guarded(mark, outcome) {
+                Ok(val) => val,
+                Err(msg) => {
+                    crate::panic_telemetry::fire(&msg, source);
+                    crate::error::r_stop(&msg)
+                }
             }
-        },
+        }
         GuardMode::RUnwind => crate::unwind_protect::with_r_unwind_protect_sourced(f, None, source),
     }
 }
@@ -108,16 +112,22 @@ where
 /// is UB but raising an R error is also undesirable (the caller expects a return
 /// value indicating failure).
 ///
+/// Deferred conditions are signalled on R's main thread after the callback.
+/// R handlers may exit (including `options(warn = 2)`); the Rust panic fallback
+/// is unchanged. Finalizer callbacks must suppress conditions instead.
 /// Telemetry is fired before returning the fallback.
 #[inline]
 pub fn guarded_ffi_call_with_fallback<F, R>(f: F, fallback: R, source: PanicSource) -> R
 where
     F: FnOnce() -> R,
 {
-    match catch_unwind(AssertUnwindSafe(f)) {
+    let mark = crate::deferred_condition::mark();
+    let outcome = catch_unwind(AssertUnwindSafe(f))
+        .map_err(|payload| panic_payload_to_string(payload.as_ref()).into_owned());
+    let (outcome, fallback) = crate::deferred_condition::finish_guarded(mark, (outcome, fallback));
+    match outcome {
         Ok(val) => val,
-        Err(payload) => {
-            let msg = panic_payload_to_string(payload.as_ref());
+        Err(msg) => {
             crate::panic_telemetry::fire(&msg, source);
             fallback
         }

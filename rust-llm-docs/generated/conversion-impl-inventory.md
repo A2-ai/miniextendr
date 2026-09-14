@@ -9,7 +9,7 @@ Traits with impls: 9
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
 | `TryFromSexp` | 469 | 469 |
-| `IntoR` | 353 | 353 |
+| `IntoR` | 355 | 355 |
 | `IntoRAs` | 135 | 135 |
 | `TryCoerce` | 95 | 93 |
 | `Coerce` | 53 | 53 |
@@ -526,7 +526,7 @@ Traits with impls: 9
 - **miniextendr-api/src/optionals/jiff_impl.rs:874** (2 impls): `JiffTimestampVecMut`, `JiffTimestampVecRef`
 - **miniextendr-api/src/optionals/jiff_impl.rs:915** (2 impls): `JiffZonedVecMut`, `JiffZonedVecRef`
 
-## `IntoR` — 353 impls
+## `IntoR` — 355 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -883,6 +883,8 @@ Traits with impls: 9
 | `AsSerialize<T>` | `<T>` | concrete | 2 | miniextendr-api/src/serde/traits.rs:262 |
 | `StrVec<'_>` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:485 |
 | `ProtectedStrVec` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:727 |
+| `Invisible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:123 |
+| `Visible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:124 |
 
 ### `IntoR` — for-types sharing a source span (likely macro-expanded / co-located)
 

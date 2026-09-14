@@ -391,10 +391,36 @@ themselves.
 **Where it works.** Every `#[miniextendr]` function and method, including
 `#[miniextendr(worker)]` bodies (the queue is a `Mutex`: the push happens on
 the worker, the signal on R's main thread once the result is back), `rng`
-wrappers and trait-ABI vtable shims. Code that runs under no such boundary
-(ALTREP callbacks, finalizers) has its conditions signalled by the next
-boundary that completes in the same package; use `error!` there. Flushing at
-those guard sites is tracked in #1518.
+wrappers and trait-ABI vtable shims. ALTREP `RUnwind` and `RustUnwind` callbacks,
+`with_r_unwind_protect_or_raise`, and connection I/O callbacks flush their own
+conditions before returning. ALTREP and connection conditions have
+`conditionCall() = NULL`; the raising guard uses its explicit `call` argument.
+For example, an ALTREP `elt()` implementation can queue `defer_warning!`
+and return the element: `suppressWarnings(x[1L])` keeps that element, while
+`tryCatch(x[1L], warning = identity)` exits with the warning. The constructor's
+`.Call` has already returned; a later unrelated call does not own that warning.
+
+Callback results remain alive while handlers run. ALTREP's SEXP trampolines
+root their results automatically. Generic low-level guards cannot inspect R
+objects hidden in arbitrary Rust values: return `OwnedProtect` (or another
+rooted handle) for an allocated SEXP and extract it after the guard returns.
+Calling handlers may allocate or re-enter Rust. Every queued entry is signalled
+in order, including identical entries; callbacks that run repeatedly should
+queue only the diagnostics their API intends to emit.
+
+A Rust failure signals queued conditions first. An **R-origin error or exiting
+handler** abandons the callback and discards its remaining queue, rather than
+trying to signal while R is already unwinding. `options(warn = 2)` and warning
+handlers that exit follow the same rule.
+
+**Finalization.** External-pointer finalizers and connection close/destroy/Drop
+callbacks suppress deferred conditions, including nested guarded work. R's
+finalizer context clears the caller's condition handlers; these conditions are
+neither signalled there nor retained for a future call. The same rule applies
+to destructors run through `drop_catching_panic`. Use explicit methods for
+user-visible diagnostics before releasing an object. Raw unguarded FFI and
+`AltrepGuard::Unsafe` callbacks must not queue conditions; select a guarded
+callback when deferred signalling is needed.
 
 ## Classed `Result` errors with `RConditionError` and `RError`
 
