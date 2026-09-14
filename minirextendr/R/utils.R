@@ -263,6 +263,10 @@ mx_ignore_patterns <- function(template, subdir = NULL) {
 #' @return Invisibly returns TRUE.
 #' @noRd
 copy_config_scripts <- function(dest_dir, display_prefix = dest_dir) {
+  fs::file_copy(
+    system.file("templates/rpkg/tools/dev-bootstrap.R", package = "minirextendr"),
+    file.path(dest_dir, "dev-bootstrap.R"), overwrite = TRUE
+  )
   for (script in c("config.guess", "config.sub")) {
     dest <- file.path(dest_dir, script)
     fs::file_copy(script_path(script), dest, overwrite = TRUE)

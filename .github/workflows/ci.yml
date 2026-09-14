@@ -1535,6 +1535,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install current cargo-revendor for bootstrap regressions
+        uses: ./.github/actions/setup-vendor
+        with:
+          configure-and-vendor: 'false'
+
       - name: Run tests
         working-directory: minirextendr
         env:

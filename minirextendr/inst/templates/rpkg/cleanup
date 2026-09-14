@@ -1,6 +1,16 @@
 #!/bin/sh
 # Cleanup script for R package (runs during R CMD build and R CMD INSTALL)
 #
+# R CMD build runs cleanup inside its temporary copy. Activate the portable
+# dev manifest there; the origin-path check leaves the checkout untouched.
+if [ -f src/rust/.dev-bootstrap.rds ]; then
+  if [ -n "$R_HOME" ]; then
+    "$R_HOME/bin/Rscript" tools/dev-bootstrap.R activate || exit $?
+  else
+    Rscript tools/dev-bootstrap.R activate || exit $?
+  fi
+fi
+
 # Remove build artifacts and generated files.
 # configure recreates Makevars from Makevars.in, so it's safe to delete.
 

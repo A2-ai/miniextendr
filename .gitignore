@@ -44,3 +44,9 @@ site/content/manual/*.md
 .r-svn/
 .rwasm/
 .webr/
+
+# Development bootstrap artifacts (source Cargo.toml stays unchanged)
+**/src/rust/vendor/
+**/src/rust/.Cargo.toml.dev
+**/src/rust/.dev-bootstrap.rds
+**/src/rust/.dev-vendor-backup-*/

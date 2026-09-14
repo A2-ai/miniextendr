@@ -130,8 +130,16 @@ miniextendr_configure <- function(path = ".") {
 #' `miniextendr_build(install = TRUE)` returns `TRUE` only if the last
 #' install attempt succeeded with test-load.
 #'
+#' @section Development bootstrap:
+#' Installs select `MINIEXTENDR_BOOTSTRAP_MODE=dev` unless the caller supplied a
+#' mode or a distribution vendor archive already exists. Updated scaffolds
+#' package only path-dependency siblings, without xz or registry/Git vendoring.
+#' The portable manifest is activated in R CMD build's temporary copy, leaving
+#' the checkout's Cargo.toml unchanged. Ordinary bootstrap calls still default
+#' to distribution mode. Requires a current cargo-revendor and updated templates.
+#'
 #' @section Mid-build source-tree restore:
-#' The install step's `R CMD build` runs the scaffolded `bootstrap.R` in the
+#' In distribution mode, the install step's `R CMD build` runs `bootstrap.R` in the
 #' source tree, sealing `inst/vendor.tar.xz` there by design (the built
 #' tarball must carry it). Left in place, that latch would flip the rest of
 #' the build into tarball mode -- where wrapper regeneration is skipped -- so
@@ -207,6 +215,11 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
   snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
   tarball_preexisting <- fs::file_exists(vendor_tarball)
+  # The development loop needs portable path siblings, not a distribution
+  # vendor archive. Honor an explicit caller mode or pre-existing release latch.
+  if (!tarball_preexisting && !nzchar(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE"))) {
+    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"))
+  }
   # A snapshot left by an earlier, never-restored freeze (#1509) means the
   # manifest we just read is the FROZEN one; restoring it later would only
   # re-freeze. Point at the fix and leave that snapshot alone.

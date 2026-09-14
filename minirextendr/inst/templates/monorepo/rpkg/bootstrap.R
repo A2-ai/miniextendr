@@ -57,7 +57,15 @@ declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
   FALSE
 }
 
-if (!file.exists("inst/vendor.tar.xz")) {
+bootstrap_mode <- match.arg(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), c("dist", "dev"))
+source("tools/dev-bootstrap.R", local = TRUE)
+if (bootstrap_mode == "dev") {
+  prepare_dev_bootstrap()
+} else {
+  clear_dev_bootstrap()
+}
+
+if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
   cargo_revendor <- Sys.which("cargo-revendor")
   if (!nzchar(cargo_revendor)) {
     if (declares_path_dep()) {
