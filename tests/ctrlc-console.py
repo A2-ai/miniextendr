@@ -85,13 +85,28 @@ def main():
         done()
         # Suspending interrupts must allow the owned Rust resource to complete.
         send('before <- miniextendr:::ctrlc_drop_count(); start <- proc.time()[[3L]]; '
-             'caught <- tryCatch(suspendInterrupts(miniextendr:::ctrlc_wait(1L)), interrupt = identity); '
+             'caught <- tryCatch({suspendInterrupts(miniextendr:::ctrlc_wait(1L)); Sys.sleep(0.01)}, interrupt = identity); '
              'stopifnot(inherits(caught, "interrupt"), !inherits(caught, "rust_interrupt"), '
              'proc.time()[[3L]] - start >= 0.9, miniextendr:::ctrlc_drop_count() == before + 1L); cat("CTRLC_OK\\n")')
         expect("CTRLC_READY\r\n")
         ctrl_c()
         done()
         send('q("no", status = 0L)')
+        # Drain output before waitpid: on macOS, a PTY child may stay in
+        # exit until the master consumes the remaining terminal output.
+        while True:
+            if not select.select([terminal], [], [], 30)[0]:
+                raise AssertionError("R did not close its console after q()")
+            try:
+                chunk = os.read(terminal, 65536)
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                break
+            if not chunk:
+                break
+            sys.stdout.buffer.write(chunk)
+            sys.stdout.buffer.flush()
         pid, status = os.waitpid(child, 0)
         assert pid == child and os.waitstatus_to_exitcode(status) == 0, status
         child = None
