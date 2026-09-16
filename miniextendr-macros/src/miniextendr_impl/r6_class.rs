@@ -403,7 +403,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method)
+            .with_return_class_from_method(ctx.method, &type_ident.to_string())
             .with_indent(6);
         lines.extend(return_builder.build_r6_body());
 
@@ -553,7 +553,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method)
+            .with_return_class_from_method(ctx.method, &type_ident.to_string())
             .with_indent(2); // top-level `$set` closure body indents 2 spaces
         lines.extend(return_builder.build_r6_body());
 
@@ -595,7 +595,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(getter_strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
-                .with_return_class_from_method(ctx.method)
+                .with_return_class_from_method(ctx.method, &type_ident.to_string())
                 .with_indent(4);
             lines.extend(getter_builder.build_r6_body());
 
@@ -639,7 +639,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(strategy)
                 .with_invisible(ctx.method.is_invisible())
                 .with_class_name(class_name.clone())
-                .with_return_class_from_method(ctx.method)
+                .with_return_class_from_method(ctx.method, &type_ident.to_string())
                 .with_indent(2); // top-level `$set` closure body indents 2 spaces
             lines.extend(return_builder.build_r6_body());
 
@@ -688,7 +688,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())
-            .with_return_class_from_method(ctx.method);
+            .with_return_class_from_method(ctx.method, &type_ident.to_string());
         lines.extend(return_builder.build_r6_body());
 
         lines.push("}".to_string());
