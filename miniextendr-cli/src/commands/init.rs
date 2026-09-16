@@ -70,7 +70,6 @@ fn init_package(path: &str, quiet: bool) -> Result<()> {
 
     let data = TemplateData::new(&pkg_name);
     scaffold_rpkg_fresh(root, &data)?;
-    write_miniextendr_yml(root, quiet)?;
     run_autoconf(root, quiet);
 
     if !quiet {
@@ -236,7 +235,6 @@ fn init_use_monorepo(
         false,
     )?;
     run_autoconf(&rpkg_root, quiet);
-    write_miniextendr_yml(root, quiet)?;
 
     if !quiet {
         eprintln!("\nminiextendr scaffolding added.");
@@ -385,7 +383,6 @@ fn init_use_rpkg(root: &Path, quiet: bool) -> Result<()> {
     std::fs::create_dir_all(root.join("vendor"))?;
 
     run_autoconf(root, quiet);
-    write_miniextendr_yml(root, quiet)?;
 
     if !quiet {
         eprintln!("\nminiextendr scaffolding added.");
@@ -463,23 +460,6 @@ fn update_description(root: &Path) -> Result<()> {
 
     std::fs::write(&desc_path, content)?;
     Ok(())
-}
-
-/// Copy the default `miniextendr.yml` unless one exists
-/// (~ `use_miniextendr_config()`).
-fn write_miniextendr_yml(root: &Path, quiet: bool) -> Result<()> {
-    let target = root.join("miniextendr.yml");
-    if target.is_file() {
-        if !quiet {
-            eprintln!("miniextendr.yml already exists, skipping");
-        }
-        return Ok(());
-    }
-    scaffold::write_file(
-        &target,
-        scaffold::embedded("templates/miniextendr.yml"),
-        false,
-    )
 }
 
 /// Run autoconf when available and make `configure` executable
@@ -683,12 +663,6 @@ mod tests {
         let root = scratch.path().join("my.pkg");
         let data = TemplateData::new("my.pkg");
         scaffold_rpkg_fresh(&root, &data).unwrap();
-        scaffold::write_file(
-            &root.join("miniextendr.yml"),
-            scaffold::embedded("templates/miniextendr.yml"),
-            false,
-        )
-        .unwrap();
 
         let mut files = Vec::new();
         walk_scaffold(&root, &mut files);
@@ -842,8 +816,6 @@ mod tests {
         let bump = read(&root, "tools/bump-version.R");
         assert!(bump.contains("tools/bump-version.R my.proj"));
         assert!(!bump.contains("{{{"));
-        // create_miniextendr_monorepo() does not write miniextendr.yml.
-        assert!(!root.join("miniextendr.yml").exists());
     }
 
     #[test]
@@ -932,7 +904,6 @@ mod tests {
         assert!(root.join("src/rust/lib.rs").is_file());
         assert!(root.join("tools/build-html-reference.R").is_file());
         assert!(root.join("tools/lock-shape-check.R").is_file());
-        assert!(root.join("miniextendr.yml").is_file());
     }
 
     /// `init use` must never lower an existing R floor — merge semantics are
@@ -979,7 +950,6 @@ mod tests {
         assert!(desc.contains("Package: my.core"));
         let cargo = read(&root, "rpkg/src/rust/Cargo.toml");
         assert!(cargo.contains("core_library = { package = \"my-core\", path = \"../../..\" }"));
-        assert!(root.join("miniextendr.yml").is_file());
     }
 
     #[test]

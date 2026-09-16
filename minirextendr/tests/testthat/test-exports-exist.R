@@ -10,7 +10,6 @@ exported_funs <- c(
   "miniextendr_configure", "miniextendr_repair_lock", "miniextendr_dev_link",
   "miniextendr_doctor", "miniextendr_validate",
   "miniextendr_vendor",
-  "miniextendr_config", "miniextendr_config_defaults",
   "upgrade_miniextendr_package",
   "use_miniextendr", "use_miniextendr_bootstrap", "use_miniextendr_build_rs",
   "use_miniextendr_cleanup", "use_miniextendr_config_scripts", "use_miniextendr_configure",

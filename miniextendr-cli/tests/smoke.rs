@@ -27,7 +27,6 @@ const SUBCOMMANDS: &[&str] = &[
     "feature",
     "render",
     "rust",
-    "config",
     "lint",
     "clean",
     "completions",
@@ -138,7 +137,6 @@ fn init_package_scaffolds_canonical_build_system() {
         "tools/lock-shape-check.R",
         ".Rbuildignore",
         ".gitignore",
-        "miniextendr.yml",
         "R/smoke.pkg-package.R",
     ] {
         assert!(pkg_dir.join(rel).is_file(), "missing {rel}");

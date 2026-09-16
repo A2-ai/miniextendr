@@ -156,14 +156,6 @@ miniextendr rust function '#[miniextendr] pub fn hello() -> &str { "hi" }'
 miniextendr rust clean                      # Clean compilation cache
 ```
 
-### `config` — Show configuration (native, no R needed)
-
-```bash
-miniextendr config show                     # Show miniextendr.yml
-miniextendr config defaults                 # Show default values
-miniextendr config defaults --json          # JSON output
-```
-
 ### `lint` — Run miniextendr-lint
 
 ```bash
@@ -255,7 +247,7 @@ Three execution modes:
 
 | Mode | R needed? | Examples |
 |------|-----------|---------|
-| **Native** | No | `status`, `config`, `cargo`, `lint`, `feature list` |
+| **Native** | No | `status`, `cargo`, `lint`, `feature list` |
 | **Hybrid** | No (shell only) | `workflow autoconf`, `workflow configure` |
 | **R bridge** | Yes (Rscript) | `workflow document`, `workflow test`, `render html` |
 | **Dev** | Varies | `dev bench`, `dev cross`, `dev templates` |
@@ -266,4 +258,4 @@ The CLI is fully independent of the `minirextendr` R package. When R is needed, 
 
 - `--path <dir>` — Project directory (default: `.`)
 - `--quiet` / `-q` — Suppress output
-- `--json` — JSON output (supported by `status`, `config`, `vendor`, `feature`)
+- `--json` — JSON output (supported by `status`, `vendor`, `feature`)

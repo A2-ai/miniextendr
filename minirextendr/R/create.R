@@ -431,10 +431,6 @@ use_miniextendr <- function(path = ".",
       )
     }
 
-    # Configuration file at workspace root
-    cli::cli_h2("Creating configuration")
-    use_miniextendr_config()
-
     if (claude_skills) {
       cli::cli_h2("Installing Claude Code skills")
       use_claude_skills()
@@ -499,10 +495,6 @@ use_miniextendr <- function(path = ".",
       }
     )
   }
-
-  # Configuration file
-  cli::cli_h2("Creating configuration")
-  use_miniextendr_config()
 
   if (claude_skills) {
     cli::cli_h2("Installing Claude Code skills")

@@ -48,7 +48,6 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("scripts/config.guess"),
     tpl!("scripts/config.sub"),
     tpl!("templates/README.md"),
-    tpl!("templates/miniextendr.yml"),
     tpl!("templates/r-release.yml"),
     // Standalone R package template.
     tpl!("templates/rpkg/Cargo.toml.tmpl"),

@@ -19,7 +19,7 @@ pub fn find_rscript() -> Result<PathBuf> {
     // Fall back to PATH lookup
     which("Rscript").context(
         "Rscript not found. Install R or set R_HOME.\n\
-         This command requires R — native commands (cargo, lint, config) do not.",
+         This command requires R — native commands (cargo, lint) do not.",
     )
 }
 

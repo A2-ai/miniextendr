@@ -1,7 +1,6 @@
 #[cfg(feature = "dev")]
 pub mod bench;
 pub mod cargo;
-pub mod config;
 #[cfg(feature = "dev")]
 pub mod cross;
 pub mod feature;
@@ -31,7 +30,6 @@ pub fn dispatch(cmd: &Command, ctx: &ProjectContext, quiet: bool, json: bool) ->
         Command::Feature { cmd } => feature::dispatch(cmd, ctx, quiet, json),
         Command::Render { cmd } => render::dispatch(cmd, ctx, quiet),
         Command::Rust { cmd } => rust::dispatch(cmd, ctx, quiet),
-        Command::Config { cmd } => config::dispatch(cmd, ctx, quiet, json),
         Command::Lint => lint::run(ctx, quiet),
         Command::Clean => clean(ctx, quiet),
         Command::Completions { .. } => Ok(()), // handled in main before dispatch
