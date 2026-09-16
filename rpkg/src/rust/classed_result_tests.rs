@@ -13,7 +13,7 @@
 //!   `miniextendr_api::condition::is_reserved_condition_field`).
 
 use miniextendr_api::condition::{ConditionData, RConditionError, RError};
-use miniextendr_api::{miniextendr, rust_condition, rust_error, warning};
+use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 
 // region: RConditionError on a package error enum
 
@@ -22,6 +22,9 @@ use miniextendr_api::{miniextendr, rust_condition, rust_error, warning};
 pub enum PkgError {
     MissingField { field: String },
     OutOfRange { value: f64, max: f64 },
+    /// A variant whose data carries an explicitly absent value: `e$optional`
+    /// must exist in `names(e)` and be `NULL`, next to a present field.
+    NoValue { present: f64 },
 }
 
 impl std::fmt::Display for PkgError {
@@ -29,6 +32,7 @@ impl std::fmt::Display for PkgError {
         match self {
             PkgError::MissingField { field } => write!(f, "field `{field}` is missing"),
             PkgError::OutOfRange { value, max } => write!(f, "{value} exceeds the maximum {max}"),
+            PkgError::NoValue { present } => write!(f, "no value alongside {present}"),
         }
     }
 }
@@ -44,6 +48,7 @@ impl RConditionError for PkgError {
         let member = match self {
             PkgError::MissingField { .. } => "pkg_error_missing_field",
             PkgError::OutOfRange { .. } => "pkg_error_out_of_range",
+            PkgError::NoValue { .. } => "pkg_error_no_value",
         };
         vec![member.to_string(), "pkg_error".to_string()]
     }
@@ -54,6 +59,10 @@ impl RConditionError for PkgError {
             PkgError::OutOfRange { value, max } => vec![
                 ("value".to_string(), (*value).into()),
                 ("max".to_string(), (*max).into()),
+            ],
+            PkgError::NoValue { present } => vec![
+                ("optional".to_string(), RValue::Null),
+                ("present".to_string(), (*present).into()),
             ],
         })
     }
@@ -91,6 +100,14 @@ pub fn classed_result_range(value: f64) -> Result<f64, PkgError> {
 #[miniextendr]
 pub fn classed_result_unit(value: f64) -> Result<(), PkgError> {
     classed_result_range(value).map(|_| ())
+}
+
+/// Always raises `pkg_error_no_value` whose data has an explicit NULL field:
+/// `"optional" %in% names(e)` is `TRUE`, `e$optional` is `NULL`, `e$present`
+/// is `1`. Guards the `keep.null = TRUE` in the shared raise helper.
+#[miniextendr]
+pub fn classed_result_null_field() -> Result<(), PkgError> {
+    Err(PkgError::NoValue { present: 1.0 })
 }
 
 /// The same error type raised from an S3 method (impl-block codegen arm).
