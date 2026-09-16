@@ -16,6 +16,8 @@ default = ["doc-lint"]
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
+## Cooperative Ctrl+C checkpoints and interrupt condition transport. Explicit opt-in.
+ctrlc = []
 ## Enable rayon integration for parallel iterators. Pulls in crossbeam-* crates.
 ## Add `features = ["rayon"]` to your dependency if needed.
 rayon = ["dep:rayon"]
@@ -139,7 +141,8 @@ growth-debug = []
 # Two composable aggregates so "all features" is defined in ONE place and CI's
 # `clippy_all` step can derive its codegen-selector half instead of re-curating
 # it (see #677). Adding a new feature only requires updating the matching
-# aggregate below; CI follows automatically.
+# aggregate below; CI follows automatically. `ctrlc` deliberately remains
+# separate: interrupt handling requires explicit opt-in.
 #
 # MUTEX CONSTRAINT: `r6-default` and `s7-default` are mutually exclusive — a
 # `compile_error!` in miniextendr-macros fires if both are enabled (#676/#710).

@@ -451,6 +451,9 @@ pub mod pump;
 pub mod unwind_protect;
 pub mod worker;
 
+#[cfg(feature = "ctrlc")]
+pub mod ctrlc;
+
 // Re-export commonly used worker items at root for convenience
 pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 

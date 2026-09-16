@@ -448,6 +448,9 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // the env-var name cannot drift between the two consumers.
     let wrapper_gen = crate::init::wrapper_gen_mode();
     if !wrapper_gen {
+        #[cfg(feature = "ctrlc")]
+        crate::ctrlc::initialize();
+
         // All ALTREP classes — both user-defined (#[miniextendr] structs) and
         // builtins (Vec, Box, Range, Cow, Arrow) — register via linkme
         // MX_ALTREP_REGISTRATIONS. Each call site emits a
@@ -1380,7 +1383,16 @@ pub fn write_r_wrappers_to_file(path: &str) {
     }
   }
   switch(.val$kind,
-    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = \"error\")),
+",
+    );
+    #[cfg(feature = "ctrlc")]
+    content.push_str(
+        "    interrupt = stop(structure(list(message = .msg, call = .call, kind = \"interrupt\"),
+      class = c(\"rust_interrupt\", \"interrupt\", \"condition\"))),
+",
+    );
+    content.push_str(
+        "    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = \"error\")),
       class = c(.class, \"rust_error\", \"simpleError\", \"error\", \"condition\"))),
     warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = \"warning\")),
       class = c(.class, \"rust_warning\", \"simpleWarning\", \"warning\", \"condition\"))),

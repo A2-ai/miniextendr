@@ -10,6 +10,7 @@ Only `default` features are enabled automatically.
 | **Default** | | |
 | `doc-lint` | Build-time lint checking `#[miniextendr]` source-level attributes | (forwarded to miniextendr-macros) |
 | **Core / R Integration** | | |
+| `ctrlc` | Cooperative interrupt checkpoints and R interrupt conditions (explicit opt-in) | — |
 | `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
 | `worker-thread` | Infrastructure for opt-in worker dispatch | (none) |
@@ -1180,3 +1181,106 @@ See [GAPS.md](GAPS.md) for the full catalog of known limitations.
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- How feature-gated types convert to/from R
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features
 - [THREADS.md](THREADS.md) -- Worker-thread routing and optional non-API stack controls
+
+## Cooperative interrupts (`ctrlc`)
+
+Enable explicitly in your package's Rust manifest:
+
+```toml
+[dependencies]
+miniextendr-api = { version = "*", features = ["ctrlc"] }
+```
+
+If your package uses feature detection, forward the feature and select it through
+`CARGO_FEATURES=ctrlc` when configuring. `ctrlc` is excluded from automatic
+feature detection and the `full` aggregates. Without it, the checkpoint API, registration hook, and interrupt-specific wrapper
+code are absent. The feature adds no dependency.
+
+```rust,ignore
+use miniextendr_api::prelude::*;
+
+#[miniextendr]
+fn calculate() -> i32 {
+    let resource = acquire_resource();
+    for chunk in work_chunks() {
+        check_interrupt();
+        process(chunk, &resource);
+    }
+    42
+}
+```
+
+Check once per bounded chunk of work. Cancellation is cooperative: code that never
+checks cannot be interrupted safely, and a blocking foreign call must provide its
+own cancellation mechanism. `#[miniextendr(check_interrupt)]` uses this checkpoint
+before the function body when the feature is enabled; it does not insert checks
+inside the body. The same API works from a `#[miniextendr(worker)]` function by
+routing the R poll to the main thread, then unwinding on the worker.
+
+At a checkpoint, a small `R_tryCatch` boundary catches `R_CheckUserInterrupt`
+below the caller's owned Rust values. After that R boundary returns normally,
+Rust unwinds with a typed payload (without panic telemetry), dropping resources.
+The outer miniextendr guard returns the existing tagged condition representation.
+Only then does the generated R wrapper signal the condition:
+
+```r
+tryCatch(calculate(), interrupt = function(condition) "cancelled")
+```
+
+Its classes are `c("rust_interrupt", "interrupt", "condition")`, its `kind` is
+`"interrupt"`, and its `call` identifies the wrapper invocation. It does not
+inherit from `error`. Elapsed/CPU time-limit errors remain errors. Checkpoints
+respect `suspendInterrupts()` and process R GUI events.
+
+Routine registration caches the condition classes once per package image and
+initializes R's lazy `R_tryCatch` trampoline before any exported Rust body runs.
+R keeps its existing signal handler; no OS signal handler is installed.
+
+The `ctrlc` crate is deliberately unnecessary for this design. In version 3.5.2,
+[Unix `try_set_handler`](https://github.com/Detegr/rust-ctrlc/blob/0aed47c35355ab7de53fa281201b8b924c2cfcb3/src/platform/unix/mod.rs#L95-L99)
+installs its handler first, then restores the old handler and rejects installation
+if one already existed. It is not a read-only probe;
+a signal during that interval can miss R's handler. Successful installation also
+leaves a permanent handler thread with no unload API. Native R polling avoids
+both problems and preserves R's interrupt suspension semantics.
+
+This feature protects the checkpoint, not arbitrary calls into R or callbacks
+that may longjmp across Rust frames. General R-call cleanup remains tracked in
+[#1507](https://github.com/A2-ai/miniextendr/issues/1507).
+
+Design alternatives considered:
+
+- Registering an optional `ctrlc` dependency with `try_set_handler` is unnecessary
+  when R owns delivery; retaining the feature name does not require that crate.
+- Replacing R's SIGINT handler requires coordination across packages and restoring
+  console/GUI behavior outside Rust calls. Retaining R's handler avoids that
+  process-wide ownership problem.
+- Returning a cancellation `Result` at every checkpoint makes propagation explicit
+  with `?`, but requires changing each participating function's return type. Typed
+  Rust unwinding fits the framework's existing condition transport and arbitrary
+  exported return types.
+- An outer `R_UnwindProtect` alone cannot drop locals in frames that R has already
+  skipped. The checkpoint's R boundary must sit below those locals.
+
+Run the real-console regression with an installed `ctrlc,worker-thread` build:
+
+```sh
+CARGO_FEATURES="$(Rscript rpkg/tools/detect-features.R),ctrlc" just rcmdinstall
+# Set R_LIBS to that installation if it is not in R's default library paths.
+python3 tests/ctrlc-console.py
+```
+
+The test creates a controlling pseudo-terminal and writes its Ctrl+C character.
+It checks main-thread and worker cancellation, destructor counts, repeated calls,
+unhandled cancellation back to the prompt, ordinary R interruption afterwards,
+and deferred delivery under `suspendInterrupts()`. The first call leaves time for
+the signal to become pending before its first checkpoint. The Linux console
+regression and targeted R assertions are required PR checks.
+
+Validation currently covers the macOS R console; the Linux PR job adds an
+independent runtime check. Windows/GUI/webR delivery, mixed-feature cross-package
+transport, and checkpoint costs remain tracked in
+[#1541](https://github.com/A2-ai/miniextendr/issues/1541). The wrapper currently
+uses `stop()` with an interrupt condition, so uncaught cancellation prints
+`Error in ... : Interrupted`; native interrupt display and restart semantics are
+also under review there. Do not treat these tests as proof of those host behaviors.
