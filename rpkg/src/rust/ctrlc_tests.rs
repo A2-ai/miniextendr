@@ -17,6 +17,8 @@ fn wait_for_interrupt(seconds: i32) -> i32 {
     let duration = Duration::from_secs(u64::try_from(seconds).expect("nonnegative seconds"));
     let deadline = Instant::now() + duration;
     miniextendr_api::r_println!("CTRLC_READY");
+    // Let the PTY test deliver SIGINT before the first checkpoint in a fresh R.
+    std::thread::sleep(Duration::from_millis(200));
     while Instant::now() < deadline {
         check_interrupt();
         std::thread::sleep(Duration::from_millis(5));
@@ -46,13 +48,6 @@ pub fn ctrlc_wait_worker(seconds: i32) -> i32 {
 #[miniextendr(noexport)]
 pub fn ctrlc_drop_count() -> i32 {
     DROPS.load(Ordering::SeqCst)
-}
-
-/// Report whether R kept ownership of SIGINT.
-/// @noRd
-#[miniextendr(noexport)]
-pub fn ctrlc_handler_installed() -> bool {
-    miniextendr_api::ctrlc::handler_installed()
 }
 
 /// Exercise intentional interrupt transport without sending a signal.

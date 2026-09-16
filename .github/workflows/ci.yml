@@ -167,6 +167,7 @@ jobs:
               - 'rpkg/**'
               - 'minirextendr/**'
               - 'tests/cross-package/**'
+              - 'tests/ctrlc-console.py'
               - 'miniextendr-api/**'
               - 'miniextendr-macros/**'
               - 'miniextendr-engine/**'
@@ -1276,11 +1277,55 @@ jobs:
         run: Rscript -e 'testthat::test_local(filter = "${{ matrix.filter }}")'
 
   # ===========================================================================
+  # Ctrl+C must be tested on PRs with the feature explicitly enabled.
+  ctrlc-tests:
+    name: Ctrl+C / Linux console
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat
+          needs: check
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.10
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: ctrlc-tests
+          cache-on-failure: true
+      - name: Install with cooperative checkpoints enabled
+        shell: bash
+        run: |
+          export CARGO_FEATURES="$(Rscript rpkg/tools/detect-features.R),ctrlc"
+          (cd rpkg && bash ./configure)
+          R CMD INSTALL rpkg
+      - name: Check interrupt conditions and GC
+        run: >-
+          Rscript -e 'library(miniextendr);
+          stopifnot(exists("ctrlc_interrupt", asNamespace("miniextendr")));
+          testthat::test_file("rpkg/tests/testthat/test-ctrlc.R", stop_on_failure = TRUE)'
+      - name: Exercise real terminal Ctrl+C
+        run: python3 tests/ctrlc-console.py
+
+  # ===========================================================================
   # Feature runtime legs (scheduled only)
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
   # (worker-default, strict-default, coerce-default, fast-default, r6-default,
-  # s7-default), nonapi, indicatif, ctrlc, and growth-debug, so no PR-gating job ever
+  # s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
   # builds — let alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set and runs testthat against it.
@@ -1298,7 +1343,7 @@ jobs:
   # The fast-default leg additionally runs the two fast_default unit tests in
   # miniextendr-macros/src/tests.rs, which no other job compiles+runs.
   #
-  # Weekly-only + workflow_dispatch: eight extra full rpkg builds are too heavy
+  # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
   # via the job summary (same pattern as gctorture-nightly.yml).
   feature-legs:
@@ -1313,9 +1358,6 @@ jobs:
           - leg: extras
             features: nonapi,indicatif,growth-debug
             filter: ""
-          - leg: ctrlc
-            features: ctrlc
-            filter: ctrlc
           - leg: worker-default
             features: worker-default
             filter: ""
@@ -1413,10 +1455,6 @@ jobs:
           else
             Rscript -e 'testthat::test_local()'
           fi
-
-      - name: Exercise real console Ctrl+C
-        if: matrix.leg == 'ctrlc'
-        run: python3 tests/ctrlc-console.py
 
       - name: Surface failure in job summary
         if: failure()
@@ -1871,6 +1909,7 @@ jobs:
       # - r-check-windows # DISABLED — re-enable when Windows job is uncommented above
       - r-tests
       - r-stress-tests
+      - ctrlc-tests
       - cross-package-tests
       - minirextendr
       - cran-check
@@ -1895,6 +1934,7 @@ jobs:
             # needs.r-check-windows.result — DISABLED
             "${{ needs.r-tests.result }}"
             "${{ needs.r-stress-tests.result }}"
+            "${{ needs.ctrlc-tests.result }}"
             "${{ needs.cross-package-tests.result }}"
             "${{ needs.minirextendr.result }}"
             "${{ needs.cran-check.result }}"

@@ -17,7 +17,7 @@ default = ["doc-lint"]
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
 ## Cooperative Ctrl+C checkpoints and interrupt condition transport. Explicit opt-in.
-ctrlc = ["dep:ctrlc"]
+ctrlc = []
 ## Enable rayon integration for parallel iterators. Pulls in crossbeam-* crates.
 ## Add `features = ["rayon"]` to your dependency if needed.
 rayon = ["dep:rayon"]
@@ -249,6 +249,3 @@ zstd = { version = "0.13", optional = true }
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
 proptest = "1.6"
-
-[target.'cfg(all(unix, not(target_family = "wasm")))'.dependencies]
-ctrlc = { version = "3.5", optional = true }
