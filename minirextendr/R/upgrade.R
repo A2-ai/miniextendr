@@ -93,6 +93,7 @@ upgrade_miniextendr_package <- function(path = ".",
   use_miniextendr_cleanup()
   use_miniextendr_configure_win()
   use_miniextendr_config_scripts()
+  use_miniextendr_html_reference()
 
   # --- Package metadata ---
   cli::cli_h2("Updating package metadata")

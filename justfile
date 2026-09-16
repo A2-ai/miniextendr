@@ -325,6 +325,10 @@ doc *cargo_flags: configure-all
       echo "doc: open not found; docs at rpkg/src/rust/target/doc/rpkg/index.html"; \
     fi
 
+# Single-page HTML reference manual of rpkg from man/*.Rd (base R, seconds; run force-document first if man/ is stale)
+doc-r out="rpkg/src/rust/target/doc/r":
+    Rscript rpkg/tools/build-html-reference.R "{{out}}"
+
 # Check formatting
 alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
@@ -1123,6 +1127,7 @@ templates-sources:
     rpkg/Rbuildignore	rpkg/.Rbuildignore
     rpkg/stub.c	rpkg/src/stub.c
     rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
+    rpkg/tools/build-html-reference.R	rpkg/tools/build-html-reference.R
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
@@ -1143,6 +1148,7 @@ templates-sources:
     monorepo/rpkg/Rbuildignore	rpkg/.Rbuildignore
     monorepo/rpkg/stub.c	rpkg/src/stub.c
     monorepo/rpkg/tools/detect-features.R	rpkg/tools/detect-features.R
+    monorepo/rpkg/tools/build-html-reference.R	rpkg/tools/build-html-reference.R
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF

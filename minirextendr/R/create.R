@@ -253,6 +253,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_miniextendr_cleanup(path = rpkg_path, subdir = "rpkg")
   use_miniextendr_configure_win(path = rpkg_path, subdir = "rpkg")
   use_miniextendr_config_scripts(path = rpkg_path, subdir = "rpkg")
+  use_miniextendr_html_reference(path = rpkg_path, subdir = "rpkg")
 
   # src/ files
   use_miniextendr_makevars(path = rpkg_path, subdir = "rpkg")
@@ -462,6 +463,7 @@ use_miniextendr <- function(path = ".",
   use_miniextendr_cleanup()
   use_miniextendr_configure_win()
   use_miniextendr_config_scripts()
+  use_miniextendr_html_reference()
   use_miniextendr_makevars()
 
   # Rust project

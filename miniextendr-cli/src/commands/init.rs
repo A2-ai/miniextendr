@@ -930,6 +930,7 @@ mod tests {
         // Build-system files landed and are canonical.
         assert!(read(&root, "configure.ac").starts_with("AC_INIT([existing.pkg]"));
         assert!(root.join("src/rust/lib.rs").is_file());
+        assert!(root.join("tools/build-html-reference.R").is_file());
         assert!(root.join("tools/lock-shape-check.R").is_file());
         assert!(root.join("miniextendr.yml").is_file());
     }

@@ -134,6 +134,7 @@ fn init_package_scaffolds_canonical_build_system() {
         "src/rust/build.rs",
         "inst/include/mx_abi.h",
         "tools/config.guess",
+        "tools/build-html-reference.R",
         "tools/lock-shape-check.R",
         ".Rbuildignore",
         ".gitignore",

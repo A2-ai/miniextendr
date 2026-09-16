@@ -43,7 +43,7 @@ mypackage/
 │   ├── Makevars.in
 │   └── win.def.in
 ├── vendor/              # Vendored miniextendr crates
-└── tools/               # config.guess, config.sub
+└── tools/               # config.guess, config.sub, build-html-reference.R
 ```
 
 ### Monorepo (Workspace)
@@ -117,6 +117,24 @@ miniextendr_sync(path = ".", mode = "if_stale", stage = "install")
 
 Modes: `"if_stale"` (default), `"always"`, `"never"`.
 Stages: `"install"` (default), `"wrappers"`, `"build"`.
+
+### HTML Reference Manual
+
+Every scaffold ships `tools/build-html-reference.R`, a base-R maintainer
+script (R >= 4.4) that renders `man/*.Rd` into one HTML page with
+`tools::pkg2HTML()`, after `tools::checkRd()` has passed over the sources:
+
+```sh
+Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg>.html
+Rscript tools/build-html-reference.R docs/r     # any output directory
+```
+
+Nothing is installed or loaded, so the page cannot lag the tree and builds in
+seconds for packages with thousands of generated wrappers. In-package links
+stay on the page, other packages link to their CRAN manuals, and built
+vignettes under `inst/doc` are copied alongside. When a rustdoc crate index
+(`--enable-index-page`) sits one level above the output directory, the manual
+is added to its list. `.Rbuildignore` keeps the script out of the tarball.
 
 ## Inline Rust Compilation
 

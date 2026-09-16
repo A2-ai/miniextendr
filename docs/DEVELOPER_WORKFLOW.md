@@ -50,6 +50,18 @@ just rcmdinstall        # 2. Compile Rust + install R package
 just devtools-test      # 3. Run R tests
 ```
 
+### Browsing the R reference manual
+
+```bash
+just doc-r              # → rpkg/src/rust/target/doc/r/miniextendr.html
+```
+
+Renders every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R
+4.4+, a few seconds, nothing installed or loaded) after `tools::checkRd()` has
+passed over the sources — a finding aborts the build. Run `just force-document`
+first when `man/` may be stale. Scaffolded packages carry the same script as
+`tools/build-html-reference.R`.
+
 ### After changing proc macros or `#[miniextendr]` attributes
 
 ```bash

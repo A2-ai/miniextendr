@@ -84,6 +84,17 @@ minirextendr::miniextendr_build()               # normal dev build again
 `minirextendr::miniextendr_build()` snapshots and restores the manifest +
 tarball around its own install, so the *supported* dev loop never leaks.
 
+## Preview the reference manual before tagging
+
+```sh
+Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg>.html
+```
+
+Base R only (`tools::pkg2HTML()`, R >= 4.4), seconds, nothing installed. It
+runs `tools::checkRd()` over `man/` first and refuses to build on a finding,
+so it doubles as a fast Rd lint after `devtools::document()`. The script is
+`.Rbuildignore`d; the tarball does not carry it.
+
 ## Cargo.lock
 
 - Commit `src/rust/Cargo.lock` — reproducible dependency resolution is a
