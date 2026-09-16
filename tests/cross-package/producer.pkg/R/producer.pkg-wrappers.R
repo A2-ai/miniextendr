@@ -23,12 +23,16 @@
   # the condition object alongside message/call/kind so handlers can read
   # `e$<name>`. `utils::modifyList` keeps the base fields and appends the
   # data fields; a malformed (non-list / unnamed) payload is ignored.
+  # `keep.null = TRUE`: a field the Rust side set to `RValue::Null` is a
+  # present field whose value is NULL, and must stay in `names(e)`; the
+  # default would silently drop it (found downstream via a
+  # `RConditionError::data()` returning an explicit NULL entry).
   .data <- .val$data
   .cond_fields <- function(base) {
     if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
       base
     } else {
-      utils::modifyList(base, .data)
+      utils::modifyList(base, .data, keep.null = TRUE)
     }
   }
   switch(.val$kind,

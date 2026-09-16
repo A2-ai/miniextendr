@@ -20,11 +20,18 @@ use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 /// Stand-in for a downstream package's thiserror-style error enum.
 #[derive(Debug)]
 pub enum PkgError {
-    MissingField { field: String },
-    OutOfRange { value: f64, max: f64 },
+    MissingField {
+        field: String,
+    },
+    OutOfRange {
+        value: f64,
+        max: f64,
+    },
     /// A variant whose data carries an explicitly absent value: `e$optional`
     /// must exist in `names(e)` and be `NULL`, next to a present field.
-    NoValue { present: f64 },
+    NoValue {
+        present: f64,
+    },
 }
 
 impl std::fmt::Display for PkgError {
