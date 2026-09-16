@@ -36,12 +36,8 @@ if (.Platform$OS.type == "windows") {
 # sibling to vendor/ so the sealed tarball is self-contained; deps declared
 # `git =` stay git and resolve offline via source replacement. Inert for a
 # git-only package with no path sibling to rewrite.
-# Only path-dependency siblings (declared `path = ...` in Cargo.toml) genuinely
-# require vendoring here: they are NOT source-replaceable and a git/staged
-# install (remotes, pak) strands them when it copies the package out of its
-# workspace. A git-only package builds straight from source, so vendoring — and
-# cargo-revendor — is optional for it. Heuristic: a `path =` entry in any
-# dependency table — incl. [workspace.dependencies]; [patch.*]/[lib] excluded.
+# Heuristic: a `path =` entry in any dependency table, including
+# [workspace.dependencies]; [patch.*] and [lib] are excluded.
 declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
   if (!file.exists(manifest)) return(FALSE)
   in_deps <- FALSE
