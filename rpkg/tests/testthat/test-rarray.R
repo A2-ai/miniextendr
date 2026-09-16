@@ -24,3 +24,17 @@ test_that("RMatrix column extraction works", {
   expect_error(rarray_matrix_column(m, 0L), "positive 1-based")
   expect_error(rarray_matrix_column(m, 4L), "out of bounds")
 })
+
+test_that("RMatrix construction survives allocations in its initializer", {
+  # Without gctorture the data SEXP is almost never collected between its
+  # allocation and set_dims, so the unrooted constructor passed this test
+  # before the fix. Force a collection at every allocation instead.
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  for (i in seq_len(20L)) {
+    result <- miniextendr:::rarray_construct_matrix(2L, 3L)
+    expect_identical(dim(result), c(2L, 3L))
+    expect_identical(result, matrix(42, nrow = 2L, ncol = 3L))
+  }
+})
