@@ -363,7 +363,7 @@ any release tag, and smoke-test a bumped tarball URL via a real CI run
 
 ## Reviews
 
-- **Reviews** (`reviews/*.md`): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
+- **Reviews** (`reviews/*.md`, local and gitignored — never committed): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
 - **Forward-looking work lives in GitHub issues**, not plan files. Open a `gh issue create` (with the full design context in the body) for anything that isn't shippable in the current PR. Flat priority order — no phases.
 - **Vendor audit**: when deps change, audit `vendor/` for crates worth integrating — open an issue per candidate (e.g., R-relevant error types, serialization, data structures) with the integration sketch in the body.
 
@@ -389,8 +389,8 @@ plan file — see the Reviews rule above). To execute one in isolation, the rule
    pin (otherwise rv enters safe mode and installs break). Re-read and re-check
    at the start of every fresh shell; never treat a version copied into prose as
    authoritative.
-2. **Read the plan first, from the main checkout.** Plan files are usually
-   *untracked*, so they will NOT appear in a fresh worktree. Read
+2. **Read the plan first, from the main checkout.** Plan files are
+   *untracked* (gitignored), so they will NOT appear in a fresh worktree. Read
    `plans/<plan>.md` (and any journal it cites, e.g.
    `git show <branch>:journal/<file>.md`) before you branch.
 3. **Worktree** (never work on `main`; never collide with a sibling agent):

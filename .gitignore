@@ -44,3 +44,14 @@ site/content/manual/*.md
 .r-svn/
 .rwasm/
 .webr/
+
+# Local working notes: kept on disk, never committed (post-mortems, plans,
+# review evidence, audit scratch, cached issue bodies from `just issues-refresh`)
+reviews/
+plans/
+analysis/
+journal/
+future/
+audit/
+pr-review/
+ISSUES/

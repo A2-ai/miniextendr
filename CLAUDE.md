@@ -18,14 +18,15 @@ tests/cross-package/  # producer.pkg / consumer.pkg — trait ABI tests
 site/                 # Zola docs → GitHub Pages
 docs/                 # Source for site/content/manual/ (1:1 generated)
 scripts/              # docs-to-site.sh, bump-version.sh
-reviews/              # Post-mortems on non-obvious failures (see Reviews)
-journal/              # Dated narrative entries (audits, sprint notes)
-analysis/             # One-off investigations / benchmarks
+reviews/              # Local post-mortems (gitignored — see Reviews)
+journal/              # Local dated narrative entries (gitignored)
+analysis/             # Local one-off investigations (gitignored)
 faq/                  # Curated FAQ (linked from MEMORY.md)
 patches/              # patches/templates.patch — rpkg → templates delta
 dev/                  # CRAN-corpus CSVs / bindgen experiment scripts
 background/           # Reference docs (gitignored — R source, autoconf, etc.)
-future/               # Speculative / not-yet-prioritised
+future/               # Local speculative notes (gitignored)
+plans/, audit/, pr-review/, ISSUES/   # Local scratch (gitignored; ISSUES/ via `just issues-refresh`)
 rv/                   # rv-managed R library for this repo
 ```
 
@@ -543,6 +544,6 @@ the `miniextendr-quarterly-audit` skill.
 
 ### Reviews
 
-- **Reviews** (`reviews/*.md`): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
+- **Reviews** (`reviews/*.md`, local and gitignored — never committed): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
 - **Forward-looking work lives in GitHub issues**, not plan files. Open a `gh issue create` (with the full design context in the body) for anything that isn't shippable in the current PR. Flat priority order — no phases.
 - **Vendor audit**: when deps change, audit `vendor/` for crates worth integrating — open an issue per candidate (e.g., R-relevant error types, serialization, data structures) with the integration sketch in the body.
