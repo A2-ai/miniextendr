@@ -2,10 +2,10 @@ name: CI
 
 on:
   pull_request:
-    # `labeled` lets the on-demand round-trip e2e job (r-roundtrip-e2e) be
-    # triggered by applying the `run-e2e` label to a PR. The default activity
-    # types (opened/synchronize/reopened) cover everything else; adding
-    # labeled/unlabeled is additive — no existing job keys on the label.
+    # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
+    # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
+    # rounds in r-tests) and `gc-stress` (r-stress-tests). The default activity
+    # types (opened/synchronize/reopened) cover everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -1068,8 +1068,9 @@ jobs:
     name: R tests / Linux
     runs-on: ubuntu-latest
     # Fast source-mode leg: full suite minus the gctorture-heavy files (those
-    # run once per PR in r-stress-tests below), plus the heap-check rounds
-    # (main/label) and the Valgrind ALTREP pass. Before the stress split this
+    # run in r-stress-tests below: main/cron/dispatch, or the `gc-stress` label
+    # on a PR), plus the heap-check rounds (main/label) and the Valgrind
+    # ALTREP pass. Before the stress split this
     # job bundled everything and had outgrown even a 90-min cap on main pushes
     # (suite 34 min + 3 heap-check rounds = ~140 min -> guaranteed timeout).
     timeout-minutes: 60
@@ -1183,12 +1184,25 @@ jobs:
   # testthat filter so the shards stay balanced. Per-PR coverage is unchanged:
   # same fixtures, same iteration counts, run once instead of five times. The
   # nightly gctorture-nightly.yml step=100 full-suite sweep remains the deep net.
+  # Opt-in on PRs. The three shards cost ~45 runner-minutes per run and the
+  # class of bug they catch (SEXPs held across allocations without a root) is
+  # rare outside PRs that touch SEXP storage, so routine PRs skip them. Apply
+  # the `gc-stress` label to a PR that adds or changes SEXP-storage paths
+  # (`Vec<SEXP>` / sidecars / list buffers / new gc_stress_* fixtures, see
+  # CLAUDE.md "Stress-test GC discipline") and the job runs on that PR like
+  # heap-check does. Push-to-main, the weekly cron and workflow_dispatch still
+  # run it unconditionally, and gctorture-nightly.yml does the deep sweep.
+  # Stays in ci-success.needs: a skipped job passes the gate, a labeled-and-
+  # failing one blocks it.
   r-stress-tests:
     name: R GC-stress tests / shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: changes
-    if: needs.changes.outputs.r == 'true'
+    if: >-
+      needs.changes.outputs.r == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'gc-stress'))
     strategy:
       fail-fast: false
       # Three shards, balanced from measured timings (run 29073963629: the
@@ -1859,8 +1873,9 @@ jobs:
             "${{ needs.rust-tests.result }}"
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
-            # "${{ needs.r-check-macos.result }}"   # non-gating, see #95
-            # "${{ needs.r-check-windows.result }}" # DISABLED
+            # needs.r-check-macos.result   — non-gating, see #95 (kept as a plain
+            # comment: Actions evaluates its expression syntax even inside a shell comment)
+            # needs.r-check-windows.result — DISABLED
             "${{ needs.r-tests.result }}"
             "${{ needs.r-stress-tests.result }}"
             "${{ needs.cross-package-tests.result }}"

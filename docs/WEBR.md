@@ -5,9 +5,12 @@ compiled to WebAssembly via Emscripten.
 
 **Status: supported, CI-validated.** Three CI tiers run in
 `.github/workflows/webr.yml`: tier 1 (`wasm32-unknown-emscripten`
-cargo-check, every PR), tier 2 (full `R CMD INSTALL` of `rpkg` inside the
+cargo-check), tier 2 (full `R CMD INSTALL` of `rpkg` inside the
 webR container — emcc side-module link), and tier 3 (a webR Node session
-that drives `library(miniextendr)` against the wasm install). A local
+that drives `library(miniextendr)` against the wasm install). All three run
+on every push to `main` and on `workflow_dispatch`; on a pull request they
+run **only when the PR carries the `webr` label** (apply it when the PR
+touches wasm-specific code, or when a reviewer asks). A local
 `just docker-webr-smoke` recipe drives the same path inside the pinned
 webR Docker image.
 
@@ -422,10 +425,12 @@ not installed locally. No `loadNamespace()`, no network.
 ## CI
 
 `.github/workflows/webr.yml` runs three tiers plus two scaffold legs (#1259
-standalone, #1271 monorepo) and a per-PR monorepo-template wasm check
-(`monorepo-wasm-check`, see below). **Tier 1**
+standalone, #1271 monorepo) and a monorepo-template wasm check
+(`monorepo-wasm-check`, see below). Every job except the cheap
+`pin-lockstep` digest grep is gated on PRs behind the `webr` label
+(push-to-main and `workflow_dispatch` run them unconditionally). **Tier 1**
 is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
-the two cross-package stub crates (#493), on every PR matching the paths filter
+the two cross-package stub crates (#493), on labeled PRs matching the paths filter
 (`miniextendr-api/**`, `miniextendr-macros/**`, `miniextendr-engine/**`,
 `miniextendr-lint/**`, `rpkg/**`, `minirextendr/**`, `tests/cross-package/**`,
 `tests/webr-node-smoke/**`, `tests/webr-smoke.sh`, `Cargo.{toml,lock}`,

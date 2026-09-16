@@ -137,14 +137,21 @@ For a tighter feedback loop while bisecting:
 - Pool variant for any-order release: `miniextendr-api/src/protect_pool.rs`
   (`ProtectPool` — VECSXP-backed, generational keys).
 
-## How CI runs the gctorture tests (per-PR)
+## How CI runs the gctorture tests (opt-in per PR)
 
 The gctorture-heavy testthat files (`test-gc-stress-fixtures.R`,
 `test-externalptr-self-root.R`, `test-iter-to-dataframe.R`,
 `test-dataframe-deserialize.R`) are ~31 of the suite's ~34 minutes, so CI runs
-them **exactly once per PR**, in the sharded `r-stress-tests` job, instead of
-inside every job that happens to execute the suite. Two env vars, both handled
-by `rpkg/tests/testthat/helper-gc-stress.R`, orchestrate this:
+them only in the sharded `r-stress-tests` job, never inside the other jobs
+that execute the suite. That job runs unconditionally on push-to-main, the
+weekly cron and `workflow_dispatch`; on a pull request it runs **only when the
+PR carries the `gc-stress` label** (the same opt-in shape as `heap-check` for
+the MALLOC_CHECK_ rounds). Label a PR that adds or changes a path holding
+SEXPs across allocations — `Vec<SEXP>`, sidecar fields, generic-list buffers,
+a new `gc_stress_*` fixture — and re-label after a force-push if the label was
+removed. An unlabeled PR skips the job, and a skipped job passes `ci-success`;
+a labeled PR whose shards fail blocks the merge. Two env vars, both handled by
+`rpkg/tests/testthat/helper-gc-stress.R`, orchestrate the split:
 
 - `MINIEXTENDR_SKIP_STRESS=1` — skips the torture blocks (cheap structure /
   value assertions in the same files keep running). Set by the `R CMD check`
@@ -156,8 +163,10 @@ by `rpkg/tests/testthat/helper-gc-stress.R`, orchestrate this:
   `test-gc-stress-fixtures.R` across the parallel `r-stress-tests` shards by
   fixture index. Unset locally, so `just devtools-test` always runs everything.
 
-Per-PR coverage is unchanged by this layout — same fixtures, same iteration
-counts, run once instead of five times.
+Main-branch coverage is unchanged by this layout — same fixtures, same
+iteration counts, run once per merge instead of five times. PR coverage is
+the author's call via the label; the nightly sweep below is the backstop for
+anything that slipped through unlabeled.
 
 ## Adding to CI (nightly deep sweep)
 

@@ -1,7 +1,18 @@
 name: webR / wasm32
 
+# Per-PR opt-in: the wasm32 tiers cost 30-90 runner-minutes and the
+# regressions they catch (cfg-gating, side-module link, wasm registry) come
+# from a small subset of PRs, so PR runs are gated on the `webr` label. Apply
+# it when a PR touches wasm-specific code (`wasm_registry.rs` generation,
+# `build.rs` wasm branches, `Dockerfile.webr*`, `tests/webr-*`, configure /
+# Makevars wasm wiring, minirextendr's webR templates) or when a reviewer asks
+# for the check. `labeled` in the activity types re-runs the workflow when the
+# label is applied after the fact. Push-to-main and workflow_dispatch run every
+# job unconditionally so merged code keeps its safety net. Only the cheap
+# pin-lockstep grep stays unconditional on PRs.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'miniextendr-api/**'
       - 'miniextendr-macros/**'
@@ -97,6 +108,9 @@ jobs:
     name: wasm32 check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'webr')
     steps:
       - uses: actions/checkout@v7
 
@@ -160,6 +174,9 @@ jobs:
     name: monorepo-template wasm32 check
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'webr')
     steps:
       - uses: actions/checkout@v7
 
@@ -278,6 +295,9 @@ jobs:
   webr-install:
     name: wasm32 R CMD INSTALL (tier 2)
     runs-on: ubuntu-latest
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'webr')
     # Main-push/dispatch runs get extra headroom for the informational
     # testthat pass in tier 3 (#1255, up to 40 min at the step cap) plus the
     # monorepo scaffold leg (#1271, two extra compiles of a minimal crate —
