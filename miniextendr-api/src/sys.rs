@@ -501,6 +501,8 @@ unsafe extern "C-unwind" {
     // Issue #112 cat. 10: kept pub(crate) — 2 callers in expression.rs/dots.rs; wrapping adds no value
     #[doc(alias = "allocList")]
     pub(crate) fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
+    /// Allocate a language object. Requires R >= 4.4.1; the portable
+    /// [`crate::gc_protect::ProtectScope::alloc_lang`] also supports R 4.4.0.
     #[doc(alias = "allocLang")]
     pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
     #[doc(alias = "allocS4Object")]
@@ -900,8 +902,9 @@ unsafe extern "C-unwind" {
     // Environment operations
     /// Single-frame (`inherits = FALSE`) or inherited variable lookup with an
     /// `ifnotfound` default — the API-blessed replacement for
-    /// `Rf_findVarInFrame` (R-exts; added in R 4.5.0, hence
-    /// `Depends: R (>= 4.5)`). **Longjmps** if `rho` is not an environment or
+    /// `Rf_findVarInFrame`. Calling this entry point requires R >= 4.5.0;
+    /// for R 4.4, evaluate `base::get0()` instead.
+    /// **Longjmps** if `rho` is not an environment or
     /// the binding is `R_MissingArg`; forces promises.
     #[doc(alias = "getVarEx")]
     pub fn R_getVarEx(sym: SEXP, rho: SEXP, inherits: Rboolean, ifnotfound: SEXP) -> SEXP;

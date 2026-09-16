@@ -41,7 +41,7 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:261 |
+| `Mode` | `` | concrete | 1 | src/main.rs:266 |
 | `Verbosity` | `` | concrete | 1 | src/main.rs:55 |
 | `LocalPackage` | `` | concrete | 1 | src/metadata.rs:8 |
 | `StripConfig` | `` | concrete | 1 | src/strip.rs:8 |
@@ -60,7 +60,7 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:261 |
+| `Mode` | `` | concrete | 0 | src/main.rs:266 |
 | `Verbosity` | `` | concrete | 0 | src/main.rs:55 |
 
 ## `Args` — 1 impls
@@ -97,16 +97,16 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:261 |
+| `Mode` | `` | concrete | 1 | src/main.rs:266 |
 
 ## `Serialize` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `JsonOutput` | `` | concrete | 1 | src/main.rs:384 |
+| `JsonOutput` | `` | concrete | 1 | src/main.rs:389 |
 
 ## `StructuralPartialEq` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:261 |
+| `Mode` | `` | concrete | 0 | src/main.rs:266 |

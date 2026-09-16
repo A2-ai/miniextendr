@@ -391,7 +391,8 @@ when the same crate is available in a local source root (e.g., a monorepo
 where `--source-root` points at the workspace containing the git dep).
 Any git dep whose name matches an entry in `git_overrides` is treated as
 local and vendored from the local path rather than fetched from git.
-Pass `&[]` when `--source-root` is not in use.
+The same precedence applies when a config patch has already made the Git
+dependency look local in metadata. Pass `&[]` when no overrides are in use.
 
 Returns an error if a git dep matches a `git_overrides` entry by name but
 the resolved git version differs from the local version — a version mismatch
@@ -451,7 +452,7 @@ Returns list of stripped items for reporting.
 ### `vendor::compress_vendor`
 
 ```rust
-fn compress_vendor(vendor_dir: &std::path::Path, tarball_path: &std::path::Path, blank_md: bool, v: crate::Verbosity) -> anyhow::Result<()>
+fn compress_vendor(vendor_dir: &std::path::Path, tarball_path: &std::path::Path, blank_md: bool, compression_level: Option<u8>, v: crate::Verbosity) -> anyhow::Result<()>
 ```
 
 Compress vendor/ into a .tar.xz tarball
@@ -562,6 +563,14 @@ When cargo package can't run (unpublished deps), we copy the crate directly.
 But workspace inheritance (`version.workspace = true`, etc.) won't resolve
 outside the workspace. This function reads the workspace root's
 `[workspace.package]` and replaces the inherited fields.
+
+### `vendor::rewrite_crate_path_deps`
+
+```rust
+fn rewrite_crate_path_deps(cargo_toml: &std::path::Path, local_pkgs: &[crate::metadata::LocalPackage], v: crate::Verbosity) -> anyhow::Result<()>
+```
+
+Rewrite one crate manifest; callers select exactly which entries to change.
 
 ### `vendor::rewrite_local_path_deps`
 

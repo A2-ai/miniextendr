@@ -937,12 +937,10 @@ fresh DESCRIPTION and the `init use` merge path).
 ### `scaffold::R_VERSION_FLOOR`
 
 ```rust
-pub const R_VERSION_FLOOR: &str = "4.5";
+pub const R_VERSION_FLOOR: &str = "4.4";
 ```
 
-Minimum R version required by miniextendr-backed packages — the runtime
-calls `R_getVarEx` (the `Rf_findVarInFrame` replacement), which only
-exists on R >= 4.5.0 (#1300), so any package linking miniextendr-api
-inherits this floor (~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the
+Minimum R version supported by miniextendr-backed packages
+(~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the
 `r_floor_matches_minirextendr_and_rpkg` test asserts both mirrors and
 `rpkg/DESCRIPTION` agree).

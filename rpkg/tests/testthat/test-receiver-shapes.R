@@ -53,3 +53,17 @@ test_that("a handle of another Rust type inside `.ptr` still fails the type chec
   expect_match(conditionMessage(e), "expected ExternalPtr<CounterTraitS3>", fixed = TRUE)
   expect_match(conditionMessage(e), "ClassedChecker", fixed = TRUE)
 })
+
+test_that("errors from receiver bindings propagate and leave the runtime usable", {
+  e <- new.env(parent = emptyenv())
+  class(e) <- "CounterTraitS3"
+  makeActiveBinding(".ptr", function() stop("cannot read handle"), e)
+  expect_error(get_value(e), "cannot read handle", fixed = TRUE)
+  expect_equal(get_value(new_countertraits3(7L)), 7L)
+
+  delayed <- new.env(parent = emptyenv())
+  class(delayed) <- "CounterTraitS3"
+  delayedAssign(".ptr", stop("cannot force handle"), assign.env = delayed)
+  expect_error(get_value(delayed), "cannot force handle", fixed = TRUE)
+  expect_equal(get_value(new_countertraits3(8L)), 8L)
+})

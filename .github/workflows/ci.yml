@@ -649,15 +649,12 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
-      # PRs check on R release only. devel (advisory — continue-on-error) and
-      # oldrel-1 rarely catch anything release doesn't on a per-PR basis but
-      # cost ~2x45 min of runners per push; they still run on push-to-main,
-      # the weekly schedule, and workflow_dispatch, so a genuine devel/oldrel
-      # breakage surfaces within one merge.
+      # Check the fixed minimum and current release on every PR. Additional
+      # R versions also run on main, the weekly schedule, and manual runs.
       matrix:
         include: ${{ github.event_name == 'pull_request'
-          && fromJSON('[{"r":"release"}]')
-          || fromJSON('[{"r":"release"},{"r":"devel","allow_failure":true},{"r":"oldrel-1"}]') }}
+          && fromJSON('[{"r":"4.4"},{"r":"release"}]')
+          || fromJSON('[{"r":"4.4"},{"r":"release"},{"r":"devel","allow_failure":true},{"r":"oldrel-1"}]') }}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}

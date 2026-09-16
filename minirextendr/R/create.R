@@ -215,8 +215,8 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # and there's never an existing DESCRIPTION to update here). Config/build/*
   # fields come from the same MX_CONFIG_BUILD_FIELDS constant the standalone
   # path applies via mx_desc_set() in use_miniextendr_description(); the
-  # Depends R floor comes from MX_R_FLOOR (miniextendr-api needs R >= 4.5,
-  # #1366) which the standalone path merges via mx_desc_ensure_r_floor().
+  # Depends R floor comes from MX_R_FLOOR, which the standalone path merges
+  # via mx_desc_ensure_r_floor().
   desc_path <- usethis::proj_path(rpkg_name, "DESCRIPTION")
   config_build_lines <- paste0(names(MX_CONFIG_BUILD_FIELDS), ": ",
                                MX_CONFIG_BUILD_FIELDS, collapse = "\n")

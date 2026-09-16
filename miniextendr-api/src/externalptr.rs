@@ -165,13 +165,13 @@ use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
+use crate::gc_protect::ProtectScope;
 use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, R_UnboundValue, R_getVarEx, Rf_allocVector,
-    Rf_allocVector_unchecked, Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked,
-    Rf_unprotect, Rf_unprotect_unchecked,
+    R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
+    Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -338,16 +338,12 @@ impl TypedExternal for () {
 // region: Class-handle unwrapping (audit A9)
 
 /// Look up a variable bound directly in a single environment frame (no search
-/// of enclosing frames — `R_getVarEx` with `inherits = FALSE`, the API-blessed
-/// replacement for the removed `Rf_findVarInFrame`).
+/// of enclosing frames), using `base::get0(..., inherits = FALSE)`.
 ///
-/// Returns `None` if `env` is not itself an environment, or if `name` has no
-/// binding in it. Active bindings are forced transparently by R, same as any
-/// other variable read. Note: `R_getVarEx` longjmps (raises an R error) if
-/// the binding turns out to be `R_MissingArg` — pathological for the
-/// `.ptr`/`.__enclos_env__`/`private` handle lookups this function serves,
-/// and acceptable here since callers run under the framework's unwind
-/// protection.
+/// Returns `None` for a non-environment, an absent binding, or `NULL` (none
+/// can hold a class handle). Promises and active bindings are evaluated once;
+/// their errors propagate under the caller's unwind protection. Evaluating
+/// `get0` keeps this path on R's public API on R 4.4 as well as newer R.
 ///
 /// # Safety
 ///
@@ -357,13 +353,20 @@ unsafe fn env_binding(env: SEXP, name: &std::ffi::CStr) -> Option<SEXP> {
         if !env.is_environment() {
             return None;
         }
-        let sym = Rf_install(name.as_ptr());
-        let val = R_getVarEx(sym, env, Rboolean::FALSE, R_UnboundValue);
-        if ptr::addr_eq(val.0, R_UnboundValue.0) {
-            None
-        } else {
-            Some(val)
-        }
+        let scope = ProtectScope::new();
+        scope.protect(env);
+        let name = scope.protect_raw(crate::sys::Rf_mkString(name.as_ptr()));
+        let mode = scope.protect_raw(crate::sys::Rf_mkString(c"any".as_ptr()));
+        let inherits = scope.protect_raw(SEXP::scalar_logical(false));
+        let call = scope.protect_raw(crate::sys::Rf_lang5(
+            Rf_install(c"get0".as_ptr()),
+            name,
+            env,
+            mode,
+            inherits,
+        ));
+        let val = crate::sys::Rf_eval(call, crate::sys::R_BaseEnv);
+        (!val.is_null_or_nil()).then_some(val)
     }
 }
 
@@ -428,8 +431,11 @@ pub(crate) unsafe fn unwrap_class_handle(sexp: SEXP) -> Option<SEXP> {
                     return Some(direct);
                 }
             }
-            let enclos = env_binding(sexp, c".__enclos_env__")?;
-            let private = env_binding(enclos, c"private")?;
+            // An active binding can return a fresh environment that is not
+            // retained by its owner. Keep it rooted across the next lookup.
+            let scope = ProtectScope::new();
+            let enclos = scope.protect_raw(env_binding(sexp, c".__enclos_env__")?);
+            let private = scope.protect_raw(env_binding(enclos, c"private")?);
             let inner = env_binding(private, c".ptr")?;
             return (inner.type_of() == SEXPTYPE::EXTPTRSXP).then_some(inner);
         }

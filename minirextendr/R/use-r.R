@@ -103,9 +103,8 @@ use_miniextendr_description <- function(path = ".") {
   # DESCRIPTION literal via MX_CONFIG_BUILD_FIELDS)
   do.call(mx_desc_set, c(list(desc_path), as.list(MX_CONFIG_BUILD_FIELDS)))
 
-  # Declare the R version floor every miniextendr-backed package inherits
-  # (R_getVarEx needs R >= 4.5, #1366). This path also runs against
-  # pre-existing DESCRIPTIONs, so merge — never overwrite a higher floor.
+  # Declare the supported R version floor. This path also runs against
+  # pre-existing DESCRIPTIONs, so merge without lowering a higher floor.
   mx_desc_ensure_r_floor(desc_path)
 
   # Set License if not already set to something meaningful. A freshly created
