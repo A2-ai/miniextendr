@@ -249,7 +249,7 @@ fn worker_inputs_unwind_before_dispatch_and_rng_cleanup_precedes_r_resume() {
     let ordered = [
         "catch_unwind",
         "InputConversionScope :: new",
-        "R_CheckUserInterrupt",
+        "check_user_interrupt",
         "try_from_sexp",
         "drop (__miniextendr_input_scope)",
         "run_on_worker",

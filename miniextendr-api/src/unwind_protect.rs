@@ -508,6 +508,10 @@ where
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
                 match cond {
+                    #[cfg(feature = "ctrlc")]
+                    crate::condition::RCondition::Interrupt => unsafe {
+                        crate::ctrlc::raise_interrupt(call)
+                    },
                     crate::condition::RCondition::Error {
                         message,
                         class,
@@ -589,6 +593,10 @@ where
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
                 let (kind, message, class, data) = match cond {
+                    #[cfg(feature = "ctrlc")]
+                    crate::condition::RCondition::Interrupt => {
+                        (kind::INTERRUPT, "Interrupted".to_owned(), Vec::new(), None)
+                    }
                     crate::condition::RCondition::Error {
                         message,
                         class,
@@ -667,6 +675,10 @@ where
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
                 let (kind, message, class, data) = match cond {
+                    #[cfg(feature = "ctrlc")]
+                    crate::condition::RCondition::Interrupt => {
+                        (kind::INTERRUPT, "Interrupted".to_owned(), Vec::new(), None)
+                    }
                     crate::condition::RCondition::Error {
                         message,
                         class,

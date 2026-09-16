@@ -1230,7 +1230,7 @@ jobs:
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
   # (worker-default, strict-default, coerce-default, fast-default, r6-default,
-  # s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
+  # s7-default), nonapi, indicatif, ctrlc, and growth-debug, so no PR-gating job ever
   # builds — let alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set and runs testthat against it.
@@ -1248,7 +1248,7 @@ jobs:
   # The fast-default leg additionally runs the two fast_default unit tests in
   # miniextendr-macros/src/tests.rs, which no other job compiles+runs.
   #
-  # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
+  # Weekly-only + workflow_dispatch: eight extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
   # via the job summary (same pattern as gctorture-nightly.yml).
   feature-legs:
@@ -1263,6 +1263,9 @@ jobs:
           - leg: extras
             features: nonapi,indicatif,growth-debug
             filter: ""
+          - leg: ctrlc
+            features: ctrlc
+            filter: ctrlc
           - leg: worker-default
             features: worker-default
             filter: ""
@@ -1362,6 +1365,10 @@ jobs:
           else
             Rscript -e 'testthat::test_local()'
           fi
+
+      - name: Exercise real console Ctrl+C
+        if: matrix.leg == 'ctrlc'
+        run: python3 tests/ctrlc-console.py
 
       - name: Surface failure in job summary
         if: failure()

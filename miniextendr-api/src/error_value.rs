@@ -123,6 +123,9 @@ use crate::{IntoR, SEXP, SEXPTYPE, SexpExt};
 /// The constants are kept in lockstep with the generated R helper; if a new
 /// kind is added, both the emission site and the R helper need to learn it.
 pub mod kind {
+    /// Cooperative cancellation; inherits from R interrupt, not error.
+    #[cfg(feature = "ctrlc")]
+    pub const INTERRUPT: &str = "interrupt";
     /// Default kind for Rust panics that surface to R via the generic panic
     /// path (no `RCondition` payload). Layered as `rust_error`.
     pub const PANIC: &str = "panic";

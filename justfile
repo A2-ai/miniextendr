@@ -141,6 +141,8 @@ check-features:
         # diagnostic features (macro-coverage does NOT compile alone — it
         # needs worker-thread; this combo is its only compile gate)
         "growth-debug,worker-thread,macro-coverage"
+        "ctrlc"
+        "ctrlc,worker-thread"
         # newer integrations (no standalone datafusion combo — heavy; it
         # rides in once via full-integrations in the final combo)
         "jiff"

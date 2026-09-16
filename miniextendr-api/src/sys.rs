@@ -334,6 +334,17 @@ unsafe extern "C-unwind" {
     #[doc(alias = "charIsLatin1")]
     pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
+    /// Catch conditions at a leaf interrupt checkpoint, below owned Rust locals.
+    #[cfg(feature = "ctrlc")]
+    pub(crate) fn R_tryCatch(
+        body: Option<unsafe extern "C-unwind" fn(*mut ::std::ffi::c_void) -> SEXP>,
+        body_data: *mut ::std::ffi::c_void,
+        classes: SEXP,
+        handler: Option<unsafe extern "C-unwind" fn(SEXP, *mut ::std::ffi::c_void) -> SEXP>,
+        handler_data: *mut ::std::ffi::c_void,
+        finally: Option<unsafe extern "C-unwind" fn(*mut ::std::ffi::c_void)>,
+        finally_data: *mut ::std::ffi::c_void,
+    ) -> SEXP;
     // Issue #112 cat. 3: kept pub(crate) — only called from unwind_protect.rs; users go through with_r_unwind_protect
     pub(crate) fn R_tryCatchError(
         body: Option<unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP>,

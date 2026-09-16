@@ -191,10 +191,23 @@ pub enum WorkerError {
     Condition(crate::condition::RCondition),
 }
 
+/// Pre-call checkpoint used by `#[miniextendr(check_interrupt)]`.
+#[doc(hidden)]
+pub fn check_user_interrupt() {
+    #[cfg(feature = "ctrlc")]
+    crate::ctrlc::check_interrupt();
+    #[cfg(not(feature = "ctrlc"))]
+    unsafe {
+        crate::sys::R_CheckUserInterrupt()
+    };
+}
+
 impl std::fmt::Display for WorkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use crate::condition::RCondition;
         let message = match self {
+            #[cfg(feature = "ctrlc")]
+            Self::Condition(RCondition::Interrupt) => "Interrupted",
             Self::Panic(message)
             | Self::Condition(RCondition::Error { message, .. })
             | Self::Condition(RCondition::Warning { message, .. })
@@ -1055,6 +1068,8 @@ mod tests {
                     panic!("inline condition became a generic panic: {error}");
                 };
                 let (kind, message, class, data) = match condition {
+                    #[cfg(feature = "ctrlc")]
+                    RCondition::Interrupt => panic!("unexpected interrupt in condition fixture"),
                     RCondition::Error {
                         message,
                         class,

@@ -70,6 +70,7 @@ main <- function() {
   #   s7-default           : mutually exclusive class-system selectors; enabling
   #                          either changes the default class system. Opt-in.
   #   worker-default       : separate opt-in semantic from `worker-thread`.
+  #   ctrlc                : interrupt handling is always explicit opt-in.
   #   indicatif            : progress-bar integration, opt-in (not in the
   #                          default integration set).
   deny <- c(
@@ -77,7 +78,7 @@ main <- function() {
     "macro-coverage", "growth-debug",
     "strict-default", "coerce-default", "fast-default",
     "r6-default", "s7-default", "worker-default",
-    "indicatif"
+    "indicatif", "ctrlc"
   )
 
   features <- setdiff(available, deny)
