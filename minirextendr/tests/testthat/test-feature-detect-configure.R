@@ -188,7 +188,8 @@ test_that("generated detect script auto-enables features with no rule", {
     "",
     "[features]",
     "rayon = []",
-    "auto_enabled = []"
+    "auto_enabled = []",
+    "ctrlc = []"
   ), file.path(tmp, "src", "rust", "Cargo.toml"))
 
   script_path <- file.path(tmp, "tools", "detect-features.R")
@@ -203,7 +204,7 @@ test_that("generated detect script auto-enables features with no rule", {
       stdout = TRUE, stderr = FALSE
     )
   })
-  # Both features should be present (sorted)
+  # Ordinary features auto-enable; ctrlc remains explicitly opt-in.
   expect_equal(output, "auto_enabled,rayon")
 })
 

@@ -508,6 +508,10 @@ where
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
                 match cond {
+                    #[cfg(feature = "ctrlc")]
+                    crate::condition::RCondition::Interrupt => unsafe {
+                        crate::ctrlc::raise_interrupt(call)
+                    },
                     crate::condition::RCondition::Error {
                         message,
                         class,

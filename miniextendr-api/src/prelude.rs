@@ -317,3 +317,6 @@ pub use indicatif;
 #[cfg(feature = "vctrs")]
 pub use crate::{IntoVctrs, VctrsClass};
 // endregion
+
+#[cfg(feature = "ctrlc")]
+pub use crate::ctrlc::check_interrupt;

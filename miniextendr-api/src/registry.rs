@@ -448,6 +448,9 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // the env-var name cannot drift between the two consumers.
     let wrapper_gen = crate::init::wrapper_gen_mode();
     if !wrapper_gen {
+        #[cfg(feature = "ctrlc")]
+        crate::ctrlc::initialize();
+
         // All ALTREP classes — both user-defined (#[miniextendr] structs) and
         // builtins (Vec, Box, Range, Cow, Arrow) — register via linkme
         // MX_ALTREP_REGISTRATIONS. Each call site emits a
@@ -1335,6 +1338,22 @@ fn resolve_list_return_wrappers(
 
 // endregion
 
+// Keep the shared condition helper feature-gated without duplicating its body.
+#[cfg(feature = "ctrlc")]
+macro_rules! interrupt_condition_arm {
+    () => {
+        r#"    interrupt = stop(structure(list(message = .msg, call = .call, kind = "interrupt"),
+      class = c("rust_interrupt", "interrupt", "condition"))),
+"#
+    };
+}
+#[cfg(not(feature = "ctrlc"))]
+macro_rules! interrupt_condition_arm {
+    () => {
+        ""
+    };
+}
+
 /// R source of the `.miniextendr_raise_condition` helper as a bare
 /// `function(.val, .call_default)` expression.
 ///
@@ -1349,7 +1368,7 @@ fn resolve_list_return_wrappers(
 /// re-raises the tagged Rust condition value as the matching R condition:
 /// `stop()` for the error kinds, `warning()` / `message()` /
 /// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
-pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_default) {
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(r#"function(.val, .call_default) {
   .msg <- .val$error
   .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
@@ -1371,7 +1390,7 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
     }
   }
   switch(.val$kind,
-    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
+"#, interrupt_condition_arm!(), r#"    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
       class = c(.class, "rust_error", "simpleError", "error", "condition"))),
     warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = "warning")),
       class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
@@ -1387,7 +1406,7 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
       class = c(.class, "rust_error", "simpleError", "error", "condition")))
   )
   invisible(NULL)
-}"#;
+}"#);
 
 /// Write all R wrapper entries to a file.
 ///

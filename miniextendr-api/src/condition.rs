@@ -185,6 +185,9 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 #[doc(hidden)]
 #[derive(Debug)]
 pub enum RCondition {
+    /// Cooperative cancellation, signalled by the R wrapper after Rust unwinds.
+    #[cfg(feature = "ctrlc")]
+    Interrupt,
     /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
     /// `Result<T, E>` Err arm once reconstructed across a package boundary.
     /// `class` is the user-supplied class vector (empty = none), prepended
@@ -223,6 +226,8 @@ impl RCondition {
     pub fn into_parts(self) -> (&'static str, String, Vec<String>, Option<ConditionData>) {
         use crate::error_value::kind;
         match self {
+            #[cfg(feature = "ctrlc")]
+            RCondition::Interrupt => (kind::INTERRUPT, "Interrupted".to_owned(), Vec::new(), None),
             RCondition::Error {
                 message,
                 class,
@@ -1417,6 +1422,8 @@ impl RCondition {
         };
 
         let cond = match kind {
+            #[cfg(feature = "ctrlc")]
+            kind_const::INTERRUPT => RCondition::Interrupt,
             kind_const::ERROR
             | kind_const::PANIC
             | kind_const::RESULT_ERR

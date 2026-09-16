@@ -601,7 +601,7 @@ impl CWrapperContext {
 
         let pre_call_checks = if self.check_interrupt {
             quote! {
-                unsafe { ::miniextendr_api::sys::R_CheckUserInterrupt(); }
+                ::miniextendr_api::worker::check_user_interrupt();
             }
         } else {
             TokenStream::new()
@@ -736,7 +736,7 @@ impl CWrapperContext {
 
         let pre_call_checks = if self.check_interrupt {
             quote! {
-                unsafe { ::miniextendr_api::sys::R_CheckUserInterrupt(); }
+                ::miniextendr_api::worker::check_user_interrupt();
             }
         } else {
             TokenStream::new()

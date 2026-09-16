@@ -16,6 +16,7 @@ crate-type = ["staticlib"]
 
 [features]
 default = []
+ctrlc = ["miniextendr-api/ctrlc"]
 nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
 # Optional features (pass-through to miniextendr-api)
