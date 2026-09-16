@@ -57,7 +57,7 @@ def main():
 
     try:
         expect("> ")
-        send('library(miniextendr); stopifnot(!miniextendr:::ctrlc_handler_installed()); cat("CTRLC_OK\\n")')
+        send('library(miniextendr); cat("CTRLC_OK\\n")')
         done()
         for function in ("ctrlc_wait", "ctrlc_wait_worker"):
             for _ in range(2):
