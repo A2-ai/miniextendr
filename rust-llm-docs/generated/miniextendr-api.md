@@ -6646,7 +6646,7 @@ back to main via [`with_r_thread`].
 Without the `worker-thread` cargo feature, all calls execute inline on
 R's main thread:
 - `with_r_thread(f)` runs `f()` directly (panics if not on main thread)
-- `run_on_worker(f)` runs `f()` directly, returns `Ok(f())`
+- `run_on_worker(f)` catches panics inline, preserving structured conditions
 
 With the feature enabled, a dedicated worker thread is spawned at init time.
 `with_r_thread` routes calls from the worker back to main, and `run_on_worker`
