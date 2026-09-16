@@ -113,7 +113,7 @@ fn init_package_scaffolds_canonical_build_system() {
     // r_floor_matches_minirextendr_and_rpkg unit test pins the value.
     let desc = read("DESCRIPTION");
     assert!(
-        desc.contains("Depends: R (>= 4.5)\n"),
+        desc.contains("Depends: R (>= 4.4)\n"),
         "scaffolded DESCRIPTION missing the R version floor: {desc}"
     );
 

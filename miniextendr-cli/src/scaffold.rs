@@ -646,13 +646,11 @@ pub const CONFIG_BUILD_FIELDS: &[(&str, &str)] = &[
 /// fresh DESCRIPTION and the `init use` merge path).
 pub const RUST_SYSTEM_REQUIREMENT: &str = "Rust (>= 1.85)";
 
-/// Minimum R version required by miniextendr-backed packages — the runtime
-/// calls `R_getVarEx` (the `Rf_findVarInFrame` replacement), which only
-/// exists on R >= 4.5.0 (#1300), so any package linking miniextendr-api
-/// inherits this floor (~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the
+/// Minimum R version supported by miniextendr-backed packages
+/// (~ `MX_R_FLOOR` in `minirextendr/R/utils.R`; the
 /// `r_floor_matches_minirextendr_and_rpkg` test asserts both mirrors and
 /// `rpkg/DESCRIPTION` agree).
-pub const R_VERSION_FLOOR: &str = "4.5";
+pub const R_VERSION_FLOOR: &str = "4.4";
 
 /// `Depends` entry carrying [`R_VERSION_FLOOR`] (~ `mx_r_depends_entry()`).
 pub fn r_depends_entry() -> String {
@@ -988,7 +986,7 @@ mod tests {
 
     #[test]
     fn desc_ensure_r_floor_raises_lower_floor() {
-        for lower in ["R (>= 4.4)", "R (>=4.4)", "R (> 4.4)", "R"] {
+        for lower in ["R (>= 4.3)", "R (>=4.3)", "R (> 4.3)", "R"] {
             let content = format!("Package: p\nDepends: {lower}, methods\n");
             let out = desc_ensure_r_floor(&content);
             assert!(
@@ -1000,7 +998,13 @@ mod tests {
 
     #[test]
     fn desc_ensure_r_floor_keeps_equal_or_higher_floor() {
-        for kept in ["R (>= 4.5)", "R (>= 4.5.0)", "R (>= 4.6)", "R (== 4.4)"] {
+        for kept in [
+            "R (>= 4.4)",
+            "R (>= 4.4.0)",
+            "R (>= 4.5)",
+            "R (>= 4.6)",
+            "R (== 4.4)",
+        ] {
             let content = format!("Package: p\nDepends: {kept}, methods\n");
             assert_eq!(desc_ensure_r_floor(&content), content, "{kept}");
         }

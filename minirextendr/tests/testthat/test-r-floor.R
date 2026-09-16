@@ -1,8 +1,7 @@
 # R version floor in scaffolded DESCRIPTIONs (#1366)
 #
-# Any package linking miniextendr-api inherits R >= 4.5 at load time
-# (R_getVarEx, see MX_R_FLOOR in R/utils.R), so every scaffold path must
-# declare the floor, and the standalone path must merge it into pre-existing
+# Every scaffold path must declare the supported R floor, and the
+# standalone path must merge it into pre-existing
 # DESCRIPTIONs without lowering a stricter one. The CLI mirror is guarded
 # from the Rust side (miniextendr-cli/src/scaffold.rs,
 # r_floor_matches_minirextendr_and_rpkg).
@@ -40,7 +39,7 @@ test_that("mx_desc_ensure_r_floor() prepends to a Depends without an R entry", {
 })
 
 test_that("mx_desc_ensure_r_floor() raises a lower or missing floor", {
-  for (lower in c("R (>= 4.4)", "R (>=4.4)", "R (> 4.4)", "R")) {
+  for (lower in c("R (>= 4.3)", "R (>=4.3)", "R (> 4.3)", "R")) {
     path <- local_desc(c("Package: p", paste0("Depends: ", lower, ", methods")))
     expect_true(minirextendr:::mx_desc_ensure_r_floor(path), info = lower)
     expect_identical(
@@ -52,7 +51,7 @@ test_that("mx_desc_ensure_r_floor() raises a lower or missing floor", {
 })
 
 test_that("mx_desc_ensure_r_floor() keeps an equal or higher floor untouched", {
-  for (kept in c("R (>= 4.5)", "R (>= 4.5.0)", "R (>= 4.6)", "R (== 4.4)")) {
+  for (kept in c("R (>= 4.4)", "R (>= 4.4.0)", "R (>= 4.5)", "R (>= 4.6)", "R (== 4.4)")) {
     path <- local_desc(c("Package: p", paste0("Depends: ", kept, ", methods")))
     before <- readLines(path, warn = FALSE)
     expect_false(minirextendr:::mx_desc_ensure_r_floor(path), info = kept)

@@ -174,20 +174,18 @@ MX_CONFIG_BUILD_FIELDS <- c(
 
 #' Minimum R version required by miniextendr-backed packages
 #'
-#' Any package linking miniextendr-api inherits this floor at load time: the
-#' runtime calls `R_getVarEx` (the `Rf_findVarInFrame` replacement), which
-#' only exists on R >= 4.5.0 (#1300). Every scaffold path writes it into the
-#' generated DESCRIPTION as `Depends: R (>= 4.5)`. Keep in lock-step with
+#' Every scaffold path writes this into the generated DESCRIPTION as
+#' `Depends: R (>= 4.4)`. Keep in lock-step with
 #' `rpkg/DESCRIPTION` and the CLI mirror (`R_VERSION_FLOOR` in
 #' `miniextendr-cli/src/scaffold.rs`, whose `r_floor_matches_minirextendr_and_rpkg`
 #' test asserts all three agree).
 #'
 #' @noRd
-MX_R_FLOOR <- "4.5"
+MX_R_FLOOR <- "4.4"
 
 #' `Depends` entry carrying the `MX_R_FLOOR` R version floor
 #'
-#' @return Character string, e.g. `"R (>= 4.5)"`.
+#' @return Character string, e.g. `"R (>= 4.4)"`.
 #' @noRd
 mx_r_depends_entry <- function() {
   sprintf("R (>= %s)", MX_R_FLOOR)

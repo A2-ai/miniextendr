@@ -167,9 +167,8 @@
 use crate::sexp_types::cetype_t;
 use crate::sys::{
     R_MakeExternalPtr, R_NewEnv, R_ProtectWithIndex, R_Reprotect, Rf_alloc3DArray, Rf_allocArray,
-    Rf_allocLang, Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocVector,
-    Rf_allocVector_unchecked, Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect,
-    Rf_unprotect, Rf_xlengthgets,
+    Rf_allocList, Rf_allocMatrix, Rf_allocS4Object, Rf_allocVector, Rf_allocVector_unchecked,
+    Rf_cons, Rf_lcons, Rf_lengthgets, Rf_mkCharLenCE, Rf_protect, Rf_unprotect, Rf_xlengthgets,
 };
 use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use core::cell::Cell;
@@ -803,7 +802,15 @@ impl ProtectScope {
     /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn alloc_lang<'a>(&'a self, n: i32) -> Root<'a> {
-        let sexp = unsafe { Rf_allocLang(n) };
+        // Rf_allocLang was added in R 4.4.1. Use the equivalent construction
+        // from Writing R Extensions, "Some backports", also on R 4.4.0.
+        let sexp = unsafe {
+            if n > 0 {
+                crate::sys::Rf_lcons(crate::sys::R_NilValue, Rf_allocList(n - 1))
+            } else {
+                crate::sys::R_NilValue
+            }
+        };
         unsafe { self.protect(sexp) }
     }
 
