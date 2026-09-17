@@ -124,6 +124,29 @@ use_miniextendr_config_scripts <- function(path = ".", subdir = NULL) {
   invisible(TRUE)
 }
 
+#' Add the HTML reference manual builder
+#'
+#' Copies `tools/build-html-reference.R`, a maintainer script that renders
+#' every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R,
+#' R >= 4.4) after validating the sources with `tools::checkRd()`. Run it with
+#' `Rscript tools/build-html-reference.R [OUT_DIR]`; nothing at install time
+#' depends on it and `.Rbuildignore` keeps it out of the tarball.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory — set to `"rpkg"` when
+#'   scaffolding the R package subdirectory of a monorepo.
+#' @return Invisibly returns TRUE if the file was copied
+#' @keywords internal
+use_miniextendr_html_reference <- function(path = ".", subdir = NULL) {
+  with_project(path)
+  ensure_dir(usethis::proj_path("tools"))
+  tools_subdir <- if (is.null(subdir)) "tools" else file.path(subdir, "tools")
+  src <- template_path("build-html-reference.R", subdir = tools_subdir)
+  fs::file_copy(src, usethis::proj_path("tools", "build-html-reference.R"), overwrite = TRUE)
+  bullet_created(file.path("tools", "build-html-reference.R"), "Copied")
+  invisible(TRUE)
+}
+
 #' Add Makevars.in template
 #'
 #' Creates src/Makevars.in which is processed by configure to generate

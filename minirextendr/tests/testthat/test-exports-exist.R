@@ -15,6 +15,7 @@ exported_funs <- c(
   "use_miniextendr", "use_miniextendr_bootstrap", "use_miniextendr_build_rs",
   "use_miniextendr_cleanup", "use_miniextendr_config_scripts", "use_miniextendr_configure",
   "use_miniextendr_configure_win", "use_miniextendr_description",
+  "use_miniextendr_html_reference",
   "use_miniextendr_gitignore", "use_miniextendr_makevars",
   "use_miniextendr_mx_abi", "use_miniextendr_package_doc", "use_miniextendr_rbuildignore",
   "use_miniextendr_stub",
