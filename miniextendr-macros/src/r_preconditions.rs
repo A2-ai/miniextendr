@@ -67,8 +67,9 @@ impl RAssertion {
 
 /// Per-function knobs that influence precondition codegen.
 ///
-/// Coercion preserves numeric input types and extends `bool` / `Vec<bool>`
-/// checks to accept integers as well as logicals. Other types keep their checks.
+/// Coercion preserves numeric input types, extends `bool` / `Vec<bool>`
+/// checks to accept integers as well as logicals, and widens the native
+/// `i32` / `Vec<i32>` gates to whole-number doubles. Other types keep their checks.
 /// Strict input conversion remains enforced in Rust, where range and precision
 /// failures can carry contextual diagnostics.
 #[derive(Clone, Default)]
@@ -102,6 +103,9 @@ enum RTypeCheck {
     ScalarLogicalOrInteger,
     /// Coerced bool vector: logical or integer.
     VectorLogicalOrInteger,
+    /// Coerced native `i32` scalar: integer, logical, raw, or a whole-number
+    /// double, with length one. The vector form is [`RTypeCheck::VectorIntegerWide`].
+    ScalarIntegerWide,
     /// Non-negative numeric scalar: type + length-1 + `>= 0` (3 assertions).
     /// Used for `u16`, `u32`, `u64`, `usize`.
     ScalarNonNeg,
@@ -203,6 +207,16 @@ impl RTypeCheck {
                 format!("'{}' must be logical or integer", param),
                 format!("is.logical({p}) || is.integer({p})", p = param),
             )],
+            RTypeCheck::ScalarIntegerWide => vec![
+                RAssertion::new(
+                    format!("'{}' must be integer or whole-number numeric", param),
+                    integer_vector_wide_check(param),
+                ),
+                RAssertion::new(
+                    format!("'{}' must have length 1", param),
+                    format!("length({}) == 1L", param),
+                ),
+            ],
             RTypeCheck::ScalarNonNeg => vec![
                 RAssertion::new(
                     format!("'{}' must be numeric, logical, or raw", param),
@@ -259,12 +273,20 @@ impl RTypeCheck {
 }
 
 /// Keep the R gate in sync with the conversion actually selected for this type.
-/// In particular, `Option<bool>` has no coercion mapping and stays nullable logical.
+///
+/// Native `i32` widens to whole-number doubles (plus logical/raw), so its gate
+/// becomes the lossless whole-number predicate; `Vec<i32>` moves from the
+/// INTSXP-only gate (#616) to the same wide predicate the other integer vectors
+/// use. Native `f64` already carries the loose numeric gate, which the widened
+/// conversion now honours. `Option<bool>` has no coercion mapping and stays
+/// nullable logical.
 fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
     use crate::miniextendr_fn::CoercionMapping;
     match CoercionMapping::from_type(ty) {
         Some(CoercionMapping::Bool) => RTypeCheck::ScalarLogicalOrInteger,
         Some(CoercionMapping::BoolVec) => RTypeCheck::VectorLogicalOrInteger,
+        Some(CoercionMapping::NativeInt) => RTypeCheck::ScalarIntegerWide,
+        Some(CoercionMapping::NativeIntVec) => RTypeCheck::VectorIntegerWide,
         _ => check,
     }
 }
@@ -737,8 +759,38 @@ mod tests {
     }
 
     #[test]
+    fn coerced_native_int_widens_to_whole_number_gate() {
+        let ty = parse_type("i32");
+        let asserts = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(
+            asserts[0].message,
+            "'x' must be integer or whole-number numeric"
+        );
+        assert!(asserts[0].condition.contains("x == trunc(x)"));
+        assert_eq!(asserts[1].condition, "length(x) == 1L");
+
+        let ty = parse_type("Vec<i32>");
+        let asserts = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+        assert_eq!(asserts.len(), 1);
+        assert!(asserts[0].condition.contains("x == trunc(x)"));
+
+        // Native doubles already carry the loose numeric gate the widened
+        // conversion honours; borrowed slices have no mapping and stay strict.
+        for name in ["f64", "Vec<f64>"] {
+            let ty = parse_type(name);
+            let expected = r_check_for_type(&ty).unwrap().assertions("x");
+            let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+            assert_eq!(actual[0].condition, expected[0].condition, "{name}");
+        }
+        let ty = parse_type("&[i32]");
+        let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
+        assert_eq!(actual[0].condition, "is.integer(x)");
+    }
+
+    #[test]
     fn coerced_numeric_and_optional_checks_are_preserved() {
-        for name in ["Vec<u16>", "Vec<i32>", "Vec<f64>", "Option<bool>"] {
+        for name in ["Vec<u16>", "Vec<f64>", "Option<bool>"] {
             let ty = parse_type(name);
             let expected = r_check_for_type(&ty).unwrap().assertions("x");
             let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");

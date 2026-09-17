@@ -34,7 +34,7 @@ Traits with impls: 219
 | `UnsafeUnpin` | 324 | 0 |
 | `UnwindSafe` | 324 | 0 |
 | `VZip` | 324 | 0 |
-| `Allocation` | 233 | 0 |
+| `Allocation` | 232 | 0 |
 | `TypedExternal` | 181 | 181 |
 | `Equivalent` | 168 | 0 |
 | `IntoRAs` | 135 | 135 |
@@ -240,43 +240,43 @@ Traits with impls: 219
 | `FactorVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:517 |
 | `FactorOptionVec<T>` | `<T>` | concrete | 2 | miniextendr-api/src/factor.rs:570 |
 | `crate::coerce::Coerced<T, R>` | `<T, R> +3wc` | concrete | 3 | miniextendr-api/src/from_r.rs:1020 |
-| `Vec<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1393 |
-| `Vec<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1394 |
-| `Vec<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1395 |
-| `Vec<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1396 |
-| `Vec<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1397 |
-| `Vec<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1398 |
-| `Vec<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1399 |
-| `Vec<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1400 |
-| `Vec<f32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1401 |
-| `Vec<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1404 |
-| `std::collections::HashSet<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1469 |
-| `std::collections::HashSet<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1470 |
-| `std::collections::HashSet<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1471 |
-| `std::collections::HashSet<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1472 |
-| `std::collections::HashSet<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1473 |
-| `std::collections::HashSet<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1474 |
-| `std::collections::HashSet<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1475 |
-| `std::collections::HashSet<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1476 |
-| `std::collections::BTreeSet<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1478 |
-| `std::collections::BTreeSet<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1479 |
-| `std::collections::BTreeSet<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1480 |
-| `std::collections::BTreeSet<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1481 |
-| `std::collections::BTreeSet<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1482 |
-| `std::collections::BTreeSet<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1483 |
-| `std::collections::BTreeSet<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1484 |
-| `std::collections::BTreeSet<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1485 |
-| `std::collections::HashSet<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1504 |
-| `std::collections::BTreeSet<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1505 |
-| `crate::externalptr::ExternalPtr<T>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1556 |
-| `Option<crate::externalptr::ExternalPtr<T>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1602 |
-| `Vec<crate::externalptr::ExternalPtr<T>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1631 |
-| `Vec<Option<crate::externalptr::ExternalPtr<T>>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1652 |
-| `crate::connection::RStdin` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1749 |
-| `crate::connection::RStdout` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1762 |
-| `crate::connection::RStderr` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1775 |
-| `crate::connection::RNullConnection` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1794 |
-| `crate::txt_progress_bar::RTxtProgressBar` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1830 |
+| `Vec<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1496 |
+| `Vec<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1497 |
+| `Vec<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1498 |
+| `Vec<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1499 |
+| `Vec<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1500 |
+| `Vec<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1501 |
+| `Vec<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1502 |
+| `Vec<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1503 |
+| `Vec<f32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1504 |
+| `Vec<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1507 |
+| `std::collections::HashSet<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1572 |
+| `std::collections::HashSet<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1573 |
+| `std::collections::HashSet<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1574 |
+| `std::collections::HashSet<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1575 |
+| `std::collections::HashSet<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1576 |
+| `std::collections::HashSet<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1577 |
+| `std::collections::HashSet<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1578 |
+| `std::collections::HashSet<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1579 |
+| `std::collections::BTreeSet<i8>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1581 |
+| `std::collections::BTreeSet<i16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1582 |
+| `std::collections::BTreeSet<i64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1583 |
+| `std::collections::BTreeSet<isize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1584 |
+| `std::collections::BTreeSet<u16>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1585 |
+| `std::collections::BTreeSet<u32>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1586 |
+| `std::collections::BTreeSet<u64>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1587 |
+| `std::collections::BTreeSet<usize>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1588 |
+| `std::collections::HashSet<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1607 |
+| `std::collections::BTreeSet<bool>` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1608 |
+| `crate::externalptr::ExternalPtr<T>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1659 |
+| `Option<crate::externalptr::ExternalPtr<T>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1705 |
+| `Vec<crate::externalptr::ExternalPtr<T>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1734 |
+| `Vec<Option<crate::externalptr::ExternalPtr<T>>>` | `<T>` | concrete | 3 | miniextendr-api/src/from_r.rs:1755 |
+| `crate::connection::RStdin` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1852 |
+| `crate::connection::RStdout` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1865 |
+| `crate::connection::RStderr` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1878 |
+| `crate::connection::RNullConnection` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1897 |
+| `crate::txt_progress_bar::RTxtProgressBar` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:1933 |
 | `Box<[T]>` | `<T> +1wc` | concrete | 3 | miniextendr-api/src/from_r.rs:368 |
 | `i32` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:457 |
 | `f64` | `` | concrete | 3 | miniextendr-api/src/from_r.rs:533 |

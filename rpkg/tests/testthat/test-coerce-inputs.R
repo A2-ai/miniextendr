@@ -29,6 +29,56 @@ test_that("coerced numeric vectors accept all existing source types and empties"
   }
 })
 
+test_that("coerced native i32 and f64 widen from the other numeric sources", {
+  # The bare conversion is one SEXPTYPE (#1112): 3 reaches `x: i32` only with coerce.
+  expect_error(miniextendr:::coerce_input_native_default(3))
+  expect_identical(miniextendr:::coerce_input_native_default(3L), 3L)
+
+  int_scalar <- coerce_input_fixture("scalar", "i32")
+  for (x in list(3L, 3, as.raw(3))) expect_identical(int_scalar(x), 3L, info = typeof(x))
+  expect_identical(int_scalar(TRUE), 1L)
+  expect_identical(int_scalar(-2), -2L)
+  # The R gate names the widened domain and rejects what Rust would reject.
+  err <- expect_error(int_scalar(3.5))
+  expect_match(conditionMessage(err), "must be integer or whole-number numeric", fixed = TRUE)
+  # A scalar i32 cannot carry NA, so every NA stays an error, as without coerce.
+  for (x in list(NA_integer_, NA_real_, NA, 2^31, Inf, "3", c(1, 2))) expect_error(int_scalar(x))
+
+  int_vector <- coerce_input_fixture("vector", "i32")
+  for (x in list(c(1L, 0L, 2L), c(1, 0, 2), as.raw(c(1, 0, 2)))) {
+    expect_identical(int_vector(x), c(1L, 0L, 2L), info = typeof(x))
+    expect_identical(int_vector(x[FALSE]), integer())
+  }
+  expect_identical(int_vector(c(TRUE, FALSE)), c(1L, 0L))
+  # The vector can carry NA: as.integer() semantics for NA_real_ and logical NA.
+  expect_identical(int_vector(c(1, NA)), c(1L, NA))
+  expect_identical(int_vector(c(TRUE, NA)), c(1L, NA))
+  err <- expect_error(int_vector(c(1, 2.5)))
+  expect_match(conditionMessage(err), "must be integer or whole-number numeric", fixed = TRUE)
+
+  real_scalar <- coerce_input_fixture("scalar", "f64")
+  for (x in list(2L, 2, as.raw(2))) expect_identical(real_scalar(x), 2, info = typeof(x))
+  expect_identical(real_scalar(TRUE), 1)
+  # as.numeric() semantics: every NA arrives as NA_real_; REALSXP keeps the bare path.
+  for (x in list(NA_real_, NA_integer_, NA)) expect_identical(real_scalar(x), NA_real_)
+  for (x in list("2", c(1, 2), integer())) expect_error(real_scalar(x))
+
+  real_vector <- coerce_input_fixture("vector", "f64")
+  for (x in list(c(1L, 0L, 2L), c(1, 0, 2), as.raw(c(1, 0, 2)))) {
+    expect_identical(real_vector(x), c(1, 0, 2), info = typeof(x))
+    expect_identical(real_vector(x[FALSE]), numeric())
+  }
+  expect_identical(real_vector(c(TRUE, FALSE, NA)), c(1, 0, NA))
+  expect_identical(real_vector(c(1L, NA_integer_)), c(1, NA))
+
+  # Without the R gate (fast), the Rust side batches every failing index.
+  err <- expect_error(miniextendr:::coerce_input_fast_i32(c(1, 2.5, NaN, 2^31, NA)))
+  msg <- conditionMessage(err)
+  expect_match(msg, "Vec<i32> conversion failed", fixed = TRUE)
+  for (i in c(1, 2, 3)) expect_match(msg, paste("invalid value at index", i), fixed = TRUE)
+  expect_false(grepl("index 4", msg, fixed = TRUE))
+})
+
 test_that("coerced bools retain logical inputs while accepting integer zero and one", {
   scalar <- coerce_input_fixture("scalar", "bool")
   vector <- coerce_input_fixture("vector", "bool")

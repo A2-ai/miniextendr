@@ -13910,8 +13910,8 @@ further allocations will occur before use.
 
 ##### Safety
 
-Must be called from the R main thread. All argument SEXPs must still
-be valid (protected or otherwise reachable by R's GC).
+Must be called from the R main thread. The builder keeps the callable
+and every argument rooted until it is dropped.
 
 #### `eval`
 
@@ -13928,7 +13928,7 @@ rather than causing a longjmp through Rust frames.
 
 - Must be called from the R main thread.
 - `env` must be a valid ENVSXP.
-- All argument SEXPs must still be valid.
+- The builder must not outlive the active R session.
 
 ##### Returns
 

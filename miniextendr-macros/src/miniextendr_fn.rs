@@ -19,6 +19,15 @@ pub(crate) enum CoercionMapping {
     Bool,
     /// Keep logical vectors and additionally accept integer zeros and ones.
     BoolVec,
+    /// Native `i32`: keep `INTSXP`, additionally accept whole-valued doubles,
+    /// logicals, and raws.
+    NativeInt,
+    /// Native `Vec<i32>`: element-wise form of [`Self::NativeInt`].
+    NativeIntVec,
+    /// Native `f64`: keep `REALSXP`, additionally accept integers, logicals, and raws.
+    NativeReal,
+    /// Native `Vec<f64>`: element-wise form of [`Self::NativeReal`].
+    NativeRealVec,
 }
 
 impl CoercionMapping {
@@ -26,7 +35,10 @@ impl CoercionMapping {
     ///
     /// Numeric conversion preserves all sources accepted by `TryFromSexp`:
     /// integer, double, logical, and raw. Booleans extend their logical-only
-    /// converter with integer zero/one input. Other types keep `TryFromSexp`.
+    /// converter with integer zero/one input. The native `i32` / `f64` scalars
+    /// and vectors, whose bare conversion accepts one `SEXPTYPE`, widen to the
+    /// same four sources (whole-valued doubles only for `i32`). Borrowed slices
+    /// and other types keep `TryFromSexp`.
     pub(crate) fn from_type(ty: &syn::Type) -> Option<Self> {
         let syn::Type::Path(type_path) = ty else {
             return None;
@@ -50,6 +62,10 @@ impl CoercionMapping {
             }
             "bool" if is_vec => Some(Self::BoolVec),
             "bool" => Some(Self::Bool),
+            "i32" if is_vec => Some(Self::NativeIntVec),
+            "i32" => Some(Self::NativeInt),
+            "f64" if is_vec => Some(Self::NativeRealVec),
+            "f64" => Some(Self::NativeReal),
             _ => None,
         }
     }

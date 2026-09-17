@@ -128,6 +128,48 @@ pub fn coerce_input_vector_f32(x: Vec<f32>) -> Vec<f32> {
     x
 }
 
+/// Identity for a coerced native i32 parameter: whole-number doubles widen.
+/// @param x Integer, whole-number double, logical, or raw scalar.
+#[miniextendr(coerce, no_strict, noexport)]
+pub fn coerce_input_scalar_i32(x: i32) -> i32 {
+    x
+}
+
+/// Identity for a coerced native Vec<i32> parameter.
+/// @param x Integer, whole-number double, logical, or raw vector.
+#[miniextendr(coerce, no_strict, noexport)]
+pub fn coerce_input_vector_i32(x: Vec<i32>) -> Vec<i32> {
+    x
+}
+
+/// Identity for a coerced native f64 parameter: integers, logicals, and raws widen.
+/// @param x Numeric, logical, or raw scalar.
+#[miniextendr(coerce, no_strict, noexport)]
+pub fn coerce_input_scalar_f64(x: f64) -> f64 {
+    x
+}
+
+/// Identity for a coerced native Vec<f64> parameter.
+/// @param x Numeric, logical, or raw vector.
+#[miniextendr(coerce, no_strict, noexport)]
+pub fn coerce_input_vector_f64(x: Vec<f64>) -> Vec<f64> {
+    x
+}
+
+/// Fast wrapper for the widened native vector: the Rust side batches failures.
+/// @param x Doubles, possibly fractional, NaN, or out of range.
+#[miniextendr(coerce, fast, noexport)]
+pub fn coerce_input_fast_i32(x: Vec<i32>) -> Vec<i32> {
+    x
+}
+
+/// Without coerce, a native i32 parameter keeps its INTSXP-only conversion.
+/// @param x Integer scalar.
+#[miniextendr(no_coerce, noexport)]
+pub fn coerce_input_native_default(x: i32) -> i32 {
+    x
+}
+
 /// Identity for a coerced bool parameter.
 /// @param x Input to convert without narrowing the accepted R types.
 #[miniextendr(coerce, no_strict, noexport)]

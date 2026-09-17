@@ -43,7 +43,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | Feature | Effect | Scope | Opt-out keyword |
 |---------|--------|-------|-----------------|
 | `strict-default` | Strict checked conversions for lossy types (i64, u64, isize, usize) | fns + impl blocks | `no_strict` |
-| `coerce-default` | Preserve numeric inputs; also accept integer `0`/`1` for `bool` and `Vec<bool>` | fns + methods | `no_coerce` |
+| `coerce-default` | Widen native `i32`/`f64` (and `Vec`) to the other numeric sources; preserve non-native numeric inputs; also accept integer `0`/`1` for `bool` and `Vec<bool>` | fns + methods | `no_coerce` |
 | `fast-default` | Fast-path knobs: drop R-side `stopifnot()` and emit `.call = NULL` | fns + impl blocks | `no_fast` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
@@ -103,9 +103,15 @@ features section). The forwarding is automatic.
 
 `coerce` and `coerce-default` preserve normal input types. Non-native numeric
 scalars and vectors already accept integer, double, logical, and raw inputs;
-coercion keeps those checked conversions. Boolean scalars and vectors retain
-logical inputs and additionally accept integer `0`/`1` (other integers and NA
-are errors). `Option<bool>` keeps its nullable logical conversion.
+coercion keeps those checked conversions. The native `i32` / `Vec<i32>` and
+`f64` / `Vec<f64>` accept one `SEXPTYPE` without coerce (`f(3)` fails for
+`x: i32`, `f(1L)` fails for `x: f64`); with coerce they widen to the same four
+sources, `i32` from whole-number doubles only, and the R precondition names the
+widened domain. NA propagates where the declared type can carry it (`f64`,
+`Vec<f64>`, `Vec<i32>`), as `as.numeric()` / `as.integer()` would; a scalar
+`i32` keeps rejecting NA. Boolean scalars and vectors retain logical inputs and
+additionally accept integer `0`/`1` (other integers and NA are errors).
+`Option<bool>` keeps its nullable logical conversion.
 
 `strict` takes precedence for the lossy integer types it checks. `no_strict`
 restores their normal multi-source conversion, including when `coerce-default`

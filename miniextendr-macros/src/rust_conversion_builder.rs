@@ -16,7 +16,7 @@ use syn::spanned::Spanned;
 /// - Slices `&[T]` → TryFromSexp
 /// - `&str` → String + Borrow (for worker thread compatibility)
 /// - Scalar references → DATAPTR_RO_unchecked
-/// - Coercion → multi-source numeric conversion or logical/integer bool conversion
+/// - Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 /// - Default → TryFromSexp
 pub struct RustConversionBuilder {
     /// Enable coercion for all parameters
@@ -526,6 +526,18 @@ impl RustConversionBuilder {
                             },
                             CoercionMapping::BoolVec => quote_spanned! {span=>
                                 ::miniextendr_api::from_r::try_from_sexp_coerced_bool_vec(#sexp_ident)
+                            },
+                            CoercionMapping::NativeInt => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32(#sexp_ident)
+                            },
+                            CoercionMapping::NativeIntVec => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_i32_vec(#sexp_ident)
+                            },
+                            CoercionMapping::NativeReal => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64(#sexp_ident)
+                            },
+                            CoercionMapping::NativeRealVec => quote_spanned! {span=>
+                                ::miniextendr_api::from_r::try_from_sexp_coerced_f64_vec(#sexp_ident)
                             },
                         };
                         self.conversion_stmt(try_expr, &error_msg, ident, ty, span)

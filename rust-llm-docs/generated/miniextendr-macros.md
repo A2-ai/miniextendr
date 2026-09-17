@@ -1914,8 +1914,9 @@ pub struct PreconditionOptions
 
 Per-function knobs that influence precondition codegen.
 
-Coercion preserves numeric input types and extends `bool` / `Vec<bool>`
-checks to accept integers as well as logicals. Other types keep their checks.
+Coercion preserves numeric input types, extends `bool` / `Vec<bool>`
+checks to accept integers as well as logicals, and widens the native
+`i32` / `Vec<i32>` gates to whole-number doubles. Other types keep their checks.
 Strict input conversion remains enforced in Rust, where range and precision
 failures can carry contextual diagnostics.
 
@@ -2245,7 +2246,7 @@ Handles:
 - Slices `&[T]` → TryFromSexp
 - `&str` → String + Borrow (for worker thread compatibility)
 - Scalar references → DATAPTR_RO_unchecked
-- Coercion → multi-source numeric conversion or logical/integer bool conversion
+- Coercion → multi-source numeric conversion (incl. widened native `i32`/`f64`) or logical/integer bool conversion
 - Default → TryFromSexp
 
 **Inherent associated items:**
