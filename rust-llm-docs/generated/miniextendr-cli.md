@@ -15,10 +15,6 @@ end-user packages in the `minirextendr` R package.
 
 `pub mod cargo;`
 
-### `commands::config`
-
-`pub mod config;`
-
 ### `commands::feature`
 
 `pub mod feature;`
@@ -305,27 +301,12 @@ pub enum Command
   - Rmarkdown/Quarto integration.
 - `Rust { cmd: RustCmd }`
   - Dynamic Rust compilation.
-- `Config { cmd: ConfigCmd }`
-  - Show configuration.
 - `Lint`
   - Run miniextendr-lint (checks macro/module consistency).
 - `Clean`
   - Clean build artifacts.
 - `Completions { shell: clap_complete::Shell }`
   - Generate shell completions.
-
-### `cli::ConfigCmd`
-
-```rust
-pub enum ConfigCmd
-```
-
-**Variants:**
-
-- `Show`
-  - Show current miniextendr.yml config.
-- `Defaults`
-  - Show default config values.
 
 ### `cli::FeatureCmd`
 
@@ -611,12 +592,6 @@ Run an arbitrary command and capture stdout.
 fn dispatch(cmd: &crate::cli::CargoCmd, ctx: &crate::project::ProjectContext, quiet: bool) -> anyhow::Result<()>
 ```
 
-### `commands::config::dispatch`
-
-```rust
-fn dispatch(cmd: &crate::cli::ConfigCmd, ctx: &crate::project::ProjectContext, _quiet: bool, json: bool) -> anyhow::Result<()>
-```
-
 ### `commands::dispatch`
 
 ```rust
@@ -683,14 +658,6 @@ fn print_json<T: Serialize>(value: &T) -> anyhow::Result<()>
 ```
 
 Serialize `value` as pretty JSON and print it to stdout.
-
-### `output::print_status`
-
-```rust
-fn print_status(msg: &str)
-```
-
-Print a simple status message.
 
 ### `project::find_workspace_root`
 

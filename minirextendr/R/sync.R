@@ -16,7 +16,7 @@ render_state_path <- function(path = usethis::proj_get()) {
 #' Compute hash of all build-relevant sources
 #'
 #' Hashes Rust sources, Cargo.toml, Cargo.lock, build.rs,
-#' DESCRIPTION, NAMESPACE, miniextendr.yml, and effective build knobs.
+#' DESCRIPTION and NAMESPACE.
 #'
 #' @param path Project root
 #' @return Single character string (MD5 digest)
@@ -40,8 +40,7 @@ compute_source_hash <- function(path = usethis::proj_get()) {
     file.path(rust_dir, "Cargo.lock"),
     file.path(rust_dir, "build.rs"),
     file.path(path, "DESCRIPTION"),
-    file.path(path, "NAMESPACE"),
-    file.path(path, "miniextendr.yml")
+    file.path(path, "NAMESPACE")
   )
   candidates <- c(candidates, config_files)
 
@@ -57,15 +56,7 @@ compute_source_hash <- function(path = usethis::proj_get()) {
 
   # Compute MD5 of each file, then hash the combined result
   sums <- tools::md5sum(existing)
-  # Include build knobs from config
-  config <- tryCatch(miniextendr_config(path), error = function(e) miniextendr_config_defaults())
-  knobs <- paste(
-    config$features, config$strict, config$coerce,
-    config$rust_version, collapse = "|"
-  )
-
-  # Create a combined digest from all file hashes + knobs
-  combined <- paste(c(sums, knobs), collapse = "\n")
+  combined <- paste(sums, collapse = "\n")
   tmp <- tempfile()
   on.exit(unlink(tmp), add = TRUE)
   writeLines(combined, tmp)

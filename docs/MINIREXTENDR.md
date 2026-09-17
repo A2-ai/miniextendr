@@ -236,7 +236,6 @@ use_vendor_lib()        # Vendor external Rust library for monorepo use
 Each `use_*()` function:
 1. Adds the Cargo feature to `src/rust/Cargo.toml`
 2. Sets up any needed R-side dependencies (e.g., R6, S7 packages)
-3. Updates `miniextendr.yml` configuration
 
 ### Feature Detection
 
@@ -247,7 +246,7 @@ that were selected by the build:
 # Initial setup - creates Rust and R helpers for has_feature()/test skips
 use_feature_detection()
 
-# After adding new features to miniextendr.yml, regenerate the detection script
+# After adding Cargo features, regenerate the detection script
 update_feature_detection()
 ```
 
@@ -434,19 +433,6 @@ overwriting. `miniextendr_doctor()` reports missing hooks as a warning.
 Running twice is safe; the installer skips on the `# miniextendr`
 marker.
 
-## Configuration
-
-`miniextendr.yml` in the package root for project-level settings:
-
-```r
-miniextendr_config(path = ".")              # Read current config (returns named list)
-miniextendr_config_defaults()               # Show all defaults with descriptions
-```
-
-`miniextendr_config()` merges project-level `miniextendr.yml` with built-in defaults.
-Settings include feature flags, class system choices, and build options.
-`miniextendr_config_defaults()` lists every available setting with its default value.
-
 ## knitr / Rmarkdown / Quarto Integration
 
 ### Package Mode (in a package vignette)
@@ -516,7 +502,6 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | **Git hooks** | `use_miniextendr_git_hooks` (pre-commit + post-merge reminders) |
 | **Vendoring** | `vendor_miniextendr`, `vendor_crates_io`, `vendor_sync`, `miniextendr_vendor`, `miniextendr_available_versions` |
 | **Diagnostics** | `has_miniextendr`, `miniextendr_status`, `miniextendr_validate`, `miniextendr_doctor`, `miniextendr_check_rust` |
-| **Configuration** | `miniextendr_config`, `miniextendr_config_defaults` |
 | **knitr/render** | `miniextendr_knitr_setup`, `miniextendr_html_document`, `miniextendr_pdf_document`, `miniextendr_word_document`, `miniextendr_quarto_pre_render`, `use_miniextendr_knitr`, `use_miniextendr_rmarkdown`, `use_miniextendr_quarto` |
 | **Cache** | `miniextendr_cache_info`, `miniextendr_clear_cache` |
 | **Upgrade** | `upgrade_miniextendr_package` |

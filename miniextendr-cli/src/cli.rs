@@ -67,11 +67,6 @@ pub enum Command {
         #[command(subcommand)]
         cmd: RustCmd,
     },
-    /// Show configuration.
-    Config {
-        #[command(subcommand)]
-        cmd: ConfigCmd,
-    },
     /// Run miniextendr-lint (checks macro/module consistency).
     Lint,
     /// Clean build artifacts.
@@ -568,17 +563,6 @@ pub enum RustCmd {
     },
     /// Clean compiled Rust code.
     Clean,
-}
-// endregion
-
-// region: Config
-
-#[derive(Subcommand)]
-pub enum ConfigCmd {
-    /// Show current miniextendr.yml config.
-    Show,
-    /// Show default config values.
-    Defaults,
 }
 // endregion
 
