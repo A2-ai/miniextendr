@@ -157,6 +157,8 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 #             a legitimate wrapper-gen here, and keep the #1022 [ -s ] guard so
 #             a missing/empty wrappers.R still falls back to full generation.
 #   dev     : load $(SHLIB) + generate wrappers (normal dev/CI flow).
+# After a successful check, mark wrappers current even if the writer kept their
+# identical content; otherwise this rule stays out of date after a relink (#1530).
 $(WRAPPERS_R): $(SHLIB)
 	@set -e; \
 	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
@@ -174,7 +176,7 @@ $(WRAPPERS_R): $(SHLIB)
 	  elif [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
 	    echo "tarball install: pre-shipped R/@PACKAGE_NAME@-wrappers.R absent or empty — falling back to full wrapper-gen (#1022 guard)..." >&2; \
 	  else \
-	    echo "Generating R wrappers + wasm_registry.rs..."; \
+	    echo "Checking R wrappers + wasm_registry.rs..."; \
 	  fi; \
 	  _shlib='$(ABS_RPKG_SRCDIR)/$(SHLIB)'; \
 	  _wrappers='$(WRAPPERS_R)'; \
@@ -185,6 +187,7 @@ $(WRAPPERS_R): $(SHLIB)
 	    _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
 	  fi; \
 	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" -e "invisible(local({ lib <- dyn.load('$$_shlib'); .Call(getNativeSymbolInfo('miniextendr_write_wrappers', lib), '$$_wrappers'); .Call(getNativeSymbolInfo('miniextendr_write_wasm_registry', lib), '$$_wasm_registry'); dyn.unload('$$_shlib') }))"; \
+	  touch '$(WRAPPERS_R)'; \
 	fi
 
 clean:
