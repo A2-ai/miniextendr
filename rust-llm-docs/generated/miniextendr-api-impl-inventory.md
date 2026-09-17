@@ -34,7 +34,7 @@ Traits with impls: 219
 | `UnsafeUnpin` | 324 | 0 |
 | `UnwindSafe` | 324 | 0 |
 | `VZip` | 324 | 0 |
-| `Allocation` | 233 | 0 |
+| `Allocation` | 232 | 0 |
 | `TypedExternal` | 181 | 181 |
 | `Equivalent` | 168 | 0 |
 | `IntoRAs` | 135 | 135 |
