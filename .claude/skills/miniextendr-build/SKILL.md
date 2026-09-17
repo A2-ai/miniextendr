@@ -237,6 +237,20 @@ It is the tool that vendors, strips, and compresses the dependency tree into
 only (no network). Windows paths in the generated `config.toml` must use
 forward slashes; the `\\?\` prefix from `canonicalize()` must be stripped.
 
+### Development install cache
+
+Avoid `R CMD INSTALL --preclean` / `--clean` in the development loop: they
+invoke `cleanup` and normally erase `rust-target`, `src/rust/target`, and
+`ra-target`, making the next Cargo build cold. If another tool requires those
+flags, set `MINIEXTENDR_KEEP_TARGET=1` for that source install. The opt-in spares
+only those target directories during R CMD INSTALL; configure files are still
+refreshed, and R CMD build still cleans its staged tree. Leave the variable
+unset for a deliberate full clean rebuild.
+
+`just rcmdinstall` and `miniextendr_build()` do not add either cleanup flag.
+The scaffold’s `Config/build/never-clean: true` prevents pkgbuild from adding
+preclean automatically. See `docs/R_BUILD_SYSTEM.md` for the opt-in example.
+
 ## Decision trees
 
 ### I changed a Makevars value — what is the regen flow?

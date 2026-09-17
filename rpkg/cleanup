@@ -6,9 +6,13 @@
 
 rm -f  src/Makevars
 rm -rf src/rust/.cargo
-rm -rf src/rust/target
-rm -rf rust-target
-rm -rf ra-target
+# R sets R_INSTALL_PKG for INSTALL, including both cleanup calls. R CMD build
+# must still remove targets from its staged source tree even with the opt-in.
+if [ "${MINIEXTENDR_KEEP_TARGET:-0}" != "1" ] || [ -z "${R_INSTALL_PKG:-}" ]; then
+  rm -rf src/rust/target
+  rm -rf rust-target
+  rm -rf ra-target
+fi
 rm -f  src/*-wrappers.R
 
 # Remove vendor/ if the compressed tarball exists (CRAN tarball prep).
