@@ -2,8 +2,9 @@
 #
 # The gctorture blocks in test-gc-stress-fixtures.R, test-externalptr-self-root.R,
 # test-iter-to-dataframe.R and test-dataframe-deserialize.R account for ~94% of
-# the suite's runtime (~32 of ~34 min). CI runs them exactly once per PR, in the
-# dedicated sharded `r-stress-tests` job; every other job that runs the suite
+# the suite's runtime (~32 of ~34 min). CI runs them only in the dedicated
+# sharded `r-stress-tests` job (push-to-main / cron / dispatch, or a PR that
+# carries the `gc-stress` label); every other job that runs the suite
 # (R CMD check legs, CRAN-like check, r-tests, heap-check rounds) sets
 # MINIEXTENDR_SKIP_STRESS=1 so it only pays for the fast tests. Local
 # `just devtools-test` sets neither variable and runs everything, unsharded.

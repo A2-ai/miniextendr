@@ -274,11 +274,14 @@ other runners silently corrupt and "pass." See `docs/GCTORTURE_TESTING.md`
 for the harness pattern (load package first, *then* enable gctorture;
 per-function loop is fastest; full `test_dir` sweep is for nightly).
 
-In CI the gctorture-heavy testthat files run once per PR in the sharded
-`r-stress-tests` job; every other suite-running job sets
-`MINIEXTENDR_SKIP_STRESS=1` (see `rpkg/tests/testthat/helper-gc-stress.R` and
-`docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Locally both
-env vars are unset and `just devtools-test` runs everything.
+In CI the gctorture-heavy testthat files run only in the sharded
+`r-stress-tests` job, which is **opt-in on PRs via the `gc-stress` label**
+(unconditional on main-push / cron / dispatch); every other suite-running job
+sets `MINIEXTENDR_SKIP_STRESS=1` (see `rpkg/tests/testthat/helper-gc-stress.R`
+and `docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label
+any PR that adds SEXP storage. The webR workflow is opt-in the same way via
+the `webr` label. Locally both env vars are unset and `just devtools-test`
+runs everything.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with
