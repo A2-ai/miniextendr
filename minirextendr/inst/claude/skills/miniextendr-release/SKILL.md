@@ -92,8 +92,9 @@ Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg
 
 Base R only (`tools::pkg2HTML()`, R >= 4.4), seconds, nothing installed. It
 runs `tools::checkRd()` over `man/` first and refuses to build on a finding,
-so it doubles as a fast Rd lint after `devtools::document()`. The script is
-`.Rbuildignore`d; the tarball does not carry it.
+so it doubles as a fast Rd lint after `devtools::document()`
+(`MINIEXTENDR_HTML_STRICT=0` renders despite findings). From R:
+`minirextendr::miniextendr_html_reference()`.
 
 ## Cargo.lock
 

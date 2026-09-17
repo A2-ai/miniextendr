@@ -129,12 +129,19 @@ Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg
 Rscript tools/build-html-reference.R docs/r     # any output directory
 ```
 
+```r
+minirextendr::miniextendr_html_reference()      # the same, from an R session
+```
+
 Nothing is installed or loaded, so the page cannot lag the tree and builds in
 seconds for packages with thousands of generated wrappers. In-package links
 stay on the page, other packages link to their CRAN manuals, and built
 vignettes under `inst/doc` are copied alongside. When a rustdoc crate index
 (`--enable-index-page`) sits one level above the output directory, the manual
-is added to its list. `.Rbuildignore` keeps the script out of the tarball.
+is added to its list. A `checkRd` finding aborts the build; set
+`MINIEXTENDR_HTML_STRICT=0` (or `strict = FALSE`) to print the findings and
+render anyway. The script ships with the package like the other `tools/`
+helpers.
 
 ## Inline Rust Compilation
 

@@ -54,13 +54,21 @@ just devtools-test      # 3. Run R tests
 
 ```bash
 just doc-r              # → rpkg/src/rust/target/doc/r/miniextendr.html
+just doc-all            # nightly: rustdoc + crate index + the R manual → site/public/rustdoc/
 ```
 
 Renders every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R
 4.4+, a few seconds, nothing installed or loaded) after `tools::checkRd()` has
-passed over the sources — a finding aborts the build. Run `just force-document`
-first when `man/` may be stale. Scaffolded packages carry the same script as
-`tools/build-html-reference.R`.
+passed over the sources — a finding aborts the build (`MINIEXTENDR_HTML_STRICT=0`
+renders anyway). Run `just force-document`
+first when `man/` may be stale. `just doc-all` needs a nightly toolchain: it
+documents the workspace crates and the rpkg bridge crate into one tree with
+rustdoc's crate index page (`--enable-index-page`), copies it to the site
+output, and registers the R manual on that index. `zola build` starts
+`site/public/` afresh, so run it after `just site-build`; publishing the tree
+from the Pages workflow is tracked in #1573. Scaffolded packages carry the
+same script as `tools/build-html-reference.R`, callable from R through
+`minirextendr::miniextendr_html_reference()`.
 
 ### After changing proc macros or `#[miniextendr]` attributes
 
