@@ -17,6 +17,14 @@ test_that("Result<T, E: RConditionError> raises member + family classes with dat
   # Ok path untouched.
   expect_equal(classed_result_missing("abc"), 3L)
   expect_equal(classed_result_range(5), 5)
+
+  # A data field whose value is an explicit NULL stays a present field: the
+  # splice must not drop it (utils::modifyList's default keep.null = FALSE did).
+  e <- tryCatch(classed_result_null_field(), error = function(e) e)
+  expect_s3_class(e, "pkg_error_no_value")
+  expect_true("optional" %in% names(e))
+  expect_null(e$optional)
+  expect_equal(e$present, 1)
 })
 
 test_that("classed Result errors work on the unit-return and impl-method arms", {
