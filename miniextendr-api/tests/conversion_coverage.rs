@@ -1561,7 +1561,7 @@ fn coerced_plain_vec_i64_lglsxp_na_is_indexed_error() {
             Err(SexpError::InvalidValue(msg)) => assert!(msg.contains("index 1"), "{msg}"),
             other => panic!("expected batched InvalidValue, got {:?}", other.map(|_| ())),
         }
-        unsafe { s.set_logical_elt(1, 0) };
+        s.set_logical_elt(1, 0);
         let v: Vec<i64> = TryFromSexp::try_from_sexp(s).unwrap();
         assert_eq!(v, vec![1i64, 0i64, 0i64]);
     });
