@@ -140,7 +140,7 @@ test_that("R6 active-binding setter enforces the R-level precondition (#1196)", 
   t <- R6Temperature$new(0)
 
   # Wrong type: same friendly message as the standalone setter method.
-  expect_error(t$celsius <- "x", "'value' must be numeric, logical, or raw", fixed = TRUE)
+  expect_error(t$celsius <- "x", "'value' must be double", fixed = TRUE)
   expect_equal(t$celsius, 0) # assignment must not have gone through
 
   # Wrong length.
@@ -148,7 +148,7 @@ test_that("R6 active-binding setter enforces the R-level precondition (#1196)", 
   expect_equal(t$celsius, 0)
 
   # Parity with the standalone setter method's message.
-  expect_error(t$set_celsius("x"), "'value' must be numeric, logical, or raw", fixed = TRUE)
+  expect_error(t$set_celsius("x"), "'value' must be double", fixed = TRUE)
 })
 
 test_that("R6 active-binding setter re-raises Rust conditions (#1196)", {

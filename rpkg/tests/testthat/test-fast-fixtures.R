@@ -19,7 +19,7 @@ test_that("multi-arg fast variant agrees on the happy path", {
 
 test_that("default wrapper raises stopifnot for bad input", {
   expect_error(fast_i32_default("not an int"),
-               regexp = "must be numeric, logical, or raw")
+               regexp = "must be integer")
 })
 
 test_that("no_preconditions wrapper raises a rust_error for bad input", {
@@ -33,7 +33,7 @@ test_that("no_preconditions wrapper raises a rust_error for bad input", {
 
 test_that("no_call_attribution wrapper still rejects bad input via stopifnot", {
   expect_error(fast_i32_no_call_attribution("not an int"),
-               regexp = "must be numeric, logical, or raw")
+               regexp = "must be integer")
 })
 
 test_that("fast wrapper raises a rust_error for bad input", {
@@ -103,5 +103,5 @@ test_that("default R6 class raises stopifnot on bad input", {
   ns <- getNamespace("miniextendr")
   c <- ns$FastCounter$new(0L)
   expect_error(c$add("not an int"),
-               regexp = "must be numeric, logical, or raw")
+               regexp = "must be integer")
 })

@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3063
+assertion_line: 3442
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Counter S7 Class
@@ -18,7 +18,7 @@ Counter <- S7::new_class("Counter",
   constructor = function(value, .ptr = NULL) {
     if (is.null(.ptr)) {
       stopifnot(
-        "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+        "'value' must be integer" = is.integer(value),
         "'value' must have length 1" = length(value) == 1L
       )
     }
@@ -139,9 +139,9 @@ Counter_increment <- function(self, ...) {
 #' @export
 Counter_from_parts <- function(a, b) {
   stopifnot(
-    "'a' must be numeric, logical, or raw" = is.numeric(a) || is.logical(a) || is.raw(a),
+    "'a' must be integer" = is.integer(a),
     "'a' must have length 1" = length(a) == 1L,
-    "'b' must be numeric, logical, or raw" = is.numeric(b) || is.logical(b) || is.raw(b),
+    "'b' must be integer" = is.integer(b),
     "'b' must have length 1" = length(b) == 1L
   )
   {

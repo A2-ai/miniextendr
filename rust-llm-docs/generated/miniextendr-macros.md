@@ -3772,7 +3772,7 @@ Returns:
 Static checks produce R-side `stopifnot()`:
 ```r
 stopifnot(
-  "'a' must be numeric, logical, or raw" = is.numeric(a) || is.logical(a) || is.raw(a),
+  "'a' must be integer" = is.integer(a),
   "'a' must have length 1" = length(a) == 1L
 )
 ```

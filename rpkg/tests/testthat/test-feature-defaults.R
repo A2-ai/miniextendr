@@ -64,13 +64,13 @@ test_that("fast-default drops preconditions for bare fns, no_fast restores them"
     # R-side stopifnot-shaped error, NOT a rust_error.
     e2 <- tryCatch(fdefault_no_fast_i32("nope"), error = function(e) e)
     expect_false(inherits(e2, "rust_error"))
-    expect_match(conditionMessage(e2), "must be numeric, logical, or raw")
+    expect_match(conditionMessage(e2), "must be integer")
   } else {
     # Every default build: preconditions are on, bare fn raises the
     # stopifnot-shaped error, not a rust_error.
     e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
     expect_false(inherits(e, "rust_error"))
-    expect_match(conditionMessage(e), "must be numeric, logical, or raw")
+    expect_match(conditionMessage(e), "must be integer")
   }
 })
 

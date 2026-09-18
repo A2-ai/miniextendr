@@ -821,7 +821,7 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
         wrapper.contains(
             "  } else {\n\
              \x20   stopifnot(\n\
-             \x20     \"'value' must be numeric, logical, or raw\" = is.numeric(value) || is.logical(value) || is.raw(value),\n\
+             \x20     \"'value' must be double\" = is.double(value),\n\
              \x20     \"'value' must have length 1\" = length(value) == 1L\n\
              \x20   )"
         ),

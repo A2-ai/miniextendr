@@ -9,9 +9,9 @@
 //! ```r
 //! add <- function(a, b) {
 //!   stopifnot(
-//!     "'a' must be numeric, logical, or raw" = is.numeric(a) || is.logical(a) || is.raw(a),
+//!     "'a' must be integer" = is.integer(a),
 //!     "'a' must have length 1" = length(a) == 1L,
-//!     "'b' must be numeric, logical, or raw" = is.numeric(b) || is.logical(b) || is.raw(b),
+//!     "'b' must be integer" = is.integer(b),
 //!     "'b' must have length 1" = length(b) == 1L
 //!   )
 //!   .Call(C_add, .call = match.call(), a, b)
@@ -97,7 +97,9 @@ impl PreconditionOptions {
 /// reach Rust's strict checker, which produces better contextual error messages.
 enum RTypeCheck {
     /// Numeric scalar: type check + length-1 check (2 assertions).
-    /// Used for `i32`, `f64`, `f32`, `i8`, `i16`, `i64`, `isize`.
+    /// Used for the multi-source scalars `f32`, `i8`, `i16`, `i64`, `isize`, and
+    /// for a coerced native `f64`. Native `i32` / `f64` without coerce use
+    /// [`RTypeCheck::Scalar`] with `"integer"` / `"double"`.
     ScalarNumeric,
     /// Coerced bool: logical or integer, with length one.
     ScalarLogicalOrInteger,
@@ -113,8 +115,10 @@ enum RTypeCheck {
     /// The string is the R type predicate name (e.g., `"logical"`, `"character"`).
     Scalar(&'static str),
     /// Floating-point numeric vector: loose `is.numeric || is.logical || is.raw`
-    /// (1 assertion). Used for `Vec<f64>` / `Vec<f32>` / `&[f64]` — doubles are
-    /// the natural representation, no truncation risk.
+    /// (1 assertion). Used for `Vec<f32>` (multi-source converter) and for a
+    /// coerced native `Vec<f64>`; `Vec<f64>` / `&[f64]` without coerce use
+    /// [`RTypeCheck::Vector`] with `"double"` because the native path reads
+    /// REALSXP only.
     VectorNumeric,
     /// **INTSXP-only** integer vector: `is.integer(x)` (1 assertion). Used *only*
     /// for `Vec<i32>` / `&[i32]` (issue #616). These use the native `RNativeType`
@@ -277,9 +281,9 @@ impl RTypeCheck {
 /// Native `i32` widens to whole-number doubles (plus logical/raw), so its gate
 /// becomes the lossless whole-number predicate; `Vec<i32>` moves from the
 /// INTSXP-only gate (#616) to the same wide predicate the other integer vectors
-/// use. Native `f64` already carries the loose numeric gate, which the widened
-/// conversion now honours. `Option<bool>` has no coercion mapping and stays
-/// nullable logical.
+/// use. Native `f64` / `Vec<f64>` move from the `is.double` gate to the loose
+/// numeric predicate. `Option<bool>` has no coercion mapping and stays nullable
+/// logical.
 fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
     use crate::miniextendr_fn::CoercionMapping;
     match CoercionMapping::from_type(ty) {
@@ -287,6 +291,8 @@ fn coerce_widened(check: RTypeCheck, ty: &syn::Type) -> RTypeCheck {
         Some(CoercionMapping::BoolVec) => RTypeCheck::VectorLogicalOrInteger,
         Some(CoercionMapping::NativeInt) => RTypeCheck::ScalarIntegerWide,
         Some(CoercionMapping::NativeIntVec) => RTypeCheck::VectorIntegerWide,
+        Some(CoercionMapping::NativeReal) => RTypeCheck::ScalarNumeric,
+        Some(CoercionMapping::NativeRealVec) => RTypeCheck::VectorNumeric,
         _ => check,
     }
 }
@@ -312,8 +318,17 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
     let ident = segment.ident.to_string();
 
     match ident.as_str() {
-        // Numeric scalars (accepts numeric, logical, and raw via R coercion)
-        "i32" | "f64" | "f32" | "i8" | "i16" | "i64" | "isize" => Some(RTypeCheck::ScalarNumeric),
+        // Native scalars convert from exactly one SEXPTYPE (`i32::try_from_sexp`
+        // is INTSXP-only, `f64` REALSXP-only), so the R gate names that storage
+        // instead of letting a double reach Rust and fail with "expected INTSXP,
+        // got REALSXP" (#1112). Under `coerce` the gate widens with the conversion
+        // (see `coerce_widened`).
+        "i32" => Some(RTypeCheck::Scalar("integer")),
+        "f64" => Some(RTypeCheck::Scalar("double")),
+
+        // Non-native numeric scalars use the multi-source converters (integer,
+        // double, logical, raw), so the loose predicate matches what Rust accepts.
+        "f32" | "i8" | "i16" | "i64" | "isize" => Some(RTypeCheck::ScalarNumeric),
 
         // Unsigned numeric scalars (non-negative constraint)
         "u16" | "u32" | "u64" | "usize" => Some(RTypeCheck::ScalarNonNeg),
@@ -391,8 +406,10 @@ fn r_check_for_vec_element(elem_ty: &syn::Type) -> Option<RTypeCheck> {
     let ident = seg.ident.to_string();
 
     match ident.as_str() {
-        // Floating-point vectors: doubles are the natural form, loose predicate.
-        "f64" | "f32" => Some(RTypeCheck::VectorNumeric),
+        // `Vec<f64>` / `&[f64]` read the REALSXP payload directly (native path),
+        // so the gate is `is.double`; `Vec<f32>` coerces from every numeric source.
+        "f64" => Some(RTypeCheck::Vector("double")),
+        "f32" => Some(RTypeCheck::VectorNumeric),
 
         // `Vec<i32>` / `&[i32]` is the *only* INTSXP-only integer vector (issue
         // #616): its inbound conversion uses the native `RNativeType` path
@@ -516,7 +533,7 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// Static checks produce R-side `stopifnot()`:
 /// ```r
 /// stopifnot(
-///   "'a' must be numeric, logical, or raw" = is.numeric(a) || is.logical(a) || is.raw(a),
+///   "'a' must be integer" = is.integer(a),
 ///   "'a' must have length 1" = length(a) == 1L
 /// )
 /// ```
@@ -604,7 +621,7 @@ mod tests {
 
     #[test]
     fn scalar_numeric_produces_two_assertions() {
-        let asserts = assertions_for("i32", "x");
+        let asserts = assertions_for("i64", "x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(asserts[0].message, "'x' must be numeric, logical, or raw");
         assert_eq!(
@@ -616,8 +633,25 @@ mod tests {
     }
 
     #[test]
+    fn native_scalars_use_their_storage_gate() {
+        // `i32` / `f64` convert from one SEXPTYPE, so the gate says so (#1112).
+        let asserts = assertions_for("i32", "x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(asserts[0].message, "'x' must be integer");
+        assert_eq!(asserts[0].condition, "is.integer(x)");
+        let asserts = assertions_for("f64", "x");
+        assert_eq!(asserts[0].message, "'x' must be double");
+        assert_eq!(asserts[0].condition, "is.double(x)");
+        let asserts = assertions_for("Vec<f64>", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].condition, "is.double(x)");
+        let asserts = assertions_for("&[f64]", "x");
+        assert_eq!(asserts[0].condition, "is.double(x)");
+    }
+
+    #[test]
     fn all_signed_numeric_types_use_scalar_numeric() {
-        for ty_str in &["i32", "f64", "f32", "i8", "i16", "i64", "isize"] {
+        for ty_str in &["f32", "i8", "i16", "i64", "isize"] {
             let asserts = assertions_for(ty_str, "x");
             assert_eq!(asserts.len(), 2, "{} should produce 2 assertions", ty_str);
             assert!(
@@ -698,15 +732,13 @@ mod tests {
 
     #[test]
     fn vector_float_stays_loose() {
-        // Float vectors keep the loose predicate — doubles are the natural form.
-        for ty_str in &["Vec<f64>", "Vec<f32>"] {
-            let asserts = assertions_for(ty_str, "x");
-            assert_eq!(asserts.len(), 1, "{} should produce 1 assertion", ty_str);
-            assert_eq!(
-                asserts[0].condition,
-                "is.numeric(x) || is.logical(x) || is.raw(x)"
-            );
-        }
+        // `Vec<f32>` coerces from every numeric source, so it keeps the loose predicate.
+        let asserts = assertions_for("Vec<f32>", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(
+            asserts[0].condition,
+            "is.numeric(x) || is.logical(x) || is.raw(x)"
+        );
     }
 
     #[test]
@@ -775,13 +807,15 @@ mod tests {
         assert_eq!(asserts.len(), 1);
         assert!(asserts[0].condition.contains("x == trunc(x)"));
 
-        // Native doubles already carry the loose numeric gate the widened
-        // conversion honours; borrowed slices have no mapping and stay strict.
+        // Native doubles move from `is.double` to the loose numeric gate;
+        // borrowed slices have no mapping and stay strict.
         for name in ["f64", "Vec<f64>"] {
             let ty = parse_type(name);
-            let expected = r_check_for_type(&ty).unwrap().assertions("x");
             let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
-            assert_eq!(actual[0].condition, expected[0].condition, "{name}");
+            assert_eq!(
+                actual[0].condition, "is.numeric(x) || is.logical(x) || is.raw(x)",
+                "{name}"
+            );
         }
         let ty = parse_type("&[i32]");
         let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
@@ -790,7 +824,7 @@ mod tests {
 
     #[test]
     fn coerced_numeric_and_optional_checks_are_preserved() {
-        for name in ["Vec<u16>", "Vec<f64>", "Option<bool>"] {
+        for name in ["Vec<u16>", "Vec<f32>", "Option<bool>"] {
             let ty = parse_type(name);
             let expected = r_check_for_type(&ty).unwrap().assertions("x");
             let actual = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
@@ -850,7 +884,7 @@ mod tests {
 
     #[test]
     fn nullable_wraps_inner_assertions() {
-        let asserts = assertions_for("Option<i32>", "x");
+        let asserts = assertions_for("Option<i64>", "x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(
             asserts[0].message,
@@ -860,6 +894,8 @@ mod tests {
             asserts[0].condition,
             "is.null(x) || is.numeric(x) || is.logical(x) || is.raw(x)"
         );
+        let asserts = assertions_for("Option<i32>", "x");
+        assert_eq!(asserts[0].condition, "is.null(x) || is.integer(x)");
         assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
         assert_eq!(asserts[1].condition, "is.null(x) || length(x) == 1L");
     }
@@ -907,7 +943,7 @@ mod tests {
         let checks = &output.static_checks;
         assert_eq!(checks.len(), 4); // stopifnot( + 2 args + )
         assert_eq!(checks[0], "stopifnot(");
-        assert!(checks[1].contains("numeric, logical, or raw"));
+        assert!(checks[1].contains("must be integer"));
         assert!(checks[2].contains("length 1"));
         assert_eq!(checks[3], ")");
         assert!(output.fallback_params.is_empty());
@@ -940,9 +976,9 @@ mod tests {
         // stopifnot( + 4 assertions (2 per param) + )
         assert_eq!(checks.len(), 6);
         assert_eq!(checks[0], "stopifnot(");
-        assert!(checks[1].contains("'a'") && checks[1].contains("numeric"));
+        assert!(checks[1].contains("'a'") && checks[1].contains("integer"));
         assert!(checks[2].contains("'a'") && checks[2].contains("length 1"));
-        assert!(checks[3].contains("'b'") && checks[3].contains("numeric"));
+        assert!(checks[3].contains("'b'") && checks[3].contains("double"));
         assert!(checks[4].contains("'b'") && checks[4].contains("length 1"));
         assert_eq!(checks[5], ")");
     }

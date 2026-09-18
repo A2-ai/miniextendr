@@ -104,8 +104,9 @@ features section). The forwarding is automatic.
 `coerce` and `coerce-default` preserve normal input types. Non-native numeric
 scalars and vectors already accept integer, double, logical, and raw inputs;
 coercion keeps those checked conversions. The native `i32` / `Vec<i32>` and
-`f64` / `Vec<f64>` accept one `SEXPTYPE` without coerce (`f(3)` fails for
-`x: i32`, `f(1L)` fails for `x: f64`); with coerce they widen to the same four
+`f64` / `Vec<f64>` accept one `SEXPTYPE` without coerce, and the R precondition
+says so (`f(3)` fails for `x: i32` with "'x' must be integer", `f(1L)` for
+`x: f64` with "'x' must be double"); with coerce they widen to the same four
 sources, `i32` from whole-number doubles only, and the R precondition names the
 widened domain. NA propagates where the declared type can carry it (`f64`,
 `Vec<f64>`, `Vec<i32>`), as `as.numeric()` / `as.integer()` would; a scalar
@@ -188,7 +189,7 @@ default to every `#[miniextendr]` function and impl block:
   `stopifnot` check costs ~300 ns/call for a typical i32 argument. When
   omitted, type errors still propagate from Rust's `TryFromSexp`, but the
   message comes from the Rust side ("failed to convert parameter 'x' to i32")
-  rather than R's "must be numeric, logical, or raw".
+  rather than R's "must be integer".
 
 - **`no_call_attribution`**: emits `.call = NULL` instead of
   `.call = match.call()` in the `.Call(...)` invocation. This saves ~1200 ns

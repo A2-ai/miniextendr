@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3083
+assertion_line: 3462
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Range S7 Class
@@ -23,9 +23,9 @@ Range <- S7::new_class("Range",
   constructor = function(start, end, .ptr = NULL) {
     if (is.null(.ptr)) {
       stopifnot(
-        "'start' must be numeric, logical, or raw" = is.numeric(start) || is.logical(start) || is.raw(start),
+        "'start' must be double" = is.double(start),
         "'start' must have length 1" = length(start) == 1L,
-        "'end' must be numeric, logical, or raw" = is.numeric(end) || is.logical(end) || is.raw(end),
+        "'end' must be double" = is.double(end),
         "'end' must have length 1" = length(end) == 1L
       )
     }

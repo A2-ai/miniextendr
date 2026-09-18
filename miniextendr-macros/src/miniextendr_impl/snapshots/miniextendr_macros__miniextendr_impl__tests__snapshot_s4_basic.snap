@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3049
+assertion_line: 3428
 expression: generate_s4_r_wrapper(&parsed)
 ---
 #' @title Counter S4 Class
@@ -19,7 +19,7 @@ methods::setClass("Counter", slots = c(ptr = "externalptr"))
 #' @export
 Counter <- function(value) {
   stopifnot(
-    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must be integer" = is.integer(value),
     "'value' must have length 1" = length(value) == 1L
   )
   .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
