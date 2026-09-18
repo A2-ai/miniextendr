@@ -41,8 +41,8 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:266 |
-| `Verbosity` | `` | concrete | 1 | src/main.rs:55 |
+| `Mode` | `` | concrete | 1 | src/main.rs:272 |
+| `Verbosity` | `` | concrete | 1 | src/main.rs:56 |
 | `LocalPackage` | `` | concrete | 1 | src/metadata.rs:8 |
 | `StripConfig` | `` | concrete | 1 | src/strip.rs:8 |
 | `LockPackage` | `` | concrete | 1 | src/verify.rs:23 |
@@ -51,7 +51,7 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Verbosity` | `` | concrete | 1 | src/main.rs:55 |
+| `Verbosity` | `` | concrete | 1 | src/main.rs:56 |
 | `LocalPackage` | `` | concrete | 1 | src/metadata.rs:8 |
 | `StripConfig` | `` | concrete | 1 | src/strip.rs:8 |
 | `LockPackage` | `` | concrete | 1 | src/verify.rs:23 |
@@ -60,20 +60,20 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:266 |
-| `Verbosity` | `` | concrete | 0 | src/main.rs:55 |
+| `Mode` | `` | concrete | 0 | src/main.rs:272 |
+| `Verbosity` | `` | concrete | 0 | src/main.rs:56 |
 
 ## `Args` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Cli` | `` | concrete | 3 | src/main.rs:70 |
+| `Cli` | `` | concrete | 3 | src/main.rs:71 |
 
 ## `CommandFactory` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Cli` | `` | concrete | 2 | src/main.rs:70 |
+| `Cli` | `` | concrete | 2 | src/main.rs:71 |
 
 ## `Drop` — 1 impls
 
@@ -85,28 +85,28 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Cli` | `` | concrete | 4 | src/main.rs:70 |
+| `Cli` | `` | concrete | 4 | src/main.rs:71 |
 
 ## `Parser` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Cli` | `` | concrete | 0 | src/main.rs:70 |
+| `Cli` | `` | concrete | 0 | src/main.rs:71 |
 
 ## `PartialEq` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 1 | src/main.rs:266 |
+| `Mode` | `` | concrete | 1 | src/main.rs:272 |
 
 ## `Serialize` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `JsonOutput` | `` | concrete | 1 | src/main.rs:389 |
+| `JsonOutput` | `` | concrete | 1 | src/main.rs:395 |
 
 ## `StructuralPartialEq` — 1 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Mode` | `` | concrete | 0 | src/main.rs:266 |
+| `Mode` | `` | concrete | 0 | src/main.rs:272 |

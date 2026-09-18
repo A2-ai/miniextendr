@@ -13,3 +13,10 @@ call_attr_caller <- function(value) {
 call_attr_self <- function(value) {
   call_attr_self_impl(value)
 }
+
+# Delegates to a `call = caller` entry point with R-side checks (#1548): a bad
+# choice or a failed precondition surfaces as `Error in call_attr_checked(...)`
+# naming the argument, the same way a Rust-side error does.
+call_attr_checked <- function(mode = "Fast", metrics = "mean", n = 1L, level = NULL) {
+  call_attr_checked_impl(mode, metrics, n, level)
+}

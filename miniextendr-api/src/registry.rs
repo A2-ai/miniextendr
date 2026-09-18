@@ -1429,18 +1429,37 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # the Rust side never sees it (#1472). Here every element has to match a choice
 # (exactly or as a unique prefix), the first that does not is reported with its
 # position, and `NULL` selects every choice, like an omitted argument does. The
-# error is attributed to the wrapper's own call, not to this helper.
-.miniextendr_match_arg_several <- function(arg, choices, arg_name) {
+# error is attributed to `call`: by default the wrapper's own call, not this
+# helper; a `call = caller` wrapper passes its caller's matched call (#1548).
+.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
   if (is.null(arg)) return(choices)
-  .call <- sys.call(-1L)
-  if (!is.character(arg)) stop(simpleError(sprintf(\"'%s' must be NULL or a character vector\", arg_name), .call))
-  if (length(arg) == 0L) stop(simpleError(sprintf(\"'%s' must be of length >= 1\", arg_name), .call))
+  if (!is.character(arg)) stop(simpleError(sprintf(\"'%s' must be NULL or a character vector\", arg_name), call))
+  if (length(arg) == 0L) stop(simpleError(sprintf(\"'%s' must be of length >= 1\", arg_name), call))
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   bad <- which(is.na(i) | i == 0L)
   if (length(bad)) {
-    stop(simpleError(sprintf(\"'%s' element %d (\\\"%s\\\") should be one of %s\", arg_name, bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = \", \")), .call))
+    stop(simpleError(sprintf(\"'%s' element %d (\\\"%s\\\") should be one of %s\", arg_name, bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = \", \")), call))
   }
   choices[i]
+}
+
+# Internal helper: scalar `match.arg()` that names the argument and raises with
+# an explicit call. `base::match.arg()` says `'arg'` in its messages and reports
+# its own frame, so `call = caller` wrappers route their scalar `match_arg` /
+# `choices` parameters through here with the caller's matched call (#1548).
+# Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
+# (the formal default) select the first choice; otherwise exactly one string
+# that matches a choice exactly or as a unique prefix.
+.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
+  if (is.null(arg)) return(choices[[1L]])
+  if (!is.character(arg)) stop(simpleError(sprintf(\"'%s' must be NULL or a character vector\", arg_name), call))
+  if (identical(arg, choices)) return(arg[[1L]])
+  if (length(arg) != 1L) stop(simpleError(sprintf(\"'%s' must be of length 1\", arg_name), call))
+  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
+  if (is.na(i) || i == 0L) {
+    stop(simpleError(sprintf(\"'%s' should be one of %s\", arg_name, paste(dQuote(choices, FALSE), collapse = \", \")), call))
+  }
+  choices[[i]]
 }
 
 ",

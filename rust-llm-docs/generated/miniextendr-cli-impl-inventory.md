@@ -82,9 +82,9 @@ Traits with impls: 33
 |---|---|---|---|---|
 | `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:239 |
 | `ProjectContext` | `` | concrete | 1 | miniextendr-cli/src/project.rs:62 |
-| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:230 |
-| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:334 |
-| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:345 |
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:236 |
+| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:340 |
+| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:351 |
 
 ## `Debug` — 5 impls
 
@@ -92,17 +92,17 @@ Traits with impls: 33
 |---|---|---|---|---|
 | `CargoBuildOpts` | `` | concrete | 1 | miniextendr-cli/src/cli.rs:239 |
 | `ProjectContext` | `` | concrete | 1 | miniextendr-cli/src/project.rs:62 |
-| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:230 |
-| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:334 |
-| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:345 |
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:236 |
+| `Dest` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:340 |
+| `PlanEntry` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:351 |
 
 ## `Copy` — 3 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:230 |
-| `Dest` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:334 |
-| `PlanEntry` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:345 |
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:236 |
+| `Dest` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:340 |
+| `PlanEntry` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:351 |
 
 ## `Args` — 2 impls
 
@@ -134,7 +134,7 @@ Traits with impls: 33
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:230 |
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:236 |
 
 ## `Parser` — 1 impls
 
@@ -146,7 +146,7 @@ Traits with impls: 33
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:230 |
+| `Render` | `` | concrete | 1 | miniextendr-cli/src/scaffold.rs:236 |
 
 ## `Serialize` — 1 impls
 
@@ -158,4 +158,4 @@ Traits with impls: 33
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:230 |
+| `Render` | `` | concrete | 0 | miniextendr-cli/src/scaffold.rs:236 |

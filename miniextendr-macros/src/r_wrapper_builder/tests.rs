@@ -424,6 +424,44 @@ fn call_attribution_strings() {
         ".mx_parent <- sys.parent()\n  \
          .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)\n  \
          .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)\n  \
-         .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()\n  "
+         .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()"
+    );
+    assert_eq!(CallAttribution::Wrapper.r_check_call(), None);
+    assert_eq!(CallAttribution::None.r_check_call(), None);
+    assert_eq!(CallAttribution::Caller.r_check_call(), Some(".mx_call"));
+}
+
+#[test]
+fn match_arg_statement_per_attribution() {
+    // Wrapper attribution (and `no_call_attribution`): `base::match.arg()` for
+    // the scalar forms, the strict helper for `several_ok`, own-frame errors.
+    for attribution in [CallAttribution::Wrapper, CallAttribution::None] {
+        assert_eq!(
+            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", false, false),
+            "mode <- base::match.arg(mode)"
+        );
+        assert_eq!(
+            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", false, true),
+            "if (!is.null(mode)) mode <- base::match.arg(mode, c(\"a\", \"b\"))"
+        );
+        assert_eq!(
+            attribution.match_arg_statement("modes", ".__MX_CHOICES__", true, false),
+            "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\")"
+        );
+    }
+    // `call = caller` (#1548): every form raises with `.mx_call` and names the
+    // argument; the scalar helper gets the choice list explicitly.
+    let caller = CallAttribution::Caller;
+    assert_eq!(
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", false, false),
+        "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
+    );
+    assert_eq!(
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", false, true),
+        "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
+    );
+    assert_eq!(
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", true, true),
+        "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );
 }
