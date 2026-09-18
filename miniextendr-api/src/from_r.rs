@@ -1245,7 +1245,7 @@ fn collect_coerced<U>(
 ///
 /// Reads INTSXP/REALSXP/RAWSXP/LGLSXP and applies the per-element map. The only
 /// behavioural axis (NA policy) lives entirely in the four closures the caller
-/// passes, so the NA-unaware [`try_from_sexp_numeric_vec`] and the NA-aware
+/// passes, so the NA-rejecting [`try_from_sexp_numeric_vec`] and the NA-aware
 /// `try_from_sexp_numeric_option_vec` (in [`na_vectors`]) share one dispatch.
 /// LGLSXP NA (`NA_LOGICAL`) and INTSXP NA (`i32::MIN`) round through as raw
 /// sentinels here; any NA-to-`None` policy is the caller's closure to encode.
@@ -1452,10 +1452,12 @@ pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
 
 /// Convert numeric/logical/raw vectors to `Vec<T>` with element-wise coercion.
 ///
-/// NA-unaware: an R `NA` round-trips as the coerced sentinel rather than being
-/// rejected. Bind `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA.
-/// Per-element coercion failures batch into one diagnostic (`container` names the
-/// target type for the message, e.g. `"Vec<u32>"`).
+/// An R `NA` is an error at its index, whichever storage carries it: `NA_integer_`
+/// and a logical `NA` are caught here (the `i32::MIN` sentinel would otherwise
+/// coerce to a finite number), `NA_real_` fails the `f64` coercion as NaN. Bind
+/// `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA. Per-element
+/// failures batch into one diagnostic (`container` names the target type for the
+/// message, e.g. `"Vec<u32>"`).
 #[inline]
 fn try_from_sexp_numeric_vec<T>(sexp: SEXP, container: &str) -> Result<Vec<T>, SexpError>
 where
@@ -1469,10 +1471,28 @@ where
     from_numeric_vec_with(
         sexp,
         container,
+        |v: i32| {
+            if v == crate::altrep_traits::NA_INTEGER {
+                Err(SexpNaError {
+                    sexp_type: SEXPTYPE::INTSXP,
+                }
+                .into())
+            } else {
+                coerce_value(v)
+            }
+        },
         coerce_value,
         coerce_value,
-        coerce_value,
-        |v: RLogical| coerce_value(v.to_i32()),
+        |v: RLogical| {
+            if v.is_na() {
+                Err(SexpNaError {
+                    sexp_type: SEXPTYPE::LGLSXP,
+                }
+                .into())
+            } else {
+                coerce_value(v.to_i32())
+            }
+        },
     )
 }
 

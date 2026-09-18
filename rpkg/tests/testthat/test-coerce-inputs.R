@@ -118,6 +118,14 @@ test_that("newly accepted vectors retain batched conversion diagnostics", {
   for (i in c(0, 2, 3, 4)) {
     expect_match(msg, paste("invalid value at index", i), fixed = TRUE)
   }
+  # A non-optional numeric vector rejects NA at its index instead of letting the
+  # NA_integer_ sentinel coerce to -2147483648.
+  na_error <- expect_error(coerce_input_fixture("vector", "i64")(c(1L, NA, 3L, NA)))
+  for (i in c(1, 3)) {
+    expect_match(conditionMessage(na_error), paste("invalid value at index", i), fixed = TRUE)
+  }
+  expect_error(coerce_input_fixture("vector", "f32")(c(TRUE, NA)))
+  expect_error(coerce_input_fixture("vector", "u16")(c(1L, NA_integer_)))
   logical_error <- expect_error(coerce_input_fixture("vector", "bool")(c(NA, TRUE, NA)))
   for (i in c(0, 2)) {
     expect_match(conditionMessage(logical_error), paste("invalid value at index", i), fixed = TRUE)

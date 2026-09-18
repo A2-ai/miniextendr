@@ -10,7 +10,7 @@ This document describes R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`) conver
 
 ### Normal Mode (default)
 
-Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
+Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. The generated R precondition says the same (`is.integer()` for `i32` / `Vec<i32>`, `is.double()` for `f64` / `Vec<f64>`), so `f(3)` on an `i32` parameter fails at the R boundary with "'x' must be integer" rather than inside Rust with "expected INTSXP, got REALSXP". A non-optional numeric vector (`Vec<i64>`, `Vec<f32>`, ...) rejects `NA` at its index; bind `Vec<Option<T>>` when the caller may pass NA. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
 
 ### Coerce Mode (`#[miniextendr(coerce)]`)
 
