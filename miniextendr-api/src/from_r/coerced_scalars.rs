@@ -55,7 +55,7 @@ where
 }
 
 #[inline]
-fn try_from_sexp_numeric_scalar<T>(sexp: SEXP) -> Result<T, SexpError>
+pub(super) fn try_from_sexp_numeric_scalar<T>(sexp: SEXP) -> Result<T, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,

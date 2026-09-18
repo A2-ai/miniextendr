@@ -1046,6 +1046,132 @@ where
 }
 // endregion
 
+/// Convert a `coerce` boolean parameter from a logical or integer zero/one.
+/// Numeric parameters already have multi-source `TryFromSexp` implementations;
+/// bool needs this extension while its ordinary conversion stays logical-only.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_bool(sexp: SEXP) -> Result<bool, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        Coerced::<bool, i32>::try_from_sexp(sexp).map(Coerced::into_inner)
+    } else {
+        bool::try_from_sexp(sexp)
+    }
+}
+
+/// Convert a `coerce` boolean vector, retaining indexed, batched diagnostics.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_bool_vec(sexp: SEXP) -> Result<Vec<bool>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        let slice: &[i32] = TryFromSexp::try_from_sexp(sexp)?;
+        coerce_slice_to_vec(slice, "Vec<bool>")
+    } else {
+        Vec::<bool>::try_from_sexp(sexp)
+    }
+}
+
+/// Convert a `coerce` native `i32` parameter.
+///
+/// `INTSXP` takes exactly the bare conversion (NA rejected, as always for a
+/// scalar `i32`). Whole-valued doubles, logicals, and raws go through the
+/// checked multi-source path the non-native integers use, so `3` reaches an
+/// `i32` parameter as `3L` while `3.5`, `NA`, and out-of-range values are errors.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_i32(sexp: SEXP) -> Result<i32, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        i32::try_from_sexp(sexp)
+    } else {
+        coerced_scalars::try_from_sexp_numeric_scalar(sexp)
+    }
+}
+
+/// Convert a `coerce` native `f64` parameter.
+///
+/// `REALSXP` takes exactly the bare conversion (`NA_real_` passes through).
+/// Integers, logicals, and raws widen losslessly, and an integer or logical NA
+/// becomes `NA_real_` as `as.numeric()` would produce it: the declared type can
+/// carry NA, so coercion propagates it rather than inventing an error.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_f64(sexp: SEXP) -> Result<f64, SexpError> {
+    match sexp.type_of() {
+        SEXPTYPE::INTSXP => {
+            let v: Option<i32> = TryFromSexp::try_from_sexp(sexp)?;
+            Ok(v.map_or(crate::altrep_traits::NA_REAL, f64::from))
+        }
+        SEXPTYPE::LGLSXP => {
+            let v: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+            Ok(if v.is_na() {
+                crate::altrep_traits::NA_REAL
+            } else {
+                f64::from(v.to_i32())
+            })
+        }
+        SEXPTYPE::RAWSXP => {
+            let v: u8 = TryFromSexp::try_from_sexp(sexp)?;
+            Ok(f64::from(v))
+        }
+        _ => f64::try_from_sexp(sexp),
+    }
+}
+
+/// Convert a `coerce` `Vec<i32>` parameter.
+///
+/// `INTSXP` takes the bare conversion. Whole-valued doubles, logicals, and raws
+/// widen element-wise with indexed, batched diagnostics. `NA_real_` and a
+/// logical NA become `NA_integer_` (the vector can carry NA, unlike the scalar);
+/// any other NaN, fractional, or out-of-range double is an error.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_i32_vec(sexp: SEXP) -> Result<Vec<i32>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::INTSXP {
+        return Vec::<i32>::try_from_sexp(sexp).map_err(SexpError::from);
+    }
+    from_numeric_vec_with(
+        sexp,
+        "Vec<i32>",
+        Ok,
+        |v: f64| {
+            if is_na_real(v) {
+                Ok(crate::altrep_traits::NA_INTEGER)
+            } else {
+                coerced_scalars::coerce_value(v)
+            }
+        },
+        |v: u8| Ok(i32::from(v)),
+        // `NA_LOGICAL` and `NA_INTEGER` share the `i32::MIN` sentinel.
+        |v: RLogical| Ok(v.to_i32()),
+    )
+}
+
+/// Convert a `coerce` `Vec<f64>` parameter.
+///
+/// `REALSXP` takes the bare conversion. Integers, logicals, and raws widen
+/// element-wise; an integer or logical NA becomes `NA_real_`.
+#[doc(hidden)]
+pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> {
+    if sexp.type_of() == SEXPTYPE::REALSXP {
+        return Vec::<f64>::try_from_sexp(sexp).map_err(SexpError::from);
+    }
+    from_numeric_vec_with(
+        sexp,
+        "Vec<f64>",
+        |v: i32| {
+            Ok(if v == crate::altrep_traits::NA_INTEGER {
+                crate::altrep_traits::NA_REAL
+            } else {
+                f64::from(v)
+            })
+        },
+        Ok,
+        |v: u8| Ok(f64::from(v)),
+        |v: RLogical| {
+            Ok(if v.is_na() {
+                crate::altrep_traits::NA_REAL
+            } else {
+                f64::from(v.to_i32())
+            })
+        },
+    )
+}
+
 // region: Direct Vec coercion conversions
 //
 // These provide direct `TryFromSexp for Vec<T>` where T is not an R native type
@@ -1119,7 +1245,7 @@ fn collect_coerced<U>(
 ///
 /// Reads INTSXP/REALSXP/RAWSXP/LGLSXP and applies the per-element map. The only
 /// behavioural axis (NA policy) lives entirely in the four closures the caller
-/// passes, so the NA-unaware [`try_from_sexp_numeric_vec`] and the NA-aware
+/// passes, so the NA-rejecting [`try_from_sexp_numeric_vec`] and the NA-aware
 /// `try_from_sexp_numeric_option_vec` (in [`na_vectors`]) share one dispatch.
 /// LGLSXP NA (`NA_LOGICAL`) and INTSXP NA (`i32::MIN`) round through as raw
 /// sentinels here; any NA-to-`None` policy is the caller's closure to encode.
@@ -1326,10 +1452,12 @@ pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
 
 /// Convert numeric/logical/raw vectors to `Vec<T>` with element-wise coercion.
 ///
-/// NA-unaware: an R `NA` round-trips as the coerced sentinel rather than being
-/// rejected. Bind `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA.
-/// Per-element coercion failures batch into one diagnostic (`container` names the
-/// target type for the message, e.g. `"Vec<u32>"`).
+/// An R `NA` is an error at its index, whichever storage carries it: `NA_integer_`
+/// and a logical `NA` are caught here (the `i32::MIN` sentinel would otherwise
+/// coerce to a finite number), `NA_real_` fails the `f64` coercion as NaN. Bind
+/// `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA. Per-element
+/// failures batch into one diagnostic (`container` names the target type for the
+/// message, e.g. `"Vec<u32>"`).
 #[inline]
 fn try_from_sexp_numeric_vec<T>(sexp: SEXP, container: &str) -> Result<Vec<T>, SexpError>
 where
@@ -1343,10 +1471,28 @@ where
     from_numeric_vec_with(
         sexp,
         container,
+        |v: i32| {
+            if v == crate::altrep_traits::NA_INTEGER {
+                Err(SexpNaError {
+                    sexp_type: SEXPTYPE::INTSXP,
+                }
+                .into())
+            } else {
+                coerce_value(v)
+            }
+        },
         coerce_value,
         coerce_value,
-        coerce_value,
-        |v: RLogical| coerce_value(v.to_i32()),
+        |v: RLogical| {
+            if v.is_na() {
+                Err(SexpNaError {
+                    sexp_type: SEXPTYPE::LGLSXP,
+                }
+                .into())
+            } else {
+                coerce_value(v.to_i32())
+            }
+        },
     )
 }
 

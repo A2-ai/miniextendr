@@ -699,7 +699,7 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
         result
     );
     assert!(
-        result.contains("'amount' must be numeric"),
+        result.contains("'amount' must be integer"),
         "precondition message should mention the param, got:\n{}",
         result
     );

@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3136
+assertion_line: 3515
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title WithDefaults S7 Class
@@ -23,9 +23,9 @@ WithDefaults <- S7::new_class("WithDefaults",
       stopifnot(
         "'name' must be character" = is.character(name),
         "'name' must have length 1" = length(name) == 1L,
-        "'scale' must be numeric, logical, or raw" = is.numeric(scale) || is.logical(scale) || is.raw(scale),
+        "'scale' must be double" = is.double(scale),
         "'scale' must have length 1" = length(scale) == 1L,
-        "'mode' must be NULL or numeric, logical, or raw" = is.null(mode) || is.numeric(mode) || is.logical(mode) || is.raw(mode),
+        "'mode' must be NULL or integer" = is.null(mode) || is.integer(mode),
         "'mode' must be NULL or have length 1" = is.null(mode) || length(mode) == 1L
       )
     }

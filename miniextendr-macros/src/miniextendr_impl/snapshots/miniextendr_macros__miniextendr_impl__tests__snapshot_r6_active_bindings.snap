@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3245
+assertion_line: 3388
 expression: generate_r6_r_wrapper(&parsed)
 ---
 #' @title Temperature R6 Class
@@ -20,7 +20,7 @@ Temperature <- R6::R6Class("Temperature",
     initialize = function(celsius, .ptr = NULL) {
       if (is.null(.ptr)) {
         stopifnot(
-          "'celsius' must be numeric, logical, or raw" = is.numeric(celsius) || is.logical(celsius) || is.raw(celsius),
+          "'celsius' must be double" = is.double(celsius),
           "'celsius' must have length 1" = length(celsius) == 1L
         )
       }
@@ -46,7 +46,7 @@ Temperature <- R6::R6Class("Temperature",
 #' @param value (no documentation available)
 Temperature$set("public", "set_celsius", function(value) {
   stopifnot(
-    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must be double" = is.double(value),
     "'value' must have length 1" = length(value) == 1L
   )
   .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
@@ -61,7 +61,7 @@ Temperature$set("active", "celsius", function(value) {
     .val
   } else {
     stopifnot(
-      "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+      "'value' must be double" = is.double(value),
       "'value' must have length 1" = length(value) == 1L
     )
     .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)

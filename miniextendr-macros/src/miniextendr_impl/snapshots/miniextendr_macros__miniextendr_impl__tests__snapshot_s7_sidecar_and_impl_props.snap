@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3117
+assertion_line: 3496
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title Mixed S7 Class
@@ -21,7 +21,7 @@ Mixed <- S7::new_class("Mixed",
   constructor = function(x, .ptr = NULL) {
     if (is.null(.ptr)) {
       stopifnot(
-        "'x' must be numeric, logical, or raw" = is.numeric(x) || is.logical(x) || is.raw(x),
+        "'x' must be double" = is.double(x),
         "'x' must have length 1" = length(x) == 1L
       )
     }

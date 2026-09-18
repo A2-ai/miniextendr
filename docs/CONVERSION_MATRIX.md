@@ -1,6 +1,6 @@
 # Conversion Behavior Matrix
 
-This document describes how miniextendr converts between R types and Rust types. Conversions are governed by three modes (**normal**, **coerce**, **strict**) and apply to both directions: R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`).
+This document describes R-to-Rust (`TryFromSexp`) and Rust-to-R (`IntoR`) conversions. The `coerce` option extends input conversion; `strict` adds input and output checks for lossy integer types.
 
 **See also**: `miniextendr-api/src/from_r.rs`, `miniextendr-api/src/into_r.rs`, `miniextendr-api/src/strict.rs`, `miniextendr-api/src/coerce.rs`
 
@@ -10,11 +10,13 @@ This document describes how miniextendr converts between R types and Rust types.
 
 ### Normal Mode (default)
 
-Each Rust type accepts exactly one R type. For example, `i32` only accepts `INTSXP`, `f64` only accepts `REALSXP`. A type mismatch produces an error.
+Native Rust types use their corresponding R storage: `i32` accepts `INTSXP`, `f64` accepts `REALSXP`, and `bool` accepts `LGLSXP`. The generated R precondition says the same (`is.integer()` for `i32` / `Vec<i32>`, `is.double()` for `f64` / `Vec<f64>`), so `f(3)` on an `i32` parameter fails at the R boundary with "'x' must be integer" rather than inside Rust with "expected INTSXP, got REALSXP". A non-optional numeric vector (`Vec<i64>`, `Vec<f32>`, ...) rejects `NA` at its index; bind `Vec<Option<T>>` when the caller may pass NA. Non-native numeric types (`i8`, `i16`, `u16`, `u32`, `i64`, `u64`, `isize`, `usize`, `f32`) and their `Vec<T>` forms already accept integer, double, logical, and raw inputs through checked conversion. No attribute is needed.
 
-### Coerce Mode
+### Coerce Mode (`#[miniextendr(coerce)]`)
 
-Coerced types (like `i64`, `u64`, `isize`, `usize`, and sub-integer types `i8`, `i16`, `u16`, `u32`, `f32`) accept multiple R types: `INTSXP`, `REALSXP`, `RAWSXP`, and `LGLSXP`. The value is extracted as the R native type, then converted to the target Rust type via `TryCoerce`. This is the default for these types -- no attribute is needed.
+Coercion preserves every input type accepted in normal mode. Non-native numeric scalars and vectors use the same checked multi-source converters. The native `i32` / `Vec<i32>` additionally accept whole-number doubles, logicals, and raws (`3` reaches an `i32` parameter as `3L`; `3.5`, `NA`, and out-of-range values are errors), and the native `f64` / `Vec<f64>` additionally accept integers, logicals, and raws. NA follows `as.integer()` / `as.numeric()`: it propagates where the declared type can carry it (`f64` and `Vec<f64>` receive `NA_real_` for an integer or logical `NA`; `Vec<i32>` receives `NA_integer_` for `NA_real_` or a logical `NA`), while a scalar `i32` keeps rejecting `NA` as it does without coerce. The generated R precondition follows the selected conversion, so `x: i32` under coerce is gated by "integer or whole-number numeric" instead of failing later in Rust. Borrowed slices (`&[i32]`, `&[f64]`) stay single-type because they cannot allocate a converted copy. `bool` and `Vec<bool>` additionally accept integer `0` and `1`, while retaining logical inputs; NA and other integers are errors. Vector conversion reports all failing indices in one diagnostic.
+
+The option can apply to a function, one parameter, or every function through `coerce-default`. `no_coerce` opts out of the feature default. Unmapped types, including `Option<bool>`, keep their ordinary conversion. When `strict` and `coerce` are both enabled, strict conversion takes precedence for the types it checks.
 
 ### Strict Mode (`#[miniextendr(strict)]`)
 

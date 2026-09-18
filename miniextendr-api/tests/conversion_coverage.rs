@@ -1435,8 +1435,9 @@ fn na_vector_option_i32_empty_zero_sentinel() {
 // These exercise the *coerced* path (`try_from_sexp_numeric_{,option_}vec`,
 // served for i8/i16/i64/u16/u32/u64/isize/usize/f32) that both route through
 // the shared `from_numeric_vec_with` dispatch. They pin the previously
-// unverified REALSXP/LGLSXP option cells and the plain-path NA-round-through
-// contract that distinguishes the NA-unaware sibling from the NA-aware one.
+// unverified REALSXP/LGLSXP option cells and the plain-path contract that
+// distinguishes the two siblings: `Vec<Option<T>>` maps NA to `None`,
+// `Vec<T>` rejects it at its index.
 
 /// Coerced Vec<Option<i64>> from REALSXP: NA_real_ → None (bit-exact, not NaN).
 #[test]
@@ -1512,11 +1513,11 @@ fn coerced_option_vec_i64_rawsxp_all_some() {
     });
 }
 
-/// Plain (NA-unaware) coerced Vec<i64> from INTSXP: NA_integer_ rounds THROUGH
-/// as the i32::MIN sentinel, it is not dropped. This is the footgun documented
-/// on the na_vectors sibling and the contract the Option path avoids.
+/// Plain coerced Vec<i64> from INTSXP: NA_integer_ is rejected at its index, it
+/// does not round through as the i32::MIN sentinel. Bind `Vec<Option<i64>>` to
+/// accept NA.
 #[test]
-fn coerced_plain_vec_i64_intsxp_na_round_through() {
+fn coerced_plain_vec_i64_intsxp_na_is_indexed_error() {
     r_test_utils::with_r_thread(|| {
         let mut g = Guard(0);
         let s = unsafe {
@@ -1527,15 +1528,25 @@ fn coerced_plain_vec_i64_intsxp_na_round_through() {
             sl[2] = 3;
             s
         };
-        let v: Vec<i64> = TryFromSexp::try_from_sexp(s).unwrap();
-        assert_eq!(v, vec![1i64, i32::MIN as i64, 3i64]);
+        let result: Result<Vec<i64>, SexpError> = TryFromSexp::try_from_sexp(s);
+        match result {
+            Err(SexpError::InvalidValue(msg)) => {
+                assert!(msg.contains("Vec<i64> conversion failed"), "{msg}");
+                assert!(msg.contains("index 1"), "{msg}");
+                assert!(
+                    !msg.contains("index 0") && !msg.contains("index 2"),
+                    "{msg}"
+                );
+            }
+            other => panic!("expected batched InvalidValue, got {:?}", other.map(|_| ())),
+        }
     });
 }
 
-/// Plain (NA-unaware) coerced Vec<i64> from LGLSXP: NA_LOGICAL reads via to_i32()
-/// and rounds through as i32::MIN; TRUE → 1, FALSE → 0.
+/// Plain coerced Vec<i64> from LGLSXP: NA_LOGICAL is rejected at its index the
+/// same way; TRUE → 1, FALSE → 0 still convert when no NA is present.
 #[test]
-fn coerced_plain_vec_i64_lglsxp_na_round_through() {
+fn coerced_plain_vec_i64_lglsxp_na_is_indexed_error() {
     r_test_utils::with_r_thread(|| {
         let mut g = Guard(0);
         let s = unsafe {
@@ -1545,8 +1556,14 @@ fn coerced_plain_vec_i64_lglsxp_na_round_through() {
             s.set_logical_elt(2, 0); // FALSE
             s
         };
+        let result: Result<Vec<i64>, SexpError> = TryFromSexp::try_from_sexp(s);
+        match result {
+            Err(SexpError::InvalidValue(msg)) => assert!(msg.contains("index 1"), "{msg}"),
+            other => panic!("expected batched InvalidValue, got {:?}", other.map(|_| ())),
+        }
+        s.set_logical_elt(1, 0);
         let v: Vec<i64> = TryFromSexp::try_from_sexp(s).unwrap();
-        assert_eq!(v, vec![1i64, i32::MIN as i64, 0i64]);
+        assert_eq!(v, vec![1i64, 0i64, 0i64]);
     });
 }
 

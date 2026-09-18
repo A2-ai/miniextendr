@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3232
+assertion_line: 3611
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Rational::new (1:1)
@@ -12,9 +12,9 @@ expression: generate_vctrs_r_wrapper(&parsed)
 #' @export
 new_rational <- function(n, d) {
   stopifnot(
-    "'n' must be numeric, logical, or raw" = is.numeric(n) || is.logical(n) || is.raw(n),
+    "'n' must be integer" = is.integer(n),
     "'n' must have length 1" = length(n) == 1L,
-    "'d' must be numeric, logical, or raw" = is.numeric(d) || is.logical(d) || is.raw(d),
+    "'d' must be integer" = is.integer(d),
     "'d' must have length 1" = length(d) == 1L
   )
   .val <- .Call(C_miniextendr_macros_Rational__new, .call = match.call(), n, d)

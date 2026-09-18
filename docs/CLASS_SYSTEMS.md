@@ -100,7 +100,7 @@ Counter <- new.env(parent = emptyenv())
 
 Counter$new <- function(initial) {
   stopifnot(
-    "'initial' must be numeric, logical, or raw" = is.numeric(initial) || is.logical(initial) || is.raw(initial),
+    "'initial' must be integer" = is.integer(initial),
     "'initial' must have length 1" = length(initial) == 1L
   )
   .val <- .Call(C_mypkg_Counter__new, .call = match.call(), initial)

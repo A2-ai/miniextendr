@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3098
+assertion_line: 3477
 expression: generate_s7_r_wrapper(&parsed)
 ---
 #' @title SidecarOnly S7 Class
@@ -19,7 +19,7 @@ SidecarOnly <- S7::new_class("SidecarOnly",
   constructor = function(value, .ptr = NULL) {
     if (is.null(.ptr)) {
       stopifnot(
-        "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+        "'value' must be integer" = is.integer(value),
         "'value' must have length 1" = length(value) == 1L
       )
     }

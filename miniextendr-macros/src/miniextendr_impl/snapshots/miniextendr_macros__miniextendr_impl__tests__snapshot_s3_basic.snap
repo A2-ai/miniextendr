@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3036
+assertion_line: 3415
 expression: generate_s3_r_wrapper(&parsed)
 ---
 # Counter::new (1:1)
@@ -11,7 +11,7 @@ expression: generate_s3_r_wrapper(&parsed)
 #' @export
 new_counter <- function(value) {
   stopifnot(
-    "'value' must be numeric, logical, or raw" = is.numeric(value) || is.logical(value) || is.raw(value),
+    "'value' must be integer" = is.integer(value),
     "'value' must have length 1" = length(value) == 1L
   )
   .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
