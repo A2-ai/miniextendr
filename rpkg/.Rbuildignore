@@ -55,3 +55,5 @@
 # Static libraries in vendored crates (R CMD check objects NOTE)
 ^vendor/.*\.a$
 ^vendor/.*\.lib$
+
+^src/rust/\.dev-vendor-backup-

@@ -67,9 +67,19 @@ too) and errors loudly there. The invariant holds regardless:
 install attempt succeeded with test-load.
 }
 
+\section{Development bootstrap}{
+
+Installs select \code{MINIEXTENDR_BOOTSTRAP_MODE=dev} unless the caller supplied a
+mode or a distribution vendor archive already exists. Updated scaffolds
+package only path-dependency siblings, without xz or registry/Git vendoring.
+The portable manifest is activated in R CMD build's temporary copy, leaving
+the checkout's Cargo.toml unchanged. Ordinary bootstrap calls still default
+to distribution mode. Requires a current cargo-revendor and updated templates.
+}
+
 \section{Mid-build source-tree restore}{
 
-The install step's \verb{R CMD build} runs the scaffolded \code{bootstrap.R} in the
+In distribution mode, the install step's \verb{R CMD build} runs \code{bootstrap.R} in the
 source tree, sealing \code{inst/vendor.tar.xz} there by design (the built
 tarball must carry it). Left in place, that latch would flip the rest of
 the build into tarball mode -- where wrapper regeneration is skipped -- so
