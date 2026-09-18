@@ -85,19 +85,30 @@ if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
   } else {
     message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
     dir.create("inst", showWarnings = FALSE)
-    status <- system2("cargo", c(
-      "revendor",
-      "--manifest-path", "src/rust/Cargo.toml",
-      "--output", "vendor",
-      "--freeze",
-      "--compress", "inst/vendor.tar.xz",
-      "--blank-md",
-      "--source-marker",
-      "--force",
-      "-v"
-    ))
-    if (status != 0) {
-      stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
-    }
+    # --freeze rewrites Cargo.toml and normalises Cargo.lock, both fingerprinted
+    # by the wrapper provenance record (#1512), while the generated wrappers do
+    # not depend on where dependencies are resolved from. A record that is
+    # current before the freeze is therefore re-written afterwards, so the sealed
+    # tarball keeps the pre-shipped-wrapper fast path (#1022); a stale or absent
+    # record stays as it is.
+    source("tools/wrapper-freshness.R", local = TRUE)
+    wrappers <- file.path("R", paste0(read.dcf("DESCRIPTION", fields = "Package")[[1L]],
+                                      "-wrappers.R"))
+    preserve_wrapper_record(".", wrappers, function() {
+      status <- system2("cargo", c(
+        "revendor",
+        "--manifest-path", "src/rust/Cargo.toml",
+        "--output", "vendor",
+        "--freeze",
+        "--compress", "inst/vendor.tar.xz",
+        "--blank-md",
+        "--source-marker",
+        "--force",
+        "-v"
+      ))
+      if (status != 0) {
+        stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
+      }
+    })
   }
 }

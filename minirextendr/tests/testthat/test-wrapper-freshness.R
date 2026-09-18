@@ -58,6 +58,45 @@ test_that("wrapper provenance survives copies and detects changed inputs", {
   expect_false(helper$wrappers_current(root, wrappers))
 })
 
+test_that("a current record survives a Cargo rewrite, a stale one does not", {
+  helper <- freshness_helper()
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "src/rust"), recursive = TRUE)
+  dir.create(file.path(root, "tools"))
+  dir.create(file.path(root, "R"))
+  wrappers <- file.path(root, "R/probe-wrappers.R")
+  writeLines("probe <- function() 1L", wrappers)
+  writeLines("pub fn probe() -> i32 { 1 }", file.path(root, "src/rust/lib.rs"))
+  manifest <- file.path(root, "src/rust/Cargo.toml")
+  writeLines('[package]\nname = "probe"', manifest)
+  writeLines("version = 4", file.path(root, "src/rust/Cargo.lock"))
+  writeLines(c("CARGO_PROFILE = release", "CARGO_FEATURES_FLAG ="),
+             file.path(root, "src/Makevars"))
+  freeze <- function() cat('\n[patch.crates-io]\ncore = { path = "vendor/core" }\n',
+                           file = manifest, append = TRUE)
+
+  # Current before the freeze: the record follows the rewritten Cargo files.
+  helper$write_wrapper_record(root, wrappers)
+  expect_invisible(helper$preserve_wrapper_record(root, wrappers, freeze))
+  expect_true(helper$wrappers_current(root, wrappers))
+
+  # Stale before the freeze (a source edit after generation): still stale.
+  cat("\n// edited\n", file = file.path(root, "src/rust/lib.rs"), append = TRUE)
+  expect_false(helper$wrappers_current(root, wrappers))
+  helper$preserve_wrapper_record(root, wrappers, freeze)
+  expect_false(helper$wrappers_current(root, wrappers))
+
+  # A failing rewrite propagates and re-records nothing.
+  helper$write_wrapper_record(root, wrappers)
+  record <- readRDS(helper$wrapper_record_path(root))
+  expect_error(helper$preserve_wrapper_record(root, wrappers, function() {
+    freeze()
+    stop("revendor failed")
+  }), "revendor failed")
+  expect_identical(readRDS(helper$wrapper_record_path(root)), record)
+  expect_false(helper$wrappers_current(root, wrappers))
+})
+
 test_that("a stale S3 tarball fails before R accepts a dangling registration", {
   skip_on_cran()
   skip_on_os("windows")

@@ -42,8 +42,8 @@ diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/bootstrap.R	2026-09-18 20:53:28
+--- a/monorepo/rpkg/bootstrap.R	2026-09-18 21:19:46
++++ b/monorepo/rpkg/bootstrap.R	2026-09-18 21:20:21
 @@ -1,41 +1,19 @@
  # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -128,7 +128,7 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# dependency table — incl. [workspace.dependencies]; [patch.*]/[lib] excluded.
  declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
    if (!file.exists(manifest)) return(FALSE)
-@@ -99,12 +86,4 @@
+@@ -99,18 +86,10 @@
      message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
      dir.create("inst", showWarnings = FALSE)
 -    # --freeze rewrites local path-dependency siblings (e.g. a core crate at
@@ -139,8 +139,20 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 -    # common git-only package (no local path deps to rewrite, no committed patches),
 -    # where it only normalises Cargo.lock. cargo-revendor auto-detects the source
 -    # root from `cargo metadata`, so no --source-root is needed here.
-     status <- system2("cargo", c(
-       "revendor",
+-    #
+-    # Both rewrites land on files the wrapper provenance record fingerprints
+-    # (#1512), while the generated wrappers do not depend on where dependencies
+-    # are resolved from. A record that is current before the freeze is therefore
+-    # re-written afterwards, so the sealed tarball keeps the pre-shipped-wrapper
+-    # fast path (#1022); a stale or absent record stays as it is.
++    # --freeze rewrites Cargo.toml and normalises Cargo.lock, both fingerprinted
++    # by the wrapper provenance record (#1512), while the generated wrappers do
++    # not depend on where dependencies are resolved from. A record that is
++    # current before the freeze is therefore re-written afterwards, so the sealed
++    # tarball keeps the pre-shipped-wrapper fast path (#1022); a stale or absent
++    # record stays as it is.
+     source("tools/wrapper-freshness.R", local = TRUE)
+     wrappers <- file.path("R", paste0(read.dcf("DESCRIPTION", fields = "Package")[[1L]],
 diff -ruN -U2 a/monorepo/rpkg/build.rs b/monorepo/rpkg/build.rs
 --- a/monorepo/rpkg/build.rs	2026-09-18 20:53:28
 +++ b/monorepo/rpkg/build.rs	2026-09-18 20:53:28
@@ -659,8 +671,8 @@ diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-09-18 20:53:28
-+++ b/rpkg/bootstrap.R	2026-09-18 20:53:28
+--- a/rpkg/bootstrap.R	2026-09-18 21:19:46
++++ b/rpkg/bootstrap.R	2026-09-18 21:19:46
 @@ -32,6 +32,6 @@
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that

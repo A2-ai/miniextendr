@@ -106,19 +106,30 @@ if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
     # common git-only package (no local path deps to rewrite, no committed patches),
     # where it only normalises Cargo.lock. cargo-revendor auto-detects the source
     # root from `cargo metadata`, so no --source-root is needed here.
-    status <- system2("cargo", c(
-      "revendor",
-      "--manifest-path", "src/rust/Cargo.toml",
-      "--output", "vendor",
-      "--freeze",
-      "--compress", "inst/vendor.tar.xz",
-      "--blank-md",
-      "--source-marker",
-      "--force",
-      "-v"
-    ))
-    if (status != 0) {
-      stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
-    }
+    #
+    # Both rewrites land on files the wrapper provenance record fingerprints
+    # (#1512), while the generated wrappers do not depend on where dependencies
+    # are resolved from. A record that is current before the freeze is therefore
+    # re-written afterwards, so the sealed tarball keeps the pre-shipped-wrapper
+    # fast path (#1022); a stale or absent record stays as it is.
+    source("tools/wrapper-freshness.R", local = TRUE)
+    wrappers <- file.path("R", paste0(read.dcf("DESCRIPTION", fields = "Package")[[1L]],
+                                      "-wrappers.R"))
+    preserve_wrapper_record(".", wrappers, function() {
+      status <- system2("cargo", c(
+        "revendor",
+        "--manifest-path", "src/rust/Cargo.toml",
+        "--output", "vendor",
+        "--freeze",
+        "--compress", "inst/vendor.tar.xz",
+        "--blank-md",
+        "--source-marker",
+        "--force",
+        "-v"
+      ))
+      if (status != 0) {
+        stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
+      }
+    })
   }
 }

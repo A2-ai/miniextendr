@@ -70,7 +70,9 @@ require a matching record. This lets `minirextendr_build()` recover from a
 deferred stale-tarball failure: its documentation step regenerates changed
 source wrappers before reconciling NAMESPACE. Missing, corrupt, or
 mismatched records trigger generation from the freshly linked library.
-Vendoring can rewrite Cargo files; those changes also require verification,
+`bootstrap.R` keeps a current record current across `cargo revendor --freeze`,
+which rewrites the fingerprinted Cargo files without changing what the wrappers
+are generated from; any other rewrite of those files invalidates the record,
 even when the resulting wrappers are identical. If the existing R wrapper
 changes, installation stops with its filename and recovery instructions before
 R's namespace load check. Generation compares a temporary copy, preserving the

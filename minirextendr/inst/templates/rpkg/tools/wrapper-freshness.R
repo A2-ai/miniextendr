@@ -42,6 +42,19 @@ write_wrapper_record <- function(root, wrappers) {
           wrapper_record_path(root), version = 2)
 }
 
+# Run `rewrite`, a step such as `cargo revendor --freeze` that rewrites the
+# fingerprinted Cargo files without changing what the wrappers are generated
+# from, and keep a record that was current beforehand current afterwards. A
+# stale or missing record is left alone, and an error in `rewrite` propagates
+# before anything is re-recorded: wrappers of unknown provenance must fall back
+# to generation at install time.
+preserve_wrapper_record <- function(root, wrappers, rewrite) {
+  current <- tryCatch(wrappers_current(root, wrappers), error = function(e) FALSE)
+  result <- rewrite()
+  if (current) write_wrapper_record(root, wrappers)
+  invisible(result)
+}
+
 # Invoked only after Cargo has built and R has linked this exact shared library.
 # A changed tarball wrapper may need new exports, S3 registrations, or docs.
 # Stop before R's load check can accept missing S3 methods with only a warning.
