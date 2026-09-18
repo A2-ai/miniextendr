@@ -50,6 +50,48 @@ guards still apply. Without `VENDOR_OUT`, extraction stays in the package's
 set, package-local build directories are cleaned as before. This cache does
 not change the behavior of the separate `cleanup` script invoked by R's
 `--preclean` and `--clean` options.
+## Pre-shipped wrapper freshness
+
+A native tarball install can reuse `R/<package>-wrappers.R` without loading the
+shared library for generation (#1022). Its size alone cannot establish that it
+matches the Rust sources: adding an S3 method after generation previously
+allowed an install to succeed with a missing-method warning (#1512).
+
+`tools/wrapper-freshness.R` records content fingerprints after a successful
+native generation pass. The generated `tools/wrapper-inputs.rds` travels in the
+package tarball and is gitignored. It binds the wrapper bytes to the package's
+Rust source paths and contents, `Cargo.toml`, `Cargo.lock`, and the configured
+Cargo features and profile. It excludes generated `wasm_registry.rs` and build
+output directories. All recorded paths are relative to the package, so copying
+the package or resetting its timestamps does not invalidate the record.
+
+The native tarball fast path and the source-mode roxygen reuse optimization
+require a matching record. This lets `minirextendr_build()` recover from a
+deferred stale-tarball failure: its documentation step regenerates changed
+source wrappers before reconciling NAMESPACE. Missing, corrupt, or
+mismatched records trigger generation from the freshly linked library.
+`bootstrap.R` keeps a current record current across `cargo revendor --freeze`,
+which rewrites the fingerprinted Cargo files without changing what the wrappers
+are generated from; any other rewrite of those files invalidates the record,
+even when the resulting wrappers are identical. If the existing R wrapper
+changes, installation stops with its filename and recovery instructions before
+R's namespace load check. Generation compares a temporary copy, preserving the
+shipped wrapper on failure so a repeated install cannot bypass the check.
+`MINIEXTENDR_FORCE_WRAPPER_GEN=1` still forces generation and performs the same
+consistency check.
+
+For example, after adding a `summary.my_class` Rust method, regenerate wrappers
+and documentation in the original source package before producing the tarball:
+
+```r
+minirextendr::miniextendr_build("path/to/package")
+devtools::build("path/to/package")
+```
+
+The fingerprint is separate from the R wrapper. The generator still leaves
+unchanged R code, timestamps, and source-position comments alone. This guard
+applies to the native tarball fast path; wasm uses its existing host-generated
+wrapper and registry snapshot workflow.
 
 ## Makefile Include Chain
 
