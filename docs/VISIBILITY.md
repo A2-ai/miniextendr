@@ -56,7 +56,7 @@ fn internal_helper(x: i32) -> i32 {
 | `export` | Force `@export` on a non-`pub` function |
 | `r_name = "..."` | Rename the R wrapper (e.g. `r_name = "is.widget"`); does not affect NAMESPACE membership |
 | `postfix = "..."` | Append a suffix to the Rust name for the R wrapper (`postfix = "_impl"` on `fn f` gives `f_impl`); states the "hand-written `f()` delegates to generated `f_impl()`" convention once. Exclusive with `r_name` and `s3(...)`. A crate-wide default for `noexport` / `internal` functions lives in `Cargo.toml` (see [below](#crate-level-default-from-the-manifest)) |
-| `call = caller` | Attribute conditions to the wrapper's caller (the hand-written R function delegating to this internal entry point) instead of the wrapper's own call. Requires `noexport` or `internal` |
+| `call = caller` | Attribute conditions to the wrapper's caller (the hand-written R function delegating to this internal entry point) instead of the wrapper's own call: Rust-side errors and the wrapper's own R-side checks (`stopifnot` preconditions, `match_arg` / `choices`) alike. Requires `noexport` or `internal` |
 | `c_symbol = "..."` | Rename the C symbol used in `.Call()` and `R_CallMethodDef`. The value is used verbatim — no crate prefix is added, so **you** own its cross-package uniqueness on webR (see `docs/WEBR.md`) |
 
 ### When to use each option
@@ -250,9 +250,12 @@ summarise(-1)
 ```
 
 Without the option the error would read `Error in summarise_impl(x = as.integer(value))`,
-leaking the bridge that `noexport` exists to hide. See
+leaking the bridge that `noexport` exists to hide. The wrapper's own R-side
+checks follow the same rule: `summarise("a")` reports
+`Error in summarise(value = "a") : 'x' must be integer`, not the wrapper's
+`stopifnot()` frame. See
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution) for
-how the frame is chosen and the top-level fallback.
+how the frame is chosen, the top-level fallback and the shape of those checks.
 
 ---
 

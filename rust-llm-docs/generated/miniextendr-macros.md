@@ -1945,6 +1945,22 @@ of parameters with unknown types that were not statically prechecked.
 - `fallback_params`: `Vec<FallbackParam>`
   - Parameters with unknown custom types that were not prechecked.
 
+**Inherent associated items:**
+
+#### `attributed_checks`
+
+```rust
+fn attributed_checks(self: &Self, call: &str) -> Vec<String>
+```
+
+The same checks as `static_checks`, one guard line per assertion, each
+raising `simpleError(<message>, <call>)`.
+
+`stopifnot()` signals with the call of the function that invoked it,
+which is the wrapper's own call. A `call = caller` wrapper has already
+bound the caller's matched call as `.mx_call` when the checks run, and
+this form hands that call to every failure (#1548).
+
 ### `r_wrapper_builder::DotCallBuilder`
 
 ```rust
@@ -2834,16 +2850,46 @@ fn dot_call_arg(self: Self) -> &'static str
 
 The `.call = ...` argument for the `.Call()` line.
 
+#### `match_arg_statement`
+
+```rust
+fn match_arg_statement(self: Self, param: &str, choices: &str, several_ok: bool, optional: bool) -> String
+```
+
+The R statement validating a choice parameter (`match_arg` / `choices`)
+in a standalone wrapper. `choices` is the R expression for the choice
+list: a literal `c("a", "b")`, or the write-time placeholder for an enum.
+
+With the wrapper's own attribution the scalar forms use
+`base::match.arg()` and `several_ok` the strict preamble helper (#1472);
+all of them report the wrapper's frame. Under
+[`CallAttribution::Caller`] every form goes through a preamble helper
+that raises with `.mx_call` and the real argument name (#1548). The
+scalar helper needs the list spelled out, since `match.arg(param)` reads
+it off the formal default.
+
 #### `prelude`
 
 ```rust
 fn prelude(self: Self, indent: &str) -> String
 ```
 
-Statements the wrapper body needs before the `.Call()` line: empty except
-for [`CallAttribution::Caller`], which binds `.mx_call`. Each line ends
-with a newline plus `indent`, so the result can be prepended to a body
-whose first line is already positioned.
+Statements the wrapper body needs before anything else: empty except
+for [`CallAttribution::Caller`], which binds `.mx_call`. The block is
+the first part of the wrapper prelude, ahead of the R-side checks
+(`stopifnot` preconditions, `match.arg`), so that those checks can
+attribute their failures to the caller too (#1548). Lines are joined
+with a newline plus `indent`; there is no trailing separator.
+
+#### `r_check_call`
+
+```rust
+fn r_check_call(self: Self) -> Option<&'static str>
+```
+
+The call an R-side check raised in the wrapper body should carry:
+`.mx_call` for [`CallAttribution::Caller`], otherwise `None` (the check
+keeps its own attribution, which is the wrapper's frame).
 
 #### `raise_default`
 

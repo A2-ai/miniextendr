@@ -270,6 +270,12 @@ Called after CRAN-trim so that cargo's offline source-replacement can verify
 both the lockfile consistency (via the `package` field) and the file
 integrity (via the `files` map).
 
+### `dev::prepare`
+
+```rust
+fn prepare(manifest: &std::path::Path, output: &std::path::Path, allow_dirty: bool, v: crate::Verbosity) -> anyhow::Result<()>
+```
+
 ### `find_workspace_root`
 
 ```rust
@@ -692,6 +698,12 @@ pub const CACHE_FILE_EXTERNAL: &str = ".revendor-cache-external";
 
 ```rust
 pub const CACHE_FILE_LOCAL: &str = ".revendor-cache-local";
+```
+
+### `dev::MANIFEST`
+
+```rust
+pub const MANIFEST: &str = ".Cargo.toml.dev";
 ```
 
 ### `vendor::PREFREEZE_SIDECAR_NAME`

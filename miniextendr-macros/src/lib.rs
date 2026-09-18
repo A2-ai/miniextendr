@@ -1212,14 +1212,14 @@ pub fn miniextendr(
         } else {
             ".val"
         };
-        let body = crate::method_return_builder::standalone_body_with_call_default(
+        // `call = caller` binds `.mx_call` at the head of the prelude (see
+        // `combined_prelude` below), ahead of every R-side check.
+        crate::method_return_builder::standalone_body_with_call_default(
             &call_expr,
             final_return,
             "  ",
             call_attribution.raise_default(),
-        );
-        // `call = caller` binds `.mx_call` in the wrapper's own frame first.
-        format!("{}{body}", call_attribution.prelude("  "))
+        )
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
@@ -1432,37 +1432,26 @@ pub fn miniextendr(
             ));
             // The plain scalar form lets match.arg pull the choice list off the
             // formal default (populated by the write-time pass as
-            // `c("a", "b", ...)`). The other two forms need the list spelled out,
+            // `c("a", "b", ...)`). The other forms need the list spelled out,
             // so they reuse the same placeholder; the write pass substitutes
-            // every occurrence.
+            // every occurrence. Strict several_ok (#1472): every element must
+            // match; NULL selects every choice. `Option<T>` (#1473): NULL means
+            // no choice and skips match.arg. Under `call = caller` every form
+            // raises with `.mx_call` (#1548).
             let placeholder =
                 crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), r_param);
-            if parsed.has_several_ok(rust_name) {
-                // Strict several_ok (#1472): every element must match; NULL
-                // selects every choice. See `.miniextendr_match_arg_several`.
-                lines.push(format!(
-                    "{param} <- .miniextendr_match_arg_several({param}, {placeholder}, \"{param}\")",
-                    param = r_param,
-                ));
-            } else if parsed.is_optional_choice(rust_name) {
-                // `Option<T>` (#1473): NULL means no choice and skips match.arg.
-                lines.push(format!(
-                    "if (!is.null({param})) {param} <- base::match.arg({param}, {placeholder})",
-                    param = r_param,
-                ));
-            } else {
-                lines.push(format!(
-                    "{param} <- base::match.arg({param})",
-                    param = r_param,
-                ));
-            }
+            lines.push(call_attribution.match_arg_statement(
+                r_param,
+                &placeholder,
+                parsed.has_several_ok(rust_name),
+                parsed.is_optional_choice(rust_name),
+            ));
         }
         lines.join("\n  ")
     };
 
-    // Generate idiomatic match.arg prelude for choices params
-    // These use the simpler pattern: `param <- match.arg(param)` (no C helper call needed)
-    // With `several_ok`, emit `match.arg(param, several.ok = TRUE)` for multi-value selection
+    // Generate the match.arg prelude for choices params: the same three forms
+    // as `match_arg`, with the literal choice list known here.
     let choices_prelude = {
         let mut lines = Vec::new();
         for arg in inputs.iter() {
@@ -1475,20 +1464,13 @@ pub fn miniextendr(
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
-                    let quoted = quoted.join(", ");
-                    if parsed.has_several_ok(&rust_name) {
-                        // Strict several_ok (#1472); the literal list is known here.
-                        lines.push(format!(
-                            "{r_name} <- .miniextendr_match_arg_several({r_name}, c({quoted}), \"{r_name}\")"
-                        ));
-                    } else if parsed.is_optional_choice(&rust_name) {
-                        // `Option<T>` (#1473): the formal is NULL, so name the list.
-                        lines.push(format!(
-                            "if (!is.null({r_name})) {r_name} <- match.arg({r_name}, c({quoted}))"
-                        ));
-                    } else {
-                        lines.push(format!("{r_name} <- match.arg({r_name})"));
-                    }
+                    let choices_expr = format!("c({})", quoted.join(", "));
+                    lines.push(call_attribution.match_arg_statement(
+                        &r_name,
+                        &choices_expr,
+                        parsed.has_several_ok(&rust_name),
+                        parsed.is_optional_choice(&rust_name),
+                    ));
                 }
             }
         }
@@ -1530,20 +1512,28 @@ pub fn miniextendr(
         };
         let precondition_output =
             r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);
-        if precondition_output.static_checks.is_empty() {
-            String::new()
-        } else {
-            precondition_output.static_checks.join("\n  ")
-        }
+        // `stopifnot()` reports the wrapper's own frame; a `call = caller`
+        // wrapper restates each check as a guard raising with `.mx_call` (#1548).
+        let lines = match call_attribution.r_check_call() {
+            Some(call) => precondition_output.attributed_checks(call),
+            None => precondition_output.static_checks,
+        };
+        lines.join("\n  ")
     };
 
-    // Combine all preludes: r_entry, on.exit, lifecycle, static preconditions, match.arg, choices, r_post_checks
-    // (Missing<T> forwarding lives inline in the `.Call()` args — see
-    // `build_call_args_vec` — because a prelude binding of the missing
+    // Combine all preludes: call attribution (`.mx_call` under `call = caller`,
+    // first so the R-side checks below can raise with it, #1548), r_entry,
+    // on.exit, lifecycle, static preconditions, match.arg, choices,
+    // r_post_checks. (Missing<T> forwarding lives inline in the `.Call()` args
+    // — see `build_call_args_vec` — because a prelude binding of the missing
     // sentinel errors on lookup.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
+    let attribution_prelude = call_attribution.prelude("  ");
     let combined_prelude = {
         let mut parts = Vec::new();
+        if !attribution_prelude.is_empty() {
+            parts.push(attribution_prelude.as_str());
+        }
         if let Some(ref entry) = r_entry {
             parts.push(entry.as_str());
         }

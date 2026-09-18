@@ -127,6 +127,62 @@ test_that("call = caller fixtures are not exported", {
   ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
   expect_false(any(grepl("call_attr_caller", ns)))
   expect_false(any(grepl("call_attr_self", ns)))
+  expect_false(any(grepl("call_attr_checked", ns)))
+})
+
+# endregion
+
+# region: call = caller covers the R-side checks too (#1548)
+
+test_that("call = caller attributes R-side check failures to the caller (#1548)", {
+  expect_equal(
+    miniextendr:::call_attr_checked("Sa", c("mea", "sd"), 2L, "hi"),
+    "Safe:mean+sd:2:high"
+  )
+  expect_equal(miniextendr:::call_attr_checked(), "Fast:mean:1:none")
+  # Scalar `match_arg`: `base::match.arg()` would say 'arg' and report its own frame.
+  e <- tryCatch(miniextendr:::call_attr_checked(mode = "bogus"), error = identity)
+  expect_s3_class(e, "simpleError")
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(mode = "bogus")))
+  expect_equal(conditionMessage(e), "'mode' should be one of \"Fast\", \"Safe\", \"Debug\"")
+  # `several_ok`: the strict helper raises with the caller's call.
+  e <- tryCatch(miniextendr:::call_attr_checked(metrics = c("mean", "bogus")), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(metrics = c("mean", "bogus"))))
+  expect_match(conditionMessage(e), "'metrics' element 2 (\"bogus\") should be one of", fixed = TRUE)
+  # Optional `choices`: NULL skips the check, anything else is validated.
+  e <- tryCatch(miniextendr:::call_attr_checked(level = "bogus"), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(level = "bogus")))
+  expect_equal(conditionMessage(e), "'level' should be one of \"low\", \"high\"")
+  # Typed precondition: the same message `stopifnot()` gave, the caller's call.
+  e <- tryCatch(miniextendr:::call_attr_checked(n = 1.5), error = identity)
+  expect_s3_class(e, "simpleError")
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(n = 1.5)))
+  expect_equal(conditionMessage(e), "'n' must be integer")
+  e <- tryCatch(miniextendr:::call_attr_checked(n = 1:2), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(n = 1:2)))
+  expect_equal(conditionMessage(e), "'n' must have length 1")
+})
+
+test_that("call = caller R-side checks expand a literal `...` in the caller's call", {
+  via_dots <- function(...) miniextendr:::call_attr_checked(...)
+  expect_equal(via_dots("Debug"), "Debug:mean:1:none")
+  e <- tryCatch(via_dots(n = 1.5), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(n = 1.5)))
+  expect_equal(conditionMessage(e), "'n' must be integer")
+})
+
+test_that("R-side checks fall back to the wrapper's own call when called directly", {
+  e <- tryCatch(miniextendr:::call_attr_checked_impl(mode = "bogus"), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked_impl(mode = "bogus")))
+  e <- tryCatch(miniextendr:::call_attr_checked_impl(n = 1.5), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked_impl(n = 1.5)))
+})
+
+test_that("default attribution of R-side checks is unchanged", {
+  # `stopifnot()` reports the wrapper's frame, as before (#1548 touches only `call = caller`).
+  e <- tryCatch(miniextendr:::call_attr_self_impl(x = 1.5), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_self_impl(x = 1.5)))
+  expect_equal(conditionMessage(e), "'x' must be integer")
 })
 
 # endregion
