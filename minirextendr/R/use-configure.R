@@ -129,8 +129,9 @@ use_miniextendr_config_scripts <- function(path = ".", subdir = NULL) {
 #' Copies `tools/build-html-reference.R`, a maintainer script that renders
 #' every `man/*.Rd` into one HTML page with `tools::pkg2HTML()` (base R,
 #' R >= 4.4) after validating the sources with `tools::checkRd()`. Run it with
-#' `Rscript tools/build-html-reference.R [OUT_DIR]`; nothing at install time
-#' depends on it and `.Rbuildignore` keeps it out of the tarball.
+#' `Rscript tools/build-html-reference.R [OUT_DIR]` or through
+#' [miniextendr_html_reference()]; nothing at install time depends on it, and it
+#' ships with the other `tools/` scripts.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param subdir Optional template subdirectory — set to `"rpkg"` when

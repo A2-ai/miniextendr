@@ -19,7 +19,8 @@ Invisibly returns TRUE if the file was copied
 Copies \code{tools/build-html-reference.R}, a maintainer script that renders
 every \verb{man/*.Rd} into one HTML page with \code{tools::pkg2HTML()} (base R,
 R >= 4.4) after validating the sources with \code{tools::checkRd()}. Run it with
-\verb{Rscript tools/build-html-reference.R [OUT_DIR]}; nothing at install time
-depends on it and \code{.Rbuildignore} keeps it out of the tarball.
+\verb{Rscript tools/build-html-reference.R [OUT_DIR]} or through
+\code{\link[=miniextendr_html_reference]{miniextendr_html_reference()}}; nothing at install time depends on it, and it
+ships with the other \verb{tools/} scripts.
 }
 \keyword{internal}

@@ -1,16 +1,10 @@
 # tools/build-html-reference.R renders man/*.Rd into one HTML page with base R
 # only. Exercised end to end through Rscript, the way a maintainer runs it.
-test_that("build-html-reference.R renders a package's Rd sources to one page", {
-  skip_if(getRversion() < "4.4.0", "tools::pkg2HTML() needs R >= 4.4.0")
+
+# A two-topic fixture package with the template script in tools/.
+write_refpkg <- function(pkg) {
   script <- system.file("templates", "rpkg", "tools", "build-html-reference.R",
                         package = "minirextendr", mustWork = TRUE)
-  monorepo <- system.file("templates", "monorepo", "rpkg", "tools",
-                          "build-html-reference.R",
-                          package = "minirextendr", mustWork = TRUE)
-  expect_identical(readLines(script), readLines(monorepo))
-
-  root <- withr::local_tempdir()
-  pkg <- file.path(root, "refpkg")
   dir.create(file.path(pkg, "man"), recursive = TRUE)
   dir.create(file.path(pkg, "tools"))
   writeLines(c("Package: refpkg", "Version: 0.1.0", "Title: Reference Fixture",
@@ -29,13 +23,27 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
                "\\usage{goodbye()}", "\\value{NULL.}"),
              file.path(pkg, "man", "goodbye.Rd"))
   file.copy(script, file.path(pkg, "tools", "build-html-reference.R"))
+  invisible(pkg)
+}
 
-  run <- function(...) {
+test_that("build-html-reference.R renders a package's Rd sources to one page", {
+  skip_if(getRversion() < "4.4.0", "tools::pkg2HTML() needs R >= 4.4.0")
+  script <- system.file("templates", "rpkg", "tools", "build-html-reference.R",
+                        package = "minirextendr", mustWork = TRUE)
+  monorepo <- system.file("templates", "monorepo", "rpkg", "tools",
+                          "build-html-reference.R",
+                          package = "minirextendr", mustWork = TRUE)
+  expect_identical(readLines(script), readLines(monorepo))
+
+  root <- withr::local_tempdir()
+  pkg <- write_refpkg(file.path(root, "refpkg"))
+
+  run <- function(..., env = character()) {
     log <- tempfile("html-reference-", fileext = ".log")
     status <- system2(file.path(R.home("bin"), "Rscript"),
                       c(shQuote(file.path(pkg, "tools", "build-html-reference.R")),
                         vapply(list(...), shQuote, character(1))),
-                      stdout = log, stderr = log)
+                      stdout = log, stderr = log, env = env)
     list(status = status, output = paste(readLines(log, warn = FALSE), collapse = "\n"))
   }
 
@@ -76,7 +84,7 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
   expect_match(idx, "<title>refpkg documentation</title>", fixed = TRUE)
   expect_match(res$output, "registered on", fixed = TRUE)
 
-  # A checkRd finding aborts the build instead of rendering around it.
+  # A checkRd finding aborts the build instead of rendering around it...
   writeLines(c("\\name{broken}", "\\alias{broken}", "\\title{Broken}",
                "\\description{\\unknownmacro{oops}}"),
              file.path(pkg, "man", "broken.Rd"))
@@ -84,4 +92,35 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
   expect_false(identical(res$status, 0L))
   expect_match(res$output, "checkRd findings", fixed = TRUE)
   expect_false(file.exists(file.path(root, "never", "refpkg.html")))
+
+  # ...unless the maintainer opts into a warn-only build.
+  res <- run(file.path(root, "lenient"), env = "MINIEXTENDR_HTML_STRICT=0")
+  expect_identical(res$status, 0L, info = res$output)
+  expect_match(res$output, "building anyway", fixed = TRUE)
+  expect_true(file.exists(file.path(root, "lenient", "refpkg.html")))
+})
+
+test_that("miniextendr_html_reference() runs the package's script from R", {
+  skip_if(getRversion() < "4.4.0", "tools::pkg2HTML() needs R >= 4.4.0")
+  root <- withr::local_tempdir()
+  pkg <- write_refpkg(file.path(root, "refpkg"))
+
+  page <- miniextendr_html_reference(pkg, out = file.path(root, "out"))
+  expect_identical(basename(page), "refpkg.html")
+  expect_true(file.exists(page))
+
+  # Default output directory and the strict/lenient switch.
+  writeLines(c("\\name{broken}", "\\alias{broken}", "\\title{Broken}",
+               "\\description{\\unknownmacro{oops}}"),
+             file.path(pkg, "man", "broken.Rd"))
+  expect_error(suppressWarnings(miniextendr_html_reference(pkg)), "exit status")
+  page <- suppressWarnings(miniextendr_html_reference(pkg, strict = FALSE))
+  expect_identical(normalizePath(dirname(page)),
+                   normalizePath(file.path(pkg, "src", "rust", "target", "doc", "r")))
+  expect_identical(Sys.getenv("MINIEXTENDR_HTML_STRICT", unset = "unset"), "unset")
+
+  # No script: point at the helper that adds it.
+  bare <- file.path(root, "bare")
+  dir.create(bare)
+  expect_error(miniextendr_html_reference(bare), "use_miniextendr_html_reference")
 })

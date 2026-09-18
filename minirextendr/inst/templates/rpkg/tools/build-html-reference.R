@@ -14,8 +14,9 @@
 # index.html, the manual and the vignettes are added to its crate list.
 #
 # In-package links stay on the page; cross-package links go to the single-page
-# manuals CRAN hosts. This is a maintainer script: R CMD build ignores it and
-# nothing at install time depends on it.
+# manuals CRAN hosts. Nothing at install time depends on this script; it ships
+# with the other tools/ scripts so an unpacked tarball can build the manual too.
+# MINIEXTENDR_HTML_STRICT=0 turns checkRd findings from an error into a message.
 
 if (getRversion() < "4.4.0") stop("tools::pkg2HTML() needs R >= 4.4.0")
 
@@ -32,7 +33,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_dir <- normalizePath(out_dir, mustWork = TRUE)
 
 # 1. Validate the Rd sources first; a finding here is an Rd bug to fix, not
-#    something to render around. Checking the files (not a parsed Rd_db) makes
+#    something to render around (MINIEXTENDR_HTML_STRICT=0 renders anyway). Checking the files (not a parsed Rd_db) makes
 #    parse-time problems such as unknown macros findings too. def_enc = TRUE:
 #    DESCRIPTION declares the encoding, so non-ASCII text is not a finding.
 rd_files <- list.files(file.path(pkg_dir, "man"), pattern = "[.][Rr]d$", full.names = TRUE)
@@ -45,7 +46,11 @@ if (length(problems)) {
     cat(nm, ":\n")
     print(problems[[nm]])
   }
-  stop(length(problems), " Rd file(s) with checkRd findings; not building the manual")
+  found <- paste(length(problems), "Rd file(s) with checkRd findings")
+  if (!identical(Sys.getenv("MINIEXTENDR_HTML_STRICT"), "0")) {
+    stop(found, "; not building the manual (MINIEXTENDR_HTML_STRICT=0 builds anyway)")
+  }
+  message(found, "; building anyway (MINIEXTENDR_HTML_STRICT=0)")
 }
 
 # 2. Link targets for other packages. pkg2HTML appends "#topic+<alias>" to

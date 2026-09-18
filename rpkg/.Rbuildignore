@@ -27,7 +27,6 @@
 
 # Development files
 ^bootstrap\.R$
-^tools/build-html-reference\.R$
 ^\.gitignore$
 ^\.DS_Store$
 ^CLAUDE\.md$

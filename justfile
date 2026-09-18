@@ -329,6 +329,28 @@ doc *cargo_flags: configure-all
 doc-r out="rpkg/src/rust/target/doc/r":
     Rscript rpkg/tools/build-html-reference.R "{{out}}"
 
+# One documentation tree for the site: nightly rustdoc for the workspace crates and the rpkg bridge crate with a crate index page, then the R manual registered on that index (needs `rustup toolchain install nightly`, rsync, R >= 4.4)
+[script("bash")]
+doc-all out="site/public/rustdoc": configure-all
+    set -euo pipefail
+    root="$(pwd)"
+    out="{{out}}"; case "$out" in /*) ;; *) out="$root/$out" ;; esac
+    flags="-Zunstable-options --enable-index-page --generate-link-to-definition"
+    # Both passes must write into one doc/ tree for the crate index to cover every crate, so the
+    # workspace's target directory (wherever cargo resolves it) is reused for the rpkg crate.
+    target="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
+    # rustdoc merges later crates into a crate index it wrote itself and refuses one it did not, so start clean.
+    # Cargo passes its own -o, so the output location is steered with CARGO_TARGET_DIR and copied into $out.
+    rm -f "$target/doc/index.html"
+    RUSTDOCFLAGS="$flags" cargo +nightly doc --workspace --no-deps --document-private-items
+    tmp="$(mktemp -d)"
+    (cd "$tmp" && RUSTDOCFLAGS="$flags" CARGO_TARGET_DIR="$target" cargo +nightly doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"")
+    just cargo-lock-restore
+    mkdir -p "$out"
+    rsync -a --delete --exclude=/r/ "$target/doc/" "$out/"
+    Rscript rpkg/tools/build-html-reference.R "$out/r"
+    echo "doc-all: $out/index.html"
+
 # Check formatting
 alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
