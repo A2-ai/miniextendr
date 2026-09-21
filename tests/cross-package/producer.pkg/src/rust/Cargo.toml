@@ -14,9 +14,12 @@ crate-type = ["staticlib"]
 # Crate-level default for internal entry points (#1454): every `noexport` /
 # `internal` free function without its own `r_name` / `postfix` gets this
 # suffix on its R wrapper. Exercised by `producer_internal_probe` and
-# tests/testthat/test-noexport-postfix.R.
+# tests/testthat/test-noexport-postfix.R. `source_tags` opts the generated
+# roxygen back into `@source` provenance lines (off by default since #1552);
+# consumer.pkg stays on the default so both shapes are exercised.
 [package.metadata.miniextendr]
 noexport_postfix = "_impl"
+source_tags = true
 
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)

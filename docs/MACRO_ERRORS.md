@@ -233,8 +233,9 @@ manifest at expansion time. The value must be a single-line TOML string that
 is a valid R identifier fragment (letters, digits, `_`, `.`), set once, in a
 `[package.metadata.miniextendr]` table (or as a dotted key under `[package]` /
 `[package.metadata]`); an inline table `miniextendr = { ... }` is rejected.
-The error is reported on the first `noexport` / `internal` function that would
-have used the default. See
+The sibling key `source_tags` must be a bare `true` / `false`, set once
+("`source_tags` must be `true` or `false`, found …"). Either error is reported
+on the first `#[miniextendr]` free function in the crate. See
 [VISIBILITY.md](VISIBILITY.md#crate-level-default-from-the-manifest).
 
 ### "`postfix` cannot be used with `s3(generic = ..., class = ...)`"

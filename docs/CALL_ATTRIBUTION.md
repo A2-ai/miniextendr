@@ -137,15 +137,12 @@ Error in call_attr_self_impl(x = value) : x must be positive, got -1
 ```
 
 `#[miniextendr(noexport, call = caller)]` moves the attribution one frame up.
-The wrapper resolves its parent frame as the first thing in its body, then
+The wrapper resolves its caller's call as the first thing in its body, then
 hands that call to every R-side check, to `.Call()` and to the raise fallback:
 
 ```r
 call_attr_caller_impl <- function(x) {
-  .mx_parent <- sys.parent()
-  .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)
-  .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)
-  .mx_call <- if (typeof(.mx_def) == "closure") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()
+  .mx_call <- .miniextendr_caller_call()
   if (!isTRUE(is.integer(x))) stop(simpleError("'x' must be integer", .mx_call))
   if (!isTRUE(length(x) == 1L)) stop(simpleError("'x' must have length 1", .mx_call))
   .val <- .Call(C_mypkg_call_attr_caller_impl, .call = .mx_call, x)
@@ -163,49 +160,48 @@ Error in call_attr_caller(value = 1.5) : 'x' must be integer
 ```
 
 The R-side checks change shape under this option (#1548). The default wrapper
-validates with `stopifnot()` and `base::match.arg()`, and both report the frame
-of the function that called them, which is the wrapper; so did the strict
-`several_ok` helper. That left the two layers disagreeing: a Rust-side failure
-named the public function, a bad choice or a non-integer argument named the
-bridge (`base::match.arg(kind)`, `verb_impl(...)`), with `match.arg()`'s
-generic `'arg'` in the message. A `call = caller` wrapper therefore emits each
+validates with `stopifnot()`, which reports the frame of the function that
+called it, which is the wrapper; the choice helpers default to the same frame.
+That left the two layers disagreeing: a Rust-side failure named the public
+function, a bad choice or a non-integer argument named the bridge
+(`verb_impl(...)`). A `call = caller` wrapper therefore emits each
 precondition as a guard that raises `simpleError(<message>, .mx_call)`
 (`isTRUE()` keeps `stopifnot()`'s failure semantics, and the guards are
-cheaper than the `stopifnot()` call they replace), and routes every choice
-parameter through the preamble helpers with the caller's call:
+cheaper than the `stopifnot()` call they replace), and passes the caller's
+call to every choice parameter's helper:
 `.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
-`match_arg` / `choices` parameter (the choice list is spelled out because
-`match.arg(kind)` reads it off the formal), the same form inside
-`if (!is.null(kind))` for an `Option<T>` choice, and
+`match_arg` / `choices` parameter, the same form inside `if (!is.null(kind))`
+for an `Option<T>` choice, and
 `.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
-`several_ok`. Both helpers name the argument (`'kind' should be one of
-"a", "b"`). Default-attribution wrappers keep their `stopifnot()` /
-`base::match.arg()` text and behaviour; the `several_ok` helper's `call`
-parameter defaults to the wrapper's own call. If a downstream package's tests
-pinned `conditionCall()` for such a failure to the `_impl` wrapper or to
-`match.arg()`, they now see the public call.
+`several_ok`. Default-attribution wrappers emit the same statements without
+the call argument, so the helper reports the wrapper's own call (#1552).
+Both helpers name the argument (`'kind' should be one of "a", "b"`). If a
+downstream package's tests pinned `conditionCall()` for such a failure to
+the `_impl` wrapper or to `match.arg()`, they now see the public call.
 
-The wrapper falls back to its own `match.call()` in two cases: `sys.parent()`
-is `0` (called from top level, also under `tryCatch()` there), or the parent
+`.miniextendr_caller_call()` is defined once at the top of the generated
+wrappers file. Called from the wrapper's body, it looks two frames up for the
+wrapper's caller, and returns that call with the caller's formals matched. It
+falls back to the wrapper's own matched call in two cases: there is no parent
+frame (called from top level, also under `tryCatch()` there), or the parent
 frame's function is not a closure. The second case covers `eval()`'d code (a
 testthat block, `source()`, `local()`): R gives such a frame the `eval`
 primitive as its function, and `match.call()` rejects a non-closure
-`definition`. Every `sys.*` lookup is a plain statement in the wrapper's own
-frame on purpose: inside a promise forced by `match.call()`, `sys.call(0)`
-resolves to `match.call`'s own frame, not the wrapper's.
+`definition`. The helper resolves the frames from its own body, never inside
+a promise forced by `match.call()`, where `sys.call(0)` would resolve to
+`match.call`'s frame.
 
-`envir = parent.frame(2L)` is the frame the caller's call was evaluated in:
-written in the wrapper, `parent.frame(2L)` is the caller's caller. `match.call()`
-only consults `envir` to expand a literal `...` in the call, and that is where
-the dots are bound when a helper forwards them (`function(...)
-call_attr_caller(...)`) or when `lapply()` evaluates `FUN(X[[i]], ...)` in its
-own frame. `match.call()`'s default is also spelled `parent.frame(2L)`, but it
-is evaluated inside `match.call()` and lands on the caller's frame, which has no
-`...`; before #1462 every call through such a helper failed with
-`... used in a situation where it does not exist`, on the success path too, since
-the call is matched before `.Call()`. The expansion follows R's `match.call()`
-convention: constants forwarded through `...` are inlined
-(`call_attr_caller(value = 0L)`), symbols and calls become `..1`, `..2`.
+The `envir` the helper hands to `match.call()` is the frame the caller's call
+was evaluated in: the caller's caller. `match.call()` only consults `envir` to
+expand a literal `...` in the call, and that is where the dots are bound when a
+helper forwards them (`function(...) call_attr_caller(...)`) or when `lapply()`
+evaluates `FUN(X[[i]], ...)` in its own frame. `match.call()`'s default is
+the caller's frame, which has no `...`; before #1462 every call through such a
+helper failed with `... used in a situation where it does not exist`, on the
+success path too, since the call is matched before `.Call()`. The expansion
+follows R's `match.call()` convention: constants forwarded through `...` are
+inlined (`call_attr_caller(value = 0L)`), symbols and calls become `..1`,
+`..2`.
 
 The option requires `noexport` or `internal` (an exported function's caller is
 arbitrary user code), cannot combine with `no_call_attribution` / `fast` (no

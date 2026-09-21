@@ -1109,7 +1109,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 {
                     lines.push(format!("#' @title convert-{}-to-{}", from_type, class_name));
                 }
-                lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
+                lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 // Add @aliases convert so roxygen2 emits \alias{convert} in the
                 // merged .Rd file. Without this, R CMD check warns:
                 //   "Objects in \usage without \alias in Rd file '...Rd': 'convert'"
@@ -1166,7 +1166,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 {
                     lines.push(format!("#' @title convert-{}-to-{}", class_name, to_type));
                 }
-                lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
+                lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 // Add @aliases convert so roxygen2 emits \alias{convert} in the
                 // merged .Rd file. Without this, R CMD check warns:
                 //   "Objects in \usage without \alias in Rd file '...Rd': 'convert'"

@@ -326,25 +326,19 @@ pub enum CallAttribution {
     #[default]
     Wrapper,
     /// `.call = .mx_call`, where the wrapper body first binds
-    /// `.mx_parent <- sys.parent()`, the parent frame's function (`.mx_def`)
-    /// and call (`.mx_pc`), then
-    /// `.mx_call <- match.call(.mx_def, .mx_pc, envir = parent.frame(2L))`:
-    /// the caller's call with the caller's formals matched. `envir` is the
-    /// frame the caller's call was evaluated in (the caller's caller, two
-    /// frames up from the wrapper), which is where a literal `...` in that
-    /// call is bound: a `function(...)` helper forwarding into the caller, or
-    /// `lapply()`'s `FUN(X[[i]], ...)`. `match.call`'s own default,
-    /// `parent.frame(2L)` evaluated inside `match.call`, is the caller's frame,
-    /// which has no `...`, so every call through such a helper failed with
-    /// `... used in a situation where it does not exist` (#1462). It falls back to
-    /// the wrapper's own `match.call()` when there is no parent frame (top
-    /// level) or the parent frame is not a closure: `eval()`'d code such as a
-    /// testthat block or `source()` has the `eval` primitive as its frame
-    /// function, and `match.call()` rejects a non-closure definition. For a
-    /// `noexport` entry point behind a hand-written R function
-    /// (`#[miniextendr(noexport, call = caller)]`). Every `sys.*` lookup is a
-    /// plain statement in the wrapper's own frame, never a promise forced by
-    /// `match.call` (where `sys.call(0)` would resolve to `match.call`'s frame).
+    /// `.mx_call <- .miniextendr_caller_call()`: the caller's call with the
+    /// caller's formals matched, resolved by the preamble helper in
+    /// `miniextendr-api/src/registry.rs` (one line per wrapper since #1552,
+    /// four before). The helper looks two frames up the calling chain for the
+    /// wrapper's caller, and hands `match.call()` the frame that call was
+    /// evaluated in, where a literal `...` in it is bound: a `function(...)`
+    /// helper forwarding into the caller, or `lapply()`'s `FUN(X[[i]], ...)`
+    /// (#1462). It falls back to the wrapper's own matched call when there is
+    /// no parent frame (top level) or the parent frame is not a closure:
+    /// `eval()`'d code such as a testthat block or `source()` has the `eval`
+    /// primitive as its frame function, and `match.call()` rejects a
+    /// non-closure definition. For a `noexport` entry point behind a
+    /// hand-written R function (`#[miniextendr(noexport, call = caller)]`).
     Caller,
     /// `.call = NULL`: `no_call_attribution` / `fast`; the raise helper falls
     /// back to the wrapper's `sys.call()`.
@@ -369,20 +363,15 @@ impl CallAttribution {
         }
     }
 
-    /// Statements the wrapper body needs before anything else: empty except
-    /// for [`CallAttribution::Caller`], which binds `.mx_call`. The block is
-    /// the first part of the wrapper prelude, ahead of the R-side checks
-    /// (`stopifnot` preconditions, `match.arg`), so that those checks can
-    /// attribute their failures to the caller too (#1548). Lines are joined
-    /// with a newline plus `indent`; there is no trailing separator.
-    pub fn prelude(self, indent: &str) -> String {
+    /// The statement the wrapper body needs before anything else: empty except
+    /// for [`CallAttribution::Caller`], which binds `.mx_call`. It is the
+    /// first part of the wrapper prelude, ahead of the R-side checks
+    /// (preconditions, `match.arg`), so that those checks can attribute their
+    /// failures to the caller too (#1548). `indent` is unused today (a single
+    /// line) and kept for the multi-line case.
+    pub fn prelude(self, _indent: &str) -> String {
         match self {
-            CallAttribution::Caller => format!(
-                ".mx_parent <- sys.parent()\n{indent}\
-                 .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)\n{indent}\
-                 .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)\n{indent}\
-                 .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()"
-            ),
+            CallAttribution::Caller => ".mx_call <- .miniextendr_caller_call()".to_string(),
             CallAttribution::Wrapper | CallAttribution::None => String::new(),
         }
     }
@@ -397,17 +386,18 @@ impl CallAttribution {
         }
     }
 
-    /// The R statement validating a choice parameter (`match_arg` / `choices`)
-    /// in a standalone wrapper. `choices` is the R expression for the choice
-    /// list: a literal `c("a", "b")`, or the write-time placeholder for an enum.
+    /// The R statement validating a choice parameter (`match_arg` / `choices`).
+    /// `choices` is the R expression for the choice list: a literal
+    /// `c("a", "b")`, or the write-time placeholder for an enum.
     ///
-    /// With the wrapper's own attribution the scalar forms use
-    /// `base::match.arg()` and `several_ok` the strict preamble helper (#1472);
-    /// all of them report the wrapper's frame. Under
-    /// [`CallAttribution::Caller`] every form goes through a preamble helper
-    /// that raises with `.mx_call` and the real argument name (#1548). The
-    /// scalar helper needs the list spelled out, since `match.arg(param)` reads
-    /// it off the formal default.
+    /// Every form is one call to a preamble helper (`.miniextendr_match_arg`
+    /// for a scalar, wrapped in `if (!is.null(..))` for an `Option<T>`,
+    /// `.miniextendr_match_arg_several` for `several_ok`, #1472). The helpers
+    /// name the argument in their messages, read a factor as its labels, and
+    /// attribute the error to the wrapper's own call by default; under
+    /// [`CallAttribution::Caller`] the statement passes `.mx_call` so the
+    /// caller is named instead (#1548). The list is spelled out because the
+    /// helpers, unlike `base::match.arg(param)`, do not read it off the formal.
     pub fn match_arg_statement(
         self,
         param: &str,
@@ -419,10 +409,12 @@ impl CallAttribution {
             (None, true, _) => format!(
                 "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\")"
             ),
-            (None, false, true) => {
-                format!("if (!is.null({param})) {param} <- base::match.arg({param}, {choices})")
+            (None, false, true) => format!(
+                "if (!is.null({param})) {param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\")"
+            ),
+            (None, false, false) => {
+                format!("{param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\")")
             }
-            (None, false, false) => format!("{param} <- base::match.arg({param})"),
             (Some(call), true, _) => format!(
                 "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\", {call})"
             ),
@@ -670,7 +662,7 @@ impl RoxygenBuilder {
             lines.push(format!("#' @rdname {}", rdname));
         }
         if let Some(ref source) = self.source {
-            lines.push(format!("#' @source {}", source));
+            lines.extend(crate::roxygen::source_tag(source));
         }
         if let Some((ref generic, ref class)) = self.method {
             lines.push(format!("#' @method {} {}", generic, class));

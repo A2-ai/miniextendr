@@ -739,8 +739,8 @@ fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
     .unwrap();
 
     assert!(
-        result.contains("mode <- base::match.arg(mode)"),
-        "match_arg param should get a base::match.arg() prelude line, got:\n{}",
+        result.contains("mode <- .miniextendr_match_arg(mode, "),
+        "match_arg param should get a .miniextendr_match_arg() prelude line, got:\n{}",
         result
     );
 }
@@ -779,8 +779,8 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
         result
     );
     assert!(
-        result.contains("mode <- match.arg(mode)"),
-        "choices param should get a match.arg() prelude line, got:\n{}",
+        result.contains("mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\")"),
+        "choices param should get a .miniextendr_match_arg() prelude line, got:\n{}",
         result
     );
 }

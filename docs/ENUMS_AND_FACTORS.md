@@ -166,15 +166,22 @@ pub fn run(mode: Mode) -> String {
 }
 ```
 
-The generated R wrapper shows the choice list directly as the formal default:
+The generated R wrapper shows the choice list directly as the formal default
+and validates through a helper defined once at the top of the wrappers file:
 
 ```r
 run <- function(mode = c("Fast", "Safe", "Debug")) {
-  mode <- if (is.factor(mode)) as.character(mode) else mode
-  mode <- base::match.arg(mode)
+  mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
   .Call(C_mypkg_run, mode)
 }
 ```
+
+`.miniextendr_match_arg()` follows `base::match.arg()`: an omitted argument
+(or `NULL`) selects the first choice, a single string is matched exactly or as
+a unique prefix, and a factor is read as its labels. Unlike `match.arg()` the
+message names the argument (`'mode' should be one of "Fast", "Safe", "Debug"`)
+and the choice list is spelled out in the call rather than read off the formal
+(#1552).
 
 The enum's `CHOICES` are spliced in at wrapper-gen time (not stored in an R
 variable), so `?run` and tab-completion both show the real options. If you set
@@ -212,14 +219,13 @@ pub fn run(#[miniextendr(match_arg)] mode: Option<Mode>) -> String {
 ```
 
 The R formal defaults to `NULL` instead of the choice vector, the prelude
-names the choices explicitly and skips `match.arg()` for `NULL`, and the
-auto-generated `@param` line ends in ", or NULL for no choice". `NULL` arrives
-as `None`; any other value is matched exactly as for the plain type:
+skips the check for `NULL`, and the auto-generated `@param` line ends in
+", or NULL for no choice". `NULL` arrives as `None`; any other value is
+matched exactly as for the plain type:
 
 ```r
 run <- function(mode = NULL) {
-  mode <- if (is.factor(mode)) as.character(mode) else mode
-  if (!is.null(mode)) mode <- base::match.arg(mode, c("Fast", "Safe", "Debug"))
+  if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
   .Call(C_mypkg_run, mode)
 }
 
@@ -386,7 +392,6 @@ with its position (#1472):
 
 ```r
 pick_modes <- function(modes = c("Fast", "Safe", "Debug")) {
-  modes <- if (is.factor(modes)) as.character(modes) else modes
   modes <- .miniextendr_match_arg_several(modes, c("Fast", "Safe", "Debug"), "modes")
   .Call(C_mypkg_pick_modes, modes)
 }

@@ -175,16 +175,15 @@ pub(crate) fn match_arg_doc_placeholder_map(
 /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
 /// parameters before the `.Call()`.
 ///
-/// Returns an empty vector when the method declares none. The plain scalar
-/// forms carry their choice list as the formal default (`c("a", "b", ...)`),
-/// so `base::match.arg(arg)` finds the list by itself. The other two forms
-/// name the list explicitly: `several_ok` goes through the strict
-/// `.miniextendr_match_arg_several` helper (every element must match, `NULL`
-/// selects all; #1472), and the `Option<T>` form skips `match.arg()` for
-/// `NULL` (#1473). For `match_arg` the list is the write-time placeholder
-/// (`c_ident` keys it, the same one `effective_r_defaults` puts in the formal);
-/// for `choices(...)` it is the literal. `match_arg` adds a factor → character
-/// coercion in front.
+/// Returns an empty vector when the method declares none. Every form is one
+/// statement from `CallAttribution::match_arg_statement` with the method's
+/// own attribution: the strict scalar helper (`NULL` and the formal default
+/// select the first choice, a factor is read as its labels), the `Option<T>`
+/// form that skips it for `NULL` (#1473), and the strict `several_ok` helper
+/// (every element must match, `NULL` selects all; #1472). For `match_arg` the
+/// choice list is the write-time placeholder (`c_ident` keys it, the same one
+/// `effective_r_defaults` puts in the formal); for `choices(...)` it is the
+/// literal.
 ///
 /// Shared by `MethodContext::match_arg_prelude` (inherent impls) and
 /// `TraitMethodContext::match_arg_prelude` (trait impls) — see
@@ -194,6 +193,7 @@ pub(crate) fn build_match_arg_prelude(
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
 ) -> Vec<String> {
+    use crate::r_wrapper_builder::CallAttribution;
     let mut lines = Vec::new();
 
     for (rust_name, attrs) in per_param {
@@ -201,21 +201,13 @@ pub(crate) fn build_match_arg_prelude(
             continue;
         }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        lines.push(format!(
-            "{r_name} <- if (is.factor({r_name})) as.character({r_name}) else {r_name}"
-        ));
         let placeholder = match_arg_placeholder(c_ident, &r_name);
-        if attrs.several_ok {
-            lines.push(format!(
-                "{r_name} <- .miniextendr_match_arg_several({r_name}, {placeholder}, \"{r_name}\")"
-            ));
-        } else if attrs.optional {
-            lines.push(format!(
-                "if (!is.null({r_name})) {r_name} <- base::match.arg({r_name}, {placeholder})"
-            ));
-        } else {
-            lines.push(format!("{r_name} <- base::match.arg({r_name})"));
-        }
+        lines.push(CallAttribution::Wrapper.match_arg_statement(
+            &r_name,
+            &placeholder,
+            attrs.several_ok,
+            attrs.optional,
+        ));
     }
 
     for (rust_name, attrs) in per_param {
@@ -224,18 +216,13 @@ pub(crate) fn build_match_arg_prelude(
         };
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
-        let quoted = quoted.join(", ");
-        if attrs.several_ok {
-            lines.push(format!(
-                "{r_name} <- .miniextendr_match_arg_several({r_name}, c({quoted}), \"{r_name}\")"
-            ));
-        } else if attrs.optional {
-            lines.push(format!(
-                "if (!is.null({r_name})) {r_name} <- match.arg({r_name}, c({quoted}))"
-            ));
-        } else {
-            lines.push(format!("{r_name} <- match.arg({r_name})"));
-        }
+        let choices_expr = format!("c({})", quoted.join(", "));
+        lines.push(CallAttribution::Wrapper.match_arg_statement(
+            &r_name,
+            &choices_expr,
+            attrs.several_ok,
+            attrs.optional,
+        ));
     }
 
     lines
@@ -742,7 +729,7 @@ impl<'a> ClassDocBuilder<'a> {
         }
         crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
         if !suppress_rd {
-            lines.push(crate::roxygen::class_source_tag(self.type_ident));
+            lines.extend(crate::roxygen::class_source_tag(self.type_ident));
         }
         if let Some(ref imports) = self.imports
             && !suppress_rd
@@ -1008,21 +995,22 @@ impl<'a> MethodDocBuilder<'a> {
         // and the class page normally supplies the `@title`, so the new page
         // would have none and roxygen2 would skip it ("no name and/or title").
         // Follow the standalone-function convention (`lib.rs`) and use the
-        // structural R name as the title unless the author wrote one.
+        // structural R name as the title unless the author wrote one. A
+        // `@noRd` block renders no page, so it needs no title (#1552).
+        let has_no_rd = crate::roxygen::has_roxygen_tag(self.doc_tags, "noRd");
         if crate::roxygen::has_roxygen_tag(self.doc_tags, "rdname") {
-            if !crate::roxygen::has_roxygen_tag(self.doc_tags, "title") {
+            if !has_no_rd && !crate::roxygen::has_roxygen_tag(self.doc_tags, "title") {
                 lines.push(format!("#' @title {}", r_name));
             }
         } else {
             lines.push(format!("#' @rdname {}", self.class_name));
         }
 
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
+        lines.extend(crate::roxygen::source_tag(format!(
+            "Generated by miniextendr from `{}::{}`",
             self.type_ident, self.method_name
-        ));
+        )));
 
-        let has_no_rd = crate::roxygen::has_roxygen_tag(self.doc_tags, "noRd");
         let has_internal = crate::roxygen::has_roxygen_tag(self.doc_tags, "keywords internal");
         // Don't auto-export if @noRd or @keywords internal is present
         if self.always_export
