@@ -8,6 +8,8 @@
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
 
+use crate::match_arg_tests::Mode;
+
 /// Wrapped path. The generated R wrapper passes `.call = match.call()` into the
 /// C entry; on panic, `Rf_errorcall(call, msg)` shows the user's call frame.
 ///
@@ -49,6 +51,32 @@ pub fn call_attr_caller_impl(x: i32) -> Result<i32, String> {
         return Err(format!("x must be positive, got {x}"));
     }
     Ok(x)
+}
+
+/// Internal entry point whose R-side checks are attributed to the caller too
+/// (#1548): a scalar `match_arg` choice, a `several_ok` list, an optional
+/// `choices` parameter and a typed precondition. The hand-written
+/// `call_attr_checked()` in `R/call_attribution.R` delegates here, so a bad
+/// choice or a non-integer `n` surfaces as `Error in call_attr_checked(...)`
+/// naming the argument, the same way a Rust-side error does.
+///
+/// @param mode One of the modes.
+/// @param metrics One or more of the metrics.
+/// @param n An integer scalar.
+/// @param level An optional level.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn call_attr_checked_impl(
+    #[miniextendr(match_arg)] mode: Mode,
+    #[miniextendr(choices("mean", "median", "sd"), several_ok)] metrics: Vec<String>,
+    n: i32,
+    #[miniextendr(choices("low", "high"))] level: Option<String>,
+) -> String {
+    format!(
+        "{mode:?}:{}:{n}:{}",
+        metrics.join("+"),
+        level.as_deref().unwrap_or("none")
+    )
 }
 
 /// Default attribution for comparison: the same shape without `call = caller`

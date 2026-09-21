@@ -369,19 +369,69 @@ impl CallAttribution {
         }
     }
 
-    /// Statements the wrapper body needs before the `.Call()` line: empty except
-    /// for [`CallAttribution::Caller`], which binds `.mx_call`. Each line ends
-    /// with a newline plus `indent`, so the result can be prepended to a body
-    /// whose first line is already positioned.
+    /// Statements the wrapper body needs before anything else: empty except
+    /// for [`CallAttribution::Caller`], which binds `.mx_call`. The block is
+    /// the first part of the wrapper prelude, ahead of the R-side checks
+    /// (`stopifnot` preconditions, `match.arg`), so that those checks can
+    /// attribute their failures to the caller too (#1548). Lines are joined
+    /// with a newline plus `indent`; there is no trailing separator.
     pub fn prelude(self, indent: &str) -> String {
         match self {
             CallAttribution::Caller => format!(
                 ".mx_parent <- sys.parent()\n{indent}\
                  .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)\n{indent}\
                  .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)\n{indent}\
-                 .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()\n{indent}"
+                 .mx_call <- if (typeof(.mx_def) == \"closure\") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()"
             ),
             CallAttribution::Wrapper | CallAttribution::None => String::new(),
+        }
+    }
+
+    /// The call an R-side check raised in the wrapper body should carry:
+    /// `.mx_call` for [`CallAttribution::Caller`], otherwise `None` (the check
+    /// keeps its own attribution, which is the wrapper's frame).
+    pub fn r_check_call(self) -> Option<&'static str> {
+        match self {
+            CallAttribution::Caller => Some(".mx_call"),
+            CallAttribution::Wrapper | CallAttribution::None => None,
+        }
+    }
+
+    /// The R statement validating a choice parameter (`match_arg` / `choices`)
+    /// in a standalone wrapper. `choices` is the R expression for the choice
+    /// list: a literal `c("a", "b")`, or the write-time placeholder for an enum.
+    ///
+    /// With the wrapper's own attribution the scalar forms use
+    /// `base::match.arg()` and `several_ok` the strict preamble helper (#1472);
+    /// all of them report the wrapper's frame. Under
+    /// [`CallAttribution::Caller`] every form goes through a preamble helper
+    /// that raises with `.mx_call` and the real argument name (#1548). The
+    /// scalar helper needs the list spelled out, since `match.arg(param)` reads
+    /// it off the formal default.
+    pub fn match_arg_statement(
+        self,
+        param: &str,
+        choices: &str,
+        several_ok: bool,
+        optional: bool,
+    ) -> String {
+        match (self.r_check_call(), several_ok, optional) {
+            (None, true, _) => format!(
+                "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\")"
+            ),
+            (None, false, true) => {
+                format!("if (!is.null({param})) {param} <- base::match.arg({param}, {choices})")
+            }
+            (None, false, false) => format!("{param} <- base::match.arg({param})"),
+            (Some(call), true, _) => format!(
+                "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\", {call})"
+            ),
+            (Some(call), false, true) => format!(
+                "if (!is.null({param})) {param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\", {call})"
+            ),
+            (Some(call), false, false) => format!(
+                "{param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\", {call})"
+            ),
         }
     }
 }

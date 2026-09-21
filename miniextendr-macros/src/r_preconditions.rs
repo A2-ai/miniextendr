@@ -45,6 +45,16 @@ impl RAssertion {
         format!("\"{}\" = {}", self.message, self.condition)
     }
 
+    /// Format as a guard that raises with an explicit call:
+    /// `if (!isTRUE(condition)) stop(simpleError("message", call))`.
+    /// `isTRUE()` keeps `stopifnot()`'s failure semantics (`NA` fails too).
+    fn to_attributed_guard(&self, call: &str) -> String {
+        format!(
+            "if (!isTRUE({})) stop(simpleError(\"{}\", {}))",
+            self.condition, self.message, call
+        )
+    }
+
     /// Wrap for nullable: prepend `is.null(param) || ` to the condition,
     /// and adjust the message to mention NULL.
     fn nullable(self, param: &str) -> Self {
@@ -488,9 +498,29 @@ pub struct PreconditionOutput {
     /// contains one line (`stopifnot(...)`). For multiple assertions, contains
     /// `stopifnot(`, indented assertion lines, and `)`.
     pub static_checks: Vec<String>,
+    /// The assertions behind `static_checks`, in order, for wrappers that
+    /// attribute a failure to a captured call instead of their own frame
+    /// (see [`PreconditionOutput::attributed_checks`]).
+    assertions: Vec<RAssertion>,
     /// Parameters with unknown custom types that were not prechecked.
     #[allow(dead_code)] // Read in tests
     pub fallback_params: Vec<FallbackParam>,
+}
+
+impl PreconditionOutput {
+    /// The same checks as `static_checks`, one guard line per assertion, each
+    /// raising `simpleError(<message>, <call>)`.
+    ///
+    /// `stopifnot()` signals with the call of the function that invoked it,
+    /// which is the wrapper's own call. A `call = caller` wrapper has already
+    /// bound the caller's matched call as `.mx_call` when the checks run, and
+    /// this form hands that call to every failure (#1548).
+    pub fn attributed_checks(&self, call: &str) -> Vec<String> {
+        self.assertions
+            .iter()
+            .map(|a| a.to_attributed_guard(call))
+            .collect()
+    }
 }
 
 /// Returns `true` for types that should never get a fallback precheck.
@@ -547,7 +577,7 @@ pub fn build_precondition_checks(
     skip_params: &HashSet<String>,
     opts: &PreconditionOptions,
 ) -> PreconditionOutput {
-    let mut args = Vec::new();
+    let mut assertions = Vec::new();
     let mut fallback_params = Vec::new();
 
     for arg in inputs {
@@ -574,15 +604,17 @@ pub fn build_precondition_checks(
             if opts.is_coerced(&r_name) {
                 check = coerce_widened(check, pt.ty.as_ref());
             }
-            for assertion in check.assertions(&r_name) {
-                args.push(assertion.to_stopifnot_arg());
-            }
+            assertions.extend(check.assertions(&r_name));
         } else if needs_fallback(pt.ty.as_ref()) {
             // Unknown type → record for potential future validation
             fallback_params.push(FallbackParam { r_name });
         }
     }
 
+    let args: Vec<String> = assertions
+        .iter()
+        .map(RAssertion::to_stopifnot_arg)
+        .collect();
     let static_checks = match args.len() {
         0 => Vec::new(),
         1 => vec![format!("stopifnot({})", args[0])],
@@ -600,6 +632,7 @@ pub fn build_precondition_checks(
 
     PreconditionOutput {
         static_checks,
+        assertions,
         fallback_params,
     }
 }
@@ -858,6 +891,35 @@ mod tests {
         let joined = output.static_checks.join("\n");
         assert!(joined.contains("is.integer(x)"));
         assert!(joined.contains("trunc(x)"));
+    }
+
+    #[test]
+    fn attributed_checks_guard_each_assertion_with_the_given_call() {
+        // `call = caller` wrappers (#1548): the same assertions as the
+        // `stopifnot()` block, each raising with the captured `.mx_call`.
+        let sig: syn::Signature = syn::parse_str("fn f(n: i32, xs: Vec<f64>)").unwrap();
+        let output = build_precondition_checks(
+            &sig.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
+        assert_eq!(
+            output.attributed_checks(".mx_call"),
+            vec![
+                "if (!isTRUE(is.integer(n))) stop(simpleError(\"'n' must be integer\", .mx_call))",
+                "if (!isTRUE(length(n) == 1L)) stop(simpleError(\"'n' must have length 1\", .mx_call))",
+                "if (!isTRUE(is.double(xs))) stop(simpleError(\"'xs' must be double\", .mx_call))",
+            ]
+        );
+        // Both forms cover the same assertions in the same order.
+        assert_eq!(output.static_checks.len(), 3 + 2);
+        let no_params: syn::Signature = syn::parse_str("fn g()").unwrap();
+        let empty = build_precondition_checks(
+            &no_params.inputs,
+            &HashSet::new(),
+            &PreconditionOptions::default(),
+        );
+        assert!(empty.attributed_checks(".mx_call").is_empty());
     }
 
     #[test]

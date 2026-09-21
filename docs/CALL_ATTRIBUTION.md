@@ -137,8 +137,8 @@ Error in call_attr_self_impl(x = value) : x must be positive, got -1
 ```
 
 `#[miniextendr(noexport, call = caller)]` moves the attribution one frame up.
-The wrapper resolves its parent frame in its own frame first, then hands that
-call to `.Call()` and to the raise fallback:
+The wrapper resolves its parent frame as the first thing in its body, then
+hands that call to every R-side check, to `.Call()` and to the raise fallback:
 
 ```r
 call_attr_caller_impl <- function(x) {
@@ -146,6 +146,8 @@ call_attr_caller_impl <- function(x) {
   .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)
   .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)
   .mx_call <- if (typeof(.mx_def) == "closure") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()
+  if (!isTRUE(is.integer(x))) stop(simpleError("'x' must be integer", .mx_call))
+  if (!isTRUE(length(x) == 1L)) stop(simpleError("'x' must have length 1", .mx_call))
   .val <- .Call(C_mypkg_call_attr_caller_impl, .call = .mx_call, x)
   if (inherits(.val, "rust_condition_value") && ...) return(.miniextendr_raise_condition(.val, .mx_call))
   .val
@@ -153,11 +155,35 @@ call_attr_caller_impl <- function(x) {
 ```
 
 so the condition carries the hand-written function's call with *its* formals
-matched:
+matched, whether Rust or the R-side checks raised it:
 
 ```text
 Error in call_attr_caller(value = -1L) : x must be positive, got -1
+Error in call_attr_caller(value = 1.5) : 'x' must be integer
 ```
+
+The R-side checks change shape under this option (#1548). The default wrapper
+validates with `stopifnot()` and `base::match.arg()`, and both report the frame
+of the function that called them, which is the wrapper; so did the strict
+`several_ok` helper. That left the two layers disagreeing: a Rust-side failure
+named the public function, a bad choice or a non-integer argument named the
+bridge (`base::match.arg(kind)`, `verb_impl(...)`), with `match.arg()`'s
+generic `'arg'` in the message. A `call = caller` wrapper therefore emits each
+precondition as a guard that raises `simpleError(<message>, .mx_call)`
+(`isTRUE()` keeps `stopifnot()`'s failure semantics, and the guards are
+cheaper than the `stopifnot()` call they replace), and routes every choice
+parameter through the preamble helpers with the caller's call:
+`.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
+`match_arg` / `choices` parameter (the choice list is spelled out because
+`match.arg(kind)` reads it off the formal), the same form inside
+`if (!is.null(kind))` for an `Option<T>` choice, and
+`.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
+`several_ok`. Both helpers name the argument (`'kind' should be one of
+"a", "b"`). Default-attribution wrappers keep their `stopifnot()` /
+`base::match.arg()` text and behaviour; the `several_ok` helper's `call`
+parameter defaults to the wrapper's own call. If a downstream package's tests
+pinned `conditionCall()` for such a failure to the `_impl` wrapper or to
+`match.arg()`, they now see the public call.
 
 The wrapper falls back to its own `match.call()` in two cases: `sys.parent()`
 is `0` (called from top level, also under `tryCatch()` there), or the parent
