@@ -919,6 +919,13 @@ impl MiniextendrFunctionParsed {
         ident == "_dots"
     }
 
+    /// Whether a parameter carried any per-parameter `#[miniextendr(...)]`
+    /// option. A `Call` / `CallerCall` marker (#1566) is bound from the call
+    /// slot, not from an R argument, so none of them apply to it.
+    pub(crate) fn has_param_attrs(&self, param_name: &str) -> bool {
+        self.per_param.contains_key(param_name)
+    }
+
     /// Check if a parameter name had `#[miniextendr(coerce)]` attribute.
     pub(crate) fn has_coerce_attr(&self, param_name: &str) -> bool {
         self.per_param.get(param_name).is_some_and(|a| a.coerce)
@@ -1180,14 +1187,22 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   Saves ~300 ns per assertion (~600 ns per scalar arg, ~1230 ns for a 1-arg
 ///   numeric scalar fn). Hot-path opt-in. Opt out with `no_fast` when `fast-default`
 ///   is enabled.
-/// - `no_call_attribution`: emit `.call = NULL` instead of `.call = match.call()`
-///   in the generated R wrapper. The error fallback `sys.call()` preserves
-///   wrapper-invocation attribution (positional args instead of named). Saves
-///   ~1200 ns per call regardless of arg count.
+/// - `call = none | wrapper | caller`: which call the wrapper attributes
+///   conditions to (#1566). `wrapper` (the framework default) passes
+///   `.call = match.call()`; `caller` binds the caller's matched call first
+///   and passes that (internal entry points behind a hand-written R function;
+///   needs `noexport` / `internal`); `none` passes `.call = NULL`, and the
+///   error fallback `sys.call()` preserves wrapper-invocation attribution
+///   (positional args instead of named), saving ~1200 ns per call regardless
+///   of arg count. A `Call` / `CallerCall` parameter is the marker spelling
+///   of `wrapper` / `caller`, and `[package.metadata.miniextendr]
+///   call_attribution` the crate default; see `CallAttribution::resolve`.
+/// - `no_call_attribution`: spelling of `call = none`.
 /// - `fast`: shorthand for `no_preconditions + no_call_attribution`. The
 ///   biggest single-knob wrapper speedup.
 /// - `no_fast`: explicit opt-out of both knobs (useful when `fast-default`
-///   feature is enabled crate-wide to restore full error UX for a specific fn).
+///   feature is enabled crate-wide to restore full error UX for a specific fn);
+///   for the call slot it spells `call = wrapper`.
 ///
 /// See `analysis/scaffolding-deep-findings-2026-05-20.md` for the measurement
 /// underlying these options (~13× speedup possible on the wrapper layer).
@@ -1232,9 +1247,13 @@ pub(crate) struct MiniextendrFnAttrs {
     /// back to `sys.call()` which surfaces the same wrapper invocation
     /// (positional args instead of named).
     ///
-    /// Set by `#[miniextendr(no_call_attribution)]` or implied by `fast`.
-    /// Use `no_fast` to opt out when `fast-default` is enabled.
-    pub(crate) no_call_attribution: bool,
+    /// The attribution the attribute asked for, if any (#1566): `call = none |
+    /// wrapper | caller`, or its spellings `no_call_attribution` / `fast`
+    /// (`none`) and `no_fast` (`wrapper`). `None` here means the attribute said
+    /// nothing; the codegen then falls back to a `Call` / `CallerCall`
+    /// parameter marker, the crate default, the `fast-default` feature and
+    /// finally `wrapper` (`crate::r_wrapper_builder::CallAttribution::resolve`).
+    pub(crate) call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
@@ -1289,13 +1308,6 @@ pub(crate) struct MiniextendrFnAttrs {
     /// convention without repeating the name in `r_name`. Exclusive with
     /// `r_name` and `s3(...)`; the C symbol is unchanged.
     pub(crate) postfix: Option<String>,
-    /// `call = caller`: attribute conditions to the wrapper's caller instead of
-    /// the wrapper's own call (the body binds `.mx_call` from the parent frame
-    /// and passes `.call = .mx_call`; see
-    /// `crate::r_wrapper_builder::CallAttribution::Caller`). For `noexport` /
-    /// `internal` entry points behind a hand-written R function, so errors name
-    /// the public function, not the bridge.
-    pub(crate) call_caller: bool,
     /// R code to inject at the very top of the wrapper body (before all built-in checks).
     ///
     /// Use `#[miniextendr(r_entry = "x <- as.integer(x)")]` to run R code before
@@ -1696,7 +1708,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut c_symbol = None;
         let mut r_name = None;
         let mut postfix = None;
-        let mut call_caller = false;
+        let mut call_attr: Option<crate::r_wrapper_builder::CallAttribution> = None;
         let mut r_entry = None;
         let mut r_post_checks = None;
         let mut r_on_exit = None;
@@ -1907,23 +1919,32 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         validate_postfix(&val, &nv.value)?;
                         postfix = Some(val);
                     } else if nv.path.is_ident("call") {
-                        let is_caller = match &nv.value {
-                            syn::Expr::Path(p) => p.path.is_ident("caller"),
+                        let name = match &nv.value {
+                            syn::Expr::Path(p) => p.path.get_ident().map(|i| i.to_string()),
                             syn::Expr::Lit(syn::ExprLit {
                                 lit: syn::Lit::Str(s),
                                 ..
-                            }) => s.value() == "caller",
-                            _ => false,
+                            }) => Some(s.value()),
+                            _ => None,
                         };
-                        if !is_caller {
+                        let Some(attribution) = name
+                            .as_deref()
+                            .and_then(crate::r_wrapper_builder::CallAttribution::parse_name)
+                        else {
                             return Err(syn::Error::new_spanned(
                                 &nv.value,
-                                "`call = ...` accepts only `caller` (attribute conditions to the \
-                                 wrapper's caller); the default already attributes them to the \
-                                 wrapper's own call",
+                                "`call = ...` accepts `none` (`.call = NULL`), `wrapper` (the \
+                                 wrapper's own `match.call()`, the default) or `caller` (attribute \
+                                 conditions to the wrapper's caller)",
+                            ));
+                        };
+                        if call_attr.is_some() {
+                            return Err(syn::Error::new_spanned(
+                                &nv,
+                                "`call = ...` is set more than once",
                             ));
                         }
-                        call_caller = true;
+                        call_attr = Some(attribution);
                     } else if nv.path.is_ident("r_entry") {
                         r_entry = Some(parse_lit_str(&nv, "r_entry")?);
                     } else if nv.path.is_ident("r_post_checks") {
@@ -1947,7 +1968,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = caller`, `r_entry = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = none | wrapper | caller`, `r_entry = \"...\"`, \
                                  `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
@@ -2092,21 +2113,46 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         }
 
         // Validate: `call = caller` is for internal entry points only, and
-        // needs a call slot to point somewhere.
-        if call_caller && !(noexport || internal) {
+        // needs a call slot to point somewhere. `no_call_attribution` / `fast`
+        // spell `call = none` and `no_fast` spells `call = wrapper`; an explicit
+        // `call = ...` that says otherwise is a contradiction, not an override.
+        use crate::r_wrapper_builder::CallAttribution;
+        if call_attr == Some(CallAttribution::Caller) && !(noexport || internal) {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
                 "`call = caller` attributes conditions to the wrapper's caller, which is only \
                  meaningful for a package-internal entry point; add `noexport` or `internal`.",
             ));
         }
-        if call_caller && no_call_attribution == Some(true) {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                "`call = caller` cannot be combined with `no_call_attribution` / `fast`: those \
-                 emit `.call = NULL`, so there is no call slot to point at the caller.",
-            ));
+        match (call_attr, no_call_attribution) {
+            (Some(CallAttribution::Caller), Some(true)) => {
+                return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "`call = caller` cannot be combined with `no_call_attribution` / `fast`: those \
+                     emit `.call = NULL`, so there is no call slot to point at the caller.",
+                ));
+            }
+            (Some(CallAttribution::Wrapper), Some(true)) => {
+                return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "`call = wrapper` cannot be combined with `no_call_attribution` / `fast`: those \
+                     emit `.call = NULL`; keep one of them.",
+                ));
+            }
+            (Some(CallAttribution::None), Some(false)) => {
+                return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "`call = none` cannot be combined with `no_fast`, which restores \
+                     `.call = match.call()`; keep one of them.",
+                ));
+            }
+            _ => {}
         }
+        let call_attribution = call_attr.or(match no_call_attribution {
+            Some(true) => Some(CallAttribution::None),
+            Some(false) => Some(CallAttribution::Wrapper),
+            None => None,
+        });
 
         if r_name.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
             return Err(syn::Error::new(
@@ -2136,13 +2182,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             unwrap_in_r,
             serde_error,
             no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
-            // An explicit `call = caller` overrides the `fast-default` feature's
-            // `.call = NULL`: the user asked for attribution.
-            no_call_attribution: if call_caller {
-                false
-            } else {
-                no_call_attribution.unwrap_or(cfg!(feature = "fast-default"))
-            },
+            call_attribution,
             return_pref,
             return_pref_span,
             s3_generic,
@@ -2158,7 +2198,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             c_symbol,
             r_name,
             postfix,
-            call_caller,
             r_entry,
             r_post_checks,
             r_on_exit,

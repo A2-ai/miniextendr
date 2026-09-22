@@ -1,0 +1,5 @@
+error: the `Call` parameter selects `wrapper` attribution but the attribute selects `caller` (`call = caller`); keep one of them (or make them agree)
+ --> tests/ui/fn_call_marker_attr_conflict.rs:9:25
+  |
+9 | pub fn disagree(x: i32, _call: miniextendr_api::Call) -> i32 {
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

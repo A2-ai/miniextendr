@@ -346,6 +346,63 @@ pub enum CallAttribution {
 }
 
 impl CallAttribution {
+    /// The spelling shared by the attribute (`call = none | wrapper | caller`)
+    /// and the crate default (`call_attribution = "none" | "wrapper" | "caller"`).
+    pub fn parse_name(name: &str) -> Option<Self> {
+        match name {
+            "none" => Some(CallAttribution::None),
+            "wrapper" => Some(CallAttribution::Wrapper),
+            "caller" => Some(CallAttribution::Caller),
+            _ => Option::None,
+        }
+    }
+
+    /// The attribute spelling of this attribution.
+    pub fn name(self) -> &'static str {
+        match self {
+            CallAttribution::Wrapper => "wrapper",
+            CallAttribution::Caller => "caller",
+            CallAttribution::None => "none",
+        }
+    }
+
+    /// The parameter marker type that selects this attribution (#1566): `Call`
+    /// for `wrapper`, `CallerCall` for `caller`. `none` has no marker: a
+    /// function that wants no call does not take one.
+    pub fn marker_name(self) -> Option<&'static str> {
+        match self {
+            CallAttribution::Wrapper => Some("Call"),
+            CallAttribution::Caller => Some("CallerCall"),
+            CallAttribution::None => Option::None,
+        }
+    }
+
+    /// Resolve a standalone function's attribution from its three spellings
+    /// (#1566), most specific first: the `Call` / `CallerCall` parameter
+    /// marker, the `call = ...` attribute (`no_call_attribution` / `fast` spell
+    /// `none`, `no_fast` spells `wrapper`), the crate's
+    /// `[package.metadata.miniextendr] call_attribution` default, then the
+    /// `fast-default` feature (`none`) and finally the framework default,
+    /// `wrapper`. A crate default of `caller` applies to internal entry points
+    /// (`noexport` / `internal`) only; an exported function's caller is
+    /// arbitrary user code, so it keeps `wrapper`. The explicit spellings are
+    /// validated before this runs (a `caller` marker or attribute on an
+    /// exported function is a compile error, not a fallback).
+    pub fn resolve(
+        marker: Option<Self>,
+        attribute: Option<Self>,
+        crate_default: Option<Self>,
+        internal_entry: bool,
+        fast_default: bool,
+    ) -> Self {
+        marker.or(attribute).unwrap_or(match crate_default {
+            Some(CallAttribution::Caller) if !internal_entry => CallAttribution::Wrapper,
+            Some(default) => default,
+            Option::None if fast_default => CallAttribution::None,
+            Option::None => CallAttribution::Wrapper,
+        })
+    }
+
     /// The `.call = ...` argument for the `.Call()` line.
     pub fn dot_call_arg(self) -> &'static str {
         match self {

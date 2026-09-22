@@ -1,0 +1,5 @@
+error: a `CallerCall` parameter attributes conditions to the wrapper's caller, which is only meaningful for a package-internal entry point; add `noexport` or `internal`.
+  --> tests/ui/fn_caller_call_requires_noexport.rs:10:42
+   |
+10 | pub fn exported_with_caller_call(x: i32, _call: miniextendr_api::CallerCall) -> i32 {
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

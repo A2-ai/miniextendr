@@ -45,6 +45,7 @@ Generates:
 | `noexport` | Suppress `@export` only |
 | `invisible` | Wrap R return in `invisible()` (same as an `Invisible<T>` return type) |
 | `visible` | Force visible return (same as a `Visible<T>` return type) |
+| `call = none \| wrapper \| caller` | Which call conditions are attributed to (same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`. See [below](#condition-call-markers-and-defaults) |
 | `doc = "..."` | Custom roxygen block (replaces auto-generated) |
 
 ```rust
@@ -110,6 +111,47 @@ tails and every trait-impl void method were `invisible(self)` /
 `invisible(x)` implicitly. A package that relied on the silence adds
 `#[miniextendr(invisible)]` or returns `Invisible<()>` /
 `Invisible<&mut Self>` on those methods; pipes and `$`-chains need no change.
+
+#### Condition call: markers and defaults
+
+Every generated wrapper passes a call object to its C entry point
+(`.Call(C_pkg_f, .call = <call>, ...)`), and conditions raised from Rust are
+attributed to it. Which call it is has three attributions and three equivalent
+spellings (#1566), most specific first:
+
+| | `wrapper` (default) | `caller` | `none` |
+|-|---------------------|----------|--------|
+| `.call =` | `match.call()` | `.mx_call`, the caller's matched call | `NULL` (R falls back to `sys.call()`) |
+| Marker parameter | `call: Call` | `call: CallerCall` | — |
+| Attribute | `call = wrapper`, `no_fast` | `call = caller` | `call = none`, `no_call_attribution`, `fast` |
+| `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
+
+```rust
+use miniextendr_api::{Call, CallerCall, miniextendr};
+
+#[miniextendr]
+pub fn scale(x: f64, call: Call) -> f64 {      // R wrapper: scale <- function(x)
+    let _ = call.sexp();                        // the wrapper's match.call()
+    x * 2.0
+}
+
+#[miniextendr(noexport)]                        // behind a hand-written scale2()
+pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
+
+#[miniextendr(call = none)]                     // .call = NULL
+pub fn hot_path(x: f64) -> f64 { x * 2.0 }
+```
+
+The marker (`miniextendr_api::{Call, CallerCall}`, `repr(transparent)` over
+`SEXP`) is not an R formal: the C wrapper binds it from its hidden call slot,
+so the body sees exactly the call the wrapper attributed to. A function taking
+one runs on the main thread. `caller`, in either spelling, requires
+`noexport` / `internal`; a crate default of `"caller"` applies to those
+functions only and leaves exported ones at `wrapper`. Two spellings on one
+function must agree, a function takes at most one marker, per-parameter
+options do not apply to it, and class / trait methods accept none of the three
+(they keep the wrapper's own call). Details, the `fast-default` interaction and
+the fixtures: [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
 #### Threading
 

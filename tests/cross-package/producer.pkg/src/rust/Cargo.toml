@@ -20,6 +20,7 @@ crate-type = ["staticlib"]
 [package.metadata.miniextendr]
 noexport_postfix = "_impl"
 source_tags = true
+call_attribution = "caller"
 
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)

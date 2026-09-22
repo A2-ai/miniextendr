@@ -73,8 +73,8 @@ pub use crate::{
 
 // region: Types
 pub use crate::{
-    IntoList, Invisible, Lazy, List, ListBuilder, ListMut, Missing, NamedVector, OwnedProtect,
-    ProtectScope, Protected, ProtectedStrVec, RCow, StrVec, StrVecBuilder, Visible,
+    Call, CallerCall, IntoList, Invisible, Lazy, List, ListBuilder, ListMut, Missing, NamedVector,
+    OwnedProtect, ProtectScope, Protected, ProtectedStrVec, RCow, StrVec, StrVecBuilder, Visible,
 };
 // endregion
 

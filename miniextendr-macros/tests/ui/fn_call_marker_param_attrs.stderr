@@ -1,0 +1,5 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `default`, `several_ok`) do not apply to a `Call` parameter: it is bound from the call slot, not from an R argument
+ --> tests/ui/fn_call_marker_param_attrs.rs:9:69
+  |
+9 | pub fn marker_with_default(x: i32, #[miniextendr(default = "NULL")] _call: miniextendr_api::Call) -> i32 {
+  |                                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -186,3 +186,59 @@ test_that("default attribution of R-side checks is unchanged", {
 })
 
 # endregion
+
+# region: the three spellings of the attribution (#1566)
+
+test_that("a `Call` marker hands the wrapper's own match.call() to Rust", {
+  # The marker is not an R formal.
+  expect_equal(names(formals(miniextendr:::call_marker_wrapper_impl)), "x")
+  expect_equal(
+    miniextendr:::call_marker_wrapper_impl(1L),
+    quote(miniextendr:::call_marker_wrapper_impl(x = 1L))
+  )
+  # Behind a delegate it still names the bridge: `Call` is `wrapper` attribution.
+  expect_equal(
+    miniextendr:::call_marker_wrapper(2L),
+    quote(call_marker_wrapper_impl(x = value))
+  )
+})
+
+test_that("a `CallerCall` marker hands the caller's matched call to Rust", {
+  expect_equal(names(formals(miniextendr:::call_marker_caller_impl)), "x")
+  expect_equal(
+    miniextendr:::call_marker_caller(2L),
+    quote(miniextendr:::call_marker_caller(value = 2L))
+  )
+  # Called directly, the wrapper's own call is the caller's call.
+  expect_equal(
+    miniextendr:::call_marker_caller_impl(3L),
+    quote(miniextendr:::call_marker_caller_impl(x = 3L))
+  )
+})
+
+test_that("a `Call` marker leaves error attribution at the wrapper", {
+  e <- tryCatch(miniextendr:::call_marker_checked_impl(-1L), error = function(e) e)
+  expect_s3_class(e, "rust_error")
+  expect_match(conditionMessage(e), "x must be positive, got -1", fixed = TRUE)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_marker_checked_impl(x = -1L)))
+  expect_equal(miniextendr:::call_marker_checked_impl(4L), 4L)
+})
+
+test_that("`call = none` passes .call = NULL and falls back to sys.call()", {
+  body_text <- paste(deparse(body(miniextendr:::call_attr_none_impl)), collapse = "\n")
+  expect_match(body_text, ".call = NULL", fixed = TRUE)
+  expect_false(grepl("match.call()", body_text, fixed = TRUE))
+  e <- tryCatch(miniextendr:::call_attr_none_impl(-1L), error = function(e) e)
+  expect_s3_class(e, "rust_error")
+  # `sys.call()` keeps the call as written: positional, not matched.
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_none_impl(-1L)))
+  expect_equal(miniextendr:::call_attr_none_impl(5L), 5L)
+})
+
+test_that("marker fixtures are not exported", {
+  ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
+  expect_false(any(grepl("call_marker_", ns)))
+  expect_false(any(grepl("call_attr_none", ns)))
+})
+
+# endregion

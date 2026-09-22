@@ -20,3 +20,16 @@ call_attr_self <- function(value) {
 call_attr_checked <- function(mode = "Fast", metrics = "mean", n = 1L, level = NULL) {
   call_attr_checked_impl(mode, metrics, n, level)
 }
+
+# Delegates to a `#[miniextendr(noexport)]` entry point taking a `CallerCall`
+# marker (#1566): the marker spelling of `call = caller`. The Rust body returns
+# the call it was handed, so the test can compare it with the caller's call.
+call_marker_caller <- function(value) {
+  call_marker_caller_impl(value)
+}
+
+# Delegates to an entry point taking a `Call` marker: the wrapper's own
+# `match.call()` reaches Rust, naming the bridge with its formals matched.
+call_marker_wrapper <- function(value) {
+  call_marker_wrapper_impl(value)
+}

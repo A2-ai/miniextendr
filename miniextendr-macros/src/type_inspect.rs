@@ -137,6 +137,9 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
+    // Condition-call markers wrap the `.call` slot's SEXP (#1566).
+    "Call",
+    "CallerCall",
     "AltrepSexp",
     "RDVector",
     "RDMatrix",
@@ -195,9 +198,36 @@ pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
     }
 }
 
+// region: condition-call markers (#1566)
+
+/// Detect a condition-call marker parameter type: `Call` selects `wrapper`
+/// attribution, `CallerCall` selects `caller`. Matched on the last path
+/// segment like the visibility markers; a segment carrying generic arguments
+/// (`Call<T>`) is some other type. References and wrappers (`&Call`,
+/// `Option<Call>`) are not markers: the C wrapper binds the marker by value
+/// from its hidden call slot. Whichever attribution `None` would spell has no
+/// marker, so this never returns `CallAttribution::None`.
+pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::CallAttribution> {
+    let syn::Type::Path(p) = ty else {
+        return None;
+    };
+    let seg = p.path.segments.last()?;
+    if !matches!(seg.arguments, syn::PathArguments::None) {
+        return None;
+    }
+    match seg.ident.to_string().as_str() {
+        "Call" => Some(crate::r_wrapper_builder::CallAttribution::Wrapper),
+        "CallerCall" => Some(crate::r_wrapper_builder::CallAttribution::Caller),
+        _ => None,
+    }
+}
+
+// endregion
+
 #[cfg(test)]
 mod tests {
-    use super::is_main_thread_bound_return;
+    use super::{call_marker, is_main_thread_bound_input, is_main_thread_bound_return};
+    use crate::r_wrapper_builder::CallAttribution;
 
     fn ty(s: &str) -> syn::Type {
         syn::parse_str(s).unwrap()
@@ -229,6 +259,30 @@ mod tests {
         )));
         assert!(!is_main_thread_bound_return(&ty("ExternalPtr<MyType>")));
         assert!(!is_main_thread_bound_return(&ty("DataFrame")));
+    }
+
+    #[test]
+    fn call_marker_matches_bare_marker_types_only() {
+        assert_eq!(call_marker(&ty("Call")), Some(CallAttribution::Wrapper));
+        assert_eq!(
+            call_marker(&ty("miniextendr_api::CallerCall")),
+            Some(CallAttribution::Caller)
+        );
+        assert_eq!(
+            call_marker(&ty("::miniextendr_api::call_marker::Call")),
+            Some(CallAttribution::Wrapper)
+        );
+        // Not markers: generics, references, wrappers, other types.
+        assert_eq!(call_marker(&ty("Call<i32>")), None);
+        assert_eq!(call_marker(&ty("&Call")), None);
+        assert_eq!(call_marker(&ty("Option<Call>")), None);
+        assert_eq!(call_marker(&ty("SEXP")), None);
+        assert_eq!(call_marker(&ty("Caller")), None);
+        // A marker holds the `.call` slot's SEXP, so it pins the main thread.
+        assert!(is_main_thread_bound_input(&ty("Call")));
+        assert!(is_main_thread_bound_input(&ty(
+            "miniextendr_api::CallerCall"
+        )));
     }
 }
 

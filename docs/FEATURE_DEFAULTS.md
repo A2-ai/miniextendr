@@ -191,13 +191,19 @@ default to every `#[miniextendr]` function and impl block:
   message comes from the Rust side ("failed to convert parameter 'x' to i32")
   rather than R's "must be integer".
 
-- **`no_call_attribution`**: emits `.call = NULL` instead of
-  `.call = match.call()` in the `.Call(...)` invocation. This saves ~1200 ns
-  per call by skipping R's `match.call()` evaluation. On the error path, R's
-  `stop()` fills in `sys.call()` for the calling frame (because `call.`
-  defaults to `TRUE`), so `conditionCall(e)` remains non-NULL — the error UX
-  difference is subtle: `match.call()` captures named argument positions,
-  while `sys.call()` does not.
+- **`no_call_attribution`** (spelled `call = none` since #1566): emits
+  `.call = NULL` instead of `.call = match.call()` in the `.Call(...)`
+  invocation. This saves ~1200 ns per call by skipping R's `match.call()`
+  evaluation. On the error path, R's `stop()` fills in `sys.call()` for the
+  calling frame (because `call.` defaults to `TRUE`), so `conditionCall(e)`
+  remains non-NULL — the error UX difference is subtle: `match.call()`
+  captures named argument positions, while `sys.call()` does not. For
+  standalone functions the feature sits below a `Call` / `CallerCall`
+  parameter, the `call = ...` attribute and the crate's
+  `[package.metadata.miniextendr] call_attribution` default, so a crate that
+  sets `call_attribution = "caller"` keeps its internal entry points attributed
+  under `fast-default` (see
+  [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default)).
 
 Combined, `fast` (= `no_preconditions` + `no_call_attribution`) delivers a
 **7.78× speedup** on the single-call fast path and **8.54×** for
@@ -302,7 +308,7 @@ impl LightWrapper { ... }  // env (overridden)
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
 | `no_fast` | `#[miniextendr(no_fast)]` on fn or impl | `fast-default` feature (restores both `stopifnot` + `match.call()`) |
 | `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl | Drops `stopifnot` block (can be used independently of `no_call_attribution`) |
-| `no_call_attribution` | `#[miniextendr(no_call_attribution)]` on fn or impl | Emits `.call = NULL` (can be used independently of `no_preconditions`) |
+| `no_call_attribution` | `#[miniextendr(no_call_attribution)]` on fn or impl | Emits `.call = NULL` (can be used independently of `no_preconditions`); on a fn also spelled `call = none`, with `call = wrapper` / `call = caller`, a `Call` / `CallerCall` parameter and the `Cargo.toml` `call_attribution` default as the other spellings (#1566) |
 | `fast` | `#[miniextendr(fast)]` on fn or impl | Bundle alias for both `no_preconditions` + `no_call_attribution`; also opts back in when used with `no_fast` |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `worker-default` feature |
