@@ -120,7 +120,7 @@ fresh package. The latter runs the pkgbuild `bootstrap.R` hook, which vendors
 dependencies while producing a package tarball and selects wrapper-skipping
 tarball mode before the first wrappers exist. A direct `R CMD INSTALL .` does
 not vendor—configure leaves it in source mode—but it also does not perform the
-complete wrappers → roxygen2 → reinstall cycle. `devtools::document()` alone
+complete wrappers → roxygen2 → install cycle. `devtools::document()` alone
 does not install the wrapper-generating build either.
 
 ### Step 4: Use from R

@@ -75,9 +75,10 @@ Three install modes, decided by `./configure`:
 minirextendr::miniextendr_build()
 ```
 
-This runs autoconf → configure → install (compiles Rust, regenerates
-wrappers) → `devtools::document()` → reinstalls once more if NAMESPACE gained
-new exports. One call, everything consistent.
+This runs autoconf → configure → compile (regenerates the wrappers in the
+source tree) → `devtools::document()` → one install. One call, everything
+consistent: a new export, a renamed one, or an edited doc comment all reach
+the installed package in the same pass.
 
 **Do not use a build-producing `devtools::install()` on a fresh package.** Its
 tarball build hook runs `bootstrap.R`, which vendors dependencies and flips the

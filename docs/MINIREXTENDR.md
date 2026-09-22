@@ -103,8 +103,7 @@ For fine-grained control or when not using devtools:
 ```r
 miniextendr_autoconf(path = "mypackage")     # autoconf → generate configure
 miniextendr_configure(path = "mypackage")    # ./configure → generate Makevars
-miniextendr_build(path = "mypackage")        # R CMD INSTALL
-devtools::document("mypackage")              # regenerate NAMESPACE + man from wrappers
+miniextendr_build(path = "mypackage")        # compile + wrappers → roxygen2 → R CMD INSTALL
 ```
 
 ### One-Shot Sync

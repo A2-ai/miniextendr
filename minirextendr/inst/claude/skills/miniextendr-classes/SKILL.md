@@ -148,8 +148,8 @@ several Rust types.
 - **Editing `R/<pkg>-wrappers.R`** — regenerated on every build; all edits
   lost. Change the Rust and rebuild.
 - **Forgetting the rebuild**: class shape changes (new method, renamed
-  property) need `minirextendr::miniextendr_build()`, which also refreshes
-  NAMESPACE and reinstalls if exports changed.
+  property) need `minirextendr::miniextendr_build()`, which regenerates the
+  wrappers, refreshes NAMESPACE and `man/`, then installs.
 - **Holding references across mutations**: the R object is a pointer to the
   Rust value. `obj2 <- obj` aliases the same Rust state in every class system
   (external-pointer semantics), even in "value-semantics" systems like S4/S7.

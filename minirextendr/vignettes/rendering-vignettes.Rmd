@@ -16,7 +16,7 @@ knitr::opts_chunk$set(
 ```
 
 miniextendr packages require a multi-step build (configure, compile, generate
-wrappers, reinstall) before R can call Rust functions. When rendering Rmd or
+wrappers, document, install) before R can call Rust functions. When rendering Rmd or
 qmd vignettes, this build must complete before knitr evaluates code chunks.
 
 `miniextendr_sync()` detects when Rust sources have changed and rebuilds

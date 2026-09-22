@@ -403,9 +403,9 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
             "{.code library()} fail."
           ),
           "i" = paste0(
-            "Fix: run {.code miniextendr_build()} (reconciles NAMESPACE and ",
-            "reinstalls), or {.code devtools::document()} followed by a ",
-            "reinstall."
+            "Fix: run {.code miniextendr_build()} (regenerates the wrappers, ",
+            "reconciles NAMESPACE, then installs), or ",
+            "{.code devtools::document()} followed by an install."
           )
         ))
         results$warn <- c(
