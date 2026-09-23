@@ -1368,7 +1368,8 @@ macro_rules! interrupt_condition_arm {
 /// re-raises the tagged Rust condition value as the matching R condition:
 /// `stop()` for the error kinds, `warning()` / `message()` /
 /// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
-pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(r#"function(.val, .call_default) {
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
+    r#"function(.val, .call_default) {
   .msg <- .val$error
   .call <- (if (is.null(.val$call)) .call_default else .val$call)
   .class <- .val$class
@@ -1390,7 +1391,9 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(r#"function(.val, .ca
     }
   }
   switch(.val$kind,
-"#, interrupt_condition_arm!(), r#"    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
+"#,
+    interrupt_condition_arm!(),
+    r#"    error = stop(structure(.cond_fields(list(message = .msg, call = .call, kind = "error")),
       class = c(.class, "rust_error", "simpleError", "error", "condition"))),
     warning = warning(structure(.cond_fields(list(message = .msg, call = .call, kind = "warning")),
       class = c(.class, "rust_warning", "simpleWarning", "warning", "condition"))),
@@ -1406,7 +1409,8 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(r#"function(.val, .ca
       class = c(.class, "rust_error", "simpleError", "error", "condition")))
   )
   invisible(NULL)
-}"#);
+}"#
+);
 
 /// Write all R wrapper entries to a file.
 ///

@@ -1309,7 +1309,8 @@ jobs:
       - name: Install with cooperative checkpoints enabled
         shell: bash
         run: |
-          export CARGO_FEATURES="$(Rscript rpkg/tools/detect-features.R),ctrlc"
+          CARGO_FEATURES="$(Rscript rpkg/tools/detect-features.R),ctrlc"
+          export CARGO_FEATURES
           (cd rpkg && bash ./configure)
           R CMD INSTALL rpkg
       - name: Check interrupt conditions and GC

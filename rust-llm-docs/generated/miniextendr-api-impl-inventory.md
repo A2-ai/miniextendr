@@ -750,8 +750,8 @@ Traits with impls: 219
 | `SEXP` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:114 |
 | `SEXP` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:115 |
 | `Call` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:118 |
-| `RError` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1016 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1514 |
+| `RError` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1021 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1521 |
 | `AsList<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:103 |
 | `AsExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:365 |
 | `AsRNative<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:417 |
@@ -1253,7 +1253,7 @@ Traits with impls: 219
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:381 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:398 |
 | `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1168 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1179 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:197 |
 
 ## `Sync` — 13 impls
@@ -1271,7 +1271,7 @@ Traits with impls: 219
 | `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:380 |
 | `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:397 |
 | `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:72 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1167 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1178 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:198 |
 
 ## `TypedExternal` — 181 impls
@@ -1656,8 +1656,8 @@ Traits with impls: 219
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1537 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1544 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:973 |
 | `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1197 |
 | `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1215 |
 | `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1233 |
@@ -1741,13 +1741,13 @@ Traits with impls: 219
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
 | `StrVec<'a>` | `<'a>` | concrete | 1 | miniextendr-api/src/strvec.rs:25 |
 | `ProtectedStrVec` | `` | concrete | 1 | miniextendr-api/src/strvec.rs:759 |
-| `DllInfo` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1100 |
-| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1128 |
-| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1153 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:982 |
+| `DllInfo` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1111 |
+| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1139 |
+| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1164 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:993 |
 | `RTxtProgressBar` | `` | concrete | 1 | miniextendr-api/src/txt_progress_bar.rs:56 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `TypedListError` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:191 |
@@ -1786,7 +1786,7 @@ Traits with impls: 219
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:973 |
 | `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1197 |
 | `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1215 |
 | `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1233 |
@@ -1864,12 +1864,12 @@ Traits with impls: 219
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
 | `cetype_t` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:353 |
 | `StrVec<'a>` | `<'a>` | concrete | 1 | miniextendr-api/src/strvec.rs:25 |
-| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1128 |
-| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1153 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:982 |
+| `R_CMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1139 |
+| `R_CallMethodDef` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1164 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:993 |
 | `R_altrep_class_t` | `` | concrete | 1 | miniextendr-api/src/sys/altrep.rs:187 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `TypedListError` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:191 |
@@ -2118,12 +2118,12 @@ Traits with impls: 219
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
 | `cetype_t` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:353 |
 | `StrVec<'a>` | `<'a>` | concrete | 0 | miniextendr-api/src/strvec.rs:25 |
-| `R_CMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1128 |
-| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1153 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:982 |
+| `R_CMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1139 |
+| `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1164 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:993 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:187 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
 | `Invisible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:56 |
@@ -2235,10 +2235,10 @@ Traits with impls: 219
 | `Rcomplex` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:982 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 1 | miniextendr-api/src/sys.rs:993 |
 | `TypeSpec` | `` | concrete | 1 | miniextendr-api/src/typed_list.rs:119 |
 | `VctrsBuildError` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-api/src/vctrs.rs:525 |
@@ -2287,10 +2287,10 @@ Traits with impls: 219
 | `Rcomplex` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:24 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:982 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:993 |
 | `TypeSpec` | `` | concrete | 0 | miniextendr-api/src/typed_list.rs:119 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
@@ -2487,10 +2487,10 @@ Traits with impls: 219
 | `RLogical` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rboolean` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 0 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1548 |
-| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:982 |
+| `RNGtype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1559 |
+| `ParseStatus` | `` | concrete | 0 | miniextendr-api/src/sys.rs:993 |
 | `VctrsBuildError` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:32 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-api/src/vctrs.rs:525 |
 | `Invisible<T>` | `<T>` | concrete | 0 | miniextendr-api/src/visibility.rs:56 |
@@ -2712,8 +2712,8 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:489 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:97 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:1031 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1521 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:1036 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1528 |
 | `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:115 |
 | `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:124 |
 | `TypeMismatchError` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:1745 |
@@ -2787,9 +2787,9 @@ Traits with impls: 219
 | `RLogical` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:162 |
 | `Rboolean` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:321 |
 | `SEXPTYPE` | `` | concrete | 1 | miniextendr-api/src/sexp_types.rs:35 |
-| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1504 |
-| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1528 |
-| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1548 |
+| `RNGtype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1515 |
+| `N01type` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1539 |
+| `Sampletype` | `` | concrete | 1 | miniextendr-api/src/sys.rs:1559 |
 | `Invisible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:56 |
 | `Visible<T>` | `<T>` | concrete | 1 | miniextendr-api/src/visibility.rs:63 |
 
@@ -2962,15 +2962,15 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `&str` | `` | concrete | 1 | miniextendr-api/src/condition.rs:741 |
-| `String` | `` | concrete | 1 | miniextendr-api/src/condition.rs:746 |
-| `&String` | `` | concrete | 1 | miniextendr-api/src/condition.rs:751 |
-| `[&str; N]` | `<N>` | concrete | 1 | miniextendr-api/src/condition.rs:756 |
-| `[String; N]` | `<N>` | concrete | 1 | miniextendr-api/src/condition.rs:761 |
-| `Vec<&str>` | `` | concrete | 1 | miniextendr-api/src/condition.rs:766 |
-| `Vec<String>` | `` | concrete | 1 | miniextendr-api/src/condition.rs:771 |
-| `&[&str]` | `` | concrete | 1 | miniextendr-api/src/condition.rs:776 |
-| `&[String]` | `` | concrete | 1 | miniextendr-api/src/condition.rs:781 |
+| `&str` | `` | concrete | 1 | miniextendr-api/src/condition.rs:746 |
+| `String` | `` | concrete | 1 | miniextendr-api/src/condition.rs:751 |
+| `&String` | `` | concrete | 1 | miniextendr-api/src/condition.rs:756 |
+| `[&str; N]` | `<N>` | concrete | 1 | miniextendr-api/src/condition.rs:761 |
+| `[String; N]` | `<N>` | concrete | 1 | miniextendr-api/src/condition.rs:766 |
+| `Vec<&str>` | `` | concrete | 1 | miniextendr-api/src/condition.rs:771 |
+| `Vec<String>` | `` | concrete | 1 | miniextendr-api/src/condition.rs:776 |
+| `&[&str]` | `` | concrete | 1 | miniextendr-api/src/condition.rs:781 |
+| `&[String]` | `` | concrete | 1 | miniextendr-api/src/condition.rs:786 |
 
 ## `SerializeMap` — 9 impls
 
@@ -3645,7 +3645,7 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RError` | `` | concrete | 3 | miniextendr-api/src/condition.rs:1037 |
+| `RError` | `` | concrete | 3 | miniextendr-api/src/condition.rs:1042 |
 
 ## `RDate` — 1 impls
 
