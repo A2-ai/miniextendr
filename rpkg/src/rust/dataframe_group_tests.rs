@@ -5,7 +5,9 @@
 //! Parity target: R `split()` + `lapply()` — with the documented deviation
 //! that NA keys form one trailing group instead of being dropped.
 
-use miniextendr_api::dataframe::{DataFrame, IntoDataFrame, NamedDataFrameListBuilder};
+use miniextendr_api::dataframe::{
+    BuiltDataFrame, DataFrame, IntoDataFrame, NamedDataFrameListBuilder,
+};
 use miniextendr_api::{DataFrameRow, IntoList, IntoR, SEXP, group_rows, miniextendr};
 
 // region: row types
@@ -223,5 +225,21 @@ pub fn group_rows_summary() -> SEXP {
     out.into_dataframe()
         .unwrap_or_else(|e| panic!("{}", e))
         .into_sexp()
+}
+// endregion
+
+// region: row-subset fixture (the primitive behind the group sub-frames)
+
+/// `DataFrame::select_rows` at the 1-based row indices `idx`: every column
+/// keeps its attributes (`tzone`, `units`, labels, element names).
+/// @param df A data.frame.
+/// @param idx 1-based row indices, in output order.
+#[miniextendr(noexport)]
+pub fn dataframe_select_rows(df: DataFrame, idx: Vec<i32>) -> BuiltDataFrame {
+    let idx: Vec<usize> = idx
+        .into_iter()
+        .map(|i| usize::try_from(i - 1).expect("row indices are 1-based and positive"))
+        .collect();
+    df.select_rows(&idx)
 }
 // endregion
