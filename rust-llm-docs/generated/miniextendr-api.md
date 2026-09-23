@@ -6637,18 +6637,21 @@ let alpha: Vec<f64> = validated.get("alpha")?;
 
 Safe API for R's `R_UnwindProtect`
 
-This module provides [`with_r_unwind_protect`] for handling R errors with Rust cleanup.
-It automatically runs Rust destructors when R errors occur.
+This module provides [`with_r_unwind_protect`] for handling Rust panics and
+continuing R errors across the FFI boundary.
 
-**Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
-Use this API to ensure cleanup happens even when R errors occur.
+**Cleanup limitation**: R's `longjmp` skips Rust locals inside the protected
+closure before the cleanup callback runs. This outer guard alone cannot run
+those destructors. Generated worker input conversions use narrower checked
+R-call fences so converter locals and completed arguments unwind in Rust.
+Broader main-thread and callback cleanup is tracked in issue #1507.
 
 #### When to reach for this
 
 - **Calling R APIs that can error from a body you wrote yourself**
   (custom ALTREP, custom connection trampoline, hand-rolled FFI shim).
-  Wrap the R-calling section in [`with_r_unwind_protect`] so Rust
-  destructors run if R longjmps.
+  Use [`with_r_unwind_protect`] for panic transport and R continuation handling;
+  account separately for resources an R longjmp can skip inside the closure.
 - **Inside a [`with_r_unwind_protect`] body it is safe to use `*_unchecked`
   variants of the R FFI** — see the [`crate::sys`] module doc. The lint
   **MXL301** recognises this as one of the three contexts where bypassing
@@ -6663,7 +6666,7 @@ Returning `Result::Err`, `Option::None`, or calling `panic!()` /
 [`crate::error!`] / [`crate::warning!`] / [`crate::message!`] is the
 idiomatic path. Direct [`with_r_unwind_protect`] use inside that body is
 almost always wrong — you'd be nesting an `R_UnwindProtect` inside another
-`R_UnwindProtect`, paying the longjmp-leak cost twice (see "Leaks" below).
+`R_UnwindProtect`, without fixing skipped local cleanup (see "Leaks" below).
 
 #### Don't use `Rf_error`
 
@@ -6674,12 +6677,11 @@ corresponding R condition for you.
 
 #### Leaks
 
-On the R longjmp path (when R unwinds out of the protected body),
-`with_r_unwind_protect` leaks ~8 bytes (an `RErrorMarker` + `Box` header)
-because the cleanup handler can't reclaim them via
-`Box::from_raw`. Regular Rust panics from inside the body don't leak.
-This is the cost MXL300 is buying off: every direct `Rf_error()` would
-incur the same leak with no observability.
+An R longjmp across Rust can leak every owned resource in the skipped frames,
+including closure captures and converter temporaries. The leak is not bounded
+by the size of the cleanup marker. Ordinary Rust panics unwind those resources.
+The worker input fences avoid this by catching each checked R call below the
+Rust conversion frames; unchecked calls still require their own cleanup design.
 
 #### Log drain
 
@@ -35964,7 +35966,7 @@ unsafe fn ALTREP(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 
  Use `SexpExt::is_altrep()` instead of calling this directly.
 Checked wrapper for `ALTREP`. Calls `ALTREP_unchecked` and routes through `with_r_thread`.
-Generated from source location line 669, column 12.
+Generated from source location line 677, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::ALTREP_unchecked`
@@ -35977,7 +35979,7 @@ unsafe extern "C-unwind" fn ALTREP_unchecked(x: SEXP) -> ::std::os::raw::c_int
 
  Use `SexpExt::is_altrep()` instead of calling this directly.
 Unchecked FFI binding for `ALTREP`.
-Generated from source location line 669, column 12.
+Generated from source location line 677, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::ATTRIB`
@@ -35990,7 +35992,7 @@ unsafe fn ATTRIB(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Returns R_NilValue if no attributes.
 Checked wrapper for `ATTRIB`. Calls `ATTRIB_unchecked` and routes through `with_r_thread`.
-Generated from source location line 630, column 12.
+Generated from source location line 638, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::ATTRIB_unchecked`
@@ -36003,7 +36005,7 @@ unsafe extern "C-unwind" fn ATTRIB_unchecked(x: SEXP) -> SEXP
 
  Returns R_NilValue if no attributes.
 Unchecked FFI binding for `ATTRIB`.
-Generated from source location line 630, column 12.
+Generated from source location line 638, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAAR`
@@ -36013,7 +36015,7 @@ unsafe fn CAAR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CAAR`. Calls `CAAR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 569, column 12.
+Generated from source location line 577, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAAR_unchecked`
@@ -36023,7 +36025,7 @@ unsafe extern "C-unwind" fn CAAR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CAAR`.
-Generated from source location line 569, column 12.
+Generated from source location line 577, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAD4R`
@@ -36033,7 +36035,7 @@ unsafe fn CAD4R(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CAD4R`. Calls `CAD4R_unchecked` and routes through `with_r_thread`.
-Generated from source location line 575, column 12.
+Generated from source location line 583, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAD4R_unchecked`
@@ -36043,7 +36045,7 @@ unsafe extern "C-unwind" fn CAD4R_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CAD4R`.
-Generated from source location line 575, column 12.
+Generated from source location line 583, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADDDR`
@@ -36053,7 +36055,7 @@ unsafe fn CADDDR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CADDDR`. Calls `CADDDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 574, column 12.
+Generated from source location line 582, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADDDR_unchecked`
@@ -36063,7 +36065,7 @@ unsafe extern "C-unwind" fn CADDDR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CADDDR`.
-Generated from source location line 574, column 12.
+Generated from source location line 582, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADDR`
@@ -36073,7 +36075,7 @@ unsafe fn CADDR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CADDR`. Calls `CADDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 573, column 12.
+Generated from source location line 581, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADDR_unchecked`
@@ -36083,7 +36085,7 @@ unsafe extern "C-unwind" fn CADDR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CADDR`.
-Generated from source location line 573, column 12.
+Generated from source location line 581, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADR`
@@ -36093,7 +36095,7 @@ unsafe fn CADR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CADR`. Calls `CADR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 571, column 12.
+Generated from source location line 579, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CADR_unchecked`
@@ -36103,7 +36105,7 @@ unsafe extern "C-unwind" fn CADR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CADR`.
-Generated from source location line 571, column 12.
+Generated from source location line 579, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAR`
@@ -36113,7 +36115,7 @@ unsafe fn CAR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CAR`. Calls `CAR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 567, column 12.
+Generated from source location line 575, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CAR_unchecked`
@@ -36123,7 +36125,7 @@ unsafe extern "C-unwind" fn CAR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CAR`.
-Generated from source location line 567, column 12.
+Generated from source location line 575, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDAR`
@@ -36133,7 +36135,7 @@ unsafe fn CDAR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CDAR`. Calls `CDAR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 570, column 12.
+Generated from source location line 578, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDAR_unchecked`
@@ -36143,7 +36145,7 @@ unsafe extern "C-unwind" fn CDAR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CDAR`.
-Generated from source location line 570, column 12.
+Generated from source location line 578, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDDR`
@@ -36153,7 +36155,7 @@ unsafe fn CDDR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CDDR`. Calls `CDDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 572, column 12.
+Generated from source location line 580, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDDR_unchecked`
@@ -36163,7 +36165,7 @@ unsafe extern "C-unwind" fn CDDR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CDDR`.
-Generated from source location line 572, column 12.
+Generated from source location line 580, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDR`
@@ -36173,7 +36175,7 @@ unsafe fn CDR(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `CDR`. Calls `CDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 568, column 12.
+Generated from source location line 576, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::CDR_unchecked`
@@ -36183,7 +36185,7 @@ unsafe extern "C-unwind" fn CDR_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `CDR`.
-Generated from source location line 568, column 12.
+Generated from source location line 576, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::COMPLEX_ELT`
@@ -36193,7 +36195,7 @@ unsafe fn COMPLEX_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> c
 ```
 
 Checked wrapper for `COMPLEX_ELT`. Calls `COMPLEX_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 594, column 12.
+Generated from source location line 602, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::COMPLEX_ELT_unchecked`
@@ -36203,7 +36205,7 @@ unsafe extern "C-unwind" fn COMPLEX_ELT_unchecked(x: SEXP, i: R_xlen_t) -> Rcomp
 ```
 
 Unchecked FFI binding for `COMPLEX_ELT`.
-Generated from source location line 594, column 12.
+Generated from source location line 602, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::COMPLEX_OR_NULL`
@@ -36213,7 +36215,7 @@ unsafe fn COMPLEX_OR_NULL(x: crate::sexp::SEXP) -> *const crate::sexp_types::Rco
 ```
 
 Checked wrapper for `COMPLEX_OR_NULL`. Calls `COMPLEX_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 587, column 12.
+Generated from source location line 595, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::COMPLEX_OR_NULL_unchecked`
@@ -36223,7 +36225,7 @@ unsafe extern "C-unwind" fn COMPLEX_OR_NULL_unchecked(x: SEXP) -> *const Rcomple
 ```
 
 Unchecked FFI binding for `COMPLEX_OR_NULL`.
-Generated from source location line 587, column 12.
+Generated from source location line 595, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::DATAPTR_OR_NULL`
@@ -36233,7 +36235,7 @@ unsafe fn DATAPTR_OR_NULL(x: crate::sexp::SEXP) -> *const ::std::os::raw::c_void
 ```
 
 Checked wrapper for `DATAPTR_OR_NULL`. Calls `DATAPTR_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 539, column 12.
+Generated from source location line 547, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::DATAPTR_OR_NULL_unchecked`
@@ -36243,7 +36245,7 @@ unsafe extern "C-unwind" fn DATAPTR_OR_NULL_unchecked(x: SEXP) -> *const ::std::
 ```
 
 Unchecked FFI binding for `DATAPTR_OR_NULL`.
-Generated from source location line 539, column 12.
+Generated from source location line 547, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::DATAPTR_RO`
@@ -36253,7 +36255,7 @@ unsafe fn DATAPTR_RO(x: crate::sexp::SEXP) -> *const ::std::os::raw::c_void
 ```
 
 Checked wrapper for `DATAPTR_RO`. Calls `DATAPTR_RO_unchecked` and routes through `with_r_thread`.
-Generated from source location line 538, column 12.
+Generated from source location line 546, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::DATAPTR_RO_unchecked`
@@ -36263,7 +36265,7 @@ unsafe extern "C-unwind" fn DATAPTR_RO_unchecked(x: SEXP) -> *const ::std::os::r
 ```
 
 Unchecked FFI binding for `DATAPTR_RO`.
-Generated from source location line 538, column 12.
+Generated from source location line 546, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::GetRNGstate`
@@ -36288,7 +36290,7 @@ unsafe fn GetRNGstate()
  }
  ```
 Checked wrapper for `GetRNGstate`. Calls `GetRNGstate_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1566, column 12.
+Generated from source location line 1574, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::GetRNGstate_unchecked`
@@ -36313,7 +36315,7 @@ unsafe extern "C-unwind" fn GetRNGstate_unchecked()
  }
  ```
 Unchecked FFI binding for `GetRNGstate`.
-Generated from source location line 1566, column 12.
+Generated from source location line 1574, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::INTEGER_ELT`
@@ -36323,7 +36325,7 @@ unsafe fn INTEGER_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> :
 ```
 
 Checked wrapper for `INTEGER_ELT`. Calls `INTEGER_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 591, column 12.
+Generated from source location line 599, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::INTEGER_ELT_unchecked`
@@ -36333,7 +36335,7 @@ unsafe extern "C-unwind" fn INTEGER_ELT_unchecked(x: SEXP, i: R_xlen_t) -> ::std
 ```
 
 Unchecked FFI binding for `INTEGER_ELT`.
-Generated from source location line 591, column 12.
+Generated from source location line 599, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::INTEGER_OR_NULL`
@@ -36343,7 +36345,7 @@ unsafe fn INTEGER_OR_NULL(x: crate::sexp::SEXP) -> *const ::std::os::raw::c_int
 ```
 
 Checked wrapper for `INTEGER_OR_NULL`. Calls `INTEGER_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 585, column 12.
+Generated from source location line 593, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::INTEGER_OR_NULL_unchecked`
@@ -36353,7 +36355,7 @@ unsafe extern "C-unwind" fn INTEGER_OR_NULL_unchecked(x: SEXP) -> *const ::std::
 ```
 
 Unchecked FFI binding for `INTEGER_OR_NULL`.
-Generated from source location line 585, column 12.
+Generated from source location line 593, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LENGTH`
@@ -36367,7 +36369,7 @@ unsafe fn LENGTH(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
  For long vectors, use `Rf_xlength()` instead.
  Returns 0 for R_NilValue.
 Checked wrapper for `LENGTH`. Calls `LENGTH_unchecked` and routes through `with_r_thread`.
-Generated from source location line 614, column 12.
+Generated from source location line 622, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LENGTH_unchecked`
@@ -36381,7 +36383,7 @@ unsafe extern "C-unwind" fn LENGTH_unchecked(x: SEXP) -> ::std::os::raw::c_int
  For long vectors, use `Rf_xlength()` instead.
  Returns 0 for R_NilValue.
 Unchecked FFI binding for `LENGTH`.
-Generated from source location line 614, column 12.
+Generated from source location line 622, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LEVELS`
@@ -36392,7 +36394,7 @@ unsafe fn LEVELS(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 
  Get the LEVELS field (for factors).
 Checked wrapper for `LEVELS`. Calls `LEVELS_unchecked` and routes through `with_r_thread`.
-Generated from source location line 648, column 12.
+Generated from source location line 656, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LEVELS_unchecked`
@@ -36403,7 +36405,7 @@ unsafe extern "C-unwind" fn LEVELS_unchecked(x: SEXP) -> ::std::os::raw::c_int
 
  Get the LEVELS field (for factors).
 Unchecked FFI binding for `LEVELS`.
-Generated from source location line 648, column 12.
+Generated from source location line 656, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LOGICAL_ELT`
@@ -36413,7 +36415,7 @@ unsafe fn LOGICAL_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> :
 ```
 
 Checked wrapper for `LOGICAL_ELT`. Calls `LOGICAL_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 593, column 12.
+Generated from source location line 601, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LOGICAL_ELT_unchecked`
@@ -36423,7 +36425,7 @@ unsafe extern "C-unwind" fn LOGICAL_ELT_unchecked(x: SEXP, i: R_xlen_t) -> ::std
 ```
 
 Unchecked FFI binding for `LOGICAL_ELT`.
-Generated from source location line 593, column 12.
+Generated from source location line 601, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LOGICAL_OR_NULL`
@@ -36433,7 +36435,7 @@ unsafe fn LOGICAL_OR_NULL(x: crate::sexp::SEXP) -> *const ::std::os::raw::c_int
 ```
 
 Checked wrapper for `LOGICAL_OR_NULL`. Calls `LOGICAL_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 584, column 12.
+Generated from source location line 592, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::LOGICAL_OR_NULL_unchecked`
@@ -36443,7 +36445,7 @@ unsafe extern "C-unwind" fn LOGICAL_OR_NULL_unchecked(x: SEXP) -> *const ::std::
 ```
 
 Unchecked FFI binding for `LOGICAL_OR_NULL`.
-Generated from source location line 584, column 12.
+Generated from source location line 592, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::OBJECT`
@@ -36456,7 +36458,7 @@ unsafe fn OBJECT(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 
  Returns non-zero if object has a class attribute.
 Checked wrapper for `OBJECT`. Calls `OBJECT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 642, column 12.
+Generated from source location line 650, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::OBJECT_unchecked`
@@ -36469,7 +36471,7 @@ unsafe extern "C-unwind" fn OBJECT_unchecked(x: SEXP) -> ::std::os::raw::c_int
 
  Returns non-zero if object has a class attribute.
 Unchecked FFI binding for `OBJECT`.
-Generated from source location line 642, column 12.
+Generated from source location line 650, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::PRINTNAME`
@@ -36480,7 +36482,7 @@ unsafe fn PRINTNAME(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Get the print name (CHARSXP) of a symbol (SYMSXP)
 Checked wrapper for `PRINTNAME`. Calls `PRINTNAME_unchecked` and routes through `with_r_thread`.
-Generated from source location line 729, column 12.
+Generated from source location line 737, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::PRINTNAME_unchecked`
@@ -36491,7 +36493,7 @@ unsafe extern "C-unwind" fn PRINTNAME_unchecked(x: SEXP) -> SEXP
 
  Get the print name (CHARSXP) of a symbol (SYMSXP)
 Unchecked FFI binding for `PRINTNAME`.
-Generated from source location line 729, column 12.
+Generated from source location line 737, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::PutRNGstate`
@@ -36505,7 +36507,7 @@ unsafe fn PutRNGstate()
  Must be called after using `unif_rand()`, `norm_rand()`, etc.
  to ensure R's `.Random.seed` is updated.
 Checked wrapper for `PutRNGstate`. Calls `PutRNGstate_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1572, column 12.
+Generated from source location line 1580, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::PutRNGstate_unchecked`
@@ -36519,7 +36521,7 @@ unsafe extern "C-unwind" fn PutRNGstate_unchecked()
  Must be called after using `unif_rand()`, `norm_rand()`, etc.
  to ensure R's `.Random.seed` is updated.
 Unchecked FFI binding for `PutRNGstate`.
-Generated from source location line 1572, column 12.
+Generated from source location line 1580, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::RAW_ELT`
@@ -36529,7 +36531,7 @@ unsafe fn RAW_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> crate
 ```
 
 Checked wrapper for `RAW_ELT`. Calls `RAW_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 595, column 12.
+Generated from source location line 603, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::RAW_ELT_unchecked`
@@ -36539,7 +36541,7 @@ unsafe extern "C-unwind" fn RAW_ELT_unchecked(x: SEXP, i: R_xlen_t) -> Rbyte
 ```
 
 Unchecked FFI binding for `RAW_ELT`.
-Generated from source location line 595, column 12.
+Generated from source location line 603, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::RAW_OR_NULL`
@@ -36549,7 +36551,7 @@ unsafe fn RAW_OR_NULL(x: crate::sexp::SEXP) -> *const crate::sexp_types::Rbyte
 ```
 
 Checked wrapper for `RAW_OR_NULL`. Calls `RAW_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 588, column 12.
+Generated from source location line 596, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::RAW_OR_NULL_unchecked`
@@ -36559,7 +36561,7 @@ unsafe extern "C-unwind" fn RAW_OR_NULL_unchecked(x: SEXP) -> *const Rbyte
 ```
 
 Unchecked FFI binding for `RAW_OR_NULL`.
-Generated from source location line 588, column 12.
+Generated from source location line 596, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::REAL_ELT`
@@ -36569,7 +36571,7 @@ unsafe fn REAL_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> f64
 ```
 
 Checked wrapper for `REAL_ELT`. Calls `REAL_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 592, column 12.
+Generated from source location line 600, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::REAL_ELT_unchecked`
@@ -36579,7 +36581,7 @@ unsafe extern "C-unwind" fn REAL_ELT_unchecked(x: SEXP, i: R_xlen_t) -> f64
 ```
 
 Unchecked FFI binding for `REAL_ELT`.
-Generated from source location line 592, column 12.
+Generated from source location line 600, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::REAL_OR_NULL`
@@ -36589,7 +36591,7 @@ unsafe fn REAL_OR_NULL(x: crate::sexp::SEXP) -> *const f64
 ```
 
 Checked wrapper for `REAL_OR_NULL`. Calls `REAL_OR_NULL_unchecked` and routes through `with_r_thread`.
-Generated from source location line 586, column 12.
+Generated from source location line 594, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::REAL_OR_NULL_unchecked`
@@ -36599,7 +36601,7 @@ unsafe extern "C-unwind" fn REAL_OR_NULL_unchecked(x: SEXP) -> *const f64
 ```
 
 Unchecked FFI binding for `REAL_OR_NULL`.
-Generated from source location line 586, column 12.
+Generated from source location line 594, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::REprintf`
@@ -36631,7 +36633,7 @@ unsafe fn R_CHAR(x: crate::sexp::SEXP) -> *const ::std::os::raw::c_char
 
  Get the C string pointer from a CHARSXP — encapsulated by SexpExt::r_char()
 Checked wrapper for `R_CHAR`. Calls `R_CHAR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 732, column 12.
+Generated from source location line 740, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CHAR_unchecked`
@@ -36642,7 +36644,7 @@ unsafe extern "C-unwind" fn R_CHAR_unchecked(x: SEXP) -> *const ::std::os::raw::
 
  Get the C string pointer from a CHARSXP — encapsulated by SexpExt::r_char()
 Unchecked FFI binding for `R_CHAR`.
-Generated from source location line 732, column 12.
+Generated from source location line 740, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckStack`
@@ -36655,7 +36657,7 @@ unsafe fn R_CheckStack()
 
  Throws an R error if stack is nearly exhausted.
 Checked wrapper for `R_CheckStack`. Calls `R_CheckStack_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1908, column 12.
+Generated from source location line 1916, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckStack2`
@@ -36670,7 +36672,7 @@ unsafe fn R_CheckStack2(extra: usize)
 
  - `extra`: Additional bytes needed
 Checked wrapper for `R_CheckStack2`. Calls `R_CheckStack2_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1915, column 12.
+Generated from source location line 1923, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckStack2_unchecked`
@@ -36685,7 +36687,7 @@ unsafe extern "C-unwind" fn R_CheckStack2_unchecked(extra: usize)
 
  - `extra`: Additional bytes needed
 Unchecked FFI binding for `R_CheckStack2`.
-Generated from source location line 1915, column 12.
+Generated from source location line 1923, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckStack_unchecked`
@@ -36698,7 +36700,7 @@ unsafe extern "C-unwind" fn R_CheckStack_unchecked()
 
  Throws an R error if stack is nearly exhausted.
 Unchecked FFI binding for `R_CheckStack`.
-Generated from source location line 1908, column 12.
+Generated from source location line 1916, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckUserInterrupt`
@@ -36708,7 +36710,7 @@ unsafe fn R_CheckUserInterrupt()
 ```
 
 Checked wrapper for `R_CheckUserInterrupt`. Calls `R_CheckUserInterrupt_unchecked` and routes through `with_r_thread`.
-Generated from source location line 715, column 12.
+Generated from source location line 723, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_CheckUserInterrupt_unchecked`
@@ -36718,7 +36720,7 @@ unsafe extern "C-unwind" fn R_CheckUserInterrupt_unchecked()
 ```
 
 Unchecked FFI binding for `R_CheckUserInterrupt`.
-Generated from source location line 715, column 12.
+Generated from source location line 723, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExpandFileName`
@@ -36733,7 +36735,7 @@ unsafe fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os
 
  Pointer to expanded path (in R's internal buffer, do not free).
 Checked wrapper for `R_ExpandFileName`. Calls `R_ExpandFileName_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1857, column 12.
+Generated from source location line 1865, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExpandFileName_unchecked`
@@ -36748,7 +36750,7 @@ unsafe extern "C-unwind" fn R_ExpandFileName_unchecked(s: *const ::std::os::raw:
 
  Pointer to expanded path (in R's internal buffer, do not free).
 Unchecked FFI binding for `R_ExpandFileName`.
-Generated from source location line 1857, column 12.
+Generated from source location line 1865, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExternalPtrAddr`
@@ -36758,7 +36760,7 @@ unsafe fn R_ExternalPtrAddr(s: crate::sexp::SEXP) -> *mut ::std::os::raw::c_void
 ```
 
 Checked wrapper for `R_ExternalPtrAddr`. Calls `R_ExternalPtrAddr_unchecked` and routes through `with_r_thread`.
-Generated from source location line 368, column 12.
+Generated from source location line 376, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExternalPtrAddrFn`
@@ -36768,7 +36770,7 @@ unsafe fn R_ExternalPtrAddrFn(s: crate::sexp::SEXP) -> DL_FUNC
 ```
 
 Checked wrapper for `R_ExternalPtrAddrFn`. Calls `R_ExternalPtrAddrFn_unchecked` and routes through `with_r_thread`.
-Generated from source location line 377, column 12.
+Generated from source location line 385, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExternalPtrAddrFn_unchecked`
@@ -36778,7 +36780,7 @@ unsafe extern "C-unwind" fn R_ExternalPtrAddrFn_unchecked(s: SEXP) -> DL_FUNC
 ```
 
 Unchecked FFI binding for `R_ExternalPtrAddrFn`.
-Generated from source location line 377, column 12.
+Generated from source location line 385, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ExternalPtrAddr_unchecked`
@@ -36788,7 +36790,7 @@ unsafe extern "C-unwind" fn R_ExternalPtrAddr_unchecked(s: SEXP) -> *mut ::std::
 ```
 
 Unchecked FFI binding for `R_ExternalPtrAddr`.
-Generated from source location line 368, column 12.
+Generated from source location line 376, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_FindNamespace`
@@ -36800,7 +36802,7 @@ unsafe fn R_FindNamespace(info: crate::sexp::SEXP) -> crate::sexp::SEXP
  Find a registered namespace by name. **Longjmps on error** — prefer
  `REnv::package_namespace()` which wraps this safely.
 Checked wrapper for `R_FindNamespace`. Calls `R_FindNamespace_unchecked` and routes through `with_r_thread`.
-Generated from source location line 921, column 12.
+Generated from source location line 929, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_FindNamespace_unchecked`
@@ -36812,7 +36814,7 @@ unsafe extern "C-unwind" fn R_FindNamespace_unchecked(info: SEXP) -> SEXP
  Find a registered namespace by name. **Longjmps on error** — prefer
  `REnv::package_namespace()` which wraps this safely.
 Unchecked FFI binding for `R_FindNamespace`.
-Generated from source location line 921, column 12.
+Generated from source location line 929, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeExternalPtrFn`
@@ -36823,7 +36825,7 @@ unsafe fn R_MakeExternalPtrFn(p: DL_FUNC, tag: crate::sexp::SEXP, prot: crate::s
 
  Added in R 3.4.0
 Checked wrapper for `R_MakeExternalPtrFn`. Calls `R_MakeExternalPtrFn_unchecked` and routes through `with_r_thread`.
-Generated from source location line 376, column 12.
+Generated from source location line 384, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeExternalPtrFn_unchecked`
@@ -36834,7 +36836,7 @@ unsafe extern "C-unwind" fn R_MakeExternalPtrFn_unchecked(p: DL_FUNC, tag: SEXP,
 
  Added in R 3.4.0
 Unchecked FFI binding for `R_MakeExternalPtrFn`.
-Generated from source location line 376, column 12.
+Generated from source location line 384, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeWeakRef`
@@ -36852,7 +36854,7 @@ unsafe fn R_MakeWeakRef(key: crate::sexp::SEXP, val: crate::sexp::SEXP, fin: cra
  - `fin`: Finalizer function (or R_NilValue)
  - `onexit`: Whether to run finalizer on R exit
 Checked wrapper for `R_MakeWeakRef`. Calls `R_MakeWeakRef_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2219, column 12.
+Generated from source location line 2227, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeWeakRefC`
@@ -36863,7 +36865,7 @@ unsafe fn R_MakeWeakRefC(key: crate::sexp::SEXP, val: crate::sexp::SEXP, fin: cr
 
  Create a weak reference with C finalizer.
 Checked wrapper for `R_MakeWeakRefC`. Calls `R_MakeWeakRefC_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2222, column 12.
+Generated from source location line 2230, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeWeakRefC_unchecked`
@@ -36874,7 +36876,7 @@ unsafe extern "C-unwind" fn R_MakeWeakRefC_unchecked(key: SEXP, val: SEXP, fin: 
 
  Create a weak reference with C finalizer.
 Unchecked FFI binding for `R_MakeWeakRefC`.
-Generated from source location line 2222, column 12.
+Generated from source location line 2230, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_MakeWeakRef_unchecked`
@@ -36892,7 +36894,7 @@ unsafe extern "C-unwind" fn R_MakeWeakRef_unchecked(key: SEXP, val: SEXP, fin: S
  - `fin`: Finalizer function (or R_NilValue)
  - `onexit`: Whether to run finalizer on R exit
 Unchecked FFI binding for `R_MakeWeakRef`.
-Generated from source location line 2219, column 12.
+Generated from source location line 2227, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ParseVector`
@@ -36910,7 +36912,7 @@ unsafe fn R_ParseVector(text: crate::sexp::SEXP, n: ::std::os::raw::c_int, statu
  Prefer the safe [`crate::expression::r_eval_str`] wrapper, which does the
  STRSXP construction, status check, and protection bookkeeping for you.
 Checked wrapper for `R_ParseVector`. Calls `R_ParseVector_unchecked` and routes through `with_r_thread`.
-Generated from source location line 958, column 12.
+Generated from source location line 966, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ParseVector_unchecked`
@@ -36928,7 +36930,7 @@ unsafe extern "C-unwind" fn R_ParseVector_unchecked(text: SEXP, n: ::std::os::ra
  Prefer the safe [`crate::expression::r_eval_str`] wrapper, which does the
  STRSXP construction, status check, and protection bookkeeping for you.
 Unchecked FFI binding for `R_ParseVector`.
-Generated from source location line 958, column 12.
+Generated from source location line 966, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_PreserveObject`
@@ -36945,7 +36947,7 @@ unsafe fn R_PreserveObject(object: crate::sexp::SEXP)
  Use only for long-lived objects (e.g., ExternalPtr stored across R calls).
  For temporary protection within a function, prefer `Rf_protect`.
 Checked wrapper for `R_PreserveObject`. Calls `R_PreserveObject_unchecked` and routes through `with_r_thread`.
-Generated from source location line 471, column 12.
+Generated from source location line 479, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_PreserveObject_unchecked`
@@ -36962,7 +36964,7 @@ unsafe extern "C-unwind" fn R_PreserveObject_unchecked(object: SEXP)
  Use only for long-lived objects (e.g., ExternalPtr stored across R calls).
  For temporary protection within a function, prefer `Rf_protect`.
 Unchecked FFI binding for `R_PreserveObject`.
-Generated from source location line 471, column 12.
+Generated from source location line 479, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ProtectWithIndex`
@@ -36977,7 +36979,7 @@ unsafe fn R_ProtectWithIndex(s: crate::sexp::SEXP, index: *mut ::std::os::raw::c
  No allocation. Use when you need to replace a protected value in-place
  (e.g., inside a loop that allocates) without unprotect/re-protect churn.
 Checked wrapper for `R_ProtectWithIndex`. Calls `R_ProtectWithIndex_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2196, column 12.
+Generated from source location line 2204, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ProtectWithIndex_unchecked`
@@ -36992,7 +36994,7 @@ unsafe extern "C-unwind" fn R_ProtectWithIndex_unchecked(s: SEXP, index: *mut ::
  No allocation. Use when you need to replace a protected value in-place
  (e.g., inside a loop that allocates) without unprotect/re-protect churn.
 Unchecked FFI binding for `R_ProtectWithIndex`.
-Generated from source location line 2196, column 12.
+Generated from source location line 2204, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RegisterFinalizer`
@@ -37002,7 +37004,7 @@ unsafe fn R_RegisterFinalizer(s: crate::sexp::SEXP, fun: crate::sexp::SEXP)
 ```
 
 Checked wrapper for `R_RegisterFinalizer`. Calls `R_RegisterFinalizer_unchecked` and routes through `with_r_thread`.
-Generated from source location line 378, column 12.
+Generated from source location line 386, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RegisterFinalizerEx`
@@ -37012,7 +37014,7 @@ unsafe fn R_RegisterFinalizerEx(s: crate::sexp::SEXP, fun: crate::sexp::SEXP, on
 ```
 
 Checked wrapper for `R_RegisterFinalizerEx`. Calls `R_RegisterFinalizerEx_unchecked` and routes through `with_r_thread`.
-Generated from source location line 380, column 12.
+Generated from source location line 388, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RegisterFinalizerEx_unchecked`
@@ -37022,7 +37024,7 @@ unsafe extern "C-unwind" fn R_RegisterFinalizerEx_unchecked(s: SEXP, fun: SEXP, 
 ```
 
 Unchecked FFI binding for `R_RegisterFinalizerEx`.
-Generated from source location line 380, column 12.
+Generated from source location line 388, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RegisterFinalizer_unchecked`
@@ -37032,7 +37034,7 @@ unsafe extern "C-unwind" fn R_RegisterFinalizer_unchecked(s: SEXP, fun: SEXP)
 ```
 
 Unchecked FFI binding for `R_RegisterFinalizer`.
-Generated from source location line 378, column 12.
+Generated from source location line 386, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ReleaseObject`
@@ -37047,7 +37049,7 @@ unsafe fn R_ReleaseObject(object: crate::sexp::SEXP)
  the cons cell. With `R_HASH_PRECIOUS` env var, O(bucket_size) average
  via a 1069-bucket hash table, but this is off by default.
 Checked wrapper for `R_ReleaseObject`. Calls `R_ReleaseObject_unchecked` and routes through `with_r_thread`.
-Generated from source location line 478, column 12.
+Generated from source location line 486, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_ReleaseObject_unchecked`
@@ -37062,7 +37064,7 @@ unsafe extern "C-unwind" fn R_ReleaseObject_unchecked(object: SEXP)
  the cons cell. With `R_HASH_PRECIOUS` env var, O(bucket_size) average
  via a 1069-bucket hash table, but this is off by default.
 Unchecked FFI binding for `R_ReleaseObject`.
-Generated from source location line 478, column 12.
+Generated from source location line 486, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_Reprotect`
@@ -37080,7 +37082,7 @@ unsafe fn R_Reprotect(s: crate::sexp::SEXP, index: ::std::os::raw::c_int)
  `index` must be from a previous `R_ProtectWithIndex` call and the
  stack must not have been unprotected past that index.
 Checked wrapper for `R_Reprotect`. Calls `R_Reprotect_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2207, column 12.
+Generated from source location line 2215, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_Reprotect_unchecked`
@@ -37098,7 +37100,7 @@ unsafe extern "C-unwind" fn R_Reprotect_unchecked(s: SEXP, index: ::std::os::raw
  `index` must be from a previous `R_ProtectWithIndex` call and the
  stack must not have been unprotected past that index.
 Unchecked FFI binding for `R_Reprotect`.
-Generated from source location line 2207, column 12.
+Generated from source location line 2215, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RunPendingFinalizers`
@@ -37109,7 +37111,7 @@ unsafe fn R_RunPendingFinalizers()
 
  Run pending finalizers.
 Checked wrapper for `R_RunPendingFinalizers`. Calls `R_RunPendingFinalizers_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2231, column 12.
+Generated from source location line 2239, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_RunPendingFinalizers_unchecked`
@@ -37120,7 +37122,7 @@ unsafe extern "C-unwind" fn R_RunPendingFinalizers_unchecked()
 
  Run pending finalizers.
 Unchecked FFI binding for `R_RunPendingFinalizers`.
-Generated from source location line 2231, column 12.
+Generated from source location line 2239, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_WeakRefKey`
@@ -37131,7 +37133,7 @@ unsafe fn R_WeakRefKey(w: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Get the key from a weak reference.
 Checked wrapper for `R_WeakRefKey`. Calls `R_WeakRefKey_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2225, column 12.
+Generated from source location line 2233, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_WeakRefKey_unchecked`
@@ -37142,7 +37144,7 @@ unsafe extern "C-unwind" fn R_WeakRefKey_unchecked(w: SEXP) -> SEXP
 
  Get the key from a weak reference.
 Unchecked FFI binding for `R_WeakRefKey`.
-Generated from source location line 2225, column 12.
+Generated from source location line 2233, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_WeakRefValue`
@@ -37153,7 +37155,7 @@ unsafe fn R_WeakRefValue(w: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Get the value from a weak reference.
 Checked wrapper for `R_WeakRefValue`. Calls `R_WeakRefValue_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2228, column 12.
+Generated from source location line 2236, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_WeakRefValue_unchecked`
@@ -37164,7 +37166,7 @@ unsafe extern "C-unwind" fn R_WeakRefValue_unchecked(w: SEXP) -> SEXP
 
  Get the value from a weak reference.
 Unchecked FFI binding for `R_WeakRefValue`.
-Generated from source location line 2228, column 12.
+Generated from source location line 2236, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_alloc`
@@ -37187,7 +37189,7 @@ unsafe fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::o
 
  Pointer to allocated memory (as `char*` for compatibility with S).
 Checked wrapper for `R_alloc`. Calls `R_alloc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1663, column 12.
+Generated from source location line 1671, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_allocLD`
@@ -37202,7 +37204,7 @@ unsafe fn R_allocLD(nelem: usize) -> *mut f64
 
  - `nelem`: Number of long double elements to allocate
 Checked wrapper for `R_allocLD`. Calls `R_allocLD_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1670, column 12.
+Generated from source location line 1678, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_allocLD_unchecked`
@@ -37217,7 +37219,7 @@ unsafe extern "C-unwind" fn R_allocLD_unchecked(nelem: usize) -> *mut f64
 
  - `nelem`: Number of long double elements to allocate
 Unchecked FFI binding for `R_allocLD`.
-Generated from source location line 1670, column 12.
+Generated from source location line 1678, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_alloc_unchecked`
@@ -37240,7 +37242,7 @@ unsafe extern "C-unwind" fn R_alloc_unchecked(nelem: usize, eltsize: ::std::os::
 
  Pointer to allocated memory (as `char*` for compatibility with S).
 Unchecked FFI binding for `R_alloc`.
-Generated from source location line 1663, column 12.
+Generated from source location line 1671, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_altrep_data1`
@@ -37250,7 +37252,7 @@ unsafe fn R_altrep_data1(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `R_altrep_data1`. Calls `R_altrep_data1_unchecked` and routes through `with_r_thread`.
-Generated from source location line 661, column 12.
+Generated from source location line 669, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_altrep_data1_unchecked`
@@ -37260,7 +37262,7 @@ unsafe extern "C-unwind" fn R_altrep_data1_unchecked(x: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `R_altrep_data1`.
-Generated from source location line 661, column 12.
+Generated from source location line 669, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_altrep_data2`
@@ -37270,7 +37272,7 @@ unsafe fn R_altrep_data2(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `R_altrep_data2`. Calls `R_altrep_data2_unchecked` and routes through `with_r_thread`.
-Generated from source location line 662, column 12.
+Generated from source location line 670, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_altrep_data2_unchecked`
@@ -37280,7 +37282,7 @@ unsafe extern "C-unwind" fn R_altrep_data2_unchecked(x: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `R_altrep_data2`.
-Generated from source location line 662, column 12.
+Generated from source location line 670, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_atof`
@@ -37293,7 +37295,7 @@ unsafe fn R_atof(str: *const ::std::os::raw::c_char) -> f64
 
  Also accepts "NA" as input, returning NA_REAL.
 Checked wrapper for `R_atof`. Calls `R_atof_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1862, column 12.
+Generated from source location line 1870, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_atof_unchecked`
@@ -37306,7 +37308,7 @@ unsafe extern "C-unwind" fn R_atof_unchecked(str: *const ::std::os::raw::c_char)
 
  Also accepts "NA" as input, returning NA_REAL.
 Unchecked FFI binding for `R_atof`.
-Generated from source location line 1862, column 12.
+Generated from source location line 1870, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_calloc_gc`
@@ -37320,7 +37322,7 @@ unsafe fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_vo
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Checked wrapper for `R_calloc_gc`. Calls `R_calloc_gc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1705, column 12.
+Generated from source location line 1713, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_calloc_gc_unchecked`
@@ -37334,7 +37336,7 @@ unsafe extern "C-unwind" fn R_calloc_gc_unchecked(nelem: usize, eltsize: usize) 
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Unchecked FFI binding for `R_calloc_gc`.
-Generated from source location line 1705, column 12.
+Generated from source location line 1713, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_compute_identical`
@@ -37361,7 +37363,7 @@ unsafe fn R_compute_identical(x: crate::sexp::SEXP, y: crate::sexp::SEXP, flags:
 
  Fast-path: Returns `TRUE` immediately if pointers are equal.
 Checked wrapper for `R_compute_identical`. Calls `R_compute_identical_unchecked` and routes through `with_r_thread`.
-Generated from source location line 772, column 12.
+Generated from source location line 780, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_compute_identical_unchecked`
@@ -37388,7 +37390,7 @@ unsafe extern "C-unwind" fn R_compute_identical_unchecked(x: SEXP, y: SEXP, flag
 
  Fast-path: Returns `TRUE` immediately if pointers are equal.
 Unchecked FFI binding for `R_compute_identical`.
-Generated from source location line 772, column 12.
+Generated from source location line 780, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_csort`
@@ -37404,7 +37406,7 @@ unsafe fn R_csort(x: *mut crate::sexp_types::Rcomplex, n: ::std::os::raw::c_int)
  - `x`: Pointer to Rcomplex array
  - `n`: Number of elements
 Checked wrapper for `R_csort`. Calls `R_csort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1745, column 12.
+Generated from source location line 1753, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_csort_unchecked`
@@ -37420,7 +37422,7 @@ unsafe extern "C-unwind" fn R_csort_unchecked(x: *mut Rcomplex, n: ::std::os::ra
  - `x`: Pointer to Rcomplex array
  - `n`: Number of elements
 Unchecked FFI binding for `R_csort`.
-Generated from source location line 1745, column 12.
+Generated from source location line 1753, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_existsVarInFrame`
@@ -37433,7 +37435,7 @@ unsafe fn R_existsVarInFrame(rho: crate::sexp::SEXP, symbol: crate::sexp::SEXP) 
 
  Does not search enclosing environments.
 Checked wrapper for `R_existsVarInFrame`. Calls `R_existsVarInFrame_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2057, column 12.
+Generated from source location line 2065, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_existsVarInFrame_unchecked`
@@ -37446,7 +37448,7 @@ unsafe extern "C-unwind" fn R_existsVarInFrame_unchecked(rho: SEXP, symbol: SEXP
 
  Does not search enclosing environments.
 Unchecked FFI binding for `R_existsVarInFrame`.
-Generated from source location line 2057, column 12.
+Generated from source location line 2065, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_forceAndCall`
@@ -37456,7 +37458,7 @@ unsafe fn R_forceAndCall(e: crate::sexp::SEXP, n: ::std::os::raw::c_int, rho: cr
 ```
 
 Checked wrapper for `R_forceAndCall`. Calls `R_forceAndCall_unchecked` and routes through `with_r_thread`.
-Generated from source location line 947, column 12.
+Generated from source location line 955, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_forceAndCall_unchecked`
@@ -37466,7 +37468,7 @@ unsafe extern "C-unwind" fn R_forceAndCall_unchecked(e: SEXP, n: ::std::os::raw:
 ```
 
 Unchecked FFI binding for `R_forceAndCall`.
-Generated from source location line 947, column 12.
+Generated from source location line 955, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_free_tmpnam`
@@ -37477,7 +37479,7 @@ unsafe fn R_free_tmpnam(name: *mut ::std::os::raw::c_char)
 
  Free a temporary filename allocated by `R_tmpnam` or `R_tmpnam2`.
 Checked wrapper for `R_free_tmpnam`. Calls `R_free_tmpnam_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1903, column 12.
+Generated from source location line 1911, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_free_tmpnam_unchecked`
@@ -37488,7 +37490,7 @@ unsafe extern "C-unwind" fn R_free_tmpnam_unchecked(name: *mut ::std::os::raw::c
 
  Free a temporary filename allocated by `R_tmpnam` or `R_tmpnam2`.
 Unchecked FFI binding for `R_free_tmpnam`.
-Generated from source location line 1903, column 12.
+Generated from source location line 1911, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_gc`
@@ -37501,7 +37503,7 @@ unsafe fn R_gc()
 
  Forces a full garbage collection cycle.
 Checked wrapper for `R_gc`. Calls `R_gc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1643, column 12.
+Generated from source location line 1651, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_gc_running`
@@ -37514,7 +37516,7 @@ unsafe fn R_gc_running() -> ::std::os::raw::c_int
 
  Returns non-zero if GC is in progress.
 Checked wrapper for `R_gc_running`. Calls `R_gc_running_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1648, column 12.
+Generated from source location line 1656, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_gc_running_unchecked`
@@ -37527,7 +37529,7 @@ unsafe extern "C-unwind" fn R_gc_running_unchecked() -> ::std::os::raw::c_int
 
  Returns non-zero if GC is in progress.
 Unchecked FFI binding for `R_gc_running`.
-Generated from source location line 1648, column 12.
+Generated from source location line 1656, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_gc_unchecked`
@@ -37540,7 +37542,7 @@ unsafe extern "C-unwind" fn R_gc_unchecked()
 
  Forces a full garbage collection cycle.
 Unchecked FFI binding for `R_gc`.
-Generated from source location line 1643, column 12.
+Generated from source location line 1651, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_getVarEx`
@@ -37556,7 +37558,7 @@ unsafe fn R_getVarEx(sym: crate::sexp::SEXP, rho: crate::sexp::SEXP, inherits: c
  **Longjmps** if `rho` is not an environment or
  the binding is `R_MissingArg`; forces promises.
 Checked wrapper for `R_getVarEx`. Calls `R_getVarEx_unchecked` and routes through `with_r_thread`.
-Generated from source location line 910, column 12.
+Generated from source location line 918, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_getVarEx_unchecked`
@@ -37572,7 +37574,7 @@ unsafe extern "C-unwind" fn R_getVarEx_unchecked(sym: SEXP, rho: SEXP, inherits:
  **Longjmps** if `rho` is not an environment or
  the binding is `R_MissingArg`; forces promises.
 Unchecked FFI binding for `R_getVarEx`.
-Generated from source location line 910, column 12.
+Generated from source location line 918, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_isort`
@@ -37588,7 +37590,7 @@ unsafe fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int)
  - `x`: Pointer to integer array
  - `n`: Number of elements
 Checked wrapper for `R_isort`. Calls `R_isort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1729, column 12.
+Generated from source location line 1737, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_isort_unchecked`
@@ -37604,7 +37606,7 @@ unsafe extern "C-unwind" fn R_isort_unchecked(x: *mut ::std::os::raw::c_int, n: 
  - `x`: Pointer to integer array
  - `n`: Number of elements
 Unchecked FFI binding for `R_isort`.
-Generated from source location line 1729, column 12.
+Generated from source location line 1737, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_malloc_gc`
@@ -37618,7 +37620,7 @@ unsafe fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Checked wrapper for `R_malloc_gc`. Calls `R_malloc_gc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1699, column 12.
+Generated from source location line 1707, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_malloc_gc_unchecked`
@@ -37632,7 +37634,7 @@ unsafe extern "C-unwind" fn R_malloc_gc_unchecked(size: usize) -> *mut ::std::os
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Unchecked FFI binding for `R_malloc_gc`.
-Generated from source location line 1699, column 12.
+Generated from source location line 1707, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_max_col`
@@ -37651,7 +37653,7 @@ unsafe fn R_max_col(matrix: *const f64, nr: *const ::std::os::raw::c_int, nc: *c
  - `maxes`: Output array for column maxima indices (1-indexed)
  - `ties_meth`: How to handle ties (1=first, 2=random, 3=last)
 Checked wrapper for `R_max_col`. Calls `R_max_col_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1966, column 12.
+Generated from source location line 1974, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_max_col_unchecked`
@@ -37670,7 +37672,7 @@ unsafe extern "C-unwind" fn R_max_col_unchecked(matrix: *const f64, nr: *const :
  - `maxes`: Output array for column maxima indices (1-indexed)
  - `ties_meth`: How to handle ties (1=first, 2=random, 3=last)
 Unchecked FFI binding for `R_max_col`.
-Generated from source location line 1966, column 12.
+Generated from source location line 1974, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_nchar`
@@ -37693,7 +37695,7 @@ unsafe fn R_nchar(x: crate::sexp::SEXP, ntype: ::std::os::raw::c_int, allowNA: c
 
  Character count or -1 on error.
 Checked wrapper for `R_nchar`. Calls `R_nchar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2022, column 12.
+Generated from source location line 2030, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_nchar_unchecked`
@@ -37716,7 +37718,7 @@ unsafe extern "C-unwind" fn R_nchar_unchecked(x: SEXP, ntype: ::std::os::raw::c_
 
  Character count or -1 on error.
 Unchecked FFI binding for `R_nchar`.
-Generated from source location line 2022, column 12.
+Generated from source location line 2030, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort`
@@ -37733,7 +37735,7 @@ unsafe fn R_qsort(v: *mut f64, i: usize, j: usize)
  - `i`: Start index (1-indexed for R compatibility)
  - `j`: End index (1-indexed)
 Checked wrapper for `R_qsort`. Calls `R_qsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1811, column 12.
+Generated from source location line 1819, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_I`
@@ -37751,7 +37753,7 @@ unsafe fn R_qsort_I(v: *mut f64, indx: *mut ::std::os::raw::c_int, i: ::std::os:
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Checked wrapper for `R_qsort_I`. Calls `R_qsort_I_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1821, column 12.
+Generated from source location line 1829, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_I_unchecked`
@@ -37769,7 +37771,7 @@ unsafe extern "C-unwind" fn R_qsort_I_unchecked(v: *mut f64, indx: *mut ::std::o
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Unchecked FFI binding for `R_qsort_I`.
-Generated from source location line 1821, column 12.
+Generated from source location line 1829, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_int`
@@ -37786,7 +37788,7 @@ unsafe fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize)
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Checked wrapper for `R_qsort_int`. Calls `R_qsort_int_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1835, column 12.
+Generated from source location line 1843, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_int_I`
@@ -37804,7 +37806,7 @@ unsafe fn R_qsort_int_I(iv: *mut ::std::os::raw::c_int, indx: *mut ::std::os::ra
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Checked wrapper for `R_qsort_int_I`. Calls `R_qsort_int_I_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1845, column 12.
+Generated from source location line 1853, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_int_I_unchecked`
@@ -37822,7 +37824,7 @@ unsafe extern "C-unwind" fn R_qsort_int_I_unchecked(iv: *mut ::std::os::raw::c_i
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Unchecked FFI binding for `R_qsort_int_I`.
-Generated from source location line 1845, column 12.
+Generated from source location line 1853, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_int_unchecked`
@@ -37839,7 +37841,7 @@ unsafe extern "C-unwind" fn R_qsort_int_unchecked(iv: *mut ::std::os::raw::c_int
  - `i`: Start index (1-indexed)
  - `j`: End index (1-indexed)
 Unchecked FFI binding for `R_qsort_int`.
-Generated from source location line 1835, column 12.
+Generated from source location line 1843, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_qsort_unchecked`
@@ -37856,7 +37858,7 @@ unsafe extern "C-unwind" fn R_qsort_unchecked(v: *mut f64, i: usize, j: usize)
  - `i`: Start index (1-indexed for R compatibility)
  - `j`: End index (1-indexed)
 Unchecked FFI binding for `R_qsort`.
-Generated from source location line 1811, column 12.
+Generated from source location line 1819, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_realloc_gc`
@@ -37870,7 +37872,7 @@ unsafe fn R_realloc_gc(ptr: *mut ::std::os::raw::c_void, size: usize) -> *mut ::
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Checked wrapper for `R_realloc_gc`. Calls `R_realloc_gc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1711, column 12.
+Generated from source location line 1719, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_realloc_gc_unchecked`
@@ -37884,7 +37886,7 @@ unsafe extern "C-unwind" fn R_realloc_gc_unchecked(ptr: *mut ::std::os::raw::c_v
  Triggers GC if allocation fails, then retries.
  Memory must be freed with `free()`.
 Unchecked FFI binding for `R_realloc_gc`.
-Generated from source location line 1711, column 12.
+Generated from source location line 1719, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_removeVarFromFrame`
@@ -37899,7 +37901,7 @@ unsafe fn R_removeVarFromFrame(symbol: crate::sexp::SEXP, env: crate::sexp::SEXP
 
  The removed value, or R_NilValue if not found.
 Checked wrapper for `R_removeVarFromFrame`. Calls `R_removeVarFromFrame_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2064, column 12.
+Generated from source location line 2072, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_removeVarFromFrame_unchecked`
@@ -37914,7 +37916,7 @@ unsafe extern "C-unwind" fn R_removeVarFromFrame_unchecked(symbol: SEXP, env: SE
 
  The removed value, or R_NilValue if not found.
 Unchecked FFI binding for `R_removeVarFromFrame`.
-Generated from source location line 2064, column 12.
+Generated from source location line 2072, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_rsort`
@@ -37930,7 +37932,7 @@ unsafe fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int)
  - `x`: Pointer to double array
  - `n`: Number of elements
 Checked wrapper for `R_rsort`. Calls `R_rsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1737, column 12.
+Generated from source location line 1745, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_rsort_unchecked`
@@ -37946,7 +37948,7 @@ unsafe extern "C-unwind" fn R_rsort_unchecked(x: *mut f64, n: ::std::os::raw::c_
  - `x`: Pointer to double array
  - `n`: Number of elements
 Unchecked FFI binding for `R_rsort`.
-Generated from source location line 1737, column 12.
+Generated from source location line 1745, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_sample_kind`
@@ -37957,7 +37959,7 @@ unsafe fn R_sample_kind() -> Sampletype
 
  Get the current discrete uniform sample method.
 Checked wrapper for `R_sample_kind`. Calls `R_sample_kind_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1605, column 12.
+Generated from source location line 1613, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_sample_kind_unchecked`
@@ -37968,7 +37970,7 @@ unsafe extern "C-unwind" fn R_sample_kind_unchecked() -> Sampletype
 
  Get the current discrete uniform sample method.
 Unchecked FFI binding for `R_sample_kind`.
-Generated from source location line 1605, column 12.
+Generated from source location line 1613, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_set_altrep_data1`
@@ -37978,7 +37980,7 @@ unsafe fn R_set_altrep_data1(x: crate::sexp::SEXP, v: crate::sexp::SEXP)
 ```
 
 Checked wrapper for `R_set_altrep_data1`. Calls `R_set_altrep_data1_unchecked` and routes through `with_r_thread`.
-Generated from source location line 663, column 12.
+Generated from source location line 671, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_set_altrep_data1_unchecked`
@@ -37988,7 +37990,7 @@ unsafe extern "C-unwind" fn R_set_altrep_data1_unchecked(x: SEXP, v: SEXP)
 ```
 
 Unchecked FFI binding for `R_set_altrep_data1`.
-Generated from source location line 663, column 12.
+Generated from source location line 671, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_set_altrep_data2`
@@ -37998,7 +38000,7 @@ unsafe fn R_set_altrep_data2(x: crate::sexp::SEXP, v: crate::sexp::SEXP)
 ```
 
 Checked wrapper for `R_set_altrep_data2`. Calls `R_set_altrep_data2_unchecked` and routes through `with_r_thread`.
-Generated from source location line 664, column 12.
+Generated from source location line 672, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_set_altrep_data2_unchecked`
@@ -38008,7 +38010,7 @@ unsafe extern "C-unwind" fn R_set_altrep_data2_unchecked(x: SEXP, v: SEXP)
 ```
 
 Unchecked FFI binding for `R_set_altrep_data2`.
-Generated from source location line 664, column 12.
+Generated from source location line 672, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_strtod`
@@ -38021,7 +38023,7 @@ unsafe fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::r
 
  Like `strtod()` but locale-independent.
 Checked wrapper for `R_strtod`. Calls `R_strtod_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1867, column 12.
+Generated from source location line 1875, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_strtod_unchecked`
@@ -38034,7 +38036,7 @@ unsafe extern "C-unwind" fn R_strtod_unchecked(c: *const ::std::os::raw::c_char,
 
  Like `strtod()` but locale-independent.
 Unchecked FFI binding for `R_strtod`.
-Generated from source location line 1867, column 12.
+Generated from source location line 1875, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tmpnam`
@@ -38054,7 +38056,7 @@ unsafe fn R_tmpnam(prefix: *const ::std::os::raw::c_char, tempdir: *const ::std:
 
  Newly allocated string (must be freed with `R_free_tmpnam`).
 Checked wrapper for `R_tmpnam`. Calls `R_tmpnam_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1880, column 12.
+Generated from source location line 1888, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tmpnam2`
@@ -38075,7 +38077,7 @@ unsafe fn R_tmpnam2(prefix: *const ::std::os::raw::c_char, tempdir: *const ::std
 
  Newly allocated string (must be freed with `R_free_tmpnam`).
 Checked wrapper for `R_tmpnam2`. Calls `R_tmpnam2_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1896, column 12.
+Generated from source location line 1904, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tmpnam2_unchecked`
@@ -38096,7 +38098,7 @@ unsafe extern "C-unwind" fn R_tmpnam2_unchecked(prefix: *const ::std::os::raw::c
 
  Newly allocated string (must be freed with `R_free_tmpnam`).
 Unchecked FFI binding for `R_tmpnam2`.
-Generated from source location line 1896, column 12.
+Generated from source location line 1904, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tmpnam_unchecked`
@@ -38116,7 +38118,7 @@ unsafe extern "C-unwind" fn R_tmpnam_unchecked(prefix: *const ::std::os::raw::c_
 
  Newly allocated string (must be freed with `R_free_tmpnam`).
 Unchecked FFI binding for `R_tmpnam`.
-Generated from source location line 1880, column 12.
+Generated from source location line 1888, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tryEval`
@@ -38126,7 +38128,7 @@ unsafe fn R_tryEval(expr: crate::sexp::SEXP, env: crate::sexp::SEXP, error_occur
 ```
 
 Checked wrapper for `R_tryEval`. Calls `R_tryEval_unchecked` and routes through `with_r_thread`.
-Generated from source location line 941, column 12.
+Generated from source location line 949, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_tryEval_unchecked`
@@ -38136,7 +38138,7 @@ unsafe extern "C-unwind" fn R_tryEval_unchecked(expr: SEXP, env: SEXP, error_occ
 ```
 
 Unchecked FFI binding for `R_tryEval`.
-Generated from source location line 941, column 12.
+Generated from source location line 949, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_unif_index`
@@ -38153,7 +38155,7 @@ unsafe fn R_unif_index(dn: f64) -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Checked wrapper for `R_unif_index`. Calls `R_unif_index_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1602, column 12.
+Generated from source location line 1610, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::R_unif_index_unchecked`
@@ -38170,7 +38172,7 @@ unsafe extern "C-unwind" fn R_unif_index_unchecked(dn: f64) -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Unchecked FFI binding for `R_unif_index`.
-Generated from source location line 1602, column 12.
+Generated from source location line 1610, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_GetOption1`
@@ -38187,7 +38189,7 @@ unsafe fn Rf_GetOption1(tag: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  - `tag`: Symbol for option name
 Checked wrapper for `Rf_GetOption1`. Calls `Rf_GetOption1_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2137, column 12.
+Generated from source location line 2145, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_GetOption1_unchecked`
@@ -38204,7 +38206,7 @@ unsafe extern "C-unwind" fn Rf_GetOption1_unchecked(tag: SEXP) -> SEXP
 
  - `tag`: Symbol for option name
 Unchecked FFI binding for `Rf_GetOption1`.
-Generated from source location line 2137, column 12.
+Generated from source location line 2145, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_GetOptionDigits`
@@ -38217,7 +38219,7 @@ unsafe fn Rf_GetOptionDigits() -> ::std::os::raw::c_int
 
  Returns the value of `getOption("digits")`.
 Checked wrapper for `Rf_GetOptionDigits`. Calls `Rf_GetOptionDigits_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2143, column 12.
+Generated from source location line 2151, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_GetOptionDigits_unchecked`
@@ -38230,7 +38232,7 @@ unsafe extern "C-unwind" fn Rf_GetOptionDigits_unchecked() -> ::std::os::raw::c_
 
  Returns the value of `getOption("digits")`.
 Unchecked FFI binding for `Rf_GetOptionDigits`.
-Generated from source location line 2143, column 12.
+Generated from source location line 2151, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_PairToVectorList`
@@ -38241,7 +38243,7 @@ unsafe fn Rf_PairToVectorList(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Convert a pairlist to a generic vector (list).
 Checked wrapper for `Rf_PairToVectorList`. Calls `Rf_PairToVectorList_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2237, column 12.
+Generated from source location line 2245, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_PairToVectorList_unchecked`
@@ -38252,7 +38254,7 @@ unsafe extern "C-unwind" fn Rf_PairToVectorList_unchecked(x: SEXP) -> SEXP
 
  Convert a pairlist to a generic vector (list).
 Unchecked FFI binding for `Rf_PairToVectorList`.
-Generated from source location line 2237, column 12.
+Generated from source location line 2245, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_PrintValue`
@@ -38265,7 +38267,7 @@ unsafe fn Rf_PrintValue(x: crate::sexp::SEXP)
 
  Uses R's standard print method for the object.
 Checked wrapper for `Rf_PrintValue`. Calls `Rf_PrintValue_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2040, column 12.
+Generated from source location line 2048, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_PrintValue_unchecked`
@@ -38278,7 +38280,7 @@ unsafe extern "C-unwind" fn Rf_PrintValue_unchecked(x: SEXP)
 
  Uses R's standard print method for the object.
 Unchecked FFI binding for `Rf_PrintValue`.
-Generated from source location line 2040, column 12.
+Generated from source location line 2048, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_S3Class`
@@ -38289,7 +38291,7 @@ unsafe fn Rf_S3Class(object: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Get the S3 class of an S4 object.
 Checked wrapper for `Rf_S3Class`. Calls `Rf_S3Class_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2125, column 12.
+Generated from source location line 2133, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_S3Class_unchecked`
@@ -38300,7 +38302,7 @@ unsafe extern "C-unwind" fn Rf_S3Class_unchecked(object: SEXP) -> SEXP
 
  Get the S3 class of an S4 object.
 Unchecked FFI binding for `Rf_S3Class`.
-Generated from source location line 2125, column 12.
+Generated from source location line 2133, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarComplex`
@@ -38310,7 +38312,7 @@ unsafe fn Rf_ScalarComplex(x: crate::sexp_types::Rcomplex) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarComplex`. Calls `Rf_ScalarComplex_unchecked` and routes through `with_r_thread`.
-Generated from source location line 521, column 12.
+Generated from source location line 529, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarComplex_unchecked`
@@ -38320,7 +38322,7 @@ unsafe extern "C-unwind" fn Rf_ScalarComplex_unchecked(x: Rcomplex) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_ScalarComplex`.
-Generated from source location line 521, column 12.
+Generated from source location line 529, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarInteger`
@@ -38330,7 +38332,7 @@ unsafe fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarInteger`. Calls `Rf_ScalarInteger_unchecked` and routes through `with_r_thread`.
-Generated from source location line 523, column 12.
+Generated from source location line 531, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarInteger_unchecked`
@@ -38340,7 +38342,7 @@ unsafe extern "C-unwind" fn Rf_ScalarInteger_unchecked(x: ::std::os::raw::c_int)
 ```
 
 Unchecked FFI binding for `Rf_ScalarInteger`.
-Generated from source location line 523, column 12.
+Generated from source location line 531, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarLogical`
@@ -38350,7 +38352,7 @@ unsafe fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarLogical`. Calls `Rf_ScalarLogical_unchecked` and routes through `with_r_thread`.
-Generated from source location line 525, column 12.
+Generated from source location line 533, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarLogical_unchecked`
@@ -38360,7 +38362,7 @@ unsafe extern "C-unwind" fn Rf_ScalarLogical_unchecked(x: ::std::os::raw::c_int)
 ```
 
 Unchecked FFI binding for `Rf_ScalarLogical`.
-Generated from source location line 525, column 12.
+Generated from source location line 533, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarRaw`
@@ -38370,7 +38372,7 @@ unsafe fn Rf_ScalarRaw(x: crate::sexp_types::Rbyte) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarRaw`. Calls `Rf_ScalarRaw_unchecked` and routes through `with_r_thread`.
-Generated from source location line 527, column 12.
+Generated from source location line 535, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarRaw_unchecked`
@@ -38380,7 +38382,7 @@ unsafe extern "C-unwind" fn Rf_ScalarRaw_unchecked(x: Rbyte) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_ScalarRaw`.
-Generated from source location line 527, column 12.
+Generated from source location line 535, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarReal`
@@ -38390,7 +38392,7 @@ unsafe fn Rf_ScalarReal(x: f64) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarReal`. Calls `Rf_ScalarReal_unchecked` and routes through `with_r_thread`.
-Generated from source location line 529, column 12.
+Generated from source location line 537, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarReal_unchecked`
@@ -38400,7 +38402,7 @@ unsafe extern "C-unwind" fn Rf_ScalarReal_unchecked(x: f64) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_ScalarReal`.
-Generated from source location line 529, column 12.
+Generated from source location line 537, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarString`
@@ -38410,7 +38412,7 @@ unsafe fn Rf_ScalarString(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_ScalarString`. Calls `Rf_ScalarString_unchecked` and routes through `with_r_thread`.
-Generated from source location line 531, column 12.
+Generated from source location line 539, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ScalarString_unchecked`
@@ -38420,7 +38422,7 @@ unsafe extern "C-unwind" fn Rf_ScalarString_unchecked(x: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_ScalarString`.
-Generated from source location line 531, column 12.
+Generated from source location line 539, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_VectorToPairList`
@@ -38431,7 +38433,7 @@ unsafe fn Rf_VectorToPairList(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Convert a generic vector (list) to a pairlist.
 Checked wrapper for `Rf_VectorToPairList`. Calls `Rf_VectorToPairList_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2241, column 12.
+Generated from source location line 2249, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_VectorToPairList_unchecked`
@@ -38442,7 +38444,7 @@ unsafe extern "C-unwind" fn Rf_VectorToPairList_unchecked(x: SEXP) -> SEXP
 
  Convert a generic vector (list) to a pairlist.
 Unchecked FFI binding for `Rf_VectorToPairList`.
-Generated from source location line 2241, column 12.
+Generated from source location line 2249, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_alloc3DArray`
@@ -38452,7 +38454,7 @@ unsafe fn Rf_alloc3DArray(sexptype: crate::sexp_types::SEXPTYPE, nrow: ::std::os
 ```
 
 Checked wrapper for `Rf_alloc3DArray`. Calls `Rf_alloc3DArray_unchecked` and routes through `with_r_thread`.
-Generated from source location line 493, column 12.
+Generated from source location line 501, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_alloc3DArray_unchecked`
@@ -38462,7 +38464,7 @@ unsafe extern "C-unwind" fn Rf_alloc3DArray_unchecked(sexptype: SEXPTYPE, nrow: 
 ```
 
 Unchecked FFI binding for `Rf_alloc3DArray`.
-Generated from source location line 493, column 12.
+Generated from source location line 501, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocArray`
@@ -38472,7 +38474,7 @@ unsafe fn Rf_allocArray(sexptype: crate::sexp_types::SEXPTYPE, dims: crate::sexp
 ```
 
 Checked wrapper for `Rf_allocArray`. Calls `Rf_allocArray_unchecked` and routes through `with_r_thread`.
-Generated from source location line 491, column 12.
+Generated from source location line 499, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocArray_unchecked`
@@ -38482,7 +38484,7 @@ unsafe extern "C-unwind" fn Rf_allocArray_unchecked(sexptype: SEXPTYPE, dims: SE
 ```
 
 Unchecked FFI binding for `Rf_allocArray`.
-Generated from source location line 491, column 12.
+Generated from source location line 499, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocLang`
@@ -38494,7 +38496,7 @@ unsafe fn Rf_allocLang(n: ::std::os::raw::c_int) -> crate::sexp::SEXP
  Allocate a language object. Requires R >= 4.4.1; the portable
  [`crate::gc_protect::ProtectScope::alloc_lang`] also supports R 4.4.0.
 Checked wrapper for `Rf_allocLang`. Calls `Rf_allocLang_unchecked` and routes through `with_r_thread`.
-Generated from source location line 507, column 12.
+Generated from source location line 515, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocLang_unchecked`
@@ -38506,7 +38508,7 @@ unsafe extern "C-unwind" fn Rf_allocLang_unchecked(n: ::std::os::raw::c_int) -> 
  Allocate a language object. Requires R >= 4.4.1; the portable
  [`crate::gc_protect::ProtectScope::alloc_lang`] also supports R 4.4.0.
 Unchecked FFI binding for `Rf_allocLang`.
-Generated from source location line 507, column 12.
+Generated from source location line 515, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocMatrix`
@@ -38516,7 +38518,7 @@ unsafe fn Rf_allocMatrix(sexptype: crate::sexp_types::SEXPTYPE, nrow: ::std::os:
 ```
 
 Checked wrapper for `Rf_allocMatrix`. Calls `Rf_allocMatrix_unchecked` and routes through `with_r_thread`.
-Generated from source location line 485, column 12.
+Generated from source location line 493, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocMatrix_unchecked`
@@ -38526,7 +38528,7 @@ unsafe extern "C-unwind" fn Rf_allocMatrix_unchecked(sexptype: SEXPTYPE, nrow: :
 ```
 
 Unchecked FFI binding for `Rf_allocMatrix`.
-Generated from source location line 485, column 12.
+Generated from source location line 493, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocS4Object`
@@ -38536,7 +38538,7 @@ unsafe fn Rf_allocS4Object() -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_allocS4Object`. Calls `Rf_allocS4Object_unchecked` and routes through `with_r_thread`.
-Generated from source location line 509, column 12.
+Generated from source location line 517, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocS4Object_unchecked`
@@ -38546,7 +38548,7 @@ unsafe extern "C-unwind" fn Rf_allocS4Object_unchecked() -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_allocS4Object`.
-Generated from source location line 509, column 12.
+Generated from source location line 517, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocVector`
@@ -38556,7 +38558,7 @@ unsafe fn Rf_allocVector(sexptype: crate::sexp_types::SEXPTYPE, length: crate::s
 ```
 
 Checked wrapper for `Rf_allocVector`. Calls `Rf_allocVector_unchecked` and routes through `with_r_thread`.
-Generated from source location line 483, column 12.
+Generated from source location line 491, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_allocVector_unchecked`
@@ -38566,7 +38568,7 @@ unsafe extern "C-unwind" fn Rf_allocVector_unchecked(sexptype: SEXPTYPE, length:
 ```
 
 Unchecked FFI binding for `Rf_allocVector`.
-Generated from source location line 483, column 12.
+Generated from source location line 491, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_any_duplicated`
@@ -38586,7 +38588,7 @@ unsafe fn Rf_any_duplicated(x: crate::sexp::SEXP, fromLast: crate::sexp_types::R
 
  0 if no duplicates, otherwise 1-indexed position of first duplicate.
 Checked wrapper for `Rf_any_duplicated`. Calls `Rf_any_duplicated_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2110, column 12.
+Generated from source location line 2118, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_any_duplicated_unchecked`
@@ -38606,7 +38608,7 @@ unsafe extern "C-unwind" fn Rf_any_duplicated_unchecked(x: SEXP, fromLast: Rbool
 
  0 if no duplicates, otherwise 1-indexed position of first duplicate.
 Unchecked FFI binding for `Rf_any_duplicated`.
-Generated from source location line 2110, column 12.
+Generated from source location line 2118, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_applyClosure`
@@ -38616,7 +38618,7 @@ unsafe fn Rf_applyClosure(call: crate::sexp::SEXP, op: crate::sexp::SEXP, args: 
 ```
 
 Checked wrapper for `Rf_applyClosure`. Calls `Rf_applyClosure_unchecked` and routes through `with_r_thread`.
-Generated from source location line 933, column 12.
+Generated from source location line 941, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_applyClosure_unchecked`
@@ -38626,7 +38628,7 @@ unsafe extern "C-unwind" fn Rf_applyClosure_unchecked(call: SEXP, op: SEXP, args
 ```
 
 Unchecked FFI binding for `Rf_applyClosure`.
-Generated from source location line 933, column 12.
+Generated from source location line 941, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asChar`
@@ -38636,7 +38638,7 @@ unsafe fn Rf_asChar(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_asChar`. Calls `Rf_asChar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 802, column 12.
+Generated from source location line 810, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asChar_unchecked`
@@ -38646,7 +38648,7 @@ unsafe extern "C-unwind" fn Rf_asChar_unchecked(x: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_asChar`.
-Generated from source location line 802, column 12.
+Generated from source location line 810, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asInteger`
@@ -38656,7 +38658,7 @@ unsafe fn Rf_asInteger(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 ```
 
 Checked wrapper for `Rf_asInteger`. Calls `Rf_asInteger_unchecked` and routes through `with_r_thread`.
-Generated from source location line 798, column 12.
+Generated from source location line 806, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asInteger_unchecked`
@@ -38666,7 +38668,7 @@ unsafe extern "C-unwind" fn Rf_asInteger_unchecked(x: SEXP) -> ::std::os::raw::c
 ```
 
 Unchecked FFI binding for `Rf_asInteger`.
-Generated from source location line 798, column 12.
+Generated from source location line 806, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asLogical`
@@ -38676,7 +38678,7 @@ unsafe fn Rf_asLogical(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 ```
 
 Checked wrapper for `Rf_asLogical`. Calls `Rf_asLogical_unchecked` and routes through `with_r_thread`.
-Generated from source location line 796, column 12.
+Generated from source location line 804, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asLogical_unchecked`
@@ -38686,7 +38688,7 @@ unsafe extern "C-unwind" fn Rf_asLogical_unchecked(x: SEXP) -> ::std::os::raw::c
 ```
 
 Unchecked FFI binding for `Rf_asLogical`.
-Generated from source location line 796, column 12.
+Generated from source location line 804, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asReal`
@@ -38696,7 +38698,7 @@ unsafe fn Rf_asReal(x: crate::sexp::SEXP) -> f64
 ```
 
 Checked wrapper for `Rf_asReal`. Calls `Rf_asReal_unchecked` and routes through `with_r_thread`.
-Generated from source location line 800, column 12.
+Generated from source location line 808, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asReal_unchecked`
@@ -38706,7 +38708,7 @@ unsafe extern "C-unwind" fn Rf_asReal_unchecked(x: SEXP) -> f64
 ```
 
 Unchecked FFI binding for `Rf_asReal`.
-Generated from source location line 800, column 12.
+Generated from source location line 808, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asS4`
@@ -38722,7 +38724,7 @@ unsafe fn Rf_asS4(object: crate::sexp::SEXP, flag: crate::sexp_types::Rboolean, 
  - `object`: Object to convert
  - `flag`: Conversion flag
 Checked wrapper for `Rf_asS4`. Calls `Rf_asS4_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2121, column 12.
+Generated from source location line 2129, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_asS4_unchecked`
@@ -38738,7 +38740,7 @@ unsafe extern "C-unwind" fn Rf_asS4_unchecked(object: SEXP, flag: Rboolean, comp
  - `object`: Object to convert
  - `flag`: Conversion flag
 Unchecked FFI binding for `Rf_asS4`.
-Generated from source location line 2121, column 12.
+Generated from source location line 2129, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsASCII`
@@ -38748,7 +38750,7 @@ unsafe fn Rf_charIsASCII(x: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_charIsASCII`. Calls `Rf_charIsASCII_unchecked` and routes through `with_r_thread`.
-Generated from source location line 329, column 12.
+Generated from source location line 331, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsASCII_unchecked`
@@ -38758,7 +38760,7 @@ unsafe extern "C-unwind" fn Rf_charIsASCII_unchecked(x: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_charIsASCII`.
-Generated from source location line 329, column 12.
+Generated from source location line 331, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsLatin1`
@@ -38768,7 +38770,7 @@ unsafe fn Rf_charIsLatin1(x: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_charIsLatin1`. Calls `Rf_charIsLatin1_unchecked` and routes through `with_r_thread`.
-Generated from source location line 333, column 12.
+Generated from source location line 335, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsLatin1_unchecked`
@@ -38778,7 +38780,7 @@ unsafe extern "C-unwind" fn Rf_charIsLatin1_unchecked(x: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_charIsLatin1`.
-Generated from source location line 333, column 12.
+Generated from source location line 335, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsUTF8`
@@ -38788,7 +38790,7 @@ unsafe fn Rf_charIsUTF8(x: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_charIsUTF8`. Calls `Rf_charIsUTF8_unchecked` and routes through `with_r_thread`.
-Generated from source location line 331, column 12.
+Generated from source location line 333, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_charIsUTF8_unchecked`
@@ -38798,7 +38800,7 @@ unsafe extern "C-unwind" fn Rf_charIsUTF8_unchecked(x: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_charIsUTF8`.
-Generated from source location line 331, column 12.
+Generated from source location line 333, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_classgets`
@@ -38816,7 +38818,7 @@ unsafe fn Rf_classgets(vec: crate::sexp::SEXP, klass: crate::sexp::SEXP) -> crat
 
  Returns the modified vector (like all "*gets" functions).
 Checked wrapper for `Rf_classgets`. Calls `Rf_classgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 884, column 12.
+Generated from source location line 892, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_classgets_unchecked`
@@ -38834,7 +38836,7 @@ unsafe extern "C-unwind" fn Rf_classgets_unchecked(vec: SEXP, klass: SEXP) -> SE
 
  Returns the modified vector (like all "*gets" functions).
 Unchecked FFI binding for `Rf_classgets`.
-Generated from source location line 884, column 12.
+Generated from source location line 892, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_coerceVector`
@@ -38844,7 +38846,7 @@ unsafe fn Rf_coerceVector(v: crate::sexp::SEXP, sexptype: crate::sexp_types::SEX
 ```
 
 Checked wrapper for `Rf_coerceVector`. Calls `Rf_coerceVector_unchecked` and routes through `with_r_thread`.
-Generated from source location line 804, column 12.
+Generated from source location line 812, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_coerceVector_unchecked`
@@ -38854,7 +38856,7 @@ unsafe extern "C-unwind" fn Rf_coerceVector_unchecked(v: SEXP, sexptype: SEXPTYP
 ```
 
 Unchecked FFI binding for `Rf_coerceVector`.
-Generated from source location line 804, column 12.
+Generated from source location line 812, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_cons`
@@ -38864,7 +38866,7 @@ unsafe fn Rf_cons(car: crate::sexp::SEXP, cdr: crate::sexp::SEXP) -> crate::sexp
 ```
 
 Checked wrapper for `Rf_cons`. Calls `Rf_cons_unchecked` and routes through `with_r_thread`.
-Generated from source location line 512, column 12.
+Generated from source location line 520, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_cons_unchecked`
@@ -38874,7 +38876,7 @@ unsafe extern "C-unwind" fn Rf_cons_unchecked(car: SEXP, cdr: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_cons`.
-Generated from source location line 512, column 12.
+Generated from source location line 520, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_copyMostAttrib`
@@ -38887,7 +38889,7 @@ unsafe fn Rf_copyMostAttrib(source: crate::sexp::SEXP, target: crate::sexp::SEXP
 
  Copies all attributes except names, dim, and dimnames.
 Checked wrapper for `Rf_copyMostAttrib`. Calls `Rf_copyMostAttrib_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2097, column 12.
+Generated from source location line 2105, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_copyMostAttrib_unchecked`
@@ -38900,7 +38902,7 @@ unsafe extern "C-unwind" fn Rf_copyMostAttrib_unchecked(source: SEXP, target: SE
 
  Copies all attributes except names, dim, and dimnames.
 Unchecked FFI binding for `Rf_copyMostAttrib`.
-Generated from source location line 2097, column 12.
+Generated from source location line 2105, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_defineVar`
@@ -38910,7 +38912,7 @@ unsafe fn Rf_defineVar(symbol: crate::sexp::SEXP, value: crate::sexp::SEXP, rho:
 ```
 
 Checked wrapper for `Rf_defineVar`. Calls `Rf_defineVar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 912, column 12.
+Generated from source location line 920, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_defineVar_unchecked`
@@ -38920,7 +38922,7 @@ unsafe extern "C-unwind" fn Rf_defineVar_unchecked(symbol: SEXP, value: SEXP, rh
 ```
 
 Unchecked FFI binding for `Rf_defineVar`.
-Generated from source location line 912, column 12.
+Generated from source location line 920, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_dimgets`
@@ -38931,7 +38933,7 @@ unsafe fn Rf_dimgets(vec: crate::sexp::SEXP, val: crate::sexp::SEXP) -> crate::s
 
  Set the `dim` attribute; returns the updated object.
 Checked wrapper for `Rf_dimgets`. Calls `Rf_dimgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 746, column 12.
+Generated from source location line 754, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_dimgets_unchecked`
@@ -38942,7 +38944,7 @@ unsafe extern "C-unwind" fn Rf_dimgets_unchecked(vec: SEXP, val: SEXP) -> SEXP
 
  Set the `dim` attribute; returns the updated object.
 Unchecked FFI binding for `Rf_dimgets`.
-Generated from source location line 746, column 12.
+Generated from source location line 754, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_dimnamesgets`
@@ -38960,7 +38962,7 @@ unsafe fn Rf_dimnamesgets(vec: crate::sexp::SEXP, val: crate::sexp::SEXP) -> cra
 
  Returns the modified vector.
 Checked wrapper for `Rf_dimnamesgets`. Calls `Rf_dimnamesgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 895, column 12.
+Generated from source location line 903, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_dimnamesgets_unchecked`
@@ -38978,7 +38980,7 @@ unsafe extern "C-unwind" fn Rf_dimnamesgets_unchecked(vec: SEXP, val: SEXP) -> S
 
  Returns the modified vector.
 Unchecked FFI binding for `Rf_dimnamesgets`.
-Generated from source location line 895, column 12.
+Generated from source location line 903, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_duplicate`
@@ -38988,7 +38990,7 @@ unsafe fn Rf_duplicate(s: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_duplicate`. Calls `Rf_duplicate_unchecked` and routes through `with_r_thread`.
-Generated from source location line 750, column 12.
+Generated from source location line 758, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_duplicate_unchecked`
@@ -38998,7 +39000,7 @@ unsafe extern "C-unwind" fn Rf_duplicate_unchecked(s: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_duplicate`.
-Generated from source location line 750, column 12.
+Generated from source location line 758, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_elt`
@@ -39008,7 +39010,7 @@ unsafe fn Rf_elt(list: crate::sexp::SEXP, i: ::std::os::raw::c_int) -> crate::se
 ```
 
 Checked wrapper for `Rf_elt`. Calls `Rf_elt_unchecked` and routes through `with_r_thread`.
-Generated from source location line 862, column 12.
+Generated from source location line 870, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_elt_unchecked`
@@ -39018,7 +39020,7 @@ unsafe extern "C-unwind" fn Rf_elt_unchecked(list: SEXP, i: ::std::os::raw::c_in
 ```
 
 Unchecked FFI binding for `Rf_elt`.
-Generated from source location line 862, column 12.
+Generated from source location line 870, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_error`
@@ -39072,7 +39074,7 @@ unsafe fn Rf_eval(expr: crate::sexp::SEXP, rho: crate::sexp::SEXP) -> crate::sex
 ```
 
 Checked wrapper for `Rf_eval`. Calls `Rf_eval_unchecked` and routes through `with_r_thread`.
-Generated from source location line 931, column 12.
+Generated from source location line 939, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_eval_unchecked`
@@ -39082,7 +39084,7 @@ unsafe extern "C-unwind" fn Rf_eval_unchecked(expr: SEXP, rho: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_eval`.
-Generated from source location line 931, column 12.
+Generated from source location line 939, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_findFun`
@@ -39092,7 +39094,7 @@ unsafe fn Rf_findFun(symbol: crate::sexp::SEXP, rho: crate::sexp::SEXP) -> crate
 ```
 
 Checked wrapper for `Rf_findFun`. Calls `Rf_findFun_unchecked` and routes through `with_r_thread`.
-Generated from source location line 916, column 12.
+Generated from source location line 924, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_findFun_unchecked`
@@ -39102,7 +39104,7 @@ unsafe extern "C-unwind" fn Rf_findFun_unchecked(symbol: SEXP, rho: SEXP) -> SEX
 ```
 
 Unchecked FFI binding for `Rf_findFun`.
-Generated from source location line 916, column 12.
+Generated from source location line 924, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_getAttrib`
@@ -39115,7 +39117,7 @@ unsafe fn Rf_getAttrib(vec: crate::sexp::SEXP, name: crate::sexp::SEXP) -> crate
 
  Returns `R_NilValue` if the attribute is not set.
 Checked wrapper for `Rf_getAttrib`. Calls `Rf_getAttrib_unchecked` and routes through `with_r_thread`.
-Generated from source location line 740, column 12.
+Generated from source location line 748, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_getAttrib_unchecked`
@@ -39128,7 +39130,7 @@ unsafe extern "C-unwind" fn Rf_getAttrib_unchecked(vec: SEXP, name: SEXP) -> SEX
 
  Returns `R_NilValue` if the attribute is not set.
 Unchecked FFI binding for `Rf_getAttrib`.
-Generated from source location line 740, column 12.
+Generated from source location line 748, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_getCharCE`
@@ -39138,7 +39140,7 @@ unsafe fn Rf_getCharCE(x: crate::sexp::SEXP) -> crate::sexp_types::cetype_t
 ```
 
 Checked wrapper for `Rf_getCharCE`. Calls `Rf_getCharCE_unchecked` and routes through `with_r_thread`.
-Generated from source location line 327, column 12.
+Generated from source location line 329, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_getCharCE_unchecked`
@@ -39148,7 +39150,7 @@ unsafe extern "C-unwind" fn Rf_getCharCE_unchecked(x: SEXP) -> cetype_t
 ```
 
 Unchecked FFI binding for `Rf_getCharCE`.
-Generated from source location line 327, column 12.
+Generated from source location line 329, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_inherits`
@@ -39158,7 +39160,7 @@ unsafe fn Rf_inherits(x: crate::sexp::SEXP, klass: *const ::std::os::raw::c_char
 ```
 
 Checked wrapper for `Rf_inherits`. Calls `Rf_inherits_unchecked` and routes through `with_r_thread`.
-Generated from source location line 814, column 12.
+Generated from source location line 822, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_inherits_unchecked`
@@ -39168,7 +39170,7 @@ unsafe extern "C-unwind" fn Rf_inherits_unchecked(x: SEXP, klass: *const ::std::
 ```
 
 Unchecked FFI binding for `Rf_inherits`.
-Generated from source location line 814, column 12.
+Generated from source location line 822, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_install`
@@ -39178,7 +39180,7 @@ unsafe fn Rf_install(name: *const ::std::os::raw::c_char) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_install`. Calls `Rf_install_unchecked` and routes through `with_r_thread`.
-Generated from source location line 727, column 12.
+Generated from source location line 735, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_installChar`
@@ -39191,7 +39193,7 @@ unsafe fn Rf_installChar(x: crate::sexp::SEXP) -> crate::sexp::SEXP
 
  Like `Rf_install()` but takes a CHARSXP instead of C string.
 Checked wrapper for `Rf_installChar`. Calls `Rf_installChar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2249, column 12.
+Generated from source location line 2257, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_installChar_unchecked`
@@ -39204,7 +39206,7 @@ unsafe extern "C-unwind" fn Rf_installChar_unchecked(x: SEXP) -> SEXP
 
  Like `Rf_install()` but takes a CHARSXP instead of C string.
 Unchecked FFI binding for `Rf_installChar`.
-Generated from source location line 2249, column 12.
+Generated from source location line 2257, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_install_unchecked`
@@ -39214,7 +39216,7 @@ unsafe extern "C-unwind" fn Rf_install_unchecked(name: *const ::std::os::raw::c_
 ```
 
 Unchecked FFI binding for `Rf_install`.
-Generated from source location line 727, column 12.
+Generated from source location line 735, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isArray`
@@ -39224,7 +39226,7 @@ unsafe fn Rf_isArray(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isArray`. Calls `Rf_isArray_unchecked` and routes through `with_r_thread`.
-Generated from source location line 836, column 12.
+Generated from source location line 844, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isArray_unchecked`
@@ -39234,7 +39236,7 @@ unsafe extern "C-unwind" fn Rf_isArray_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isArray`.
-Generated from source location line 836, column 12.
+Generated from source location line 844, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isComplex`
@@ -39244,7 +39246,7 @@ unsafe fn Rf_isComplex(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isComplex`. Calls `Rf_isComplex_unchecked` and routes through `with_r_thread`.
-Generated from source location line 826, column 12.
+Generated from source location line 834, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isComplex_unchecked`
@@ -39254,7 +39256,7 @@ unsafe extern "C-unwind" fn Rf_isComplex_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isComplex`.
-Generated from source location line 826, column 12.
+Generated from source location line 834, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isDataFrame`
@@ -39264,7 +39266,7 @@ unsafe fn Rf_isDataFrame(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isDataFrame`. Calls `Rf_isDataFrame_unchecked` and routes through `with_r_thread`.
-Generated from source location line 852, column 12.
+Generated from source location line 860, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isDataFrame_unchecked`
@@ -39274,7 +39276,7 @@ unsafe extern "C-unwind" fn Rf_isDataFrame_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isDataFrame`.
-Generated from source location line 852, column 12.
+Generated from source location line 860, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isEnvironment`
@@ -39284,7 +39286,7 @@ unsafe fn Rf_isEnvironment(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isEnvironment`. Calls `Rf_isEnvironment_unchecked` and routes through `with_r_thread`.
-Generated from source location line 830, column 12.
+Generated from source location line 838, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isEnvironment_unchecked`
@@ -39294,7 +39296,7 @@ unsafe extern "C-unwind" fn Rf_isEnvironment_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isEnvironment`.
-Generated from source location line 830, column 12.
+Generated from source location line 838, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isExpression`
@@ -39304,7 +39306,7 @@ unsafe fn Rf_isExpression(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isExpression`. Calls `Rf_isExpression_unchecked` and routes through `with_r_thread`.
-Generated from source location line 828, column 12.
+Generated from source location line 836, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isExpression_unchecked`
@@ -39314,7 +39316,7 @@ unsafe extern "C-unwind" fn Rf_isExpression_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isExpression`.
-Generated from source location line 828, column 12.
+Generated from source location line 836, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isFactor`
@@ -39324,7 +39326,7 @@ unsafe fn Rf_isFactor(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isFactor`. Calls `Rf_isFactor_unchecked` and routes through `with_r_thread`.
-Generated from source location line 854, column 12.
+Generated from source location line 862, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isFactor_unchecked`
@@ -39334,7 +39336,7 @@ unsafe extern "C-unwind" fn Rf_isFactor_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isFactor`.
-Generated from source location line 854, column 12.
+Generated from source location line 862, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isFunction`
@@ -39344,7 +39346,7 @@ unsafe fn Rf_isFunction(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isFunction`. Calls `Rf_isFunction_unchecked` and routes through `with_r_thread`.
-Generated from source location line 846, column 12.
+Generated from source location line 854, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isFunction_unchecked`
@@ -39354,7 +39356,7 @@ unsafe extern "C-unwind" fn Rf_isFunction_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isFunction`.
-Generated from source location line 846, column 12.
+Generated from source location line 854, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isInteger`
@@ -39364,7 +39366,7 @@ unsafe fn Rf_isInteger(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isInteger`. Calls `Rf_isInteger_unchecked` and routes through `with_r_thread`.
-Generated from source location line 856, column 12.
+Generated from source location line 864, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isInteger_unchecked`
@@ -39374,7 +39376,7 @@ unsafe extern "C-unwind" fn Rf_isInteger_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isInteger`.
-Generated from source location line 856, column 12.
+Generated from source location line 864, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isLanguage`
@@ -39384,7 +39386,7 @@ unsafe fn Rf_isLanguage(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isLanguage`. Calls `Rf_isLanguage_unchecked` and routes through `with_r_thread`.
-Generated from source location line 850, column 12.
+Generated from source location line 858, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isLanguage_unchecked`
@@ -39394,7 +39396,7 @@ unsafe extern "C-unwind" fn Rf_isLanguage_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isLanguage`.
-Generated from source location line 850, column 12.
+Generated from source location line 858, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isList`
@@ -39404,7 +39406,7 @@ unsafe fn Rf_isList(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isList`. Calls `Rf_isList_unchecked` and routes through `with_r_thread`.
-Generated from source location line 840, column 12.
+Generated from source location line 848, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isList_unchecked`
@@ -39414,7 +39416,7 @@ unsafe extern "C-unwind" fn Rf_isList_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isList`.
-Generated from source location line 840, column 12.
+Generated from source location line 848, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isLogical`
@@ -39424,7 +39426,7 @@ unsafe fn Rf_isLogical(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isLogical`. Calls `Rf_isLogical_unchecked` and routes through `with_r_thread`.
-Generated from source location line 822, column 12.
+Generated from source location line 830, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isLogical_unchecked`
@@ -39434,7 +39436,7 @@ unsafe extern "C-unwind" fn Rf_isLogical_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isLogical`.
-Generated from source location line 822, column 12.
+Generated from source location line 830, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isMatrix`
@@ -39444,7 +39446,7 @@ unsafe fn Rf_isMatrix(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isMatrix`. Calls `Rf_isMatrix_unchecked` and routes through `with_r_thread`.
-Generated from source location line 838, column 12.
+Generated from source location line 846, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isMatrix_unchecked`
@@ -39454,7 +39456,7 @@ unsafe extern "C-unwind" fn Rf_isMatrix_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isMatrix`.
-Generated from source location line 838, column 12.
+Generated from source location line 846, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isNewList`
@@ -39464,7 +39466,7 @@ unsafe fn Rf_isNewList(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isNewList`. Calls `Rf_isNewList_unchecked` and routes through `with_r_thread`.
-Generated from source location line 842, column 12.
+Generated from source location line 850, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isNewList_unchecked`
@@ -39474,7 +39476,7 @@ unsafe extern "C-unwind" fn Rf_isNewList_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isNewList`.
-Generated from source location line 842, column 12.
+Generated from source location line 850, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isNull`
@@ -39484,7 +39486,7 @@ unsafe fn Rf_isNull(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isNull`. Calls `Rf_isNull_unchecked` and routes through `with_r_thread`.
-Generated from source location line 818, column 12.
+Generated from source location line 826, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isNull_unchecked`
@@ -39494,7 +39496,7 @@ unsafe extern "C-unwind" fn Rf_isNull_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isNull`.
-Generated from source location line 818, column 12.
+Generated from source location line 826, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isObject`
@@ -39504,7 +39506,7 @@ unsafe fn Rf_isObject(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isObject`. Calls `Rf_isObject_unchecked` and routes through `with_r_thread`.
-Generated from source location line 858, column 12.
+Generated from source location line 866, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isObject_unchecked`
@@ -39514,7 +39516,7 @@ unsafe extern "C-unwind" fn Rf_isObject_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isObject`.
-Generated from source location line 858, column 12.
+Generated from source location line 866, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isOrdered`
@@ -39525,7 +39527,7 @@ unsafe fn Rf_isOrdered(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 
  Check if a factor is ordered.
 Checked wrapper for `Rf_isOrdered`. Calls `Rf_isOrdered_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2155, column 12.
+Generated from source location line 2163, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isOrdered_unchecked`
@@ -39536,7 +39538,7 @@ unsafe extern "C-unwind" fn Rf_isOrdered_unchecked(s: SEXP) -> Rboolean
 
  Check if a factor is ordered.
 Unchecked FFI binding for `Rf_isOrdered`.
-Generated from source location line 2155, column 12.
+Generated from source location line 2163, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isPairList`
@@ -39546,7 +39548,7 @@ unsafe fn Rf_isPairList(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isPairList`. Calls `Rf_isPairList_unchecked` and routes through `with_r_thread`.
-Generated from source location line 844, column 12.
+Generated from source location line 852, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isPairList_unchecked`
@@ -39556,7 +39558,7 @@ unsafe extern "C-unwind" fn Rf_isPairList_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isPairList`.
-Generated from source location line 844, column 12.
+Generated from source location line 852, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isPrimitive`
@@ -39566,7 +39568,7 @@ unsafe fn Rf_isPrimitive(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isPrimitive`. Calls `Rf_isPrimitive_unchecked` and routes through `with_r_thread`.
-Generated from source location line 848, column 12.
+Generated from source location line 856, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isPrimitive_unchecked`
@@ -39576,7 +39578,7 @@ unsafe extern "C-unwind" fn Rf_isPrimitive_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isPrimitive`.
-Generated from source location line 848, column 12.
+Generated from source location line 856, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isReal`
@@ -39586,7 +39588,7 @@ unsafe fn Rf_isReal(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isReal`. Calls `Rf_isReal_unchecked` and routes through `with_r_thread`.
-Generated from source location line 824, column 12.
+Generated from source location line 832, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isReal_unchecked`
@@ -39596,7 +39598,7 @@ unsafe extern "C-unwind" fn Rf_isReal_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isReal`.
-Generated from source location line 824, column 12.
+Generated from source location line 832, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isS4`
@@ -39618,7 +39620,7 @@ unsafe fn Rf_isString(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isString`. Calls `Rf_isString_unchecked` and routes through `with_r_thread`.
-Generated from source location line 832, column 12.
+Generated from source location line 840, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isString_unchecked`
@@ -39628,7 +39630,7 @@ unsafe extern "C-unwind" fn Rf_isString_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isString`.
-Generated from source location line 832, column 12.
+Generated from source location line 840, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isSymbol`
@@ -39638,7 +39640,7 @@ unsafe fn Rf_isSymbol(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 ```
 
 Checked wrapper for `Rf_isSymbol`. Calls `Rf_isSymbol_unchecked` and routes through `with_r_thread`.
-Generated from source location line 820, column 12.
+Generated from source location line 828, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isSymbol_unchecked`
@@ -39648,7 +39650,7 @@ unsafe extern "C-unwind" fn Rf_isSymbol_unchecked(s: SEXP) -> Rboolean
 ```
 
 Unchecked FFI binding for `Rf_isSymbol`.
-Generated from source location line 820, column 12.
+Generated from source location line 828, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isUnordered`
@@ -39659,7 +39661,7 @@ unsafe fn Rf_isUnordered(s: crate::sexp::SEXP) -> crate::sexp_types::Rboolean
 
  Check if a factor is unordered.
 Checked wrapper for `Rf_isUnordered`. Calls `Rf_isUnordered_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2159, column 12.
+Generated from source location line 2167, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isUnordered_unchecked`
@@ -39670,7 +39672,7 @@ unsafe extern "C-unwind" fn Rf_isUnordered_unchecked(s: SEXP) -> Rboolean
 
  Check if a factor is unordered.
 Unchecked FFI binding for `Rf_isUnordered`.
-Generated from source location line 2159, column 12.
+Generated from source location line 2167, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isUnsorted`
@@ -39686,7 +39688,7 @@ unsafe fn Rf_isUnsorted(x: crate::sexp::SEXP, strictly: crate::sexp_types::Rbool
  - `x`: Vector to check
  - `strictly`: If TRUE, check for strictly increasing
 Checked wrapper for `Rf_isUnsorted`. Calls `Rf_isUnsorted_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2168, column 12.
+Generated from source location line 2176, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_isUnsorted_unchecked`
@@ -39702,7 +39704,7 @@ unsafe extern "C-unwind" fn Rf_isUnsorted_unchecked(x: SEXP, strictly: Rboolean)
  - `x`: Vector to check
  - `strictly`: If TRUE, check for strictly increasing
 Unchecked FFI binding for `Rf_isUnsorted`.
-Generated from source location line 2168, column 12.
+Generated from source location line 2176, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lang1`
@@ -39814,7 +39816,7 @@ unsafe fn Rf_lastElt(list: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_lastElt`. Calls `Rf_lastElt_unchecked` and routes through `with_r_thread`.
-Generated from source location line 864, column 12.
+Generated from source location line 872, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lastElt_unchecked`
@@ -39824,7 +39826,7 @@ unsafe extern "C-unwind" fn Rf_lastElt_unchecked(list: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_lastElt`.
-Generated from source location line 864, column 12.
+Generated from source location line 872, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lcons`
@@ -39834,7 +39836,7 @@ unsafe fn Rf_lcons(car: crate::sexp::SEXP, cdr: crate::sexp::SEXP) -> crate::sex
 ```
 
 Checked wrapper for `Rf_lcons`. Calls `Rf_lcons_unchecked` and routes through `with_r_thread`.
-Generated from source location line 513, column 12.
+Generated from source location line 521, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lcons_unchecked`
@@ -39844,7 +39846,7 @@ unsafe extern "C-unwind" fn Rf_lcons_unchecked(car: SEXP, cdr: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_lcons`.
-Generated from source location line 513, column 12.
+Generated from source location line 521, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lengthgets`
@@ -39857,7 +39859,7 @@ unsafe fn Rf_lengthgets(x: crate::sexp::SEXP, newlen: crate::sexp_types::R_xlen_
 
  For short vectors (length < 2^31).
 Checked wrapper for `Rf_lengthgets`. Calls `Rf_lengthgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2182, column 12.
+Generated from source location line 2190, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_lengthgets_unchecked`
@@ -39870,7 +39872,7 @@ unsafe extern "C-unwind" fn Rf_lengthgets_unchecked(x: SEXP, newlen: R_xlen_t) -
 
  For short vectors (length < 2^31).
 Unchecked FFI binding for `Rf_lengthgets`.
-Generated from source location line 2182, column 12.
+Generated from source location line 2190, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_list1`
@@ -39944,7 +39946,7 @@ unsafe fn Rf_listAppend(s: crate::sexp::SEXP, t: crate::sexp::SEXP) -> crate::se
 ```
 
 Checked wrapper for `Rf_listAppend`. Calls `Rf_listAppend_unchecked` and routes through `with_r_thread`.
-Generated from source location line 868, column 12.
+Generated from source location line 876, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_listAppend_unchecked`
@@ -39954,7 +39956,7 @@ unsafe extern "C-unwind" fn Rf_listAppend_unchecked(s: SEXP, t: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_listAppend`.
-Generated from source location line 868, column 12.
+Generated from source location line 876, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_match`
@@ -39977,7 +39979,7 @@ unsafe fn Rf_match(x: crate::sexp::SEXP, table: crate::sexp::SEXP, nomatch: ::st
 
  Integer vector of match positions (1-indexed, nomatch for non-matches).
 Checked wrapper for `Rf_match`. Calls `Rf_match_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2089, column 12.
+Generated from source location line 2097, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_match_unchecked`
@@ -40000,7 +40002,7 @@ unsafe extern "C-unwind" fn Rf_match_unchecked(x: SEXP, table: SEXP, nomatch: ::
 
  Integer vector of match positions (1-indexed, nomatch for non-matches).
 Unchecked FFI binding for `Rf_match`.
-Generated from source location line 2089, column 12.
+Generated from source location line 2097, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkChar`
@@ -40010,7 +40012,7 @@ unsafe fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_mkChar`. Calls `Rf_mkChar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 312, column 12.
+Generated from source location line 314, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkCharLen`
@@ -40020,7 +40022,7 @@ unsafe fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> crate::sex
 ```
 
 Checked wrapper for `Rf_mkCharLen`. Calls `Rf_mkCharLen_unchecked` and routes through `with_r_thread`.
-Generated from source location line 314, column 12.
+Generated from source location line 316, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkCharLenCE`
@@ -40030,7 +40032,7 @@ unsafe fn Rf_mkCharLenCE(x: *const ::std::os::raw::c_char, len: ::std::os::raw::
 ```
 
 Checked wrapper for `Rf_mkCharLenCE`. Calls `Rf_mkCharLenCE_unchecked` and routes through `with_r_thread`.
-Generated from source location line 316, column 12.
+Generated from source location line 318, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkCharLenCE_unchecked`
@@ -40040,7 +40042,7 @@ unsafe extern "C-unwind" fn Rf_mkCharLenCE_unchecked(x: *const ::std::os::raw::c
 ```
 
 Unchecked FFI binding for `Rf_mkCharLenCE`.
-Generated from source location line 316, column 12.
+Generated from source location line 318, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkCharLen_unchecked`
@@ -40050,7 +40052,7 @@ unsafe extern "C-unwind" fn Rf_mkCharLen_unchecked(s: *const ::std::os::raw::c_c
 ```
 
 Unchecked FFI binding for `Rf_mkCharLen`.
-Generated from source location line 314, column 12.
+Generated from source location line 316, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkChar_unchecked`
@@ -40060,7 +40062,7 @@ unsafe extern "C-unwind" fn Rf_mkChar_unchecked(s: *const ::std::os::raw::c_char
 ```
 
 Unchecked FFI binding for `Rf_mkChar`.
-Generated from source location line 312, column 12.
+Generated from source location line 314, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_mkString`
@@ -40088,7 +40090,7 @@ unsafe fn Rf_namesgets(vec: crate::sexp::SEXP, val: crate::sexp::SEXP) -> crate:
 
  Set the `names` attribute; returns the updated object.
 Checked wrapper for `Rf_namesgets`. Calls `Rf_namesgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 743, column 12.
+Generated from source location line 751, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_namesgets_unchecked`
@@ -40099,7 +40101,7 @@ unsafe extern "C-unwind" fn Rf_namesgets_unchecked(vec: SEXP, val: SEXP) -> SEXP
 
  Set the `names` attribute; returns the updated object.
 Unchecked FFI binding for `Rf_namesgets`.
-Generated from source location line 743, column 12.
+Generated from source location line 751, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ncols`
@@ -40109,7 +40111,7 @@ unsafe fn Rf_ncols(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 ```
 
 Checked wrapper for `Rf_ncols`. Calls `Rf_ncols_unchecked` and routes through `with_r_thread`.
-Generated from source location line 810, column 12.
+Generated from source location line 818, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_ncols_unchecked`
@@ -40119,7 +40121,7 @@ unsafe extern "C-unwind" fn Rf_ncols_unchecked(x: SEXP) -> ::std::os::raw::c_int
 ```
 
 Unchecked FFI binding for `Rf_ncols`.
-Generated from source location line 810, column 12.
+Generated from source location line 818, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_nrows`
@@ -40129,7 +40131,7 @@ unsafe fn Rf_nrows(x: crate::sexp::SEXP) -> ::std::os::raw::c_int
 ```
 
 Checked wrapper for `Rf_nrows`. Calls `Rf_nrows_unchecked` and routes through `with_r_thread`.
-Generated from source location line 808, column 12.
+Generated from source location line 816, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_nrows_unchecked`
@@ -40139,7 +40141,7 @@ unsafe extern "C-unwind" fn Rf_nrows_unchecked(x: SEXP) -> ::std::os::raw::c_int
 ```
 
 Unchecked FFI binding for `Rf_nrows`.
-Generated from source location line 808, column 12.
+Generated from source location line 816, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_nthcdr`
@@ -40149,7 +40151,7 @@ unsafe fn Rf_nthcdr(list: crate::sexp::SEXP, n: ::std::os::raw::c_int) -> crate:
 ```
 
 Checked wrapper for `Rf_nthcdr`. Calls `Rf_nthcdr_unchecked` and routes through `with_r_thread`.
-Generated from source location line 866, column 12.
+Generated from source location line 874, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_nthcdr_unchecked`
@@ -40159,7 +40161,7 @@ unsafe extern "C-unwind" fn Rf_nthcdr_unchecked(list: SEXP, n: ::std::os::raw::c
 ```
 
 Unchecked FFI binding for `Rf_nthcdr`.
-Generated from source location line 866, column 12.
+Generated from source location line 874, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_protect`
@@ -40176,7 +40178,7 @@ unsafe fn Rf_protect(s: crate::sexp::SEXP) -> crate::sexp::SEXP
  LIFO — nested scopes are safe, but interleaved usage from different scopes
  will cause incorrect unprotection.
 Checked wrapper for `Rf_protect`. Calls `Rf_protect_unchecked` and routes through `with_r_thread`.
-Generated from source location line 440, column 12.
+Generated from source location line 448, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_protect_unchecked`
@@ -40193,7 +40195,7 @@ unsafe extern "C-unwind" fn Rf_protect_unchecked(s: SEXP) -> SEXP
  LIFO — nested scopes are safe, but interleaved usage from different scopes
  will cause incorrect unprotection.
 Unchecked FFI binding for `Rf_protect`.
-Generated from source location line 440, column 12.
+Generated from source location line 448, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_setAttrib`
@@ -40203,7 +40205,7 @@ unsafe fn Rf_setAttrib(vec: crate::sexp::SEXP, name: crate::sexp::SEXP, val: cra
 ```
 
 Checked wrapper for `Rf_setAttrib`. Calls `Rf_setAttrib_unchecked` and routes through `with_r_thread`.
-Generated from source location line 517, column 12.
+Generated from source location line 525, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_setAttrib_unchecked`
@@ -40213,7 +40215,7 @@ unsafe extern "C-unwind" fn Rf_setAttrib_unchecked(vec: SEXP, name: SEXP, val: S
 ```
 
 Unchecked FFI binding for `Rf_setAttrib`.
-Generated from source location line 517, column 12.
+Generated from source location line 525, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_setVar`
@@ -40223,7 +40225,7 @@ unsafe fn Rf_setVar(symbol: crate::sexp::SEXP, value: crate::sexp::SEXP, rho: cr
 ```
 
 Checked wrapper for `Rf_setVar`. Calls `Rf_setVar_unchecked` and routes through `with_r_thread`.
-Generated from source location line 914, column 12.
+Generated from source location line 922, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_setVar_unchecked`
@@ -40233,7 +40235,7 @@ unsafe extern "C-unwind" fn Rf_setVar_unchecked(symbol: SEXP, value: SEXP, rho: 
 ```
 
 Unchecked FFI binding for `Rf_setVar`.
-Generated from source location line 914, column 12.
+Generated from source location line 922, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_shallow_duplicate`
@@ -40243,7 +40245,7 @@ unsafe fn Rf_shallow_duplicate(s: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `Rf_shallow_duplicate`. Calls `Rf_shallow_duplicate_unchecked` and routes through `with_r_thread`.
-Generated from source location line 752, column 12.
+Generated from source location line 760, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_shallow_duplicate_unchecked`
@@ -40253,7 +40255,7 @@ unsafe extern "C-unwind" fn Rf_shallow_duplicate_unchecked(s: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `Rf_shallow_duplicate`.
-Generated from source location line 752, column 12.
+Generated from source location line 760, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_substitute`
@@ -40266,7 +40268,7 @@ unsafe fn Rf_substitute(lang: crate::sexp::SEXP, rho: crate::sexp::SEXP) -> crat
 
  Like R's `substitute()` function.
 Checked wrapper for `Rf_substitute`. Calls `Rf_substitute_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2176, column 12.
+Generated from source location line 2184, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_substitute_unchecked`
@@ -40279,7 +40281,7 @@ unsafe extern "C-unwind" fn Rf_substitute_unchecked(lang: SEXP, rho: SEXP) -> SE
 
  Like R's `substitute()` function.
 Unchecked FFI binding for `Rf_substitute`.
-Generated from source location line 2176, column 12.
+Generated from source location line 2184, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_topenv`
@@ -40293,7 +40295,7 @@ unsafe fn Rf_topenv(target: crate::sexp::SEXP, envir: crate::sexp::SEXP) -> crat
  Walks up enclosing environments until reaching a top-level env
  (global, namespace, or base).
 Checked wrapper for `Rf_topenv`. Calls `Rf_topenv_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2071, column 12.
+Generated from source location line 2079, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_topenv_unchecked`
@@ -40307,7 +40309,7 @@ unsafe extern "C-unwind" fn Rf_topenv_unchecked(target: SEXP, envir: SEXP) -> SE
  Walks up enclosing environments until reaching a top-level env
  (global, namespace, or base).
 Unchecked FFI binding for `Rf_topenv`.
-Generated from source location line 2071, column 12.
+Generated from source location line 2079, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_translateCharUTF8`
@@ -40317,7 +40319,7 @@ unsafe fn Rf_translateCharUTF8(x: crate::sexp::SEXP) -> *const ::std::os::raw::c
 ```
 
 Checked wrapper for `Rf_translateCharUTF8`. Calls `Rf_translateCharUTF8_unchecked` and routes through `with_r_thread`.
-Generated from source location line 325, column 12.
+Generated from source location line 327, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_translateCharUTF8_unchecked`
@@ -40327,7 +40329,7 @@ unsafe extern "C-unwind" fn Rf_translateCharUTF8_unchecked(x: SEXP) -> *const ::
 ```
 
 Unchecked FFI binding for `Rf_translateCharUTF8`.
-Generated from source location line 325, column 12.
+Generated from source location line 327, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_type2char`
@@ -40340,7 +40342,7 @@ unsafe fn Rf_type2char(sexptype: crate::sexp_types::SEXPTYPE) -> *const ::std::o
 
  Returns a string like "INTSXP", "REALSXP", etc.
 Checked wrapper for `Rf_type2char`. Calls `Rf_type2char_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2034, column 12.
+Generated from source location line 2042, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_type2char_unchecked`
@@ -40353,7 +40355,7 @@ unsafe extern "C-unwind" fn Rf_type2char_unchecked(sexptype: SEXPTYPE) -> *const
 
  Returns a string like "INTSXP", "REALSXP", etc.
 Unchecked FFI binding for `Rf_type2char`.
-Generated from source location line 2034, column 12.
+Generated from source location line 2042, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_unprotect`
@@ -40369,7 +40371,7 @@ unsafe fn Rf_unprotect(l: ::std::os::raw::c_int)
  The popped SEXPs become eligible for GC. Must match the number of
  `Rf_protect` calls in the current scope (LIFO order).
 Checked wrapper for `Rf_unprotect`. Calls `Rf_unprotect_unchecked` and routes through `with_r_thread`.
-Generated from source location line 450, column 12.
+Generated from source location line 458, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_unprotect_ptr`
@@ -40388,7 +40390,7 @@ unsafe fn Rf_unprotect_ptr(s: crate::sexp::SEXP)
  the specific pointer regardless of stack position. Useful when LIFO
  discipline cannot be maintained, but more expensive than `Rf_unprotect`.
 Checked wrapper for `Rf_unprotect_ptr`. Calls `Rf_unprotect_ptr_unchecked` and routes through `with_r_thread`.
-Generated from source location line 462, column 12.
+Generated from source location line 470, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_unprotect_ptr_unchecked`
@@ -40407,7 +40409,7 @@ unsafe extern "C-unwind" fn Rf_unprotect_ptr_unchecked(s: SEXP)
  the specific pointer regardless of stack position. Useful when LIFO
  discipline cannot be maintained, but more expensive than `Rf_unprotect`.
 Unchecked FFI binding for `Rf_unprotect_ptr`.
-Generated from source location line 462, column 12.
+Generated from source location line 470, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_unprotect_unchecked`
@@ -40423,7 +40425,7 @@ unsafe extern "C-unwind" fn Rf_unprotect_unchecked(l: ::std::os::raw::c_int)
  The popped SEXPs become eligible for GC. Must match the number of
  `Rf_protect` calls in the current scope (LIFO order).
 Unchecked FFI binding for `Rf_unprotect`.
-Generated from source location line 450, column 12.
+Generated from source location line 458, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_warning`
@@ -40454,7 +40456,7 @@ unsafe fn Rf_xlength(x: crate::sexp::SEXP) -> crate::sexp_types::R_xlen_t
 ```
 
 Checked wrapper for `Rf_xlength`. Calls `Rf_xlength_unchecked` and routes through `with_r_thread`.
-Generated from source location line 323, column 12.
+Generated from source location line 325, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_xlength_unchecked`
@@ -40464,7 +40466,7 @@ unsafe extern "C-unwind" fn Rf_xlength_unchecked(x: SEXP) -> R_xlen_t
 ```
 
 Unchecked FFI binding for `Rf_xlength`.
-Generated from source location line 323, column 12.
+Generated from source location line 325, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_xlengthgets`
@@ -40475,7 +40477,7 @@ unsafe fn Rf_xlengthgets(x: crate::sexp::SEXP, newlen: crate::sexp_types::R_xlen
 
  Set vector length (long vector version).
 Checked wrapper for `Rf_xlengthgets`. Calls `Rf_xlengthgets_unchecked` and routes through `with_r_thread`.
-Generated from source location line 2186, column 12.
+Generated from source location line 2194, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rf_xlengthgets_unchecked`
@@ -40486,7 +40488,7 @@ unsafe extern "C-unwind" fn Rf_xlengthgets_unchecked(x: SEXP, newlen: R_xlen_t) 
 
  Set vector length (long vector version).
 Unchecked FFI binding for `Rf_xlengthgets`.
-Generated from source location line 2186, column 12.
+Generated from source location line 2194, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::Rprintf`
@@ -40517,7 +40519,7 @@ unsafe fn SETCAD4R(e: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::S
 ```
 
 Checked wrapper for `SETCAD4R`. Calls `SETCAD4R_unchecked` and routes through `with_r_thread`.
-Generated from source location line 583, column 12.
+Generated from source location line 591, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCAD4R_unchecked`
@@ -40527,7 +40529,7 @@ unsafe extern "C-unwind" fn SETCAD4R_unchecked(e: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCAD4R`.
-Generated from source location line 583, column 12.
+Generated from source location line 591, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADDDR`
@@ -40537,7 +40539,7 @@ unsafe fn SETCADDDR(x: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::
 ```
 
 Checked wrapper for `SETCADDDR`. Calls `SETCADDDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 582, column 12.
+Generated from source location line 590, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADDDR_unchecked`
@@ -40547,7 +40549,7 @@ unsafe extern "C-unwind" fn SETCADDDR_unchecked(x: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCADDDR`.
-Generated from source location line 582, column 12.
+Generated from source location line 590, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADDR`
@@ -40557,7 +40559,7 @@ unsafe fn SETCADDR(x: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::S
 ```
 
 Checked wrapper for `SETCADDR`. Calls `SETCADDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 581, column 12.
+Generated from source location line 589, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADDR_unchecked`
@@ -40567,7 +40569,7 @@ unsafe extern "C-unwind" fn SETCADDR_unchecked(x: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCADDR`.
-Generated from source location line 581, column 12.
+Generated from source location line 589, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADR`
@@ -40577,7 +40579,7 @@ unsafe fn SETCADR(x: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::SE
 ```
 
 Checked wrapper for `SETCADR`. Calls `SETCADR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 580, column 12.
+Generated from source location line 588, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCADR_unchecked`
@@ -40587,7 +40589,7 @@ unsafe extern "C-unwind" fn SETCADR_unchecked(x: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCADR`.
-Generated from source location line 580, column 12.
+Generated from source location line 588, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCAR`
@@ -40597,7 +40599,7 @@ unsafe fn SETCAR(x: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::SEX
 ```
 
 Checked wrapper for `SETCAR`. Calls `SETCAR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 578, column 12.
+Generated from source location line 586, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCAR_unchecked`
@@ -40607,7 +40609,7 @@ unsafe extern "C-unwind" fn SETCAR_unchecked(x: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCAR`.
-Generated from source location line 578, column 12.
+Generated from source location line 586, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCDR`
@@ -40617,7 +40619,7 @@ unsafe fn SETCDR(x: crate::sexp::SEXP, y: crate::sexp::SEXP) -> crate::sexp::SEX
 ```
 
 Checked wrapper for `SETCDR`. Calls `SETCDR_unchecked` and routes through `with_r_thread`.
-Generated from source location line 579, column 12.
+Generated from source location line 587, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETCDR_unchecked`
@@ -40627,7 +40629,7 @@ unsafe extern "C-unwind" fn SETCDR_unchecked(x: SEXP, y: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `SETCDR`.
-Generated from source location line 579, column 12.
+Generated from source location line 587, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETLEVELS`
@@ -40640,7 +40642,7 @@ unsafe fn SETLEVELS(x: crate::sexp::SEXP, v: ::std::os::raw::c_int) -> ::std::os
 
  Returns the value that was set.
 Checked wrapper for `SETLEVELS`. Calls `SETLEVELS_unchecked` and routes through `with_r_thread`.
-Generated from source location line 653, column 12.
+Generated from source location line 661, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SETLEVELS_unchecked`
@@ -40653,7 +40655,7 @@ unsafe extern "C-unwind" fn SETLEVELS_unchecked(x: SEXP, v: ::std::os::raw::c_in
 
  Returns the value that was set.
 Unchecked FFI binding for `SETLEVELS`.
-Generated from source location line 653, column 12.
+Generated from source location line 661, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_ATTRIB`
@@ -40668,7 +40670,7 @@ unsafe fn SET_ATTRIB(x: crate::sexp::SEXP, v: crate::sexp::SEXP)
 
  `v` must be a pairlist or R_NilValue
 Checked wrapper for `SET_ATTRIB`. Calls `SET_ATTRIB_unchecked` and routes through `with_r_thread`.
-Generated from source location line 637, column 12.
+Generated from source location line 645, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_ATTRIB_unchecked`
@@ -40683,7 +40685,7 @@ unsafe extern "C-unwind" fn SET_ATTRIB_unchecked(x: SEXP, v: SEXP)
 
  `v` must be a pairlist or R_NilValue
 Unchecked FFI binding for `SET_ATTRIB`.
-Generated from source location line 637, column 12.
+Generated from source location line 645, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_COMPLEX_ELT`
@@ -40693,7 +40695,7 @@ unsafe fn SET_COMPLEX_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, 
 ```
 
 Checked wrapper for `SET_COMPLEX_ELT`. Calls `SET_COMPLEX_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 602, column 12.
+Generated from source location line 610, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_COMPLEX_ELT_unchecked`
@@ -40703,7 +40705,7 @@ unsafe extern "C-unwind" fn SET_COMPLEX_ELT_unchecked(x: SEXP, i: R_xlen_t, v: R
 ```
 
 Unchecked FFI binding for `SET_COMPLEX_ELT`.
-Generated from source location line 602, column 12.
+Generated from source location line 610, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_INTEGER_ELT`
@@ -40713,7 +40715,7 @@ unsafe fn SET_INTEGER_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, 
 ```
 
 Checked wrapper for `SET_INTEGER_ELT`. Calls `SET_INTEGER_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 600, column 12.
+Generated from source location line 608, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_INTEGER_ELT_unchecked`
@@ -40723,7 +40725,7 @@ unsafe extern "C-unwind" fn SET_INTEGER_ELT_unchecked(x: SEXP, i: R_xlen_t, v: :
 ```
 
 Unchecked FFI binding for `SET_INTEGER_ELT`.
-Generated from source location line 600, column 12.
+Generated from source location line 608, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_LOGICAL_ELT`
@@ -40733,7 +40735,7 @@ unsafe fn SET_LOGICAL_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, 
 ```
 
 Checked wrapper for `SET_LOGICAL_ELT`. Calls `SET_LOGICAL_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 599, column 12.
+Generated from source location line 607, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_LOGICAL_ELT_unchecked`
@@ -40743,7 +40745,7 @@ unsafe extern "C-unwind" fn SET_LOGICAL_ELT_unchecked(x: SEXP, i: R_xlen_t, v: :
 ```
 
 Unchecked FFI binding for `SET_LOGICAL_ELT`.
-Generated from source location line 599, column 12.
+Generated from source location line 607, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_OBJECT`
@@ -40754,7 +40756,7 @@ unsafe fn SET_OBJECT(x: crate::sexp::SEXP, v: ::std::os::raw::c_int)
 
  Set the "object" bit.
 Checked wrapper for `SET_OBJECT`. Calls `SET_OBJECT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 645, column 12.
+Generated from source location line 653, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_OBJECT_unchecked`
@@ -40765,7 +40767,7 @@ unsafe extern "C-unwind" fn SET_OBJECT_unchecked(x: SEXP, v: ::std::os::raw::c_i
 
  Set the "object" bit.
 Unchecked FFI binding for `SET_OBJECT`.
-Generated from source location line 645, column 12.
+Generated from source location line 653, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_RAW_ELT`
@@ -40775,7 +40777,7 @@ unsafe fn SET_RAW_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, v: c
 ```
 
 Checked wrapper for `SET_RAW_ELT`. Calls `SET_RAW_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 603, column 12.
+Generated from source location line 611, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_RAW_ELT_unchecked`
@@ -40785,7 +40787,7 @@ unsafe extern "C-unwind" fn SET_RAW_ELT_unchecked(x: SEXP, i: R_xlen_t, v: Rbyte
 ```
 
 Unchecked FFI binding for `SET_RAW_ELT`.
-Generated from source location line 603, column 12.
+Generated from source location line 611, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_REAL_ELT`
@@ -40795,7 +40797,7 @@ unsafe fn SET_REAL_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, v: 
 ```
 
 Checked wrapper for `SET_REAL_ELT`. Calls `SET_REAL_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 601, column 12.
+Generated from source location line 609, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_REAL_ELT_unchecked`
@@ -40805,7 +40807,7 @@ unsafe extern "C-unwind" fn SET_REAL_ELT_unchecked(x: SEXP, i: R_xlen_t, v: f64)
 ```
 
 Unchecked FFI binding for `SET_REAL_ELT`.
-Generated from source location line 601, column 12.
+Generated from source location line 609, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_STRING_ELT`
@@ -40815,7 +40817,7 @@ unsafe fn SET_STRING_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, v
 ```
 
 Checked wrapper for `SET_STRING_ELT`. Calls `SET_STRING_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 598, column 12.
+Generated from source location line 606, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_STRING_ELT_unchecked`
@@ -40825,7 +40827,7 @@ unsafe extern "C-unwind" fn SET_STRING_ELT_unchecked(x: SEXP, i: R_xlen_t, v: SE
 ```
 
 Unchecked FFI binding for `SET_STRING_ELT`.
-Generated from source location line 598, column 12.
+Generated from source location line 606, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_TAG`
@@ -40835,7 +40837,7 @@ unsafe fn SET_TAG(x: crate::sexp::SEXP, y: crate::sexp::SEXP)
 ```
 
 Checked wrapper for `SET_TAG`. Calls `SET_TAG_unchecked` and routes through `with_r_thread`.
-Generated from source location line 577, column 12.
+Generated from source location line 585, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_TAG_unchecked`
@@ -40845,7 +40847,7 @@ unsafe extern "C-unwind" fn SET_TAG_unchecked(x: SEXP, y: SEXP)
 ```
 
 Unchecked FFI binding for `SET_TAG`.
-Generated from source location line 577, column 12.
+Generated from source location line 585, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_VECTOR_ELT`
@@ -40855,7 +40857,7 @@ unsafe fn SET_VECTOR_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t, v
 ```
 
 Checked wrapper for `SET_VECTOR_ELT`. Calls `SET_VECTOR_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 604, column 12.
+Generated from source location line 612, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::SET_VECTOR_ELT_unchecked`
@@ -40865,7 +40867,7 @@ unsafe extern "C-unwind" fn SET_VECTOR_ELT_unchecked(x: SEXP, i: R_xlen_t, v: SE
 ```
 
 Unchecked FFI binding for `SET_VECTOR_ELT`.
-Generated from source location line 604, column 12.
+Generated from source location line 612, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::STRING_ELT`
@@ -40875,7 +40877,7 @@ unsafe fn STRING_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> cr
 ```
 
 Checked wrapper for `STRING_ELT`. Calls `STRING_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 597, column 12.
+Generated from source location line 605, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::STRING_ELT_unchecked`
@@ -40885,7 +40887,7 @@ unsafe extern "C-unwind" fn STRING_ELT_unchecked(x: SEXP, i: R_xlen_t) -> SEXP
 ```
 
 Unchecked FFI binding for `STRING_ELT`.
-Generated from source location line 597, column 12.
+Generated from source location line 605, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::S_alloc`
@@ -40901,7 +40903,7 @@ unsafe fn S_alloc(nelem: ::std::os::raw::c_long, eltsize: ::std::os::raw::c_int)
  - `nelem`: Number of elements
  - `eltsize`: Size of each element
 Checked wrapper for `S_alloc`. Calls `S_alloc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1678, column 12.
+Generated from source location line 1686, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::S_alloc_unchecked`
@@ -40917,7 +40919,7 @@ unsafe extern "C-unwind" fn S_alloc_unchecked(nelem: ::std::os::raw::c_long, elt
  - `nelem`: Number of elements
  - `eltsize`: Size of each element
 Unchecked FFI binding for `S_alloc`.
-Generated from source location line 1678, column 12.
+Generated from source location line 1686, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::S_realloc`
@@ -40932,7 +40934,7 @@ unsafe fn S_realloc(ptr: *mut ::std::os::raw::c_char, newsize: ::std::os::raw::c
 
  `ptr` must have been allocated by `S_alloc`.
 Checked wrapper for `S_realloc`. Calls `S_realloc_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1688, column 12.
+Generated from source location line 1696, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::S_realloc_unchecked`
@@ -40947,7 +40949,7 @@ unsafe extern "C-unwind" fn S_realloc_unchecked(ptr: *mut ::std::os::raw::c_char
 
  `ptr` must have been allocated by `S_alloc`.
 Unchecked FFI binding for `S_realloc`.
-Generated from source location line 1688, column 12.
+Generated from source location line 1696, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::StringFalse`
@@ -40960,7 +40962,7 @@ unsafe fn StringFalse(s: *const ::std::os::raw::c_char) -> crate::sexp_types::Rb
 
  Recognizes "FALSE", "false", "False", "F", "f", etc.
 Checked wrapper for `StringFalse`. Calls `StringFalse_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1978, column 12.
+Generated from source location line 1986, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::StringFalse_unchecked`
@@ -40973,7 +40975,7 @@ unsafe extern "C-unwind" fn StringFalse_unchecked(s: *const ::std::os::raw::c_ch
 
  Recognizes "FALSE", "false", "False", "F", "f", etc.
 Unchecked FFI binding for `StringFalse`.
-Generated from source location line 1978, column 12.
+Generated from source location line 1986, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::StringTrue`
@@ -40986,7 +40988,7 @@ unsafe fn StringTrue(s: *const ::std::os::raw::c_char) -> crate::sexp_types::Rbo
 
  Recognizes "TRUE", "true", "True", "T", "t", etc.
 Checked wrapper for `StringTrue`. Calls `StringTrue_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1984, column 12.
+Generated from source location line 1992, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::StringTrue_unchecked`
@@ -40999,7 +41001,7 @@ unsafe extern "C-unwind" fn StringTrue_unchecked(s: *const ::std::os::raw::c_cha
 
  Recognizes "TRUE", "true", "True", "T", "t", etc.
 Unchecked FFI binding for `StringTrue`.
-Generated from source location line 1984, column 12.
+Generated from source location line 1992, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TAG`
@@ -41009,7 +41011,7 @@ unsafe fn TAG(e: crate::sexp::SEXP) -> crate::sexp::SEXP
 ```
 
 Checked wrapper for `TAG`. Calls `TAG_unchecked` and routes through `with_r_thread`.
-Generated from source location line 576, column 12.
+Generated from source location line 584, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TAG_unchecked`
@@ -41019,7 +41021,7 @@ unsafe extern "C-unwind" fn TAG_unchecked(e: SEXP) -> SEXP
 ```
 
 Unchecked FFI binding for `TAG`.
-Generated from source location line 576, column 12.
+Generated from source location line 584, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TRUELENGTH`
@@ -41033,7 +41035,7 @@ unsafe fn TRUELENGTH(x: crate::sexp::SEXP) -> crate::sexp_types::R_xlen_t
  May be larger than LENGTH for vectors with reserved space.
  ALTREP-aware.
 Checked wrapper for `TRUELENGTH`. Calls `TRUELENGTH_unchecked` and routes through `with_r_thread`.
-Generated from source location line 625, column 12.
+Generated from source location line 633, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TRUELENGTH_unchecked`
@@ -41047,7 +41049,7 @@ unsafe extern "C-unwind" fn TRUELENGTH_unchecked(x: SEXP) -> R_xlen_t
  May be larger than LENGTH for vectors with reserved space.
  ALTREP-aware.
 Unchecked FFI binding for `TRUELENGTH`.
-Generated from source location line 625, column 12.
+Generated from source location line 633, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TYPEOF`
@@ -41057,7 +41059,7 @@ unsafe fn TYPEOF(x: crate::sexp::SEXP) -> crate::sexp_types::SEXPTYPE
 ```
 
 Checked wrapper for `TYPEOF`. Calls `TYPEOF_unchecked` and routes through `with_r_thread`.
-Generated from source location line 721, column 12.
+Generated from source location line 729, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::TYPEOF_unchecked`
@@ -41067,7 +41069,7 @@ unsafe extern "C-unwind" fn TYPEOF_unchecked(x: SEXP) -> SEXPTYPE
 ```
 
 Unchecked FFI binding for `TYPEOF`.
-Generated from source location line 721, column 12.
+Generated from source location line 729, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::VECTOR_ELT`
@@ -41077,7 +41079,7 @@ unsafe fn VECTOR_ELT(x: crate::sexp::SEXP, i: crate::sexp_types::R_xlen_t) -> cr
 ```
 
 Checked wrapper for `VECTOR_ELT`. Calls `VECTOR_ELT_unchecked` and routes through `with_r_thread`.
-Generated from source location line 596, column 12.
+Generated from source location line 604, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::VECTOR_ELT_unchecked`
@@ -41087,7 +41089,7 @@ unsafe extern "C-unwind" fn VECTOR_ELT_unchecked(x: SEXP, i: R_xlen_t) -> SEXP
 ```
 
 Unchecked FFI binding for `VECTOR_ELT`.
-Generated from source location line 596, column 12.
+Generated from source location line 604, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::XLENGTH`
@@ -41100,7 +41102,7 @@ unsafe fn XLENGTH(x: crate::sexp::SEXP) -> crate::sexp_types::R_xlen_t
 
  ALTREP-aware: will call ALTREP Length method if needed.
 Checked wrapper for `XLENGTH`. Calls `XLENGTH_unchecked` and routes through `with_r_thread`.
-Generated from source location line 619, column 12.
+Generated from source location line 627, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::XLENGTH_unchecked`
@@ -41113,7 +41115,7 @@ unsafe extern "C-unwind" fn XLENGTH_unchecked(x: SEXP) -> R_xlen_t
 
  ALTREP-aware: will call ALTREP Length method if needed.
 Unchecked FFI binding for `XLENGTH`.
-Generated from source location line 619, column 12.
+Generated from source location line 627, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::altrep::R_make_altcomplex_class`
@@ -41290,7 +41292,7 @@ unsafe fn cPsort(x: *mut crate::sexp_types::Rcomplex, n: ::std::os::raw::c_int, 
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Checked wrapper for `cPsort`. Calls `cPsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1802, column 12.
+Generated from source location line 1810, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::cPsort_unchecked`
@@ -41307,7 +41309,7 @@ unsafe extern "C-unwind" fn cPsort_unchecked(x: *mut Rcomplex, n: ::std::os::raw
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Unchecked FFI binding for `cPsort`.
-Generated from source location line 1802, column 12.
+Generated from source location line 1810, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::exp_rand`
@@ -41322,7 +41324,7 @@ unsafe fn exp_rand() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Checked wrapper for `exp_rand`. Calls `exp_rand_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1593, column 12.
+Generated from source location line 1601, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::exp_rand_unchecked`
@@ -41337,7 +41339,7 @@ unsafe extern "C-unwind" fn exp_rand_unchecked() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Unchecked FFI binding for `exp_rand`.
-Generated from source location line 1593, column 12.
+Generated from source location line 1601, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::findInterval`
@@ -41364,7 +41366,7 @@ unsafe fn findInterval(xt: *const f64, n: ::std::os::raw::c_int, x: f64, rightmo
 
  Interval index (1-indexed).
 Checked wrapper for `findInterval`. Calls `findInterval_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1934, column 12.
+Generated from source location line 1942, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::findInterval2`
@@ -41375,7 +41377,7 @@ unsafe fn findInterval2(xt: *const f64, n: ::std::os::raw::c_int, x: f64, rightm
 
  Extended interval finding with left-open option.
 Checked wrapper for `findInterval2`. Calls `findInterval2_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1946, column 12.
+Generated from source location line 1954, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::findInterval2_unchecked`
@@ -41386,7 +41388,7 @@ unsafe extern "C-unwind" fn findInterval2_unchecked(xt: *const f64, n: ::std::os
 
  Extended interval finding with left-open option.
 Unchecked FFI binding for `findInterval2`.
-Generated from source location line 1946, column 12.
+Generated from source location line 1954, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::findInterval_unchecked`
@@ -41413,7 +41415,7 @@ unsafe extern "C-unwind" fn findInterval_unchecked(xt: *const f64, n: ::std::os:
 
  Interval index (1-indexed).
 Unchecked FFI binding for `findInterval`.
-Generated from source location line 1934, column 12.
+Generated from source location line 1942, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::iPsort`
@@ -41430,7 +41432,7 @@ unsafe fn iPsort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int, k: ::s
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Checked wrapper for `iPsort`. Calls `iPsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1778, column 12.
+Generated from source location line 1786, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::iPsort_unchecked`
@@ -41447,7 +41449,7 @@ unsafe extern "C-unwind" fn iPsort_unchecked(x: *mut ::std::os::raw::c_int, n: :
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Unchecked FFI binding for `iPsort`.
-Generated from source location line 1778, column 12.
+Generated from source location line 1786, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::isBlankString`
@@ -41458,7 +41460,7 @@ unsafe fn isBlankString(s: *const ::std::os::raw::c_char) -> crate::sexp_types::
 
  Check if a string is blank (empty or only whitespace).
 Checked wrapper for `isBlankString`. Calls `isBlankString_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1988, column 12.
+Generated from source location line 1996, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::isBlankString_unchecked`
@@ -41469,7 +41471,7 @@ unsafe extern "C-unwind" fn isBlankString_unchecked(s: *const ::std::os::raw::c_
 
  Check if a string is blank (empty or only whitespace).
 Unchecked FFI binding for `isBlankString`.
-Generated from source location line 1988, column 12.
+Generated from source location line 1996, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::nonapi_stack::set_r_cstack_limit`
@@ -41495,7 +41497,7 @@ unsafe fn norm_rand() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Checked wrapper for `norm_rand`. Calls `norm_rand_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1586, column 12.
+Generated from source location line 1594, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::norm_rand_unchecked`
@@ -41510,7 +41512,7 @@ unsafe extern "C-unwind" fn norm_rand_unchecked() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Unchecked FFI binding for `norm_rand`.
-Generated from source location line 1586, column 12.
+Generated from source location line 1594, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::rPsort`
@@ -41527,7 +41529,7 @@ unsafe fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Checked wrapper for `rPsort`. Calls `rPsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1792, column 12.
+Generated from source location line 1800, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::rPsort_unchecked`
@@ -41544,7 +41546,7 @@ unsafe extern "C-unwind" fn rPsort_unchecked(x: *mut f64, n: ::std::os::raw::c_i
  - `n`: Number of elements
  - `k`: Target position (0-indexed)
 Unchecked FFI binding for `rPsort`.
-Generated from source location line 1792, column 12.
+Generated from source location line 1800, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::revsort`
@@ -41561,7 +41563,7 @@ unsafe fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw
  - `ib`: Pointer to integer array (permuted alongside `a`)
  - `n`: Number of elements
 Checked wrapper for `revsort`. Calls `revsort_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1755, column 12.
+Generated from source location line 1763, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::revsort_unchecked`
@@ -41578,7 +41580,7 @@ unsafe extern "C-unwind" fn revsort_unchecked(a: *mut f64, ib: *mut ::std::os::r
  - `ib`: Pointer to integer array (permuted alongside `a`)
  - `n`: Number of elements
 Unchecked FFI binding for `revsort`.
-Generated from source location line 1755, column 12.
+Generated from source location line 1763, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::rsort_with_index`
@@ -41595,7 +41597,7 @@ unsafe fn rsort_with_index(x: *mut f64, indx: *mut ::std::os::raw::c_int, n: ::s
  - `indx`: Pointer to integer array (permuted alongside `x`)
  - `n`: Number of elements
 Checked wrapper for `rsort_with_index`. Calls `rsort_with_index_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1764, column 12.
+Generated from source location line 1772, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::rsort_with_index_unchecked`
@@ -41612,7 +41614,7 @@ unsafe extern "C-unwind" fn rsort_with_index_unchecked(x: *mut f64, indx: *mut :
  - `indx`: Pointer to integer array (permuted alongside `x`)
  - `n`: Number of elements
 Unchecked FFI binding for `rsort_with_index`.
-Generated from source location line 1764, column 12.
+Generated from source location line 1772, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::unif_rand`
@@ -41627,7 +41629,7 @@ unsafe fn unif_rand() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Checked wrapper for `unif_rand`. Calls `unif_rand_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1579, column 12.
+Generated from source location line 1587, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::unif_rand_unchecked`
@@ -41642,7 +41644,7 @@ unsafe extern "C-unwind" fn unif_rand_unchecked() -> f64
 
  Must call `GetRNGstate()` before and `PutRNGstate()` after.
 Unchecked FFI binding for `unif_rand`.
-Generated from source location line 1579, column 12.
+Generated from source location line 1587, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::vmaxget`
@@ -41668,7 +41670,7 @@ unsafe fn vmaxget() -> *mut ::std::os::raw::c_void
  }
  ```
 Checked wrapper for `vmaxget`. Calls `vmaxget_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1630, column 12.
+Generated from source location line 1638, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::vmaxget_unchecked`
@@ -41694,7 +41696,7 @@ unsafe extern "C-unwind" fn vmaxget_unchecked() -> *mut ::std::os::raw::c_void
  }
  ```
 Unchecked FFI binding for `vmaxget`.
-Generated from source location line 1630, column 12.
+Generated from source location line 1638, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::vmaxset`
@@ -41710,7 +41712,7 @@ unsafe fn vmaxset(ovmax: *const ::std::os::raw::c_void)
  `ovmax` must be a value returned by `vmaxget()` called earlier in the
  same R evaluation context.
 Checked wrapper for `vmaxset`. Calls `vmaxset_unchecked` and routes through `with_r_thread`.
-Generated from source location line 1638, column 12.
+Generated from source location line 1646, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `sys::vmaxset_unchecked`
@@ -41726,7 +41728,7 @@ unsafe extern "C-unwind" fn vmaxset_unchecked(ovmax: *const ::std::os::raw::c_vo
  `ovmax` must be a value returned by `vmaxget()` called earlier in the
  same R evaluation context.
 Unchecked FFI binding for `vmaxset`.
-Generated from source location line 1638, column 12.
+Generated from source location line 1646, column 12.
 Generated from source file `miniextendr-api/src/sys.rs`.
 
 ### `thread::disable_stack_checking_permanently`
@@ -42330,8 +42332,9 @@ Execute a closure with R unwind protection, raising any Rust panic as an R
 error via `Rf_eval(stop(structure(...)))`.
 
 If the closure panics, the panic is caught and converted to an R error
-(longjmp) with `rust_*` class layering. If R raises an error (longjmp), all
-Rust RAII resources are properly dropped before R continues unwinding.
+(longjmp) with `rust_*` class layering. R errors resume their continuation;
+locals skipped by an R longjmp inside the closure are not dropped by this
+outer guard. See the module's cleanup limitation.
 
 **This is NOT the user-facing path for `#[miniextendr]` functions.** That
 path is [`with_r_unwind_protect`], which returns a tagged SEXP instead of
