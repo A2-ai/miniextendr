@@ -317,3 +317,8 @@ pub use indicatif;
 #[cfg(feature = "vctrs")]
 pub use crate::{IntoVctrs, VctrsClass};
 // endregion
+
+// Explicit class-system return markers.
+pub use crate::wrap_as::{
+    ConvertFrom, ConvertTo, WrapAsEnv, WrapAsR6, WrapAsS3, WrapAsS4, WrapAsS7, WrapAsVctrs,
+};

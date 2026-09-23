@@ -151,6 +151,120 @@ tails and every trait-impl void method were `invisible(self)` /
 `#[miniextendr(invisible)]` or returns `Invisible<()>` /
 `Invisible<&mut Self>` on those methods; pipes and `$`-chains need no change.
 
+##### Explicit cross-class return wrapping
+
+Use `WrapAsR6<T>`, `WrapAsS7<T>`, `WrapAsS4<T>`, `WrapAsS3<T>`,
+`WrapAsEnv<T>`, or `WrapAsVctrs<T>` when a return needs a specific R class
+system. The equivalent attribute is `#[miniextendr(wrap = "r6")]`, with
+`"s7"`, `"s4"`, `"s3"`, `"env"`, and `"vctrs"` selecting the other systems.
+Both spellings work on free functions, inherent methods, and trait impl
+methods. Nested method syntax such as `#[miniextendr(env(wrap = "r6"))]`
+is also accepted.
+
+For example, an Env factory can return a usable R6 board:
+
+```rust
+use miniextendr_api::{WrapAsR6, miniextendr};
+
+#[miniextendr(env)]
+impl Factory {
+    pub fn build(&self, w: i32, h: i32) -> WrapAsR6<Board> {
+        WrapAsR6(Board::new(w, h))
+    }
+
+    #[miniextendr(wrap = "r6")]
+    pub fn build_attr(&self, w: i32, h: i32) -> Board {
+        Board::new(w, h)
+    }
+}
+```
+
+Both R methods finish with `Board$new(.ptr = .val)`, so callers can use
+`factory$build(3L, 4L)$dimensions()`. The explicit system takes precedence
+over automatic return-class detection. A trait factory can similarly return
+`WrapAsR6<Self>` (in both the trait declaration and implementation), or put
+`#[miniextendr(wrap = "r6")]` on an implementation returning bare `Self`.
+
+The macro emits the chosen wrapping expression directly:
+
+| Selection | R expression |
+|---|---|
+| R6 | `T$new(.ptr = .val)` |
+| S7 | `T(.ptr = .val)` |
+| S4 | `methods::new("T", ptr = .val)` |
+| S3 / Env | `structure(.val, class = "T")` |
+| Vctrs | Prepend `T` to the existing class vector, retaining vctrs parent classes |
+
+The marker forwards ordinary `IntoR` conversion to its payload; it does not
+turn an arbitrary external pointer into vctrs vector data. A vctrs payload
+must already provide a valid vctrs representation, for example through
+`#[derive(Vctrs, PreferVctrs)]`.
+
+Put containers outside the marker: `Option<WrapAsR6<Board>>`,
+`Result<WrapAsR6<Board>, Error>`, `Vec<WrapAsR6<Board>>`,
+`Option<Vec<WrapAsR6<Board>>>`, or `Result<Vec<WrapAsR6<Board>>, Error>`.
+The attribute accepts the same shapes with bare `Board` payloads. `Err`
+retains normal error transport; vectors wrap each element. Explicit optional
+class returns raise on `None`, including free functions and optional vectors:
+the boundary unwraps the container before converting its class payload.
+Ordinary free functions without explicit wrapping keep their existing
+`Option<T>: IntoR` rules (including `NULL` for supported optional vectors). `Result<T, ()>` is not supported by explicit wrapping.
+Put visibility outside the complete return, e.g.
+`Invisible<Result<WrapAsR6<Board>, Error>>`.
+
+The payload must be an owned named type. The final Rust path segment names
+the R class; `Self` uses the implementing class name. No registry lookup or
+cross-check is added: the selected class system and name must match the R
+class definition, and a mismatch fails when R constructs or uses the object.
+As with visibility markers, aliases and renamed imports do not select the
+marker behavior. Different marker/attribute systems, nested wrapping markers,
+argument-position markers, and combinations with `serialize` or `unwrap_in_r`
+are compile errors. Raw `extern "C-unwind"` functions cannot use `wrap`.
+
+##### S7 conversion return markers
+
+`ConvertTo<T>` and `ConvertFrom<T>` add the type spellings of
+`s7(convert_to = "Target")` and `s7(convert_from = "Source")`. They are
+restricted to inherent S7 methods because these attributes register methods
+with `S7::convert()` as well as wrapping the returned class.
+
+```rust
+use miniextendr_api::{ConvertFrom, ConvertTo, ExternalPtr, miniextendr};
+
+#[miniextendr(s7)]
+impl Fahrenheit {
+    pub fn from_celsius(source: ExternalPtr<Celsius>) -> ConvertFrom<Self> {
+        ConvertFrom(Self { value: source.value * 9.0 / 5.0 + 32.0 })
+    }
+
+    pub fn to_celsius(&self) -> ConvertTo<Celsius> {
+        ConvertTo(Celsius { value: (self.value - 32.0) * 5.0 / 9.0 })
+    }
+}
+```
+
+`ConvertTo<T>` selects `T` as the target of an instance method with no
+additional parameters. `ConvertFrom<T>` keeps `T` as the returned payload
+(`Self` or the enclosing class type); its static method's sole source
+parameter supplies the source class name. That parameter may be a named
+class, a reference to it, or `ExternalPtr<Source>`. The equivalent attributes
+keep the plain return types and state the target/source name explicitly.
+
+Both spellings feed the existing S7 class-reference resolver, so registered
+R class renames work for conversion methods. Ordinary method calls and
+`S7::convert(from, to)` use the same return wrapping. This also distinguishes
+conversion markers from `WrapAsS7<T>`, which explicitly wraps a return without
+registering an S7 conversion.
+
+`Result<ConvertTo<T>, E>` / `Result<ConvertFrom<Self>, E>` preserve error
+transport; `Option` variants raise on `None`. Put `Invisible` or `Visible`
+outside the complete return. Visibility applies to both ordinary method
+calls and `S7::convert()`. Conversion returns represent one class instance,
+so vectors of class instances are rejected. Conflicting marker/attribute
+names, incompatible class systems, wrong source/receiver arity, and
+`serialize`/`unwrap_in_r` combinations are compile errors. As with the other
+return markers, renamed imports and type aliases do not select the syntax.
+
 #### Condition call: markers and defaults
 
 Every generated wrapper passes a call object to its C entry point
@@ -222,6 +336,7 @@ pub fn inspect_sexp(x: miniextendr_api::sys::SEXP) -> i32 { /* ... */ }
 |-----------|--------|
 | `coerce` | Auto-coerce R types (e.g., double → int) |
 | `no_coerce` | Reject type mismatches |
+| `wrap = "r6"` | Explicitly wrap the return in R6 (also `s7`, `s4`, `s3`, `env`, `vctrs`); see explicit cross-class return wrapping above |
 | `serialize` | Return the complete value through serde, equivalent to `AsSerialize<T>`; requires the `serde` feature (see [serde return transport](SERDE_R.md#returning-serde-values)) |
 | `strict` | Panic on lossy conversions (i64/u64 overflow) |
 | `no_strict` | Allow lossy conversions |
@@ -538,6 +653,7 @@ impl Person {
 | `worker` / `no_worker` | Thread override |
 | `check_interrupt` | Insert interrupt check |
 | `coerce` / `no_coerce` | Type coercion override |
+| `wrap = "r6"` | Explicitly wrap the return in R6 (also `s7`, `s4`, `s3`, `env`, `vctrs`); see explicit cross-class return wrapping above |
 | `serialize` | Convert the complete return value through `AsSerialize<T>` |
 | `rng` | RNG state management |
 | `unwrap_in_r` | Return `Result<T, E>` as a list with `$value`/`$error` instead of raising on `Err` |

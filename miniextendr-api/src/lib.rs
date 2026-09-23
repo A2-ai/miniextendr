@@ -767,6 +767,12 @@ pub use visibility::{Invisible, Visible};
 /// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.
 pub mod call_marker;
 pub use call_marker::{Call, CallerCall};
+
+/// Explicit R class-system return markers.
+pub mod wrap_as;
+pub use wrap_as::{
+    ConvertFrom, ConvertTo, WrapAsEnv, WrapAsR6, WrapAsS3, WrapAsS4, WrapAsS7, WrapAsVctrs,
+};
 pub mod named_vector;
 pub mod rcow;
 pub mod rvalue;
