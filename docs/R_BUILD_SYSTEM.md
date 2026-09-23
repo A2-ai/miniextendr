@@ -401,6 +401,23 @@ R CMD build activates the staging by running `./cleanup` in its copy, and skips 
 writes every file without mode bits, so bootstrap restores the executable bit on
 `cleanup` whenever it leaves a staging behind.
 
+Installers only reach an outside sibling when they start from the repository:
+
+- **pak** with a repository ref and a subdirectory (`pak::pak("owner/repo/rpkg")`,
+  `gitlab::…/-/rpkg`, or any ref that pkgdepends resolves through git) downloads
+  the whole repository, runs `bootstrap.R` in the subdirectory, and builds the
+  tarball there, so the staging is what gets installed.
+- **rv** with a git source plus `directory = "rpkg"`, or a local source whose
+  `path` is the repository root plus `directory = "rpkg"`, copies the whole
+  repository, runs `bootstrap.R` in the subdirectory, and installs that copy in
+  place. The sibling is still next to it, so the staging goes unused.
+
+Pointing either tool at the package directory itself (pak `local::<repo>/rpkg`,
+rv `path = "<repo>/rpkg"`) copies only that directory, so the sibling is gone
+before any bootstrap runs, with or without `cargo-revendor`. Use one of the forms
+above, or build the tarball in the checkout (`devtools::build()`) and install
+that.
+
 The stager runs `cargo metadata --no-deps` for discovery and `cargo package
 --no-verify --allow-dirty` per sibling, so it never writes to the source tree.
 Two constraints follow from `cargo package`:
