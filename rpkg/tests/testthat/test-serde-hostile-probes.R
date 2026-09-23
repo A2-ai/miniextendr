@@ -1,9 +1,9 @@
 # Runtime boundary of the serde -> R lowering, pinned empirically
 # (rpkg/src/rust/serde_hostile_probe_tests.rs).
 #
-# The compile-time boundary cannot be pinned here: a struct field holding an
-# R handle (SEXP, ExternalPtr<T>) fails #[derive(Serialize)] with E0277 —
-# neither type implements Serialize/Deserialize, so there is nothing to lower.
+# The compile-time boundary cannot be pinned here: a struct field holding a
+# raw SEXP fails #[derive(Serialize)] with E0277: it has no serde impl.
+# ExternalPtr<T> instead serializes the pointee when T implements Serialize.
 
 test_that("u128 fields cannot be serialized to R data", {
   expect_match(probe_serde_u128(), "u128 is not supported")
