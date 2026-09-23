@@ -671,3 +671,39 @@ pub fn producer_exported_probe() -> i32 {
 }
 
 // endregion
+
+// region: crate-level call attribution (#1566)
+
+/// Internal entry point attributed through the crate default: `Cargo.toml`
+/// sets `call_attribution = "caller"`, so this wrapper binds `.mx_call` and
+/// reports its hand-written caller (`producer_attributed()` in
+/// `R/call-attribution.R`) without a per-item `call = caller`.
+#[miniextendr(noexport)]
+pub fn producer_attributed_probe(x: i32) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+/// The per-item attribute wins over the crate default: this one keeps the
+/// wrapper's own call.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_self_attributed_probe(x: i32) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+/// A crate default of `caller` never applies to an exported function: its
+/// caller is arbitrary user code, so it falls back to `wrapper`.
+#[miniextendr]
+pub fn producer_exported_attributed_probe(x: i32) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+// endregion

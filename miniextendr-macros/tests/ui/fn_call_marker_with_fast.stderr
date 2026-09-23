@@ -1,0 +1,5 @@
+error: the `Call` parameter selects `wrapper` attribution but the attribute selects `none` (`call = none`, `no_call_attribution` or `fast`); keep one of them (or make them agree)
+ --> tests/ui/fn_call_marker_with_fast.rs:9:33
+  |
+9 | pub fn fast_with_marker(x: i32, _call: miniextendr_api::Call) -> i32 {
+  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

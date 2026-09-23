@@ -135,7 +135,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 );
                 lines.push("#' @param x An object".to_string());
                 lines.push("#' @param ... Additional arguments passed to methods".to_string());
-                lines.push(crate::roxygen::method_source_tag(
+                lines.extend(crate::roxygen::method_source_tag(
                     type_ident,
                     &ctx.method.ident,
                 ));

@@ -1,0 +1,5 @@
+error: `Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` functions only; class and trait methods attribute conditions to the wrapper's own call
+  --> tests/ui/impl_call_marker_rejected.rs:19:36
+   |
+19 |     fn bump(&self, by: i32, _call: miniextendr_api::Call) -> i32 {
+   |                                    ^^^^^^^^^^^^^^^

@@ -241,13 +241,16 @@ pub struct mx_erased {
 // region: Tag generation
 
 /// FNV-1a 64-bit offset basis.
-const FNV1A_64_OFFSET: u64 = 0xcbf29ce484222325;
+pub(crate) const FNV1A_64_OFFSET: u64 = 0xcbf29ce484222325;
 
 /// FNV-1a 64-bit prime.
 const FNV1A_64_PRIME: u64 = 0x00000100000001b3;
 
 /// Compute FNV-1a 64-bit hash of a byte slice (const-compatible).
-const fn fnv1a_64(bytes: &[u8], seed: u64) -> u64 {
+///
+/// Also fingerprints the generated wrappers file (`registry.rs`), so the
+/// header there and the type tags share one dependency-free digest.
+pub(crate) const fn fnv1a_64(bytes: &[u8], seed: u64) -> u64 {
     let mut hash = seed;
     let mut i = 0;
     while i < bytes.len() {

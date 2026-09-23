@@ -2850,36 +2850,64 @@ fn dot_call_arg(self: Self) -> &'static str
 
 The `.call = ...` argument for the `.Call()` line.
 
+#### `marker_name`
+
+```rust
+fn marker_name(self: Self) -> Option<&'static str>
+```
+
+The parameter marker type that selects this attribution (#1566): `Call`
+for `wrapper`, `CallerCall` for `caller`. `none` has no marker: a
+function that wants no call does not take one.
+
 #### `match_arg_statement`
 
 ```rust
 fn match_arg_statement(self: Self, param: &str, choices: &str, several_ok: bool, optional: bool) -> String
 ```
 
-The R statement validating a choice parameter (`match_arg` / `choices`)
-in a standalone wrapper. `choices` is the R expression for the choice
-list: a literal `c("a", "b")`, or the write-time placeholder for an enum.
+The R statement validating a choice parameter (`match_arg` / `choices`).
+`choices` is the R expression for the choice list: a literal
+`c("a", "b")`, or the write-time placeholder for an enum.
 
-With the wrapper's own attribution the scalar forms use
-`base::match.arg()` and `several_ok` the strict preamble helper (#1472);
-all of them report the wrapper's frame. Under
-[`CallAttribution::Caller`] every form goes through a preamble helper
-that raises with `.mx_call` and the real argument name (#1548). The
-scalar helper needs the list spelled out, since `match.arg(param)` reads
-it off the formal default.
+Every form is one call to a preamble helper (`.miniextendr_match_arg`
+for a scalar, wrapped in `if (!is.null(..))` for an `Option<T>`,
+`.miniextendr_match_arg_several` for `several_ok`, #1472). The helpers
+name the argument in their messages, read a factor as its labels, and
+attribute the error to the wrapper's own call by default; under
+[`CallAttribution::Caller`] the statement passes `.mx_call` so the
+caller is named instead (#1548). The list is spelled out because the
+helpers, unlike `base::match.arg(param)`, do not read it off the formal.
+
+#### `name`
+
+```rust
+fn name(self: Self) -> &'static str
+```
+
+The attribute spelling of this attribution.
+
+#### `parse_name`
+
+```rust
+fn parse_name(name: &str) -> Option<Self>
+```
+
+The spelling shared by the attribute (`call = none | wrapper | caller`)
+and the crate default (`call_attribution = "none" | "wrapper" | "caller"`).
 
 #### `prelude`
 
 ```rust
-fn prelude(self: Self, indent: &str) -> String
+fn prelude(self: Self, _indent: &str) -> String
 ```
 
-Statements the wrapper body needs before anything else: empty except
-for [`CallAttribution::Caller`], which binds `.mx_call`. The block is
-the first part of the wrapper prelude, ahead of the R-side checks
-(`stopifnot` preconditions, `match.arg`), so that those checks can
-attribute their failures to the caller too (#1548). Lines are joined
-with a newline plus `indent`; there is no trailing separator.
+The statement the wrapper body needs before anything else: empty except
+for [`CallAttribution::Caller`], which binds `.mx_call`. It is the
+first part of the wrapper prelude, ahead of the R-side checks
+(preconditions, `match.arg`), so that those checks can attribute their
+failures to the caller too (#1548). `indent` is unused today (a single
+line) and kept for the multi-line case.
 
 #### `r_check_call`
 
@@ -2898,6 +2926,24 @@ fn raise_default(self: Self) -> &'static str
 ```
 
 The fallback call handed to `.miniextendr_raise_condition`.
+
+#### `resolve`
+
+```rust
+fn resolve(marker: Option<Self>, attribute: Option<Self>, crate_default: Option<Self>, internal_entry: bool, fast_default: bool) -> Self
+```
+
+Resolve a standalone function's attribution from its three spellings
+(#1566), most specific first: the `Call` / `CallerCall` parameter
+marker, the `call = ...` attribute (`no_call_attribution` / `fast` spell
+`none`, `no_fast` spells `wrapper`), the crate's
+`[package.metadata.miniextendr] call_attribution` default, then the
+`fast-default` feature (`none`) and finally the framework default,
+`wrapper`. A crate default of `caller` applies to internal entry points
+(`noexport` / `internal`) only; an exported function's caller is
+arbitrary user code, so it keeps `wrapper`. The explicit spellings are
+validated before this runs (a `caller` marker or attribute on an
+exported function is a compile error, not a fallback).
 
 ### `typed_list::ParsedTypeSpec`
 

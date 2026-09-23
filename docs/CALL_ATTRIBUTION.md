@@ -137,15 +137,12 @@ Error in call_attr_self_impl(x = value) : x must be positive, got -1
 ```
 
 `#[miniextendr(noexport, call = caller)]` moves the attribution one frame up.
-The wrapper resolves its parent frame as the first thing in its body, then
+The wrapper resolves its caller's call as the first thing in its body, then
 hands that call to every R-side check, to `.Call()` and to the raise fallback:
 
 ```r
 call_attr_caller_impl <- function(x) {
-  .mx_parent <- sys.parent()
-  .mx_def <- if (.mx_parent > 0L) sys.function(.mx_parent)
-  .mx_pc <- if (.mx_parent > 0L) sys.call(.mx_parent)
-  .mx_call <- if (typeof(.mx_def) == "closure") match.call(.mx_def, .mx_pc, envir = parent.frame(2L)) else match.call()
+  .mx_call <- .miniextendr_caller_call()
   if (!isTRUE(is.integer(x))) stop(simpleError("'x' must be integer", .mx_call))
   if (!isTRUE(length(x) == 1L)) stop(simpleError("'x' must have length 1", .mx_call))
   .val <- .Call(C_mypkg_call_attr_caller_impl, .call = .mx_call, x)
@@ -163,54 +160,56 @@ Error in call_attr_caller(value = 1.5) : 'x' must be integer
 ```
 
 The R-side checks change shape under this option (#1548). The default wrapper
-validates with `stopifnot()` and `base::match.arg()`, and both report the frame
-of the function that called them, which is the wrapper; so did the strict
-`several_ok` helper. That left the two layers disagreeing: a Rust-side failure
-named the public function, a bad choice or a non-integer argument named the
-bridge (`base::match.arg(kind)`, `verb_impl(...)`), with `match.arg()`'s
-generic `'arg'` in the message. A `call = caller` wrapper therefore emits each
+validates with `stopifnot()`, which reports the frame of the function that
+called it, which is the wrapper; the choice helpers default to the same frame.
+That left the two layers disagreeing: a Rust-side failure named the public
+function, a bad choice or a non-integer argument named the bridge
+(`verb_impl(...)`). A `call = caller` wrapper therefore emits each
 precondition as a guard that raises `simpleError(<message>, .mx_call)`
 (`isTRUE()` keeps `stopifnot()`'s failure semantics, and the guards are
-cheaper than the `stopifnot()` call they replace), and routes every choice
-parameter through the preamble helpers with the caller's call:
+cheaper than the `stopifnot()` call they replace), and passes the caller's
+call to every choice parameter's helper:
 `.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
-`match_arg` / `choices` parameter (the choice list is spelled out because
-`match.arg(kind)` reads it off the formal), the same form inside
-`if (!is.null(kind))` for an `Option<T>` choice, and
+`match_arg` / `choices` parameter, the same form inside `if (!is.null(kind))`
+for an `Option<T>` choice, and
 `.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
-`several_ok`. Both helpers name the argument (`'kind' should be one of
-"a", "b"`). Default-attribution wrappers keep their `stopifnot()` /
-`base::match.arg()` text and behaviour; the `several_ok` helper's `call`
-parameter defaults to the wrapper's own call. If a downstream package's tests
-pinned `conditionCall()` for such a failure to the `_impl` wrapper or to
-`match.arg()`, they now see the public call.
+`several_ok`. Default-attribution wrappers emit the same statements without
+the call argument, so the helper reports the wrapper's own call (#1552).
+Both helpers name the argument (`'kind' should be one of "a", "b"`). If a
+downstream package's tests pinned `conditionCall()` for such a failure to
+the `_impl` wrapper or to `match.arg()`, they now see the public call.
 
-The wrapper falls back to its own `match.call()` in two cases: `sys.parent()`
-is `0` (called from top level, also under `tryCatch()` there), or the parent
+`.miniextendr_caller_call()` is defined once at the top of the generated
+wrappers file. Called from the wrapper's body, it looks two frames up for the
+wrapper's caller, and returns that call with the caller's formals matched. It
+falls back to the wrapper's own matched call in two cases: there is no parent
+frame (called from top level, also under `tryCatch()` there), or the parent
 frame's function is not a closure. The second case covers `eval()`'d code (a
 testthat block, `source()`, `local()`): R gives such a frame the `eval`
 primitive as its function, and `match.call()` rejects a non-closure
-`definition`. Every `sys.*` lookup is a plain statement in the wrapper's own
-frame on purpose: inside a promise forced by `match.call()`, `sys.call(0)`
-resolves to `match.call`'s own frame, not the wrapper's.
+`definition`. The helper resolves the frames from its own body, never inside
+a promise forced by `match.call()`, where `sys.call(0)` would resolve to
+`match.call`'s frame.
 
-`envir = parent.frame(2L)` is the frame the caller's call was evaluated in:
-written in the wrapper, `parent.frame(2L)` is the caller's caller. `match.call()`
-only consults `envir` to expand a literal `...` in the call, and that is where
-the dots are bound when a helper forwards them (`function(...)
-call_attr_caller(...)`) or when `lapply()` evaluates `FUN(X[[i]], ...)` in its
-own frame. `match.call()`'s default is also spelled `parent.frame(2L)`, but it
-is evaluated inside `match.call()` and lands on the caller's frame, which has no
-`...`; before #1462 every call through such a helper failed with
-`... used in a situation where it does not exist`, on the success path too, since
-the call is matched before `.Call()`. The expansion follows R's `match.call()`
-convention: constants forwarded through `...` are inlined
-(`call_attr_caller(value = 0L)`), symbols and calls become `..1`, `..2`.
+The `envir` the helper hands to `match.call()` is the frame the caller's call
+was evaluated in: the caller's caller. `match.call()` only consults `envir` to
+expand a literal `...` in the call, and that is where the dots are bound when a
+helper forwards them (`function(...) call_attr_caller(...)`) or when `lapply()`
+evaluates `FUN(X[[i]], ...)` in its own frame. `match.call()`'s default is
+the caller's frame, which has no `...`; before #1462 every call through such a
+helper failed with `... used in a situation where it does not exist`, on the
+success path too, since the call is matched before `.Call()`. The expansion
+follows R's `match.call()` convention: constants forwarded through `...` are
+inlined (`call_attr_caller(value = 0L)`), symbols and calls become `..1`,
+`..2`.
 
 The option requires `noexport` or `internal` (an exported function's caller is
 arbitrary user code), cannot combine with `no_call_attribution` / `fast` (no
 call slot to redirect), and applies to standalone functions only; class methods
-keep their own attribution. The frame is the *calling* frame, so an entry point reached
+keep their own attribution. A `CallerCall` parameter is the type-level spelling
+of the same option, and `[package.metadata.miniextendr] call_attribution =
+"caller"` in `Cargo.toml` makes it the default for every internal entry point
+(see [the next section](#choosing-the-attribution-marker-attribute-crate-default)). The frame is the *calling* frame, so an entry point reached
 through `lapply()` reports `FUN(value = X[[i]])`, and one reached through
 `do.call()` reports the call `do.call()` built (`call_attr_caller(value = -1L)`
 for a function name, the deparsed function for a function object), the same way
@@ -218,6 +217,74 @@ for a function name, the deparsed function for a function object), the same way
 `call_attr_caller_impl` / `call_attr_self_impl` in
 `rpkg/src/rust/call_attribution_demo.rs` with the delegates in
 `rpkg/R/call_attribution.R`, verified by `test-call-attribution.R`.
+
+## Choosing the attribution: marker, attribute, crate default
+
+A standalone `#[miniextendr]` function picks one of three attributions, in
+three equivalent spellings (#1566). Most specific wins:
+
+| Spelling | `wrapper` | `caller` | `none` |
+|----------|-----------|----------|--------|
+| **Marker parameter** (`miniextendr_api::{Call, CallerCall}`) | `call: Call` | `call: CallerCall` | — |
+| **Attribute** | `call = wrapper` (also `no_fast`) | `call = caller` | `call = none` (also `no_call_attribution`, `fast`) |
+| **Crate default** (`Cargo.toml`) | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
+
+Below those come the `fast-default` cargo feature (`none`) and the framework
+default, `wrapper`. The attribute accepts the path and string forms
+(`call = caller`, `call = "caller"`).
+
+```rust
+use miniextendr_api::{Call, CallerCall, miniextendr};
+
+/// `.call = match.call()`, and the body gets to see it.
+#[miniextendr]
+pub fn scale(x: f64, call: Call) -> f64 { let _ = call.sexp(); x * 2.0 }
+
+/// Internal entry point behind a hand-written `scale2()`: the caller's call,
+/// with the caller's formals matched, reaches Rust as `call`.
+#[miniextendr(noexport)]
+pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
+
+/// `.call = NULL`, spelled as an attribute.
+#[miniextendr(call = none)]
+pub fn hot_path(x: f64) -> f64 { x * 2.0 }
+```
+
+```toml
+# Cargo.toml: every noexport / internal entry point reports its caller.
+[package.metadata.miniextendr]
+call_attribution = "caller"
+```
+
+The marker is **not an R formal**: the generated wrapper's formals are the
+other parameters (`scale <- function(x)`), and the C wrapper binds the marker
+from its hidden `__miniextendr_call` slot, so the body receives exactly the
+SEXP the wrapper passed as `.call = ...`. Both markers are `repr(transparent)`
+newtypes over `SEXP` (`.sexp()`, `Deref`, `From<CallerCall> for Call`), and a
+function taking one runs on R's main thread like one taking `SEXP`. The marker
+selects the attribution the same way the attribute does: `Call` is `wrapper`,
+`CallerCall` is `caller` and therefore needs `noexport` / `internal` too.
+Per-parameter options (`coerce`, `match_arg`, `choices`, `default`) do not
+apply to it.
+
+A crate default of `"caller"` applies to `noexport` / `internal` free
+functions only: an exported function's caller is arbitrary user code, so it
+keeps `wrapper`. `"none"` and `"wrapper"` apply to every standalone function.
+The crate default beats the `fast-default` feature, and a per-item spelling
+beats the crate default; a `call = wrapper` on one entry point restores the
+wrapper's own call under a `"caller"` default. Class and trait methods are
+untouched by all three spellings (a marker on a method is a compile error;
+impl blocks keep their `fast` / `no_call_attribution` knobs).
+
+Two spellings on one function must agree. A `Call` parameter with
+`call = caller` (or with `fast`), two markers, a `CallerCall` on an exported
+function, per-parameter options on a marker and `call = parent` are all
+compile errors listed in [MACRO_ERRORS.md](MACRO_ERRORS.md#common-proc-macro-errors).
+Fixtures: `call_marker_wrapper_impl` / `call_marker_caller_impl` /
+`call_marker_checked_impl` / `call_attr_none_impl` in
+`rpkg/src/rust/call_attribution_demo.rs` (verified by `test-call-attribution.R`),
+and the crate default in `tests/cross-package/producer.pkg`
+(`test-call-attribution.R` there).
 
 ## Where this is emitted
 
@@ -238,7 +305,9 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `match.call()`
 
-Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
+A standalone function opts into it with `call = none` (`no_call_attribution`,
+`fast`) or through the crate default / `fast-default` feature, as described
+above. Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
 
 The five sites are:
 

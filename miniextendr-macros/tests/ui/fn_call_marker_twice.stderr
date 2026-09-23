@@ -1,0 +1,5 @@
+error: a `#[miniextendr]` function takes at most one `Call` / `CallerCall` parameter (`_first` already receives the condition call); the call slot is a single value
+ --> tests/ui/fn_call_marker_twice.rs:9:53
+  |
+9 | pub fn twice(x: i32, _first: miniextendr_api::Call, _second: miniextendr_api::CallerCall) -> i32 {
+  |                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

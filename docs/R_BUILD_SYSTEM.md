@@ -94,6 +94,15 @@ unchanged R code, timestamps, and source-position comments alone. This guard
 applies to the native tarball fast path; wasm uses its existing host-generated
 wrapper and registry snapshot workflow.
 
+The wrapper file itself opens with two header lines: the `AUTO-GENERATED`
+marker, then the `miniextendr-api` version that generated it and an FNV-1a
+64-bit digest of the rest of the file with source positions normalized
+(`# miniextendr-api 0.x.y | fnv1a-64 of the normalized lines below: …`,
+#1552). Two copies with the same digest contain the same wrapper code,
+exports and docstrings, whatever their `(file.rs:line:col)` comments say;
+that is the same view the generator uses to decide whether to rewrite the
+file, so a Rust edit that only shifts line numbers changes neither.
+
 ## Makefile Include Chain
 
 R's build system is a hierarchy of makefiles included in a specific order.

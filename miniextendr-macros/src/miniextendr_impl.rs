@@ -3624,7 +3624,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
             } else {
                 lines.push(format!("#' @rdname {}", class_name));
             }
-            lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
+            lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
         }
 
         // Export and method registration
