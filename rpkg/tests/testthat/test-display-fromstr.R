@@ -56,6 +56,22 @@ test_that("AsFromStr returns error on invalid input", {
   expect_error(miniextendr:::test_fromstr_bad_input("not-an-ip"))
 })
 
+test_that("AsFromStr quotes the value it cannot parse", {
+  expect_error(
+    miniextendr:::test_fromstr_int("n/a"),
+    '"n/a": invalid digit found in string',
+    fixed = TRUE
+  )
+})
+
+test_that("AsFromStr refuses NA instead of parsing an empty string", {
+  expect_error(
+    miniextendr:::test_fromstr_int(NA_character_),
+    "unexpected NA value",
+    fixed = TRUE
+  )
+})
+
 # endregion
 
 # region: AsFromStrVec — R character vector → Rust Vec<T: FromStr>
@@ -75,6 +91,24 @@ test_that("AsFromStrVec reports all parse errors", {
     miniextendr:::test_fromstr_vec_ints(c("1", "abc", "3", "def")),
     "index 1.*index 3"
   )
+})
+
+test_that("AsFromStrVec quotes each value it cannot parse", {
+  expect_error(
+    miniextendr:::test_fromstr_vec_ints(c("1", "n/a")),
+    'index 1: "n/a": invalid digit found in string',
+    fixed = TRUE
+  )
+})
+
+test_that("AsFromStrVec reports NA as NA, not as a failed parse of \"\"", {
+  msg <- tryCatch(
+    miniextendr:::test_fromstr_vec_ints(c("1", NA, "x")),
+    error = conditionMessage
+  )
+  expect_match(msg, "NA at index 1 not allowed", fixed = TRUE)
+  expect_match(msg, 'index 2: "x": invalid digit found in string', fixed = TRUE)
+  expect_no_match(msg, "empty string", fixed = TRUE)
 })
 
 # endregion

@@ -153,6 +153,12 @@ enum RTypeCheck {
     /// Non-numeric vector: `is.<type>(x)` only (1 assertion).
     /// The string is the R type predicate name.
     Vector(&'static str),
+    /// `AsNumeric` scalar: numeric, logical, character, or factor, with length
+    /// one (2 assertions). The marker parses character and factor labels the way
+    /// `as.numeric()` does, so the gate admits exactly the types it reads.
+    ScalarNumericOrText,
+    /// `AsNumericVec`: numeric, logical, character, or factor (1 assertion).
+    VectorNumericOrText,
     /// Nullable wrapper around an inner check: prepends `is.null(x) ||` to each assertion
     /// and adjusts messages to mention NULL.
     Nullable(Box<RTypeCheck>),
@@ -185,6 +191,18 @@ fn integer_vector_wide_check(param: &str) -> String {
     format!(
         "is.integer({p}) || is.logical({p}) || is.raw({p}) || \
          (is.numeric({p}) && all(is.na({p}) | {p} == trunc({p})))",
+        p = param
+    )
+}
+
+/// Build the predicate for the `AsNumeric` / `AsNumericVec` markers.
+///
+/// `is.numeric()` is `FALSE` for a factor, so `is.factor()` is listed on its
+/// own: the marker reads a factor by its labels. Raw and complex stay out, as
+/// the marker refuses them.
+fn numeric_or_text_check(param: &str) -> String {
+    format!(
+        "is.numeric({p}) || is.logical({p}) || is.character({p}) || is.factor({p})",
         p = param
     )
 }
@@ -273,6 +291,20 @@ impl RTypeCheck {
                 format!("'{}' must be {}", param, r_type),
                 format!("is.{}({})", r_type, param),
             )],
+            RTypeCheck::ScalarNumericOrText => vec![
+                RAssertion::new(
+                    format!("'{}' must be numeric, logical, character, or factor", param),
+                    numeric_or_text_check(param),
+                ),
+                RAssertion::new(
+                    format!("'{}' must have length 1", param),
+                    format!("length({}) == 1L", param),
+                ),
+            ],
+            RTypeCheck::VectorNumericOrText => vec![RAssertion::new(
+                format!("'{}' must be numeric, logical, character, or factor", param),
+                numeric_or_text_check(param),
+            )],
             RTypeCheck::Nullable(inner) => inner
                 .assertions(param)
                 .into_iter()
@@ -354,6 +386,10 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
 
         // Complex scalar
         "Rcomplex" => Some(RTypeCheck::Scalar("complex")),
+
+        // `as.numeric()`-style markers: numbers, text, and factor labels.
+        "AsNumeric" => Some(RTypeCheck::ScalarNumericOrText),
+        "AsNumericVec" => Some(RTypeCheck::VectorNumericOrText),
 
         // Option<T> → Nullable
         "Option" => {
@@ -969,6 +1005,57 @@ mod tests {
         assert_eq!(asserts[0].message, "'s' must be NULL or character");
         assert_eq!(asserts[0].condition, "is.null(s) || is.character(s)");
         assert_eq!(asserts[1].message, "'s' must be NULL or have length 1");
+    }
+
+    #[test]
+    fn as_numeric_markers_admit_numbers_text_and_factors() {
+        let condition = "is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)";
+        let asserts = assertions_for("AsNumeric", "x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(
+            asserts[0].message,
+            "'x' must be numeric, logical, character, or factor"
+        );
+        assert_eq!(asserts[0].condition, condition);
+        assert_eq!(asserts[1].message, "'x' must have length 1");
+        assert_eq!(asserts[1].condition, "length(x) == 1L");
+
+        // Path-qualified spellings resolve by their last segment.
+        let asserts = assertions_for("miniextendr_api::AsNumericVec", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(
+            asserts[0].message,
+            "'x' must be numeric, logical, character, or factor"
+        );
+        assert_eq!(asserts[0].condition, condition);
+    }
+
+    #[test]
+    fn optional_as_numeric_is_nullable() {
+        let asserts = assertions_for("Option<AsNumeric>", "x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(
+            asserts[0].message,
+            "'x' must be NULL or numeric, logical, character, or factor"
+        );
+        assert_eq!(
+            asserts[0].condition,
+            "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)"
+        );
+        assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
+        let asserts = assertions_for("Option<AsNumericVec>", "x");
+        assert_eq!(asserts.len(), 1);
+        assert!(asserts[0].condition.starts_with("is.null(x) || "));
+    }
+
+    #[test]
+    fn coerce_keeps_the_as_numeric_gate() {
+        // `AsNumeric` has no coercion mapping: `coerce` leaves its gate alone.
+        let ty = parse_type("AsNumericVec");
+        let check = coerce_widened(r_check_for_type(&ty).unwrap(), &ty);
+        let asserts = check.assertions("x");
+        assert_eq!(asserts.len(), 1);
+        assert!(asserts[0].condition.contains("is.factor(x)"));
     }
 
     #[test]

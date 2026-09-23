@@ -55,14 +55,19 @@ use crate::altrep_traits::NA_REAL;
 use crate::coerce::TryCoerce;
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
-/// Check if an f64 value is R's NA_real_ (a specific NaN bit pattern).
+/// Check if an f64 value is R's NA_real_, by R's own rule (`R_IsNA`).
 ///
 /// This is different from `f64::is_nan()` which returns true for ALL NaN values.
-/// R's `NA_real_` is a specific NaN with a particular bit pattern, while regular
+/// R's `NA_real_` is a NaN whose low 32-bit word is 1954, while regular
 /// NaN values (e.g., from `0.0/0.0`) should be preserved as valid values.
+///
+/// Only the low word is compared, as `R_IsNA` does: arithmetic on `NA_real_`
+/// quiets the NaN (`NA_real_ * 1` has bits `0x7FF8_0000_0000_07A2`, not
+/// [`NA_REAL`]'s `0x7FF0_0000_0000_07A2`), and R still reports that value as
+/// `NA`, so a computed `c(1, NA) * 2` must read as NA here too.
 #[inline]
 pub(crate) fn is_na_real(value: f64) -> bool {
-    value.to_bits() == NA_REAL.to_bits()
+    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == (NA_REAL.to_bits() & 0xFFFF_FFFF)
 }
 
 // region: CHARSXP to string conversion
@@ -2155,24 +2160,39 @@ pub(crate) const BATCHED_ERROR_CAP: usize = 10;
 /// [`into_error`](Self::into_error) the retained entries are joined with `"; "`
 /// and the remainder is summarized as `"and N more"`.
 ///
+/// The recorded item type `T` defaults to a formatted per-element message
+/// (`String`, folded by [`into_error`](BatchedErrors::into_error)). Value-listing
+/// diagnostics record `(index, value)` pairs instead and fold them with
+/// [`into_value_error`](BatchedErrors::into_value_error), as
+/// [`AsNumericVec`](crate::convert::AsNumericVec) does.
+///
 /// Public (but hidden) because `try_from_sexp_via_str_parse!` is
 /// `#[macro_export]` and expands in downstream crates — not intended to be
 /// used directly.
 #[doc(hidden)]
-#[derive(Default)]
-pub struct BatchedErrors {
-    listed: Vec<String>,
+pub struct BatchedErrors<T = String> {
+    listed: Vec<T>,
     total: usize,
 }
 
-impl BatchedErrors {
-    /// Record one per-element failure. `msg` is evaluated (and its `String`
-    /// allocated) only for the first [`BATCHED_ERROR_CAP`] failures; later ones
-    /// are counted for the `"and N more"` tail but never formatted.
+// Hand-written so `T` needs no `Default` bound.
+impl<T> Default for BatchedErrors<T> {
+    fn default() -> Self {
+        Self {
+            listed: Vec::new(),
+            total: 0,
+        }
+    }
+}
+
+impl<T> BatchedErrors<T> {
+    /// Record one per-element failure. `item` is evaluated (and whatever it
+    /// allocates) only for the first [`BATCHED_ERROR_CAP`] failures; later ones
+    /// are counted for the `"and N more"` tail but never built.
     #[inline]
-    pub fn push(&mut self, msg: impl FnOnce() -> String) {
+    pub fn push(&mut self, item: impl FnOnce() -> T) {
         if self.listed.len() < BATCHED_ERROR_CAP {
-            self.listed.push(msg());
+            self.listed.push(item());
         }
         self.total += 1;
     }
@@ -2183,16 +2203,64 @@ impl BatchedErrors {
         self.total == 0
     }
 
+    /// Append the `"; and N more"` tail when failures past the cap were counted.
+    fn write_more_tail(&self, msg: &mut String) {
+        if self.total > self.listed.len() {
+            use std::fmt::Write;
+            let _ = write!(msg, "; and {} more", self.total - self.listed.len());
+        }
+    }
+}
+
+impl BatchedErrors<String> {
     /// Fold the recorded failures into one [`SexpError::InvalidValue`] under
     /// `container` (e.g. `"Vec<u32>"`).
     pub fn into_error(self, container: &str) -> SexpError {
         debug_assert!(self.total > 0, "batching zero conversion errors");
         let mut msg = format!("{container} conversion failed: {}", self.listed.join("; "));
-        if self.total > self.listed.len() {
-            use std::fmt::Write;
-            let _ = write!(msg, "; and {} more", self.total - self.listed.len());
-        }
+        self.write_more_tail(&mut msg);
         SexpError::InvalidValue(msg)
+    }
+}
+
+impl BatchedErrors<(usize, String)> {
+    /// Fold recorded `(0-based index, offending value)` pairs into one
+    /// [`SexpError::InvalidValue`] that shows the values and where they are:
+    ///
+    /// `<what> value(s): "n/a", "<0.1" (elements 2, 5)`
+    ///
+    /// Values are quoted (Rust `Debug` escaping, so invisible characters show),
+    /// and element numbers are 1-based, as R counts them. Past the cap, the
+    /// `"; and N more"` tail matches [`into_error`](Self::into_error).
+    pub fn into_value_error(self, what: &str) -> SexpError {
+        SexpError::InvalidValue(self.value_message(what))
+    }
+
+    /// The message behind [`into_value_error`](Self::into_value_error).
+    fn value_message(&self, what: &str) -> String {
+        use std::fmt::Write;
+        debug_assert!(self.total > 0, "batching zero rejected values");
+        let mut msg = format!("{what} value(s): ");
+        for (k, (_, value)) in self.listed.iter().enumerate() {
+            if k > 0 {
+                msg.push_str(", ");
+            }
+            let _ = write!(msg, "{value:?}");
+        }
+        msg.push_str(if self.listed.len() == 1 {
+            " (element "
+        } else {
+            " (elements "
+        });
+        for (k, (index, _)) in self.listed.iter().enumerate() {
+            if k > 0 {
+                msg.push_str(", ");
+            }
+            let _ = write!(msg, "{}", index + 1);
+        }
+        msg.push(')');
+        self.write_more_tail(&mut msg);
+        msg
     }
 }
 
@@ -2333,3 +2401,56 @@ macro_rules! try_from_sexp_via_str_parse {
     };
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_na_real_follows_r_is_na() {
+        assert!(is_na_real(NA_REAL));
+        // `NA_real_ * 1` in R: the same payload with the quiet bit set.
+        assert!(is_na_real(f64::from_bits(0x7FF8_0000_0000_07A2)));
+        // `-NA_real_`: the sign bit flips, R still reads NA.
+        assert!(is_na_real(f64::from_bits(0xFFF0_0000_0000_07A2)));
+        assert!(!is_na_real(f64::NAN));
+        assert!(!is_na_real(1954.0));
+        assert!(!is_na_real(f64::from_bits(0x0000_0000_0000_07A2)));
+    }
+
+    #[test]
+    fn batched_value_error_lists_values_and_one_based_elements() {
+        let mut errors = BatchedErrors::<(usize, String)>::default();
+        errors.push(|| (1, "n/a".to_string()));
+        errors.push(|| (4, "<0.1".to_string()));
+        assert_eq!(
+            errors.value_message("non-numeric"),
+            r#"non-numeric value(s): "n/a", "<0.1" (elements 2, 5)"#
+        );
+
+        let mut one = BatchedErrors::<(usize, String)>::default();
+        one.push(|| (0, "a\"b\u{a0}".to_string()));
+        assert_eq!(
+            one.value_message("non-numeric"),
+            r#"non-numeric value(s): "a\"b\u{a0}" (element 1)"#
+        );
+    }
+
+    #[test]
+    fn batched_value_error_caps_the_listing() {
+        let mut errors = BatchedErrors::<(usize, String)>::default();
+        for i in 0..12 {
+            errors.push(|| (i, format!("x{i}")));
+        }
+        let msg = errors.value_message("non-numeric");
+        assert!(
+            msg.starts_with(r#"non-numeric value(s): "x0", "x1","#),
+            "{msg}"
+        );
+        assert!(
+            msg.ends_with(r#""x9" (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 2 more"#),
+            "{msg}"
+        );
+        assert!(!msg.contains("x10"), "{msg}");
+    }
+}

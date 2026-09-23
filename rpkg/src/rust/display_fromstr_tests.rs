@@ -1,6 +1,9 @@
-//! Test fixtures for AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec wrappers.
+//! Test fixtures for AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec wrappers,
+//! and the `as.numeric()`-style AsNumeric / AsNumericVec markers.
 
-use miniextendr_api::convert::{AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec};
+use miniextendr_api::convert::{
+    AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec, AsNumeric, AsNumericVec,
+};
 use miniextendr_api::miniextendr;
 use std::net::IpAddr;
 
@@ -71,6 +74,26 @@ pub fn test_fromstr_vec_ips(addrs: AsFromStrVec<IpAddr>) -> Vec<bool> {
 #[miniextendr(noexport)]
 pub fn test_fromstr_vec_ints(nums: AsFromStrVec<i32>) -> Vec<i32> {
     nums.0
+}
+
+// endregion
+
+// region: AsNumeric / AsNumericVec — numbers, text, or factor labels → f64 (NA → None)
+
+#[miniextendr(noexport)]
+pub fn test_as_numeric_vec(x: AsNumericVec) -> Vec<Option<f64>> {
+    x.0
+}
+
+#[miniextendr(noexport)]
+pub fn test_as_numeric(x: AsNumeric) -> Option<f64> {
+    x.0
+}
+
+/// `NULL` and `NA` both come back as `NA_real_`.
+#[miniextendr(noexport)]
+pub fn test_as_numeric_opt(x: Option<AsNumeric>) -> Option<f64> {
+    x.and_then(|v| v.0)
 }
 
 // endregion
