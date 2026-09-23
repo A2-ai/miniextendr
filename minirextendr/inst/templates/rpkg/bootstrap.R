@@ -4,7 +4,8 @@
 #   1. Run ./configure so Makevars and .cargo/config.toml exist before
 #      R CMD build collects them.
 #   2. Produce inst/vendor.tar.xz via cargo-revendor, so the sealed
-#      tarball ships with vendored sources for offline install.
+#      tarball ships with vendored sources for offline install. Without
+#      cargo-revendor, stage only the path dependencies (see below).
 #
 # Order matters: configure runs FIRST. In a dev/monorepo checkout (the
 # source dir still has a workspace .git ancestor — pkgbuild's
@@ -47,29 +48,15 @@ if (.Platform$OS.type == "windows") {
   system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
 }
 
-# A manifest-declared path-dependency sibling (e.g. a core crate at
-# `path = "../../../my-core"`) is NOT source-replaceable: a git/staged install
-# (remotes, pak) copies the package out of its workspace and strands it, so it
-# MUST be vendored here while still reachable. A git-only package has no such
-# sibling and builds straight from source — configure's [patch] override for
-# in-tree siblings, or cargo fetching the git URL — so vendoring, and thus
-# cargo-revendor, is optional. Heuristic: a `path =` entry in any dependency
-# table — incl. [workspace.dependencies] and subtables; [patch.*]/[lib] excluded.
-declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
-  if (!file.exists(manifest)) return(FALSE)
-  in_deps <- FALSE
-  for (ln in readLines(manifest, warn = FALSE)) {
-    s <- trimws(ln)
-    if (startsWith(s, "[")) {
-      in_deps <- grepl("dependencies(\\.[^]]+)?\\]$", s) &&
-        !startsWith(s, "[patch")
-      next
-    }
-    if (in_deps && grepl("(^|[][{, \t])path[ \t]*=", s)) return(TRUE)
-  }
-  FALSE
-}
-
+# A path dependency outside the package (e.g. a core crate at
+# `path = "../../../my-core"`) is NOT source-replaceable: R CMD build seals only
+# the package directory, and a git/staged install (remotes, pak) copies it out
+# of its workspace, so the sibling must travel inside the package. With
+# cargo-revendor on PATH the whole graph goes into inst/vendor.tar.xz. Without
+# it, tools/dev-bootstrap.R stages only the path dependencies under
+# src/rust/vendor via `cargo package`, and cleanup swaps in a manifest pointing
+# there; registry and git dependencies still resolve over the network. A package
+# whose path dependencies all live inside it has nothing to stage.
 bootstrap_mode <- match.arg(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), c("dist", "dev"))
 source("tools/dev-bootstrap.R", local = TRUE)
 if (bootstrap_mode == "dev") {
@@ -79,22 +66,20 @@ if (bootstrap_mode == "dev") {
 }
 
 if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
-  cargo_revendor <- Sys.which("cargo-revendor")
-  if (!nzchar(cargo_revendor)) {
-    if (declares_path_dep()) {
-      stop(
-        "bootstrap.R: cargo-revendor not on PATH, but this package declares a\n",
-        "path-dependency sibling that must be vendored before the package is\n",
-        "copied out of its workspace. Install it with:\n",
-        "  cargo install --git https://github.com/A2-ai/miniextendr ",
-        "cargo-revendor --locked",
-        call. = FALSE
+  if (!nzchar(Sys.which("cargo-revendor"))) {
+    if (prepare_dev_bootstrap(mode = "dist")) {
+      message(
+        "bootstrap.R: cargo-revendor not on PATH; staged path dependencies under ",
+        "src/rust/vendor. Registry and git dependencies resolve over the network at ",
+        "install, so this artifact is not CRAN-ready (install cargo-revendor for an ",
+        "offline inst/vendor.tar.xz)."
+      )
+    } else {
+      message(
+        "bootstrap.R: cargo-revendor not on PATH and no path dependency outside the ",
+        "package; building from source (cargo fetches dependencies over the network)."
       )
     }
-    message(
-      "bootstrap.R: cargo-revendor not on PATH and no path-dependency sibling ",
-      "to vendor; building from source (cargo fetches dependencies over the network)."
-    )
   } else {
     message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
     dir.create("inst", showWarnings = FALSE)

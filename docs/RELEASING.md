@@ -67,14 +67,16 @@ crates (`miniextendr-api`, `-lint`, `-macros`) travel along as sibling
 directories — and builds via `pkgbuild`. Because DESCRIPTION sets
 `Config/build/bootstrap: TRUE`, `pkgbuild` runs `rpkg/bootstrap.R` first.
 
-On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. It vendors
-via `cargo-revendor` **only when the manifest declares a path-dependency
-sibling** (`path = "../…"`, which a staged/git install would strand). A
-git-only package — the exemplar and the typical scaffold — falls through to a
-plain source build (configure's `[patch]` for in-tree siblings, or cargo
-fetching the git URL), so `cargo-revendor` is **not** required. (Before the
-`declares_path_dep()` gate, bootstrap hard-aborted without cargo-revendor even
-for git-only packages — `install_github` failed out of the box.)
+On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. With
+`cargo-revendor` on PATH it vendors the whole graph into `inst/vendor.tar.xz`.
+Without it, only a path dependency **outside the package** (`path = "../…"`,
+which a staged/git install would strand) needs work: `tools/dev-bootstrap.R`
+stages those crates under `src/rust/vendor/` with `cargo package` (#1580), and
+registry and git dependencies resolve over the network. A package whose path
+dependencies all live inside it (the exemplar's `satellite`) or that has none
+(the typical scaffold) falls through to a plain source build (configure's
+`[patch]` for the framework siblings, or cargo fetching the git URL), so
+`cargo-revendor` is **not** required.
 
 How the framework crates resolve (read from `configure.ac`):
 
@@ -90,8 +92,8 @@ How the framework crates resolve (read from `configure.ac`):
   The unpinned `git = …` in `Cargo.toml` only decides resolution when the lock
   is regenerated — see "Known gap".
 
-**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`),
-`cargo-revendor` on PATH (undeclared — sharp edge), and network access.
+**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`)
+and network access. `cargo-revendor` is optional here (see above).
 `autoconf` is **not** needed — `configure` is committed.
 
 ### Mode B — released vendored tarball (reproducible, offline, CRAN-shaped)

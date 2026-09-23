@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/gitattributes b/monorepo/gitattributes
---- a/monorepo/gitattributes	2026-09-18 20:53:28
-+++ b/monorepo/gitattributes	2026-09-18 20:53:28
+--- a/monorepo/gitattributes	2026-09-23 13:05:37
++++ b/monorepo/gitattributes	2026-09-23 13:05:37
 @@ -3,6 +3,6 @@
  # The conflict still needs resolution: regenerate from the merged sources,
  # then git add the result. No conflict markers are available for git rerere.
@@ -13,8 +13,8 @@ diff -ruN -U2 a/monorepo/gitattributes b/monorepo/gitattributes
 +**/configure -merge
 +**/man/*.Rd -merge
 diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
---- a/monorepo/rpkg/Rbuildignore	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/Rbuildignore	2026-09-18 20:53:28
+--- a/monorepo/rpkg/Rbuildignore	2026-09-23 13:05:37
++++ b/monorepo/rpkg/Rbuildignore	2026-09-23 13:05:37
 @@ -2,15 +2,9 @@
  ^dev$
  
@@ -42,9 +42,9 @@ diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-09-18 21:19:46
-+++ b/monorepo/rpkg/bootstrap.R	2026-09-18 21:20:21
-@@ -1,41 +1,19 @@
+--- a/monorepo/rpkg/bootstrap.R	2026-09-23 13:10:49
++++ b/monorepo/rpkg/bootstrap.R	2026-09-23 13:11:22
+@@ -1,42 +1,20 @@
  # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
 -# the source directory before R CMD build seals the tarball. Two jobs:
@@ -55,9 +55,10 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +#   1. Run ./configure so Makevars and other generated files exist before
  #      R CMD build collects them.
 -#   2. Produce inst/vendor.tar.xz via cargo-revendor, so the sealed
--#      tarball ships with vendored sources for offline install.
+-#      tarball ships with vendored sources for offline install. Without
 +#   2. If no inst/vendor.tar.xz is present yet, vendor one with cargo-revendor
-+#      so the sealed tarball ships self-contained for offline install.
++#      so the sealed tarball ships self-contained for offline install. Without
+ #      cargo-revendor, stage only the path dependencies (see below).
  #
 -# Order matters: configure runs FIRST. In a dev/monorepo checkout (the
 -# source dir still has a workspace .git ancestor — pkgbuild's
@@ -98,17 +99,18 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# devtools::build()/check()) is not mistaken for a leak.
  if (.Platform$OS.type == "windows") {
    if (file.exists("configure.ucrt")) {
-@@ -48,12 +26,21 @@
+@@ -49,13 +27,20 @@
  }
  
--# A manifest-declared path-dependency sibling (e.g. a core crate at
--# `path = "../../../my-core"`) is NOT source-replaceable: a git/staged install
--# (remotes, pak) copies the package out of its workspace and strands it, so it
--# MUST be vendored here while still reachable. A git-only package has no such
--# sibling and builds straight from source — configure's [patch] override for
--# in-tree siblings, or cargo fetching the git URL — so vendoring, and thus
--# cargo-revendor, is optional. Heuristic: a `path =` entry in any dependency
--# table — incl. [workspace.dependencies] and subtables; [patch.*]/[lib] excluded.
+-# A path dependency outside the package (e.g. a core crate at
+-# `path = "../../../my-core"`) is NOT source-replaceable: R CMD build seals only
+-# the package directory, and a git/staged install (remotes, pak) copies it out
+-# of its workspace, so the sibling must travel inside the package. With
+-# cargo-revendor on PATH the whole graph goes into inst/vendor.tar.xz. Without
+-# it, tools/dev-bootstrap.R stages only the path dependencies under
+-# src/rust/vendor via `cargo package`, and cleanup swaps in a manifest pointing
+-# there; registry and git dependencies still resolve over the network. A package
+-# whose path dependencies all live inside it has nothing to stage.
 +# Tarball-production vendoring. minirextendr::miniextendr_vendor() normally seals
 +# inst/vendor.tar.xz before the build and this block short-circuits via the
 +# file.exists guard. But git-based / staged installs (remotes::install_git,
@@ -120,15 +122,14 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# sibling to vendor/ so the sealed tarball is self-contained; deps declared
 +# `git =` stay git and resolve offline via source replacement. Inert for a
 +# git-only package with no path sibling to rewrite.
-+# Only path-dependency siblings (declared `path = ...` in Cargo.toml) genuinely
-+# require vendoring here: they are NOT source-replaceable and a git/staged
-+# install (remotes, pak) strands them when it copies the package out of its
-+# workspace. A git-only package builds straight from source, so vendoring — and
-+# cargo-revendor — is optional for it. Heuristic: a `path =` entry in any
-+# dependency table — incl. [workspace.dependencies]; [patch.*]/[lib] excluded.
- declares_path_dep <- function(manifest = "src/rust/Cargo.toml") {
-   if (!file.exists(manifest)) return(FALSE)
-@@ -99,18 +86,10 @@
++# Without cargo-revendor, tools/dev-bootstrap.R stages only the path
++# dependencies under src/rust/vendor via `cargo package`, and cleanup swaps in
++# a manifest pointing there; registry and git dependencies still resolve over
++# the network. A package whose path dependencies all live inside it has
++# nothing to stage.
+ bootstrap_mode <- match.arg(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), c("dist", "dev"))
+ source("tools/dev-bootstrap.R", local = TRUE)
+@@ -84,18 +69,10 @@
      message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
      dir.create("inst", showWarnings = FALSE)
 -    # --freeze rewrites local path-dependency siblings (e.g. a core crate at
@@ -154,8 +155,8 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
      source("tools/wrapper-freshness.R", local = TRUE)
      wrappers <- file.path("R", paste0(read.dcf("DESCRIPTION", fields = "Package")[[1L]],
 diff -ruN -U2 a/monorepo/rpkg/build.rs b/monorepo/rpkg/build.rs
---- a/monorepo/rpkg/build.rs	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/build.rs	2026-09-18 20:53:28
+--- a/monorepo/rpkg/build.rs	2026-09-23 13:05:37
++++ b/monorepo/rpkg/build.rs	2026-09-23 13:05:37
 @@ -16,15 +16,14 @@
               This crate is NOT directly installable on wasm32. wasm_registry.rs\n\
               (and R/<pkg>-wrappers.R) are generated by a host cdylib pass and are\n\
@@ -186,8 +187,8 @@ diff -ruN -U2 a/monorepo/rpkg/build.rs b/monorepo/rpkg/build.rs
          );
      }
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/configure.ac	2026-09-18 20:53:28
+--- a/monorepo/rpkg/configure.ac	2026-09-23 13:05:37
++++ b/monorepo/rpkg/configure.ac	2026-09-23 13:05:37
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -558,8 +559,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/monorepo/rpkg/gitignore b/monorepo/rpkg/gitignore
---- a/monorepo/rpkg/gitignore	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/gitignore	2026-09-18 20:54:03
+--- a/monorepo/rpkg/gitignore	2026-09-23 13:05:37
++++ b/monorepo/rpkg/gitignore	2026-09-23 13:05:37
 @@ -1,6 +1,6 @@
  configure~
 -autom4te.cache
@@ -613,8 +614,8 @@ diff -ruN -U2 a/monorepo/rpkg/gitignore b/monorepo/rpkg/gitignore
  # Generated wrapper provenance, shipped with the package tarball
  /tools/wrapper-inputs.rds
 diff -ruN -U2 a/monorepo/rpkg/tools/detect-features.R b/monorepo/rpkg/tools/detect-features.R
---- a/monorepo/rpkg/tools/detect-features.R	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/tools/detect-features.R	2026-09-18 20:53:28
+--- a/monorepo/rpkg/tools/detect-features.R	2026-09-23 13:05:37
++++ b/monorepo/rpkg/tools/detect-features.R	2026-09-23 13:05:37
 @@ -171,6 +171,4 @@
  rules[["vctrs"]] <- function() requireNamespace("vctrs", quietly = TRUE)
  rules[["connections"]] <- function() getRversion() >= "4.3.0"
@@ -623,8 +624,8 @@ diff -ruN -U2 a/monorepo/rpkg/tools/detect-features.R b/monorepo/rpkg/tools/dete
  ## END RULES (do not edit this line)
  
 diff -ruN -U2 a/monorepo/rpkg/tools/lock-shape-check.R b/monorepo/rpkg/tools/lock-shape-check.R
---- a/monorepo/rpkg/tools/lock-shape-check.R	2026-09-18 20:53:28
-+++ b/monorepo/rpkg/tools/lock-shape-check.R	2026-09-18 20:53:28
+--- a/monorepo/rpkg/tools/lock-shape-check.R	2026-09-23 13:05:37
++++ b/monorepo/rpkg/tools/lock-shape-check.R	2026-09-23 13:05:37
 @@ -17,6 +17,6 @@
  # of cargo source-replacement intercepting `[patch."git+url"]` entries during
  # `cargo vendor`, so they show up in tarball-shape locks even when the source-
@@ -642,8 +643,8 @@ diff -ruN -U2 a/monorepo/rpkg/tools/lock-shape-check.R b/monorepo/rpkg/tools/loc
    quit("no", status = 1)
  }
 diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
---- a/rpkg/Rbuildignore	2026-09-18 20:53:28
-+++ b/rpkg/Rbuildignore	2026-09-18 20:53:28
+--- a/rpkg/Rbuildignore	2026-09-23 13:05:37
++++ b/rpkg/Rbuildignore	2026-09-23 13:05:37
 @@ -2,15 +2,9 @@
  ^dev$
  
@@ -671,9 +672,9 @@ diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-09-18 21:19:46
-+++ b/rpkg/bootstrap.R	2026-09-18 21:19:46
-@@ -32,6 +32,6 @@
+--- a/rpkg/bootstrap.R	2026-09-23 13:10:49
++++ b/rpkg/bootstrap.R	2026-09-23 13:11:07
+@@ -33,6 +33,6 @@
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
 -# this ./configure was invoked by bootstrap, not directly. The `just vendor`
@@ -683,8 +684,8 @@ diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
  # (git-tracked) source dir on purpose; without this signal configure would
  # (correctly, for a *direct* invocation) treat that tarball-in-a-git-tree as a
 diff -ruN -U2 a/rpkg/build.rs b/rpkg/build.rs
---- a/rpkg/build.rs	2026-09-18 20:53:28
-+++ b/rpkg/build.rs	2026-09-18 20:53:28
+--- a/rpkg/build.rs	2026-09-23 13:05:37
++++ b/rpkg/build.rs	2026-09-23 13:05:37
 @@ -16,15 +16,14 @@
               This crate is NOT directly installable on wasm32. wasm_registry.rs\n\
               (and R/<pkg>-wrappers.R) are generated by a host cdylib pass and are\n\
@@ -715,8 +716,8 @@ diff -ruN -U2 a/rpkg/build.rs b/rpkg/build.rs
          );
      }
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-09-18 20:53:28
-+++ b/rpkg/configure.ac	2026-09-18 20:53:28
+--- a/rpkg/configure.ac	2026-09-23 13:05:37
++++ b/rpkg/configure.ac	2026-09-23 13:05:37
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -1069,8 +1070,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/gitignore b/rpkg/gitignore
---- a/rpkg/gitignore	2026-09-18 20:53:28
-+++ b/rpkg/gitignore	2026-09-18 20:54:03
+--- a/rpkg/gitignore	2026-09-23 13:05:37
++++ b/rpkg/gitignore	2026-09-23 13:05:37
 @@ -1,6 +1,6 @@
  configure~
 -autom4te.cache
@@ -1124,8 +1125,8 @@ diff -ruN -U2 a/rpkg/gitignore b/rpkg/gitignore
  # Generated wrapper provenance, shipped with the package tarball
  /tools/wrapper-inputs.rds
 diff -ruN -U2 a/rpkg/tools/detect-features.R b/rpkg/tools/detect-features.R
---- a/rpkg/tools/detect-features.R	2026-09-18 20:53:28
-+++ b/rpkg/tools/detect-features.R	2026-09-18 20:53:28
+--- a/rpkg/tools/detect-features.R	2026-09-23 13:05:37
++++ b/rpkg/tools/detect-features.R	2026-09-23 13:05:37
 @@ -171,6 +171,4 @@
  rules[["vctrs"]] <- function() requireNamespace("vctrs", quietly = TRUE)
  rules[["connections"]] <- function() getRversion() >= "4.3.0"
@@ -1134,8 +1135,8 @@ diff -ruN -U2 a/rpkg/tools/detect-features.R b/rpkg/tools/detect-features.R
  ## END RULES (do not edit this line)
  
 diff -ruN -U2 a/rpkg/tools/lock-shape-check.R b/rpkg/tools/lock-shape-check.R
---- a/rpkg/tools/lock-shape-check.R	2026-09-18 20:53:28
-+++ b/rpkg/tools/lock-shape-check.R	2026-09-18 20:53:28
+--- a/rpkg/tools/lock-shape-check.R	2026-09-23 13:05:37
++++ b/rpkg/tools/lock-shape-check.R	2026-09-23 13:05:37
 @@ -17,6 +17,6 @@
  # of cargo source-replacement intercepting `[patch."git+url"]` entries during
  # `cargo vendor`, so they show up in tarball-shape locks even when the source-

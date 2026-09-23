@@ -371,17 +371,42 @@ withr::with_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"), {
 
 `minirextendr::miniextendr_build()` selects this mode for its own installs unless
 you explicitly set a bootstrap mode or already have a distribution vendor
-archive. Install the current `cargo-revendor` before using it:
-
-```sh
-cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked
-```
+archive. It uses `cargo revendor --dev` when that tool is on PATH and the base-R
+stager in `tools/dev-bootstrap.R` otherwise; both produce the same layout.
 
 Bootstrap packages only path dependencies, including their transitive path
 siblings, into uncompressed `src/rust/vendor/<name>-<version>/` directories.
 Cargo package resolves workspace inheritance. Registry and Git dependencies
 continue to resolve normally; this mode does not make an offline release
-artifact, generate source replacement, or compress `inst/vendor.tar.xz`.
+artifact, generate source replacement, or compress `inst/vendor.tar.xz`. The
+portable manifest points each path dependency at its staged directory and adds
+`exclude = ["vendor"]` to its `[workspace]` so staged crates never become
+workspace members.
+
+## Distribution bootstrap without cargo-revendor
+
+A distribution build (`MINIEXTENDR_BOOTSTRAP_MODE` unset or `dist`) normally
+runs `cargo revendor --freeze` into `inst/vendor.tar.xz`. When `cargo-revendor`
+is not on PATH, bootstrap falls back to the same base-R stager whenever a path
+dependency lies **outside the package directory**, because R CMD build seals
+only that directory and a `path` dependency is not source-replaceable. The
+result builds with network access but is not CRAN-ready (#1580). A package whose
+path dependencies all live inside it has nothing to stage and builds from source.
+
+The stager runs `cargo metadata --no-deps` for discovery and `cargo package
+--no-verify --allow-dirty` per sibling, so it never writes to the source tree.
+Two constraints follow from `cargo package`:
+
+- A dependency **between siblings** (normal or build kind) needs a `version`
+  key, because `cargo package` rewrites it to a version-only entry; the stager
+  then points it back at the staged copy. The R crate's own path dependencies
+  need no version key: its manifest is rewritten in place, never packaged.
+- A sibling cannot carry a `git` dependency, which `cargo package` rejects or
+  turns into a crates.io one. Install `cargo-revendor` for such a graph.
+
+Bootstrap reports every missing `version` and every sibling git dependency in
+one error before staging anything. The staged state records its mode, so a
+staging left in the checkout is only reused by a later build of the same mode.
 
 The source `Cargo.toml` stays byte-for-byte unchanged. Bootstrap prepares
 `.Cargo.toml.dev` and `.dev-bootstrap.rds` beside it. R CMD build runs cleanup

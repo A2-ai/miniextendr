@@ -236,8 +236,10 @@ the template.
 - **`bootstrap.R` is the vendoring trigger.** When devtools or pkgbuild
   invokes `R CMD build` on a source tree, `bootstrap.R` runs configure (with
   `MINIEXTENDR_BOOTSTRAP=1`) and, if `cargo-revendor` is on PATH, vendors into
-  `inst/vendor.tar.xz` before the tarball is sealed. Configure itself never
-  vendors. This is expected and correct behavior, not a bug.
+  `inst/vendor.tar.xz` before the tarball is sealed. Without the tool it
+  stages only path dependencies outside the package under `src/rust/vendor/`
+  (`tools/dev-bootstrap.R`, #1580). Configure itself never vendors. This is
+  expected and correct behavior, not a bug.
 
 - **Regression tests in `minirextendr/tests/testthat/` grep function source.**
   These tests use `deparse(body())` to check that template strings appear
