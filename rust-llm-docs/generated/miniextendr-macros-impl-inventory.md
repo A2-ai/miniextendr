@@ -8,30 +8,30 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Any` | 105 | 0 |
-| `Borrow` | 105 | 0 |
-| `BorrowMut` | 105 | 0 |
-| `Freeze` | 105 | 0 |
-| `From` | 105 | 0 |
-| `Into` | 105 | 0 |
-| `RefUnwindSafe` | 105 | 0 |
-| `Send` | 105 | 0 |
-| `Sync` | 105 | 0 |
-| `TryFrom` | 105 | 0 |
-| `TryInto` | 105 | 0 |
-| `Unpin` | 105 | 0 |
-| `UnsafeUnpin` | 105 | 0 |
-| `UnwindSafe` | 105 | 0 |
+| `Any` | 106 | 0 |
+| `Borrow` | 106 | 0 |
+| `BorrowMut` | 106 | 0 |
+| `Freeze` | 106 | 0 |
+| `From` | 106 | 0 |
+| `Into` | 106 | 0 |
+| `RefUnwindSafe` | 106 | 0 |
+| `Send` | 106 | 0 |
+| `Sync` | 106 | 0 |
+| `TryFrom` | 106 | 0 |
+| `TryInto` | 106 | 0 |
+| `Unpin` | 106 | 0 |
+| `UnsafeUnpin` | 106 | 0 |
+| `UnwindSafe` | 106 | 0 |
 | `Debug` | 33 | 33 |
-| `Clone` | 24 | 24 |
-| `CloneToUninit` | 24 | 0 |
-| `ToOwned` | 24 | 0 |
+| `Clone` | 25 | 25 |
+| `CloneToUninit` | 25 | 0 |
+| `ToOwned` | 25 | 0 |
 | `Default` | 22 | 22 |
 | `Eq` | 14 | 14 |
 | `PartialEq` | 14 | 14 |
 | `StructuralPartialEq` | 14 | 14 |
 | `Parse` | 13 | 13 |
-| `Copy` | 11 | 11 |
+| `Copy` | 12 | 12 |
 | `Display` | 2 | 2 |
 | `FromStr` | 2 | 2 |
 | `ToString` | 2 | 0 |
@@ -41,10 +41,10 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
+| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
+| `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:161 |
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
+| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:253 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
@@ -75,14 +75,15 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:328 |
 
-## `Clone` — 24 impls
+## `Clone` — 25 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
+| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
+| `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:161 |
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
+| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:253 |
+| `SliceBorrowShape<'a>` | `<'a>` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:31 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
@@ -135,9 +136,9 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
+| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
+| `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:253 |
 | `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:42 |
 | `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:65 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
@@ -154,9 +155,9 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
+| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
+| `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:253 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
@@ -173,9 +174,9 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
+| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
+| `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:253 |
 | `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:42 |
 | `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:65 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
@@ -206,12 +207,13 @@ Traits with impls: 28
 | `TypedListInput` | `` | concrete | 1 | miniextendr-macros/src/typed_list.rs:39 |
 | `ParsedEntry` | `` | concrete | 1 | miniextendr-macros/src/typed_list.rs:79 |
 
-## `Copy` — 11 impls
+## `Copy` — 12 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
+| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:130 |
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
-| `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
+| `SliceBorrowShape<'a>` | `<'a>` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:31 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |

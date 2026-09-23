@@ -153,8 +153,10 @@ See `rpkg/src/rust/doc_attr_tests.rs` for test coverage.
 `&mut [T]` parameters borrow R's vector storage directly and mutate it in place.
 Because R may pass the same SEXP to more than one argument, callers must not
 alias a mutable slice with another mutable or shared slice parameter. Generated
-wrappers detect this in debug builds; it remains a caller contract in release
-builds.
+wrappers reject repeated non-empty R vector identities before conversion in
+both debug and release builds, including slices reached through optional and
+nested list arguments. Direct `TryFromSexp` callers must enforce the borrowing
+contract themselves.
 
 ```rust
 #[miniextendr]

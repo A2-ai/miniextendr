@@ -653,9 +653,10 @@ where
 /// binding the same R vector to two slice parameters aliases one buffer. That is
 /// undefined behavior whenever at least one borrow is mutable — two `&mut [T]`,
 /// or a `&mut [T]` paired with a shared `&[T]` (which borrows the same buffer).
-/// The macro-generated wrapper emits a `debug_assert!` catching this in debug
-/// builds (#1104); in release the caller is responsible for not passing the same
-/// SEXP to two such parameters when one is mutable.
+/// Generated wrappers reject repeated non-empty R vector identities before
+/// conversion in every build, including borrowed slices inside optional/nested
+/// lists (#1104, #1252). Direct callers of this conversion must ensure the
+/// resulting borrow does not overlap another live mutable or shared borrow.
 impl<T> TryFromSexp for &mut [T]
 where
     T: crate::RNativeType + Copy,
