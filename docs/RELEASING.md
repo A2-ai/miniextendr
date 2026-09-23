@@ -67,14 +67,17 @@ crates (`miniextendr-api`, `-lint`, `-macros`) travel along as sibling
 directories — and builds via `pkgbuild`. Because DESCRIPTION sets
 `Config/build/bootstrap: TRUE`, `pkgbuild` runs `rpkg/bootstrap.R` first.
 
-On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. It vendors
-via `cargo-revendor` **only when the manifest declares a path-dependency
-sibling** (`path = "../…"`, which a staged/git install would strand). A
-git-only package — the exemplar and the typical scaffold — falls through to a
-plain source build (configure's `[patch]` for in-tree siblings, or cargo
-fetching the git URL), so `cargo-revendor` is **not** required. (Before the
-`declares_path_dep()` gate, bootstrap hard-aborted without cargo-revendor even
-for git-only packages — `install_github` failed out of the box.)
+On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. With
+`cargo-revendor` on PATH it vendors the whole graph into `inst/vendor.tar.xz`.
+Without it, only a path dependency **outside the package** (`path = "../…"`,
+which a staged/git install would strand) needs work: `tools/dev-bootstrap.R`
+stages those crates under `src/rust/vendor/` with `cargo package` (#1580), and
+registry and git dependencies resolve over the network. A package whose path
+dependencies all live inside it (the exemplar's `satellite`) or that has none
+(the typical scaffold) falls through to a plain source build (configure's
+`[patch]` for the framework siblings, or cargo fetching the git URL), so
+`cargo-revendor` is **not** required. Either way bootstrap warns that the build
+is not CRAN-ready; that is expected for this mode.
 
 How the framework crates resolve (read from `configure.ac`):
 
@@ -90,8 +93,8 @@ How the framework crates resolve (read from `configure.ac`):
   The unpinned `git = …` in `Cargo.toml` only decides resolution when the lock
   is regenerated — see "Known gap".
 
-**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`),
-`cargo-revendor` on PATH (undeclared — sharp edge), and network access.
+**Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`)
+and network access. `cargo-revendor` is optional here (see above).
 `autoconf` is **not** needed — `configure` is committed.
 
 ### Mode B — released vendored tarball (reproducible, offline, CRAN-shaped)
@@ -111,6 +114,14 @@ pkgbuild extension.) The `just r-cmd-build` / `just r-cmd-check` recipes call
 `just vendor` explicitly as well, which adds a defense-in-depth assertion that the
 framework crates were vendored from the local workspace rather than git@main
 (#876) — but the tarball would be vendored either way.
+
+This needs `cargo-revendor` on PATH. Without it the build still produces a
+tarball, but bootstrap ends with a warning that it "downloads crates.io and git
+dependencies at install time and is not CRAN-ready". That tarball is not a
+release artifact: install `cargo-revendor` (or run
+`minirextendr::miniextendr_vendor()` first) and rebuild. Before attaching a
+tarball, confirm it contains `inst/vendor.tar.xz` (`tar -tzf … | grep
+inst/vendor.tar.xz`).
 
 Attach the resulting `miniextendr_0.2.0.tar.gz` to a GitHub Release. Users install
 it offline and reproducibly:

@@ -136,7 +136,8 @@ miniextendr_configure <- function(path = ".") {
 #' package only path-dependency siblings, without xz or registry/Git vendoring.
 #' The portable manifest is activated in R CMD build's temporary copy, leaving
 #' the checkout's Cargo.toml unchanged. Ordinary bootstrap calls still default
-#' to distribution mode. Requires a current cargo-revendor and updated templates.
+#' to distribution mode. Staging uses cargo-revendor when it is on PATH and the
+#' scaffold's base-R stager otherwise; both require updated templates.
 #'
 #' @section Mid-build source-tree restore:
 #' In distribution mode, the install step's `R CMD build` runs `bootstrap.R` in the

@@ -26,7 +26,10 @@ Only workflows that are deliberately producing a package tarball may create
 - `just vendor` and `minirextendr_vendor()` create it explicitly before a
   maintainer builds a release artifact.
 - `bootstrap.R` creates it before `R CMD build` when a build frontend such as
-  `pkgbuild` honors `Config/build/bootstrap: TRUE`.
+  `pkgbuild` honors `Config/build/bootstrap: TRUE` and `cargo-revendor` is on
+  PATH. Without the tool, bootstrap only stages path dependencies that lie
+  outside the package (see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md)), so that
+  artifact stays in source mode.
 
 Everything else stays in source mode when the file is absent. This includes
 `bash ./configure`, `R CMD INSTALL .`, and a fresh scaffold outside a Git
@@ -37,6 +40,15 @@ installation. It remains in source mode and cargo may need network access; that
 artifact is therefore not CRAN-ready. The failure on CRAN's offline farm is the
 intended canary for a maintainer who shipped an incomplete release artifact.
 
+The build warns first. A distribution `bootstrap.R` run without `cargo-revendor`
+on PATH ends with an R `warning()` ("this tarball downloads crates.io and git
+dependencies at install time and is not CRAN-ready"), whether or not it staged
+path dependencies. `devtools::build()` and other non-quiet pkgbuild builds print
+it; pak and rv run bootstrap quietly and show it only in failure logs. Treat a
+tarball whose build printed that warning as a development artifact, never a
+release artifact. The warning is unconditional: no environment variable silences
+it, and there is no `NOT_CRAN` switch (see "Why" below).
+
 ## Where each install path lands
 
 | You ran | Mode | Vendor used? | How vendor was produced |
@@ -44,7 +56,7 @@ intended canary for a maintainer who shipped an incomplete release artifact.
 | `R CMD INSTALL .` (source dir) | Source | No | n/a; configure does not vendor |
 | `devtools::install(build = FALSE)` / `load_all` | Source | No | n/a; no package tarball is produced |
 | `R CMD build rpkg` directly | Source unless pre-vendored | Only if already present | run `just vendor` / `miniextendr_vendor()` first for a release artifact |
-| `devtools::build("rpkg")` / `pkgbuild::build()` | Tarball | Yes when `cargo-revendor` is available | `bootstrap.R` vendors before `R CMD build` |
+| `devtools::build("rpkg")` / `pkgbuild::build()` | Tarball when `cargo-revendor` is available, source (with a not-CRAN-ready warning) otherwise | Yes with `cargo-revendor`; without it only path dependencies outside the package are staged under `src/rust/vendor/` | `bootstrap.R` vendors (or stages, #1580) before `R CMD build` |
 | `just r-cmd-build` / `just r-cmd-check` | Tarball | Yes | explicit `just vendor` (recipe dependency) before R CMD build |
 | CRAN's autobuilder on a submitted tarball | Tarball | Yes | maintainer's `just vendor` baked it into the tarball |
 

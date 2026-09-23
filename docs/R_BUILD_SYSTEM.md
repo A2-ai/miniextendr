@@ -371,17 +371,81 @@ withr::with_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"), {
 
 `minirextendr::miniextendr_build()` selects this mode for its own installs unless
 you explicitly set a bootstrap mode or already have a distribution vendor
-archive. Install the current `cargo-revendor` before using it:
-
-```sh
-cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked
-```
+archive. It uses `cargo revendor --dev` when that tool is on PATH and the base-R
+stager in `tools/dev-bootstrap.R` otherwise; both produce the same layout.
 
 Bootstrap packages only path dependencies, including their transitive path
 siblings, into uncompressed `src/rust/vendor/<name>-<version>/` directories.
 Cargo package resolves workspace inheritance. Registry and Git dependencies
 continue to resolve normally; this mode does not make an offline release
-artifact, generate source replacement, or compress `inst/vendor.tar.xz`.
+artifact, generate source replacement, or compress `inst/vendor.tar.xz`. The
+portable manifest points each path dependency at its staged directory and adds
+`exclude = ["vendor"]` to its `[workspace]` so staged crates never become
+workspace members.
+
+## Distribution bootstrap without cargo-revendor
+
+A distribution build (`MINIEXTENDR_BOOTSTRAP_MODE` unset or `dist`) normally
+runs `cargo revendor --freeze` into `inst/vendor.tar.xz`. When `cargo-revendor`
+is not on PATH, bootstrap falls back to the same base-R stager whenever a path
+dependency lies **outside the package directory**, because R CMD build seals
+only that directory and a `path` dependency is not source-replaceable. The
+result builds with network access but is not CRAN-ready (#1580). A package whose
+path dependencies all live inside it has nothing to stage and builds from source.
+Either way bootstrap ends with a `warning()` that the tarball downloads crates.io
+and git dependencies at install time and is not CRAN-ready, naming the
+`cargo install` line and `minirextendr::miniextendr_vendor()` as the fixes.
+
+R CMD build activates the staging by running `./cleanup` in its copy, and skips a
+`cleanup` that is not executable. pak's git client (`git::` and `gitlab::` refs)
+writes every file without mode bits, so bootstrap restores the executable bit on
+`cleanup` whenever it leaves a staging behind.
+
+Installers only reach an outside sibling when they start from the repository:
+
+- **pak** with a repository ref and a subdirectory (`pak::pak("owner/repo/rpkg")`,
+  `gitlab::…/-/rpkg`, or any ref that pkgdepends resolves through git) downloads
+  the whole repository, runs `bootstrap.R` in the subdirectory, and builds the
+  tarball there, so the staging is what gets installed.
+- **rv** with a git source plus `directory = "rpkg"`, or a local source whose
+  `path` is the repository root plus `directory = "rpkg"`, copies the whole
+  repository, runs `bootstrap.R` in the subdirectory, and installs that copy in
+  place. The sibling is still next to it, so the staging goes unused.
+
+Pointing either tool at the package directory itself (pak `local::<repo>/rpkg`,
+rv `path = "<repo>/rpkg"`) copies only that directory, so the sibling is gone
+before any bootstrap runs, with or without `cargo-revendor`. Use one of the forms
+above, or build the tarball in the checkout (`devtools::build()`) and install
+that.
+
+The stager runs `cargo metadata --no-deps` for discovery and `cargo package
+--no-verify --allow-dirty` per sibling, so it never writes to the source tree.
+Two constraints follow from `cargo package`:
+
+- A dependency **between siblings** (normal or build kind) needs a `version`
+  key, because `cargo package` rewrites it to a version-only entry; the stager
+  then points it back at the staged copy. The R crate's own path dependencies
+  need no version key: its manifest is rewritten in place, never packaged.
+- A sibling cannot carry a `git` dependency, which `cargo package` rejects or
+  turns into a crates.io one. Install `cargo-revendor` for such a graph.
+
+Bootstrap reports every blocking problem in one error before staging anything:
+each missing `version`, each sibling git dependency, each `path` that points at
+a directory without a `Cargo.toml`, and each other path literal in the R crate
+that leaves the package. That last group covers a `[patch]` or `[replace]`
+source, which the fallback does not stage, and a target such as `[lib] path`.
+The R crate may declare a staged dependency in any TOML form cargo accepts
+(inline or `[dependencies.<name>]` tables, dotted keys, either quote style,
+absolute or `./`-prefixed paths, `[workspace.dependencies]` inheritance,
+`[target.*]` tables, multi-line inline tables); the minirextendr test suite
+exercises each form.
+
+The staged state records its mode and an md5 fingerprint of the source files
+behind every staged crate (plus an inherited workspace manifest). A staging
+left in the checkout is only reused by a later build of the same mode, and
+cleanup stops with `path dependency <name> changed since bootstrap; rerun
+bootstrap.R` when a source it can still see has changed. Sources that no
+longer exist are not compared.
 
 The source `Cargo.toml` stays byte-for-byte unchanged. Bootstrap prepares
 `.Cargo.toml.dev` and `.dev-bootstrap.rds` beside it. R CMD build runs cleanup
@@ -390,18 +454,22 @@ checks both the recorded origin path and source digest, so running cleanup in
 the checkout leaves its manifest alone and stale preparation fails clearly.
 Configure never rewrites either source manifest.
 
-Replaced dev output and staging files are retained under
-`src/rust/.dev-vendor-backup-*` for recovery. They are gitignored and excluded
-from package artifacts; remove unwanted backups with your usual trash utility.
-The current dev sidecars must reach R's build-copy cleanup and therefore are
-only gitignored. Cleanup consumes them before the artifact is sealed.
+A staging is bootstrap's own only while `.dev-bootstrap.rds` sits beside it.
+Every bootstrap removes that previous staging (vendor directory, portable
+manifest, state) before writing a new one, so repeated installs keep exactly
+one copy and no backups. A `src/rust/vendor` without the state file is not
+bootstrap's, so bootstrap stops instead of moving or deleting it. The dev
+sidecars must reach R's build-copy cleanup and therefore are only gitignored.
+Cleanup consumes them before the artifact is sealed, keeping its activation
+backup under `src/rust/.dev-vendor-backup-*` inside the build copy, which is
+excluded from the artifact.
 
 Ordinary bootstrap calls still default to distribution mode. Unset the variable
 (or set it to `dist`) to produce `inst/vendor.tar.xz` with the existing full
-vendor/freeze workflow. Bootstrap retires prior dev staging into the same
-backup area before preparing that distribution artifact.
+vendor/freeze workflow. Bootstrap removes prior dev staging before preparing
+that distribution artifact.
 
-Development bundles follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. Bootstrap never stages files in Git.
+Development bundles follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. In a Git checkout, untracked files that Git does not ignore are packaged too, and ignored ones are left out. Bootstrap never stages files in Git.
 
 ## See Also
 

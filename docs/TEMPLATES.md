@@ -26,7 +26,7 @@ Templates are stored in `minirextendr/inst/templates/` and come in two flavors:
 Templates are not exact copies of the example package (`rpkg/`) - they have legitimate differences for standalone projects:
 
 - **Conditional monorepo detection** - Check if miniextendr-api exists before using path overrides
-- **Standalone tarball production** - Bootstrap can freeze path-dependency siblings into the release vendor tarball
+- **Standalone tarball production** - Bootstrap can freeze path-dependency siblings into the release vendor tarball (with `cargo-revendor`), or stage just the out-of-package path dependencies under `src/rust/vendor/` without it
 - **Extra flexibility** - Handle cases where rpkg assumptions don't hold
 
 The approved differences are tracked in `patches/templates.patch`.

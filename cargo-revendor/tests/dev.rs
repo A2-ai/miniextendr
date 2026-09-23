@@ -139,4 +139,26 @@ fn dev_bundle_relocates_path_chain_and_preserves_source_manifest() {
         "{}",
         String::from_utf8_lossy(&check.stderr)
     );
+    // Staged crates sit under the root's directory. Cargo's `exclude` is a
+    // literal path prefix, so only an exact `vendor` entry keeps them out of
+    // the workspace (a member would also resolve its dev-dependencies).
+    let metadata = std::process::Command::new("cargo")
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--offline",
+        ])
+        .current_dir(relocated.path())
+        .env("CARGO_HOME", cargo_home.path())
+        .output()
+        .unwrap();
+    assert!(metadata.status.success());
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    assert_eq!(
+        metadata["workspace_members"].as_array().unwrap().len(),
+        1,
+        "{metadata}"
+    );
 }

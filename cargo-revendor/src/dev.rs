@@ -119,8 +119,10 @@ pub fn prepare(
         doc.remove("workspace");
         if pkg.id == root.id {
             doc["workspace"] = toml_edit::Item::Table(toml_edit::Table::new());
+            // Cargo's `exclude` is a literal path prefix (no globs): name the
+            // staging directory itself, or staged crates become members.
             let mut exclude = toml_edit::Array::new();
-            exclude.push(format!("{}/*", crate::path_to_toml(relative)));
+            exclude.push(crate::path_to_toml(relative));
             doc["workspace"]["exclude"] = toml_edit::value(exclude);
         }
         rewrite_paths(
@@ -142,7 +144,9 @@ pub fn prepare(
         }
     }
     // Retain the previous output for recovery instead of permanently deleting
-    // an existing directory. Scaffold ignore rules keep these backups local.
+    // an existing directory: nothing here proves it is ours. bootstrap.R removes
+    // its own staging first (its state file proves ownership), so this only
+    // fires for direct invocations. Scaffold ignore rules keep backups local.
     if output.exists() {
         let backup = tempfile::Builder::new()
             .prefix(".dev-vendor-backup-")
