@@ -119,8 +119,10 @@ pub fn prepare(
         doc.remove("workspace");
         if pkg.id == root.id {
             doc["workspace"] = toml_edit::Item::Table(toml_edit::Table::new());
+            // Cargo's `exclude` is a literal path prefix (no globs): name the
+            // staging directory itself, or staged crates become members.
             let mut exclude = toml_edit::Array::new();
-            exclude.push(format!("{}/*", crate::path_to_toml(relative)));
+            exclude.push(crate::path_to_toml(relative));
             doc["workspace"]["exclude"] = toml_edit::value(exclude);
         }
         rewrite_paths(
