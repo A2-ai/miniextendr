@@ -407,8 +407,10 @@ fn native_metadata_matches_selected_conversion_paths() {
         ("()", true),
         ("&Dots", true),
         ("&str", true),
+        ("Call", true),
+        ("miniextendr_api::CallerCall", true),
         ("i64", true),
-        ("u16", true),
+        ("u16", false),
         ("Vec<Mode>", true),
         ("Box<[Mode]>", true),
         ("[Mode; 2]", true),
@@ -435,8 +437,10 @@ fn native_metadata_matches_selected_conversion_paths() {
         unreachable!()
     };
     assert!(builder.native_borrow_metadata(&param, &arg).is_none());
-    // Coercion flags do not change borrowed / optional / boxed fallback conversions.
+    // Numeric coercion now delegates to TryFromSexp, as do these fallback paths.
     for ty in [
+        "u16",
+        "Vec<u16>",
         "&mut i32",
         "Option<&mut i32>",
         "Box<[&mut i32]>",
