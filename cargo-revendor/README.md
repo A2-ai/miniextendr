@@ -359,8 +359,10 @@ archive is created. A relocated Rust regression covers dependency aliases,
 workspace fields, transitive paths, and an ordinary Git dependency.
 
 The output must be a directory inside the source crate. Existing output is
-retained in a `.dev-vendor-backup-*` directory beside it for recovery. R scaffolds
-ignore those backups. Their bootstrap/cleanup helpers activate the portable
+retained in a `.dev-vendor-backup-*` directory beside it for recovery, because
+the tool cannot prove it wrote that directory. R scaffolds ignore those backups,
+and their bootstrap removes its own previous output first (its state file proves
+ownership), so backups only accumulate for direct invocations. Their bootstrap/cleanup helpers activate the portable
 manifest only inside R CMD build's staged copy; configure does not mutate it.
 Select `MINIEXTENDR_BOOTSTRAP_MODE=dev` to use this through ordinary R build tools.
 See [the R build guide](../docs/R_BUILD_SYSTEM.md#development-bootstrap) for the

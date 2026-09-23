@@ -144,7 +144,9 @@ pub fn prepare(
         }
     }
     // Retain the previous output for recovery instead of permanently deleting
-    // an existing directory. Scaffold ignore rules keep these backups local.
+    // an existing directory: nothing here proves it is ours. bootstrap.R removes
+    // its own staging first (its state file proves ownership), so this only
+    // fires for direct invocations. Scaffold ignore rules keep backups local.
     if output.exists() {
         let backup = tempfile::Builder::new()
             .prefix(".dev-vendor-backup-")

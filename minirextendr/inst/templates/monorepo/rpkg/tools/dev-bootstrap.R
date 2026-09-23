@@ -35,9 +35,14 @@ cargo_json_field <- function(json, key) {
 
 cargo_manifest <- function(manifest) {
   manifest <- normalizePath(manifest, winslash = "/", mustWork = TRUE)
+  err <- tempfile()
+  on.exit(unlink(err), add = TRUE)
   out <- suppressWarnings(system2("cargo", c("metadata", "--no-deps", "--format-version", "1",
-    "--offline", "--manifest-path", shQuote(manifest)), stdout = TRUE))
-  if (!is.null(attr(out, "status"))) stop("cargo metadata failed for ", manifest, call. = FALSE)
+    "--offline", "--manifest-path", shQuote(manifest)), stdout = TRUE, stderr = err))
+  if (!is.null(attr(out, "status"))) {
+    stop("cargo metadata failed for ", manifest, ":\n", paste(readLines(err, warn = FALSE), collapse = "\n"),
+         "\nFix the manifest error above, then rerun bootstrap.R.", call. = FALSE)
+  }
   json <- paste(out, collapse = "")
   starts <- gregexpr('\\{"name":"[^"]*","version":"[^"]*","id":', json, perl = TRUE)[[1L]]
   pkgs <- substring(json, starts, c(starts[-1L] - 1L, nchar(json)))
@@ -62,11 +67,13 @@ path_inside <- function(path, root) startsWith(paste0(path, "/"), paste0(root, "
 # their normal/build edges. `cargo package` re-resolves each sibling's
 # normalized manifest, so its versioned path edges (dev ones too) also need a
 # patch entry; unversioned dev edges are stripped by cargo and need nothing.
-path_dependency_plan <- function(paths) {
+# `all = TRUE` follows every edge, as `cargo revendor --dev` stages them.
+path_dependency_closure <- function(paths, all = FALSE) {
   root <- cargo_manifest(paths$manifest)
   nodes <- list()
   patches <- character()
   problems <- character()
+  dangling <- character()
   pending <- list(root)
   while (length(pending)) {
     info <- pending[[1L]]
@@ -74,14 +81,20 @@ path_dependency_plan <- function(paths) {
     sibling <- !identical(info$dir, root$dir)
     for (i in seq_len(nrow(info$deps))) {
       dep <- info$deps[i, ]
-      dev <- identical(dep$kind, "dev")
+      dev <- identical(dep$kind, "dev") && !all
       if (sibling && !dev && !is.na(dep$source) && startsWith(dep$source, "git+")) {
         problems <- c(problems, sprintf("%s: `%s` is a git dependency, which `cargo package` cannot keep",
                                         info$manifest, dep$alias))
       }
       if (is.na(dep$path)) next
-      dir <- normalizePath(dep$path, winslash = "/")
+      dir <- normalizePath(dep$path, winslash = "/", mustWork = FALSE)
       if (identical(dir, root$dir)) next
+      if (!file.exists(file.path(dir, "Cargo.toml"))) {
+        dangling <- c(dangling, dir)
+        problems <- c(problems, sprintf("%s: path dependency `%s` points at %s, which has no Cargo.toml; fix its `path`",
+                                        info$manifest, dep$alias, dir))
+        next
+      }
       if (sibling && dev) {
         if (dep$req != "*") patches[[dep$name]] <- dir
         next
@@ -100,12 +113,29 @@ path_dependency_plan <- function(paths) {
       }
     }
   }
-  if (all(vapply(names(nodes), path_inside, logical(1), root = paths$root))) return(NULL)
-  lines <- readLines(paths$manifest, warn = FALSE)
-  if (!any(grepl("^\\s*\\[workspace\\]\\s*(#.*)?$", lines)) &&
-      any(grepl("(^|[{,.[:space:]])workspace\\s*=\\s*true", lines))) {
+  list(root = root, nodes = nodes, patches = patches, problems = problems, dangling = dangling)
+}
+
+# The staging plan, or NULL when no path in the manifest or its dependency
+# closure leaves the package. Every blocking problem is reported in one error
+# before staging.
+path_dependency_plan <- function(paths) {
+  plan <- path_dependency_closure(paths)
+  plan$lines <- readLines(paths$manifest, warn = FALSE)
+  plan$slots <- vapply(plan$nodes, function(node) paste0(node$name, "-", node$version), "")
+  portable <- portable_manifest(paths, plan)
+  outside <- !vapply(c(names(plan$nodes), plan$dangling), path_inside, logical(1), root = paths$root)
+  if (!any(outside) && !length(portable$outside)) return(NULL)
+  problems <- c(plan$problems, portable$outside, portable$missed)
+  if (!any(grepl("^\\s*\\[workspace\\]\\s*(#.*)?$", plan$lines)) &&
+      any(grepl("(^|[{,.[:space:]])workspace\\s*=\\s*true", plan$lines))) {
     problems <- c(problems, sprintf("%s: inherits from a parent workspace; give it its own [workspace] table",
                                     paths$manifest))
+  }
+  crates <- vapply(plan$nodes, `[[`, "", "name")
+  if (anyDuplicated(crates)) {
+    problems <- c(problems, sprintf("path dependencies share a package name: %s; rename one of them",
+      paste(plan$slots[crates %in% crates[duplicated(crates)]], collapse = ", ")))
   }
   if (length(problems)) {
     stop(paste(c("Cannot stage path dependencies without cargo-revendor:", paste0("  - ", problems),
@@ -113,11 +143,8 @@ path_dependency_plan <- function(paths) {
       "  cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked"),
       collapse = "\n"), call. = FALSE)
   }
-  slots <- vapply(nodes, function(node) paste0(node$name, "-", node$version), "")
-  if (anyDuplicated(slots) || anyDuplicated(vapply(nodes, `[[`, "", "name"))) {
-    stop("Path dependencies must have distinct package names: ", paste(slots, collapse = ", "), call. = FALSE)
-  }
-  list(root = root, nodes = nodes, slots = slots, patches = patches, lines = lines)
+  plan$portable <- portable$lines
+  plan
 }
 
 # `cargo package` rewrites a nested path dependency to a version-only
@@ -144,8 +171,10 @@ restore_sibling_paths <- function(node, lines, slots) {
 }
 
 # The R crate's own manifest cannot come from `cargo package`, which rejects or
-# rewrites its git dependencies. Rewrite only its path literals that resolve to
-# a staged crate, and keep the staged copies out of its workspace.
+# rewrites its git dependencies. Rewrite only its dependency-table path literals
+# that resolve to a staged crate, keep the staged copies out of its workspace,
+# and report every other path literal that would dangle once the package leaves
+# its checkout (a [patch] or [replace] source, a target outside the package).
 portable_manifest <- function(paths, plan) {
   lines <- plan$lines
   base <- dirname(paths$manifest)
@@ -158,53 +187,61 @@ portable_manifest <- function(paths, plan) {
     normalizePath(value, winslash = "/", mustWork = FALSE)
   }
   rewritten <- character()
-  in_deps <- FALSE
-  code <- !startsWith(trimws(lines), "#")
-  for (i in which(code)) {
+  outside <- character()
+  section <- ""
+  for (i in which(!startsWith(trimws(lines), "#"))) {
     s <- trimws(lines[[i]])
     if (startsWith(s, "[")) {
-      s <- sub("\\]\\s*#.*$", "]", s)
-      in_deps <- grepl("dependencies(\\.[^]]+)?\\]$", s) && !startsWith(s, "[patch")
+      section <- sub("\\]\\s*#.*$", "]", s)
       next
     }
-    if (!in_deps) next
     m <- gregexpr(literal, lines[[i]], perl = TRUE)
     hits <- regmatches(lines[[i]], m)[[1L]]
     if (!length(hits)) next
+    deps <- grepl("dependencies(\\.[^]]+)?\\]$", section) && !startsWith(section, "[patch")
     regmatches(lines[[i]], m) <- list(vapply(hits, function(hit) {
       dir <- resolve(hit)
-      if (is.null(plan$nodes[[dir]])) return(hit)
-      rewritten <<- c(rewritten, dir)
-      sprintf('path = "vendor/%s"', plan$slots[[dir]])
+      if (deps && !is.null(plan$nodes[[dir]])) {
+        rewritten <<- c(rewritten, dir)
+        return(sprintf('path = "vendor/%s"', plan$slots[[dir]]))
+      }
+      if (!path_inside(dir, paths$root) && !dir %in% plan$dangling) {
+        fix <- if (grepl("^\\[(patch|replace)", section)) {
+          "patch sources are not staged, so move that crate inside the package"
+        } else {
+          "move it inside the package"
+        }
+        outside <<- c(outside, sprintf("%s: `%s` under %s points outside the package; %s",
+                                       paths$manifest, hit, if (nzchar(section)) section else "the top level", fix))
+      }
+      hit
     }, "", USE.NAMES = FALSE))
   }
-  direct <- unique(normalizePath(plan$root$deps$path[!is.na(plan$root$deps$path)], winslash = "/"))
-  outside <- unlist(lapply(regmatches(lines[code], gregexpr(literal, lines[code], perl = TRUE)), function(hits) {
-    hits[!vapply(hits, function(hit) path_inside(resolve(hit), paths$root), logical(1))]
-  }))
-  if (length(setdiff(direct, rewritten)) || length(outside)) {
-    stop("Cannot rewrite the path dependencies of ", paths$manifest, " for staging: ",
-         paste(c(setdiff(direct, rewritten), outside), collapse = ", "), call. = FALSE)
-  }
+  deps <- plan$root$deps[!is.na(plan$root$deps$path), ]
+  dirs <- normalizePath(deps$path, winslash = "/", mustWork = FALSE)
+  missed <- unique(deps$alias[!dirs %in% c(rewritten, plan$dangling, plan$root$dir)])
+  missed <- sprintf("%s: cannot find the `path = \"...\"` entry of `%s` to rewrite; declare it with a plain `path` key",
+                    paths$manifest, missed)
   ws <- which(grepl("^\\s*\\[workspace\\]\\s*(#.*)?$", lines))
-  if (!length(ws)) return(c(lines, "", "[workspace]", 'exclude = ["vendor"]'))
-  heads <- which(grepl("^\\s*\\[", lines))
-  end <- c(heads[heads > ws[[1L]]], length(lines) + 1L)[[1L]]
-  body <- seq.int(ws[[1L]] + 1L, length.out = end - ws[[1L]] - 1L)
-  ex <- body[grepl("^\\s*exclude\\s*=\\s*\\[", lines[body])]
-  if (length(ex)) {
-    lines[[ex[[1L]]]] <- sub("[", '["vendor", ', lines[[ex[[1L]]]], fixed = TRUE)
-    lines
+  if (!length(ws)) {
+    lines <- c(lines, "", "[workspace]", 'exclude = ["vendor"]')
   } else {
-    append(lines, 'exclude = ["vendor"]', after = ws[[1L]])
+    heads <- which(grepl("^\\s*\\[", lines))
+    end <- c(heads[heads > ws[[1L]]], length(lines) + 1L)[[1L]]
+    body <- seq.int(ws[[1L]] + 1L, length.out = end - ws[[1L]] - 1L)
+    ex <- body[grepl("^\\s*exclude\\s*=\\s*\\[", lines[body])]
+    if (length(ex)) {
+      lines[[ex[[1L]]]] <- sub("[", '["vendor", ', lines[[ex[[1L]]]], fixed = TRUE)
+    } else {
+      lines <- append(lines, 'exclude = ["vendor"]', after = ws[[1L]])
+    }
   }
+  list(lines = lines, outside = outside, missed = missed)
 }
 
-# Stage every path dependency under src/rust/vendor/<name>-<version>/ when one
-# lies outside the package. No .cargo-checksum.json: path crates need none.
-stage_path_dependencies <- function(paths) {
-  plan <- path_dependency_plan(paths)
-  if (is.null(plan)) return(FALSE)
+# Stage every node of the plan under src/rust/vendor/<name>-<version>/.
+# No .cargo-checksum.json: path crates need none.
+stage_path_dependencies <- function(paths, plan) {
   # Same prefix as the backups, so an interrupted run stays ignored.
   stage <- tempfile(".dev-vendor-backup-", dirname(paths$manifest))
   tree <- file.path(stage, "vendor")
@@ -224,13 +261,28 @@ stage_path_dependencies <- function(paths) {
     manifest <- file.path(tree, plan$slots[[dir]], "Cargo.toml")
     writeLines(restore_sibling_paths(node, readLines(manifest, warn = FALSE), plan$slots), manifest)
   }
-  portable <- portable_manifest(paths, plan)
-  dev_bootstrap_backup(paths, paths$vendor)
   if (!file.rename(tree, paths$vendor)) stop("Unable to publish ", paths$vendor, call. = FALSE)
-  writeLines(portable, paths$portable)
+  writeLines(plan$portable, paths$portable)
   message("Staged ", length(plan$slots), " path dependencies under src/rust/vendor without cargo-revendor: ",
           paste(plan$slots, collapse = ", "))
   invisible(TRUE)
+}
+
+# Fingerprint the source files behind each staged slot (its packaged file list
+# mapped back to the origin, plus an inherited workspace manifest), so the build
+# copy can refuse a staging that is older than its path dependencies.
+path_dependency_sources <- function(nodes, vendor) {
+  sources <- list()
+  for (node in nodes) {
+    slot <- paste0(node$name, "-", node$version)
+    staged <- file.path(vendor, slot)
+    if (!dir.exists(staged)) next
+    files <- file.path(node$dir, list.files(staged, recursive = TRUE, all.files = TRUE))
+    files <- files[file.exists(files)]
+    if (!identical(node$workspace, node$dir)) files <- c(files, file.path(node$workspace, "Cargo.toml"))
+    sources[[slot]] <- list(name = node$name, dir = node$dir, md5 = tools::md5sum(unique(files)))
+  }
+  sources
 }
 
 # endregion
@@ -243,25 +295,41 @@ prepare_dev_bootstrap <- function(root = ".", mode = "dev") {
          call. = FALSE)
   }
   original <- unname(tools::md5sum(paths$manifest))
-  if (mode == "dev" && nzchar(Sys.which("cargo-revendor"))) {
+  tool <- mode == "dev" && nzchar(Sys.which("cargo-revendor"))
+  plan <- if (!tool) path_dependency_plan(paths)
+  clear_dev_bootstrap(root)
+  if (!tool && is.null(plan)) return(invisible(FALSE))
+  if (file.exists(paths$vendor)) {
+    stop(paths$vendor, " exists but bootstrap did not create it (no .dev-bootstrap.rds beside Cargo.toml); ",
+         "move it out of src/rust, then rerun bootstrap.R.", call. = FALSE)
+  }
+  # Anything at the staging paths from here on is this run's output.
+  done <- FALSE
+  on.exit(if (!done) unlink(c(paths$vendor, paths$portable), recursive = TRUE), add = TRUE)
+  if (tool) {
     status <- system2("cargo", c("revendor", "--dev", "--manifest-path",
       shQuote(paths$manifest), "--output", shQuote(paths$vendor), "-v"))
     if (status != 0L) stop("Development bootstrap failed (exit ", status, ").", call. = FALSE)
-  } else if (!stage_path_dependencies(paths)) {
-    clear_dev_bootstrap(root)
-    return(invisible(FALSE))
+    nodes <- path_dependency_closure(paths, all = TRUE)$nodes
+  } else {
+    stage_path_dependencies(paths, plan)
+    nodes <- plan$nodes
   }
   if (!identical(unname(tools::md5sum(paths$manifest)), original)) {
     stop("Development bootstrap changed the source Cargo.toml.", call. = FALSE)
   }
-  saveRDS(list(root = paths$root, manifest = original, mode = mode), paths$state)
+  saveRDS(list(root = paths$root, manifest = original, mode = mode,
+               sources = path_dependency_sources(nodes, paths$vendor)), paths$state)
+  done <- TRUE
   invisible(TRUE)
 }
 
+# A staging is ours only when its state file exists. It is regenerated on
+# every bootstrap, so it is removed rather than retained.
 clear_dev_bootstrap <- function(root = ".") {
   paths <- dev_bootstrap_paths(root)
   if (file.exists(paths$state)) {
-    dev_bootstrap_backup(paths, c(paths$portable, paths$state, paths$vendor))
+    unlink(c(paths$vendor, paths$portable, paths$state), recursive = TRUE)
   }
   invisible(TRUE)
 }
@@ -277,6 +345,18 @@ activate_dev_bootstrap <- function(root = ".") {
   }
   if (!identical(unname(tools::md5sum(paths$manifest)), state$manifest)) {
     stop("Source Cargo.toml changed after development bootstrap; rerun bootstrap.R.", call. = FALSE)
+  }
+  # Sources that no longer exist (a relocated checkout) cannot be compared.
+  changed <- character()
+  for (source in state$sources) {
+    if (!dir.exists(source$dir)) next
+    now <- tools::md5sum(names(source$md5))
+    if (!identical(unname(now), unname(source$md5))) changed <- c(changed, source$name)
+  }
+  if (length(changed)) {
+    stop(sprintf("path %s %s changed since bootstrap; rerun bootstrap.R.",
+                 if (length(changed) == 1L) "dependency" else "dependencies", paste(changed, collapse = ", ")),
+         call. = FALSE)
   }
   # Preserve the staged original too. The checkout was never rewritten.
   dev_bootstrap_backup(paths, c(paths$manifest, paths$state))
