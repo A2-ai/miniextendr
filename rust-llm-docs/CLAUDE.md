@@ -91,6 +91,8 @@ The `root` field in the JSON indicates the crate root ID, and structs/enums have
 
 ## Notes
 
+- Run corpus generation/checks and Rust tests sequentially when they share a Cargo target directory. During an overlapping `llm-docs-check` and test run, rustdoc failed to load the `linkme` dependency for doctests; the unchanged tree passed those doctests when rerun serially. Keep separate target directories if running them concurrently.
+
 - Both scripts filter to only document public items (`visibility == "public"`)
 - By default, only items from the current crate are documented (`crate_id == 0`)
 - The generated `docs/` and `generated/` directories are gitignored
