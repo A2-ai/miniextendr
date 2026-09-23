@@ -13,12 +13,19 @@ enum Container {
     Vec,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConversionKind {
+    To,
+    From,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReturnWrap {
     system: ClassSystem,
     target: String,
     containers: Vec<Container>,
     typed: bool,
+    pub(crate) conversion: Option<ConversionKind>,
 }
 
 pub(crate) fn parse_system(value: &syn::LitStr) -> syn::Result<ClassSystem> {
@@ -31,7 +38,7 @@ pub(crate) fn parse_system(value: &syn::LitStr) -> syn::Result<ClassSystem> {
 fn marker_system(name: &syn::Ident) -> Option<ClassSystem> {
     Some(match name.to_string().as_str() {
         "WrapAsR6" => ClassSystem::R6,
-        "WrapAsS7" => ClassSystem::S7,
+        "WrapAsS7" | "ConvertTo" | "ConvertFrom" => ClassSystem::S7,
         "WrapAsS4" => ClassSystem::S4,
         "WrapAsS3" => ClassSystem::S3,
         "WrapAsEnv" => ClassSystem::Env,
@@ -136,6 +143,14 @@ pub(crate) fn resolve(
     } else {
         None
     };
+    let conversion =
+        marker
+            .as_ref()
+            .and_then(|(_, segment)| match segment.ident.to_string().as_str() {
+                "ConvertTo" => Some(ConversionKind::To),
+                "ConvertFrom" => Some(ConversionKind::From),
+                _ => None,
+            });
     let typed = marker.is_some();
     let (system, payload) = match marker {
         Some((system, segment)) => {
@@ -205,12 +220,26 @@ pub(crate) fn resolve(
             target,
             containers,
             typed,
+            conversion,
         }),
         ReturnType::Type(*arrow, Box::new(peeled)),
     ))
 }
 
 impl ReturnWrap {
+    pub(crate) fn system(&self) -> ClassSystem {
+        self.system
+    }
+    pub(crate) fn target(&self) -> &str {
+        &self.target
+    }
+    pub(crate) fn set_target(&mut self, target: String) {
+        self.target = target;
+    }
+    pub(crate) fn has_vector(&self) -> bool {
+        self.containers.contains(&Container::Vec)
+    }
+
     /// Unwrap only syntactic marker values; attributes keep the user's value.
     pub(crate) fn prepare_value(&self, call: TokenStream) -> TokenStream {
         fn map(call: TokenStream, containers: &[Container]) -> TokenStream {

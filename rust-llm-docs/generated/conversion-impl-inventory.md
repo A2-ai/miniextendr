@@ -9,7 +9,7 @@ Traits with impls: 9
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
 | `TryFromSexp` | 469 | 469 |
-| `IntoR` | 361 | 361 |
+| `IntoR` | 363 | 363 |
 | `IntoRAs` | 135 | 135 |
 | `TryCoerce` | 95 | 93 |
 | `Coerce` | 53 | 53 |
@@ -526,7 +526,7 @@ Traits with impls: 9
 - **miniextendr-api/src/optionals/jiff_impl.rs:874** (2 impls): `JiffTimestampVecMut`, `JiffTimestampVecRef`
 - **miniextendr-api/src/optionals/jiff_impl.rs:915** (2 impls): `JiffZonedVecMut`, `JiffZonedVecRef`
 
-## `IntoR` — 361 impls
+## `IntoR` — 363 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -885,12 +885,14 @@ Traits with impls: 9
 | `ProtectedStrVec` | `` | concrete | 4 | miniextendr-api/src/strvec.rs:727 |
 | `Invisible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:123 |
 | `Visible<T>` | `<T>` | concrete | 3 | miniextendr-api/src/visibility.rs:124 |
-| `WrapAsR6<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:68 |
-| `WrapAsS7<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:72 |
-| `WrapAsS4<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:76 |
-| `WrapAsS3<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:80 |
-| `WrapAsEnv<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:81 |
-| `WrapAsVctrs<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:82 |
+| `WrapAsR6<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:75 |
+| `WrapAsS7<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:79 |
+| `WrapAsS4<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:83 |
+| `WrapAsS3<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:87 |
+| `WrapAsEnv<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:88 |
+| `WrapAsVctrs<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:89 |
+| `ConvertTo<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:94 |
+| `ConvertFrom<T>` | `<T>` | concrete | 3 | miniextendr-api/src/wrap_as.rs:98 |
 
 ### `IntoR` — for-types sharing a source span (likely macro-expanded / co-located)
 

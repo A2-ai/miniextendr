@@ -10,7 +10,6 @@
 \alias{S7Fahrenheit_to_celsius}
 \alias{S7Fahrenheit_from_celsius}
 \alias{convert-S7Celsius-to-S7Fahrenheit}
-\alias{convert}
 \alias{convert-S7Fahrenheit-to-S7Celsius}
 \title{S7Fahrenheit S7 Class}
 \source{
@@ -38,12 +37,6 @@ S7Fahrenheit_value(self, ...)
 S7Fahrenheit_to_celsius(self, ...)
 
 S7Fahrenheit_from_celsius(c)
-
-## S7 method for classes <miniextendr::S7Celsius>, <miniextendr::S7Fahrenheit>
-convert(from, to, ...)
-
-## S7 method for classes <miniextendr::S7Fahrenheit>, <miniextendr::S7Celsius>
-convert(from, to, ...)
 }
 \arguments{
 \item{value}{Numeric temperature in Fahrenheit.}
@@ -52,7 +45,7 @@ convert(from, to, ...)
 
 \item{self}{A \code{S7Fahrenheit} object.}
 
-\item{...}{Additional arguments passed to the S7 convert generic.}
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
 \item{c}{(undocumented)}
 }
@@ -77,4 +70,16 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Convert Fahrenheit from Celsius. Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
 }
+\section{Conversion from \code{S7Celsius}}{
+
+\code{S7::convert(from, S7Fahrenheit)} converts a source object to this class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
+\section{Conversion to \code{S7Celsius}}{
+
+\code{S7::convert(from, S7Celsius)} converts an object of this class to the target class.
+See \code{\link[S7:convert]{S7::convert()}} for the generic's arguments.
+}
+
 \keyword{internal}

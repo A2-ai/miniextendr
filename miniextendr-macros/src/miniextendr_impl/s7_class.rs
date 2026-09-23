@@ -1110,16 +1110,20 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     lines.push(format!("#' @title convert-{}-to-{}", from_type, class_name));
                 }
                 lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
-                // Add @aliases convert so roxygen2 emits \alias{convert} in the
-                // merged .Rd file. Without this, R CMD check warns:
-                //   "Objects in \usage without \alias in Rd file '...Rd': 'convert'"
-                lines.push("#' @aliases convert".to_string());
-                // S7's `convert` generic is `function(from, to, ...)`. Document
-                // `...` so the rendered \usage{} matches and codoc passes.
-                lines.push(
-                    "#' @param ... Additional arguments passed to the S7 convert generic."
-                        .to_string(),
-                );
+                // The generic belongs to S7. Giving every class page its
+                // `convert` alias duplicates that alias across the package.
+                // Describe the registration here; ordinary Rust shortcuts
+                // retain their own usage and argument documentation.
+                lines.push("#' @usage NULL".to_string());
+                lines.push(format!(
+                    "#' @section Conversion from `{}`:",
+                    class_ref_or_verbatim(from_type)
+                ));
+                lines.push(format!(
+                    "#' `S7::convert(from, {})` converts a source object to this class.",
+                    class_name
+                ));
+                lines.push("#' See [S7::convert()] for the generic's arguments.".to_string());
             }
 
             // Generate: S7::method(S7::convert, list(FromType, ThisClass)) <- function(from, to, ...) ...
@@ -1167,16 +1171,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     lines.push(format!("#' @title convert-{}-to-{}", class_name, to_type));
                 }
                 lines.push(crate::roxygen::method_source_tag(type_ident, &method.ident));
-                // Add @aliases convert so roxygen2 emits \alias{convert} in the
-                // merged .Rd file. Without this, R CMD check warns:
-                //   "Objects in \usage without \alias in Rd file '...Rd': 'convert'"
-                lines.push("#' @aliases convert".to_string());
-                // S7's `convert` generic is `function(from, to, ...)`. Document
-                // `...` so the rendered \usage{} matches and codoc passes.
-                lines.push(
-                    "#' @param ... Additional arguments passed to the S7 convert generic."
-                        .to_string(),
-                );
+                lines.push("#' @usage NULL".to_string());
+                lines.push(format!(
+                    "#' @section Conversion to `{}`:",
+                    class_ref_or_verbatim(to_type)
+                ));
+                lines.push(format!(
+                    "#' `S7::convert(from, {})` converts an object of this class to the target class.",
+                    class_ref_or_verbatim(to_type)
+                ));
+                lines.push("#' See [S7::convert()] for the generic's arguments.".to_string());
             }
 
             // Generate: S7::method(convert, list(ThisClass, ToType)) <- function(from, to, ...) ...
@@ -1195,6 +1199,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type_ref.clone())
+                .with_invisible(method.is_invisible())
+                .with_return_class_from_method(method)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package.

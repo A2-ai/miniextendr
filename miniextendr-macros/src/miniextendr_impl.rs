@@ -2713,7 +2713,13 @@ impl ParsedImpl {
         let mut methods = Vec::new();
         for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
+                let mut method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
+                crate::s7_conversion::configure(
+                    &mut method,
+                    fn_item,
+                    attrs.class_system,
+                    &type_ident,
+                )?;
                 // Validate method attributes for this class system
                 ParsedMethod::validate_method_attrs(
                     &method.method_attrs,

@@ -274,6 +274,7 @@ mod s3_nonsyntactic_tests;
 mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
+mod s7_conversion_marker_tests;
 mod s7_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]

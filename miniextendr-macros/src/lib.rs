@@ -162,6 +162,7 @@ mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
 mod return_wrap;
+mod s7_conversion;
 mod type_inspect;
 mod typed_dataframe;
 mod typed_list;
@@ -853,6 +854,17 @@ pub fn miniextendr(
         Ok(resolved) => resolved,
         Err(error) => return error.into_compile_error().into(),
     };
+    if return_wrap
+        .as_ref()
+        .is_some_and(|wrap| wrap.conversion.is_some())
+    {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "ConvertTo/ConvertFrom require an inherent S7 impl method",
+        )
+        .into_compile_error()
+        .into();
+    }
     if return_wrap.is_some() && (serialize || unwrap_in_r) {
         return syn::Error::new_spanned(
             parsed.output(),

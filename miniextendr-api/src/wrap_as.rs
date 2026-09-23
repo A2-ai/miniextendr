@@ -5,6 +5,13 @@
 //! Both forms leave Rust-to-R value conversion to `T`; they only select the
 //! R-side wrapping expression. See `docs/MINIEXTENDR_ATTRIBUTE.md` for examples.
 //!
+//! `ConvertTo<T>` and `ConvertFrom<T>` additionally register an inherent S7
+//! method with `S7::convert`. `ConvertTo<T>` names the target payload;
+//! `ConvertFrom<Self>` infers the source from its static method's sole typed
+//! parameter. Both use the existing S7 class-name resolver, including registered
+//! R class renames, and have matching `s7(convert_to = "Target")` /
+//! `s7(convert_from = "Source")` attributes.
+//!
 //! Markers are recognized by their last path segment. Type aliases and renamed
 //! imports do not select wrapping. Put `Invisible`/`Visible` outside the whole
 //! return, and `Option`, `Result`, or `Vec` outside the class marker.
@@ -82,4 +89,13 @@ wrap_marker!(WrapAsEnv, "Return `T` with its Env dispatch class.");
 wrap_marker!(
     WrapAsVctrs,
     "Return `T` with its named vctrs class, preserving its existing class hierarchy."
+);
+
+wrap_marker!(
+    ConvertTo,
+    "Return an S7 target class and register the inherent method with `S7::convert`. The equivalent attribute is `s7(convert_to = \"Target\")`."
+);
+wrap_marker!(
+    ConvertFrom,
+    "Return the enclosing S7 class from a static conversion method. Its sole typed source parameter determines the `s7(convert_from = \"Source\")` registration."
 );
