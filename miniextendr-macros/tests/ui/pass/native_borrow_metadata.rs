@@ -39,11 +39,7 @@ impl FromRNewtype for &User {
 #[miniextendr(no_worker)]
 pub fn custom_container(x: Vec<&User>, y: &mut [i32]) -> i32 { i32::try_from(x.len() + y.len()).unwrap() }
 
-struct u16;
-impl miniextendr_api::TryCoerce<u16> for i32 {
-    type Error = std::convert::Infallible;
-    fn try_coerce(self) -> Result<u16, Self::Error> { Ok(u16) }
-}
+// Numeric coercion uses the primitive type's multi-source TryFromSexp impl.
 #[miniextendr(no_worker)]
 pub fn coerce_only(#[miniextendr(coerce)] x: u16, y: &mut [i32]) -> i32 { let _ = x; i32::try_from(y.len()).unwrap() }
 

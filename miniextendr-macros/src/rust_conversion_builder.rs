@@ -104,6 +104,9 @@ impl RustConversionBuilder {
             return None;
         };
         let ty = pat_type.ty.as_ref();
+        if crate::type_inspect::call_marker(ty).is_some() {
+            return None;
+        }
         let param_name = crate::naming::ident_name(&pat_ident.ident);
         match ty {
             syn::Type::ImplTrait(_) => return None,
@@ -146,7 +149,11 @@ impl RustConversionBuilder {
                 {
                     return None;
                 }
-                if self.should_coerce(&param_name) && CoercionMapping::from_type(ty).is_some() {
+                // Numeric delegates to TryFromSexp, so retain that converter's metadata.
+                if self.should_coerce(&param_name)
+                    && let Some(mapping) = CoercionMapping::from_type(ty)
+                    && !matches!(mapping, CoercionMapping::Numeric)
+                {
                     return None;
                 }
             }
