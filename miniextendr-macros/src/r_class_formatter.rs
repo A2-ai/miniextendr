@@ -244,8 +244,9 @@ pub(crate) fn match_arg_skip_set(
 }
 
 /// Build R-side precondition `stopifnot()` lines for a parameter list, given
-/// its match_arg/choices per-param map and whether `coerce` is active for the
-/// whole method.
+/// its per-param map (match_arg/choices skips, `inherits` / `no_na` checks),
+/// whether `coerce` is active for the whole method, and whether the
+/// type-derived checks are dropped (`no_preconditions`; the named checks stay).
 ///
 /// Neither impl methods nor trait methods carry a per-param `coerce` flag
 /// (only function-wide `coerce`, see `ParsedMethod::per_param` docs), so
@@ -256,10 +257,13 @@ pub(crate) fn build_method_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     coerce_all: bool,
+    no_type_checks: bool,
 ) -> Vec<String> {
     let opts = crate::r_preconditions::PreconditionOptions {
         coerce_all,
         coerce_params: std::collections::HashSet::new(),
+        explicit: crate::miniextendr_fn::explicit_checks_by_r_name(per_param),
+        no_type_checks,
     };
     crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
         .static_checks
@@ -558,10 +562,10 @@ impl<'a> MethodContext<'a> {
     /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`) and
     /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
     /// those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
+    ///
+    /// `no_preconditions` drops the type-derived checks; the per-parameter
+    /// `inherits(...)` / `no_na(...)` checks stay.
     pub fn precondition_checks(&self) -> Vec<String> {
-        if self.no_preconditions {
-            return Vec::new();
-        }
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
         // its precondition tightens to `is.integer` (#616). Impl methods carry
         // coerce at method level (`method_attrs.coerce`, equivalent to
@@ -571,6 +575,7 @@ impl<'a> MethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.method_attrs.per_param,
             self.method.method_attrs.coerce,
+            self.no_preconditions,
         )
     }
 

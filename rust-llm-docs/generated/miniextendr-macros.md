@@ -1747,6 +1747,9 @@ Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`) and
 any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
 those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
 
+`no_preconditions` drops the type-derived checks; the per-parameter
+`inherits(...)` / `no_na(...)` checks stay.
+
 #### `source_comment`
 
 ```rust
@@ -1890,6 +1893,47 @@ Suppress `@param` tags from user doc comments.
 Used for S4/S7 instance methods where the method is defined via `setMethod()`
 or `S7::method()` assignment, which roxygen2 doesn't parse for `\usage` entries.
 
+### `r_preconditions::ExplicitChecks`
+
+```rust
+pub struct ExplicitChecks
+```
+
+R-side checks the author asked for by name on one parameter, rather than
+ones derived from its Rust type.
+
+Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
+parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
+method. They run after the type checks, in the same `stopifnot()` block
+(or `call = caller` guards), and survive `no_preconditions` / `fast`: the
+Rust conversion cannot check them, so dropping them would change what the
+function accepts.
+
+**Fields:**
+
+- `inherits`: `Option<Vec<String>>`
+  - `inherits = "cls"` / `inherits("a", "b")`: the argument must inherit
+- `no_na`: `bool`
+  - `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
+
+**Inherent associated items:**
+
+#### `is_empty`
+
+```rust
+fn is_empty(self: &Self) -> bool
+```
+
+Whether any check is requested.
+
+#### `merge`
+
+```rust
+fn merge(self: &mut Self, other: ExplicitChecks)
+```
+
+Merge `other` into `self` (a parameter may carry several attributes).
+
 ### `r_preconditions::FallbackParam`
 
 ```rust
@@ -1926,6 +1970,10 @@ failures can carry contextual diagnostics.
   - `coerce` knob is active for all parameters (`coerce_all`).
 - `coerce_params`: `std::collections::HashSet<String>`
   - R-normalized names of parameters with a per-param `coerce` attribute.
+- `explicit`: `std::collections::HashMap<String, ExplicitChecks>`
+  - Checks the author named per parameter (`inherits`, `no_na`), keyed by
+- `no_type_checks`: `bool`
+  - `no_preconditions` / `fast`: drop the checks derived from parameter
 
 ### `r_preconditions::PreconditionOutput`
 
@@ -3874,6 +3922,10 @@ Skips:
 - `self`/`&self`/`&mut self` (receiver args)
 - Parameters in `skip_params` (e.g., match_arg params already validated)
 - Skip types (SEXP, Dots, ExternalPtr, etc.)
+- Every type-derived check under `opts.no_type_checks`
+
+A parameter's [`ExplicitChecks`] follow its type checks and are never
+skipped.
 
 ### `r_wrapper_builder::normalize_r_arg_ident`
 

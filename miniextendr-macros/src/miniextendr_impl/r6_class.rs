@@ -93,6 +93,7 @@ fn active_setter_precondition_checks(setter: &ParsedMethod) -> Vec<String> {
         &inputs,
         &per_param,
         setter.method_attrs.coerce,
+        false,
     )
 }
 

@@ -249,6 +249,7 @@ mod ordered_float_adapter_tests;
 mod panic_location_tests;
 mod panic_telemetry_tests;
 mod panic_tests;
+mod param_check_tests;
 mod pipe_builder_tests;
 mod protect_pool_tests;
 mod r6_default_tests;

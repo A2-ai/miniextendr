@@ -189,7 +189,8 @@ default to every `#[miniextendr]` function and impl block:
   `stopifnot` check costs ~300 ns/call for a typical i32 argument. When
   omitted, type errors still propagate from Rust's `TryFromSexp`, but the
   message comes from the Rust side ("failed to convert parameter 'x' to i32")
-  rather than R's "must be integer".
+  rather than R's "must be integer". Checks named per parameter
+  (`inherits`, `no_na`) are kept: the Rust conversion does not repeat them.
 
 - **`no_call_attribution`** (spelled `call = none` since #1566): emits
   `.call = NULL` instead of `.call = match.call()` in the `.Call(...)`

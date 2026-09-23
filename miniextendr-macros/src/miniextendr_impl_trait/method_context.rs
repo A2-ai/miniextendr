@@ -201,6 +201,7 @@ impl<'a> TraitMethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.per_param,
             self.method.coerce,
+            false,
         )
     }
 

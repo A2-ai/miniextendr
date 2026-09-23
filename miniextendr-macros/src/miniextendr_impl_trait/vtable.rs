@@ -863,13 +863,50 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     entry.several_ok = true;
                     Ok(())
                 })?;
+            } else if meta.path.is_ident("no_na") {
+                // `no_na(param1, param2, ...)` — R-side `!anyNA(param)` checks.
+                meta.parse_nested_meta(|inner| {
+                    let name = inner
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| inner.error("expected parameter name"))?
+                        .to_string();
+                    per_param.entry(name).or_default().checks.no_na = true;
+                    Ok(())
+                })?;
+            } else if meta.path.is_ident("inherits") {
+                // `inherits(param = "cls_a, cls_b")` — R-side `inherits(param, c(...))`.
+                meta.parse_nested_meta(|inner| {
+                    let name = inner
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| inner.error("expected parameter name"))?
+                        .to_string();
+                    let _: syn::Token![=] = inner.input.parse()?;
+                    let value: syn::LitStr = inner.input.parse()?;
+                    let classes = crate::r_wrapper_builder::split_choice_list(&value.value());
+                    if classes.is_empty() {
+                        return Err(syn::Error::new(
+                            value.span(),
+                            "`inherits(param = \"...\")` needs one or more class names",
+                        ));
+                    }
+                    per_param
+                        .entry(name)
+                        .or_default()
+                        .checks
+                        .inherits
+                        .get_or_insert_with(Vec::new)
+                        .extend(classes);
+                    Ok(())
+                })?;
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
-                     `choices`, `choices_several_ok`",
+                     `choices`, `choices_several_ok`, `inherits`, `no_na`",
                 ));
             }
             Ok(())
