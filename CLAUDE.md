@@ -22,6 +22,7 @@ reviews/              # Local post-mortems (gitignored — see Reviews)
 journal/              # Local dated narrative entries (gitignored)
 analysis/             # Local one-off investigations (gitignored)
 faq/                  # Curated FAQ (linked from MEMORY.md)
+upstream/             # Tracked notes on other projects' issues that affect us (see Reviews)
 patches/              # patches/templates.patch — rpkg → templates delta
 dev/                  # CRAN-corpus CSVs / bindgen experiment scripts
 background/           # Reference docs (gitignored — R source, autoconf, etc.)
@@ -556,4 +557,5 @@ the `miniextendr-quarterly-audit` skill.
 
 - **Reviews** (`reviews/*.md`, local and gitignored — never committed): when things go wrong (test/CI failure, runtime error, unexpected behavior), write a short file: *what was attempted*, *what went wrong*, *root cause*, *fix*. Accumulates institutional knowledge on non-obvious failure modes.
 - **Forward-looking work lives in GitHub issues**, not plan files. Open a `gh issue create` (with the full design context in the body) for anything that isn't shippable in the current PR. Flat priority order — no phases.
+- **Upstream issues** (`upstream/*.md`, tracked): when a problem's cause lives in another project, record it as `upstream/<project>-<number>-<slug>.md` (format in `upstream/README.md`) and link it from our own tracking issue. Don't comment upstream unless the user asks.
 - **Vendor audit**: when deps change, audit `vendor/` for crates worth integrating — open an issue per candidate (e.g., R-relevant error types, serialization, data structures) with the integration sketch in the body.
