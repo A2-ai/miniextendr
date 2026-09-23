@@ -33,6 +33,14 @@ cargo_json_field <- function(json, key) {
   gsub("\\\\(.)", "\\1", m[[3L]], perl = TRUE)
 }
 
+# A path dependency that exists in the checkout goes missing when the installer
+# copies only the package directory.
+missing_path_hint <- paste0(
+  "If the missing path exists in your checkout, this build started from a copy of the package ",
+  "directory alone (pak `local::` makes one). Build from the checkout ",
+  "(devtools::build()) or install from the repository with a subdirectory reference."
+)
+
 cargo_manifest <- function(manifest) {
   manifest <- normalizePath(manifest, winslash = "/", mustWork = TRUE)
   err <- tempfile()
@@ -40,8 +48,13 @@ cargo_manifest <- function(manifest) {
   out <- suppressWarnings(system2("cargo", c("metadata", "--no-deps", "--format-version", "1",
     "--offline", "--manifest-path", shQuote(manifest)), stdout = TRUE, stderr = err))
   if (!is.null(attr(out, "status"))) {
-    stop("cargo metadata failed for ", manifest, ":\n", paste(readLines(err, warn = FALSE), collapse = "\n"),
-         "\nFix the manifest error above, then rerun bootstrap.R.", call. = FALSE)
+    stderr <- readLines(err, warn = FALSE)
+    stop("cargo metadata failed for ", manifest, ":\n", paste(stderr, collapse = "\n"),
+         "\nFix the manifest error above, then rerun bootstrap.R.",
+         if (any(grepl("failed to load manifest for dependency", stderr, fixed = TRUE))) {
+           paste0("\n", missing_path_hint)
+         },
+         call. = FALSE)
   }
   json <- paste(out, collapse = "")
   starts <- gregexpr('\\{"name":"[^"]*","version":"[^"]*","id":', json, perl = TRUE)[[1L]]
@@ -139,6 +152,7 @@ path_dependency_plan <- function(paths) {
   }
   if (length(problems)) {
     stop(paste(c("Cannot stage path dependencies without cargo-revendor:", paste0("  - ", problems),
+      if (length(plan$dangling)) missing_path_hint,
       "Fix the entries above, or install cargo-revendor:",
       "  cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked"),
       collapse = "\n"), call. = FALSE)
@@ -320,6 +334,12 @@ prepare_dev_bootstrap <- function(root = ".", mode = "dev") {
   }
   saveRDS(list(root = paths$root, manifest = original, mode = mode,
                sources = path_dependency_sources(nodes, paths$vendor)), paths$state)
+  # R CMD build runs ./cleanup, which activates the staging, only when it is
+  # executable. pak's git client checks every file out without mode bits.
+  cleanup <- file.path(paths$root, "cleanup")
+  if (file.exists(cleanup) && !file_test("-x", cleanup)) {
+    Sys.chmod(cleanup, file.mode(cleanup) | as.octmode("111"))
+  }
   done <- TRUE
   invisible(TRUE)
 }

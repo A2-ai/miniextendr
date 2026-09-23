@@ -330,10 +330,14 @@ test_that("without cargo-revendor, dist and dev builds stage nested path sibling
   writeLines('stopifnot(identical(loadNamespace("fallbackprobe")$value(), 7L))', probe)
 
   # Distribution: pkgbuild runs bootstrap.R, R CMD build's cleanup activates.
+  # pak's git client checks files out without mode bits, and R CMD build skips
+  # a cleanup that is not executable; bootstrap restores the bit.
+  Sys.chmod(file.path(pkg, "cleanup"), "644")
   build <- file.path(root, "build.R")
   writeLines(sprintf('devtools::build(%s, path = %s, binary = FALSE, vignettes = FALSE, manual = FALSE)',
                      deparse(pkg), deparse(root)), build)
   output <- run(file.path(R.home("bin"), "Rscript"), shQuote(build), "fallback-build")
+  expect_true(file_test("-x", file.path(pkg, "cleanup")))
   expect_match(output, "staged path dependencies under src/rust/vendor", fixed = TRUE)
   expect_identical(tools::md5sum(manifest), before)
   tarball <- list.files(root, "^fallbackprobe_.*[.]tar[.]gz$", full.names = TRUE)

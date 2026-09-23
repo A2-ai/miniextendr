@@ -235,11 +235,12 @@ stager_cases <- list(
     rcrate("[dependencies]", 'alpha = { path = "../../../alpha" }', 'ghost = { path = "../../../ghost" }'),
     crate("alpha")),
     header = "cargo metadata failed for",
-    error = c("failed to load manifest for dependency `ghost`", "Fix the manifest error above")),
+    error = c("failed to load manifest for dependency `ghost`", "Fix the manifest error above",
+              "pak `local::` makes one")),
   list(id = "e4", name = "dangling path in a sibling", files = function(repo) c(
     rcrate("[dependencies]", 'alpha = { path = "../../../alpha" }'),
     crate("alpha", "[dependencies]", 'ghost = { path = "../ghost", version = "0.1" }')),
-    error = "path dependency `ghost` points at"),
+    error = c("path dependency `ghost` points at", "pak `local::` makes one")),
   list(id = "e5", name = "R crate inheriting from a parent workspace", files = function(repo) c(
     list("Cargo.toml" = c("[workspace]", 'resolver = "2"', 'members = ["pkg/src/rust"]',
                           "[workspace.dependencies]", 'alpha = { path = "alpha" }')),
@@ -256,6 +257,9 @@ stager_cases <- list(
 
 skip_without_stager_tools <- function() {
   skip_on_cran()
+  # Like the other stager end-to-end tests: `path+file://` id parsing, the
+  # /dev/null hooks path and the absolute-path case assume POSIX paths.
+  skip_on_os("windows")
   for (tool in c("cargo", "git")) skip_if_not(nzchar(Sys.which(tool)), paste(tool, "not available"))
 }
 

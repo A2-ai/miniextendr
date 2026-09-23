@@ -393,6 +393,11 @@ only that directory and a `path` dependency is not source-replaceable. The
 result builds with network access but is not CRAN-ready (#1580). A package whose
 path dependencies all live inside it has nothing to stage and builds from source.
 
+R CMD build activates the staging by running `./cleanup` in its copy, and skips a
+`cleanup` that is not executable. pak's git client (`git::` and `gitlab::` refs)
+writes every file without mode bits, so bootstrap restores the executable bit on
+`cleanup` whenever it leaves a staging behind.
+
 The stager runs `cargo metadata --no-deps` for discovery and `cargo package
 --no-verify --allow-dirty` per sibling, so it never writes to the source tree.
 Two constraints follow from `cargo package`:
