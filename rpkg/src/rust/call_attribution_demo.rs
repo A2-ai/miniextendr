@@ -7,6 +7,7 @@
 
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
+use miniextendr_api::{Call, CallerCall};
 
 use crate::match_arg_tests::Mode;
 
@@ -86,6 +87,61 @@ pub fn call_attr_checked_impl(
 /// @noRd
 #[miniextendr(noexport)]
 pub fn call_attr_self_impl(x: i32) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+// endregion
+
+// region: the three spellings of the attribution (#1566)
+
+/// `Call` marker: the type-level spelling of `wrapper` attribution. The
+/// marker is not an R formal (the wrapper takes `x` only); the C wrapper binds
+/// it from its hidden call slot, so the body sees the wrapper's own
+/// `match.call()`, here returned to R for the test to compare.
+///
+/// @param x Ignored.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn call_marker_wrapper_impl(_x: i32, call: Call) -> SEXP {
+    call.sexp()
+}
+
+/// `CallerCall` marker: the type-level spelling of `call = caller`. Behind the
+/// hand-written `call_marker_caller()` in `R/call_attribution.R` the body sees
+/// that function's matched call; called directly it sees its own.
+///
+/// @param x Ignored.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn call_marker_caller_impl(_x: i32, call: CallerCall) -> SEXP {
+    call.sexp()
+}
+
+/// `Call` marker together with an `Err`: the marker changes what the body can
+/// see, not how conditions are attributed, so this reports its own call like
+/// `call_attr_self_impl` does.
+///
+/// @param x Must be positive.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn call_marker_checked_impl(x: i32, _call: Call) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+/// `call = none`: the attribute spelling of `no_call_attribution`. The wrapper
+/// passes `.call = NULL`; on error R's `sys.call()` fallback still names the
+/// wrapper, but without the formals matched.
+///
+/// @param x Must be positive.
+/// @noRd
+#[miniextendr(noexport, call = none)]
+pub fn call_attr_none_impl(x: i32) -> Result<i32, String> {
     if x <= 0 {
         return Err(format!("x must be positive, got {x}"));
     }

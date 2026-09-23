@@ -206,7 +206,10 @@ inlined (`call_attr_caller(value = 0L)`), symbols and calls become `..1`,
 The option requires `noexport` or `internal` (an exported function's caller is
 arbitrary user code), cannot combine with `no_call_attribution` / `fast` (no
 call slot to redirect), and applies to standalone functions only; class methods
-keep their own attribution. The frame is the *calling* frame, so an entry point reached
+keep their own attribution. A `CallerCall` parameter is the type-level spelling
+of the same option, and `[package.metadata.miniextendr] call_attribution =
+"caller"` in `Cargo.toml` makes it the default for every internal entry point
+(see [the next section](#choosing-the-attribution-marker-attribute-crate-default)). The frame is the *calling* frame, so an entry point reached
 through `lapply()` reports `FUN(value = X[[i]])`, and one reached through
 `do.call()` reports the call `do.call()` built (`call_attr_caller(value = -1L)`
 for a function name, the deparsed function for a function object), the same way
@@ -214,6 +217,74 @@ for a function name, the deparsed function for a function object), the same way
 `call_attr_caller_impl` / `call_attr_self_impl` in
 `rpkg/src/rust/call_attribution_demo.rs` with the delegates in
 `rpkg/R/call_attribution.R`, verified by `test-call-attribution.R`.
+
+## Choosing the attribution: marker, attribute, crate default
+
+A standalone `#[miniextendr]` function picks one of three attributions, in
+three equivalent spellings (#1566). Most specific wins:
+
+| Spelling | `wrapper` | `caller` | `none` |
+|----------|-----------|----------|--------|
+| **Marker parameter** (`miniextendr_api::{Call, CallerCall}`) | `call: Call` | `call: CallerCall` | — |
+| **Attribute** | `call = wrapper` (also `no_fast`) | `call = caller` | `call = none` (also `no_call_attribution`, `fast`) |
+| **Crate default** (`Cargo.toml`) | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
+
+Below those come the `fast-default` cargo feature (`none`) and the framework
+default, `wrapper`. The attribute accepts the path and string forms
+(`call = caller`, `call = "caller"`).
+
+```rust
+use miniextendr_api::{Call, CallerCall, miniextendr};
+
+/// `.call = match.call()`, and the body gets to see it.
+#[miniextendr]
+pub fn scale(x: f64, call: Call) -> f64 { let _ = call.sexp(); x * 2.0 }
+
+/// Internal entry point behind a hand-written `scale2()`: the caller's call,
+/// with the caller's formals matched, reaches Rust as `call`.
+#[miniextendr(noexport)]
+pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
+
+/// `.call = NULL`, spelled as an attribute.
+#[miniextendr(call = none)]
+pub fn hot_path(x: f64) -> f64 { x * 2.0 }
+```
+
+```toml
+# Cargo.toml: every noexport / internal entry point reports its caller.
+[package.metadata.miniextendr]
+call_attribution = "caller"
+```
+
+The marker is **not an R formal**: the generated wrapper's formals are the
+other parameters (`scale <- function(x)`), and the C wrapper binds the marker
+from its hidden `__miniextendr_call` slot, so the body receives exactly the
+SEXP the wrapper passed as `.call = ...`. Both markers are `repr(transparent)`
+newtypes over `SEXP` (`.sexp()`, `Deref`, `From<CallerCall> for Call`), and a
+function taking one runs on R's main thread like one taking `SEXP`. The marker
+selects the attribution the same way the attribute does: `Call` is `wrapper`,
+`CallerCall` is `caller` and therefore needs `noexport` / `internal` too.
+Per-parameter options (`coerce`, `match_arg`, `choices`, `default`) do not
+apply to it.
+
+A crate default of `"caller"` applies to `noexport` / `internal` free
+functions only: an exported function's caller is arbitrary user code, so it
+keeps `wrapper`. `"none"` and `"wrapper"` apply to every standalone function.
+The crate default beats the `fast-default` feature, and a per-item spelling
+beats the crate default; a `call = wrapper` on one entry point restores the
+wrapper's own call under a `"caller"` default. Class and trait methods are
+untouched by all three spellings (a marker on a method is a compile error;
+impl blocks keep their `fast` / `no_call_attribution` knobs).
+
+Two spellings on one function must agree. A `Call` parameter with
+`call = caller` (or with `fast`), two markers, a `CallerCall` on an exported
+function, per-parameter options on a marker and `call = parent` are all
+compile errors listed in [MACRO_ERRORS.md](MACRO_ERRORS.md#common-proc-macro-errors).
+Fixtures: `call_marker_wrapper_impl` / `call_marker_caller_impl` /
+`call_marker_checked_impl` / `call_attr_none_impl` in
+`rpkg/src/rust/call_attribution_demo.rs` (verified by `test-call-attribution.R`),
+and the crate default in `tests/cross-package/producer.pkg`
+(`test-call-attribution.R` there).
 
 ## Where this is emitted
 
@@ -234,7 +305,9 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `match.call()`
 
-Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
+A standalone function opts into it with `call = none` (`no_call_attribution`,
+`fast`) or through the crate default / `fast-default` feature, as described
+above. Five lambda dispatch sites cannot use `match.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `match.call()` inside those lambdas would capture the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
 
 The five sites are:
 

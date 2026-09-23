@@ -764,6 +764,9 @@ pub mod missing;
 /// Return-visibility markers (`Invisible<T>` / `Visible<T>`).
 pub mod visibility;
 pub use visibility::{Invisible, Visible};
+/// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.
+pub mod call_marker;
+pub use call_marker::{Call, CallerCall};
 pub mod named_vector;
 pub mod rcow;
 pub mod rvalue;

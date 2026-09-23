@@ -757,8 +757,7 @@ pub fn miniextendr(
         unwrap_in_r,
         serde_error,
         no_preconditions,
-        no_call_attribution,
-        call_caller,
+        call_attribution: call_attribution_attr,
         return_pref,
         return_pref_span,
         s3_generic,
@@ -831,7 +830,7 @@ pub fn miniextendr(
 
     // Extract references to parsed components
     let rust_ident = parsed.ident();
-    let inputs = parsed.inputs();
+    let all_inputs = parsed.inputs();
     // Return-visibility markers (`Invisible<T>` / `Visible<T>`, #1213) are
     // peeled here so every later analysis sees the inner type; the marker's
     // decision is folded in below, next to the attribute form.
@@ -855,10 +854,95 @@ pub fn miniextendr(
     // Fail fast on invalid extern "C-unwind" signatures *before* any codegen,
     // so we never emit a wrapper that would be discarded by the surfaced error.
     if let Some(user_abi) = abi
-        && let Err(e) = validate_extern_signature(user_abi, attrs, inputs, output)
+        && let Err(e) = validate_extern_signature(user_abi, attrs, all_inputs, output)
     {
         return e.into_compile_error().into();
     }
+
+    // Condition-call markers (#1566): a `Call` / `CallerCall` parameter is the
+    // type-level spelling of `call = wrapper` / `call = caller`. It is not an
+    // R formal: the C wrapper binds it from the hidden `__miniextendr_call`
+    // slot, so every R-side consumer below sees `inputs` with the marker
+    // removed while the Rust call site substitutes the slot.
+    let mut call_marker: Option<(syn::Ident, r_wrapper_builder::CallAttribution)> = None;
+    for arg in all_inputs.iter() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let Some(kind) = crate::type_inspect::call_marker(&pt.ty) else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let marker = kind.marker_name().unwrap_or("Call");
+        if let Some((first, _)) = &call_marker {
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "a `#[miniextendr]` function takes at most one `Call` / `CallerCall` \
+                     parameter (`{first}` already receives the condition call); the call \
+                     slot is a single value"
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+        if parsed.has_param_attrs(&crate::naming::ident_name(&pat_ident.ident)) {
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `default`, \
+                     `several_ok`) do not apply to a `{marker}` parameter: it is bound from \
+                     the call slot, not from an R argument"
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+        if kind == r_wrapper_builder::CallAttribution::Caller && !(noexport || internal) {
+            return syn::Error::new_spanned(
+                pt,
+                "a `CallerCall` parameter attributes conditions to the wrapper's caller, which \
+                 is only meaningful for a package-internal entry point; add `noexport` or \
+                 `internal`.",
+            )
+            .into_compile_error()
+            .into();
+        }
+        if let Some(attr) = call_attribution_attr
+            && attr != kind
+        {
+            let spellings = match attr {
+                r_wrapper_builder::CallAttribution::None => ", `no_call_attribution` or `fast`",
+                r_wrapper_builder::CallAttribution::Wrapper => " or `no_fast`",
+                r_wrapper_builder::CallAttribution::Caller => "",
+            };
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "the `{marker}` parameter selects `{}` attribution but the attribute \
+                     selects `{}` (`call = {}`{spellings}); keep one of them (or make them \
+                     agree)",
+                    kind.name(),
+                    attr.name(),
+                    attr.name(),
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+        call_marker = Some((pat_ident.ident.clone(), kind));
+    }
+    let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
+        .iter()
+        .filter(|arg| match arg {
+            syn::FnArg::Typed(pt) => crate::type_inspect::call_marker(&pt.ty).is_none(),
+            syn::FnArg::Receiver(_) => true,
+        })
+        .cloned()
+        .collect();
+    let inputs = &r_inputs;
 
     // Check for @title/@description conflicts with implicit values (doc-lint feature)
     // Skip when `doc` attribute overrides the roxygen — implicit docs are irrelevant then.
@@ -868,19 +952,29 @@ pub fn miniextendr(
         crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span())
     };
 
-    // calling the rust function with
-    let rust_inputs: Vec<syn::Ident> = inputs
+    // Calling the Rust function: each R-backed parameter by name, a `Call` /
+    // `CallerCall` marker from the C wrapper's `__miniextendr_call` slot (the
+    // R wrapper's `.call = ...` argument, so a `CallerCall` sees `.mx_call`).
+    let rust_inputs: Vec<proc_macro2::TokenStream> = all_inputs
         .iter()
         .filter_map(|arg| {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(p) = pt.pat.as_ref()
             {
-                return Some(p.ident.clone());
+                let ident = &p.ident;
+                return Some(match crate::type_inspect::call_marker(&pt.ty) {
+                    Some(r_wrapper_builder::CallAttribution::Caller) => quote::quote! {
+                        ::miniextendr_api::CallerCall::from_sexp(__miniextendr_call)
+                    },
+                    Some(_) => quote::quote! {
+                        ::miniextendr_api::Call::from_sexp(__miniextendr_call)
+                    },
+                    None => quote::quote! { #ident },
+                });
             }
             None
         })
         .collect();
-    // dbg!(&rust_inputs);
 
     // Validate dots_spec usage (actual injection happens later in the function body)
     if dots_spec.is_some() && !has_dots {
@@ -933,8 +1027,9 @@ pub fn miniextendr(
 
     // Check if any input parameter is main-thread-bound (SEXP or a !Send
     // framework wrapper like AltrepSexp — neither can move into the worker
-    // closure, so the function must stay on the main thread)
-    let has_sexp_inputs = inputs.iter().any(|arg| {
+    // closure, so the function must stay on the main thread). A `Call` /
+    // `CallerCall` marker holds the call slot's SEXP and counts too.
+    let has_sexp_inputs = all_inputs.iter().any(|arg| {
         if let syn::FnArg::Typed(pat_type) = arg {
             is_main_thread_bound_input(pat_type.ty.as_ref())
         } else {
@@ -1172,22 +1267,39 @@ pub fn miniextendr(
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
 
-    // Prepend .call parameter if using internal C wrapper.
-    // `#[miniextendr(no_call_attribution)]` / `fast` emits `.call = NULL`
-    // instead of `match.call()` — saves ~1200 ns/call. The R-side
-    // .miniextendr_raise_condition helper falls back to sys.call() so the
-    // error UX is preserved (positional args instead of named).
-    let call_attribution = if no_call_attribution {
-        r_wrapper_builder::CallAttribution::None
-    } else if call_caller {
-        r_wrapper_builder::CallAttribution::Caller
-    } else {
-        r_wrapper_builder::CallAttribution::Wrapper
+    // Crate-level defaults (#1454, #1566): `[package.metadata.miniextendr]` in
+    // the crate's Cargo.toml. Read once per expansion; a malformed table is
+    // reported here, on the first `#[miniextendr]` function, for every key it
+    // may carry.
+    let crate_config = match crate::crate_config::crate_config() {
+        Ok(config) => config,
+        Err(err) => {
+            return syn::Error::new(proc_macro2::Span::call_site(), err.to_string())
+                .into_compile_error()
+                .into();
+        }
     };
+
+    // Prepend the `.call` parameter if using the internal C wrapper. Marker
+    // (`Call` / `CallerCall`) > attribute (`call = none | wrapper | caller`,
+    // `no_call_attribution` / `fast`, `no_fast`) > crate default
+    // (`call_attribution = "..."`) > `fast-default` feature > `wrapper`
+    // (#1566). `none` emits `.call = NULL` instead of `match.call()` — saves
+    // ~1200 ns/call; the R-side .miniextendr_raise_condition helper falls back
+    // to sys.call() so the error UX is preserved (positional args instead of
+    // named).
+    let call_attribution = r_wrapper_builder::CallAttribution::resolve(
+        call_marker.as_ref().map(|(_, kind)| *kind),
+        call_attribution_attr,
+        crate_config.call_attribution,
+        noexport || internal,
+        cfg!(feature = "fast-default"),
+    );
     if uses_internal_c_wrapper {
         r_call_args_strs.insert(0, call_attribution.dot_call_arg().to_string());
-    } else if call_caller {
-        // `extern "C-unwind"` fns have no generated call slot to redirect.
+    } else if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::Caller) {
+        // `extern "C-unwind"` fns have no generated call slot to redirect (a
+        // `CallerCall` parameter already fails the extern signature check).
         return syn::Error::new_spanned(
             &parsed.item().sig.ident,
             "`call = caller` needs the generated call slot; an `extern \"C-unwind\"` function \
@@ -1224,21 +1336,11 @@ pub fn miniextendr(
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
     // Crate-level default for internal entry points (#1454):
-    // `[package.metadata.miniextendr] noexport_postfix = "..."` in the crate's
-    // Cargo.toml applies to every `noexport` / `internal` free function that
-    // names itself neither via `r_name` nor via its own `postfix`. Exported
-    // functions and S3 methods keep their names. Precedence:
+    // `[package.metadata.miniextendr] noexport_postfix = "..."` applies to
+    // every `noexport` / `internal` free function that names itself neither
+    // via `r_name` nor via its own `postfix`. Exported functions and S3
+    // methods keep their names. Precedence:
     // `r_name` > `postfix` > crate default > Rust name.
-    // Read once per expansion; a malformed table is reported here, on the
-    // first `#[miniextendr]` function, for every key it may carry.
-    let crate_config = match crate::crate_config::crate_config() {
-        Ok(config) => config,
-        Err(err) => {
-            return syn::Error::new(proc_macro2::Span::call_site(), err.to_string())
-                .into_compile_error()
-                .into();
-        }
-    };
     let effective_postfix = match &fn_postfix {
         Some(postfix) => Some(postfix.clone()),
         None if (noexport || internal) && fn_r_name.is_none() && !is_s3_method => {

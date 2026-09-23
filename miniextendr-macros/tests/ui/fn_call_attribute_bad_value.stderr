@@ -1,0 +1,5 @@
+error: `call = ...` accepts `none` (`.call = NULL`), `wrapper` (the wrapper's own `match.call()`, the default) or `caller` (attribute conditions to the wrapper's caller)
+ --> tests/ui/fn_call_attribute_bad_value.rs:7:22
+  |
+7 | #[miniextendr(call = parent)]
+  |                      ^^^^^^

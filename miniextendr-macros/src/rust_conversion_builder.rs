@@ -221,6 +221,25 @@ impl RustConversionBuilder {
         let plain = crate::naming::unraw(ident);
         let ty = pat_type.ty.as_ref();
 
+        // A `Call` / `CallerCall` marker (#1566) never reaches this builder from
+        // a standalone fn: `lib.rs` removes it from the inputs and binds it from
+        // the call slot at the call site. Seeing one here means a class or trait
+        // method took it, where the wrapper's own call is the only attribution.
+        if crate::type_inspect::call_marker(ty).is_some() {
+            let span = ty.span();
+            // The binding keeps the method's own use of the parameter from adding
+            // a follow-on "cannot find value" to the diagnostic; the wrapper's call
+            // slot is in scope in every C wrapper, so it also type-checks.
+            let stmt = quote_spanned! {span=>
+                ::core::compile_error!(
+                    "`Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` \
+                     functions only; class and trait methods attribute conditions to the wrapper's own call"
+                );
+                let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+            };
+            return (vec![stmt], vec![]);
+        }
+
         match ty {
             // Unit type: ()
             // Note: We never generate `mut` on conversion bindings - the user's function

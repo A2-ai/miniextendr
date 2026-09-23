@@ -16,20 +16,25 @@
 //! [package.metadata.miniextendr]
 //! noexport_postfix = "_impl"
 //! source_tags = true
+//! call_attribution = "caller"
 //! ```
 //!
 //! The reader is a deliberately small line-based scanner rather than a TOML
 //! dependency: the macro crate ships in every downstream build, and the only
-//! values it needs are a string and a boolean under one well-known table.
+//! values it needs are strings and a boolean under one well-known table.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
+use crate::r_wrapper_builder::CallAttribution;
+
 /// Dotted path of the `noexport_postfix` key.
 const NOEXPORT_POSTFIX_KEY: &str = "package.metadata.miniextendr.noexport_postfix";
 /// Dotted path of the `source_tags` key.
 const SOURCE_TAGS_KEY: &str = "package.metadata.miniextendr.source_tags";
+/// Dotted path of the `call_attribution` key.
+const CALL_ATTRIBUTION_KEY: &str = "package.metadata.miniextendr.call_attribution";
 /// Dotted path of the table itself, used to reject the inline-table spelling.
 const TABLE_KEY: &str = "package.metadata.miniextendr";
 
@@ -46,6 +51,13 @@ pub(crate) struct CrateConfig {
     /// shared Rd page, and the `# Generated from Rust fn … (file:line:col)`
     /// comment above each wrapper remains the navigation pointer.
     pub(crate) source_tags: bool,
+    /// `call_attribution = "none" | "wrapper" | "caller"`: the condition-call
+    /// attribution of every free function that neither takes a `Call` /
+    /// `CallerCall` parameter nor sets `call = ...` / `no_call_attribution` /
+    /// `fast` (#1566). `caller` applies to `noexport` / `internal` functions;
+    /// exported ones keep `wrapper`. Unset means the framework default,
+    /// `wrapper` (or `none` under the `fast-default` feature).
+    pub(crate) call_attribution: Option<CallAttribution>,
 }
 
 /// A malformed `[package.metadata.miniextendr]` entry, reported as a compile
@@ -156,6 +168,23 @@ pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
                  table with each key on its own line"
                     .to_string(),
             );
+        }
+        if full == CALL_ATTRIBUTION_KEY {
+            if config.call_attribution.is_some() {
+                return Err("`call_attribution` is set more than once".to_string());
+            }
+            let value = value.trim();
+            let attribution = parse_string_value(value)
+                .as_deref()
+                .and_then(CallAttribution::parse_name)
+                .ok_or_else(|| {
+                    format!(
+                        "`call_attribution` must be one of \"none\", \"wrapper\", \"caller\", \
+                         found `{value}`"
+                    )
+                })?;
+            config.call_attribution = Some(attribution);
+            continue;
         }
         if full == SOURCE_TAGS_KEY {
             if source_tags_seen {
@@ -351,6 +380,46 @@ noexport_postfix = "also not ours"
                 .unwrap_err()
                 .contains("more than once")
         );
+    }
+
+    #[test]
+    fn call_attribution_is_read_and_validated() {
+        let attribution = |text: &str| parse_crate_config(text).map(|c| c.call_attribution);
+        assert_eq!(attribution(""), Ok(None));
+        assert_eq!(
+            attribution(
+                "[package.metadata.miniextendr]\ncall_attribution = \"caller\" # internal entry points\n"
+            ),
+            Ok(Some(CallAttribution::Caller))
+        );
+        assert_eq!(
+            attribution("[package.metadata]\nminiextendr.call_attribution = 'none'\n"),
+            Ok(Some(CallAttribution::None))
+        );
+        assert_eq!(
+            attribution("[package]\nmetadata.miniextendr.call_attribution = \"wrapper\"\n"),
+            Ok(Some(CallAttribution::Wrapper))
+        );
+        let bad = attribution("[package.metadata.miniextendr]\ncall_attribution = \"parent\"\n")
+            .unwrap_err();
+        assert!(
+            bad.contains("must be one of") && bad.contains("`\"parent\"`"),
+            "{bad}"
+        );
+        let bare =
+            attribution("[package.metadata.miniextendr]\ncall_attribution = caller\n").unwrap_err();
+        assert!(bare.contains("must be one of"), "{bare}");
+        let twice = attribution(
+            "[package.metadata.miniextendr]\ncall_attribution = \"none\"\ncall_attribution = \"none\"\n",
+        )
+        .unwrap_err();
+        assert!(twice.contains("more than once"), "{twice}");
+        // Alongside the other keys.
+        let all = "[package.metadata.miniextendr]\nnoexport_postfix = \"_impl\"\nsource_tags = true\ncall_attribution = \"caller\"\n";
+        let config = parse_crate_config(all).unwrap();
+        assert_eq!(config.noexport_postfix.as_deref(), Some("_impl"));
+        assert!(config.source_tags);
+        assert_eq!(config.call_attribution, Some(CallAttribution::Caller));
     }
 
     #[test]

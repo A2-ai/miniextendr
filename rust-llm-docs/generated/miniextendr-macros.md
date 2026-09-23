@@ -2850,6 +2850,16 @@ fn dot_call_arg(self: Self) -> &'static str
 
 The `.call = ...` argument for the `.Call()` line.
 
+#### `marker_name`
+
+```rust
+fn marker_name(self: Self) -> Option<&'static str>
+```
+
+The parameter marker type that selects this attribution (#1566): `Call`
+for `wrapper`, `CallerCall` for `caller`. `none` has no marker: a
+function that wants no call does not take one.
+
 #### `match_arg_statement`
 
 ```rust
@@ -2868,6 +2878,23 @@ attribute the error to the wrapper's own call by default; under
 [`CallAttribution::Caller`] the statement passes `.mx_call` so the
 caller is named instead (#1548). The list is spelled out because the
 helpers, unlike `base::match.arg(param)`, do not read it off the formal.
+
+#### `name`
+
+```rust
+fn name(self: Self) -> &'static str
+```
+
+The attribute spelling of this attribution.
+
+#### `parse_name`
+
+```rust
+fn parse_name(name: &str) -> Option<Self>
+```
+
+The spelling shared by the attribute (`call = none | wrapper | caller`)
+and the crate default (`call_attribution = "none" | "wrapper" | "caller"`).
 
 #### `prelude`
 
@@ -2899,6 +2926,24 @@ fn raise_default(self: Self) -> &'static str
 ```
 
 The fallback call handed to `.miniextendr_raise_condition`.
+
+#### `resolve`
+
+```rust
+fn resolve(marker: Option<Self>, attribute: Option<Self>, crate_default: Option<Self>, internal_entry: bool, fast_default: bool) -> Self
+```
+
+Resolve a standalone function's attribution from its three spellings
+(#1566), most specific first: the `Call` / `CallerCall` parameter
+marker, the `call = ...` attribute (`no_call_attribution` / `fast` spell
+`none`, `no_fast` spells `wrapper`), the crate's
+`[package.metadata.miniextendr] call_attribution` default, then the
+`fast-default` feature (`none`) and finally the framework default,
+`wrapper`. A crate default of `caller` applies to internal entry points
+(`noexport` / `internal`) only; an exported function's caller is
+arbitrary user code, so it keeps `wrapper`. The explicit spellings are
+validated before this runs (a `caller` marker or attribute on an
+exported function is a compile error, not a fallback).
 
 ### `typed_list::ParsedTypeSpec`
 

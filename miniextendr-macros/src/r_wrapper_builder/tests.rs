@@ -426,6 +426,70 @@ fn call_attribution_strings() {
 }
 
 #[test]
+fn call_attribution_names_and_markers_round_trip() {
+    for attribution in [
+        CallAttribution::None,
+        CallAttribution::Wrapper,
+        CallAttribution::Caller,
+    ] {
+        assert_eq!(
+            CallAttribution::parse_name(attribution.name()),
+            Some(attribution)
+        );
+    }
+    assert_eq!(CallAttribution::parse_name("parent"), None);
+    assert_eq!(CallAttribution::Wrapper.marker_name(), Some("Call"));
+    assert_eq!(CallAttribution::Caller.marker_name(), Some("CallerCall"));
+    assert_eq!(CallAttribution::None.marker_name(), None);
+}
+
+#[test]
+fn call_attribution_resolve_precedence() {
+    use CallAttribution::{Caller, None as NoCall, Wrapper};
+    // Nothing said: framework default, or `none` under `fast-default`.
+    assert_eq!(
+        CallAttribution::resolve(None, None, None, false, false),
+        Wrapper
+    );
+    assert_eq!(
+        CallAttribution::resolve(None, None, None, false, true),
+        NoCall
+    );
+    // Crate default beats the feature; `caller` applies to internal entries only.
+    assert_eq!(
+        CallAttribution::resolve(None, None, Some(NoCall), false, false),
+        NoCall
+    );
+    assert_eq!(
+        CallAttribution::resolve(None, None, Some(Wrapper), false, true),
+        Wrapper
+    );
+    assert_eq!(
+        CallAttribution::resolve(None, None, Some(Caller), true, false),
+        Caller
+    );
+    assert_eq!(
+        CallAttribution::resolve(None, None, Some(Caller), false, false),
+        Wrapper
+    );
+    // Attribute beats the crate default; marker beats the attribute (they are
+    // validated to agree before this runs, so the order only matters for the
+    // fallbacks).
+    assert_eq!(
+        CallAttribution::resolve(None, Some(Wrapper), Some(NoCall), false, true),
+        Wrapper
+    );
+    assert_eq!(
+        CallAttribution::resolve(Some(Caller), None, Some(NoCall), true, true),
+        Caller
+    );
+    assert_eq!(
+        CallAttribution::resolve(Some(Wrapper), Some(Wrapper), Some(Caller), true, false),
+        Wrapper
+    );
+}
+
+#[test]
 fn match_arg_statement_per_attribution() {
     // Wrapper attribution (and `no_call_attribution`): the preamble helpers
     // with their default call, i.e. the wrapper's own frame (#1552 folded the
