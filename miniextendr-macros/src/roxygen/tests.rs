@@ -577,14 +577,7 @@ fn test_describein_keeps_continuation_lines() {
 
 #[test]
 fn test_wrapped_single_word_tags_keep_continuation() {
-    for tag in [
-        "@family",
-        "@inherit",
-        "@inheritParams",
-        "@inheritSection",
-        "@keywords",
-        "@concept",
-    ] {
+    for tag in ["@family", "@inherit", "@inheritParams", "@inheritSection"] {
         let first = format!("{tag} alpha");
         let attrs: Vec<syn::Attribute> = vec![
             syn::parse_quote!(#[doc = #first]),
@@ -614,6 +607,24 @@ fn test_title_continuation_joined_onto_one_line() {
     );
     // Rendering keeps it on one `#'` line.
     assert!(!format_roxygen_tags(&tags[..1]).trim_end().contains('\n'));
+}
+
+#[test]
+fn test_keywords_and_concept_join_continuation_for_roxygen() {
+    for tag in ["@keywords", "@concept"] {
+        let first = format!("{tag} alpha");
+        let attrs: Vec<syn::Attribute> = vec![
+            syn::parse_quote!(#[doc = #first]),
+            syn::parse_quote!(#[doc = "  beta"]),
+            syn::parse_quote!(#[doc = "@param x A value."]),
+        ];
+        let tags = roxygen_tags_from_attrs(&attrs);
+        assert_eq!(
+            tags,
+            vec![format!("{tag} alpha beta"), "@param x A value.".into()]
+        );
+        assert!(!format_roxygen_tags(&tags[..1]).trim_end().contains('\n'));
+    }
 }
 
 #[test]

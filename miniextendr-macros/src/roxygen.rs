@@ -51,14 +51,13 @@ const MULTILINE_TAGS: &[&str] = &[
     "inherit",
     "inheritParams",
     "inheritSection",
-    "keywords",
-    "concept",
 ];
 
 /// Tags whose wrapped continuation lines are joined back onto one line with a
 /// space instead of a newline: roxygen2 wants these on a single line, but a
-/// long `@title` in a Rust doc comment still gets wrapped by the author.
-const JOINED_TAGS: &[&str] = &["title"];
+/// long title, keyword list, or concept in a Rust doc comment can be wrapped
+/// by the author.
+const JOINED_TAGS: &[&str] = &["title", "keywords", "concept"];
 
 /// A bare `@name` / `@rdname` (topic written on the next `///` line, which
 /// roxygen2 accepts) takes exactly one continuation line as its topic. Once

@@ -42,6 +42,8 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - **MXL111** — `s4_*` method name on `#[miniextendr(s4)]` impl gets `s4_s4_*`. Drop the prefix.
 - **S7 fast-path shortcuts** — every non-fallback S7 instance method (inherent *and* trait impl) emits a `<ClassName>_<method>(self, ...)` function that bypasses `S7::S7_dispatch()`. Opt out per-method with `#[miniextendr(s7(no_shortcut))]`. Shortcut names share a namespace with static-method functions; same-impl-block collisions are a `compile_error!` (`check_s7_shortcut_collisions` in `miniextendr_impl.rs`). Sidecar-accessor collisions (`<ClassName>_get_<field>`) are NOT detectable at macro time — see #991. The advisory roxygen prose is shared via `s7_class::shortcut_advisory_lines`.
 
+- **Wrapped roxygen tags:** `@title`, `@keywords`, and `@concept` must render on one line for roxygen2; keep them in `JOINED_TAGS`, not `MULTILINE_TAGS`. A successful `force-document` exit does not prove the absence of roxygen diagnostics: inspect its log and the regenerated Rd fields.
+
 ## When changing codegen
 - Touched proc-macro output? Run `just configure && just rcmdinstall && just force-document`. Commit regenerated `NAMESPACE` + `man/*.Rd` in the same PR. `rpkg/R/miniextendr-wrappers.R` and `rpkg/src/rust/wasm_registry.rs` are gitignored, regenerated during installs, and shipped from disk in the tarball; CI's `wrappers-sync-check` detects tracked doc drift.
 - Added a class-system constructor path? Make sure error-check pattern `(.val <- .Call(...); condition_check_lines())` is wired through — silent object corruption otherwise.
