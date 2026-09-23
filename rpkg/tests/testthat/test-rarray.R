@@ -30,10 +30,15 @@ test_that("RMatrix construction survives allocations in its initializer", {
   # allocation and set_dims, so the unrooted constructor passed this test
   # before the fix. Force a collection at every allocation instead.
   skip_gc_stress_if_disabled()
+  results <- vector("list", 20L)
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
-  for (i in seq_len(20L)) {
-    result <- miniextendr:::rarray_construct_matrix(2L, 3L)
+  for (i in seq_along(results)) {
+    results[[i]] <- miniextendr:::rarray_construct_matrix(2L, 3L)
+  }
+  # Stress the constructor allocations, not testthat's assertion machinery.
+  gctorture(FALSE)
+  for (result in results) {
     expect_identical(dim(result), c(2L, 3L))
     expect_identical(result, matrix(42, nrow = 2L, ncol = 3L))
   }
