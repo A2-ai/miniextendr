@@ -20,10 +20,7 @@ test_that("worker conditions preserve kind, classes, data, and call across both 
         }),
         error = function(e) { captured <<- e; NULL }
       )
-      expected_class <- layers[[kind]]
-      if (kind != "message") {
-        expected_class <- c("worker_custom", "worker_secondary", expected_class)
-      }
+      expected_class <- c("worker_custom", "worker_secondary", layers[[kind]])
       expect_identical(class(captured), expected_class, info = deparse(call))
       expect_identical(captured$kind, kind)
       # Match the shared R helper: messages use base R's newline and NULL call.

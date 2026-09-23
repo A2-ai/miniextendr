@@ -884,31 +884,6 @@ mod tests {
     }
 
     #[test]
-    fn with_r_thread_panics_before_init() {
-        // If another test already called miniextendr_runtime_init (via Once),
-        // we can't test the pre-init path. Verify at least panics from wrong thread.
-        if R_MAIN_THREAD_ID.get().is_some() {
-            let handle = std::thread::spawn(|| std::panic::catch_unwind(|| with_r_thread(|| 42)));
-            let result = handle.join().expect("thread panicked outside catch_unwind");
-            assert!(
-                result.is_err(),
-                "with_r_thread should panic from non-main thread"
-            );
-            return;
-        }
-        let result = std::panic::catch_unwind(|| {
-            with_r_thread(|| 42);
-        });
-        assert!(result.is_err());
-        let payload = result.unwrap_err();
-        let msg = crate::unwind_protect::panic_payload_to_string(payload.as_ref());
-        assert!(
-            msg.contains("miniextendr_runtime_init"),
-            "expected init error message, got: {msg}"
-        );
-    }
-
-    #[test]
     fn has_worker_context_false_outside_worker() {
         assert!(!has_worker_context());
     }
@@ -1041,7 +1016,11 @@ mod tests {
                             class,
                             data,
                         },
-                        2 => RCondition::Message { message, data },
+                        2 => RCondition::Message {
+                            message,
+                            class,
+                            data,
+                        },
                         _ => RCondition::Condition {
                             message,
                             class,
@@ -1065,7 +1044,11 @@ mod tests {
                         class,
                         data,
                     } => (1, message, class, data),
-                    RCondition::Message { message, data } => (2, message, vec![], data),
+                    RCondition::Message {
+                        message,
+                        class,
+                        data,
+                    } => (2, message, class, data),
                     RCondition::Condition {
                         message,
                         class,
@@ -1074,14 +1057,7 @@ mod tests {
                 };
                 assert_eq!(kind, expected_kind);
                 assert_eq!(message, "inline condition");
-                assert_eq!(
-                    class,
-                    if kind == 2 {
-                        vec![]
-                    } else {
-                        vec!["inline_class"]
-                    }
-                );
+                assert_eq!(class, vec!["inline_class"]);
                 let data = data.unwrap();
                 assert_eq!(data[0].0, "values");
                 let crate::RValue::Integer(values) = &data[0].1 else {

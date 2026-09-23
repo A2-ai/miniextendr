@@ -600,7 +600,11 @@ pub fn test_worker_condition(kind: String, via_main: bool) {
                 class,
                 data,
             },
-            "message" => RCondition::Message { message, data },
+            "message" => RCondition::Message {
+                message,
+                class,
+                data,
+            },
             "condition" => RCondition::Condition {
                 message,
                 class,
