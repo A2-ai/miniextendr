@@ -145,8 +145,7 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
-        let erased = ErasedExternalPtr::from_sexp(ptr);
-        if erased.is::<Counter>() {
+        if ErasedExternalPtr::wrap_sexp(ptr).is_some_and(|erased| erased.is::<Counter>()) {
             SEXP::scalar_integer(1)
         } else {
             SEXP::scalar_integer(0)
@@ -162,8 +161,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
-        let erased = ErasedExternalPtr::from_sexp(ptr);
-        if erased.is::<Point>() {
+        if ErasedExternalPtr::wrap_sexp(ptr).is_some_and(|erased| erased.is::<Point>()) {
             SEXP::scalar_integer(1)
         } else {
             SEXP::scalar_integer(0)
