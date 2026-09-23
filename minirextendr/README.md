@@ -62,12 +62,16 @@ miniextendr_build()
 
 1. `autoconf`
 2. `./configure`
-3. package install (`devtools::install()` when available)
-4. roxygen regeneration (`devtools::document()`)
+3. compile the Rust crate and regenerate `R/<pkg>-wrappers.R` in the source
+   tree (`pkgbuild::compile_dll()`, forced wrapper generation)
+4. roxygen regeneration (`devtools::document()`), then unloading the
+   development namespace it leaves behind so `library()` picks up the install
+5. package install (`devtools::install()`)
 
-The R wrapper and wasm registry are written during install/build, kept out of
-git, and shipped from disk in the package tarball. Roxygen2 derives the tracked
-`NAMESPACE` and `man/*.Rd` files from the generated wrapper.
+The R wrapper and wasm registry are written by the compile step (and by every
+install), kept out of git, and shipped from disk in the package tarball.
+Roxygen2 derives the tracked `NAMESPACE` and `man/*.Rd` files from the
+generated wrapper, so they are current before the install ships them.
 
 ## Templates
 

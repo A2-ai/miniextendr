@@ -258,10 +258,11 @@ just minirextendr-check
 
 Creates a real standalone R package from the template and builds it:
 
-**Important:** Dev mode requires install → document → reinstall. The first
-`R CMD INSTALL` compiles Rust and generates R wrappers via the `document`
-binary, but `NAMESPACE` starts empty. `devtools::document()` runs roxygen2 to
-populate `NAMESPACE` with exports, then a second install picks up the updated
+**Important:** the wrappers must exist before roxygen2 and the install.
+`miniextendr_build()` compiles the crate and regenerates `R/<pkg>-wrappers.R`
+in the source tree, runs `devtools::document()` to write `NAMESPACE` and
+`man/` from them, then installs once. A bare `R CMD INSTALL` on a fresh
+package compiles and generates the wrappers but leaves `NAMESPACE` without
 exports. `miniextendr_build(install = TRUE)` goes through `R CMD build` first,
 which excludes `vendor/` (via `.Rbuildignore`), so installing from the tarball
 fails in dev mode. Use direct `R CMD INSTALL` on the source directory instead.
@@ -311,7 +312,7 @@ EOF
 **Pass criteria:**
 1. Generated package configures and installs.
 2. Generated Rust wrappers are usable from R (`add(2, 3) == 5`).
-3. Dev mode workflow: install → document → reinstall succeeds.
+3. Dev mode workflow: compile + wrappers → document → install succeeds.
 
 ### Phase B3: External Dependency + Re-Vendor
 

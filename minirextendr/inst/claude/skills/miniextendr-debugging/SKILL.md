@@ -23,9 +23,8 @@ Check in order:
 2. Its module is reachable from `lib.rs` (`mod my_module;` present —
    unreachable modules are silently skipped).
 3. Rebuild the whole chain: `minirextendr::miniextendr_build()`. A new export
-   needs wrappers regenerated *and* `NAMESPACE` updated *and* a reinstall;
-   `miniextendr_build()` does all three (including the second install when
-   NAMESPACE changed).
+   needs wrappers regenerated *and* `NAMESPACE` updated *and* an install;
+   `miniextendr_build()` does all three, in that order.
 4. Restart R. An already-loaded package image doesn't pick up the new `.so`.
 
 ## `library(pkg)` exposes nothing (empty namespace)

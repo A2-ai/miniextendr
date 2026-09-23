@@ -528,15 +528,14 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 # script + bespoke CI job before; see #805). create_miniextendr_package() +
 # miniextendr_build() scaffold a package that sits outside any .git ancestor.
 # A build = TRUE install's bootstrap.R vendors while producing the tarball and
-# flips the staged package into
-# *tarball mode* — which skips the wrapper-gen pass. On a brand-new
-# package (no R/<pkg>-wrappers.R yet) that means the wrappers can never be
-# generated and library() exposes nothing (#822). miniextendr_build() now
-# detects the absent wrappers file and calls bootstrap_fresh_wrappers(), which
-# clears the latch, re-runs configure, then installs with
-# MINIEXTENDR_FORCE_WRAPPER_GEN=1 (build = FALSE). Configure does not vendor in
-# this source-mode bootstrap; the FORCE flag also guards the wrappers-present
-# case in install_pkg() against a leaked tarball latch (#757).
+# flips the staged package into *tarball mode* — which skips the wrapper-gen
+# pass. On a brand-new package (no R/<pkg>-wrappers.R yet) that used to mean
+# the wrappers could never be generated and library() exposed nothing (#822).
+# miniextendr_build() now compiles the crate and regenerates the wrappers in
+# the source tree (pkgbuild::compile_dll under MINIEXTENDR_FORCE_WRAPPER_GEN=1,
+# a libs-only source-mode install) before roxygen2 and before the tarball
+# install, so the first wrappers file exists before any tarball is produced;
+# the FORCE flag also guards the install against a leaked tarball latch (#757).
 #
 # Unlike the monorepo tests, create_miniextendr_package() takes no local_path, so
 # it scaffolds against miniextendr `main` and this test is network-dependent
@@ -604,8 +603,16 @@ test_that("standalone scaffolding builds in tarball mode and exposes functions",
 # and document() reads its @export tags to (re)write NAMESPACE, but install
 # collated NAMESPACE *before* document() rewrote it — so the freshly-installed
 # image lagged the on-disk NAMESPACE by one build and the new export was missing
-# until a second build. The fix snapshots NAMESPACE before/after document() and
-# reinstalls once iff it changed.
+# until a second build. Since #1549 the wrappers are regenerated in the source
+# tree before document(), and the single install ships the rewritten NAMESPACE.
+#
+# The same session has a second way to see a stale export set: document()
+# loads the package through pkgload::load_all(), whose export table is the
+# NAMESPACE as it was *before* roxygen2 rewrote it (for a fresh package: no
+# exports at all). miniextendr_build() unloads that development namespace, so
+# getNamespaceExports() below loads the installed image. Without the unload
+# this assertion fails against the leftover dev namespace, whatever the
+# installed image contains.
 #
 # This bug only manifests in the installed image's export set, so the assertion
 # is on getNamespaceExports() (a behavioural check) — a source-grep / deparse()
@@ -684,33 +691,34 @@ test_that("miniextendr_build() exports a newly added function in a single pass (
     expect_true(exists("mx_new_fn", envir = asNamespace("spexport")))
     expect_equal(getExportedValue("spexport", "mx_new_fn")(21), 42)
 
-    detach("package:spexport", character.only = TRUE, unload = TRUE)
+    # getNamespaceExports() loaded the installed namespace without attaching
+    # it (the build unloaded document()'s dev namespace), so unload by name.
+    if ("spexport" %in% loadedNamespaces()) pkgload::unload("spexport", quiet = TRUE)
   })
 })
 
 # -----------------------------------------------------------------------------
-# miniextendr_build() removal/rename self-heal (#1288)
+# miniextendr_build() removal/rename in a single pass (#1288)
 # -----------------------------------------------------------------------------
 
 # Sibling of the #898 single-pass test above, but for the opposite direction:
-# removing or renaming an exported #[miniextendr] function. That case dies at
-# Step 3 rather than lagging by one build -- the on-disk NAMESPACE is a
-# *superset* of the freshly regenerated wrappers, and R CMD INSTALL's
-# test-load aborts with "undefined exports: <old_name>" before document() gets
-# a chance to drop the stale entry. miniextendr_build() now defers that Step-3
-# failure, lets document() reconcile NAMESPACE, then forces a Step-5 retry --
-# so the rename still heals in a single miniextendr_build() pass.
+# removing or renaming an exported #[miniextendr] function. With an
+# install-first ordering that case died outright -- the on-disk NAMESPACE was
+# a *superset* of the freshly regenerated wrappers, and R CMD INSTALL's
+# test-load aborted with "undefined exports: <old_name>" before document()
+# could drop the stale entry. miniextendr_build() now regenerates the wrappers
+# in the source tree without loading the namespace (Step 3), lets document()
+# reconcile NAMESPACE (Step 4), and installs once against the reconciled file
+# (Step 5), so the rename lands in a single pass with no deferred failure.
 #
-# This also pins #1294 (the mid-build source-tree restore): Step 3's
-# build = TRUE install runs bootstrap.R in the SOURCE tree, sealing
-# inst/vendor.tar.xz there by design. Without the mid-build restore, Steps
-# 4/5 run latched in tarball mode, wrapper regeneration is skipped (the
-# Makevars #1022 guard), and the self-heal breaks for EVERY post-first-build
-# export change -- additive too. The `add_renamed %in% exports_after`
-# assertion below IS the additive-second-build regression pin for #1294 (a
-# new export appearing on a second build), so no separate additive e2e is
-# needed. Each build additionally asserts the latch is absent and the
-# manifest byte-identical once miniextendr_build() returns.
+# This also pins #1294 (the source-tree restore): the install's R CMD build
+# runs bootstrap.R in the SOURCE tree, sealing inst/vendor.tar.xz there by
+# design. Left in place, the NEXT build would run latched in tarball mode.
+# The `add_renamed %in% exports_after` assertion below IS the
+# additive-second-build regression pin (a new export appearing on a second
+# build), so no separate additive e2e is needed. Each build additionally
+# asserts the latch is absent and the manifest byte-identical once
+# miniextendr_build() returns.
 #
 # Same monorepo/offline scaffold shape as #898 (local-repo `.git` keeps
 # configure in source mode; crates.io deps vendored via `cargo vendor`), but
@@ -798,28 +806,28 @@ test_that("miniextendr_build() heals a removed/renamed export in a single pass (
     lib_content <- sub("pub fn add(", "pub fn add_renamed(", lib_content, fixed = TRUE)
     writeLines(lib_content, lib_rs)
 
-    # The single pass under test. If #1288 regresses, Step 3's install aborts
-    # ("undefined exports: add") and propagates instead of healing, and this
-    # miniextendr_build() call errors instead of returning. Two warnings are
-    # part of the healing pass's contract: minirextendr's own deferral
-    # warning, and pkgload's setup_ns_exports() superset warning from Step
-    # 4's load_all (the "wrinkle 1" mechanism that lets document() survive
-    # the stale NAMESPACE) -- assert both are present among ALL warnings
-    # raised. capture_warnings() (not nested expect_warning()) because
-    # load_all's internal unload/reload cycle can re-emit the pkgload
-    # superset warning more than once per build; nested expect_warning()
-    # only muffles the FIRST occurrence matching each regex, so a repeat
-    # occurrence leaks past both handlers to testthat's own stray-warning
-    # watcher and inflates the run's WARN tally without failing the test.
-    # capture_warnings() unconditionally muffles every warning it sees, so
-    # nothing leaks regardless of how many times a message repeats.
+    # The single pass under test. If the ordering regresses to install-first,
+    # the install aborts ("undefined exports: add") and this
+    # miniextendr_build() call errors instead of returning. The stale
+    # NAMESPACE (still exporting `add`) only ever meets pkgload's load_all
+    # inside document(), whose setup_ns_exports() warns on the superset and
+    # proceeds -- that warning is the one expected side effect, and no
+    # install-failure warning may appear. capture_warnings() (not nested
+    # expect_warning()) because load_all's internal unload/reload cycle can
+    # re-emit the pkgload superset warning more than once per build; nested
+    # expect_warning() only muffles the FIRST occurrence matching each regex,
+    # so a repeat occurrence leaks past both handlers to testthat's own
+    # stray-warning watcher and inflates the run's WARN tally without failing
+    # the test. capture_warnings() unconditionally muffles every warning it
+    # sees, so nothing leaks regardless of how many times a message repeats.
     manifest_snap_2 <- readLines(manifest_path, warn = FALSE)
     warnings_seen <- testthat::capture_warnings(
       suppressMessages(
         miniextendr_build(rpkg_path, install = TRUE)
       )
     )
-    expect_true(any(grepl("Install failed before NAMESPACE reconciliation", warnings_seen)))
+    expect_false(any(grepl("Install failed|installation failed", warnings_seen)),
+                 info = paste(warnings_seen, collapse = "\n"))
     expect_true(any(grepl("Objects listed as exports, but not present", warnings_seen)))
     expect_false(file.exists(latch_path),
                  info = "build 2 left inst/vendor.tar.xz behind (#1294 restore regression)")
@@ -843,6 +851,90 @@ test_that("miniextendr_build() heals a removed/renamed export in a single pass (
     # Drop build 2's dev namespace so later tests don't see a loaded
     # namespace pointing into this test's soon-deleted temp library.
     if ("sprename" %in% loadedNamespaces()) pkgload::unload("sprename", quiet = TRUE)
+  })
+})
+
+# -----------------------------------------------------------------------------
+# miniextendr_build() doc-comment edit reaches source AND installed help (#1549)
+# -----------------------------------------------------------------------------
+
+# The third shape of the one-build lag. A Rust doc-comment edit changes no
+# export, so with an install-first ordering the install succeeded from a
+# tarball copy whose man/ was the stale source man/, document() then updated
+# the source wrappers and man/, and the conditional reinstall (keyed on a
+# NAMESPACE change) never fired: `?add` in the installed package showed the
+# old text until the next build. With compile -> document -> install, the
+# single install ships the regenerated man/. Assert the edit in the source
+# wrappers, the source man/, and the INSTALLED Rd database (probed in a fresh
+# R subprocess, as in the #1288 test above).
+test_that("miniextendr_build() ships a Rust doc-comment edit to the installed help in a single pass (#1549)", {
+  skip_e2e()
+  miniextendr_path <- find_miniextendr_repo()
+
+  tmp <- tempfile("doc-edit-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  suppressMessages({
+    create_miniextendr_monorepo(tmp, package = "spdoc", crate_name = "spdoc-rs",
+                                local_path = miniextendr_path, open = FALSE)
+  })
+  rpkg_path <- file.path(tmp, "spdoc")
+
+  suppressWarnings({
+    withr::with_dir(rpkg_path, {
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
+              stdout = FALSE, stderr = FALSE)
+    })
+  })
+
+  installed_add_help <- function(lib) {
+    callr::r(
+      function(lib) {
+        rd <- tools::Rd_db("spdoc", lib.loc = lib)[["add.Rd"]]
+        if (is.null(rd)) return(NA_character_)
+        paste(capture.output(tools::Rd2txt(rd)), collapse = "\n")
+      },
+      args = list(lib = lib)
+    )
+  }
+
+  templib <- file.path(tmp, "library")
+  dir.create(templib)
+  marker <- "adds two numbers (edited for #1549)"
+
+  withr::with_libpaths(templib, action = "prefix", {
+    suppressMessages(
+      miniextendr_build(rpkg_path, install = TRUE)
+    )
+    expect_false(grepl(marker, installed_add_help(templib), fixed = TRUE))
+    if ("spdoc" %in% loadedNamespaces()) pkgload::unload("spdoc", quiet = TRUE)
+
+    # Edit only the doc comment of `add`: the export set is unchanged, so
+    # nothing but the documentation distinguishes build 2 from build 1.
+    lib_rs <- file.path(rpkg_path, "src", "rust", "lib.rs")
+    lib_content <- readLines(lib_rs)
+    lib_content <- sub("/// A simple function that adds two numbers",
+                       paste0("/// A simple function that ", marker),
+                       lib_content, fixed = TRUE)
+    writeLines(lib_content, lib_rs)
+
+    wrappers <- file.path(rpkg_path, "R", "spdoc-wrappers.R")
+    expect_false(any(grepl(marker, readLines(wrappers, warn = FALSE), fixed = TRUE)))
+
+    suppressMessages(
+      miniextendr_build(rpkg_path, install = TRUE)
+    )
+
+    expect_true(any(grepl(marker, readLines(wrappers, warn = FALSE), fixed = TRUE)),
+                info = "source R/spdoc-wrappers.R did not pick up the doc-comment edit")
+    add_rd <- file.path(rpkg_path, "man", "add.Rd")
+    expect_true(file.exists(add_rd))
+    expect_true(any(grepl(marker, readLines(add_rd, warn = FALSE), fixed = TRUE)),
+                info = "source man/add.Rd did not pick up the doc-comment edit")
+    expect_true(grepl(marker, installed_add_help(templib), fixed = TRUE),
+                info = "installed help for add() is one build behind (#1549)")
+
+    if ("spdoc" %in% loadedNamespaces()) pkgload::unload("spdoc", quiet = TRUE)
   })
 })
 

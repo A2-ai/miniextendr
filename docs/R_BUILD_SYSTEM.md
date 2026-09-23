@@ -66,10 +66,11 @@ output directories. All recorded paths are relative to the package, so copying
 the package or resetting its timestamps does not invalidate the record.
 
 The native tarball fast path and the source-mode roxygen reuse optimization
-require a matching record. This lets `minirextendr_build()` recover from a
-deferred stale-tarball failure: its documentation step regenerates changed
-source wrappers before reconciling NAMESPACE. Missing, corrupt, or
-mismatched records trigger generation from the freshly linked library.
+require a matching record. `miniextendr_build()` regenerates the source
+wrappers (and the record) under `MINIEXTENDR_FORCE_WRAPPER_GEN=1` before
+roxygen2 runs, so its `document()` step reuses them and its single install
+ships them (#1549). Missing, corrupt, or mismatched records trigger
+generation from the freshly linked library.
 `bootstrap.R` keeps a current record current across `cargo revendor --freeze`,
 which rewrites the fingerprinted Cargo files without changing what the wrappers
 are generated from; any other rewrite of those files invalidates the record,

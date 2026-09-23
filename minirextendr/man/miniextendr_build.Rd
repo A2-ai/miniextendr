@@ -9,62 +9,57 @@ miniextendr_build(path = ".", install = TRUE)
 \arguments{
 \item{path}{Path to the R package root, or \code{NULL} to use the active project.}
 
-\item{install}{Whether to run the \verb{R CMD INSTALL} steps. If \code{FALSE}, only
-runs autoconf + configure + roxygen2 (no compile, no reinstall).}
+\item{install}{Whether to run the final \verb{R CMD INSTALL}. If \code{FALSE}, the
+workflow stops after roxygen2: autoconf, configure, the compile with
+wrapper regeneration and \code{document()} still run, so the source tree is
+current, but nothing is installed.}
 }
 \value{
 Invisibly returns TRUE on success
 }
 \description{
-Runs the complete R package build pipeline:
-autoconf -> configure -> \verb{R CMD INSTALL} (compiles Rust + generates the
-\verb{R/<pkg>-wrappers.R} file via the wrapper-gen pass) -> roxygen2 -> conditional
-reinstall. This is the high-level workflow for building the entire package;
-for compiling just the Rust crate, use \code{\link[=cargo_build]{cargo_build()}} instead.
+Runs the complete R package build pipeline: autoconf -> configure ->
+compile the Rust crate and regenerate \verb{R/<pkg>-wrappers.R} in the source
+tree -> roxygen2 (\code{NAMESPACE} + \verb{man/}) -> one \verb{R CMD INSTALL}. This is the
+high-level workflow for building the entire package; for compiling just the
+Rust crate, use \code{\link[=cargo_build]{cargo_build()}} instead.
 }
-\section{Why a conditional reinstall}{
+\section{Why the wrappers are regenerated before roxygen2 and the install}{
 
-The \verb{R/<pkg>-wrappers.R} file is generated \emph{during} install, and its roxygen
-\verb{@export} tags are what \code{\link[devtools:document]{devtools::document()}} reads to write \code{NAMESPACE}.
-That creates a chicken-and-egg ordering: \code{document()} can only see the
-wrappers after install, but install collates \code{NAMESPACE} (the export set the
-installed image actually exposes) \emph{before} \code{document()} rewrites it. On a
-first build -- or any build that adds or renames an exported function -- the
-freshly-installed image therefore lags the on-disk \code{NAMESPACE} by one build,
-and \code{library(pkg)} exposes nothing new until the package is built a second
-time.
+\verb{R/<pkg>-wrappers.R} is written by the wrapper-gen rule of the package's
+\code{Makevars}, which loads the freshly linked shared object and asks it for the
+R side of every \verb{#[miniextendr]} item. Its roxygen \verb{@export} tags are what
+\code{\link[devtools:document]{devtools::document()}} reads to write \code{NAMESPACE}, and its doc comments are
+what \verb{man/} is rendered from. Installing first therefore shipped a
+\code{NAMESPACE} and \verb{man/} that were one build behind the Rust sources: a new
+export was missing from the installed image until a second build (#860), a
+removed or renamed export made the install's namespace load-test fail with
+\verb{undefined exports: <old>} before roxygen2 could drop the entry (#1288), and
+an edited doc comment reached the source \verb{man/} but not the installed help
+(#1549). Earlier versions worked around the first two with a conditional
+reinstall and a deferred install failure.
 
-To collapse that into a single pass, this workflow snapshots \code{NAMESPACE}
-before and after \code{document()}. If \code{document()} changed it (new or renamed
-exports), the package is reinstalled once so the installed image matches the
-freshly-written \code{NAMESPACE}. The reinstall happens at most once: after it,
-the wrappers and \code{NAMESPACE} are already in their final form, so a repeat
-\code{document()} would be a fixpoint and no further install is needed.
-}
+The steps now run in dependency order. Step 3 compiles the crate in the
+source tree with \code{\link[pkgbuild:compile_dll]{pkgbuild::compile_dll()}} under
+\code{MINIEXTENDR_FORCE_WRAPPER_GEN=1}: a libs-only \verb{R CMD INSTALL} into a
+throwaway library that links \verb{src/<pkg>.so}, regenerates
+\verb{R/<pkg>-wrappers.R}, \code{src/rust/wasm_registry.rs} and the wrapper
+provenance record in place, and never loads the namespace, so a stale
+\code{NAMESPACE} cannot fail it. Step 4's \code{document()} reads the current
+wrappers; its own \code{pkgload::load_all()} compile finds the crate built and
+the record current, and only warns when \code{NAMESPACE} still lists an export
+the regenerated wrappers no longer define. Step 5 installs the package
+once, with \code{NAMESPACE}, \verb{man/} and the wrappers already in their final
+form. A brand-new package needs no special case: Step 3 writes its first
+wrappers file the same way.
 
-\section{Removal/rename self-heal}{
-
-The addition case above assumes the install step succeeds. It doesn't when
-an exported \verb{#[miniextendr]} function is \emph{removed or renamed}: the on-disk
-\code{NAMESPACE} is then a superset of the freshly regenerated wrappers, and
-\verb{R CMD INSTALL}'s test-load aborts with \verb{undefined exports: <old_name>}
-before \code{document()} gets a chance to drop the stale entry (#1288).
-
-To self-heal this, the install step's failure is caught and deferred (with
-a loud warning) rather than propagated immediately. \code{document()} still
-runs and reconciles \code{NAMESPACE} down to the new export set --
-\code{pkgload}'s \code{setup_ns_exports()} only warns on a \code{NAMESPACE} superset and
-proceeds, so \code{document()} survives it even though the installed image
-can't. The reinstall is then made \strong{mandatory} whenever the install step
-was deferred, even if \code{document()} left \code{NAMESPACE} textually unchanged --
-a digest-only check would otherwise skip the reinstall and leave the
-broken image in place. No error classification is performed: any Step 3
-failure is deferred and retried once, because a genuinely broken build
-re-fails identically at the mandatory retry (or earlier, since
-\code{document()}'s \code{pkgload::load_all(compile = NA)} recompiles the crate
-too) and errors loudly there. The invariant holds regardless:
-\code{miniextendr_build(install = TRUE)} returns \code{TRUE} only if the last
-install attempt succeeded with test-load.
+\code{document()} loads the package from source through \code{pkgload::load_all()}
+and leaves that development namespace registered in the session. Its export
+table is the \code{NAMESPACE} as it stood \emph{before} roxygen2 rewrote it, so a
+\code{library()} call in the same session would attach an image missing every
+export the build just added. The workflow unloads it after \code{document()};
+\code{library()} then loads the installed package (or, with \code{install = FALSE},
+\code{load_all()} reads the current \code{NAMESPACE}).
 }
 
 \section{Development bootstrap}{
@@ -78,43 +73,16 @@ to distribution mode. Staging uses cargo-revendor when it is on PATH and the
 scaffold's base-R stager otherwise; both require updated templates.
 }
 
-\section{Mid-build source-tree restore}{
+\section{Source-tree restore}{
 
-In distribution mode, the install step's \verb{R CMD build} runs \code{bootstrap.R} in the
-source tree, sealing \code{inst/vendor.tar.xz} there by design (the built
-tarball must carry it). Left in place, that latch would flip the rest of
-the build into tarball mode -- where wrapper regeneration is skipped -- so
-\code{document()} would reconcile \code{NAMESPACE} against stale wrappers and both
-self-heal paths above would break for any post-first-build export change
-(#1294). \code{miniextendr_build()} therefore restores the dev source tree
-(manifest/lockfile snapshot written back; a newly-sealed
-\code{inst/vendor.tar.xz} deleted) immediately after the install step, not
-only on exit. A latch that existed \emph{before} the build is never deleted --
-instead a warning is emitted up front, because a latched tree builds in
-tarball mode throughout and the dev-loop self-heal is structurally
-disabled; delete \code{inst/vendor.tar.xz} (or run \code{minirextendr_doctor()}) to
-resume source-mode development.
-}
-
-\section{Fresh-package bootstrap}{
-
-A brand-new package has no generated \verb{R/<pkg>-wrappers.R} yet. The wrappers
-are produced by the wrapper-gen pass during install, but a plain
-\code{devtools::install(build = TRUE)} cannot bootstrap them: its \verb{R CMD build}
-step runs \code{bootstrap.R}, which vendors into \code{inst/vendor.tar.xz} as part of
-producing the package tarball, and
-that latch flips \code{./configure} into offline \emph{tarball} mode -- which ships
-pre-generated wrappers and skips wrapper generation. With no wrappers to
-ship, the install either fails loudly ("tarball is missing pre-generated
-wrappers") or, worse, leaves the namespace empty.
-
-When \code{miniextendr_build()} detects that the wrappers file is absent, it
-first runs a bootstrap (clear any stale latch -> configure ->
-\code{devtools::install(build = FALSE, MINIEXTENDR_FORCE_WRAPPER_GEN=1)} ->
-\code{devtools::document()}) so the wrappers exist before the normal build path
-runs. The \code{MINIEXTENDR_FORCE_WRAPPER_GEN} override also protects this helper
-from a pre-existing tarball-mode configuration while it establishes the
-source-mode wrapper set. Once wrappers are present, the normal build path
-runs unchanged.
+The install step's \verb{R CMD build} runs \code{bootstrap.R} in the source tree. In
+distribution mode that seals \code{inst/vendor.tar.xz} there by design (the built
+tarball must carry it) and freezes \code{src/rust/Cargo.toml}; left in place, the
+latch would flip the next build into offline tarball mode (#1294).
+\code{miniextendr_build()} snapshots the manifest and lockfile on entry and
+restores them on exit, deleting a latch it created itself. A latch that
+existed \emph{before} the build is never deleted; a warning is emitted up front
+instead, and \code{minirextendr_doctor()} / \code{miniextendr_clean_vendor_leak()}
+point at the fix.
 }
 
