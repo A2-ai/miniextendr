@@ -67,19 +67,16 @@ if (bootstrap_mode == "dev") {
 
 if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
   if (!nzchar(Sys.which("cargo-revendor"))) {
-    if (prepare_dev_bootstrap(mode = "dist")) {
-      message(
-        "bootstrap.R: cargo-revendor not on PATH; staged path dependencies under ",
-        "src/rust/vendor. Registry and git dependencies resolve over the network at ",
-        "install, so this artifact is not CRAN-ready (install cargo-revendor for an ",
-        "offline inst/vendor.tar.xz)."
-      )
-    } else {
-      message(
-        "bootstrap.R: cargo-revendor not on PATH and no path dependency outside the ",
-        "package; building from source (cargo fetches dependencies over the network)."
-      )
-    }
+    staged <- prepare_dev_bootstrap(mode = "dist")
+    warning(
+      "bootstrap.R: cargo-revendor is not on PATH, so this tarball ",
+      if (staged) "carries its path dependencies under src/rust/vendor but ",
+      "downloads crates.io and git dependencies at install time and is not CRAN-ready. ",
+      "For a CRAN submission, install cargo-revendor ",
+      "(`cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked`) ",
+      "and rebuild, or run minirextendr::miniextendr_vendor() first.",
+      call. = FALSE
+    )
   } else {
     message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
     dir.create("inst", showWarnings = FALSE)

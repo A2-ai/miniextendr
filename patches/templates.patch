@@ -42,8 +42,8 @@ diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
---- a/monorepo/rpkg/bootstrap.R	2026-09-23 13:10:49
-+++ b/monorepo/rpkg/bootstrap.R	2026-09-23 13:11:22
+--- a/monorepo/rpkg/bootstrap.R	2026-09-23 16:04:04
++++ b/monorepo/rpkg/bootstrap.R	2026-09-23 16:04:21
 @@ -1,42 +1,20 @@
  # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
 -# Invoked by pkgbuild (devtools::build, r-lib/actions/check-r-package) in
@@ -129,7 +129,7 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +# nothing to stage.
  bootstrap_mode <- match.arg(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), c("dist", "dev"))
  source("tools/dev-bootstrap.R", local = TRUE)
-@@ -84,18 +69,10 @@
+@@ -81,18 +66,10 @@
      message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
      dir.create("inst", showWarnings = FALSE)
 -    # --freeze rewrites local path-dependency siblings (e.g. a core crate at
@@ -672,8 +672,8 @@ diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
  
  # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
---- a/rpkg/bootstrap.R	2026-09-23 13:10:49
-+++ b/rpkg/bootstrap.R	2026-09-23 13:11:07
+--- a/rpkg/bootstrap.R	2026-09-23 16:04:04
++++ b/rpkg/bootstrap.R	2026-09-23 16:04:28
 @@ -33,6 +33,6 @@
  
  # MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that

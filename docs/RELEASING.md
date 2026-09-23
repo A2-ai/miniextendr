@@ -76,7 +76,8 @@ registry and git dependencies resolve over the network. A package whose path
 dependencies all live inside it (the exemplar's `satellite`) or that has none
 (the typical scaffold) falls through to a plain source build (configure's
 `[patch]` for the framework siblings, or cargo fetching the git URL), so
-`cargo-revendor` is **not** required.
+`cargo-revendor` is **not** required. Either way bootstrap warns that the build
+is not CRAN-ready; that is expected for this mode.
 
 How the framework crates resolve (read from `configure.ac`):
 
@@ -113,6 +114,14 @@ pkgbuild extension.) The `just r-cmd-build` / `just r-cmd-check` recipes call
 `just vendor` explicitly as well, which adds a defense-in-depth assertion that the
 framework crates were vendored from the local workspace rather than git@main
 (#876) — but the tarball would be vendored either way.
+
+This needs `cargo-revendor` on PATH. Without it the build still produces a
+tarball, but bootstrap ends with a warning that it "downloads crates.io and git
+dependencies at install time and is not CRAN-ready". That tarball is not a
+release artifact: install `cargo-revendor` (or run
+`minirextendr::miniextendr_vendor()` first) and rebuild. Before attaching a
+tarball, confirm it contains `inst/vendor.tar.xz` (`tar -tzf … | grep
+inst/vendor.tar.xz`).
 
 Attach the resulting `miniextendr_0.2.0.tar.gz` to a GitHub Release. Users install
 it offline and reproducibly:

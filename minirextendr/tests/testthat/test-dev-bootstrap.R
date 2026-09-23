@@ -338,7 +338,11 @@ test_that("without cargo-revendor, dist and dev builds stage nested path sibling
                      deparse(pkg), deparse(root)), build)
   output <- run(file.path(R.home("bin"), "Rscript"), shQuote(build), "fallback-build")
   expect_true(file_test("-x", file.path(pkg, "cleanup")))
-  expect_match(output, "staged path dependencies under src/rust/vendor", fixed = TRUE)
+  # The not-CRAN-ready notice is a warning, visible in pkgbuild's output.
+  expect_match(output, paste0("Warning message:\nbootstrap.R: cargo-revendor is not on PATH, so this ",
+                              "tarball carries its path dependencies under src/rust/vendor but downloads ",
+                              "crates.io and git dependencies at install time and is not CRAN-ready."),
+               fixed = TRUE)
   expect_identical(tools::md5sum(manifest), before)
   tarball <- list.files(root, "^fallbackprobe_.*[.]tar[.]gz$", full.names = TRUE)
   expect_length(tarball, 1L)

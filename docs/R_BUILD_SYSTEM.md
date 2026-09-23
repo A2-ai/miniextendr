@@ -392,6 +392,9 @@ dependency lies **outside the package directory**, because R CMD build seals
 only that directory and a `path` dependency is not source-replaceable. The
 result builds with network access but is not CRAN-ready (#1580). A package whose
 path dependencies all live inside it has nothing to stage and builds from source.
+Either way bootstrap ends with a `warning()` that the tarball downloads crates.io
+and git dependencies at install time and is not CRAN-ready, naming the
+`cargo install` line and `minirextendr::miniextendr_vendor()` as the fixes.
 
 R CMD build activates the staging by running `./cleanup` in its copy, and skips a
 `cleanup` that is not executable. pak's git client (`git::` and `gitlab::` refs)
