@@ -11,7 +11,6 @@
 \alias{zero_copy_arrow_i32_identity}
 \alias{zero_copy_arrow_u8_identity}
 \alias{zero_copy_arrow_f64_computed_is_different}
-\alias{zero_copy_sexprec_offset}
 \alias{zero_copy_arrow_f64_roundtrip}
 \alias{zero_copy_arrow_i32_roundtrip}
 \alias{zero_copy_arrow_f64_altrep}
@@ -42,8 +41,6 @@ zero_copy_arrow_i32_identity(x)
 zero_copy_arrow_u8_identity(x)
 
 zero_copy_arrow_f64_computed_is_different(x)
-
-zero_copy_sexprec_offset()
 
 zero_copy_arrow_f64_roundtrip(x)
 
@@ -90,8 +87,6 @@ Returns TRUE if Int32Array round-trip returns the same R object.
 Returns TRUE if UInt8Array round-trip returns the same R object.
 
 Returns FALSE — computed Arrow array has different backing memory.
-
-Verifies r_memory::sexprec_data_offset is nonzero (init ran).
 
 Round-trip Float64Array through Arrow and return the result. The zero-copy path returns the original R SEXP — serialization is trivial.
 

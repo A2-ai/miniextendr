@@ -15,6 +15,8 @@ just r-cmd-build / r-cmd-check  # tarball + check
 ```
 After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just rcmdinstall && just force-document`, then commit `NAMESPACE` + `man/*.Rd` in the same PR. `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are **gitignored** (regenerated on every install, like `inst/vendor.tar.xz`) — nothing to commit there. CI's `just wrappers-sync-check` regenerates wrappers.R and git-diffs NAMESPACE + man to catch drift.
 
+When removing an exported Rust function, an old `NAMESPACE` can fail the first install’s load check before roxygen has regenerated it. Use `just configure && just rcmdinstall --no-test-load && just force-document && just rcmdinstall`: the first install refreshes wrappers, documentation removes the obsolete export, and the final normal install verifies loading. Never hand-edit the generated namespace.
+
 ## Where installs land (main vs worktree)
 `just rcmdinstall` / `R CMD INSTALL` deposit `miniextendr` into `.libPaths()[1]`,
 which rv's `activate.R` sets to this checkout's own `rv/library/<ver>/<arch>`.
