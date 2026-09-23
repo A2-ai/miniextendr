@@ -65,6 +65,16 @@ test_that("Cow strings own only elements that require translation", {
   expect_false(zero_copy_vec_cow_str_all_borrowed(c("ascii", value)))
 })
 
+test_that("native UTF-8 and ASCII strings remain borrowed on supported R versions", {
+  value <- enc2utf8("façade")
+  Encoding(value) <- "unknown"
+  expect_identical(Encoding(value), "unknown")
+  expect_identical(conv_string_arg(value), enc2utf8(value))
+  expect_equal(miniextendr:::str_borrow_len(value), 6L)
+  expect_true(zero_copy_cow_str_is_borrowed(value))
+  expect_true(zero_copy_cow_str_is_borrowed("ascii"))
+})
+
 test_that("bytes-encoded strings are rejected as non-text", {
   value <- rawToChar(as.raw(0xff))
   Encoding(value) <- "bytes"

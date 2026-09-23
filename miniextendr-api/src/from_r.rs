@@ -74,8 +74,9 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 
 /// Convert CHARSXP to `&str`, translating to UTF-8 when required.
 ///
-/// Strings that R reports as UTF-8 (including ASCII and native strings in a
-/// UTF-8 locale) borrow directly from the CHARSXP via `R_CHAR` + `LENGTH`.
+/// UTF-8 and native strings (including ASCII) borrow directly from the
+/// CHARSXP via `R_CHAR` + `LENGTH`. Package initialization requires a UTF-8
+/// locale, so native strings have the same interpretation.
 /// Latin-1 and other translatable strings use `Rf_translateCharUTF8`; that
 /// buffer lives on R's memory stack for the enclosing `.Call`. Strings marked
 /// with R's `bytes` encoding are rejected because they are not text.
@@ -87,10 +88,14 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
-        if matches!(crate::sys::Rf_charIsUTF8(charsxp), crate::Rboolean::TRUE) {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
             return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
         }
-        reject_bytes_encoding(crate::sys::Rf_getCharCE(charsxp));
+        reject_bytes_encoding(encoding);
         translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp))
     }
 }
@@ -99,13 +104,14 @@ pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
 #[inline]
 pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
+        let encoding = crate::sys::Rf_getCharCE_unchecked(charsxp);
         if matches!(
-            crate::sys::Rf_charIsUTF8_unchecked(charsxp),
-            crate::Rboolean::TRUE
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
         ) {
             return charsxp_utf8_bytes(charsxp.r_char_unchecked(), charsxp.len_unchecked());
         }
-        reject_bytes_encoding(crate::sys::Rf_getCharCE_unchecked(charsxp));
+        reject_bytes_encoding(encoding);
         translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8_unchecked(charsxp))
     }
 }
@@ -118,7 +124,7 @@ unsafe fn charsxp_utf8_bytes(ptr: *const std::os::raw::c_char, len: usize) -> &'
     }
 }
 
-/// Borrow directly from a CHARSXP that R classifies as UTF-8/ASCII.
+/// Borrow directly from a UTF-8 or native CHARSXP in the required UTF-8 locale.
 ///
 /// Unlike [`charsxp_to_str`], this never returns R's temporary translation
 /// buffer. Use it for views whose borrow may be tied to the source STRSXP
@@ -126,10 +132,14 @@ unsafe fn charsxp_utf8_bytes(ptr: *const std::os::raw::c_char, len: usize) -> &'
 #[inline]
 pub(crate) unsafe fn charsxp_to_borrowed_str(charsxp: SEXP) -> &'static str {
     unsafe {
-        if matches!(crate::sys::Rf_charIsUTF8(charsxp), crate::Rboolean::TRUE) {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
             return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
         }
-        reject_bytes_encoding(crate::sys::Rf_getCharCE(charsxp));
+        reject_bytes_encoding(encoding);
         panic!("cannot borrow a non-UTF-8 R string; use Cow<str> or String to translate it");
     }
 }
@@ -151,16 +161,20 @@ unsafe fn translated_charsxp_to_str(ptr: *const std::os::raw::c_char) -> &'stati
 
 /// Convert CHARSXP to `Cow<str>`.
 ///
-/// UTF-8/ASCII strings borrow directly from R. Strings that require encoding
+/// UTF-8/native strings borrow directly from R. Strings that require encoding
 /// translation become owned Rust strings so the translated buffer cannot be
 /// invalidated independently of the returned value.
 #[inline]
 pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
     unsafe {
-        if matches!(crate::sys::Rf_charIsUTF8(charsxp), crate::Rboolean::TRUE) {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
             return std::borrow::Cow::Borrowed(charsxp_utf8_bytes(charsxp.r_char(), charsxp.len()));
         }
-        reject_bytes_encoding(crate::sys::Rf_getCharCE(charsxp));
+        reject_bytes_encoding(encoding);
         std::borrow::Cow::Owned(
             translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp)).to_owned(),
         )
