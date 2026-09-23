@@ -13,6 +13,12 @@
 \alias{deferred_rng_value}
 \alias{deferred_nested}
 \alias{deferred_worker_value}
+\alias{deferred_guard_altrep}
+\alias{deferred_guard_nested}
+\alias{deferred_pending_count}
+\alias{deferred_finalizer_pointer}
+\alias{deferred_finalized_count}
+\alias{deferred_guard_connection}
 \title{deferred_warning_value}
 \usage{
 deferred_warning_value(n)
@@ -38,6 +44,18 @@ deferred_rng_value()
 deferred_nested(f)
 
 deferred_worker_value()
+
+deferred_guard_altrep(mode)
+
+deferred_guard_nested(panic_inner)
+
+deferred_pending_count()
+
+deferred_finalizer_pointer()
+
+deferred_finalized_count()
+
+deferred_guard_connection()
 }
 \arguments{
 \item{n}{Row count.}
@@ -45,6 +63,10 @@ deferred_worker_value()
 \item{fail}{Whether to return \code{Err}.}
 
 \item{f}{An R function of no arguments.}
+
+\item{mode}{Zero succeeds; 1 raises a classed error; 2 panics; 3 raises an R error; 4 uses the sum fallback.}
+
+\item{panic_inner}{Whether the inner callback panics after queueing its warning.}
 }
 \description{
 Returns \code{n - 2} and warns about the two dropped rows.
@@ -70,4 +92,16 @@ The \code{rng} arm of the main-thread template (Get/PutRNGstate around the body)
 Nested calls: evaluates an R closure that itself calls \code{deferred_warning_value()}; the inner call flushes only its own warning, this call flushes only "outer".
 
 Worker-thread template: the push happens on the worker, the signal on the main thread after the result is back. Returns 9.
+
+Create an ALTREP whose element callback defers a warning and message.
+
+Check that a low-level raising guard signals before the enclosing .Call.
+
+Number of unsignalled entries, including entries below this .Call's mark.
+
+An external pointer whose destructor attempts to queue a warning.
+
+Number of completed deferred-warning finalizers.
+
+Connection writes signal locally; close, destroy and Drop suppress queues.
 }
