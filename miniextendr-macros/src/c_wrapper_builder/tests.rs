@@ -91,51 +91,6 @@ fn return_handling_detection() {
 }
 
 #[test]
-fn slice_borrow_kind_classification() {
-    // &mut [T] -> Mut
-    let ty: syn::Type = syn::parse_quote!(&mut [i32]);
-    assert_eq!(
-        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
-        Some(SliceBorrow::Mut)
-    );
-
-    // Option<&mut [T]> -> Mut
-    let ty: syn::Type = syn::parse_quote!(Option<&mut [f64]>);
-    assert_eq!(
-        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
-        Some(SliceBorrow::Mut)
-    );
-
-    // &[T] (shared) -> Shared
-    let ty: syn::Type = syn::parse_quote!(&[i32]);
-    assert_eq!(
-        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
-        Some(SliceBorrow::Shared)
-    );
-
-    // Option<&[T]> (shared) -> Shared
-    let ty: syn::Type = syn::parse_quote!(Option<&[i32]>);
-    assert_eq!(
-        slice_borrow_kind(&ty).map(|borrow| borrow.kind),
-        Some(SliceBorrow::Shared)
-    );
-
-    // &mut T (scalar reference) -> not a slice borrow
-    let ty: syn::Type = syn::parse_quote!(&mut i32);
-    assert!(slice_borrow_kind(&ty).is_none());
-
-    // Vec<T> / Box<[T]> copy -> not a borrow
-    let ty: syn::Type = syn::parse_quote!(Vec<i32>);
-    assert!(slice_borrow_kind(&ty).is_none());
-    let ty: syn::Type = syn::parse_quote!(Box<[i32]>);
-    assert!(slice_borrow_kind(&ty).is_none());
-
-    // Option<i32> -> not a borrow
-    let ty: syn::Type = syn::parse_quote!(Option<i32>);
-    assert!(slice_borrow_kind(&ty).is_none());
-}
-
-#[test]
 fn alias_guard_emission() {
     // Build a minimal CWrapperContext whose `inputs` are the parameters of the
     // given function signature.
@@ -172,34 +127,24 @@ fn alias_guard_emission() {
     ));
     assert!(!ctx.build_alias_guard(&sexp_idents).is_empty());
 
-    // Two &[T] (both shared): two `&` reads don't conflict -> no guard.
+    // Shared-only metadata is filtered before entering the runtime check.
     let ctx = ctx_for(syn::parse_quote!(
         fn two_shared(a: &[i32], b: &[i32]) {}
     ));
-    assert!(ctx.build_alias_guard(&sexp_idents).is_empty());
-
-    // Single &mut [T] param -> no guard (nothing to alias with).
-    let ctx = ctx_for(syn::parse_quote!(
-        fn single(a: &mut [i32]) {}
-    ));
     assert!(
-        ctx.build_alias_guard(&[syn::parse_quote!(arg_0)])
-            .is_empty()
+        ctx.build_alias_guard(&sexp_idents)
+            .to_string()
+            .contains("needs_check")
     );
 
-    // Three slices (two mut + one shared) -> pairwise guards for every pair
-    // touching a mutable borrow (mut/mut, mut/shared, mut/shared = 3 asserts;
-    // the shared/shared pair is skipped).
+    // A single parameter can hide a mutable list behind a type alias.
     let ctx = ctx_for(syn::parse_quote!(
-        fn three(a: &mut [i32], b: &mut [i32], c: &[i32]) {}
+        fn single(a: BorrowAlias) {}
     ));
-    let three_idents: Vec<syn::Ident> = vec![
-        syn::parse_quote!(arg_0),
-        syn::parse_quote!(arg_1),
-        syn::parse_quote!(arg_2),
-    ];
-    let guard = ctx.build_alias_guard(&three_idents).to_string();
-    assert_eq!(guard.matches("parameters `").count(), 3, "guard = {guard}");
+    let guard = ctx
+        .build_alias_guard(&[syn::parse_quote!(arg_0)])
+        .to_string();
+    assert!(guard.contains("BorrowAlias as :: miniextendr_api :: TryFromSexp"));
 }
 
 #[test]
@@ -252,4 +197,37 @@ fn alias_guard_also_rejects_conflicts_in_release() {
         !guard.contains("debug_assert"),
         "release wrappers must reject aliasing too"
     );
+}
+
+#[test]
+fn alias_guard_covers_native_scalar_and_boxed_borrows() {
+    for sig in [
+        syn::parse_quote!(
+            fn probe(a: &mut i32, b: &i32) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: &mut i32, b: &[i32]) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Vec<&mut i32>, b: &i32) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: Box<[&mut [i32]]>, b: &[i32]) {}
+        ),
+        syn::parse_quote!(
+            fn probe(a: ScalarAlias, b: BoxedAlias) {}
+        ),
+    ] {
+        let sig: syn::ItemFn = sig;
+        let ctx = CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_probe))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_probe))
+            .call_expr(quote::quote!(probe()))
+            .inputs(sig.sig.inputs)
+            .build();
+        assert!(
+            !ctx.build_alias_guard(&[syn::parse_quote!(arg_0), syn::parse_quote!(arg_1)])
+                .is_empty(),
+            "scalar, boxed, and aliased conversion types need native borrow preflight"
+        );
+    }
 }
