@@ -912,6 +912,14 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// otherwise, so existing `Result<T, String>` / `Result<T, MyDebugError>`
 /// functions are unchanged. The condition's `kind` stays `"result_err"`.
 ///
+/// The same impl classes argument-conversion failures: when a parameter
+/// type's `TryFromSexp::Error` implements this trait, a failed conversion
+/// raises its classes and fields with `kind = "conversion"`, the message
+/// `failed to convert parameter '<p>' to <T>: <message()>` and the
+/// parameter's R name as `e$param` (unless `data()` has a `param` field of
+/// its own, which then wins). An error type without the impl renders with
+/// `Display` and keeps the plain `rust_error` class vector.
+///
 /// `data()` field names must not be `message`, `call` or `kind` (see
 /// [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
 /// `rust_error` explaining the clash, so rename such a field at the source.
@@ -1156,6 +1164,124 @@ macro_rules! __mx_result_err_parts {
 
 // endregion
 
+// region: Classed argument-conversion errors
+
+/// Conversion probe, preferred arm: `E: RConditionError`.
+///
+/// When an argument fails its `TryFromSexp` conversion, the generated wrapper
+/// calls `(&e).__mx_conversion_parts()` with both conversion-probe traits in
+/// scope (see [`crate::__mx_conversion_err_parts!`]). This impl, on `E` taking
+/// `&self`, matches the receiver `&E` by value, so a `TryFromSexp::Error`
+/// that implements [`RConditionError`] contributes its class vector, message
+/// and data. [`ConversionErrDisplay`] needs one more auto-ref and is only
+/// reached otherwise.
+///
+/// Unlike the `Result` probe ([`crate::__mx_result_err_parts!`]) there is no
+/// serde stage and the fallback is `Display`, not `Debug`: the generated code
+/// has always rendered conversion errors with `Display`, which every built-in
+/// error type (`SexpError`, `MatchArgError`, ...) implements.
+#[doc(hidden)]
+pub trait ConversionErrClassed {
+    fn __mx_conversion_parts(&self) -> ErrParts;
+}
+
+impl<E: RConditionError> ConversionErrClassed for E {
+    #[track_caller]
+    fn __mx_conversion_parts(&self) -> ErrParts {
+        ErrParts {
+            message: self.message(),
+            class: self.class(),
+            data: check_condition_data(self.data()),
+        }
+    }
+}
+
+/// Conversion probe, fallback arm: any `E: Display`. The message is the
+/// error's `Display` text, with no class and no data, so the condition keeps
+/// the plain `rust_error` class vector.
+#[doc(hidden)]
+pub trait ConversionErrDisplay {
+    fn __mx_conversion_parts(&self) -> ErrParts;
+}
+
+impl<E: std::fmt::Display> ConversionErrDisplay for &E {
+    fn __mx_conversion_parts(&self) -> ErrParts {
+        ErrParts {
+            message: self.to_string(),
+            class: Vec::new(),
+            data: None,
+        }
+    }
+}
+
+/// Internal: the argument-conversion `Err(e)` probe used by generated
+/// wrappers. Not public API. Yields the error's own [`ErrParts`];
+/// [`crate::error_value::conversion_condition_value`] adds the parameter
+/// context.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_conversion_err_parts {
+    ($e:expr) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ConversionErrClassed as _, ConversionErrDisplay as _};
+        match &$e {
+            __mx_e => __mx_e.__mx_conversion_parts(),
+        }
+    }};
+}
+
+/// The name of the structured field that carries the failing parameter's R
+/// name on every argument-conversion condition (`e$param`).
+const CONVERSION_PARAM_FIELD: &str = "param";
+
+/// Combine an argument-conversion error's own parts with the wrapper's
+/// parameter context.
+///
+/// - The message becomes `<context>: <error message>`, where `context` is
+///   `failed to convert parameter '<p>' to <T>` (or `failed to coerce ...`).
+/// - The class vector is the error's own (empty for the `Display` fallback),
+///   followed by `crate_class`, the crate's `conversion_error_class` from
+///   `[package.metadata.miniextendr]`, minus any class the error already
+///   names. The R helper appends the `rust_error` layering after both.
+/// - `param` (the parameter's R name) is added as the first data field,
+///   `e$param`, unless the error's own data already has a field named
+///   `param`. Then the error type's value is kept: the framework never
+///   overwrites a field the type author chose, and the parameter name stays
+///   in the message. R's `e$param` reads only the first of two same-named
+///   fields, so exactly one of the two must be spliced.
+#[doc(hidden)]
+pub fn conversion_err_parts(
+    context: &str,
+    param: &str,
+    crate_class: &[&str],
+    parts: ErrParts,
+) -> ErrParts {
+    let ErrParts {
+        message,
+        mut class,
+        data,
+    } = parts;
+    for extra in crate_class {
+        if !class.iter().any(|c| c == extra) {
+            class.push((*extra).to_string());
+        }
+    }
+    let mut fields = data.unwrap_or_default();
+    if !fields
+        .iter()
+        .any(|(name, _)| name == CONVERSION_PARAM_FIELD)
+    {
+        fields.insert(0, (CONVERSION_PARAM_FIELD.to_string(), param.into()));
+    }
+    ErrParts {
+        message: format!("{context}: {message}"),
+        class,
+        data: Some(fields),
+    }
+}
+
+// endregion
+
 // region: Serde-tagged Result errors (#[miniextendr(serde_error)])
 
 /// Build the `Err`-arm parts from the error's serde shape.
@@ -1291,7 +1417,9 @@ impl RCondition {
     /// SEXPs (normal return values, `R_NilValue`, etc.).
     ///
     /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
-    /// `"result_err"`/`"none_err"`/`"other_rust_error"` → [`RCondition::Error`];
+    /// `"result_err"`/`"none_err"`/`"conversion"`/`"other_rust_error"` →
+    /// [`RCondition::Error`] (class, message and data kept; the kind itself is
+    /// not carried by the variant);
     /// `"warning"` → [`RCondition::Warning`]; `"message"` → [`RCondition::Message`];
     /// `"condition"` → [`RCondition::Condition`]. Unknown kinds degrade to
     /// [`RCondition::Error`] with the kind string prefixed to the message.
@@ -1421,6 +1549,7 @@ impl RCondition {
             | kind_const::PANIC
             | kind_const::RESULT_ERR
             | kind_const::NONE_ERR
+            | kind_const::CONVERSION
             | kind_const::OTHER_RUST_ERROR => RCondition::Error {
                 message: msg,
                 class,
@@ -2012,6 +2141,172 @@ mod condition_macro_tests {
         assert_eq!(parts.message, "Opaque");
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
+    }
+
+    /// The conversion probe's fallback: the built-in conversion errors are not
+    /// `RConditionError`, so they keep the plain class vector and render with
+    /// `Display` (not `Debug`), with no data of their own.
+    #[test]
+    fn conversion_probe_falls_back_to_display_for_builtin_errors() {
+        let e = crate::from_r::SexpError::InvalidValue("parse errors: index 1".into());
+        let parts = crate::__mx_conversion_err_parts!(e);
+        assert_eq!(parts.message, e.to_string());
+        assert!(parts.class.is_empty());
+        assert!(parts.data.is_none());
+
+        let e = crate::match_arg::MatchArgError::IsNa;
+        let parts = crate::__mx_conversion_err_parts!(e);
+        assert_eq!(parts.message, "match.arg: input is NA");
+        assert!(parts.class.is_empty());
+        assert!(parts.data.is_none());
+
+        // A plain `&str` / `String` error (neither `Serialize`-classed nor
+        // `Debug`-quoted, unlike the `Result` probe).
+        let parts = crate::__mx_conversion_err_parts!(String::from("bad input"));
+        assert_eq!(parts.message, "bad input");
+        assert!(parts.class.is_empty());
+    }
+
+    /// The conversion probe's preferred arm: an `RConditionError` error type
+    /// contributes its class vector, message and data.
+    #[test]
+    fn conversion_probe_prefers_rconditionerror() {
+        use super::RError;
+        let e = RError::new("must be positive")
+            .class(["pkg_bad_arg", "pkg_error"])
+            .data("value", -1);
+        let parts = crate::__mx_conversion_err_parts!(e);
+        assert_eq!(parts.message, "must be positive");
+        assert_eq!(parts.class, ["pkg_bad_arg", "pkg_error"]);
+        assert_eq!(parts.data.expect("data")[0].0, "value");
+    }
+
+    /// A reserved data name on a conversion error is rejected like on a
+    /// `Result` error, instead of overwriting `e$kind`.
+    #[test]
+    fn conversion_probe_rejects_reserved_fields() {
+        use super::RError;
+        let err = std::panic::AssertUnwindSafe(RError::new("m").data("kind", 2));
+        let payload = std::panic::catch_unwind(move || crate::__mx_conversion_err_parts!(err.0))
+            .err()
+            .expect("must panic");
+        let msg = payload
+            .downcast_ref::<String>()
+            .cloned()
+            .expect("plain panic message");
+        assert!(msg.contains("reserved"), "got: {msg}");
+    }
+
+    fn field_names(parts: &super::ErrParts) -> Vec<&str> {
+        parts
+            .data
+            .as_ref()
+            .map(|d| d.iter().map(|(n, _)| n.as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    /// `conversion_err_parts`: the context prefixes the message, the class is
+    /// kept, and `param` comes first in the data.
+    #[test]
+    fn conversion_err_parts_adds_context_and_param() {
+        use super::{ErrParts, conversion_err_parts};
+        use crate::RValue;
+
+        let plain = conversion_err_parts(
+            "failed to convert parameter 'x' to i32",
+            "x",
+            &[],
+            ErrParts {
+                message: "type mismatch: expected INTSXP, got STRSXP".into(),
+                class: Vec::new(),
+                data: None,
+            },
+        );
+        assert_eq!(
+            plain.message,
+            "failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got STRSXP"
+        );
+        assert!(plain.class.is_empty());
+        assert_eq!(field_names(&plain), ["param"]);
+        assert!(matches!(
+            &plain.data.as_ref().expect("data")[0].1,
+            RValue::Character(v) if v == &vec![Some("x".to_string())]
+        ));
+
+        let classed = conversion_err_parts(
+            "failed to convert parameter 'x' to Count",
+            "x",
+            &[],
+            ErrParts {
+                message: "must be positive".into(),
+                class: vec!["pkg_bad_arg".into(), "pkg_error".into()],
+                data: Some(vec![("value".into(), RValue::from(-1))]),
+            },
+        );
+        assert_eq!(classed.class, ["pkg_bad_arg", "pkg_error"]);
+        assert_eq!(field_names(&classed), ["param", "value"]);
+    }
+
+    /// The crate's `conversion_error_class` follows the error's own classes,
+    /// skipping those it already names; a plain error gets only the crate's.
+    #[test]
+    fn conversion_err_parts_appends_the_crate_class() {
+        use super::{ErrParts, conversion_err_parts};
+
+        let crate_class = ["pkg_error_argument", "pkg_error"];
+        let plain = conversion_err_parts(
+            "failed to convert parameter 'x' to i32",
+            "x",
+            &crate_class,
+            ErrParts {
+                message: "type mismatch".into(),
+                class: Vec::new(),
+                data: None,
+            },
+        );
+        assert_eq!(plain.class, ["pkg_error_argument", "pkg_error"]);
+
+        let classed = conversion_err_parts(
+            "failed to convert parameter 'x' to Count",
+            "x",
+            &crate_class,
+            ErrParts {
+                message: "must be positive".into(),
+                class: vec!["pkg_error_negative".into(), "pkg_error".into()],
+                data: None,
+            },
+        );
+        assert_eq!(
+            classed.class,
+            ["pkg_error_negative", "pkg_error", "pkg_error_argument"]
+        );
+    }
+
+    /// A `param` field of the error type's own wins: the framework's field is
+    /// not added, so `e$param` reads the type's value.
+    #[test]
+    fn conversion_err_parts_keeps_the_types_param_field() {
+        use super::{ErrParts, conversion_err_parts};
+        use crate::RValue;
+
+        let parts = conversion_err_parts(
+            "failed to convert parameter 'hyper' to Hyperparams",
+            "hyper",
+            &[],
+            ErrParts {
+                message: "hyperparameter 'beta' must be non-negative".into(),
+                class: Vec::new(),
+                data: Some(vec![
+                    ("value".into(), RValue::from(-2.0)),
+                    ("param".into(), RValue::from("beta")),
+                ]),
+            },
+        );
+        assert_eq!(field_names(&parts), ["value", "param"]);
+        assert!(matches!(
+            &parts.data.as_ref().expect("data")[1].1,
+            RValue::Character(v) if v == &vec![Some("beta".to_string())]
+        ));
     }
 
     #[test]

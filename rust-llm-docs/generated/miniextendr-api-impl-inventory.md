@@ -750,8 +750,8 @@ Traits with impls: 219
 | `SEXP` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:114 |
 | `SEXP` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:115 |
 | `Call` | `` | concrete | 1 | miniextendr-api/src/call_marker.rs:118 |
-| `RError` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1016 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1514 |
+| `RError` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1024 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1643 |
 | `AsList<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:103 |
 | `AsExternalPtr<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:365 |
 | `AsRNative<T>` | `<T>` | concrete | 1 | miniextendr-api/src/convert.rs:417 |
@@ -1655,8 +1655,8 @@ Traits with impls: 219
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1537 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1666 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:976 |
 | `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1197 |
 | `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1215 |
 | `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1233 |
@@ -1785,7 +1785,7 @@ Traits with impls: 219
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:481 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:85 |
 | `Coerced<T, R>` | `<T, R>` | concrete | 1 | miniextendr-api/src/coerce.rs:919 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:968 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:976 |
 | `RStdin` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1197 |
 | `RStdout` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1215 |
 | `RStderr` | `` | concrete | 1 | miniextendr-api/src/connection.rs:1233 |
@@ -2681,8 +2681,8 @@ Traits with impls: 219
 |---|---|---|---|---|
 | `LogicalCoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:489 |
 | `CoerceError` | `` | concrete | 1 | miniextendr-api/src/coerce.rs:97 |
-| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:1031 |
-| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1521 |
+| `RError` | `` | concrete | 1 | miniextendr-api/src/condition.rs:1039 |
+| `AsRError<E>` | `<E>` | concrete | 1 | miniextendr-api/src/condition.rs:1650 |
 | `DataFrameError` | `` | concrete | 1 | miniextendr-api/src/dataframe.rs:115 |
 | `GroupKey` | `` | concrete | 1 | miniextendr-api/src/dataframe/group.rs:124 |
 | `TypeMismatchError` | `` | concrete | 1 | miniextendr-api/src/externalptr.rs:1741 |
@@ -3642,7 +3642,7 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `RError` | `` | concrete | 3 | miniextendr-api/src/condition.rs:1037 |
+| `RError` | `` | concrete | 3 | miniextendr-api/src/condition.rs:1045 |
 
 ## `RDate` — 1 impls
 

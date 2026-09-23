@@ -162,11 +162,12 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 /// Build a tagged condition value with no structured `data` payload.
 ///
 /// Thin wrapper over [`make_rust_condition_value_with_data`] with `data =
-/// None`. This is the entry point used by all proc-macro-generated codegen
-/// (argument-conversion failures, `Option::None`, `Result::Err`), none of
-/// which carries a `data` payload. Only the user-facing `error!()` /
+/// None` and at most one class. Generated code uses it for the unclassed
+/// kinds (`Option::None`); classed `Result::Err` values go through
+/// [`result_err_condition_value`], argument-conversion failures through
+/// [`conversion_condition_value`], and the user-facing `error!()` /
 /// `warning!()` / `message!()` / `condition!()` macros (routed through
-/// [`crate::unwind_protect`]) attach `data`.
+/// [`crate::unwind_protect`]) attach their own `data`.
 ///
 /// # Safety
 ///
@@ -206,6 +207,42 @@ pub unsafe fn result_err_condition_value(
         make_rust_condition_value_with_data(
             &parts.message,
             kind::RESULT_ERR,
+            &parts.class,
+            call,
+            parts.data,
+        )
+    }
+}
+
+/// Build the tagged value for an argument that failed its Rust-side
+/// conversion: `kind = "conversion"`, the parts probed off the error by
+/// [`crate::__mx_conversion_err_parts!`] (class, message and data from an
+/// [`RConditionError`](crate::condition::RConditionError) impl, else the
+/// `Display` text), with `context` prefixed to the message, the crate's
+/// `conversion_error_class` (`crate_class`, emitted by the macro from
+/// `[package.metadata.miniextendr]`) after the error's own classes, and the
+/// parameter's R name as `e$param`. See
+/// [`crate::condition::conversion_err_parts`] for how they combine.
+///
+/// # Safety
+///
+/// Same contract as [`make_rust_condition_value_with_data`]: R main thread,
+/// valid allocation context. Every generated conversion `Err` arm runs inside
+/// the wrapper's `with_r_unwind_protect` closure (or, for sidecar setters, the
+/// `.Call` entry point itself), which satisfies it.
+pub unsafe fn conversion_condition_value(
+    context: &str,
+    param: &str,
+    crate_class: &[&str],
+    parts: crate::condition::ErrParts,
+    call: Option<SEXP>,
+) -> SEXP {
+    let parts = crate::condition::conversion_err_parts(context, param, crate_class, parts);
+    // SAFETY: forwarded from the caller.
+    unsafe {
+        make_rust_condition_value_with_data(
+            &parts.message,
+            kind::CONVERSION,
             &parts.class,
             call,
             parts.data,

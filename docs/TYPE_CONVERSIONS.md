@@ -523,18 +523,27 @@ pub fn label_grid(x: Array2<Option<String>>) -> Array2<Option<String>> {
 
 ## Error Cases
 
+A value that fails its Rust-side conversion raises an R error with
+`e$kind == "conversion"`, `e$param` set to the parameter's R name, and the
+message `failed to convert parameter '<p>' to <T>: <reason>`, where `<reason>`
+is the conversion error's own message. Most built-in types are checked by an
+R-side precondition first; the examples below use `no_preconditions` so the
+value reaches Rust. An argument type whose error implements `RConditionError`
+contributes its own classes and fields; see
+[ERROR_HANDLING.md](ERROR_HANDLING.md#classed-conversion-errors).
+
 ### Type Mismatch
 
 When R type doesn't match expected Rust type:
 
 ```rust
-#[miniextendr]
+#[miniextendr(no_preconditions)]
 pub fn needs_integer(x: i32) -> i32 { x }
 ```
 
 ```r
 needs_integer(1.5)
-# Error: failed to convert parameter 'x' to i32: wrong type
+# Error: failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got REALSXP
 ```
 
 ### NA in Non-Option
@@ -542,13 +551,13 @@ needs_integer(1.5)
 When NA is passed to non-Option parameter:
 
 ```rust
-#[miniextendr]
+#[miniextendr(no_preconditions)]
 pub fn needs_value(x: i32) -> i32 { x }
 ```
 
 ```r
 needs_value(NA_integer_)
-# Error: failed to convert parameter 'x' to i32: contains NA
+# Error: failed to convert parameter 'x' to i32: unexpected NA value in INTSXP
 ```
 
 ### Coercion Failure
@@ -561,8 +570,8 @@ pub fn needs_int(x: i32) -> i32 { x }
 ```
 
 ```r
-needs_int(1.5)
-# Error: failed to coerce parameter 'x' to i32: fractional value
+needs_int(1e20)
+# Error: failed to coerce parameter 'x' to i32: invalid value: value out of range
 ```
 
 ---

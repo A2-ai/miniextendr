@@ -45,8 +45,8 @@ Traits with impls: 28
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
 | `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
-| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
-| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
+| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
+| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -73,7 +73,7 @@ Traits with impls: 28
 | `LowerArg` | `` | concrete | 1 | miniextendr-macros/src/r_macro/lowering.rs:79 |
 | `LowerAtom` | `` | concrete | 1 | miniextendr-macros/src/r_macro/lowering.rs:86 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:328 |
+| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:550 |
 
 ## `Clone` — 24 impls
 
@@ -83,8 +83,8 @@ Traits with impls: 28
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
 | `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
-| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
-| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
+| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
+| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
@@ -102,7 +102,7 @@ Traits with impls: 28
 | `TraitMethod` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl_trait.rs:120 |
 | `PreconditionOptions` | `` | concrete | 1 | miniextendr-macros/src/r_preconditions.rs:85 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:328 |
+| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:550 |
 
 ## `Default` — 22 impls
 
@@ -110,7 +110,7 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `ContainerAttrs` | `` | concrete | 1 | miniextendr-macros/src/condition_derive.rs:41 |
 | `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/condition_derive.rs:76 |
-| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
+| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
 | `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:128 |
 | `RFactorAttrs` | `` | concrete | 1 | miniextendr-macros/src/factor_derive.rs:61 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
@@ -129,7 +129,7 @@ Traits with impls: 28
 | `PreconditionOptions` | `` | concrete | 1 | miniextendr-macros/src/r_preconditions.rs:85 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `RoxygenBuilder` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:742 |
-| `RustConversionBuilder` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:606 |
+| `RustConversionBuilder` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:584 |
 
 ## `Eq` — 14 impls
 
@@ -138,8 +138,8 @@ Traits with impls: 28
 | `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:42 |
-| `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:65 |
+| `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:49 |
+| `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -157,8 +157,8 @@ Traits with impls: 28
 | `ErrPartsMode` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
 | `SliceBorrow` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:42 |
-| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:65 |
+| `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
+| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -176,8 +176,8 @@ Traits with impls: 28
 | `ErrPartsMode` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:187 |
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
-| `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:42 |
-| `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:65 |
+| `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:49 |
+| `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -226,7 +226,7 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:71 |
+| `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:83 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:126 |
 
 ## `FromStr` — 2 impls

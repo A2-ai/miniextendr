@@ -17,10 +17,13 @@ crate-type = ["staticlib"]
 # tests/testthat/test-noexport-postfix.R. `source_tags` opts the generated
 # roxygen back into `@source` provenance lines (off by default since #1552);
 # consumer.pkg stays on the default so both shapes are exercised.
+# `conversion_error_class` puts every argument-conversion error of the crate in
+# the `producer_error` family (tests/testthat/test-conversion-error-class.R).
 [package.metadata.miniextendr]
 noexport_postfix = "_impl"
 source_tags = true
 call_attribution = "caller"
+conversion_error_class = ["producer_error_argument", "producer_error"]
 
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)

@@ -30,10 +30,14 @@ pub struct RustConversionBuilder {
     /// `Option<T>`-typed scalar `match_arg` parameter names — use
     /// `match_arg_option_from_sexp` instead of `TryFromSexp` (#1473).
     match_arg_optional_params: Vec<String>,
+    /// The crate's `conversion_error_class` (`[package.metadata.miniextendr]`),
+    /// appended to every conversion condition's class vector.
+    conversion_error_class: Vec<String>,
 }
 
 impl RustConversionBuilder {
-    /// Create a new conversion builder.
+    /// Create a new conversion builder, carrying the crate-level
+    /// `conversion_error_class` from the manifest (empty when unset).
     pub fn new() -> Self {
         Self {
             coerce_all: false,
@@ -41,7 +45,16 @@ impl RustConversionBuilder {
             strict: false,
             match_arg_several_ok_params: Vec::new(),
             match_arg_optional_params: Vec::new(),
+            conversion_error_class: crate::crate_config::conversion_error_class(),
         }
+    }
+
+    /// Override the crate-level conversion-error classes (the manifest's
+    /// `conversion_error_class` is read by [`Self::new`]).
+    #[cfg(test)]
+    pub fn with_conversion_error_class(mut self, classes: Vec<String>) -> Self {
+        self.conversion_error_class = classes;
+        self
     }
 
     /// Enable coercion for all parameters.
@@ -97,50 +110,27 @@ impl RustConversionBuilder {
     /// `return` happens from inside the C wrapper body before any further conversion.
     ///
     /// - `try_expr`: The `Result<T, E>`-producing expression
-    /// - `error_msg`: Human-readable error message for the failure
+    /// - `context`: The message prefix, `failed to convert parameter '<p>' to <T>`
+    /// - `r_name`: The parameter's R name, attached to the condition as `e$param`
     /// - `ident`: The binding name for the converted value
-    /// - `ty`: The target Rust type (for the `let` binding)
+    /// - `ty`: The target Rust type (for the `let` binding). The annotation is
+    ///   load-bearing: the `Err` arm probes the error type by method call
+    ///   ([`conversion_err_arm`]), which needs that type known at that point.
     /// - `span`: Source span for error reporting
     fn conversion_stmt(
         &self,
         try_expr: TokenStream,
-        error_msg: &str,
+        context: &str,
+        r_name: &str,
         ident: &syn::Ident,
         ty: &syn::Type,
         span: proc_macro2::Span,
     ) -> TokenStream {
+        let err_arm = conversion_err_arm(context, r_name, &self.conversion_error_class, span);
         quote_spanned! {span=>
             let #ident: #ty = match #try_expr {
                 Ok(v) => v,
-                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &format!("{}: {e}", #error_msg),
-                    ::miniextendr_api::error_value::kind::CONVERSION,
-                    ::core::option::Option::None,
-                    Some(__miniextendr_call),
-                ) },
-            };
-        }
-    }
-
-    /// Like `conversion_stmt` but without a type annotation on the binding.
-    fn conversion_stmt_untyped(
-        &self,
-        try_expr: TokenStream,
-        error_msg: &str,
-        ident: &syn::Ident,
-        span: proc_macro2::Span,
-    ) -> TokenStream {
-        quote_spanned! {span=>
-            let #ident = match #try_expr {
-                Ok(v) => v,
-                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &format!("{}: {e}", #error_msg),
-                    ::miniextendr_api::error_value::kind::CONVERSION,
-                    ::core::option::Option::None,
-                    Some(__miniextendr_call),
-                ) },
+                #err_arm
             };
         }
     }
@@ -220,6 +210,10 @@ impl RustConversionBuilder {
         // `r#`-free spelling for synthesized bindings (`__storage_where`).
         let plain = crate::naming::unraw(ident);
         let ty = pat_type.ty.as_ref();
+        // The R formal's name (`_x` → `x`, `r#type` → `type`): what a
+        // conversion condition names in its message and in `e$param`.
+        let r_name =
+            crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(ident));
 
         // A `Call` / `CallerCall` marker (#1566) never reaches this builder from
         // a standalone fn: `lib.rs` removes it from the inputs and binds it from
@@ -276,12 +270,7 @@ impl RustConversionBuilder {
                 {
                     let is_mut = r.mutability.is_some();
                     let storage_ident = quote::format_ident!("__storage_{}", plain);
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to &{}[{}]: invalid choice",
-                        param_name,
-                        if is_mut { "mut " } else { "" },
-                        quote::quote!(#inner_ty)
-                    );
+                    let context = convert_context(&r_name, ty);
                     let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
@@ -291,21 +280,27 @@ impl RustConversionBuilder {
                     // For &mut [T] the storage binding needs `mut`.
                     let owned_stmt = if is_mut {
                         // Need `let mut storage_ident: vec_ty = ...`; inline the mut variant.
-                        let em = &error_msg;
+                        let err_arm = conversion_err_arm(
+                            &context,
+                            &r_name,
+                            &self.conversion_error_class,
+                            span,
+                        );
                         quote_spanned! {span=>
                             let mut #storage_ident: #vec_ty = match #try_expr {
                                 Ok(v) => v,
-                                // SAFETY: emitted into the wrapper's with_r_unwind_protect closure (R main thread).
-                                Err(e) => return unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                    &format!("{}: {e}", #em),
-                                    ::miniextendr_api::error_value::kind::CONVERSION,
-                                    ::core::option::Option::None,
-                                    Some(__miniextendr_call),
-                                ) },
+                                #err_arm
                             };
                         }
                     } else {
-                        self.conversion_stmt(try_expr, &error_msg, &storage_ident, &vec_ty, span)
+                        self.conversion_stmt(
+                            try_expr,
+                            &context,
+                            &r_name,
+                            &storage_ident,
+                            &vec_ty,
+                            span,
+                        )
                     };
                     let borrow_stmt = if is_mut {
                         quote_spanned! {span=>
@@ -328,33 +323,41 @@ impl RustConversionBuilder {
                     };
                     (vec![stmt], vec![])
                 } else if is_slice {
-                    // &[T]: use TryFromSexp (backed by DATAPTR_RO)
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to slice: wrong type or length",
-                        ident
-                    );
+                    // &[T]: use TryFromSexp (backed by DATAPTR_RO). The binding is
+                    // annotated with the lifetime-erased type (`&'a [T]` → `&'_ [T]`):
+                    // the user's lifetime need not be in scope, and the `Err` arm's
+                    // probe needs the error type named.
+                    let context = convert_context(&r_name, ty);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
-                    let stmt = self.conversion_stmt_untyped(try_expr, &error_msg, ident, span);
+                    let binding_ty = crate::type_inspect::erase_lifetimes(ty);
+                    let stmt =
+                        self.conversion_stmt(try_expr, &context, &r_name, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 } else if is_str {
                     let span = ty.span();
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to string: expected character vector",
-                        ident
-                    );
+                    let context = convert_context(&r_name, ty);
                     if zero_copy_str {
                         // Main-thread path: borrow R's CHARSXP pool directly via the
                         // `&'static str` TryFromSexp impl — zero allocation. The SEXP
                         // is a live wrapper argument for the whole call, so the borrow
                         // is sound; its lifetime is tied to this scope, so storing it
                         // beyond the call is a borrow-checker error (no-store guarantee).
+                        // The binding carries the lifetime-erased type, as for slices.
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        let stmt = self.conversion_stmt_untyped(try_expr, &error_msg, ident, span);
+                        let binding_ty = crate::type_inspect::erase_lifetimes(ty);
+                        let stmt = self.conversion_stmt(
+                            try_expr,
+                            &context,
+                            &r_name,
+                            ident,
+                            &binding_ty,
+                            span,
+                        );
                         (vec![stmt], vec![])
                     } else {
                         // Worker path: convert to owned String, then borrow using the
@@ -368,7 +371,8 @@ impl RustConversionBuilder {
                         };
                         let owned_stmt = self.conversion_stmt(
                             try_expr,
-                            &error_msg,
+                            &context,
+                            &r_name,
                             &owned_ident,
                             &string_ty,
                             span,
@@ -381,16 +385,12 @@ impl RustConversionBuilder {
                     }
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to {}: wrong type",
-                        ident,
-                        quote!(#ty)
-                    );
+                    let context = convert_context(&r_name, ty);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
-                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                    let stmt = self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
                     (vec![stmt], vec![])
                 }
             }
@@ -422,15 +422,11 @@ impl RustConversionBuilder {
                     && let Some(inner_ty) = crate::option_inner_type(ty)
                 {
                     let span = ty.span();
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to Option<{}>: invalid choice",
-                        param_name,
-                        quote!(#inner_ty)
-                    );
+                    let context = convert_context(&r_name, ty);
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::match_arg_option_from_sexp::<#inner_ty>(#sexp_ident)
                     };
-                    let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                    let stmt = self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 
@@ -441,37 +437,26 @@ impl RustConversionBuilder {
                     && let Some((container, inner_ty)) = crate::classify_several_ok_container(ty)
                 {
                     let span = ty.span();
+                    let context = convert_context(&r_name, ty);
                     match container {
                         crate::SeveralOkContainer::Vec => {
-                            let error_msg = format!(
-                                "failed to convert parameter '{}' to Vec<{}>: invalid choice",
-                                param_name,
-                                quote!(#inner_ty)
-                            );
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
-                            let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                            let stmt =
+                                self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
                             return (vec![stmt], vec![]);
                         }
                         crate::SeveralOkContainer::BoxedSlice => {
-                            let error_msg = format!(
-                                "failed to convert parameter '{}' to Box<[{}]>: invalid choice",
-                                param_name,
-                                quote!(#inner_ty)
-                            );
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                                     .map(|v| v.into_boxed_slice())
                             };
-                            let stmt = self.conversion_stmt(try_expr, &error_msg, ident, ty, span);
+                            let stmt =
+                                self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
                             return (vec![stmt], vec![]);
                         }
                         crate::SeveralOkContainer::Array(n) => {
-                            let error_msg = format!(
-                                "failed to convert parameter '{}': invalid choice",
-                                param_name,
-                            );
                             let param_name_lit = &param_name;
                             let span = ty.span();
                             // First extract the Vec via match_arg_vec_from_sexp (handles
@@ -482,8 +467,9 @@ impl RustConversionBuilder {
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
-                            let vec_stmt = self
-                                .conversion_stmt(try_expr, &error_msg, &vec_ident, &vec_ty, span);
+                            let vec_stmt = self.conversion_stmt(
+                                try_expr, &context, &r_name, &vec_ident, &vec_ty, span,
+                            );
                             // Length check + array conversion via panic (framework catches panics)
                             let arr_stmt = quote_spanned! {span=>
                                 let #ident: #ty = {
@@ -501,18 +487,14 @@ impl RustConversionBuilder {
                         }
                         crate::SeveralOkContainer::BorrowedSlice => {
                             let storage_ident = quote::format_ident!("__storage_{}", plain);
-                            let error_msg = format!(
-                                "failed to convert parameter '{}' to &[{}]: invalid choice",
-                                param_name,
-                                quote!(#inner_ty)
-                            );
                             let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
                             let owned_stmt = self.conversion_stmt(
                                 try_expr,
-                                &error_msg,
+                                &context,
+                                &r_name,
                                 &storage_ident,
                                 &vec_ty,
                                 span,
@@ -535,7 +517,7 @@ impl RustConversionBuilder {
                 let span = ty.span();
                 let stmt = match coercion_mapping {
                     Some(mapping) => {
-                        let error_msg = format!("failed to coerce parameter '{}'", param_name);
+                        let context = coerce_context(&r_name, ty);
                         let try_expr = match mapping {
                             CoercionMapping::Numeric => quote_spanned! {span=>
                                 ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
@@ -559,18 +541,14 @@ impl RustConversionBuilder {
                                 ::miniextendr_api::from_r::try_from_sexp_coerced_f64_vec(#sexp_ident)
                             },
                         };
-                        self.conversion_stmt(try_expr, &error_msg, ident, ty, span)
+                        self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span)
                     }
                     None => {
-                        let error_msg = format!(
-                            "failed to convert parameter '{}' to {}: wrong type, length, or contains NA",
-                            param_name,
-                            quote!(#ty)
-                        );
+                        let context = convert_context(&r_name, ty);
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        self.conversion_stmt(try_expr, &error_msg, ident, ty, span)
+                        self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span)
                     }
                 };
                 (vec![stmt], vec![])
@@ -608,6 +586,54 @@ impl Default for RustConversionBuilder {
         Self::new()
     }
 }
+
+// region: conversion-failure conditions
+
+/// `failed to convert parameter '<r_name>' to <T>`: the message prefix of an
+/// argument-conversion condition. The error's own message follows it; it
+/// already says what failed (type, length, NA, parse error, ...).
+fn convert_context(r_name: &str, ty: &syn::Type) -> String {
+    format!(
+        "failed to convert parameter '{r_name}' to {}",
+        crate::type_inspect::type_display(ty)
+    )
+}
+
+/// `failed to coerce parameter '<r_name>' to <T>`: the prefix for a
+/// `coerce`-mode conversion.
+fn coerce_context(r_name: &str, ty: &syn::Type) -> String {
+    format!(
+        "failed to coerce parameter '{r_name}' to {}",
+        crate::type_inspect::type_display(ty)
+    )
+}
+
+/// The `Err(e)` arm of a conversion binding: return the tagged
+/// `kind = "conversion"` value. `__mx_conversion_err_parts!` takes the class
+/// vector, message and data from an `RConditionError` error type and the
+/// `Display` text otherwise; `conversion_condition_value` prefixes `context`,
+/// appends the crate's `conversion_error_class` and adds `r_name` as
+/// `e$param`.
+fn conversion_err_arm(
+    context: &str,
+    r_name: &str,
+    crate_class: &[String],
+    span: proc_macro2::Span,
+) -> TokenStream {
+    // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
+    // with_r_unwind_protect closure, on the R main thread.
+    quote_spanned! {span=>
+        Err(e) => return unsafe { ::miniextendr_api::error_value::conversion_condition_value(
+            #context,
+            #r_name,
+            &[#(#crate_class),*],
+            ::miniextendr_api::__mx_conversion_err_parts!(e),
+            Some(__miniextendr_call),
+        ) },
+    }
+}
+
+// endregion
 
 #[cfg(test)]
 mod tests;

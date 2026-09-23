@@ -17,11 +17,13 @@
 //! noexport_postfix = "_impl"
 //! source_tags = true
 //! call_attribution = "caller"
+//! conversion_error_class = ["pkg_error_argument", "pkg_error"]
 //! ```
 //!
 //! The reader is a deliberately small line-based scanner rather than a TOML
 //! dependency: the macro crate ships in every downstream build, and the only
-//! values it needs are strings and a boolean under one well-known table.
+//! values it needs are strings, a boolean and a single-line string array
+//! under one well-known table.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -35,6 +37,11 @@ const NOEXPORT_POSTFIX_KEY: &str = "package.metadata.miniextendr.noexport_postfi
 const SOURCE_TAGS_KEY: &str = "package.metadata.miniextendr.source_tags";
 /// Dotted path of the `call_attribution` key.
 const CALL_ATTRIBUTION_KEY: &str = "package.metadata.miniextendr.call_attribution";
+/// Dotted path of the `conversion_error_class` key.
+const CONVERSION_ERROR_CLASS_KEY: &str = "package.metadata.miniextendr.conversion_error_class";
+/// The classes the R raise helper appends to every Rust error. A crate-level
+/// class naming one of them would duplicate a layer of the vector.
+const FRAMEWORK_ERROR_CLASSES: [&str; 4] = ["rust_error", "simpleError", "error", "condition"];
 /// Dotted path of the table itself, used to reject the inline-table spelling.
 const TABLE_KEY: &str = "package.metadata.miniextendr";
 
@@ -58,6 +65,11 @@ pub(crate) struct CrateConfig {
     /// exported ones keep `wrapper`. Unset means the framework default,
     /// `wrapper` (or `none` under the `fast-default` feature).
     pub(crate) call_attribution: Option<CallAttribution>,
+    /// `conversion_error_class = "..." | ["...", ...]`: classes added to every
+    /// argument-conversion condition of the crate, after the error type's own
+    /// `RConditionError` classes (duplicates skipped) and before the
+    /// `rust_error` layering. Empty when unset.
+    pub(crate) conversion_error_class: Vec<String>,
 }
 
 /// A malformed `[package.metadata.miniextendr]` entry, reported as a compile
@@ -102,6 +114,19 @@ pub(crate) fn source_tags_enabled() -> bool {
     crate_config().map(|c| c.source_tags).unwrap_or(false)
 }
 
+/// The crate-level classes of argument-conversion conditions
+/// (`conversion_error_class`), empty when unset.
+///
+/// Read by the argument-conversion codegen, which runs for free functions,
+/// impl methods, trait methods and sidecar setters alike; a malformed table
+/// reads as the default here and is reported as a compile error by the first
+/// `#[miniextendr]` function, which goes through [`crate_config`].
+pub(crate) fn conversion_error_class() -> Vec<String> {
+    crate_config()
+        .map(|c| c.conversion_error_class)
+        .unwrap_or_default()
+}
+
 /// [`crate_config`] for an explicit manifest directory (the cached entry point).
 pub(crate) fn crate_config_for_dir(dir: &Path) -> Result<CrateConfig, CrateConfigError> {
     static CACHE: OnceLock<Mutex<HashMap<PathBuf, Result<CrateConfig, CrateConfigError>>>> =
@@ -137,6 +162,7 @@ fn read_crate_config(manifest: &Path) -> Result<CrateConfig, CrateConfigError> {
 pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
     let mut config = CrateConfig::default();
     let mut source_tags_seen = false;
+    let mut conversion_error_class_seen = false;
     let mut table = String::new();
 
     for raw_line in text.lines() {
@@ -184,6 +210,25 @@ pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
                     )
                 })?;
             config.call_attribution = Some(attribution);
+            continue;
+        }
+        if full == CONVERSION_ERROR_CLASS_KEY {
+            if conversion_error_class_seen {
+                return Err("`conversion_error_class` is set more than once".to_string());
+            }
+            let value = value.trim();
+            let classes = parse_string_value(value)
+                .map(|class| vec![class])
+                .or_else(|| parse_string_array_value(value))
+                .ok_or_else(|| {
+                    format!(
+                        "`conversion_error_class` must be a string or a single-line array of \
+                         strings, found `{value}`"
+                    )
+                })?;
+            validate_conversion_error_class(&classes)?;
+            config.conversion_error_class = classes;
+            conversion_error_class_seen = true;
             continue;
         }
         if full == SOURCE_TAGS_KEY {
@@ -265,6 +310,35 @@ fn parse_string_value(value: &str) -> Option<String> {
     Some(body.to_string())
 }
 
+/// Parse a single-line TOML array of strings (`["a", 'b']`, a trailing comma
+/// and a trailing `# comment` allowed), each element under the
+/// [`parse_string_value`] rules. Multi-line arrays and non-string elements
+/// return `None`.
+fn parse_string_array_value(value: &str) -> Option<Vec<String>> {
+    let mut rest = value.strip_prefix('[')?.trim_start();
+    let mut items = Vec::new();
+    loop {
+        if let Some(after) = rest.strip_prefix(']') {
+            let trailing = after.trim_start();
+            return (trailing.is_empty() || trailing.starts_with('#')).then_some(items);
+        }
+        let quote = rest.chars().next().filter(|c| matches!(c, '"' | '\''))?;
+        let body_and_rest = &rest[1..];
+        let end = body_and_rest.find(quote)?;
+        let body = &body_and_rest[..end];
+        if body.contains('\\') {
+            return None;
+        }
+        items.push(body.to_string());
+        rest = body_and_rest[end + 1..].trim_start();
+        if let Some(after) = rest.strip_prefix(',') {
+            rest = after.trim_start();
+        } else if !rest.starts_with(']') {
+            return None;
+        }
+    }
+}
+
 /// Parse a TOML boolean, allowing a trailing `# comment`.
 fn parse_bool_value(value: &str) -> Option<bool> {
     let (literal, rest) = match value.split_once(char::is_whitespace) {
@@ -279,6 +353,32 @@ fn parse_bool_value(value: &str) -> Option<bool> {
         "false" => Some(false),
         _ => None,
     }
+}
+
+/// `conversion_error_class` must name at least one class, each non-empty,
+/// distinct, and not one of the framework's own layers (`rust_error`,
+/// `simpleError`, `error`, `condition`), which are always appended.
+fn validate_conversion_error_class(classes: &[String]) -> Result<(), String> {
+    if classes.is_empty() {
+        return Err("`conversion_error_class` must name at least one class".to_string());
+    }
+    for (i, class) in classes.iter().enumerate() {
+        if class.trim().is_empty() {
+            return Err("`conversion_error_class` entries must not be empty".to_string());
+        }
+        if FRAMEWORK_ERROR_CLASSES.contains(&class.as_str()) {
+            return Err(format!(
+                "`conversion_error_class` must not name `{class}`: every conversion error already \
+                 carries `rust_error`, `simpleError`, `error` and `condition`"
+            ));
+        }
+        if classes[..i].contains(class) {
+            return Err(format!(
+                "`conversion_error_class` names `{class}` more than once"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Mirror of `miniextendr_fn::validate_postfix` for the manifest value.
@@ -420,6 +520,71 @@ noexport_postfix = "also not ours"
         assert_eq!(config.noexport_postfix.as_deref(), Some("_impl"));
         assert!(config.source_tags);
         assert_eq!(config.call_attribution, Some(CallAttribution::Caller));
+    }
+
+    #[test]
+    fn conversion_error_class_is_read_and_validated() {
+        let classes = |text: &str| parse_crate_config(text).map(|c| c.conversion_error_class);
+        let owned = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(classes(""), Ok(Vec::new()));
+        // A single string and the array spellings.
+        assert_eq!(
+            classes("[package.metadata.miniextendr]\nconversion_error_class = \"pkg_error\"\n"),
+            Ok(owned(&["pkg_error"]))
+        );
+        assert_eq!(
+            classes(
+                "[package.metadata.miniextendr]\nconversion_error_class = [\"pkg_error_argument\", 'pkg_error'] # family last\n"
+            ),
+            Ok(owned(&["pkg_error_argument", "pkg_error"]))
+        );
+        assert_eq!(
+            classes(
+                "[package.metadata]\nminiextendr.conversion_error_class = [ \"a\" , \"b\" , ]\n"
+            ),
+            Ok(owned(&["a", "b"]))
+        );
+        assert_eq!(
+            classes("[package]\nmetadata.miniextendr.conversion_error_class = ['pkg.error']\n"),
+            Ok(owned(&["pkg.error"]))
+        );
+
+        let err = |text: &str| classes(text).unwrap_err();
+        let table = "[package.metadata.miniextendr]\n";
+        for bad in [
+            "conversion_error_class = pkg_error\n",
+            "conversion_error_class = 1\n",
+            "conversion_error_class = [\"a\", 1]\n",
+            "conversion_error_class = [\"a\" \"b\"]\n",
+            "conversion_error_class = [\"a\"] trailing\n",
+            "conversion_error_class = [\"a\\tb\"]\n",
+            "conversion_error_class = [\n",
+        ] {
+            let msg = err(&format!("{table}{bad}"));
+            assert!(msg.contains("single-line array of strings"), "{bad}: {msg}");
+        }
+        assert!(err(&format!("{table}conversion_error_class = []\n")).contains("at least one"));
+        assert!(err(&format!("{table}conversion_error_class = [\"\"]\n")).contains("not be empty"));
+        let layered = err(&format!(
+            "{table}conversion_error_class = [\"pkg_error\", \"rust_error\"]\n"
+        ));
+        assert!(layered.contains("must not name `rust_error`"), "{layered}");
+        let dup = err(&format!("{table}conversion_error_class = [\"a\", \"a\"]\n"));
+        assert!(dup.contains("more than once"), "{dup}");
+        let twice = err(&format!(
+            "{table}conversion_error_class = \"a\"\nconversion_error_class = \"b\"\n"
+        ));
+        assert!(twice.contains("is set more than once"), "{twice}");
+
+        // Alongside the other keys.
+        let all = "[package.metadata.miniextendr]\nnoexport_postfix = \"_impl\"\nconversion_error_class = [\"pkg_error_argument\", \"pkg_error\"]\ncall_attribution = \"caller\"\n";
+        let config = parse_crate_config(all).unwrap();
+        assert_eq!(config.noexport_postfix.as_deref(), Some("_impl"));
+        assert_eq!(config.call_attribution, Some(CallAttribution::Caller));
+        assert_eq!(
+            config.conversion_error_class,
+            owned(&["pkg_error_argument", "pkg_error"])
+        );
     }
 
     #[test]
