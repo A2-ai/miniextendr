@@ -649,7 +649,13 @@ impl CWrapperContext {
                             Some(__miniextendr_call),
                         )
                     }));
-                    // PutRNGstate runs after catch_unwind, before error handling
+                    // PutRNGstate can allocate when .Random.seed is shared.
+                    let __miniextendr_rng_scope = unsafe {
+                        ::miniextendr_api::gc_protect::ProtectScope::new()
+                    };
+                    if let Ok(sexp) = &__result {
+                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
+                    }
                     unsafe { ::miniextendr_api::sys::PutRNGstate(); }
                     let __miniextendr_value = match __result {
                         Ok(sexp) => sexp,
@@ -748,7 +754,16 @@ impl CWrapperContext {
         let (rng_get, rng_put) = if self.rng {
             (
                 quote! { unsafe { ::miniextendr_api::sys::GetRNGstate(); } },
-                quote! { unsafe { ::miniextendr_api::sys::PutRNGstate(); } },
+                quote! {
+                    // Keep values and tagged conditions alive through RNG cleanup.
+                    let __miniextendr_rng_scope = unsafe {
+                        ::miniextendr_api::gc_protect::ProtectScope::new()
+                    };
+                    if let Ok(sexp) = &__miniextendr_panic_result {
+                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
+                    }
+                    unsafe { ::miniextendr_api::sys::PutRNGstate(); }
+                },
             )
         } else {
             (TokenStream::new(), TokenStream::new())
