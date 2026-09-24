@@ -13,13 +13,12 @@ cleanup.ucrt eol=lf
 # On conflict, pick a side and regenerate with `just templates-approve`. See CLAUDE.md.
 patches/templates.patch -merge
 
-# Regenerated files routed to the mx-regen merge driver
+# Cargo.lock is routed to the mx-regen merge driver
 # (scripts/merge-driver-regen.sh). With the driver installed
-# (`just merge-drivers-install`), a both-sides change keeps the current side
-# and queues the path for `just regenerate-merged`; Cargo.lock only does so
-# when the conflict is pin-line churn. Without the driver, git falls back to
+# (`just merge-drivers-install`), a conflict that is only pin-line churn keeps
+# the current side's pins and queues the lock for `just regenerate-merged`;
+# any other lock conflict stops as usual. Without the driver, git falls back to
 # its default text merge, as before. The `-merge` paths (above and in
 # rpkg/.gitattributes) are routed to the driver by the install recipe instead,
 # through .git/info/attributes. See CLAUDE.md "Rebase conflicts".
-rust-llm-docs/generated/*.md merge=mx-regen
 rpkg/src/rust/Cargo.lock merge=mx-regen

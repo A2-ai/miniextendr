@@ -15,25 +15,28 @@ against the miniextendr workspace without any extra setup. The scripts have no
 third-party Python dependencies for the *local-crate* path — only `requests` and
 `zstandard` are needed when downloading from docs.rs.
 
-## generated/ — pre-built miniextendr docs
+## generated/ — miniextendr docs, built on demand
 
-`generated/` contains a committed snapshot of LLM-ready docs for every root
-workspace crate plus the standalone `cargo-revendor` utility. Use them directly
-in an LLM context when you need full public API coverage. The standalone
-R-package and cross-package fixture workspaces are test surfaces rather than
-framework API references.
+`just llm-docs` writes LLM-ready docs for every root workspace crate plus the
+standalone `cargo-revendor` utility into `generated/`. The directory is
+gitignored: the files change with every public-API change, so tracking them
+made almost every open PR conflict. Generate them locally, then use them
+directly in an LLM context when you need full public API coverage. Do not
+hand-edit them. The standalone R-package and cross-package fixture workspaces
+are test surfaces rather than framework API references, so they are not
+documented.
 
 | File | Contents |
 |---|---|
-| `miniextendr-api.md` | Full API digest for `miniextendr-api` (broad feature set) |
-| `miniextendr-macros.md` | Proc-macro public API |
-| `miniextendr-engine.md` | Standalone embedded-R engine public API |
-| `miniextendr-bench.md` | Benchmark harness public API |
-| `miniextendr-lint.md` | Lint rule public API |
-| `miniextendr-cli.md` | CLI helper public API |
-| `*-impl-inventory.md` | Every trait impl grouped by trait + span |
-| `conversion-impl-inventory.md` | Conversion traits only — the dedup-audit view |
-| `conversion-manual-vs-macro.md` | Hand-rolled impls a proc-macro could absorb |
+| `<crate>.md` | Single-file public API digest: modules, re-exports, extern crates/types, structs, unions, enums, traits/trait aliases, functions, macros, constants, statics, type aliases, and primitives. Container items live under their parent; signatures include generics, bounds, ABI, variadics, and where clauses. One file each for `miniextendr-api`, `-macros`, `-engine`, `-bench`, `-lint`, `-cli` and `cargo-revendor`. |
+| `<crate>-impl-inventory.md` | Every non-blanket, non-synthetic trait `impl` in the crate, grouped by trait, with fully-resolved `for`-type, generics, kind, and source span (the summary table still counts blanket/synthetic impls). Includes a per-trait "for-types sharing a source span" cluster: macro-expanded families collapse to one line, hand-rolled one-offs stand out. |
+| `conversion-impl-inventory.md` | Same inventory restricted to the R↔Rust conversion traits (`TryFromSexp`, `IntoR`, `IntoRAs`, `Coerce`, `TryCoerce`, serde-native, ALTREP). The dedup-audit lens: re-run it after a conversion refactor to confirm the set of `for`-types is unchanged. |
+| `conversion-manual-vs-macro.md` | Hand-rolled (unique-span) impls grouped by container shape, flagging shapes a macro already generates. The "which manual impls could a macro absorb?" lens. |
+
+`miniextendr-api` is documented with its maintained `full` feature aggregate so
+feature-gated integrations are visible; `miniextendr-bench` uses all features.
+The others use default features. `miniextendr-macros` is a proc-macro crate, so
+its rustdoc surface is intentionally thin.
 
 ### Regenerating
 
@@ -44,10 +47,10 @@ just llm-docs
 Requires a `rustc` with `RUSTC_BOOTSTRAP=1` support (stable is fine) and Python 3.
 The recipe runs `cargo doc --no-deps --document-private-items` for each crate,
 using `miniextendr-api`'s maintained `full` feature aggregate and all benchmark
-features, then renders markdown into `generated/`. Commit the result alongside
-any macro/API changes that affect the public surface. `just llm-docs-check`
-tests the renderer, regenerates the corpus, and fails if the committed snapshot
-drifts.
+features, then renders markdown into `generated/`. The output is deterministic:
+the same sources render byte-identical files. `just llm-docs-check` runs the
+renderer tests, then regenerates the corpus; the regeneration fails on any
+rustdoc item kind the renderer does not cover.
 
 ## Using the scripts for other crates
 

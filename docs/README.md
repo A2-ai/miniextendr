@@ -18,7 +18,7 @@ framework.
 | Use lazy/compact vectors | [ALTREP](ALTREP.md) |
 | Understand the architecture | [Architecture](ARCHITECTURE.md) |
 | See what features exist | [Features](FEATURES.md) |
-| Look up the generated Rust API surface | [LLM-ready rustdoc digests](../rust-llm-docs/generated/README.md) |
+| Look up the generated Rust API surface | [LLM-ready rustdoc digests](../rust-llm-docs/README.md) (`just llm-docs`) |
 | Debug a problem | [Troubleshooting](TROUBLESHOOTING.md) |
 
 ## Documentation map

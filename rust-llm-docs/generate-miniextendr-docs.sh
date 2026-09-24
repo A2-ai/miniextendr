@@ -4,7 +4,7 @@
 #
 #   rust-llm-docs/generate-miniextendr-docs.sh
 #
-# Outputs to rust-llm-docs/generated/:
+# Outputs to rust-llm-docs/generated/ (gitignored; see rust-llm-docs/README.md):
 #   <crate>.md                     — single-file API digest (rustdoc_megadoc.py)
 #   <crate>-impl-inventory.md      — every trait impl grouped by trait + span
 #   conversion-impl-inventory.md   — conversion traits only, the dedup-audit view
