@@ -3,8 +3,8 @@
 # with NA of any type as NA.
 #
 # The conversion's own text ("as.character() failed", ...) is matched exactly;
-# the "'x' must be atomic: " prefix before it is the macro's argument-error
-# wording (#1591). R precondition failures are matched on stable fragments (the
+# the "'x' must be coercible to character: " prefix before it is the macro's
+# argument-error wording (#1591). R precondition failures are matched on stable fragments (the
 # parameter name and the requirement), not on the full sentence the generated
 # check happens to use. Both raise the same argument error: `rust_error`,
 # `kind = "conversion"` and `e$param`, plus `e$rust_type` on a conversion.
@@ -121,7 +121,10 @@ test_that("A failing as.character() method is a conversion error", {
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "x")
   expect_identical(e$rust_type, "AsCharacterVec")
-  expect_match(conditionMessage(e), "^'x' must be atomic: as\\.character\\(\\) failed: ")
+  expect_match(
+    conditionMessage(e),
+    "^'x' must be coercible to character: as\\.character\\(\\) failed: "
+  )
   expect_match(conditionMessage(e), "no labels here", fixed = TRUE)
   .S3method("as.character", "mx_test_numeric", function(x, ...) unclass(x))
   expect_error(
@@ -129,6 +132,12 @@ test_that("A failing as.character() method is a conversion error", {
     "as.character() returned INTSXP, not a character vector",
     fixed = TRUE
   )
+  # A length-1 argument whose method gives two strings passes the R-side
+  # checks; the conversion names what the result has to be.
+  .S3method("as.character", "mx_test_pair", function(x, ...) c("a", "b"))
+  e <- tryCatch(as_chr(structure(1L, class = "mx_test_pair")), error = identity)
+  expect_identical(conditionMessage(e), "'x' must be coercible to a single string: got length 2")
+  expect_identical(e$rust_type, "AsCharacter")
 })
 
 # endregion

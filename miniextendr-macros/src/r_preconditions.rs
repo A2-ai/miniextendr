@@ -563,9 +563,11 @@ impl RTypeCheck {
     /// `a single <noun>` (`a single integer`, `a single string`, `TRUE or
     /// FALSE`), vectors name the R type (`numeric`, `character`, `a list`).
     /// `AsNumeric` / `AsNumericVec` say `a single number` / `numeric`, the
-    /// value they produce, rather than the inputs they read; `AsCharacter` /
-    /// `AsCharacterVec` say what they read, `a single atomic value` /
-    /// `atomic` (base R's `'x' must be atomic`).
+    /// value they produce, rather than the inputs they read. `AsCharacter` /
+    /// `AsCharacterVec` likewise say `coercible to a single string` /
+    /// `coercible to character`: their R-side check has already required an
+    /// atomic argument, so what is left to fail is the `as.character()` step
+    /// (a failing method, a non-character or wrong-length result).
     fn expectation(&self) -> String {
         match self {
             RTypeCheck::ScalarNumeric | RTypeCheck::ScalarNumericOrText => "a single number".into(),
@@ -577,12 +579,14 @@ impl RTypeCheck {
                 "logical" => "TRUE or FALSE".into(),
                 "character" => "a single string".into(),
                 "integer" | "double" => format!("a single {r_type}"),
-                // `raw`, `complex`, `atomic` (`AsCharacter`).
+                "atomic" => "coercible to a single string".into(),
+                // `raw`, `complex`.
                 other => format!("a single {other} value"),
             },
             RTypeCheck::VectorNumeric | RTypeCheck::VectorNumericOrText => "numeric".into(),
             RTypeCheck::VectorIntegerStrict => "integer".into(),
             RTypeCheck::VectorIntegerWide => "integer or whole-number numeric".into(),
+            RTypeCheck::Vector("atomic") => "coercible to character".into(),
             RTypeCheck::Vector(r_type) => (*r_type).into(),
             RTypeCheck::Nullable(inner) => match inner.expectation().as_str() {
                 "TRUE or FALSE" => "NULL, TRUE or FALSE".into(),
@@ -1303,11 +1307,14 @@ mod tests {
         assert_eq!(exp("Vec<bool>", true), some("logical or integer"));
         assert_eq!(exp("HashMap<String, i32>", false), some("a list"));
         assert_eq!(exp("Missing<f64>", false), some("a single double"));
-        assert_eq!(exp("AsCharacter", false), some("a single atomic value"));
-        assert_eq!(exp("AsCharacterVec", false), some("atomic"));
+        assert_eq!(
+            exp("AsCharacter", false),
+            some("coercible to a single string")
+        );
+        assert_eq!(exp("AsCharacterVec", false), some("coercible to character"));
         assert_eq!(
             exp("Option<AsCharacter>", false),
-            some("NULL or a single atomic value")
+            some("NULL or coercible to a single string")
         );
         // Choice parameters, including the `Missing` / `Option` / `Either`
         // layers of #1551, have no expectation: their conversion errors read

@@ -662,7 +662,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `u8` / `Rcomplex` | `a single raw value` / `a single complex value` |
 | `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` |
 | `AsNumericVec` | `numeric` |
-| `AsCharacter` / `AsCharacterVec` | `a single atomic value` / `atomic` |
+| `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |
 | anything else | none: `invalid '<p>' argument: <reason>` |
