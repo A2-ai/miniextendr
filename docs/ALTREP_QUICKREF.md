@@ -109,7 +109,7 @@ In both cases, use `MyData { value: 42, len: 100 }.into_sexp()` to create the AL
 | **Serialization** | `AltrepSerialize` | `serialize` | Save/load support needed |
 | **Subsetting** | `AltrepExtractSubset::extract_subset()` | `subset` | O(1) subset possible (integer/complex only) |
 | **Mutation** | low-level `AltString`/`AltList::set_elt()` | none — `manual, no_lowlevel` + hand-written low-level traits | Mutable String/List (see [ALTREP.md § Mutable Vectors](ALTREP.md#mutable-vectors)) |
-| **NA hint** | `no_na()` | - | Enables optimizations |
+| **NA hint** | `no_na()` | - | Enables optimizations; `Some(true)` promises no NA **and** no NaN (`anyNA()` trusts it) |
 | **Sorted hint** | `is_sorted()` | - | Enables optimizations |
 | **Sum** | `sum()` | - | O(1) computation possible |
 | **Min** | `min()` | - | O(1) computation possible |
@@ -262,7 +262,7 @@ Do you have data in memory?
 
 ## Performance Checklist
 
-- [ ] Provide `no_na()` if no NAs → Faster operations
+- [ ] Provide `no_na()` if no NAs and no NaNs → Faster operations
 - [ ] Provide `is_sorted()` if sorted → Faster unique/sort
 - [ ] Provide `sum()/min()/max()` if O(1) possible → Much faster
 - [ ] Provide `get_region()` if faster than looping → Faster bulk access

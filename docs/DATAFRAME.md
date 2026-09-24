@@ -73,10 +73,15 @@ rooted at every link and safe across R allocations (#1247). `rename` /
 receiver the handle carries through the chain.
 
 `select_rows(&[usize])` (0-based row indices, in output order; also what
-`group_by` sub-frames are cut with) keeps every column attribute except
-`names`, `dim` and `dimnames`, the `vctrs::vec_slice()` rule. So a `POSIXct`
-column keeps its `tzone`, a `difftime` its `units`, and a plain column its
-label. Base `[` drops the last one. Element names are subset with the values.
+`group_by` sub-frames are cut with) takes a row of every column, as
+`df[idx, , drop = FALSE]` does. A matrix column (`I(matrix(...))`) is subset
+along its first dimension, with its row names, and a packed data.frame column
+is subset recursively; arrays of three or more dimensions are sliced along
+their first dimension too (`vctrs::vec_slice()`; base `[` subsets those by
+element). Each column keeps every other attribute, the `vctrs::vec_slice()`
+rule. So a `POSIXct` column keeps its `tzone`, a `difftime` its `units`, and a
+plain column its label. Base `[` drops the last one. Element names are subset
+with the values.
 
 ```rust
 let df: BuiltDataFrame = rows.into_dataframe()?;
