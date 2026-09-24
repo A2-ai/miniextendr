@@ -154,17 +154,19 @@ test_that("classed conversion errors reach the call = caller path", {
   )
 })
 
-test_that("a plain SexpError keeps the default class, with e$param and the new wording", {
+test_that("a plain SexpError keeps the default class, with e$param and the R wording", {
   e <- tryCatch(either_int_or_str(3.5), error = function(e) e)
   expect_equal(class(e), c("rust_error", "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "value")
   expect_equal(e$rust_type, "Either<i32, String>")
-  expect_match(
+  # Either names both sides; both branches refused the type, so the reason is
+  # the value's type (#1594 follow-up).
+  expect_equal(
     conditionMessage(e),
-    "invalid 'value' argument: failed to convert to Either: ",
-    fixed = TRUE
+    "'value' must be a single integer or a single string: got numeric"
   )
+  expect_no_match(conditionMessage(e), "Left failed|SXP", fixed = FALSE)
   expect_no_match(conditionMessage(e), "wrong type, length, or contains NA", fixed = TRUE)
 
   e <- tryCatch(miniextendr:::test_fromstr_vec_ints(c(1, 2)), error = function(e) e)
@@ -172,6 +174,6 @@ test_that("a plain SexpError keeps the default class, with e$param and the new w
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "nums")
   expect_equal(e$rust_type, "AsFromStrVec<i32>")
-  # A built-in error without an R-facing expectation names both types, in R terms.
-  expect_equal(conditionMessage(e), "invalid 'nums' argument: expected character, got numeric")
+  # AsFromStrVec parses character input, and says so.
+  expect_equal(conditionMessage(e), "'nums' must be character: got numeric")
 })

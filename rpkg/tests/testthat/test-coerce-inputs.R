@@ -71,12 +71,17 @@ test_that("coerced native i32 and f64 widen from the other numeric sources", {
   expect_identical(real_vector(c(TRUE, FALSE, NA)), c(1, 0, NA))
   expect_identical(real_vector(c(1L, NA_integer_)), c(1, NA))
 
-  # Without the R gate (fast), the Rust side batches every failing index.
+  # Without the R gate (fast), the Rust side batches every failing element,
+  # by reason and 1-based position; the NA (element 5) is a valid NA_integer_.
   err <- expect_error(miniextendr:::coerce_input_fast_i32(c(1, 2.5, NaN, 2^31, NA)))
-  msg <- conditionMessage(err)
-  expect_match(msg, "Vec<i32> conversion failed", fixed = TRUE)
-  for (i in c(1, 2, 3)) expect_match(msg, paste("invalid value at index", i), fixed = TRUE)
-  expect_false(grepl("index 4", msg, fixed = TRUE))
+  expect_identical(
+    conditionMessage(err),
+    paste0(
+      "'x' must be integer or whole-number numeric: precision loss (element 2); ",
+      "NaN cannot be converted (element 3); value out of range (element 4)"
+    )
+  )
+  expect_identical(err$rust_type, "Vec<i32>")
 })
 
 test_that("coerced bools retain logical inputs while accepting integer zero and one", {
@@ -114,22 +119,24 @@ test_that("newly accepted vectors retain batched conversion diagnostics", {
   err <- expect_error(miniextendr:::coerce_input_fast(c(-1, 5, 70000, 1.5, NaN)))
   msg <- conditionMessage(err)
   expect_s3_class(err, "rust_error")
-  expect_match(msg, "Vec<u16> conversion failed", fixed = TRUE)
-  for (i in c(0, 2, 3, 4)) {
-    expect_match(msg, paste("invalid value at index", i), fixed = TRUE)
-  }
-  # A non-optional numeric vector rejects NA at its index instead of letting the
+  # Each reason once, with the 1-based positions that failed with it; the Rust
+  # type is e$rust_type, not part of the message.
+  expect_identical(
+    msg,
+    paste0(
+      "'x' must be integer or whole-number numeric: value out of range (elements 1, 3); ",
+      "precision loss (element 4); NaN cannot be converted (element 5)"
+    )
+  )
+  expect_identical(err$rust_type, "Vec<u16>")
+  # A non-optional numeric vector rejects NA at its position instead of letting the
   # NA_integer_ sentinel coerce to -2147483648.
   na_error <- expect_error(coerce_input_fixture("vector", "i64")(c(1L, NA, 3L, NA)))
-  for (i in c(1, 3)) {
-    expect_match(conditionMessage(na_error), paste("invalid value at index", i), fixed = TRUE)
-  }
+  expect_match(conditionMessage(na_error), ": NA is not allowed (elements 2, 4)", fixed = TRUE)
   expect_error(coerce_input_fixture("vector", "f32")(c(TRUE, NA)))
   expect_error(coerce_input_fixture("vector", "u16")(c(1L, NA_integer_)))
   logical_error <- expect_error(coerce_input_fixture("vector", "bool")(c(NA, TRUE, NA)))
-  for (i in c(0, 2)) {
-    expect_match(conditionMessage(logical_error), paste("invalid value at index", i), fixed = TRUE)
-  }
+  expect_match(conditionMessage(logical_error), ": NA is not allowed (elements 1, 3)", fixed = TRUE)
 })
 
 test_that("strict retains precedence over coerce", {

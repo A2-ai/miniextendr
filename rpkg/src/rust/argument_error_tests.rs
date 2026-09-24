@@ -8,6 +8,7 @@
 //! `e$rust_type`. rpkg sets no `conversion_error_class`; the configured case
 //! lives in `tests/cross-package/producer.pkg`.
 
+use crate::match_arg_tests::Mode;
 use miniextendr_api::{AsNumeric, AsNumericVec, miniextendr};
 
 // region: the two paths
@@ -93,5 +94,53 @@ pub fn arg_error_named_checks(
     #[miniextendr(choices("fast", "slow"))] mode: &str,
 ) -> String {
     format!("{mode}: {}", x.iter().sum::<f64>())
+}
+
+/// `no_na` on a vector marker: its NA check says `must not contain NA`, as a
+/// `Vec<T>`'s does.
+/// @param obs Numbers, strings or factor labels, none of them `NA`.
+#[miniextendr(internal)]
+pub fn arg_error_no_na_peak(#[miniextendr(no_na)] obs: AsNumericVec) -> Option<f64> {
+    obs.0.into_iter().flatten().reduce(f64::max)
+}
+// endregion
+
+// region: per-element failures, 1-based and batched
+
+/// `Vec<u16>` whose R-side whole-number check passes values the conversion
+/// refuses (out of range, `NA`): every failing element is listed, by reason
+/// and 1-based position.
+/// @param counts Whole numbers from 0 to 65535.
+#[miniextendr(internal)]
+pub fn arg_error_u16s(counts: Vec<u16>) -> i32 {
+    counts.into_iter().map(i32::from).sum()
+}
+
+/// A tuple argument: an unnamed list of a whole number and a string.
+/// @param pair `list(<integer>, <string>)`.
+#[miniextendr(internal)]
+pub fn arg_error_pair(pair: (i32, String)) -> String {
+    format!("{}:{}", pair.0, pair.1)
+}
+
+/// `strict` input: a logical, raw, fractional or out-of-range value is the
+/// argument error, not a panic.
+/// @param n A whole number.
+/// @param ids Whole numbers.
+#[miniextendr(internal, strict)]
+pub fn arg_error_strict_inputs(n: i64, ids: Vec<i64>) -> String {
+    format!("{n}:{}", ids.len())
+}
+// endregion
+
+// region: match_arg choices without the attribute
+
+/// A `MatchArg` enum parameter without `#[miniextendr(match_arg)]`: no R-side
+/// `match.arg()` check, so a bad value reaches the conversion, whose error
+/// still names the choices.
+/// @param speed One of `"Fast"`, `"Safe"`, `"Debug"`.
+#[miniextendr(internal)]
+pub fn arg_error_plain_mode(speed: Mode) -> String {
+    format!("{speed:?}")
 }
 // endregion

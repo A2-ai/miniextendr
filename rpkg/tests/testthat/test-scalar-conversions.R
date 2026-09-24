@@ -60,11 +60,21 @@ test_that("strict Vec<i64> conversion errors for out-of-range values", {
 
 # Strict input validation - rejects RAWSXP and LGLSXP
 test_that("strict input rejects logical for i64", {
-  expect_error(strict_echo_i64(TRUE), "strict conversion failed")
+  # An input rejection is the argument error (#1594), not a panic.
+  e <- tryCatch(strict_echo_i64(TRUE), error = identity)
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(e$rust_type, "i64")
+  expect_identical(conditionMessage(e), "'x' must be a single whole number: got logical")
 })
 
 test_that("strict input rejects raw for i64", {
-  expect_error(strict_echo_i64(as.raw(1)), "strict conversion failed")
+  expect_error(
+    strict_echo_i64(as.raw(1)),
+    "'x' must be a single whole number: got raw",
+    fixed = TRUE
+  )
 })
 
 test_that("strict input accepts integer for i64", {
@@ -76,11 +86,19 @@ test_that("strict input accepts whole double for i64", {
 })
 
 test_that("strict input rejects fractional double for i64", {
-  expect_error(strict_echo_i64(3.14), "strict conversion failed")
+  expect_error(
+    strict_echo_i64(3.14),
+    "'x' must be a single whole number: precision loss",
+    fixed = TRUE
+  )
 })
 
 test_that("strict input Vec rejects logical vector", {
-  expect_error(strict_echo_vec_i64(c(TRUE, FALSE)), "strict conversion failed")
+  expect_error(
+    strict_echo_vec_i64(c(TRUE, FALSE)),
+    "'x' must be integer or whole-number numeric: got logical",
+    fixed = TRUE
+  )
 })
 
 test_that("strict input Vec accepts integer vector", {
@@ -106,12 +124,20 @@ test_that("strict input Vec rejects fractional double vector", {
 })
 
 test_that("strict R6 constructor rejects logical for i64 param", {
-  expect_error(StrictCounter$new(TRUE), "strict conversion failed")
+  e <- tryCatch(StrictCounter$new(TRUE), error = identity)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "value")
+  expect_identical(conditionMessage(e), "'value' must be a single whole number: got logical")
 })
 
 test_that("strict R6 method rejects logical for i64 param", {
   counter <- StrictCounter$new(0L)
-  expect_error(counter$add(TRUE), "strict conversion failed")
+  expect_error(
+    counter$add(TRUE),
+    "'x' must be a single whole number: got logical",
+    fixed = TRUE,
+    class = "rust_error"
+  )
 })
 
 # Strict mode on impl methods (R6)
@@ -149,9 +175,17 @@ test_that("strict Vec<Option<i64>> rejects logical input (audit A6)", {
   # as Vec<i64> (strict): only INTSXP/REALSXP are accepted, LGLSXP is rejected.
   # Previously this silently coerced via the lax TryFromSexp path (audit
   # finding #3 in audit/2026-07-03-api-sense-runtime-vctrs-misc.md).
-  expect_error(strict_echo_vec_option_i64(c(TRUE, FALSE)), "strict conversion failed")
+  expect_error(
+    strict_echo_vec_option_i64(c(TRUE, FALSE)),
+    "'x' must be integer or whole-number numeric: got logical",
+    fixed = TRUE
+  )
 })
 
 test_that("strict Vec<Option<i64>> rejects raw input", {
-  expect_error(strict_echo_vec_option_i64(as.raw(c(1, 2))), "strict conversion failed")
+  expect_error(
+    strict_echo_vec_option_i64(as.raw(c(1, 2))),
+    "'x' must be integer or whole-number numeric: got raw",
+    fixed = TRUE
+  )
 })
