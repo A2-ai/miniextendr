@@ -2,7 +2,7 @@
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
 expression: generate_env_r_wrapper(&parsed)
 ---
-#' @title Counter  Class
+#' @title Counter Class
 #' @name Counter
 #' @rdname Counter
 #' @export
