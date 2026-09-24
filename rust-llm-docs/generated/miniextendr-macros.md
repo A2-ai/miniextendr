@@ -1895,7 +1895,9 @@ Set the method's formal parameter names (comma-separated R params string).
 
 When set, auto-generates `@param name (undocumented)` for any parameter
 not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
-`...` parameters.
+`...` parameters. Generates nothing when the method's own tags take the
+arguments from another topic (`@rdname`, `@describeIn`,
+`@inheritParams`; see `roxygen::params_documented_elsewhere`).
 
 #### `with_suppress_params`
 
