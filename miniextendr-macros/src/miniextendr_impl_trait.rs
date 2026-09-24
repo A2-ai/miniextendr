@@ -146,6 +146,10 @@ struct TraitMethod {
     rng: bool,
     /// Return `Result<T, E>` to R without unwrapping -- R wrapper receives the result variant.
     unwrap_in_r: bool,
+    /// Serialize the complete return value through `AsSerialize<T>`.
+    serialize: bool,
+    /// Explicit class-system return wrapping.
+    return_wrap: Option<crate::return_wrap::ReturnWrap>,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`.
     /// Keys are parameter names, values are R expressions used as default values.
     param_defaults: std::collections::HashMap<String, String>,
@@ -825,6 +829,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 check_interrupt: false,
                 rng: false,
                 unwrap_in_r: false,
+                serialize: false,
+                return_wrap: None,
                 param_defaults: Default::default(),
                 param_tags: vec![],
                 rdname: None,

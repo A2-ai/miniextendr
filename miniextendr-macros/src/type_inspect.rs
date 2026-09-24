@@ -73,6 +73,39 @@ pub(crate) fn peel_return_visibility(output: &syn::ReturnType) -> (Option<bool>,
     }
 }
 
+/// Model `#[miniextendr(serialize)]` exactly like a declared `AsSerialize<T>`
+/// return, after peeling an outer visibility marker. In particular, `Option`
+/// and `Result` inside it are serde data, not boundary control flow.
+pub(crate) fn serialize_return_type(output: &syn::ReturnType, serialize: bool) -> syn::ReturnType {
+    if !serialize {
+        return output.clone();
+    }
+    let ty: syn::Type = match output {
+        syn::ReturnType::Default => syn::parse_quote!(()),
+        syn::ReturnType::Type(_, ty) => (**ty).clone(),
+    };
+    syn::parse_quote!(-> ::miniextendr_api::serde::AsSerialize<#ty>)
+}
+
+/// Prepare the value to match the type used by return analysis. Both functions
+/// and method/shim paths unwrap visibility before applying serde transport.
+pub(crate) fn prepare_return_value(
+    call: proc_macro2::TokenStream,
+    visibility_marker: Option<bool>,
+    serialize: bool,
+) -> proc_macro2::TokenStream {
+    let value = if visibility_marker.is_some() {
+        quote::quote! { (#call).0 }
+    } else {
+        call
+    };
+    if serialize {
+        quote::quote! { ::miniextendr_api::serde::AsSerialize(#value) }
+    } else {
+        value
+    }
+}
+
 /// Resolve the wrapper's visibility from the three sources, most explicit
 /// first: a return-type marker, then the `invisible` / `visible` attribute,
 /// then the shape default. A marker and an attribute that disagree are an

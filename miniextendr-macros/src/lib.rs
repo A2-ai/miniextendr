@@ -161,6 +161,8 @@ mod c_wrapper_builder;
 mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
+mod return_wrap;
+mod s7_conversion;
 mod type_inspect;
 mod typed_dataframe;
 mod typed_list;
@@ -528,6 +530,8 @@ fn build_match_arg_helpers(
 ///   method tails are visible unless marked (#1213).
 /// - `#[miniextendr(check_interrupt)]` — check for user interrupt after call
 /// - `#[miniextendr(coerce)]` — coerce R type before conversion (also usable per-parameter)
+/// - `#[miniextendr(serialize)]` — serialize the complete return through `AsSerialize<T>`
+///   (requires the API `serde` feature); composes with return visibility markers
 /// - `#[miniextendr(strict)]` — reject lossy conversions for i64/u64/isize/usize
 /// - `#[miniextendr(unwrap_in_r)]` — return `Result<T, E>` to R without unwrapping
 /// - `#[miniextendr(serde_error(tag = "..", prefix = "..", skip(..), rename(a = ".."))]` —
@@ -755,6 +759,8 @@ pub fn miniextendr(
         coerce_all,
         rng,
         unwrap_in_r,
+        serialize,
+        wrap,
         serde_error,
         no_preconditions,
         call_attribution: call_attribution_attr,
@@ -843,8 +849,43 @@ pub fn miniextendr(
         }
         crate::type_inspect::peel_return_visibility(output)
     };
-    let output = &peeled_output;
+    let (return_wrap, peeled_output) = match crate::return_wrap::resolve(&peeled_output, wrap) {
+        Ok(resolved) => resolved,
+        Err(error) => return error.into_compile_error().into(),
+    };
+    if return_wrap
+        .as_ref()
+        .is_some_and(|wrap| wrap.conversion.is_some())
+    {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "ConvertTo/ConvertFrom require an inherent S7 impl method",
+        )
+        .into_compile_error()
+        .into();
+    }
+    if return_wrap.is_some() && (serialize || unwrap_in_r) {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "explicit class wrapping cannot be combined with serialize or unwrap_in_r",
+        )
+        .into_compile_error()
+        .into();
+    }
+    if return_wrap.is_some() && parsed.abi().is_some() {
+        return syn::Error::new_spanned(parsed.output(), "explicit class wrapping requires a generated Rust-to-R wrapper, not an extern function").into_compile_error().into();
+    }
+    let converted_output = crate::type_inspect::serialize_return_type(&peeled_output, serialize);
+    let output = &converted_output;
     let abi = parsed.abi();
+    if serialize && abi.is_some() {
+        return syn::Error::new_spanned(
+            parsed.output(),
+            "`serialize` requires a generated Rust-to-R conversion and cannot be used on an extern function",
+        )
+        .into_compile_error()
+        .into();
+    }
     let attrs = parsed.attrs();
     let vis = parsed.vis();
     let generics = parsed.generics();
@@ -1118,10 +1159,14 @@ pub fn miniextendr(
     // Build the call expression: rust_ident(rust_input_1, rust_input_2, ...).
     // A visibility marker is a transparent newtype: unwrap it so the return
     // conversion works on the inner value (the analysis above saw the inner type).
-    let fn_call_expr = if visibility_marker.is_some() {
-        quote::quote! { (#rust_ident(#(#rust_inputs),*)).0 }
-    } else {
-        quote::quote! { #rust_ident(#(#rust_inputs),*) }
+    let fn_call_expr = crate::type_inspect::prepare_return_value(
+        quote::quote! { #rust_ident(#(#rust_inputs),*) },
+        visibility_marker,
+        serialize,
+    );
+    let fn_call_expr = match &return_wrap {
+        Some(wrap) => wrap.prepare_value(fn_call_expr),
+        None => fn_call_expr,
     };
 
     // Determine return handling: use standalone-fn semantics (OptionIntoR for Option<T>)
@@ -1148,7 +1193,13 @@ pub fn miniextendr(
         }
         c_wrapper_builder::ReturnHandling::IntoR
     } else {
-        let auto = c_wrapper_builder::detect_return_handling_standalone_fn(output);
+        let auto = if return_wrap.is_some() {
+            // Explicit class returns unwrap Option before converting its payload.
+            // Arbitrary Option<Class> / Option<Vec<Class>> have no IntoR impl.
+            c_wrapper_builder::detect_return_handling(output)
+        } else {
+            c_wrapper_builder::detect_return_handling_standalone_fn(output)
+        };
         // Apply return_pref override: wraps the result in AsList/AsExternalPtr/AsRNative.
         // Only applies to the plain IntoR variant — Option*/Result*/Unit/RawSexp/ExternalPtr
         // variants have no bare T to wrap and now hard-error instead of silently ignoring
@@ -1319,16 +1370,19 @@ pub fn miniextendr(
     };
     let r_wrapper_return_str = {
         // Capture result, check for tagged condition value, raise R condition if present.
+        let final_return = return_wrap
+            .as_ref()
+            .map_or_else(|| ".val".to_owned(), |wrap| wrap.r_expression(".val", None));
         let final_return = if is_invisible_return_type {
-            "invisible(.val)"
+            format!("invisible({final_return})")
         } else {
-            ".val"
+            final_return
         };
         // `call = caller` binds `.mx_call` at the head of the prelude (see
         // `combined_prelude` below), ahead of every R-side check.
         crate::method_return_builder::standalone_body_with_call_default(
             &call_expr,
-            final_return,
+            &final_return,
             "  ",
             call_attribution.raise_default(),
         )

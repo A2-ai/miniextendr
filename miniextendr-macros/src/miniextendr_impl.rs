@@ -430,6 +430,8 @@ pub struct ParsedMethod {
     /// peeled from [`Self::sig`] at parse time, so every return-shape
     /// predicate sees `T`; the C wrapper unwraps the newtype before conversion.
     pub visibility_marker: Option<bool>,
+    /// Explicit target class wrapping, shared by marker and attribute spellings.
+    pub return_wrap: Option<crate::return_wrap::ReturnWrap>,
     /// The method's name (e.g., `new`, `get`, `set_value`).
     pub ident: syn::Ident,
     /// How this method receives `self`: `&self`, `&mut self`, by value, or not at all (static).
@@ -622,6 +624,10 @@ pub struct MethodAttrs {
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub serde_error: Option<crate::miniextendr_fn::SerdeErrorSpec>,
+    /// Serialize the complete return value through `AsSerialize<T>`.
+    pub serialize: bool,
+    /// Explicit return class system (`wrap = "r6"` and siblings).
+    pub wrap: Option<ClassSystem>,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -1285,6 +1291,13 @@ impl ParsedMethod {
             ));
         }
 
+        if attrs.serialize && (attrs.unwrap_in_r || attrs.serde_error.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`serialize` cannot be combined with `unwrap_in_r` or `serde_error`: it serializes the complete return value, including any Result variant",
+            ));
+        }
+
         // serde_error classes the raised condition; unwrap_in_r never raises.
         if attrs.serde_error.is_some() && attrs.unwrap_in_r {
             return Err(syn::Error::new(
@@ -1381,6 +1394,11 @@ impl ParsedMethod {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
+                        } else if inner.path.is_ident("wrap") {
+                            let value: syn::LitStr = inner.value()?.parse()?;
+                            method_attrs.wrap = Some(crate::return_wrap::parse_system(&value)?);
+                        } else if inner.path.is_ident("serialize") {
+                            method_attrs.serialize = true;
                         } else if inner.path.is_ident("serde_error") {
                             method_attrs.serde_error =
                                 Some(crate::miniextendr_fn::parse_serde_error_nested(&inner)?);
@@ -1506,7 +1524,7 @@ impl ParsedMethod {
                             }
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, no_shortcut, convert_from, convert_to, deep_clone, r_on_exit, r_name, postfix, invisible, visible"
                             ));
                         }
                         Ok(())
@@ -1653,6 +1671,11 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("wrap") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    method_attrs.wrap = Some(crate::return_wrap::parse_system(&value)?);
+                } else if meta.path.is_ident("serialize") {
+                    method_attrs.serialize = true;
                 } else if meta.path.is_ident("serde_error") {
                     method_attrs.serde_error =
                         Some(crate::miniextendr_fn::parse_serde_error_nested(&meta)?);
@@ -1871,7 +1894,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -2223,8 +2246,18 @@ impl ParsedMethod {
             ));
         }
 
+        let (return_wrap, output) = crate::return_wrap::resolve(&sig.output, method_attrs.wrap)?;
+        if return_wrap.is_some() && (method_attrs.serialize || method_attrs.unwrap_in_r) {
+            return Err(syn::Error::new_spanned(
+                &item.sig.output,
+                "explicit class wrapping cannot be combined with serialize or unwrap_in_r",
+            ));
+        }
+        sig.output = crate::type_inspect::serialize_return_type(&output, method_attrs.serialize);
+
         Ok(ParsedMethod {
             visibility_marker,
+            return_wrap,
             ident: item.sig.ident.clone(),
             env,
             sig,
@@ -2722,7 +2755,13 @@ impl ParsedImpl {
         let mut methods = Vec::new();
         for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
+                let mut method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
+                crate::s7_conversion::configure(
+                    &mut method,
+                    fn_item,
+                    attrs.class_system,
+                    &type_ident,
+                )?;
                 // Validate method attributes for this class system
                 ParsedMethod::validate_method_attrs(
                     &method.method_attrs,
@@ -3205,10 +3244,14 @@ pub fn generate_method_c_wrapper(
     // unwrap it (`.0`) before the conversion, which was analysed on the inner
     // type (`method.sig.output` is already peeled).
     let unwrap_marker = |call: TokenStream| -> TokenStream {
-        if method.visibility_marker.is_some() {
-            quote! { (#call).0 }
-        } else {
-            call
+        let call = crate::type_inspect::prepare_return_value(
+            call,
+            method.visibility_marker,
+            method.method_attrs.serialize,
+        );
+        match &method.return_wrap {
+            Some(wrap) => wrap.prepare_value(call),
+            None => call,
         }
     };
     let call_expr = match method.env {

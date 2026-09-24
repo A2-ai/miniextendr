@@ -188,6 +188,7 @@ mod dots_tests;
 mod either_adapter_tests;
 mod encoding_tests;
 mod error_in_r_tests;
+mod explicit_wrap_tests;
 mod export_control_tests;
 mod expression_tests;
 mod externalptr_any_tests;
@@ -275,6 +276,7 @@ mod s3_nonsyntactic_tests;
 mod s3_tests;
 mod s4_helpers_tests;
 mod s4_tests;
+mod s7_conversion_marker_tests;
 mod s7_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]
@@ -283,6 +285,8 @@ mod serde_error_tests;
 mod serde_json_adapter_tests;
 #[cfg(feature = "serde")]
 mod serde_r_tests;
+#[cfg(feature = "serde")]
+mod serialize_attr_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
 mod shared_trait_test;

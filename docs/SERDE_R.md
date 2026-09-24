@@ -25,6 +25,54 @@ miniextendr-api = { version = "0.1", features = ["serde"] }
 miniextendr-api = { version = "0.1", features = ["serde_json"] }
 ```
 
+## Returning serde values
+
+`#[miniextendr(serialize)]` converts a function or method return through the same
+`AsSerialize<T>` implementation as the type spelling. Enable the API crate's
+`serde` feature; the returned type needs `serde::Serialize`, not its own `IntoR`.
+
+```rust
+use miniextendr_api::{miniextendr, serde::AsSerialize};
+use serde::Serialize;
+
+#[derive(Serialize)]
+pub struct Point { x: f64, y: f64 }
+
+#[miniextendr(serialize)]
+pub fn point(x: f64, y: f64) -> Point { Point { x, y } }
+
+// Equivalent R representation: list(x = ..., y = ...).
+#[miniextendr]
+pub fn point_typed(x: f64, y: f64) -> AsSerialize<Point> {
+    AsSerialize(Point { x, y })
+}
+```
+
+The conversion happens after the Rust call returns, including early `return`s.
+It also works on inherent and trait-impl methods. A serialized class or `Self`
+return produces serde data instead of a class-constructor wrapper. Worker bodies
+return owned Rust data; serialization runs on R's main thread.
+
+The attribute wraps the **complete return value**, just like `AsSerialize<T>`:
+
+| Return type with `serialize` | Equivalent type spelling | R result |
+|---|---|---|
+| `Point` | `AsSerialize<Point>` | Named list of fields |
+| `Option<Point>` | `AsSerialize<Option<Point>>` | List for `Some`, `NULL` for `None` |
+| `Result<Point, String>` | `AsSerialize<Result<Point, String>>` | `list(Ok = ...)` or `list(Err = ...)` |
+| `Invisible<Point>` | `Invisible<AsSerialize<Point>>` | The same list, returned invisibly |
+
+To keep `Err` as an R error, wrap only the successful payload in the type spelling:
+`Result<AsSerialize<Point>, E>`. `serialize` cannot be combined with `unwrap_in_r`
+or `serde_error(...)`, which select different Result handling. Panics and failures
+inside the serializer still become ordinary structured Rust errors.
+
+Trait implementations apply serde transport to their concrete vtable shims too.
+Rust View consumers retain their declared return type's `TryFromSexp` contract;
+it must accept the serialized representation. The attribute only selects outbound
+conversion. User-written extern functions have no generated conversion and cannot
+use `serialize`.
+
 ## Type Mappings
 
 ### Serialization (Rust → R)

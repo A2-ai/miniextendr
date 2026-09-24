@@ -4458,3 +4458,218 @@ fn r6_active_binding_setter_honours_visibility_without_changing_default() {
         assert!(active.contains("stopifnot("));
     }
 }
+
+#[test]
+fn serialize_methods_bypass_class_and_result_wrapping_in_every_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let mut code: syn::ItemImpl = syn::parse_quote! {
+                impl Example {
+                    #[miniextendr(serialize)]
+                    pub fn snapshot(&self) -> Self { unimplemented!() }
+                    #[miniextendr(serialize)]
+                    pub fn fallible(&self) -> Result<Self, String> { unimplemented!() }
+                    #[miniextendr(serialize)]
+                    pub fn quiet(&self) -> Invisible<Self> { unimplemented!() }
+                    #[miniextendr(env(serialize))]
+                    pub fn nested(&self) -> Payload { unimplemented!() }
+                }
+        };
+        if matches!(system, ClassSystem::Vctrs) {
+            for item in &mut code.items {
+                if let syn::ImplItem::Fn(method) = item {
+                    method.sig.inputs = method
+                        .sig
+                        .inputs
+                        .iter()
+                        .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+                        .cloned()
+                        .collect();
+                }
+            }
+        }
+        let parsed = parse_impl(system, code);
+        for name in ["snapshot", "fallible", "quiet", "nested"] {
+            let method = parsed.methods.iter().find(|m| m.ident == name).unwrap();
+            assert!(!method.returns_self(), "{system:?}: {name}");
+            assert!(method.wrapped_output_arg("Result").is_none());
+            let tokens = c_wrapper_tokens(&parsed, name);
+            assert!(
+                tokens.contains("serde :: AsSerialize"),
+                "{system:?}: {tokens}"
+            );
+            assert!(
+                !tokens.contains("__mx_result_err_parts"),
+                "{system:?}: {tokens}"
+            );
+        }
+        assert_eq!(
+            parsed
+                .methods
+                .iter()
+                .find(|m| m.ident == "quiet")
+                .unwrap()
+                .visibility_marker,
+            Some(true)
+        );
+    }
+}
+
+#[test]
+fn explicit_return_wrap_overrides_the_enclosing_class_system() {
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        let code = syn::parse_quote! {
+            impl Factory {
+                pub fn build() -> WrapAsR6<Board> { unimplemented!() }
+                #[miniextendr(wrap = "r6")]
+                pub fn build_attr() -> Board { unimplemented!() }
+                pub fn many() -> Result<Vec<WrapAsR6<Board>>, String> { unimplemented!() }
+            }
+        };
+        let parsed = parse_impl(system, code);
+        for method in &parsed.methods {
+            let plan = method.return_wrap.as_ref().unwrap();
+            assert!(
+                plan.r_expression(".val", Some("Factory"))
+                    .contains("Board$new(.ptr =")
+            );
+            assert!(!method.returns_self());
+        }
+        assert!(c_wrapper_tokens(&parsed, "many").contains("__mx_result_err_parts"));
+        let wrapper = match system {
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
+        };
+        assert!(
+            wrapper.contains("Board$new(.ptr = .val)"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(
+            wrapper.contains("lapply(.val, function(.item) Board$new(.ptr = .item))"),
+            "{system:?}: {wrapper}"
+        );
+        assert!(
+            !wrapper.contains("__MX_WRAP"),
+            "explicit returns must not request registry resolution"
+        );
+    }
+}
+
+#[test]
+fn s7_conversion_marker_and_attribute_spellings_emit_identical_r_wrappers() {
+    for container in ["{}", "Result<{}, String>", "Option<{}>"] {
+        let marked_to = container.replace("{}", "ConvertTo<Source>");
+        let plain_to = container.replace("{}", "Source");
+        let marked_from = container.replace("{}", "ConvertFrom<Self>");
+        let plain_from = container.replace("{}", "Self");
+        let typed = format!(
+            "impl Target {{ pub fn from_source(source: ExternalPtr<Source>) -> {marked_from} {{ unimplemented!() }} pub fn to_source(&self) -> Invisible<{marked_to}> {{ unimplemented!() }} }}"
+        );
+        let attributed = format!(
+            "impl Target {{ #[miniextendr(s7(convert_from = \"Source\"))] pub fn from_source(source: ExternalPtr<Source>) -> {plain_from} {{ unimplemented!() }} #[miniextendr(s7(convert_to = \"Source\"), invisible)] pub fn to_source(&self) -> {plain_to} {{ unimplemented!() }} }}"
+        );
+        let typed = parse_impl(ClassSystem::S7, syn::parse_str(&typed).unwrap());
+        let attributed = parse_impl(ClassSystem::S7, syn::parse_str(&attributed).unwrap());
+        let without_source_positions = |wrapper: String| {
+            wrapper
+                .lines()
+                .filter(|line| !line.starts_with("# Target::"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(
+            without_source_positions(generate_s7_r_wrapper(&typed)),
+            without_source_positions(generate_s7_r_wrapper(&attributed))
+        );
+        assert!(
+            generate_s7_r_wrapper(&typed)
+                .contains("invisible(.__MX_CLASS_REF_Source__(.ptr = .val))")
+        );
+    }
+}
+
+#[test]
+fn convert_from_accepts_a_named_enclosing_return_and_borrowed_source() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn from_source(source: &other::Source) -> ConvertFrom<Target> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(
+        parsed.methods[0].method_attrs.s7.convert_from.as_deref(),
+        Some("Source")
+    );
+    assert!(generate_s7_r_wrapper(&parsed).contains("Target(.ptr = .val)"));
+}
+
+#[test]
+fn conversion_markers_resolve_self_in_class_references() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn identity(&self) -> ConvertTo<Self> { unimplemented!() }
+            }
+        },
+    );
+    assert_eq!(
+        parsed.methods[0].method_attrs.s7.convert_to.as_deref(),
+        Some("Target")
+    );
+    assert!(!generate_s7_r_wrapper(&parsed).contains(".__MX_CLASS_REF_Self__"));
+}
+
+#[test]
+fn s7_conversion_docs_do_not_claim_the_external_generic() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Target {
+                pub fn from_source(source: ExternalPtr<Source>) -> ConvertFrom<Self> { unimplemented!() }
+                pub fn to_source(&self) -> ConvertTo<Source> { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(!wrapper.contains("#' @aliases convert\n"));
+    for (name, direction) in [
+        ("convert-Source-to-Target", "from"),
+        ("convert-Target-to-Source", "to"),
+    ] {
+        let block = wrapper
+            .split(&format!("#' @name {name}\n"))
+            .nth(1)
+            .unwrap()
+            .split("S7::method(convert,")
+            .next()
+            .unwrap();
+        assert!(block.contains("#' @usage NULL"), "{block}");
+        assert!(
+            block.contains(&format!(
+                "#' @section Conversion {direction} `.__MX_CLASS_REF_Source__`:"
+            )),
+            "{block}"
+        );
+        assert!(!block.contains("#' @param"), "{block}");
+    }
+}

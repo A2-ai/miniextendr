@@ -1,0 +1,5 @@
+error: `serialize` requires a generated Rust-to-R conversion and cannot be used on an extern function
+ --> tests/ui/fn_serialize_extern.rs:4:67
+  |
+4 | pub unsafe extern "C-unwind" fn raw(value: miniextendr_api::SEXP) -> miniextendr_api::SEXP {
+  |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^

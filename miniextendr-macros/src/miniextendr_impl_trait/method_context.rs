@@ -146,6 +146,12 @@ impl<'a> TraitMethodContext<'a> {
     /// per class system (`class(.val) <-` / `structure()` / `methods::new()` /
     /// `Class(.ptr=)` / `Class$new(.ptr=)`).
     pub(super) fn method_body_lines(&self, call: &str, class_system: ClassSystem) -> Vec<String> {
+        if let Some(wrap) = &self.method.return_wrap {
+            return crate::MethodReturnBuilder::new(call.to_owned())
+                .with_class_name(self.type_ident.to_string())
+                .with_explicit_wrap(wrap.clone())
+                .build();
+        }
         if !self.returns_self() {
             return trait_method_body_lines(call, "  ");
         }

@@ -1582,3 +1582,27 @@ fn no_call_attribution_independent_parse() {
     assert!(!attrs.no_preconditions);
 }
 // endregion
+
+#[test]
+fn serialize_attribute_accepts_boolean_forms_and_rejects_result_transport_conflicts() {
+    for input in [quote::quote!(serialize), quote::quote!(serialize = true)] {
+        assert!(syn::parse2::<MiniextendrFnAttrs>(input).unwrap().serialize);
+    }
+    assert!(
+        !syn::parse2::<MiniextendrFnAttrs>(quote::quote!(serialize = false))
+            .unwrap()
+            .serialize
+    );
+    for input in [
+        quote::quote!(serialize, unwrap_in_r),
+        quote::quote!(serialize, serde_error(prefix = "example")),
+    ] {
+        let err = syn::parse2::<MiniextendrFnAttrs>(input)
+            .err()
+            .expect("conflict must fail");
+        assert!(
+            err.to_string()
+                .contains("serializes the complete return value")
+        );
+    }
+}
