@@ -1462,8 +1462,9 @@ pub fn miniextendr(
     }
 
     // Generated @param tags for the parameters the author left undocumented,
-    // unless the block takes them from an `@rdname` / `@describeIn` topic or
-    // `@inheritParams` (#1590). The match_arg placeholders feed the
+    // unless the block takes them from a `@describeIn` topic or
+    // `@inheritParams` (#1590); the wrapper registry decides the rest per page
+    // at write time. The match_arg placeholders feed the
     // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver.
     let match_arg_param_doc_placeholders =
         crate::roxygen::push_fn_param_tags(&mut roxygen_tags, inputs, &parsed, &c_ident_str);

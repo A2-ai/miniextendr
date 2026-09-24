@@ -1129,36 +1129,56 @@ fn summary_fn(doc_tag: Option<&str>) -> proc_macro2::TokenStream {
     }
 }
 
+/// The `@param` lines of a tag list; a generated one keeps its
+/// [`PARAM_FILLER_MARKER`] prefix.
 fn param_lines(tags: &[String]) -> Vec<&str> {
     tags.iter()
         .map(String::as_str)
-        .filter(|tag| tag.starts_with("@param"))
+        .filter(|tag| tag.starts_with("@param") || tag.starts_with(PARAM_FILLER_MARKER))
         .collect()
+}
+
+/// The generated lines a standalone function gets for `summary_fn`'s
+/// undocumented arguments, each marked for the wrapper registry.
+fn summary_filler_lines(mode_placeholder: &str) -> Vec<String> {
+    [
+        "@param weights (no documentation available)".to_string(),
+        format!("@param mode {mode_placeholder}"),
+        "@param side One of \"low\", \"high\".".to_string(),
+    ]
+    .into_iter()
+    .map(|line| format!("{PARAM_FILLER_MARKER}{line}"))
+    .collect()
 }
 
 #[test]
 fn fn_param_tags_fill_every_undocumented_argument_on_its_own_page() {
     let (tags, placeholders) = generated_fn_param_tags(summary_fn(None));
     let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
-    assert_eq!(
-        param_lines(&tags),
-        [
-            "@param values Numbers to summarise.",
-            "@param weights (no documentation available)",
-            format!("@param mode {mode_placeholder}").as_str(),
-            "@param side One of \"low\", \"high\".",
-        ],
-        "got {tags:?}"
-    );
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(summary_filler_lines(&mode_placeholder));
+    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
+    assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
+}
+
+/// An `@rdname topic` may name the function's own file-stem page, which only
+/// the wrapper registry knows, so the fillers stay, marked, for it to decide.
+#[test]
+fn fn_param_tags_leave_an_rdname_block_to_the_registry() {
+    let (tags, placeholders) = generated_fn_param_tags(summary_fn(Some("@rdname summaries")));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(summary_filler_lines(&mode_placeholder));
+    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
     assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
 }
 
 #[test]
 fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
     for doc_tag in [
-        "@rdname summaries",
         "@describeIn summaries Weighted summary.",
         "@inheritParams summaries",
+        "@inherit summaries params",
     ] {
         let (tags, placeholders) = generated_fn_param_tags(summary_fn(Some(doc_tag)));
         // The author's own `@param` stays, exactly once; nothing is generated.
@@ -1171,6 +1191,69 @@ fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
             placeholders.is_empty(),
             "`{doc_tag}`: a match_arg doc placeholder needs its @param line"
         );
+    }
+}
+
+#[test]
+fn describe_in_topic_is_the_first_word() {
+    assert_eq!(
+        describe_in_topic(&tag_list(&["@describeIn observed Largest\nvalue."])),
+        Some("observed")
+    );
+    assert_eq!(
+        describe_in_topic(&tag_list(&["@describeInx observed"])),
+        None
+    );
+    assert_eq!(describe_in_topic(&tag_list(&["@rdname observed"])), None);
+}
+
+/// A block joins an author topic through `@describeIn`, or through an
+/// `@rdname` naming another page than the framework's default; the page its
+/// companion blocks follow is that topic.
+#[test]
+fn joins_author_topic_and_method_page() {
+    let describe = tag_list(&["@describeIn counter_ops Add a step."]);
+    let rdname_other = tag_list(&["@rdname counter_ops"]);
+    let rdname_class = tag_list(&["@rdname Counter"]);
+    let inherit_only = tag_list(&["@inheritParams counter_ops"]);
+
+    for tags in [&describe, &rdname_other] {
+        assert!(joins_author_topic(tags, Some("Counter")), "{tags:?}");
+        assert!(joins_author_topic(tags, None), "{tags:?}");
+        assert_eq!(method_page(tags, "Counter"), "counter_ops");
+    }
+    assert!(!joins_author_topic(&rdname_class, Some("Counter")));
+    assert!(joins_author_topic(&rdname_class, None));
+    assert_eq!(method_page(&rdname_class, "Counter"), "Counter");
+    // Inheritance fills the arguments but keeps the block on its own page.
+    assert!(!joins_author_topic(&inherit_only, Some("Counter")));
+    assert!(params_documented_elsewhere(&inherit_only, Some("Counter")));
+    assert_eq!(method_page(&inherit_only, "Counter"), "Counter");
+}
+
+#[test]
+fn order_after_topic_blocks_only_on_an_author_topic() {
+    let order_line = format!("#' {ORDER_AFTER_TOPIC_BLOCKS}");
+    let pushed = |tags: &[&str]| {
+        let mut lines = Vec::new();
+        push_order_after_topic_blocks(&mut lines, &tag_list(tags), "Counter");
+        lines
+    };
+    for tags in [
+        &["@rdname counter_ops"][..],
+        &["@describeIn counter_ops Add a step."][..],
+    ] {
+        assert_eq!(pushed(tags), std::slice::from_ref(&order_line), "{tags:?}");
+    }
+    for tags in [
+        &[][..],
+        &["@rdname Counter"][..],
+        &["@inheritParams counter_ops"][..],
+        // The author's own order wins; a block without a page needs none.
+        &["@rdname counter_ops", "@order 2"][..],
+        &["@rdname counter_ops", "@noRd"][..],
+    ] {
+        assert!(pushed(tags).is_empty(), "{tags:?}");
     }
 }
 

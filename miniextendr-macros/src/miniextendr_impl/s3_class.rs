@@ -116,25 +116,29 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 // class-qualified so classes sharing a generic don't collide on
                 // `\alias{generic}`). That is the same alias the method block
                 // below produces, so both must land on the same page: a
-                // method-level `@rdname` moves the generic block along with the
-                // method, otherwise R CMD check reports the alias as duplicated
-                // across the class page and the split page.
-                let split = crate::roxygen::rdname_value(&ctx.method.doc_tags).is_some();
-                if !split {
+                // method-level `@rdname` or `@describeIn` moves the generic block
+                // along with the method, otherwise R CMD check reports the alias
+                // as duplicated across the class page and the method's page.
+                let method_tags = &ctx.method.doc_tags;
+                let joined = crate::roxygen::joins_author_topic(method_tags, Some(&class_name));
+                if !joined {
                     // roxygen2 keeps the first `@title` on a page. On the class
                     // page that is the class block's, so this one is inert; on a
                     // split page it would beat the method's structural title.
+                    // The author's topic describes the method itself, so the
+                    // structural description would only add a stray paragraph.
                     lines.push(format!("#' @title S3 generic for `{}`", generic_name));
+                    lines.push(format!("#' @description S3 generic for `{}`", generic_name));
                 }
-                lines.push(format!("#' @description S3 generic for `{}`", generic_name));
                 lines.push(format!("#' @name {}.{}", generic_name, class_name));
-                crate::roxygen::push_rdname_or_default(
-                    &mut lines,
-                    &ctx.method.doc_tags,
-                    &class_name,
-                );
-                lines.push("#' @param x An object".to_string());
-                lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                crate::roxygen::push_rdname_or_default(&mut lines, method_tags, &class_name);
+                if !joined {
+                    // On the author's topic its own block documents `x` and
+                    // `...`; a generated line would replace that text (#1590).
+                    lines.push("#' @param x An object".to_string());
+                    lines.push("#' @param ... Additional arguments passed to methods".to_string());
+                }
+                crate::roxygen::push_order_after_topic_blocks(&mut lines, method_tags, &class_name);
                 lines.extend(crate::roxygen::method_source_tag(
                     type_ident,
                     &ctx.method.ident,
@@ -178,9 +182,14 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
             lines.push(format!("#' @method {} {}", generic_name, class_name));
             // roxygen2 can't parse generic blocks wrapped in if (!exists(...)),
-            // so @param x/@param ... must also appear on the method block
-            lines.push("#' @param x An object.".to_string());
-            lines.push("#' @param ... Additional arguments.".to_string());
+            // so @param x/@param ... must also appear on the method block. On
+            // an author topic (method-level `@rdname` / `@describeIn`) the
+            // topic's own block documents them instead: roxygen2 keeps the
+            // later `@param` of a name, and this block sorts last (#1590).
+            if !crate::roxygen::joins_author_topic(&ctx.method.doc_tags, Some(&class_name)) {
+                lines.push("#' @param x An object.".to_string());
+                lines.push("#' @param ... Additional arguments.".to_string());
+            }
             if should_register_s3method {
                 lines.push("#' @export".to_string());
             }

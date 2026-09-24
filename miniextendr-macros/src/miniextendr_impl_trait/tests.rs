@@ -1147,7 +1147,26 @@ fn test_trait_method_rdname_override_all_systems() {
                 !result.contains("#' @title S3 generic for `value`"),
                 "split S3 guard must not carry the filler title, got:\n{result}"
             );
+            // The author's topic describes the method and documents `x` and
+            // `...` itself (#1590).
+            assert!(
+                !result.contains("#' @param x ") && !result.contains("#' @param ... "),
+                "split S3 blocks must leave `x` / `...` to the topic, got:\n{result}"
+            );
+            assert!(
+                !result.contains("#' @description S3 generic for `value`"),
+                "split S3 guard must not add a structural description, got:\n{result}"
+            );
         }
+        // Every block on an author topic sorts after the topic's own block
+        // (#1590), and only those: one per `@rdname foo_*` line.
+        assert_eq!(
+            result
+                .matches(&format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS))
+                .count(),
+            expected_value + 1,
+            "{class_system:?}: got:\n{result}"
+        );
     }
 }
 
@@ -1186,6 +1205,9 @@ fn test_s7_trait_shortcut_param_filler_follows_method_page() {
     method.rdname = Some("foo_steps".to_string());
     let split = generate(&method);
     assert!(!split.contains("#' @param times "), "got:\n{split}");
+    // The structural `self` / `...` lines are left to the topic too (#1590).
+    assert!(!split.contains("#' @param self "), "got:\n{split}");
+    assert!(!split.contains("#' @param ... "), "got:\n{split}");
     assert_eq!(
         split.matches("#' @param by Step size.").count(),
         1,
