@@ -291,6 +291,7 @@ mod serialize_attr_tests;
 mod sha2_adapter_tests;
 mod shared_param_docs;
 mod shared_trait_test;
+mod stem_page_docs;
 mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;

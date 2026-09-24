@@ -448,9 +448,11 @@ the roxygen `@param` line at write time using the enum's `CHOICES`:
 
 This runs for both standalone functions and impl-block methods across every
 class system. Explicit `@param` lines you write yourself are preserved
-verbatim; only missing entries are auto-generated. A block with `@rdname`,
-`@describeIn` or `@inheritParams` gets no generated line: the page it joins
-or the topic it inherits from documents the parameter (see
+verbatim; only missing entries are auto-generated. A block with
+`@describeIn`, `@inheritParams`, or an `@rdname` naming another page gets no
+generated line: the page it joins or the topic it inherits from documents the
+parameter. On a file-stem page shared by several functions the line is kept
+only when no function there documents the parameter (see
 [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages)).
 
 ---

@@ -4527,6 +4527,241 @@ fn s7_constructor_param_filler_follows_the_class_block_tags() {
     }
 }
 
+/// The roxygen block (lines up to the definition) that documents `def` in a
+/// generated wrapper.
+fn block_before<'a>(wrapper: &'a str, def: &str) -> Vec<&'a str> {
+    let lines: Vec<&str> = wrapper.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with(def))
+        .unwrap_or_else(|| panic!("no `{def}` in:\n{wrapper}"));
+    let start = lines[..at]
+        .iter()
+        .rposition(|l| !l.starts_with("#'"))
+        .map_or(0, |i| i + 1);
+    lines[start..at].to_vec()
+}
+
+/// A method-level `@describeIn` lists the S3 method in the destination's
+/// "Functions" section: the method block carries neither `@name` nor
+/// `@rdname` (roxygen2 rejects both next to it) nor a structural title, and
+/// the generic block, whose `@name` is the method's alias, follows it to the
+/// destination page. On the author's topic neither block adds the structural
+/// `x` / `...` lines, and both sort after the topic's own block. A method on
+/// the class page keeps all of it.
+#[test]
+fn s3_method_describe_in_joins_the_destination_page() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// @describeIn counter_ops Add a step.
+            /// @param by Step size.
+            pub fn bump(&mut self, by: i32) { unimplemented!() }
+            /// Scale the value.
+            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+            /// @describeIn counter_ops Build a counter from a step.
+            pub fn from_step(step: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let wrapper = generate_s3_r_wrapper(&parse_impl(ClassSystem::S3, item_impl));
+    let order = format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS);
+
+    let method = block_before(&wrapper, "bump.Counter <- function");
+    assert!(
+        method.contains(&"#' @describeIn counter_ops Add a step."),
+        "{method:#?}"
+    );
+    assert!(method.contains(&"#' @param by Step size."), "{method:#?}");
+    assert!(method.contains(&order.as_str()), "{method:#?}");
+    for tag in ["@name", "@rdname", "@title", "@param x ", "@param ... "] {
+        assert!(
+            !method.iter().any(|l| l.starts_with(&format!("#' {tag}"))),
+            "`{tag}` on a @describeIn block: {method:#?}"
+        );
+    }
+
+    let generic = block_before(&wrapper, "if (!base::exists(\"bump\"");
+    assert!(generic.contains(&"#' @rdname counter_ops"), "{generic:#?}");
+    assert!(generic.contains(&"#' @name bump.Counter"), "{generic:#?}");
+    assert!(generic.contains(&order.as_str()), "{generic:#?}");
+    for tag in ["@title", "@description", "@param"] {
+        assert!(
+            !generic.iter().any(|l| l.starts_with(&format!("#' {tag}"))),
+            "`{tag}` on a generic block that follows @describeIn: {generic:#?}"
+        );
+    }
+
+    let statik = block_before(&wrapper, "counter_from_step <- function");
+    assert!(statik.contains(&"#' @describeIn counter_ops Build a counter from a step."));
+    assert!(statik.contains(&order.as_str()), "{statik:#?}");
+    assert!(
+        !statik
+            .iter()
+            .any(|l| l.starts_with("#' @name") || l.starts_with("#' @rdname")),
+        "{statik:#?}"
+    );
+    // `step` is documented by the destination topic: no filler.
+    assert!(
+        !statik.iter().any(|l| l.starts_with("#' @param")),
+        "{statik:#?}"
+    );
+
+    let class_page = block_before(&wrapper, "scale.Counter <- function");
+    for line in [
+        "#' @name scale.Counter",
+        "#' @rdname Counter",
+        "#' @param x An object.",
+        "#' @param ... Additional arguments.",
+        "#' @param factor (undocumented)",
+    ] {
+        assert!(class_page.contains(&line), "`{line}`: {class_page:#?}");
+    }
+    assert!(!class_page.contains(&order.as_str()), "{class_page:#?}");
+}
+
+/// A method-level `@rdname other` moves the S3 method onto the author's
+/// topic, whose own block documents `x` and `...` (#1590): the structural
+/// lines would replace that text, so neither block emits them.
+#[test]
+fn s3_method_rdname_leaves_structural_params_to_the_topic() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// @rdname counter_ops
+            pub fn bump(&mut self) { unimplemented!() }
+        }
+    };
+    let wrapper = generate_s3_r_wrapper(&parse_impl(ClassSystem::S3, item_impl));
+    assert!(!wrapper.contains("#' @param x "), "{wrapper}");
+    assert!(!wrapper.contains("#' @param ... "), "{wrapper}");
+    assert_eq!(
+        wrapper
+            .matches(&format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS))
+            .count(),
+        2,
+        "generic and method block both sort after the topic's block:\n{wrapper}"
+    );
+    assert_eq!(
+        wrapper.matches("#' @rdname counter_ops").count(),
+        2,
+        "{wrapper}"
+    );
+}
+
+/// The `as.<target>()` coercion follows the same `@describeIn` rule.
+#[test]
+fn as_coercion_describe_in_drops_name_and_rdname() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// @describeIn counter_ops The counter as a list.
+            #[miniextendr(as = "list")]
+            pub fn to_list(&self) -> Vec<i32> { unimplemented!() }
+        }
+    };
+    let coercion = generate_as_coercion_methods(&parse_impl(ClassSystem::S3, item_impl));
+    let block = block_before(&coercion, "as.list.Counter <- function");
+    assert!(block.contains(&"#' @describeIn counter_ops The counter as a list."));
+    assert!(
+        block.contains(&format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS).as_str()),
+        "{block:#?}"
+    );
+    assert!(
+        !block.iter().any(|l| l.starts_with("#' @name")
+            || l.starts_with("#' @rdname")
+            || l.starts_with("#' @title")),
+        "{block:#?}"
+    );
+}
+
+/// Where the method's R wrapper has no object roxygen2 can list under the
+/// destination, `@describeIn` is a compile error pointing at `@rdname`.
+#[test]
+fn describe_in_rejected_where_roxygen_has_no_object() {
+    let reject = |class_system: ClassSystem, item_impl: syn::ItemImpl| {
+        ParsedImpl::parse(default_impl_attrs(class_system), item_impl)
+            .err()
+            .map(|e| e.to_string())
+    };
+    let instance: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            /// @describeIn counter_ops Add a step.
+            pub fn bump(&mut self) { unimplemented!() }
+        }
+    };
+    let ctor: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// @describeIn counter_ops Make a counter.
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+    let statik: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            pub fn new() -> Self { unimplemented!() }
+            /// @describeIn counter_ops A helper.
+            pub fn helper(step: i32) -> i32 { unimplemented!() }
+        }
+    };
+    for (system, item, kind) in [
+        (ClassSystem::S4, instance.clone(), "instance method"),
+        (ClassSystem::S7, instance.clone(), "instance method"),
+        (ClassSystem::Env, instance.clone(), "instance method"),
+        (ClassSystem::R6, instance.clone(), "instance method"),
+        (ClassSystem::S3, ctor.clone(), "constructor"),
+        (ClassSystem::S7, ctor.clone(), "constructor"),
+        (ClassSystem::Env, statik.clone(), "static method"),
+        (ClassSystem::R6, statik.clone(), "static method"),
+    ] {
+        let err = reject(system, item).unwrap_or_else(|| panic!("{system:?} {kind} accepted"));
+        assert!(err.contains("`@describeIn` is not supported"), "{err}");
+        assert!(err.contains(kind), "{system:?}: {err}");
+        assert!(err.contains("@rdname <topic>"), "{err}");
+    }
+    for (system, item) in [
+        (ClassSystem::S3, instance),
+        (ClassSystem::S3, statik.clone()),
+        (ClassSystem::S4, statik.clone()),
+        (ClassSystem::S7, statik),
+        (ClassSystem::S4, ctor),
+    ] {
+        assert_eq!(reject(system, item), None, "{system:?}");
+    }
+}
+
+/// An S7 class block on an author topic (impl-level `@rdname other`) leaves
+/// `.ptr` to the topic's own block and sorts after it; on its own class page
+/// it keeps the structural line.
+#[test]
+fn s7_class_block_on_an_author_topic_leaves_ptr_to_it() {
+    let build = |impl_doc: Option<&str>| {
+        let doc = impl_doc.map(|tag| quote::quote!(#[doc = #tag]));
+        let item_impl: syn::ItemImpl = syn::parse_quote! {
+            /// A counter.
+            #doc
+            impl Counter {
+                /// @param value Starting value.
+                pub fn new(value: i32) -> Self { unimplemented!() }
+            }
+        };
+        generate_s7_r_wrapper(&parse_impl(ClassSystem::S7, item_impl))
+    };
+    let order = format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS);
+    for impl_doc in [None, Some("@rdname Counter")] {
+        let own = build(impl_doc);
+        assert!(
+            own.contains("#' @param .ptr Internal pointer"),
+            "{impl_doc:?}: {own}"
+        );
+        assert!(!own.contains(&order), "{impl_doc:?}: {own}");
+    }
+    let joined = build(Some("@rdname counter_family"));
+    assert!(!joined.contains("#' @param .ptr "), "{joined}");
+    assert!(joined.contains(&order), "{joined}");
+    assert!(
+        joined.contains("#' @param value Starting value."),
+        "{joined}"
+    );
+}
+
 // endregion
 
 #[test]

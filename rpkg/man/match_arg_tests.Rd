@@ -84,7 +84,7 @@ match_arg_log_level(
 )
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL for no choice.}
+\item{mode}{A Mode enum value, or NULL.}
 
 \item{status}{A BuildStatus enum value.}
 

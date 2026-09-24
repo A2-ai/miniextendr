@@ -7,16 +7,14 @@
 \method{build}{GreetingBuilder}(x, ...)
 }
 \arguments{
-\item{x}{An object.}
+\item{x}{A \code{GreetingBuilder}.}
 
-\item{...}{Additional arguments.}
+\item{...}{Unused; accepted for S3 method compatibility.}
 }
 \description{
-S3 generic for \code{build}
-
 Terminal step: render the configured greeting as a string.
 
 Takes \verb{&self} (not \code{self}) so the R object remains valid afterwards, and returns a different type (\code{String}) converted to R via \code{IntoR}.
 
-Documented on its own help page (\code{man/greeting_build.Rd}, reached via \code{?build.GreetingBuilder}) rather than the shared \code{GreetingBuilder} page: a method-level \verb{@rdname} is honoured by the generator instead of being overwritten by the class default.
+Documented on its own help page (\code{man/greeting_build.Rd}, reached via \code{?build.GreetingBuilder}) rather than the shared \code{GreetingBuilder} page: a method-level \verb{@rdname} is honoured by the generator instead of being overwritten by the class default. The page is the method's own, so it documents the S3 method's \code{x} and \code{...} itself.
 }
