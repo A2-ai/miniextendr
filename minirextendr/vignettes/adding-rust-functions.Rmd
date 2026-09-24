@@ -316,5 +316,8 @@ handles the dispatch automatically. Two things to be aware of:
 - See the [type conversion reference](https://a2-ai.github.io/miniextendr/manual/type-conversions/) for the
   full list of supported types, NA handling, and coercion rules.
 - For class systems (R6, S7, environment classes), see the miniextendr
-  documentation.
+  documentation. Before adding `#[miniextendr(s7)]` classes, run
+  `minirextendr::use_s7()`: it adds S7 to `Imports` and the `.onLoad()` that
+  calls `S7::methods_register()`, without which S7 methods for base operators
+  and other packages' generics stop working in new R sessions.
 - For lazy/compact vectors, see `vignette("altrep-quick-start")`.

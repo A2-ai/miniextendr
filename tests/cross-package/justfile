@@ -2,8 +2,27 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# producer.pkg and consumer.pkg install into, load from and are tested against
+# a library inside this checkout (gitignored), so parallel checkouts and
+# worktrees never overwrite each other's installs in the shared user library.
+# R_LIBS puts it first on .libPaths() in every R process started below (and
+# their subprocesses), ahead of the library that provides the dependencies
+# (rv does not activate in this directory). R drops R_LIBS entries that do
+# not exist yet, so every recipe that starts R depends on `_r-lib`.
+r_lib := justfile_directory() / ".r-lib"
+r_libs_sep := if os_family() == "windows" { ";" } else { ":" }
+export R_LIBS := if env("R_LIBS", "") == "" { r_lib } else { r_lib + r_libs_sep + env("R_LIBS") }
+
 default:
     @just --list
+
+# Create the per-checkout R library
+_r-lib:
+    @mkdir -p "{{r_lib}}"
+
+# Print the library the recipes install into and load from
+r-lib: _r-lib
+    Rscript -e 'cat(.libPaths()[1], "\n")'
 
 # Build and install both packages in sequence
 build-all: configure-producer build-producer configure-consumer build-consumer
@@ -15,7 +34,7 @@ install-all: build-all
 document-all: document-producer document-consumer
 
 # Document producer.pkg
-document-producer: configure-producer
+document-producer: _r-lib configure-producer
     #!/usr/bin/env bash
     set -euo pipefail
     FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' producer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
@@ -44,7 +63,7 @@ document-producer: configure-producer
     Rscript -e 'suppressMessages(require(vctrs, quietly = TRUE)); roxygen2::roxygenise(load_code = roxygen2::load_installed)'
 
 # Document consumer.pkg
-document-consumer: document-producer configure-consumer
+document-consumer: _r-lib document-producer configure-consumer
     #!/usr/bin/env bash
     set -euo pipefail
     FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' consumer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
@@ -79,7 +98,7 @@ configure-producer:
     bash ./configure
 
 # Build and install producer.pkg
-build-producer: configure-producer
+build-producer: _r-lib configure-producer
     cd producer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Configure consumer.pkg
@@ -89,15 +108,15 @@ configure-consumer:
     bash ./configure
 
 # Build and install consumer.pkg (must be built after producer)
-build-consumer: build-producer configure-consumer
+build-consumer: _r-lib build-producer configure-consumer
     cd consumer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Test producer.pkg (uses installed package, not load_all)
-test-producer: configure-producer
+test-producer: _r-lib configure-producer
     cd producer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
 
 # Test consumer.pkg (includes cross-package tests, uses installed package)
-test-consumer: configure-consumer
+test-consumer: _r-lib configure-consumer
     cd consumer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
 
 # Run all tests
@@ -111,6 +130,7 @@ clean:
     rm -rf consumer.pkg/src/rust/target
     rm -rf producer.pkg/rust-target
     rm -rf consumer.pkg/rust-target
+    rm -rf "{{r_lib}}"
 
 # Alias for clean
 clean-all: clean
@@ -125,12 +145,16 @@ rebuild: build-producer build-consumer
 rebuild-all: rebuild
 
 # Run R CMD check on producer.pkg
-check-producer: configure-producer
+check-producer: _r-lib configure-producer
     cd producer.pkg && Rscript -e 'devtools::check()'
 
 # Run R CMD check on consumer.pkg
-check-consumer: configure-consumer
+check-consumer: _r-lib configure-consumer
     cd consumer.pkg && Rscript -e 'devtools::check()'
 
 # Run R CMD check on both packages
 check-all: check-producer check-consumer
+
+# Run the cross-package interop benchmarks against the installed packages
+bench-interop: _r-lib
+    Rscript bench-interop.R

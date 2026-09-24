@@ -1335,6 +1335,95 @@ agents-md-check:
 issues-refresh output_dir="ISSUES":
     bash scripts/refresh-issues-cache.sh "{{output_dir}}"
 
+# Merge driver for regenerated files (scripts/merge-driver-regen.sh). The
+# root .gitattributes routes rust-llm-docs/generated/*.md and
+# rpkg/src/rust/Cargo.lock to `merge=mx-regen`; this recipe defines the
+# driver in the repository config and, in the shared info/attributes, also
+# routes the paths that the tracked attributes mark `-merge` (rpkg's NAMESPACE,
+# man pages and configure, and patches/templates.patch). The tracked `-merge`
+# stays for clones without the driver and for scaffolded packages, which
+# inherit rpkg/.gitattributes. Both the config and info/attributes are shared
+# by every worktree of this clone. Re-running replaces the managed block.
+# Install the mx-regen merge driver for regenerated files (this clone and its worktrees)
+[script("bash")]
+merge-drivers-install:
+    set -euo pipefail
+    git config merge.mx-regen.name "keep the current side of a regenerated file (just regenerate-merged)"
+    git config merge.mx-regen.driver "bash scripts/merge-driver-regen.sh %O %A %B %L %P %S %X %Y"
+    attributes="$(git rev-parse --git-path info/attributes)"
+    mkdir -p "$(dirname "$attributes")"
+    touch "$attributes"
+    kept="$(sed '/^# mx-regen: begin/,/^# mx-regen: end/d' "$attributes")"
+    {
+      if [ -n "$kept" ]; then printf '%s\n' "$kept"; fi
+      echo "# mx-regen: begin (written by just merge-drivers-install)"
+      echo "rpkg/NAMESPACE merge=mx-regen"
+      echo "rpkg/man/*.Rd merge=mx-regen"
+      echo "rpkg/configure merge=mx-regen"
+      echo "patches/templates.patch merge=mx-regen"
+      echo "# mx-regen: end"
+    } > "$attributes"
+    echo "mx-regen merge driver installed (git config + $attributes)."
+    echo "After a merge or rebase that used it, run: just regenerate-merged"
+
+# Rebuild the files the mx-regen merge driver kept unmerged. Reads the
+# per-worktree list $(git rev-parse --git-dir)/mx-regenerate and clears it
+# only when every regeneration step succeeded. The Cargo.lock re-stamp runs
+# last because the rpkg install recipes restore the lock from the index.
+# Regenerate the files listed by the mx-regen merge driver, then clear the list
+[script("bash")]
+regenerate-merged:
+    set -euo pipefail
+    list="$(git rev-parse --git-dir)/mx-regenerate"
+    if [ ! -s "$list" ]; then
+      echo "regenerate-merged: nothing to regenerate ($list is empty or absent)"
+      exit 0
+    fi
+    llm_docs=0 rpkg_docs=0 configure=0 templates=0 lock=0 unknown=()
+    while IFS= read -r path; do
+      case "$path" in
+        rust-llm-docs/generated/*) llm_docs=1 ;;
+        rpkg/NAMESPACE | rpkg/man/*) rpkg_docs=1 ;;
+        rpkg/configure) configure=1 ;;
+        patches/templates.patch) templates=1 ;;
+        rpkg/src/rust/Cargo.lock) lock=1 ;;
+        *) unknown+=("$path") ;;
+      esac
+    done < <(sort -u "$list")
+    if [ "${#unknown[@]}" -gt 0 ]; then
+      printf 'regenerate-merged: no regeneration step for: %s\n' "${unknown[@]}" >&2
+      exit 1
+    fi
+    echo "regenerate-merged: regenerating:"
+    sort -u "$list" | sed 's/^/  /'
+    if [ "$rpkg_docs" = 1 ]; then
+      # `just configure` also runs autoconf, which covers rpkg/configure.
+      just configure
+      just rcmdinstall
+      just force-document
+    elif [ "$configure" = 1 ]; then
+      (cd rpkg && autoconf)
+    fi
+    if [ "$templates" = 1 ]; then
+      just templates-approve
+      just templates-check
+    fi
+    if [ "$llm_docs" = 1 ]; then
+      just llm-docs
+    fi
+    if [ "$lock" = 1 ]; then
+      just configure
+      cargo revendor --manifest-path rpkg/src/rust/Cargo.toml --stamp-lock -v
+      just lock-shape-check
+    fi
+    rm -f "$list"
+    echo "regenerate-merged: done. Review, git add and commit:"
+    git status --short
+
+# Test the mx-regen merge driver and merge-drivers-install in scratch repositories
+test-merge-drivers:
+    bash tests/merge-driver-regen.sh
+
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================

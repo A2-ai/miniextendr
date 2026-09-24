@@ -677,6 +677,32 @@ the generated wrappers, through the shortcut:
 S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2)
 ```
 
+### Registering methods when the package loads
+
+A package with S7 classes needs an `.onLoad()` that calls
+`S7::methods_register()`:
+
+```r
+.onLoad <- function(libname, pkgname) {
+  suppressMessages(S7::methods_register())
+}
+```
+
+S7 records a method for a generic that belongs to another package when the
+package is built: a base operator (`bag[i]`, `bag[[i]]`, `money + 1`), a base
+generic (`format()`, `print()`) or another package's generic
+(`s7(generic = "pkg::name")`). Only `S7::methods_register()` registers those
+methods again in a new R session. Without it they work in the session that
+installed the package and fail in every later one; `bag[i]` then errors with
+"S7 objects are not subsettable". Methods on the package's own generics are
+not affected.
+
+`minirextendr::use_s7()` writes this hook to `R/zzz.R` when the package has no
+`.onLoad()`, and names the line to add when it has one.
+`minirextendr::miniextendr_doctor()` warns when an S7 package's `.onLoad()` does
+not call it. The `suppressMessages()` hides the "Overwriting method" messages
+S7 prints under `devtools::load_all()`, which registers such methods twice.
+
 ### When to Use
 
 - New packages without legacy constraints

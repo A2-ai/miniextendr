@@ -521,6 +521,8 @@ mx_desc_get_deps <- function(file) {
                        version = character(), stringsAsFactors = FALSE)
 
   for (type in c("Depends", "Imports", "Suggests", "LinkingTo", "Enhances")) {
+    # read.dcf() returns only the fields the file has.
+    if (!type %in% colnames(dcf)) next
     val <- dcf[1, type]
     if (is.na(val)) next
     pkgs <- trimws(strsplit(val, ",")[[1]])
@@ -529,13 +531,53 @@ mx_desc_get_deps <- function(file) {
       # Parse "pkg (>= 1.0)" or just "pkg"
       m <- regmatches(pkg, regexec("^([^(]+)\\s*(?:\\((.+)\\))?$", pkg))[[1]]
       pkg_name <- trimws(m[2])
-      pkg_ver <- if (length(m) >= 3 && !is.na(m[3])) trimws(m[3]) else "*"
+      pkg_ver <- if (length(m) >= 3 && !is.na(m[3]) && nzchar(m[3])) trimws(m[3]) else "*"
       result <- rbind(result, data.frame(type = type, package = pkg_name,
                                          version = pkg_ver,
                                          stringsAsFactors = FALSE))
     }
   }
   result
+}
+
+#' Remove a dependency from one DESCRIPTION field
+#'
+#' Drops `pkg` (with any version constraint) from `type`, and the field
+#' itself when it becomes empty.
+#'
+#' @param file Path to DESCRIPTION
+#' @param pkg Package name
+#' @param type Dependency field (e.g., "Suggests")
+#' @return Invisibly, `TRUE` if the file was modified
+#' @noRd
+mx_desc_drop_dep <- function(file, pkg, type) {
+  lines <- readLines(file, warn = FALSE)
+  section_idx <- grep(paste0("^", type, ":"), lines)
+  if (length(section_idx) == 0) {
+    return(invisible(FALSE))
+  }
+  start <- section_idx[1]
+  end <- start
+  while (end < length(lines) && grepl("^\\s", lines[end + 1])) {
+    end <- end + 1
+  }
+  deps_text <- sub(paste0("^", type, ":\\s*"), "", paste(lines[start:end], collapse = "\n"))
+  deps <- trimws(strsplit(deps_text, ",")[[1]])
+  deps <- deps[nzchar(deps)]
+  keep <- trimws(sub("\\(.*$", "", deps)) != pkg
+  if (all(keep)) {
+    return(invisible(FALSE))
+  }
+  new_section <- if (any(keep)) {
+    paste0(type, ":\n", paste0("    ", deps[keep], collapse = ",\n"))
+  }
+  lines <- c(
+    if (start > 1) lines[1:(start - 1)],
+    new_section,
+    if (end < length(lines)) lines[(end + 1):length(lines)]
+  )
+  writeLines(lines, file)
+  invisible(TRUE)
 }
 
 #' Add or update a dependency in DESCRIPTION

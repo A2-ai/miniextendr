@@ -150,7 +150,8 @@ connections = ["miniextendr-api/connections"]
 Add integrations the same way (`rayon = ["miniextendr-api/rayon"]`, `serde`,
 `uuid`, `time`, …) or use the `minirextendr::use_*()` helpers (`use_rayon()`,
 `use_serde()`, `use_r6()`, `use_s4()`, `use_s7()`, `use_vctrs()`), which also
-handle R-side `DESCRIPTION` changes. Configure-time feature detection
+handle R-side `DESCRIPTION` changes (`use_s7()` also adds the `.onLoad()` that
+calls `S7::methods_register()`). Configure-time feature detection
 (features switched on per-machine at install time) is managed by
 `minirextendr::use_feature_detection()` / `update_feature_detection()` and
 lives in `tools/detect-features.R`; configure passes the result to cargo via

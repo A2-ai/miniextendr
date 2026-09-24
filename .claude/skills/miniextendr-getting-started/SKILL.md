@@ -98,9 +98,9 @@ the leaked-tarball guard (#1029) only protects git-tracked source trees.
   for that file).
 - `configure.ac` — the autoconf source for install-mode detection.
 - `configure` — the generated configure script (via `autoconf`).
-- `src/rust/Cargo.toml` — a Rust crate depending on `miniextendr-api` and
-  `miniextendr-macros`.
-- `src/rust/src/lib.rs` — a minimal Rust library with `miniextendr_init!`.
+- `src/rust/Cargo.toml` — a Rust crate depending on `miniextendr-api` (which
+  re-exports the `#[miniextendr]` macros).
+- `src/rust/lib.rs` — a minimal Rust library with `miniextendr_init!`.
 - `src/stub.c` — the minimal C file that R's build system requires.
 
 The key entry point is `minirextendr/R/create.R`. If you want to see what the
@@ -109,7 +109,7 @@ example is `rpkg/` in this repository.
 
 ### Step 2: Add a Rust function
 
-Open `src/rust/src/lib.rs` (inside your R package's source tree) and add:
+Open `src/rust/lib.rs` (inside your R package's source tree) and add:
 
 ```rust
 use miniextendr_api::miniextendr;

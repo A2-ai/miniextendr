@@ -35,6 +35,14 @@
 #' generated yet or when a whole-package `import()` directive makes exports
 #' statically unattributable.
 #'
+#' For a package that uses S7 (S7 in `Imports`, or generated wrappers that
+#' call it), the doctor also checks that `.onLoad()` calls
+#' `S7::methods_register()`. S7 records methods for other packages' generics
+#' (base generics and operators such as `[[`, `format()` or `+`, and external
+#' generics) when the package is built, and only that call registers them in a
+#' new session; [use_s7()] adds it. The check parses `R/` without running it,
+#' so a call reached through a helper function is not seen.
+#'
 #' For more targeted checks, see [miniextendr_status()] (file presence)
 #' and [miniextendr_validate()] (configuration correctness).
 #'
@@ -416,6 +424,53 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
     }
   }
 
+  # -- S7 method registration --
+  # S7 records methods for other packages' generics (base generics,
+  # operators, external generics) at build time; only an .onLoad() calling
+  # S7::methods_register() registers them in a new session, so without it
+  # `x[[i]]`, `format(x)` or `x + 1` work right after install and fail in
+  # every later session. Static like the export check; silent for packages
+  # that do not use S7.
+  s7 <- s7_registration_status(usethis::proj_get())
+  if (!is.null(s7)) {
+    cli::cli_h2("S7 method registration")
+    if (!s7$imported) {
+      cli::cli_alert_warning(
+        "The generated wrappers call {.pkg S7}, but DESCRIPTION does not import it."
+      )
+      cli::cli_bullets(c("i" = "Fix: run {.code minirextendr::use_s7()}."))
+      results$warn <- c(results$warn, "S7 used by the wrappers but not in Imports")
+    }
+    hooks <- s7$hooks
+    if (length(s7$failed) > 0L) {
+      cli::cli_alert_info(
+        "S7 registration check skipped: {.path {s7$failed}} could not be parsed."
+      )
+    } else if (length(hooks) == 0L) {
+      cli::cli_alert_warning(
+        "No {.code .onLoad()} calls {.code S7::methods_register()}: S7 methods for other packages' generics (base operators such as {.code [[}, {.code format()}, external generics) are lost in new sessions."
+      )
+      cli::cli_bullets(c("i" = "Fix: run {.code minirextendr::use_s7()}."))
+      results$warn <- c(results$warn, "S7 methods not registered on load (no .onLoad)")
+    } else if (length(hooks) > 1L) {
+      files <- vapply(hooks, `[[`, character(1), "file")
+      cli::cli_alert_warning(
+        "{.code .onLoad()} is defined {length(hooks)} times ({.path {files}}); R keeps only the one collated last. Merge them into one that calls {.code S7::methods_register()}."
+      )
+      results$warn <- c(results$warn, "S7: .onLoad defined more than once")
+    } else if (!hooks[[1L]]$registers) {
+      cli::cli_alert_warning(
+        "{.code .onLoad()} in {.path {hooks[[1L]]$file}} does not call {.code S7::methods_register()}: S7 methods for other packages' generics are lost in new sessions. Add {.code suppressMessages(S7::methods_register())} to its body."
+      )
+      results$warn <- c(results$warn, "S7 methods not registered on load (.onLoad lacks methods_register)")
+    } else {
+      cli::cli_alert_success(
+        "{.code .onLoad()} in {.path {hooks[[1L]]$file}} registers S7 methods"
+      )
+      results$pass <- c(results$pass, "S7 methods registered on load")
+    }
+  }
+
   # -- Vendor tarball leak --
   # inst/vendor.tar.xz is gitignored and only belongs in the source tree
   # transiently (during `miniextendr_vendor()` + `R CMD build`). This is the
@@ -704,6 +759,33 @@ tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
     return(NULL)
   }
   tracked[nzchar(tracked)]
+}
+
+#' S7 use and load-hook state of a package
+#'
+#' A package uses S7 when DESCRIPTION lists it in `Imports` or `Depends`, or
+#' when a generated `R/*-wrappers.R` calls `S7::`. Fully static, like
+#' `stale_namespace_exports()`.
+#'
+#' @param pkg_dir Package directory to inspect.
+#' @return `NULL` when the package does not use S7; otherwise
+#'   `list(imported = <lgl>, hooks = , failed = )` with `hooks` / `failed`
+#'   from `s7_load_hooks()`.
+#' @noRd
+s7_registration_status <- function(pkg_dir = usethis::proj_get()) {
+  desc_path <- file.path(pkg_dir, "DESCRIPTION")
+  imported <- file.exists(desc_path) && {
+    deps <- mx_desc_get_deps(desc_path)
+    "S7" %in% deps$package[deps$type %in% c("Imports", "Depends")]
+  }
+  wrappers <- list.files(file.path(pkg_dir, "R"), pattern = "-wrappers\\.R$", full.names = TRUE)
+  in_wrappers <- any(vapply(wrappers, function(f) {
+    any(grepl("S7::", readLines(f, warn = FALSE), fixed = TRUE))
+  }, logical(1)))
+  if (!imported && !in_wrappers) {
+    return(NULL)
+  }
+  c(list(imported = imported), s7_load_hooks(pkg_dir))
 }
 
 #' Stale NAMESPACE exports (#1304/#1305)

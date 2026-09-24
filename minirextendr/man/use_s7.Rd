@@ -13,7 +13,28 @@ use_s7(path = ".")
 Invisibly returns TRUE
 }
 \description{
-Adds S7 as a dependency for using the S7 class system with \verb{#[miniextendr(s7)]}.
+Adds S7 as a dependency for using the S7 class system with
+\verb{#[miniextendr(s7)]}, and makes the package register its S7 methods when it
+loads.
+}
+\details{
+S7 records methods for generics that belong to other packages (base
+generics such as \code{format()}, base operators such as \code{[[} and \code{+}, and
+generics from other packages) when the package is built, and registers them
+in a new R session only when the package's \code{.onLoad()} calls
+\code{S7::methods_register()}. Without that call such methods work in the session
+that installed the package and nowhere else. So \code{use_s7()} also:
+\itemize{
+\item writes an \code{.onLoad()} that calls \code{S7::methods_register()} to \code{R/zzz.R}
+(creating the file or appending to it) when the package defines no
+\code{.onLoad()}, and adds \code{zzz.R} to a \code{Collate} field if there is one;
+\item leaves an existing \code{.onLoad()} alone, and if it does not call
+\code{S7::methods_register()}, prints the line to add and the file it goes in.
+}
+
+Running it again changes nothing. A package that never calls \code{use_s7()}
+does not depend on S7. \code{\link[=miniextendr_doctor]{miniextendr_doctor()}} reports an S7 package whose
+\code{.onLoad()} does not register its methods.
 }
 \examples{
 \dontrun{

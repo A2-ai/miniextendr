@@ -1,10 +1,11 @@
 # Cross-Package Trait Dispatch Benchmarks
 #
 # Times key cross-package operations between producer.pkg and consumer.pkg.
-# Requires both packages to be installed (just cross-install).
+# Requires both packages to be installed (just cross-install), which puts them
+# in this checkout's tests/cross-package/.r-lib library.
 #
-# Usage:
-#   Rscript tests/cross-package/bench-interop.R
+# Usage (the recipe puts that library first on .libPaths()):
+#   cd tests/cross-package && just bench-interop
 
 # ---------------------------------------------------------------------------
 # Configuration
