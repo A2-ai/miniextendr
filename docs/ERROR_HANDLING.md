@@ -705,6 +705,16 @@ either_int_or_str(3.5)   # value: Either<i32, String>
 #   Left failed (type mismatch: expected INTSXP, got REALSXP), Right failed (type mismatch: expected STRSXP, got REALSXP)
 ```
 
+A `match_arg` / `choices` parameter on `Either<T, R>` is decoded differently
+("Choice or Another Value" in [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md)):
+the R prelude checks character or factor input against the choices, and
+anything else is converted to `R` alone, so the reason is that arm's own:
+
+```r
+choices_either_level(TRUE)   # level: Either<String, f64>, choices("low", "mid", "high")
+# Error: invalid 'level' argument: expected numeric, got logical
+```
+
 ### NA Handling
 
 NA-rejecting scalar types such as `i32` and `bool` report conversion errors;

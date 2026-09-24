@@ -1281,11 +1281,21 @@ mod tests {
         assert_eq!(exp("Vec<bool>", true), some("logical or integer"));
         assert_eq!(exp("HashMap<String, i32>", false), some("a list"));
         assert_eq!(exp("Missing<f64>", false), some("a single double"));
+        // Choice parameters, including the `Missing` / `Option` / `Either`
+        // layers of #1551, have no expectation: their conversion errors read
+        // `invalid '<p>' argument: <reason>`.
         for unknown in [
             "Hyperparams",
             "Either<i32, String>",
             "AsFromStrVec<i32>",
             "SEXP",
+            "Mode",
+            "Option<Mode>",
+            "Missing<Option<Mode>>",
+            "Missing<Vec<Mode>>",
+            "Either<Route, DataFrame>",
+            "Option<Either<Route, DataFrame>>",
+            "Missing<Option<Either<Mode, List>>>",
         ] {
             assert_eq!(exp(unknown, false), None, "{unknown}");
         }

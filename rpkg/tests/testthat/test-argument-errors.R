@@ -297,6 +297,50 @@ test_that("impl and trait methods take the method-level messages", {
 
 # endregion
 
+# region: omittable and Either choices (#1551)
+
+test_that("an omittable choice raises the argument error", {
+  # The choice check behind the `Missing<..>` guard (src/rust/match_arg_tests.rs).
+  e <- caught(match_arg_omitted_mode("nope"))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "mode")
+  expect_null(e$rust_type)
+  expect_identical(conditionMessage(e), "'mode' should be one of \"Fast\", \"Safe\", \"Debug\"")
+  expect_equal(conditionCall(e), quote(match_arg_omitted_mode("nope")))
+  # Under call = caller the guarded check keeps the caller's call.
+  e <- caught(miniextendr:::call_attr_omitted(mode = "bogus"))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "mode")
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_omitted(mode = "bogus")))
+})
+
+test_that("an Either choice raises the argument error on both paths", {
+  skip_if_not(exists("match_arg_either_route"), "either feature not compiled in")
+  # A misspelled choice fails in the R prelude and never reaches the other arm.
+  e <- caught(match_arg_either_route("iv"))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "route")
+  expect_null(e$rust_type)
+  # Input that is neither character nor factor goes to the other arm, whose
+  # failure is the Rust conversion's argument error.
+  e <- caught(match_arg_either_route(1:3))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "route")
+  expect_identical(e$rust_type, "Either<Route, DataFrame>")
+  expect_match(conditionMessage(e), "^invalid 'route' argument: ")
+  expect_equal(conditionCall(e), quote(match_arg_either_route(route = 1:3)))
+  # A built-in conversion error in the other arm reads in R terms.
+  e <- caught(choices_either_level(TRUE))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "level")
+  expect_identical(e$rust_type, "Either<String, f64>")
+  expect_identical(conditionMessage(e), "invalid 'level' argument: expected numeric, got logical")
+})
+
+# endregion
+
 # region: the S7 fallback receiver check
 
 test_that("a class_any method given a non-S7 receiver raises the argument error", {

@@ -4,11 +4,15 @@
 
 skip_if_not(exists("match_arg_either_route"), "either feature not compiled in")
 
-# A choice failure names the argument and lists the choices. Only those stable
-# parts are asserted; the exact wording belongs to the R-side helpers.
+# A choice failure is the argument error of #1591 (`rust_error`,
+# `kind = "conversion"`, `e$param`), its message names the argument and lists
+# the choices. Only those stable parts are asserted; the exact wording belongs
+# to the R-side helpers.
 expect_choice_error <- function(expr, param, choices) {
   e <- tryCatch(expr, error = identity)
-  expect_s3_class(e, "error")
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, param)
   msg <- conditionMessage(e)
   expect_true(grepl(param, msg, fixed = TRUE), info = msg)
   for (choice in choices) {
