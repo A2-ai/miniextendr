@@ -1632,7 +1632,8 @@ impl AltRealData for DVector<f64> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        // `ISNAN`, not `R_IsNA`: R's `anyNA()` trusts this hint (`AltRealData::no_na`).
+        Some(!self.iter().any(|x| x.is_nan()))
     }
 }
 
@@ -1646,7 +1647,7 @@ impl AltIntegerData for DVector<i32> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        Some(!self.iter().any(|&x| x == crate::altrep_traits::NA_INTEGER))
     }
 }
 

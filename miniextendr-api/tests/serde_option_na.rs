@@ -82,6 +82,7 @@ fn serde_option_na_suite() {
         vec_na_element_errors_with_unexpected_na();
         vec_option_na_element_becomes_none();
         vec_without_na_still_roundtrips();
+        computed_na_is_na_on_every_double_path();
     });
 }
 
@@ -281,6 +282,35 @@ fn vec_option_na_element_becomes_none() {
         let strs = guard.protect(vec![Some("a".to_string()), None].into_sexp());
         let vals: Vec<Option<String>> = from_r(strs).expect("Vec<Option<String>> with NA element");
         assert_eq!(vals, vec![Some("a".to_string()), None]);
+    }
+}
+
+/// `NA_real_ * 1` as R computes it: arithmetic quiets the NaN (bits
+/// `0x7FF8_0000_0000_07A2`), and R still treats the value as NA (`R_IsNA`).
+const COMPUTED_NA: f64 = f64::from_bits(0x7FF8_0000_0000_07A2);
+
+/// A computed NA is NA on every double path of the deserializer (scalar
+/// `Option`, bare scalars, vector elements), while a plain NaN stays a value.
+fn computed_na_is_na_on_every_double_path() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let scalar = guard.protect(SEXP::scalar_real(COMPUTED_NA));
+        let opt: Option<f64> = from_r(scalar).expect("Option<f64> from a computed NA");
+        assert!(opt.is_none());
+        assert_unexpected_na(&from_r::<f64>(scalar).unwrap_err(), "f64");
+        assert_unexpected_na(&from_r::<i64>(scalar).unwrap_err(), "i64");
+        assert_unexpected_na(&from_r::<u32>(scalar).unwrap_err(), "u32");
+        assert_unexpected_na(&from_r::<u64>(scalar).unwrap_err(), "u64");
+
+        let nan = guard.protect(SEXP::scalar_real(f64::NAN));
+        let opt: Option<f64> = from_r(nan).expect("Option<f64> from NaN");
+        assert!(opt.is_some_and(f64::is_nan));
+
+        let reals = guard.protect(vec![1.0, COMPUTED_NA, f64::NAN].into_sexp());
+        let vals: Vec<Option<f64>> = from_r(reals).expect("Vec<Option<f64>> with a computed NA");
+        assert_eq!(vals[..2], [Some(1.0), None]);
+        assert!(vals[2].is_some_and(f64::is_nan));
+        assert_unexpected_na(&from_r::<Vec<f64>>(reals).unwrap_err(), "Vec<f64>");
     }
 }
 

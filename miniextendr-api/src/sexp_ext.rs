@@ -765,7 +765,8 @@ impl SexpExt for SEXP {
     #[inline]
     fn as_real(&self) -> Option<f64> {
         let v = unsafe { Rf_asReal(*self) };
-        if v.to_bits() == crate::altrep_traits::NA_REAL.to_bits() {
+        // `R_IsNA`: a computed NA is `None` too; any other NaN is a value.
+        if crate::from_r::is_na_real(v) {
             None
         } else {
             Some(v)

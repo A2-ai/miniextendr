@@ -36,8 +36,9 @@
 //! # NA Handling
 //!
 //! R's `NA_complex_` has both real and imaginary parts set to `NA_REAL` (a specific NaN).
-//! This module treats a complex number as NA if **either** part equals `NA_REAL`.
-//! Regular NaN values (not `NA_REAL`) are preserved as valid values.
+//! This module treats a complex number as NA if **either** part is R's NA, decided by
+//! R's `R_IsNA` rule (a NaN whose low word is 1954, so a computed NA such as
+//! `NA_real_ * 1` counts). Other NaN values are preserved as valid values.
 
 pub use num_complex::Complex;
 
@@ -71,19 +72,17 @@ pub fn na_rcomplex() -> Rcomplex {
 
 /// Check if an `Rcomplex` value is NA.
 ///
-/// A complex is NA if either the real or imaginary part is `NA_REAL`.
-/// We use bit comparison for reliable detection since `NA_REAL` is a specific NaN payload.
+/// A complex is NA if either the real or imaginary part is R's NA by the
+/// `R_IsNA` rule (see the module docs); a plain NaN part is not NA.
 #[inline]
 pub fn is_na_rcomplex(r: &Rcomplex) -> bool {
-    let na_bits = NA_REAL.to_bits();
-    r.r.to_bits() == na_bits || r.i.to_bits() == na_bits
+    crate::from_r::is_na_real(r.r) || crate::from_r::is_na_real(r.i)
 }
 
-/// Check if a `Complex<f64>` value is NA (either part is `NA_REAL`).
+/// Check if a `Complex<f64>` value is NA (either part is R's NA, by `R_IsNA`).
 #[inline]
 pub fn is_na_complex(c: &Complex<f64>) -> bool {
-    let na_bits = NA_REAL.to_bits();
-    c.re.to_bits() == na_bits || c.im.to_bits() == na_bits
+    crate::from_r::is_na_real(c.re) || crate::from_r::is_na_real(c.im)
 }
 // endregion
 
@@ -420,9 +419,20 @@ mod tests {
 
         // Regular NaN is NOT NA
         let nan = Complex::new(f64::NAN, 0.0);
-        // NaN bits are different from NA_REAL bits (usually)
-        // This test verifies that regular NaN is not treated as NA
-        assert!(!is_na_complex(&nan) || nan.re.to_bits() == NA_REAL.to_bits());
+        assert!(!is_na_complex(&nan));
+        assert!(!is_na_rcomplex(&Rcomplex {
+            r: 0.0,
+            i: f64::NAN
+        }));
+
+        // A computed NA (`NA_real_ * 1` quiets the NaN) is still NA, in either part.
+        let computed = f64::from_bits(0x7FF8_0000_0000_07A2);
+        assert!(is_na_complex(&Complex::new(computed, 1.0)));
+        assert!(is_na_complex(&Complex::new(1.0, computed)));
+        assert!(is_na_rcomplex(&Rcomplex {
+            r: computed,
+            i: 2.0
+        }));
     }
 
     #[test]
