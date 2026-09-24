@@ -712,12 +712,10 @@ impl miniextendr_api::TryFromSexp for WorkerBindingInput {
         let _local = WorkerConversionResource::new();
         unsafe {
             let symbol = miniextendr_api::sys::Rf_install(c"input".as_ptr());
-            miniextendr_api::sys::R_getVarEx(
-                symbol,
-                env,
-                miniextendr_api::Rboolean::FALSE,
-                miniextendr_api::sys::R_UnboundValue,
-            );
+            // Evaluate this fixture's bound symbol through a checked API that
+            // exists on R 4.4 too. Active bindings, promises and missing arguments
+            // still raise below the converter's owned resources.
+            miniextendr_api::sys::Rf_eval(symbol, env);
         }
         Ok(Self)
     }
