@@ -105,9 +105,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
 
+        // `$` takes an R symbol: quote operator names (#1475).
         lines.push(format!(
             "{}${} <- function({}) {{",
-            class_name, method_name, ctx.params
+            class_name,
+            crate::naming::r_def_name(&method_name),
+            ctx.params
         ));
 
         let what = format!("{}${}", class_name, method_name);
@@ -141,7 +144,9 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!(
             "{}${} <- function({}) {{",
-            class_name, method_name, ctx.params
+            class_name,
+            crate::naming::r_def_name(&method_name),
+            ctx.params
         ));
 
         let what = format!("{}${}", class_name, method_name);

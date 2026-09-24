@@ -277,6 +277,23 @@ pub(crate) fn r_def_name(name: &str) -> String {
     }
 }
 
+/// The argument of a raw NAMESPACE directive such as `export(<name>)`.
+///
+/// `@rawNamespace` lines reach NAMESPACE verbatim, so roxygen2 does not quote
+/// them the way it quotes `@export <name>`. Syntactic names stay bare; a
+/// non-syntactic one (an S7 generic on `[[` or `%op%`) becomes a double-quoted
+/// string, the form roxygen2 itself writes, because `export([[)` does not parse.
+/// `miniextendr-api`'s generic-doc pass mirrors this rule
+/// (`registry::r_namespace_name`); the two must stay in step so roxygen2 sees
+/// one directive, not two spellings of it.
+pub(crate) fn r_namespace_name(name: &str) -> String {
+    if is_syntactic_r_name(name) {
+        name.to_string()
+    } else {
+        format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+}
+
 // endregion
 
 #[cfg(test)]
@@ -406,5 +423,26 @@ mod tests {
         assert_eq!(apply_rename_all("HelloWorld", Some("lower")), "helloworld");
         assert_eq!(apply_rename_all("HelloWorld", Some("upper")), "HELLOWORLD");
         assert_eq!(apply_rename_all("HelloWorld", None), "HelloWorld");
+    }
+
+    #[test]
+    fn namespace_names_quote_operators_only() {
+        for name in ["get", "var", ".hidden", "s7_trait_Ops_value", "Foo_at"] {
+            assert_eq!(r_namespace_name(name), name);
+            assert_eq!(r_def_name(name), name);
+        }
+        for (name, ns, def) in [
+            ("[", r#""[""#, "`[`"),
+            ("[[", r#""[[""#, "`[[`"),
+            ("$", r#""$""#, "`$`"),
+            ("%custom%", r#""%custom%""#, "`%custom%`"),
+            ("Foo_[[", r#""Foo_[[""#, "`Foo_[[`"),
+            ("if", r#""if""#, "`if`"),
+        ] {
+            assert_eq!(r_namespace_name(name), ns);
+            assert_eq!(r_def_name(name), def);
+        }
+        // The NAMESPACE form is an R string literal: escape `"` and `\`.
+        assert_eq!(r_namespace_name(r#"a"b\c"#), r#""a\"b\\c""#);
     }
 }

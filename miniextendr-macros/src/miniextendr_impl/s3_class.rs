@@ -228,7 +228,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("#' @export".to_string());
         }
 
-        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            crate::naming::r_def_name(&fn_name),
+            ctx.params
+        ));
 
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 

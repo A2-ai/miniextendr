@@ -68,6 +68,21 @@ fn class_ref_or_any_or_verbatim(name: &str) -> String {
     }
 }
 
+/// Name of the S7 fast-path shortcut `<ClassName>_<method>` (#949), or `None`
+/// when that name is not a syntactic R name.
+///
+/// A method whose R name is an operator (`r_name = "[["`, `"%op%"`) is reached
+/// through R's operator syntax (`obj[[i]]`), which dispatches through the
+/// generic. A shortcut named `` `Foo_[[` `` could only be called with backticks,
+/// so it is not emitted at all. Spell the method `s7(generic = "[[")` on a
+/// Rust method with an ordinary name to keep both the operator and a
+/// `Foo_<name>` shortcut. Shared by the inherent and trait S7 generators and
+/// the shortcut collision check, so all three agree on which names exist.
+pub(crate) fn s7_shortcut_name(class_name: &str, method_name: &str) -> Option<String> {
+    let name = format!("{class_name}_{method_name}");
+    crate::naming::is_syntactic_r_name(&name).then_some(name)
+}
+
 /// Roxygen prose for the fast-path dispatch shortcut advisory block.
 ///
 /// Shared between the inherent-impl S7 generator ([`generate_s7_r_wrapper`])
@@ -764,12 +779,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 ("base".to_string(), generic_name.clone())
             };
 
+            // The generic appears as an R symbol (assignment target, first
+            // argument of `S7::method`) and as a string. Operator generics such
+            // as `[` need backticks in symbol position only (#1475).
+            let gen_symbol = crate::naming::r_def_name(&gen_name);
+
             // Use S7::new_external_generic for existing generics from other packages
             lines.push(format!(
                 "if (!exists(\"{gen_name}\", mode = \"function\")) {{"
             ));
             lines.push(format!(
-                "  {gen_name} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
+                "  {gen_symbol} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
             ));
             lines.push("}".to_string());
 
@@ -784,18 +804,26 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             let what = format!("{}.{}", generic_name, class_name);
             lines.push(format!(
-                "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
+                "S7::method({gen_symbol}, {method_class}) <- function({full_params}) {{"
             ));
             ctx.emit_method_prelude(&mut lines, "  ", &what);
             lines.extend(body_lines);
             lines.push("}".to_string());
         } else {
+            // The generic in R symbol position (assignment target, first argument
+            // of `S7::method`); string literals keep the bare name (#1475).
+            let generic_symbol = crate::naming::r_def_name(&generic_name);
+
             // Create new S7 generic if it doesn't exist
             // Use @rawNamespace to explicitly export the bare generic name.
             // Plain @export would export the qualified @name (e.g., "ClassName-method")
-            // instead of the bare generic.
+            // instead of the bare generic. The raw directive is not quoted by
+            // roxygen2, so an operator generic is written `export("[[")`.
             if should_export {
-                lines.push(format!("#' @rawNamespace export({})", generic_name));
+                lines.push(format!(
+                    "#' @rawNamespace export({})",
+                    crate::naming::r_namespace_name(&generic_name)
+                ));
             }
 
             // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
@@ -891,7 +919,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "  # No existing binding; define a plain package-local S7 generic.".to_string(),
             );
             lines.push(format!(
-                "  {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
+                "  {generic_symbol} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
             lines.push(format!(
                 "}} else if (local({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }})) {{"
@@ -916,7 +944,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // eagerly-assigned `.mx_masked` (assignment forces the value now — a
             // function *argument* would stay an unforced promise and later see the
             // reused `.mx_gen`, which is why we don't pass it as one).
-            lines.push(format!("  {generic_name} <- local({{"));
+            lines.push(format!("  {generic_symbol} <- local({{"));
             lines.push(format!(
                 "    .mx_masked <- base::get(\"{generic_name}\", mode = \"function\")"
             ));
@@ -947,7 +975,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             let what = format!("{}.{}", generic_name, class_name);
             lines.push(format!(
-                "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
+                "S7::method({generic_symbol}, {method_class}) <- function({method_formals}) {{"
             ));
             ctx.emit_method_prelude(&mut lines, "  ", &what);
             lines.extend(body_lines);
@@ -967,9 +995,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Fallback methods dispatch on `S7::class_any`, so a per-class shortcut
         // is meaningless — skip them. `s7(no_shortcut)` opts a method out
         // explicitly (e.g. to avoid a name collision with a sidecar accessor).
-        if !method_attrs.s7.fallback && !method_attrs.s7.no_shortcut {
-            let method_name = ctx.method.r_method_name();
-            let shortcut_name = format!("{}_{}", class_name, method_name);
+        // An operator R name (`r_name = "[["`) has no syntactic shortcut name,
+        // so it gets none (see `s7_shortcut_name`).
+        let method_name = ctx.method.r_method_name();
+        let shortcut_name = if method_attrs.s7.fallback || method_attrs.s7.no_shortcut {
+            None
+        } else {
+            s7_shortcut_name(&class_name, &method_name)
+        };
+        if let Some(shortcut_name) = shortcut_name {
             let shortcut_call = ctx.instance_call("self@.ptr");
             let shortcut_formals =
                 ctx.instance_formals_with_receiver("self", !method_attrs.s7.no_dots);
@@ -1054,7 +1088,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("#' @export".to_string());
         }
 
-        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+        // A static method's R name is its only access path, so an operator
+        // `r_name` is kept and backtick-quoted rather than dropped (#1475).
+        lines.push(format!(
+            "{} <- function({}) {{",
+            crate::naming::r_def_name(&fn_name),
+            ctx.params
+        ));
 
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 
