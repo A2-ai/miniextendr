@@ -108,7 +108,7 @@ pub(crate) fn s7_operator_dispatch_args(op: &str) -> Option<[&'static str; 2]> {
 }
 
 /// Where an S7 instance method's generic comes from.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) enum S7GenericTarget {
     /// A base R operator (`[`, `[[`, `$`, the `Ops` group, `%*%`). It always
     /// exists, so the method attaches to it directly: the package neither
