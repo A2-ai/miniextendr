@@ -188,3 +188,41 @@ test_that("gc_stress_expression_call survives gctorture and returns the right va
 })
 
 # endregion
+
+# region: trait View argument rooting -----------------------------------------
+
+# The View behind a `#[miniextendr]` trait converts each argument to a SEXP
+# before the vtable call; every converted argument has to stay rooted while
+# the later ones allocate and while the shim converts them back.
+trait_view_args_expected <- 'host|first|second|[1.5, 2.5]|["x", "y"]|last'
+
+test_that("gc_stress_trait_view_args passes every argument through the View", {
+  expect_identical(miniextendr:::gc_stress_trait_view_args(), trait_view_args_expected)
+})
+
+test_that("gc_stress_trait_view_args keeps View arguments rooted under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(20L)) {
+    res <- tryCatch(
+      {
+        out <- miniextendr:::gc_stress_trait_view_args()
+        if (identical(out, trait_view_args_expected)) "ok" else paste("got", out)
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+
+  expect_equal(ok, 20L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
+# endregion

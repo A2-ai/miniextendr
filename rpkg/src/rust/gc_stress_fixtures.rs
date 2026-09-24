@@ -3394,3 +3394,88 @@ pub fn gc_stress_as_character() -> Vec<Option<String>> {
 }
 
 // endregion
+
+// region: trait View argument rooting
+
+/// Trait whose View method crosses several freshly allocated arguments.
+///
+/// The View converts each Rust argument to a SEXP before calling through the
+/// vtable, so every converted argument must stay rooted while the later ones
+/// allocate, and through the shim's conversions back to Rust.
+#[miniextendr]
+pub trait ViewArgProbe {
+    /// Join every argument into one string, so a corrupted argument shows.
+    fn join_args(
+        &self,
+        first: String,
+        second: String,
+        values: Vec<f64>,
+        tags: Vec<String>,
+        last: String,
+    ) -> String;
+}
+
+/// Host type for the trait View argument fixture.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ViewArgHost {
+    prefix: String,
+}
+
+#[miniextendr(env, noexport)]
+impl ViewArgHost {
+    fn new(prefix: String) -> Self {
+        Self { prefix }
+    }
+}
+
+#[miniextendr(env, noexport)]
+impl ViewArgProbe for ViewArgHost {
+    fn join_args(
+        &self,
+        first: String,
+        second: String,
+        values: Vec<f64>,
+        tags: Vec<String>,
+        last: String,
+    ) -> String {
+        format!(
+            "{}|{first}|{second}|{values:?}|{tags:?}|{last}",
+            self.prefix
+        )
+    }
+}
+
+/// Call a trait method through its View with several allocating arguments.
+///
+/// The View converts `first`, `second`, `values`, `tags` and `last` to SEXPs
+/// one after another; each conversion allocates, so an argument left
+/// unrooted by the View is collected under `gctorture(TRUE)` and the shim
+/// reads a freed or reused node. The same-size strings make a reused node
+/// likely, which turns the use-after-free into a wrong value or a type error.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport, no_worker)]
+pub fn gc_stress_trait_view_args() -> String {
+    let host = ViewArgHost::new("host".to_string());
+    // SAFETY: main thread (`no_worker`); the wrapped handle is protected for
+    // the whole View call.
+    let joined = unsafe {
+        let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
+            __mx_wrap_viewarghost(host),
+        ));
+        ViewArgProbeView::from_sexp(handle.get()).join_args(
+            "first".to_string(),
+            "second".to_string(),
+            vec![1.5, 2.5],
+            vec!["x".to_string(), "y".to_string()],
+            "last".to_string(),
+        )
+    };
+    assert_eq!(
+        joined, r#"host|first|second|[1.5, 2.5]|["x", "y"]|last"#,
+        "trait View arguments were corrupted"
+    );
+    joined
+}
+
+// endregion
