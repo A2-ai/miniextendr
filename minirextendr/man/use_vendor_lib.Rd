@@ -13,9 +13,7 @@ use_vendor_lib(crate, version = "*", dev_path, path = ".")
 
 \item{dev_path}{Relative path from R package root to the monorepo crate
 (e.g., "../../../dvs"). Stored relative on purpose -- the generated
-\code{configure.ac} block rewrites it for tarball/CRAN builds. A \emph{hand-added}
-\code{path = ...} dependency (without that machinery) must be absolute instead;
-see Details.}
+\code{configure.ac} block rewrites it for tarball/CRAN builds.}
 
 \item{path}{Path to the R package root}
 }
@@ -33,14 +31,12 @@ that configure extracts at build time.
 purpose: the generated \code{configure.ac} block rewrites it to the extracted
 vendor copy in tarball/CRAN mode, so the relative path never reaches the
 offline build. This is why \code{use_vendor_lib()} is the supported way to wire
-in a monorepo crate.
+in a monorepo crate through \verb{[patch.crates-io]}.
 
-If you instead \strong{hand-add} a \code{path = ...} dependency to
-\code{src/rust/Cargo.toml} (with no such rewriting machinery), it must be an
-\strong{absolute} path. \verb{R CMD INSTALL} / \code{devtools::install()} copy the package
-into a temporary build directory before compiling the Rust staticlib, so a
-relative path resolves against the temp location and fails with
-\verb{failed to load manifest for dependency}. An absolute path is read live from
-its real location. (\verb{cargo vendor} captures only the crate's registry deps;
-the crate's own source is read from the \code{path} at install time.)
+A crate you \strong{hand-add} as a relative \code{path = ...} dependency of
+\code{src/rust/Cargo.toml} travels with the package through \code{bootstrap.R}
+instead, which stages it into the package while the repository is present
+(\code{devtools::build()}, pak with a repository ref and a subdirectory, rv
+0.23.0 or later). An installer that copies the package directory alone
+stops in configure, naming the missing path.
 }

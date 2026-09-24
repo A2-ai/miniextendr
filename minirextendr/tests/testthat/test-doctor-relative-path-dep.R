@@ -1,8 +1,9 @@
-# Tests for the relative-path-dep check in miniextendr_doctor() (#894).
+# Tests for the outside-path-dep check in miniextendr_doctor() (#894).
 #
 # The check warns when [dependencies] in src/rust/Cargo.toml contains a
-# `path = "..."` value that is relative (does not start with "/").  It must
-# NOT warn for [patch.crates-io] entries.
+# relative `path = "..."` value that leaves the package, which only a build
+# running bootstrap.R carries along. It must NOT warn for [patch.crates-io]
+# entries or for paths inside the package.
 
 # ---------------------------------------------------------------------------
 # Unit tests for the parse_relative_path_deps() helper
@@ -111,7 +112,7 @@ make_doctor_pkg <- function(cargo_lines) {
   tmp
 }
 
-test_that("miniextendr_doctor warns on relative path dep in [dependencies]", {
+test_that("miniextendr_doctor warns on a path dep outside the package", {
   tmp <- make_doctor_pkg(c(
     '[package]',
     'name = "mypkg"',
@@ -119,16 +120,18 @@ test_that("miniextendr_doctor warns on relative path dep in [dependencies]", {
     '',
     '[dependencies]',
     'miniextendr-api = "*"',
-    'my-local = { path = "../my-local" }'
+    'my-local = { path = "../../../my-local" }'
   ))
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  result <- suppressMessages(miniextendr_doctor(tmp))
+  messages <- capture_messages(result <- miniextendr_doctor(tmp))
 
   expect_true(
-    any(grepl("relative path dep in \\[dependencies\\]", result$warn)),
-    label = "doctor should warn about relative [dependencies] path dep"
+    any(grepl("path dep outside the package in \\[dependencies\\]", result$warn)),
+    label = "doctor should warn about a [dependencies] path outside the package"
   )
+  expect_true(any(grepl("stops in configure", messages, fixed = TRUE)))
+  expect_false(any(grepl("absolute path", messages, fixed = TRUE)))
   expect_true(
     any(grepl("my-local", result$warn)),
     label = "warning should name the offending crate"
@@ -152,12 +155,12 @@ test_that("miniextendr_doctor does NOT warn on relative path in [patch.crates-io
   result <- suppressMessages(miniextendr_doctor(tmp))
 
   expect_false(
-    any(grepl("relative path dep in \\[dependencies\\]", result$warn)),
+    any(grepl("path dep outside the package in \\[dependencies\\]", result$warn)),
     label = "doctor must NOT warn for [patch.crates-io] relative paths"
   )
 })
 
-test_that("miniextendr_doctor passes cleanly when no relative path deps exist", {
+test_that("miniextendr_doctor passes cleanly when no path deps leave the package", {
   tmp <- make_doctor_pkg(c(
     '[package]',
     'name = "mypkg"',
@@ -165,16 +168,19 @@ test_that("miniextendr_doctor passes cleanly when no relative path deps exist", 
     '',
     '[dependencies]',
     'miniextendr-api = "*"',
-    'serde = { version = "1.0", features = ["derive"] }'
+    'serde = { version = "1.0", features = ["derive"] }',
+    'satellite = { path = "satellite" }',
+    'nested = { path = "../rust/nested" }'
   ))
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   result <- suppressMessages(miniextendr_doctor(tmp))
 
   expect_true(
-    any(grepl("no relative path deps in \\[dependencies\\]", result$pass)),
-    label = "doctor should pass the relative-path check when no relative deps"
+    "no path deps outside the package in [dependencies]" %in% result$pass,
+    label = "doctor should pass the check when every path stays inside the package"
   )
+  expect_false(any(grepl("path dep outside the package", result$warn, fixed = TRUE)))
 })
 
 
@@ -189,9 +195,9 @@ test_that("doctor reports frozen dependencies and patches instead of unrelated a
   messages <- capture_messages(result <- miniextendr_doctor(tmp))
   expect_true("vendor-bound Cargo.toml [dependencies]: core_library" %in% result$warn)
   expect_true("vendor-bound Cargo.toml [patch.crates-io]: core" %in% result$warn)
-  expect_false(any(grepl("relative path dep in", result$warn, fixed = TRUE)))
-  expect_false("no relative path deps in [dependencies]" %in% result$pass)
-  expect_false(any(grepl("Use an absolute path", messages, fixed = TRUE)))
+  expect_false(any(grepl("path dep outside the package", result$warn, fixed = TRUE)))
+  expect_false("no path deps outside the package in [dependencies]" %in% result$pass)
+  expect_false(any(grepl("outside the package", messages, fixed = TRUE)))
 })
 
 test_that("doctor warns about multiple installed copies", {

@@ -254,24 +254,20 @@ add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
 #' purpose: the generated `configure.ac` block rewrites it to the extracted
 #' vendor copy in tarball/CRAN mode, so the relative path never reaches the
 #' offline build. This is why `use_vendor_lib()` is the supported way to wire
-#' in a monorepo crate.
+#' in a monorepo crate through `[patch.crates-io]`.
 #'
-#' If you instead **hand-add** a `path = ...` dependency to
-#' `src/rust/Cargo.toml` (with no such rewriting machinery), it must be an
-#' **absolute** path. `R CMD INSTALL` / `devtools::install()` copy the package
-#' into a temporary build directory before compiling the Rust staticlib, so a
-#' relative path resolves against the temp location and fails with
-#' `failed to load manifest for dependency`. An absolute path is read live from
-#' its real location. (`cargo vendor` captures only the crate's registry deps;
-#' the crate's own source is read from the `path` at install time.)
+#' A crate you **hand-add** as a relative `path = ...` dependency of
+#' `src/rust/Cargo.toml` travels with the package through `bootstrap.R`
+#' instead, which stages it into the package while the repository is present
+#' (`devtools::build()`, pak with a repository ref and a subdirectory, rv
+#' 0.23.0 or later). An installer that copies the package directory alone
+#' stops in configure, naming the missing path.
 #'
 #' @param crate Crate name (e.g., "dvs")
 #' @param version Version spec for Cargo.toml (e.g., "*" or "0.1.0")
 #' @param dev_path Relative path from R package root to the monorepo crate
 #'   (e.g., "../../../dvs"). Stored relative on purpose -- the generated
-#'   `configure.ac` block rewrites it for tarball/CRAN builds. A *hand-added*
-#'   `path = ...` dependency (without that machinery) must be absolute instead;
-#'   see Details.
+#'   `configure.ac` block rewrites it for tarball/CRAN builds.
 #' @param path Path to the R package root
 #' @return Invisibly returns TRUE
 #' @export
