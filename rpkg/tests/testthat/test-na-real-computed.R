@@ -82,7 +82,10 @@ test_that("ALTREP sum / min / max return NA, not NaN, for a computed NA", {
 test_that("serde reads a computed NA as None", {
   skip_if_missing_feature("serde")
   skip_unless_computed_na_differs()
-  expect_null(serde_r_deserialize_option_f64(computed_na()))
+  # `None` comes back as canonical NA_real_ bytes; a missed NA would come back
+  # as `Some(NaN)` with the computed NA's bytes.
+  out <- serde_r_deserialize_option_f64(computed_na())
+  expect_identical(bytes_of(out), bytes_of(NA_real_))
   expect_true(is.nan(serde_r_deserialize_option_f64(NaN)))
 })
 
