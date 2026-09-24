@@ -411,4 +411,25 @@ fn extract_method_info_extracts_params() {
     assert_eq!(info.param_names[1].to_string(), "b");
     assert_eq!(info.param_types.len(), 2);
 }
+
+/// A `Missing<T>` argument crosses the View's vtable call through
+/// `missing_to_sexp` (absent → R's missing-argument sentinel), every other
+/// argument through `to_sexp`; `Missing` has no `IntoR` (#1551).
+#[test]
+fn view_method_passes_missing_args_as_the_sentinel() {
+    let method: syn::TraitItemFn = syn::parse2(quote::quote! {
+        fn pick(&self, level: Missing<Option<String>>, n: i32) -> String;
+    })
+    .unwrap();
+    let info = extract_method_info(&method).unwrap();
+    let view = generate_view_method(&info).unwrap().to_string();
+    assert!(
+        view.contains(":: miniextendr_api :: trait_abi :: missing_to_sexp (level)"),
+        "{view}"
+    );
+    assert!(
+        view.contains(":: miniextendr_api :: trait_abi :: to_sexp (n)"),
+        "{view}"
+    );
+}
 // endregion

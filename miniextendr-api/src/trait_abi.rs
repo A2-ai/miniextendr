@@ -135,7 +135,9 @@ pub mod ccall;
 pub mod conv;
 
 // Re-export commonly used items
-pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_from_sexp};
+pub use conv::{
+    check_arity, extract_arg, from_sexp, missing_to_sexp, nil, rf_error, to_sexp, try_from_sexp,
+};
 
 // Re-export for use in macro-generated View method wrappers (Approach 1, issue #345).
 // The View method wrapper calls this immediately after the vtable call to re-panic

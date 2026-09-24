@@ -636,13 +636,23 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         quote::quote! { &self }
     };
 
-    // Generate argument array for vtable call
+    // Generate argument array for vtable call. A `Missing<T>` argument (an
+    // omittable parameter, e.g. a choice, #1551) crosses as R's
+    // missing-argument sentinel when absent, which the shim's
+    // `TryFromSexp for Missing<T>` reads back; `Missing` has no `IntoR`.
     let argc = param_types.len() as i32;
     let arg_conversions: Vec<_> = param_names
         .iter()
-        .map(|name| {
-            quote::quote! {
-                ::miniextendr_api::trait_abi::to_sexp(#name)
+        .zip(param_types.iter())
+        .map(|(name, ty)| {
+            if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
+                quote::quote! {
+                    ::miniextendr_api::trait_abi::missing_to_sexp(#name)
+                }
+            } else {
+                quote::quote! {
+                    ::miniextendr_api::trait_abi::to_sexp(#name)
+                }
             }
         })
         .collect();
