@@ -87,6 +87,27 @@ test_that("AsCharacterVec uses a registered as.character() method", {
   )
 })
 
+test_that("AsCharacterVec finds a method defined in the global environment", {
+  # Unregistered, as a script would define it; a top-level as.character(x)
+  # finds it, and so does the marker.
+  assign(
+    "as.character.mx_test_global",
+    function(x, ...) rep("G", length(x)),
+    envir = globalenv()
+  )
+  on.exit(rm("as.character.mx_test_global", envir = globalenv()), add = TRUE)
+  expect_identical(
+    as_chr_vec(structure(1:2, class = "mx_test_global")),
+    c("G", "G")
+  )
+})
+
+test_that("A global binding named as.character does not replace base's", {
+  assign("as.character", function(...) "masked", envir = globalenv())
+  on.exit(rm("as.character", envir = globalenv()), add = TRUE)
+  expect_identical(as_chr_vec(factor(c("a", "b"))), c("a", "b"))
+})
+
 test_that("A failing as.character() method is a conversion error", {
   .S3method("as.character", "mx_test_boom", function(x, ...) stop("no labels here"))
   expect_error(
@@ -94,11 +115,10 @@ test_that("A failing as.character() method is a conversion error", {
     "as.character() failed: ",
     fixed = TRUE
   )
-  expect_error(
-    as_chr_vec(structure(1L, class = "mx_test_boom")),
-    "no labels here",
-    fixed = TRUE
-  )
+  e <- tryCatch(as_chr_vec(structure(1L, class = "mx_test_boom")), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$param, "x")
+  expect_match(conditionMessage(e), "no labels here", fixed = TRUE)
   .S3method("as.character", "mx_test_numeric", function(x, ...) unclass(x))
   expect_error(
     as_chr_vec(structure(1L, class = "mx_test_numeric")),
