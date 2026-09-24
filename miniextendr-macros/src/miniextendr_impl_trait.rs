@@ -153,14 +153,16 @@ struct TraitMethod {
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`.
     /// Keys are parameter names, values are R expressions used as default values.
     param_defaults: std::collections::HashMap<String, String>,
-    /// Roxygen `@param` tags extracted from method doc comments.
-    param_tags: Vec<String>,
-    /// Topic from a method-level `/// @rdname other` doc tag. When set, the
-    /// method's own R wrapper block (S3 method, S4 `setMethod`, env/R6 namespace
-    /// member, S7 shortcut, static function) is documented on that page instead
-    /// of the type's shared `@rdname <Type>` page. Generics and consts stay on
-    /// the type page.
-    rdname: Option<String>,
+    /// The author's roxygen tags from the method's doc comment. The wrapper
+    /// generators forward the `@param` lines and the page tags (see
+    /// `r_wrappers::own_block_page`): a method-level `@rdname other` or
+    /// `@describeIn other ...` puts the method's own R wrapper block (S3
+    /// method, S4 `setMethod`, env/R6 namespace member, S7 shortcut, static
+    /// function) on that page instead of the type's shared `@rdname <Type>`
+    /// page, `@name` replaces the generated topic name, `@order` the generated
+    /// order, and `@inheritParams` / `@inherit` / `@inheritDotParams` fill the
+    /// arguments. Generics and consts stay on the type page.
+    doc_tags: Vec<String>,
     /// When true, this method is excluded from C wrappers, R wrappers, and vtable shims.
     /// The method is still kept in the emitted impl block (it's a real trait method).
     skip: bool,
@@ -832,8 +834,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 serialize: false,
                 return_wrap: None,
                 param_defaults: Default::default(),
-                param_tags: vec![],
-                rdname: None,
+                doc_tags: vec![],
                 skip: false,
                 strict: false,
                 lifecycle: None,

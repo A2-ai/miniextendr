@@ -11,6 +11,8 @@
 \alias{range_within}
 \alias{range_clamp}
 \alias{range_midpoint}
+\alias{box_midpoint.RangeBox}
+\alias{box_clamp.RangeBox}
 \title{Range summaries}
 \usage{
 \method{box_width}{RangeBox}(x, ...)
@@ -26,6 +28,10 @@ range_within(values, lower, upper, inclusive)
 range_clamp(values, lower, upper, outside = c("clamp", "drop"))
 
 range_midpoint(values)
+
+\method{box_midpoint}{RangeBox}(x, ...)
+
+\method{box_clamp}{RangeBox}(x, values, ...)
 }
 \arguments{
 \item{x}{A \code{RangeBox} object.}
@@ -42,10 +48,11 @@ range_midpoint(values)
 them onto the nearer bound, \code{"drop"} removes them.}
 }
 \value{
-\code{range_width()}, \code{range_midpoint()} and \code{box_width()} return a
-number, \code{range_within()} and \code{box_covers()} a logical vector with one
-element per value, \code{range_clamp()} a numeric vector, and
-\code{rangebox_from_values()} a \code{RangeBox}.
+\code{range_width()}, \code{range_midpoint()}, \code{box_width()} and
+\code{box_midpoint()} return a number, \code{range_within()} and \code{box_covers()} a
+logical vector with one element per value, \code{range_clamp()} and
+\code{box_clamp()} a numeric vector, and \code{rangebox_from_values()} a
+\code{RangeBox}.
 }
 \description{
 Small summaries of where numeric values sit relative to a range. The
@@ -69,6 +76,9 @@ value.
 
 \item \code{range_midpoint()}: Midpoint between the smallest and the largest
 value.
+
+\item \code{box_midpoint(RangeBox)}: Midpoint of a range box, halfway between
+its bounds.
 
 }}
 \examples{

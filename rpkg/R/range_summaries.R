@@ -1,8 +1,9 @@
 # Shared help page for the range-summary fixtures in
 # src/rust/shared_param_docs.rs (#1590). Each argument is documented once
-# here; the Rust functions and `RangeBox` methods join the page (`@rdname`,
-# `@describeIn`) or inherit the descriptions (`@inheritParams`), and their
-# generated wrappers must not add `@param` lines that would replace these.
+# here; the Rust functions and `RangeBox` methods (inherent and trait-impl)
+# join the page (`@rdname`, `@describeIn`) or inherit the descriptions
+# (`@inheritParams`), and their generated wrappers must not add `@param`
+# lines that would replace these.
 #
 # roxygen2 reads R/ in alphabetical order and a merged page takes its name
 # and title from the first block it reads. This file sorts after
@@ -23,10 +24,11 @@
 #'   them onto the nearer bound, `"drop"` removes them.
 #' @param x A `RangeBox` object.
 #' @param ... Unused; accepted for S3 method compatibility.
-#' @returns `range_width()`, `range_midpoint()` and `box_width()` return a
-#'   number, `range_within()` and `box_covers()` a logical vector with one
-#'   element per value, `range_clamp()` a numeric vector, and
-#'   `rangebox_from_values()` a `RangeBox`.
+#' @returns `range_width()`, `range_midpoint()`, `box_width()` and
+#'   `box_midpoint()` return a number, `range_within()` and `box_covers()` a
+#'   logical vector with one element per value, `range_clamp()` and
+#'   `box_clamp()` a numeric vector, and `rangebox_from_values()` a
+#'   `RangeBox`.
 #' @examples
 #' x <- c(2, 5, 9)
 #' range_width(x)

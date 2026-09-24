@@ -48,6 +48,7 @@ pub(super) fn generate_trait_r_wrapper(
         internal,
         noexport,
     } = opts;
+    reject_unsupported_describe_in(methods, class_system)?;
     let result = match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
         ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
@@ -141,54 +142,188 @@ pub(super) fn generate_trait_r_wrapper(
     }
 }
 
-/// `@rdname` for a trait method's own wrapper block: the method-level
-/// override when the doc comment carries one, else the type's shared page.
-/// Generics and consts always use the type page (#1438).
-fn method_rdname<'a>(method: &'a TraitMethod, type_str: &'a str) -> &'a str {
-    method.rdname.as_deref().unwrap_or(type_str)
-}
+// region: author page tags (#1438, #1590)
 
-/// Attach a structural `@title` to a prose-less roxygen block that has been
-/// split onto its own page by a method-level `@rdname`; without one roxygen2
-/// skips the page ("no name and/or title"). No-op on the shared type page,
-/// which gets its title from the class block.
-fn title_if_split(
-    builder: crate::r_wrapper_builder::RoxygenBuilder,
-    method: &TraitMethod,
-    title: &str,
-) -> crate::r_wrapper_builder::RoxygenBuilder {
-    if method.rdname.is_some() {
-        builder.title(title)
-    } else {
-        builder
-    }
-}
+/// The author tags of a trait-impl method that its own wrapper block
+/// forwards besides the `@param` lines: the tags that decide the method's
+/// page and where its arguments are documented. `@describeIn` / `@rdname`
+/// route the block, `@name` names its topic, `@order` sorts it, and
+/// `@inheritParams` / `@inherit` / `@inheritDotParams` fill its arguments.
+const PAGE_TAGS: &[&str] = &[
+    "describeIn",
+    "rdname",
+    "name",
+    "order",
+    "inheritParams",
+    "inherit",
+    "inheritDotParams",
+];
 
-/// Whether a trait method's own `@rdname` sends its blocks to a topic other
-/// than the type page (#1590). The topic's own block documents that page, so
-/// the method's blocks sort after it ([`order_if_joined`]) and leave the
-/// structural `@param` lines (`x`, `...`, `self`) to it.
-fn joins_author_topic(method: &TraitMethod, type_str: &str) -> bool {
+/// The `@param` lines of the method's doc comment.
+fn param_tags(method: &TraitMethod) -> impl Iterator<Item = &String> {
     method
-        .rdname
-        .as_deref()
-        .is_some_and(|topic| topic != type_str)
+        .doc_tags
+        .iter()
+        .filter(|tag| crate::roxygen::roxygen_tag_name(tag) == Some("param"))
 }
 
-/// Add `@order NaN` (`roxygen::ORDER_AFTER_TOPIC_BLOCKS`) to a block of a
-/// method that joins an author topic, so the topic's own block names and
-/// titles the merged page whatever the R file order.
-fn order_if_joined(
-    builder: crate::r_wrapper_builder::RoxygenBuilder,
+/// The page a trait method's own block lands on, and with it the companion
+/// block that must share it (the S3 generic block, named after the method):
+/// the `@describeIn` destination, the method-level `@rdname`, else the type's
+/// shared page. Generics of S4 / S7 and consts always use the type page.
+fn method_page<'a>(method: &'a TraitMethod, type_str: &'a str) -> &'a str {
+    crate::roxygen::method_page(&method.doc_tags, type_str)
+}
+
+/// Whether the method's page is an author topic other than the type page
+/// (`@describeIn`, or an `@rdname` naming another page). The topic's own
+/// block documents that page, so the method's blocks sort after it
+/// (`@order NaN`) and leave the structural `@param` lines (`x`, `...`,
+/// `self`) and generated prose to it.
+fn joins_author_topic(method: &TraitMethod, type_str: &str) -> bool {
+    crate::roxygen::joins_author_topic(&method.doc_tags, Some(type_str))
+}
+
+/// Whether the method's arguments are documented by another block: it joins
+/// an author topic, or inherits them (`@inheritParams`, `@inherit`). The
+/// generated `(undocumented)` fillers are left out then.
+fn params_documented_elsewhere(method: &TraitMethod, type_str: &str) -> bool {
+    crate::roxygen::params_documented_elsewhere(&method.doc_tags, Some(type_str))
+}
+
+/// Whether the method-level `@describeIn` lists the method's own block in
+/// its destination's "Functions" section.
+fn describes_in(method: &TraitMethod) -> bool {
+    crate::roxygen::describe_in_topic(&method.doc_tags).is_some()
+}
+
+/// The page lines of a trait method's own wrapper block, as `MethodDocBuilder`
+/// writes an inherent method's (#1590):
+///
+/// - the author's [`PAGE_TAGS`], verbatim;
+/// - without an author `@describeIn`: `@name default_name` unless the author
+///   named the topic (blocks roxygen2 cannot name from their object need
+///   one), `@rdname <Type>` unless the author picked the page, and, on a page
+///   the author's `@rdname` splits off, `@title split_title` (roxygen2 skips
+///   a page without a title). With `@describeIn` roxygen2 takes the page from
+///   the destination and rejects `@name` / `@rdname` next to it, so neither
+///   is generated;
+/// - `@order NaN` on an author topic the author did not order
+///   (`roxygen::orders_after_topic_blocks`).
+fn own_block_page_lines(
     method: &TraitMethod,
     type_str: &str,
-) -> crate::r_wrapper_builder::RoxygenBuilder {
-    if joins_author_topic(method, type_str) {
-        builder.custom(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
-    } else {
-        builder
+    default_name: Option<&str>,
+    split_title: Option<&str>,
+) -> Vec<String> {
+    let tags = &method.doc_tags;
+    let mut lines = Vec::new();
+    if !describes_in(method) {
+        let has = |tag: &str| crate::roxygen::has_roxygen_tag(tags, tag);
+        if has("rdname")
+            && let Some(title) = split_title
+        {
+            lines.push(format!("#' @title {title}"));
+        }
+        if !has("name")
+            && let Some(name) = default_name
+        {
+            lines.push(format!("#' @name {name}"));
+        }
+        if !has("rdname") {
+            lines.push(format!("#' @rdname {type_str}"));
+        }
     }
+    let page_tags: Vec<String> = tags
+        .iter()
+        .filter(|tag| {
+            crate::roxygen::roxygen_tag_name(tag).is_some_and(|name| PAGE_TAGS.contains(&name))
+        })
+        .cloned()
+        .collect();
+    crate::roxygen::push_roxygen_tags(&mut lines, &page_tags);
+    crate::roxygen::push_order_after_topic_blocks(&mut lines, tags, type_str);
+    lines
 }
+
+/// Push the method's `@param` lines, each continuation line with its own
+/// `#' ` lead.
+fn push_param_tags(lines: &mut Vec<String>, method: &TraitMethod) {
+    let params: Vec<String> = param_tags(method).cloned().collect();
+    crate::roxygen::push_roxygen_tags(lines, &params);
+}
+
+/// Reject a method-level `@describeIn` that roxygen2 cannot honour on the
+/// trait wrapper (#1590), the rule `ParsedImpl::reject_unsupported_describe_in`
+/// applies to inherent methods.
+///
+/// roxygen2 lists a `@describeIn` block in its destination's "Functions"
+/// section through the R object the block documents. The trait wrappers give
+/// the method's own block such an object for S3 and vctrs instance methods
+/// (the S3 method `generic.Type`), S4 instance methods (the block sits on
+/// `methods::setMethod()`, an S4 method object), S4 static methods (the
+/// plain function `Type_Trait_method`) and S7 instance methods (the
+/// fast-path shortcut `Type_method`). Every other method is a
+/// `Type$Trait$method` (or `.Type__Trait$method`) namespace member, whose
+/// block roxygen2 drops ("Block must have a @name"), and an S7 instance
+/// method with `s7(no_shortcut)` has no block of its own. There the tag is a
+/// compile error pointing at `@rdname`, reported for every such method at
+/// once.
+///
+/// The set is wider than the inherent one on S4 instance methods: an
+/// inherent S4 method's block sits on the `if (!exists(...))` generic guard,
+/// a trait method's on its own `setMethod()` call.
+fn reject_unsupported_describe_in(
+    methods: &[TraitMethod],
+    class_system: ClassSystem,
+) -> syn::Result<()> {
+    let system = match class_system {
+        ClassSystem::S3 => "S3",
+        ClassSystem::Vctrs => "vctrs",
+        ClassSystem::S4 => "S4",
+        ClassSystem::S7 => "S7",
+        ClassSystem::Env => "Env",
+        ClassSystem::R6 => "R6",
+    };
+    let mut errors: Option<syn::Error> = None;
+    for method in methods.iter().filter(|m| describes_in(m)) {
+        let supported = match class_system {
+            ClassSystem::S3 | ClassSystem::Vctrs => method.has_self,
+            ClassSystem::S4 => true,
+            ClassSystem::S7 => method.has_self && !method.no_shortcut,
+            ClassSystem::Env | ClassSystem::R6 => false,
+        };
+        if supported {
+            continue;
+        }
+        let (kind, qualifier) = if !method.has_self {
+            ("static method", "")
+        } else if matches!(class_system, ClassSystem::S7) {
+            ("instance method", " without a fast-path shortcut")
+        } else {
+            ("instance method", "")
+        };
+        let error = syn::Error::new_spanned(
+            &method.ident,
+            format!(
+                "`@describeIn` is not supported on the {system} trait {kind} `{}`{qualifier}: \
+                 its R wrapper is not an R function roxygen2 can list in the destination's \
+                 \"Functions\" section, so roxygen2 would drop the block. Use `@rdname <topic>` \
+                 to document it on that page instead. On trait impls `@describeIn` works on \
+                 S3, vctrs and S4 instance methods, on S4 static methods, and on S7 instance \
+                 methods with a fast-path shortcut.",
+                method.ident,
+            ),
+        );
+        match errors.as_mut() {
+            Some(all) => all.combine(error),
+            None => errors = Some(error),
+        }
+    }
+    errors.map_or(Ok(()), Err)
+}
+
+// endregion
 
 /// Generate Env-style R wrapper code for trait methods.
 ///
@@ -241,19 +376,12 @@ fn generate_trait_env_r_wrapper(
         let symbol = ctx.namespace_symbol(ClassSystem::Env);
 
         // Build roxygen tags
-        let roxygen = order_if_joined(
-            title_if_split(
-                RoxygenBuilder::new()
-                    .name(target.clone())
-                    .rdname(method_rdname(method, &type_str)),
-                method,
-                &target,
-            ),
+        lines.extend(own_block_page_lines(
             method,
             &type_str,
-        )
-        .build();
-        lines.extend(roxygen);
+            Some(&target),
+            Some(&target),
+        ));
 
         // Check for 'x' parameter collision in instance methods
         if method.has_self {
@@ -374,23 +502,25 @@ fn generate_trait_s3_r_wrapper(
         // S3 generic roxygen (only create if doesn't exist). The type-qualified
         // @name avoids duplicate aliases across types, but it is also the S3
         // method's own name, so the generic block must follow a method-level
-        // `@rdname` onto the split page or R CMD check reports the alias as
-        // duplicated across two pages. The `@title` is inert on the type page
-        // (the type block's title comes first) and would beat the method's
-        // structural title on a split page, so it is only emitted when the
-        // block stays on the type page. The prose is a `@description`: a bare
-        // line here continues the tag before it (`@rdname` is single-line and
-        // roxygen2 skips the page; #1552 surfaced this once `@source` stopped
-        // absorbing it).
+        // `@rdname` / `@describeIn` onto the method's page or R CMD check
+        // reports the alias as duplicated across two pages. The `@title` is
+        // inert on the type page (the type block's title comes first) and
+        // would beat the method's structural title on a split page, so it is
+        // only emitted when the block stays on the type page. The prose is a
+        // `@description`: a bare line here continues the tag before it
+        // (`@rdname` is single-line and roxygen2 skips the page; #1552
+        // surfaced this once `@source` stopped absorbing it).
+        let tags = &method.doc_tags;
         let generic_roxygen = RoxygenBuilder::new();
-        let generic_roxygen = if method.rdname.is_none() {
-            generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
-        } else {
-            generic_roxygen
-        };
+        let generic_roxygen =
+            if crate::roxygen::has_roxygen_tag(tags, "rdname") || describes_in(method) {
+                generic_roxygen
+            } else {
+                generic_roxygen.title(format!("S3 generic for `{}`", generic_name))
+            };
         let generic_roxygen = generic_roxygen
             .name(format!("{}.{}", generic_name, type_str))
-            .rdname(method_rdname(method, &type_str));
+            .rdname(method_page(method, &type_str));
         // On an author topic its own block describes the method and documents
         // `x` and `...` (#1590); the structural lines would only compete.
         let generic_roxygen = if joins_author_topic(method, &type_str) {
@@ -401,7 +531,12 @@ fn generate_trait_s3_r_wrapper(
                 .custom("@param x An object")
                 .custom("@param ... Additional arguments passed to methods")
         };
-        let generic_roxygen = order_if_joined(generic_roxygen, method, &type_str)
+        let generic_roxygen = if crate::roxygen::orders_after_topic_blocks(tags, &type_str) {
+            generic_roxygen.custom(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
+        } else {
+            generic_roxygen
+        };
+        let generic_roxygen = generic_roxygen
             .source(format!(
                 "Generated by miniextendr from `impl {} for {}`",
                 trait_name, type_ident
@@ -414,19 +549,19 @@ fn generate_trait_s3_r_wrapper(
         lines.push(emit_s3_generic_guard(generic_name.as_str()));
         lines.push(String::new());
 
-        // S3 method roxygen (include @param tags from method doc comments)
-        let mut method_roxygen = order_if_joined(
-            title_if_split(
-                RoxygenBuilder::new().rdname(method_rdname(method, &type_str)),
-                method,
-                &s3_method_name,
-            ),
+        // S3 method roxygen (include @param tags from method doc comments).
+        // roxygen2 names the block from the S3 method object, so it needs no
+        // generated `@name`.
+        lines.extend(own_block_page_lines(
             method,
             &type_str,
-        )
-        .export()
-        .method(&generic_name, &type_str);
-        for tag in &method.param_tags {
+            None,
+            Some(&s3_method_name),
+        ));
+        let mut method_roxygen = RoxygenBuilder::new()
+            .export()
+            .method(&generic_name, &type_str);
+        for tag in param_tags(method) {
             method_roxygen = method_roxygen.custom(tag.clone());
         }
         lines.extend(method_roxygen.build());
@@ -488,15 +623,7 @@ fn generate_trait_s3_r_wrapper(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
-        let roxygen = order_if_joined(
-            RoxygenBuilder::new()
-                .name(target.clone())
-                .rdname(method_rdname(method, &type_str)),
-            method,
-            &type_str,
-        )
-        .build();
-        lines.extend(roxygen);
+        lines.extend(own_block_page_lines(method, &type_str, Some(&target), None));
 
         let call = ctx.static_call();
 
@@ -607,7 +734,7 @@ fn generate_trait_s4_r_wrapper(
             ))
             .custom(format!("@param x A `{}` object", type_str))
             .custom("@param ... Additional arguments passed to methods");
-        for tag in &method.param_tags {
+        for tag in param_tags(method) {
             generic_roxygen = generic_roxygen.custom(tag.clone());
         }
         lines.extend(generic_roxygen.export().build());
@@ -621,19 +748,17 @@ fn generate_trait_s4_r_wrapper(
         ));
         lines.push(String::new());
 
-        // S4 method roxygen + definition (include @param tags from method doc comments)
-        lines.push(format!("#' @rdname {}", method_rdname(method, &type_str)));
-        if method.rdname.is_some() {
-            // Split page (#1438): the S4 method object supplies the name; a
-            // structural title is still needed or roxygen2 skips the page.
-            lines.push(format!("#' @title {}", generic_name));
-        }
-        if joins_author_topic(method, &type_str) {
-            lines.push(format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS));
-        }
-        for tag in &method.param_tags {
-            lines.push(format!("#' {}", tag));
-        }
+        // S4 method roxygen + definition (include @param tags from method doc
+        // comments). The block sits on `methods::setMethod()`: roxygen2 names
+        // it from the S4 method object, and a split page (#1438) still needs
+        // a structural title or roxygen2 skips it.
+        lines.extend(own_block_page_lines(
+            method,
+            &type_str,
+            None,
+            Some(&generic_name),
+        ));
+        push_param_tags(&mut lines, method);
         lines.push(format!("#' @exportMethod {}", generic_name));
 
         lines.push(format!(
@@ -658,21 +783,22 @@ fn generate_trait_s4_r_wrapper(
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
         let fn_name = ctx.namespace_target(ClassSystem::S4);
 
-        // Static method roxygen
-        lines.push(format!(
-            "#' Static trait method {}::{}() for {}",
-            trait_name, r_name, type_str
-        ));
-        let roxygen = order_if_joined(
-            RoxygenBuilder::new()
-                .name(&fn_name)
-                .rdname(method_rdname(method, &type_str)),
+        // Static method roxygen. A `@describeIn` block is listed in its
+        // destination's "Functions" section, whose own block titles the page,
+        // so it carries no intro line that could title it instead.
+        if !describes_in(method) {
+            lines.push(format!(
+                "#' Static trait method {}::{}() for {}",
+                trait_name, r_name, type_str
+            ));
+        }
+        lines.extend(own_block_page_lines(
             method,
             &type_str,
-        )
-        .export()
-        .build();
-        lines.extend(roxygen);
+            Some(&fn_name),
+            None,
+        ));
+        lines.push("#' @export".to_string());
 
         let call = ctx.static_call();
 
@@ -843,31 +969,39 @@ fn generate_trait_s7_r_wrapper(
             // page (type_str) already carries the method's prose via the generic
             // block above, so only document `self` + each formal here to keep the
             // shortcut's \usage fully covered (no "undocumented argument" warning).
-            lines.extend(crate::miniextendr_impl::s7_class::shortcut_advisory_lines(
+            //
+            // A method-level `@rdname` naming another page or a `@describeIn`
+            // sends the shortcut to a topic whose own block documents its
+            // arguments (#1590): only the type page needs the structural `self` /
+            // `...` lines, and the advisory's description would be a paragraph of
+            // the topic's description that names no function. Its first line
+            // stays as the block's title, which a page of the shortcut's own
+            // (`@rdname` naming a new page) needs.
+            let joined = joins_author_topic(method, &type_str);
+            let advisory = crate::miniextendr_impl::s7_class::shortcut_advisory_lines(
                 &method.r_method_name(),
                 &type_str,
-            ));
-            // A method-level `@rdname` naming another page sends the shortcut to
-            // a topic whose own block documents its arguments (#1590): only the
-            // type page needs the structural `self` / `...` lines and fillers.
-            let joined = joins_author_topic(method, &type_str);
+            );
+            let advisory_len = if joined { 1 } else { advisory.len() };
+            lines.extend(advisory.into_iter().take(advisory_len));
             if !joined {
                 lines.push(format!("#' @param self A `{}` object.", type_str));
             }
-            for tag in &method.param_tags {
-                lines.push(format!("#' {}", tag));
-            }
+            push_param_tags(&mut lines, method);
             // Auto-document any formal lacking an explicit @param tag. `...` is
             // included so roxygen2 covers it (otherwise R CMD check warns about
             // an undocumented argument). Split on top-level commas only — a
             // naive `split(", ")` breaks a `mode = c("fast", "slow")` default
-            // into a bogus `"slow")` formal (undocumented-argument warning).
+            // into a bogus `"slow")` formal (undocumented-argument warning). A
+            // method that inherits its arguments (`@inheritParams`) gets no
+            // `(undocumented)` filler, which would block the inheritance.
+            let fillers = !params_documented_elsewhere(method, &type_str);
             for formal in crate::roxygen::split_r_formals(&shortcut_formals) {
                 let pname = crate::roxygen::formal_name(formal);
                 if joined || pname == "self" {
                     continue;
                 }
-                let documented = crate::roxygen::param_documented(&method.param_tags, pname);
+                let documented = crate::roxygen::param_documented(&method.doc_tags, pname);
                 if documented {
                     continue;
                 }
@@ -876,15 +1010,16 @@ fn generate_trait_s7_r_wrapper(
                         "#' @param ... Additional arguments; ignored by the fast-path shortcut."
                             .to_string(),
                     );
-                } else {
+                } else if fillers {
                     lines.push(format!("#' @param {} (undocumented)", pname));
                 }
             }
-            lines.push(format!("#' @name {}", shortcut_name));
-            lines.push(format!("#' @rdname {}", method_rdname(method, &type_str)));
-            if joined {
-                lines.push(format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS));
-            }
+            lines.extend(own_block_page_lines(
+                method,
+                &type_str,
+                Some(&shortcut_name),
+                None,
+            ));
             lines.extend(crate::roxygen::source_tag(format!(
                 "Generated by miniextendr from `impl {} for {}` (`{}` shortcut)",
                 trait_name, type_ident, method_name
@@ -924,15 +1059,8 @@ fn generate_trait_s7_r_wrapper(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
-        let roxygen = order_if_joined(
-            RoxygenBuilder::new()
-                .name(format!("{}${}${}", type_str, trait_str, r_name))
-                .rdname(method_rdname(method, &type_str)),
-            method,
-            &type_str,
-        )
-        .build();
-        lines.extend(roxygen);
+        let name = format!("{}${}${}", type_str, trait_str, r_name);
+        lines.extend(own_block_page_lines(method, &type_str, Some(&name), None));
 
         let call = ctx.static_call();
 
@@ -1053,19 +1181,12 @@ fn generate_trait_r6_r_wrapper(
 
         // Namespace-member roxygen — a `$<-` assignment target, so roxygen emits
         // no `\usage` and needs no per-formal `@param` docs (matches Env; #1141).
-        let roxygen = order_if_joined(
-            title_if_split(
-                RoxygenBuilder::new()
-                    .name(target.clone())
-                    .rdname(method_rdname(method, &type_str)),
-                method,
-                &target,
-            ),
+        lines.extend(own_block_page_lines(
             method,
             &type_str,
-        )
-        .build();
-        lines.extend(roxygen);
+            Some(&target),
+            Some(&target),
+        ));
 
         let call = ctx.instance_call(".ptr");
 
@@ -1092,15 +1213,7 @@ fn generate_trait_r6_r_wrapper(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
-        let roxygen = order_if_joined(
-            RoxygenBuilder::new()
-                .name(target.clone())
-                .rdname(method_rdname(method, &type_str)),
-            method,
-            &type_str,
-        )
-        .build();
-        lines.extend(roxygen);
+        lines.extend(own_block_page_lines(method, &type_str, Some(&target), None));
 
         let call = ctx.static_call();
 
