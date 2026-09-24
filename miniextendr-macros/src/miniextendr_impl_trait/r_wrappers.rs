@@ -210,8 +210,9 @@ fn generate_trait_env_r_wrapper(
         let ctx = TraitMethodContext::new(method, type_ident, trait_name);
 
         // Trait-namespace assignment target (`Type$Trait$method`), owned by
-        // `trait_namespace_target` — see #1141.
+        // `trait_namespace_target` — see #1141. `symbol` is its R-code form.
         let target = ctx.namespace_target(ClassSystem::Env);
+        let symbol = ctx.namespace_symbol(ClassSystem::Env);
 
         // Build roxygen tags
         let roxygen = title_if_split(
@@ -253,7 +254,7 @@ fn generate_trait_env_r_wrapper(
         };
 
         // Generate method wrapper (R-facing name)
-        lines.push(format!("{target} <- function({full_params}) {{"));
+        lines.push(format!("{symbol} <- function({full_params}) {{"));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::Env));
         if method.has_self {
@@ -263,7 +264,7 @@ fn generate_trait_env_r_wrapper(
 
         // Stamp instance methods with attribute for $ dispatch detection
         if method.has_self {
-            lines.push(format!("attr({target}, \".__mx_instance__\") <- TRUE"));
+            lines.push(format!("attr({symbol}, \".__mx_instance__\") <- TRUE"));
         }
 
         lines.push(String::new());
@@ -449,7 +450,11 @@ fn generate_trait_s3_r_wrapper(
 
         let call = ctx.static_call();
 
-        lines.push(format!("{target} <- function({}) {{", ctx.params));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            ctx.namespace_symbol(ClassSystem::S3),
+            ctx.params
+        ));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::S3));
         lines.push("}".to_string());
@@ -614,7 +619,11 @@ fn generate_trait_s4_r_wrapper(
 
         let call = ctx.static_call();
 
-        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            ctx.namespace_symbol(ClassSystem::S4),
+            ctx.params
+        ));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::S4));
         lines.push("}".to_string());
@@ -724,12 +733,15 @@ fn generate_trait_s7_r_wrapper(
             .build();
         lines.extend(generic_roxygen);
 
-        // S7 generic definition
+        // S7 generic definition. An operator `r_name` makes the prefixed
+        // generic non-syntactic (`s7_trait_Ops_[[`), so symbol positions are
+        // backtick-quoted (#1475); string literals keep the bare name.
+        let generic_symbol = crate::naming::r_def_name(&generic_name);
         lines.push(format!(
             "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
         ));
         lines.push(format!(
-            "  {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+            "  {generic_symbol} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -737,7 +749,7 @@ fn generate_trait_s7_r_wrapper(
         // S7 method definition
         lines.push(format!(
             "S7::method({}, {}) <- function({}) {{",
-            generic_name, s7_class_var, full_params
+            generic_symbol, s7_class_var, full_params
         ));
         // S7 objects store the ExternalPtr in x@.ptr — extract it for .Call()
         lines.push("  .ptr <- x@.ptr".to_string());
@@ -755,9 +767,14 @@ fn generate_trait_s7_r_wrapper(
         // plain `<ClassName>_<method>(self, ...)` function that calls `.Call`
         // directly, bypassing `S7::S7_dispatch()`. The receiver is named `self`
         // here (the generic names it `x`) and wired through `self@.ptr`.
-        // `s7(no_shortcut)` opts a method out.
-        if !method.no_shortcut {
-            let shortcut_name = format!("{}_{}", type_str, method.r_method_name());
+        // `s7(no_shortcut)` opts a method out, and an operator `r_name` gets no
+        // shortcut (see `s7_class::s7_shortcut_name`).
+        let shortcut_name = if method.no_shortcut {
+            None
+        } else {
+            crate::miniextendr_impl::s7_class::s7_shortcut_name(&type_str, &method.r_method_name())
+        };
+        if let Some(shortcut_name) = shortcut_name {
             let shortcut_formals = if ctx.params.is_empty() {
                 "self, ...".to_string()
             } else {
@@ -851,7 +868,7 @@ fn generate_trait_s7_r_wrapper(
 
         lines.push(format!(
             "{} <- function({}) {{",
-            ctx.namespace_target(ClassSystem::S7),
+            ctx.namespace_symbol(ClassSystem::S7),
             ctx.params
         ));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
@@ -978,7 +995,10 @@ fn generate_trait_r6_r_wrapper(
 
         let call = ctx.instance_call(".ptr");
 
-        lines.push(format!("{target} <- function({full_params}) {{"));
+        lines.push(format!(
+            "{} <- function({full_params}) {{",
+            ctx.namespace_symbol(ClassSystem::R6)
+        ));
         // R6 objects store the ExternalPtr in private$.ptr — extract it for .Call()
         lines.push("  .ptr <- x$.__enclos_env__$private$.ptr".to_string());
         ctx.emit_method_prelude(&mut lines, "  ", &method.r_method_name());
@@ -1006,7 +1026,11 @@ fn generate_trait_r6_r_wrapper(
 
         let call = ctx.static_call();
 
-        lines.push(format!("{target} <- function({}) {{", ctx.params));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            ctx.namespace_symbol(ClassSystem::R6),
+            ctx.params
+        ));
         ctx.emit_method_prelude(&mut lines, "  ", &r_name);
         lines.extend(ctx.method_body_lines(&call, ClassSystem::R6));
         lines.push("}".to_string());

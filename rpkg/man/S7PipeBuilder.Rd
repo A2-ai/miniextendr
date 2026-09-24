@@ -21,7 +21,7 @@ S7PipeBuilder_s7_total(self, ...)
 
 \item{self}{A \code{S7PipeBuilder} object.}
 
-\item{amount}{(undocumented)}
+\item{amount}{Amount to add.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }

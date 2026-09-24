@@ -453,6 +453,14 @@ later, unpredictably.
   sorts S7 classes in the generated file. If you have a manual S7 wrapper mixed
   into the file, ensure the parent appears first.
 
+- **S7 operator methods**: `r_name = "[["` or `s7(generic = "[")` on an S7
+  instance method dispatches through `obj[[i]]` / `obj[i]`; the generated R
+  backtick-quotes the operator and an operator `r_name` gets no
+  `Type_<method>` shortcut. The `Ops` operators (`+`, `==`, `!`, `%*%`, ...) are
+  a compile error, since S7 needs a two-class `(e1, e2)` method for them:
+  register those in R through the shortcut
+  (`` S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2) ``).
+
 - **S3 `@export` on conditional generic**: `if (!exists("generic", mode = "function")) { generic <- function(x, ...) UseMethod("generic") }` is not introspectable by roxygen2. Adding `#' @export` directly above it causes roxygen to drift the export onto the next function. Use `#' @export generic_name` (explicit target) instead. The macro generator handles this correctly.
 
 - **Vctrs DLL not loaded**: `R_GetCCallable("vctrs", ...)` longjmps (throws R

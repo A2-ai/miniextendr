@@ -53,6 +53,32 @@ pub(super) fn trait_namespace_target(
     }
 }
 
+/// [`trait_namespace_target`] in R code position (the left of `<-`, the
+/// argument of `attr()`). A non-syntactic member (an operator `r_name`, #1475)
+/// is backtick-quoted: `Type$Trait$`[[``, or `` `Type_Trait_[[` `` for S4.
+/// Roxygen `@name` keeps the bare [`trait_namespace_target`] spelling.
+pub(super) fn trait_namespace_symbol(
+    class_system: ClassSystem,
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    member: &str,
+) -> String {
+    match class_system {
+        ClassSystem::S4 => crate::naming::r_def_name(&trait_namespace_target(
+            class_system,
+            type_ident,
+            trait_name,
+            member,
+        )),
+        _ => trait_namespace_target(
+            class_system,
+            type_ident,
+            trait_name,
+            &crate::naming::r_def_name(member),
+        ),
+    }
+}
+
 /// The local environment variable S7 trait wrappers assign members into before
 /// attaching it to the class object via `attr()`. One owner so
 /// [`trait_namespace_target`]'s S7 arm and the generator's `new.env` / `attr()`
@@ -120,6 +146,17 @@ impl<'a> TraitMethodContext<'a> {
     /// using this method's R-facing name. See that function for the policy.
     pub(super) fn namespace_target(&self, class_system: ClassSystem) -> String {
         trait_namespace_target(
+            class_system,
+            self.type_ident,
+            self.trait_name,
+            &self.method.r_method_name(),
+        )
+    }
+
+    /// [`Self::namespace_target`] in R code position, via
+    /// [`trait_namespace_symbol`].
+    pub(super) fn namespace_symbol(&self, class_system: ClassSystem) -> String {
+        trait_namespace_symbol(
             class_system,
             self.type_ident,
             self.trait_name,

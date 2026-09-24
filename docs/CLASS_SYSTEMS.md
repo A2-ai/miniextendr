@@ -636,6 +636,47 @@ functions emitted for static methods. A collision inside one impl block
 avoid naming an instance method `get_<field>`/`set_<field>` for a sidecar
 field, or use `s7(no_shortcut)` (see #991).
 
+### Operator methods
+
+An instance method can be called through R's operator syntax by giving it an
+operator as its generic:
+
+```rust
+#[miniextendr(s7)]
+impl Bag {
+    /// `bag[i]`, registered on the existing `[` generic.
+    #[miniextendr(s7(generic = "["))]
+    pub fn subset(&self, i: Vec<i32>) -> Vec<f64> { ... }
+
+    /// `bag[[i]]`
+    #[miniextendr(r_name = "[[")]
+    pub fn at(&self, i: i32) -> f64 { ... }
+
+    /// `bag %scale% k`, a package-local generic.
+    #[miniextendr(r_name = "%scale%")]
+    pub fn scale(&self, k: f64) -> Vec<f64> { ... }
+}
+```
+
+The generated R backtick-quotes the operator wherever it is an R symbol
+(`` S7::method(`[[`, Bag) <- function(x, i, ...) ``) and exports a new
+generic such as `%scale%` as `export("%scale%")`. An operator `r_name` gets no
+fast-path shortcut, because `Bag_[[` is not a syntactic R name; the
+`s7(generic = ...)` spelling on an ordinary Rust name keeps one (`Bag_subset()`
+above). `s7(generic = ...)` attaches to a generic that already exists, so spell
+a new operator such as `%scale%` with `r_name`.
+
+R's `Ops` group (`+`, `-`, `*`, `/`, `^`, `%%`, `%/%`, `==`, `!=`, `<`, `<=`,
+`>=`, `>`, `&`, `|`, `!`) and `%*%` are a compile error on S7 methods. S7
+dispatches those operators on both operands, which needs a two-class signature
+and `(e1, e2)` formals, and it does not dispatch `!` at all. Keep the method
+under an ordinary name and register the operator in an R file collated after
+the generated wrappers, through the shortcut:
+
+```r
+S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2)
+```
+
 ### When to Use
 
 - New packages without legacy constraints

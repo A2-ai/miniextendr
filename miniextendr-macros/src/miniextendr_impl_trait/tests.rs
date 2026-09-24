@@ -487,6 +487,80 @@ fn test_s7_trait_impl_no_shortcut_suppresses_shortcut() {
     );
 }
 
+/// An operator `r_name` on a trait method (#1475): the prefixed S7 generic is
+/// quoted in symbol position and gets no `Foo_[[` shortcut, and static methods
+/// quote their namespace member in every class system.
+#[test]
+fn test_trait_operator_r_names_are_quoted() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    for generic in ["[", "[[", "$", "%custom%"] {
+        let mut method = make_test_method("value", true);
+        method.r_name = Some(generic.to_string());
+        let wrapper = generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            &[method],
+            &[],
+            opts(ClassSystem::S7, false, false, false),
+        )
+        .unwrap();
+        let generic_name = format!("s7_trait_Bar_{generic}");
+        for expected in [
+            format!("if (!exists(\"{generic_name}\", mode = \"function\")) {{"),
+            format!(
+                "  `{generic_name}` <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+            ),
+            format!("S7::method(`{generic_name}`, .s7_class_Foo) <- function(x, ...) {{"),
+        ] {
+            assert!(
+                wrapper.contains(&expected),
+                "missing `{expected}`:\n{wrapper}"
+            );
+        }
+        assert!(!wrapper.contains(&format!("Foo_{generic}")), "{wrapper}");
+        assert!(!wrapper.contains("Fast-path shortcut"), "{wrapper}");
+    }
+
+    for (class_system, definition) in [
+        (ClassSystem::Env, "Foo$Bar$`[[` <- function() {"),
+        (ClassSystem::S3, "Foo$Bar$`[[` <- function() {"),
+        (ClassSystem::R6, "Foo$Bar$`[[` <- function() {"),
+        (ClassSystem::S4, "`Foo_Bar_[[` <- function() {"),
+        (ClassSystem::S7, ".Foo__Bar$`[[` <- function() {"),
+    ] {
+        let mut method = make_test_method("make", false);
+        method.r_name = Some("[[".to_string());
+        let wrapper = generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            &[method],
+            &[],
+            opts(class_system, false, false, false),
+        )
+        .unwrap();
+        assert!(wrapper.contains(definition), "{class_system:?}:\n{wrapper}");
+    }
+
+    // Env / R6 instance members are namespace assignments too.
+    for class_system in [ClassSystem::Env, ClassSystem::R6] {
+        let mut method = make_test_method("value", true);
+        method.r_name = Some("[[".to_string());
+        let wrapper = generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            &[method],
+            &[],
+            opts(class_system, false, false, false),
+        )
+        .unwrap();
+        assert!(
+            wrapper.contains("Foo$Bar$`[[` <- function(x) {"),
+            "{class_system:?}:\n{wrapper}"
+        );
+    }
+}
+
 /// Void trait-impl shortcut methods chain via `self`, visibly (#1213); an
 /// `Invisible<()>` return marks the tail `invisible(self)`.
 #[test]

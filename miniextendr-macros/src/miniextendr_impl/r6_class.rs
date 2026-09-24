@@ -370,9 +370,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Private instance methods
     for ctx in parsed_impl.private_instance_method_contexts() {
         lines.push(format!("    {}", ctx.source_comment(type_ident)));
+        // A list element name is an R symbol: quote operator names (#1475).
         lines.push(format!(
             "    {} = function({}) {{",
-            ctx.method.r_method_name(),
+            crate::naming::r_def_name(&ctx.method.r_method_name()),
             ctx.params
         ));
 
@@ -679,7 +680,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as separate functions on the class object
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.r_method_name();
-        let static_method_name = format!("{}${}", class_name, method_name);
+        // `$` takes an R symbol: quote operator names (#1475).
+        let static_method_name =
+            format!("{}${}", class_name, crate::naming::r_def_name(&method_name));
         lines.push(String::new());
 
         lines.push(ctx.source_comment(type_ident));

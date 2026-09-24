@@ -1232,6 +1232,299 @@ fn s7_shortcut_collision_check_ignores_other_class_systems() {
 }
 // endregion
 
+// region: S7 operator generics (#1475)
+
+/// Parse `impl Foo { <attr> pub fn operator(&self, i: i32) -> i32 }` under S7.
+fn parse_s7_operator(attr: proc_macro2::TokenStream) -> ParsedImpl {
+    parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                #attr
+                pub fn operator(&self, i: i32) -> i32 { i }
+            }
+        },
+    )
+}
+
+/// An operator R name (`r_name = "[["`) defines and dispatches the S7 generic
+/// under a backtick-quoted symbol, exports it as a quoted NAMESPACE string, and
+/// emits no `Foo_[[` fast-path shortcut (that name is not syntactic R).
+#[test]
+fn s7_operator_r_names_are_quoted_and_skip_the_shortcut() {
+    for generic in ["[", "[[", "$", "%custom%"] {
+        let wrapper = generate_s7_r_wrapper(&parse_s7_operator(
+            quote::quote!(#[miniextendr(r_name = #generic)]),
+        ));
+        for expected in [
+            format!("#' @rawNamespace export(\"{generic}\")"),
+            format!("if (!base::exists(\"{generic}\", mode = \"function\")) {{"),
+            format!(
+                "  `{generic}` <- S7::new_generic(\"{generic}\", \"x\", function(x, ...) S7::S7_dispatch())"
+            ),
+            format!("  `{generic}` <- local({{"),
+            format!("    .mx_masked <- base::get(\"{generic}\", mode = \"function\")"),
+            format!("S7::method(`{generic}`, Foo) <- function(x, i, ...) {{"),
+        ] {
+            assert!(
+                wrapper.contains(&expected),
+                "missing `{expected}`:\n{wrapper}"
+            );
+        }
+        assert!(
+            !wrapper.contains(&format!("Foo_{generic}")),
+            "no shortcut for an operator name:\n{wrapper}"
+        );
+        assert!(!wrapper.contains("Fast-path shortcut"), "{wrapper}");
+    }
+}
+
+/// `s7(generic = "[")` reuses the existing generic through a quoted symbol and
+/// keeps the `Foo_<rust name>` shortcut, because the method's own R name is
+/// still syntactic.
+#[test]
+fn s7_operator_generic_override_is_quoted_and_keeps_the_shortcut() {
+    for generic in ["[", "[[", "$", "%custom%"] {
+        let wrapper = generate_s7_r_wrapper(&parse_s7_operator(
+            quote::quote!(#[miniextendr(s7(generic = #generic))]),
+        ));
+        for expected in [
+            format!("if (!exists(\"{generic}\", mode = \"function\")) {{"),
+            format!("  `{generic}` <- S7::new_external_generic(\"base\", \"{generic}\")"),
+            format!("S7::method(`{generic}`, Foo) <- function(x, i, ...) {{"),
+            "Foo_operator <- function(self, i, ...) {".to_string(),
+            "#' @export Foo_operator".to_string(),
+        ] {
+            assert!(
+                wrapper.contains(&expected),
+                "missing `{expected}`:\n{wrapper}"
+            );
+        }
+        assert!(!wrapper.contains("@rawNamespace"), "{wrapper}");
+    }
+}
+
+/// A static method's R name is its only access path, so an operator `r_name`
+/// keeps the function and quotes its definition in every class system.
+#[test]
+fn operator_r_names_quote_static_and_member_definitions() {
+    let item = || -> syn::ItemImpl {
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r_name = "[[")]
+                pub fn at(i: i32) -> i32 { i }
+            }
+        }
+    };
+    for (class_system, definition) in [
+        (ClassSystem::S7, "`Foo_[[` <- function(i) {"),
+        (ClassSystem::S4, "`Foo_[[` <- function(i) {"),
+        (ClassSystem::S3, "`foo_[[` <- function(i) {"),
+        (ClassSystem::Env, "Foo$`[[` <- function(i) {"),
+        (ClassSystem::R6, "Foo$`[[` <- function(i) {"),
+    ] {
+        let parsed = parse_impl(class_system, item());
+        let wrapper = match class_system {
+            ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
+            ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+            ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
+            ClassSystem::Env => generate_env_r_wrapper(&parsed),
+            _ => generate_r6_r_wrapper(&parsed),
+        };
+        assert!(wrapper.contains(definition), "{class_system:?}:\n{wrapper}");
+    }
+
+    let mut vctrs_attrs = default_impl_attrs(ClassSystem::Vctrs);
+    vctrs_attrs.vctrs_attrs.base = Some("double".to_string());
+    let parsed = ParsedImpl::parse(
+        vctrs_attrs,
+        syn::parse_quote! {
+            impl Foo {
+                pub fn new(x: Vec<f64>) -> Vec<f64> { x }
+                #[miniextendr(r_name = "[[")]
+                pub fn at(i: i32) -> i32 { i }
+            }
+        },
+    )
+    .expect("vctrs impl parses");
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+    assert!(wrapper.contains("`foo_[[` <- function(i) {"), "{wrapper}");
+
+    // Instance members are R symbols too: an R6 private list element and an
+    // env-class `$` member.
+    let wrapper = generate_r6_r_wrapper(&parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r6(private, r_name = "%custom%"))]
+                pub fn secret(&self) -> i32 { 1 }
+            }
+        },
+    ));
+    assert!(
+        wrapper.contains("    `%custom%` = function() {"),
+        "{wrapper}"
+    );
+    let wrapper = generate_env_r_wrapper(&parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r_name = "[[")]
+                pub fn at(&self, i: i32) -> i32 { i }
+            }
+        },
+    ));
+    assert!(wrapper.contains("Foo$`[[` <- function(i) {"), "{wrapper}");
+}
+
+/// The shortcut's \usage is the only place an S7 method's formals are
+/// documented, so its block carries the method's `@param` tags (and none of
+/// its prose, which the generic block already renders on the class page).
+#[test]
+fn s7_shortcut_docs_carry_the_method_param_tags() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                /// Values at positions.
+                /// @param i Integer positions to keep.
+                #[miniextendr(s7(generic = "["))]
+                pub fn subset(&self, i: Vec<i32>, n: i32) -> Vec<f64> { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let shortcut_block = wrapper
+        .split("#' Fast-path shortcut for the `subset` S7 method on `Foo`.")
+        .nth(1)
+        .and_then(|rest| rest.split("Foo_subset <- function(").next())
+        .expect("shortcut block");
+    assert!(
+        shortcut_block.contains("#' @param i Integer positions to keep."),
+        "{shortcut_block}"
+    );
+    assert!(
+        !shortcut_block.contains("@param i (undocumented)"),
+        "{shortcut_block}"
+    );
+    // Formals the method did not document still get a placeholder.
+    assert!(
+        shortcut_block.contains("#' @param n (undocumented)"),
+        "{shortcut_block}"
+    );
+    assert!(
+        !shortcut_block.contains("Values at positions."),
+        "{shortcut_block}"
+    );
+    // The S7 method block itself stays free of @param (no \usage there).
+    let method_block = wrapper
+        .split("#' @name Foo-[")
+        .nth(1)
+        .and_then(|rest| rest.split("S7::method(`[`, Foo)").next())
+        .expect("method block");
+    assert!(!method_block.contains("@param"), "{method_block}");
+}
+
+/// Syntactic names keep the bare spelling (no churn in ordinary wrappers).
+#[test]
+fn s7_syntactic_names_stay_bare() {
+    let wrapper = generate_s7_r_wrapper(&parse_s7_operator(
+        quote::quote!(#[miniextendr(r_name = "at")]),
+    ));
+    for expected in [
+        "#' @rawNamespace export(at)",
+        "  at <- S7::new_generic(\"at\", \"x\", function(x, ...) S7::S7_dispatch())",
+        "S7::method(at, Foo) <- function(x, i, ...) {",
+        "Foo_at <- function(self, i, ...) {",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+}
+
+/// An instance `r_name = "[["` emits no shortcut, so it cannot collide with a
+/// static method that owns `Foo_[[`.
+#[test]
+fn s7_operator_instance_method_does_not_collide_with_static() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r_name = "[[")]
+                pub fn at(&self, i: i32) -> i32 { i }
+                #[miniextendr(r_name = "[[")]
+                pub fn make(i: i32) -> i32 { i }
+            }
+        },
+    );
+    check_s7_shortcut_collisions(&parsed).expect("no shortcut for `[[`, so no collision");
+}
+
+/// S7 cannot register a single-class method for the Ops operators, so both
+/// spellings are a compile error that points at the R-side registration.
+#[test]
+fn s7_ops_operators_are_a_compile_error() {
+    for op in ["+", "-", "==", "<=", "&", "%%", "%/%", "%*%"] {
+        for attr in [
+            quote::quote!(#[miniextendr(r_name = #op)]),
+            quote::quote!(#[miniextendr(s7(generic = #op))]),
+            quote::quote!(#[miniextendr(s7(fallback, r_name = #op))]),
+        ] {
+            let err = check_s7_ops_generics(&parse_s7_operator(attr))
+                .expect_err("Ops operator must be rejected");
+            let msg = err.to_string();
+            assert!(
+                msg.contains(&format!("the `{op}` operator"))
+                    && msg.contains(&format!(
+                        "S7::method(`{op}`, list(Foo, S7::class_any)) <- function(e1, e2) \
+                         Foo_operator(e1, e2)"
+                    )),
+                "{msg}"
+            );
+        }
+    }
+    let err = check_s7_ops_generics(&parse_s7_operator(
+        quote::quote!(#[miniextendr(r_name = "!")]),
+    ))
+    .expect_err("`!` must be rejected");
+    assert!(
+        err.to_string().contains("S7 does not dispatch `!`"),
+        "{err}"
+    );
+
+    // Operators S7 dispatches on one argument, static methods and other class
+    // systems are unaffected.
+    for generic in ["[", "[[", "$", "%custom%"] {
+        check_s7_ops_generics(&parse_s7_operator(
+            quote::quote!(#[miniextendr(r_name = #generic)]),
+        ))
+        .expect("single-dispatch operator is accepted");
+    }
+    let statics = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r_name = "+")]
+                pub fn plus(i: i32) -> i32 { i }
+            }
+        },
+    );
+    check_s7_ops_generics(&statics).expect("static methods are plain functions");
+    let s3 = parse_impl(
+        ClassSystem::S3,
+        syn::parse_quote! {
+            impl Foo {
+                #[miniextendr(r_name = "+")]
+                pub fn plus(&self, i: i32) -> i32 { i }
+            }
+        },
+    );
+    check_s7_ops_generics(&s3).expect("non-S7 systems are exempt");
+}
+// endregion
+
 // region: Label support tests
 
 #[test]

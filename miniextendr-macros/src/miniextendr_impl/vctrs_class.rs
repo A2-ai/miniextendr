@@ -307,7 +307,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("#' @export".to_string());
         lines.push(format!(
             "{} <- function({}) {{",
-            s3_method_name, full_params
+            crate::naming::r_def_name(&s3_method_name),
+            full_params
         ));
 
         let what = format!("{}.{}", generic_name, class_name);
@@ -377,7 +378,11 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             ctx.params.to_string()
         };
-        lines.push(format!("{} <- function({}) {{", fn_name, formals));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            crate::naming::r_def_name(&fn_name),
+            formals
+        ));
 
         ctx.emit_method_prelude(&mut lines, "  ", &fn_name);
 

@@ -3868,7 +3868,8 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     }
 
     // Instance methods (excluding fallback / no_shortcut / property accessors)
-    // emit the `<ClassName>_<r_method_name>` shortcut.
+    // emit the `<ClassName>_<r_method_name>` shortcut, unless that name is not
+    // syntactic R (an operator `r_name`), in which case none is emitted.
     for m in parsed.instance_methods() {
         if m.method_attrs.s7.fallback
             || m.method_attrs.s7.no_shortcut
@@ -3878,7 +3879,9 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
         {
             continue;
         }
-        let name = format!("{}_{}", class_name, m.r_method_name());
+        let Some(name) = s7_class::s7_shortcut_name(&class_name, &m.r_method_name()) else {
+            continue;
+        };
         if seen.contains_key(&name) {
             return Err(syn::Error::new(
                 m.ident.span(),
@@ -3893,6 +3896,62 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
         seen.insert(name, m.ident.span());
     }
 
+    Ok(())
+}
+
+/// R's `Ops` group generics plus the `matrixOps` group (`%*%`).
+///
+/// S7 dispatches the binary ones on both operands, so a method needs a
+/// two-class signature (`list(Foo, S7::class_any)`) and `(e1, e2)` formals;
+/// `S7::method(`+`, Foo)` fails at package load with "`signature` must be a
+/// list for multidispatch generics". `!` is not dispatched by S7 at all.
+const S7_OPS_GENERICS: &[&str] = &[
+    "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", "<=", ">=", ">", "&", "|", "!", "%*%",
+];
+
+/// Reject S7 instance methods whose generic is an `Ops` / `matrixOps` operator.
+///
+/// The S7 class generator emits a single-class signature with an `x` receiver,
+/// which S7 cannot register for these generics, so the generated wrappers
+/// would stop the package from loading. Fail at compile time instead and point
+/// at the R-side registration that works. Non-S7 class systems are a no-op, as
+/// are static methods (plain functions) and property accessors.
+fn check_s7_ops_generics(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::S7 {
+        return Ok(());
+    }
+    let class_name = parsed.class_name();
+    for m in parsed.instance_methods() {
+        if m.method_attrs.s7.getter || m.method_attrs.s7.setter || m.method_attrs.s7.validate {
+            continue;
+        }
+        let generic = m
+            .method_attrs
+            .generic
+            .clone()
+            .unwrap_or_else(|| m.r_method_name());
+        let op = generic.rsplit("::").next().unwrap_or(&generic);
+        if !S7_OPS_GENERICS.contains(&op) {
+            continue;
+        }
+        let message = if op == "!" {
+            "S7 methods cannot be generated for the `!` operator: S7 does not dispatch `!` \
+             (its Ops handling covers the binary operators only). Keep this method under an \
+             ordinary name and call it directly."
+                .to_string()
+        } else {
+            let rust_name = crate::naming::ident_name(&m.ident);
+            format!(
+                "S7 methods cannot be generated for the `{op}` operator: S7 dispatches R's \
+                 Ops group generics on both operands, which needs a two-class signature and \
+                 `(e1, e2)` formals rather than the single-class `x` method generated here. \
+                 Keep this method under an ordinary name and register the operator in R \
+                 through its fast-path shortcut: S7::method(`{op}`, list({class_name}, \
+                 S7::class_any)) <- function(e1, e2) {class_name}_{rust_name}(e1, e2)"
+            )
+        };
+        return Err(syn::Error::new(m.ident.span(), message));
+    }
     Ok(())
 }
 
@@ -3948,6 +4007,11 @@ pub fn expand_impl(
     // literally named like an instance method) can make two definitions clash,
     // with the last one silently winning. Fail loudly at compile time instead.
     if let Err(e) = check_s7_shortcut_collisions(&parsed) {
+        return e.into_compile_error().into();
+    }
+    // S7 cannot take a single-class method for the Ops operators (`+`, `==`,
+    // ...); the generated wrappers would stop the package from loading.
+    if let Err(e) = check_s7_ops_generics(&parsed) {
         return e.into_compile_error().into();
     }
 

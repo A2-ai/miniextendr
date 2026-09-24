@@ -33,15 +33,15 @@ S7CrossPlan_s7_build_many_r6(self, width, height, count, ...)
 
 \item{self}{A \code{S7CrossPlan} object.}
 
-\item{width}{(undocumented)}
+\item{width}{Board width.}
 
-\item{height}{(undocumented)}
+\item{height}{Board height.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 
-\item{fail}{(undocumented)}
+\item{fail}{When true, returns \code{None} instead of a board.}
 
-\item{count}{(undocumented)}
+\item{count}{Number of boards to build.}
 }
 \description{
 S7 builder fixture for cross-class return wrapping.
