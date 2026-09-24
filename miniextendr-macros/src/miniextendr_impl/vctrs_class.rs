@@ -292,11 +292,11 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Then create the S3 method
         let qualified_name = format!("{}.{}", generic_name, method_class_suffix);
-        let mx_doc = ctx.match_arg_doc_placeholders();
+        let mx_doc = ctx.choice_param_docs();
         let method_doc =
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
                 .with_r_params(&ctx.params)
-                .with_match_arg_doc_placeholders(&mx_doc)
+                .with_choice_param_docs(&mx_doc)
                 .with_r_name(qualified_name)
                 .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());
@@ -343,14 +343,14 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
         let r_name = fn_name.clone();
 
-        let mx_doc = ctx.match_arg_doc_placeholders();
+        let mx_doc = ctx.choice_param_docs();
         let method_name = ctx.method.r_method_name();
         if is_protocol {
             let proto = ctx.method.method_attrs.vctrs_protocol.as_ref().unwrap();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(r_name.clone())
                     .with_class_no_rd(class_has_no_rd);
             lines.extend(method_doc.build());
@@ -360,7 +360,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(r_name.clone())
                     .with_class_no_rd(class_has_no_rd);
             lines.extend(method_doc.build());

@@ -934,6 +934,86 @@ fn test_missing_type_forwarded_inline_in_trait_method_call() {
         result
     );
 }
+
+/// A trait method with an omittable `choices(...)` parameter and a plain one.
+fn choice_trait_method() -> TraitMethod {
+    let mut method = make_test_method("pick", true);
+    method.sig = syn::parse_quote!(
+        fn pick(&self, level: Missing<Option<String>>, n: i32) -> String
+    );
+    let mut attrs = crate::miniextendr_fn::ParamAttrs {
+        choices: Some(vec!["low".to_string(), "high".to_string()]),
+        ..Default::default()
+    };
+    let ty: syn::Type = syn::parse_quote!(Missing<Option<String>>);
+    crate::miniextendr_fn::classify_choice_param(&mut attrs, "level", &ty, false).unwrap();
+    method.per_param.insert("level".to_string(), attrs);
+    method
+}
+
+const LEVEL_DOC: &str =
+    "#' @param level One of \"low\", \"high\", or NULL; omitting the argument means no choice.";
+
+/// The S3 method block of a trait method documents every formal of its
+/// `\usage` the doc comment leaves out, a `choices(...)` param with the same
+/// text a standalone function gets, and the generic is exported by name
+/// (roxygen2 cannot see it inside the `exists()` guard, so a bare `@export`
+/// would export the method `pick.Foo` as a plain function instead).
+#[test]
+fn s3_trait_method_documents_params_and_exports_generic_by_name() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[choice_trait_method()],
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    assert!(result.contains(LEVEL_DOC), "got:\n{result}");
+    assert!(
+        result.contains("#' @param n (undocumented)"),
+        "got:\n{result}"
+    );
+    assert!(result.contains("#' @export pick\n"), "got:\n{result}");
+
+    // A method-level `@rdname` naming another topic leaves the arguments to
+    // that topic's block (#1590).
+    let mut split = choice_trait_method();
+    split.doc_tags.push("@rdname pick_family".to_string());
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[split],
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    assert!(!result.contains("@param level"), "got:\n{result}");
+    assert!(!result.contains("@param n "), "got:\n{result}");
+}
+
+/// The S7 fast-path shortcut documents a `choices(...)` param with its choice
+/// text instead of `(undocumented)`.
+#[test]
+fn s7_trait_shortcut_documents_choice_params() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let result = generate_trait_r_wrapper(
+        &type_ident,
+        &trait_name,
+        &[choice_trait_method()],
+        &[],
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+    assert!(result.contains(LEVEL_DOC), "got:\n{result}");
+    assert!(
+        result.contains("#' @param n (undocumented)"),
+        "got:\n{result}"
+    );
+}
 // endregion
 
 #[test]

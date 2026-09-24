@@ -288,7 +288,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Document constructor params that aren't already documented.
         // Class-level @param tags (in class_doc_tags) are inherited by all methods
         // via roxygen2 8.0.0 — skip emitting a placeholder for params covered there.
-        let ctor_mx_doc = ctx.match_arg_doc_placeholders();
+        let ctor_mx_doc = ctx.choice_param_docs();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();
             if param_name == ".ptr" {
@@ -301,8 +301,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if class_param_names.contains(param_name) {
                     continue;
                 }
-                // match_arg'd constructor params get the write-time placeholder
-                // so the cdylib pass renders `One of "A", "B".` (#210).
+                // Choice params get their choice text: the literal
+                // `choices(...)` line, or the write-time placeholder the
+                // cdylib pass renders to `One of "A", "B".` (#210).
                 let body = ctor_mx_doc
                     .get(param_name)
                     .map(String::as_str)
@@ -511,7 +512,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // For subclass methods (r6_inherit set) and params not covered at class level,
         // emit a write-time marker so the registry can detect in-package parent docs
         // and suppress the placeholder (letting roxygen2 pull from the parent method).
-        let method_mx_doc = ctx.match_arg_doc_placeholders();
+        let method_mx_doc = ctx.choice_param_docs();
         let r_method_name = ctx.method.r_method_name();
         for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
             let param_name = param.split('=').next().unwrap_or(param).trim();

@@ -434,7 +434,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Skip if class has @noRd
     if !class_has_no_rd {
         if let Some(ctx) = parsed_impl.constructor_context() {
-            let mx_doc = ctx.match_arg_doc_placeholders();
+            let mx_doc = ctx.choice_param_docs();
             for param in ctx.params.split(", ").filter(|p| !p.is_empty()) {
                 let param_name = param.split('=').next().unwrap_or(param).trim();
                 if param_name == ".ptr" || param_name == "..." {
@@ -456,10 +456,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     // The class block joins (`@rdname`) or inherits from a
                     // topic that documents the argument (#1590).
                     continue;
-                } else if let Some(placeholder) = mx_doc.get(param_name) {
-                    // match_arg'd constructor param — placeholder rewritten at
-                    // cdylib write time to rendered choice description (#210).
-                    lines.push(format!("#' @param {} {}", param_name, placeholder));
+                } else if let Some(doc) = mx_doc.get(param_name) {
+                    // Choice param: the literal `choices(...)` line, or a
+                    // match_arg placeholder rewritten at cdylib write time to
+                    // the rendered choice description (#210).
+                    lines.push(format!("#' @param {} {}", param_name, doc));
                 } else {
                     lines.push(format!("#' @param {} (undocumented)", param_name));
                 }
@@ -1049,7 +1050,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 // the only place those formals are documented; without them each
                 // one fell back to `(undocumented)`. Mirrors the trait shortcut,
                 // which forwards `param_tags`.
-                let mx_doc = ctx.match_arg_doc_placeholders();
+                let mx_doc = ctx.choice_param_docs();
                 let param_tags: Vec<String> = ctx
                     .method
                     .doc_tags
@@ -1060,7 +1061,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let method_doc =
                     MethodDocBuilder::new(&class_name, &method_name, type_ident, &param_tags)
                         .with_r_params(&shortcut_formals)
-                        .with_match_arg_doc_placeholders(&mx_doc)
+                        .with_choice_param_docs(&mx_doc)
                         .with_r_name(shortcut_name.clone());
                 lines.extend(method_doc.build());
             }
@@ -1097,11 +1098,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
-            let mx_doc = ctx.match_arg_doc_placeholders();
+            let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(fn_name.clone());
             lines.extend(method_doc.build());
         }

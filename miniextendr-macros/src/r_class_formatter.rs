@@ -151,27 +151,32 @@ pub(crate) use crate::match_arg_keys::{
     param_doc_placeholder as match_arg_param_doc_placeholder,
 };
 
-/// Build the R-param-name → @param placeholder map for a method's match_arg and
-/// choices params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
-/// in each class generator.
+/// Build the R-param-name → auto-generated `@param` text map for a method's
+/// choice params: the write-time placeholder for a `match_arg` param (the
+/// cdylib pass renders it from the enum's `MatchArg::CHOICES`, #210), the
+/// literal `One of "a", "b".` line for a `choices(...)` param
+/// ([`ParamAttrs::literal_choices_doc`](crate::miniextendr_fn::ParamAttrs::literal_choices_doc),
+/// the same text a standalone function gets). Pass to
+/// `MethodDocBuilder::with_choice_param_docs` in each class generator.
 ///
 /// Takes the per-param attribute map directly (rather than `&ParsedMethod`) so
 /// it's shared by both the inherent-impl (`MethodContext`) and trait-impl
 /// (`TraitMethodContext`, `miniextendr_impl_trait/method_context.rs`) paths.
-pub(crate) fn match_arg_doc_placeholder_map(
+pub(crate) fn choice_param_doc_map(
     c_ident: &str,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
 ) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for (rust_name, attrs) in per_param {
-        if !attrs.match_arg {
-            continue;
-        }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        out.insert(
-            r_name.clone(),
-            match_arg_param_doc_placeholder(c_ident, &r_name),
-        );
+        let doc = if attrs.match_arg {
+            match_arg_param_doc_placeholder(c_ident, &r_name)
+        } else if let Some(doc) = attrs.literal_choices_doc() {
+            doc
+        } else {
+            continue;
+        };
+        out.insert(r_name, doc);
     }
     out
 }
@@ -388,12 +393,11 @@ impl<'a> MethodContext<'a> {
         self
     }
 
-    /// Build the R-param-name → @param placeholder map for this method's
-    /// match_arg params. Pass to `MethodDocBuilder::with_match_arg_doc_placeholders`
-    /// so the cdylib write pass rewrites the placeholders into rendered choice
-    /// descriptions (#210).
-    pub fn match_arg_doc_placeholders(&self) -> std::collections::HashMap<String, String> {
-        match_arg_doc_placeholder_map(&self.c_ident, &self.method.method_attrs.per_param)
+    /// Build the R-param-name → `@param` text map for this method's
+    /// `match_arg` / `choices` params ([`choice_param_doc_map`]). Pass to
+    /// `MethodDocBuilder::with_choice_param_docs`.
+    pub fn choice_param_docs(&self) -> std::collections::HashMap<String, String> {
+        choice_param_doc_map(&self.c_ident, &self.method.method_attrs.per_param)
     }
 
     /// Build R prelude lines that validate `match_arg` / `choices` / `several_ok`
@@ -792,12 +796,14 @@ pub struct MethodDocBuilder<'a> {
     /// or `S7::method()` assignment, which roxygen2 doesn't parse for `\usage` entries.
     /// Including `@param` tags would create "Documented arguments not in \\usage" warnings.
     suppress_params: bool,
-    /// Map of R-param-name → write-time doc placeholder for match_arg parameters.
+    /// Map of R-param-name → auto-generated `@param` text for choice
+    /// parameters ([`choice_param_doc_map`]).
     ///
     /// When the auto-generated `@param` line would otherwise say `(undocumented)`,
-    /// a match_arg'd param emits the placeholder instead, which the cdylib's
-    /// write-time pass replaces with a rendered choice description (#210).
-    match_arg_doc_placeholders: Option<&'a std::collections::HashMap<String, String>>,
+    /// a `match_arg` param emits its placeholder instead, which the cdylib's
+    /// write-time pass replaces with a rendered choice description (#210), and
+    /// a `choices(...)` param its literal `One of ...` line.
+    choice_param_docs: Option<&'a std::collections::HashMap<String, String>>,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -824,19 +830,19 @@ impl<'a> MethodDocBuilder<'a> {
             params_as_details: false,
             r_params: None,
             suppress_params: false,
-            match_arg_doc_placeholders: None,
+            choice_param_docs: None,
         }
     }
 
-    /// Supply a map from R-param-name to a write-time doc placeholder for
-    /// match_arg'd params. When the auto-generated `@param` line would otherwise
-    /// say `(undocumented)`, the placeholder is emitted instead and the cdylib
-    /// write pass rewrites it to a rendered choice description. See #210.
-    pub fn with_match_arg_doc_placeholders(
+    /// Supply the R-param-name → `@param` text map of the method's choice
+    /// params ([`choice_param_doc_map`]). When the auto-generated `@param`
+    /// line would otherwise say `(undocumented)`, that text is emitted instead
+    /// (a `match_arg` placeholder is rewritten by the cdylib write pass, #210).
+    pub fn with_choice_param_docs(
         mut self,
-        placeholders: &'a std::collections::HashMap<String, String>,
+        docs: &'a std::collections::HashMap<String, String>,
     ) -> Self {
-        self.match_arg_doc_placeholders = Some(placeholders);
+        self.choice_param_docs = Some(docs);
         self
     }
 
@@ -983,10 +989,10 @@ impl<'a> MethodDocBuilder<'a> {
                 let already_documented =
                     crate::roxygen::param_documented(self.doc_tags, param_name);
                 if !already_documented {
-                    // match_arg'd params get a placeholder the cdylib write-pass
-                    // replaces with the rendered choice description (#210).
+                    // Choice params get their choice text (a match_arg
+                    // placeholder is rendered by the cdylib write pass, #210).
                     let body = self
-                        .match_arg_doc_placeholders
+                        .choice_param_docs
                         .and_then(|m| m.get(param_name))
                         .map(|s| s.as_str())
                         .unwrap_or("(undocumented)");

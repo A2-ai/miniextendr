@@ -231,6 +231,13 @@ impl<'a> TraitMethodContext<'a> {
             .build()
     }
 
+    /// R-param-name → auto-generated `@param` text of this method's choice
+    /// params (`One of "a", "b".` for `choices(...)`). See
+    /// `r_class_formatter::choice_param_doc_map`.
+    pub(super) fn choice_param_docs(&self) -> std::collections::HashMap<String, String> {
+        crate::r_class_formatter::choice_param_doc_map(&self.c_ident, &self.method.per_param)
+    }
+
     /// Build R prelude lines validating `match_arg`/`choices` params. See
     /// `r_class_formatter::build_match_arg_prelude`.
     pub(super) fn match_arg_prelude(&self) -> Vec<String> {
