@@ -1194,6 +1194,46 @@ fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
     }
 }
 
+/// A layered `choices` parameter's generated line names what else the
+/// argument takes (#1551, #1599). It is a filler like the others: marked for
+/// the registry on the function's own page, dropped under `@describeIn`.
+#[test]
+fn fn_param_tags_describe_layered_choices() {
+    let route_fn = |doc_tag: Option<&str>| {
+        let doc_tag = doc_tag.map(|tag| quote::quote!(#[doc = #tag]));
+        quote::quote! {
+            /// @param dose Amount per administration.
+            #doc_tag
+            fn route(
+                dose: f64,
+                #[miniextendr(choices("oral", "bolus"))] route: Either<String, DataFrame>,
+                #[miniextendr(choices("low", "high"))] side: Missing<Option<String>>,
+            ) {}
+        }
+    };
+    let (tags, _) = generated_fn_param_tags(route_fn(None));
+    assert_eq!(
+        param_lines(&tags),
+        vec![
+            "@param dose Amount per administration.".to_string(),
+            format!(
+                "{PARAM_FILLER_MARKER}@param route One of \"oral\", \"bolus\", or a data frame."
+            ),
+            format!(
+                "{PARAM_FILLER_MARKER}@param side One of \"low\", \"high\", or NULL; omitting the \
+                 argument means no choice."
+            ),
+        ],
+        "got {tags:?}"
+    );
+    let (tags, _) = generated_fn_param_tags(route_fn(Some("@describeIn routes By route.")));
+    assert_eq!(
+        param_lines(&tags),
+        ["@param dose Amount per administration."],
+        "got {tags:?}"
+    );
+}
+
 #[test]
 fn describe_in_topic_is_the_first_word() {
     assert_eq!(
