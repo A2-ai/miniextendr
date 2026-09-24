@@ -1923,12 +1923,22 @@ raising the same argument error, and survive `no_preconditions` / `fast`: the
 Rust conversion cannot check them, so dropping them would change what the
 function accepts.
 
+Each check can carry the author's own condition message
+(`inherits(class = "cls", message = "...")`, `no_na(message = "...")`;
+method level `inherits(x(class = "cls", message = "..."))`,
+`no_na(x(message = "..."))`), used verbatim in place of the generated
+`'x' must inherit from 'cls'`. The condition is otherwise the same.
+
 **Fields:**
 
 - `inherits`: `Option<Vec<String>>`
   - `inherits = "cls"` / `inherits("a", "b")`: the argument must inherit
+- `inherits_message`: `Option<String>`
+  - `message = "..."` in `inherits(...)`: the message of a failed class
 - `no_na`: `bool`
   - `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
+- `no_na_message`: `Option<String>`
+  - `no_na(message = "...")`: the message of a failed NA check. Only set
 
 **Inherent associated items:**
 
@@ -1943,10 +1953,13 @@ Whether any check is requested.
 #### `merge`
 
 ```rust
-fn merge(self: &mut Self, other: ExplicitChecks)
+fn merge(self: &mut Self, other: ExplicitChecks) -> Result<(), String>
 ```
 
 Merge `other` into `self` (a parameter may carry several attributes).
+
+Fails when both give a message for the same check; the error names
+the check.
 
 ### `r_preconditions::FallbackParam`
 
