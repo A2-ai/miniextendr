@@ -496,8 +496,8 @@ line: `(no documentation available)`, or the choice list of a `choices` /
 its own page, including the file-stem page. The line is left out when the
 block takes its arguments from elsewhere:
 
-- it has `@rdname topic` or `@describeIn topic ...`, so `topic`'s page
-  documents them;
+- it has `@describeIn topic ...`, or an `@rdname topic` naming another page
+  than its own file-stem page, so `topic`'s page documents them;
 - it has `@inheritParams source` (or `@inherit source` including params),
   which fills in exactly the arguments the block leaves out.
 
@@ -505,7 +505,7 @@ A family of functions can then share one page whose block, often in R,
 documents each argument once:
 
 ```r
-# R/doc_range_summaries.R
+# R/range_summaries.R
 #' Range summaries
 #'
 #' @description
@@ -529,22 +529,66 @@ pub fn range_width(values: Vec<f64>) -> f64 { /* ... */ }
 pub fn range_clamp(values: Vec<f64>, lower: f64, upper: f64) -> Vec<f64> { /* ... */ }
 ```
 
-roxygen2 keeps a single entry per argument name on a merged page, and a
-generated line would be the one that survives, replacing the shared
+roxygen2 keeps a single entry per argument name on a merged page, the one
+from the block it reads last, so a generated line would replace the shared
 description (next to a grouped `@param lower,upper` it would also add
 separate `lower` and `upper` entries). `rpkg/src/rust/shared_param_docs.rs`
 is the working fixture.
 
+The same holds for the fixed lines a class generator adds for the formals it
+injects: `@param x` / `@param ...` on an S3 method and its generic, `self` /
+`...` on an S7 trait method's shortcut, and `.ptr` on an S7 class block.
+They are left out when the method (or, for `.ptr`, the impl block) joins
+another topic with `@rdname` or `@describeIn`: that topic's block documents
+`x` and `...`. A method split onto a brand-new page with `@rdname` therefore
+documents them in its own doc comment (``/// @param x A `Counter`.``), as
+`GreetingBuilder::build` does in `rpkg/src/rust/pipe_builder_tests.rs`. On
+the class page (no page tag, or `@rdname <Class>`) the lines stay. An
+`@inheritParams` alone keeps the method on the class page, so it keeps them
+too.
+
+A file-stem page is shared by every function of its Rust file (with the
+injected default, or with `@rdname <file stem>` spelled out to keep a custom
+`@name` on it). There the wrapper registry decides each generated line when
+it writes `R/miniextendr-wrappers.R`: the line stays only when no function on
+the page documents that argument itself, so a shared argument shows the one
+real description once. `rpkg/src/rust/stem_page_docs.rs` is the fixture. The
+registry sees only the generated wrappers: an R-file block that joins a
+file-stem page does not count, so document such an argument in the Rust doc
+comment.
+
 An argument that no block documents is reported by `R CMD check`
 ("Undocumented arguments in Rd file"), so document it on the shared block or
 in the function's own doc comment (a `@param` the function writes itself is
-kept as is). The same holds for a block that spells out `@rdname <file stem>`
-to keep a custom `@name` on the file page: some block on that page must
-document its arguments.
+kept as is).
 
-roxygen2 reads `R/` in alphabetical order and gives a merged page the name and
-title of the first block it reads, so put the shared block in a file that sorts
-before `R/miniextendr-wrappers.R`.
+The shared block may live in any R file. roxygen2 gives a merged page the
+`\name` and `\title` of the first block it reads, and it reads every block
+sorted by `@order` (`Inf` when absent, so file order among unordered blocks).
+Every generated block that joins another topic (`@describeIn`, an `@rdname`
+naming another page, the S3 generic block that follows such a method)
+carries `@order NaN`, and R's `order()` sorts `NaN` after `Inf`: the topic's
+own block is read first wherever its file sorts, and the generated blocks
+keep their source order among themselves. A topic made only of generated
+blocks is named and titled by the first of them, as before. An `@order` you
+write in the Rust doc comment is kept instead. The fixture's R file,
+`R/range_summaries.R`, sorts after `R/miniextendr-wrappers.R` on purpose,
+and `test-doc-shared-pages.R` checks the page name and title. Writing
+`@order 1` on the shared R block has the same effect without relying on the
+generated tag.
+
+A method-level `@describeIn topic ...` works on the class methods whose R
+wrapper is a function roxygen2 can list: S3 instance methods (listed as
+`generic(Class)`), the static methods of S3, S4, S7 and vctrs classes, S4
+constructors, and `as.<target>()` coercions. The method block then carries
+neither `@name` nor `@rdname` (roxygen2 rejects both next to `@describeIn`),
+and the S3 generic block, whose `@name generic.Class` is the method's alias,
+follows it to `topic`. On S4 and S7 instance methods (registered by
+`setMethod()` / `S7::method<-`), on Env and R6 methods (`Class$method <-`),
+and on the S3, vctrs and S7 constructors (documented by the class block),
+`@describeIn` is a compile error that points at `@rdname`. Trait-impl
+methods forward only their `@rdname` and `@param` tags, so a `@describeIn`
+there has no effect.
 
 ### Constraints
 
