@@ -1,0 +1,29 @@
+error: `message` in `inherits(...)` must not be empty; leave it out to get the generated message
+ --> tests/ui/fn_param_check_message.rs:8:74
+  |
+8 | pub fn empty_message(#[miniextendr(inherits(class = "pkg_obj", message = ""))] x: Vec<f64>) {}
+  |                                                                          ^^
+
+error: `message` in `inherits(...)` needs a class to check, e.g. `inherits(class = "pkg_obj", message = "...")`
+  --> tests/ui/fn_param_check_message.rs:11:44
+   |
+11 | pub fn message_without_class(#[miniextendr(inherits(message = "needs a pkg_obj"))] x: Vec<f64>) {}
+   |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: unknown `inherits` option `msg`; expected class names (`"cls"` or `class = "cls"`) and an optional `message = "..."`
+  --> tests/ui/fn_param_check_message.rs:14:71
+   |
+14 | pub fn unknown_inherits_key(#[miniextendr(inherits(class = "pkg_obj", msg = "m"))] x: Vec<f64>) {}
+   |                                                                       ^^^
+
+error: unknown `no_na` option; expected `message = "..."`
+  --> tests/ui/fn_param_check_message.rs:17:46
+   |
+17 | pub fn unknown_no_na_key(#[miniextendr(no_na(msg = "m"))] x: f64) {}
+   |                                              ^^^
+
+error: `inherits` is given more than one `message` on this parameter; give it once
+  --> tests/ui/fn_param_check_message.rs:22:5
+   |
+22 |     #[miniextendr(inherits("pkg_b", message = "two"))]
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -397,7 +397,8 @@ pub(crate) fn validate_per_param_attr_conflicts(
 /// Parsed per-parameter `#[miniextendr(...)]` attribute content.
 ///
 /// A single attribute can contain multiple items, e.g.
-/// `#[miniextendr(match_arg, default = "Safe")]`.
+/// `#[miniextendr(match_arg, default = "Safe")]`; a parameter carrying
+/// several attributes gets them merged ([`PerParamMiniextendrAttr::merge`]).
 #[derive(Default)]
 pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `coerce` was present, enabling automatic type coercion for this parameter
@@ -414,9 +415,28 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `several_ok` was present, enabling multi-value `match.arg(several.ok = TRUE)`.
     /// Only valid with `choices(...)` or `match_arg`.
     pub has_several_ok: bool,
-    /// `inherits = "cls"` / `inherits("a", "b")` and `no_na`: R-side checks
-    /// named by the author (see [`crate::r_preconditions::ExplicitChecks`]).
+    /// `inherits = "cls"` / `inherits("a", "b")` and `no_na`, each with an
+    /// optional `message = "..."`: R-side checks named by the author (see
+    /// [`crate::r_preconditions::ExplicitChecks`]).
     pub checks: crate::r_preconditions::ExplicitChecks,
+}
+
+impl PerParamMiniextendrAttr {
+    /// Merge the options of another attribute on the same parameter: flags
+    /// add up, the first `default` / `choices(...)` wins, and the checks
+    /// merge (one `message` per check; the error says which).
+    pub(crate) fn merge(&mut self, other: PerParamMiniextendrAttr) -> Result<(), String> {
+        self.has_coerce |= other.has_coerce;
+        self.has_match_arg |= other.has_match_arg;
+        self.has_several_ok |= other.has_several_ok;
+        if self.default_value.is_none() {
+            self.default_value = other.default_value;
+        }
+        if self.choices.is_none() {
+            self.choices = other.choices;
+        }
+        self.checks.merge(other.checks)
+    }
 }
 
 /// Parse all per-parameter options from a `#[miniextendr(...)]` attribute.
@@ -424,32 +444,34 @@ pub(crate) struct PerParamMiniextendrAttr {
 /// Handles mixed content like `#[miniextendr(match_arg, default = "\"Safe\"")]`
 /// and `#[miniextendr(choices("a", "b", "c"))]`.
 ///
-/// Returns `None` if `attr` is not a `#[miniextendr(...)]` attribute, if it cannot
-/// be parsed, or if it contains only function-level options (like `strict`) with
-/// no per-parameter options.
+/// Returns `Ok(None)` if `attr` is not a `#[miniextendr(...)]` attribute, if its
+/// content is not a list of options, or if it contains only function-level
+/// options (like `strict`) with no per-parameter options. A malformed
+/// `inherits(...)` / `no_na(...)` is an error.
 ///
 /// # Arguments
 ///
 /// * `attr` - A `syn::Attribute` to inspect. Only attributes with path `miniextendr`
 ///   are considered.
-pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMiniextendrAttr> {
+pub(crate) fn parse_per_param_attr(
+    attr: &syn::Attribute,
+) -> syn::Result<Option<PerParamMiniextendrAttr>> {
     use syn::spanned::Spanned;
     if !attr.path().is_ident("miniextendr") {
-        return None;
+        return Ok(None);
     }
 
     let syn::Meta::List(meta_list) = &attr.meta else {
-        return None;
+        return Ok(None);
     };
 
     let mut result = PerParamMiniextendrAttr::default();
     let mut is_per_param = false;
 
-    let metas = match meta_list
-        .parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-    {
-        Ok(m) => m,
-        Err(_) => return None,
+    let Ok(metas) = meta_list.parse_args_with(
+        syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+    ) else {
+        return Ok(None);
     };
 
     for meta in &metas {
@@ -507,18 +529,20 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
                     result.choices = Some(choices);
                     is_per_param = true;
                 } else if list.path.is_ident("inherits") {
-                    // inherits("a", "b") — any-of class list, like `inherits(x, c(...))`
-                    let class_lits = match list.parse_args_with(
-                        syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
-                    ) {
-                        Ok(lits) => lits,
-                        Err(_) => continue,
-                    };
+                    // inherits("a", "b"[, message = "..."]) / inherits(class = "a", ...)
+                    let checks = parse_inherits_list(list)?;
                     result
                         .checks
-                        .inherits
-                        .get_or_insert_with(Vec::new)
-                        .extend(class_lits.iter().map(|l| l.value()));
+                        .merge(checks)
+                        .map_err(|msg| syn::Error::new_spanned(list, msg))?;
+                    is_per_param = true;
+                } else if list.path.is_ident("no_na") {
+                    // no_na(message = "...")
+                    let checks = parse_no_na_list(list)?;
+                    result
+                        .checks
+                        .merge(checks)
+                        .map_err(|msg| syn::Error::new_spanned(list, msg))?;
                     is_per_param = true;
                 }
                 // Other list forms are function-level, ignore here
@@ -527,46 +551,234 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
     }
 
     if !is_per_param {
-        return None;
+        return Ok(None);
     }
-    Some(result)
+    Ok(Some(result))
 }
 
-/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `coerce`.
-///
-/// The `coerce` flag may be combined with other per-parameter options (e.g.,
-/// `#[miniextendr(coerce, default = "0")]`).
-pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
-    parse_per_param_attr(attr).is_some_and(|a| a.has_coerce)
+/// `inherits(...)` on a parameter: each string literal, and each
+/// `class = "..."`, names one class (the argument must inherit from one of
+/// them); `message = "..."` gives the condition message of a failure, for all
+/// of them. No string is split on commas, as with `inherits = "cls"`
+/// (the method-level `class = "a, b"` is split, see [`parse_method_inherits`]).
+fn parse_inherits_list(
+    list: &syn::MetaList,
+) -> syn::Result<crate::r_preconditions::ExplicitChecks> {
+    use syn::parse::Parser as _;
+    let mut classes = Vec::new();
+    let mut message = None;
+    let parser = |input: syn::parse::ParseStream| -> syn::Result<()> {
+        while !input.is_empty() {
+            if input.peek(syn::LitStr) {
+                let class: syn::LitStr = input.parse()?;
+                classes.push(class.value());
+            } else {
+                let key: syn::Ident = input.parse()?;
+                input.parse::<syn::Token![=]>()?;
+                let value: syn::LitStr = input.parse()?;
+                if key == "class" {
+                    classes.push(value.value());
+                } else if key == "message" {
+                    set_check_message(&mut message, &value, "inherits")?;
+                } else {
+                    return Err(syn::Error::new_spanned(
+                        &key,
+                        format!(
+                            "unknown `inherits` option `{key}`; expected class names \
+                             (`\"cls\"` or `class = \"cls\"`) and an optional `message = \"...\"`"
+                        ),
+                    ));
+                }
+            }
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<syn::Token![,]>()?;
+        }
+        Ok(())
+    };
+    parser.parse2(list.tokens.clone())?;
+    if message.is_some() && classes.is_empty() {
+        return Err(syn::Error::new_spanned(
+            list,
+            "`message` in `inherits(...)` needs a class to check, \
+             e.g. `inherits(class = \"pkg_obj\", message = \"...\")`",
+        ));
+    }
+    Ok(crate::r_preconditions::ExplicitChecks {
+        inherits: Some(classes),
+        inherits_message: message,
+        ..Default::default()
+    })
 }
 
-/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `match_arg`.
-///
-/// The `match_arg` flag may be combined with other per-parameter options (e.g.,
-/// `#[miniextendr(match_arg, choices("a", "b"))]`).
-pub(crate) fn is_miniextendr_match_arg_attr(attr: &syn::Attribute) -> bool {
-    parse_per_param_attr(attr).is_some_and(|a| a.has_match_arg)
+/// `no_na(message = "...")` on a parameter: `no_na` with the condition
+/// message of a failure.
+fn parse_no_na_list(list: &syn::MetaList) -> syn::Result<crate::r_preconditions::ExplicitChecks> {
+    let mut message = None;
+    list.parse_nested_meta(|opt| parse_no_na_option(&opt, &mut message))?;
+    Ok(crate::r_preconditions::ExplicitChecks {
+        no_na: true,
+        no_na_message: message,
+        ..Default::default()
+    })
 }
 
-/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `several_ok`.
-pub(crate) fn is_miniextendr_several_ok_attr(attr: &syn::Attribute) -> bool {
-    parse_per_param_attr(attr).is_some_and(|a| a.has_several_ok)
+/// One option inside `no_na(...)` (parameter level) or `no_na(p(...))`
+/// (method level): only `message = "..."`.
+fn parse_no_na_option(
+    opt: &syn::meta::ParseNestedMeta,
+    message: &mut Option<String>,
+) -> syn::Result<()> {
+    if opt.path.is_ident("message") {
+        let value: syn::LitStr = opt.value()?.parse()?;
+        set_check_message(message, &value, "no_na")
+    } else {
+        Err(opt.error("unknown `no_na` option; expected `message = \"...\"`"))
+    }
 }
 
-/// Extracts the list of choice strings from a `#[miniextendr(choices("a", "b", "c"))]` attribute.
-///
-/// Returns `None` if the attribute does not contain `choices(...)` or is not a
-/// `#[miniextendr(...)]` attribute.
-pub(crate) fn parse_choices_attr(attr: &syn::Attribute) -> Option<Vec<String>> {
-    parse_per_param_attr(attr).and_then(|a| a.choices)
+/// Record the `message = "..."` of an `inherits` / `no_na` check: the
+/// condition message of a failure, used verbatim. It is given once, is not
+/// empty, and holds no NUL (an R string cannot).
+fn set_check_message(
+    slot: &mut Option<String>,
+    value: &syn::LitStr,
+    check: &str,
+) -> syn::Result<()> {
+    let text = value.value();
+    if slot.is_some() {
+        return Err(syn::Error::new(
+            value.span(),
+            format!("`message` is given more than once in `{check}(...)`"),
+        ));
+    }
+    if text.trim().is_empty() {
+        return Err(syn::Error::new(
+            value.span(),
+            format!(
+                "`message` in `{check}(...)` must not be empty; leave it out to get the \
+                 generated message"
+            ),
+        ));
+    }
+    if text.contains('\0') {
+        return Err(syn::Error::new(
+            value.span(),
+            "`message` must not contain a NUL character: an R string cannot hold one",
+        ));
+    }
+    *slot = Some(text);
+    Ok(())
 }
 
-/// Extracts the default value from a `#[miniextendr(default = "...")]` attribute.
-///
-/// Returns `Some((default_value, attr_span))` if the attribute contains a `default` option.
-/// The span is used for error reporting when the default references a non-existent parameter.
-pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
-    parse_per_param_attr(attr).and_then(|a| a.default_value)
+/// The parameter an entry of a method-level `no_na(...)` / `inherits(...)`
+/// names.
+fn method_check_param(entry: &syn::meta::ParseNestedMeta) -> syn::Result<String> {
+    Ok(entry
+        .path
+        .get_ident()
+        .ok_or_else(|| entry.error("expected parameter name"))?
+        .to_string())
+}
+
+/// Method-level `no_na(p, q(message = "..."))` on an impl or trait method,
+/// whose parameters cannot carry attributes: each entry names a parameter,
+/// optionally with the condition message of its NA check. Shared by the
+/// inherent-impl and trait-impl method parsers.
+pub(crate) fn parse_method_no_na(
+    meta: &syn::meta::ParseNestedMeta,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|entry| {
+        let name = method_check_param(&entry)?;
+        let mut message = None;
+        if entry.input.peek(syn::token::Paren) {
+            entry.parse_nested_meta(|opt| parse_no_na_option(&opt, &mut message))?;
+        }
+        let checks = crate::r_preconditions::ExplicitChecks {
+            no_na: true,
+            no_na_message: message,
+            ..Default::default()
+        };
+        per_param
+            .entry(name)
+            .or_default()
+            .checks
+            .merge(checks)
+            .map_err(|msg| entry.error(msg))
+    })
+}
+
+/// Method-level `inherits(p = "a, b", q(class = "a, b", message = "..."))` on
+/// an impl or trait method: each entry names a parameter and the classes it
+/// must inherit from (one of), optionally with the condition message of the
+/// class check. A nested value cannot be a bare list of literals, so the
+/// classes are one comma-separated string, as in `choices(p = "a, b")`.
+/// Shared by the inherent-impl and trait-impl method parsers.
+pub(crate) fn parse_method_inherits(
+    meta: &syn::meta::ParseNestedMeta,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|entry| {
+        let name = method_check_param(&entry)?;
+        let mut classes = Vec::new();
+        let mut message = None;
+        if entry.input.peek(syn::Token![=]) {
+            let value: syn::LitStr = entry.value()?.parse()?;
+            classes = method_class_list(&value)?;
+        } else if entry.input.peek(syn::token::Paren) {
+            entry.parse_nested_meta(|opt| {
+                if opt.path.is_ident("class") {
+                    let value: syn::LitStr = opt.value()?.parse()?;
+                    classes.extend(method_class_list(&value)?);
+                    Ok(())
+                } else if opt.path.is_ident("message") {
+                    let value: syn::LitStr = opt.value()?.parse()?;
+                    set_check_message(&mut message, &value, "inherits")
+                } else {
+                    Err(opt.error(
+                        "unknown `inherits` option; expected `class = \"...\"` and an \
+                         optional `message = \"...\"`",
+                    ))
+                }
+            })?;
+            if classes.is_empty() {
+                return Err(entry.error(format!(
+                    "`inherits({name}(...))` needs `class = \"...\"`, \
+                     e.g. `inherits({name}(class = \"pkg_obj\", message = \"...\"))`"
+                )));
+            }
+        } else {
+            return Err(entry.error(format!(
+                "expected `{name} = \"cls\"` or `{name}(class = \"cls\", message = \"...\")`"
+            )));
+        }
+        let checks = crate::r_preconditions::ExplicitChecks {
+            inherits: Some(classes),
+            inherits_message: message,
+            ..Default::default()
+        };
+        per_param
+            .entry(name)
+            .or_default()
+            .checks
+            .merge(checks)
+            .map_err(|msg| entry.error(msg))
+    })
+}
+
+/// The classes of a method-level `inherits` entry: a comma-separated,
+/// non-empty list.
+fn method_class_list(value: &syn::LitStr) -> syn::Result<Vec<String>> {
+    let classes = crate::r_wrapper_builder::split_choice_list(&value.value());
+    if classes.is_empty() {
+        return Err(syn::Error::new(
+            value.span(),
+            "`inherits(param = \"...\")` needs one or more class names",
+        ));
+    }
+    Ok(classes)
 }
 // endregion
 
@@ -908,24 +1120,28 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 continue;
             };
 
-            let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
-            let had_match_arg_attr = pat_type.attrs.iter().any(is_miniextendr_match_arg_attr);
-            let had_several_ok = pat_type.attrs.iter().any(is_miniextendr_several_ok_attr);
-            let default_with_span = pat_type.attrs.iter().find_map(parse_default_attr);
-            let had_choices = pat_type.attrs.iter().find_map(parse_choices_attr);
-            let had_checks = pat_type.attrs.iter().filter_map(parse_per_param_attr).fold(
-                crate::r_preconditions::ExplicitChecks::default(),
-                |mut acc, attr| {
-                    acc.merge(attr.checks);
-                    acc
-                },
-            );
-
-            // Remove the per-parameter miniextendr attributes (coerce, match_arg,
-            // choices, several_ok, default, inherits, no_na)
-            pat_type
-                .attrs
-                .retain(|attr| parse_per_param_attr(attr).is_none());
+            // Consume the per-parameter miniextendr attributes (coerce,
+            // match_arg, choices, several_ok, default, inherits, no_na), merging
+            // them when a parameter carries several; keep every other attribute.
+            let mut param_attr = PerParamMiniextendrAttr::default();
+            let mut kept_attrs = Vec::with_capacity(pat_type.attrs.len());
+            for attr in std::mem::take(&mut pat_type.attrs) {
+                match parse_per_param_attr(&attr)? {
+                    Some(parsed) => param_attr
+                        .merge(parsed)
+                        .map_err(|msg| syn::Error::new_spanned(&attr, msg))?,
+                    None => kept_attrs.push(attr),
+                }
+            }
+            pat_type.attrs = kept_attrs;
+            let PerParamMiniextendrAttr {
+                has_coerce: had_coerce_attr,
+                has_match_arg: had_match_arg_attr,
+                default_value: default_with_span,
+                choices: had_choices,
+                has_several_ok: had_several_ok,
+                checks: had_checks,
+            } = param_attr;
 
             // Validate type-based constraints (Missing nesting, Missing<Dots>)
             validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;

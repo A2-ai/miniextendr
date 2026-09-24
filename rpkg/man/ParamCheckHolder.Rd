@@ -4,6 +4,7 @@
 \alias{ParamCheckHolder}
 \alias{ParamCheckHolder$new}
 \alias{ParamCheckHolder$add}
+\alias{ParamCheckHolder$add_checked}
 \alias{$.ParamCheckHolder}
 \alias{[[.ParamCheckHolder}
 \title{ParamCheckHolder  Class}
@@ -23,6 +24,13 @@ ParamCheckHolder
 Env class whose \code{add()} method checks its arguments with \code{inherits(...)} / \code{no_na(...)}.
 
 Add \code{y} if \code{x} is an \code{mx_obj}.
+
+\describe{
+\item{\code{x}}{An object of class \code{mx_obj} or \code{mx_other}.}
+\item{\code{y}}{A non-NA double.}
+}
+
+\code{add()} with the method-level messages.
 
 \describe{
 \item{\code{x}}{An object of class \code{mx_obj} or \code{mx_other}.}

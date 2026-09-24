@@ -860,6 +860,52 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
     );
 }
 
+/// Trait methods parse the method-level `inherits(p(class = ..., message = ...))`
+/// / `no_na(p(message = ...))` forms with the inherent-impl parser's helpers,
+/// from the attribute through to the guard.
+#[test]
+fn test_trait_method_checks_take_custom_messages() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(
+                no_na(x_factor(message = "`x_factor` must be a number, not NA")),
+                inherits(model(class = "pkg_model", message = "`model` must be a `pkg_model`"))
+            )]
+            fn scale(&mut self, x_factor: f64, model: List) -> f64 { unimplemented!() }
+        }
+    };
+    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let result = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    for guard in [
+        "if (!isTRUE(!anyNA(x_factor))) .miniextendr_arg_error(\"x_factor\", message = \"`x_factor` must be a number, not NA\")",
+        "if (!isTRUE(inherits(model, \"pkg_model\"))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`\")",
+    ] {
+        assert!(result.contains(guard), "missing `{guard}` in:\n{result}");
+    }
+
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(inherits(model(message = "m")))]
+            fn scale(&mut self, model: List) -> f64 { unimplemented!() }
+        }
+    };
+    let Err(err) = super::vtable::extract_methods(&impl_item) else {
+        panic!("a class check without a class must be rejected");
+    };
+    assert!(
+        err.to_string()
+            .contains("`inherits(model(...))` needs `class = \"...\"`"),
+        "{err}"
+    );
+}
+
 /// Related fix bundled into the same prelude parity: trait methods used to
 /// build `.Call()` args via `collect_param_idents`, which had no `Missing<T>`
 /// handling. A truly-missing R argument forwarded as a bare binding errors on

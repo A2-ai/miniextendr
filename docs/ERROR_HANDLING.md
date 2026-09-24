@@ -589,10 +589,13 @@ Both places raise the same error condition (#1591):
 - `e$param`, the R name of the failing parameter;
 - a message in R terms. An R-side check says the one requirement that failed
   (`'x' must have length 1`, `'x' must not contain NA`,
-  `'mode' should be one of "fast", "slow"`). A conversion says what the
-  argument must be and why it is not: `'<p>' must be <expected>: <reason>`,
-  or `invalid '<p>' argument: <reason>` for a type without an R-facing
-  expectation (custom types, `Either`, the `AsFromStr` family);
+  `'mode' should be one of "fast", "slow"`), or gives the package author's
+  own message for an `inherits` / `no_na` check that sets one
+  ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
+  A conversion says what the argument must be and why it is not:
+  `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`
+  for a type without an R-facing expectation (custom types, `Either`, the
+  `AsFromStr` family);
 - on a conversion only, `e$rust_type`, the Rust type as written in the
   signature, for the package author.
 
@@ -635,7 +638,12 @@ name the caller's matched call ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 The R-side checks are one guard per check,
 `if (!isTRUE(<check>)) .miniextendr_arg_error("<p>", "<requirement>")`,
 calling a helper in the generated wrappers file only when the check fails;
-a passing argument costs one `isTRUE()` test per check.
+a passing argument costs one `isTRUE()` test per check. A check with the
+author's message passes it instead of the requirement,
+`.miniextendr_arg_error("<p>", message = "<message>")`, and the helper uses
+it as the condition message unchanged. The receiver check of an S7 method
+registered for `S7::class_any` (`s7(fallback)`) raises the same condition on
+`x`: `'x' must be an S7 object, got integer`.
 
 ### Conversion wording
 

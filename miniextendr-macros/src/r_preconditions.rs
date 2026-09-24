@@ -41,6 +41,9 @@ struct RAssertion {
     requirement: String,
     /// R expression that must evaluate to `TRUE` for the check to pass.
     condition: String,
+    /// The author's own condition message (`message = "..."` on `inherits` /
+    /// `no_na`), used verbatim instead of `'<param>' <requirement>`.
+    message: Option<String>,
 }
 
 impl RAssertion {
@@ -54,27 +57,55 @@ impl RAssertion {
             param: param.into(),
             requirement: requirement.into(),
             condition: condition.into(),
+            message: None,
         }
     }
 
-    /// The condition message a failure raises: `'<param>' <requirement>`.
+    /// Use `message` verbatim as the condition message of a failure.
+    fn with_message(mut self, message: Option<&String>) -> Self {
+        self.message = message.cloned();
+        self
+    }
+
+    /// The condition message a failure raises: the author's message, else
+    /// `'<param>' <requirement>`.
     #[cfg(test)]
     fn message(&self) -> String {
-        format!("'{}' {}", self.param, self.requirement)
+        match &self.message {
+            Some(message) => message.clone(),
+            None => format!("'{}' {}", self.param, self.requirement),
+        }
     }
 
     /// Format as a guard that raises an argument error on failure:
-    /// `if (!isTRUE(condition)) .miniextendr_arg_error("param", "requirement")`.
+    /// `if (!isTRUE(condition)) .miniextendr_arg_error("param", "requirement")`,
+    /// or with the author's message
+    /// `if (!isTRUE(condition)) .miniextendr_arg_error("param", message = "...")`.
     ///
     /// `call` is the call the error is attributed to. `None` leaves the
     /// helper's default, the wrapper's own call (what `stopifnot()` reported);
-    /// a `call = caller` wrapper passes `.mx_call` (#1548).
+    /// a `call = caller` wrapper passes `.mx_call` (#1548). Next to a named
+    /// `message` the call is named too: positionally it would bind to `what`.
     fn to_guard(&self, call: Option<&str>) -> String {
-        let call_arg = call.map(|c| format!(", {c}")).unwrap_or_default();
-        format!(
-            "if (!isTRUE({})) .miniextendr_arg_error(\"{}\", \"{}\"{})",
-            self.condition, self.param, self.requirement, call_arg
-        )
+        match &self.message {
+            None => {
+                let call_arg = call.map(|c| format!(", {c}")).unwrap_or_default();
+                format!(
+                    "if (!isTRUE({})) .miniextendr_arg_error(\"{}\", \"{}\"{})",
+                    self.condition, self.param, self.requirement, call_arg
+                )
+            }
+            Some(message) => {
+                let call_arg = call.map(|c| format!(", call = {c}")).unwrap_or_default();
+                format!(
+                    "if (!isTRUE({})) .miniextendr_arg_error(\"{}\", message = \"{}\"{})",
+                    self.condition,
+                    self.param,
+                    r_string_escape(message),
+                    call_arg
+                )
+            }
+        }
     }
 
     /// Wrap for nullable: prepend `is.null(param) || ` to the condition,
@@ -93,6 +124,7 @@ impl RAssertion {
             condition: format!("is.null({}) || {}", self.param, self.condition),
             param: self.param,
             requirement,
+            message: self.message,
         }
     }
 }
@@ -135,14 +167,26 @@ impl PreconditionOptions {
 /// raising the same argument error, and survive `no_preconditions` / `fast`: the
 /// Rust conversion cannot check them, so dropping them would change what the
 /// function accepts.
+///
+/// Each check can carry the author's own condition message
+/// (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`;
+/// method level `inherits(x(class = "cls", message = "..."))`,
+/// `no_na(x(message = "..."))`), used verbatim in place of the generated
+/// `'x' must inherit from 'cls'`. The condition is otherwise the same.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExplicitChecks {
     /// `inherits = "cls"` / `inherits("a", "b")`: the argument must inherit
     /// from at least one of these classes (`inherits(x, c(...))`).
     pub inherits: Option<Vec<String>>,
+    /// `message = "..."` in `inherits(...)`: the message of a failed class
+    /// check, for all of its classes. Only set together with `inherits`.
+    pub inherits_message: Option<String>,
     /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
     /// is refused too, as `is.na()` does).
     pub no_na: bool,
+    /// `no_na(message = "...")`: the message of a failed NA check. Only set
+    /// together with `no_na`.
+    pub no_na_message: Option<String>,
 }
 
 impl ExplicitChecks {
@@ -152,11 +196,21 @@ impl ExplicitChecks {
     }
 
     /// Merge `other` into `self` (a parameter may carry several attributes).
-    pub fn merge(&mut self, other: ExplicitChecks) {
+    ///
+    /// Fails when both give a message for the same check; the error names
+    /// the check.
+    pub fn merge(&mut self, other: ExplicitChecks) -> Result<(), String> {
+        merge_message(
+            &mut self.inherits_message,
+            other.inherits_message,
+            "inherits",
+        )?;
+        merge_message(&mut self.no_na_message, other.no_na_message, "no_na")?;
         if let Some(classes) = other.inherits {
             self.inherits.get_or_insert_with(Vec::new).extend(classes);
         }
         self.no_na |= other.no_na;
+        Ok(())
     }
 
     /// The assertions for parameter `param` of type `ty`.
@@ -175,11 +229,14 @@ impl ExplicitChecks {
             } else {
                 "be"
             };
-            out.push(RAssertion::new(
-                param,
-                format!("must not {verb} NA"),
-                format!("!anyNA({param})"),
-            ));
+            out.push(
+                RAssertion::new(
+                    param,
+                    format!("must not {verb} NA"),
+                    format!("!anyNA({param})"),
+                )
+                .with_message(self.no_na_message.as_ref()),
+            );
         }
         if let Some(classes) = &self.inherits {
             let quoted: Vec<String> = classes
@@ -199,11 +256,14 @@ impl ExplicitChecks {
                 [one] => one.clone(),
                 _ => format!("c({})", literals.join(", ")),
             };
-            out.push(RAssertion::new(
-                param,
-                format!("must inherit from {what}"),
-                format!("inherits({param}, {class_arg})"),
-            ));
+            out.push(
+                RAssertion::new(
+                    param,
+                    format!("must inherit from {what}"),
+                    format!("inherits({param}, {class_arg})"),
+                )
+                .with_message(self.inherits_message.as_ref()),
+            );
         }
         let guard = if crate::miniextendr_fn::is_missing_type(ty) {
             Some(format!("missing({param})"))
@@ -221,10 +281,54 @@ impl ExplicitChecks {
     }
 }
 
+/// Record `from` as the message of `check`, which may have only one.
+fn merge_message(
+    into: &mut Option<String>,
+    from: Option<String>,
+    check: &str,
+) -> Result<(), String> {
+    match (into.is_some(), from) {
+        (true, Some(_)) => Err(format!(
+            "`{check}` is given more than one `message` on this parameter; give it once"
+        )),
+        (false, Some(message)) => {
+            *into = Some(message);
+            Ok(())
+        }
+        (_, None) => Ok(()),
+    }
+}
+
 /// Escape `s` for the inside of an R double-quoted string literal (the
-/// requirement text and the class names in `inherits()`).
+/// requirement text, the class names in `inherits()` and the author's
+/// messages).
+///
+/// Besides `\` and `"`, a newline, carriage return or tab becomes its escape
+/// (a guard stays on one line of the wrappers file), any other control
+/// character and every non-ASCII character a `\u{..}` / `\U{..}` escape: R
+/// code in a package must be ASCII, and R reads these escapes back to the
+/// same UTF-8 text. A NUL cannot be written (R strings cannot hold one);
+/// the attribute parser rejects it in a message.
 fn r_string_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_ascii() && !c.is_ascii_control() => out.push(c),
+            c if u32::from(c) <= 0xFFFF => {
+                let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
+            }
+            c => {
+                let _ = write!(out, "\\U{{{:x}}}", u32::from(c));
+            }
+        }
+    }
+    out
 }
 
 /// Classification of an R-side type check for a function parameter.
@@ -1475,14 +1579,28 @@ mod tests {
     fn inherits(classes: &[&str]) -> ExplicitChecks {
         ExplicitChecks {
             inherits: Some(classes.iter().map(|c| c.to_string()).collect()),
-            no_na: false,
+            ..Default::default()
         }
     }
 
     fn no_na() -> ExplicitChecks {
         ExplicitChecks {
-            inherits: None,
             no_na: true,
+            ..Default::default()
+        }
+    }
+
+    fn with_inherits_message(classes: &[&str], message: &str) -> ExplicitChecks {
+        ExplicitChecks {
+            inherits_message: Some(message.to_string()),
+            ..inherits(classes)
+        }
+    }
+
+    fn with_no_na_message(message: &str) -> ExplicitChecks {
+        ExplicitChecks {
+            no_na_message: Some(message.to_string()),
+            ..no_na()
         }
     }
 
@@ -1565,6 +1683,7 @@ mod tests {
         let both = ExplicitChecks {
             inherits: Some(vec!["pkg_obj".into()]),
             no_na: true,
+            ..Default::default()
         };
         let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
@@ -1609,15 +1728,107 @@ mod tests {
     #[test]
     fn explicit_checks_merge() {
         let mut a = inherits(&["a"]);
-        a.merge(no_na());
-        a.merge(inherits(&["b"]));
+        a.merge(no_na()).unwrap();
+        a.merge(inherits(&["b"])).unwrap();
         assert_eq!(
             a,
             ExplicitChecks {
                 inherits: Some(vec!["a".into(), "b".into()]),
                 no_na: true,
+                ..Default::default()
             }
         );
         assert!(ExplicitChecks::default().is_empty());
+
+        // One message per check: it may come from either attribute, not both.
+        let mut b = inherits(&["a"]);
+        b.merge(with_inherits_message(&["b"], "one")).unwrap();
+        assert_eq!(b.inherits_message.as_deref(), Some("one"));
+        assert_eq!(b.inherits, Some(vec!["a".into(), "b".into()]));
+        b.merge(with_no_na_message("two")).unwrap();
+        assert_eq!(b.no_na_message.as_deref(), Some("two"));
+        let err = b.merge(with_inherits_message(&["c"], "three")).unwrap_err();
+        assert!(
+            err.contains("`inherits`") && err.contains("more than one `message`"),
+            "{err}"
+        );
+        let err = b.merge(with_no_na_message("four")).unwrap_err();
+        assert!(err.contains("`no_na`"), "{err}");
+    }
+
+    /// The author's message replaces `'<p>' <requirement>` verbatim: the
+    /// helper gets it as `message = `, and the call, when there is one, by
+    /// name too (after a named `message` a positional call would bind to
+    /// `what`). One message covers every class of the check.
+    #[test]
+    fn custom_messages_are_passed_verbatim_by_name() {
+        let checks = ExplicitChecks {
+            inherits: Some(vec!["pkg_a".into(), "pkg_b".into()]),
+            inherits_message: Some("`model` must be a `pkg_model`; see pkg_model().".into()),
+            no_na: true,
+            no_na_message: Some("no NA in `model`".into()),
+        };
+        let out = explicit_output("fn f(model: List)", &[("model", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(is.list(model))) .miniextendr_arg_error(\"model\", \"must be a list\")",
+                "if (!isTRUE(!anyNA(model))) .miniextendr_arg_error(\"model\", message = \"no NA in `model`\")",
+                "if (!isTRUE(inherits(model, c(\"pkg_a\", \"pkg_b\")))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\")",
+            ]
+        );
+        let caller = out.guards(Some(".mx_call"));
+        assert!(
+            caller[0].ends_with(".miniextendr_arg_error(\"model\", \"must be a list\", .mx_call)"),
+            "{}",
+            caller[0]
+        );
+        assert!(
+            caller[1].ends_with(
+                ".miniextendr_arg_error(\"model\", message = \"no NA in `model`\", call = .mx_call)"
+            ),
+            "{}",
+            caller[1]
+        );
+        // The `Option` / `Missing` guards are unchanged.
+        let optional = explicit_output(
+            "fn f(x: Option<List>)",
+            &[("x", with_inherits_message(&["pkg_obj"], "need a pkg_obj"))],
+            true,
+        );
+        assert_eq!(
+            optional.guards(None),
+            vec![
+                "if (!isTRUE(is.null(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")"
+            ]
+        );
+        let asserts = with_no_na_message("mine").assertions("x", &parse_type("f64"));
+        assert_eq!(asserts[0].message(), "mine");
+    }
+
+    /// A message is an R string literal: quotes, backslashes, newlines, tabs
+    /// and control characters are escaped, and non-ASCII text becomes
+    /// `\u{..}` / `\U{..}` escapes (R code in a package must be ASCII). `%`
+    /// needs nothing: the message never goes through `sprintf()`.
+    #[test]
+    fn custom_messages_are_escaped_as_r_string_literals() {
+        let message = "say \"hi\" \\ back\nline\ttab 100% caf\u{e9} \u{1F600} bell\u{7}";
+        let out = explicit_output("fn f(x: f64)", &[("x", with_no_na_message(message))], true);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                r#"if (!isTRUE(!anyNA(x))) .miniextendr_arg_error("x", message = "say \"hi\" \\ back\nline\ttab 100% caf\u{e9} \U{1f600} bell\u{7}")"#
+            ]
+        );
+        assert_eq!(r_string_escape("a\rb"), r"a\rb");
+        assert_eq!(r_string_escape("plain 'text'"), "plain 'text'");
+        // Class names take the same escaping.
+        let out = explicit_output("fn f(x: SEXP)", &[("x", inherits(&["caf\u{e9}"]))], true);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                r#"if (!isTRUE(inherits(x, "caf\u{e9}"))) .miniextendr_arg_error("x", "must inherit from 'caf\u{e9}'")"#
+            ]
+        );
     }
 }

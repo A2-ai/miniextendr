@@ -183,3 +183,133 @@ test_that("fast keeps the named check and the conversion error is the same kind"
 })
 
 # endregion
+
+# region: the author's messages (`message = ` on inherits / no_na)
+
+# src/rust/param_check_tests.rs: a custom message replaces the generated
+# `'<p>' must ...` text verbatim; the condition is otherwise the one every
+# argument error raises.
+
+mx_model <- function() structure(list(a = 1), class = "mx_model")
+
+test_that("a custom message is the only difference from the generated one", {
+  # Two fixtures that differ only in the message.
+  e1 <- caught(miniextendr:::param_model_default(list()))
+  e2 <- caught(miniextendr:::param_model_custom(list()))
+  expect_identical(conditionMessage(e1), "'model' must inherit from 'mx_model' or 'mx_model2'")
+  expect_identical(
+    conditionMessage(e2),
+    "`model` must be an `mx_model` object; create one with `mx_model()`."
+  )
+  expect_identical(class(e1), layers)
+  expect_identical(class(e2), class(e1))
+  expect_identical(e1$kind, "conversion")
+  expect_identical(e2$kind, e1$kind)
+  expect_identical(e1$param, "model")
+  expect_identical(e2$param, e1$param)
+  expect_null(e2$rust_type)
+  expect_equal(conditionCall(e1), quote(miniextendr:::param_model_default(list())))
+  expect_equal(conditionCall(e2), quote(miniextendr:::param_model_custom(list())))
+  # One message covers both classes, either of which passes.
+  expect_identical(miniextendr:::param_model_custom(mx_model()), 1L)
+  expect_identical(miniextendr:::param_model_custom(structure(list(), class = "mx_model2")), 0L)
+  # The type check before it keeps its generated message.
+  expect_identical(
+    conditionMessage(caught(miniextendr:::param_model_custom(1))),
+    "'model' must be a list"
+  )
+})
+
+test_that("the keyed spelling inherits(class = , message = ) works the same", {
+  expect_identical(miniextendr:::param_model_class_key(mx_model()), 1L)
+  e <- caught(miniextendr:::param_model_class_key(list()))
+  expect_identical(conditionMessage(e), "need an mx_model")
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "model")
+})
+
+test_that("a no_na message reaches R unchanged", {
+  e1 <- caught(miniextendr:::param_no_na_scalar(NA_real_))
+  e2 <- caught(miniextendr:::param_no_na_custom(NA_real_))
+  # Quotes, backticks, a backslash, `%` (no sprintf() on the way), a newline
+  # and a non-ASCII character.
+  expect_identical(
+    conditionMessage(e2),
+    "`x` can't be NA: it's \"required\" \\ 100% sure\nsee café()"
+  )
+  expect_identical(class(e2), class(e1))
+  expect_identical(e2$kind, e1$kind)
+  expect_identical(e2$param, "x")
+  expect_equal(conditionCall(e2), quote(miniextendr:::param_no_na_custom(NA_real_)))
+  expect_identical(conditionMessage(caught(miniextendr:::param_no_na_custom(NaN))), conditionMessage(e2))
+  expect_identical(miniextendr:::param_no_na_custom(1.5), 1.5)
+})
+
+test_that("fast keeps a check that has a message", {
+  e <- caught(miniextendr:::param_no_na_custom_fast(NA_real_))
+  expect_identical(conditionMessage(e), "no NA here")
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "x")
+})
+
+test_that("under call = caller a custom message keeps the caller's call", {
+  obj <- structure(list(), class = "mx_obj")
+  expect_identical(miniextendr:::param_checks_caller_msg(obj, 1), 1)
+  e1 <- caught(miniextendr:::param_checks_caller(list(), 1))
+  e2 <- caught(miniextendr:::param_checks_caller_msg(list(), 1))
+  expect_identical(conditionMessage(e2), "`x` must be an `mx_obj`")
+  expect_identical(class(e2), class(e1))
+  expect_identical(e2$kind, e1$kind)
+  expect_identical(e2$param, e1$param)
+  expect_equal(conditionCall(e1), quote(miniextendr:::param_checks_caller(x = list(), y = 1)))
+  expect_equal(conditionCall(e2), quote(miniextendr:::param_checks_caller_msg(x = list(), y = 1)))
+  e <- caught(miniextendr:::param_checks_caller_msg(obj, NA_real_))
+  expect_identical(conditionMessage(e), "`y` must not be NA")
+  expect_identical(e$param, "y")
+  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller_msg(x = obj, y = NA_real_)))
+})
+
+test_that("impl and trait methods take the method-level messages", {
+  h <- ParamCheckHolder$new()
+  expect_identical(h$add_checked(structure(list(), class = "mx_other"), 2), 2)
+  e1 <- caught(h$add(list(), 1))
+  e2 <- caught(h$add_checked(list(), 1))
+  expect_identical(conditionMessage(e1), "'x' must inherit from 'mx_obj' or 'mx_other'")
+  expect_identical(conditionMessage(e2), "`x` must be an `mx_obj` or an `mx_other`")
+  expect_identical(class(e2), class(e1))
+  expect_identical(e2$param, e1$param)
+  e <- caught(h$add_checked(structure(list(), class = "mx_obj"), NA_real_))
+  expect_identical(conditionMessage(e), "`y` must be a number, not NA")
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "y")
+
+  obj <- ScalerS7(2)
+  e <- caught(s7_trait_Scaler_scale(obj, x_factor = NA_real_))
+  expect_identical(conditionMessage(e), "`x_factor` must be a number, not NA")
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "x_factor")
+  # The fast-path shortcut runs the same check.
+  e <- caught(ScalerS7_scale(obj, x_factor = NA_real_))
+  expect_identical(conditionMessage(e), "`x_factor` must be a number, not NA")
+  expect_identical(e$param, "x_factor")
+  expect_equal(s7_trait_Scaler_scale(obj, x_factor = 3), 6)
+})
+
+# endregion
+
+# region: the S7 fallback receiver check
+
+test_that("a class_any method given a non-S7 receiver raises the argument error", {
+  # `describe_any` is registered for S7::class_any (src/rust/s7_tests.rs); the
+  # receiver check runs before the pointer is taken.
+  e <- caught(describe_any(1L))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "'x' must be an S7 object, got integer")
+  expect_null(e$rust_type)
+  expect_true(is.call(conditionCall(e)))
+  expect_identical(describe_any(S7Strict(123L)), "S7Strict with value 123")
+})
+
+# endregion

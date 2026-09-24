@@ -302,6 +302,9 @@ impl ScalerS7 {
 
 #[miniextendr(s7, internal)]
 impl Scaler for ScalerS7 {
+    /// `no_na(p(message = ...))` on a trait method: `x_factor = NA` is refused
+    /// in R with the author's message.
+    #[miniextendr(no_na(x_factor(message = "`x_factor` must be a number, not NA")))]
     fn scale(&mut self, x_factor: f64) -> f64 {
         self.value *= x_factor;
         self.value

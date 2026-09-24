@@ -798,4 +798,16 @@ pub fn producer_named_checks(
     format!("{mode}: {}", x.iter().sum::<f64>())
 }
 
+/// `no_na` / `inherits` with the author's messages: the message is the
+/// author's, the classes still the crate's.
+/// @param x A classed double vector without NA.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_named_checks_msg(
+    #[miniextendr(no_na(message = "`x` must not contain NA"))]
+    #[miniextendr(inherits(class = "producer_num", message = "`x` must be a `producer_num`"))]
+    x: Vec<f64>,
+) -> f64 {
+    x.iter().sum()
+}
+
 // endregion

@@ -750,9 +750,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // For fallback methods (class_any), check class before using @ to extract
         // the pointer. Non-S7 objects can't have @.ptr — error in R rather than
-        // passing a wrong type to Rust (which would segfault).
+        // passing a wrong type to Rust (which would segfault). The error is the
+        // shared argument error on the receiver `x` (#1591), attributed like
+        // `stop()` was to the method's call.
         let self_expr = if method_attrs.s7.fallback {
-            "if (inherits(x, \"S7_object\")) x@.ptr else stop(paste0(\"expected an S7 object, got \", class(x)[[1]]))"
+            "if (inherits(x, \"S7_object\")) x@.ptr else .miniextendr_arg_error(\"x\", paste0(\"must be an S7 object, got \", class(x)[[1L]]))"
         } else {
             "x@.ptr"
         };

@@ -1,6 +1,4 @@
-use crate::miniextendr_fn::{
-    MiniextendrFnAttrs, MiniextendrFunctionParsed, is_miniextendr_coerce_attr,
-};
+use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 #[test]
 fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
     let parsed: MiniextendrFunctionParsed =
@@ -74,7 +72,10 @@ fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
         panic!("expected ident pattern");
     };
     assert_eq!(first_ident.ident, "__unused0");
-    assert!(!first.attrs.iter().any(is_miniextendr_coerce_attr));
+    assert!(
+        first.attrs.is_empty(),
+        "the per-parameter attribute is consumed"
+    );
 }
 
 #[test]
@@ -104,6 +105,205 @@ fn parsed_fn_errors_on_non_ident_dots_pattern() {
             .contains("variadic pattern must be a simple identifier")
     );
 }
+
+// region: per-parameter `inherits` / `no_na` and their messages
+
+/// The `inherits` / `no_na` spellings of one parameter, keyed by R name.
+fn param_checks(
+    tokens: proc_macro2::TokenStream,
+) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {
+    syn::parse2::<MiniextendrFunctionParsed>(tokens)
+        .expect("should parse")
+        .explicit_checks()
+}
+
+/// The error a parameter attribute raises, as text.
+fn param_attr_error(tokens: proc_macro2::TokenStream) -> String {
+    syn::parse2::<MiniextendrFunctionParsed>(tokens)
+        .err()
+        .expect("should fail")
+        .to_string()
+}
+
+/// Every spelling of `inherits` / `no_na` lands in the same checks: the
+/// #1586 forms without a message, and `class = ` / positional classes or
+/// `no_na(...)` with one. One message covers every class of the check, and
+/// the checks of two attributes on one parameter merge.
+#[test]
+fn parsed_fn_param_check_spellings() {
+    let checks = param_checks(quote::quote! {
+        fn f(
+            #[miniextendr(inherits = "a")] a: List,
+            #[miniextendr(inherits("b1", "b2"))] b: List,
+            #[miniextendr(inherits(class = "c", message = "`c` must be a `c`; see c()."))] c: List,
+            #[miniextendr(inherits("d1", class = "d2", message = "one for both"))] d: List,
+            #[miniextendr(no_na)] e: f64,
+            #[miniextendr(no_na(message = "no NA in `g`"))] g: f64,
+            #[miniextendr(no_na(message = "n"), inherits(class = "h", message = "i"))] h: Vec<f64>,
+            #[miniextendr(inherits("k1"))]
+            #[miniextendr(inherits(class = "k2", message = "m"))]
+            k: List,
+        ) {}
+    });
+    let classes = |p: &str| checks[p].inherits.clone().unwrap();
+    let inherits_message = |p: &str| checks[p].inherits_message.as_deref();
+    let no_na_message = |p: &str| checks[p].no_na_message.as_deref();
+
+    assert_eq!(classes("a"), ["a"]);
+    assert_eq!(inherits_message("a"), None);
+    assert_eq!(classes("b"), ["b1", "b2"]);
+    assert_eq!(inherits_message("b"), None);
+    assert_eq!(classes("c"), ["c"]);
+    assert_eq!(inherits_message("c"), Some("`c` must be a `c`; see c()."));
+    assert_eq!(classes("d"), ["d1", "d2"]);
+    assert_eq!(inherits_message("d"), Some("one for both"));
+    assert!(checks["e"].no_na && checks["e"].inherits.is_none());
+    assert_eq!(no_na_message("e"), None);
+    assert!(checks["g"].no_na);
+    assert_eq!(no_na_message("g"), Some("no NA in `g`"));
+    assert!(checks["h"].no_na);
+    assert_eq!(no_na_message("h"), Some("n"));
+    assert_eq!(classes("h"), ["h"]);
+    assert_eq!(inherits_message("h"), Some("i"));
+    assert_eq!(classes("k"), ["k1", "k2"]);
+    assert_eq!(inherits_message("k"), Some("m"));
+
+    // `class = "a, b"` is one class at parameter level (no comma splitting).
+    let checks = param_checks(quote::quote! {
+        fn f(#[miniextendr(inherits(class = "a, b", message = "m"))] x: List) {}
+    });
+    assert_eq!(checks["x"].inherits.clone().unwrap(), ["a, b"]);
+}
+
+/// The forms a message cannot take, each with an error that says why.
+#[test]
+fn parsed_fn_param_check_message_errors() {
+    for (tokens, expected) in [
+        (
+            quote::quote! { fn f(#[miniextendr(inherits(class = "a", message = ""))] x: List) {} },
+            "`message` in `inherits(...)` must not be empty",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_na(message = "  "))] x: f64) {} },
+            "`message` in `no_na(...)` must not be empty",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(inherits(message = "m"))] x: List) {} },
+            "`message` in `inherits(...)` needs a class to check",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(inherits(class = "a", msg = "m"))] x: List) {} },
+            "unknown `inherits` option `msg`",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_na(msg = "m"))] x: f64) {} },
+            "unknown `no_na` option; expected `message = \"...\"`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", message = "m", message = "n"))] x: List) {}
+            },
+            "`message` is given more than once in `inherits(...)`",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(inherits("a", message = "m"))]
+                    #[miniextendr(inherits("b", message = "n"))]
+                    x: List,
+                ) {}
+            },
+            "`inherits` is given more than one `message` on this parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_na(message = "a\0b"))] x: f64) {} },
+            "must not contain a NUL character",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(inherits(1))] x: List) {} },
+            "expected identifier",
+        ),
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+}
+
+/// The method-level spellings shared by impl and trait methods:
+/// `no_na(p, q(message = ...))` and
+/// `inherits(p = "a, b", q(class = "a, b", message = ...))`, with the
+/// classes of a method-level entry split on commas.
+#[test]
+fn method_level_param_check_spellings_and_errors() {
+    use syn::parse::Parser as _;
+    let parse = |tokens: proc_macro2::TokenStream| {
+        let mut per_param = std::collections::HashMap::new();
+        syn::meta::parser(|meta| {
+            if meta.path.is_ident("no_na") {
+                crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)
+            } else {
+                crate::miniextendr_fn::parse_method_inherits(&meta, &mut per_param)
+            }
+        })
+        .parse2(tokens)
+        .map(|()| per_param)
+        .map_err(|e| e.to_string())
+    };
+
+    let per_param = parse(quote::quote! {
+        no_na(p, q(message = "no NA in `q`")),
+        inherits(p = "a, b", q(class = "c, d", message = "`q` must be a c or d"), r(class = "e"))
+    })
+    .expect("should parse");
+    let checks = |p: &str| &per_param[p].checks;
+    assert!(checks("p").no_na && checks("p").no_na_message.is_none());
+    assert_eq!(checks("p").inherits.clone().unwrap(), ["a", "b"]);
+    assert!(checks("p").inherits_message.is_none());
+    assert_eq!(checks("q").no_na_message.as_deref(), Some("no NA in `q`"));
+    assert_eq!(checks("q").inherits.clone().unwrap(), ["c", "d"]);
+    assert_eq!(
+        checks("q").inherits_message.as_deref(),
+        Some("`q` must be a c or d")
+    );
+    assert_eq!(checks("r").inherits.clone().unwrap(), ["e"]);
+    assert!(!checks("r").no_na);
+
+    for (tokens, expected) in [
+        (
+            quote::quote! { inherits(q(message = "m")) },
+            "`inherits(q(...))` needs `class = \"...\"`",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", msg = "m")) },
+            "unknown `inherits` option",
+        ),
+        (
+            quote::quote! { no_na(q(msg = "m")) },
+            "unknown `no_na` option",
+        ),
+        (
+            quote::quote! { no_na(q(message = "")) },
+            "must not be empty",
+        ),
+        (
+            quote::quote! { inherits(q) },
+            "expected `q = \"cls\"` or `q(class = \"cls\", message = \"...\")`",
+        ),
+        (
+            quote::quote! { inherits(q(class = "", message = "m")) },
+            "needs one or more class names",
+        ),
+        (
+            quote::quote! { no_na(q(message = "a"), q(message = "b")) },
+            "`no_na` is given more than one `message`",
+        ),
+    ] {
+        let err = parse(tokens).expect_err("should fail");
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+}
+
+// endregion
 
 #[test]
 fn miniextendr_attr_rejects_unknown_options() {
