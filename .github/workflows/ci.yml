@@ -299,6 +299,9 @@ jobs:
       - name: AGENTS.md sibling check
         run: just agents-md-check
 
+      - name: Merge driver for regenerated files
+        run: just test-merge-drivers
+
       - name: Check docs index coverage
         shell: bash
         run: |
