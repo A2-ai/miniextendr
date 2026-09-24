@@ -309,6 +309,46 @@ fn generate_preserves_original_trait() {
     assert!(output_str.contains("pub trait Counter"));
     assert!(output_str.contains("fn value"));
 }
+
+/// The View protects each converted argument before the next conversion
+/// allocates, and the returned SEXP until it is converted back to Rust.
+#[test]
+fn view_method_roots_arguments_and_result() {
+    let method: syn::TraitItemFn = syn::parse2(quote::quote! {
+        fn join(&self, a: String, b: Vec<f64>) -> String;
+    })
+    .unwrap();
+    let info = extract_method_info(&method).unwrap();
+    let view = generate_view_method(&info).unwrap().to_string();
+    assert!(
+        view.contains(":: miniextendr_api :: gc_protect :: ProtectScope :: new ()"),
+        "{view}"
+    );
+    for arg in ["a", "b"] {
+        assert!(
+            view.contains(&format!(
+                "__mx_roots . protect_raw (:: miniextendr_api :: trait_abi :: to_sexp ({arg}))"
+            )),
+            "{view}"
+        );
+    }
+    assert!(
+        view.contains("let result = __mx_roots . protect_raw ({"),
+        "{view}"
+    );
+}
+
+/// A method with no arguments and no return value has nothing to root.
+#[test]
+fn view_method_without_arguments_or_result_opens_no_scope() {
+    let method: syn::TraitItemFn = syn::parse2(quote::quote! {
+        fn touch(&mut self);
+    })
+    .unwrap();
+    let info = extract_method_info(&method).unwrap();
+    let view = generate_view_method(&info).unwrap().to_string();
+    assert!(!view.contains("ProtectScope"), "{view}");
+}
 // endregion
 
 // region: MethodInfo extraction tests
