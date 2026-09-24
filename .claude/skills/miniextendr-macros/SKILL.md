@@ -172,7 +172,13 @@ page — the extras become aliases with concatenated usage/params, with no
 diagnostic. Impl-block/class entries group by class name instead. For one man
 page per function, put an explicit `#' @rdname <fn_name>` on each free
 function. Making per-function pages the default (grouping opt-in) is proposed
-in A2-ai/miniextendr#1289.
+in A2-ai/miniextendr#1289. The same pass (`resolve_standalone_pages`) resolves
+the macro's marked `@param` fillers (`.__MX_PARAM_FILLER__`) per page, keeping
+one only where no function on the page documents the argument, and adds
+`@order NaN` to blocks that join another topic (`@describeIn`, or an `@rdname`
+naming neither the file stem nor the block's own name), so that topic's own
+block names and titles the merged page (`docs/S3_METHODS.md`, "Parameters on
+shared pages").
 
 ### Trait ABI shims
 
