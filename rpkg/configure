@@ -2455,6 +2455,11 @@ if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
   as_fn_error $? "rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM" "$LINENO" 5
 fi
 
+if test "$IS_TARBALL_INSTALL" != "true"; then
+  "${R_HOME}/bin/Rscript" "${srcdir}/tools/dev-bootstrap.R" configure || \
+    as_fn_error $? "a path dependency outside the package is missing; see the message above" "$LINENO" 5
+fi
+
 
 : ${RUST_TOOLCHAIN=""}
 
