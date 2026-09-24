@@ -41,7 +41,7 @@ struct_prefer_native(x)
 pref_rows_as_data_frame()
 }
 \arguments{
-\item{x}{(no documentation available)}
+\item{x}{An integer stored in the wrapped value.}
 }
 \description{
 Wraps a type implementing ExternalPtr, IntoList, and RNativeType with \code{AsList} to force VECSXP.
