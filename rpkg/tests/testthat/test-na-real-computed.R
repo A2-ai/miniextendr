@@ -104,6 +104,15 @@ test_that("Arrow nulls follow R_IsNA", {
   expect_identical(arrow_na_f64_null_positions(v), c(FALSE, TRUE, FALSE))
 })
 
+test_that("Arrow dates and times treat NaN as missing, as R does", {
+  # R reads a NaN date or time as NA (`is.na(as.Date(NaN))`); casting it to
+  # Arrow's integer storage would give the epoch instead.
+  d <- arrow_date_roundtrip(as.Date(c(19000, NaN, NA)))
+  expect_identical(is.na(d), c(FALSE, TRUE, TRUE))
+  t <- arrow_posixct_roundtrip(.POSIXct(c(0, NaN, NA), tz = "UTC"))
+  expect_identical(is.na(t), c(FALSE, TRUE, TRUE))
+})
+
 test_that("num-complex treats a computed NA part as NA", {
   skip_if_missing_feature("num-complex")
   skip_unless_computed_na_differs()

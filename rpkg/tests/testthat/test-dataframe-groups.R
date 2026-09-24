@@ -338,9 +338,10 @@ test_that("select_rows with matrix columns survives gctorture", {
   skip_gc_stress_if_disabled()
   df <- row_shaped_frame()
   ref <- df[c(4L, 2L), , drop = FALSE]
-  gctorture(TRUE)
+  old <- gctorture(TRUE)
+  on.exit(gctorture(old), add = TRUE)
   out <- miniextendr:::dataframe_select_rows(df, c(4L, 2L))
-  gctorture(FALSE)
+  gctorture(old)
   expect_equal(out, ref, ignore_attr = "row.names")
 })
 
