@@ -256,6 +256,9 @@ pub enum SexpError {
     MissingField(String),
     /// A named list has duplicate non-empty names.
     DuplicateName(String),
+    /// A `match_arg` choice did not match (from `#[derive(MatchArg)]`'s
+    /// `TryFromSexp`), kept whole so the argument error names the choices.
+    MatchArg(crate::match_arg::MatchArgError),
     /// Failed to convert to `Either<L, R>` - both branches failed.
     ///
     /// Contains the errors from attempting both conversions, so the argument
@@ -304,6 +307,18 @@ impl SexpLengthError {
 }
 
 impl SexpError {
+    /// What the value should have been, in R terms, when the error itself
+    /// knows (a `match_arg` choice: `one of "fast", "slow"`) and the argument's
+    /// Rust type does not tell the macro (#1594): the generated wrapper then
+    /// writes `'<p>' must be <this>: <reason>` instead of
+    /// `invalid '<p>' argument: <reason>`.
+    pub(crate) fn r_expectation(&self) -> Option<String> {
+        match self {
+            SexpError::MatchArg(e) => Some(e.expectation()),
+            _ => None,
+        }
+    }
+
     /// The reason of this conversion error in R terms, the text after
     /// `'<p>' must be <expected>: ` in an argument error (#1591). `Display`
     /// is written for the package author (SEXPTYPE names, `invalid value: `);
@@ -318,6 +333,8 @@ impl SexpError {
     /// | NA | either | `NA is not allowed` |
     /// | invalid value | either | the value's own text, without `invalid value: ` |
     /// | missing field / duplicate name | either | `missing field 'x'` / `duplicate name 'x'` |
+    /// | `match_arg` | yes | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
+    /// | `match_arg` | no | `expected one of "a", "b", got "zzz"` |
     /// | `Either` | either | see below |
     ///
     /// `expected_known` says whether the text before the reason already
@@ -340,6 +357,7 @@ impl SexpError {
             SexpError::InvalidValue(msg) => msg.clone(),
             SexpError::MissingField(name) => format!("missing field '{name}'"),
             SexpError::DuplicateName(name) => format!("duplicate name '{name}'"),
+            SexpError::MatchArg(e) => e.r_reason(expected_known),
             #[cfg(feature = "either")]
             SexpError::EitherConversion {
                 left_error,
@@ -378,6 +396,7 @@ impl std::fmt::Display for SexpError {
             SexpError::InvalidValue(msg) => write!(f, "invalid value: {}", msg),
             SexpError::MissingField(name) => write!(f, "missing field: {}", name),
             SexpError::DuplicateName(name) => write!(f, "duplicate name in list: {:?}", name),
+            SexpError::MatchArg(e) => write!(f, "{}", e),
             #[cfg(feature = "either")]
             SexpError::EitherConversion {
                 left_error,
@@ -400,6 +419,7 @@ impl std::error::Error for SexpError {
             SexpError::InvalidValue(_) => None,
             SexpError::MissingField(_) => None,
             SexpError::DuplicateName(_) => None,
+            SexpError::MatchArg(e) => Some(e),
             #[cfg(feature = "either")]
             SexpError::EitherConversion { .. } => None,
         }
@@ -1618,7 +1638,20 @@ where
                 coerce_value(v)
             }
         },
-        coerce_value,
+        // `NA_real_` fails an integer target's coercion as NaN; say NA, as for
+        // the other storages. (A float target keeps it, as NaN.)
+        |v: f64| {
+            coerce_value(v).map_err(|e| {
+                if is_na_real(v) {
+                    SexpNaError {
+                        sexp_type: SEXPTYPE::REALSXP,
+                    }
+                    .into()
+                } else {
+                    e
+                }
+            })
+        },
         coerce_value,
         |v: RLogical| {
             if v.is_na() {

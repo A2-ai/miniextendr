@@ -1308,6 +1308,69 @@ macro_rules! __mx_conversion_err_parts {
     }};
 }
 
+/// Expectation probe, built-in arm: an error that knows what the value should
+/// have been. A `match_arg` choice error (`MatchArgError`, or a `SexpError`
+/// carrying one, as `#[derive(MatchArg)]`'s `TryFromSexp` returns) names its
+/// choices: `one of "fast", "slow"`.
+#[doc(hidden)]
+pub trait ConversionExpectBuiltin {
+    fn __mx_conversion_expectation(&self) -> Option<String>;
+}
+
+impl ConversionExpectBuiltin for crate::from_r::SexpError {
+    fn __mx_conversion_expectation(&self) -> Option<String> {
+        self.r_expectation()
+    }
+}
+
+impl ConversionExpectBuiltin for crate::match_arg::MatchArgError {
+    fn __mx_conversion_expectation(&self) -> Option<String> {
+        Some(self.expectation())
+    }
+}
+
+/// Expectation probe, fallback arm: any other error type says nothing about
+/// what the value should have been.
+#[doc(hidden)]
+pub trait ConversionExpectNone {
+    fn __mx_conversion_expectation(&self) -> Option<String>;
+}
+
+impl<E> ConversionExpectNone for &E {
+    fn __mx_conversion_expectation(&self) -> Option<String> {
+        None
+    }
+}
+
+/// Internal: what a failed argument conversion's error says the value should
+/// have been, for a parameter whose Rust type gives the macro no R-facing
+/// expectation (#1594). `Some("one of \"fast\", \"slow\"")` for a `match_arg`
+/// choice error, `None` otherwise. Not public API.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_conversion_expectation {
+    ($e:expr) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ConversionExpectBuiltin as _, ConversionExpectNone as _};
+        match &$e {
+            __mx_e => __mx_e.__mx_conversion_expectation(),
+        }
+    }};
+}
+
+/// The message prefix of a conversion failure whose expectation comes from
+/// the error at run time (see [`crate::__mx_conversion_expectation!`]):
+/// `'<p>' must be <expected>` (`'<p>' must be NULL or <expected>` for an
+/// `Option<_>` parameter, `nullable`), else `invalid '<p>' argument`.
+#[doc(hidden)]
+pub fn conversion_prefix(param: &str, nullable: bool, expected: Option<&str>) -> String {
+    match expected {
+        Some(expected) if nullable => format!("'{param}' must be NULL or {expected}"),
+        Some(expected) => format!("'{param}' must be {expected}"),
+        None => format!("invalid '{param}' argument"),
+    }
+}
+
 /// The name of the structured field that carries the failing parameter's R
 /// name on every argument-conversion condition (`e$param`).
 const CONVERSION_PARAM_FIELD: &str = "param";
@@ -2303,14 +2366,19 @@ mod condition_macro_tests {
         // `MatchArgError` takes the built-in arm too: R-worded, and after the
         // `one of ...` expectation just the input.
         use crate::match_arg::MatchArgError;
-        let e = MatchArgError::IsNa;
-        let parts = crate::__mx_conversion_err_parts!(e);
-        assert_eq!(parts.message, "NA is not allowed");
+        const CHOICES: &[&str] = &["fast", "slow"];
+        let e = MatchArgError::IsNa { choices: CHOICES };
+        let parts = crate::__mx_conversion_err_parts!(e.clone());
+        assert_eq!(parts.message, r#"expected one of "fast", "slow", got NA"#);
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            "NA is not allowed"
+        );
         let e = MatchArgError::NoMatch {
             input: "zzz".into(),
-            choices: &["fast", "slow"],
+            choices: CHOICES,
         };
         assert_eq!(
             crate::__mx_conversion_err_parts!(e.clone()).message,
@@ -2320,17 +2388,24 @@ mod condition_macro_tests {
             crate::__mx_conversion_err_parts!(e, true).message,
             r#"got "zzz""#
         );
-        let e = MatchArgError::InvalidType(SEXPTYPE::REALSXP);
+        let e = MatchArgError::InvalidType {
+            actual: SEXPTYPE::REALSXP,
+            choices: CHOICES,
+        };
         assert_eq!(
             crate::__mx_conversion_err_parts!(e.clone()).message,
-            "expected a string or factor, got numeric"
+            r#"expected one of "fast", "slow" (a string or factor), got numeric"#
         );
         assert_eq!(
             crate::__mx_conversion_err_parts!(e, true).message,
             "got numeric"
         );
+        let e = MatchArgError::InvalidLength {
+            actual: 2,
+            choices: CHOICES,
+        };
         assert_eq!(
-            crate::__mx_conversion_err_parts!(MatchArgError::InvalidLength(2), true).message,
+            crate::__mx_conversion_err_parts!(e, true).message,
             "got length 2"
         );
 
@@ -2339,6 +2414,47 @@ mod condition_macro_tests {
         let parts = crate::__mx_conversion_err_parts!(String::from("bad input"), true);
         assert_eq!(parts.message, "bad input");
         assert!(parts.class.is_empty());
+    }
+
+    /// A `match_arg` choice error knows what the value should have been, as a
+    /// `MatchArgError` or inside the `SexpError` `#[derive(MatchArg)]`'s
+    /// `TryFromSexp` returns; other errors do not (#1594). The prefix built
+    /// from it reads like a statically known one.
+    #[test]
+    fn conversion_expectation_probe_names_match_arg_choices() {
+        use super::conversion_prefix;
+        use crate::from_r::SexpError;
+        use crate::match_arg::MatchArgError;
+        let e = MatchArgError::NoMatch {
+            input: "zzz".into(),
+            choices: &["fast", "slow"],
+        };
+        let expected = Some(r#"one of "fast", "slow""#.to_string());
+        assert_eq!(crate::__mx_conversion_expectation!(e.clone()), expected);
+        let e = SexpError::from(e);
+        assert_eq!(crate::__mx_conversion_expectation!(e.clone()), expected);
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            r#"got "zzz""#
+        );
+        assert_eq!(
+            crate::__mx_conversion_expectation!(SexpError::InvalidValue("x".into())),
+            None
+        );
+        assert_eq!(
+            crate::__mx_conversion_expectation!(String::from("bad input")),
+            None
+        );
+
+        assert_eq!(
+            conversion_prefix("mode", false, expected.as_deref()),
+            r#"'mode' must be one of "fast", "slow""#
+        );
+        assert_eq!(
+            conversion_prefix("mode", true, expected.as_deref()),
+            r#"'mode' must be NULL or one of "fast", "slow""#
+        );
+        assert_eq!(conversion_prefix("x", true, None), "invalid 'x' argument");
     }
 
     /// The conversion probe's preferred arm: an `RConditionError` error type

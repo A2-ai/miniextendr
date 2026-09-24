@@ -728,6 +728,10 @@ struct ArgContext {
     /// The Rust type as written in the signature, `e$rust_type`: kept for the
     /// package author, out of the user-facing message.
     rust_type: String,
+    /// Whether the value may be `NULL` (an `Option<_>`, under any `Missing`):
+    /// an expectation the error supplies at run time then reads
+    /// `NULL or <expected>`. Only used when `expected_known` is `false`.
+    nullable: bool,
 }
 
 impl ArgContext {
@@ -757,11 +761,13 @@ impl ArgContext {
             Some(expected) => format!("'{r_name}' must be {expected}"),
             None => format!("invalid '{r_name}' argument"),
         };
+        let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
         Self {
             prefix,
             expected_known: expected.is_some(),
             r_name: r_name.to_string(),
             rust_type: crate::type_inspect::type_display(ty),
+            nullable: crate::type_inspect::is_option_type(value_ty),
         }
     }
 }
@@ -783,18 +789,73 @@ fn conversion_err_arm(
         expected_known,
         r_name,
         rust_type,
+        nullable,
     } = ctx;
+    let value = conversion_value_tokens(
+        expected_known.then_some(prefix.as_str()),
+        r_name,
+        *nullable,
+        Some(rust_type),
+        crate_class,
+        &quote! { Some(__miniextendr_call) },
+    );
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
-        Err(e) => return unsafe { ::miniextendr_api::error_value::conversion_condition_value(
-            #prefix,
-            #r_name,
-            ::core::option::Option::Some(#rust_type),
-            &[#(#crate_class),*],
-            ::miniextendr_api::__mx_conversion_err_parts!(e, #expected_known),
-            Some(__miniextendr_call),
-        ) },
+        Err(e) => return unsafe { #value },
+    }
+}
+
+/// The `conversion_condition_value(...)` expression for the error bound as
+/// `e`: parameter `param`, Rust type `rust_type` (`e$rust_type`), the crate
+/// class and `call`.
+///
+/// With `static_prefix` (the macro knows the R-facing expectation,
+/// `'<p>' must be <expected>`) the prefix is that literal. Without one, the
+/// error may know what the value should have been (a `match_arg` choice
+/// error: `one of "fast", "slow"`, #1594), so the prefix is built on the
+/// failure path from `__mx_conversion_expectation!(e)` by
+/// `condition::conversion_prefix` (`NULL or ...` when `nullable`), falling
+/// back to `invalid '<p>' argument`. Shared by the argument conversions and
+/// the sidecar setters.
+pub(crate) fn conversion_value_tokens(
+    static_prefix: Option<&str>,
+    param: &str,
+    nullable: bool,
+    rust_type: Option<&str>,
+    crate_class: &[String],
+    call: &TokenStream,
+) -> TokenStream {
+    let rust_type = match rust_type {
+        Some(t) => quote! { ::core::option::Option::Some(#t) },
+        None => quote! { ::core::option::Option::None },
+    };
+    match static_prefix {
+        Some(prefix) => quote! {
+            ::miniextendr_api::error_value::conversion_condition_value(
+                #prefix,
+                #param,
+                #rust_type,
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                #call,
+            )
+        },
+        None => quote! {{
+            let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
+            ::miniextendr_api::error_value::conversion_condition_value(
+                &::miniextendr_api::condition::conversion_prefix(
+                    #param,
+                    #nullable,
+                    __mx_expected.as_deref(),
+                ),
+                #param,
+                #rust_type,
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
+                #call,
+            )
+        }},
     }
 }
 

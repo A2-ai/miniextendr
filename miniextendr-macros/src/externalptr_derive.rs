@@ -593,34 +593,27 @@ fn generate_setter_body(
     // field's R-facing expectation, `e$param == "value"`, the field's Rust type
     // as `e$rust_type` and the crate's `conversion_error_class`. A
     // `Conversion` slot's expectation comes from the same type table as an
-    // argument's (else `invalid 'value' argument`); a scalar slot reads its
-    // value with `Rf_as*`, which has no error value, so the reason is worded
-    // from the rejected value (`from_r::scalar_rejection_reason`).
+    // argument's, else from the error at run time, else `invalid 'value'
+    // argument` (`rust_conversion_builder::conversion_value_tokens`); a scalar
+    // slot reads its value with `Rf_as*`, which has no error value, so the
+    // reason is worded from the rejected value (`from_r::scalar_rejection_reason`).
     let crate_class = crate::crate_config::conversion_error_class();
     let rust_type = crate::type_inspect::type_display(&slot.ty);
-    let conversion_err =
-        |expected: Option<String>, err: proc_macro2::TokenStream| -> proc_macro2::TokenStream {
-            let expected_known = expected.is_some();
-            let prefix = match expected {
-                Some(expected) => format!("'value' must be {expected}"),
-                None => "invalid 'value' argument".to_string(),
-            };
-            quote::quote! {
-                ::miniextendr_api::error_value::conversion_condition_value(
-                    #prefix,
-                    "value",
-                    ::core::option::Option::Some(#rust_type),
-                    &[#(#crate_class),*],
-                    ::miniextendr_api::__mx_conversion_err_parts!(#err, #expected_known),
-                    ::core::option::Option::None,
-                )
-            }
-        };
     let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
-        conversion_err(
-            Some(expected.to_string()),
-            quote::quote!(::miniextendr_api::from_r::scalar_rejection_reason(value)),
-        )
+        let prefix = format!("'value' must be {expected}");
+        quote::quote! {
+            ::miniextendr_api::error_value::conversion_condition_value(
+                #prefix,
+                "value",
+                ::core::option::Option::Some(#rust_type),
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(
+                    ::miniextendr_api::from_r::scalar_rejection_reason(value),
+                    true
+                ),
+                ::core::option::Option::None,
+            )
+        }
     };
 
     match slot.kind {
@@ -692,9 +685,17 @@ fn generate_setter_body(
         }
         SlotKind::Conversion => {
             let ty = &slot.ty;
-            let err_value = conversion_err(
-                crate::r_preconditions::conversion_expectation(ty, false),
-                quote::quote!(e),
+            // The field type's expectation, else the one the error knows at
+            // run time (a `match_arg` enum field), as for an argument.
+            let prefix = crate::r_preconditions::conversion_expectation(ty, false)
+                .map(|expected| format!("'value' must be {expected}"));
+            let err_value = crate::rust_conversion_builder::conversion_value_tokens(
+                prefix.as_deref(),
+                "value",
+                crate::type_inspect::is_option_type(ty),
+                Some(&rust_type),
+                &crate_class,
+                &quote::quote!(::core::option::Option::None),
             );
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
@@ -1507,9 +1508,12 @@ mod tests {
         assert!(s.contains("Some (\"Vec<String>\")"), "{s}");
         assert!(s.contains(", true)"), "{s}");
 
+        // No static expectation: the error may supply one at run time (a
+        // `match_arg` enum field), else `invalid 'value' argument`.
         let s = body(syn::parse_quote!(MyType), super::SlotKind::Conversion);
-        assert!(s.contains("\"invalid 'value' argument\""), "{s}");
-        assert!(s.contains(", false)"), "{s}");
+        assert!(s.contains("__mx_conversion_expectation ! (e)"), "{s}");
+        assert!(s.contains("conversion_prefix (\"value\" , false ,"), "{s}");
+        assert!(s.contains("Some (\"MyType\")"), "{s}");
     }
 
     /// The R6 active-binding and S7 property integration code also call the

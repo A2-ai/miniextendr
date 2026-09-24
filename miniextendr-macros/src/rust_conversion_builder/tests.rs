@@ -98,9 +98,20 @@ fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
 fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
     let s = conversion_text(&RustConversionBuilder::new(), "_nums: Hyperparams<i32>");
     assert!(s.contains("conversion_condition_value"), "{s}");
-    assert!(s.contains("__mx_conversion_err_parts ! (e , false)"), "{s}");
+    // The error may still know its expectation (a `match_arg` choice error,
+    // #1594): the prefix is built on the failure path, `invalid 'nums'
+    // argument` when it does not.
+    assert!(s.contains("__mx_conversion_expectation ! (e)"), "{s}");
     assert!(
-        s.contains("\"invalid 'nums' argument\" , \"nums\" , :: core :: option :: Option :: Some (\"Hyperparams<i32>\") , & []"),
+        s.contains("conversion_prefix (\"nums\" , false , __mx_expected . as_deref () ,)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
+        "{s}"
+    );
+    assert!(
+        s.contains("\"nums\" , :: core :: option :: Option :: Some (\"Hyperparams<i32>\") , & []"),
         "{s}"
     );
     assert!(!s.contains("failed to convert"), "{s}");
