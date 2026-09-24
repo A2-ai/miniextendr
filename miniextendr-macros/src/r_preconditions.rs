@@ -224,9 +224,7 @@ impl ExplicitChecks {
         let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
         let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
         if self.no_na {
-            let verb = if crate::miniextendr_fn::is_vector_like_type(value_ty)
-                || r_check_for_type(value_ty).is_some_and(|check| check.is_vector())
-            {
+            let verb = if is_vector_valued(value_ty) {
                 "contain"
             } else {
                 "be"
@@ -281,6 +279,27 @@ impl ExplicitChecks {
         }
         out
     }
+}
+
+/// Whether an argument of Rust type `ty` holds several values, so a `no_na`
+/// failure reads `must not contain NA` rather than `must not be NA`.
+///
+/// The type table decides when it knows the type ([`RTypeCheck::is_vector`]):
+/// `Vec<T>` and slices, the vector markers (`AsNumericVec`, `AsCharacterVec`,
+/// any marker whose table entry is a vector check), maps and lists. For a type the
+/// table does not know, the shape decides: `Vec<T>`, `Box<[T]>`, slices and
+/// arrays, and a type named `...Vec` (the vector half of a marker family such
+/// as `AsFromStrVec` / `AsDisplayVec`, or a vector type like `BitVec`).
+fn is_vector_valued(ty: &syn::Type) -> bool {
+    if let Some(check) = r_check_for_type(ty) {
+        return check.is_vector();
+    }
+    crate::miniextendr_fn::is_vector_like_type(ty)
+        || matches!(
+            ty,
+            syn::Type::Path(tp)
+                if tp.path.segments.last().is_some_and(|s| s.ident.to_string().ends_with("Vec"))
+        )
 }
 
 /// Record `from` as the message of `check`, which may have only one.
@@ -554,6 +573,28 @@ impl RTypeCheck {
         }
     }
 
+    /// Whether the check admits several values: the vector checks and
+    /// [`RTypeCheck::List`], through [`RTypeCheck::Nullable`]. Matched
+    /// exhaustively, so a new check has to say which it is.
+    fn is_vector(&self) -> bool {
+        match self {
+            RTypeCheck::VectorLogicalOrInteger
+            | RTypeCheck::VectorNumeric
+            | RTypeCheck::VectorIntegerStrict
+            | RTypeCheck::VectorIntegerWide
+            | RTypeCheck::Vector(_)
+            | RTypeCheck::VectorNumericOrText
+            | RTypeCheck::List => true,
+            RTypeCheck::ScalarNumeric
+            | RTypeCheck::ScalarLogicalOrInteger
+            | RTypeCheck::ScalarIntegerWide
+            | RTypeCheck::ScalarNonNeg
+            | RTypeCheck::Scalar(_)
+            | RTypeCheck::ScalarNumericOrText => false,
+            RTypeCheck::Nullable(inner) => inner.is_vector(),
+        }
+    }
+
     /// What an argument of this type must be, in R terms: the `<expected>` of
     /// a Rust conversion failure's message, `'<p>' must be <expected>: <reason>`
     /// (#1591).
@@ -594,23 +635,6 @@ impl RTypeCheck {
             },
             RTypeCheck::List => "a list".into(),
         }
-    }
-
-    /// Whether the check admits an atomic vector of any length, so a `no_na`
-    /// failure reads `must not contain NA` rather than `must not be NA`. This
-    /// covers the vector markers (`AsNumericVec`, `AsCharacterVec`) that
-    /// [`crate::miniextendr_fn::is_vector_like_type`] does not see as
-    /// containers.
-    fn is_vector(&self) -> bool {
-        matches!(
-            self,
-            RTypeCheck::VectorLogicalOrInteger
-                | RTypeCheck::VectorNumeric
-                | RTypeCheck::VectorIntegerStrict
-                | RTypeCheck::VectorIntegerWide
-                | RTypeCheck::Vector(_)
-                | RTypeCheck::VectorNumericOrText
-        )
     }
 }
 
@@ -1712,6 +1736,39 @@ mod tests {
         }
     }
 
+    /// Beyond the type table's vector checks (above): a `Missing<_>` marker,
+    /// maps, arrays, and a marker the table does not know, by its `...Vec`
+    /// name (`AsFromStrVec<T>`, `AsDisplayVec<T>`), hold several values too;
+    /// their scalar halves and opaque types do not.
+    #[test]
+    fn no_na_wording_knows_the_vector_markers() {
+        let verb = |sig: &str| {
+            let out = explicit_output(sig, &[("x", no_na())], false);
+            let guards = out.guards(None);
+            let guard = guards.last().expect("the no_na guard");
+            if guard.contains("must not contain NA") {
+                "contain"
+            } else {
+                assert!(guard.contains("must not be NA"), "{guard}");
+                "be"
+            }
+        };
+        for (sig, expected) in [
+            ("fn f(x: Option<AsNumericVec>)", "contain"),
+            ("fn f(x: Missing<AsNumericVec>)", "contain"),
+            ("fn f(x: AsFromStrVec<std::net::IpAddr>)", "contain"),
+            ("fn f(x: AsDisplayVec<u8>)", "contain"),
+            ("fn f(x: HashMap<String, f64>)", "contain"),
+            ("fn f(x: [f64; 3])", "contain"),
+            ("fn f(x: Option<AsNumeric>)", "be"),
+            ("fn f(x: AsFromStr<std::net::IpAddr>)", "be"),
+            ("fn f(x: String)", "be"),
+            ("fn f(x: MyCustomType)", "be"),
+        ] {
+            assert_eq!(verb(sig), expected, "{sig}");
+        }
+    }
+
     #[test]
     fn explicit_checks_pass_null_and_missing() {
         let optional = explicit_output(
@@ -1745,11 +1802,11 @@ mod tests {
         };
         let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
-        // NA first.
+        // NA first. A list holds several values, so its NA check says `contain`.
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
                 "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
             ]
         );
