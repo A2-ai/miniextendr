@@ -26,11 +26,11 @@ pub struct SidecarEnv {
     pub count: i32,
 
     /// Zero-overhead scalar: f64
-    #[r_data]
+    #[r_data(setter = "visible")]
     pub score: f64,
 
     /// Zero-overhead scalar: bool
-    #[r_data]
+    #[r_data(setter = "invisible")]
     pub flag: bool,
 
     /// Conversion type: String
@@ -85,13 +85,13 @@ pub struct SidecarR6 {
     #[r_data]
     pub value: i32,
 
-    #[r_data]
+    #[r_data(setter = "visible")]
     pub label: String,
 }
 
 /// R6 class registration for SidecarR6 with active binding sidecar accessors.
 /// @field value Integer sidecar field (active binding).
-/// @field label Character sidecar field (active binding).
+/// @field label Character sidecar field (active binding); direct setter calls return visibly.
 #[miniextendr(r6(r_data_accessors))]
 impl SidecarR6 {
     /// Create a new SidecarR6 with initial values.
@@ -109,6 +109,12 @@ impl SidecarR6 {
 /// Test creating a SidecarR6 with R6 active binding accessors.
 /// @param value Integer sidecar field.
 /// @param label Character sidecar field.
+/// @examples
+/// obj <- SidecarR6$new(1L, "before")
+/// set_label <- activeBindingFunction("label", obj)
+/// result <- withVisible(set_label("after"))
+/// stopifnot(result$visible, identical(result$value, obj), obj$label == "after")
+/// stopifnot(!withVisible(obj$label <- "assigned")$visible)
 #[miniextendr]
 pub fn rdata_sidecar_r6_new(value: i32, label: String) -> ExternalPtr<SidecarR6> {
     ExternalPtr::new(SidecarR6 {
@@ -158,7 +164,7 @@ pub struct SidecarS4 {
     #[r_data]
     pub slot_int: i32,
 
-    #[r_data]
+    #[r_data(setter = "visible")]
     pub slot_real: f64,
 
     #[r_data]
@@ -198,13 +204,13 @@ pub struct SidecarS7 {
     #[r_data]
     _r: RSidecar,
 
-    #[r_data(prop_doc = "An integer sidecar property.")]
+    #[r_data(prop_doc = "An integer sidecar property.", setter = "visible")]
     pub prop_int: i32,
 
     #[r_data(prop_doc = "A logical sidecar property.")]
     pub prop_flag: bool,
 
-    #[r_data(prop_doc = "A character sidecar property.")]
+    #[r_data(prop_doc = "A character sidecar property.", setter = "invisible")]
     pub prop_name: String,
 }
 

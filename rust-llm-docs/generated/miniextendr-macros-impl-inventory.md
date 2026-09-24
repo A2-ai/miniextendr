@@ -8,25 +8,25 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Any` | 106 | 0 |
-| `Borrow` | 106 | 0 |
-| `BorrowMut` | 106 | 0 |
-| `Freeze` | 106 | 0 |
-| `From` | 106 | 0 |
-| `Into` | 106 | 0 |
-| `RefUnwindSafe` | 106 | 0 |
-| `Send` | 106 | 0 |
-| `Sync` | 106 | 0 |
-| `TryFrom` | 106 | 0 |
-| `TryInto` | 106 | 0 |
-| `Unpin` | 106 | 0 |
-| `UnsafeUnpin` | 106 | 0 |
-| `UnwindSafe` | 106 | 0 |
+| `Any` | 107 | 0 |
+| `Borrow` | 107 | 0 |
+| `BorrowMut` | 107 | 0 |
+| `Freeze` | 107 | 0 |
+| `From` | 107 | 0 |
+| `Into` | 107 | 0 |
+| `RefUnwindSafe` | 107 | 0 |
+| `Send` | 107 | 0 |
+| `Sync` | 107 | 0 |
+| `TryFrom` | 107 | 0 |
+| `TryInto` | 107 | 0 |
+| `Unpin` | 107 | 0 |
+| `UnsafeUnpin` | 107 | 0 |
+| `UnwindSafe` | 107 | 0 |
 | `Debug` | 34 | 34 |
 | `Clone` | 25 | 25 |
 | `CloneToUninit` | 25 | 0 |
 | `ToOwned` | 25 | 0 |
-| `Default` | 23 | 23 |
+| `Default` | 24 | 24 |
 | `Eq` | 15 | 15 |
 | `PartialEq` | 15 | 15 |
 | `StructuralPartialEq` | 15 | 15 |
@@ -47,7 +47,7 @@ Traits with impls: 28
 | `ReturnHandling` | `` | concrete | 1 | miniextendr-macros/src/c_wrapper_builder.rs:95 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
-| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
@@ -87,7 +87,7 @@ Traits with impls: 28
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
@@ -106,7 +106,7 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:550 |
 
-## `Default` — 23 impls
+## `Default` — 24 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -114,6 +114,7 @@ Traits with impls: 28
 | `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/condition_derive.rs:76 |
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
 | `FieldAttrs` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:128 |
+| `RDataOptions` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:196 |
 | `RFactorAttrs` | `` | concrete | 1 | miniextendr-macros/src/factor_derive.rs:61 |
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
@@ -144,7 +145,7 @@ Traits with impls: 28
 | `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:49 |
 | `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1464 |
@@ -164,7 +165,7 @@ Traits with impls: 28
 | `CrateConfig` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:49 |
 | `CrateConfigError` | `` | concrete | 1 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 1 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1464 |
@@ -184,7 +185,7 @@ Traits with impls: 28
 | `CrateConfig` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:49 |
 | `CrateConfigError` | `` | concrete | 0 | miniextendr-macros/src/crate_config.rs:77 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1464 |
@@ -219,7 +220,7 @@ Traits with impls: 28
 | `SliceBorrow` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:22 |
 | `ThreadStrategy` | `` | concrete | 0 | miniextendr-macros/src/c_wrapper_builder.rs:64 |
 | `VariantShape` | `` | concrete | 0 | miniextendr-macros/src/dataframe_derive.rs:3112 |
-| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:253 |
+| `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `ReturnPref` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1728 |
