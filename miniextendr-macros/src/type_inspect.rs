@@ -434,8 +434,8 @@ pub(crate) fn erase_lifetimes(ty: &syn::Type) -> syn::Type {
 #[cfg(test)]
 mod tests {
     use super::{
-        call_marker, erase_lifetimes, is_main_thread_bound_input, is_main_thread_bound_return,
-        type_display,
+        call_marker, choice_layer_name, choice_layers, erase_lifetimes, is_main_thread_bound_input,
+        is_main_thread_bound_return, match_arg_choices_ty, r_value_noun, type_display,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -531,6 +531,84 @@ mod tests {
     }
 
     #[test]
+    fn r_value_noun_names_the_r_side() {
+        let cases = [
+            ("DataFrame", "a data frame"),
+            ("miniextendr_api::DataFrame", "a data frame"),
+            ("List", "a list"),
+            ("HashMap<String, i32>", "a list"),
+            ("String", "a string"),
+            ("&str", "a string"),
+            ("f64", "a number"),
+            ("i32", "an integer"),
+            ("bool", "TRUE or FALSE"),
+            ("Vec<f64>", "a numeric vector"),
+            ("&[i32]", "an integer vector"),
+            ("Vec<Option<String>>", "a character vector"),
+            ("SEXP", "any other R value"),
+            ("ExternalPtr<Model>", "an external pointer"),
+            ("Model", "a `Model`"),
+            ("Vec<Model>", "a `Vec<Model>`"),
+        ];
+        for (src, want) in cases {
+            assert_eq!(r_value_noun(&ty(src)), want, "noun for `{src}`");
+        }
+    }
+
+    #[test]
+    fn choice_layers_peel_missing_option_either() {
+        let layers = |src: &str| {
+            let t = ty(src);
+            let l = choice_layers(&t);
+            (
+                l.missing,
+                l.nullable,
+                l.either_right.map(type_display),
+                type_display(l.value),
+            )
+        };
+        assert_eq!(layers("Mode"), (false, false, None, "Mode".to_string()));
+        assert_eq!(
+            layers("Missing<Option<Either<Mode, DataFrame>>>"),
+            (
+                true,
+                true,
+                Some("DataFrame".to_string()),
+                "Mode".to_string()
+            )
+        );
+        assert_eq!(
+            layers("Either<Mode, Option<f64>>"),
+            (
+                false,
+                false,
+                Some("Option<f64>".to_string()),
+                "Mode".to_string()
+            )
+        );
+        // A layer out of order stays in the value, where the classifier
+        // rejects it.
+        assert_eq!(
+            layers("Option<Missing<Mode>>"),
+            (false, true, None, "Missing<Mode>".to_string())
+        );
+        assert_eq!(choice_layer_name(&ty("Missing<Mode>")), Some("Missing"));
+        assert_eq!(choice_layer_name(&ty("Either<Mode, f64>")), Some("Either"));
+        assert_eq!(choice_layer_name(&ty("Either<Mode>")), None);
+        assert_eq!(
+            type_display(match_arg_choices_ty(&ty("Missing<Vec<Mode>>"), true)),
+            "Mode"
+        );
+        assert_eq!(
+            type_display(match_arg_choices_ty(
+                &ty("Option<Either<Mode, List>>"),
+                false
+            )),
+            "Mode"
+        );
+    }
+
+    #[test]
     fn erase_lifetimes_replaces_every_lifetime() {
         let erased = |s: &str| type_display(&erase_lifetimes(&ty(s)));
         assert_eq!(erased("&'a [f64]"), "&'_ [f64]");
@@ -558,25 +636,170 @@ pub(crate) fn option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     first_type_argument(seg)
 }
 
+// region: choice-parameter layers (`match_arg` / `choices`)
+
+/// The wrappers around the value of a `match_arg` / `choices` parameter,
+/// peeled outermost first: `Missing<..>`, then `Option<..>`, then
+/// `Either<T, R>` with the choice on the left. A plain `T` (or a plain
+/// `several_ok` container) has none.
+///
+/// Each layer changes one contract and leaves the rest to the layer below:
+/// `Missing` reports an omitted argument as `Missing::Absent` and keeps the
+/// choice vector as the R formal (#1551), `Option` turns `NULL` into `None`
+/// (#1473), and `Either` sends every argument that is not character or
+/// factor to its `R` arm instead of the choice check.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ChoiceLayers<'a> {
+    /// `Missing<..>` is the outermost wrapper.
+    pub missing: bool,
+    /// `Option<..>` wraps the value (inside `Missing`, if present).
+    pub nullable: bool,
+    /// `Either<T, R>` wraps the value (inside the others): its `R` arm.
+    pub either_right: Option<&'a syn::Type>,
+    /// The type under the layers: the `MatchArg` type (or the string type of a
+    /// `choices` parameter) for a scalar, the container for `several_ok`.
+    pub value: &'a syn::Type,
+}
+
+/// Peel the [`ChoiceLayers`] of a choice parameter's type.
+pub(crate) fn choice_layers(ty: &syn::Type) -> ChoiceLayers<'_> {
+    let (missing, ty) = match crate::miniextendr_fn::get_missing_inner_type(ty) {
+        Some(inner) => (true, inner),
+        None => (false, ty),
+    };
+    let (nullable, ty) = match option_inner_type(ty) {
+        Some(inner) => (true, inner),
+        None => (false, ty),
+    };
+    let (either_right, value) = match either_arms(ty) {
+        Some((left, right)) => (Some(right), left),
+        None => (None, ty),
+    };
+    ChoiceLayers {
+        missing,
+        nullable,
+        either_right,
+        value,
+    }
+}
+
+/// The layer name (`"Missing"` / `"Option"` / `"Either"`) when `ty` is itself
+/// a layer type, i.e. when it sits where the choice value should be. Used to
+/// reject layers in an unsupported order, such as `Option<Missing<T>>` or
+/// `Either<Option<T>, R>`.
+pub(crate) fn choice_layer_name(ty: &syn::Type) -> Option<&'static str> {
+    if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
+        Some("Missing")
+    } else if option_inner_type(ty).is_some() {
+        Some("Option")
+    } else if either_arms(ty).is_some() {
+        Some("Either")
+    } else {
+        None
+    }
+}
+
+/// `(L, R)` for an `Either<L, R>` type (last path segment `Either` with two
+/// type arguments), `None` for anything else.
+pub(crate) fn either_arms(ty: &syn::Type) -> Option<(&syn::Type, &syn::Type)> {
+    let syn::Type::Path(tp) = ty else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Either" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    let mut types = args.args.iter().filter_map(|arg| match arg {
+        syn::GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    });
+    match (types.next(), types.next(), types.next()) {
+        (Some(left), Some(right), None) => Some((left, right)),
+        _ => None,
+    }
+}
+
+/// How R documentation names a value of type `ty`, with its article: `"a data
+/// frame"`, `"a list"`, `"a number"`, `"a character vector"`, ... Used for the
+/// `R` arm of an `Either<T, R>` choice parameter in its auto-generated
+/// `@param` line (`One of "a", "b", or a data frame.`). A type without an R
+/// name falls back to its Rust spelling in code format.
+pub(crate) fn r_value_noun(ty: &syn::Type) -> String {
+    let named = match ty {
+        syn::Type::Reference(r) => match r.elem.as_ref() {
+            syn::Type::Slice(s) => vector_noun(&s.elem),
+            elem => return r_value_noun(elem),
+        },
+        syn::Type::Slice(s) => vector_noun(&s.elem),
+        syn::Type::Path(tp) => {
+            tp.path
+                .segments
+                .last()
+                .and_then(|seg| match seg.ident.to_string().as_str() {
+                    "DataFrame" | "BuiltDataFrame" => Some("a data frame"),
+                    "List" | "ListMut" | "NamedList" | "HashMap" | "BTreeMap" => Some("a list"),
+                    "String" | "str" | "char" | "PathBuf" | "Path" => Some("a string"),
+                    "f64" | "f32" => Some("a number"),
+                    "i8" | "i16" | "i32" | "i64" | "isize" | "u16" | "u32" | "u64" | "usize" => {
+                        Some("an integer")
+                    }
+                    "bool" | "Rbool" | "Rboolean" => Some("TRUE or FALSE"),
+                    "Rcomplex" => Some("a complex number"),
+                    "ExternalPtr" => Some("an external pointer"),
+                    "SEXP" => Some("any other R value"),
+                    "Vec" => first_type_argument(seg).and_then(vector_noun),
+                    _ => None,
+                })
+        }
+        _ => None,
+    };
+    named.map_or_else(|| format!("a `{}`", type_display(ty)), str::to_string)
+}
+
+/// The R name of a vector with elements of type `elem`, if it has one.
+fn vector_noun(elem: &syn::Type) -> Option<&'static str> {
+    let syn::Type::Path(tp) = elem else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    match seg.ident.to_string().as_str() {
+        "f64" | "f32" => Some("a numeric vector"),
+        "i8" | "i16" | "i32" | "i64" | "isize" | "u16" | "u32" | "u64" | "usize" => {
+            Some("an integer vector")
+        }
+        "String" | "str" => Some("a character vector"),
+        "bool" | "Rbool" | "Rboolean" => Some("a logical vector"),
+        "u8" => Some("a raw vector"),
+        "Option" => first_type_argument(seg).and_then(vector_noun),
+        _ => None,
+    }
+}
+
 /// Resolve the `MatchArg`-bound type behind a `match_arg` parameter.
 ///
-/// A `several_ok` parameter is a container (`Vec<T>`, `Box<[T]>`, `[T; N]`,
-/// `&[T]`), so the element type is the one carrying `CHOICES`. A scalar
-/// parameter may be `Option<T>` (the optional form, #1473), in which case `T`
-/// is. Anything else is returned unchanged, and the `MatchArg` bound on the
+/// The [`ChoiceLayers`] are peeled first. A `several_ok` parameter is then a
+/// container (`Vec<T>`, `Box<[T]>`, `[T; N]`, `&[T]`), so the element type is
+/// the one carrying `CHOICES`; a scalar parameter's value is that type itself.
+/// Anything else is returned unchanged, and the `MatchArg` bound on the
 /// generated code reports the mistake.
 ///
 /// Shared by the standalone-fn path (`lib.rs`) and the impl-method path
 /// (`miniextendr_impl.rs`) so the two cannot resolve the type differently.
 pub(crate) fn match_arg_choices_ty(param_ty: &syn::Type, several_ok: bool) -> &syn::Type {
+    let value = choice_layers(param_ty).value;
     if several_ok {
-        classify_several_ok_container(param_ty)
+        classify_several_ok_container(value)
             .map(|(_, inner)| inner)
-            .unwrap_or(param_ty)
+            .unwrap_or(value)
     } else {
-        option_inner_type(param_ty).unwrap_or(param_ty)
+        value
     }
 }
+
+// endregion
 
 /// Container family for a `several_ok` parameter, returned by
 /// [`classify_several_ok_container`].

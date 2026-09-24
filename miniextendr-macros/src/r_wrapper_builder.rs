@@ -445,42 +445,57 @@ impl CallAttribution {
 
     /// The R statement validating a choice parameter (`match_arg` / `choices`).
     /// `choices` is the R expression for the choice list: a literal
-    /// `c("a", "b")`, or the write-time placeholder for an enum.
+    /// `c("a", "b")`, or the write-time placeholder for an enum. `attrs` are
+    /// the parameter's own attributes, which carry `several_ok` and the
+    /// type's layers.
     ///
     /// Every form is one call to a preamble helper (`.miniextendr_match_arg`
-    /// for a scalar, wrapped in `if (!is.null(..))` for an `Option<T>`,
-    /// `.miniextendr_match_arg_several` for `several_ok`, #1472). The helpers
-    /// name the argument in their messages, read a factor as its labels, and
-    /// attribute the error to the wrapper's own call by default; under
-    /// [`CallAttribution::Caller`] the statement passes `.mx_call` so the
-    /// caller is named instead (#1548). The list is spelled out because the
-    /// helpers, unlike `base::match.arg(param)`, do not read it off the formal.
+    /// for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
+    /// #1472), guarded by the layers of the parameter type: `!missing(..)`
+    /// for `Missing<..>` (#1551), then `!is.null(..)` for `Option<..>`
+    /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>`,
+    /// which leaves `NULL` out too. The helpers name the argument in their messages, read a
+    /// factor as its labels, and attribute the error to the wrapper's own call
+    /// by default; under [`CallAttribution::Caller`] the statement passes
+    /// `.mx_call` so the caller is named instead (#1548). The list is spelled
+    /// out because the helpers, unlike `base::match.arg(param)`, do not read
+    /// it off the formal.
     pub fn match_arg_statement(
         self,
         param: &str,
         choices: &str,
-        several_ok: bool,
-        optional: bool,
+        attrs: &crate::miniextendr_fn::ParamAttrs,
     ) -> String {
-        match (self.r_check_call(), several_ok, optional) {
-            (None, true, _) => format!(
-                "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\")"
-            ),
-            (None, false, true) => format!(
-                "if (!is.null({param})) {param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\")"
-            ),
-            (None, false, false) => {
-                format!("{param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\")")
-            }
-            (Some(call), true, _) => format!(
-                "{param} <- .miniextendr_match_arg_several({param}, {choices}, \"{param}\", {call})"
-            ),
-            (Some(call), false, true) => format!(
-                "if (!is.null({param})) {param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\", {call})"
-            ),
-            (Some(call), false, false) => format!(
-                "{param} <- .miniextendr_match_arg({param}, {choices}, \"{param}\", {call})"
-            ),
+        let helper = if attrs.several_ok {
+            ".miniextendr_match_arg_several"
+        } else {
+            ".miniextendr_match_arg"
+        };
+        let call = match self.r_check_call() {
+            Some(call) => format!(", {call}"),
+            None => String::new(),
+        };
+        let statement = format!("{param} <- {helper}({param}, {choices}, \"{param}\"{call})");
+        let mut guards = Vec::new();
+        if attrs.omittable {
+            guards.push(format!("!missing({param})"));
+        }
+        if attrs.either_noun.is_some() {
+            // Only the forms `match.arg()` reads are choices; everything else
+            // (NULL included) goes to the `Either`'s `R` arm unchanged.
+            let reads = format!("is.character({param}) || is.factor({param})");
+            guards.push(if guards.is_empty() {
+                reads
+            } else {
+                format!("({reads})")
+            });
+        } else if attrs.optional {
+            guards.push(format!("!is.null({param})"));
+        }
+        if guards.is_empty() {
+            statement
+        } else {
+            format!("if ({}) {statement}", guards.join(" && "))
         }
     }
 }

@@ -1,0 +1,60 @@
+---
+source: miniextendr-macros/src/r_wrapper_builder/tests.rs
+assertion_line: 580
+expression: output
+---
+Mode
+  formal:  mode = c("fast", "safe")
+  wrapper: mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe".
+Option<Mode>
+  formal:  mode = NULL
+  wrapper: if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", or NULL for no choice.
+Missing<Mode>
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe"; omitting the argument means no choice.
+Missing<Option<Mode>>
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", or NULL; omitting the argument means no choice.
+Vec<Mode> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe".
+Missing<Vec<Mode>> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe"; omitting the argument means no choice.
+Missing<Box<[Mode]>> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe"; omitting the argument means no choice.
+Either<Mode, DataFrame>
+  formal:  mode = c("fast", "safe")
+  wrapper: if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", or a data frame.
+Option<Either<Mode, DataFrame>>
+  formal:  mode = NULL
+  wrapper: if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", a data frame, or NULL for no choice.
+Missing<Either<Mode, f64>>
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", or a number; omitting the argument means no choice.
+Missing<Option<Either<Mode, List>>>
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One of "fast", "safe", a list, or NULL; omitting the argument means no choice.

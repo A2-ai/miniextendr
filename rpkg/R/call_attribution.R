@@ -21,6 +21,13 @@ call_attr_checked <- function(mode = "Fast", metrics = "mean", n = 1L, level = N
   call_attr_checked_impl(mode, metrics, n, level)
 }
 
+# Delegates to a `call = caller` entry point taking `Missing<Option<Mode>>`
+# (#1551). `mode` has no default here, so `call_attr_omitted()` leaves it
+# missing in the entry point too (a default would be forwarded as a value).
+call_attr_omitted <- function(mode) {
+  call_attr_omitted_impl(mode)
+}
+
 # Delegates to a `#[miniextendr(noexport)]` entry point taking a `CallerCall`
 # marker (#1566): the marker spelling of `call = caller`. The Rust body returns
 # the call it was handed, so the test can compare it with the caller's call.

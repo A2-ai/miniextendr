@@ -150,3 +150,71 @@ fn test_coercion() {
         assert!(stmts[0].to_string().contains("u16"));
     }
 }
+
+/// The decoder of a layered choice parameter (#1473, #1551): one
+/// `match_arg_*` helper per layer, outermost first, around the choice's own
+/// decoder.
+#[test]
+fn test_layered_choice_decoders() {
+    let decoder = |ty: &str, leaf: ChoiceLeaf| {
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        let sexp = syn::Ident::new("s", proc_macro2::Span::call_site());
+        layered_choice_expr(&ty, leaf, &sexp, proc_macro2::Span::call_site())
+            .to_string()
+            .replace(' ', "")
+    };
+    let api = "::miniextendr_api::";
+    let cases = [
+        (
+            "Option<Mode>",
+            ChoiceLeaf::MatchArg,
+            format!("{api}match_arg_option_from_sexp::<Mode>(s)"),
+        ),
+        (
+            "Missing<Mode>",
+            ChoiceLeaf::MatchArg,
+            format!("{api}match_arg_missing_or(s,{api}match_arg_from_sexp::<Mode>)"),
+        ),
+        (
+            "Missing<Option<Mode>>",
+            ChoiceLeaf::MatchArg,
+            format!("{api}match_arg_missing_or(s,{api}match_arg_option_from_sexp::<Mode>)"),
+        ),
+        (
+            "Missing<Vec<Mode>>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!("{api}match_arg_missing_or(s,{api}match_arg_vec_from_sexp::<Mode>)"),
+        ),
+        (
+            "Missing<Box<[Mode]>>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!(
+                "{api}match_arg_missing_or(s,|__mx_sexp|{api}match_arg_vec_from_sexp::<Mode>(__mx_sexp).map(::std::vec::Vec::into_boxed_slice))"
+            ),
+        ),
+        (
+            "Either<Route, DataFrame>",
+            ChoiceLeaf::MatchArg,
+            format!(
+                "{api}match_arg_either_or::<_,DataFrame,_>(s,{api}match_arg_from_sexp::<Route>)"
+            ),
+        ),
+        (
+            "Option<Either<Route, DataFrame>>",
+            ChoiceLeaf::MatchArg,
+            format!(
+                "{api}match_arg_null_or(s,|__mx_sexp|{api}match_arg_either_or::<_,DataFrame,_>(__mx_sexp,{api}match_arg_from_sexp::<Route>))"
+            ),
+        ),
+        (
+            "Either<String, f64>",
+            ChoiceLeaf::Literal,
+            format!(
+                "{api}match_arg_either_or::<_,f64,_>(s,<Stringas::miniextendr_api::TryFromSexp>::try_from_sexp)"
+            ),
+        ),
+    ];
+    for (ty, leaf, want) in cases {
+        assert_eq!(decoder(ty, leaf), want, "decoder for `{ty}`");
+    }
+}

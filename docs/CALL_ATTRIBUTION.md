@@ -171,7 +171,8 @@ cheaper than the `stopifnot()` call they replace), and passes the caller's
 call to every choice parameter's helper:
 `.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
 `match_arg` / `choices` parameter, the same form inside `if (!is.null(kind))`
-for an `Option<T>` choice, and
+for an `Option<T>` choice (`if (!missing(kind) && ...)` when it is wrapped in
+`Missing<..>`, #1551), and
 `.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
 `several_ok`. Default-attribution wrappers emit the same statements without
 the call argument, so the helper reports the wrapper's own call (#1552).

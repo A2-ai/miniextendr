@@ -15,7 +15,7 @@
 //!    time from the enum's `MatchArg::CHOICES`) or an explicit
 //!    `c("a", "b", "c")` vector for `choices(...)` params.
 
-use miniextendr_api::{MatchArg, miniextendr};
+use miniextendr_api::{MatchArg, Missing, miniextendr};
 
 /// Enum shared by every fixture — keeps the R-side choice list identical across
 /// class systems so the testthat file can assert against one canonical vector.
@@ -50,6 +50,17 @@ impl R6MatchArgCounter {
         self.mode = mode;
         self.hits += 1;
         self.hits
+    }
+
+    /// Omittable optional mode (#1551): the formal keeps the choice vector,
+    /// an omitted argument reports the current mode, `NULL` reports `"null"`.
+    #[miniextendr(match_arg(mode))]
+    pub fn peek(&self, mode: Missing<Option<ImplMode>>) -> String {
+        match mode {
+            Missing::Absent => format!("current:{:?}", self.mode),
+            Missing::Present(None) => "null".to_string(),
+            Missing::Present(Some(m)) => format!("{m:?}"),
+        }
     }
 
     /// Static method with a choices() param — validates the `choices(...)` path

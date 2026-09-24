@@ -495,7 +495,7 @@ Traits with impls: 219
 | `Option<Bytes>` | `` | concrete | 3 | miniextendr-api/src/optionals/bytes_impl.rs:430 |
 | `Option<BytesMut>` | `` | concrete | 3 | miniextendr-api/src/optionals/bytes_impl.rs:451 |
 | `RSessionContext` | `` | concrete | 3 | miniextendr-api/src/optionals/datafusion_impl.rs:198 |
-| `Either<L, R>` | `<L, R> +4wc` | concrete | 3 | miniextendr-api/src/optionals/either_impl.rs:96 |
+| `Either<L, R>` | `<L, R> +4wc` | concrete | 3 | miniextendr-api/src/optionals/either_impl.rs:102 |
 | `GlobSet` | `` | concrete | 2 | miniextendr-api/src/optionals/globset_impl.rs:115 |
 | `Option<GlobSet>` | `` | concrete | 3 | miniextendr-api/src/optionals/globset_impl.rs:133 |
 | `Vec<GlobSet>` | `` | concrete | 3 | miniextendr-api/src/optionals/globset_impl.rs:134 |
@@ -775,7 +775,7 @@ Traits with impls: 219
 | `CoerceErrorKind` | `` | concrete | 1 | miniextendr-api/src/into_r_as.rs:306 |
 | `CoerceErrorKind` | `` | concrete | 1 | miniextendr-api/src/into_r_as.rs:317 |
 | `ListFromSexpError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1240 |
-| `crate::from_r::SexpError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:114 |
+| `crate::from_r::SexpError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:124 |
 | `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:221 |
 | `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:228 |
 | `Option<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:238 |
@@ -1060,7 +1060,7 @@ Traits with impls: 219
 | `BytesMut` | `` | concrete | 5 | miniextendr-api/src/optionals/bytes_impl.rs:396 |
 | `Option<Bytes>` | `` | concrete | 5 | miniextendr-api/src/optionals/bytes_impl.rs:472 |
 | `Option<BytesMut>` | `` | concrete | 5 | miniextendr-api/src/optionals/bytes_impl.rs:496 |
-| `Either<L, R>` | `<L, R> +2wc` | concrete | 3 | miniextendr-api/src/optionals/either_impl.rs:145 |
+| `Either<L, R>` | `<L, R> +2wc` | concrete | 3 | miniextendr-api/src/optionals/either_impl.rs:151 |
 | `IndexMap<String, T>` | `<T> +1wc` | concrete | 2 | miniextendr-api/src/optionals/indexmap_impl.rs:117 |
 | `Zoned` | `` | concrete | 4 | miniextendr-api/src/optionals/jiff_impl.rs:178 |
 | `Option<Zoned>` | `` | concrete | 4 | miniextendr-api/src/optionals/jiff_impl.rs:235 |
@@ -1269,8 +1269,8 @@ Traits with impls: 219
 | `WorkerUnprotectGuard` | `` | concrete | 0 | miniextendr-api/src/gc_protect.rs:1616 |
 | `RPreservedSexp` | `` | concrete | 0 | miniextendr-api/src/optionals/arrow_impl.rs:285 |
 | `RTerm` | `` | concrete | 0 | miniextendr-api/src/progress.rs:129 |
-| `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:381 |
-| `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:398 |
+| `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:382 |
+| `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:399 |
 | `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:71 |
 | `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1160 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:197 |
@@ -1284,11 +1284,11 @@ Traits with impls: 219
 | `RTerm` | `` | concrete | 0 | miniextendr-api/src/progress.rs:130 |
 | `RWrapperEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:241 |
 | `MatchArgChoicesEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:258 |
-| `MatchArgParamDocEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:279 |
-| `ClassNameEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:297 |
-| `SidecarPropEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:360 |
-| `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:380 |
-| `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:397 |
+| `MatchArgParamDocEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:280 |
+| `ClassNameEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:298 |
+| `SidecarPropEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:361 |
+| `TraitDispatchEntry` | `` | concrete | 0 | miniextendr-api/src/registry.rs:381 |
+| `AltrepRegistration` | `` | concrete | 0 | miniextendr-api/src/registry.rs:398 |
 | `SEXP` | `` | concrete | 0 | miniextendr-api/src/sexp.rs:72 |
 | `R_CallMethodDef` | `` | concrete | 0 | miniextendr-api/src/sys.rs:1159 |
 | `R_altrep_class_t` | `` | concrete | 0 | miniextendr-api/src/sys/altrep.rs:198 |
@@ -1722,7 +1722,7 @@ Traits with impls: 219
 | `ListFromSexpError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1221 |
 | `List` | `` | concrete | 1 | miniextendr-api/src/list.rs:40 |
 | `ListMut` | `` | concrete | 1 | miniextendr-api/src/list.rs:47 |
-| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:69 |
+| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:79 |
 | `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:98 |
 | `NamedVector<M>` | `<M>` | concrete | 1 | miniextendr-api/src/named_vector.rs:191 |
 | `RPrimitive<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/arrow_impl.rs:172 |
@@ -1857,7 +1857,7 @@ Traits with impls: 219
 | `DuplicateNameError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1206 |
 | `ListFromSexpError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1221 |
 | `List` | `` | concrete | 1 | miniextendr-api/src/list.rs:40 |
-| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:69 |
+| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:79 |
 | `Missing<T>` | `<T>` | concrete | 1 | miniextendr-api/src/missing.rs:98 |
 | `NamedVector<M>` | `<M>` | concrete | 1 | miniextendr-api/src/named_vector.rs:191 |
 | `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:99 |
@@ -2854,7 +2854,7 @@ Traits with impls: 219
 | `IntoRError` | `` | concrete | 1 | miniextendr-api/src/into_r_error.rs:30 |
 | `DuplicateNameError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1212 |
 | `ListFromSexpError` | `` | concrete | 1 | miniextendr-api/src/list.rs:1229 |
-| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:86 |
+| `MatchArgError` | `` | concrete | 1 | miniextendr-api/src/match_arg.rs:96 |
 | `RFlags<T>` | `<T>` | concrete | 1 | miniextendr-api/src/optionals/bitflags_impl.rs:138 |
 | `RCoerceError` | `` | concrete | 1 | miniextendr-api/src/r_coerce.rs:138 |
 | `RawError` | `` | concrete | 1 | miniextendr-api/src/raw_conversions.rs:84 |
@@ -2878,7 +2878,7 @@ Traits with impls: 219
 | `IntoRError` | `` | concrete | 0 | miniextendr-api/src/into_r_error.rs:49 |
 | `DuplicateNameError` | `` | concrete | 0 | miniextendr-api/src/list.rs:1218 |
 | `ListFromSexpError` | `` | concrete | 0 | miniextendr-api/src/list.rs:1238 |
-| `MatchArgError` | `` | concrete | 0 | miniextendr-api/src/match_arg.rs:112 |
+| `MatchArgError` | `` | concrete | 0 | miniextendr-api/src/match_arg.rs:122 |
 | `RCoerceError` | `` | concrete | 0 | miniextendr-api/src/r_coerce.rs:155 |
 | `RawError` | `` | concrete | 0 | miniextendr-api/src/raw_conversions.rs:107 |
 | `RSerdeError` | `` | concrete | 0 | miniextendr-api/src/serde/error.rs:120 |
@@ -3667,7 +3667,7 @@ Traits with impls: 219
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `T` | `<T>` | concrete | 1 | miniextendr-api/src/match_arg.rs:311 |
+| `T` | `<T>` | concrete | 1 | miniextendr-api/src/match_arg.rs:392 |
 
 ## `IsContiguous` — 1 impls
 

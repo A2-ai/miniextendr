@@ -81,6 +81,7 @@
 //! - `tabled_adapter_tests`: Table formatting adapter (feature: `tabled`)
 //! - `nalgebra_adapter_tests`: Linear algebra adapter (feature: `nalgebra`)
 //! - `either_adapter_tests`: Either type adapter (feature: `either`)
+//! - `match_arg_either_tests`: `match_arg` / `choices` on `Either<T, R>` (feature: `either`)
 //! - `serde_json_adapter_tests`: JSON serialization adapter (feature: `serde_json`)
 //!
 //! # Miscellaneous
@@ -226,6 +227,8 @@ mod lifecycle_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 mod macro_equivalence;
+#[cfg(feature = "either")]
+mod match_arg_either_tests;
 mod match_arg_foreign_tests;
 mod match_arg_impl_tests;
 mod match_arg_tests;

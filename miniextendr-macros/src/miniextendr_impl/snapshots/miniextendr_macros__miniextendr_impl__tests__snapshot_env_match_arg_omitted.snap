@@ -1,0 +1,91 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3640
+expression: generate_env_r_wrapper(&parsed)
+---
+#' @title Picker  Class
+#' @name Picker
+#' @rdname Picker
+#' @export
+Picker <- new.env(parent = emptyenv())
+
+# Picker::new (1:1)
+#' @name Picker$new
+#' @rdname Picker
+Picker$new <- function() {
+  .val <- .Call(C_miniextendr_macros_Picker__new, .call = match.call())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  self <- .val
+  class(self) <- "Picker"
+  self
+}
+
+# Picker::pick (1:1)
+#' @name Picker$pick
+#' @rdname Picker
+Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
+  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode")
+  if (!missing(color)) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
+  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = match.call(), self, if (missing(mode)) quote(expr=) else mode, if (missing(color)) quote(expr=) else color)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Picker::pick_many (1:1)
+#' @name Picker$pick_many
+#' @rdname Picker
+Picker$pick_many <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__) {
+  if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes")
+  .val <- .Call(C_miniextendr_macros_Picker__pick_many, .call = match.call(), self, if (missing(modes)) quote(expr=) else modes)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+#' @rdname Picker
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.Picker` <- function(self, name) {
+  obj <- Picker[[name]]
+  if (is.environment(obj)) {
+    # Trait namespace - wrap instance methods to prepend self
+    bound <- new.env(parent = emptyenv())
+    for (method_name in names(obj)) {
+      method <- obj[[method_name]]
+      if (is.function(method)) {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
+      }
+    }
+    bound
+  } else if (is.null(obj)) {
+    # Not found at top level -- search trait namespace environments
+    for (ns_name in names(Picker)) {
+      ns <- Picker[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method -- bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
+  } else {
+    environment(obj) <- environment()
+    obj
+  }
+}
+#' @rdname Picker
+#' @export
+`[[.Picker` <- `$.Picker`

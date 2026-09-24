@@ -23,6 +23,12 @@
 //!
 //! This "try left first" strategy means the order of type parameters matters!
 //!
+//! A `match_arg` / `choices` parameter typed `Either<T, R>` does not use this
+//! impl: its C wrapper decodes with
+//! [`match_arg_either_or`](crate::match_arg::match_arg_either_or), which sends
+//! character and factor input to the choice `T` and everything else to `R`,
+//! the same split the R wrapper's `match.arg()` check makes.
+//!
 //! ## From Rust to R (`IntoR`)
 //!
 //! Each variant is converted to R using its inner type's `IntoR` implementation.

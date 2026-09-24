@@ -36,6 +36,16 @@
 //! one for its own enum under the orphan rule), so a hand-written `MatchArg`
 //! impl needs nothing extra.
 //!
+//! A `Missing<..>` around the parameter type (`Missing<T>`,
+//! `Missing<Option<T>>`, `Missing<Vec<T>>` for `several_ok`) keeps the choice
+//! vector as the R formal and reports an omitted argument as
+//! `Missing::Absent` (#1551); the C wrapper decodes it with
+//! [`match_arg_missing_or`] around the decoder of the inner type.
+//!
+//! With the `either` feature, `Either<T, R>` takes a choice or a value of
+//! another kind: character or factor input is matched and becomes `Left(T)`,
+//! anything else converts to `R` (`match_arg_either_or`).
+//!
 //! `several_ok` parameters are validated strictly on the R side: every element
 //! has to match a choice, and `NULL` selects every choice (the same fallback
 //! [`match_arg_vec_from_sexp`] applies).
@@ -237,10 +247,81 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
 /// `TryFromSexp` impl for a downstream enum (orphan rule) and a `T: MatchArg`
 /// blanket would collide with the newtype blanket in [`crate::newtype`].
 pub fn match_arg_option_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Option<T>, MatchArgError> {
+    match_arg_null_or(sexp, match_arg_from_sexp)
+}
+
+/// The `Option<_>` layer of a choice parameter: `NULL` is `None`, anything
+/// else is decoded by `inner` and becomes `Some`.
+///
+/// Generated C wrappers compose this with the other layer helpers
+/// ([`match_arg_missing_or`]) around the decoder of the choice itself;
+/// [`match_arg_option_from_sexp`] is the scalar case.
+pub fn match_arg_null_or<U, E>(
+    sexp: SEXP,
+    inner: impl FnOnce(SEXP) -> Result<U, E>,
+) -> Result<Option<U>, E> {
     if sexp.type_of() == SEXPTYPE::NILSXP {
-        return Ok(None);
+        Ok(None)
+    } else {
+        inner(sexp).map(Some)
     }
-    match_arg_from_sexp(sexp).map(Some)
+}
+
+/// The `Missing<_>` layer of a choice parameter (#1551): the missing-argument
+/// sentinel is [`Missing::Absent`](crate::Missing::Absent), anything else
+/// (`NULL` included) is decoded by `inner` and becomes `Missing::Present`.
+///
+/// The generated R wrapper keeps the choice vector as the formal default,
+/// skips the `match.arg()` check for an omitted argument and forwards R's
+/// missing-argument sentinel (`if (missing(x)) quote(expr=) else x`), so
+/// `#[miniextendr(match_arg)] mode: Missing<Option<Mode>>` reaches Rust as
+/// `Absent` when omitted, `Present(None)` for `NULL`, and
+/// `Present(Some(mode))` for a matched choice. The C wrapper decodes it with
+/// `match_arg_missing_or(sexp, match_arg_option_from_sexp::<Mode>)`.
+pub fn match_arg_missing_or<U, E>(
+    sexp: SEXP,
+    inner: impl FnOnce(SEXP) -> Result<U, E>,
+) -> Result<crate::Missing<U>, E> {
+    if crate::missing::is_missing_arg(sexp) {
+        Ok(crate::Missing::Absent)
+    } else {
+        inner(sexp).map(crate::Missing::Present)
+    }
+}
+
+/// The `Either<_, R>` layer of a choice parameter: a choice or a value of
+/// another kind. Character and factor input (the forms `match.arg()` reads)
+/// is decoded by `left` and becomes `Left`; anything else, `NULL` included, is
+/// converted to `R` and becomes `Right`.
+///
+/// The generated R wrapper applies the same split: its prelude matches the
+/// argument against the choices only when it is character or factor, so a
+/// misspelled choice fails there and never reaches `R`, and a data frame is
+/// never tried as a choice. For `#[miniextendr(match_arg)] route:
+/// Either<Route, DataFrame>` the C wrapper decodes with
+/// `match_arg_either_or::<_, DataFrame, _>(sexp, match_arg_from_sexp::<Route>)`;
+/// a `choices(...)` parameter on `Either<String, R>` passes the string's
+/// `TryFromSexp` as `left`.
+///
+/// This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
+/// every input and would decode `NULL` as the first choice.
+#[cfg(feature = "either")]
+pub fn match_arg_either_or<L, R, E>(
+    sexp: SEXP,
+    left: impl FnOnce(SEXP) -> Result<L, E>,
+) -> Result<either::Either<L, R>, SexpError>
+where
+    E: Into<SexpError>,
+    R: TryFromSexp,
+    R::Error: Into<SexpError>,
+{
+    if sexp.type_of() == SEXPTYPE::STRSXP || sexp.is_factor() {
+        left(sexp).map(either::Either::Left).map_err(Into::into)
+    } else {
+        R::try_from_sexp(sexp)
+            .map(either::Either::Right)
+            .map_err(Into::into)
+    }
 }
 
 /// Match a string against the choices of a `MatchArg` type (exact or partial).
