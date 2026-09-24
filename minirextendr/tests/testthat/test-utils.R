@@ -150,3 +150,13 @@ test_that("get_monorepo_crate() abort names the path and suggests rpkg", {
   # Points at the correct escape hatch for a standalone package.
   expect_match(msg, "rpkg", fixed = TRUE)
 })
+
+test_that("mx_desc_get_deps() handles a DESCRIPTION without dependency fields", {
+  desc <- withr::local_tempfile()
+  writeLines(c("Package: testpkg", "Version: 0.1.0"), desc)
+  expect_identical(nrow(mx_desc_get_deps(desc)), 0L)
+  writeLines(c("Package: testpkg", "Version: 0.1.0", "Imports: S7 (>= 0.2.0), utils"), desc)
+  deps <- mx_desc_get_deps(desc)
+  expect_identical(deps$package, c("S7", "utils"))
+  expect_identical(deps$version, c(">= 0.2.0", "*"))
+})

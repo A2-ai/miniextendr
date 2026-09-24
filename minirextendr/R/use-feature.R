@@ -3,9 +3,7 @@
 # These functions configure miniextendr features that require R package dependencies.
 # They handle both the Cargo feature (if applicable) and the R package import.
 
-# =============================================================================
-# Helper functions
-# =============================================================================
+# region: Helper functions
 
 #' Add a feature to Cargo.toml
 #'
@@ -81,15 +79,19 @@ add_import <- function(pkg, min_version = NULL) {
     return(invisible(FALSE))
   }
 
-  # Add to Imports
+  # Add to Imports; a package belongs in only one dependency field.
   mx_desc_set_dep(desc_path, pkg, type = "Imports", version = min_version)
-  cli::cli_alert_success("Added {.pkg {pkg}} to Imports in DESCRIPTION")
+  if (mx_desc_drop_dep(desc_path, pkg, type = "Suggests")) {
+    cli::cli_alert_success("Moved {.pkg {pkg}} from Suggests to Imports in DESCRIPTION")
+  } else {
+    cli::cli_alert_success("Added {.pkg {pkg}} to Imports in DESCRIPTION")
+  }
   invisible(TRUE)
 }
 
-# =============================================================================
-# Feature configuration functions
-# =============================================================================
+# endregion
+
+# region: Feature configuration functions
 
 #' Enable vctrs support
 #'
@@ -181,7 +183,26 @@ use_r6 <- function(path = ".") {
 
 #' Enable S7 class system support
 #'
-#' Adds S7 as a dependency for using the S7 class system with `#[miniextendr(s7)]`.
+#' Adds S7 as a dependency for using the S7 class system with
+#' `#[miniextendr(s7)]`, and makes the package register its S7 methods when it
+#' loads.
+#'
+#' S7 records methods for generics that belong to other packages (base
+#' generics such as `format()`, base operators such as `[[` and `+`, and
+#' generics from other packages) when the package is built, and registers them
+#' in a new R session only when the package's `.onLoad()` calls
+#' `S7::methods_register()`. Without that call such methods work in the session
+#' that installed the package and nowhere else. So `use_s7()` also:
+#'
+#' - writes an `.onLoad()` that calls `S7::methods_register()` to `R/zzz.R`
+#'   (creating the file or appending to it) when the package defines no
+#'   `.onLoad()`, and adds `zzz.R` to a `Collate` field if there is one;
+#' - leaves an existing `.onLoad()` alone, and if it does not call
+#'   `S7::methods_register()`, prints the line to add and the file it goes in.
+#'
+#' Running it again changes nothing. A package that never calls `use_s7()`
+#' does not depend on S7. [miniextendr_doctor()] reports an S7 package whose
+#' `.onLoad()` does not register its methods.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
@@ -200,11 +221,140 @@ use_s7 <- function(path = ".") {
   # undeclared `::` import for packages with base-name-colliding S7 methods.
   add_import("methods")
   add_import("utils")
+  use_s7_load_hook()
 
   cli::cli_alert_info("Use {.code #[miniextendr(s7)]} on impl blocks for S7 classes")
   cli::cli_alert_info("See {.url https://rconsortium.github.io/S7/} for S7 documentation")
 
   invisible(TRUE)
+}
+
+#' Load hook that `use_s7()` writes when a package has no `.onLoad()`
+#'
+#' Mirrors rpkg's `.onLoad()` (`rpkg/R/rpkg-package.R`).
+#' @noRd
+MX_S7_LOAD_HOOK <- c(
+  "# Register S7 methods when the package loads. S7 records methods for",
+  "# generics from other packages (base generics such as format(), operators",
+  "# such as `[[` and `+`) when the package is built; S7::methods_register()",
+  "# registers them again in every new session.",
+  "# suppressMessages(): under devtools::load_all() methods for another",
+  "# package's S7 generic are registered twice, and S7 reports the second",
+  "# registration as \"Overwriting method\".",
+  ".onLoad <- function(libname, pkgname) {",
+  "  suppressMessages(S7::methods_register())",
+  "}"
+)
+
+#' Make the active package register its S7 methods on load
+#'
+#' See `use_s7()` for the rules. Never edits an existing `.onLoad()`.
+#'
+#' @return Invisibly, `TRUE` if a hook was written.
+#' @noRd
+use_s7_load_hook <- function() {
+  scan <- s7_load_hooks(usethis::proj_get())
+  line <- "suppressMessages(S7::methods_register())"
+
+  if (length(scan$failed) > 0L) {
+    cli::cli_alert_warning(
+      "Could not parse {.path {scan$failed}}, so the {.code .onLoad()} check was skipped."
+    )
+    cli::cli_bullets(c(" " = "Make sure {.code .onLoad()} calls {.code {line}}."))
+    return(invisible(FALSE))
+  }
+
+  hooks <- scan$hooks
+  if (length(hooks) > 1L) {
+    files <- vapply(hooks, `[[`, character(1), "file")
+    cli::cli_alert_warning(
+      "{.code .onLoad()} is defined {length(hooks)} times ({.path {files}}); R keeps only the one collated last."
+    )
+    cli::cli_bullets(c(" " = "Merge them into one that calls {.code {line}}."))
+    return(invisible(FALSE))
+  }
+  if (length(hooks) == 1L) {
+    hook <- hooks[[1L]]
+    if (hook$registers) {
+      cli::cli_alert_info("{.code .onLoad()} in {.path {hook$file}} already registers S7 methods")
+    } else {
+      cli::cli_alert_warning(
+        "{.code .onLoad()} in {.path {hook$file}} does not call {.code S7::methods_register()}."
+      )
+      cli::cli_bullets(c(
+        " " = "Add {.code {line}} to its body, or S7 methods for other packages' generics are lost in new sessions."
+      ))
+    }
+    return(invisible(FALSE))
+  }
+
+  zzz <- usethis::proj_path("R", "zzz.R")
+  existing <- if (fs::file_exists(zzz)) readLines(zzz, warn = FALSE) else character()
+  ensure_dir(dirname(zzz))
+  writeLines(if (length(existing)) c(existing, "", MX_S7_LOAD_HOOK) else MX_S7_LOAD_HOOK, zzz)
+
+  desc_path <- usethis::proj_path("DESCRIPTION")
+  collate <- mx_desc_get_field("Collate", file = desc_path)
+  if (!is.na(collate) && !grepl("(^|[[:space:]'\"])zzz\\.R(['\"]|[[:space:]]|$)", collate)) {
+    # read.dcf() drops the continuation-line indent; restore it.
+    entries <- c(strsplit(trimws(collate), "[[:space:]]+")[[1]], "'zzz.R'")
+    mx_desc_set(desc_path, Collate = paste(entries, collapse = "\n    "))
+    cli::cli_alert_success("Added {.path zzz.R} to {.field Collate} in DESCRIPTION")
+  }
+
+  cli::cli_alert_success(
+    "Added an {.code .onLoad()} that calls {.code S7::methods_register()} to {.path R/zzz.R}"
+  )
+  invisible(TRUE)
+}
+
+#' `.onLoad()` definitions in a package's R sources
+#'
+#' Parses the collated R files under `R/` (the generated `*-wrappers.R` is
+#' skipped) without evaluating them, and returns every top-level
+#' `.onLoad <- function(...)` or `.onLoad = function(...)` assignment, with
+#' whether its body calls `S7::methods_register()` (or `S7::S7_on_load()`, its
+#' name after S7 0.2.2). A call reached through a helper function is not
+#' seen.
+#'
+#' @param pkg_dir Package directory.
+#' @return `list(hooks = list(list(file, registers)), failed = <chr>)`: one
+#'   entry per definition (`file` relative to `pkg_dir`), and the files that
+#'   could not be parsed.
+#' @noRd
+s7_load_hooks <- function(pkg_dir) {
+  r_dir <- file.path(pkg_dir, "R")
+  r_files <- if (dir.exists(r_dir)) {
+    # .R/.r/.S/.s/.q are the code extensions R CMD INSTALL collates (WRE 1.1.5).
+    list.files(r_dir, pattern = "\\.[RrSsq]$", full.names = TRUE)
+  } else {
+    character()
+  }
+  r_files <- r_files[!grepl("-wrappers\\.R$", basename(r_files))]
+
+  hooks <- list()
+  failed <- character()
+  for (f in r_files) {
+    rel <- file.path("R", basename(f))
+    exprs <- tryCatch(
+      parse(f, keep.source = FALSE, encoding = "UTF-8"),
+      error = function(e) NULL
+    )
+    if (is.null(exprs)) {
+      failed <- c(failed, rel)
+      next
+    }
+    for (e in exprs) {
+      is_onload <- is.call(e) && length(e) == 3L &&
+        (identical(e[[1L]], as.name("<-")) || identical(e[[1L]], as.name("="))) &&
+        (identical(e[[2L]], as.name(".onLoad")) || identical(e[[2L]], ".onLoad"))
+      if (is_onload) {
+        registers <- any(c("methods_register", "S7_on_load") %in% all.names(e[[3L]]))
+        hooks[[length(hooks) + 1L]] <- list(file = rel, registers = registers)
+      }
+    }
+  }
+  list(hooks = hooks, failed = failed)
 }
 
 #' Enable S4 class system support
@@ -284,9 +434,9 @@ use_serde <- function(path = ".") {
   invisible(TRUE)
 }
 
-# =============================================================================
-# Feature Detection Generator
-# =============================================================================
+# endregion
+
+# region: Feature Detection Generator
 
 #' Generate feature detection code
 #'
@@ -553,9 +703,9 @@ skip_if_missing_feature <- function(name) {
   code
 }
 
-# =============================================================================
-# Render workflow scaffolding helpers
-# =============================================================================
+# endregion
+
+# region: Render workflow scaffolding helpers
 
 #' Add miniextendr knitr setup to a vignette
 #'
@@ -725,3 +875,5 @@ use_miniextendr_quarto <- function(path = ".") {
   cli::cli_alert_success("Added miniextendr pre-render hook to {.path {qmd_path}}")
   invisible(TRUE)
 }
+
+# endregion

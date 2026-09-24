@@ -243,6 +243,12 @@ Each `use_*()` function:
 1. Adds the Cargo feature to `src/rust/Cargo.toml`
 2. Sets up any needed R-side dependencies (e.g., R6, S7 packages)
 
+`use_s7()` also makes the package register its S7 methods on load: it writes
+an `.onLoad()` calling `S7::methods_register()` to `R/zzz.R` when the package
+has none, and tells you the line to add to an existing `.onLoad()`. Without
+that call, S7 methods for base operators such as `[[`, base generics such as
+`format()` and other packages' generics are lost in every new R session.
+
 ### Feature Detection
 
 `use_feature_detection()` generates runtime introspection for Cargo features
@@ -414,7 +420,8 @@ miniextendr_check_rust()            # Verify Rust toolchain is available
 `miniextendr_status()` reports each build artifact's state (present, stale, or missing).
 `miniextendr_validate()` checks structural consistency (DESCRIPTION fields, module
 declarations, etc.). `miniextendr_doctor()` runs the full suite including Rust
-toolchain checks.
+toolchain checks. For a package that uses S7 it also checks that `.onLoad()`
+calls `S7::methods_register()`.
 
 **Note:** In monorepo mode, `miniextendr_doctor()` may report false-positive vendor
 warnings because vendored crates are resolved differently via `[patch]` in the workspace.

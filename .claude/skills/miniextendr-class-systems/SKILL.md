@@ -254,6 +254,12 @@ S7 generates:
 - Multiple dispatch: via `#[miniextendr(s7(dispatch = "x,y"))]`.
 - Static methods: `<Class>_<method>(...)`.
 - Convert methods: `S7::method(convert, list(From, To))` for `convert_from`/`convert_to`.
+- Methods for other packages' generics (base operators, `format()`, external
+  generics, `convert`) are recorded at build time and only re-registered in a
+  new session by `S7::methods_register()` in the package's `.onLoad()`
+  (`rpkg/R/rpkg-package.R`; scaffolds get it from `minirextendr::use_s7()`,
+  which writes it to the package's `zzz.R`, and `miniextendr_doctor()` flags
+  its absence).
 
 **Topological ordering**: S7's `parent = X` requires `X` to already be defined.
 `collect_r_wrappers()` topologically sorts all S7 class fragments so parents

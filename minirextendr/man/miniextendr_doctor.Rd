@@ -51,6 +51,14 @@ are out of scope, and the check skips when the wrappers file has not been
 generated yet or when a whole-package \code{import()} directive makes exports
 statically unattributable.
 
+For a package that uses S7 (S7 in \code{Imports}, or generated wrappers that
+call it), the doctor also checks that \code{.onLoad()} calls
+\code{S7::methods_register()}. S7 records methods for other packages' generics
+(base generics and operators such as \code{[[}, \code{format()} or \code{+}, and external
+generics) when the package is built, and only that call registers them in a
+new session; \code{\link[=use_s7]{use_s7()}} adds it. The check parses \verb{R/} without running it,
+so a call reached through a helper function is not seen.
+
 For more targeted checks, see \code{\link[=miniextendr_status]{miniextendr_status()}} (file presence)
 and \code{\link[=miniextendr_validate]{miniextendr_validate()}} (configuration correctness).
 }

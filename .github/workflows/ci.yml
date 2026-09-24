@@ -1514,7 +1514,9 @@ jobs:
   minirextendr:
     name: minirextendr
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Tests alone take ~11 min, several of them building scaffolded packages
+    # (a cold miniextendr-api compile each).
+    timeout-minutes: 30
     needs: changes
     if: needs.changes.outputs.r == 'true'
     env:

@@ -26,6 +26,15 @@ generic-style APIs. R6/S7/vctrs add the corresponding R package to your
 `DESCRIPTION` — `minirextendr::use_r6()` / `use_s7()` / `use_vctrs()` /
 `use_s4()` set that up.
 
+**S7 packages need `S7::methods_register()` in `.onLoad()`.** S7 records
+methods for generics owned by other packages (base operators such as `[` and
+`[[`, base generics such as `format()`, `s7(generic = "pkg::name")`) at build
+time, and only that call registers them in a new session. Without it,
+`obj[i]` works right after install and fails with "S7 objects are not
+subsettable" in the next session. `minirextendr::use_s7()` writes the hook to a
+`zzz.R` file in the package's R directory, or names the line to add when the
+package already has an `.onLoad()`; `minirextendr::miniextendr_doctor()` warns when it is missing.
+
 ## A complete R6 example
 
 ```rust
