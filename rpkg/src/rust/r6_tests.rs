@@ -190,7 +190,7 @@ impl R6Temperature {
     ///
     /// Raises an R error for values below absolute zero — exercises the
     /// active-binding setter's `rust_condition_value` re-raise guard
-    /// (a Rust-side error that passes the R-level `stopifnot` precondition).
+    /// (a Rust-side error that passes the R-level precondition).
     #[miniextendr(r6(setter, prop = "kelvin"), visible)]
     pub fn set_kelvin(&mut self, value: f64) {
         if value < 0.0 {

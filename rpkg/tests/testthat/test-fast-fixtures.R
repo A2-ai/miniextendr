@@ -23,12 +23,12 @@ test_that("default wrapper raises stopifnot for bad input", {
 })
 
 test_that("no_preconditions wrapper raises a rust_error for bad input", {
-  # stopifnot is gone; TryFromSexp still rejects the bad input, but the
-  # message comes from Rust now ("failed to convert parameter 'x' to i32").
+  # The R-side check is gone; TryFromSexp still rejects the bad input, with
+  # the same argument-error condition worded by the conversion (#1591).
   e <- tryCatch(fast_i32_no_preconditions("not an int"), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_match(conditionMessage(e),
-               "failed to convert parameter 'x' to i32")
+  expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
+  expect_identical(e$rust_type, "i32")
 })
 
 test_that("no_call_attribution wrapper still rejects bad input via stopifnot", {
@@ -39,8 +39,7 @@ test_that("no_call_attribution wrapper still rejects bad input via stopifnot", {
 test_that("fast wrapper raises a rust_error for bad input", {
   e <- tryCatch(fast_i32_fast("not an int"), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_match(conditionMessage(e),
-               "failed to convert parameter 'x' to i32")
+  expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
 })
 
 test_that("no_call_attribution: error$call falls back to sys.call()", {
@@ -95,8 +94,7 @@ test_that("fast R6 class still raises rust_error on bad input", {
   c <- ns$FastCounterFast$new(0L)
   e <- tryCatch(c$add("not an int"), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_match(conditionMessage(e),
-               "failed to convert parameter 'n' to i32")
+  expect_identical(conditionMessage(e), "'n' must be a single integer: got character")
 })
 
 test_that("default R6 class raises stopifnot on bad input", {

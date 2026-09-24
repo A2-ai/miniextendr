@@ -630,13 +630,16 @@ pub fn label_grid(x: Array2<Option<String>>) -> Array2<Option<String>> {
 ## Error Cases
 
 A value that fails its Rust-side conversion raises an R error with
-`e$kind == "conversion"`, `e$param` set to the parameter's R name, and the
-message `failed to convert parameter '<p>' to <T>: <reason>`, where `<reason>`
-is the conversion error's own message. Most built-in types are checked by an
-R-side precondition first; the examples below use `no_preconditions` so the
-value reaches Rust. An argument type whose error implements `RConditionError`
-contributes its own classes and fields; see
-[ERROR_HANDLING.md](ERROR_HANDLING.md#classed-conversion-errors).
+`e$kind == "conversion"`, `e$param` set to the parameter's R name,
+`e$rust_type` set to the Rust type, and a message in R terms:
+`'<p>' must be <expected>: <reason>` (`invalid '<p>' argument: <reason>` for a
+type without an R-facing expectation). Most built-in types are checked by an
+R-side precondition first, which raises the same condition with its own
+message (`'x' must have length 1`); the examples below use `no_preconditions`
+so the value reaches Rust. An argument type whose error implements
+`RConditionError` contributes its own classes and fields; see
+[ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) for the wording
+table and [classed conversion errors](ERROR_HANDLING.md#classed-conversion-errors).
 
 ### Type Mismatch
 
@@ -649,7 +652,7 @@ pub fn needs_integer(x: i32) -> i32 { x }
 
 ```r
 needs_integer(1.5)
-# Error: failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got REALSXP
+# Error: 'x' must be a single integer: got numeric
 ```
 
 ### NA in Non-Option
@@ -663,7 +666,7 @@ pub fn needs_value(x: i32) -> i32 { x }
 
 ```r
 needs_value(NA_integer_)
-# Error: failed to convert parameter 'x' to i32: unexpected NA value in INTSXP
+# Error: 'x' must be a single integer: NA is not allowed
 ```
 
 ### Coercion Failure
@@ -677,7 +680,7 @@ pub fn needs_int(x: i32) -> i32 { x }
 
 ```r
 needs_int(1e20)
-# Error: failed to coerce parameter 'x' to i32: invalid value: value out of range
+# Error: 'x' must be a single whole number: value out of range
 ```
 
 ---

@@ -18,14 +18,12 @@ WithDefaults <- S7::new_class("WithDefaults",
   ),
   constructor = function(name, scale, mode, .ptr = NULL) {
     if (is.null(.ptr)) {
-      stopifnot(
-        "'name' must be character" = is.character(name),
-        "'name' must have length 1" = length(name) == 1L,
-        "'scale' must be double" = is.double(scale),
-        "'scale' must have length 1" = length(scale) == 1L,
-        "'mode' must be NULL or integer" = is.null(mode) || is.integer(mode),
-        "'mode' must be NULL or have length 1" = is.null(mode) || length(mode) == 1L
-      )
+      if (!isTRUE(is.character(name))) .miniextendr_arg_error("name", "must be character")
+      if (!isTRUE(length(name) == 1L)) .miniextendr_arg_error("name", "must have length 1")
+      if (!isTRUE(is.double(scale))) .miniextendr_arg_error("scale", "must be double")
+      if (!isTRUE(length(scale) == 1L)) .miniextendr_arg_error("scale", "must have length 1")
+      if (!isTRUE(is.null(mode) || is.integer(mode))) .miniextendr_arg_error("mode", "must be NULL or integer")
+      if (!isTRUE(is.null(mode) || length(mode) == 1L)) .miniextendr_arg_error("mode", "must be NULL or have length 1")
     }
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)

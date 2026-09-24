@@ -22,8 +22,8 @@ pub fn fast_i32_default(x: i32) -> i32 {
     x
 }
 
-/// Identity (i32) with `no_preconditions` — wrapper drops the `stopifnot(...)`
-/// block. TryFromSexp still raises on bad input, message comes from Rust.
+/// Identity (i32) with `no_preconditions` — wrapper drops the R-side type
+/// checks. TryFromSexp still raises on bad input, message comes from Rust.
 /// @param x Input value.
 /// @export
 #[miniextendr(no_preconditions)]
@@ -83,7 +83,7 @@ pub struct FastCounter {
     value: i32,
 }
 
-/// Default-mode counter (R6 wrapper with full stopifnot + match.call).
+/// Default-mode counter (R6 wrapper with full preconditions + match.call).
 #[miniextendr(r6, internal)]
 impl FastCounter {
     /// @param initial Initial counter value.
@@ -109,7 +109,7 @@ pub struct FastCounterFast {
     value: i32,
 }
 
-/// Fast-mode counter: every method wrapper drops stopifnot + match.call.
+/// Fast-mode counter: every method wrapper drops preconditions + match.call.
 #[miniextendr(r6, internal, fast)]
 impl FastCounterFast {
     /// @param initial Initial counter value.

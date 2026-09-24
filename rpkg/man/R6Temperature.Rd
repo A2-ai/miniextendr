@@ -90,7 +90,7 @@ R6 temperature class with getter/setter active bindings for Celsius and Fahrenhe
 \subsection{\code{R6Temperature$set_kelvin()}}{
   Set the temperature via Kelvin (active binding setter that raises).
 
-Raises an R error for values below absolute zero — exercises the active-binding setter's \code{rust_condition_value} re-raise guard (a Rust-side error that passes the R-level \code{stopifnot} precondition).
+Raises an R error for values below absolute zero — exercises the active-binding setter's \code{rust_condition_value} re-raise guard (a Rust-side error that passes the R-level precondition).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6Temperature$set_kelvin(value)}

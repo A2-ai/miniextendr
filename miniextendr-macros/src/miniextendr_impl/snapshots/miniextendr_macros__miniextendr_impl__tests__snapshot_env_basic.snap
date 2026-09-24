@@ -17,10 +17,8 @@ Counter <- new.env(parent = emptyenv())
 #' @name Counter$new
 #' @rdname Counter
 Counter$new <- function(value) {
-  stopifnot(
-    "'value' must be integer" = is.integer(value),
-    "'value' must have length 1" = length(value) == 1L
-  )
+  if (!isTRUE(is.integer(value))) .miniextendr_arg_error("value", "must be integer")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
@@ -53,10 +51,8 @@ Counter$increment <- function() {
 #' @name Counter$add
 #' @rdname Counter
 Counter$add <- function(n) {
-  stopifnot(
-    "'n' must be integer" = is.integer(n),
-    "'n' must have length 1" = length(n) == 1L
-  )
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Counter__add, .call = match.call(), self, n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -67,10 +63,8 @@ Counter$add <- function(n) {
 #' @name Counter$from_string
 #' @rdname Counter
 Counter$from_string <- function(s) {
-  stopifnot(
-    "'s' must be character" = is.character(s),
-    "'s' must have length 1" = length(s) == 1L
-  )
+  if (!isTRUE(is.character(s))) .miniextendr_arg_error("s", "must be character")
+  if (!isTRUE(length(s) == 1L)) .miniextendr_arg_error("s", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Counter__from_string, .call = match.call(), s)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   class(.val) <- "Counter"

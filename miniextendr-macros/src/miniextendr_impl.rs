@@ -765,7 +765,7 @@ pub struct ParsedImpl {
     pub r_data_accessors: bool,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
-    /// Drop the R-side `stopifnot(...)` precondition block from method wrappers.
+    /// Drop the R-side type-check guards from method wrappers.
     /// Inherited from [`ImplAttrs::no_preconditions`] (set by
     /// `#[miniextendr(no_preconditions)]` or `fast`).
     pub no_preconditions: bool,
@@ -847,9 +847,9 @@ pub struct ImplAttrs {
     pub strict: bool,
     // endregion
     // region: Fast-path knobs
-    /// When true, drop the R-side `stopifnot(...)` precondition block from all
-    /// generated method wrappers. TryFromSexp still raises on bad input; the
-    /// message comes from Rust. Saves ~300 ns per assertion. Set by
+    /// When true, drop the R-side type-check guards from all generated method
+    /// wrappers. TryFromSexp still raises on bad input, with the same
+    /// argument-error condition; the message comes from the conversion. Set by
     /// `#[miniextendr(no_preconditions)]` or implied by `fast`.
     pub no_preconditions: bool,
     /// When true, emit `.call = NULL` instead of `.call = match.call()` in all

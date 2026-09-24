@@ -2,7 +2,8 @@
 # reads it, from numbers, text, or factor labels, with NA of any type as NA.
 #
 # Messages are matched on the marker's own text only (fixed = TRUE); the
-# "failed to convert parameter" prefix belongs to the macro's conversion error.
+# `'x' must be numeric: ` prefix belongs to the macro's conversion error
+# (test-argument-errors.R checks it).
 
 as_num_vec <- function(x) miniextendr:::test_as_numeric_vec(x)
 as_num <- function(x) miniextendr:::test_as_numeric(x)

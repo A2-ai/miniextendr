@@ -55,22 +55,30 @@ test_that("coerce-default converts bool params from R integers", {
 
 test_that("fast-default drops preconditions for bare fns, no_fast restores them", {
   fast_on <- miniextendr_has_feature("fast-default")
+  # Both paths raise the same argument-error condition (#1591); they differ
+  # in which side words it.
   if (fast_on) {
-    # stopifnot is gone under fast-default; TryFromSexp still rejects bad
-    # input, but the error now comes from Rust conversion (rust_error).
+    # The R-side check is gone under fast-default; TryFromSexp still rejects
+    # bad input, worded by the conversion.
     e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
     expect_s3_class(e, "rust_error")
-    # no_fast opts back out: preconditions restored, so the error is the
-    # R-side stopifnot-shaped error, NOT a rust_error.
+    expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
+    expect_identical(e$rust_type, "i32")
+    # no_fast opts back out: preconditions restored, so the R-side check
+    # words the error, and no Rust type is involved.
     e2 <- tryCatch(fdefault_no_fast_i32("nope"), error = function(e) e)
-    expect_false(inherits(e2, "rust_error"))
-    expect_match(conditionMessage(e2), "must be integer")
+    expect_s3_class(e2, "rust_error")
+    expect_identical(conditionMessage(e2), "'x' must be integer")
+    expect_null(e2$rust_type)
   } else {
-    # Every default build: preconditions are on, bare fn raises the
-    # stopifnot-shaped error, not a rust_error.
+    # Every default build: preconditions are on, the bare fn's R-side check
+    # words the error.
     e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
-    expect_false(inherits(e, "rust_error"))
-    expect_match(conditionMessage(e), "must be integer")
+    expect_s3_class(e, "rust_error")
+    expect_identical(e$kind, "conversion")
+    expect_identical(e$param, "x")
+    expect_identical(conditionMessage(e), "'x' must be integer")
+    expect_null(e$rust_type)
   }
 })
 

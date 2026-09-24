@@ -143,8 +143,8 @@ hands that call to every R-side check, to `.Call()` and to the raise fallback:
 ```r
 call_attr_caller_impl <- function(x) {
   .mx_call <- .miniextendr_caller_call()
-  if (!isTRUE(is.integer(x))) stop(simpleError("'x' must be integer", .mx_call))
-  if (!isTRUE(length(x) == 1L)) stop(simpleError("'x' must have length 1", .mx_call))
+  if (!isTRUE(is.integer(x))) .miniextendr_arg_error("x", "must be integer", .mx_call)
+  if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1", .mx_call)
   .val <- .Call(C_mypkg_call_attr_caller_impl, .call = .mx_call, x)
   if (inherits(.val, "rust_condition_value") && ...) return(.miniextendr_raise_condition(.val, .mx_call))
   .val
@@ -159,16 +159,18 @@ Error in call_attr_caller(value = -1L) : x must be positive, got -1
 Error in call_attr_caller(value = 1.5) : 'x' must be integer
 ```
 
-The R-side checks change shape under this option (#1548). The default wrapper
-validates with `stopifnot()`, which reports the frame of the function that
-called it, which is the wrapper; the choice helpers default to the same frame.
-That left the two layers disagreeing: a Rust-side failure named the public
-function, a bad choice or a non-integer argument named the bridge
-(`verb_impl(...)`). A `call = caller` wrapper therefore emits each
-precondition as a guard that raises `simpleError(<message>, .mx_call)`
-(`isTRUE()` keeps `stopifnot()`'s failure semantics, and the guards are
-cheaper than the `stopifnot()` call they replace), and passes the caller's
-call to every choice parameter's helper:
+The R-side checks take the caller's call under this option (#1548). Every
+wrapper emits each precondition as a guard,
+`if (!isTRUE(<check>)) .miniextendr_arg_error("<p>", "<requirement>")`, whose
+helper raises the same argument error as a failed Rust conversion (#1591) and
+by default reports the wrapper's own call, the frame `stopifnot()` used to
+report (`isTRUE()` keeps `stopifnot()`'s failure semantics, and the guards are
+cheaper than the `stopifnot()` call they replaced); the choice helpers default
+to the same frame. With that default a Rust-side failure would name the public
+function and a bad choice or a non-integer argument the bridge
+(`verb_impl(...)`). A `call = caller` wrapper therefore passes `.mx_call` to
+every precondition guard, and the caller's call to every choice parameter's
+helper:
 `.miniextendr_match_arg(kind, c(...), "kind", .mx_call)` for a scalar
 `match_arg` / `choices` parameter, the same form inside `if (!is.null(kind))`
 for an `Option<T>` choice (`if (!missing(kind) && ...)` when it is wrapped in

@@ -795,7 +795,7 @@ fn r6_active_binding_internal_emits_field_internal() {
 fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     // Audit 2026-07-06 finding 4: the setter branch of a combined
     // getter/setter active binding used to be a bare `.Call()` — no
-    // `stopifnot` precondition (unlike the standalone `set_*` method) and no
+    // precondition (unlike the standalone `set_*` method) and no
     // `rust_condition_value` re-raise guard, so `obj$prop <- <bad value>`
     // silently discarded the transported conversion error.
     //
@@ -815,17 +815,15 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
     let parsed = parse_impl(ClassSystem::R6, item_impl);
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // Setter branch: precondition block referencing the binding's `value`
+    // Setter branch: precondition guards referencing the binding's `value`
     // formal (not the Rust parameter name `temp`).
     assert!(
         wrapper.contains(
             "  } else {\n\
-             \x20   stopifnot(\n\
-             \x20     \"'value' must be double\" = is.double(value),\n\
-             \x20     \"'value' must have length 1\" = length(value) == 1L\n\
-             \x20   )"
+             \x20   if (!isTRUE(is.double(value))) .miniextendr_arg_error(\"value\", \"must be double\")\n\
+             \x20   if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error(\"value\", \"must have length 1\")\n"
         ),
-        "active-binding setter branch must emit the standalone setter's stopifnot block, renamed to 'value'\n{}",
+        "active-binding setter branch must emit the standalone setter's precondition guards, renamed to 'value'\n{}",
         wrapper
     );
     // The standalone `set_celsius` method keeps its own `temp` formal; only
@@ -3678,7 +3676,7 @@ fn snapshot_r6_with_options() {
 #[test]
 fn snapshot_r6_active_bindings() {
     // Pins the combined getter/setter active-binding emission: the setter
-    // branch must carry the standalone setter's stopifnot precondition block
+    // branch must carry the standalone setter's precondition guards
     // (renamed to the binding's `value` formal) and both branches must guard
     // the `.Call()` result against transported Rust conditions (audit
     // 2026-07-06 finding 4).
@@ -5096,7 +5094,7 @@ fn r6_active_binding_setter_honours_visibility_without_changing_default() {
             .unwrap();
         assert_eq!(active.contains("invisible(self)"), invisible, "{active}");
         assert!(active.contains(".miniextendr_raise_condition(.val, sys.call())"));
-        assert!(active.contains("stopifnot("));
+        assert!(active.contains(".miniextendr_arg_error(\"value\", \"must be integer\")"));
     }
 }
 

@@ -20997,6 +20997,20 @@ Used by the resolver in `write_r_wrappers_to_file` to replace
 - `class_system`: `&'static str`
   - Class system tag: `"env"` | `"r6"` | `"s3"` | `"s4"` | `"s7"` | `"vctrs"`.
 
+### `registry::ConversionErrorClassEntry`
+
+```rust
+pub struct ConversionErrorClassEntry
+```
+
+The package crate's `conversion_error_class`, registered by
+`miniextendr_init!` in [`MX_CONVERSION_ERROR_CLASS`].
+
+**Fields:**
+
+- `classes`: `&'static [&'static str]`
+  - The classes, most specific first; empty when the crate sets none.
+
 ### `registry::MatchArgChoicesEntry`
 
 ```rust
@@ -32759,25 +32773,31 @@ Automatically routes to R's main thread if called from a worker thread.
 ### `error_value::conversion_condition_value`
 
 ```rust
-unsafe fn conversion_condition_value(context: &str, param: &str, crate_class: &[&str], parts: crate::condition::ErrParts, call: Option<crate::SEXP>) -> crate::SEXP
+unsafe fn conversion_condition_value(prefix: &str, param: &str, rust_type: Option<&str>, crate_class: &[&str], parts: crate::condition::ErrParts, call: Option<crate::SEXP>) -> crate::SEXP
 ```
 
 Build the tagged value for an argument that failed its Rust-side
 conversion: `kind = "conversion"`, the parts probed off the error by
 [`crate::__mx_conversion_err_parts!`] (class, message and data from an
-[`RConditionError`](crate::condition::RConditionError) impl, else the
-`Display` text), with `context` prefixed to the message, the crate's
-`conversion_error_class` (`crate_class`, emitted by the macro from
-`[package.metadata.miniextendr]`) after the error's own classes, and the
-parameter's R name as `e$param`. See
-[`crate::condition::conversion_err_parts`] for how they combine.
+[`RConditionError`](crate::condition::RConditionError) impl, the R-worded
+reason for a built-in conversion error, else the `Display` text), with
+`prefix` before the message (`'x' must be a single integer`, or
+`invalid 'x' argument` when the macro has no R-facing expectation for the
+type), the crate's `conversion_error_class` (`crate_class`, emitted by the
+macro from `[package.metadata.miniextendr]`) after the error's own
+classes, the parameter's R name as `e$param` and the Rust type as
+`e$rust_type`. See [`crate::condition::conversion_err_parts`] for how they
+combine.
+
+The R-side argument checks raise the same condition from R
+(`.miniextendr_arg_error`, #1591), so a handler for the crate class, or
+for `rust_error`, sees every argument error whichever side caught it.
 
 #### Safety
 
 Same contract as [`make_rust_condition_value_with_data`]: R main thread,
 valid allocation context. Every generated conversion `Err` arm runs inside
-the wrapper's `with_r_unwind_protect` closure (or, for sidecar setters, the
-`.Call` entry point itself), which satisfies it.
+the wrapper's `with_r_unwind_protect` closure, which satisfies it.
 
 ### `error_value::make_rust_condition_value`
 
@@ -44467,6 +44487,20 @@ Each `#[miniextendr]` impl block emits an entry. During
 `write_r_wrappers_to_file`, `.__MX_CLASS_REF_<RustName>__` placeholders
 in generated R wrapper strings are replaced with the registered R class name
 (which may differ when `class = "Override"` is set on the impl block).
+
+### `registry::MX_CONVERSION_ERROR_CLASS`
+
+```rust
+pub static MX_CONVERSION_ERROR_CLASS: ::linkme::DistributedSlice<[ConversionErrorClassEntry]> = _;
+```
+
+The package crate's `conversion_error_class`. **Host-only.**
+
+`miniextendr_init!` emits one entry, with the classes it reads from the
+crate's `[package.metadata.miniextendr]` (empty when unset). During
+`write_r_wrappers_to_file` it becomes `.miniextendr_conversion_error_class`,
+the classes `.miniextendr_arg_error` gives every R-side argument error, so
+they match the ones the macro emits into the Rust conversion arms (#1591).
 
 ### `registry::MX_MATCH_ARG_CHOICES`
 

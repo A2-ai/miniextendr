@@ -44,7 +44,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 |---------|--------|-------|-----------------|
 | `strict-default` | Strict checked conversions for lossy types (i64, u64, isize, usize) | fns + impl blocks | `no_strict` |
 | `coerce-default` | Widen native `i32`/`f64` (and `Vec`) to the other numeric sources; preserve non-native numeric inputs; also accept integer `0`/`1` for `bool` and `Vec<bool>` | fns + methods | `no_coerce` |
-| `fast-default` | Fast-path knobs: drop R-side `stopifnot()` and emit `.call = NULL` | fns + impl blocks | `no_fast` |
+| `fast-default` | Fast-path knobs: drop the R-side type checks and emit `.call = NULL` | fns + impl blocks | `no_fast` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
@@ -185,11 +185,11 @@ impl MyType {
 The `fast-default` feature bundles two performance knobs that are applied by
 default to every `#[miniextendr]` function and impl block:
 
-- **`no_preconditions`**: drops the R-side `stopifnot(...)` block. The
-  `stopifnot` check costs ~300 ns/call for a typical i32 argument. When
-  omitted, type errors still propagate from Rust's `TryFromSexp`, but the
-  message comes from the Rust side ("failed to convert parameter 'x' to i32")
-  rather than R's "must be integer". Checks named per parameter
+- **`no_preconditions`**: drops the R-side type checks, one `isTRUE()`
+  guard per check. When omitted, type errors still propagate from Rust's
+  `TryFromSexp`, as the same argument-error condition (#1591), but worded by
+  the conversion (`'x' must be a single integer: got character`) rather than
+  by the R check (`'x' must be integer`). Checks named per parameter
   (`inherits`, `no_na`) are kept: the Rust conversion does not repeat them.
 
 - **`no_call_attribution`** (spelled `call = none` since #1566): emits
@@ -307,8 +307,8 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `strict-default` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
-| `no_fast` | `#[miniextendr(no_fast)]` on fn or impl | `fast-default` feature (restores both `stopifnot` + `match.call()`) |
-| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl | Drops `stopifnot` block (can be used independently of `no_call_attribution`) |
+| `no_fast` | `#[miniextendr(no_fast)]` on fn or impl | `fast-default` feature (restores both the type checks + `match.call()`) |
+| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl | Drops the R-side type checks (can be used independently of `no_call_attribution`) |
 | `no_call_attribution` | `#[miniextendr(no_call_attribution)]` on fn or impl | Emits `.call = NULL` (can be used independently of `no_preconditions`); on a fn also spelled `call = none`, with `call = wrapper` / `call = caller`, a `Call` / `CallerCall` parameter and the `Cargo.toml` `call_attribution` default as the other spellings (#1566) |
 | `fast` | `#[miniextendr(fast)]` on fn or impl | Bundle alias for both `no_preconditions` + `no_call_attribution`; also opts back in when used with `no_fast` |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
