@@ -51,7 +51,7 @@ Materialize this plan into an \code{S7CrossBoard}.
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target).
@@ -61,7 +61,7 @@ Mirror of \code{R6CrossPlan::build_s7}: the returned class drives the constructo
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target), or \code{None} when \code{fail} is set.
@@ -71,7 +71,7 @@ Mixed-system container return: proves the target-keyed resolver picks the R6 con
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Materialize this plan into \code{count} \code{R6CrossBoard}s (S7 source, R6 element target).
@@ -81,6 +81,6 @@ Mixed-system list return (#1284): mirror of \code{R6CrossPlan::build_many_s7} �
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 }

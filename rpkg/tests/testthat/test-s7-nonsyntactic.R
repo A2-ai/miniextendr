@@ -27,3 +27,47 @@ test_that("r_name = \"%mx_scale%\" defines and exports a package-local operator"
   expect_true("%mx_scale%" %in% getNamespaceExports("miniextendr"))
   expect_false(exists("MxS7Bag_%mx_scale%", envir = asNamespace("miniextendr"), inherits = FALSE))
 })
+
+test_that("base operators are not re-exported or documented as package generics", {
+  exports <- getNamespaceExports("miniextendr")
+  expect_false("[" %in% exports)
+  expect_false("[[" %in% exports)
+  expect_false("%*%" %in% exports)
+})
+
+test_that("s7(generic = \"%mx_cat%\") defines a new operator and keeps its shortcut", {
+  bag <- MxS7Bag(c(1, 2))
+  expect_equal(bag %mx_cat% c(3, 4), c(1, 2, 3, 4))
+  expect_true(inherits(miniextendr::`%mx_cat%`, "S7_generic"))
+  expect_true("%mx_cat%" %in% getNamespaceExports("miniextendr"))
+  expect_equal(MxS7Bag_concat(bag, 5), c(1, 2, 5))
+})
+
+test_that("`%*%` dispatches on both operands", {
+  a <- MxS7Bag(c(1, 2, 3))
+  b <- MxS7Bag(c(4, 5, 6))
+  expect_equal(a %*% b, 32)
+  expect_error(a %*% MxS7Bag(1), "cannot multiply bags of 3 and 1 values")
+  expect_equal(MxS7Bag_dot(a, b), 32)
+})
+
+test_that("s7(generic = \"generics::tidy\") registers when generics loads", {
+  skip_if_not_installed("generics")
+  # A fresh session: library(miniextendr) does not load generics, so the
+  # method can only reach tidy() through S7's onLoad hook.
+  res <- run_isolated({
+    before <- isNamespaceLoaded("generics")
+    out <- generics::tidy(MxS7Bag(c(10, 20)))
+    list(before = before, out = out)
+  })
+  expect_false(res$before)
+  expect_s3_class(res$out, "data.frame")
+  expect_equal(res$out$position, 1:2)
+  expect_equal(res$out$value, c(10, 20))
+
+  out <- generics::tidy(MxS7Bag(5))
+  expect_equal(out$value, 5)
+  expect_equal(MxS7Bag_tidy(MxS7Bag(7))$value, 7)
+  # The generic belongs to generics: it is neither exported nor documented here.
+  expect_false("tidy" %in% getNamespaceExports("miniextendr"))
+})

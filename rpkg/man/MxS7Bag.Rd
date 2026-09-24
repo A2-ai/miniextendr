@@ -9,25 +9,44 @@
 \alias{MxS7Bag$[[}
 \alias{MxS7Bag-\%mx_scale\%}
 \alias{MxS7Bag$\%mx_scale\%}
+\alias{MxS7Bag-\%mx_cat\%}
+\alias{MxS7Bag$\%mx_cat\%}
+\alias{MxS7Bag_concat}
+\alias{MxS7Bag-\%*\%}
+\alias{MxS7Bag$\%*\%}
+\alias{MxS7Bag_dot}
+\alias{MxS7Bag-tidy}
+\alias{MxS7Bag$tidy}
+\alias{MxS7Bag_tidy}
 \title{MxS7Bag S7 Class}
 \usage{
 MxS7Bag(values, .ptr = NULL)
 
 MxS7Bag_subset(self, i, ...)
+
+MxS7Bag_concat(self, other, ...)
+
+MxS7Bag_dot(self, y, ...)
+
+MxS7Bag_tidy(self, ...)
 }
 \arguments{
 \item{values}{Numeric values held by the bag.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 
-\item{self}{A \code{MxS7Bag} object.}
-
 \item{i}{Integer positions to keep.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
+\item{self}{A \code{MxS7Bag} object.}
+
+\item{other}{Numeric values to append.}
+
+\item{y}{Another \code{MxS7Bag} with the same number of values.}
 }
 \description{
-S7 bag with \code{[}, \code{[[} and \verb{\%mx_scale\%} methods.
+S7 bag with \code{[}, \code{[[}, \code{\%*\%}, \verb{\%mx_scale\%}, \verb{\%mx_cat\%} and \code{tidy()} methods.
 
 Values at 1-based positions, as \code{bag[i]}.
 
@@ -36,10 +55,40 @@ Registered on the existing \code{[} generic; the Rust name keeps the \code{MxS7B
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Value at a 1-based position, as \code{bag[[i]]}.
 
 Every value multiplied by \code{k}, as \code{bag \%mx_scale\% k}.
+
+The bag's values followed by \code{other}, as \code{bag \%mx_cat\% other}.
+
+\code{s7(generic = ...)} with a name no generic has yet defines the package-local \verb{\%mx_cat\%} operator; the Rust name keeps the \code{MxS7Bag_concat()} shortcut.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Dot product with another bag, as \code{bag \%*\% y}.
+
+S7 dispatches \code{\%*\%} on \code{x} and \code{y}; the method is registered for any \code{y}, which the Rust conversion reads as another \code{MxS7Bag}.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+The values as a data frame of \code{position} and \code{value}, as \code{generics::tidy(bag)}.
+
+Registered on the \code{tidy()} generic of the generics package, which the package does not import: the method is attached when generics loads.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
 }

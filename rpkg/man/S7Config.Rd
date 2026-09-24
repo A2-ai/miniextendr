@@ -32,7 +32,7 @@ Regular getter for version.
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 }
 \keyword{internal}
