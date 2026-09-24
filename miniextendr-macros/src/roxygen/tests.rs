@@ -1041,3 +1041,122 @@ fn source_tag_renders_only_when_enabled() {
 }
 
 // endregion
+
+// region: generated @param lines vs topics that document the arguments (#1590)
+
+fn tag_list(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(|line| line.to_string()).collect()
+}
+
+#[test]
+fn params_documented_elsewhere_for_topic_and_inheritance_tags() {
+    for tag in [
+        "@rdname observed",
+        "@describeIn observed Largest value.",
+        "@inheritParams observed",
+        "@inherit observed",
+        "@inherit observed params return",
+    ] {
+        assert!(
+            params_documented_elsewhere(&tag_list(&["@param x Values.", tag])),
+            "`{tag}` takes the arguments from another block"
+        );
+    }
+}
+
+#[test]
+fn params_not_documented_elsewhere_for_own_page_tags() {
+    for block in [
+        tag_list(&[]),
+        tag_list(&["@param x Values."]),
+        // `@name` documents the block's own page (#1476); nothing fills it.
+        tag_list(&["@name observed", "@title Observed values"]),
+        // A field list without `params`: the arguments are not inherited.
+        tag_list(&["@inherit observed return description"]),
+        // Only `...` is inherited, and `...` never gets a generated line.
+        tag_list(&["@inheritDotParams observed"]),
+        // Tag names match exactly, not by prefix.
+        tag_list(&["@rdnamex observed", "@inheritParamsx observed"]),
+    ] {
+        assert!(
+            !params_documented_elsewhere(&block),
+            "{block:?} has no other block documenting its arguments"
+        );
+    }
+}
+
+/// Run the standalone-function `@param` generation over a parsed fn item.
+fn generated_fn_param_tags(item: proc_macro2::TokenStream) -> (Vec<String>, Vec<(String, String)>) {
+    let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed =
+        syn::parse2(item).expect("fixture fn parses");
+    let mut tags = roxygen_tags_from_attrs(parsed.attrs());
+    let placeholders = push_fn_param_tags(&mut tags, parsed.inputs(), &parsed, "C_pkg_summary");
+    (tags, placeholders)
+}
+
+/// The same signature under each doc block: one argument the author
+/// documents, one plain, one `match_arg`, one `choices`, plus unnamed dots
+/// (never given a generated line).
+fn summary_fn(doc_tag: Option<&str>) -> proc_macro2::TokenStream {
+    let doc_tag = doc_tag.map(|tag| quote::quote!(#[doc = #tag]));
+    quote::quote! {
+        /// @param values Numbers to summarise.
+        #doc_tag
+        fn summary(
+            values: Vec<f64>,
+            weights: Vec<f64>,
+            #[miniextendr(match_arg)] mode: Mode,
+            #[miniextendr(choices("low", "high"))] side: &str,
+            ...
+        ) -> f64 {
+            0.0
+        }
+    }
+}
+
+fn param_lines(tags: &[String]) -> Vec<&str> {
+    tags.iter()
+        .map(String::as_str)
+        .filter(|tag| tag.starts_with("@param"))
+        .collect()
+}
+
+#[test]
+fn fn_param_tags_fill_every_undocumented_argument_on_its_own_page() {
+    let (tags, placeholders) = generated_fn_param_tags(summary_fn(None));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    assert_eq!(
+        param_lines(&tags),
+        [
+            "@param values Numbers to summarise.",
+            "@param weights (no documentation available)",
+            format!("@param mode {mode_placeholder}").as_str(),
+            "@param side One of \"low\", \"high\".",
+        ],
+        "got {tags:?}"
+    );
+    assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
+}
+
+#[test]
+fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
+    for doc_tag in [
+        "@rdname summaries",
+        "@describeIn summaries Weighted summary.",
+        "@inheritParams summaries",
+    ] {
+        let (tags, placeholders) = generated_fn_param_tags(summary_fn(Some(doc_tag)));
+        // The author's own `@param` stays, exactly once; nothing is generated.
+        assert_eq!(
+            param_lines(&tags),
+            ["@param values Numbers to summarise."],
+            "`{doc_tag}`: got {tags:?}"
+        );
+        assert!(
+            placeholders.is_empty(),
+            "`{doc_tag}`: a match_arg doc placeholder needs its @param line"
+        );
+    }
+}
+
+// endregion

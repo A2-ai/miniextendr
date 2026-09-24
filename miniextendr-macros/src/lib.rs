@@ -1460,57 +1460,12 @@ pub fn miniextendr(
         crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
     }
 
-    // Auto-generate @param tags for every non-dots parameter the user didn't
-    // already document. Priority, per param:
-    //   1. choices(...)      — quoted list, "One of ..." / "One or more of ..."
-    //   2. match_arg         — placeholder resolved at write time (#210)
-    //   3. everything else   — "(no documentation available)" fallback
-    //
-    // Collect (doc_placeholder, rust_param) as we go so the write-time resolver
-    // registry gets an MX_MATCH_ARG_PARAM_DOCS entry for every match_arg param.
-    let mut match_arg_param_doc_placeholders: Vec<(String, String)> = Vec::new();
-    for arg in inputs.iter() {
-        let syn::FnArg::Typed(pt) = arg else {
-            continue;
-        };
-        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
-            continue;
-        };
-        if parsed.is_dots_param(&pat_ident.ident) {
-            continue;
-        }
-        let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        let r_name = r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
-        let already_documented = crate::roxygen::param_documented(&roxygen_tags, &r_name);
-        if already_documented {
-            continue;
-        }
-
-        if let Some(choices) = parsed.choices_for_param(&rust_name) {
-            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
-            let prefix = if parsed.has_several_ok(&rust_name) {
-                "One or more of"
-            } else {
-                "One of"
-            };
-            let suffix = if parsed.is_optional_choice(&rust_name) {
-                ", or NULL for no choice"
-            } else {
-                ""
-            };
-            roxygen_tags.push(format!(
-                "@param {r_name} {prefix} {}{suffix}.",
-                quoted.join(", ")
-            ));
-        } else if parsed.has_match_arg_attr(&rust_name) {
-            let doc_placeholder =
-                crate::match_arg_keys::param_doc_placeholder(&c_ident.to_string(), &r_name);
-            roxygen_tags.push(format!("@param {r_name} {doc_placeholder}"));
-            match_arg_param_doc_placeholders.push((doc_placeholder, rust_name));
-        } else {
-            roxygen_tags.push(format!("@param {r_name} (no documentation available)"));
-        }
-    }
+    // Generated @param tags for the parameters the author left undocumented,
+    // unless the block takes them from an `@rdname` / `@describeIn` topic or
+    // `@inheritParams` (#1590). The match_arg placeholders feed the
+    // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver.
+    let match_arg_param_doc_placeholders =
+        crate::roxygen::push_fn_param_tags(&mut roxygen_tags, inputs, &parsed, &c_ident_str);
 
     // A standalone function's reference page is titled by its R wrapper name — never
     // the doc-comment prose. rustdoc summaries are markdown (intra-doc links, code

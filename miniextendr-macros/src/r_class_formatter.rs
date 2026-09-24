@@ -883,7 +883,9 @@ impl<'a> MethodDocBuilder<'a> {
     ///
     /// When set, auto-generates `@param name (undocumented)` for any parameter
     /// not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
-    /// `...` parameters.
+    /// `...` parameters. Generates nothing when the method's own tags take the
+    /// arguments from another topic (`@rdname`, `@describeIn`,
+    /// `@inheritParams`; see `roxygen::params_documented_elsewhere`).
     pub fn with_r_params(mut self, params: &'a str) -> Self {
         self.r_params = Some(params);
         self
@@ -965,11 +967,16 @@ impl<'a> MethodDocBuilder<'a> {
             }
         }
 
-        // Auto-generate @param for undocumented method parameters. Split on
-        // top-level commas only — a naive `split(", ")` shreds a
+        // Auto-generate @param for undocumented method parameters, unless the
+        // method's own tags send it to a topic that documents them (`@rdname`,
+        // `@describeIn`) or inherit them (`@inheritParams`, #1590). The class
+        // page default below is not in `doc_tags`, so it never suppresses them.
+        // Split on top-level commas only — a naive `split(", ")` shreds a
         // `mode = c("fast", "slow")` default into a bogus `"slow")` formal,
         // which surfaces as a spurious @param and an R CMD check warning.
-        if let Some(params) = self.r_params {
+        if let Some(params) = self.r_params
+            && !crate::roxygen::params_documented_elsewhere(self.doc_tags)
+        {
             for param in crate::roxygen::split_r_formals(params) {
                 let param_name = crate::roxygen::formal_name(param);
                 if param_name == ".ptr" || param_name == "..." || param_name == "self" {
@@ -1144,6 +1151,39 @@ mod tests {
                 docs.contains("Example$new(1L)\n#' @details\n#' \\describe{"),
                 "{docs}"
             );
+        }
+    }
+
+    /// A method whose own tags join or inherit a topic gets no generated
+    /// `@param` lines (#1590); its own `@param` stays. The class-page default
+    /// the builder appends is not an author tag, so a method on the class page
+    /// keeps the filler for each undocumented argument.
+    #[test]
+    fn method_param_filler_only_on_the_class_page() {
+        let type_ident: syn::Ident = syn::parse_quote!(Counter);
+        let build = |tags: &[&str]| {
+            let tags: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
+            super::MethodDocBuilder::new("Counter", "add", &type_ident, &tags)
+                .with_r_params("by, times = 1L")
+                .build()
+                .join("\n")
+        };
+
+        let class_page = build(&["@param by Step size."]);
+        assert!(class_page.contains("#' @rdname Counter"), "{class_page}");
+        assert!(
+            class_page.contains("#' @param times (undocumented)"),
+            "{class_page}"
+        );
+
+        for tag in ["@rdname counter_ops", "@inheritParams counter_ops"] {
+            let docs = build(&["@param by Step size.", tag]);
+            assert_eq!(
+                docs.matches("#' @param ").count(),
+                1,
+                "`{tag}`: only the author's @param, got:\n{docs}"
+            );
+            assert!(docs.contains("#' @param by Step size."), "{docs}");
         }
     }
 

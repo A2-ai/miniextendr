@@ -994,8 +994,9 @@ impl MiniextendrFunctionParsed {
         if let Some(ref named) = self.named_dots {
             return ident == named;
         }
-        // Unnamed dots: the variadic was replaced with `_dots` as the param name
-        ident == "_dots"
+        // Unnamed dots: `rewrite_variadic_dots` replaced the variadic with the
+        // synthetic `__miniextendr_dots` binding.
+        ident == "__miniextendr_dots"
     }
 
     /// Whether a parameter carried any per-parameter `#[miniextendr(...)]`

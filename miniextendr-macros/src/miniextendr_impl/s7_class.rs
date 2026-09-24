@@ -434,6 +434,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let ctor_tag = crate::roxygen::find_param_tag(&ctx.method.doc_tags, param_name);
                 if let Some(tag) = ctor_tag {
                     lines.push(format!("#' {}", tag));
+                } else if crate::roxygen::params_documented_elsewhere(class_doc_tags) {
+                    // The class block joins (`@rdname`) or inherits from a
+                    // topic that documents the argument (#1590).
+                    continue;
                 } else if let Some(placeholder) = mx_doc.get(param_name) {
                     // match_arg'd constructor param — placeholder rewritten at
                     // cdylib write time to rendered choice description (#210).
