@@ -283,3 +283,66 @@ NULL
 #' @param ... Additional arguments.
 #' @name gauge_level
 NULL
+
+# Omittable and `Either` choice-parameter fixtures (#1551): the S3 generics of
+# the OmitPickS3 / EitherRouteS3 methods and of their OmitGrade /
+# EitherGrade trait impls. Exported by the auto-generated wrappers under the
+# class @rdname, aliased here for R CMD check.
+
+#' Report omittable choice parameters through an S3 method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name omit_pick_s3
+NULL
+
+#' Report an omittable inline choice through an S3 trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name omit_grade
+NULL
+
+#' Report omittable inline choices through an S3 trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name omit_grades
+NULL
+
+#' Describe a route name or data frame, and a level, through an S3 method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name plan_s3
+NULL
+
+#' Describe a grade name or number through an S3 trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name either_grade
+NULL
+
+# Trait generics of the Counter / MatrixCounter S3 impls (S3TraitCounter,
+# CounterTraitS3). The S3 trait wrappers export the generic by name, so it
+# needs an alias like the inherent-impl generics above.
+
+#' Increment a counter through its trait
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name increment
+NULL
+
+#' Add to a counter through its trait
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name checked_add
+NULL
+
+#' Add to a counter through a custom-named trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name custom_add
+NULL
+
+#' Read a counter through a custom-named trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name custom_get
+NULL
