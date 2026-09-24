@@ -110,23 +110,28 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
 
-### Parsing Markers (input-only)
+### Parsing and Reading Markers (input-only)
 
-Argument markers that read a value from its text. They have no `IntoR`; return
-the inner value instead.
+Argument markers that read a value the way an R function would (`as.numeric()`,
+`as.character()`), or parse it from its text. They have no `IntoR`; return the
+inner value instead.
 
 | Rust Type | Accepted R Type(s) | Element Behavior | On failure |
 |-----------|--------------------|------------------|------------|
 | `AsNumericVec` (`.0: Vec<Option<f64>>`) | REALSXP, INTSXP, LGLSXP, STRSXP, factor | Like `as.numeric()`: doubles as is (`NaN` stays `Some(NaN)`), integer/logical widened, character parsed with R's `R_strtod` (surrounding blanks, `Inf`, `NaN`, `1e3`, hex), factor read by its labels, never its codes. NA of any type, blank strings and the token `"NA"` → `None` | One `InvalidValue`: `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`, 1-based, at most 10 listed then `and N more`. Other types: `SexpError::Type` |
 | `AsNumeric` (`.0: Option<f64>`) | Same, length 1 | Same | Same wording for the one value; wrong length: `SexpError::Length` |
+| `AsCharacterVec` (`.0: Vec<Option<String>>`) | Any atomic: LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP (incl. factor, `Date`, `POSIXct`) | Like `as.character()`, with R making the text: a plain vector through `coerceVector()` (`0.1 + 0.2` → `"0.3"`, `1e6` → `"1e+06"`, `TRUE` → `"TRUE"`, `as.raw(255)` → `"ff"`), a classed vector through its `as.character()` method (factor labels, formatted dates). NA of any type → `None`; `"NA"`, `""` and `"NaN"` stay strings. Names and `dim` dropped | Non-atomic input: `SexpError::Type`. A failing method: `InvalidValue` (`as.character() failed: ...`); a method returning non-character: `InvalidValue` |
+| `AsCharacter` (`.0: Option<String>`) | Same, length 1 | Same | Same; wrong length (of the argument or of the method's result): `SexpError::Length` |
 | `AsFromStrVec<T: FromStr>` | STRSXP only | `str::parse` per element | One batched `InvalidValue` (`index 1: "n/a": <err>`, 0-based); `NA_character_` → `NA at index <i> not allowed` |
 | `AsFromStr<T: FromStr>` | STRSXP, length 1 | `str::parse` | `"n/a": <err>`; `NA_character_` → `SexpError::Na` |
 
 The generated R precondition for `AsNumeric` / `AsNumericVec` is
 `is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)` ("'x' must
 be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
-`is.null(x) ||` under `Option<…>`). `AsFromStr` / `AsFromStrVec` have no R
-precondition; their errors come from the conversion.
+`is.null(x) ||` under `Option<…>`). For `AsCharacter` / `AsCharacterVec` it is
+`is.atomic(x)` ("'x' must be atomic", base R's own wording; plus length 1 for
+`AsCharacter`), which refuses lists and data frames before `.Call`. `AsFromStr` /
+`AsFromStrVec` have no R precondition; their errors come from the conversion.
 
 ---
 
@@ -333,6 +338,7 @@ not gaps:
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
 | `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
 | `AsNumeric` / `AsNumericVec` | `TryFromSexp` only | They describe how an argument is *read* (from text or factor labels). An `IntoR` would only repeat `Option<f64>` / `Vec<Option<f64>>`, which already return a double vector with NA; return `.0`. |
+| `AsCharacter` / `AsCharacterVec` | `TryFromSexp` only | Same shape: they describe how an argument is read (through `as.character()`). `Option<String>` / `Vec<Option<String>>` already return a character vector with NA; return `.0`. |
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `TryFromSexp` only | Parsing adapters. The outbound counterpart is `AsDisplay<T>` / `AsDisplayVec<T>`. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented

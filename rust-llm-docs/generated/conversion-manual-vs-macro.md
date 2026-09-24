@@ -10,12 +10,14 @@ Source: `target/doc/miniextendr_api.json`
 
 ## TryFromSexp
 
-- shape `Option<_>`: **50 hand-rolled**, 22 macro-generated  <== macro already exists for this shape
+- shape `Option<_>`: **52 hand-rolled**, 22 macro-generated  <== macro already exists for this shape
     - `Option<&'static str>` (3 items) — miniextendr-api/src/from_r/strings.rs:83
     - `Option<&[T]>` (3 items) — miniextendr-api/src/from_r.rs:700
     - `Option<&mut [T]>` (3 items) — miniextendr-api/src/from_r.rs:727
     - `Option<AhoCorasick>` (3 items) — miniextendr-api/src/optionals/aho_corasick_impl.rs:102
     - `Option<ArrayVec<[T; N]>>` (3 items) — miniextendr-api/src/optionals/tinyvec_impl.rs:227
+    - `Option<AsCharacter>` (3 items) — miniextendr-api/src/convert/as_character.rs:126
+    - `Option<AsCharacterVec>` (3 items) — miniextendr-api/src/convert/as_character.rs:127
     - `Option<AsNumeric>` (3 items) — miniextendr-api/src/convert/as_numeric.rs:127
     - `Option<AsNumericVec>` (3 items) — miniextendr-api/src/convert/as_numeric.rs:128
     - `Option<BitVec<u8, Msb0>>` (3 items) — miniextendr-api/src/optionals/bitvec_impl.rs:172

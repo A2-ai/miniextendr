@@ -413,6 +413,57 @@ The markers are input-only; return the inner `Vec<Option<f64>>` /
 `AsFromStrVec<T>`: character input only, `NA` refused, and each failing value
 quoted in the error (`index 1: "n/a": invalid digit found in string`).
 
+### Labels from any atomic vector (`AsCharacter`)
+
+Identifiers in R data are often numbers or factors: subject IDs, visit numbers,
+grouping columns read by `read.csv()`. A `Vec<String>` parameter accepts
+character input only. `AsCharacterVec` (and the length-1 `AsCharacter`) take
+any atomic vector and read it the way `as.character()` does, so the strings are
+the ones R produces elsewhere:
+
+```rust
+use miniextendr_api::AsCharacterVec;
+use std::collections::HashSet;
+
+#[miniextendr]
+pub fn n_subjects(ids: AsCharacterVec) -> i32 {
+    let distinct: HashSet<String> = ids.0.into_iter().flatten().collect();
+    i32::try_from(distinct.len()).expect("fewer than 2^31 subjects")
+}
+```
+
+```r
+n_subjects(c(101L, 102L, 101L))        # 2
+n_subjects(factor(c("S1", "S2", NA)))  # 2  factor labels, not codes
+n_subjects(c(0.1 + 0.2, 0.3))          # 1  both read as "0.3"
+n_subjects(list(1))
+#> Error: 'ids' must be atomic
+```
+
+| Input | Result |
+|-------|--------|
+| character | as is; `NA_character_` → `None`, `"NA"` and `""` stay values |
+| integer, double | R's formatting (doubles to 15 significant digits): `0.1 + 0.2` → `"0.3"`, `1e6` → `"1e+06"`, `100` → `"100"`, `NaN` → `"NaN"`; `NA` → `None` |
+| logical | `"TRUE"` / `"FALSE"`; `NA` → `None` |
+| complex, raw | `"1+2i"`, `"ff"` (as `as.character()`) |
+| classed vector (factor, `Date`, `POSIXct`, …) | its `as.character()` method: factor labels, `"2024-01-15"` for a `Date` |
+| list, data frame, `NULL`, … | refused (R precondition `is.atomic(x)`, then `SexpError::Type`) |
+
+The text always comes from R, never from Rust formatting (`format!("{}", 0.1 +
+0.2)` is `"0.30000000000000004"`). A plain vector goes through R's
+`coerceVector()`, as the `as.character()` primitive does. A vector with a class
+attribute is passed to `as.character(x)` itself, because `coerceVector()` on the
+double underneath a `Date` would give its day count (`"19737"`); an error in
+that method becomes the conversion error. Names and `dim` are dropped, as
+`as.character()` drops them: a matrix is read in column-major order.
+
+Unlike `AsNumeric`, which reads the token `"NA"` and blank strings as missing,
+`AsCharacter` keeps `"NA"` and `""` as strings, as `as.character()` does: only
+`NA` itself is `None`. `NaN` becomes `"NaN"`; `#[miniextendr(no_na)]` refuses it
+along with `NA`, since `anyNA()` counts it. `Option<AsCharacter>` /
+`Option<AsCharacterVec>` also accept `NULL` as `None`, and the markers are
+input-only: return the inner `Vec<Option<String>>` / `Option<String>`.
+
 ---
 
 ## Slice Lifetimes

@@ -7176,6 +7176,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 
 ### `pub use arrow_schema::Schema;`
 
+### `pub use as_character::AsCharacter;`
+
+### `pub use as_character::AsCharacterVec;`
+
 ### `pub use as_numeric::AsNumeric;`
 
 ### `pub use as_numeric::AsNumericVec;`
@@ -7327,6 +7331,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use conv::to_sexp;`
 
 ### `pub use conv::try_from_sexp;`
+
+### `pub use convert::AsCharacter;`
+
+### `pub use convert::AsCharacterVec;`
 
 ### `pub use convert::AsDataFrame;`
 
@@ -13026,6 +13034,112 @@ fn upper(words: Vec<String>) -> CollectStrings<impl ExactSizeIterator<Item = Str
 **Fields:**
 
 - `0`: `I`
+
+### `convert::as_character::AsCharacter`
+
+```rust
+pub struct AsCharacter
+```
+
+A character scalar read like R's `as.character()`: from an atomic vector
+of length 1 of any type, a factor by its label. `NA` of any type is `None`.
+
+It follows the same reading rules as [`AsCharacterVec`], and also requires
+length 1 ([`SexpError::Length`] otherwise), both of the argument and of what
+a class's `as.character()` method returns for it.
+
+#### Example
+
+```ignore
+use miniextendr_api::{miniextendr, AsCharacter};
+
+#[miniextendr]
+fn subject_label(id: AsCharacter) -> String {
+    format!("subject {}", id.0.as_deref().unwrap_or("unknown"))
+}
+// R: subject_label("S-01")        → "subject S-01"
+//    subject_label(101L)          → "subject 101"
+//    subject_label(factor("S-02")) → "subject S-02"   (the label, not the code)
+//    subject_label(NA)            → "subject unknown"
+//    subject_label(c(1, 2))       → error: 'id' must have length 1
+```
+
+**Fields:**
+
+- `0`: `Option<String>`
+
+### `convert::as_character::AsCharacterVec`
+
+```rust
+pub struct AsCharacterVec
+```
+
+A character vector read like R's `as.character()`: from an atomic vector of
+any type, a factor by its labels. `NA` of any type is `None`.
+
+Identifiers in R data often arrive as numbers or factors: subject IDs,
+visit numbers, or grouping columns read by `read.csv()`. A `Vec<String>`
+parameter accepts character input only, so a function that treats such
+values as labels would need an R wrapper calling `as.character()` first.
+This marker does that conversion itself, and the strings are exactly the
+ones R produces elsewhere, because R makes them.
+
+#### Reading rules
+
+| R input | Result |
+|---------|--------|
+| character | as is; `NA_character_` → `None`. `"NA"` and `""` stay values |
+| integer, double | R's own formatting (doubles to 15 significant digits): `0.1 + 0.2` → `"0.3"`, `1e6` → `"1e+06"`, `100` → `"100"`, `NaN` → `"NaN"`, `Inf` → `"Inf"`; `NA` → `None` |
+| logical | `"TRUE"` / `"FALSE"`; `NA` → `None` |
+| complex | `"1+2i"`; `NA` → `None` |
+| raw | two hex digits: `as.raw(255)` → `"ff"` |
+| classed object (factor, `Date`, `POSIXct`, …) | its `as.character()` method: factor labels (never the codes), `"2024-01-15"` for a `Date`, `"2024-01-15 10:30:00"` for a `POSIXct` |
+| list, data frame, `NULL`, … | [`SexpError::Type`] |
+
+A plain atomic vector is converted with R's `coerceVector()` (what the
+`as.character()` primitive does for it); the text never comes from Rust
+formatting, which would give `"0.30000000000000004"` for `0.1 + 0.2`. A
+vector with a class attribute (`is.object(x)`) is passed to
+`as.character(x)`, evaluated as if at top level: base R's `as.character`
+(a user binding of that name does not interfere), with S3 and S4 methods
+registered by packages or defined in the global environment. A `Date` is a
+double underneath, and `coerceVector()` alone would give its day count
+(`"19737"`). An error in the method becomes the conversion error, as does a
+method that returns something other than a character vector.
+
+Names and `dim` are dropped, as `as.character()` drops them: a matrix is
+read in column-major order. Zero-length input gives an empty vector.
+
+Unlike [`AsNumericVec`](crate::convert::AsNumericVec), which reads the
+token `"NA"` and blank strings as missing, only `NA` itself is `None`
+here: `as.character()` keeps `"NA"` and `""` as strings. `NaN` becomes
+`"NaN"` (`no_na` refuses it in R, as `anyNA()` counts it).
+
+`Option<AsCharacterVec>` (and `Option<AsCharacter>`) also accept `NULL` as
+`None`. The markers are input-only: there is no `IntoR`. Return the inner
+`Vec<Option<String>>` / `Option<String>`, which already converts to a
+character vector with `NA`.
+
+#### Example
+
+```ignore
+use miniextendr_api::{miniextendr, AsCharacterVec};
+use std::collections::HashSet;
+
+#[miniextendr]
+fn n_subjects(ids: AsCharacterVec) -> i32 {
+    let distinct: HashSet<String> = ids.0.into_iter().flatten().collect();
+    i32::try_from(distinct.len()).expect("fewer than 2^31 subjects")
+}
+// R: n_subjects(c(101L, 102L, 101L))         → 2
+//    n_subjects(factor(c("S1", "S2", NA)))    → 2   (labels, not codes)
+//    n_subjects(c(0.1 + 0.2, 0.3))            → 1   (both read as "0.3")
+//    n_subjects(list(1))                      → error: 'ids' must be atomic
+```
+
+**Fields:**
+
+- `0`: `Vec<Option<String>>`
 
 ### `convert::as_numeric::AsNumeric`
 

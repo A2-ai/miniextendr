@@ -8,7 +8,7 @@ Traits with impls: 9
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `TryFromSexp` | 473 | 473 |
+| `TryFromSexp` | 477 | 477 |
 | `IntoR` | 363 | 363 |
 | `IntoRAs` | 135 | 135 |
 | `TryCoerce` | 95 | 93 |
@@ -18,13 +18,17 @@ Traits with impls: 9
 | `IntoRAltrep` | 3 | 1 |
 | `RDeserializeNative` | 1 | 1 |
 
-## `TryFromSexp` — 473 impls
+## `TryFromSexp` — 477 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
 | `AltrepSexp` | `` | concrete | 3 | miniextendr-api/src/altrep_sexp.rs:282 |
-| `AsFromStr<T>` | `<T> +1wc` | concrete | 2 | miniextendr-api/src/convert.rs:1035 |
-| `AsFromStrVec<T>` | `<T> +1wc` | concrete | 2 | miniextendr-api/src/convert.rs:1082 |
+| `AsFromStr<T>` | `<T> +1wc` | concrete | 2 | miniextendr-api/src/convert.rs:1037 |
+| `AsFromStrVec<T>` | `<T> +1wc` | concrete | 2 | miniextendr-api/src/convert.rs:1084 |
+| `AsCharacterVec` | `` | concrete | 2 | miniextendr-api/src/convert/as_character.rs:103 |
+| `AsCharacter` | `` | concrete | 2 | miniextendr-api/src/convert/as_character.rs:111 |
+| `Option<AsCharacter>` | `` | concrete | 3 | miniextendr-api/src/convert/as_character.rs:126 |
+| `Option<AsCharacterVec>` | `` | concrete | 3 | miniextendr-api/src/convert/as_character.rs:127 |
 | `AsNumeric` | `` | concrete | 2 | miniextendr-api/src/convert/as_numeric.rs:107 |
 | `Option<AsNumeric>` | `` | concrete | 3 | miniextendr-api/src/convert/as_numeric.rs:127 |
 | `Option<AsNumericVec>` | `` | concrete | 3 | miniextendr-api/src/convert/as_numeric.rs:128 |
@@ -534,23 +538,23 @@ Traits with impls: 9
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `AsList<T>` | `<T>` | concrete | 4 | miniextendr-api/src/convert.rs:112 |
-| `Collect<I>` | `<I, T> +2wc` | concrete | 5 | miniextendr-api/src/convert.rs:1146 |
-| `CollectStrings<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1202 |
-| `CollectNA<I>` | `<I> +1wc` | concrete | 5 | miniextendr-api/src/convert.rs:1243 |
-| `CollectNAInt<I>` | `<I> +1wc` | concrete | 5 | miniextendr-api/src/convert.rs:1288 |
-| `AsExternalPtr<T>` | `<T>` | concrete | 4 | miniextendr-api/src/convert.rs:375 |
-| `AsRNative<T>` | `<T>` | concrete | 5 | miniextendr-api/src/convert.rs:427 |
-| `AsDataFrame<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:497 |
-| `AsVctrs<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:545 |
-| `AsNamedList<Vec<(K, V)>>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:616 |
-| `AsNamedList<[(K, V); N]>` | `<K, V, N>` | concrete | 4 | miniextendr-api/src/convert.rs:645 |
-| `AsNamedList<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:671 |
-| `AsNamedVector<Vec<(K, V)>>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:729 |
-| `AsNamedVector<[(K, V); N]>` | `<K, V, N>` | concrete | 4 | miniextendr-api/src/convert.rs:745 |
-| `AsNamedVector<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:761 |
-| `AsDisplay<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:968 |
-| `AsDisplayVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:995 |
+| `AsList<T>` | `<T>` | concrete | 4 | miniextendr-api/src/convert.rs:114 |
+| `Collect<I>` | `<I, T> +2wc` | concrete | 5 | miniextendr-api/src/convert.rs:1148 |
+| `CollectStrings<I>` | `<I> +1wc` | concrete | 3 | miniextendr-api/src/convert.rs:1204 |
+| `CollectNA<I>` | `<I> +1wc` | concrete | 5 | miniextendr-api/src/convert.rs:1245 |
+| `CollectNAInt<I>` | `<I> +1wc` | concrete | 5 | miniextendr-api/src/convert.rs:1290 |
+| `AsExternalPtr<T>` | `<T>` | concrete | 4 | miniextendr-api/src/convert.rs:377 |
+| `AsRNative<T>` | `<T>` | concrete | 5 | miniextendr-api/src/convert.rs:429 |
+| `AsDataFrame<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:499 |
+| `AsVctrs<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:547 |
+| `AsNamedList<Vec<(K, V)>>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:618 |
+| `AsNamedList<[(K, V); N]>` | `<K, V, N>` | concrete | 4 | miniextendr-api/src/convert.rs:647 |
+| `AsNamedList<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:673 |
+| `AsNamedVector<Vec<(K, V)>>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:731 |
+| `AsNamedVector<[(K, V); N]>` | `<K, V, N>` | concrete | 4 | miniextendr-api/src/convert.rs:747 |
+| `AsNamedVector<&[(K, V)]>` | `<K, V>` | concrete | 4 | miniextendr-api/src/convert.rs:763 |
+| `AsDisplay<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:970 |
+| `AsDisplayVec<T>` | `<T>` | concrete | 3 | miniextendr-api/src/convert.rs:997 |
 | `DataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:727 |
 | `BuiltDataFrame` | `` | concrete | 4 | miniextendr-api/src/dataframe.rs:935 |
 | `FactorVec<T>` | `<T>` | concrete | 4 | miniextendr-api/src/factor.rs:501 |

@@ -3356,3 +3356,41 @@ pub fn gc_stress_deferred_connection_open() {
 }
 
 // endregion
+
+// region: AsCharacterVec conversion rooting
+
+/// `AsCharacterVec` must keep the character vector R's conversion produced
+/// rooted while it copies the strings out. A double vector without attributes
+/// becomes a deferred-string ALTREP whose elements are allocated as they are
+/// read; a named integer vector is coerced eagerly; a `Date` and a factor go
+/// through an `as.character()` dispatch whose result arrives unprotected.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_as_character() -> Vec<Option<String>> {
+    use miniextendr_api::AsCharacterVec;
+    use miniextendr_api::from_r::TryFromSexp;
+
+    // Each input is protected as soon as it exists, before the next allocates.
+    fn eval(src: &str) -> OwnedProtect {
+        let sexp = miniextendr_api::r_str!(src).expect("fixture source evaluates");
+        unsafe { OwnedProtect::new(sexp) }
+    }
+    let doubles: Vec<f64> = (0..50).map(|i| f64::from(i) + 0.5).collect();
+    let inputs = [
+        unsafe { OwnedProtect::new(doubles.into_sexp()) },
+        eval("c(a = 1L, b = NA)"),
+        eval(r#"as.Date("2024-01-15") + 0:9"#),
+        eval(r#"factor(c("b", NA, "a", "b"))"#),
+    ];
+    inputs
+        .iter()
+        .flat_map(|input| {
+            AsCharacterVec::try_from_sexp(input.get())
+                .expect("atomic input converts")
+                .0
+        })
+        .collect()
+}
+
+// endregion
