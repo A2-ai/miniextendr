@@ -1006,7 +1006,12 @@ warning) because they only make sense on a method:
 Tags on **method** doc comments are not stripped: `@param`, `@return`,
 `@examples`, `@rdname`, `@name`, `@seealso`, and so on flow through to the
 generated wrapper verbatim (undocumented parameters get an auto-generated
-`@param name (undocumented)` line). The one exception is class systems whose
+`@param name (undocumented)` line, except when the method's own `@rdname` or
+`@inheritParams` sends it to a page that documents them; see
+[Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages)). R6
+constructor and instance methods are documented on the class page whatever
+their tags, so they keep the generated line. The one exception is class
+systems whose
 methods are registered by assignment (S4 `setMethod()`, S7 `S7::method()`),
 where per-method `@param` would document arguments roxygen2 cannot see in
 `\usage`; those generators drop method `@param` tags to keep `R CMD check`
