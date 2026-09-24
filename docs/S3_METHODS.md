@@ -488,13 +488,63 @@ Functions are emitted in source order within a file (priority group first,
 then file, then line), so the `@description` paragraphs and `\usage` entries
 of a shared page appear in the order the Rust file defines them.
 
-One gotcha on shared pages: a parameter without a `@param` in the Rust doc
-gets a `@param <name> (no documentation available)` filler so roxygen2 does not
-warn on the single-function page. roxygen2 matches parameter names exactly, so
-on a shared page that filler does **not** merge with a hand-written
-`@param x,object ...` line; both show up. Document every parameter of every
-function that shares a page (`@param x` on each block is fine; identical names
-are merged).
+#### Parameters on shared pages
+
+A parameter the Rust doc comment does not document gets a generated `@param`
+line: `(no documentation available)`, or the choice list of a `choices` /
+`match_arg` parameter. That keeps every argument of a function documented on
+its own page, including the file-stem page. The line is left out when the
+block takes its arguments from elsewhere:
+
+- it has `@rdname topic` or `@describeIn topic ...`, so `topic`'s page
+  documents them;
+- it has `@inheritParams source` (or `@inherit source` including params),
+  which fills in exactly the arguments the block leaves out.
+
+A family of functions can then share one page whose block, often in R,
+documents each argument once:
+
+```r
+# R/doc_range_summaries.R
+#' Range summaries
+#'
+#' @description
+#' Summaries of where values sit relative to a range.
+#'
+#' @param values A numeric vector.
+#' @param lower,upper Lower and upper bound of the range.
+#' @name range_summaries
+NULL
+```
+
+```rust
+/// Width of the values' range.
+/// @rdname range_summaries
+#[miniextendr]
+pub fn range_width(values: Vec<f64>) -> f64 { /* ... */ }
+
+/// Values clamped into the range.
+/// @rdname range_summaries
+#[miniextendr]
+pub fn range_clamp(values: Vec<f64>, lower: f64, upper: f64) -> Vec<f64> { /* ... */ }
+```
+
+roxygen2 keeps a single entry per argument name on a merged page, and a
+generated line would be the one that survives, replacing the shared
+description (next to a grouped `@param lower,upper` it would also add
+separate `lower` and `upper` entries). `rpkg/src/rust/shared_param_docs.rs`
+is the working fixture.
+
+An argument that no block documents is reported by `R CMD check`
+("Undocumented arguments in Rd file"), so document it on the shared block or
+in the function's own doc comment (a `@param` the function writes itself is
+kept as is). The same holds for a block that spells out `@rdname <file stem>`
+to keep a custom `@name` on the file page: some block on that page must
+document its arguments.
+
+roxygen2 reads `R/` in alphabetical order and gives a merged page the name and
+title of the first block it reads, so put the shared block in a file that sorts
+before `R/miniextendr-wrappers.R`.
 
 ### Constraints
 

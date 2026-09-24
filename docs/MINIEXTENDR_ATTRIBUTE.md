@@ -35,6 +35,12 @@ Generates:
   share the `zero_copy_tests.Rd` page. Explicit `@rdname`, `@describeIn` or
   `@name` wins (a `@name topic` block documents `topic.Rd`, as in roxygen2);
   `@noRd` suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
+- Each parameter the doc comment does not document gets a generated `@param`
+  line (`(no documentation available)`, or the choice list of a `choices` /
+  `match_arg` parameter), except in a block with `@rdname`, `@describeIn` or
+  `@inheritParams`: there the page it joins, or the topic it inherits from,
+  documents the arguments. See
+  [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages).
 
 ### Function Attributes
 
