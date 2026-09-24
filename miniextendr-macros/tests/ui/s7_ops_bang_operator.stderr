@@ -1,0 +1,5 @@
+error: S7 methods cannot be generated for the `!` operator: S7 does not dispatch `!` (its Ops handling covers the binary operators only). Keep this method under an ordinary name and call it directly.
+  --> tests/ui/s7_ops_bang_operator.rs:13:8
+   |
+13 |     fn not(&self) -> bool {
+   |        ^^^

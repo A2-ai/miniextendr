@@ -1,5 +1,0 @@
-error: S7 methods cannot be generated for the `+` operator: S7 dispatches R's Ops group generics on both operands, which needs a two-class signature and `(e1, e2)` formals rather than the single-class `x` method generated here. Keep this method under an ordinary name and register the operator in R through its fast-path shortcut: S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2)
-  --> tests/ui/s7_ops_operator_method.rs:14:8
-   |
-14 |     fn add(&self, other: f64) -> f64 {
-   |        ^^^

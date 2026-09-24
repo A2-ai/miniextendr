@@ -62,7 +62,7 @@ S7::method(get, Counter) <- function(x, ...) {
 #' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`
 #' (the class walk + method-table lookup). Use in hot loops where the
 #' per-call dispatch overhead matters. **Footgun:** this shortcut does not
-#' perform subclass dispatch — a method override defined on a child class
+#' perform subclass dispatch: a method override defined on a child class
 #' will *not* be honoured. Use the generic when subclassing is possible.
 #' @param self A `Counter` object.
 #' @param ... Additional arguments; ignored by the fast-path shortcut.
@@ -109,7 +109,7 @@ S7::method(increment, Counter) <- function(x, ...) {
 #' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`
 #' (the class walk + method-table lookup). Use in hot loops where the
 #' per-call dispatch overhead matters. **Footgun:** this shortcut does not
-#' perform subclass dispatch — a method override defined on a child class
+#' perform subclass dispatch: a method override defined on a child class
 #' will *not* be honoured. Use the generic when subclassing is possible.
 #' @param self A `Counter` object.
 #' @param ... Additional arguments; ignored by the fast-path shortcut.

@@ -1,0 +1,5 @@
+error: `s7(dispatch = "x, y")` on `compare`: dispatch argument `y` must be parameter 1 of the method, found `other` (S7 needs a method's formals to start with the generic's dispatch arguments, in order, the first naming the receiver); the R parameters of `compare` are `other`
+  --> tests/ui/s7_dispatch_parameter_order.rs:14:8
+   |
+14 |     fn compare(&self, other: i32) -> i32 {
+   |        ^^^^^^^

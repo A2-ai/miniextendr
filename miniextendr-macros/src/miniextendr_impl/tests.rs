@@ -1177,9 +1177,89 @@ fn s7_wrapper_generic_override() {
     let parsed = parse_impl(ClassSystem::S7, item_impl);
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should use external generic for base::print
-    assert!(wrapper.contains("print <- S7::new_external_generic(\"base\", \"print\")"));
-    assert!(wrapper.contains("S7::method(print, Counter) <- function(x, ...)"));
+    // A qualified generic is bound as an external generic under its bare name
+    // (with the dispatch arguments S7 0.2 requires), never exported, and gets
+    // no standalone generic page.
+    for expected in [
+        "if (!base::inherits(base::get0(\"print\", inherits = FALSE), \"S7_external_generic\")) {",
+        "  print <- S7::new_external_generic(\"base\", \"print\", \"x\")",
+        "S7::method(print, Counter) <- function(x, ...)",
+        "#' @name Counter-print",
+        "#' @aliases Counter$print",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+    assert!(!wrapper.contains("export(print)"), "{wrapper}");
+    assert!(!wrapper.contains("generic=\"print\""), "{wrapper}");
+    assert!(!wrapper.contains("base::print"), "{wrapper}");
+}
+
+/// `s7(generic = "pkg::name")` for a package that is not loaded yet: the
+/// external generic carries the method's dispatch arguments, and two classes'
+/// methods on one generic share the guarded binding.
+#[test]
+fn s7_external_generic_carries_dispatch_args() {
+    let wrapper = generate_s7_r_wrapper(&parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Bag {
+                #[miniextendr(s7(generic = "generics::tidy"))]
+                pub fn tidy(&self) -> i32 { 0 }
+
+                #[miniextendr(s7(generic = "pkgx::compare", dispatch = "x, y"))]
+                pub fn compare(&self, y: i32) -> bool { true }
+            }
+        },
+    ));
+    for expected in [
+        "if (!base::inherits(base::get0(\"tidy\", inherits = FALSE), \"S7_external_generic\")) {",
+        "  tidy <- S7::new_external_generic(\"generics\", \"tidy\", \"x\")",
+        "S7::method(tidy, Bag) <- function(x, ...) {",
+        "  compare <- S7::new_external_generic(\"pkgx\", \"compare\", c(\"x\", \"y\"))",
+        "S7::method(compare, list(Bag, S7::class_any)) <- function(x, y, ...) {",
+        // The Rust names keep their shortcuts.
+        "Bag_tidy <- function(self, ...) {",
+        "Bag_compare <- function(self, y, ...) {",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+    assert!(!wrapper.contains("@rawNamespace"), "{wrapper}");
+    assert!(!wrapper.contains(".__MX_GENERIC_DOC__"), "{wrapper}");
+}
+
+/// An unqualified `s7(generic = ...)` names the package's own generic, like
+/// `r_name`: a brand-new operator is defined, exported and documented.
+#[test]
+fn s7_unqualified_generic_override_defines_a_new_generic() {
+    let wrapper = generate_s7_r_wrapper(&parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Bag {
+                #[miniextendr(s7(generic = "%mx_cat%"))]
+                pub fn concat(&self, other: Vec<f64>) -> Vec<f64> { other }
+            }
+        },
+    ));
+    for expected in [
+        ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"%mx_cat%\", class=\"Bag\", export=true, dispatch=\"x\", no_dots=false)",
+        "#' @rawNamespace export(\"%mx_cat%\")",
+        "if (!base::exists(\"%mx_cat%\", mode = \"function\")) {",
+        "  `%mx_cat%` <- S7::new_generic(\"%mx_cat%\", \"x\", function(x, ...) S7::S7_dispatch())",
+        "S7::method(`%mx_cat%`, Bag) <- function(x, other, ...) {",
+        "Bag_concat <- function(self, other, ...) {",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+    assert!(!wrapper.contains("new_external_generic"), "{wrapper}");
 }
 
 /// `s7(no_shortcut)` suppresses the `<ClassName>_<method>` fast-dispatch
@@ -1287,60 +1367,97 @@ fn parse_s7_operator(attr: proc_macro2::TokenStream) -> ParsedImpl {
     )
 }
 
-/// An operator R name (`r_name = "[["`) defines and dispatches the S7 generic
-/// under a backtick-quoted symbol, exports it as a quoted NAMESPACE string, and
-/// emits no `Foo_[[` fast-path shortcut (that name is not syntactic R).
+/// A base operator (`[`, `[[`, `$`) always exists, so a method on it attaches
+/// straight to base's generic under a backtick-quoted symbol: nothing is
+/// defined, exported or documented as a package generic, whether the operator
+/// is spelled `r_name` or `s7(generic = ...)` (bare or `base::`-qualified).
 #[test]
-fn s7_operator_r_names_are_quoted_and_skip_the_shortcut() {
+fn s7_base_operator_methods_attach_to_the_base_generic() {
+    for generic in ["[", "[[", "$"] {
+        let qualified = format!("base::{generic}");
+        for attr in [
+            quote::quote!(#[miniextendr(r_name = #generic)]),
+            quote::quote!(#[miniextendr(s7(generic = #generic))]),
+            quote::quote!(#[miniextendr(s7(generic = #qualified))]),
+        ] {
+            let wrapper = generate_s7_r_wrapper(&parse_s7_operator(attr));
+            // The method block sits right above `S7::method(...)`, so it opts
+            // out of the `\usage` roxygen2 would derive from it.
+            assert!(
+                wrapper.contains(&format!(
+                    "#' @usage NULL\nS7::method(`{generic}`, Foo) <- function(x, i, ...) {{"
+                )),
+                "{wrapper}"
+            );
+            for absent in [
+                "@rawNamespace",
+                ".__MX_GENERIC_DOC__",
+                "base::exists(",
+                "S7::new_generic(",
+                "new_external_generic",
+            ] {
+                assert!(
+                    !wrapper.contains(absent),
+                    "unexpected `{absent}`:\n{wrapper}"
+                );
+            }
+        }
+    }
+}
+
+/// An operator R name emits no `Foo_[[` fast-path shortcut (that name is not
+/// syntactic R); `s7(generic = ...)` on an ordinary Rust name keeps the
+/// `Foo_<rust name>` shortcut.
+#[test]
+fn s7_operator_r_names_skip_the_shortcut() {
     for generic in ["[", "[[", "$", "%custom%"] {
         let wrapper = generate_s7_r_wrapper(&parse_s7_operator(
             quote::quote!(#[miniextendr(r_name = #generic)]),
         ));
-        for expected in [
-            format!("#' @rawNamespace export(\"{generic}\")"),
-            format!("if (!base::exists(\"{generic}\", mode = \"function\")) {{"),
-            format!(
-                "  `{generic}` <- S7::new_generic(\"{generic}\", \"x\", function(x, ...) S7::S7_dispatch())"
-            ),
-            format!("  `{generic}` <- local({{"),
-            format!("    .mx_masked <- base::get(\"{generic}\", mode = \"function\")"),
-            format!("S7::method(`{generic}`, Foo) <- function(x, i, ...) {{"),
-        ] {
-            assert!(
-                wrapper.contains(&expected),
-                "missing `{expected}`:\n{wrapper}"
-            );
-        }
         assert!(
             !wrapper.contains(&format!("Foo_{generic}")),
             "no shortcut for an operator name:\n{wrapper}"
         );
         assert!(!wrapper.contains("Fast-path shortcut"), "{wrapper}");
-    }
-}
 
-/// `s7(generic = "[")` reuses the existing generic through a quoted symbol and
-/// keeps the `Foo_<rust name>` shortcut, because the method's own R name is
-/// still syntactic.
-#[test]
-fn s7_operator_generic_override_is_quoted_and_keeps_the_shortcut() {
-    for generic in ["[", "[[", "$", "%custom%"] {
         let wrapper = generate_s7_r_wrapper(&parse_s7_operator(
             quote::quote!(#[miniextendr(s7(generic = #generic))]),
         ));
         for expected in [
-            format!("if (!exists(\"{generic}\", mode = \"function\")) {{"),
-            format!("  `{generic}` <- S7::new_external_generic(\"base\", \"{generic}\")"),
-            format!("S7::method(`{generic}`, Foo) <- function(x, i, ...) {{"),
-            "Foo_operator <- function(self, i, ...) {".to_string(),
-            "#' @export Foo_operator".to_string(),
+            "Foo_operator <- function(self, i, ...) {",
+            "#' @export Foo_operator",
         ] {
             assert!(
-                wrapper.contains(&expected),
+                wrapper.contains(expected),
                 "missing `{expected}`:\n{wrapper}"
             );
         }
-        assert!(!wrapper.contains("@rawNamespace"), "{wrapper}");
+    }
+}
+
+/// A package-local operator (`%custom%`) is the package's own generic under
+/// either spelling: defined under a backtick-quoted symbol and exported as a
+/// quoted NAMESPACE string.
+#[test]
+fn s7_custom_operator_generics_are_quoted_and_exported() {
+    for attr in [
+        quote::quote!(#[miniextendr(r_name = "%custom%")]),
+        quote::quote!(#[miniextendr(s7(generic = "%custom%"))]),
+    ] {
+        let wrapper = generate_s7_r_wrapper(&parse_s7_operator(attr));
+        for expected in [
+            "#' @rawNamespace export(\"%custom%\")",
+            "if (!base::exists(\"%custom%\", mode = \"function\")) {",
+            "  `%custom%` <- S7::new_generic(\"%custom%\", \"x\", function(x, ...) S7::S7_dispatch())",
+            "  `%custom%` <- local({",
+            "    .mx_masked <- base::get(\"%custom%\", mode = \"function\")",
+            "S7::method(`%custom%`, Foo) <- function(x, i, ...) {",
+        ] {
+            assert!(
+                wrapper.contains(expected),
+                "missing `{expected}`:\n{wrapper}"
+            );
+        }
     }
 }
 
@@ -1502,66 +1619,280 @@ fn s7_operator_instance_method_does_not_collide_with_static() {
     check_s7_shortcut_collisions(&parsed).expect("no shortcut for `[[`, so no collision");
 }
 
-/// S7 cannot register a single-class method for the Ops operators, so both
-/// spellings are a compile error that points at the R-side registration.
+/// Parse an S7 impl whose single instance method takes `params` and carries
+/// `attr`, for the dispatch-validation tests.
+fn parse_s7_method(attr: proc_macro2::TokenStream, params: proc_macro2::TokenStream) -> ParsedImpl {
+    parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Money {
+                #attr
+                pub fn op(&self, #params) -> i32 { 0 }
+            }
+        },
+    )
+}
+
+/// The `Ops` operators and `%*%` get a two-class `(e1, e2)` / `(x, y)` method on
+/// base's generic: the receiver takes the left operand's name, the Rust
+/// operand parameter is the right one, and nothing is defined or exported.
 #[test]
-fn s7_ops_operators_are_a_compile_error() {
-    for op in ["+", "-", "==", "<=", "&", "%%", "%/%", "%*%"] {
+fn s7_ops_operator_methods_dispatch_on_both_operands() {
+    for op in [
+        "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", "<=", ">=", ">", "&", "|",
+    ] {
         for attr in [
             quote::quote!(#[miniextendr(r_name = #op)]),
             quote::quote!(#[miniextendr(s7(generic = #op))]),
-            quote::quote!(#[miniextendr(s7(fallback, r_name = #op))]),
+            quote::quote!(#[miniextendr(s7(generic = #op, dispatch = "e1, e2"))]),
         ] {
-            let err = check_s7_ops_generics(&parse_s7_operator(attr))
-                .expect_err("Ops operator must be rejected");
-            let msg = err.to_string();
-            assert!(
-                msg.contains(&format!("the `{op}` operator"))
-                    && msg.contains(&format!(
-                        "S7::method(`{op}`, list(Foo, S7::class_any)) <- function(e1, e2) \
-                         Foo_operator(e1, e2)"
-                    )),
-                "{msg}"
-            );
+            let parsed = parse_s7_method(attr, quote::quote!(e2: f64));
+            check_s7_dispatch(&parsed).expect("an `e2` operand is accepted");
+            let wrapper = generate_s7_r_wrapper(&parsed);
+            let symbol = format!("`{op}`");
+            for expected in [
+                format!(
+                    "#' @usage NULL\nS7::method({symbol}, list(Money, S7::class_any)) <- function(e1, e2, ...) {{"
+                ),
+                "e1@.ptr, e2)".to_string(),
+            ] {
+                assert!(
+                    wrapper.contains(&expected),
+                    "missing `{expected}`:\n{wrapper}"
+                );
+            }
+            for absent in ["@rawNamespace", ".__MX_GENERIC_DOC__", "S7::new_generic("] {
+                assert!(
+                    !wrapper.contains(absent),
+                    "unexpected `{absent}`:\n{wrapper}"
+                );
+            }
         }
     }
-    let err = check_s7_ops_generics(&parse_s7_operator(
-        quote::quote!(#[miniextendr(r_name = "!")]),
-    ))
-    .expect_err("`!` must be rejected");
+
+    let parsed = parse_s7_method(
+        quote::quote!(#[miniextendr(s7(generic = "%*%"))]),
+        quote::quote!(y: f64),
+    );
+    check_s7_dispatch(&parsed).expect("a `y` operand is accepted for `%*%`");
+    let wrapper = generate_s7_r_wrapper(&parsed);
     assert!(
-        err.to_string().contains("S7 does not dispatch `!`"),
-        "{err}"
+        wrapper.contains("S7::method(`%*%`, list(Money, S7::class_any)) <- function(x, y, ...) {"),
+        "{wrapper}"
+    );
+    // The Rust name keeps its shortcut; its receiver is still `self`.
+    assert!(
+        wrapper.contains("Money_op <- function(self, y, ...) {"),
+        "{wrapper}"
+    );
+}
+
+/// A void `&mut self` operator method hands back its receiver, which is named
+/// after the first dispatch argument.
+#[test]
+fn s7_dispatch_receiver_is_the_chain_value() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Money {
+                #[miniextendr(s7(generic = "+"))]
+                pub fn bump(&mut self, e2: f64) {}
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let method = wrapper
+        .split("S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) {")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .expect("method body");
+    assert!(method.contains("e1"), "{method}");
+    assert!(!method.contains("invisible(x)"), "{method}");
+}
+
+/// Operator methods S7 cannot register stay a compile error, each naming the
+/// fix: `!` (S7 does not dispatch it), a wrongly named or missing operand, a
+/// second operand, a conflicting `dispatch` and `fallback`.
+#[test]
+fn s7_ops_operator_misuse_is_a_compile_error() {
+    let err = |attr: proc_macro2::TokenStream, params: proc_macro2::TokenStream| {
+        check_s7_dispatch(&parse_s7_method(attr, params))
+            .expect_err("must be rejected")
+            .to_string()
+    };
+
+    let msg = err(
+        quote::quote!(#[miniextendr(r_name = "!")]),
+        quote::quote!(e2: f64),
+    );
+    assert!(msg.contains("S7 does not dispatch `!`"), "{msg}");
+
+    let msg = err(
+        quote::quote!(#[miniextendr(r_name = "+")]),
+        quote::quote!(other: f64),
+    );
+    assert!(
+        msg.contains("the right operand of `op` must be named `e2`")
+            && msg.contains("Rename the parameter `other` to `e2`"),
+        "{msg}"
     );
 
-    // Operators S7 dispatches on one argument, static methods and other class
-    // systems are unaffected.
-    for generic in ["[", "[[", "$", "%custom%"] {
-        check_s7_ops_generics(&parse_s7_operator(
-            quote::quote!(#[miniextendr(r_name = #generic)]),
-        ))
-        .expect("single-dispatch operator is accepted");
-    }
+    let msg = err(
+        quote::quote!(#[miniextendr(s7(generic = "%*%"))]),
+        quote::quote!(e2: f64),
+    );
+    assert!(msg.contains("must be named `y`"), "{msg}");
+
+    let msg = err(
+        quote::quote!(#[miniextendr(r_name = "==")]),
+        quote::quote!(e2: f64, tolerance: f64),
+    );
+    assert!(
+        msg.contains("takes exactly one parameter besides the receiver")
+            && msg.contains("`e2`, `tolerance`"),
+        "{msg}"
+    );
+
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Money {
+                #[miniextendr(r_name = "-")]
+                pub fn negate(&self) -> i32 { 0 }
+            }
+        },
+    );
+    let msg = check_s7_dispatch(&parsed).expect_err("unary").to_string();
+    assert!(
+        msg.contains("has no parameters besides the receiver"),
+        "{msg}"
+    );
+
+    let msg = err(
+        quote::quote!(#[miniextendr(s7(generic = "+", dispatch = "x, y"))]),
+        quote::quote!(y: f64),
+    );
+    assert!(msg.contains("S7 dispatches `+` on `e1` and `e2`"), "{msg}");
+
+    let msg = err(
+        quote::quote!(#[miniextendr(s7(fallback, r_name = "<"))]),
+        quote::quote!(e2: f64),
+    );
+    assert!(
+        msg.contains("`s7(fallback)` cannot be combined with the `<` operator"),
+        "{msg}"
+    );
+
+    let msg = err(
+        quote::quote!(#[miniextendr(s7(generic = "[[", dispatch = "x, i"))]),
+        quote::quote!(i: i32),
+    );
+    assert!(msg.contains("on its first argument only"), "{msg}");
+
+    // Static methods (plain functions) and other class systems are unaffected.
     let statics = parse_impl(
         ClassSystem::S7,
         syn::parse_quote! {
-            impl Foo {
+            impl Money {
                 #[miniextendr(r_name = "+")]
                 pub fn plus(i: i32) -> i32 { i }
             }
         },
     );
-    check_s7_ops_generics(&statics).expect("static methods are plain functions");
+    check_s7_dispatch(&statics).expect("static methods are plain functions");
     let s3 = parse_impl(
         ClassSystem::S3,
         syn::parse_quote! {
-            impl Foo {
+            impl Money {
                 #[miniextendr(r_name = "+")]
                 pub fn plus(&self, i: i32) -> i32 { i }
             }
         },
     );
-    check_s7_ops_generics(&s3).expect("non-S7 systems are exempt");
+    check_s7_dispatch(&s3).expect("non-S7 systems are exempt");
+}
+
+/// `s7(dispatch = "...")` is name-based: the first name is the receiver and
+/// the rest must be the method's leading parameters, in order, without
+/// defaults; `no_dots` needs every formal to be a dispatch argument.
+#[test]
+fn s7_dispatch_names_are_validated() {
+    let err = |spec: &str, params: proc_macro2::TokenStream| {
+        check_s7_dispatch(&parse_s7_method(
+            quote::quote!(#[miniextendr(s7(dispatch = #spec))]),
+            params,
+        ))
+        .expect_err("must be rejected")
+        .to_string()
+    };
+    let ok = |spec: &str, params: proc_macro2::TokenStream| {
+        check_s7_dispatch(&parse_s7_method(
+            quote::quote!(#[miniextendr(s7(dispatch = #spec))]),
+            params,
+        ))
+        .expect("accepted");
+    };
+
+    ok("x, other", quote::quote!(other: i32));
+    ok("x, other", quote::quote!(other: i32, sep: String));
+    ok("obj", quote::quote!(n: i32));
+    ok("a, b, c", quote::quote!(b: i32, c: i32));
+
+    let msg = err("x, y", quote::quote!(other: i32));
+    assert!(
+        msg.contains("dispatch argument `y` must be parameter 1 of the method, found `other`"),
+        "{msg}"
+    );
+    let msg = err("x, other, more", quote::quote!(other: i32));
+    assert!(
+        msg.contains("dispatch argument `more` must be parameter 2"),
+        "{msg}"
+    );
+    let msg = err("x, sep", quote::quote!(other: i32, sep: String));
+    assert!(msg.contains("found `other`"), "{msg}");
+    let msg = err("other, other", quote::quote!(other: i32));
+    assert!(msg.contains("names `other` twice"), "{msg}");
+    let msg = err("other", quote::quote!(other: i32));
+    assert!(
+        msg.contains("names the receiver, so it cannot also be a parameter name"),
+        "{msg}"
+    );
+    let msg = err("x, ...", quote::quote!(other: i32));
+    assert!(
+        msg.contains("`...` is not a syntactic R argument name"),
+        "{msg}"
+    );
+    let msg = err("x,", quote::quote!(other: i32));
+    assert!(msg.contains("is not a syntactic R argument name"), "{msg}");
+
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Money {
+                #[miniextendr(s7(dispatch = "x, other"), defaults(other = "1L"))]
+                pub fn op(&self, other: i32) -> i32 { 0 }
+            }
+        },
+    );
+    let msg = check_s7_dispatch(&parsed).expect_err("default").to_string();
+    assert!(
+        msg.contains("`other` has a default value (`other = 1L`)"),
+        "{msg}"
+    );
+
+    let parsed = parse_s7_method(
+        quote::quote!(#[miniextendr(s7(dispatch = "x, other", no_dots))]),
+        quote::quote!(other: i32, sep: String),
+    );
+    let msg = check_s7_dispatch(&parsed)
+        .expect_err("no_dots extra")
+        .to_string();
+    assert!(msg.contains("but `sep` is not one"), "{msg}");
+    check_s7_dispatch(&parse_s7_method(
+        quote::quote!(#[miniextendr(s7(dispatch = "x, other", no_dots))]),
+        quote::quote!(other: i32),
+    ))
+    .expect("every formal is a dispatch argument");
 }
 // endregion
 
@@ -3174,54 +3505,95 @@ fn s7_generic_no_dots() {
     );
 }
 
+/// `s7(dispatch = "x, other")`: a two-argument generic, a list signature with
+/// `S7::class_any` for the non-receiver argument, and method formals that
+/// start with the dispatch arguments (receiver first, then the dispatch
+/// parameter, then the rest). The shadow fallback and the generic doc marker
+/// use the same arguments.
 #[test]
 fn s7_generic_multi_dispatch() {
     let impl_code: syn::ItemImpl = syn::parse_quote! {
         impl Dog {
-            #[miniextendr(s7(dispatch = "x,y"))]
-            pub fn compare(&self, other: i32) -> i32 { 0 }
+            #[miniextendr(s7(dispatch = "x, other"))]
+            pub fn compare(&self, other: i32, scale: f64) -> i32 { 0 }
         }
     };
     let parsed = parse_impl(ClassSystem::S7, impl_code);
+    check_s7_dispatch(&parsed).expect("valid dispatch");
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should have c("x", "y") dispatch args
-    assert!(
-        wrapper.contains(r#"c("x", "y")"#),
-        "Expected multi-dispatch args, got:\n{}",
-        wrapper
-    );
-    // Should have function(x, y, ...) signature
-    assert!(
-        wrapper.contains("function(x, y, ...) S7::S7_dispatch()"),
-        "Expected multi-dispatch signature, got:\n{}",
-        wrapper
-    );
+    for expected in [
+        ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"compare\", class=\"Dog\", export=true, dispatch=\"x,other\", no_dots=false)",
+        "  compare <- S7::new_generic(\"compare\", c(\"x\", \"other\"), function(x, other, ...) S7::S7_dispatch())",
+        "    S7::method(.mx_g, list(S7::class_any, S7::class_any)) <- function(x, other, ...) .mx_masked(x, other, ...)",
+        "S7::method(compare, list(Dog, S7::class_any)) <- function(x, other, scale, ...) {",
+        "x@.ptr, other, scale)",
+        "Dog_compare <- function(self, other, scale, ...) {",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
 }
 
+/// A custom receiver name (`s7(dispatch = "obj")`) is threaded through the
+/// generic, the method formals, the `@.ptr` extraction and a fallback's
+/// `inherits()` guard.
+#[test]
+fn s7_dispatch_renames_the_receiver() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Dog {
+            #[miniextendr(s7(dispatch = "obj"))]
+            pub fn size(&self, n: i32) -> i32 { 0 }
+
+            #[miniextendr(s7(dispatch = "obj", fallback))]
+            pub fn any_size(&self) -> i32 { 0 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    check_s7_dispatch(&parsed).expect("valid dispatch");
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    for expected in [
+        "  size <- S7::new_generic(\"size\", \"obj\", function(obj, ...) S7::S7_dispatch())",
+        "S7::method(size, Dog) <- function(obj, n, ...) {",
+        "obj@.ptr, n)",
+        "S7::method(any_size, S7::class_any) <- function(obj, ...) {",
+        "if (inherits(obj, \"S7_object\")) obj@.ptr else .miniextendr_arg_error(\"obj\", paste0(\"must be an S7 object, got \", class(obj)[[1L]]))",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
+    assert!(!wrapper.contains("x@.ptr"), "{wrapper}");
+    assert!(!wrapper.contains("stop("), "{wrapper}");
+}
+
+/// `no_dots` with multi-dispatch: the generic and the method share the exact
+/// formals S7 requires when the generic lacks `...`.
 #[test]
 fn s7_generic_multi_dispatch_no_dots() {
     let impl_code: syn::ItemImpl = syn::parse_quote! {
         impl Matrix {
-            #[miniextendr(s7(dispatch = "x,y", no_dots))]
+            #[miniextendr(s7(dispatch = "x, other", no_dots))]
             pub fn multiply(&self, other: i32) -> i32 { 0 }
         }
     };
     let parsed = parse_impl(ClassSystem::S7, impl_code);
+    check_s7_dispatch(&parsed).expect("valid dispatch");
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Should have c("x", "y") dispatch args
-    assert!(
-        wrapper.contains(r#"c("x", "y")"#),
-        "Expected multi-dispatch args, got:\n{}",
-        wrapper
-    );
-    // Should have function(x, y) signature without ...
-    assert!(
-        wrapper.contains("function(x, y) S7::S7_dispatch()"),
-        "Expected strict multi-dispatch signature, got:\n{}",
-        wrapper
-    );
+    for expected in [
+        "S7::new_generic(\"multiply\", c(\"x\", \"other\"), function(x, other) S7::S7_dispatch())",
+        "S7::method(multiply, list(Matrix, S7::class_any)) <- function(x, other) {",
+        "dispatch=\"x,other\", no_dots=true)",
+    ] {
+        assert!(
+            wrapper.contains(expected),
+            "missing `{expected}`:\n{wrapper}"
+        );
+    }
 }
 
 #[test]

@@ -1,6 +1,6 @@
-//! Test: an S7 instance method on an Ops operator (`+`) is a compile error.
-//! S7 dispatches the Ops group on both operands, which needs a two-class
-//! signature the generated single-class method cannot provide.
+//! Test: an S7 method on an Ops operator (`+`) must name its operand `e2`.
+//! S7 dispatches the Ops group on `(e1, e2)`; the receiver becomes `e1`, and
+//! the method's formals have to start with exactly those names.
 
 use miniextendr_macros::miniextendr;
 
