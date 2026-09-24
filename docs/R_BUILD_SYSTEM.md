@@ -417,16 +417,68 @@ Installers only reach an outside sibling when they start from the repository:
   `gitlab::…/-/rpkg`, or any ref that pkgdepends resolves through git) downloads
   the whole repository, runs `bootstrap.R` in the subdirectory, and builds the
   tarball there, so the staging is what gets installed.
-- **rv** with a git source plus `directory = "rpkg"`, or a local source whose
-  `path` is the repository root plus `directory = "rpkg"`, copies the whole
-  repository, runs `bootstrap.R` in the subdirectory, and installs that copy in
-  place. The sibling is still next to it, so the staging goes unused.
+- **rv 0.23.0 or later** with a git source plus `directory = "rpkg"`, or a local
+  source whose `path` is the repository root plus `directory = "rpkg"`, copies
+  the whole repository, runs `bootstrap.R` in the subdirectory, runs `R CMD
+  build` there, and installs the extracted tarball. The staging is what gets
+  built: with rv 0.23.1 the sibling compiles from `src/rust/vendor/`.
 
-Pointing either tool at the package directory itself (pak `local::<repo>/rpkg`,
-rv `path = "<repo>/rpkg"`) copies only that directory, so the sibling is gone
-before any bootstrap runs, with or without `cargo-revendor`. Use one of the forms
-above, or build the tarball in the checkout (`devtools::build()`) and install
-that.
+rv before 0.23.0 never runs `bootstrap.R`, and a local source takes no
+`directory` yet. With a git source plus `directory = "rpkg"`, what reaches
+`R CMD INSTALL` depends on the release:
+
+| rv | Build directory | The outside sibling |
+|---|---|---|
+| up to 0.12.0 | Real directories whose files are symlinks into the package directory of rv's checkout (a copy on Windows) | configure stages it from that checkout, see below |
+| 0.12.1 to 0.16.x | A copy of the package directory alone | missing: configure stops with the error below |
+| 0.17.0 to 0.22.x | A copy of the whole repository, installed in place | still next to the package, so cargo builds it where it is |
+
+Pointing any installer at the package directory itself (pak
+`local::<repo>/rpkg`, rv `path = "<repo>/rpkg"`, a plain `R CMD build` of
+`rpkg/`) takes only that directory, so the sibling is gone before anything can
+stage it, with or without `cargo-revendor`. Use rv 0.23.0 or later or pak with
+one of the forms above, or build the tarball in the checkout
+(`devtools::build()`) and install that.
+
+Configure catches a stranded sibling before cargo runs, instead of the opaque
+`failed to load manifest for dependency` cargo error. Outside tarball mode,
+`tools/dev-bootstrap.R configure` scans `src/rust/Cargo.toml` for `path`
+entries in the tables cargo loads: every dependency table (dev,
+build and target-specific ones included, `[workspace.dependencies]`) and
+`[patch.*]` sources. A path inside the package, or one whose directory holds a
+`Cargo.toml`, passes. That covers the checkout itself, the whole-repository
+copy, a checkout that bootstrap staged, and the tarball R CMD build seals after
+cleanup activates the staging. For a missing path it does one of two things:
+
+- When the build directory is a tree of symlinks (rv up to 0.12.0), it follows
+  `src/rust/Cargo.toml` to the package directory it mirrors. It acts only when
+  that manifest sits at `<origin>/src/rust/Cargo.toml`, the tree's
+  `DESCRIPTION` resolves to `<origin>/DESCRIPTION`, and `<origin>` is not the
+  build directory. If every missing path exists relative to the origin
+  manifest, the base-R stager packages those crates from the origin into the
+  tree's `src/rust/vendor/`. It then renames the portable manifest, and a copy
+  of the lockfile, over the tree's symlinks. Every write is a new entry of the
+  build directory, so neither configure nor cargo writes through a link into
+  the checkout.
+- Otherwise (a copy, or a tree of hardlinks, where nothing leads back to the
+  checkout) configure stops:
+
+```text
+Path dependencies outside the package directory are missing:
+  - `path = "../../../core"` under [dependencies] in src/rust/Cargo.toml: /tmp/core has no Cargo.toml
+bootstrap.R did not run for this build. It stages the crates that the package's
+src/rust/Cargo.toml reaches outside the package directory, but the installer took
+the package directory out of its repository without running it.
+Install the package in one of these ways, which run bootstrap.R while the repository is present:
+  - rv >= 0.23.0 with a git source plus `directory` naming the package's subdirectory
+  - pak with a repository ref and a subdirectory, e.g. pak::pak("<owner>/<repo>/<subdirectory>")
+  - build the tarball in the checkout with devtools::build() and install that tarball
+configure: error: a path dependency outside the package is missing; see the message above
+```
+
+A missing `[workspace.dependencies]` path counts even when no dependency
+inherits it, since the base-R stager rejects such an entry too. An unused
+`[replace]` path and a target path such as `[lib] path` are left to cargo.
 
 The stager runs `cargo metadata --no-deps` for discovery and `cargo package
 --no-verify --allow-dirty` per sibling, so it never writes to the source tree.

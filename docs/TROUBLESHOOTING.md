@@ -149,29 +149,30 @@ just vendor             # Refresh vendored copies (rpkg/vendor/ + inst/vendor.ta
 ### `failed to load manifest for dependency` for a local crate
 
 Symptom: a `path = ...` dependency on a crate outside your package (an "engine"
-crate, a sibling library) builds fine with `cargo build` but fails under
-`R CMD INSTALL` / `devtools::install()`:
+crate, a sibling library) builds fine from the checkout but fails once an
+installer copies the package:
 
 ```
 error: failed to load manifest for dependency `my_engine`
   ... No such file or directory
 ```
 
-Cause: R copies the package into a temporary build directory before compiling
-the Rust staticlib, so a **relative** path (`../../../engine`) resolves against
-the temp location, which doesn't contain the crate. Fix: use an **absolute**
-path in `src/rust/Cargo.toml`:
+Cause: the build started from the package directory alone, without the
+repository around it, and `bootstrap.R` never staged the crate into the package.
+A current `configure.ac` stops before cargo with an error that says
+`bootstrap.R did not run for this build` and names the missing path; this cargo
+error means an older one, which
+`minirextendr::upgrade_miniextendr_package(configure_ac = TRUE)` replaces.
 
-```toml
-# ❌ relative — breaks under R's temp-copy
-my_engine = { path = "../../../engine" }
-# ✅ absolute — read live from its real location
-my_engine = { path = "/abs/path/to/engine" }
-```
-
-See [MINIREXTENDR.md](MINIREXTENDR.md#wrapping-a-local-rust-crate-use-an-absolute-path)
-for the full explanation (and how this interacts with `use_vendor_lib()` and
-vendoring).
+Fix: keep the relative path and install through something that runs
+`bootstrap.R` while the repository is present: rv 0.23.0 or later with a git
+source plus `directory`, pak with a repository ref and a subdirectory
+(`pak::pak("owner/repo/rpkg")`), or `devtools::build()` in the checkout and an
+install of that tarball. Don't switch to an absolute path, which resolves only
+on the machine that wrote it. See
+[MINIREXTENDR.md](MINIREXTENDR.md#wrapping-a-local-rust-crate-outside-the-package)
+and the installer matrix in
+[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#distribution-bootstrap-without-cargo-revendor).
 
 ### Editing generated files has no effect
 
