@@ -1,0 +1,5 @@
+error: match_arg/choices parameter `route` has `Option<..>` in an unsupported position; the wrappers go outermost first as `Missing<Option<Either<T, R>>>` (each one optional, the choice type `T` on the left of `Either`)
+ --> tests/ui/match_arg_either_layer_order.rs:9:60
+  |
+9 | fn bad_either_layer_order(#[miniextendr(match_arg)] route: Either<Option<Route>, List>) {}
+  |                                                            ^^^^^^

@@ -308,6 +308,67 @@ reaches Rust as `Absent` when called as `run()`, while
 over as a supplied value (R's `missing()` does not see through a formal with a
 default).
 
+### Choice or Another Value: `Either<T, R>`
+
+With the `either` feature, a choice parameter can also take a value of a
+different kind: a named route or a data frame of doses, a level name or a
+number. Declare it as `Either<T, R>` with the choice type on the left:
+
+```rust
+use miniextendr_api::either_impl::Either;
+use miniextendr_api::DataFrame;
+
+#[derive(Copy, Clone, Debug, MatchArg)]
+#[match_arg(rename_all = "lower")]
+pub enum Route { Oral, Bolus, Infusion }
+
+#[miniextendr]
+pub fn set_route(#[miniextendr(match_arg)] route: Either<Route, DataFrame>) -> String {
+    match route {
+        Either::Left(route) => format!("{route:?}"),
+        Either::Right(doses) => format!("{} dose rows", doses.nrow()),
+    }
+}
+```
+
+The formal default is `T`'s choice vector, and the prelude matches the
+argument only when it is a form `match.arg()` reads (character or factor);
+anything else reaches Rust unchanged:
+
+```r
+set_route <- function(route = c("oral", "bolus", "infusion")) {
+  if (is.character(route) || is.factor(route)) route <- .miniextendr_match_arg(route, c("oral", "bolus", "infusion"), "route")
+  .Call(C_mypkg_set_route, .call = match.call(), route)
+}
+
+set_route()                         # Left(Oral), the first choice
+set_route("inf")                    # Left(Infusion)
+set_route(data.frame(amt = 1:2))    # Right(<data frame>)
+set_route("iv")                     # Error: 'route' should be one of "oral", "bolus", "infusion"
+```
+
+The C wrapper decodes with `match_arg_either_or`: character or factor input
+becomes `Left(T)` (matched against `MatchArg::CHOICES`), everything else is
+converted to `R` with its `TryFromSexp` impl and becomes `Right`. The split
+follows the R prelude exactly, so a data frame is never tried as a choice and
+a misspelled choice never falls through to `R`. An explicit `NULL` is not a
+choice either: it goes to `R` (and fails for `DataFrame`). The auto-generated
+`@param` line names the other kind: `One of "oral", "bolus", "infusion", or a
+data frame.`
+
+The layers of the previous sections compose with it, outermost first:
+`Option<Either<T, R>>` has a `NULL` formal and turns `NULL` into `None`,
+`Missing<Either<T, R>>` and `Missing<Option<Either<T, R>>>` keep the choice
+vector and report an omitted argument as `Absent`. `choices("a", "b")` works
+the same way on `Either<String, R>`. Impl methods take all of these through
+`match_arg(p)` / `choices(p = "...")`, trait methods the `choices` forms
+(`choices(p = "...")` on `Either<String, R>`). The other arm's name in
+the `@param` line comes from its Rust type (`DataFrame` is "a data frame",
+`List` "a list", `f64` "a number", `Vec<String>` "a character vector"; a type
+R has no name for is shown in code format). `several_ok` does not take an
+`Either`, and a layer inside the left arm (`Either<Option<T>, R>`) is rejected:
+both are compile errors. The choice type has to be the left arm.
+
 ### Rename Variants
 
 Same syntax as RFactor but with `#[match_arg(...)]`:

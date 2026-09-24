@@ -2487,6 +2487,10 @@ vector as the R formal and reports an omitted argument as
 `Missing::Absent` (#1551); the C wrapper decodes it with
 [`match_arg_missing_or`] around the decoder of the inner type.
 
+With the `either` feature, `Either<T, R>` takes a choice or a value of
+another kind: character or factor input is matched and becomes `Left(T)`,
+anything else converts to `R` (`match_arg_either_or`).
+
 `several_ok` parameters are validated strictly on the R side: every element
 has to match a choice, and `NULL` selects every choice (the same fallback
 [`match_arg_vec_from_sexp`] applies).
@@ -3193,6 +3197,12 @@ When converting an R value to `Either<L, R>`:
 3. If both fail, returns an error containing both failure reasons
 
 This "try left first" strategy means the order of type parameters matters!
+
+A `match_arg` / `choices` parameter typed `Either<T, R>` does not use this
+impl: its C wrapper decodes with
+[`match_arg_either_or`](crate::match_arg::match_arg_either_or), which sends
+character and factor input to the choice `T` and everything else to `R`,
+the same split the R wrapper's `match.arg()` check makes.
 
 ##### From Rust to R (`IntoR`)
 
@@ -8045,6 +8055,8 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use match_arg::MatchArgError;`
 
 ### `pub use match_arg::choices_sexp;`
+
+### `pub use match_arg::match_arg_either_or;`
 
 ### `pub use match_arg::match_arg_from_sexp;`
 
@@ -33309,6 +33321,29 @@ recognises as escape sequences inside `"..."`. Used when formatting
 `MatchArg::CHOICES` into the default of a generated R wrapper formal, so
 that a choice like `say "hi"` or `c:\path` cannot produce syntactically
 invalid R code.
+
+### `match_arg::match_arg_either_or`
+
+```rust
+fn match_arg_either_or<L, R, E>(sexp: crate::SEXP, left: impl FnOnce(crate::SEXP) -> Result<L, E>) -> Result<either::Either<L, R>, crate::from_r::SexpError> where E: Into<crate::from_r::SexpError>, R: TryFromSexp, <R as >::Error: Into<crate::from_r::SexpError>
+```
+
+The `Either<_, R>` layer of a choice parameter: a choice or a value of
+another kind. Character and factor input (the forms `match.arg()` reads)
+is decoded by `left` and becomes `Left`; anything else, `NULL` included, is
+converted to `R` and becomes `Right`.
+
+The generated R wrapper applies the same split: its prelude matches the
+argument against the choices only when it is character or factor, so a
+misspelled choice fails there and never reaches `R`, and a data frame is
+never tried as a choice. For `#[miniextendr(match_arg)] route:
+Either<Route, DataFrame>` the C wrapper decodes with
+`match_arg_either_or::<_, DataFrame, _>(sexp, match_arg_from_sexp::<Route>)`;
+a `choices(...)` parameter on `Either<String, R>` passes the string's
+`TryFromSexp` as `left`.
+
+This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
+every input and would decode `NULL` as the first choice.
 
 ### `match_arg::match_arg_from_sexp`
 

@@ -1,0 +1,5 @@
+error: several_ok parameter `routes` cannot be an `Either<..>`; the choice-or-other split applies to a scalar choice, `Either<T, R>`
+ --> tests/ui/match_arg_several_ok_either.rs:8:72
+  |
+8 | fn bad_several_ok_either(#[miniextendr(match_arg, several_ok)] routes: Either<Vec<Route>, List>) {}
+  |                                                                        ^^^^^^

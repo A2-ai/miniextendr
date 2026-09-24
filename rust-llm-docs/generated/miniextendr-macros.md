@@ -2946,7 +2946,8 @@ Every form is one call to a preamble helper (`.miniextendr_match_arg`
 for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
 #1472), guarded by the layers of the parameter type: `!missing(..)`
 for `Missing<..>` (#1551), then `!is.null(..)` for `Option<..>`
-(#1473). The helpers name the argument in their messages, read a
+(#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>`,
+which leaves `NULL` out too. The helpers name the argument in their messages, read a
 factor as its labels, and attribute the error to the wrapper's own call
 by default; under [`CallAttribution::Caller`] the statement passes
 `.mx_call` so the caller is named instead (#1548). The list is spelled
@@ -3033,6 +3034,8 @@ Where the innermost value of a layered choice parameter comes from.
   - A scalar `match_arg` type (`T: MatchArg`), decoded with
 - `MatchArgSeveral`
   - A `match_arg` + `several_ok` container (`Vec<T>` / `Box<[T]>`),
+- `Literal`
+  - The string type of a `choices(...)` parameter, decoded with its own
 
 ### `typed_list::ParsedTypeSpec`
 

@@ -554,6 +554,10 @@ fn snapshot_choice_param_forms() {
         ("Vec<Mode>", true),
         ("Missing<Vec<Mode>>", true),
         ("Missing<Box<[Mode]>>", true),
+        ("Either<Mode, DataFrame>", false),
+        ("Option<Either<Mode, DataFrame>>", false),
+        ("Missing<Either<Mode, f64>>", false),
+        ("Missing<Option<Either<Mode, List>>>", false),
     ];
     let choices = "c(\"fast\", \"safe\")";
     let mut output = String::new();
@@ -596,4 +600,35 @@ fn classify_choice_param_rejects_unsupported_layers() {
     assert!(err("Missing<&[Mode]>", true, false).contains("`Missing<Vec<T>>`"));
     assert!(err("Missing<Mode>", true, false).contains("requires a vector type"));
     assert!(err("Option<Mode>", false, true).contains("cannot have a default"));
+    assert!(err("Option<Either<Mode, List>>", false, true).contains("cannot have a default"));
+    assert!(err("Either<Option<Mode>, List>", false, false).contains("outermost"));
+    assert!(err("Either<Either<Mode, f64>, List>", false, false).contains("outermost"));
+    assert!(err("Either<Vec<Mode>, List>", true, false).contains("cannot be an `Either<..>`"));
+}
+
+#[test]
+fn either_choice_layers_record_the_other_arm() {
+    let attrs = choice_attrs("Either<Mode, DataFrame>", false);
+    assert_eq!(attrs.either_noun.as_deref(), Some("a data frame"));
+    assert!(!attrs.optional && !attrs.omittable);
+    assert_eq!(
+        attrs.layered_leaf(),
+        Some(crate::rust_conversion_builder::ChoiceLeaf::MatchArg)
+    );
+    // `choices(...)` on `Either<String, R>` needs the split decoder too; its
+    // `Missing` / `Option` layers alone convert through `TryFromSexp`.
+    let literal = |ty: &str| {
+        let mut attrs = crate::miniextendr_fn::ParamAttrs {
+            choices: Some(vec!["a".into(), "b".into()]),
+            ..Default::default()
+        };
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        crate::miniextendr_fn::classify_choice_param(&mut attrs, "level", &ty, false).unwrap();
+        attrs.layered_leaf()
+    };
+    assert_eq!(
+        literal("Either<String, f64>"),
+        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal)
+    );
+    assert_eq!(literal("Missing<Option<String>>"), None);
 }

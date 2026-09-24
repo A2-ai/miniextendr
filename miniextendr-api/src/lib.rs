@@ -1217,6 +1217,8 @@ pub use raw_conversions::{
 /// strings with partial matching, like R's `match.arg()`.
 /// Use `#[derive(MatchArg)]` on C-style enums to auto-generate the implementation.
 pub mod match_arg;
+#[cfg(feature = "either")]
+pub use match_arg::match_arg_either_or;
 pub use match_arg::{
     MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp, match_arg_missing_or,
     match_arg_null_or, match_arg_option_from_sexp, match_arg_vec_from_sexp,

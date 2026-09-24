@@ -617,6 +617,12 @@ pub(crate) struct ParamAttrs {
     /// omitted argument, and Rust sees `Missing::Absent`. Set by
     /// [`classify_choice_param`].
     pub omittable: bool,
+    /// `Either<T, R>` layer of a scalar `match_arg` / `choices` parameter: the
+    /// R-facing name of the `R` arm (`"a data frame"`, see
+    /// [`crate::type_inspect::r_value_noun`]) for the `@param` line. The
+    /// prelude checks only character or factor input; anything else reaches
+    /// Rust unchanged and decodes as `R`. Set by [`classify_choice_param`].
+    pub either_noun: Option<String>,
     /// R-side checks named by the author: `inherits` / `no_na`.
     pub checks: crate::r_preconditions::ExplicitChecks,
 }
@@ -640,19 +646,30 @@ impl ParamAttrs {
     }
 
     /// The text after the quoted choice list in the auto-generated `@param`
-    /// line (`One of "a", "b"<suffix>.`): `, or NULL for no choice` for
-    /// `Option<T>`, `, or NULL; omitting the argument means no choice` for
+    /// line (`One of "a", "b"<suffix>.`): the other accepted values, then an
+    /// omission note. `, or NULL for no choice` for `Option<T>`,
+    /// `, or a data frame` for `Either<T, DataFrame>`,
+    /// `, a data frame, or NULL for no choice` for both,
+    /// `, or NULL; omitting the argument means no choice` for
     /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
     /// `Missing<T>`, and nothing for a plain choice.
     pub(crate) fn choice_doc_suffix(&self) -> String {
-        let mut suffix = String::new();
+        let mut alternatives: Vec<&str> = Vec::new();
+        if let Some(noun) = &self.either_noun {
+            alternatives.push(noun);
+        }
         if self.optional {
-            suffix.push_str(if self.omittable {
-                ", or NULL"
+            alternatives.push(if self.omittable {
+                "NULL"
             } else {
-                ", or NULL for no choice"
+                "NULL for no choice"
             });
         }
+        let mut suffix = match alternatives.as_slice() {
+            [] => String::new(),
+            [only] => format!(", or {only}"),
+            [init @ .., last] => format!(", {}, or {last}", init.join(", ")),
+        };
         if self.omittable {
             suffix.push_str("; omitting the argument means no choice");
         }
@@ -660,32 +677,39 @@ impl ParamAttrs {
     }
 
     /// How the C wrapper decodes this parameter when a plain `TryFromSexp`
-    /// cannot: a `match_arg` parameter with a `Missing` / `Option` layer.
-    /// `None` for every other parameter (a `choices` string type converts
-    /// through `TryFromSexp` with its layers; a plain `several_ok` container
-    /// has its own path).
+    /// cannot: a `match_arg` parameter with a `Missing` / `Option` / `Either`
+    /// layer, or a `choices` parameter with an `Either` layer. `None` for
+    /// every other parameter (a `choices` string type converts through
+    /// `TryFromSexp` with its `Missing` / `Option` layers; a plain
+    /// `several_ok` container has its own path).
     pub(crate) fn layered_leaf(&self) -> Option<crate::rust_conversion_builder::ChoiceLeaf> {
         use crate::rust_conversion_builder::ChoiceLeaf;
-        if !self.match_arg || !(self.optional || self.omittable) {
-            return None;
-        }
-        Some(if self.several_ok {
-            ChoiceLeaf::MatchArgSeveral
+        let either = self.either_noun.is_some();
+        if self.match_arg && (self.optional || self.omittable || either) {
+            Some(if self.several_ok {
+                ChoiceLeaf::MatchArgSeveral
+            } else {
+                ChoiceLeaf::MatchArg
+            })
+        } else if self.choices.is_some() && either {
+            Some(ChoiceLeaf::Literal)
         } else {
-            ChoiceLeaf::MatchArg
-        })
+            None
+        }
     }
 }
 
 /// Record the layers of a `match_arg` / `choices` parameter's type on its
-/// [`ParamAttrs`] (`optional`, `omittable`) and reject the shapes the codegen
-/// cannot serve, now that the type is known. Shared by the standalone-fn
-/// parser and [`finalize_method_param_attrs`] so the two cannot classify a
-/// type differently. A no-op for other parameters.
+/// [`ParamAttrs`] (`optional`, `omittable`, `either_noun`) and reject the
+/// shapes the codegen cannot serve, now that the type is known. Shared by the
+/// standalone-fn parser and [`finalize_method_param_attrs`] so the two cannot
+/// classify a type differently. A no-op for other parameters.
 ///
-/// Accepted: a scalar `T`, `Option<T>` (#1473), `Missing<T>` and
-/// `Missing<Option<T>>` (#1551); a `several_ok` container, or a
-/// `Missing<Vec<T>>` / `Missing<Box<[T]>>` one. `has_default` says whether
+/// Accepted, outermost layer first: an optional `Missing<..>` (#1551), an
+/// optional `Option<..>` (#1473), an optional `Either<.., R>`, then the
+/// scalar choice type (so `T`, `Option<T>`, `Missing<Option<T>>`,
+/// `Either<T, R>`, `Option<Either<T, R>>`, ...); a `several_ok` container, or
+/// a `Missing<Vec<T>>` / `Missing<Box<[T]>>` one. `has_default` says whether
 /// the parameter carries a `default` (an `Option<T>` choice cannot; the
 /// `Missing<T>` + default conflict is reported by the callers' own check).
 pub(crate) fn classify_choice_param(
@@ -703,13 +727,22 @@ pub(crate) fn classify_choice_param(
         return Err(syn::Error::new(
             ty.span(),
             format!(
-                "match_arg/choices parameter `{param_name}` has `{layer}<..>` inside another \
-                 wrapper; `Missing<..>` has to be the outermost one: write `Missing<T>`, \
-                 `Option<T>` or `Missing<Option<T>>`"
+                "match_arg/choices parameter `{param_name}` has `{layer}<..>` in an unsupported \
+                 position; the wrappers go outermost first as `Missing<Option<Either<T, R>>>` \
+                 (each one optional, the choice type `T` on the left of `Either`)"
             ),
         ));
     }
     if attrs.several_ok {
+        if layers.either_right.is_some() {
+            return Err(syn::Error::new(
+                ty.span(),
+                format!(
+                    "several_ok parameter `{param_name}` cannot be an `Either<..>`; the \
+                     choice-or-other split applies to a scalar choice, `Either<T, R>`"
+                ),
+            ));
+        }
         if layers.nullable {
             return Err(syn::Error::new(
                 ty.span(),
@@ -755,6 +788,7 @@ pub(crate) fn classify_choice_param(
     }
     attrs.optional = layers.nullable;
     attrs.omittable = layers.missing;
+    attrs.either_noun = layers.either_right.map(crate::type_inspect::r_value_noun);
     Ok(())
 }
 

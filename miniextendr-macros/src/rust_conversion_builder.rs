@@ -598,24 +598,36 @@ pub enum ChoiceLeaf {
     /// A `match_arg` + `several_ok` container (`Vec<T>` / `Box<[T]>`),
     /// decoded with `match_arg_vec_from_sexp::<T>`.
     MatchArgSeveral,
+    /// The string type of a `choices(...)` parameter, decoded with its own
+    /// `TryFromSexp` (the R prelude already matched it against the list).
+    Literal,
 }
 
 /// A layer around a choice parameter's value, outermost first.
-enum ChoiceLayer {
+enum ChoiceLayer<'a> {
     /// `Missing<..>`: the missing-argument sentinel is `Missing::Absent`.
     Missing,
     /// `Option<..>`: `NULL` is `None`.
     Null,
+    /// `Either<.., R>`: character or factor input is the choice (`Left`),
+    /// anything else converts to `R` (`Right`).
+    Either(&'a syn::Type),
 }
 
 /// The decoding expression for a choice parameter of type `ty` whose value
-/// sits under `Missing` / `Option` layers (#1473, #1551), applied to the
-/// `SEXP` binding `sexp`. Each layer is one `miniextendr_api::match_arg_*`
+/// sits under `Missing` / `Option` / `Either` layers (#1473, #1551), applied
+/// to the `SEXP` binding `sexp`. Each layer is one `miniextendr_api::match_arg_*`
 /// helper that takes the decoder of the layers below it, so
 /// `Missing<Option<Mode>>` becomes
 ///
 /// ```ignore
 /// ::miniextendr_api::match_arg_missing_or(sexp, ::miniextendr_api::match_arg_option_from_sexp::<Mode>)
+/// ```
+///
+/// and `Either<Route, DataFrame>` becomes
+///
+/// ```ignore
+/// ::miniextendr_api::match_arg_either_or::<_, DataFrame, _>(sexp, ::miniextendr_api::match_arg_from_sexp::<Route>)
 /// ```
 fn layered_choice_expr(
     ty: &syn::Type,
@@ -631,29 +643,33 @@ fn layered_choice_expr(
     if layers.nullable {
         wraps.push(ChoiceLayer::Null);
     }
+    if let Some(right) = layers.either_right {
+        wraps.push(ChoiceLayer::Either(right));
+    }
     let value = LayeredValue::new(layers.value, leaf);
     let expr = value.apply(&wraps, &quote! { #sexp });
     quote_spanned! {span=> #expr }
 }
 
 /// The innermost value of a layered choice parameter.
-struct LayeredValue<'a> {
+struct LayeredValue {
     leaf: ChoiceLeaf,
-    /// The `MatchArg` type: the value itself for a scalar, the element type
-    /// of a `several_ok` container.
-    choice_ty: &'a syn::Type,
+    /// The decoded type: the `MatchArg` type of a scalar, the element type
+    /// of a `several_ok` container, the string type of a `choices` value
+    /// (lifetimes erased).
+    choice_ty: syn::Type,
     /// A `Box<[T]>` container, converted from the decoded `Vec<T>`.
     boxed: bool,
 }
 
-impl<'a> LayeredValue<'a> {
-    fn new(value: &'a syn::Type, leaf: ChoiceLeaf) -> Self {
+impl LayeredValue {
+    fn new(value: &syn::Type, leaf: ChoiceLeaf) -> Self {
         let (choice_ty, boxed) = match (leaf, crate::classify_several_ok_container(value)) {
             (ChoiceLeaf::MatchArgSeveral, Some((container, inner))) => (
-                inner,
+                inner.clone(),
                 matches!(container, crate::SeveralOkContainer::BoxedSlice),
             ),
-            _ => (value, false),
+            _ => (crate::type_inspect::erase_lifetimes(value), false),
         };
         Self {
             leaf,
@@ -665,20 +681,16 @@ impl<'a> LayeredValue<'a> {
     /// `layers` over this value, decoding the argument `sexp`: the outermost
     /// layer's helper called on `sexp` with the decoder of the rest.
     fn apply(&self, layers: &[ChoiceLayer], sexp: &TokenStream) -> TokenStream {
-        let t = self.choice_ty;
+        let t = &self.choice_ty;
         match layers {
-            [] => match (self.leaf, self.boxed) {
-                (ChoiceLeaf::MatchArg, _) => {
-                    quote! { ::miniextendr_api::match_arg_from_sexp::<#t>(#sexp) }
-                }
-                (ChoiceLeaf::MatchArgSeveral, false) => {
-                    quote! { ::miniextendr_api::match_arg_vec_from_sexp::<#t>(#sexp) }
-                }
-                (ChoiceLeaf::MatchArgSeveral, true) => quote! {
-                    ::miniextendr_api::match_arg_vec_from_sexp::<#t>(#sexp)
-                        .map(::std::vec::Vec::into_boxed_slice)
-                },
+            [] if self.boxed => quote! {
+                ::miniextendr_api::match_arg_vec_from_sexp::<#t>(#sexp)
+                    .map(::std::vec::Vec::into_boxed_slice)
             },
+            [] => {
+                let decoder = self.decoder(&[]);
+                quote! { #decoder(#sexp) }
+            }
             // `Option<T>` over a scalar choice (#1473) keeps its dedicated helper.
             [ChoiceLayer::Null] if self.leaf == ChoiceLeaf::MatchArg => {
                 quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t>(#sexp) }
@@ -692,6 +704,12 @@ impl<'a> LayeredValue<'a> {
                     ChoiceLayer::Null => {
                         quote! { ::miniextendr_api::match_arg_null_or(#sexp, #inner) }
                     }
+                    ChoiceLayer::Either(right) => {
+                        let right = crate::type_inspect::erase_lifetimes(right);
+                        quote! {
+                            ::miniextendr_api::match_arg_either_or::<_, #right, _>(#sexp, #inner)
+                        }
+                    }
                 }
             }
         }
@@ -700,15 +718,18 @@ impl<'a> LayeredValue<'a> {
     /// `layers` over this value as a decoder (`FnOnce(SEXP) -> Result<_, _>`):
     /// a function path where one exists, a closure otherwise.
     fn decoder(&self, layers: &[ChoiceLayer]) -> TokenStream {
-        let t = self.choice_ty;
-        match (layers, self.leaf, self.boxed) {
-            ([], ChoiceLeaf::MatchArg, _) => {
+        let t = &self.choice_ty;
+        match (layers, self.leaf) {
+            ([], ChoiceLeaf::MatchArg) => {
                 quote! { ::miniextendr_api::match_arg_from_sexp::<#t> }
             }
-            ([], ChoiceLeaf::MatchArgSeveral, false) => {
+            ([], ChoiceLeaf::MatchArgSeveral) if !self.boxed => {
                 quote! { ::miniextendr_api::match_arg_vec_from_sexp::<#t> }
             }
-            ([ChoiceLayer::Null], ChoiceLeaf::MatchArg, _) => {
+            ([], ChoiceLeaf::Literal) => {
+                quote! { <#t as ::miniextendr_api::TryFromSexp>::try_from_sexp }
+            }
+            ([ChoiceLayer::Null], ChoiceLeaf::MatchArg) => {
                 quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t> }
             }
             _ => {

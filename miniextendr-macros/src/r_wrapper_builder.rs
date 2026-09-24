@@ -453,7 +453,8 @@ impl CallAttribution {
     /// for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
     /// #1472), guarded by the layers of the parameter type: `!missing(..)`
     /// for `Missing<..>` (#1551), then `!is.null(..)` for `Option<..>`
-    /// (#1473). The helpers name the argument in their messages, read a
+    /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>`,
+    /// which leaves `NULL` out too. The helpers name the argument in their messages, read a
     /// factor as its labels, and attribute the error to the wrapper's own call
     /// by default; under [`CallAttribution::Caller`] the statement passes
     /// `.mx_call` so the caller is named instead (#1548). The list is spelled
@@ -479,7 +480,16 @@ impl CallAttribution {
         if attrs.omittable {
             guards.push(format!("!missing({param})"));
         }
-        if attrs.optional {
+        if attrs.either_noun.is_some() {
+            // Only the forms `match.arg()` reads are choices; everything else
+            // (NULL included) goes to the `Either`'s `R` arm unchanged.
+            let reads = format!("is.character({param}) || is.factor({param})");
+            guards.push(if guards.is_empty() {
+                reads
+            } else {
+                format!("({reads})")
+            });
+        } else if attrs.optional {
             guards.push(format!("!is.null({param})"));
         }
         if guards.is_empty() {

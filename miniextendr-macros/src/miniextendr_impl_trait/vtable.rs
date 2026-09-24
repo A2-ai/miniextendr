@@ -1216,6 +1216,15 @@ pub(super) fn generate_trait_method_c_wrapper(
         builder = builder.strict();
     }
 
+    // A `choices(...)` string under an `Either<.., R>` layer decodes with the
+    // choice-or-other split instead of `TryFromSexp` (the other layers of a
+    // `choices` string convert through `TryFromSexp` directly).
+    for (rust_name, attrs) in &method.per_param {
+        if let Some(leaf) = attrs.layered_leaf() {
+            builder = builder.layered_choice(rust_name.clone(), leaf);
+        }
+    }
+
     // The builder generates both the C wrapper and the R_CallMethodDef
     builder.build().generate()
 }

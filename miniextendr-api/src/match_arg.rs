@@ -42,6 +42,10 @@
 //! `Missing::Absent` (#1551); the C wrapper decodes it with
 //! [`match_arg_missing_or`] around the decoder of the inner type.
 //!
+//! With the `either` feature, `Either<T, R>` takes a choice or a value of
+//! another kind: character or factor input is matched and becomes `Left(T)`,
+//! anything else converts to `R` (`match_arg_either_or`).
+//!
 //! `several_ok` parameters are validated strictly on the R side: every element
 //! has to match a choice, and `NULL` selects every choice (the same fallback
 //! [`match_arg_vec_from_sexp`] applies).
@@ -282,6 +286,41 @@ pub fn match_arg_missing_or<U, E>(
         Ok(crate::Missing::Absent)
     } else {
         inner(sexp).map(crate::Missing::Present)
+    }
+}
+
+/// The `Either<_, R>` layer of a choice parameter: a choice or a value of
+/// another kind. Character and factor input (the forms `match.arg()` reads)
+/// is decoded by `left` and becomes `Left`; anything else, `NULL` included, is
+/// converted to `R` and becomes `Right`.
+///
+/// The generated R wrapper applies the same split: its prelude matches the
+/// argument against the choices only when it is character or factor, so a
+/// misspelled choice fails there and never reaches `R`, and a data frame is
+/// never tried as a choice. For `#[miniextendr(match_arg)] route:
+/// Either<Route, DataFrame>` the C wrapper decodes with
+/// `match_arg_either_or::<_, DataFrame, _>(sexp, match_arg_from_sexp::<Route>)`;
+/// a `choices(...)` parameter on `Either<String, R>` passes the string's
+/// `TryFromSexp` as `left`.
+///
+/// This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
+/// every input and would decode `NULL` as the first choice.
+#[cfg(feature = "either")]
+pub fn match_arg_either_or<L, R, E>(
+    sexp: SEXP,
+    left: impl FnOnce(SEXP) -> Result<L, E>,
+) -> Result<either::Either<L, R>, SexpError>
+where
+    E: Into<SexpError>,
+    R: TryFromSexp,
+    R::Error: Into<SexpError>,
+{
+    if sexp.type_of() == SEXPTYPE::STRSXP || sexp.is_factor() {
+        left(sexp).map(either::Either::Left).map_err(Into::into)
+    } else {
+        R::try_from_sexp(sexp)
+            .map(either::Either::Right)
+            .map_err(Into::into)
     }
 }
 
