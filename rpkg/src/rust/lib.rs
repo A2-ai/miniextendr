@@ -232,6 +232,7 @@ mod macro_equivalence;
 mod match_arg_either_tests;
 mod match_arg_foreign_tests;
 mod match_arg_impl_tests;
+mod match_arg_omitted_tests;
 mod match_arg_tests;
 #[cfg(feature = "md5")]
 mod md5_adapter_tests;
