@@ -22,6 +22,7 @@ note: the traits `RConditionError` and `std::fmt::Display` must be implemented
   --> $RUST/core/src/fmt/mod.rs
    = help: items from traits can only be used if the trait is implemented and in scope
    = note: the following traits define an item `__mx_conversion_parts`, perhaps you need to implement one of them:
-           candidate #1: `miniextendr_api::condition::ConversionErrClassed`
-           candidate #2: `miniextendr_api::condition::ConversionErrDisplay`
+           candidate #1: `miniextendr_api::condition::ConversionErrBuiltin`
+           candidate #2: `miniextendr_api::condition::ConversionErrClassed`
+           candidate #3: `miniextendr_api::condition::ConversionErrDisplay`
    = note: this error originates in the macro `::miniextendr_api::__mx_conversion_err_parts` (in Nightly builds, run with -Z macro-backtrace for more info)

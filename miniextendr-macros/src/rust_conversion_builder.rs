@@ -111,8 +111,8 @@ impl RustConversionBuilder {
     /// `return` happens from inside the C wrapper body before any further conversion.
     ///
     /// - `try_expr`: The `Result<T, E>`-producing expression
-    /// - `context`: The message prefix, `failed to convert parameter '<p>' to <T>`
-    /// - `r_name`: The parameter's R name, attached to the condition as `e$param`
+    /// - `ctx`: The argument's R-facing failure context ([`ArgContext`]): the
+    ///   message prefix, `e$param` and `e$rust_type`
     /// - `ident`: The binding name for the converted value
     /// - `ty`: The target Rust type (for the `let` binding). The annotation is
     ///   load-bearing: the `Err` arm probes the error type by method call
@@ -121,13 +121,12 @@ impl RustConversionBuilder {
     fn conversion_stmt(
         &self,
         try_expr: TokenStream,
-        context: &str,
-        r_name: &str,
+        ctx: &ArgContext,
         ident: &syn::Ident,
         ty: &syn::Type,
         span: proc_macro2::Span,
     ) -> TokenStream {
-        let err_arm = conversion_err_arm(context, r_name, &self.conversion_error_class, span);
+        let err_arm = conversion_err_arm(ctx, &self.conversion_error_class, span);
         quote_spanned! {span=>
             let #ident: #ty = match #try_expr {
                 Ok(v) => v,
@@ -215,6 +214,14 @@ impl RustConversionBuilder {
         // conversion condition names in its message and in `e$param`.
         let r_name =
             crate::r_wrapper_builder::normalize_r_arg_string(&crate::naming::ident_name(ident));
+        // What a conversion failure of this argument says (#1591): the R-facing
+        // expectation (coerce-widened like the R-side check), `e$param` and
+        // `e$rust_type`.
+        let ctx = ArgContext::new(
+            &r_name,
+            ty,
+            self.should_coerce(&crate::naming::ident_name(ident)),
+        );
 
         // A `Call` / `CallerCall` marker (#1566) never reaches this builder from
         // a standalone fn: `lib.rs` removes it from the inputs and binds it from
@@ -271,7 +278,6 @@ impl RustConversionBuilder {
                 {
                     let is_mut = r.mutability.is_some();
                     let storage_ident = quote::format_ident!("__storage_{}", plain);
-                    let context = convert_context(&r_name, ty);
                     let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
@@ -281,12 +287,7 @@ impl RustConversionBuilder {
                     // For &mut [T] the storage binding needs `mut`.
                     let owned_stmt = if is_mut {
                         // Need `let mut storage_ident: vec_ty = ...`; inline the mut variant.
-                        let err_arm = conversion_err_arm(
-                            &context,
-                            &r_name,
-                            &self.conversion_error_class,
-                            span,
-                        );
+                        let err_arm = conversion_err_arm(&ctx, &self.conversion_error_class, span);
                         quote_spanned! {span=>
                             let mut #storage_ident: #vec_ty = match #try_expr {
                                 Ok(v) => v,
@@ -294,14 +295,7 @@ impl RustConversionBuilder {
                             };
                         }
                     } else {
-                        self.conversion_stmt(
-                            try_expr,
-                            &context,
-                            &r_name,
-                            &storage_ident,
-                            &vec_ty,
-                            span,
-                        )
+                        self.conversion_stmt(try_expr, &ctx, &storage_ident, &vec_ty, span)
                     };
                     let borrow_stmt = if is_mut {
                         quote_spanned! {span=>
@@ -328,18 +322,15 @@ impl RustConversionBuilder {
                     // annotated with the lifetime-erased type (`&'a [T]` → `&'_ [T]`):
                     // the user's lifetime need not be in scope, and the `Err` arm's
                     // probe needs the error type named.
-                    let context = convert_context(&r_name, ty);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
                     let binding_ty = crate::type_inspect::erase_lifetimes(ty);
-                    let stmt =
-                        self.conversion_stmt(try_expr, &context, &r_name, ident, &binding_ty, span);
+                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                     (vec![stmt], vec![])
                 } else if is_str {
                     let span = ty.span();
-                    let context = convert_context(&r_name, ty);
                     if zero_copy_str {
                         // Main-thread path: borrow R's CHARSXP pool directly via the
                         // `&'static str` TryFromSexp impl — zero allocation. The SEXP
@@ -351,14 +342,7 @@ impl RustConversionBuilder {
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
                         let binding_ty = crate::type_inspect::erase_lifetimes(ty);
-                        let stmt = self.conversion_stmt(
-                            try_expr,
-                            &context,
-                            &r_name,
-                            ident,
-                            &binding_ty,
-                            span,
-                        );
+                        let stmt = self.conversion_stmt(try_expr, &ctx, ident, &binding_ty, span);
                         (vec![stmt], vec![])
                     } else {
                         // Worker path: convert to owned String, then borrow using the
@@ -370,14 +354,8 @@ impl RustConversionBuilder {
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        let owned_stmt = self.conversion_stmt(
-                            try_expr,
-                            &context,
-                            &r_name,
-                            &owned_ident,
-                            &string_ty,
-                            span,
-                        );
+                        let owned_stmt =
+                            self.conversion_stmt(try_expr, &ctx, &owned_ident, &string_ty, span);
                         // Borrow: String -> &str (using Borrow trait)
                         let borrow_stmt = quote_spanned! {span=>
                             let #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
@@ -386,12 +364,11 @@ impl RustConversionBuilder {
                     }
                 } else {
                     // &T for other types: use TryFromSexp for the reference type.
-                    let context = convert_context(&r_name, ty);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
                         ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                     };
-                    let stmt = self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
+                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
                     (vec![stmt], vec![])
                 }
             }
@@ -424,9 +401,8 @@ impl RustConversionBuilder {
                     .find(|(name, _)| *name == param_name)
                 {
                     let span = ty.span();
-                    let context = convert_context(&r_name, ty);
                     let try_expr = layered_choice_expr(ty, *leaf, sexp_ident, span);
-                    let stmt = self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
+                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 
@@ -437,14 +413,12 @@ impl RustConversionBuilder {
                     && let Some((container, inner_ty)) = crate::classify_several_ok_container(ty)
                 {
                     let span = ty.span();
-                    let context = convert_context(&r_name, ty);
                     match container {
                         crate::SeveralOkContainer::Vec => {
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
-                            let stmt =
-                                self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
+                            let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
                             return (vec![stmt], vec![]);
                         }
                         crate::SeveralOkContainer::BoxedSlice => {
@@ -452,35 +426,35 @@ impl RustConversionBuilder {
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                                     .map(|v| v.into_boxed_slice())
                             };
-                            let stmt =
-                                self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
+                            let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
                             return (vec![stmt], vec![]);
                         }
                         crate::SeveralOkContainer::Array(n) => {
-                            let param_name_lit = &param_name;
                             let span = ty.span();
                             // First extract the Vec via match_arg_vec_from_sexp (handles
-                            // match_arg validation + error reporting), then convert length-check
-                            // separately via a direct panic (caught by the framework).
+                            // match_arg validation + error reporting), then the array
+                            // conversion, whose only failure is the selection length:
+                            // an argument error like any other (#1591).
                             let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                             let vec_ident = quote::format_ident!("__vec_{}", plain);
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
-                            let vec_stmt = self.conversion_stmt(
-                                try_expr, &context, &r_name, &vec_ident, &vec_ty, span,
-                            );
-                            // Length check + array conversion via panic (framework catches panics)
+                            let vec_stmt =
+                                self.conversion_stmt(try_expr, &ctx, &vec_ident, &vec_ty, span);
+                            let len_ctx = ArgContext {
+                                prefix: format!("'{r_name}' must be of length {n}"),
+                                expected_known: true,
+                                ..ctx.clone()
+                            };
+                            let len_arm =
+                                conversion_err_arm(&len_ctx, &self.conversion_error_class, span);
                             let arr_stmt = quote_spanned! {span=>
-                                let #ident: #ty = {
-                                    if #vec_ident.len() != #n {
-                                        panic!(
-                                            "parameter `{}`: expected {} values for [_; {}], got {}",
-                                            #param_name_lit, #n, #n, #vec_ident.len()
-                                        );
-                                    }
-                                    <[#inner_ty; #n]>::try_from(#vec_ident)
-                                        .unwrap_or_else(|_| unreachable!())
+                                let #ident: #ty = match <[#inner_ty; #n]>::try_from(#vec_ident)
+                                    .map_err(|v| ::std::format!("got length {}", v.len()))
+                                {
+                                    Ok(v) => v,
+                                    #len_arm
                                 };
                             };
                             return (vec![vec_stmt, arr_stmt], vec![]);
@@ -491,14 +465,8 @@ impl RustConversionBuilder {
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
-                            let owned_stmt = self.conversion_stmt(
-                                try_expr,
-                                &context,
-                                &r_name,
-                                &storage_ident,
-                                &vec_ty,
-                                span,
-                            );
+                            let owned_stmt =
+                                self.conversion_stmt(try_expr, &ctx, &storage_ident, &vec_ty, span);
                             let borrow_stmt = quote_spanned! {span=>
                                 let #ident: #ty = &#storage_ident;
                             };
@@ -517,7 +485,6 @@ impl RustConversionBuilder {
                 let span = ty.span();
                 let stmt = match coercion_mapping {
                     Some(mapping) => {
-                        let context = coerce_context(&r_name, ty);
                         let try_expr = match mapping {
                             CoercionMapping::Numeric => quote_spanned! {span=>
                                 ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
@@ -541,14 +508,13 @@ impl RustConversionBuilder {
                                 ::miniextendr_api::from_r::try_from_sexp_coerced_f64_vec(#sexp_ident)
                             },
                         };
-                        self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span)
+                        self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }
                     None => {
-                        let context = convert_context(&r_name, ty);
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span)
+                        self.conversion_stmt(try_expr, &ctx, ident, ty, span)
                     }
                 };
                 (vec![stmt], vec![])
@@ -745,45 +711,70 @@ impl LayeredValue {
 
 // region: conversion-failure conditions
 
-/// `failed to convert parameter '<r_name>' to <T>`: the message prefix of an
-/// argument-conversion condition. The error's own message follows it; it
-/// already says what failed (type, length, NA, parse error, ...).
-fn convert_context(r_name: &str, ty: &syn::Type) -> String {
-    format!(
-        "failed to convert parameter '{r_name}' to {}",
-        crate::type_inspect::type_display(ty)
-    )
+/// The R-facing context of one argument's conversion failure (#1591).
+#[derive(Clone)]
+struct ArgContext {
+    /// The message prefix: `'<p>' must be <expected>` when the type has an
+    /// R-facing expectation ([`crate::r_preconditions::conversion_expectation`]),
+    /// `invalid '<p>' argument` otherwise. The error's reason follows it.
+    prefix: String,
+    /// Whether `prefix` states the expectation. Passed to the probe
+    /// (`__mx_conversion_err_parts!(e, expected_known)`), so a built-in error's
+    /// reason does not repeat it (`got character` rather than
+    /// `expected integer, got character`).
+    expected_known: bool,
+    /// The R formal's name, `e$param`.
+    r_name: String,
+    /// The Rust type as written in the signature, `e$rust_type`: kept for the
+    /// package author, out of the user-facing message.
+    rust_type: String,
 }
 
-/// `failed to coerce parameter '<r_name>' to <T>`: the prefix for a
-/// `coerce`-mode conversion.
-fn coerce_context(r_name: &str, ty: &syn::Type) -> String {
-    format!(
-        "failed to coerce parameter '{r_name}' to {}",
-        crate::type_inspect::type_display(ty)
-    )
+impl ArgContext {
+    /// The context of parameter `r_name` of type `ty`; `coerced` when the
+    /// `coerce` knob applies to it (the expectation widens with the gate).
+    fn new(r_name: &str, ty: &syn::Type, coerced: bool) -> Self {
+        let expected = crate::r_preconditions::conversion_expectation(ty, coerced);
+        let prefix = match &expected {
+            Some(expected) => format!("'{r_name}' must be {expected}"),
+            None => format!("invalid '{r_name}' argument"),
+        };
+        Self {
+            prefix,
+            expected_known: expected.is_some(),
+            r_name: r_name.to_string(),
+            rust_type: crate::type_inspect::type_display(ty),
+        }
+    }
 }
 
 /// The `Err(e)` arm of a conversion binding: return the tagged
 /// `kind = "conversion"` value. `__mx_conversion_err_parts!` takes the class
-/// vector, message and data from an `RConditionError` error type and the
-/// `Display` text otherwise; `conversion_condition_value` prefixes `context`,
-/// appends the crate's `conversion_error_class` and adds `r_name` as
-/// `e$param`.
+/// vector, message and data from an `RConditionError` error type, the
+/// R-worded reason from a built-in conversion error and the `Display` text
+/// otherwise; `conversion_condition_value` puts the context's prefix before
+/// it, appends the crate's `conversion_error_class` and adds `e$param` and
+/// `e$rust_type`.
 fn conversion_err_arm(
-    context: &str,
-    r_name: &str,
+    ctx: &ArgContext,
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
+    let ArgContext {
+        prefix,
+        expected_known,
+        r_name,
+        rust_type,
+    } = ctx;
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
         Err(e) => return unsafe { ::miniextendr_api::error_value::conversion_condition_value(
-            #context,
+            #prefix,
             #r_name,
+            ::core::option::Option::Some(#rust_type),
             &[#(#crate_class),*],
-            ::miniextendr_api::__mx_conversion_err_parts!(e),
+            ::miniextendr_api::__mx_conversion_err_parts!(e, #expected_known),
             Some(__miniextendr_call),
         ) },
     }

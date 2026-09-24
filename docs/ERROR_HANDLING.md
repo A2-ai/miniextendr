@@ -569,28 +569,112 @@ pub fn internal_function() {
 
 ## Type Conversion Errors
 
-Most built-in argument types get an R-side precondition in the generated
-wrapper, so a bad value usually fails in R with an R-worded message
-(`'x' must be integer ...`) before it reaches Rust. The arguments without
-one convert in Rust through `TryFromSexp`: every custom `TryFromSexp` type,
+A bad argument is caught in one of two places: by an R-side check in the
+generated wrapper (the type and length checks most built-in argument types
+get, `no_na`, `inherits`, and the `match_arg` / `choices` validation), or by
+the Rust conversion (`TryFromSexp`) for what only Rust can judge, such as a
+non-numeric string given to `AsNumeric`. The arguments without an R-side type
+check convert in Rust directly: every custom `TryFromSexp` type,
 `Either<L, R>`, the `AsFromStr` family, and every argument of a function built
-with `no_preconditions` or `fast-default`. When that conversion fails, the
-wrapper raises an error condition with:
+with `no_preconditions` or `fast-default`.
+
+Both places raise the same error condition (#1591):
 
 - the class vector `c("rust_error", "simpleError", "error", "condition")`,
-  preceded by the error type's own classes when it implements
-  `RConditionError` ([below](#classed-conversion-errors)) and by the crate's
-  `conversion_error_class` when set
-  ([below](#a-crate-level-class-for-every-conversion-error));
+  preceded by the crate's `conversion_error_class` when set
+  ([below](#a-crate-level-class-for-every-conversion-error)), and, for a
+  conversion whose error type implements `RConditionError`, by that type's
+  own classes first ([below](#classed-conversion-errors));
 - `e$kind == "conversion"`;
-- the message `failed to convert parameter '<p>' to <T>: <reason>`
-  (`failed to coerce parameter ...` under `coerce`). `<p>` is the R formal's
-  name, `<T>` the Rust type as written in the signature, and `<reason>` the
-  error's own message, which says what failed (type, length, NA, a parse
-  error, ...);
-- `e$param`, the R name of the failing parameter.
+- `e$param`, the R name of the failing parameter;
+- a message in R terms. An R-side check says the one requirement that failed
+  (`'x' must have length 1`, `'x' must not contain NA`,
+  `'mode' should be one of "fast", "slow"`), or gives the package author's
+  own message for an `inherits` / `no_na` check that sets one
+  ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
+  A conversion says what the argument must be and why it is not:
+  `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`
+  for a type without an R-facing expectation (custom types, `Either`, the
+  `AsFromStr` family);
+- on a conversion only, `e$rust_type`, the Rust type as written in the
+  signature, for the package author.
 
-The examples below are for functions without the R-side precondition
+So one handler, `rust_error` or the crate's class, catches every argument
+error, whichever side found it:
+
+```rust
+#[miniextendr(internal)]
+pub fn ratio(num: AsNumeric, den: AsNumeric) -> Option<f64> { Some(num.0? / den.0?) }
+
+#[miniextendr(internal)]
+pub fn peak(dv: AsNumericVec) -> Option<f64> { dv.0.into_iter().flatten().reduce(f64::max) }
+```
+
+```r
+e1 <- tryCatch(ratio(c(1, 2), 3), error = identity)   # R-side length check
+class(e1)
+#> [1] "rust_error" "simpleError" "error" "condition"
+conditionMessage(e1)
+#> [1] "'num' must have length 1"
+e1$param
+#> [1] "num"
+
+e2 <- tryCatch(peak(c("1", "BLQ")), error = identity)  # Rust conversion
+class(e2)
+#> [1] "rust_error" "simpleError" "error" "condition"
+conditionMessage(e2)
+#> [1] "'dv' must be numeric: non-numeric value(s): \"BLQ\" (element 2)"
+e2$param
+#> [1] "dv"
+e2$rust_type
+#> [1] "AsNumericVec"
+```
+
+`conditionCall(e)` follows the function's call attribution as before: an
+R-side check reports the wrapper's call as written (what `stopifnot()` used
+to), a conversion the wrapper's matched call, and under `call = caller` both
+name the caller's matched call ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
+
+The R-side checks are one guard per check,
+`if (!isTRUE(<check>)) .miniextendr_arg_error("<p>", "<requirement>")`,
+calling a helper in the generated wrappers file only when the check fails;
+a passing argument costs one `isTRUE()` test per check. A check with the
+author's message passes it instead of the requirement,
+`.miniextendr_arg_error("<p>", message = "<message>")`, and the helper uses
+it as the condition message unchanged. The receiver check of an S7 method
+registered for `S7::class_any` (`s7(fallback)`) raises the same condition on
+`x`: `'x' must be an S7 object, got integer`.
+
+### Conversion wording
+
+The `<expected>` part comes from the same type table as the R-side checks
+(with `coerce` widening it the same way), and the built-in conversion errors
+(`SexpError` and its parts) give the `<reason>` in R terms rather than as
+`SEXPTYPE` names:
+
+| Argument type | `<expected>` |
+|---------------|--------------|
+| `i32` / `f64` | `a single integer` / `a single double` (`a single whole number` / `a single number` under `coerce`) |
+| `f32`, `i8`, `i16`, `i64`, `isize`, `AsNumeric` | `a single number` |
+| `u16`, `u32`, `u64`, `usize` | `a single non-negative number` |
+| `bool` | `TRUE or FALSE` |
+| `String`, `&str`, `char`, `PathBuf` | `a single string` |
+| `u8` / `Rcomplex` | `a single raw value` / `a single complex value` |
+| `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` |
+| `AsNumericVec` | `numeric` |
+| `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
+| `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
+| `Option<T>` | `NULL or <expected of T>` |
+| anything else | none: `invalid '<p>' argument: <reason>` |
+
+| Built-in error | `<reason>` |
+|----------------|------------|
+| type | `got character` (`expected integer, got character` without an `<expected>`) |
+| length | `got length 2` (`expected length 1, got length 2` without an `<expected>`) |
+| NA | `NA is not allowed` |
+| invalid value | the value's own text, e.g. `non-numeric value(s): "BLQ" (element 2)` |
+
+The examples below are for functions without the R-side checks
 (`no_preconditions` / `fast-default`), where these values reach Rust.
 
 ### Type mismatch
@@ -604,20 +688,32 @@ pub fn needs_integer(x: i32) -> i32 {
 
 ```r
 needs_integer("abc")
-# Error: failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got STRSXP
+# Error: 'x' must be a single integer: got character
 
 e <- tryCatch(needs_integer("abc"), error = identity)
-e$kind   # "conversion"
-e$param  # "x"
+e$kind       # "conversion"
+e$param      # "x"
+e$rust_type  # "i32"
 ```
 
-Types without a precondition look the same, with the full type in the
-message:
+A type without an R-facing expectation reads `invalid '<p>' argument`, with
+the error's own message as the reason; the full Rust type is in
+`e$rust_type`:
 
 ```r
 either_int_or_str(3.5)   # value: Either<i32, String>
-# Error: failed to convert parameter 'value' to Either<i32, String>: failed to convert to Either:
+# Error: invalid 'value' argument: failed to convert to Either:
 #   Left failed (type mismatch: expected INTSXP, got REALSXP), Right failed (type mismatch: expected STRSXP, got REALSXP)
+```
+
+A `match_arg` / `choices` parameter on `Either<T, R>` is decoded differently
+("Choice or Another Value" in [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md)):
+the R prelude checks character or factor input against the choices, and
+anything else is converted to `R` alone, so the reason is that arm's own:
+
+```r
+choices_either_level(TRUE)   # level: Either<String, f64>, choices("low", "mid", "high")
+# Error: invalid 'level' argument: expected numeric, got logical
 ```
 
 ### NA Handling
@@ -637,7 +733,7 @@ pub fn handles_na(x: Option<i32>) -> i32 {
 
 ```r
 needs_value(NA_integer_)
-# Error: failed to convert parameter 'x' to i32: unexpected NA value in INTSXP
+# Error: 'x' must be a single integer: NA is not allowed
 handles_na(NA_integer_)   # -1
 ```
 
@@ -651,8 +747,8 @@ pub fn needs_int(x: i32) -> i32 { x }
 ```
 
 ```r
-needs_int(1.5)   # Error: 'x' must be integer or whole-number numeric   (R-side precondition)
-needs_int(1e20)  # Error: failed to coerce parameter 'x' to i32: invalid value: value out of range
+needs_int(1.5)   # Error: 'x' must be integer or whole-number numeric   (R-side check)
+needs_int(1e20)  # Error: 'x' must be a single whole number: value out of range
 ```
 
 ### Classed conversion errors
@@ -661,9 +757,9 @@ When the `TryFromSexp::Error` of an argument type implements
 [`RConditionError`](CONDITIONS.md#classed-result-errors-with-rconditionerror-and-rerror),
 a failed conversion takes that error's class vector, message and data, the
 same way a `Result<T, E: RConditionError>` return does. `kind` stays
-`"conversion"`, the message keeps the parameter context, and `e$param` is
-added, so a package can put the conversion failures of its own argument types
-in its condition family:
+`"conversion"`, the message keeps the parameter context, and `e$param` and
+`e$rust_type` are added, so a package can put the conversion failures of its
+own argument types in its condition family:
 
 ```rust
 use miniextendr_api::condition::RConditionError;
@@ -705,57 +801,62 @@ pub fn hyperparams_total(hyper: Hyperparams) -> f64 {
 e <- tryCatch(hyperparams_total(1:3), error = identity)
 class(e)
 # [1] "pkg_error_bad_arg" "pkg_error" "rust_error" "simpleError" "error" "condition"
-e$kind    # "conversion"
-e$param   # "hyper"
-e$reason  # "invalid value: NamedVector requires a names attribute on the input vector"
+e$kind       # "conversion"
+e$param      # "hyper"
+e$rust_type  # "Hyperparams"
+e$reason     # "invalid value: NamedVector requires a names attribute on the input vector"
 conditionMessage(e)
-# failed to convert parameter 'hyper' to Hyperparams: expected a named numeric vector (invalid value: ...)
+# invalid 'hyper' argument: expected a named numeric vector (invalid value: ...)
 
 tryCatch(hyperparams_total("a"), pkg_error = function(e) "caught by the family handler")
 ```
 
 Rules:
 
-- **`param` precedence.** When the error type's own `data()` already has a
-  field named `param`, the type's value is kept and the framework adds none:
-  the type author owns the fields they chose, and the parameter's name stays
-  in the message. Above, `hyperparams_total(c(alpha = 1, beta = -2))` gives
-  `e$param == "beta"` (the hyperparameter) and the message
-  `failed to convert parameter 'hyper' to Hyperparams: hyperparameter 'beta' must be non-negative, got -2`.
+- **`param` / `rust_type` precedence.** When the error type's own `data()`
+  already has a field named `param` (or `rust_type`), the type's value is
+  kept and the framework adds none: the type author owns the fields they
+  chose, and the parameter's name stays in the message. Above,
+  `hyperparams_total(c(alpha = 1, beta = -2))` gives `e$param == "beta"` (the
+  hyperparameter) and the message
+  `invalid 'hyper' argument: hyperparameter 'beta' must be non-negative, got -2`.
 - **Reserved names.** `data()` fields must not be `message`, `call` or
   `kind`; a reserved name raises a plain `rust_error` explaining the clash,
   as for `Result` errors.
-- **Fallback.** An error type without the impl (every built-in one, e.g.
-  `SexpError`, `MatchArgError`) is rendered with `Display` and keeps the plain
-  class vector. The error type must implement `RConditionError` or `Display`.
+- **Fallback.** An error type without the impl keeps the plain class vector.
+  The built-in `SexpError` family is reworded as in the table above; any
+  other type (e.g. `MatchArgError`) is rendered with `Display`. The error type
+  must implement `RConditionError` or `Display`.
 - **Worker and `call = caller`.** The conversion runs on the main thread in
   both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
   follows the function's call attribution.
 - **Sidecar setters** (`Type_set_<field>`) report
   `failed to convert value for sidecar field '<field>' on `<Type>`: <reason>`
-  with `e$param == "value"`, the setter's formal.
+  with `e$param == "value"`, the setter's formal, and no `e$rust_type`.
 - **Strict mode** (`#[miniextendr(strict)]` on lossy integer types) rejects
   values with a panic (`kind = "panic"`), not a conversion condition.
 
 ### A crate-level class for every conversion error
 
-To put every argument-conversion failure of a package in its condition family
-without an `RConditionError` impl on each type, name the classes once in the
-crate's `Cargo.toml`:
+To put every argument error of a package in its condition family without an
+`RConditionError` impl on each type, name the classes once in the crate's
+`Cargo.toml`:
 
 ```toml
 [package.metadata.miniextendr]
 conversion_error_class = ["pkg_error_argument", "pkg_error"]   # or one string: "pkg_error"
 ```
 
-Every conversion condition of the crate (free functions, methods, trait
-methods and sidecar setters) then carries those classes before the
-`rust_error` layering. An error type with its own `RConditionError` classes
-keeps them first; the crate classes follow, skipping any the error already
-names:
+Every argument error of the crate then carries those classes before the
+`rust_error` layering: the Rust conversions (free functions, methods, trait
+methods and sidecar setters) and the R-side checks alike, so a package can
+document one argument-error class for its users. An error type with its own
+`RConditionError` classes keeps them first; the crate classes follow,
+skipping any the error already names:
 
 ```r
-# A plain SexpError (e.g. an `i32` argument without a precondition):
+# A plain SexpError (e.g. an `i32` argument without a precondition), or any
+# R-side check (a length check, `no_na`, `inherits`, a bad choice):
 class(tryCatch(f("a"), error = identity))
 # [1] "pkg_error_argument" "pkg_error" "rust_error" "simpleError" "error" "condition"
 
@@ -764,13 +865,18 @@ class(tryCatch(g(-1L), error = identity))
 # [1] "pkg_error_negative" "pkg_error" "pkg_error_argument" "rust_error" "simpleError" "error" "condition"
 ```
 
-Without the key nothing changes. The value is a string or a single-line array
-of strings, set once; the entries must be non-empty and distinct and must not
-name `rust_error`, `simpleError`, `error` or `condition`, which every
-conversion error already carries. The key covers conversions done in Rust; an
-argument rejected by an R-side precondition or by `match.arg()` raises that
-check's plain R error. `tests/cross-package/producer.pkg` sets the key and
-tests it in `test-conversion-error-class.R`.
+Without the key nothing is added. The value is a string or a single-line
+array of strings, set once; the entries must be non-empty and distinct and
+must not name `rust_error`, `simpleError`, `error` or `condition`, which every
+argument error already carries. The macro emits the classes into each Rust
+conversion arm, and `miniextendr_init!` registers them for the generated
+wrappers file, which binds them as `.miniextendr_conversion_error_class` for
+the R-side checks (`NULL` without the key). A conversion arm reads the
+manifest of the crate that defines its item, the wrappers-file binding that of
+the crate calling `miniextendr_init!`; they agree whenever the package's
+`#[miniextendr]` items live in that crate, the usual layout.
+`tests/cross-package/producer.pkg` sets the key and tests it in
+`test-conversion-error-class.R`.
 
 ---
 

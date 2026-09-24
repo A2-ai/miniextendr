@@ -51,7 +51,7 @@
 use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::class_ref_or_verbatim;
 
-/// Build the `stopifnot()` precondition lines for the setter branch of a
+/// Build the precondition guard lines for the setter branch of a
 /// combined getter/setter active binding.
 ///
 /// This is the same precondition block the standalone `set_*` method gets via
@@ -603,7 +603,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             lines.push("  } else {".to_string());
 
-            // Same `stopifnot` precondition block the standalone `set_*`
+            // Same precondition guards the standalone `set_*`
             // method gets (audit 2026-07-06 finding 4): without it,
             // `obj$prop <- <bad value>` skipped the R-level type check.
             for check in active_setter_precondition_checks(setter_method) {

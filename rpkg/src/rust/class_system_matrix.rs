@@ -227,7 +227,7 @@ impl StaticXParam for CounterTraitEnv {
 // rewrites *every* match of that substring, so a parameter whose R name
 // starts with `x` was silently rewritten too (`x_factor` -> `.ptr_factor`),
 // producing a runtime "object '.ptr_factor' not found" error. `bump`
-// exercises the `stopifnot()` precondition-check prelude step trait methods
+// exercises the precondition-check prelude step trait methods
 // used to skip entirely; `set_mode`'s `choices(...)` param exercises
 // `match.arg()` support, which trait methods had none of at all before this
 // refactor. See `TraitMethodContext` (miniextendr_impl_trait/method_context.rs).
@@ -236,7 +236,7 @@ impl StaticXParam for CounterTraitEnv {
 pub trait Scaler {
     /// Regression for the `x`-prefixed substring-corruption bug (BUG1).
     fn scale(&mut self, x_factor: f64) -> f64;
-    /// Regression for the missing `stopifnot()` precondition prelude (BUG2).
+    /// Regression for the missing precondition prelude (BUG2).
     fn bump(&mut self, amount: i32) -> f64;
     /// Regression for trait methods having no `match_arg`/`choices` support
     /// at all (BUG2). `choices(...)` is set per-impl (see below), matching
@@ -302,6 +302,9 @@ impl ScalerS7 {
 
 #[miniextendr(s7, internal)]
 impl Scaler for ScalerS7 {
+    /// `no_na(p(message = ...))` on a trait method: `x_factor = NA` is refused
+    /// in R with the author's message.
+    #[miniextendr(no_na(x_factor(message = "`x_factor` must be a number, not NA")))]
     fn scale(&mut self, x_factor: f64) -> f64 {
         self.value *= x_factor;
         self.value

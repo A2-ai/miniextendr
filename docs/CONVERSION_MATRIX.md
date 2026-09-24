@@ -132,6 +132,10 @@ be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
 `is.atomic(x)` ("'x' must be atomic", base R's own wording; plus length 1 for
 `AsCharacter`), which refuses lists and data frames before `.Call`. `AsFromStr` /
 `AsFromStrVec` have no R precondition; their errors come from the conversion.
+Either way the argument error is the same condition (#1591); a conversion
+failure reads `'dv' must be numeric: non-numeric value(s): "BLQ" (element 2)`
+(`a single number` for `AsNumeric`), with the Rust type in `e$rust_type`
+([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)).
 
 ---
 

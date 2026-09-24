@@ -9,10 +9,8 @@ expression: generate_vctrs_r_wrapper(&parsed)
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
 new_percent <- function(x) {
-  stopifnot(
-    "'x' must be double" = is.double(x),
-    "'x' must have length 1" = length(x) == 1L
-  )
+  if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
+  if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Percent__new, .call = match.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
@@ -45,7 +43,7 @@ vec_cast.Percent.Percent <- function(x, to, ...) x
 #' @name percent_value
 #' @rdname Percent
 percent_value <- function(amounts) {
-  stopifnot("'amounts' must be double" = is.double(amounts))
+  if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
   .val <- .Call(C_miniextendr_macros_Percent__value, .call = match.call(), amounts)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
@@ -57,11 +55,9 @@ percent_value <- function(amounts) {
 #' @name percent_scale
 #' @rdname Percent
 percent_scale <- function(amounts, factor) {
-  stopifnot(
-    "'amounts' must be double" = is.double(amounts),
-    "'factor' must be double" = is.double(factor),
-    "'factor' must have length 1" = length(factor) == 1L
-  )
+  if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
+  if (!isTRUE(is.double(factor))) .miniextendr_arg_error("factor", "must be double")
+  if (!isTRUE(length(factor) == 1L)) .miniextendr_arg_error("factor", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Percent__scale, .call = match.call(), amounts, factor)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val

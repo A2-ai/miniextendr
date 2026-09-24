@@ -915,10 +915,12 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// The same impl classes argument-conversion failures: when a parameter
 /// type's `TryFromSexp::Error` implements this trait, a failed conversion
 /// raises its classes and fields with `kind = "conversion"`, the message
-/// `failed to convert parameter '<p>' to <T>: <message()>` and the
-/// parameter's R name as `e$param` (unless `data()` has a `param` field of
-/// its own, which then wins). An error type without the impl renders with
-/// `Display` and keeps the plain `rust_error` class vector.
+/// `'<p>' must be <expected>: <message()>` (or `invalid '<p>' argument:
+/// <message()>` when the argument's type has no R-facing expectation), the
+/// parameter's R name as `e$param` and the Rust type as `e$rust_type`
+/// (unless `data()` has a field of the same name, which then wins). An error
+/// type without the impl renders with `Display` and keeps the plain
+/// `rust_error` class vector.
 ///
 /// `data()` field names must not be `message`, `call` or `kind` (see
 /// [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
@@ -1169,12 +1171,14 @@ macro_rules! __mx_result_err_parts {
 /// Conversion probe, preferred arm: `E: RConditionError`.
 ///
 /// When an argument fails its `TryFromSexp` conversion, the generated wrapper
-/// calls `(&e).__mx_conversion_parts()` with both conversion-probe traits in
-/// scope (see [`crate::__mx_conversion_err_parts!`]). This impl, on `E` taking
-/// `&self`, matches the receiver `&E` by value, so a `TryFromSexp::Error`
-/// that implements [`RConditionError`] contributes its class vector, message
-/// and data. [`ConversionErrDisplay`] needs one more auto-ref and is only
-/// reached otherwise.
+/// calls `(&e).__mx_conversion_parts(expected_known)` with the three
+/// conversion-probe traits in scope (see [`crate::__mx_conversion_err_parts!`]).
+/// This impl, on `E` taking `&self`, matches the receiver `&E` by value, so a
+/// `TryFromSexp::Error` that implements [`RConditionError`] contributes its
+/// class vector, message and data. [`ConversionErrBuiltin`] matches at the
+/// same step for the built-in conversion errors, which never implement
+/// [`RConditionError`], so the two never compete. [`ConversionErrDisplay`]
+/// needs one more auto-ref and is only reached otherwise.
 ///
 /// Unlike the `Result` probe ([`crate::__mx_result_err_parts!`]) there is no
 /// serde stage and the fallback is `Display`, not `Debug`: the generated code
@@ -1182,16 +1186,110 @@ macro_rules! __mx_result_err_parts {
 /// error type (`SexpError`, `MatchArgError`, ...) implements.
 #[doc(hidden)]
 pub trait ConversionErrClassed {
-    fn __mx_conversion_parts(&self) -> ErrParts;
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
 }
 
 impl<E: RConditionError> ConversionErrClassed for E {
     #[track_caller]
-    fn __mx_conversion_parts(&self) -> ErrParts {
+    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
         ErrParts {
             message: self.message(),
             class: self.class(),
             data: check_condition_data(self.data()),
+        }
+    }
+}
+
+/// Conversion probe, built-in arm: the framework's own conversion errors
+/// ([`SexpError`](crate::from_r::SexpError) and the
+/// [`SexpTypeError`](crate::from_r::SexpTypeError) /
+/// [`SexpLengthError`](crate::from_r::SexpLengthError) /
+/// [`SexpNaError`](crate::from_r::SexpNaError) it wraps), reworded for R
+/// users (#1591).
+///
+/// Their `Display` text is written for the package author: SEXPTYPE names
+/// (`expected INTSXP, got STRSXP`) and a variant prefix (`invalid value: ...`).
+/// The condition message says instead what the argument should have been:
+///
+/// | error | `expected_known` | reason |
+/// |-------|------------------|--------|
+/// | type | yes | `got character` |
+/// | type | no | `expected integer, got character` |
+/// | length | yes | `got length 2` |
+/// | length | no | `expected length 1, got length 2` |
+/// | NA | either | `NA is not allowed` |
+/// | invalid value | either | the value's own text, without `invalid value: ` |
+/// | missing field / duplicate name | either | `missing field 'x'` / `duplicate name 'x'` |
+///
+/// `expected_known` is set by the macro when it knows the argument's R-facing
+/// expectation and puts it in the message prefix (`'x' must be a single
+/// integer`); the reason then does not repeat it. The type names are those of
+/// [`sexptype_name`](crate::typed_list::sexptype_name) (`numeric` for a
+/// double, `list`, `NULL`, ...). Other variants keep their `Display` text.
+#[doc(hidden)]
+pub trait ConversionErrBuiltin {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
+}
+
+/// The R-facing reason for a built-in conversion error, see
+/// [`ConversionErrBuiltin`].
+fn builtin_reason_parts(message: String) -> ErrParts {
+    ErrParts {
+        message,
+        class: Vec::new(),
+        data: None,
+    }
+}
+
+impl ConversionErrBuiltin for crate::from_r::SexpTypeError {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
+        let got = crate::typed_list::sexptype_name(self.actual);
+        builtin_reason_parts(if expected_known {
+            format!("got {got}")
+        } else {
+            format!(
+                "expected {}, got {got}",
+                crate::typed_list::sexptype_name(self.expected)
+            )
+        })
+    }
+}
+
+impl ConversionErrBuiltin for crate::from_r::SexpLengthError {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
+        builtin_reason_parts(if expected_known {
+            format!("got length {}", self.actual)
+        } else {
+            format!(
+                "expected length {}, got length {}",
+                self.expected, self.actual
+            )
+        })
+    }
+}
+
+impl ConversionErrBuiltin for crate::from_r::SexpNaError {
+    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
+        builtin_reason_parts("NA is not allowed".to_string())
+    }
+}
+
+impl ConversionErrBuiltin for crate::from_r::SexpError {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
+        use crate::from_r::SexpError;
+        match self {
+            SexpError::Type(e) => e.__mx_conversion_parts(expected_known),
+            SexpError::Length(e) => e.__mx_conversion_parts(expected_known),
+            SexpError::Na(e) => e.__mx_conversion_parts(expected_known),
+            SexpError::InvalidValue(msg) => builtin_reason_parts(msg.clone()),
+            SexpError::MissingField(name) => {
+                builtin_reason_parts(format!("missing field '{name}'"))
+            }
+            SexpError::DuplicateName(name) => {
+                builtin_reason_parts(format!("duplicate name '{name}'"))
+            }
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion { .. } => builtin_reason_parts(self.to_string()),
         }
     }
 }
@@ -1201,11 +1299,11 @@ impl<E: RConditionError> ConversionErrClassed for E {
 /// the plain `rust_error` class vector.
 #[doc(hidden)]
 pub trait ConversionErrDisplay {
-    fn __mx_conversion_parts(&self) -> ErrParts;
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
 }
 
 impl<E: std::fmt::Display> ConversionErrDisplay for &E {
-    fn __mx_conversion_parts(&self) -> ErrParts {
+    fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
         ErrParts {
             message: self.to_string(),
             class: Vec::new(),
@@ -1218,14 +1316,23 @@ impl<E: std::fmt::Display> ConversionErrDisplay for &E {
 /// wrappers. Not public API. Yields the error's own [`ErrParts`];
 /// [`crate::error_value::conversion_condition_value`] adds the parameter
 /// context.
+///
+/// The second argument is `expected_known` (see [`ConversionErrBuiltin`]):
+/// `true` when the message prefix already states what the argument should
+/// be. It defaults to `false`.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_conversion_err_parts {
-    ($e:expr) => {{
+    ($e:expr) => {
+        $crate::__mx_conversion_err_parts!($e, false)
+    };
+    ($e:expr, $expected_known:expr) => {{
         #[allow(unused_imports)]
-        use $crate::condition::{ConversionErrClassed as _, ConversionErrDisplay as _};
+        use $crate::condition::{
+            ConversionErrBuiltin as _, ConversionErrClassed as _, ConversionErrDisplay as _,
+        };
         match &$e {
-            __mx_e => __mx_e.__mx_conversion_parts(),
+            __mx_e => __mx_e.__mx_conversion_parts($expected_known),
         }
     }};
 }
@@ -1234,25 +1341,34 @@ macro_rules! __mx_conversion_err_parts {
 /// name on every argument-conversion condition (`e$param`).
 const CONVERSION_PARAM_FIELD: &str = "param";
 
+/// The name of the structured field that carries the Rust type an argument
+/// failed to convert to (`e$rust_type`, #1591).
+const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
+
 /// Combine an argument-conversion error's own parts with the wrapper's
 /// parameter context.
 ///
-/// - The message becomes `<context>: <error message>`, where `context` is
-///   `failed to convert parameter '<p>' to <T>` (or `failed to coerce ...`).
-/// - The class vector is the error's own (empty for the `Display` fallback),
-///   followed by `crate_class`, the crate's `conversion_error_class` from
-///   `[package.metadata.miniextendr]`, minus any class the error already
-///   names. The R helper appends the `rust_error` layering after both.
+/// - The message becomes `<prefix>: <error message>`. For an argument the
+///   macro writes the prefix in R terms (#1591): `'<p>' must be <expected>`
+///   when it knows what the argument should be (`'x' must be a single
+///   integer`, `'dv' must be numeric`), `invalid '<p>' argument` otherwise.
+///   A sidecar setter passes its own prefix.
+/// - The class vector is the error's own (empty for the built-in and
+///   `Display` arms), followed by `crate_class`, the crate's
+///   `conversion_error_class` from `[package.metadata.miniextendr]`, minus
+///   any class the error already names. The R helper appends the
+///   `rust_error` layering after both.
 /// - `param` (the parameter's R name) is added as the first data field,
-///   `e$param`, unless the error's own data already has a field named
-///   `param`. Then the error type's value is kept: the framework never
-///   overwrites a field the type author chose, and the parameter name stays
-///   in the message. R's `e$param` reads only the first of two same-named
-///   fields, so exactly one of the two must be spliced.
+///   `e$param`, and `rust_type` (the Rust type as written in the signature,
+///   when given) after it, `e$rust_type`. Neither is added when the error's
+///   own data already has a field of that name: the type author's value is
+///   kept, since the framework never overwrites a field the type author
+///   chose, and R's `e$name` reads only the first of two same-named fields.
 #[doc(hidden)]
 pub fn conversion_err_parts(
-    context: &str,
+    prefix: &str,
     param: &str,
+    rust_type: Option<&str>,
     crate_class: &[&str],
     parts: ErrParts,
 ) -> ErrParts {
@@ -1267,14 +1383,23 @@ pub fn conversion_err_parts(
         }
     }
     let mut fields = data.unwrap_or_default();
-    if !fields
-        .iter()
-        .any(|(name, _)| name == CONVERSION_PARAM_FIELD)
-    {
+    let has_field =
+        |fields: &ConditionData, field: &str| fields.iter().any(|(name, _)| name == field);
+    let mut at = 0;
+    if !has_field(&fields, CONVERSION_PARAM_FIELD) {
         fields.insert(0, (CONVERSION_PARAM_FIELD.to_string(), param.into()));
+        at = 1;
+    }
+    if let Some(rust_type) = rust_type
+        && !has_field(&fields, CONVERSION_RUST_TYPE_FIELD)
+    {
+        fields.insert(
+            at,
+            (CONVERSION_RUST_TYPE_FIELD.to_string(), rust_type.into()),
+        );
     }
     ErrParts {
-        message: format!("{context}: {message}"),
+        message: format!("{prefix}: {message}"),
         class,
         data: Some(fields),
     }
@@ -2143,16 +2268,66 @@ mod condition_macro_tests {
         assert!(parts.data.is_none());
     }
 
-    /// The conversion probe's fallback: the built-in conversion errors are not
-    /// `RConditionError`, so they keep the plain class vector and render with
-    /// `Display` (not `Debug`), with no data of their own.
+    /// The conversion probe's built-in arm (#1591): the framework's own
+    /// conversion errors are not `RConditionError`, keep the plain class
+    /// vector and no data, and read in R terms instead of their `Display`
+    /// text. Other error types still render with `Display` (not `Debug`).
     #[test]
-    fn conversion_probe_falls_back_to_display_for_builtin_errors() {
-        let e = crate::from_r::SexpError::InvalidValue("parse errors: index 1".into());
-        let parts = crate::__mx_conversion_err_parts!(e);
-        assert_eq!(parts.message, e.to_string());
+    fn conversion_probe_rewords_builtin_errors() {
+        use crate::SEXPTYPE;
+        use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError};
+
+        // The probe takes the owned error, as in the generated `Err(e)` arm.
+        let message = |e: &SexpError, known: bool| {
+            crate::__mx_conversion_err_parts!(e.clone(), known).message
+        };
+
+        let e = SexpError::InvalidValue("non-numeric value(s): \"BLQ\" (element 2)".into());
+        let parts = crate::__mx_conversion_err_parts!(e, true);
+        assert_eq!(parts.message, "non-numeric value(s): \"BLQ\" (element 2)");
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
+        assert_eq!(message(&e, false), message(&e, true));
+
+        let e = SexpError::Type(SexpTypeError {
+            expected: SEXPTYPE::INTSXP,
+            actual: SEXPTYPE::STRSXP,
+        });
+        assert_eq!(message(&e, true), "got character");
+        assert_eq!(message(&e, false), "expected integer, got character");
+        let e = SexpError::Length(SexpLengthError {
+            expected: 1,
+            actual: 2,
+        });
+        assert_eq!(message(&e, true), "got length 2");
+        assert_eq!(message(&e, false), "expected length 1, got length 2");
+        let e = SexpError::Na(SexpNaError {
+            sexp_type: SEXPTYPE::REALSXP,
+        });
+        assert_eq!(message(&e, true), "NA is not allowed");
+        assert_eq!(message(&e, false), "NA is not allowed");
+        assert_eq!(
+            message(&SexpError::MissingField("id".into()), true),
+            "missing field 'id'"
+        );
+        assert_eq!(
+            message(&SexpError::DuplicateName("id".into()), true),
+            "duplicate name 'id'"
+        );
+        // The bare error structs some conversions return take the same arm.
+        let e = SexpTypeError {
+            expected: SEXPTYPE::REALSXP,
+            actual: SEXPTYPE::VECSXP,
+        };
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            "got list"
+        );
+        // The one-argument form is the no-expectation form.
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e).message,
+            "expected numeric, got list"
+        );
 
         let e = crate::match_arg::MatchArgError::IsNa;
         let parts = crate::__mx_conversion_err_parts!(e);
@@ -2162,7 +2337,7 @@ mod condition_macro_tests {
 
         // A plain `&str` / `String` error (neither `Serialize`-classed nor
         // `Debug`-quoted, unlike the `Result` probe).
-        let parts = crate::__mx_conversion_err_parts!(String::from("bad input"));
+        let parts = crate::__mx_conversion_err_parts!(String::from("bad input"), true);
         assert_eq!(parts.message, "bad input");
         assert!(parts.class.is_empty());
     }
@@ -2175,7 +2350,7 @@ mod condition_macro_tests {
         let e = RError::new("must be positive")
             .class(["pkg_bad_arg", "pkg_error"])
             .data("value", -1);
-        let parts = crate::__mx_conversion_err_parts!(e);
+        let parts = crate::__mx_conversion_err_parts!(e, true);
         assert_eq!(parts.message, "must be positive");
         assert_eq!(parts.class, ["pkg_bad_arg", "pkg_error"]);
         assert_eq!(parts.data.expect("data")[0].0, "value");
@@ -2205,37 +2380,49 @@ mod condition_macro_tests {
             .unwrap_or_default()
     }
 
-    /// `conversion_err_parts`: the context prefixes the message, the class is
-    /// kept, and `param` comes first in the data.
+    fn character_field<'a>(parts: &'a super::ErrParts, name: &str) -> Option<&'a str> {
+        parts
+            .data
+            .as_ref()?
+            .iter()
+            .find(|(n, _)| n == name)
+            .and_then(|(_, v)| match v {
+                crate::RValue::Character(v) => v.first()?.as_deref(),
+                _ => None,
+            })
+    }
+
+    /// `conversion_err_parts`: the prefix leads the message, the class is
+    /// kept, `param` comes first in the data and `rust_type` second.
     #[test]
-    fn conversion_err_parts_adds_context_and_param() {
+    fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         use super::{ErrParts, conversion_err_parts};
         use crate::RValue;
 
         let plain = conversion_err_parts(
-            "failed to convert parameter 'x' to i32",
-            "x",
+            "'dv' must be numeric",
+            "dv",
+            Some("AsNumericVec"),
             &[],
             ErrParts {
-                message: "type mismatch: expected INTSXP, got STRSXP".into(),
+                message: "non-numeric value(s): \"BLQ\" (element 2)".into(),
                 class: Vec::new(),
                 data: None,
             },
         );
         assert_eq!(
             plain.message,
-            "failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got STRSXP"
+            "'dv' must be numeric: non-numeric value(s): \"BLQ\" (element 2)"
         );
         assert!(plain.class.is_empty());
-        assert_eq!(field_names(&plain), ["param"]);
-        assert!(matches!(
-            &plain.data.as_ref().expect("data")[0].1,
-            RValue::Character(v) if v == &vec![Some("x".to_string())]
-        ));
+        assert_eq!(field_names(&plain), ["param", "rust_type"]);
+        assert_eq!(character_field(&plain, "param"), Some("dv"));
+        assert_eq!(character_field(&plain, "rust_type"), Some("AsNumericVec"));
 
         let classed = conversion_err_parts(
-            "failed to convert parameter 'x' to Count",
+            "invalid 'x' argument",
             "x",
+            Some("Count"),
             &[],
             ErrParts {
                 message: "must be positive".into(),
@@ -2243,8 +2430,23 @@ mod condition_macro_tests {
                 data: Some(vec![("value".into(), RValue::from(-1))]),
             },
         );
+        assert_eq!(classed.message, "invalid 'x' argument: must be positive");
         assert_eq!(classed.class, ["pkg_bad_arg", "pkg_error"]);
-        assert_eq!(field_names(&classed), ["param", "value"]);
+        assert_eq!(field_names(&classed), ["param", "rust_type", "value"]);
+
+        // Without a Rust type (sidecar setters) only `param` is added.
+        let sidecar = conversion_err_parts(
+            "failed to convert value for sidecar field 'n' on `T`",
+            "value",
+            None,
+            &[],
+            ErrParts {
+                message: "expected a single integer".into(),
+                class: Vec::new(),
+                data: None,
+            },
+        );
+        assert_eq!(field_names(&sidecar), ["param"]);
     }
 
     /// The crate's `conversion_error_class` follows the error's own classes,
@@ -2255,11 +2457,12 @@ mod condition_macro_tests {
 
         let crate_class = ["pkg_error_argument", "pkg_error"];
         let plain = conversion_err_parts(
-            "failed to convert parameter 'x' to i32",
+            "'x' must be a single integer",
             "x",
+            Some("i32"),
             &crate_class,
             ErrParts {
-                message: "type mismatch".into(),
+                message: "got character".into(),
                 class: Vec::new(),
                 data: None,
             },
@@ -2267,8 +2470,9 @@ mod condition_macro_tests {
         assert_eq!(plain.class, ["pkg_error_argument", "pkg_error"]);
 
         let classed = conversion_err_parts(
-            "failed to convert parameter 'x' to Count",
+            "invalid 'x' argument",
             "x",
+            Some("Count"),
             &crate_class,
             ErrParts {
                 message: "must be positive".into(),
@@ -2282,16 +2486,18 @@ mod condition_macro_tests {
         );
     }
 
-    /// A `param` field of the error type's own wins: the framework's field is
-    /// not added, so `e$param` reads the type's value.
+    /// A `param` or `rust_type` field of the error type's own wins: the
+    /// framework's field is not added, so `e$param` / `e$rust_type` read the
+    /// type's value.
     #[test]
-    fn conversion_err_parts_keeps_the_types_param_field() {
+    fn conversion_err_parts_keeps_the_types_own_fields() {
         use super::{ErrParts, conversion_err_parts};
         use crate::RValue;
 
         let parts = conversion_err_parts(
-            "failed to convert parameter 'hyper' to Hyperparams",
+            "invalid 'hyper' argument",
             "hyper",
+            Some("Hyperparams"),
             &[],
             ErrParts {
                 message: "hyperparameter 'beta' must be non-negative".into(),
@@ -2302,11 +2508,22 @@ mod condition_macro_tests {
                 ]),
             },
         );
-        assert_eq!(field_names(&parts), ["value", "param"]);
-        assert!(matches!(
-            &parts.data.as_ref().expect("data")[1].1,
-            RValue::Character(v) if v == &vec![Some("beta".to_string())]
-        ));
+        assert_eq!(field_names(&parts), ["rust_type", "value", "param"]);
+        assert_eq!(character_field(&parts, "param"), Some("beta"));
+
+        let parts = conversion_err_parts(
+            "invalid 'x' argument",
+            "x",
+            Some("Wrapped"),
+            &[],
+            ErrParts {
+                message: "bad".into(),
+                class: Vec::new(),
+                data: Some(vec![("rust_type".into(), RValue::from("Inner"))]),
+            },
+        );
+        assert_eq!(field_names(&parts), ["param", "rust_type"]);
+        assert_eq!(character_field(&parts, "rust_type"), Some("Inner"));
     }
 
     #[test]

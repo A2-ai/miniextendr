@@ -8,7 +8,7 @@
 // - S7-style: S7Point
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
-use miniextendr_api::{ExternalPtr, SEXP, miniextendr, trait_abi::ccall};
+use miniextendr_api::{AsNumeric, AsNumericVec, ExternalPtr, SEXP, miniextendr, trait_abi::ccall};
 // Condition macros — use fully-qualified paths to avoid module/macro name collision
 // (pub mod error and pub mod condition at crate root shadow the macros if imported).
 
@@ -764,6 +764,50 @@ pub fn producer_count_twice(n: ProducerCount) -> i32 {
 #[miniextendr(no_preconditions)]
 pub fn producer_int_twice(x: i32) -> i32 {
     x * 2
+}
+
+/// Scalar `AsNumeric` arguments: two values fail the R-side length check,
+/// which raises the crate classes like a failed conversion (#1591). The crate
+/// default `call = caller` names the delegate `producer_ratio_caller()`
+/// (`R/call-attribution.R`).
+/// @param num,den A number, string or factor label of length 1.
+#[miniextendr(noexport)]
+pub fn producer_ratio(num: AsNumeric, den: AsNumeric) -> Option<f64> {
+    Some(num.0? / den.0?)
+}
+
+/// An `AsNumericVec` argument: `"BLQ"` passes the R-side type check and fails
+/// the Rust conversion, with the same classes as the length check above.
+/// @param dv Numbers, strings or factor labels.
+#[miniextendr(noexport)]
+pub fn producer_peak(dv: AsNumericVec) -> Option<f64> {
+    dv.0.into_iter().flatten().reduce(f64::max)
+}
+
+/// `no_na`, `inherits` and `choices` failures carry the crate classes too;
+/// `call = wrapper` keeps the helpers' default call, the wrapper's own.
+/// @param x A classed double vector without NA.
+/// @param mode One of `"fast"`, `"slow"`.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_named_checks(
+    #[miniextendr(no_na)]
+    #[miniextendr(inherits = "producer_num")]
+    x: Vec<f64>,
+    #[miniextendr(choices("fast", "slow"))] mode: &str,
+) -> String {
+    format!("{mode}: {}", x.iter().sum::<f64>())
+}
+
+/// `no_na` / `inherits` with the author's messages: the message is the
+/// author's, the classes still the crate's.
+/// @param x A classed double vector without NA.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_named_checks_msg(
+    #[miniextendr(no_na(message = "`x` must not contain NA"))]
+    #[miniextendr(inherits(class = "producer_num", message = "`x` must be a `producer_num`"))]
+    x: Vec<f64>,
+) -> f64 {
+    x.iter().sum()
 }
 
 // endregion

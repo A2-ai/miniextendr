@@ -90,8 +90,9 @@ test_that("macro class vectors layer member before family", {
 
 # Argument-conversion errors: a `TryFromSexp::Error` implementing
 # `RConditionError` classes the conversion condition; `kind` stays
-# "conversion", the message keeps the parameter context and `e$param` names
-# the R parameter.
+# "conversion", the message keeps the parameter context (`invalid '<p>'
+# argument` for a type without an R-facing expectation, #1591), `e$param`
+# names the R parameter and `e$rust_type` the Rust type.
 
 test_that("a classed TryFromSexp error classes the conversion condition", {
   e <- tryCatch(hyperparams_total(1:3), error = function(e) e)
@@ -99,10 +100,11 @@ test_that("a classed TryFromSexp error classes the conversion condition", {
                            "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "hyper")
+  expect_equal(e$rust_type, "Hyperparams")
   expect_match(e$reason, "names attribute", fixed = TRUE)
   expect_match(
     conditionMessage(e),
-    "^failed to convert parameter 'hyper' to Hyperparams: expected a named numeric vector \\("
+    "^invalid 'hyper' argument: expected a named numeric vector \\("
   )
   expect_equal(conditionCall(e), quote(hyperparams_total(hyper = 1:3)))
 
@@ -125,7 +127,7 @@ test_that("the error type's own `param` field wins over the parameter name", {
   expect_equal(e$value, -2)
   expect_equal(
     conditionMessage(e),
-    "failed to convert parameter 'hyper' to Hyperparams: hyperparameter 'beta' must be non-negative, got -2"
+    "invalid 'hyper' argument: hyperparameter 'beta' must be non-negative, got -2"
   )
 })
 
@@ -157,9 +159,10 @@ test_that("a plain SexpError keeps the default class, with e$param and the new w
   expect_equal(class(e), c("rust_error", "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "value")
+  expect_equal(e$rust_type, "Either<i32, String>")
   expect_match(
     conditionMessage(e),
-    "failed to convert parameter 'value' to Either<i32, String>: failed to convert to Either: ",
+    "invalid 'value' argument: failed to convert to Either: ",
     fixed = TRUE
   )
   expect_no_match(conditionMessage(e), "wrong type, length, or contains NA", fixed = TRUE)
@@ -168,9 +171,7 @@ test_that("a plain SexpError keeps the default class, with e$param and the new w
   expect_equal(class(e), c("rust_error", "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "nums")
-  expect_match(
-    conditionMessage(e),
-    "failed to convert parameter 'nums' to AsFromStrVec<i32>: ",
-    fixed = TRUE
-  )
+  expect_equal(e$rust_type, "AsFromStrVec<i32>")
+  # A built-in error without an R-facing expectation names both types, in R terms.
+  expect_equal(conditionMessage(e), "invalid 'nums' argument: expected character, got numeric")
 })

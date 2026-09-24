@@ -223,7 +223,7 @@ pub(crate) fn build_match_arg_prelude(
 }
 
 /// Rust-side parameter names that are validated by R's `match.arg()` and
-/// therefore don't need `stopifnot()` preconditions generated for them.
+/// therefore don't need type-check preconditions generated for them.
 /// Shared by `MethodContext` and `TraitMethodContext`.
 pub(crate) fn match_arg_skip_set(
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
@@ -237,7 +237,7 @@ pub(crate) fn match_arg_skip_set(
     s
 }
 
-/// Build R-side precondition `stopifnot()` lines for a parameter list, given
+/// Build the R-side precondition guard lines for a parameter list, given
 /// its per-param map (match_arg/choices skips, `inherits` / `no_na` checks),
 /// whether `coerce` is active for the whole method, and whether the
 /// type-derived checks are dropped (`no_preconditions`; the named checks stay).
@@ -260,7 +260,7 @@ pub(crate) fn build_method_precondition_checks(
         no_type_checks,
     };
     crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
-        .static_checks
+        .guards(None)
 }
 
 /// Effective R-formal defaults for a method.
@@ -331,7 +331,7 @@ pub struct MethodContext<'a> {
     /// R call arguments string without defaults (e.g., `"value, step"`), used
     /// inside `.Call()` expressions.
     pub args: String,
-    /// Drop the R-side `stopifnot(...)` block from the generated wrapper.
+    /// Drop the R-side type-check guards from the generated wrapper.
     /// Inherited from `ImplAttrs::no_preconditions` (set by `#[miniextendr(no_preconditions)]`
     /// or `fast` on the impl block).
     pub no_preconditions: bool,
@@ -541,14 +541,14 @@ impl<'a> MethodContext<'a> {
         self.method.method_attrs.class.is_some()
     }
 
-    /// Build R-side precondition `stopifnot()` lines for this method's parameters.
+    /// Build the R-side precondition guard lines for this method's parameters.
     ///
     /// Returns static checks for known types. Custom types not in the static table
     /// are identified as fallback params but no R-side precheck is generated for them.
     ///
     /// Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`) and
     /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
-    /// those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
+    /// those already have a stronger runtime guarantee than an `is.character()` check.
     ///
     /// `no_preconditions` drops the type-derived checks; the per-parameter
     /// `inherits(...)` / `no_na(...)` checks stay.
@@ -574,7 +574,7 @@ impl<'a> MethodContext<'a> {
     /// 1. `r_entry` — user code injected before any checks
     /// 2. `r_on_exit` — `on.exit(...)` cleanup
     /// 3. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
-    /// 4. `precondition_checks` — `stopifnot(is.*(param))` for typed params
+    /// 4. `precondition_checks` — one `isTRUE()` guard per check on typed params
     /// 5. `match_arg_prelude` — `base::match.arg(param)` validation
     /// 6. `r_post_checks` — user code after all checks, before `.Call()`
     ///

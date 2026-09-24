@@ -1,0 +1,5 @@
+error: `message` in `no_na(...)` must not be empty; leave it out to get the generated message
+  --> tests/ui/trait_impl_method_check_message.rs:14:37
+   |
+14 |     #[miniextendr(no_na(x(message = "")))]
+   |                                     ^^

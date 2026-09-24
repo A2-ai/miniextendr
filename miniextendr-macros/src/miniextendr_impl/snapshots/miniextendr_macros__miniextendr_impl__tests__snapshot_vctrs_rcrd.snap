@@ -9,12 +9,10 @@ expression: generate_vctrs_r_wrapper(&parsed)
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
 new_rational <- function(n, d) {
-  stopifnot(
-    "'n' must be integer" = is.integer(n),
-    "'n' must have length 1" = length(n) == 1L,
-    "'d' must be integer" = is.integer(d),
-    "'d' must have length 1" = length(d) == 1L
-  )
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  if (!isTRUE(is.integer(d))) .miniextendr_arg_error("d", "must be integer")
+  if (!isTRUE(length(d) == 1L)) .miniextendr_arg_error("d", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Rational__new, .call = match.call(), n, d)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
@@ -47,7 +45,7 @@ vec_cast.Rational.Rational <- function(x, to, ...) x
 #' @name rational_numerator
 #' @rdname Rational
 rational_numerator <- function(n) {
-  stopifnot("'n' must be an integer vector" = is.integer(n))
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be an integer vector")
   .val <- .Call(C_miniextendr_macros_Rational__numerator, .call = match.call(), n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val

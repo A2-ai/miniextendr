@@ -18,10 +18,8 @@ Mixed <- S7::new_class("Mixed",
   ), .rdata_properties_Mixed),
   constructor = function(x, .ptr = NULL) {
     if (is.null(.ptr)) {
-      stopifnot(
-        "'x' must be double" = is.double(x),
-        "'x' must have length 1" = length(x) == 1L
-      )
+      if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
+      if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1")
     }
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)

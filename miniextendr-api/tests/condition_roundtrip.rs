@@ -289,7 +289,8 @@ fn result_err_parts_roundtrip() {
 }
 
 /// `conversion_condition_value`: the probed parts of a classed conversion
-/// error, the crate classes and `param` land in the tagged value; the
+/// error, the crate classes, `param` and `rust_type` land in the tagged
+/// value; the
 /// trait-ABI re-panic path (`from_tagged_sexp`) keeps class, data and the
 /// message without an unknown-kind prefix.
 #[test]
@@ -304,8 +305,9 @@ fn conversion_parts_roundtrip() {
             .data("value", -1);
         let parts = miniextendr_api::__mx_conversion_err_parts!(err);
         let sexp = conversion_condition_value(
-            "failed to convert parameter 'n' to Count",
+            "invalid 'n' argument",
             "n",
+            Some("Count"),
             &["pkg_error_argument", "pkg_error"],
             parts,
             None,
@@ -316,10 +318,7 @@ fn conversion_parts_roundtrip() {
                 class,
                 data,
             } => {
-                assert_eq!(
-                    message,
-                    "failed to convert parameter 'n' to Count: must be positive"
-                );
+                assert_eq!(message, "invalid 'n' argument: must be positive");
                 assert_eq!(
                     class,
                     vec!["pkg_error_negative", "pkg_error", "pkg_error_argument"]
@@ -329,7 +328,11 @@ fn conversion_parts_roundtrip() {
                 assert!(
                     matches!(&data[0].1, RValue::Character(v) if v == &[Some("n".to_string())])
                 );
-                assert_eq!(data[1].0, "value");
+                assert_eq!(data[1].0, "rust_type");
+                assert!(
+                    matches!(&data[1].1, RValue::Character(v) if v == &[Some("Count".to_string())])
+                );
+                assert_eq!(data[2].0, "value");
             }
             other => panic!("wrong variant: {other:?}"),
         }
