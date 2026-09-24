@@ -78,7 +78,7 @@ Key functions in `minirextendr/R/create.R`:
   calls `use_miniextendr()` on it.
 
 Both functions emit: `configure.ac`, `configure` (generated), `src/Makevars.in`,
-`src/stub.c`, `src/rust/Cargo.toml`, `src/rust/src/lib.rs`, and `.gitignore`
+`src/stub.c`, `src/rust/Cargo.toml`, `src/rust/lib.rs`, and `.gitignore`
 updates.
 
 After scaffolding, the user runs `bash ./configure && R CMD INSTALL .` to build.
@@ -178,7 +178,7 @@ the template.
 2. `usethis::create_package("mypkg")` — creates the R package skeleton.
 3. `minirextendr::use_miniextendr()` — from the package root, adds Rust
    scaffolding.
-4. Write Rust functions with `#[miniextendr]` in `src/rust/src/lib.rs`.
+4. Write Rust functions with `#[miniextendr]` in `src/rust/lib.rs`.
 5. `bash ./configure && R CMD INSTALL .` — builds and installs.
 
 ### Upgrading an existing package
