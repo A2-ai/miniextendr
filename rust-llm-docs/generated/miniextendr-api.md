@@ -27322,10 +27322,12 @@ functions are unchanged. The condition's `kind` stays `"result_err"`.
 The same impl classes argument-conversion failures: when a parameter
 type's `TryFromSexp::Error` implements this trait, a failed conversion
 raises its classes and fields with `kind = "conversion"`, the message
-`failed to convert parameter '<p>' to <T>: <message()>` and the
-parameter's R name as `e$param` (unless `data()` has a `param` field of
-its own, which then wins). An error type without the impl renders with
-`Display` and keeps the plain `rust_error` class vector.
+`'<p>' must be <expected>: <message()>` (or `invalid '<p>' argument:
+<message()>` when the argument's type has no R-facing expectation), the
+parameter's R name as `e$param` and the Rust type as `e$rust_type`
+(unless `data()` has a field of the same name, which then wins). An error
+type without the impl renders with `Display` and keeps the plain
+`rust_error` class vector.
 
 `data()` field names must not be `message`, `call` or `kind` (see
 [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
