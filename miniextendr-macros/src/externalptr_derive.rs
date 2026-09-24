@@ -588,34 +588,39 @@ fn generate_setter_body(
             .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
     };
 
-    // Conversion-failure condition: the message names the field and its type,
-    // and `e$param` names the setter's `value` formal, as on every conversion
-    // condition; there is no `e$rust_type` (the field, not a parameter, has
-    // the type). The scalar slots have no error value, so their `expected ...`
-    // text goes through the same probe as a `&str` (its `Display` arm).
-    let err_prefix = syn::LitStr::new(
-        &format!(
-            "failed to convert value for sidecar field '{}' on `{}`",
-            field_name, struct_name
-        ),
-        field_name.span(),
-    );
+    // Conversion-failure condition, the argument error of #1594 on the
+    // setter's `value` formal: `'value' must be <expected>: <reason>` with the
+    // field's R-facing expectation, `e$param == "value"`, the field's Rust type
+    // as `e$rust_type` and the crate's `conversion_error_class`. A
+    // `Conversion` slot's expectation comes from the same type table as an
+    // argument's (else `invalid 'value' argument`); a scalar slot reads its
+    // value with `Rf_as*`, which has no error value, so the reason is worded
+    // from the rejected value (`from_r::scalar_rejection_reason`).
     let crate_class = crate::crate_config::conversion_error_class();
-    let conversion_err = |err: proc_macro2::TokenStream| -> proc_macro2::TokenStream {
-        quote::quote! {
-            ::miniextendr_api::error_value::conversion_condition_value(
-                #err_prefix,
-                "value",
-                ::core::option::Option::None,
-                &[#(#crate_class),*],
-                ::miniextendr_api::__mx_conversion_err_parts!(#err),
-                ::core::option::Option::None,
-            )
-        }
-    };
+    let rust_type = crate::type_inspect::type_display(&slot.ty);
+    let conversion_err =
+        |expected: Option<String>, err: proc_macro2::TokenStream| -> proc_macro2::TokenStream {
+            let expected_known = expected.is_some();
+            let prefix = match expected {
+                Some(expected) => format!("'value' must be {expected}"),
+                None => "invalid 'value' argument".to_string(),
+            };
+            quote::quote! {
+                ::miniextendr_api::error_value::conversion_condition_value(
+                    #prefix,
+                    "value",
+                    ::core::option::Option::Some(#rust_type),
+                    &[#(#crate_class),*],
+                    ::miniextendr_api::__mx_conversion_err_parts!(#err, #expected_known),
+                    ::core::option::Option::None,
+                )
+            }
+        };
     let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
-        let text = syn::LitStr::new(&format!("expected {expected}"), field_name.span());
-        conversion_err(quote::quote!(#text))
+        conversion_err(
+            Some(expected.to_string()),
+            quote::quote!(::miniextendr_api::from_r::scalar_rejection_reason(value)),
+        )
     };
 
     match slot.kind {
@@ -629,7 +634,7 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarInt => {
-            let err_value = scalar_err("a single non-NA integer-compatible value");
+            let err_value = scalar_err("a number");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
@@ -643,7 +648,7 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarReal => {
-            let err_value = scalar_err("a single non-NA numeric-compatible value");
+            let err_value = scalar_err("a number");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
@@ -657,7 +662,7 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarLogical => {
-            let err_value = scalar_err("a single non-NA logical-compatible value");
+            let err_value = scalar_err("TRUE or FALSE");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
@@ -671,7 +676,7 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarRaw => {
-            let err_value = scalar_err("at least one raw-compatible value");
+            let err_value = scalar_err("a raw value");
             quote::quote! {
                 use ::miniextendr_api::{SexpExt, SEXPTYPE};
                 unsafe {
@@ -687,7 +692,10 @@ fn generate_setter_body(
         }
         SlotKind::Conversion => {
             let ty = &slot.ty;
-            let err_value = conversion_err(quote::quote!(e));
+            let err_value = conversion_err(
+                crate::r_preconditions::conversion_expectation(ty, false),
+                quote::quote!(e),
+            );
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
@@ -1457,6 +1465,51 @@ mod tests {
                 "{cs:?} getter+setter should each carry the condition guard:\n{out}"
             );
         }
+    }
+
+    /// A sidecar setter's conversion failure is the argument error of #1594
+    /// on its `value` formal: `'value' must be <expected>`, the field's Rust
+    /// type as `e$rust_type`, and the reason probed from the error (a
+    /// `Conversion` slot) or worded from the rejected value (a scalar slot).
+    #[test]
+    fn sidecar_setter_raises_the_argument_error() {
+        let body = |ty: syn::Type, kind: super::SlotKind| {
+            let slot = super::SidecarSlot {
+                name: syn::Ident::new("f", proc_macro2::Span::call_site()),
+                ty,
+                index: 0,
+                is_public: true,
+                kind,
+                prop_doc: None,
+                setter_invisible: None,
+            };
+            let lit = syn::LitInt::new("0", proc_macro2::Span::call_site());
+            super::generate_setter_body(
+                &syn::Ident::new("T", proc_macro2::Span::call_site()),
+                &slot,
+                &lit,
+            )
+            .to_string()
+        };
+
+        let s = body(syn::parse_quote!(i32), super::SlotKind::ScalarInt);
+        assert!(s.contains("\"'value' must be a number\""), "{s}");
+        assert!(s.contains("scalar_rejection_reason (value)"), "{s}");
+        assert!(s.contains("Some (\"i32\")"), "{s}");
+        assert!(s.contains("__mx_conversion_err_parts ! ("), "{s}");
+        assert!(!s.contains("failed to convert"), "{s}");
+
+        let s = body(syn::parse_quote!(bool), super::SlotKind::ScalarLogical);
+        assert!(s.contains("\"'value' must be TRUE or FALSE\""), "{s}");
+
+        let s = body(syn::parse_quote!(Vec<String>), super::SlotKind::Conversion);
+        assert!(s.contains("\"'value' must be character\""), "{s}");
+        assert!(s.contains("Some (\"Vec<String>\")"), "{s}");
+        assert!(s.contains(", true)"), "{s}");
+
+        let s = body(syn::parse_quote!(MyType), super::SlotKind::Conversion);
+        assert!(s.contains("\"invalid 'value' argument\""), "{s}");
+        assert!(s.contains(", false)"), "{s}");
     }
 
     /// The R6 active-binding and S7 property integration code also call the

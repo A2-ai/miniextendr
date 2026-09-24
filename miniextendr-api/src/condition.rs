@@ -2433,19 +2433,20 @@ mod condition_macro_tests {
         assert_eq!(classed.class, ["pkg_bad_arg", "pkg_error"]);
         assert_eq!(field_names(&classed), ["param", "rust_type", "value"]);
 
-        // Without a Rust type (sidecar setters) only `param` is added.
-        let sidecar = conversion_err_parts(
-            "failed to convert value for sidecar field 'n' on `T`",
+        // Without a Rust type only `param` is added.
+        let untyped = conversion_err_parts(
+            "'value' must be a number",
             "value",
             None,
             &[],
             ErrParts {
-                message: "expected a single integer".into(),
+                message: "got \"abc\"".into(),
                 class: Vec::new(),
                 data: None,
             },
         );
-        assert_eq!(field_names(&sidecar), ["param"]);
+        assert_eq!(untyped.message, "'value' must be a number: got \"abc\"");
+        assert_eq!(field_names(&untyped), ["param"]);
     }
 
     /// The crate's `conversion_error_class` follows the error's own classes,

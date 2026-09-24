@@ -1429,6 +1429,46 @@ pub(crate) fn map_strsxp_with<U>(
     Ok(result)
 }
 
+/// Why a value that `Rf_asInteger` / `Rf_asReal` / `Rf_asLogical` (or a raw
+/// coercion) could not reduce to one non-`NA` scalar was refused, in R terms:
+/// `got NULL`, `got length 0`, `got "abc"` (a string that does not parse),
+/// `NA is not allowed`, or `got <type>` for a value of another kind.
+///
+/// The reason of a sidecar scalar setter's argument error
+/// (`'value' must be a number: got "abc"`, #1594). Those setters read the
+/// value with the `Rf_as*` coercions, which report failure as `NA` with no
+/// error value, so the reason is worded from the rejected value itself.
+#[doc(hidden)]
+pub fn scalar_rejection_reason(value: SEXP) -> String {
+    let ty = value.type_of();
+    if ty == SEXPTYPE::NILSXP {
+        return "got NULL".to_string();
+    }
+    let atomic = matches!(
+        ty,
+        SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP
+    );
+    if !atomic {
+        return format!("got {}", crate::typed_list::sexptype_name(ty));
+    }
+    if value.len() == 0 {
+        return "got length 0".to_string();
+    }
+    if ty == SEXPTYPE::STRSXP {
+        let charsxp = value.string_elt(0);
+        if charsxp != SEXP::na_string() {
+            // SAFETY: a non-NA CHARSXP of a live STRSXP.
+            return format!("got {:?}", unsafe { charsxp_to_str(charsxp) });
+        }
+    }
+    "NA is not allowed".to_string()
+}
+
 /// Shared scalar-STRSXP prologue: type-check + `len == 1` + `string_elt(0)`.
 ///
 /// Returns the raw CHARSXP; NA (`SEXP::na_string()`) and blank-string
