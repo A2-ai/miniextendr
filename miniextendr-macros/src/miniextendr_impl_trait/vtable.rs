@@ -527,7 +527,7 @@ fn generate_concrete_vtable_shims(
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
 /// `#[miniextendr(...)]` attributes (coerce, skip, r_name, defaults, etc.),
 /// and roxygen `@param` tags from doc comments.
-fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
+pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
     let mut methods = Vec::new();
     for item in &impl_item.items {
         if let syn::ImplItem::Fn(method) = item {
@@ -898,42 +898,12 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     Ok(())
                 })?;
             } else if meta.path.is_ident("no_na") {
-                // `no_na(param1, param2, ...)` — R-side `!anyNA(param)` checks.
-                meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
-                    per_param.entry(name).or_default().checks.no_na = true;
-                    Ok(())
-                })?;
+                // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
+                crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)?;
             } else if meta.path.is_ident("inherits") {
-                // `inherits(param = "cls_a, cls_b")` — R-side `inherits(param, c(...))`.
-                meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
-                    let _: syn::Token![=] = inner.input.parse()?;
-                    let value: syn::LitStr = inner.input.parse()?;
-                    let classes = crate::r_wrapper_builder::split_choice_list(&value.value());
-                    if classes.is_empty() {
-                        return Err(syn::Error::new(
-                            value.span(),
-                            "`inherits(param = \"...\")` needs one or more class names",
-                        ));
-                    }
-                    per_param
-                        .entry(name)
-                        .or_default()
-                        .checks
-                        .inherits
-                        .get_or_insert_with(Vec::new)
-                        .extend(classes);
-                    Ok(())
-                })?;
+                // `inherits(p = "cls_a, cls_b", q(class = "cls", message = "..."))` —
+                // R-side `inherits(p, c(...))` checks.
+                crate::miniextendr_fn::parse_method_inherits(&meta, &mut per_param)?;
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \

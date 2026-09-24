@@ -99,3 +99,23 @@ test_that("no_na, inherits and choices failures carry the crate classes", {
   # `call = wrapper`: the wrapper's own call, as the R-side checks always reported it.
   expect_equal(conditionCall(e), quote(producer.pkg:::producer_named_checks_impl(x, "medium")))
 })
+
+test_that("a check with the author's message keeps the crate classes", {
+  x <- structure(c(1, 2), class = "producer_num")
+  expect_identical(producer.pkg:::producer_named_checks_msg_impl(x), 3)
+
+  e <- tryCatch(
+    producer.pkg:::producer_named_checks_msg_impl(structure(c(1, NA), class = "producer_num")),
+    error = function(e) e
+  )
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "`x` must not contain NA")
+
+  e <- tryCatch(producer.pkg:::producer_named_checks_msg_impl(c(1, 2)), error = function(e) e)
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "`x` must be a `producer_num`")
+  expect_equal(conditionCall(e), quote(producer.pkg:::producer_named_checks_msg_impl(c(1, 2))))
+})

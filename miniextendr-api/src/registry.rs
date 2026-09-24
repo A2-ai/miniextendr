@@ -1579,13 +1579,15 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
 # at the end of this preamble), then `rust_error`, with
 # `kind = \"conversion\"` and `e$param`, so one handler catches an argument
-# error whichever side finds it. The message is `'<param>' <what>`. `call`
-# defaults to the wrapper's own call, as `stopifnot()` reported it; a
-# `call = caller` wrapper passes `.mx_call` (#1548). Only a failing check
-# calls this: the passing path is one `isTRUE()` test per check.
-.miniextendr_arg_error <- function(param, what, call = sys.call(-1L)) {
+# error whichever side finds it. The message is `'<param>' <what>`, or the
+# author's own `message` (`inherits(..., message = )` / `no_na(message = )`),
+# used as given. `call` defaults to the wrapper's own call, as `stopifnot()`
+# reported it; a `call = caller` wrapper passes `.mx_call` (#1548), by name
+# next to a named `message`. Only a failing check calls this: the passing path
+# is one `isTRUE()` test per check.
+.miniextendr_arg_error <- function(param, what, call = sys.call(-1L), message = sprintf(\"'%s' %s\", param, what)) {
   stop(structure(
-    list(message = sprintf(\"'%s' %s\", param, what), call = call, kind = \"conversion\", param = param),
+    list(message = message, call = call, kind = \"conversion\", param = param),
     class = c(.miniextendr_conversion_error_class, \"rust_error\", \"simpleError\", \"error\", \"condition\")
   ))
 }

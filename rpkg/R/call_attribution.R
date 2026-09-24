@@ -48,6 +48,12 @@ param_checks_caller <- function(x, y) {
   param_checks_caller_impl(x, y)
 }
 
+# The same with the author's messages on both checks: a custom message keeps
+# the caller's call.
+param_checks_caller_msg <- function(x, y) {
+  param_checks_caller_msg_impl(x, y)
+}
+
 # Delegate to `call = caller` entry points taking `AsNumeric` / `AsNumericVec`
 # (src/rust/argument_error_tests.rs, #1591): an argument error surfaces as
 # `Error in arg_error_ratio_caller(...)` / `arg_error_peak_caller(...)` whether

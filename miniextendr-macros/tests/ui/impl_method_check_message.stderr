@@ -1,0 +1,11 @@
+error: `inherits(x(...))` needs `class = "..."`, e.g. `inherits(x(class = "pkg_obj", message = "..."))`
+  --> tests/ui/impl_method_check_message.rs:10:28
+   |
+10 |     #[miniextendr(inherits(x(message = "`x` must be a pkg_obj")))]
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: unknown `no_na` option; expected `message = "..."`
+  --> tests/ui/impl_method_check_message.rs:20:27
+   |
+20 |     #[miniextendr(no_na(y(msg = "m")))]
+   |                           ^^^

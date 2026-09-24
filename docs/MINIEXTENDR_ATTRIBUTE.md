@@ -363,7 +363,9 @@ Written on a single parameter of a standalone function:
 | `choices("a", "b")` | Validate a string against a literal choice list |
 | `several_ok` | With `match_arg` / `choices`: accept several values |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
+| `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too |
+| `no_na(message = "...")` | The same check, failing with your message |
 
 ```rust
 #[miniextendr]
@@ -392,10 +394,48 @@ parameter an omitted argument. Unlike the type checks, they stay under
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
 NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
 
+The generated message states the rule (`'model' must inherit from
+'pkg_model'`). To say where the object comes from instead, give the check a
+`message`:
+
+```rust
+#[miniextendr]
+pub fn fit_summary(
+    #[miniextendr(inherits(
+        class = "pkg_model",
+        message = "`model` must be a `pkg_model` object; create one with `pkg_model()`."
+    ))]
+    model: List,
+    #[miniextendr(no_na(message = "`weight` must be a number, not NA"))] weight: f64,
+) -> String { /* ... */ }
+```
+
+```r
+if (!isTRUE(is.list(model))) .miniextendr_arg_error("model", "must be a list")
+if (!isTRUE(inherits(model, "pkg_model"))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; create one with `pkg_model()`.")
+if (!isTRUE(is.double(weight))) .miniextendr_arg_error("weight", "must be double")
+if (!isTRUE(length(weight) == 1L)) .miniextendr_arg_error("weight", "must have length 1")
+if (!isTRUE(!anyNA(weight))) .miniextendr_arg_error("weight", message = "`weight` must be a number, not NA")
+```
+
+The message becomes the condition message as written, without a `'model'`
+prefix. Everything else stays the same: the classes, `kind = "conversion"`,
+`e$param` and the call (under `call = caller`, the caller's). Inside
+`inherits(...)`, each string literal and each `class = "..."` names one class,
+and one `message` covers all of them. Each check takes at most one message,
+and it must not be empty. The macro escapes it for the R string literal:
+quotes, backslashes, newlines and other control characters, and non-ASCII
+text as `\u{..}` (R code in a package must be ASCII).
+
 Impl and trait methods cannot carry parameter attributes, so the same options
 are method-level and name the parameter: `match_arg(p)`,
 `match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
-`inherits(p = "cls_a, cls_b")`, `no_na(p, q)`.
+`inherits(p = "cls_a, cls_b")`, `no_na(p, q)`. A message goes in parentheses
+after the parameter: `inherits(p(class = "cls_a, cls_b", message = "..."))`,
+`no_na(p(message = "..."), q)`. At method level the classes are one
+comma-separated string, as in `choices(p = "a, b")`, because a nested option
+cannot hold a list of literals. At parameter level no class name is split, so
+`inherits(class = "a, b")` names one class, `a, b`.
 
 #### Error Handling
 
@@ -668,7 +708,9 @@ impl Person {
 | `r_on_exit = "..."` | Register `on.exit()` cleanup |
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
+| `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `no_na(p, q)` | R check `!anyNA(p)` |
+| `no_na(p(message = "..."))` | The same check, failing with your message |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,

@@ -5,7 +5,10 @@
 //! (`#[miniextendr(inherits = "cls", no_na)]`); impl and trait methods on the
 //! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
 //! generated precondition guards after the type checks and survive
-//! `no_preconditions` / `fast`.
+//! `no_preconditions` / `fast`. Either spelling takes an optional
+//! `message = "..."`, the condition message of a failure, used verbatim
+//! (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`,
+//! method level `inherits(x(class = "cls", message = "..."))`).
 
 use miniextendr_api::{List, Missing, SEXP, miniextendr};
 
@@ -90,6 +93,75 @@ pub fn param_checks_caller_impl(
 }
 // endregion
 
+// region: custom messages
+
+/// Two classes, the generated message: the baseline for
+/// `param_model_custom`, which differs only in its message.
+/// @param model An `mx_model` or `mx_model2` object.
+#[miniextendr(noexport)]
+pub fn param_model_default(#[miniextendr(inherits("mx_model", "mx_model2"))] model: List) -> i32 {
+    i32::try_from(model.len()).expect("list length fits i32")
+}
+
+/// Two classes, one message for both, used verbatim.
+/// @param model An `mx_model` or `mx_model2` object.
+#[miniextendr(noexport)]
+pub fn param_model_custom(
+    #[miniextendr(inherits(
+        "mx_model",
+        "mx_model2",
+        message = "`model` must be an `mx_model` object; create one with `mx_model()`."
+    ))]
+    model: List,
+) -> i32 {
+    i32::try_from(model.len()).expect("list length fits i32")
+}
+
+/// The keyed spelling `inherits(class = "cls", message = "...")`.
+/// @param model An `mx_model` object.
+#[miniextendr(noexport)]
+pub fn param_model_class_key(
+    #[miniextendr(inherits(class = "mx_model", message = "need an mx_model"))] model: List,
+) -> i32 {
+    i32::try_from(model.len()).expect("list length fits i32")
+}
+
+/// `no_na(message = "...")`, with quotes, backticks, a backslash, `%`, a
+/// newline and a non-ASCII character, all of which reach R unchanged.
+/// @param x A non-NA double.
+#[miniextendr(noexport)]
+pub fn param_no_na_custom(
+    #[miniextendr(no_na(
+        message = "`x` can't be NA: it's \"required\" \\ 100% sure\nsee caf\u{e9}()"
+    ))]
+    x: f64,
+) -> f64 {
+    x
+}
+
+/// `fast` keeps a check with a message, like any named check.
+/// @param x A non-NA double.
+#[miniextendr(noexport, fast)]
+pub fn param_no_na_custom_fast(#[miniextendr(no_na(message = "no NA here"))] x: f64) -> f64 {
+    x
+}
+
+/// `param_checks_caller_impl` with messages: under `call = caller` a custom
+/// message keeps the caller's call (`R/call_attribution.R`,
+/// `param_checks_caller_msg()`).
+/// @param x An object of class `mx_obj`.
+/// @param y A non-NA double.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn param_checks_caller_msg_impl(
+    #[miniextendr(inherits(class = "mx_obj", message = "`x` must be an `mx_obj`"))] x: List,
+    #[miniextendr(no_na(message = "`y` must not be NA"))] y: f64,
+) -> f64 {
+    let _ = x;
+    y
+}
+// endregion
+
 // region: impl methods
 
 /// Holder for the impl-method `inherits(...)` / `no_na(...)` fixture.
@@ -114,6 +186,20 @@ impl ParamCheckHolder {
         let _ = x;
         self.total += y;
         self.total
+    }
+
+    /// `add()` with the method-level messages.
+    /// @param x An object of class `mx_obj` or `mx_other`.
+    /// @param y A non-NA double.
+    #[miniextendr(
+        inherits(x(
+            class = "mx_obj, mx_other",
+            message = "`x` must be an `mx_obj` or an `mx_other`"
+        )),
+        no_na(y(message = "`y` must be a number, not NA"))
+    )]
+    pub fn add_checked(&mut self, x: List, y: f64) -> f64 {
+        self.add(x, y)
     }
 }
 // endregion

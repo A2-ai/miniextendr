@@ -448,6 +448,48 @@ fn env_wrapper_with_custom_class_name() {
     assert!(wrapper.contains("RCounter$new <- function()"));
     assert!(wrapper.contains("class(self) <- \"RCounter\""));
 }
+
+/// Method-level `inherits(p(class = ..., message = ...))` /
+/// `no_na(p(message = ...))`: the author's message reaches the guard
+/// verbatim, next to the generated wording of a check without one.
+#[test]
+fn env_method_checks_take_custom_messages() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Holder {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(
+                inherits(x(class = "mx_a, mx_b", message = "`x` must be an mx object; see mx()."), z = "mx_z"),
+                no_na(y(message = "`y` must not be NA"), z)
+            )]
+            pub fn add(&mut self, x: List, y: f64, z: Vec<f64>) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let wrapper = generate_env_r_wrapper(&parsed);
+    for guard in [
+        "if (!isTRUE(inherits(x, c(\"mx_a\", \"mx_b\")))) .miniextendr_arg_error(\"x\", message = \"`x` must be an mx object; see mx().\")",
+        "if (!isTRUE(!anyNA(y))) .miniextendr_arg_error(\"y\", message = \"`y` must not be NA\")",
+        "if (!isTRUE(!anyNA(z))) .miniextendr_arg_error(\"z\", \"must not contain NA\")",
+        "if (!isTRUE(inherits(z, \"mx_z\"))) .miniextendr_arg_error(\"z\", \"must inherit from 'mx_z'\")",
+    ] {
+        assert!(wrapper.contains(guard), "missing `{guard}` in:\n{wrapper}");
+    }
+
+    // A typo in the parameter name is still caught.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Holder {
+            #[miniextendr(no_na(yy(message = "m")))]
+            pub fn add(&mut self, y: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let Err(err) = ParsedImpl::parse(default_impl_attrs(ClassSystem::Env), item_impl) else {
+        panic!("an unknown parameter name must be rejected");
+    };
+    assert!(
+        err.to_string().contains("non-existent parameter `yy`"),
+        "{err}"
+    );
+}
 // endregion
 
 // region: R6 class system tests
@@ -3204,6 +3246,16 @@ fn s7_generic_fallback() {
         "Fallback should NOT use raw x@.ptr in .Call, got:\n{}",
         wrapper
     );
+    // A non-S7 receiver raises the shared argument error on `x` (#1591), not
+    // a plain `stop()`.
+    assert!(
+        wrapper.contains(
+            "if (inherits(x, \"S7_object\")) x@.ptr else .miniextendr_arg_error(\"x\", paste0(\"must be an S7 object, got \", class(x)[[1L]]))"
+        ),
+        "Expected the receiver check to raise the argument error, got:\n{}",
+        wrapper
+    );
+    assert!(!wrapper.contains("stop("), "{wrapper}");
 }
 
 #[test]
