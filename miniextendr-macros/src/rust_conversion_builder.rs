@@ -798,6 +798,7 @@ fn conversion_err_arm(
         Some(rust_type),
         crate_class,
         &quote! { Some(__miniextendr_call) },
+        span,
     );
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
@@ -825,13 +826,14 @@ pub(crate) fn conversion_value_tokens(
     rust_type: Option<&str>,
     crate_class: &[String],
     call: &TokenStream,
+    span: proc_macro2::Span,
 ) -> TokenStream {
     let rust_type = match rust_type {
         Some(t) => quote! { ::core::option::Option::Some(#t) },
         None => quote! { ::core::option::Option::None },
     };
     match static_prefix {
-        Some(prefix) => quote! {
+        Some(prefix) => quote_spanned! {span=>
             ::miniextendr_api::error_value::conversion_condition_value(
                 #prefix,
                 #param,
@@ -841,7 +843,7 @@ pub(crate) fn conversion_value_tokens(
                 #call,
             )
         },
-        None => quote! {{
+        None => quote_spanned! {span=> {
             let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
             ::miniextendr_api::error_value::conversion_condition_value(
                 &::miniextendr_api::condition::conversion_prefix(
@@ -855,7 +857,7 @@ pub(crate) fn conversion_value_tokens(
                 ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
                 #call,
             )
-        }},
+        } },
     }
 }
 

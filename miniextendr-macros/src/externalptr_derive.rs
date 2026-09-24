@@ -696,6 +696,7 @@ fn generate_setter_body(
                 Some(&rust_type),
                 &crate_class,
                 &quote::quote!(::core::option::Option::None),
+                syn::spanned::Spanned::span(ty),
             );
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
