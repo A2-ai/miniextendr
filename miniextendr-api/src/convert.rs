@@ -74,6 +74,9 @@
 //! the conversion control-surface analysis (`analysis/conversion-control-surface-2026-06-07.md`,
 //! §3.4 / §4.5) and issue #871.
 
+mod as_numeric;
+pub use as_numeric::{AsNumeric, AsNumericVec};
+
 use crate::RNativeType;
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
 use crate::into_r::IntoR;
@@ -1007,6 +1010,12 @@ impl<T: std::fmt::Display> IntoR for AsDisplayVec<T> {
 /// Wrap a parsed `T: FromStr` from an R character scalar.
 ///
 /// Pass an R character scalar and it will be parsed into `T` via `str::parse()`.
+/// `NA_character_` is refused with [`SexpError::Na`](crate::from_r::SexpError::Na)
+/// rather than parsed as `""`. A parse failure quotes the value:
+/// `"not-an-ip": invalid IP address syntax`.
+///
+/// For numbers read like R's `as.numeric()` (from character, factor labels, or
+/// numbers, with `NA` as `None`), use [`AsNumeric`] instead.
 ///
 /// # Example
 ///
@@ -1029,26 +1038,31 @@ where
     type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
-        let s: &str = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-        let value = s
-            .parse::<T>()
-            .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{e}")))?;
-        Ok(AsFromStr(value))
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::SEXP) -> Result<Self, Self::Error> {
-        let s: &str = unsafe { crate::from_r::TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        let value = s
-            .parse::<T>()
-            .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{e}")))?;
-        Ok(AsFromStr(value))
+        let charsxp = crate::from_r::scalar_charsxp(sexp)?;
+        if charsxp == crate::SEXP::na_string() {
+            return Err(crate::from_r::SexpNaError {
+                sexp_type: crate::SEXPTYPE::STRSXP,
+            }
+            .into());
+        }
+        // SAFETY: a non-NA CHARSXP from a live STRSXP argument.
+        let s = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+        s.parse::<T>()
+            .map(AsFromStr)
+            .map_err(|e| crate::from_r::SexpError::InvalidValue(format!("{s:?}: {e}")))
     }
 }
 
 /// Wrap a `Vec<T: FromStr>` parsed from an R character vector.
 ///
-/// Each element of the R character vector is parsed into `T`.
-/// All parse errors are collected with their indices.
+/// Each element of the R character vector is parsed into `T`. Every failure is
+/// collected into one error (the first 10 listed, then `"and N more"`), each
+/// with its 0-based index and quoted value (`index 1: "n/a": invalid digit found
+/// in string`). An `NA_character_` element is reported as
+/// `NA at index <i> not allowed`, not parsed as `""`.
+///
+/// For numbers read like R's `as.numeric()`, with `NA` as `None`, use
+/// [`AsNumericVec`] instead.
 ///
 /// # Example
 ///
@@ -1071,43 +1085,22 @@ where
     type Error = crate::from_r::SexpError;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
-        let strings: Vec<String> = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
+        let strings: Vec<Option<&str>> = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
         let mut result = Vec::with_capacity(strings.len());
-        let mut errors = Vec::new();
-        for (i, s) in strings.iter().enumerate() {
-            match s.parse::<T>() {
-                Ok(v) => result.push(v),
-                Err(e) => errors.push(format!("index {i}: {e}")),
+        let mut errors = crate::from_r::BatchedErrors::default();
+        for (i, s) in strings.into_iter().enumerate() {
+            match s {
+                None => errors.push(|| format!("NA at index {i} not allowed")),
+                Some(s) => match s.parse::<T>() {
+                    Ok(v) => result.push(v),
+                    Err(e) => errors.push(|| format!("index {i}: {s:?}: {e}")),
+                },
             }
         }
         if errors.is_empty() {
             Ok(AsFromStrVec(result))
         } else {
-            Err(crate::from_r::SexpError::InvalidValue(format!(
-                "parse errors: {}",
-                errors.join("; ")
-            )))
-        }
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: crate::SEXP) -> Result<Self, Self::Error> {
-        let strings: Vec<String> =
-            unsafe { crate::from_r::TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        let mut result = Vec::with_capacity(strings.len());
-        let mut errors = Vec::new();
-        for (i, s) in strings.iter().enumerate() {
-            match s.parse::<T>() {
-                Ok(v) => result.push(v),
-                Err(e) => errors.push(format!("index {i}: {e}")),
-            }
-        }
-        if errors.is_empty() {
-            Ok(AsFromStrVec(result))
-        } else {
-            Err(crate::from_r::SexpError::InvalidValue(format!(
-                "parse errors: {}",
-                errors.join("; ")
-            )))
+            Err(errors.into_error("AsFromStrVec"))
         }
     }
 }

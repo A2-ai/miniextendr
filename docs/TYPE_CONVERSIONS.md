@@ -112,7 +112,7 @@ R logicals are stored as integers internally:
 pub const NA_REAL: f64 = f64::from_bits(0x7FF0_0000_0000_07A2);
 ```
 
-R's `NA_real_` is a specific IEEE 754 NaN with a particular bit pattern.
+R's `NA_real_` is an IEEE 754 NaN whose low 32-bit word is 1954.
 
 **Critical:** This is different from regular `f64::NAN`:
 
@@ -121,16 +121,23 @@ R's `NA_real_` is a specific IEEE 754 NaN with a particular bit pattern.
 let na = NA_REAL;           // R's NA
 let nan = f64::NAN;         // Regular IEEE NaN
 
-// Detection requires bit comparison
+// Inbound conversions detect NA the way R's `R_IsNA` does:
+// a NaN whose low word is 1954.
 fn is_na_real(value: f64) -> bool {
-    value.to_bits() == NA_REAL.to_bits()
+    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == 1954
 }
 
-// Regular NaN check does NOT detect NA
+// Regular NaN check does NOT tell them apart
 value.is_nan()  // Returns true for both NA and NaN
 ```
 
-**Implication:** When working with `f64` vectors, regular NaN values pass through unchanged. Only `NA_REAL` is treated as NA.
+Only the low word is compared because arithmetic on `NA_real_` quiets the NaN:
+`NA_real_ * 1` (and so any computed NA, such as `c(1, NA) * 2`) has bits
+`0x7FF8_0000_0000_07A2`, not `NA_REAL`'s `0x7FF0_0000_0000_07A2`, and R still
+reports it as `NA`. A bit-exact comparison against `NA_REAL` would read it as a
+plain NaN.
+
+**Implication:** When working with `f64` vectors, regular NaN values pass through unchanged. Only values R considers `NA` are treated as NA.
 
 ### String NA
 
@@ -293,7 +300,7 @@ NA-aware vectors. Element-level semantics: `None` ↔ NA, `Some(v)` ↔ concrete
 | R Type | Rust Type | NA sentinel mapped to `None` |
 |--------|-----------|------------------------------|
 | INTSXP | `Vec<Option<i32>>`, `Box<[Option<i32>]>` | `i32::MIN` (`NA_integer_`) |
-| REALSXP | `Vec<Option<f64>>`, `Box<[Option<f64>]>` | specific NaN bit pattern (`NA_real_`) |
+| REALSXP | `Vec<Option<f64>>`, `Box<[Option<f64>]>` | `NA_real_`, including computed NAs (a NaN with low word 1954, as `R_IsNA` checks) |
 | LGLSXP | `Vec<Option<bool>>`, `Box<[Option<bool>]>` | `i32::MIN` (`NA_logical_`) |
 | STRSXP | `Vec<Option<String>>`, `Box<[Option<String>]>` | `R_NaString` (`NA_character_`) |
 
@@ -357,6 +364,54 @@ pub fn parse_numbers(strings: Vec<String>) -> Vec<Option<f64>> {
         .collect()
 }
 ```
+
+### Numbers from text, factors, or numbers (`AsNumeric`)
+
+Data read from CSV files or spreadsheets often arrives as character, with
+numbers mixed with tokens such as `"n/a"` or `"<0.1"`, or as a factor whose
+labels are the numbers. `AsNumericVec` (and the length-1 `AsNumeric`) read such
+an argument the way `as.numeric()` does, and fail with the offending values
+instead of turning them into `NA`:
+
+```rust
+use miniextendr_api::AsNumericVec;
+
+#[miniextendr]
+pub fn total(x: AsNumericVec) -> f64 {
+    x.0.into_iter().flatten().sum()
+}
+```
+
+```r
+total(c(1.5, NA))                  # 1.5    doubles as is
+total(c(2L, NA))                   # 2      integer and logical widened
+total(c(" 1.5 ", "1e3", "0x10"))   # 1017.5 parsed like as.numeric()
+total(factor(c("10", "2")))        # 12     factor labels, not codes
+total(c("", "NA", NA))             # 0      blank, "NA" and NA are NA
+total(c("1", "n/a", "3", "<0.1"))
+#> Error: ... non-numeric value(s): "n/a", "<0.1" (elements 2, 4)
+total(list(1))
+#> Error: 'x' must be numeric, logical, character, or factor
+```
+
+| Input | Result |
+|-------|--------|
+| double | as is; `NA_real_` → `None`, `NaN` stays `Some(NaN)` |
+| integer, logical | widened to `f64`; `NA` → `None` |
+| character | R's `R_strtod` on each value, the rest must be blank (surrounding spaces, `Inf`, `-inf`, `NaN`, `1e3`, hex such as `0x1A` all accepted); `NA_character_`, blank strings and the token `"NA"` → `None` |
+| factor | each label (`levels(x)[x]`) parsed as character; code `NA` → `None` |
+| raw, complex, list, … | refused (R precondition, then `SexpError::Type`) |
+
+Every value that is not a number is reported in one error, with 1-based element
+numbers and at most 10 values listed (the rest counted as `and N more`). The
+token `"NA"` follows `scan()` / `type.convert()`: `as.numeric("NA")` also gives
+`NA`, but with a coercion warning. `Option<AsNumeric>` / `Option<AsNumericVec>`
+additionally accept `NULL` as `None`.
+
+The markers are input-only; return the inner `Vec<Option<f64>>` /
+`Option<f64>`. For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
+`AsFromStrVec<T>`: character input only, `NA` refused, and each failing value
+quoted in the error (`index 1: "n/a": invalid digit found in string`).
 
 ---
 

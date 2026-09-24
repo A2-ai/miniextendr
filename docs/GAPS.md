@@ -547,21 +547,21 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#coercion-system) for the user-faci
 |------|----------|-------|
 | Integer | `i32::MIN` (-2147483648) | Same as `NA_INTEGER` in R |
 | Logical | `i32::MIN` | Same representation as integer |
-| Real | `0x7FF00000000007A2` (bits) | Specific IEEE 754 NaN payload |
+| Real | `0x7FF00000000007A2` (bits) | IEEE 754 NaN whose low word is 1954 |
 
 **Critical distinction - NA_REAL vs NaN:**
 ```rust
 // These are DIFFERENT values
-let na = NA_REAL;           // R's NA (specific bit pattern)
+let na = NA_REAL;           // R's NA (NaN with low word 1954)
 let nan = f64::NAN;         // Regular IEEE NaN
 
-// Detection requires bit comparison
+// Inbound conversions detect NA as R's `R_IsNA` does
 fn is_na_real(value: f64) -> bool {
-    value.to_bits() == NA_REAL.to_bits()
+    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == 1954
 }
 ```
 
-Regular `f64::NAN` values are preserved as valid data. Only the specific `NA_REAL` bit pattern is treated as NA.
+Regular `f64::NAN` values are preserved as valid data. Only values R considers NA are treated as NA, including computed ones: `NA_real_ * 1` has bits `0x7FF80000000007A2` (the NaN is quieted) and still reads as NA.
 
 **Option-to-NA coercion:**
 ```rust

@@ -7104,6 +7104,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 
 ### `pub use arrow_schema::Schema;`
 
+### `pub use as_numeric::AsNumeric;`
+
+### `pub use as_numeric::AsNumericVec;`
+
 ### `pub use bitflags;`
 
 ### `pub use bitflags;`
@@ -7279,6 +7283,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use convert::AsNamedVector;`
 
 ### `pub use convert::AsNamedVectorExt;`
+
+### `pub use convert::AsNumeric;`
+
+### `pub use convert::AsNumericVec;`
 
 ### `pub use convert::AsRNative;`
 
@@ -12567,6 +12575,12 @@ pub struct AsFromStr<T>
 Wrap a parsed `T: FromStr` from an R character scalar.
 
 Pass an R character scalar and it will be parsed into `T` via `str::parse()`.
+`NA_character_` is refused with [`SexpError::Na`](crate::from_r::SexpError::Na)
+rather than parsed as `""`. A parse failure quotes the value:
+`"not-an-ip": invalid IP address syntax`.
+
+For numbers read like R's `as.numeric()` (from character, factor labels, or
+numbers, with `NA` as `None`), use [`AsNumeric`] instead.
 
 #### Example
 
@@ -12592,8 +12606,14 @@ pub struct AsFromStrVec<T>
 
 Wrap a `Vec<T: FromStr>` parsed from an R character vector.
 
-Each element of the R character vector is parsed into `T`.
-All parse errors are collected with their indices.
+Each element of the R character vector is parsed into `T`. Every failure is
+collected into one error (the first 10 listed, then `"and N more"`), each
+with its 0-based index and quoted value (`index 1: "n/a": invalid digit found
+in string`). An `NA_character_` element is reported as
+`NA at index <i> not allowed`, not parsed as `""`.
+
+For numbers read like R's `as.numeric()`, with `NA` as `None`, use
+[`AsNumericVec`] instead.
 
 #### Example
 
@@ -12896,6 +12916,106 @@ fn upper(words: Vec<String>) -> CollectStrings<impl ExactSizeIterator<Item = Str
 **Fields:**
 
 - `0`: `I`
+
+### `convert::as_numeric::AsNumeric`
+
+```rust
+pub struct AsNumeric
+```
+
+A numeric scalar read like R's `as.numeric()`: from a double, integer,
+logical, character, or factor (by its labels) of length 1. `NA` of any
+type is `None`.
+
+It follows the same reading rules as [`AsNumericVec`], and also requires
+length 1 ([`SexpError::Length`] otherwise). A value that is not a number
+fails with `non-numeric value(s): "n/a" (element 1)`.
+
+#### Example
+
+```ignore
+use miniextendr_api::{miniextendr, AsNumeric};
+
+#[miniextendr]
+fn half(x: AsNumeric) -> Option<f64> {
+    x.0.map(|v| v / 2.0)
+}
+// R: half(3L)            → 1.5
+//    half(" 1e3 ")       → 500
+//    half(factor("10"))  → 5   (the label, not the code)
+//    half(NA_character_) → NA
+//    half("n/a")         → error: non-numeric value(s): "n/a" (element 1)
+```
+
+**Fields:**
+
+- `0`: `Option<f64>`
+
+### `convert::as_numeric::AsNumericVec`
+
+```rust
+pub struct AsNumericVec
+```
+
+A numeric vector read like R's `as.numeric()`: from a double, integer,
+logical, character, or factor (by its labels) vector. `NA` of any type is
+`None`.
+
+Data read from CSV files or spreadsheets often arrives as character, with
+numbers mixed with tokens such as `"n/a"` or `"<0.1"`, or as a factor whose
+labels are the numbers. This marker takes any of those, maps every kind of
+`NA` to `None`, and names the values that are not numbers in one error.
+
+#### Reading rules
+
+| R input | Result |
+|---------|--------|
+| double | as is; `NA_real_` → `None`, `NaN` stays `Some(NaN)` |
+| integer, logical | widened to `f64`; `NA` → `None` |
+| character | parsed as `as.numeric()` does (see below) |
+| factor | each *label* (`levels(x)[x]`) parsed as character, never the codes; code `NA` → `None` |
+| anything else (list, raw, complex, …) | [`SexpError::Type`] |
+
+Character parsing follows R's `String2Real` (`RealFromString` in
+`src/main/coerce.c`):
+
+- `NA_character_` → `None`.
+- A blank string (empty, or whitespace only) → `None`, as `as.numeric("")`
+  gives `NA` without a warning.
+- The token `"NA"`, with blanks around it at most, → `None`. This follows
+  `scan()` / `type.convert()`, which read `"NA"` as missing;
+  `as.numeric("NA")` also gives `NA`, but with a coercion warning.
+- Otherwise R's own `R_strtod` reads a number, and the rest of the string
+  must be blank. That accepts surrounding spaces, `"Inf"`, `"-inf"`,
+  `"Infinity"`, `"NaN"`, `"1e3"`, `"+.5"`, `"5."`, and hex such as `"0x1A"`
+  or `"0x1p3"`, exactly as the running R does.
+- Anything else fails. All failures are collected and reported together:
+  `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`, with 1-based
+  element numbers and at most 10 values listed (the rest as `"; and N more"`).
+
+`Option<AsNumericVec>` (and `Option<AsNumeric>`) also accept `NULL` as
+`None`. The markers are input-only: there is no `IntoR`. Return the inner
+`Vec<Option<f64>>` / `Option<f64>`, which already converts to a double
+vector with `NA`.
+
+#### Example
+
+```ignore
+use miniextendr_api::{miniextendr, AsNumericVec};
+
+#[miniextendr]
+fn total(x: AsNumericVec) -> f64 {
+    x.0.into_iter().flatten().sum()
+}
+// R: total(c(" 1.5 ", "NA", "", "0x10")) → 17.5
+//    total(factor(c("10", "2")))         → 12  (labels, not codes)
+//    total(c("1", "n/a", "3", "4", "<0.1"))
+//    → error: non-numeric value(s): "n/a", "<0.1" (elements 2, 5)
+```
+
+**Fields:**
+
+- `0`: `Vec<Option<f64>>`
 
 ### `dataframe::BuiltDataFrame`
 

@@ -110,6 +110,24 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
 
+### Parsing Markers (input-only)
+
+Argument markers that read a value from its text. They have no `IntoR`; return
+the inner value instead.
+
+| Rust Type | Accepted R Type(s) | Element Behavior | On failure |
+|-----------|--------------------|------------------|------------|
+| `AsNumericVec` (`.0: Vec<Option<f64>>`) | REALSXP, INTSXP, LGLSXP, STRSXP, factor | Like `as.numeric()`: doubles as is (`NaN` stays `Some(NaN)`), integer/logical widened, character parsed with R's `R_strtod` (surrounding blanks, `Inf`, `NaN`, `1e3`, hex), factor read by its labels, never its codes. NA of any type, blank strings and the token `"NA"` → `None` | One `InvalidValue`: `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`, 1-based, at most 10 listed then `and N more`. Other types: `SexpError::Type` |
+| `AsNumeric` (`.0: Option<f64>`) | Same, length 1 | Same | Same wording for the one value; wrong length: `SexpError::Length` |
+| `AsFromStrVec<T: FromStr>` | STRSXP only | `str::parse` per element | One batched `InvalidValue` (`index 1: "n/a": <err>`, 0-based); `NA_character_` → `NA at index <i> not allowed` |
+| `AsFromStr<T: FromStr>` | STRSXP, length 1 | `str::parse` | `"n/a": <err>`; `NA_character_` → `SexpError::Na` |
+
+The generated R precondition for `AsNumeric` / `AsNumericVec` is
+`is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)` ("'x' must
+be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
+`is.null(x) ||` under `Option<…>`). `AsFromStr` / `AsFromStrVec` have no R
+precondition; their errors come from the conversion.
+
 ---
 
 ## Rust-to-R Conversions (Output: IntoR)
@@ -314,6 +332,8 @@ not gaps:
 | `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
 | `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
+| `AsNumeric` / `AsNumericVec` | `TryFromSexp` only | They describe how an argument is *read* (from text or factor labels). An `IntoR` would only repeat `Option<f64>` / `Vec<Option<f64>>`, which already return a double vector with NA; return `.0`. |
+| `AsFromStr<T>` / `AsFromStrVec<T>` | `TryFromSexp` only | Parsing adapters. The outbound counterpart is `AsDisplay<T>` / `AsDisplayVec<T>`. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
 because the R representation (a string) is faithful in both directions.
@@ -392,7 +412,7 @@ views (`ArrayView*`) convert Rust-to-R only (numeric element types).
 | R Value | Rust Representation | Notes |
 |---------|-------------------|-------|
 | `NA_integer_` | `i32::MIN` (-2147483648) | Excluded from valid i32 range; inbound NA produces `SexpError::Na` on `i32` (use `Option<i32>` to receive NA) |
-| `NA_real_` | `0x7FF0000000000007A2` (specific NaN bit pattern) | Distinguished from ordinary `f64::NAN` by bit-exact comparison; ALTREP `no_na`/`sum`/`min`/`max` treat only this bit pattern as NA |
+| `NA_real_` | `0x7FF00000000007A2` (a NaN whose low word is 1954) | Inbound conversions detect it as R's `R_IsNA` does (low word 1954), so computed NAs such as `NA_real_ * 1` (bits `0x7FF80000000007A2`) read as NA too; ALTREP `no_na`/`sum`/`min`/`max` still compare the exact bit pattern |
 | `NA_logical_` | `i32::MIN` | Same sentinel as NA_integer_ |
 | `NA_character_` | R_NaString CHARSXP | Mapped to `None` in `Option<String>` |
 | `NaN` | `f64::NAN` | **Not** the same as NA_real_; passes through as valid f64 |

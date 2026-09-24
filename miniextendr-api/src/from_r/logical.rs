@@ -252,14 +252,12 @@ impl TryFromSexp for Option<crate::Rcomplex> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::altrep_traits::NA_REAL;
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
         let value: crate::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
-        let na_bits = NA_REAL.to_bits();
-        if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
+        // R's complex `NA` check: either part is `NA_real_` (`R_IsNA`).
+        if is_na_real(value.r) || is_na_real(value.i) {
             Ok(None)
         } else {
             Ok(Some(value))
@@ -268,14 +266,11 @@ impl TryFromSexp for Option<crate::Rcomplex> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::altrep_traits::NA_REAL;
-
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
         let value: crate::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        let na_bits = NA_REAL.to_bits();
-        if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
+        if is_na_real(value.r) || is_na_real(value.i) {
             Ok(None)
         } else {
             Ok(Some(value))
