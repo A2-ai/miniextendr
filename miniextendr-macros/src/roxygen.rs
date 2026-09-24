@@ -273,10 +273,11 @@ pub(crate) fn rdname_value(tags: &[String]) -> Option<&str> {
     })
 }
 
-/// Push `#' @rdname <topic>`: the method's own `@rdname` when present, else
-/// `default` (the class page).
+/// Push `#' @rdname <topic>` for a scaffolding block that follows its method:
+/// the method's page ([`method_page`]: its `@describeIn` destination or own
+/// `@rdname`), else `default` (the class page).
 pub(crate) fn push_rdname_or_default(lines: &mut Vec<String>, tags: &[String], default: &str) {
-    let topic = rdname_value(tags).unwrap_or(default);
+    let topic = method_page(tags, default);
     lines.push(format!("#' @rdname {topic}"));
 }
 
@@ -874,50 +875,130 @@ fn param_names_token(tag: &str) -> Option<&str> {
     rest.split_whitespace().next()
 }
 
-/// Returns `true` when the author's roxygen block takes its argument
-/// documentation from another block, so the generators must not add `@param`
-/// lines for the arguments it leaves undocumented (#1590):
-///
-/// - `@rdname topic` / `@describeIn topic ...` join `topic`'s page, where the
-///   topic's own block documents the arguments. roxygen2 keeps one entry per
-///   argument name on a merged page, and a generated line such as
-///   `(no documentation available)` is the entry that survives, so it would
-///   replace the topic's description (and add a second entry beside a
-///   grouped `@param a,b`).
-/// - `@inheritParams source` (and `@inherit source`, which inherits params
-///   unless its field list leaves them out) fills only the arguments the
-///   block does not document, so a generated line would block the
-///   inheritance.
-///
-/// An argument that no block documents is still reported by `R CMD check`
-/// ("Undocumented arguments in Rd file"), so nothing goes missing silently.
-///
-/// `tags` must be the author's own tags (doc comment or `doc = "..."`). The
-/// framework's page defaults are added outside those lists: the file-stem
-/// `@rdname` of a standalone function is injected by the wrapper registry at
-/// write time, and the class-page `@rdname` of a method is appended by the
-/// class generators. No other block documents the arguments on those pages,
-/// so they keep their generated lines. For the same reason, an author
-/// `@rdname` that names `default_page` (the class page a method or class block
-/// lands on anyway) does not count. A standalone function passes `None`: its
-/// file-stem page is only known at write time.
-pub(crate) fn params_documented_elsewhere(tags: &[String], default_page: Option<&str>) -> bool {
-    tags.iter().any(|tag| match roxygen_tag_name(tag) {
-        Some("rdname") => {
-            default_page.is_none() || rdname_value(std::slice::from_ref(tag)) != default_page
+// region: shared pages (#1590)
+
+/// The topic named by the tag list's own `@describeIn <topic> <description>`
+/// tag, if it has one.
+pub(crate) fn describe_in_topic(tags: &[String]) -> Option<&str> {
+    tags.iter().find_map(|t| {
+        let rest = t.trim_start().strip_prefix("@describeIn")?;
+        if rest.starts_with(char::is_whitespace) {
+            rest.split_whitespace().next()
+        } else {
+            None
         }
-        Some("describeIn" | "inheritParams") => true,
-        Some("inherit") => inherit_covers_params(tag),
+    })
+}
+
+/// Whether the author's tags put the block on a topic other than
+/// `default_page`: `@describeIn topic ...`, or an `@rdname topic` that names
+/// another page. The block then joins a topic whose own block (usually the
+/// author's, often in R) documents the page, so generated lines that claim the
+/// page (a structural `@param`, the page `\name` and title) must give way to it.
+///
+/// `tags` must be the author's own tags (doc comment or `doc = "..."`), and
+/// `default_page` the page the framework puts the block on anyway: a class
+/// generator passes the class name, so a redundant author `@rdname <Class>`
+/// counts as no page tag. A standalone function passes `None` (its file-stem
+/// page is only known when the wrapper registry writes the file), so any
+/// `@rdname` counts there.
+pub(crate) fn joins_author_topic(tags: &[String], default_page: Option<&str>) -> bool {
+    describe_in_topic(tags).is_some()
+        || rdname_value(tags).is_some_and(|topic| Some(topic) != default_page)
+}
+
+/// The page a method's block lands on: its `@describeIn` destination (roxygen2
+/// files a `@describeIn` block under the destination's topic), its own
+/// `@rdname`, else `default_page` (the class page). A companion block that
+/// must share the method's page (the S3 generic block, whose class-qualified
+/// `@name` is also the method's alias) gets `@rdname` this.
+pub(crate) fn method_page<'a>(tags: &'a [String], default_page: &'a str) -> &'a str {
+    describe_in_topic(tags)
+        .or_else(|| rdname_value(tags))
+        .unwrap_or(default_page)
+}
+
+/// Whether the author's tags inherit the parameter docs from another topic:
+/// `@inheritParams source`, or `@inherit source` whose field list includes
+/// params (roxygen2 inherits every field when none is listed). roxygen2 fills
+/// only the arguments the merged topic leaves undocumented, so a generated
+/// line would block the inheritance.
+fn inherits_params(tags: &[String]) -> bool {
+    tags.iter().any(|tag| match roxygen_tag_name(tag) {
+        Some("inheritParams") => true,
+        Some("inherit") => {
+            let mut fields = tag.split_whitespace().skip(2).peekable(); // `@inherit`, source
+            fields.peek().is_none() || fields.any(|field| field == "params")
+        }
         _ => false,
     })
 }
 
-/// Whether an `@inherit source [fields...]` tag inherits the parameters:
-/// roxygen2 inherits every field when none is listed.
-fn inherit_covers_params(tag: &str) -> bool {
-    let mut fields = tag.split_whitespace().skip(2).peekable(); // `@inherit`, source
-    fields.peek().is_none() || fields.any(|field| field == "params")
+/// Returns `true` when the author's roxygen block takes its argument
+/// documentation from another block, so the generators must not add `@param`
+/// lines for the arguments it leaves undocumented (#1590):
+///
+/// - the block joins another topic ([`joins_author_topic`]: `@rdname topic`,
+///   `@describeIn topic ...`), whose own block documents the arguments.
+///   roxygen2 keeps one entry per argument name on a merged page, and a
+///   generated line such as `(no documentation available)` is the entry that
+///   survives, so it would replace the topic's description (and add a second
+///   entry beside a grouped `@param a,b`);
+/// - the block inherits them ([`inherits_params`]).
+///
+/// An argument that no block documents is still reported by `R CMD check`
+/// ("Undocumented arguments in Rd file"), so nothing goes missing silently.
+/// See [`joins_author_topic`] for `tags` and `default_page`.
+pub(crate) fn params_documented_elsewhere(tags: &[String], default_page: Option<&str>) -> bool {
+    joins_author_topic(tags, default_page) || inherits_params(tags)
 }
+
+/// The `@order` tag that sorts a generated block after every block without
+/// one, so the topic's own block claims a merged page regardless of R file
+/// order (#1590).
+///
+/// roxygen2 gives a merged page the `\name` and `\title` of the first block
+/// it reads, and every block contributes a `\name` (a `@describeIn` block
+/// too, from its object), so dropping generated titles cannot fix the page
+/// name. Blocks are read in `order_blocks()` order: every block of the
+/// package sorted with `order(as.double(<@order>))`, `Inf` for a block
+/// without `@order`, which is stable and puts `NaN` last. A generated block
+/// that joins an author topic therefore sorts after the author's block
+/// wherever the R files sit, and the generated blocks of one topic keep their
+/// source order among themselves (a topic made only of generated blocks
+/// renders as before). On a merged page a later block's `@param` wins, which
+/// is why joining blocks also drop their generated `@param` lines.
+pub(crate) const ORDER_AFTER_TOPIC_BLOCKS: &str = "@order NaN";
+
+/// Push `#' @order NaN` ([`ORDER_AFTER_TOPIC_BLOCKS`]) when the block joins
+/// an author topic ([`joins_author_topic`] against `default_page`), unless the
+/// author ordered the block with their own `@order` or it renders no page
+/// (`@noRd`).
+pub(crate) fn push_order_after_topic_blocks(
+    lines: &mut Vec<String>,
+    tags: &[String],
+    default_page: &str,
+) {
+    if joins_author_topic(tags, Some(default_page))
+        && !has_roxygen_tag(tags, "order")
+        && !has_roxygen_tag(tags, "noRd")
+    {
+        lines.push(format!("#' {ORDER_AFTER_TOPIC_BLOCKS}"));
+    }
+}
+
+/// Prefix of a generated `@param` line in a standalone function's wrapper
+/// (`#' .__MX_PARAM_FILLER__ @param x (no documentation available)`), for the
+/// wrapper registry to resolve when it writes the file
+/// (`resolve_standalone_pages` in `miniextendr-api/src/registry.rs`, which
+/// spells the same prefix). Whether an author `@rdname topic` names the
+/// function's own file-stem page, and whether another function on the page
+/// documents the argument, is only known then. The registry keeps the line
+/// (without the prefix) when the function stays on its own or file-stem page
+/// and no other function there documents the argument, and drops it
+/// otherwise. roxygen2 keeps the later of two `@param` lines for one name, so
+/// a filler written after the real description would replace it.
+pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 
 /// Append the generated `@param` tags for a standalone function's R
 /// parameters to the author's `tags`, and return the `(doc_placeholder,
@@ -932,8 +1013,10 @@ fn inherit_covers_params(tag: &str) -> bool {
 /// 2. `match_arg`: a placeholder the cdylib resolves at write time (#210);
 /// 3. anything else: `(no documentation available)`.
 ///
-/// Nothing is generated when [`params_documented_elsewhere`] holds: the
-/// arguments are documented by the topic the block joins or inherits from.
+/// Each line carries [`PARAM_FILLER_MARKER`], so the wrapper registry decides
+/// whether it is written. Nothing is generated when the block takes its
+/// arguments from elsewhere whatever page it sits on: `@describeIn` (the
+/// destination documents them) or inherited params ([`inherits_params`]).
 pub(crate) fn push_fn_param_tags(
     tags: &mut Vec<String>,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
@@ -941,7 +1024,7 @@ pub(crate) fn push_fn_param_tags(
     c_ident: &str,
 ) -> Vec<(String, String)> {
     let mut match_arg_doc_placeholders = Vec::new();
-    if params_documented_elsewhere(tags, None) {
+    if describe_in_topic(tags).is_some() || inherits_params(tags) {
         return match_arg_doc_placeholders;
     }
     for arg in inputs {
@@ -973,19 +1056,25 @@ pub(crate) fn push_fn_param_tags(
                 ""
             };
             tags.push(format!(
-                "@param {r_name} {prefix} {}{suffix}.",
+                "{PARAM_FILLER_MARKER}@param {r_name} {prefix} {}{suffix}.",
                 quoted.join(", ")
             ));
         } else if parsed.has_match_arg_attr(&rust_name) {
             let doc_placeholder = crate::match_arg_keys::param_doc_placeholder(c_ident, &r_name);
-            tags.push(format!("@param {r_name} {doc_placeholder}"));
+            tags.push(format!(
+                "{PARAM_FILLER_MARKER}@param {r_name} {doc_placeholder}"
+            ));
             match_arg_doc_placeholders.push((doc_placeholder, rust_name));
         } else {
-            tags.push(format!("@param {r_name} (no documentation available)"));
+            tags.push(format!(
+                "{PARAM_FILLER_MARKER}@param {r_name} (no documentation available)"
+            ));
         }
     }
     match_arg_doc_placeholders
 }
+
+// endregion
 
 /// Split an R formals/argument string on **top-level** commas only.
 ///

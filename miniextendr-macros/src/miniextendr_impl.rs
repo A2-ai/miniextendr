@@ -2887,7 +2887,7 @@ impl ParsedImpl {
         // generator can suppress placeholder lines for covered params.
         let class_param_names = crate::roxygen::extract_param_names(&doc_tags);
 
-        Ok(ParsedImpl {
+        let parsed = ParsedImpl {
             type_ident,
             class_system: attrs.class_system,
             class_name: attrs.class_name,
@@ -2916,7 +2916,75 @@ impl ParsedImpl {
             noexport: attrs.noexport,
             param_warnings,
             class_param_names,
-        })
+        };
+        parsed.reject_unsupported_describe_in()?;
+        Ok(parsed)
+    }
+
+    /// Reject a method-level `@describeIn` that roxygen2 cannot honour (#1590).
+    ///
+    /// roxygen2 lists a `@describeIn` block in its destination's "Functions"
+    /// section through the R object the block documents, and rejects the tag
+    /// next to `@name` / `@rdname`, so `MethodDocBuilder` drops both for it.
+    /// That only works where the method's block sits on a plain R function or
+    /// S3 method: S3 instance methods (`generic.Class`), the static methods of
+    /// S3 / S4 / S7 / vctrs (`class_method()`), and the S4 constructor
+    /// (`Class()`). Everywhere else the block has no object to list:
+    ///
+    /// - S4 / S7 instance methods are registered by `setMethod()` /
+    ///   `S7::method<-` after the `if (!exists(...))` generic guard the block
+    ///   is attached to;
+    /// - Env and R6 methods are `Class$method <-` assignments or live inside
+    ///   `R6Class()`;
+    /// - the S3 / vctrs / S7 constructor is documented by the class block.
+    ///
+    /// There the tag would only earn a roxygen2 warning and a dropped block,
+    /// so it is a compile error pointing at `@rdname` instead.
+    fn reject_unsupported_describe_in(&self) -> syn::Result<()> {
+        for method in self.included_methods() {
+            if crate::roxygen::describe_in_topic(&method.doc_tags).is_none() {
+                continue;
+            }
+            let is_ctor = self.is_method_constructor(method);
+            let is_static = method.env == ReceiverKind::None && !is_ctor;
+            let supported = match self.class_system {
+                ClassSystem::S3 | ClassSystem::Vctrs => !is_ctor,
+                ClassSystem::S4 => is_ctor || is_static,
+                ClassSystem::S7 => is_static,
+                ClassSystem::Env | ClassSystem::R6 => false,
+            };
+            if supported {
+                continue;
+            }
+            let kind = if is_ctor {
+                "constructor"
+            } else if is_static {
+                "static method"
+            } else {
+                "instance method"
+            };
+            let system = match self.class_system {
+                ClassSystem::S3 => "S3",
+                ClassSystem::Vctrs => "vctrs",
+                ClassSystem::S4 => "S4",
+                ClassSystem::S7 => "S7",
+                ClassSystem::Env => "Env",
+                ClassSystem::R6 => "R6",
+            };
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "`@describeIn` is not supported on the {system} {kind} `{}`: its R wrapper \
+                     is not an R function roxygen2 can list in the destination's \"Functions\" \
+                     section, so roxygen2 would drop the block. Use `@rdname <topic>` to \
+                     document it on that page instead. `@describeIn` works on S3 instance \
+                     methods, on the static methods of S3, S4, S7 and vctrs classes, and on \
+                     S4 constructors.",
+                    method.ident,
+                ),
+            ));
+        }
+        Ok(())
     }
 
     /// Get the class name (override or type name).
@@ -3697,18 +3765,28 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
             // The method's own doc tags were pushed verbatim above, so only
             // inject the defaults a user did not supply (same rule as
             // `MethodDocBuilder`): a method-level `@rdname` splits the
-            // coercion onto its own page instead of being duplicated.
-            if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            // coercion onto its own page instead of being duplicated, and a
+            // `@describeIn` (which roxygen2 rejects next to `@name` /
+            // `@rdname`) takes its page from the S3 method object.
+            let describe_in = crate::roxygen::describe_in_topic(&method.doc_tags).is_some();
+            if !describe_in && !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
                 lines.push(format!("#' @name {}", s3_method_name));
             }
-            if crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-                // Own page: needs a title (see `MethodDocBuilder::build`).
-                if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title") {
-                    lines.push(format!("#' @title {}", s3_method_name));
+            if !describe_in {
+                if crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
+                    // Own page: needs a title (see `MethodDocBuilder::build`).
+                    if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "title") {
+                        lines.push(format!("#' @title {}", s3_method_name));
+                    }
+                } else {
+                    lines.push(format!("#' @rdname {}", class_name));
                 }
-            } else {
-                lines.push(format!("#' @rdname {}", class_name));
             }
+            crate::roxygen::push_order_after_topic_blocks(
+                &mut lines,
+                &method.doc_tags,
+                &class_name,
+            );
             lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
         }
 
