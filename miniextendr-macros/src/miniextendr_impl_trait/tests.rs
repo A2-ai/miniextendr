@@ -906,6 +906,76 @@ fn test_trait_method_checks_take_custom_messages() {
     );
 }
 
+/// A method-level check or choice list naming no parameter of the trait
+/// method is rejected, as on inherent methods: the typo would otherwise drop
+/// the check without a word. `defaults(...)` gets the inherent wording too.
+#[test]
+fn test_trait_method_rejects_unknown_parameter_names() {
+    let cases: [(syn::ItemImpl, &str); 5] = [
+        (
+            syn::parse_quote! {
+                impl Bar for Foo {
+                    #[miniextendr(no_na(x_factr))]
+                    fn scale(&mut self, x_factor: f64) -> f64 { unimplemented!() }
+                }
+            },
+            "non-existent parameter `x_factr`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Bar for Foo {
+                    #[miniextendr(inherits(modl = "pkg_model"))]
+                    fn scale(&mut self, model: List) -> f64 { unimplemented!() }
+                }
+            },
+            "non-existent parameter `modl`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Bar for Foo {
+                    #[miniextendr(choices(mod = "fast, slow"))]
+                    fn run(&self, mode: &str) -> i32 { unimplemented!() }
+                }
+            },
+            "non-existent parameter `mod`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Bar for Foo {
+                    #[miniextendr(choices_several_ok(mods = "fast, slow"))]
+                    fn run(&self, modes: Vec<String>) -> i32 { unimplemented!() }
+                }
+            },
+            "non-existent parameter `mods`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Bar for Foo {
+                    #[miniextendr(defaults(n = "1L", m = "2L"))]
+                    fn run(&self, n: i32) -> i32 { unimplemented!() }
+                }
+            },
+            "defaults(...) references non-existent parameter(s): m",
+        ),
+    ];
+    for (impl_item, expected) in cases {
+        let Err(err) = super::vtable::extract_methods(&impl_item) else {
+            panic!("`{expected}` must be rejected");
+        };
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+
+    // A raw identifier is named by its plain spelling, as in the signature.
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(no_na(r#type), defaults(r#type = "1"))]
+            fn run(&self, r#type: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    assert!(methods[0].per_param["type"].checks.no_na);
+}
+
 /// Related fix bundled into the same prelude parity: trait methods used to
 /// build `.Call()` args via `collect_param_idents`, which had no `Missing<T>`
 /// handling. A truly-missing R argument forwarded as a bare binding errors on

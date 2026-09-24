@@ -146,7 +146,7 @@ fn method_failures_are_conversion_errors() {
     let msg = invalid_message(vec_of(r#"structure(1L, class = "mx_test_numeric")"#).unwrap_err());
     assert_eq!(
         msg,
-        "as.character() returned INTSXP, not a character vector"
+        "as.character() returned integer, not a character vector"
     );
 }
 

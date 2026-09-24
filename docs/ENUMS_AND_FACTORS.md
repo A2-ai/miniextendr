@@ -199,8 +199,13 @@ run("Fast")       # exact match
 run("F")          # partial match → "Fast"
 run()             # NULL → default (first choice: "Fast")
 run("Saf")        # partial match → "Safe"
-run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
+run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
+
+A `MatchArg` enum parameter without `#[miniextendr(match_arg)]` gets no R-side
+`match.arg()` check; its Rust conversion refuses a value that is not a choice
+with the same argument error, naming the choices:
+`'mode' must be one of "Fast", "Safe", "Debug": got "X"`.
 
 ### Optional Choice: `Option<T>`
 
@@ -232,7 +237,7 @@ run <- function(mode = NULL) {
 run()             # None
 run(NULL)         # None
 run("Sa")         # Some(Safe)
-run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
+run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
 
 The same works for `choices(...)` on an `Option<String>` / `Option<&str>`

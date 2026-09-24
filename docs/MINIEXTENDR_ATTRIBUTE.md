@@ -403,6 +403,10 @@ parameter an omitted argument. Unlike the type checks, they stay under
 `no_preconditions` / `fast`: nothing in the Rust conversion repeats them. A
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
 NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
+The `no_na` message says `'x' must not contain NA` for an argument that holds
+several values (`Vec<T>`, slices, arrays, maps and lists, and the vector
+markers such as `AsNumericVec` or `AsFromStrVec<T>`) and `'x' must not be NA`
+for a scalar.
 
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a

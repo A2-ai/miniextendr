@@ -120,8 +120,8 @@ where
         match R::try_from_sexp(sexp) {
             Ok(right) => Ok(Either::Right(right)),
             Err(right_err) => Err(SexpError::EitherConversion {
-                left_error: left_err.to_string(),
-                right_error: right_err.into().to_string(),
+                left_error: Box::new(left_err),
+                right_error: Box::new(right_err.into()),
             }),
         }
     }
@@ -138,8 +138,8 @@ where
         match unsafe { R::try_from_sexp_unchecked(sexp) } {
             Ok(right) => Ok(Either::Right(right)),
             Err(right_err) => Err(SexpError::EitherConversion {
-                left_error: left_err.to_string(),
-                right_error: right_err.into().to_string(),
+                left_error: Box::new(left_err),
+                right_error: Box::new(right_err.into()),
             }),
         }
     }

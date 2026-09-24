@@ -1,0 +1,5 @@
+error: match_arg/choices/inherits/no_na references non-existent parameter `x_factr`
+  --> tests/ui/trait_impl_unknown_param_no_na.rs:15:19
+   |
+15 |     #[miniextendr(no_na(x_factr))]
+   |                   ^^^^^

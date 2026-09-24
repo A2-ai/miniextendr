@@ -71,40 +71,40 @@ pub enum StorageCoerceError {
         from: &'static str,
         /// Target storage type name.
         to: &'static str,
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Value is non-finite (NaN or Inf) but target requires finite.
     NonFinite {
         /// Target storage type name.
         to: &'static str,
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Conversion would lose precision.
     PrecisionLoss {
         /// Target storage type name.
         to: &'static str,
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Float value is not integral but target is integer type.
     NotIntegral {
         /// Target storage type name.
         to: &'static str,
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Missing value (NA) cannot be represented in target type.
     MissingValue {
         /// Target storage type name.
         to: &'static str,
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Invalid UTF-8 in string conversion.
     InvalidUtf8 {
-        /// Failing element index for vector conversions.
+        /// Failing element index (0-based) for vector conversions.
         index: Option<usize>,
     },
     /// Aggregated per-element failures from a vector conversion (#1097).
@@ -120,65 +120,41 @@ pub enum StorageCoerceError {
     },
 }
 
+/// The per-element variants carry a 0-based `index` into the Rust vector;
+/// the message numbers the element as R counts the resulting vector:
+/// `value out of range for i64 → i32 (element 2)`.
 impl fmt::Display for StorageCoerceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let at = |index: &Option<usize>| {
+            index
+                .map(crate::from_r::element_position)
+                .unwrap_or_default()
+        };
         match self {
             StorageCoerceError::Unsupported { from, to } => {
                 write!(f, "cannot convert {} to {}", from, to)
             }
             StorageCoerceError::OutOfRange { from, to, index } => {
-                if let Some(i) = index {
-                    write!(f, "value at index {} out of range for {} → {}", i, from, to)
-                } else {
-                    write!(f, "value out of range for {} → {}", from, to)
-                }
+                write!(f, "value out of range for {from} → {to}{}", at(index))
             }
             StorageCoerceError::NonFinite { to, index } => {
-                if let Some(i) = index {
-                    write!(
-                        f,
-                        "non-finite value at index {} cannot convert to {}",
-                        i, to
-                    )
-                } else {
-                    write!(f, "non-finite value cannot convert to {}", to)
-                }
+                write!(f, "non-finite value cannot convert to {to}{}", at(index))
             }
             StorageCoerceError::PrecisionLoss { to, index } => {
-                if let Some(i) = index {
-                    write!(
-                        f,
-                        "value at index {} would lose precision converting to {}",
-                        i, to
-                    )
-                } else {
-                    write!(f, "value would lose precision converting to {}", to)
-                }
+                write!(
+                    f,
+                    "value would lose precision converting to {to}{}",
+                    at(index)
+                )
             }
             StorageCoerceError::NotIntegral { to, index } => {
-                if let Some(i) = index {
-                    write!(
-                        f,
-                        "non-integral value at index {} cannot convert to {}",
-                        i, to
-                    )
-                } else {
-                    write!(f, "non-integral value cannot convert to {}", to)
-                }
+                write!(f, "non-integral value cannot convert to {to}{}", at(index))
             }
             StorageCoerceError::MissingValue { to, index } => {
-                if let Some(i) = index {
-                    write!(f, "missing value at index {} cannot convert to {}", i, to)
-                } else {
-                    write!(f, "missing value cannot convert to {}", to)
-                }
+                write!(f, "missing value cannot convert to {to}{}", at(index))
             }
             StorageCoerceError::InvalidUtf8 { index } => {
-                if let Some(i) = index {
-                    write!(f, "invalid UTF-8 at index {}", i)
-                } else {
-                    write!(f, "invalid UTF-8")
-                }
+                write!(f, "invalid UTF-8{}", at(index))
             }
             StorageCoerceError::Batched {
                 container,
@@ -1161,9 +1137,11 @@ mod tests {
                     total,
                 }
                 .to_string();
-                assert!(display.contains("index 3"), "{display}");
-                assert!(display.contains("index 17"), "{display}");
-                assert!(display.contains("index 42"), "{display}");
+                // The 0-based `index` fields read 1-based, as R numbers the result.
+                assert!(display.contains("(element 4)"), "{display}");
+                assert!(display.contains("(element 18)"), "{display}");
+                assert!(display.contains("(element 43)"), "{display}");
+                assert!(!display.contains("index"), "{display}");
             }
             other => panic!("expected Batched, got {other:?}"),
         }
@@ -1210,8 +1188,8 @@ mod tests {
                 }
                 let display = e.to_string();
                 assert!(display.contains("&[i64] conversion failed"), "{display}");
-                assert!(display.contains("index 1"), "{display}");
-                assert!(display.contains("index 4"), "{display}");
+                assert!(display.contains("(element 2)"), "{display}");
+                assert!(display.contains("(element 5)"), "{display}");
             }
             other => panic!("expected Batched, got {other:?}"),
         }

@@ -329,14 +329,19 @@ test_that("an Either choice raises the argument error on both paths", {
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "route")
   expect_identical(e$rust_type, "Either<Route, DataFrame>")
-  expect_match(conditionMessage(e), "^invalid 'route' argument: ")
+  # The data frame arm refuses the type in R terms, not SEXPTYPE names.
+  expect_identical(conditionMessage(e), "invalid 'route' argument: expected list, got integer")
   expect_equal(conditionCall(e), quote(match_arg_either_route(route = 1:3)))
-  # A built-in conversion error in the other arm reads in R terms.
+  # A built-in conversion error in the other arm reads in R terms, after an
+  # expectation naming both sides.
   e <- caught(choices_either_level(TRUE))
   expect_identical(class(e), layers)
   expect_identical(e$param, "level")
   expect_identical(e$rust_type, "Either<String, f64>")
-  expect_identical(conditionMessage(e), "invalid 'level' argument: expected numeric, got logical")
+  expect_identical(
+    conditionMessage(e),
+    "'level' must be a single string or a single double: got logical"
+  )
 })
 
 # endregion
@@ -354,6 +359,132 @@ test_that("a class_any method given a non-S7 receiver raises the argument error"
   expect_null(e$rust_type)
   expect_true(is.call(conditionCall(e)))
   expect_identical(describe_any(S7Strict(123L)), "S7Strict with value 123")
+})
+
+# endregion
+
+# region: per-element failures, R-facing expectations, strict and no_na wording
+
+test_that("a vector conversion lists every bad element, 1-based and batched", {
+  # c(NA, 70000, 1, -5) passes the R-side whole-number check; the conversion
+  # refuses the NA and the two values outside u16, each reason once with the
+  # positions that failed with it.
+  e <- caught(miniextendr:::arg_error_u16s(c(NA, 70000, 1, -5)))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "counts")
+  expect_identical(e$rust_type, "Vec<u16>")
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "'counts' must be integer or whole-number numeric: ",
+      "NA is not allowed (element 1); value out of range (elements 2, 4)"
+    )
+  )
+  # No 0-based index and no Rust type in the text.
+  expect_no_match(conditionMessage(e), "index|Vec<|conversion failed")
+  # Past ten failures the rest are counted.
+  expect_identical(
+    conditionMessage(caught(miniextendr:::arg_error_u16s(rep(70000, 12)))),
+    paste0(
+      "'counts' must be integer or whole-number numeric: ",
+      "value out of range (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 2 more"
+    )
+  )
+  expect_identical(miniextendr:::arg_error_u16s(c(1, 2)), 3L)
+})
+
+test_that("Either, AsFromStr and tuple arguments say what they accept", {
+  e <- caught(either_int_or_str(1:2))
+  expect_identical(class(e), layers)
+  expect_identical(e$rust_type, "Either<i32, String>")
+  # The integer branch took the type and refused the length: that reason.
+  expect_identical(
+    conditionMessage(e),
+    "'value' must be a single integer or a single string: got length 2"
+  )
+  expect_identical(
+    conditionMessage(caught(either_int_or_str(list()))),
+    "'value' must be a single integer or a single string: got list"
+  )
+
+  e <- caught(miniextendr:::test_fromstr_ip(1))
+  expect_identical(e$param, "addr")
+  expect_identical(conditionMessage(e), "'addr' must be a single string: got numeric")
+  expect_identical(
+    conditionMessage(caught(miniextendr:::test_fromstr_ip("x"))),
+    "'addr' must be a single string: \"x\": invalid IP address syntax"
+  )
+
+  e <- caught(miniextendr:::arg_error_pair(list("a", 1L)))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "pair")
+  expect_identical(e$rust_type, "(i32, String)")
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "'pair' must be a list of length 2: expected integer, got character (element 1); ",
+      "expected character, got integer (element 2)"
+    )
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::arg_error_pair(list(1L)))),
+    "'pair' must be a list of length 2: got length 1"
+  )
+  expect_identical(miniextendr:::arg_error_pair(list(3L, "x")), "3:x")
+})
+
+test_that("strict input rejections are argument errors, batched over a vector", {
+  e <- caught(miniextendr:::arg_error_strict_inputs(TRUE, 1L))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "n")
+  expect_identical(e$rust_type, "i64")
+  expect_identical(conditionMessage(e), "'n' must be a single whole number: got logical")
+
+  e <- caught(miniextendr:::arg_error_strict_inputs(1L, c(1, NA, 1e300)))
+  expect_identical(e$param, "ids")
+  expect_identical(e$rust_type, "Vec<i64>")
+  expect_identical(
+    conditionMessage(e),
+    paste0(
+      "'ids' must be integer or whole-number numeric: ",
+      "NA is not allowed (element 2); value out of range (element 3)"
+    )
+  )
+  expect_identical(miniextendr:::arg_error_strict_inputs(2, c(1L, 2L)), "2:2")
+})
+
+test_that("no_na on a vector marker says 'must not contain NA'", {
+  e <- caught(miniextendr:::arg_error_no_na_peak(c("1", NA)))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "obs")
+  expect_identical(conditionMessage(e), "'obs' must not contain NA")
+  expect_null(e$rust_type)
+  expect_identical(miniextendr:::arg_error_no_na_peak(c("1", "4")), 4)
+})
+
+test_that("a match_arg enum's conversion error names its choices", {
+  # No match_arg attribute, so no R-side match.arg(): the conversion refuses
+  # the value, and the error says what it must be.
+  e <- caught(miniextendr:::arg_error_plain_mode("zzz"))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "speed")
+  expect_identical(e$rust_type, "Mode")
+  expect_identical(
+    conditionMessage(e),
+    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": got \"zzz\""
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::arg_error_plain_mode(1))),
+    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": got numeric"
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::arg_error_plain_mode(NA_character_))),
+    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": NA is not allowed"
+  )
+  expect_identical(miniextendr:::arg_error_plain_mode("Sa"), "Safe")
 })
 
 # endregion

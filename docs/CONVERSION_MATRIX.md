@@ -122,7 +122,7 @@ inner value instead.
 | `AsNumeric` (`.0: Option<f64>`) | Same, length 1 | Same | Same wording for the one value; wrong length: `SexpError::Length` |
 | `AsCharacterVec` (`.0: Vec<Option<String>>`) | Any atomic: LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP (incl. factor, `Date`, `POSIXct`) | Like `as.character()`, with R making the text: a plain vector through `coerceVector()` (`0.1 + 0.2` → `"0.3"`, `1e6` → `"1e+06"`, `TRUE` → `"TRUE"`, `as.raw(255)` → `"ff"`), a classed vector through its `as.character()` method (factor labels, formatted dates). NA of any type → `None`; `"NA"`, `""` and `"NaN"` stay strings. Names and `dim` dropped | Non-atomic input: `SexpError::Type`. A failing method: `InvalidValue` (`as.character() failed: ...`); a method returning non-character: `InvalidValue` |
 | `AsCharacter` (`.0: Option<String>`) | Same, length 1 | Same | Same; wrong length (of the argument or of the method's result): `SexpError::Length` |
-| `AsFromStrVec<T: FromStr>` | STRSXP only | `str::parse` per element | One batched `InvalidValue` (`index 1: "n/a": <err>`, 0-based); `NA_character_` → `NA at index <i> not allowed` |
+| `AsFromStrVec<T: FromStr>` | STRSXP only | `str::parse` per element | One batched `InvalidValue`, 1-based: `"n/a": <err> (element 2); NA is not allowed (element 3)` |
 | `AsFromStr<T: FromStr>` | STRSXP, length 1 | `str::parse` | `"n/a": <err>`; `NA_character_` → `SexpError::Na` |
 
 The generated R precondition for `AsNumeric` / `AsNumericVec` is

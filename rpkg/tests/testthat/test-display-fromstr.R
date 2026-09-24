@@ -67,7 +67,7 @@ test_that("AsFromStr quotes the value it cannot parse", {
 test_that("AsFromStr refuses NA instead of parsing an empty string", {
   expect_error(
     miniextendr:::test_fromstr_int(NA_character_),
-    "invalid 's' argument: NA is not allowed",
+    "'s' must be a single string: NA is not allowed",
     fixed = TRUE
   )
 })
@@ -89,14 +89,14 @@ test_that("AsFromStrVec parses integers", {
 test_that("AsFromStrVec reports all parse errors", {
   expect_error(
     miniextendr:::test_fromstr_vec_ints(c("1", "abc", "3", "def")),
-    "index 1.*index 3"
+    "\\(element 2\\).*\\(element 4\\)"
   )
 })
 
 test_that("AsFromStrVec quotes each value it cannot parse", {
   expect_error(
     miniextendr:::test_fromstr_vec_ints(c("1", "n/a")),
-    'index 1: "n/a": invalid digit found in string',
+    '"n/a": invalid digit found in string (element 2)',
     fixed = TRUE
   )
 })
@@ -106,8 +106,8 @@ test_that("AsFromStrVec reports NA as NA, not as a failed parse of \"\"", {
     miniextendr:::test_fromstr_vec_ints(c("1", NA, "x")),
     error = conditionMessage
   )
-  expect_match(msg, "NA at index 1 not allowed", fixed = TRUE)
-  expect_match(msg, 'index 2: "x": invalid digit found in string', fixed = TRUE)
+  expect_match(msg, "NA is not allowed (element 2)", fixed = TRUE)
+  expect_match(msg, '"x": invalid digit found in string (element 3)', fixed = TRUE)
   expect_no_match(msg, "empty string", fixed = TRUE)
 })
 

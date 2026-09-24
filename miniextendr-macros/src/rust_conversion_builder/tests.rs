@@ -89,18 +89,29 @@ fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
         .join("\n")
 }
 
-/// A type without an R-facing expectation: the `Err` arm names the parameter
-/// by its R formal (`_x` → `x`) in the `invalid '<p>' argument` prefix, passes
-/// the Rust type (with source spacing) as `e$rust_type` rather than in the
-/// message, probes without an expectation, and passes an empty crate class
-/// list by default (#1591).
+/// A type without an R-facing expectation (an opaque custom type): the `Err`
+/// arm names the parameter by its R formal (`_x` → `x`) in the
+/// `invalid '<p>' argument` prefix, passes the Rust type (with source spacing)
+/// as `e$rust_type` rather than in the message, probes without an
+/// expectation, and passes an empty crate class list by default (#1591).
 #[test]
 fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
-    let s = conversion_text(&RustConversionBuilder::new(), "_nums: AsFromStrVec<i32>");
+    let s = conversion_text(&RustConversionBuilder::new(), "_nums: Hyperparams<i32>");
     assert!(s.contains("conversion_condition_value"), "{s}");
-    assert!(s.contains("__mx_conversion_err_parts ! (e , false)"), "{s}");
+    // The error may still know its expectation (a `match_arg` choice error,
+    // #1594): the prefix is built on the failure path, `invalid 'nums'
+    // argument` when it does not.
+    assert!(s.contains("__mx_conversion_expectation ! (e)"), "{s}");
     assert!(
-        s.contains("\"invalid 'nums' argument\" , \"nums\" , :: core :: option :: Option :: Some (\"AsFromStrVec<i32>\") , & []"),
+        s.contains("conversion_prefix (\"nums\" , false , __mx_expected . as_deref () ,)"),
+        "{s}"
+    );
+    assert!(
+        s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
+        "{s}"
+    );
+    assert!(
+        s.contains("\"nums\" , :: core :: option :: Option :: Some (\"Hyperparams<i32>\") , & []"),
         "{s}"
     );
     assert!(!s.contains("failed to convert"), "{s}");
@@ -120,6 +131,13 @@ fn test_conversion_err_arm_states_the_r_expectation() {
         ("s: &str", "'s' must be a single string"),
         ("flag: bool", "'flag' must be TRUE or FALSE"),
         ("xs: &[f64]", "'xs' must be double"),
+        ("addr: AsFromStr<IpAddr>", "'addr' must be a single string"),
+        ("addrs: AsFromStrVec<IpAddr>", "'addrs' must be character"),
+        (
+            "value: Either<i32, String>",
+            "'value' must be a single integer or a single string",
+        ),
+        ("pair: (i32, String)", "'pair' must be a list of length 2"),
     ] {
         let s = conversion_text(&builder, src);
         assert!(s.contains(&format!("\"{prefix}\"")), "{src}: {s}");
@@ -146,6 +164,49 @@ fn test_several_ok_array_length_is_an_argument_error() {
     assert!(s.contains("\"'modes' must be of length 2\""), "{s}");
     assert!(s.contains("got length {}"), "{s}");
     assert_eq!(s.matches("conversion_condition_value").count(), 2, "{s}");
+}
+
+/// Strict input rejections are argument errors (#1594), not panics: the
+/// checked helper returns a `Result` bound like any other conversion, with
+/// an expectation naming what strict accepts.
+#[test]
+fn test_strict_input_rejection_is_an_argument_error() {
+    let builder = RustConversionBuilder::new().with_strict();
+    for (src, helper, prefix) in [
+        (
+            "n: i64",
+            "checked_try_from_sexp_i64",
+            "'n' must be a single whole number",
+        ),
+        (
+            "n: usize",
+            "checked_try_from_sexp_usize",
+            "'n' must be a single non-negative whole number",
+        ),
+        (
+            "xs: Vec<u64>",
+            "checked_vec_try_from_sexp_u64",
+            "'xs' must be integer or whole-number numeric",
+        ),
+        (
+            "xs: Vec<Option<isize>>",
+            "checked_vec_option_try_from_sexp_isize",
+            "'xs' must be integer or whole-number numeric",
+        ),
+    ] {
+        let s = conversion_text(&builder, src);
+        assert!(
+            s.contains(&format!("strict :: {helper} (arg_0)")),
+            "{src}: {s}"
+        );
+        assert!(s.contains(&format!("\"{prefix}\"")), "{src}: {s}");
+        assert!(s.contains("conversion_condition_value"), "{src}: {s}");
+        assert!(
+            s.contains("__mx_conversion_err_parts ! (e , true)"),
+            "{src}: {s}"
+        );
+        assert!(!s.contains("panic"), "{src}: {s}");
+    }
 }
 
 /// Every conversion site binds a typed `let`, which the `Err` arm's probe
@@ -271,31 +332,31 @@ fn test_layered_choice_decoders() {
 }
 
 /// A layered choice parameter's `Err` arm is the argument error of #1591:
-/// the `invalid '<p>' argument` prefix (a choice type has no R-facing
-/// expectation), the full Rust type as `e$rust_type`, and the crate class,
-/// on every layer shape the decoder composes.
+/// the full Rust type as `e$rust_type` and the crate class, on every layer
+/// shape the decoder composes. A choice type has no static R-facing
+/// expectation, so the prefix is built on the failure path from the error
+/// (`'mode' must be one of ...` for a `match_arg` choice error, `NULL or`
+/// under `Option`, #1594); a `choices` `Either<String, R>` names both sides.
 #[test]
 fn test_layered_choice_err_arm_is_the_argument_error() {
-    for (src, leaf, rust_type) in [
+    for (src, leaf, rust_type, nullable) in [
         (
             "mode: Missing<Option<Mode>>",
             ChoiceLeaf::MatchArg,
             "Missing<Option<Mode>>",
+            true,
         ),
         (
             "mode: Missing<Vec<Mode>>",
             ChoiceLeaf::MatchArgSeveral,
             "Missing<Vec<Mode>>",
+            false,
         ),
         (
             "mode: Either<Route, DataFrame>",
             ChoiceLeaf::MatchArg,
             "Either<Route, DataFrame>",
-        ),
-        (
-            "mode: Option<Either<String, f64>>",
-            ChoiceLeaf::Literal,
-            "Option<Either<String, f64>>",
+            false,
         ),
     ] {
         let builder = RustConversionBuilder::new()
@@ -304,14 +365,37 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
         let s = conversion_text(&builder, src);
         assert!(s.contains("match_arg_"), "{src}: {s}");
         assert!(
+            s.contains("__mx_conversion_expectation ! (e)"),
+            "{src}: {s}"
+        );
+        assert!(
             s.contains(&format!(
-                "\"invalid 'mode' argument\" , \"mode\" , :: core :: option :: Option :: Some (\"{rust_type}\") , & [\"pkg_error_argument\"]"
+                "conversion_prefix (\"mode\" , {nullable} , __mx_expected . as_deref () ,)"
             )),
             "{src}: {s}"
         );
         assert!(
-            s.contains("__mx_conversion_err_parts ! (e , false)"),
+            s.contains(&format!(
+                "\"mode\" , :: core :: option :: Option :: Some (\"{rust_type}\") , & [\"pkg_error_argument\"]"
+            )),
+            "{src}: {s}"
+        );
+        assert!(
+            s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
             "{src}: {s}"
         );
     }
+
+    let builder = RustConversionBuilder::new()
+        .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
+        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
+    let s = conversion_text(&builder, "mode: Option<Either<String, f64>>");
+    assert!(s.contains("match_arg_"), "{s}");
+    assert!(
+        s.contains(
+            "\"'mode' must be NULL or a single string or a single double\" , \"mode\" , :: core :: option :: Option :: Some (\"Option<Either<String, f64>>\") , & [\"pkg_error_argument\"]"
+        ),
+        "{s}"
+    );
+    assert!(s.contains("__mx_conversion_err_parts ! (e , true)"), "{s}");
 }

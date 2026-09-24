@@ -1562,11 +1562,7 @@ impl ParsedMethod {
                     // `match_arg(param1, param2, ...)` — scalar match_arg params.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
-                        let name = inner
-                            .path
-                            .get_ident()
-                            .ok_or_else(|| inner.error("expected parameter name"))?
-                            .to_string();
+                        let name = crate::miniextendr_fn::method_check_param(&inner)?;
                         method_attrs
                             .per_param
                             .entry(name)
@@ -1579,11 +1575,7 @@ impl ParsedMethod {
                     // for Vec/slice/array/Box<[_]>-typed parameters.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
-                        let name = inner
-                            .path
-                            .get_ident()
-                            .ok_or_else(|| inner.error("expected parameter name"))?
-                            .to_string();
+                        let name = crate::miniextendr_fn::method_check_param(&inner)?;
                         let entry = method_attrs.per_param.entry(name).or_default();
                         entry.match_arg = true;
                         entry.several_ok = true;
@@ -1593,11 +1585,7 @@ impl ParsedMethod {
                     // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
-                        let name = inner
-                            .path
-                            .get_ident()
-                            .ok_or_else(|| inner.error("expected parameter name"))?
-                            .to_string();
+                        let name = crate::miniextendr_fn::method_check_param(&inner)?;
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
@@ -1608,11 +1596,7 @@ impl ParsedMethod {
                     // `choices_several_ok(param = "a, b, c")` — choices + several_ok.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     meta.parse_nested_meta(|inner| {
-                        let name = inner
-                            .path
-                            .get_ident()
-                            .ok_or_else(|| inner.error("expected parameter name"))?
-                            .to_string();
+                        let name = crate::miniextendr_fn::method_check_param(&inner)?;
                         let _: syn::Token![=] = inner.input.parse()?;
                         let value: syn::LitStr = inner.input.parse()?;
                         let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
@@ -2001,42 +1985,6 @@ impl ParsedMethod {
             item.block.stmts.insert(0, stmt);
         }
 
-        // match_arg / choices on impl methods: unlike standalone functions, Rust
-        // doesn't accept `#[miniextendr(...)]` on method parameters inside an impl
-        // (attribute macros aren't allowed there — "expected non-macro attribute").
-        // The surface is instead method-level: `#[miniextendr(match_arg(p), choices(q = "a, b"))]`.
-        // `parse_method_attrs` already filled the sets; validate that every named
-        // param exists on the signature so typos fail at compile time.
-        let sig_param_names: std::collections::HashSet<String> = item
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|arg| match arg {
-                syn::FnArg::Typed(pt) => match pt.pat.as_ref() {
-                    syn::Pat::Ident(pat_ident) => Some(crate::naming::ident_name(&pat_ident.ident)),
-                    _ => None,
-                },
-                _ => None,
-            })
-            .collect();
-        for annotated in method_attrs.per_param.iter().filter_map(|(name, a)| {
-            if a.match_arg || a.choices.is_some() || !a.checks.is_empty() {
-                Some(name)
-            } else {
-                None
-            }
-        }) {
-            if !sig_param_names.contains(annotated) {
-                return Err(syn::Error::new(
-                    method_attrs
-                        .match_arg_span
-                        .unwrap_or_else(|| item.sig.ident.span()),
-                    format!(
-                        "match_arg/choices/inherits/no_na references non-existent parameter `{annotated}`"
-                    ),
-                ));
-            }
-        }
         // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
         if env != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
             return Err(syn::Error::new(
@@ -2131,12 +2079,21 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
-        // `Option<T>` scalar match_arg/choices params are the optional form
-        // (#1473); `Missing<T>` ones and defaults on `Option<T>` are rejected.
+        // match_arg / choices / inherits / no_na on impl methods: unlike standalone
+        // functions, Rust doesn't accept `#[miniextendr(...)]` on method parameters
+        // inside an impl (attribute macros aren't allowed there — "expected
+        // non-macro attribute"). The surface is instead method-level:
+        // `#[miniextendr(match_arg(p), choices(q = "a, b"))]`. Every named param
+        // must exist on the signature, so typos fail at compile time; `Option<T>`
+        // scalar match_arg/choices params are the optional form (#1473);
+        // `Missing<T>` ones and defaults on `Option<T>` are rejected.
         crate::miniextendr_fn::finalize_method_param_attrs(
             &mut method_attrs.per_param,
             &item.sig.inputs,
             &param_defaults,
+            method_attrs
+                .match_arg_span
+                .unwrap_or_else(|| item.sig.ident.span()),
         )?;
 
         // Validate: Missing<T> parameters must not have defaults

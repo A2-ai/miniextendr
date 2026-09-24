@@ -291,20 +291,28 @@ impl TryFromSexp for Vec<Zoned> {
 
         let src: &[f64] = unsafe { sexp.as_slice() };
         let mut result = Vec::with_capacity(src.len());
+        let mut errors = crate::from_r::BatchedErrors::default();
         for (i, &secs) in src.iter().enumerate() {
             if secs.is_nan() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Zoned>",
-                    i
-                )));
+                errors.push(i, || "NA is not allowed".to_string());
+                continue;
             }
-            let ts = posix_secs_to_timestamp(secs).map_err(|e| {
-                SexpError::InvalidValue(format!("jiff Timestamp out of range at index {i}: {e}"))
-            })?;
-            result.push(ts.to_zoned(tz.clone()));
+            match posix_secs_to_timestamp(secs) {
+                Ok(ts) => result.push(ts.to_zoned(tz.clone())),
+                Err(e) => errors.push(i, || timestamp_out_of_range(e)),
+            }
         }
-        Ok(result)
+        if errors.is_empty() {
+            Ok(result)
+        } else {
+            Err(errors.into_element_error())
+        }
     }
+}
+
+/// The reason a POSIXct value is outside jiff's `Timestamp` range.
+fn timestamp_out_of_range(e: impl std::fmt::Display) -> String {
+    format!("jiff Timestamp out of range: {e}")
 }
 
 impl IntoR for Vec<Zoned> {
@@ -394,19 +402,22 @@ impl TryFromSexp for Vec<Option<Zoned>> {
 
         let src: &[f64] = unsafe { sexp.as_slice() };
         let mut result = Vec::with_capacity(src.len());
+        let mut errors = crate::from_r::BatchedErrors::default();
         for (i, &secs) in src.iter().enumerate() {
             if secs.is_nan() {
                 result.push(None);
-            } else {
-                let ts = posix_secs_to_timestamp(secs).map_err(|e| {
-                    SexpError::InvalidValue(format!(
-                        "jiff Timestamp out of range at index {i}: {e}"
-                    ))
-                })?;
-                result.push(Some(ts.to_zoned(tz.clone())));
+                continue;
+            }
+            match posix_secs_to_timestamp(secs) {
+                Ok(ts) => result.push(Some(ts.to_zoned(tz.clone()))),
+                Err(e) => errors.push(i, || timestamp_out_of_range(e)),
             }
         }
-        Ok(result)
+        if errors.is_empty() {
+            Ok(result)
+        } else {
+            Err(errors.into_element_error())
+        }
     }
 }
 
@@ -1018,18 +1029,19 @@ impl crate::from_r::TryFromSexp for JiffZonedVec {
         let canonical = tz.iana_name().unwrap_or("UTC").to_string();
         let src: &[f64] = unsafe { sexp.as_slice() };
         let mut result = Vec::with_capacity(src.len());
+        let mut errors = crate::from_r::BatchedErrors::default();
         for (i, &secs) in src.iter().enumerate() {
             if secs.is_nan() {
-                return Err(crate::from_r::SexpError::InvalidValue(format!(
-                    "NA at index {i} not allowed for JiffZonedVec"
-                )));
+                errors.push(i, || "NA is not allowed".to_string());
+                continue;
             }
-            let ts = posix_secs_to_timestamp(secs).map_err(|e| {
-                crate::from_r::SexpError::InvalidValue(format!(
-                    "jiff Timestamp out of range at index {i}: {e}"
-                ))
-            })?;
-            result.push(ts.to_zoned(tz.clone()));
+            match posix_secs_to_timestamp(secs) {
+                Ok(ts) => result.push(ts.to_zoned(tz.clone())),
+                Err(e) => errors.push(i, || timestamp_out_of_range(e)),
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
         Ok(Self {
             data: Arc::new(result),

@@ -594,8 +594,7 @@ Both places raise the same error condition (#1591):
   ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
   A conversion says what the argument must be and why it is not:
   `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`
-  for a type without an R-facing expectation (custom types, `Either`, the
-  `AsFromStr` family);
+  for an opaque custom type without an R-facing expectation;
 - on a conversion only, `e$rust_type`, the Rust type as written in the
   signature, for the package author.
 
@@ -663,9 +662,15 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` |
 | `AsNumericVec` | `numeric` |
 | `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
+| `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |
+| `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), when both have one |
+| `(A, B, ...)` | `a list of length N` |
+| `DataFrame` | `a data frame` |
+| a `match_arg` enum | `one of "fast", "slow"` (`NULL or one of ...` for `Option<T>`), from the choice error at run time, with or without `#[miniextendr(match_arg)]` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |
-| anything else | none: `invalid '<p>' argument: <reason>` |
+| `i64`, `u64`, `isize`, `usize` under `strict` | `a single whole number` / `a single non-negative whole number` |
+| an opaque custom `TryFromSexp` type | none: `invalid '<p>' argument: <reason>` |
 
 | Built-in error | `<reason>` |
 |----------------|------------|
@@ -673,6 +678,15 @@ The `<expected>` part comes from the same type table as the R-side checks
 | length | `got length 2` (`expected length 1, got length 2` without an `<expected>`) |
 | NA | `NA is not allowed` |
 | invalid value | the value's own text, e.g. `non-numeric value(s): "BLQ" (element 2)` |
+| `Either` (both branches failed) | the reason of the branch whose type matched (`got length 2`), else one for the value's type (`got numeric`) |
+| `match_arg` enum | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
+
+A vector conversion checks every element and reports them together, each
+reason once with the 1-based positions that failed with it, as R numbers them:
+`'xs' must be integer or whole-number numeric: NA is not allowed (element 1);
+value out of range (elements 2, 4)`. The first 10 failing elements are
+listed, the rest counted (`; and 5 more`). The Rust type is in
+`e$rust_type`, not in the message.
 
 The examples below are for functions without the R-side checks
 (`no_preconditions` / `fast-default`), where these values reach Rust.
@@ -696,14 +710,14 @@ e$param      # "x"
 e$rust_type  # "i32"
 ```
 
-A type without an R-facing expectation reads `invalid '<p>' argument`, with
-the error's own message as the reason; the full Rust type is in
-`e$rust_type`:
+An `Either<L, R>` names both sides, and its reason is the one of the branch
+that got furthest; the full Rust type is in `e$rust_type`:
 
 ```r
 either_int_or_str(3.5)   # value: Either<i32, String>
-# Error: invalid 'value' argument: failed to convert to Either:
-#   Left failed (type mismatch: expected INTSXP, got REALSXP), Right failed (type mismatch: expected STRSXP, got REALSXP)
+# Error: 'value' must be a single integer or a single string: got numeric
+either_int_or_str(1:2)
+# Error: 'value' must be a single integer or a single string: got length 2
 ```
 
 A `match_arg` / `choices` parameter on `Either<T, R>` is decoded differently
@@ -713,8 +727,12 @@ anything else is converted to `R` alone, so the reason is that arm's own:
 
 ```r
 choices_either_level(TRUE)   # level: Either<String, f64>, choices("low", "mid", "high")
-# Error: invalid 'level' argument: expected numeric, got logical
+# Error: 'level' must be a single string or a single double: got logical
 ```
+
+Only an opaque custom type reads `invalid '<p>' argument`, with the error's
+own message (its `Display` text, or its `RConditionError` message) as the
+reason.
 
 ### NA Handling
 
@@ -824,17 +842,25 @@ Rules:
   `kind`; a reserved name raises a plain `rust_error` explaining the clash,
   as for `Result` errors.
 - **Fallback.** An error type without the impl keeps the plain class vector.
-  The built-in `SexpError` family is reworded as in the table above; any
-  other type (e.g. `MatchArgError`) is rendered with `Display`. The error type
+  The built-in `SexpError` family and `MatchArgError` are reworded as in the
+  table above; any other type is rendered with `Display`. The error type
   must implement `RConditionError` or `Display`.
 - **Worker and `call = caller`.** The conversion runs on the main thread in
   both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
   follows the function's call attribution.
-- **Sidecar setters** (`Type_set_<field>`) report
-  `failed to convert value for sidecar field '<field>' on `<Type>`: <reason>`
-  with `e$param == "value"`, the setter's formal, and no `e$rust_type`.
-- **Strict mode** (`#[miniextendr(strict)]` on lossy integer types) rejects
-  values with a panic (`kind = "panic"`), not a conversion condition.
+- **Sidecar setters** (`Type_set_<field>`, and the R6 / S7 bindings over them)
+  raise the same condition on their `value` formal, naming the field:
+  `'<field>' must be <expected>: <reason>` (`'count' must be a number: got "abc"`,
+  `'tags' must be character: got integer`), with `e$param == "value"` and the
+  field's Rust type as `e$rust_type`. The field is in the message because an
+  R6 active binding's or S7 property's condition call is the binding's own
+  anonymous function, which does not name it.
+- **Strict mode** (`#[miniextendr(strict)]` on lossy integer types) rejects a
+  logical, raw, fractional, out-of-range or `NA` input with the same
+  condition (`'n' must be a single whole number: got logical`), every failing
+  element of a vector at once. A strict *return value* that does not fit an R
+  integer is still a panic (`kind = "panic"`): that is the function's fault,
+  not the argument's.
 
 ### A crate-level class for every conversion error
 

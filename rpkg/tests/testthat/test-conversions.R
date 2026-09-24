@@ -808,11 +808,19 @@ test_that("1-tuple argument round-trips a single-element list (#976)", {
 })
 
 test_that("1-tuple argument rejects wrong length", {
-  expect_error(conv_tuple1_roundtrip(list(1L, 2L)), "expected length 1, got length 2", fixed = TRUE)
+  expect_error(
+    conv_tuple1_roundtrip(list(1L, 2L)),
+    "'solo' must be a list of length 1: got length 2",
+    fixed = TRUE
+  )
 })
 
 test_that("1-tuple argument rejects non-list input", {
-  expect_error(conv_tuple1_roundtrip(7L), "expected list, got integer", fixed = TRUE)
+  expect_error(
+    conv_tuple1_roundtrip(7L),
+    "'solo' must be a list of length 1: got integer",
+    fixed = TRUE
+  )
 })
 
 test_that("tuple argument round-trips an unnamed list (#976)", {
@@ -835,13 +843,17 @@ test_that("3-tuple argument converts mixed element types", {
 test_that("tuple argument rejects wrong length", {
   expect_error(
     conv_tuple2_roundtrip(list(1L, "a", "extra")),
-    "invalid 'pair' argument: expected length 2, got length 3",
+    "'pair' must be a list of length 2: got length 3",
     fixed = TRUE
   )
 })
 
 test_that("tuple argument rejects non-list input", {
-  expect_error(conv_tuple2_roundtrip(42L), "expected list, got integer", fixed = TRUE)
+  expect_error(
+    conv_tuple2_roundtrip(42L),
+    "'pair' must be a list of length 2: got integer",
+    fixed = TRUE
+  )
 })
 
 test_that("tuple argument batches all element errors", {

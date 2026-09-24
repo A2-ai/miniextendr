@@ -134,7 +134,7 @@ impl_option_try_from_sexp!(AsNumericVec);
 struct NotNumeric;
 
 /// The rejected-element accumulator: 0-based index and the offending text.
-type Rejected = BatchedErrors<(usize, String)>;
+type Rejected = BatchedErrors;
 
 /// Refuse every SEXPTYPE the markers do not read. `REALSXP` is named as the
 /// expected type because that is the storage the value ends up in.
@@ -182,7 +182,7 @@ fn read_numeric(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
             let mut rejected = Rejected::default();
             let values = map_strsxp_with(sexp, |charsxp, i| {
                 Ok(parse_charsxp(charsxp).unwrap_or_else(|NotNumeric| {
-                    rejected.push(|| (i, unsafe { charsxp_to_str(charsxp) }.to_owned()));
+                    rejected.push(i, || unsafe { charsxp_to_str(charsxp) }.to_owned());
                     None
                 }))
             })?;
@@ -226,7 +226,7 @@ fn read_factor_labels(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
         match parsed[k] {
             Ok(v) => values.push(v),
             Err(NotNumeric) => {
-                rejected.push(|| (i, level_label(levels, k)));
+                rejected.push(i, || level_label(levels, k));
                 values.push(None);
             }
         }

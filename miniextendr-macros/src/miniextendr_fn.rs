@@ -672,14 +672,17 @@ fn set_check_message(
     Ok(())
 }
 
-/// The parameter an entry of a method-level `no_na(...)` / `inherits(...)`
-/// names.
-fn method_check_param(entry: &syn::meta::ParseNestedMeta) -> syn::Result<String> {
-    Ok(entry
-        .path
-        .get_ident()
-        .ok_or_else(|| entry.error("expected parameter name"))?
-        .to_string())
+/// The parameter an entry of a method-level `match_arg(...)` / `choices(...)`
+/// / `no_na(...)` / `inherits(...)` names, spelled as the signature's
+/// [`crate::naming::ident_name`] (`r#type` names `type`), so
+/// [`finalize_method_param_attrs`] finds it.
+pub(crate) fn method_check_param(entry: &syn::meta::ParseNestedMeta) -> syn::Result<String> {
+    Ok(crate::naming::ident_name(
+        entry
+            .path
+            .get_ident()
+            .ok_or_else(|| entry.error("expected parameter name"))?,
+    ))
 }
 
 /// Method-level `no_na(p, q(message = "..."))` on an impl or trait method,
@@ -1022,15 +1025,47 @@ pub(crate) fn explicit_checks_by_r_name(
         .collect()
 }
 
-/// Classify the choice parameters of an impl or trait method (see
-/// [`classify_choice_param`]) now that the signature is known. The
+/// Check an impl or trait method's per-parameter attributes against its
+/// signature, now that it is known. Every parameter a method-level
+/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `no_na(...)` names
+/// must exist (a typo would otherwise drop the check without a word); then
+/// the choice parameters are classified (see [`classify_choice_param`]). The
 /// standalone-fn path does the same while parsing; this is the twin for
 /// method-level attributes, whose parameter names arrive before the types.
+/// The inherent-impl and trait-impl parsers both call it, so they reject an
+/// unknown name the same way. `span` is where that error points: the first
+/// such attribute, else the method name.
 pub(crate) fn finalize_method_param_attrs(
     per_param: &mut std::collections::HashMap<String, ParamAttrs>,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     defaults: &std::collections::HashMap<String, String>,
+    span: proc_macro2::Span,
 ) -> syn::Result<()> {
+    let sig_names: std::collections::HashSet<String> = inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(pt) => match pt.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => Some(crate::naming::ident_name(&pat_ident.ident)),
+                _ => None,
+            },
+            syn::FnArg::Receiver(_) => None,
+        })
+        .collect();
+    let mut unknown: Vec<&String> = per_param
+        .iter()
+        .filter(|(name, a)| {
+            (a.match_arg || a.choices.is_some() || !a.checks.is_empty())
+                && !sig_names.contains(name.as_str())
+        })
+        .map(|(name, _)| name)
+        .collect();
+    unknown.sort();
+    if let Some(first) = unknown.first() {
+        return Err(syn::Error::new(
+            span,
+            format!("match_arg/choices/inherits/no_na references non-existent parameter `{first}`"),
+        ));
+    }
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;

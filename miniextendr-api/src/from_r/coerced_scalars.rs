@@ -30,6 +30,17 @@ use crate::coerce::TryCoerce;
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
+/// The type error of a coerced numeric scalar given something that is not
+/// integer, double, logical or raw: worded in R terms by the argument error
+/// (`got character`), like the vector shells' (`from_numeric_vec_with`).
+fn numeric_type_error(actual: SEXPTYPE) -> SexpError {
+    crate::from_r::SexpTypeError {
+        expected: SEXPTYPE::REALSXP,
+        actual,
+    }
+    .into()
+}
+
 /// NA-rejecting error for a logical (`LGLSXP`) scalar that holds `NA`.
 ///
 /// The bare integer/float scalar paths must reject `NA_logical_` rather than
@@ -85,10 +96,7 @@ where
             }
             coerce_value(value.to_i32())
         }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
+        _ => Err(numeric_type_error(actual)),
     }
 }
 
@@ -123,10 +131,7 @@ where
             }
             coerce_value(value.to_i32())
         }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
+        _ => Err(numeric_type_error(actual)),
     }
 }
 
@@ -191,10 +196,7 @@ where
                 coerce_value(value.to_i32()).map(Some)
             }
         }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
+        _ => Err(numeric_type_error(actual)),
     }
 }
 
@@ -259,10 +261,7 @@ where
                 coerce_value(value.to_i32()).map(Some)
             }
         }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
+        _ => Err(numeric_type_error(actual)),
     }
 }
 

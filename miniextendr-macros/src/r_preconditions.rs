@@ -224,9 +224,7 @@ impl ExplicitChecks {
         let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
         let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
         if self.no_na {
-            let verb = if crate::miniextendr_fn::is_vector_like_type(value_ty)
-                || r_check_for_type(value_ty).is_some_and(|check| check.is_vector())
-            {
+            let verb = if is_vector_valued(value_ty) {
                 "contain"
             } else {
                 "be"
@@ -281,6 +279,27 @@ impl ExplicitChecks {
         }
         out
     }
+}
+
+/// Whether an argument of Rust type `ty` holds several values, so a `no_na`
+/// failure reads `must not contain NA` rather than `must not be NA`.
+///
+/// The type table decides when it knows the type ([`RTypeCheck::is_vector`]):
+/// `Vec<T>` and slices, the vector markers (`AsNumericVec`, `AsCharacterVec`,
+/// any marker whose table entry is a vector check), maps and lists. For a type the
+/// table does not know, the shape decides: `Vec<T>`, `Box<[T]>`, slices and
+/// arrays, and a type named `...Vec` (the vector half of a marker family such
+/// as `AsFromStrVec` / `AsDisplayVec`, or a vector type like `BitVec`).
+fn is_vector_valued(ty: &syn::Type) -> bool {
+    if let Some(check) = r_check_for_type(ty) {
+        return check.is_vector();
+    }
+    crate::miniextendr_fn::is_vector_like_type(ty)
+        || matches!(
+            ty,
+            syn::Type::Path(tp)
+                if tp.path.segments.last().is_some_and(|s| s.ident.to_string().ends_with("Vec"))
+        )
 }
 
 /// Record `from` as the message of `check`, which may have only one.
@@ -554,6 +573,28 @@ impl RTypeCheck {
         }
     }
 
+    /// Whether the check admits several values: the vector checks and
+    /// [`RTypeCheck::List`], through [`RTypeCheck::Nullable`]. Matched
+    /// exhaustively, so a new check has to say which it is.
+    fn is_vector(&self) -> bool {
+        match self {
+            RTypeCheck::VectorLogicalOrInteger
+            | RTypeCheck::VectorNumeric
+            | RTypeCheck::VectorIntegerStrict
+            | RTypeCheck::VectorIntegerWide
+            | RTypeCheck::Vector(_)
+            | RTypeCheck::VectorNumericOrText
+            | RTypeCheck::List => true,
+            RTypeCheck::ScalarNumeric
+            | RTypeCheck::ScalarLogicalOrInteger
+            | RTypeCheck::ScalarIntegerWide
+            | RTypeCheck::ScalarNonNeg
+            | RTypeCheck::Scalar(_)
+            | RTypeCheck::ScalarNumericOrText => false,
+            RTypeCheck::Nullable(inner) => inner.is_vector(),
+        }
+    }
+
     /// What an argument of this type must be, in R terms: the `<expected>` of
     /// a Rust conversion failure's message, `'<p>' must be <expected>: <reason>`
     /// (#1591).
@@ -595,23 +636,6 @@ impl RTypeCheck {
             RTypeCheck::List => "a list".into(),
         }
     }
-
-    /// Whether the check admits an atomic vector of any length, so a `no_na`
-    /// failure reads `must not contain NA` rather than `must not be NA`. This
-    /// covers the vector markers (`AsNumericVec`, `AsCharacterVec`) that
-    /// [`crate::miniextendr_fn::is_vector_like_type`] does not see as
-    /// containers.
-    fn is_vector(&self) -> bool {
-        matches!(
-            self,
-            RTypeCheck::VectorLogicalOrInteger
-                | RTypeCheck::VectorNumeric
-                | RTypeCheck::VectorIntegerStrict
-                | RTypeCheck::VectorIntegerWide
-                | RTypeCheck::Vector(_)
-                | RTypeCheck::VectorNumericOrText
-        )
-    }
 }
 
 /// The R-facing expectation for a parameter of Rust type `ty`, for the
@@ -620,19 +644,81 @@ impl RTypeCheck {
 ///
 /// Derived from the same type classification as the R-side checks, including
 /// the `coerce` widening (`coerced`) and the `Missing<T>` / `Option<T>`
-/// wrappers, so the two paths describe an argument the same way. `None` for
-/// a type without an R-side check (a custom `TryFromSexp` type, `Either`,
-/// the `AsFromStr` family, ...): the conversion then reports
-/// `invalid '<p>' argument: <reason>`.
+/// wrappers, so the two paths describe an argument the same way. A few types
+/// without an R-side check still have an R-facing expectation
+/// ([`unchecked_expectation`]): `Either<L, R>`, the `AsFromStr` markers and
+/// tuples. `None` only for an opaque type (a custom `TryFromSexp` type): the
+/// conversion then reports `invalid '<p>' argument: <reason>`.
 pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<String> {
     let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-    let check = r_check_for_type(ty)?;
+    let Some(check) = r_check_for_type(ty) else {
+        return unchecked_expectation(ty);
+    };
     let check = if coerced {
         coerce_widened(check, ty)
     } else {
         check
     };
     Some(check.expectation())
+}
+
+/// The R-facing expectation of a type that has no R-side check, so its
+/// conversion alone says what it accepts (#1594):
+///
+/// | type | `<expected>` |
+/// |------|--------------|
+/// | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (the input `T` is parsed from) |
+/// | `Either<L, R>` | `<L> or <R>`, when both sides have one (`a single integer or a single string`) |
+/// | `(A, B, ...)` | `a list of length N` |
+/// | `DataFrame` | `a data frame` |
+/// | `Option<T>` of the above | `NULL or <T>` |
+fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Tuple(tuple) if !tuple.elems.is_empty() => {
+            Some(format!("a list of length {}", tuple.elems.len()))
+        }
+        syn::Type::Path(type_path) => {
+            let segment = type_path.path.segments.last()?;
+            match segment.ident.to_string().as_str() {
+                "AsFromStr" => Some("a single string".into()),
+                "AsFromStrVec" => Some("character".into()),
+                "DataFrame" => Some("a data frame".into()),
+                "Either" => {
+                    let left = crate::type_inspect::first_type_argument(segment)?;
+                    let right = crate::type_inspect::second_type_argument(segment)?;
+                    Some(format!(
+                        "{} or {}",
+                        conversion_expectation(left, false)?,
+                        conversion_expectation(right, false)?
+                    ))
+                }
+                "Option" => {
+                    let inner = extract_single_generic_arg(segment)?;
+                    Some(format!("NULL or {}", unchecked_expectation(inner)?))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The R-facing expectation of a `strict` lossy-integer parameter (`i64`,
+/// `u64`, `isize`, `usize` and their `Vec` / `Vec<Option<_>>` forms), whose
+/// Rust conversion accepts only integer and whole-number double input
+/// (#1594): `a single whole number` / `a single non-negative whole number`
+/// for a scalar, the vector's usual `integer or whole-number numeric`
+/// otherwise.
+pub(crate) fn strict_conversion_expectation(ty: &syn::Type) -> Option<String> {
+    let scalar = match ty {
+        syn::Type::Path(tp) => tp.path.segments.last().map(|s| s.ident.to_string()),
+        _ => None,
+    };
+    match scalar.as_deref() {
+        Some("i64" | "isize") => Some("a single whole number".into()),
+        Some("u64" | "usize") => Some("a single non-negative whole number".into()),
+        _ => conversion_expectation(ty, false),
+    }
 }
 
 /// Keep the R gate in sync with the conversion actually selected for this type.
@@ -1316,14 +1402,40 @@ mod tests {
             exp("Option<AsCharacter>", false),
             some("NULL or coercible to a single string")
         );
+        // Types without an R-side check that still say what they accept.
+        assert_eq!(exp("AsFromStr<IpAddr>", false), some("a single string"));
+        assert_eq!(exp("AsFromStrVec<i32>", false), some("character"));
+        assert_eq!(
+            exp("Option<AsFromStr<IpAddr>>", false),
+            some("NULL or a single string")
+        );
+        assert_eq!(
+            exp("Either<i32, String>", false),
+            some("a single integer or a single string")
+        );
+        assert_eq!(
+            exp("Either<f64, Vec<i32>>", false),
+            some("a single double or integer")
+        );
+        assert_eq!(
+            exp("Either<bool, Either<i32, String>>", false),
+            some("TRUE or FALSE or a single integer or a single string")
+        );
+        assert_eq!(
+            exp("Option<Either<i32, String>>", false),
+            some("NULL or a single integer or a single string")
+        );
+        assert_eq!(exp("(i32, String)", false), some("a list of length 2"));
+        assert_eq!(exp("DataFrame", false), some("a data frame"));
         // Choice parameters, including the `Missing` / `Option` / `Either`
-        // layers of #1551, have no expectation: their conversion errors read
-        // `invalid '<p>' argument: <reason>`.
+        // layers of #1551, have no static expectation: their conversion error
+        // supplies it at run time (`one of "a", "b"`). An opaque side leaves
+        // the whole `Either` without one.
         for unknown in [
             "Hyperparams",
-            "Either<i32, String>",
-            "AsFromStrVec<i32>",
+            "Either<i32, Hyperparams>",
             "SEXP",
+            "()",
             "Mode",
             "Option<Mode>",
             "Missing<Option<Mode>>",
@@ -1334,6 +1446,21 @@ mod tests {
         ] {
             assert_eq!(exp(unknown, false), None, "{unknown}");
         }
+    }
+
+    #[test]
+    fn strict_expectation_names_a_whole_number() {
+        let exp = |ty: &str| strict_conversion_expectation(&parse_type(ty));
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(exp("i64"), some("a single whole number"));
+        assert_eq!(exp("isize"), some("a single whole number"));
+        assert_eq!(exp("u64"), some("a single non-negative whole number"));
+        assert_eq!(exp("usize"), some("a single non-negative whole number"));
+        assert_eq!(exp("Vec<i64>"), some("integer or whole-number numeric"));
+        assert_eq!(
+            exp("Vec<Option<u64>>"),
+            some("integer or whole-number numeric")
+        );
     }
 
     #[test]
@@ -1712,6 +1839,39 @@ mod tests {
         }
     }
 
+    /// Beyond the type table's vector checks (above): a `Missing<_>` marker,
+    /// maps, arrays, and a marker the table does not know, by its `...Vec`
+    /// name (`AsFromStrVec<T>`, `AsDisplayVec<T>`), hold several values too;
+    /// their scalar halves and opaque types do not.
+    #[test]
+    fn no_na_wording_knows_the_vector_markers() {
+        let verb = |sig: &str| {
+            let out = explicit_output(sig, &[("x", no_na())], false);
+            let guards = out.guards(None);
+            let guard = guards.last().expect("the no_na guard");
+            if guard.contains("must not contain NA") {
+                "contain"
+            } else {
+                assert!(guard.contains("must not be NA"), "{guard}");
+                "be"
+            }
+        };
+        for (sig, expected) in [
+            ("fn f(x: Option<AsNumericVec>)", "contain"),
+            ("fn f(x: Missing<AsNumericVec>)", "contain"),
+            ("fn f(x: AsFromStrVec<std::net::IpAddr>)", "contain"),
+            ("fn f(x: AsDisplayVec<u8>)", "contain"),
+            ("fn f(x: HashMap<String, f64>)", "contain"),
+            ("fn f(x: [f64; 3])", "contain"),
+            ("fn f(x: Option<AsNumeric>)", "be"),
+            ("fn f(x: AsFromStr<std::net::IpAddr>)", "be"),
+            ("fn f(x: String)", "be"),
+            ("fn f(x: MyCustomType)", "be"),
+        ] {
+            assert_eq!(verb(sig), expected, "{sig}");
+        }
+    }
+
     #[test]
     fn explicit_checks_pass_null_and_missing() {
         let optional = explicit_output(
@@ -1745,11 +1905,11 @@ mod tests {
         };
         let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
-        // NA first.
+        // NA first. A list holds several values, so its NA check says `contain`.
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
                 "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
             ]
         );

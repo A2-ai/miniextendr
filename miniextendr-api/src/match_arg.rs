@@ -76,14 +76,31 @@ pub trait MatchArg: Sized + Copy + 'static {
 }
 
 /// Error type for `MatchArg` conversion failures.
+///
+/// Every variant carries the type's choices, so an argument error can say
+/// what the argument must be (`'mode' must be one of "fast", "slow"`, #1594)
+/// whichever way the value was wrong.
 #[derive(Debug, Clone)]
 pub enum MatchArgError {
     /// The SEXP was not a character or factor type.
-    InvalidType(SEXPTYPE),
+    InvalidType {
+        /// The SEXPTYPE that was given.
+        actual: SEXPTYPE,
+        /// The valid choices.
+        choices: &'static [&'static str],
+    },
     /// The input had length != 1.
-    InvalidLength(usize),
+    InvalidLength {
+        /// The length that was given.
+        actual: usize,
+        /// The valid choices.
+        choices: &'static [&'static str],
+    },
     /// The input was NA.
-    IsNa,
+    IsNa {
+        /// The valid choices.
+        choices: &'static [&'static str],
+    },
     /// No choice matched the input.
     NoMatch {
         /// The input string that didn't match.
@@ -93,27 +110,71 @@ pub enum MatchArgError {
     },
 }
 
+impl MatchArgError {
+    /// The choices the value should have been one of.
+    pub fn choices(&self) -> &'static [&'static str] {
+        match self {
+            MatchArgError::InvalidType { choices, .. }
+            | MatchArgError::InvalidLength { choices, .. }
+            | MatchArgError::IsNa { choices }
+            | MatchArgError::NoMatch { choices, .. } => choices,
+        }
+    }
+
+    /// What the argument must be, in R terms: `one of "fast", "slow"`. The
+    /// argument error puts it in its message (`'mode' must be one of "fast",
+    /// "slow": got "zzz"`), whether or not the macro knew the parameter's type
+    /// is a `match_arg` enum (#1594).
+    pub fn expectation(&self) -> String {
+        one_of(self.choices())
+    }
+
+    /// The reason of this error in R terms, after `'<p>' must be one of "a",
+    /// "b": ` in an argument error (#1591): `got "zzz"`, `got numeric`,
+    /// `got length 2`, `NA is not allowed`. With `expected_known = false`
+    /// (nothing before the reason names the choices) it is the `Display`
+    /// text, which says what was expected.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        if !expected_known {
+            return self.to_string();
+        }
+        match self {
+            MatchArgError::InvalidType { actual, .. } => {
+                format!("got {}", crate::typed_list::sexptype_name(*actual))
+            }
+            MatchArgError::InvalidLength { actual, .. } => format!("got length {actual}"),
+            MatchArgError::IsNa { .. } => "NA is not allowed".to_string(),
+            MatchArgError::NoMatch { input, .. } => format!("got {input:?}"),
+        }
+    }
+}
+
+/// `one of "fast", "slow"`: what a `match_arg` / `choices` argument must be,
+/// in the words of an argument error (`'mode' must be one of "fast", "slow":
+/// got "zzz"`, #1594).
+pub fn one_of(choices: &[&str]) -> String {
+    let quoted: Vec<String> = choices.iter().map(|c| format!("{c:?}")).collect();
+    format!("one of {}", quoted.join(", "))
+}
+
+/// The text is complete on its own, for a conversion outside an argument:
+/// `expected one of "fast", "slow", got "zzz"`, `expected a string or factor,
+/// got numeric`.
 impl std::fmt::Display for MatchArgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let expected = self.expectation();
         match self {
-            MatchArgError::InvalidType(ty) => {
-                write!(f, "match.arg: expected character or factor, got {:?}", ty)
+            MatchArgError::InvalidType { actual, .. } => write!(
+                f,
+                "expected {expected} (a string or factor), got {}",
+                crate::typed_list::sexptype_name(*actual)
+            ),
+            MatchArgError::InvalidLength { actual, .. } => {
+                write!(f, "expected {expected}, got length {actual}")
             }
-            MatchArgError::InvalidLength(len) => {
-                write!(f, "match.arg: expected length 1, got {}", len)
-            }
-            MatchArgError::IsNa => write!(f, "match.arg: input is NA"),
-            MatchArgError::NoMatch { input, choices } => {
-                write!(
-                    f,
-                    "'arg' should be one of {}, got {:?}",
-                    choices
-                        .iter()
-                        .map(|c| format!("{:?}", c))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    input,
-                )
+            MatchArgError::IsNa { .. } => write!(f, "expected {expected}, got NA"),
+            MatchArgError::NoMatch { input, .. } => {
+                write!(f, "expected {expected}, got {input:?}")
             }
         }
     }
@@ -121,9 +182,11 @@ impl std::fmt::Display for MatchArgError {
 
 impl std::error::Error for MatchArgError {}
 
+/// Kept whole, so a `TryFromSexp` whose error is `SexpError` (the one
+/// `#[derive(MatchArg)]` emits) still reports the choices.
 impl From<MatchArgError> for crate::from_r::SexpError {
     fn from(e: MatchArgError) -> Self {
-        crate::from_r::SexpError::InvalidValue(e.to_string())
+        crate::from_r::SexpError::MatchArg(e)
     }
 }
 
@@ -177,10 +240,17 @@ pub fn choices_sexp<T: MatchArg>() -> SEXP {
 /// Only `Type` and `Length` are produced by the `&str`/`Option<&str>`/
 /// `Vec<Option<&str>>` conversions we delegate to — other variants are
 /// unreachable in this context.
-fn sexp_err_to_match_arg_err(e: SexpError) -> MatchArgError {
+fn sexp_err_to_match_arg_err<T: MatchArg>(e: SexpError) -> MatchArgError {
+    let choices = <T as MatchArg>::CHOICES;
     match e {
-        SexpError::Type(t) => MatchArgError::InvalidType(t.actual),
-        SexpError::Length(l) => MatchArgError::InvalidLength(l.actual),
+        SexpError::Type(t) => MatchArgError::InvalidType {
+            actual: t.actual,
+            choices,
+        },
+        SexpError::Length(l) => MatchArgError::InvalidLength {
+            actual: l.actual,
+            choices,
+        },
         other => unreachable!("unexpected SexpError from string conversion: {other}"),
     }
 }
@@ -189,12 +259,17 @@ fn sexp_err_to_match_arg_err(e: SexpError) -> MatchArgError {
 fn factor_elt_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
     let len = sexp.len();
     if len != 1 {
-        return Err(MatchArgError::InvalidLength(len));
+        return Err(MatchArgError::InvalidLength {
+            actual: len,
+            choices: <T as MatchArg>::CHOICES,
+        });
     }
     let idx = sexp.integer_elt(0);
     if idx == i32::MIN {
         // NA_integer_
-        return Err(MatchArgError::IsNa);
+        return Err(MatchArgError::IsNa {
+            choices: <T as MatchArg>::CHOICES,
+        });
     }
     let levels = sexp.get_levels();
     // R factor indices are 1-based.
@@ -230,8 +305,10 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
     // STRSXP length-1 path — delegate type/length checks to Option<&str>.
     // NIL was handled above, so `None` here means NA_character_.
     let input = <Option<&'static str> as TryFromSexp>::try_from_sexp(sexp)
-        .map_err(sexp_err_to_match_arg_err)?
-        .ok_or(MatchArgError::IsNa)?;
+        .map_err(sexp_err_to_match_arg_err::<T>)?
+        .ok_or(MatchArgError::IsNa {
+            choices: <T as MatchArg>::CHOICES,
+        })?;
 
     match_choice::<T>(input)
 }
@@ -420,9 +497,14 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
     // STRSXP path — delegate type check + per-element NA handling
     // to Vec<Option<&str>>. `None` means NA_character_ (IsNa error).
     <Vec<Option<&'static str>> as TryFromSexp>::try_from_sexp(sexp)
-        .map_err(sexp_err_to_match_arg_err)?
+        .map_err(sexp_err_to_match_arg_err::<T>)?
         .into_iter()
-        .map(|opt| opt.ok_or(MatchArgError::IsNa).and_then(match_choice::<T>))
+        .map(|opt| {
+            opt.ok_or(MatchArgError::IsNa {
+                choices: <T as MatchArg>::CHOICES,
+            })
+            .and_then(match_choice::<T>)
+        })
         .collect()
 }
 

@@ -377,19 +377,19 @@ impl RustConversionBuilder {
             _ => {
                 let param_name = crate::naming::ident_name(ident);
 
-                // Strict mode: use checked input helpers for lossy types
+                // Strict mode: use checked input helpers for lossy types. A
+                // rejected input is the same argument error as any other
+                // conversion failure (#1594), worded against what strict
+                // accepts (`a single whole number`).
                 if self.strict
                     && let Some(strict_expr) =
                         crate::return_type_analysis::strict_input_conversion_for_type(
-                            ty,
-                            sexp_ident,
-                            &param_name,
+                            ty, sexp_ident,
                         )
                 {
                     let span = ty.span();
-                    let stmt = quote_spanned! {span=>
-                        let #ident: #ty = #strict_expr;
-                    };
+                    let strict_ctx = ArgContext::strict(&r_name, ty);
+                    let stmt = self.conversion_stmt(strict_expr, &strict_ctx, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 
@@ -728,22 +728,46 @@ struct ArgContext {
     /// The Rust type as written in the signature, `e$rust_type`: kept for the
     /// package author, out of the user-facing message.
     rust_type: String,
+    /// Whether the value may be `NULL` (an `Option<_>`, under any `Missing`):
+    /// an expectation the error supplies at run time then reads
+    /// `NULL or <expected>`. Only used when `expected_known` is `false`.
+    nullable: bool,
 }
 
 impl ArgContext {
     /// The context of parameter `r_name` of type `ty`; `coerced` when the
     /// `coerce` knob applies to it (the expectation widens with the gate).
     fn new(r_name: &str, ty: &syn::Type, coerced: bool) -> Self {
-        let expected = crate::r_preconditions::conversion_expectation(ty, coerced);
+        Self::with_expectation(
+            r_name,
+            ty,
+            crate::r_preconditions::conversion_expectation(ty, coerced),
+        )
+    }
+
+    /// The context of a `strict` lossy-integer parameter (#1594): the
+    /// expectation names what strict accepts, a whole number, since a
+    /// logical, raw or fractional input is refused.
+    fn strict(r_name: &str, ty: &syn::Type) -> Self {
+        Self::with_expectation(
+            r_name,
+            ty,
+            crate::r_preconditions::strict_conversion_expectation(ty),
+        )
+    }
+
+    fn with_expectation(r_name: &str, ty: &syn::Type, expected: Option<String>) -> Self {
         let prefix = match &expected {
             Some(expected) => format!("'{r_name}' must be {expected}"),
             None => format!("invalid '{r_name}' argument"),
         };
+        let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
         Self {
             prefix,
             expected_known: expected.is_some(),
             r_name: r_name.to_string(),
             rust_type: crate::type_inspect::type_display(ty),
+            nullable: crate::type_inspect::is_option_type(value_ty),
         }
     }
 }
@@ -765,18 +789,94 @@ fn conversion_err_arm(
         expected_known,
         r_name,
         rust_type,
+        nullable,
     } = ctx;
+    let value = conversion_value_tokens(
+        &ConversionSubject {
+            static_prefix: expected_known.then_some(prefix.as_str()),
+            quoted: r_name,
+            param: r_name,
+            nullable: *nullable,
+            rust_type,
+        },
+        crate_class,
+        &quote! { Some(__miniextendr_call) },
+        span,
+    );
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
-        Err(e) => return unsafe { ::miniextendr_api::error_value::conversion_condition_value(
-            #prefix,
-            #r_name,
-            ::core::option::Option::Some(#rust_type),
-            &[#(#crate_class),*],
-            ::miniextendr_api::__mx_conversion_err_parts!(e, #expected_known),
-            Some(__miniextendr_call),
-        ) },
+        Err(e) => return unsafe { #value },
+    }
+}
+
+/// What a conversion failure is about: the value it names and how.
+pub(crate) struct ConversionSubject<'a> {
+    /// `'<p>' must be <expected>` when the macro knows the R-facing
+    /// expectation, else `None` (asked of the error at run time).
+    pub(crate) static_prefix: Option<&'a str>,
+    /// The name quoted in the message: the parameter, or a sidecar's field.
+    pub(crate) quoted: &'a str,
+    /// `e$param`: the R formal that failed.
+    pub(crate) param: &'a str,
+    /// The value may be `NULL` (`Option<_>`): a run-time expectation reads
+    /// `NULL or <expected>`.
+    pub(crate) nullable: bool,
+    /// `e$rust_type`: the Rust type as written.
+    pub(crate) rust_type: &'a str,
+}
+
+/// The `conversion_condition_value(...)` expression for the error bound as
+/// `e` on `subject`, with the crate class and `call`.
+///
+/// With a `static_prefix` (the macro knows the R-facing expectation,
+/// `'<p>' must be <expected>`) the prefix is that literal. Without one, the
+/// error may know what the value should have been (a `match_arg` choice
+/// error: `one of "fast", "slow"`, #1594), so the prefix is built on the
+/// failure path from `__mx_conversion_expectation!(e)` by
+/// `condition::conversion_prefix` (`NULL or ...` when `nullable`), falling
+/// back to `invalid '<p>' argument`. Shared by the argument conversions and
+/// the sidecar setters.
+pub(crate) fn conversion_value_tokens(
+    subject: &ConversionSubject,
+    crate_class: &[String],
+    call: &TokenStream,
+    span: proc_macro2::Span,
+) -> TokenStream {
+    let ConversionSubject {
+        static_prefix,
+        quoted,
+        param,
+        nullable,
+        rust_type,
+    } = subject;
+    let rust_type = quote! { ::core::option::Option::Some(#rust_type) };
+    match static_prefix {
+        Some(prefix) => quote_spanned! {span=>
+            ::miniextendr_api::error_value::conversion_condition_value(
+                #prefix,
+                #param,
+                #rust_type,
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                #call,
+            )
+        },
+        None => quote_spanned! {span=> {
+            let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
+            ::miniextendr_api::error_value::conversion_condition_value(
+                &::miniextendr_api::condition::conversion_prefix(
+                    #quoted,
+                    #nullable,
+                    __mx_expected.as_deref(),
+                ),
+                #param,
+                #rust_type,
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
+                #call,
+            )
+        } },
     }
 }
 

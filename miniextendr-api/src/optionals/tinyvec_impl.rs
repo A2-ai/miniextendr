@@ -292,7 +292,7 @@ use crate::coerce::{Coerced, TryCoerce};
 /// instead of bailing on the first `Err`. Uses `{e}` (Display) per element,
 /// matching every other coercion site — this one used to be the crate's last
 /// holdout on `{e:?}` (Debug).
-fn coerce_slice_to_vec<R, T>(slice: &[R], container: &str) -> Result<Vec<Coerced<T, R>>, SexpError>
+fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<Coerced<T, R>>, SexpError>
 where
     R: Copy + TryCoerce<T>,
     <R as TryCoerce<T>>::Error: std::fmt::Display,
@@ -302,13 +302,13 @@ where
     for (i, v) in slice.iter().copied().enumerate() {
         match v.try_coerce() {
             Ok(x) => result.push(Coerced::new(x)),
-            Err(e) => errors.push(|| format!("invalid value at index {i}: {e}")),
+            Err(e) => errors.push(i, || e.to_string()),
         }
     }
     if errors.is_empty() {
         Ok(result)
     } else {
-        Err(errors.into_error(container))
+        Err(errors.into_element_error())
     }
 }
 
@@ -332,7 +332,7 @@ where
             .into());
         }
         let slice: &[R] = unsafe { sexp.as_slice() };
-        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "TinyVec")?;
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
         let mut tv = TinyVec::new();
         for item in data {
             tv.push(item);
@@ -373,7 +373,7 @@ where
                 N
             )));
         }
-        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice, "ArrayVec")?;
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
         let mut av = ArrayVec::new();
         for item in data {
             av.push(item);
@@ -461,42 +461,45 @@ mod tests {
     }
 
     /// Two failing elements (i32 values that don't fit in i8) are both
-    /// reported by index in one batched error, not just the first.
+    /// reported, by 1-based position, in one batched error, not just the first.
     #[test]
     fn coerce_slice_to_vec_batches_all_failing_indices() {
         let slice = [1i32, 999, 2, 999];
-        let err = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap_err();
+        let err = coerce_slice_to_vec::<i32, i8>(&slice).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("TinyVec conversion failed"), "got: {msg}");
-        assert!(msg.contains("invalid value at index 1"), "got: {msg}");
-        assert!(msg.contains("invalid value at index 3"), "got: {msg}");
-        // index 0 and 2 (the valid elements) must not appear.
-        assert!(!msg.contains("at index 0"), "got: {msg}");
-        assert!(!msg.contains("at index 2"), "got: {msg}");
+        assert!(
+            msg.ends_with("value out of range (elements 2, 4)"),
+            "got: {msg}"
+        );
+        // The valid elements (1 and 3) are not listed, nor the container.
+        assert!(!msg.contains("elements 1"), "got: {msg}");
+        assert!(!msg.contains("TinyVec"), "got: {msg}");
     }
 
     /// The all-valid happy path succeeds (no false batching).
     #[test]
     fn coerce_slice_to_vec_happy_path_ok() {
         let slice = [1i32, 2, 3];
-        let out = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap();
+        let out = coerce_slice_to_vec::<i32, i8>(&slice).unwrap();
         assert_eq!(
             out.into_iter().map(|c| *c).collect::<Vec<_>>(),
             vec![1i8, 2, 3]
         );
     }
 
-    /// More than 10 failures are capped: the first 10 indices are listed and
+    /// More than 10 failures are capped: the first 10 positions are listed and
     /// the remainder is summarized as "and N more".
     #[test]
     fn coerce_slice_to_vec_batch_caps_at_ten_and_summarizes_rest() {
         let slice = [999i32; 15];
-        let err = coerce_slice_to_vec::<i32, i8>(&slice, "TinyVec").unwrap_err();
+        let err = coerce_slice_to_vec::<i32, i8>(&slice).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("invalid value at index 0"), "got: {msg}");
-        assert!(msg.contains("invalid value at index 9"), "got: {msg}");
-        assert!(!msg.contains("at index 10"), "got: {msg}");
-        assert!(msg.contains("and 5 more"), "got: {msg}");
+        assert!(
+            msg.ends_with(
+                "value out of range (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 5 more"
+            ),
+            "got: {msg}"
+        );
     }
 }
 // endregion

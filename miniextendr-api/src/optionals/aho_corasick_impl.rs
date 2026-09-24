@@ -77,16 +77,18 @@ impl TryFromSexp for AhoCorasick {
         }
 
         let mut patterns = Vec::with_capacity(len);
+        let mut errors = crate::from_r::BatchedErrors::default();
         for i in 0..len {
             let charsxp = sexp.string_elt(i as crate::R_xlen_t);
             if charsxp == SEXP::na_string() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed in patterns",
-                    i
-                )));
+                errors.push(i, || "NA is not allowed as a pattern".to_string());
+                continue;
             }
             let s = unsafe { charsxp_to_str(charsxp) };
             patterns.push(s.to_string());
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
 
         AhoCorasick::new(&patterns)

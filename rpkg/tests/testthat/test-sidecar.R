@@ -438,15 +438,18 @@ test_that("sidecar setter on a wrong-type external pointer errors (no silent no-
 test_that("sidecar int setter rejects un-convertible input (no silent NA store)", {
   obj <- rdata_sidecar_env_new(count = 7L, score = 1.0, flag = TRUE, name = "x")
 
-  expect_error(
-    suppressWarnings(SidecarEnv_set_count(obj, "oops")),
-    "failed to convert value for sidecar field 'count'",
-    fixed = TRUE,
-    class = "rust_error"
-  )
+  e <- tryCatch(suppressWarnings(SidecarEnv_set_count(obj, "oops")), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(conditionMessage(e), "'count' must be a number: got \"oops\"")
+  expect_identical(e$rust_type, "i32")
   expect_error(
     SidecarEnv_set_count(obj, NA_integer_),
-    "failed to convert value for sidecar field 'count'",
+    "'count' must be a number: NA is not allowed",
+    fixed = TRUE
+  )
+  expect_error(
+    SidecarEnv_set_count(obj, integer()),
+    "'count' must be a number: got length 0",
     fixed = TRUE
   )
   # Failed sets must not have written anything
@@ -458,12 +461,12 @@ test_that("sidecar real and logical setters reject NA (no silent sentinel store)
 
   expect_error(
     SidecarEnv_set_score(obj, NA_real_),
-    "failed to convert value for sidecar field 'score'",
+    "'score' must be a number: NA is not allowed",
     fixed = TRUE
   )
   expect_error(
     SidecarEnv_set_flag(obj, NA),
-    "failed to convert value for sidecar field 'flag'",
+    "'flag' must be TRUE or FALSE: NA is not allowed",
     fixed = TRUE
   )
   expect_identical(SidecarEnv_get_score(obj), 2.5)
@@ -475,20 +478,24 @@ test_that("sidecar conversion setter surfaces TryFromSexp errors (no silent drop
 
   expect_error(
     SidecarEnv_set_name(obj, 123),
-    "failed to convert value for sidecar field 'name'",
+    "'name' must be a single string: got numeric",
     fixed = TRUE,
     class = "rust_error"
   )
   expect_identical(SidecarEnv_get_name(obj), "keep")
 
-  # Like every argument-conversion condition, it names the failing formal.
+  # Like every argument-conversion condition (#1594): e$param is the failing
+  # formal (`value`), the message names the field (what an R6 / S7 binding
+  # user assigned to), and e$rust_type is the field's Rust type.
   e <- tryCatch(SidecarEnv_set_name(obj, 123), error = function(e) e)
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "value")
+  expect_equal(e$rust_type, "String")
   e <- tryCatch(SidecarEnv_set_count(obj, NA_integer_), error = function(e) e)
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "value")
-  expect_match(conditionMessage(e), "on `SidecarEnv`: expected a single non-NA", fixed = TRUE)
+  expect_equal(e$rust_type, "i32")
 })
 
 test_that("sidecar getter panic becomes a structured R condition (no crash)", {
@@ -520,8 +527,9 @@ test_that("SidecarR6 active binding setter propagates conversion errors", {
 
   expect_error(
     obj$value <- NA_integer_,
-    "failed to convert value for sidecar field 'value'",
-    fixed = TRUE
+    "'value' must be a number: NA is not allowed",
+    fixed = TRUE,
+    class = "rust_error"
   )
   expect_identical(obj$value, 5L)
 })
@@ -532,8 +540,9 @@ test_that("SidecarS7 property setter propagates conversion errors", {
 
   expect_error(
     obj@prop_int <- NA_integer_,
-    "failed to convert value for sidecar field 'prop_int'",
-    fixed = TRUE
+    "'prop_int' must be a number: NA is not allowed",
+    fixed = TRUE,
+    class = "rust_error"
   )
   expect_identical(obj@prop_int, 5L)
 })
