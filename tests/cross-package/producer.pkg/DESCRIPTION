@@ -18,9 +18,10 @@ SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
     methods,
     R6,
+    S7 (>= 0.2.0),
+    utils,
     vctrs
 Suggests:
-    S7,
     testthat (>= 3.0.0)
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
