@@ -540,11 +540,23 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
                 }
             });
             let mut attrs = parse_trait_method_attrs(&method.attrs)?;
-            // `Option<T>` scalar choices params are the optional form (#1473).
+            // Every parameter `choices(...)` / `inherits(...)` / `no_na(...)`
+            // name must exist, as on inherent methods; `Option<T>` scalar
+            // choices params are the optional form (#1473).
             crate::miniextendr_fn::finalize_method_param_attrs(
                 &mut attrs.per_param,
                 &method.sig.inputs,
                 &attrs.defaults,
+                attrs
+                    .per_param_span
+                    .unwrap_or_else(|| method.sig.ident.span()),
+            )?;
+            check_trait_method_defaults(
+                &attrs.defaults,
+                &method.sig.inputs,
+                attrs
+                    .defaults_span
+                    .unwrap_or_else(|| method.sig.ident.span()),
             )?;
 
             // The author's tags; the R wrapper generators pick the `@param`
@@ -610,6 +622,42 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
     Ok(methods)
 }
 
+/// Reject a `defaults(...)` entry that names no parameter of the trait
+/// method, with the inherent-impl wording (a typo would otherwise drop the
+/// default without a word).
+fn check_trait_method_defaults(
+    defaults: &std::collections::HashMap<String, String>,
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    span: proc_macro2::Span,
+) -> syn::Result<()> {
+    let names: std::collections::HashSet<String> = inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(pt) => match pt.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => Some(crate::naming::ident_name(&pat_ident.ident)),
+                _ => None,
+            },
+            syn::FnArg::Receiver(_) => None,
+        })
+        .collect();
+    let mut invalid: Vec<&str> = defaults
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !names.contains(key.strip_prefix("r#").unwrap_or(key)))
+        .collect();
+    if invalid.is_empty() {
+        return Ok(());
+    }
+    invalid.sort_unstable();
+    Err(syn::Error::new(
+        span,
+        format!(
+            "defaults(...) references non-existent parameter(s): {}",
+            invalid.join(", ")
+        ),
+    ))
+}
+
 /// Parsed `#[miniextendr(...)]` attributes for a single trait method.
 ///
 /// Extracted from method-level attributes to control C wrapper behavior,
@@ -651,6 +699,12 @@ struct TraitMethodAttrs {
     /// Per-parameter `match_arg`/`choices`/`several_ok` attributes, keyed by
     /// Rust parameter name. See `TraitMethod::per_param`.
     per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    /// Span of the first `choices` / `choices_several_ok` / `no_na` /
+    /// `inherits` option: where an unknown parameter name is reported.
+    per_param_span: Option<proc_macro2::Span>,
+    /// Span of the `defaults(...)` option: where an unknown parameter name in
+    /// it is reported.
+    defaults_span: Option<proc_macro2::Span>,
 }
 
 /// Parse `#[miniextendr(...)]` attributes from a trait method.
@@ -662,6 +716,7 @@ struct TraitMethodAttrs {
 /// Both styles can coexist. The `worker` flag controls whether static methods
 /// dispatch to the worker thread (defaults to `cfg!(feature = "worker-default")`).
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
+    use syn::spanned::Spanned;
     let mut worker = false;
     let mut unsafe_main_thread = false;
     let mut coerce = false;
@@ -681,6 +736,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut no_shortcut = false;
     let mut per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs> =
         std::collections::HashMap::new();
+    let mut per_param_span: Option<proc_macro2::Span> = None;
+    let mut defaults_span: Option<proc_macro2::Span> = None;
 
     for attr in attrs {
         if !attr.path().is_ident("miniextendr") {
@@ -749,6 +806,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 strict = true;
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
+                defaults_span.get_or_insert(meta.path.span());
                 meta.parse_nested_meta(|inner| {
                     let param_name = inner
                         .path
@@ -848,6 +906,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     r_on_exit = Some(crate::miniextendr_fn::ROnExit { expr, add, after });
                 }
             } else if meta.path.is_ident("choices") {
+                per_param_span.get_or_insert(meta.path.span());
                 // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
                 //
                 // NOTE: `match_arg`/`match_arg_several_ok` (choices derived from a
@@ -864,11 +923,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 // at macro-expansion time), so it's safe to support today. Tracked in
                 // the trait-method-emitter follow-up issue for full match_arg parity.
                 meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
+                    let name = crate::miniextendr_fn::method_check_param(&inner)?;
                     let _: syn::Token![=] = inner.input.parse()?;
                     let value: syn::LitStr = inner.input.parse()?;
                     let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
@@ -876,13 +931,10 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     Ok(())
                 })?;
             } else if meta.path.is_ident("choices_several_ok") {
+                per_param_span.get_or_insert(meta.path.span());
                 // `choices_several_ok(param = "a, b, c")` — choices + several_ok.
                 meta.parse_nested_meta(|inner| {
-                    let name = inner
-                        .path
-                        .get_ident()
-                        .ok_or_else(|| inner.error("expected parameter name"))?
-                        .to_string();
+                    let name = crate::miniextendr_fn::method_check_param(&inner)?;
                     let _: syn::Token![=] = inner.input.parse()?;
                     let value: syn::LitStr = inner.input.parse()?;
                     let choices = crate::r_wrapper_builder::split_choice_list(&value.value());
@@ -892,9 +944,11 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     Ok(())
                 })?;
             } else if meta.path.is_ident("no_na") {
+                per_param_span.get_or_insert(meta.path.span());
                 // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
                 crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)?;
             } else if meta.path.is_ident("inherits") {
+                per_param_span.get_or_insert(meta.path.span());
                 // `inherits(p = "cls_a, cls_b", q(class = "cls", message = "..."))` —
                 // R-side `inherits(p, c(...))` checks.
                 crate::miniextendr_fn::parse_method_inherits(&meta, &mut per_param)?;
@@ -937,6 +991,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_on_exit,
         no_shortcut,
         per_param,
+        per_param_span,
+        defaults_span,
     })
 }
 
