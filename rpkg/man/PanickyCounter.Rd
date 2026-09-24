@@ -12,7 +12,7 @@
 \alias{PanickyCounter$Counter$checked_add}
 \alias{PanickyCounter$Counter$default_initial}
 \alias{PanickyCounter$Counter$MAX_VALUE}
-\title{PanickyCounter  Class}
+\title{PanickyCounter Class}
 \usage{
 PanickyCounter
 

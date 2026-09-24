@@ -7,7 +7,7 @@
 \alias{ParamCheckHolder$add_checked}
 \alias{$.ParamCheckHolder}
 \alias{[[.ParamCheckHolder}
-\title{ParamCheckHolder  Class}
+\title{ParamCheckHolder Class}
 \usage{
 ParamCheckHolder
 

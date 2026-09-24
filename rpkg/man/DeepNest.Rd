@@ -7,7 +7,7 @@
 \alias{DeepNest$from_r}
 \alias{$.DeepNest}
 \alias{[[.DeepNest}
-\title{DeepNest  Class}
+\title{DeepNest Class}
 \usage{
 DeepNest
 
@@ -21,5 +21,5 @@ DeepNest
 \item{name}{Method name for dispatch.}
 }
 \description{
-DeepNest  Class
+DeepNest Class
 }

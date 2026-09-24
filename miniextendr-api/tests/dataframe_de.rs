@@ -112,6 +112,54 @@ fn round_trip_option_fields() {
 
 // endregion
 
+// region: computed NA in a double column
+
+/// `NA_real_ * 1` as R computes it (bits `0x7FF8_0000_0000_07A2`): still NA by
+/// R's `R_IsNA` rule, so the reader treats it like `NA_real_`.
+const COMPUTED_NA: f64 = f64::from_bits(0x7FF8_0000_0000_07A2);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct OptScoreRow {
+    score: Option<f64>,
+}
+
+#[test]
+fn computed_na_in_double_column_reads_as_na() {
+    use miniextendr_api::SexpExt as _;
+    r_test_utils::with_r_thread(|| {
+        let rows = vec![
+            OptScoreRow { score: Some(1.0) },
+            OptScoreRow { score: Some(2.0) },
+            OptScoreRow { score: Some(3.0) },
+        ];
+        let sexp = vec_to_dataframe(&rows)
+            .expect("vec_to_dataframe")
+            .into_sexp();
+        let score = sexp.vector_elt(0);
+        score.set_real_elt(1, COMPUTED_NA);
+        score.set_real_elt(2, f64::NAN);
+
+        let back: Vec<OptScoreRow> = dataframe_to_vec(sexp).expect("dataframe_to_vec");
+        assert_eq!(
+            back[..2],
+            [
+                OptScoreRow { score: Some(1.0) },
+                OptScoreRow { score: None }
+            ]
+        );
+        assert!(back[2].score.is_some_and(f64::is_nan));
+
+        let err = dataframe_to_vec::<ScoreRow>(sexp).expect_err("NA in a bare f64 field");
+        let msg = err.to_string();
+        assert!(
+            matches!(err, RSerdeError::UnexpectedNa) || msg.contains("NA"),
+            "expected UnexpectedNa error, got: {msg}"
+        );
+    });
+}
+
+// endregion
+
 // region: test 3 — NA on non-Option field returns error
 
 #[test]

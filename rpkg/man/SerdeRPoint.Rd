@@ -7,7 +7,7 @@
 \alias{SerdeRPoint$from_r}
 \alias{$.SerdeRPoint}
 \alias{[[.SerdeRPoint}
-\title{SerdeRPoint  Class}
+\title{SerdeRPoint Class}
 \usage{
 SerdeRPoint
 

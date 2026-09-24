@@ -7,7 +7,7 @@
 \alias{EnvMatchArgCounter$reset}
 \alias{$.EnvMatchArgCounter}
 \alias{[[.EnvMatchArgCounter}
-\title{EnvMatchArgCounter  Class}
+\title{EnvMatchArgCounter Class}
 \usage{
 EnvMatchArgCounter
 
@@ -21,5 +21,5 @@ EnvMatchArgCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-EnvMatchArgCounter  Class
+EnvMatchArgCounter Class
 }

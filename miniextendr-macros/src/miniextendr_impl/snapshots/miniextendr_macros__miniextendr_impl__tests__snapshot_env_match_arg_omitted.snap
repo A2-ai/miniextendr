@@ -3,7 +3,7 @@ source: miniextendr-macros/src/miniextendr_impl/tests.rs
 assertion_line: 3640
 expression: generate_env_r_wrapper(&parsed)
 ---
-#' @title Picker  Class
+#' @title Picker Class
 #' @name Picker
 #' @rdname Picker
 #' @export

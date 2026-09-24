@@ -3796,7 +3796,8 @@ impl AltRealData for Array1<f64> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        // `ISNAN`, not `R_IsNA`: R's `anyNA()` trusts this hint (`AltRealData::no_na`).
+        Some(!self.iter().any(|x| x.is_nan()))
     }
 }
 
@@ -3814,7 +3815,7 @@ impl AltIntegerData for Array1<i32> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        Some(!self.iter().any(|&x| x == crate::altrep_traits::NA_INTEGER))
     }
 }
 
@@ -3893,3 +3894,24 @@ impl RegisterAltrep for Array1<i32> {
     }
 }
 // endregion
+
+#[cfg(test)]
+mod altrep_no_na_tests {
+    use super::*;
+    use crate::altrep_traits::{NA_INTEGER, NA_REAL};
+
+    /// `no_na` is R's `ISNAN` hint: `anyNA()` trusts it, so NA and NaN both count.
+    #[test]
+    fn array1_no_na_scans_the_data() {
+        let clean: Array1<f64> = Array1::from(vec![1.0, 2.0]);
+        assert_eq!(AltRealData::no_na(&clean), Some(true));
+        let na: Array1<f64> = Array1::from(vec![1.0, NA_REAL]);
+        assert_eq!(AltRealData::no_na(&na), Some(false));
+        let nan: Array1<f64> = Array1::from(vec![1.0, f64::NAN]);
+        assert_eq!(AltRealData::no_na(&nan), Some(false));
+        let ints: Array1<i32> = Array1::from(vec![1, NA_INTEGER]);
+        assert_eq!(AltIntegerData::no_na(&ints), Some(false));
+        let clean_ints: Array1<i32> = Array1::from(vec![1, 2]);
+        assert_eq!(AltIntegerData::no_na(&clean_ints), Some(true));
+    }
+}

@@ -9,7 +9,7 @@
 \alias{Bell$QuietBell$ring}
 \alias{Bell$QuietBell$ring_quietly}
 \alias{Bell$QuietBell$rings_quietly}
-\title{Bell  Class}
+\title{Bell Class}
 \usage{
 Bell
 

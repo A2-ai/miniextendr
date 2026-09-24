@@ -11,7 +11,7 @@
 \alias{GrowableVec$RExtend$extend_from_vec}
 \alias{GrowableVec$RExtend$len}
 \alias{GrowableVec$RExtend$is_empty}
-\title{GrowableVec  Class}
+\title{GrowableVec Class}
 \usage{
 GrowableVec
 

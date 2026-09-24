@@ -500,19 +500,31 @@ impl DataFrame {
 
     /// Keep only the rows at the given 0-based indices, in order.
     ///
-    /// Subsets every column (each a vector or list-column) to the specified rows
-    /// and rebuilds compact integer `row.names`. Used by the enum reader to
-    /// densify a flattened sub-frame before recursing into the inner type's reader.
+    /// Subsets every column to the specified rows and rebuilds compact integer
+    /// `row.names`. Used by the enum reader to densify a flattened sub-frame
+    /// before recursing into the inner type's reader, and by group iteration.
     ///
-    /// Each column keeps all of its attributes except `names`, `dim` and
-    /// `dimnames` (`Rf_copyMostAttrib`, the `vctrs::vec_slice()` rule), so a
-    /// `POSIXct` column keeps its `tzone` and a `difftime` its `units`. Element
-    /// names, if any, are subset with the values.
+    /// A row is a row of every column, as in `df[idx, , drop = FALSE]`:
+    ///
+    /// - A vector or list column is gathered by element, and its element
+    ///   `names`, if any, are subset with the values.
+    /// - A column with a `dim` (an `I(matrix)` column, or an array) is gathered
+    ///   along its first dimension: `dim` becomes `c(length(idx), dim[-1])` and
+    ///   the first `dimnames` component (the row names) is subset, the rest kept.
+    ///   Arrays of three or more dimensions follow `vctrs::vec_slice()` here;
+    ///   base `[.data.frame` subsets those by element.
+    /// - A data.frame column (a packed column) is subset the same way,
+    ///   recursively.
+    ///
+    /// Each column keeps all of its other attributes (`Rf_copyMostAttrib`, the
+    /// `vctrs::vec_slice()` rule), so a `POSIXct` column keeps its `tzone`, a
+    /// `difftime` its `units` and an `I()` column its `AsIs` class.
     ///
     /// # PROTECT discipline
     ///
-    /// Allocates one new column vector per column — `OwnedProtect`s the output list
-    /// across the loop so previously-built column SEXPs survive subsequent allocations.
+    /// Allocates new column vectors (and `dim` / `dimnames` for matrix columns)
+    /// while the output list is `OwnedProtect`ed, rooting each new column in it
+    /// before the next allocation.
     ///
     /// # Rooting
     ///
@@ -520,66 +532,10 @@ impl DataFrame {
     /// [`drop`](Self::drop)'s rooting note (#1247).
     #[must_use]
     pub fn select_rows(&self, idx: &[usize]) -> BuiltDataFrame {
-        use crate::SexpExt as _;
-
         unsafe {
-            let names_sexp = self.sexp.get_names();
-            let ncol = self.sexp.xlength();
-            let new_nrow = idx.len();
-
-            let new_list = crate::OwnedProtect::new(SEXP::alloc_list(ncol));
-            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(ncol));
-
-            for col_j in 0..ncol {
-                let src_col = self.sexp.vector_elt(col_j);
-
-                // Gather the requested rows into a new dense column via the shared
-                // conversion helper (the row-selecting inverse of `scatter_column`).
-                // It returns an unprotected SEXP; we root it into the protected
-                // `new_list` immediately below, before any further allocation.
-                let new_col: SEXP = crate::convert::gather_column(src_col, idx);
-
-                // Root new_col in the protected output list BEFORE touching its
-                // attributes. `gather_column` returns an unprotected SEXP, and the
-                // attribute writes below allocate and can trigger GC.
-                // set_vector_elt does not allocate, so this ordering keeps new_col
-                // reachable (via new_list) across every allocating call.
-                new_list.set_vector_elt(col_j, new_col);
-                if names_sexp != SEXP::nil() {
-                    new_names.set_string_elt(col_j, names_sexp.string_elt(col_j));
-                }
-
-                // Copy every column attribute except names/dim/dimnames, as
-                // `vctrs::vec_slice()` does: `class` and `levels` (factor, Date),
-                // `tzone` (POSIXct), `units` (difftime), labels, and anything else a
-                // package keeps on a column. Base `[` would drop the last kind on an
-                // unclassed column; a row subset should not change a column's meaning.
-                crate::sys::Rf_copyMostAttrib(src_col, new_col);
-
-                // Element names are per row, so they are subset with the values.
-                let col_names = src_col.get_names();
-                if col_names != SEXP::nil() {
-                    let new_col_names =
-                        crate::OwnedProtect::new(crate::convert::gather_column(col_names, idx));
-                    new_col.set_names(*new_col_names);
-                }
-            }
-
-            if names_sexp != SEXP::nil() {
-                new_list.set_names(*new_names);
-            }
-
-            // Set compact integer row.names (c(NA_integer_, -new_nrow)).
-            let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
-            let _rn_guard = crate::OwnedProtect::new(row_names);
-            rn[0] = i32::MIN;
-            rn[1] = -(new_nrow as i32);
-            new_list.set_row_names(row_names);
-            // Copy the data.frame class attribute.
-            new_list.set_class(self.sexp.get_class());
-
-            // Root before the guards drop (see `drop` for the ordering argument).
-            BuiltDataFrame::adopt_sexp(*new_list)
+            let out = select_frame_rows(self.sexp, idx);
+            // Root before the guard drops (see `drop` for the ordering argument).
+            BuiltDataFrame::adopt_sexp(*out)
         }
     }
 
@@ -708,6 +664,142 @@ unsafe fn col_name(names_sexp: SEXP, i: isize) -> &'static str {
         let s = names_sexp.string_elt(i);
         let p = s.r_char();
         std::ffi::CStr::from_ptr(p).to_str().unwrap_or("")
+    }
+}
+
+/// The body of [`DataFrame::select_rows`]: row-subset the data.frame VECSXP
+/// `frame` at the 0-based rows `idx`. Shared with packed data.frame columns.
+///
+/// Returns the new frame still protected; the caller roots it before the guard
+/// drops.
+///
+/// # Safety
+///
+/// R main thread; `frame` is a data.frame list whose columns all have at least
+/// `max(idx) + 1` rows.
+unsafe fn select_frame_rows(frame: SEXP, idx: &[usize]) -> crate::OwnedProtect {
+    use crate::SexpExt as _;
+
+    unsafe {
+        let names_sexp = frame.get_names();
+        let ncol = frame.xlength();
+        let new_nrow = i32::try_from(idx.len()).expect("row count exceeds i32::MAX");
+
+        let new_list = crate::OwnedProtect::new(SEXP::alloc_list(ncol));
+        {
+            let new_names = crate::OwnedProtect::new(SEXP::alloc_strsxp(ncol));
+
+            for col_j in 0..ncol {
+                let src_col = frame.vector_elt(col_j);
+                // Protected on return; rooted in the protected `new_list` before
+                // its guard (the top of the protect stack) drops.
+                let new_col = select_column_rows(src_col, idx);
+                new_list.set_vector_elt(col_j, *new_col);
+                drop(new_col);
+                if names_sexp != SEXP::nil() {
+                    new_names.set_string_elt(col_j, names_sexp.string_elt(col_j));
+                }
+            }
+
+            if names_sexp != SEXP::nil() {
+                new_list.set_names(*new_names);
+            }
+        }
+
+        // Set compact integer row.names (c(NA_integer_, -new_nrow)).
+        let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
+        {
+            let _rn_guard = crate::OwnedProtect::new(row_names);
+            rn[0] = i32::MIN;
+            rn[1] = -new_nrow;
+            new_list.set_row_names(row_names);
+        }
+        // Copy the data.frame class attribute.
+        new_list.set_class(frame.get_class());
+
+        new_list
+    }
+}
+
+/// Row-subset one data.frame column at the 0-based rows `idx` (see
+/// [`DataFrame::select_rows`] for the per-kind rules). Returns it protected.
+///
+/// # Safety
+///
+/// R main thread; `col` is a valid column with at least `max(idx) + 1` rows.
+unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
+    use crate::SexpExt as _;
+
+    unsafe {
+        if col.type_of() == SEXPTYPE::VECSXP && col.is_data_frame() {
+            return select_frame_rows(col, idx);
+        }
+
+        let dim = col.get_dim();
+        if dim.type_of() != SEXPTYPE::INTSXP || dim.xlength() == 0 {
+            // A plain vector or list column: a row is an element.
+            let out = crate::OwnedProtect::new(crate::convert::gather_column(col, idx));
+            // Every attribute except names/dim/dimnames, as `vctrs::vec_slice()`
+            // does: `class` and `levels` (factor, Date), `tzone` (POSIXct), `units`
+            // (difftime), labels, and anything else a package keeps on a column.
+            // Base `[` would drop the last kind on an unclassed column; a row
+            // subset should not change a column's meaning.
+            crate::sys::Rf_copyMostAttrib(col, *out);
+            // Element names are per row, so they are subset with the values.
+            let col_names = col.get_names();
+            if col_names != SEXP::nil() {
+                let new_names =
+                    crate::OwnedProtect::new(crate::convert::gather_column(col_names, idx));
+                out.set_names(*new_names);
+            }
+            return out;
+        }
+
+        // A matrix or array column: a row is one index of the first dimension,
+        // taken at every position of the trailing dimensions (column-major).
+        let dims: Vec<usize> = dim
+            .as_slice::<i32>()
+            .iter()
+            .map(|&d| usize::try_from(d).expect("dim entries are non-negative"))
+            .collect();
+        let nrow = dims[0];
+        let trailing: usize = dims[1..].iter().product();
+        let flat: Vec<usize> = (0..trailing)
+            .flat_map(|k| idx.iter().map(move |&row| row + k * nrow))
+            .collect();
+
+        let out = crate::OwnedProtect::new(crate::convert::gather_column(col, &flat));
+        crate::sys::Rf_copyMostAttrib(col, *out);
+
+        {
+            let (new_dim, dim_vals) = crate::into_r::alloc_r_vector::<i32>(dims.len());
+            let _dim_guard = crate::OwnedProtect::new(new_dim);
+            dim_vals[0] = i32::try_from(idx.len()).expect("row count exceeds i32::MAX");
+            dim_vals[1..].copy_from_slice(&dim.as_slice::<i32>()[1..]);
+            out.set_dim(new_dim);
+        }
+
+        let dimnames = col.get_dimnames();
+        if dimnames != SEXP::nil() {
+            let n = dimnames.xlength();
+            let new_dimnames = crate::OwnedProtect::new(SEXP::alloc_list(n));
+            let row_names = dimnames.vector_elt(0);
+            if row_names != SEXP::nil() {
+                // Unprotected until the `set_vector_elt` right after, which does
+                // not allocate.
+                new_dimnames.set_vector_elt(0, crate::convert::gather_column(row_names, idx));
+            }
+            for i in 1..n {
+                new_dimnames.set_vector_elt(i, dimnames.vector_elt(i));
+            }
+            let dimnames_names = dimnames.get_names();
+            if dimnames_names != SEXP::nil() {
+                new_dimnames.set_names(dimnames_names);
+            }
+            out.set_dimnames(*new_dimnames);
+        }
+
+        out
     }
 }
 

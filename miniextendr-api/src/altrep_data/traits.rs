@@ -158,7 +158,11 @@ pub trait AltRealData: AltrepLen {
         None
     }
 
-    /// Optional: does this vector contain any NA values?
+    /// Optional: `Some(true)` promises the vector holds no `NA` **and** no `NaN`.
+    ///
+    /// R reads this hint as "nothing `ISNAN`": `anyNA()` returns `FALSE` without
+    /// scanning when it is true, so a vector with a plain `NaN` must not report
+    /// `Some(true)` (`anyNA(c(1, NaN))` is `TRUE`).
     fn no_na(&self) -> Option<bool> {
         None
     }

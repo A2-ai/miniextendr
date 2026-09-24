@@ -20,7 +20,7 @@
 \alias{WrapFactory$hidden}
 \alias{$.WrapFactory}
 \alias{[[.WrapFactory}
-\title{WrapFactory  Class}
+\title{WrapFactory Class}
 \usage{
 WrapFactory
 

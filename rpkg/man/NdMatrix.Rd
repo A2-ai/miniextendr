@@ -26,7 +26,7 @@
 \alias{NdMatrix$identity}
 \alias{$.NdMatrix}
 \alias{[[.NdMatrix}
-\title{NdMatrix  Class}
+\title{NdMatrix Class}
 \usage{
 NdMatrix
 

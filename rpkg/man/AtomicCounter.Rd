@@ -9,7 +9,7 @@
 \alias{AtomicCounter$SharedCounter$increment}
 \alias{AtomicCounter$SharedCounter$add}
 \alias{AtomicCounter$SharedCounter$reset}
-\title{AtomicCounter  Class}
+\title{AtomicCounter Class}
 \usage{
 AtomicCounter
 
@@ -23,5 +23,5 @@ AtomicCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-AtomicCounter  Class
+AtomicCounter Class
 }

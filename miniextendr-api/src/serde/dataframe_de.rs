@@ -63,9 +63,11 @@
 //! [issue #689]: https://github.com/A2-ai/miniextendr/issues/689
 
 use super::error::RSerdeError;
-use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
+// Doubles are NA by R's `R_IsNA` rule, so a computed NA reads as missing too.
 use crate::dataframe::DataFrame;
 use crate::from_r::charsxp_to_str;
+use crate::from_r::is_na_real;
 use crate::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
@@ -1122,7 +1124,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(i);
-                if v.to_bits() == NA_REAL.to_bits() {
+                if is_na_real(v) {
                     visitor.visit_none()
                 } else {
                     visitor.visit_f64(v)
@@ -1195,7 +1197,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
+                if is_na_real(v) {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < i64::MIN as f64 || v > i64::MAX as f64 {
@@ -1249,7 +1251,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
+                if is_na_real(v) {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u32::MAX as f64 {
@@ -1281,7 +1283,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if v.to_bits() == NA_REAL.to_bits() {
+                if is_na_real(v) {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u64::MAX as f64 {
@@ -1370,7 +1372,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         let is_na = match self.sexp_type() {
             SEXPTYPE::LGLSXP => self.col.logical_elt(i) == NA_LOGICAL,
             SEXPTYPE::INTSXP => self.col.integer_elt(i) == NA_INTEGER,
-            SEXPTYPE::REALSXP => self.col.real_elt(i).to_bits() == NA_REAL.to_bits(),
+            SEXPTYPE::REALSXP => is_na_real(self.col.real_elt(i)),
             SEXPTYPE::STRSXP => self.col.string_elt(i) == SEXP::na_string(),
             _ => false,
         };
@@ -1670,7 +1672,7 @@ fn deserialize_real_cell(de: &CellDeserializer<'_, '_>) -> Result<f64, RSerdeErr
     match de.sexp_type() {
         SEXPTYPE::REALSXP => {
             let v = de.col.real_elt(de.row_isize());
-            if v.to_bits() == NA_REAL.to_bits() {
+            if is_na_real(v) {
                 return Err(RSerdeError::UnexpectedNa);
             }
             Ok(v)

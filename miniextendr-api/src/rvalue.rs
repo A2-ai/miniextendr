@@ -367,12 +367,14 @@ impl RValue {
 
     /// The single non-NA `f64` of a length-1 `Double`, else `None`.
     ///
-    /// R's NA (the `NA_REAL` bit pattern) yields `None`, matching [`as_i32`](Self::as_i32).
+    /// R's NA yields `None`, matching [`as_i32`](Self::as_i32). NA is decided by
+    /// R's `R_IsNA` rule, so a computed NA (`NA_real_ * 1`) counts; any other NaN
+    /// is returned as a value.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             RValue::Double(v) if v.len() == 1 => {
                 let x = v[0];
-                (x.to_bits() != crate::altrep_traits::NA_REAL.to_bits()).then_some(x)
+                (!crate::from_r::is_na_real(x)).then_some(x)
             }
             _ => None,
         }
@@ -449,7 +451,8 @@ impl TryFrom<RValue> for f64 {
                     }));
                 }
                 let x = xs[0];
-                if x.to_bits() == crate::altrep_traits::NA_REAL.to_bits() {
+                // `R_IsNA`: a computed NA is an NA error too; other NaNs pass.
+                if crate::from_r::is_na_real(x) {
                     Err(SexpError::Na(SexpNaError {
                         sexp_type: SEXPTYPE::REALSXP,
                     }))
@@ -538,6 +541,24 @@ mod tests {
             f64::try_from(RValue::Double(vec![crate::altrep_traits::NA_REAL])),
             Err(SexpError::Na(_))
         ));
+    }
+
+    /// A computed NA (`NA_real_ * 1` quiets the NaN: bits `0x7FF8_0000_0000_07A2`)
+    /// is NA by R's `R_IsNA` rule; a plain NaN is a value.
+    #[test]
+    fn double_na_follows_r_is_na() {
+        let computed = f64::from_bits(0x7FF8_0000_0000_07A2);
+        assert_eq!(RValue::Double(vec![computed]).as_f64(), None);
+        assert!(matches!(
+            f64::try_from(RValue::Double(vec![computed])),
+            Err(SexpError::Na(_))
+        ));
+        assert!(
+            RValue::Double(vec![f64::NAN])
+                .as_f64()
+                .is_some_and(f64::is_nan)
+        );
+        assert!(f64::try_from(RValue::Double(vec![f64::NAN])).is_ok_and(f64::is_nan));
     }
 
     #[test]

@@ -444,12 +444,9 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
 // region: NA bitmap construction
 
 use crate::altrep_traits::{NA_INTEGER, NA_REAL};
-
-/// Check if an f64 value is R's NA_real_ (specific NaN bit pattern).
-#[inline]
-fn is_na_real(value: f64) -> bool {
-    value.to_bits() == NA_REAL.to_bits()
-}
+// R's `R_IsNA` rule (low word 1954), so a computed NA such as `NA_real_ * 1`
+// becomes an Arrow null too; a plain NaN stays a valid value.
+use crate::from_r::is_na_real;
 
 /// Scan an R integer vector for `NA_integer_` and build an Arrow NullBuffer.
 ///
@@ -777,7 +774,9 @@ impl TryFromSexp for Date32Array {
         let mut builder = arrow_array::builder::Date32Builder::with_capacity(n);
 
         for &v in slice {
-            if is_na_real(v) {
+            // `ISNAN`, not `R_IsNA`: R treats a NaN date as missing
+            // (`is.na(as.Date(NaN))`), and the cast below would turn it into day 0.
+            if v.is_nan() {
                 builder.append_null();
             } else {
                 // Arrow Date32 stores i32 days; R Date is an f64 day count.
@@ -828,7 +827,9 @@ pub fn posixct_to_timestamp(sexp: SEXP) -> Result<TimestampSecondArray, SexpErro
 
     let mut builder = arrow_array::builder::TimestampSecondBuilder::with_capacity(n);
     for &v in slice {
-        if is_na_real(v) {
+        // `ISNAN`, not `R_IsNA`: a NaN time is missing in R too, and the cast
+        // below would turn it into the epoch.
+        if v.is_nan() {
             builder.append_null();
         } else {
             // Arrow stores i64 seconds; R POSIXct is f64 seconds. Fractional
@@ -1645,7 +1646,9 @@ impl AltRealData for Float64Array {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(self.null_count() == 0)
+        // `ISNAN`, not `R_IsNA`: R's `anyNA()` trusts this hint, and a
+        // non-null slot can still hold a NaN (`AltRealData::no_na`).
+        Some(self.null_count() == 0 && !self.values().iter().any(|x| x.is_nan()))
     }
 }
 
@@ -2093,3 +2096,31 @@ static __MX_ALTREP_REG_ENTRY_builtin_arrow_StringArray: crate::registry::AltrepR
     };
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `NA_real_ * 1` as R computes it: the NaN is quieted, the low word stays 1954.
+    const COMPUTED_NA: f64 = f64::from_bits(0x7FF8_0000_0000_07A2);
+
+    #[test]
+    fn f64_null_buffer_follows_r_is_na() {
+        let nulls = build_f64_null_buffer(&[1.0, COMPUTED_NA, f64::NAN, NA_REAL])
+            .expect("the NAs need a null buffer");
+        // Only the two NAs are null; the plain NaN stays a valid value.
+        assert_eq!(nulls.null_count(), 2);
+        assert!(nulls.is_valid(0) && nulls.is_null(1) && nulls.is_valid(2) && nulls.is_null(3));
+        assert!(build_f64_null_buffer(&[1.0, f64::NAN]).is_none());
+    }
+
+    #[test]
+    fn float64_array_no_na_counts_nan() {
+        let clean = Float64Array::from(vec![1.0, 2.0]);
+        assert_eq!(AltRealData::no_na(&clean), Some(true));
+        let with_nan = Float64Array::from(vec![1.0, f64::NAN]);
+        assert_eq!(AltRealData::no_na(&with_nan), Some(false));
+        let with_null = Float64Array::from(vec![Some(1.0), None]);
+        assert_eq!(AltRealData::no_na(&with_null), Some(false));
+    }
+}

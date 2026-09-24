@@ -9,7 +9,7 @@
 \alias{ChainedError$RError$error_message}
 \alias{ChainedError$RError$error_chain}
 \alias{ChainedError$RError$error_chain_length}
-\title{ChainedError  Class}
+\title{ChainedError Class}
 \usage{
 ChainedError
 

@@ -7,7 +7,7 @@
 \alias{SerdeRPoint3D$from_r}
 \alias{$.SerdeRPoint3D}
 \alias{[[.SerdeRPoint3D}
-\title{SerdeRPoint3D  Class}
+\title{SerdeRPoint3D Class}
 \usage{
 SerdeRPoint3D
 
@@ -21,5 +21,5 @@ SerdeRPoint3D
 \item{name}{Method name for dispatch.}
 }
 \description{
-SerdeRPoint3D  Class
+SerdeRPoint3D Class
 }

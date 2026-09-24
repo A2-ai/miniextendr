@@ -282,13 +282,15 @@ unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) 
     }
 }
 
-/// Gather the rows at `idx` (0-based, in order) out of a typed column SEXP into a
-/// new dense SEXP of length `idx.len()`, where `out[j] = src[idx[j]]`.
+/// Gather the elements at `idx` (0-based, in order) out of a typed vector SEXP
+/// into a new dense SEXP of length `idx.len()`, where `out[j] = src[idx[j]]`.
 ///
-/// The row-selecting inverse of [`scatter_column`]: where `scatter_column`
-/// places a dense column's values at sparse positions, `gather_column` pulls a
-/// dense subset out of a column by row index. Used by `DataFrame::select_rows`
-/// to densify a flattened sub-frame before the enum reader recurses.
+/// The selecting inverse of [`scatter_column`]: where `scatter_column` places a
+/// dense column's values at sparse positions, `gather_column` pulls a dense
+/// subset out of a vector by element index. An element is a row only for a
+/// plain vector or list column: `DataFrame::select_rows` expands a row index to
+/// the element indices of every matrix column and recurses into data.frame
+/// columns before calling this.
 ///
 /// Contiguous primitive columns (real/integer/logical/raw/complex) are copied as
 /// a slice gather via [`gather_native`]; string and list columns are copied

@@ -21,7 +21,7 @@
 \alias{NdIntVec$to_r}
 \alias{$.NdIntVec}
 \alias{[[.NdIntVec}
-\title{NdIntVec  Class}
+\title{NdIntVec Class}
 \usage{
 NdIntVec
 

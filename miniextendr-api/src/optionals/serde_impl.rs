@@ -70,7 +70,7 @@ pub use serde::{Deserialize, Serialize};
 pub use serde_json;
 pub use serde_json::Value as JsonValue;
 
-use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
 
 // region: JSON conversion options
 
@@ -487,8 +487,8 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
 }
 
 fn real_to_json(val: f64, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
-    // Check for NA (NA_REAL is a specific NaN bit pattern)
-    if val.to_bits() == NA_REAL.to_bits() {
+    // NA by R's `R_IsNA` rule (a computed NA counts); other NaNs are handled below.
+    if crate::from_r::is_na_real(val) {
         return handle_na(opts);
     }
 
@@ -1276,6 +1276,22 @@ mod tests {
         };
         let result = real_to_json(f64::NAN, &opts);
         assert!(result.is_err());
+    }
+
+    /// A computed NA (`NA_real_ * 1`, bits `0x7FF8_0000_0000_07A2`) takes the NA
+    /// branch, not the NaN one.
+    #[test]
+    fn real_to_json_computed_na_is_na() {
+        let opts = JsonOptions {
+            na: NaHandling::String("NA".into()),
+            nan: SpecialFloatHandling::String,
+            ..Default::default()
+        };
+        let computed = f64::from_bits(0x7FF8_0000_0000_07A2);
+        let na = real_to_json(computed, &opts).expect("NA is representable");
+        assert_eq!(na, JsonValue::String("NA".into()));
+        let nan = real_to_json(f64::NAN, &opts).expect("NaN is representable");
+        assert_eq!(nan, JsonValue::String("NaN".into()));
     }
 
     #[test]

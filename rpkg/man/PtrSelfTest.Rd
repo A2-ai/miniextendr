@@ -11,7 +11,7 @@
 \alias{PtrSelfTest$value_owned_ptr}
 \alias{$.PtrSelfTest}
 \alias{[[.PtrSelfTest}
-\title{PtrSelfTest  Class}
+\title{PtrSelfTest Class}
 \usage{
 PtrSelfTest
 

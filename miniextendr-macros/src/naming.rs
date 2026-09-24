@@ -269,11 +269,17 @@ pub(crate) fn is_syntactic_r_name(name: &str) -> bool {
 /// a non-syntactic one (an S3 method on `[`, `$`, `==`, ...) is wrapped in
 /// backticks, which R accepts for any name. Without this the wrapper file did
 /// not parse (#1475).
+///
+/// R processes backslash escapes inside backticks as it does in strings, so a
+/// `\` is doubled (first, so the escapes added for backticks stay single) and a
+/// backtick becomes `` \` ``: the name `a\b` is written `` `a\\b` ``.
+/// `miniextendr-api`'s duplicate-definition scan
+/// (`registry::parse_top_level_fn_def_name`) reads this escaped spelling.
 pub(crate) fn r_def_name(name: &str) -> String {
     if is_syntactic_r_name(name) {
         name.to_string()
     } else {
-        format!("`{}`", name.replace('`', "\\`"))
+        format!("`{}`", name.replace('\\', "\\\\").replace('`', "\\`"))
     }
 }
 
@@ -285,13 +291,48 @@ pub(crate) fn r_def_name(name: &str) -> String {
 /// string, the form roxygen2 itself writes, because `export([[)` does not parse.
 /// `miniextendr-api`'s generic-doc pass mirrors this rule
 /// (`registry::r_namespace_name`); the two must stay in step so roxygen2 sees
-/// one directive, not two spellings of it.
+/// one directive, not two spellings of it. Only `\` and `"` are escaped, as
+/// the mirror does ([`r_string_escape`] would also escape control and
+/// non-ASCII characters).
 pub(crate) fn r_namespace_name(name: &str) -> String {
     if is_syntactic_r_name(name) {
         name.to_string()
     } else {
         format!("\"{}\"", name.replace('\\', "\\\\").replace('"', "\\\""))
     }
+}
+
+/// Escape `s` for the inside of an R double-quoted string literal. Every
+/// generated R string literal built from user text goes through this (the
+/// precondition requirement text and the author's messages, the class names
+/// in `inherits()`, lifecycle arguments).
+///
+/// Besides `\` and `"`, a newline, carriage return or tab becomes its escape
+/// (a guard stays on one line of the wrappers file), any other control
+/// character and every non-ASCII character a `\u{..}` / `\U{..}` escape: R
+/// code in a package must be ASCII, and R reads these escapes back to the
+/// same UTF-8 text. A NUL cannot be written (R strings cannot hold one);
+/// the attribute parser rejects it in a message.
+pub(crate) fn r_string_escape(s: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_ascii() && !c.is_ascii_control() => out.push(c),
+            c if u32::from(c) <= 0xFFFF => {
+                let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
+            }
+            c => {
+                let _ = write!(out, "\\U{{{:x}}}", u32::from(c));
+            }
+        }
+    }
+    out
 }
 
 // endregion
@@ -444,5 +485,18 @@ mod tests {
         }
         // The NAMESPACE form is an R string literal: escape `"` and `\`.
         assert_eq!(r_namespace_name(r#"a"b\c"#), r#""a\"b\\c""#);
+    }
+
+    #[test]
+    fn def_names_escape_backslashes_before_backticks() {
+        // R reads backslash escapes inside backticks, so `\` must be doubled
+        // (`` `a\\b` `` is the three-character name `a\b`) and a trailing one must
+        // not escape the closing backtick.
+        assert_eq!(r_def_name(r"a\b"), r"`a\\b`");
+        assert_eq!(r_def_name(r"trail\"), r"`trail\\`");
+        assert_eq!(r_def_name("a`b"), r"`a\`b`");
+        // A backslash next to a backtick: each is escaped once, in order.
+        assert_eq!(r_def_name(r"x\`y"), r"`x\\\`y`");
+        assert_eq!(r_def_name(r"%\%"), r"`%\\%`");
     }
 }

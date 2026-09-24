@@ -15,7 +15,7 @@
 \alias{SeededRng$RRngOps$gen_range_f64_vec}
 \alias{SeededRng$RRngOps$gen_range_i32_vec}
 \alias{SeededRng$RRngOps$gen_bool_vec}
-\title{SeededRng  Class}
+\title{SeededRng Class}
 \usage{
 SeededRng
 

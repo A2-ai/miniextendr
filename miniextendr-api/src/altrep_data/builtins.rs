@@ -12,7 +12,7 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use crate::altrep_traits::NA_REAL;
+use crate::from_r::is_na_real;
 use crate::{Rcomplex, SEXP};
 
 use super::{
@@ -217,10 +217,77 @@ macro_rules! impl_altinteger_slice {
     };
 }
 
+// region: double NA/NaN summaries shared by the slice-backed AltRealData impls
+
+/// `no_na` for a double slice: `true` only when no element is `NA` **or** `NaN`.
+///
+/// This is R's `ISNAN` test, not `R_IsNA`: `anyNA()` returns `FALSE` as soon as
+/// `REAL_NO_NA()` reports true (its own scan tests `ISNAN`, so
+/// `anyNA(c(1, NaN))` is `TRUE`), and `sort()` uses the same hint to skip its
+/// NA handling, which drops NaN too.
+fn real_slice_no_na(s: &[f64]) -> bool {
+    !s.iter().any(|x| x.is_nan())
+}
+
+/// `sum` for a double slice, following R's `rsum`.
+///
+/// With `na_rm`, every `NA` and `NaN` is skipped (`ISNAN`). Without it, the
+/// result is the first element that is R's NA (`R_IsNA`, so a computed NA such
+/// as `NA_real_ * 1` counts), else `NaN` if any element is another NaN. R leaves
+/// the NA-vs-NaN outcome of a sum unspecified; letting NA win matches `min` and
+/// `max`.
+fn real_slice_sum(s: &[f64], na_rm: bool) -> f64 {
+    let mut sum = 0.0;
+    let mut nan = false;
+    for &x in s {
+        if x.is_nan() {
+            if na_rm {
+                continue;
+            }
+            if is_na_real(x) {
+                return x;
+            }
+            nan = true;
+        } else {
+            sum += x;
+        }
+    }
+    if nan { f64::NAN } else { sum }
+}
+
+/// `min` / `max` for a double slice, following R's `rmin` / `rmax`.
+///
+/// Missing values are handled as in [`real_slice_sum`]: skipped with `na_rm`,
+/// otherwise an NA (`R_IsNA`) wins over a NaN ("any NA trumps all NaNs" in
+/// R's source) and is returned as is, bits included, as R's loop does. `None`
+/// when nothing is left to compare (R then computes the `Inf` / `-Inf` result
+/// and its warning itself).
+fn real_slice_extreme(s: &[f64], na_rm: bool, pick: fn(f64, f64) -> f64) -> Option<f64> {
+    let mut best: Option<f64> = None;
+    let mut nan = false;
+    for &x in s {
+        if x.is_nan() {
+            if na_rm {
+                continue;
+            }
+            if is_na_real(x) {
+                return Some(x);
+            }
+            nan = true;
+        } else {
+            best = Some(best.map_or(x, |b| pick(b, x)));
+        }
+    }
+    if nan { Some(f64::NAN) } else { best }
+}
+
+// endregion
+
 /// `AltRealData` for any container that derefs to `[f64]`.
 ///
-/// Distinguishes R's `NA_real_` (a specific NaN bit pattern) from a regular
-/// IEEE NaN: `NA_real_` propagates as NA, regular NaN propagates as NaN.
+/// Distinguishes R's `NA_real_` from a regular IEEE NaN where R does: `sum`,
+/// `min` and `max` return NA for an NA element and NaN for a NaN element, while
+/// `no_na` treats both as missing (see [`real_slice_no_na`]).
 macro_rules! impl_altreal_slice {
     ($ty:ty) => {
         impl AltRealData for $ty {
@@ -244,69 +311,19 @@ macro_rules! impl_altreal_slice {
             }
 
             fn no_na(&self) -> Option<bool> {
-                let s: &[f64] = self;
-                Some(!s.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
+                Some(real_slice_no_na(self))
             }
 
             fn sum(&self, na_rm: bool) -> Option<f64> {
-                let s: &[f64] = self;
-                let mut sum = 0.0;
-                for &x in s.iter() {
-                    if x.to_bits() == NA_REAL.to_bits() {
-                        if !na_rm {
-                            return Some(NA_REAL);
-                        }
-                    } else if x.is_nan() {
-                        if !na_rm {
-                            return Some(f64::NAN);
-                        }
-                    } else {
-                        sum += x;
-                    }
-                }
-                Some(sum)
+                Some(real_slice_sum(self, na_rm))
             }
 
             fn min(&self, na_rm: bool) -> Option<f64> {
-                let s: &[f64] = self;
-                let mut min = f64::INFINITY;
-                let mut found = false;
-                for &x in s.iter() {
-                    if x.to_bits() == NA_REAL.to_bits() {
-                        if !na_rm {
-                            return Some(NA_REAL);
-                        }
-                    } else if x.is_nan() {
-                        if !na_rm {
-                            return Some(f64::NAN);
-                        }
-                    } else {
-                        found = true;
-                        min = min.min(x);
-                    }
-                }
-                if found { Some(min) } else { None }
+                real_slice_extreme(self, na_rm, f64::min)
             }
 
             fn max(&self, na_rm: bool) -> Option<f64> {
-                let s: &[f64] = self;
-                let mut max = f64::NEG_INFINITY;
-                let mut found = false;
-                for &x in s.iter() {
-                    if x.to_bits() == NA_REAL.to_bits() {
-                        if !na_rm {
-                            return Some(NA_REAL);
-                        }
-                    } else if x.is_nan() {
-                        if !na_rm {
-                            return Some(f64::NAN);
-                        }
-                    } else {
-                        found = true;
-                        max = max.max(x);
-                    }
-                }
-                if found { Some(max) } else { None }
+                real_slice_extreme(self, na_rm, f64::max)
             }
         }
     };
@@ -1044,7 +1061,7 @@ impl<const N: usize> AltRealData for [f64; N] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|x| x.to_bits() == NA_REAL.to_bits()))
+        Some(real_slice_no_na(self))
     }
 }
 
@@ -1221,6 +1238,11 @@ impl_serialize_cow!(Rcomplex);
 mod tests {
     use super::*;
     use crate::altrep_data::AltRealData;
+    use crate::altrep_traits::NA_REAL;
+
+    /// `NA_real_ * 1` as R computes it: arithmetic quiets the NaN, so the
+    /// high word differs from `NA_REAL`'s while the low word stays 1954.
+    const COMPUTED_NA: f64 = f64::from_bits(0x7FF8_0000_0000_07A2);
 
     // region: NA_REAL bit pattern tests
 
@@ -1242,12 +1264,19 @@ mod tests {
 
     // region: Vec<f64> no_na — NA vs NaN
 
-    /// A vector with only regular (non-NA) NaN should report no_na = Some(true).
-    /// Regular NaN is a valid floating-point value, not R's NA.
+    /// A vector holding a regular NaN reports no_na = Some(false): R's
+    /// `anyNA()` trusts the hint and counts NaN as missing (`ISNAN`).
     #[test]
-    fn vec_f64_no_na_with_regular_nan_is_true() {
+    fn vec_f64_no_na_with_regular_nan_is_false() {
         let v: Vec<f64> = vec![1.0, f64::NAN, 3.0];
-        assert_eq!(AltRealData::no_na(&v), Some(true));
+        assert_eq!(AltRealData::no_na(&v), Some(false));
+    }
+
+    /// A computed NA (`NA_real_ * 1` quiets the NaN) is still NA.
+    #[test]
+    fn vec_f64_no_na_with_computed_na_is_false() {
+        let v: Vec<f64> = vec![1.0, COMPUTED_NA, 3.0];
+        assert_eq!(AltRealData::no_na(&v), Some(false));
     }
 
     /// A vector containing NA_real_ should report no_na = Some(false).
@@ -1313,14 +1342,51 @@ mod tests {
         assert_eq!(result, Some(4.0));
     }
 
+    /// A computed NA propagates as NA (not NaN) and is skipped by na_rm.
+    #[test]
+    fn vec_f64_sum_computed_na() {
+        let v: Vec<f64> = vec![1.0, COMPUTED_NA, 3.0];
+        let na = AltRealData::sum(&v, false).expect("sum is always computed");
+        assert!(is_na_real(na), "{:#x}", na.to_bits());
+        assert_eq!(AltRealData::sum(&v, true), Some(4.0));
+    }
+
+    /// NA wins over NaN whatever the order, as in R's `rmin` / `rmax`.
+    #[test]
+    fn vec_f64_min_max_na_trumps_nan() {
+        for v in [
+            vec![f64::NAN, 1.0, COMPUTED_NA],
+            vec![COMPUTED_NA, f64::NAN, 1.0],
+            vec![1.0, f64::NAN, NA_REAL],
+        ] {
+            for extreme in [
+                AltRealData::min(&v, false),
+                AltRealData::max(&v, false),
+                AltRealData::sum(&v, false),
+            ] {
+                let value = extreme.expect("missing values give a result");
+                assert!(is_na_real(value), "{v:?} gave {:#x}", value.to_bits());
+            }
+            assert_eq!(AltRealData::min(&v, true), Some(1.0));
+            assert_eq!(AltRealData::max(&v, true), Some(1.0));
+        }
+        let nan_only = vec![3.0, f64::NAN, 1.0];
+        let min = AltRealData::min(&nan_only, false).expect("NaN gives a result");
+        assert!(min.is_nan() && !is_na_real(min));
+        assert_eq!(AltRealData::min(&nan_only, true), Some(1.0));
+        assert_eq!(AltRealData::max(&nan_only, true), Some(3.0));
+        let all_missing = vec![NA_REAL, f64::NAN];
+        assert_eq!(AltRealData::min(&all_missing, true), None);
+    }
+
     // endregion
 
     // region: Box<[f64]> no_na — NA vs NaN
 
     #[test]
-    fn box_f64_no_na_with_regular_nan_is_true() {
+    fn box_f64_no_na_with_regular_nan_is_false() {
         let v: Box<[f64]> = vec![1.0, f64::NAN, 3.0].into_boxed_slice();
-        assert_eq!(AltRealData::no_na(&v), Some(true));
+        assert_eq!(AltRealData::no_na(&v), Some(false));
     }
 
     #[test]
@@ -1334,9 +1400,9 @@ mod tests {
     // region: &[f64] no_na — NA vs NaN
 
     #[test]
-    fn slice_f64_no_na_with_regular_nan_is_true() {
+    fn slice_f64_no_na_with_regular_nan_is_false() {
         let data: &[f64] = &[1.0, f64::NAN, 3.0];
-        assert_eq!(AltRealData::no_na(&data), Some(true));
+        assert_eq!(AltRealData::no_na(&data), Some(false));
     }
 
     #[test]
@@ -1350,9 +1416,9 @@ mod tests {
     // region: [f64; N] no_na — NA vs NaN
 
     #[test]
-    fn array_f64_no_na_with_regular_nan_is_true() {
+    fn array_f64_no_na_with_regular_nan_is_false() {
         let arr: [f64; 3] = [1.0, f64::NAN, 3.0];
-        assert_eq!(AltRealData::no_na(&arr), Some(true));
+        assert_eq!(AltRealData::no_na(&arr), Some(false));
     }
 
     #[test]
@@ -1366,9 +1432,9 @@ mod tests {
     // region: Cow<'static, [f64]> no_na — NA vs NaN
 
     #[test]
-    fn cow_f64_no_na_with_regular_nan_is_true() {
+    fn cow_f64_no_na_with_regular_nan_is_false() {
         let v: Cow<'static, [f64]> = Cow::Owned(vec![1.0, f64::NAN, 3.0]);
-        assert_eq!(AltRealData::no_na(&v), Some(true));
+        assert_eq!(AltRealData::no_na(&v), Some(false));
     }
 
     #[test]

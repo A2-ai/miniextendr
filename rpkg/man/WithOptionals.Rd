@@ -9,7 +9,7 @@
 \alias{WithOptionals$from_r}
 \alias{$.WithOptionals}
 \alias{[[.WithOptionals}
-\title{WithOptionals  Class}
+\title{WithOptionals Class}
 \usage{
 WithOptionals
 
@@ -23,5 +23,5 @@ WithOptionals
 \item{name}{Method name for dispatch.}
 }
 \description{
-WithOptionals  Class
+WithOptionals Class
 }

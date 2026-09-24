@@ -8,7 +8,7 @@
 \alias{Collections$from_r}
 \alias{$.Collections}
 \alias{[[.Collections}
-\title{Collections  Class}
+\title{Collections Class}
 \usage{
 Collections
 
@@ -22,5 +22,5 @@ Collections
 \item{name}{Method name for dispatch.}
 }
 \description{
-Collections  Class
+Collections Class
 }

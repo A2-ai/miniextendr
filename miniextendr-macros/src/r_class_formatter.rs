@@ -633,8 +633,9 @@ pub struct ClassDocBuilder<'a> {
     type_ident: &'a syn::Ident,
     /// User-provided roxygen tags extracted from doc comments.
     doc_tags: &'a [String],
-    /// Human-readable label for the class system (e.g., `"R6"`, `"S3"`, `"Env"`),
-    /// used in the auto-generated `@title`.
+    /// Human-readable label for the class system (e.g., `"R6"`, `"S3"`), used in
+    /// the auto-generated `@title`. Empty for Env classes, whose title is plain
+    /// `"<Class> Class"`.
     class_system_label: &'static str,
     /// Optional `@importFrom` tag for class-system-specific R packages
     /// (e.g., `"@importFrom R6 R6Class"`).
@@ -712,10 +713,13 @@ impl<'a> ClassDocBuilder<'a> {
         }
 
         if !has_title && !suppress_rd {
-            lines.push(format!(
-                "#' @title {} {} Class",
-                self.class_name, self.class_system_label
-            ));
+            // Env classes pass an empty label: "Counter Class", not "Counter  Class".
+            let title = if self.class_system_label.is_empty() {
+                format!("{} Class", self.class_name)
+            } else {
+                format!("{} {} Class", self.class_name, self.class_system_label)
+            };
+            lines.push(format!("#' @title {title}"));
         }
         if !has_name && !suppress_rd {
             lines.push(format!("#' @name {}", self.class_name));
@@ -1352,5 +1356,24 @@ mod tests {
             joined.contains("@title") && joined.contains("@name") && joined.contains("@rdname")
         );
         assert!(joined.contains("#' @export"));
+    }
+
+    /// The auto title names the class system, and has one space between words
+    /// when there is no label (Env classes).
+    #[test]
+    fn test_class_title_spacing() {
+        let type_ident: syn::Ident = syn::parse_str("Foo").unwrap();
+        let doc_tags: Vec<String> = vec![];
+        for (label, title) in [
+            ("R6", "#' @title Foo R6 Class"),
+            ("", "#' @title Foo Class"),
+        ] {
+            let lines = ClassDocBuilder::new("Foo", &type_ident, &doc_tags, label).build();
+            assert_eq!(
+                lines.iter().filter(|l| l.starts_with("#' @title")).count(),
+                1
+            );
+            assert!(lines.iter().any(|l| l == title), "{lines:?}");
+        }
     }
 }

@@ -9,7 +9,7 @@
 \alias{ReceiverCounter$default_counter}
 \alias{$.ReceiverCounter}
 \alias{[[.ReceiverCounter}
-\title{ReceiverCounter  Class}
+\title{ReceiverCounter Class}
 \usage{
 ReceiverCounter
 

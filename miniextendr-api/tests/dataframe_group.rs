@@ -60,3 +60,42 @@ fn extract_partitions_tuple_keyed_groups() {
         assert_eq!(parts[3].1, vec![row("y", "q", 4.0)]);
     });
 }
+
+/// `select_rows` treats a row as a row of every column: a matrix column is
+/// gathered along its first dimension (with its row names), and a packed
+/// data.frame column is subset recursively.
+#[test]
+fn select_rows_keeps_matrix_and_packed_columns_row_aligned() {
+    use miniextendr_api::dataframe::DataFrame;
+    use miniextendr_api::{OwnedProtect, SexpExt, r_str};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let df = r_str!(
+            "local({
+                d <- data.frame(id = 1:3)
+                d$m <- I(matrix(1:6, nrow = 3, dimnames = list(c('a', 'b', 'c'), c('x', 'y'))))
+                d$p <- data.frame(q = c(10, 20, 30))
+                d
+            })"
+        )
+        .expect("build the frame");
+        let _df_guard = OwnedProtect::new(df);
+
+        let out = DataFrame::from_sexp(df)
+            .expect("a data.frame")
+            .select_rows(&[2, 0]);
+        let out = out.as_sexp();
+
+        let m = out.vector_elt(1);
+        assert_eq!(m.get_dim().as_slice::<i32>(), &[2, 2]);
+        assert_eq!(m.as_slice::<i32>(), &[3, 1, 6, 4]);
+        let row_names = m.get_dimnames().vector_elt(0);
+        let name = |i| std::ffi::CStr::from_ptr(row_names.string_elt(i).r_char());
+        assert_eq!((name(0), name(1)), (c"c", c"a"));
+        assert!(m.inherits_class(c"AsIs"), "the I() class is kept");
+
+        let packed = out.vector_elt(2);
+        assert!(packed.is_data_frame());
+        assert_eq!(packed.vector_elt(0).as_slice::<f64>(), &[30.0, 10.0]);
+    });
+}

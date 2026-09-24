@@ -3551,6 +3551,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_top_level_fn_def_name_reads_escaped_backslashes() {
+        // `naming::r_def_name` (miniextendr-macros) writes `a\b` as `` `a\\b` ``
+        // and `trail\` as `` `trail\\` ``: R reads backslash escapes inside
+        // backticks. The scan returns that escaped spelling, and the doubled
+        // backslash before the closing backtick must not hide it.
+        for (line, name) in [
+            (r"`a\\b` <- function(x) {}", r"a\\b"),
+            (r"`trail\\` <- function(x) {}", r"trail\\"),
+            (r"`x\\\`y` <- function(x) {}", r"x\\\`y"),
+        ] {
+            assert_eq!(parse_top_level_fn_def_name(line), Some(name), "{line}");
+        }
+        // The pre-escaping spelling of `trail\` never closed its backtick.
+        assert_eq!(
+            parse_top_level_fn_def_name(r"`trail\` <- function(x) {}"),
+            None
+        );
+        let map = std::collections::HashMap::new();
+        let twice = "`a\\\\b` <- function() 1\n`a\\\\b` <- function() 2\n";
+        assert!(detect_duplicate_wrapper_defs(twice, &map).is_err());
+    }
+
+    #[test]
     fn detect_duplicate_quoted_operator_defs() {
         let map = std::collections::HashMap::new();
         let content = "`[.Foo` <- function(x, ...) {}\n`[.Foo` <- function(x, ...) {}\n";

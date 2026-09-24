@@ -2,7 +2,7 @@
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
 expression: generate_env_r_wrapper(&parsed)
 ---
-#' @title Widget  Class
+#' @title Widget Class
 #' @name Widget
 #' @rdname Widget
 #' @export

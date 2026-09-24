@@ -291,6 +291,60 @@ test_that("select_rows subsets element names with the values", {
   expect_identical(unname(out$x), c(2L, 3L))
 })
 
+# A frame with every column kind whose rows are not its elements, next to
+# plain columns. Base `[.data.frame` is the reference for all of them.
+row_shaped_frame <- function() {
+  df <- data.frame(id = 1:4)
+  df$m <- I(matrix(1:8, nrow = 4))
+  m <- matrix(c(1.5, 2.5, 3.5, 4.5, 10, 20, 30, 40), nrow = 4,
+              dimnames = list(rows = c("a", "b", "c", "d"), cols = c("x", "y")))
+  df$named <- I(m)
+  df$l <- I(list(1, "two", NULL, 4:5))
+  df$packed <- data.frame(p = c(10, 20, 30, 40), q = c("w", "x", "y", "z"))
+  df
+}
+
+test_that("select_rows keeps matrix, list and packed data.frame columns row-aligned", {
+  df <- row_shaped_frame()
+  # The input really carries the shapes under test.
+  expect_identical(dim(df$m), c(4L, 2L))
+  expect_identical(rownames(df$named), c("a", "b", "c", "d"))
+  expect_identical(names(dimnames(df$named)), c("rows", "cols"))
+  expect_s3_class(df$packed, "data.frame")
+
+  idx <- c(3L, 1L, 3L)
+  out <- miniextendr:::dataframe_select_rows(df, idx)
+  ref <- df[idx, , drop = FALSE]
+
+  expect_identical(out$m, ref$m)
+  expect_identical(out$named, ref$named)
+  expect_identical(dimnames(out$named), list(rows = c("c", "a", "c"), cols = c("x", "y")))
+  expect_identical(out$l, ref$l)
+  expect_identical(out$packed$p, ref$packed$p)
+  expect_identical(out$packed$q, ref$packed$q)
+  expect_identical(nrow(out$packed), 3L)
+  expect_equal(out, ref, ignore_attr = "row.names")
+})
+
+test_that("select_rows slices arrays along their first dimension", {
+  df <- data.frame(id = 1:3)
+  df$a <- I(array(1:12, dim = c(3, 2, 2)))
+  out <- miniextendr:::dataframe_select_rows(df, c(2L, 3L))
+  expect_identical(dim(out$a), c(2L, 2L, 2L))
+  expect_identical(unclass(out$a), array(1:12, dim = c(3, 2, 2))[2:3, , , drop = FALSE])
+})
+
+test_that("select_rows with matrix columns survives gctorture", {
+  skip_gc_stress_if_disabled()
+  df <- row_shaped_frame()
+  ref <- df[c(4L, 2L), , drop = FALSE]
+  old <- gctorture(TRUE)
+  on.exit(gctorture(old), add = TRUE)
+  out <- miniextendr:::dataframe_select_rows(df, c(4L, 2L))
+  gctorture(old)
+  expect_equal(out, ref, ignore_attr = "row.names")
+})
+
 test_that("group_by sub-frames keep a POSIXct column's time zone", {
   df <- data.frame(
     g = c("a", "b", "a"),

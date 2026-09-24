@@ -17,7 +17,7 @@
 \alias{Point$RCopy$copy}
 \alias{Point$RCopy$is_copy}
 \alias{Point$ROrd$cmp}
-\title{Point  Class}
+\title{Point Class}
 \usage{
 Point
 

@@ -86,7 +86,36 @@ fn from_r_suite() {
         test_coerced_conversions();
         test_error_cases();
         test_na_logical_bare_scalar_rejected();
+        test_computed_na_real();
     });
+}
+
+/// `NA_real_ * 1` as R computes it: arithmetic quiets the NaN, so the high word
+/// differs from `NA_REAL`'s (`0x7FF0_0000_0000_07A2`) while the low word stays 1954.
+const COMPUTED_NA: f64 = f64::from_bits(0x7FF8_0000_0000_07A2);
+
+/// Every inbound path that decides "is this R's NA" follows `R_IsNA`: a computed
+/// NA is NA, a plain NaN is a value.
+fn test_computed_na_real() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let scalar = guard.protect(SEXP::scalar_real(COMPUTED_NA));
+        let opt: Option<f64> = TryFromSexp::try_from_sexp(scalar).unwrap();
+        assert_eq!(opt, None);
+        assert_eq!(scalar.as_real(), None, "SexpExt::as_real");
+
+        let nan = guard.protect(SEXP::scalar_real(f64::NAN));
+        let opt: Option<f64> = TryFromSexp::try_from_sexp(nan).unwrap();
+        assert!(opt.is_some_and(f64::is_nan));
+        assert!(nan.as_real().is_some_and(f64::is_nan), "SexpExt::as_real");
+
+        let vec = make_real_vec(&[1.0, COMPUTED_NA, f64::NAN], &mut guard);
+        let opts: Vec<Option<f64>> = TryFromSexp::try_from_sexp(vec).unwrap();
+        assert_eq!(opts.len(), 3);
+        assert_eq!(opts[0], Some(1.0));
+        assert_eq!(opts[1], None);
+        assert!(opts[2].is_some_and(f64::is_nan));
+    }
 }
 
 fn test_scalar_conversions() {

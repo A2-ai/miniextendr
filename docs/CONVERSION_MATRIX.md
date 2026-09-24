@@ -422,7 +422,7 @@ views (`ArrayView*`) convert Rust-to-R only (numeric element types).
 | R Value | Rust Representation | Notes |
 |---------|-------------------|-------|
 | `NA_integer_` | `i32::MIN` (-2147483648) | Excluded from valid i32 range; inbound NA produces `SexpError::Na` on `i32` (use `Option<i32>` to receive NA) |
-| `NA_real_` | `0x7FF00000000007A2` (a NaN whose low word is 1954) | Inbound conversions detect it as R's `R_IsNA` does (low word 1954), so computed NAs such as `NA_real_ * 1` (bits `0x7FF80000000007A2`) read as NA too; ALTREP `no_na`/`sum`/`min`/`max` still compare the exact bit pattern |
+| `NA_real_` | `0x7FF00000000007A2` (a NaN whose low word is 1954) | Every NA check (inbound conversions, serde, `RValue`, `SexpExt::as_real`, Arrow nulls, complex NA, ALTREP `sum`/`min`/`max`) follows R's `R_IsNA` (low word 1954), so computed NAs such as `NA_real_ * 1` (bits `0x7FF80000000007A2`) read as NA too. ALTREP `no_na` is R's `ISNAN` hint: a NaN counts as missing there, because `anyNA()` trusts it |
 | `NA_logical_` | `i32::MIN` | Same sentinel as NA_integer_ |
 | `NA_character_` | R_NaString CHARSXP | Mapped to `None` in `Option<String>` |
 | `NaN` | `f64::NAN` | **Not** the same as NA_real_; passes through as valid f64 |
