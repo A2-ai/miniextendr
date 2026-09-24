@@ -817,10 +817,10 @@ fn generate_trait_s7_r_wrapper(
                         "#' @param ... Additional arguments; ignored by the fast-path shortcut."
                             .to_string(),
                     );
-                } else if method.rdname.is_none() {
-                    // A method-level `@rdname` sends the shortcut to a topic
-                    // that documents its arguments (#1590); only the type
-                    // page needs the filler.
+                } else if method_rdname(method, &type_str) == type_str {
+                    // A method-level `@rdname` naming another page sends the
+                    // shortcut to a topic that documents its arguments
+                    // (#1590); only the type page needs the filler.
                     lines.push(format!("#' @param {} (undocumented)", pname));
                 }
             }
