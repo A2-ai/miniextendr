@@ -468,6 +468,12 @@ so existing `Result<T, String>` functions behave exactly as before. `kind`
 stays `"result_err"`. Field names follow the reserved-name rule above; a
 reserved name from `data()` raises a `rust_error` describing the clash.
 
+The same trait classes argument-conversion failures: when a parameter type's
+`TryFromSexp::Error` implements `RConditionError`, a failed conversion raises
+its classes and fields with `kind = "conversion"` and the parameter's name as
+`e$param`. See
+[ERROR_HANDLING.md](ERROR_HANDLING.md#classed-conversion-errors).
+
 For one-off cases, `RError` is a ready-made classed value. Any
 `std::error::Error` converts into it with `?` or `From` (the message keeps the
 `caused by:` chain), and builders add the R-facing parts:

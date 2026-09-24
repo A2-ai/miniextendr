@@ -1,0 +1,27 @@
+error[E0599]: the method `__mx_conversion_parts` exists for reference `&OpaqueError`, but its trait bounds were not satisfied
+  --> tests/ui/fn_arg_error_not_display.rs:25:21
+   |
+14 | pub struct OpaqueError;
+   | ---------------------- doesn't satisfy `OpaqueError: RConditionError`, `OpaqueError: std::fmt::Display` or `_: ConversionErrClassed`
+...
+25 | fn takes_opaque(_x: Opaque) -> i32 {
+   |                     ^^^^^^
+   |
+   = note: the following trait bounds were not satisfied:
+           `OpaqueError: RConditionError`
+           which is required by `OpaqueError: miniextendr_api::condition::ConversionErrClassed`
+           `&OpaqueError: RConditionError`
+           which is required by `&OpaqueError: miniextendr_api::condition::ConversionErrClassed`
+           `OpaqueError: std::fmt::Display`
+           which is required by `&OpaqueError: miniextendr_api::condition::ConversionErrDisplay`
+note: the traits `RConditionError` and `std::fmt::Display` must be implemented
+  --> $WORKSPACE/miniextendr-api/src/condition.rs
+   |
+   | pub trait RConditionError {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+  --> $RUST/core/src/fmt/mod.rs
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following traits define an item `__mx_conversion_parts`, perhaps you need to implement one of them:
+           candidate #1: `miniextendr_api::condition::ConversionErrClassed`
+           candidate #2: `miniextendr_api::condition::ConversionErrDisplay`
+   = note: this error originates in the macro `::miniextendr_api::__mx_conversion_err_parts` (in Nightly builds, run with -Z macro-backtrace for more info)

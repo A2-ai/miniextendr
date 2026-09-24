@@ -26710,6 +26710,14 @@ Detection is by trait, not by attribute: the generated `Err` arm probes
 otherwise, so existing `Result<T, String>` / `Result<T, MyDebugError>`
 functions are unchanged. The condition's `kind` stays `"result_err"`.
 
+The same impl classes argument-conversion failures: when a parameter
+type's `TryFromSexp::Error` implements this trait, a failed conversion
+raises its classes and fields with `kind = "conversion"`, the message
+`failed to convert parameter '<p>' to <T>: <message()>` and the
+parameter's R name as `e$param` (unless `data()` has a `param` field of
+its own, which then wins). An error type without the impl renders with
+`Display` and keeps the plain `rust_error` class vector.
+
 `data()` field names must not be `message`, `call` or `kind` (see
 [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
 `rust_error` explaining the clash, so rename such a field at the source.
@@ -32150,6 +32158,29 @@ Raise an R warning with the given message.
 Unlike `r_stop`, this returns normally after issuing the warning.
 Automatically routes to R's main thread if called from a worker thread.
 
+### `error_value::conversion_condition_value`
+
+```rust
+unsafe fn conversion_condition_value(context: &str, param: &str, crate_class: &[&str], parts: crate::condition::ErrParts, call: Option<crate::SEXP>) -> crate::SEXP
+```
+
+Build the tagged value for an argument that failed its Rust-side
+conversion: `kind = "conversion"`, the parts probed off the error by
+[`crate::__mx_conversion_err_parts!`] (class, message and data from an
+[`RConditionError`](crate::condition::RConditionError) impl, else the
+`Display` text), with `context` prefixed to the message, the crate's
+`conversion_error_class` (`crate_class`, emitted by the macro from
+`[package.metadata.miniextendr]`) after the error's own classes, and the
+parameter's R name as `e$param`. See
+[`crate::condition::conversion_err_parts`] for how they combine.
+
+#### Safety
+
+Same contract as [`make_rust_condition_value_with_data`]: R main thread,
+valid allocation context. Every generated conversion `Err` arm runs inside
+the wrapper's `with_r_unwind_protect` closure (or, for sidecar setters, the
+`.Call` entry point itself), which satisfies it.
+
 ### `error_value::make_rust_condition_value`
 
 ```rust
@@ -32159,11 +32190,12 @@ unsafe fn make_rust_condition_value(message: &str, kind: &str, class: Option<&st
 Build a tagged condition value with no structured `data` payload.
 
 Thin wrapper over [`make_rust_condition_value_with_data`] with `data =
-None`. This is the entry point used by all proc-macro-generated codegen
-(argument-conversion failures, `Option::None`, `Result::Err`), none of
-which carries a `data` payload. Only the user-facing `error!()` /
+None` and at most one class. Generated code uses it for the unclassed
+kinds (`Option::None`); classed `Result::Err` values go through
+[`result_err_condition_value`], argument-conversion failures through
+[`conversion_condition_value`], and the user-facing `error!()` /
 `warning!()` / `message!()` / `condition!()` macros (routed through
-[`crate::unwind_protect`]) attach `data`.
+[`crate::unwind_protect`]) attach their own `data`.
 
 #### Safety
 

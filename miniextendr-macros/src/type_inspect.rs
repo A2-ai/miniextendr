@@ -224,9 +224,186 @@ pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::Ca
 
 // endregion
 
+// region: type rendering for messages
+
+/// Render a type the way it is written in Rust source, for user-facing
+/// messages: `AsFromStrVec<i32>`, `Either<i32, String>`, `&[f64]`,
+/// `&'a str`, `Option<Vec<String>>`.
+///
+/// `quote!(#ty).to_string()` puts a space between every token
+/// (`AsFromStrVec < i32 >`); this walks the tokens and applies the usual
+/// spacing instead: none around `<`, `>`, `::`, after `&` / `*` / `'`, or
+/// inside brackets; a space after `,` / `;`, around `+` / `=` / `->`, between
+/// two words, and between `mut` / `const` / `dyn` / `impl` or a lifetime and
+/// a following bracket group (`&mut [T]`, `&'a [T]`).
+pub(crate) fn type_display(ty: &syn::Type) -> String {
+    let mut out = String::new();
+    write_type_tokens(quote::quote!(#ty), &mut out);
+    out
+}
+
+fn write_type_tokens(tokens: proc_macro2::TokenStream, out: &mut String) {
+    use proc_macro2::{Delimiter, Spacing, TokenTree};
+
+    /// What the previous token leaves for the next one to attach to.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Prev {
+        /// Start of the stream, or a token after which nothing is spaced
+        /// (`<`, `&`, `*`, `::`, a trailing-space punct like `, `).
+        Glue,
+        /// A lifetime's `'`: the next ident attaches.
+        Tick,
+        /// An identifier, literal or closing `>`: a following word is spaced.
+        Word,
+        /// `mut` / `const` / `dyn` / `impl` or a lifetime: a following word
+        /// or group is spaced.
+        Keyword,
+    }
+
+    let mut prev = Prev::Glue;
+    // `-` of a pending `->` and the first `:` of a `::`.
+    let mut pending_arrow = false;
+    let mut pending_path_sep = false;
+    for tt in tokens {
+        match tt {
+            TokenTree::Ident(ident) => {
+                let name = ident.to_string();
+                if matches!(prev, Prev::Word | Prev::Keyword) {
+                    out.push(' ');
+                }
+                out.push_str(&name);
+                prev = if prev == Prev::Tick
+                    || matches!(name.as_str(), "mut" | "const" | "dyn" | "impl")
+                {
+                    Prev::Keyword
+                } else {
+                    Prev::Word
+                };
+            }
+            TokenTree::Literal(lit) => {
+                if matches!(prev, Prev::Word | Prev::Keyword) {
+                    out.push(' ');
+                }
+                out.push_str(&lit.to_string());
+                prev = Prev::Word;
+            }
+            TokenTree::Group(group) => {
+                if prev == Prev::Keyword
+                    || (prev == Prev::Word && group.delimiter() == Delimiter::Bracket)
+                {
+                    out.push(' ');
+                }
+                let (open, close) = match group.delimiter() {
+                    Delimiter::Parenthesis => ("(", ")"),
+                    Delimiter::Bracket => ("[", "]"),
+                    Delimiter::Brace => ("{", "}"),
+                    Delimiter::None => ("", ""),
+                };
+                out.push_str(open);
+                write_type_tokens(group.stream(), out);
+                out.push_str(close);
+                prev = Prev::Word;
+            }
+            TokenTree::Punct(punct) => {
+                let c = punct.as_char();
+                match c {
+                    ',' | ';' => {
+                        out.push(c);
+                        out.push(' ');
+                        prev = Prev::Glue;
+                    }
+                    '+' | '=' => {
+                        out.push(' ');
+                        out.push(c);
+                        out.push(' ');
+                        prev = Prev::Glue;
+                    }
+                    '-' if punct.spacing() == Spacing::Joint => {
+                        out.push_str(" -");
+                        pending_arrow = true;
+                    }
+                    '>' if pending_arrow => {
+                        out.push_str("> ");
+                        pending_arrow = false;
+                        prev = Prev::Glue;
+                    }
+                    '>' => {
+                        out.push('>');
+                        prev = Prev::Word;
+                    }
+                    ':' if punct.spacing() == Spacing::Joint => {
+                        out.push(':');
+                        pending_path_sep = true;
+                        prev = Prev::Glue;
+                    }
+                    ':' if pending_path_sep => {
+                        out.push(':');
+                        pending_path_sep = false;
+                        prev = Prev::Glue;
+                    }
+                    ':' => {
+                        // Associated-type bound: `Item: Clone`.
+                        out.push_str(": ");
+                        prev = Prev::Glue;
+                    }
+                    '\'' => {
+                        if matches!(prev, Prev::Word | Prev::Keyword) {
+                            out.push(' ');
+                        }
+                        out.push('\'');
+                        prev = Prev::Tick;
+                    }
+                    _ => {
+                        out.push(c);
+                        prev = Prev::Glue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `ty` with every lifetime replaced by `'_`, for a `let` binding annotation
+/// in generated code: `&'a [f64]` → `&'_ [f64]`. The binding then names the
+/// target type (so the error type of its conversion is known where the
+/// wrapper inspects it) without depending on the user's lifetime parameters
+/// being in scope.
+pub(crate) fn erase_lifetimes(ty: &syn::Type) -> syn::Type {
+    use proc_macro2::{Group, Ident, TokenStream, TokenTree};
+
+    fn erase(tokens: TokenStream) -> TokenStream {
+        let mut out = Vec::new();
+        let mut iter = tokens.into_iter();
+        while let Some(tt) = iter.next() {
+            match tt {
+                TokenTree::Punct(p) if p.as_char() == '\'' => {
+                    out.push(TokenTree::Punct(p));
+                    if let Some(TokenTree::Ident(lifetime)) = iter.next() {
+                        out.push(TokenTree::Ident(Ident::new("_", lifetime.span())));
+                    }
+                }
+                TokenTree::Group(g) => {
+                    let mut erased = Group::new(g.delimiter(), erase(g.stream()));
+                    erased.set_span(g.span());
+                    out.push(TokenTree::Group(erased));
+                }
+                other => out.push(other),
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    syn::parse2(erase(quote::quote!(#ty))).unwrap_or_else(|_| ty.clone())
+}
+
+// endregion
+
 #[cfg(test)]
 mod tests {
-    use super::{call_marker, is_main_thread_bound_input, is_main_thread_bound_return};
+    use super::{
+        call_marker, erase_lifetimes, is_main_thread_bound_input, is_main_thread_bound_return,
+        type_display,
+    };
     use crate::r_wrapper_builder::CallAttribution;
 
     fn ty(s: &str) -> syn::Type {
@@ -283,6 +460,51 @@ mod tests {
         assert!(is_main_thread_bound_input(&ty(
             "miniextendr_api::CallerCall"
         )));
+    }
+
+    #[test]
+    fn type_display_uses_source_spacing() {
+        let cases = [
+            ("i32", "i32"),
+            ("AsFromStrVec<i32>", "AsFromStrVec<i32>"),
+            ("Either<i32, String>", "Either<i32, String>"),
+            ("&[f64]", "&[f64]"),
+            ("&mut [f64]", "&mut [f64]"),
+            ("&str", "&str"),
+            ("&'a str", "&'a str"),
+            ("&'static [u8]", "&'static [u8]"),
+            ("Option<Vec<String>>", "Option<Vec<String>>"),
+            (
+                "HashMap<String, Vec<(i32, f64)>>",
+                "HashMap<String, Vec<(i32, f64)>>",
+            ),
+            ("::std::vec::Vec<i32>", "::std::vec::Vec<i32>"),
+            ("[u8; 4]", "[u8; 4]"),
+            ("Box<[Mode]>", "Box<[Mode]>"),
+            ("()", "()"),
+            ("*const T", "*const T"),
+            ("RCow<'a, i32>", "RCow<'a, i32>"),
+            (
+                "Box<dyn Fn(i32) -> i32 + Send + 'static>",
+                "Box<dyn Fn(i32) -> i32 + Send + 'static>",
+            ),
+            ("impl Iterator<Item = i32>", "impl Iterator<Item = i32>"),
+            ("<T as Trait>::Assoc", "<T as Trait>::Assoc"),
+            ("for<'a> fn(&'a str) -> bool", "for<'a> fn(&'a str) -> bool"),
+        ];
+        for (src, want) in cases {
+            assert_eq!(type_display(&ty(src)), want, "rendering `{src}`");
+        }
+    }
+
+    #[test]
+    fn erase_lifetimes_replaces_every_lifetime() {
+        let erased = |s: &str| type_display(&erase_lifetimes(&ty(s)));
+        assert_eq!(erased("&'a [f64]"), "&'_ [f64]");
+        assert_eq!(erased("&'static str"), "&'_ str");
+        assert_eq!(erased("&mut [i32]"), "&mut [i32]");
+        assert_eq!(erased("RCow<'a, Vec<&'b str>>"), "RCow<'_, Vec<&'_ str>>");
+        assert_eq!(erased("&str"), "&str");
     }
 }
 

@@ -460,6 +460,15 @@ test_that("sidecar conversion setter surfaces TryFromSexp errors (no silent drop
     class = "rust_error"
   )
   expect_identical(SidecarEnv_get_name(obj), "keep")
+
+  # Like every argument-conversion condition, it names the failing formal.
+  e <- tryCatch(SidecarEnv_set_name(obj, 123), error = function(e) e)
+  expect_equal(e$kind, "conversion")
+  expect_equal(e$param, "value")
+  e <- tryCatch(SidecarEnv_set_count(obj, NA_integer_), error = function(e) e)
+  expect_equal(e$kind, "conversion")
+  expect_equal(e$param, "value")
+  expect_match(conditionMessage(e), "on `SidecarEnv`: expected a single non-NA", fixed = TRUE)
 })
 
 test_that("sidecar getter panic becomes a structured R condition (no crash)", {

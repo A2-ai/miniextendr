@@ -569,12 +569,34 @@ pub fn internal_function() {
 
 ## Type Conversion Errors
 
-### SexpTypeError
+Most built-in argument types get an R-side precondition in the generated
+wrapper, so a bad value usually fails in R with an R-worded message
+(`'x' must be integer ...`) before it reaches Rust. The arguments without
+one convert in Rust through `TryFromSexp`: every custom `TryFromSexp` type,
+`Either<L, R>`, the `AsFromStr` family, and every argument of a function built
+with `no_preconditions` or `fast-default`. When that conversion fails, the
+wrapper raises an error condition with:
 
-When R passes wrong types:
+- the class vector `c("rust_error", "simpleError", "error", "condition")`,
+  preceded by the error type's own classes when it implements
+  `RConditionError` ([below](#classed-conversion-errors)) and by the crate's
+  `conversion_error_class` when set
+  ([below](#a-crate-level-class-for-every-conversion-error));
+- `e$kind == "conversion"`;
+- the message `failed to convert parameter '<p>' to <T>: <reason>`
+  (`failed to coerce parameter ...` under `coerce`). `<p>` is the R formal's
+  name, `<T>` the Rust type as written in the signature, and `<reason>` the
+  error's own message, which says what failed (type, length, NA, a parse
+  error, ...);
+- `e$param`, the R name of the failing parameter.
+
+The examples below are for functions without the R-side precondition
+(`no_preconditions` / `fast-default`), where these values reach Rust.
+
+### Type mismatch
 
 ```rust
-#[miniextendr]
+#[miniextendr(no_preconditions)]
 pub fn needs_integer(x: i32) -> i32 {
     x * 2
 }
@@ -583,6 +605,19 @@ pub fn needs_integer(x: i32) -> i32 {
 ```r
 needs_integer("abc")
 # Error: failed to convert parameter 'x' to i32: type mismatch: expected INTSXP, got STRSXP
+
+e <- tryCatch(needs_integer("abc"), error = identity)
+e$kind   # "conversion"
+e$param  # "x"
+```
+
+Types without a precondition look the same, with the full type in the
+message:
+
+```r
+either_int_or_str(3.5)   # value: Either<i32, String>
+# Error: failed to convert parameter 'value' to Either<i32, String>: failed to convert to Either:
+#   Left failed (type mismatch: expected INTSXP, got REALSXP), Right failed (type mismatch: expected STRSXP, got REALSXP)
 ```
 
 ### NA Handling
@@ -591,7 +626,7 @@ NA-rejecting scalar types such as `i32` and `bool` report conversion errors;
 their `Option` forms preserve NA as `None`:
 
 ```rust
-#[miniextendr]
+#[miniextendr(no_preconditions)]
 pub fn needs_value(x: i32) -> i32 { x }
 
 #[miniextendr]
@@ -601,7 +636,8 @@ pub fn handles_na(x: Option<i32>) -> i32 {
 ```
 
 ```r
-needs_value(NA_integer_)  # Error: contains NA
+needs_value(NA_integer_)
+# Error: failed to convert parameter 'x' to i32: unexpected NA value in INTSXP
 handles_na(NA_integer_)   # -1
 ```
 
@@ -615,9 +651,126 @@ pub fn needs_int(x: i32) -> i32 { x }
 ```
 
 ```r
-needs_int(1.5)   # Error: failed to coerce to i32: fractional value
-needs_int(1e20)  # Error: failed to coerce to i32: overflow
+needs_int(1.5)   # Error: 'x' must be integer or whole-number numeric   (R-side precondition)
+needs_int(1e20)  # Error: failed to coerce parameter 'x' to i32: invalid value: value out of range
 ```
+
+### Classed conversion errors
+
+When the `TryFromSexp::Error` of an argument type implements
+[`RConditionError`](CONDITIONS.md#classed-result-errors-with-rconditionerror-and-rerror),
+a failed conversion takes that error's class vector, message and data, the
+same way a `Result<T, E: RConditionError>` return does. `kind` stays
+`"conversion"`, the message keeps the parameter context, and `e$param` is
+added, so a package can put the conversion failures of its own argument types
+in its condition family:
+
+```rust
+use miniextendr_api::condition::RConditionError;
+use miniextendr_api::named_vector::NamedVector;
+use miniextendr_api::{SEXP, TryFromSexp};
+use std::collections::BTreeMap;
+
+pub struct Hyperparams(BTreeMap<String, f64>);
+
+#[derive(Debug, RConditionError)]
+#[condition(class = "pkg_error")]
+pub enum HyperparamError {
+    #[condition(class = "pkg_error_bad_arg", message = "expected a named numeric vector ({reason})")]
+    NotNamedNumeric { reason: String },
+    #[condition(class = "pkg_error_negative", message = "hyperparameter '{param}' must be non-negative, got {value}")]
+    Negative { param: String, value: f64 },
+}
+
+impl TryFromSexp for Hyperparams {
+    type Error = HyperparamError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let NamedVector(map) = NamedVector::<BTreeMap<String, f64>>::try_from_sexp(sexp)
+            .map_err(|e| HyperparamError::NotNamedNumeric { reason: e.to_string() })?;
+        if let Some((param, value)) = map.iter().find(|(_, v)| **v < 0.0) {
+            return Err(HyperparamError::Negative { param: param.clone(), value: *value });
+        }
+        Ok(Hyperparams(map))
+    }
+}
+
+#[miniextendr]
+pub fn hyperparams_total(hyper: Hyperparams) -> f64 {
+    hyper.0.values().sum()
+}
+```
+
+```r
+e <- tryCatch(hyperparams_total(1:3), error = identity)
+class(e)
+# [1] "pkg_error_bad_arg" "pkg_error" "rust_error" "simpleError" "error" "condition"
+e$kind    # "conversion"
+e$param   # "hyper"
+e$reason  # "invalid value: NamedVector requires a names attribute on the input vector"
+conditionMessage(e)
+# failed to convert parameter 'hyper' to Hyperparams: expected a named numeric vector (invalid value: ...)
+
+tryCatch(hyperparams_total("a"), pkg_error = function(e) "caught by the family handler")
+```
+
+Rules:
+
+- **`param` precedence.** When the error type's own `data()` already has a
+  field named `param`, the type's value is kept and the framework adds none:
+  the type author owns the fields they chose, and the parameter's name stays
+  in the message. Above, `hyperparams_total(c(alpha = 1, beta = -2))` gives
+  `e$param == "beta"` (the hyperparameter) and the message
+  `failed to convert parameter 'hyper' to Hyperparams: hyperparameter 'beta' must be non-negative, got -2`.
+- **Reserved names.** `data()` fields must not be `message`, `call` or
+  `kind`; a reserved name raises a plain `rust_error` explaining the clash,
+  as for `Result` errors.
+- **Fallback.** An error type without the impl (every built-in one, e.g.
+  `SexpError`, `MatchArgError`) is rendered with `Display` and keeps the plain
+  class vector. The error type must implement `RConditionError` or `Display`.
+- **Worker and `call = caller`.** The conversion runs on the main thread in
+  both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
+  follows the function's call attribution.
+- **Sidecar setters** (`Type_set_<field>`) report
+  `failed to convert value for sidecar field '<field>' on `<Type>`: <reason>`
+  with `e$param == "value"`, the setter's formal.
+- **Strict mode** (`#[miniextendr(strict)]` on lossy integer types) rejects
+  values with a panic (`kind = "panic"`), not a conversion condition.
+
+### A crate-level class for every conversion error
+
+To put every argument-conversion failure of a package in its condition family
+without an `RConditionError` impl on each type, name the classes once in the
+crate's `Cargo.toml`:
+
+```toml
+[package.metadata.miniextendr]
+conversion_error_class = ["pkg_error_argument", "pkg_error"]   # or one string: "pkg_error"
+```
+
+Every conversion condition of the crate (free functions, methods, trait
+methods and sidecar setters) then carries those classes before the
+`rust_error` layering. An error type with its own `RConditionError` classes
+keeps them first; the crate classes follow, skipping any the error already
+names:
+
+```r
+# A plain SexpError (e.g. an `i32` argument without a precondition):
+class(tryCatch(f("a"), error = identity))
+# [1] "pkg_error_argument" "pkg_error" "rust_error" "simpleError" "error" "condition"
+
+# An error type classed c("pkg_error_negative", "pkg_error"):
+class(tryCatch(g(-1L), error = identity))
+# [1] "pkg_error_negative" "pkg_error" "pkg_error_argument" "rust_error" "simpleError" "error" "condition"
+```
+
+Without the key nothing changes. The value is a string or a single-line array
+of strings, set once; the entries must be non-empty and distinct and must not
+name `rust_error`, `simpleError`, `error` or `condition`, which every
+conversion error already carries. The key covers conversions done in Rust; an
+argument rejected by an R-side precondition or by `match.arg()` raises that
+check's plain R error. `tests/cross-package/producer.pkg` sets the key and
+tests it in `test-conversion-error-class.R`.
 
 ---
 

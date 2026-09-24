@@ -557,17 +557,33 @@ fn generate_setter_body(
             .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
     };
 
-    // Conversion-failure error message prefix, mirroring the main path's
-    // "failed to convert parameter '<name>' to <ty>: ..." wording.
-    let err_prefix = format!(
-        "failed to convert value for sidecar field '{}' on `{}`",
-        field_name, struct_name
+    // Conversion-failure condition: the message prefix mirrors the main path's
+    // "failed to convert parameter '<name>' to <ty>: ..." wording, and `e$param`
+    // names the setter's `value` formal, as on every conversion condition. The
+    // scalar slots have no error value, so their `expected ...` text goes
+    // through the same probe as a `&str` (its `Display` arm).
+    let err_prefix = syn::LitStr::new(
+        &format!(
+            "failed to convert value for sidecar field '{}' on `{}`",
+            field_name, struct_name
+        ),
+        field_name.span(),
     );
-    let scalar_err = |expected: &str| -> syn::LitStr {
-        syn::LitStr::new(
-            &format!("{err_prefix}: expected {expected}"),
-            field_name.span(),
-        )
+    let crate_class = crate::crate_config::conversion_error_class();
+    let conversion_err = |err: proc_macro2::TokenStream| -> proc_macro2::TokenStream {
+        quote::quote! {
+            ::miniextendr_api::error_value::conversion_condition_value(
+                #err_prefix,
+                "value",
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(#err),
+                ::core::option::Option::None,
+            )
+        }
+    };
+    let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
+        let text = syn::LitStr::new(&format!("expected {expected}"), field_name.span());
+        conversion_err(quote::quote!(#text))
     };
 
     match slot.kind {
@@ -581,76 +597,56 @@ fn generate_setter_body(
             }
         }
         SlotKind::ScalarInt => {
-            let err_msg = scalar_err("a single non-NA integer-compatible value");
+            let err_value = scalar_err("a single non-NA integer-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_integer() {
                         Some(v) => v,
-                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
-                            #err_msg,
-                            ::miniextendr_api::error_value::kind::CONVERSION,
-                            ::core::option::Option::None,
-                            ::core::option::Option::None,
-                        ),
+                        None => return #err_value,
                     };
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
-            let err_msg = scalar_err("a single non-NA numeric-compatible value");
+            let err_value = scalar_err("a single non-NA numeric-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_real() {
                         Some(v) => v,
-                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
-                            #err_msg,
-                            ::miniextendr_api::error_value::kind::CONVERSION,
-                            ::core::option::Option::None,
-                            ::core::option::Option::None,
-                        ),
+                        None => return #err_value,
                     };
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            let err_msg = scalar_err("a single non-NA logical-compatible value");
+            let err_value = scalar_err("a single non-NA logical-compatible value");
             quote::quote! {
                 use ::miniextendr_api::SexpExt;
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_logical() {
                         Some(v) => v,
-                        None => return ::miniextendr_api::error_value::make_rust_condition_value(
-                            #err_msg,
-                            ::miniextendr_api::error_value::kind::CONVERSION,
-                            ::core::option::Option::None,
-                            ::core::option::Option::None,
-                        ),
+                        None => return #err_value,
                     };
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            let err_msg = scalar_err("at least one raw-compatible value");
+            let err_value = scalar_err("at least one raw-compatible value");
             quote::quote! {
                 use ::miniextendr_api::{SexpExt, SEXPTYPE};
                 unsafe {
                     #extract_mut
                     let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
                     if raw_vec.len() == 0 {
-                        return ::miniextendr_api::error_value::make_rust_condition_value(
-                            #err_msg,
-                            ::miniextendr_api::error_value::kind::CONVERSION,
-                            ::core::option::Option::None,
-                            ::core::option::Option::None,
-                        );
+                        return #err_value;
                     }
                     data.#field_name = raw_vec.raw_elt(0);
                     x
@@ -659,19 +655,14 @@ fn generate_setter_body(
         }
         SlotKind::Conversion => {
             let ty = &slot.ty;
-            let err_msg_lit = syn::LitStr::new(&err_prefix, field_name.span());
+            let err_value = conversion_err(quote::quote!(e));
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
                     #extract_mut
                     data.#field_name = match <#ty as TryFromSexp>::try_from_sexp(value) {
                         Ok(val) => val,
-                        Err(e) => return ::miniextendr_api::error_value::make_rust_condition_value(
-                            &format!("{}: {e}", #err_msg_lit),
-                            ::miniextendr_api::error_value::kind::CONVERSION,
-                            ::core::option::Option::None,
-                            ::core::option::Option::None,
-                        ),
+                        Err(e) => return #err_value,
                     };
                     x
                 }

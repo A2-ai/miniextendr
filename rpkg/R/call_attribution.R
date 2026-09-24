@@ -33,3 +33,10 @@ call_marker_caller <- function(value) {
 call_marker_wrapper <- function(value) {
   call_marker_wrapper_impl(value)
 }
+
+# Delegates to a `call = caller` entry point whose argument converts Rust-side
+# (a `TryFromSexp` newtype with a classed error, src/rust/classed_result_tests.rs):
+# the conversion error surfaces as `Error in hyperparams_total_caller(...)`.
+hyperparams_total_caller <- function(hyper) {
+  hyperparams_total_caller_impl(hyper)
+}

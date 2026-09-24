@@ -707,3 +707,63 @@ pub fn producer_exported_attributed_probe(x: i32) -> Result<i32, String> {
 }
 
 // endregion
+
+// region: crate-level conversion error class
+
+/// A positive count. Its `TryFromSexp::Error` implements `RConditionError`
+/// with classes of its own; `Cargo.toml` sets `conversion_error_class =
+/// ["producer_error_argument", "producer_error"]`, which follows them
+/// (without repeating `producer_error`).
+pub struct ProducerCount(i32);
+
+/// Why an argument is not a [`ProducerCount`].
+#[derive(Debug, miniextendr_api::condition::RConditionError)]
+#[condition(class = "producer_error")]
+pub enum ProducerCountError {
+    /// Not an integer scalar.
+    #[condition(message = "expected an integer count ({reason})")]
+    NotInteger {
+        /// The underlying conversion error.
+        reason: String,
+    },
+    /// Zero or negative.
+    #[condition(message = "expected a positive count, got {value}")]
+    NotPositive {
+        /// The rejected value.
+        value: i32,
+    },
+}
+
+impl miniextendr_api::TryFromSexp for ProducerCount {
+    type Error = ProducerCountError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let value = <i32 as miniextendr_api::TryFromSexp>::try_from_sexp(sexp).map_err(|e| {
+            ProducerCountError::NotInteger {
+                reason: e.to_string(),
+            }
+        })?;
+        if value <= 0 {
+            return Err(ProducerCountError::NotPositive { value });
+        }
+        Ok(ProducerCount(value))
+    }
+}
+
+/// Classed conversion error plus the crate default: a bad `n` raises
+/// `c("producer_error_not_positive", "producer_error", "producer_error_argument", "rust_error", ...)`.
+/// @param n A positive integer count.
+#[miniextendr]
+pub fn producer_count_twice(n: ProducerCount) -> i32 {
+    n.0 * 2
+}
+
+/// Plain `SexpError` conversion (no R-side precondition): a bad `x` gets only
+/// the crate default, `c("producer_error_argument", "producer_error", "rust_error", ...)`.
+/// @param x An integer scalar.
+#[miniextendr(no_preconditions)]
+pub fn producer_int_twice(x: i32) -> i32 {
+    x * 2
+}
+
+// endregion

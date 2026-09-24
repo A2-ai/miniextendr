@@ -2327,7 +2327,8 @@ Returns a flat list of all conversion statements, in parameter order.
 fn new() -> Self
 ```
 
-Create a new conversion builder.
+Create a new conversion builder, carrying the crate-level
+`conversion_error_class` from the manifest (empty when unset).
 
 #### `with_coerce_all`
 

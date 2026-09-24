@@ -12,6 +12,8 @@
 \alias{classed_warning_vec}
 \alias{classed_condition_vec}
 \alias{reserved_data_macro_runtime}
+\alias{hyperparams_total}
+\alias{hyperparams_total_worker}
 \title{classed_result_missing}
 \usage{
 classed_result_missing(field)
@@ -35,6 +37,10 @@ classed_warning_vec(n)
 classed_condition_vec(classes)
 
 reserved_data_macro_runtime(name)
+
+hyperparams_total(hyper)
+
+hyperparams_total_worker(hyper)
 }
 \arguments{
 \item{field}{(no documentation available)}
@@ -52,6 +58,8 @@ reserved_data_macro_runtime(name)
 \item{n}{(no documentation available)}
 
 \item{classes}{(no documentation available)}
+
+\item{hyper}{A named numeric vector of non-negative values.}
 }
 \description{
 \verb{Result<i32, PkgError>}: empty \code{field} raises \code{pkg_error_missing_field} with \code{e$field == "id"}; otherwise returns the length.
@@ -75,4 +83,8 @@ Classless \code{RError}: same rendering as a plain \verb{Result<_, String>} erro
 \verb{rust_condition!} with a class vector supplied as a \verb{Vec<String>}.
 
 Computed reserved field name: the runtime reserved-name check fires.
+
+Sum of the hyperparameters; a bad \code{hyper} raises a classed conversion error (\code{mx_fixture_bad_arg} / \code{mx_fixture_negative_hyperparam}, then \code{mx_fixture_error}).
+
+\code{hyperparams_total()} on the worker thread: the argument converts on the main thread before dispatch, through the split conversion path.
 }

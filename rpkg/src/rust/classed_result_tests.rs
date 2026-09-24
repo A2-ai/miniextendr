@@ -206,3 +206,99 @@ pub fn reserved_data_macro_runtime(name: &str) {
 }
 
 // endregion
+
+// region: classed argument-conversion errors
+
+/// Named, non-negative hyperparameters from an R named numeric vector,
+/// `c(alpha = 1, beta = 0.5)`. Its `TryFromSexp::Error` implements
+/// `RConditionError` (via the derive), so an argument that fails to convert
+/// raises the error's classes and fields, with the parameter context in the
+/// message and the parameter's R name as `e$param`.
+pub struct Hyperparams(std::collections::BTreeMap<String, f64>);
+
+/// Why an argument is not a valid [`Hyperparams`].
+#[derive(Debug, RConditionError)]
+#[condition(class = "mx_fixture_error")]
+pub enum HyperparamError {
+    /// Not a named numeric vector. The member class is the
+    /// `mx_fixture_bad_arg` of every argument this fixture family rejects.
+    #[condition(
+        class = "mx_fixture_bad_arg",
+        message = "expected a named numeric vector ({reason})"
+    )]
+    NotNamedNumeric {
+        /// The underlying conversion error.
+        reason: String,
+    },
+    /// A negative entry. Its data has a `param` field of its own (the
+    /// hyperparameter's name), which wins over the framework's `e$param`.
+    #[condition(
+        class = "mx_fixture_negative_hyperparam",
+        message = "hyperparameter '{param}' must be non-negative, got {value}"
+    )]
+    Negative {
+        /// The hyperparameter's name.
+        param: String,
+        /// Its value.
+        value: f64,
+    },
+}
+
+impl miniextendr_api::TryFromSexp for Hyperparams {
+    type Error = HyperparamError;
+
+    fn try_from_sexp(sexp: miniextendr_api::SEXP) -> Result<Self, Self::Error> {
+        use miniextendr_api::named_vector::NamedVector;
+        let NamedVector(map) =
+            NamedVector::<std::collections::BTreeMap<String, f64>>::try_from_sexp(sexp).map_err(
+                |e| HyperparamError::NotNamedNumeric {
+                    reason: e.to_string(),
+                },
+            )?;
+        if let Some((param, value)) = map.iter().find(|(_, value)| **value < 0.0) {
+            return Err(HyperparamError::Negative {
+                param: param.clone(),
+                value: *value,
+            });
+        }
+        Ok(Hyperparams(map))
+    }
+}
+
+/// Sum of the hyperparameters; a bad `hyper` raises a classed conversion
+/// error (`mx_fixture_bad_arg` / `mx_fixture_negative_hyperparam`, then
+/// `mx_fixture_error`).
+///
+/// @param hyper A named numeric vector of non-negative values.
+#[miniextendr]
+pub fn hyperparams_total(hyper: Hyperparams) -> f64 {
+    hyper.0.values().sum()
+}
+
+#[cfg(feature = "worker-thread")]
+mod worker {
+    use super::Hyperparams;
+    use miniextendr_api::miniextendr;
+
+    /// `hyperparams_total()` on the worker thread: the argument converts on
+    /// the main thread before dispatch, through the split conversion path.
+    ///
+    /// @param hyper A named numeric vector of non-negative values.
+    #[miniextendr(worker)]
+    pub fn hyperparams_total_worker(hyper: Hyperparams) -> f64 {
+        hyper.0.values().sum()
+    }
+}
+
+/// Internal entry point behind the hand-written `hyperparams_total_caller()`
+/// in `R/call_attribution.R`: a conversion error is attributed to that
+/// caller's call.
+///
+/// @param hyper A named numeric vector of non-negative values.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn hyperparams_total_caller_impl(hyper: Hyperparams) -> f64 {
+    hyper.0.values().sum()
+}
+
+// endregion
