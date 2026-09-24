@@ -89,18 +89,18 @@ fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
         .join("\n")
 }
 
-/// A type without an R-facing expectation: the `Err` arm names the parameter
-/// by its R formal (`_x` → `x`) in the `invalid '<p>' argument` prefix, passes
-/// the Rust type (with source spacing) as `e$rust_type` rather than in the
-/// message, probes without an expectation, and passes an empty crate class
-/// list by default (#1591).
+/// A type without an R-facing expectation (an opaque custom type): the `Err`
+/// arm names the parameter by its R formal (`_x` → `x`) in the
+/// `invalid '<p>' argument` prefix, passes the Rust type (with source spacing)
+/// as `e$rust_type` rather than in the message, probes without an
+/// expectation, and passes an empty crate class list by default (#1591).
 #[test]
 fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
-    let s = conversion_text(&RustConversionBuilder::new(), "_nums: AsFromStrVec<i32>");
+    let s = conversion_text(&RustConversionBuilder::new(), "_nums: Hyperparams<i32>");
     assert!(s.contains("conversion_condition_value"), "{s}");
     assert!(s.contains("__mx_conversion_err_parts ! (e , false)"), "{s}");
     assert!(
-        s.contains("\"invalid 'nums' argument\" , \"nums\" , :: core :: option :: Option :: Some (\"AsFromStrVec<i32>\") , & []"),
+        s.contains("\"invalid 'nums' argument\" , \"nums\" , :: core :: option :: Option :: Some (\"Hyperparams<i32>\") , & []"),
         "{s}"
     );
     assert!(!s.contains("failed to convert"), "{s}");
@@ -120,6 +120,13 @@ fn test_conversion_err_arm_states_the_r_expectation() {
         ("s: &str", "'s' must be a single string"),
         ("flag: bool", "'flag' must be TRUE or FALSE"),
         ("xs: &[f64]", "'xs' must be double"),
+        ("addr: AsFromStr<IpAddr>", "'addr' must be a single string"),
+        ("addrs: AsFromStrVec<IpAddr>", "'addrs' must be character"),
+        (
+            "value: Either<i32, String>",
+            "'value' must be a single integer or a single string",
+        ),
+        ("pair: (i32, String)", "'pair' must be a list of length 2"),
     ] {
         let s = conversion_text(&builder, src);
         assert!(s.contains(&format!("\"{prefix}\"")), "{src}: {s}");

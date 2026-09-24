@@ -644,19 +644,61 @@ impl RTypeCheck {
 ///
 /// Derived from the same type classification as the R-side checks, including
 /// the `coerce` widening (`coerced`) and the `Missing<T>` / `Option<T>`
-/// wrappers, so the two paths describe an argument the same way. `None` for
-/// a type without an R-side check (a custom `TryFromSexp` type, `Either`,
-/// the `AsFromStr` family, ...): the conversion then reports
-/// `invalid '<p>' argument: <reason>`.
+/// wrappers, so the two paths describe an argument the same way. A few types
+/// without an R-side check still have an R-facing expectation
+/// ([`unchecked_expectation`]): `Either<L, R>`, the `AsFromStr` markers and
+/// tuples. `None` only for an opaque type (a custom `TryFromSexp` type): the
+/// conversion then reports `invalid '<p>' argument: <reason>`.
 pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<String> {
     let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-    let check = r_check_for_type(ty)?;
+    let Some(check) = r_check_for_type(ty) else {
+        return unchecked_expectation(ty);
+    };
     let check = if coerced {
         coerce_widened(check, ty)
     } else {
         check
     };
     Some(check.expectation())
+}
+
+/// The R-facing expectation of a type that has no R-side check, so its
+/// conversion alone says what it accepts (#1594):
+///
+/// | type | `<expected>` |
+/// |------|--------------|
+/// | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (the input `T` is parsed from) |
+/// | `Either<L, R>` | `<L> or <R>`, when both sides have one (`a single integer or a single string`) |
+/// | `(A, B, ...)` | `a list of length N` |
+/// | `Option<T>` of the above | `NULL or <T>` |
+fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Tuple(tuple) if !tuple.elems.is_empty() => {
+            Some(format!("a list of length {}", tuple.elems.len()))
+        }
+        syn::Type::Path(type_path) => {
+            let segment = type_path.path.segments.last()?;
+            match segment.ident.to_string().as_str() {
+                "AsFromStr" => Some("a single string".into()),
+                "AsFromStrVec" => Some("character".into()),
+                "Either" => {
+                    let left = crate::type_inspect::first_type_argument(segment)?;
+                    let right = crate::type_inspect::second_type_argument(segment)?;
+                    Some(format!(
+                        "{} or {}",
+                        conversion_expectation(left, false)?,
+                        conversion_expectation(right, false)?
+                    ))
+                }
+                "Option" => {
+                    let inner = extract_single_generic_arg(segment)?;
+                    Some(format!("NULL or {}", unchecked_expectation(inner)?))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// The R-facing expectation of a `strict` lossy-integer parameter (`i64`,
@@ -1358,14 +1400,39 @@ mod tests {
             exp("Option<AsCharacter>", false),
             some("NULL or coercible to a single string")
         );
+        // Types without an R-side check that still say what they accept.
+        assert_eq!(exp("AsFromStr<IpAddr>", false), some("a single string"));
+        assert_eq!(exp("AsFromStrVec<i32>", false), some("character"));
+        assert_eq!(
+            exp("Option<AsFromStr<IpAddr>>", false),
+            some("NULL or a single string")
+        );
+        assert_eq!(
+            exp("Either<i32, String>", false),
+            some("a single integer or a single string")
+        );
+        assert_eq!(
+            exp("Either<f64, Vec<i32>>", false),
+            some("a single double or integer")
+        );
+        assert_eq!(
+            exp("Either<bool, Either<i32, String>>", false),
+            some("TRUE or FALSE or a single integer or a single string")
+        );
+        assert_eq!(
+            exp("Option<Either<i32, String>>", false),
+            some("NULL or a single integer or a single string")
+        );
+        assert_eq!(exp("(i32, String)", false), some("a list of length 2"));
         // Choice parameters, including the `Missing` / `Option` / `Either`
-        // layers of #1551, have no expectation: their conversion errors read
-        // `invalid '<p>' argument: <reason>`.
+        // layers of #1551, have no static expectation: their conversion error
+        // supplies it at run time (`one of "a", "b"`). An opaque side leaves
+        // the whole `Either` without one.
         for unknown in [
             "Hyperparams",
-            "Either<i32, String>",
-            "AsFromStrVec<i32>",
+            "Either<i32, Hyperparams>",
             "SEXP",
+            "()",
             "Mode",
             "Option<Mode>",
             "Missing<Option<Mode>>",
@@ -1376,6 +1443,21 @@ mod tests {
         ] {
             assert_eq!(exp(unknown, false), None, "{unknown}");
         }
+    }
+
+    #[test]
+    fn strict_expectation_names_a_whole_number() {
+        let exp = |ty: &str| strict_conversion_expectation(&parse_type(ty));
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(exp("i64"), some("a single whole number"));
+        assert_eq!(exp("isize"), some("a single whole number"));
+        assert_eq!(exp("u64"), some("a single non-negative whole number"));
+        assert_eq!(exp("usize"), some("a single non-negative whole number"));
+        assert_eq!(exp("Vec<i64>"), some("integer or whole-number numeric"));
+        assert_eq!(
+            exp("Vec<Option<u64>>"),
+            some("integer or whole-number numeric")
+        );
     }
 
     #[test]
