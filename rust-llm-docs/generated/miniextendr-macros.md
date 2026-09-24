@@ -1819,6 +1819,9 @@ Build the roxygen `#' @tag` lines for the method.
 Returns a vector of strings, each a complete roxygen comment line. If the parent
 class has `@noRd`, returns only `["#' @noRd"]`. Otherwise generates `@name`,
 `@rdname`, `@source`, and optionally `@export` tags, plus any user-provided tags.
+A method that joins an author topic (`@rdname other`, `@describeIn other`)
+gets no `@name` / `@rdname` next to `@describeIn`, and sorts after the
+topic's own block (`roxygen::ORDER_AFTER_TOPIC_BLOCKS`).
 
 #### `new`
 
