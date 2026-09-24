@@ -5,16 +5,12 @@
 \alias{drop_on_panic}
 \alias{drop_on_panic_with_move}
 \alias{take_and_return_nothing}
-\alias{rpkg_arithmetic}
-\alias{add}
 \alias{add2}
 \alias{add3}
 \alias{add4}
 \alias{nested_panic}
-\alias{rpkg_panic_tests}
-\alias{add_panic}
-\alias{add_panic_heap}
 \alias{add_r_error}
+\alias{add_panic_heap}
 \alias{add_r_error_heap}
 \alias{add_left_mut}
 \alias{add_right_mut}
@@ -29,8 +25,6 @@ drop_on_panic_with_move()
 
 take_and_return_nothing()
 
-add(left, right)
-
 add2(left, right, dummy = NULL)
 
 add3(left, right, dummy = NULL)
@@ -38,8 +32,6 @@ add3(left, right, dummy = NULL)
 add4(left, right)
 
 nested_panic()
-
-add_panic(left, right)
 
 add_r_error(left, right)
 
@@ -60,9 +52,6 @@ add_left_right_mut(left, right)
 
 \item{dummy}{Ignored unit parameter for testing.}
 }
-\value{
-A scalar integer result.
-}
 \description{
 Test that MsgOnDrop prints its message on normal function return.
 
@@ -72,8 +61,6 @@ Test that MsgOnDrop runs its destructor when an Rf_error (R longjmp) occurs.
 
 Test that a function returning unit () works correctly (invisible NULL in R).
 
-Arithmetic and return-value tests
-
 Test addition with a unit-typed dummy parameter.
 
 Test checked addition returning Result, with a unit-typed dummy parameter.
@@ -81,8 +68,6 @@ Test checked addition returning Result, with a unit-typed dummy parameter.
 Test checked division returning Result with a string error on divide-by-zero.
 
 Test that a panic in a deeply nested call chain is caught and propagated.
-
-Panic and error handling tests (unsafe)
 
 Test that Rf_error triggers an R error with a stack-allocated MsgOnDrop.
 
@@ -95,15 +80,4 @@ Test macro handling of a mutable left parameter.
 Test macro handling of a mutable right parameter.
 
 Test macro handling when both parameters are mutable.
-}
-\examples{
-add(1L, 2L)
-try(add_panic(1L, 2L))
-try(add_r_error(1L, 2L))
-\dontrun{
-# These use checked FFI wrappers that detect wrong-thread usage,
-# but thread panic propagation causes runtime errors.
-miniextendr:::unsafe_C_r_error_in_thread()
-miniextendr:::unsafe_C_r_print_in_thread()
-}
 }

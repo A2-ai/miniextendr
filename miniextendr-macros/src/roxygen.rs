@@ -51,14 +51,23 @@ const MULTILINE_TAGS: &[&str] = &[
     "inherit",
     "inheritParams",
     "inheritSection",
-    "keywords",
-    "concept",
 ];
 
 /// Tags whose wrapped continuation lines are joined back onto one line with a
 /// space instead of a newline: roxygen2 wants these on a single line, but a
-/// long `@title` in a Rust doc comment still gets wrapped by the author.
-const JOINED_TAGS: &[&str] = &["title"];
+/// long title, keyword list, or concept in a Rust doc comment can be wrapped
+/// by the author.
+const JOINED_TAGS: &[&str] = &["title", "keywords", "concept"];
+
+/// A bare `@name` / `@rdname` (topic written on the next `///` line, which
+/// roxygen2 accepts) takes exactly one continuation line as its topic. Once
+/// the tag has a topic it is single-line again, so following prose is not
+/// absorbed (see `test_rdname_stays_single_line`). The wrapper registry
+/// decides page routing from the single `#' @name <topic>` line, so a dropped
+/// topic would silently change which page a function lands on.
+fn is_bare_topic_tag(tag: &str) -> bool {
+    matches!(tag, "@name" | "@rdname")
+}
 
 /// Check if a tag name supports multi-line content.
 fn is_multiline_tag(tag: &str) -> bool {
@@ -178,7 +187,7 @@ fn explicit_roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
                     // Continuation line for the current multi-line tag.
                     last.push('\n');
                     last.push_str(trimmed);
-                } else if is_joined_tag(last) {
+                } else if is_joined_tag(last) || is_bare_topic_tag(last) {
                     // Wrapped single-line tag: fold back onto one line.
                     last.push(' ');
                     last.push_str(trimmed);
