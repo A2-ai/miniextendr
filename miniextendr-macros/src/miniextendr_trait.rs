@@ -110,6 +110,14 @@
 //! - **Type conversion failure**: Raises R error with the error message
 //! - **Panic**: Caught via `with_r_unwind_protect`, converted to R error
 //!
+//! ## GC Protection
+//!
+//! A View method converts each argument to a fresh SEXP, and the next
+//! conversion allocates, so it protects every converted argument in a
+//! `ProtectScope` as soon as it exists and keeps it protected across the
+//! vtable call. The returned SEXP is protected across the tagged-error check
+//! and its conversion back to Rust.
+//!
 //! ## Thread Safety
 //!
 //! All generated shims are **main-thread only**. They do not route through
@@ -639,10 +647,14 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         })
         .collect();
 
-    // Generate vtable call
+    // Generate vtable call. Each converted argument is rooted before the next
+    // conversion allocates, and stays rooted for the whole call: the shim reads
+    // every `argv` entry back, and SEXP-backed parameters live on in the method
+    // body (the `mx_meth` contract).
     let vtable_call = if argc > 0 {
         quote::quote! {
-            let args: [::miniextendr_api::SEXP; #argc as usize] = [#(#arg_conversions),*];
+            let args: [::miniextendr_api::SEXP; #argc as usize] =
+                [#(__mx_roots.protect_raw(#arg_conversions)),*];
             ((*self.vtable).#method_name)(self.data, #argc, args.as_ptr())
         }
     } else {
@@ -651,11 +663,13 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         }
     };
 
-    // Generate return type handling
+    // Generate return type handling. A returned value is rooted across the
+    // tagged-error check and its conversion back to Rust.
     let return_type = &method.return_type;
-    let (return_sig, result_conversion) = if let Some(ret_ty) = return_type {
+    let (return_sig, result_binding, result_conversion) = if let Some(ret_ty) = return_type {
         (
             quote::quote! { -> #ret_ty },
+            quote::quote! { let result = __mx_roots.protect_raw({ #vtable_call }); },
             quote::quote! {
                 ::miniextendr_api::trait_abi::from_sexp::<#ret_ty>(result)
             },
@@ -663,10 +677,21 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     } else {
         (
             quote::quote! {},
+            quote::quote! { let result = { #vtable_call }; },
             quote::quote! {
                 let _ = result;
             },
         )
+    };
+
+    // The scope owns the argument and result protections; a method with
+    // neither has nothing to root.
+    let roots = if argc > 0 || return_type.is_some() {
+        quote::quote! {
+            let __mx_roots = ::miniextendr_api::gc_protect::ProtectScope::new();
+        }
+    } else {
+        quote::quote! {}
     };
 
     Some(quote::quote! {
@@ -674,7 +699,8 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
         #[inline]
         pub fn #method_name(#self_param #(, #params)*) #return_sig {
             unsafe {
-                let result = { #vtable_call };
+                #roots
+                #result_binding
                 // Approach 1 (issue #345): if the shim returned a tagged error SEXP,
                 // re-panic with the reconstructed RCondition so the consumer's outer
                 // `with_r_unwind_protect` guard can apply rust_* class layering.

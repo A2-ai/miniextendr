@@ -127,7 +127,10 @@ impl mx_tag {
 ///
 /// This function pointer is `unsafe` because:
 /// - `data` must point to valid, properly-aligned data of the expected type
-/// - `argv` must point to `argc` valid SEXP values
+/// - `argv` must point to `argc` valid SEXP values, each rooted by the caller
+///   for the whole call (the shim's conversions and the method body allocate);
+///   the generated View protects each argument before converting the next
+/// - The returned SEXP is unprotected; the caller roots it before allocating
 /// - Must be called on R's main thread
 ///
 /// [`TryFromSexp`]: crate::TryFromSexp
