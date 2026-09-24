@@ -1151,6 +1151,44 @@ fn test_trait_method_rdname_override_all_systems() {
     }
 }
 
+/// The S7 trait shortcut documents each formal. On the type page an
+/// undocumented one gets the `(undocumented)` filler; a method-level
+/// `@rdname` sends the shortcut to a topic that documents its arguments, so
+/// the filler is left out there (#1590). The method's own `@param` is kept.
+#[test]
+fn test_s7_trait_shortcut_param_filler_follows_method_page() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("step", true);
+    method.sig = syn::parse_quote!(fn step(&self, by: i32, times: i32) -> i32);
+    method.param_tags = vec!["@param by Step size.".to_string()];
+    let generate = |method: &TraitMethod| {
+        generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            std::slice::from_ref(method),
+            &[],
+            opts(ClassSystem::S7, false, false, false),
+        )
+        .unwrap()
+    };
+
+    let type_page = generate(&method);
+    assert!(
+        type_page.contains("#' @param times (undocumented)"),
+        "got:\n{type_page}"
+    );
+
+    method.rdname = Some("foo_steps".to_string());
+    let split = generate(&method);
+    assert!(!split.contains("#' @param times "), "got:\n{split}");
+    assert_eq!(
+        split.matches("#' @param by Step size.").count(),
+        1,
+        "got:\n{split}"
+    );
+}
+
 #[test]
 fn explicit_cross_class_returns_work_in_every_trait_wrapper_generator() {
     for system in [

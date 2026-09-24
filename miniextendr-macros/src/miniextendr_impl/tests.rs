@@ -4749,6 +4749,96 @@ fn s7_convert_methods_honour_method_rdname() {
 
 // endregion
 
+// region: generated @param lines vs topics that document the arguments (#1590)
+
+/// A method whose own doc comment joins a topic (`@rdname`) or inherits its
+/// arguments (`@inheritParams`) gets no `(undocumented)` filler: roxygen2
+/// keeps one entry per argument on the merged page, and the filler would
+/// replace the topic's description. The method's own `@param` is kept once.
+/// A method on the framework's class page (the class-default `@rdname`) keeps
+/// the filler, since nothing else documents its arguments there.
+#[test]
+fn s3_method_param_filler_follows_the_methods_own_page() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            /// @param value Starting value.
+            pub fn new(value: i32) -> Self { unimplemented!() }
+            /// Add a step several times.
+            /// @rdname counter_ops
+            /// @param by Step size.
+            pub fn add(&mut self, by: i32, times: i32) { unimplemented!() }
+            /// Scale the value.
+            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+            /// Clamp a value into a range.
+            /// @inheritParams counter_ops
+            pub fn clamp(lower: i32, upper: i32) -> i32 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+
+    assert_eq!(
+        wrapper.matches("#' @param by Step size.").count(),
+        1,
+        "the method's own @param is kept once, got:\n{wrapper}"
+    );
+    for name in ["times", "lower", "upper"] {
+        assert!(
+            !wrapper.contains(&format!("#' @param {name} ")),
+            "`{name}` is documented by the topic, got:\n{wrapper}"
+        );
+    }
+    assert!(
+        wrapper.contains("#' @param factor (undocumented)"),
+        "class-page method keeps its filler, got:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @param value Starting value."),
+        "got:\n{wrapper}"
+    );
+}
+
+/// S7 renders constructor arguments into the class block, so the impl
+/// block's own tags decide: an `@inheritParams` there leaves undocumented
+/// constructor arguments to the inheritance source, while the constructor's
+/// own `@param` is still forwarded. Without it the filler stays.
+#[test]
+fn s7_constructor_param_filler_follows_the_class_block_tags() {
+    let build = |impl_doc: Option<&str>| {
+        let doc = impl_doc.map(|tag| quote::quote!(#[doc = #tag]));
+        let item_impl: syn::ItemImpl = syn::parse_quote! {
+            /// A counter.
+            #doc
+            impl Counter {
+                /// @param value Starting value.
+                pub fn new(value: i32, step: i32) -> Self { unimplemented!() }
+            }
+        };
+        generate_s7_r_wrapper(&parse_impl(ClassSystem::S7, item_impl))
+    };
+
+    let own_page = build(None);
+    assert!(
+        own_page.contains("#' @param step (undocumented)"),
+        "got:\n{own_page}"
+    );
+
+    for tag in ["@inheritParams counter_args", "@rdname counter_family"] {
+        let wrapper = build(Some(tag));
+        assert!(
+            !wrapper.contains("#' @param step "),
+            "`{tag}`: `step` comes from the other topic, got:\n{wrapper}"
+        );
+        assert_eq!(
+            wrapper.matches("#' @param value Starting value.").count(),
+            1,
+            "`{tag}`: the constructor's own @param is kept once, got:\n{wrapper}"
+        );
+    }
+}
+
+// endregion
+
 #[test]
 fn r6_active_binding_setter_honours_visibility_without_changing_default() {
     for (option, output, invisible) in [

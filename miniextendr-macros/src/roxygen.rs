@@ -874,6 +874,113 @@ fn param_names_token(tag: &str) -> Option<&str> {
     rest.split_whitespace().next()
 }
 
+/// Returns `true` when the author's roxygen block takes its argument
+/// documentation from another block, so the generators must not add `@param`
+/// lines for the arguments it leaves undocumented (#1590):
+///
+/// - `@rdname topic` / `@describeIn topic ...` join `topic`'s page, where the
+///   topic's own block documents the arguments. roxygen2 keeps one entry per
+///   argument name on a merged page, and a generated line such as
+///   `(no documentation available)` is the entry that survives, so it would
+///   replace the topic's description (and add a second entry beside a
+///   grouped `@param a,b`).
+/// - `@inheritParams source` (and `@inherit source`, which inherits params
+///   unless its field list leaves them out) fills only the arguments the
+///   block does not document, so a generated line would block the
+///   inheritance.
+///
+/// An argument that no block documents is still reported by `R CMD check`
+/// ("Undocumented arguments in Rd file"), so nothing goes missing silently.
+///
+/// `tags` must be the author's own tags (doc comment or `doc = "..."`). The
+/// framework's page defaults are added outside those lists: the file-stem
+/// `@rdname` of a standalone function is injected by the wrapper registry at
+/// write time, and the class-page `@rdname` of a method is appended by the
+/// class generators. No other block documents the arguments on those pages,
+/// so they keep their generated lines.
+pub(crate) fn params_documented_elsewhere(tags: &[String]) -> bool {
+    tags.iter().any(|tag| match roxygen_tag_name(tag) {
+        Some("rdname" | "describeIn" | "inheritParams") => true,
+        Some("inherit") => inherit_covers_params(tag),
+        _ => false,
+    })
+}
+
+/// Whether an `@inherit source [fields...]` tag inherits the parameters:
+/// roxygen2 inherits every field when none is listed.
+fn inherit_covers_params(tag: &str) -> bool {
+    let mut words = tag.split_whitespace().skip(2); // `@inherit`, source
+    let mut fields = words.by_ref().peekable();
+    fields.peek().is_none() || fields.any(|field| field == "params")
+}
+
+/// Append the generated `@param` tags for a standalone function's R
+/// parameters to the author's `tags`, and return the `(doc_placeholder,
+/// rust_param)` pair of every match_arg parameter that received the
+/// write-time placeholder (the resolver registry needs one
+/// `MX_MATCH_ARG_PARAM_DOCS` entry each).
+///
+/// Every non-dots parameter the author left undocumented gets, in order of
+/// preference:
+///
+/// 1. `choices(...)`: the quoted list, "One of ..." / "One or more of ...";
+/// 2. `match_arg`: a placeholder the cdylib resolves at write time (#210);
+/// 3. anything else: `(no documentation available)`.
+///
+/// Nothing is generated when [`params_documented_elsewhere`] holds: the
+/// arguments are documented by the topic the block joins or inherits from.
+pub(crate) fn push_fn_param_tags(
+    tags: &mut Vec<String>,
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    parsed: &crate::miniextendr_fn::MiniextendrFunctionParsed,
+    c_ident: &str,
+) -> Vec<(String, String)> {
+    let mut match_arg_doc_placeholders = Vec::new();
+    if params_documented_elsewhere(tags) {
+        return match_arg_doc_placeholders;
+    }
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        if parsed.is_dots_param(&pat_ident.ident) {
+            continue;
+        }
+        let rust_name = crate::naming::ident_name(&pat_ident.ident);
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        if param_documented(tags, &r_name) {
+            continue;
+        }
+
+        if let Some(choices) = parsed.choices_for_param(&rust_name) {
+            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
+            let prefix = if parsed.has_several_ok(&rust_name) {
+                "One or more of"
+            } else {
+                "One of"
+            };
+            let suffix = parsed
+                .param_attrs(&rust_name)
+                .map(crate::miniextendr_fn::ParamAttrs::choice_doc_suffix)
+                .unwrap_or_default();
+            tags.push(format!(
+                "@param {r_name} {prefix} {}{suffix}.",
+                quoted.join(", ")
+            ));
+        } else if parsed.has_match_arg_attr(&rust_name) {
+            let doc_placeholder = crate::match_arg_keys::param_doc_placeholder(c_ident, &r_name);
+            tags.push(format!("@param {r_name} {doc_placeholder}"));
+            match_arg_doc_placeholders.push((doc_placeholder, rust_name));
+        } else {
+            tags.push(format!("@param {r_name} (no documentation available)"));
+        }
+    }
+    match_arg_doc_placeholders
+}
+
 /// Split an R formals/argument string on **top-level** commas only.
 ///
 /// Commas nested inside parentheses, brackets, or braces — or inside a single-
