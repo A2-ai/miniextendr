@@ -552,10 +552,20 @@ injected default, or with `@rdname <file stem>` spelled out to keep a custom
 `@name` on it). There the wrapper registry decides each generated line when
 it writes `R/miniextendr-wrappers.R`: the line stays only when no function on
 the page documents that argument itself, so a shared argument shows the one
-real description once. `rpkg/src/rust/stem_page_docs.rs` is the fixture. The
-registry sees only the generated wrappers: an R-file block that joins a
-file-stem page does not count, so document such an argument in the Rust doc
-comment.
+real description once. `rpkg/src/rust/stem_page_docs.rs` is the fixture.
+
+The registry sees only the generated wrappers, not your R files. An R-file
+block on a file-stem page (typically `#' @name <file stem>` on `NULL`, to
+give the page its title and description) does not count as documenting an
+argument, so a function on the page that leaves the argument out still gets
+its generated line, and roxygen2 keeps the line of whichever block it reads
+last. If the R file sorts before `R/<pkg>-wrappers.R`, the page takes the R
+block's name and title, but `(no documentation available)` silently replaces
+the R block's description of that argument. If it sorts after, the
+description is kept, but the page is named and titled after the first
+generated block. Document the argument in the doc comment of a function on
+the page instead: the registry then drops the generated lines for it, and
+the R block keeps the page's name, title and description.
 
 An argument that no block documents is reported by `R CMD check`
 ("Undocumented arguments in Rd file"), so document it on the shared block or
@@ -586,9 +596,24 @@ and the S3 generic block, whose `@name generic.Class` is the method's alias,
 follows it to `topic`. On S4 and S7 instance methods (registered by
 `setMethod()` / `S7::method<-`), on Env and R6 methods (`Class$method <-`),
 and on the S3, vctrs and S7 constructors (documented by the class block),
-`@describeIn` is a compile error that points at `@rdname`. Trait-impl
-methods forward only their `@rdname` and `@param` tags, so a `@describeIn`
-there has no effect.
+`@describeIn` is a compile error that points at `@rdname`.
+
+Trait-impl methods (`impl Trait for Type`) take the same page tags on their
+own wrapper block: `@describeIn`, `@rdname`, `@name`, `@order`, and the
+inheritance tags `@inheritParams`, `@inherit` and `@inheritDotParams`. Their
+prose, `@examples` and other tags are not forwarded. `@describeIn` works
+where that block documents an R function or method: S3 and vctrs instance
+methods (`generic.Type`), S4 instance methods (the block sits on the
+method's own `setMethod()` call, so unlike an inherent S4 method it is
+listed as `generic(Type)`), S4 static methods (`Type_Trait_method()`), and
+S7 instance methods through their fast-path shortcut (`Type_method()`). The
+S4 and S7 generics stay on the type page, and on a joined page the S7
+shortcut keeps only the first line of its advisory text, as its title. On
+the `Type$Trait$method` namespace members (Env and R6 methods, and the
+static methods of S3, vctrs and S7) and on S7 methods with
+`s7(no_shortcut)`, `@describeIn` is a compile error that points at
+`@rdname`. `RangeMeasure for RangeBox` in
+`rpkg/src/rust/shared_param_docs.rs` is the fixture.
 
 ### Constraints
 

@@ -1013,7 +1013,9 @@ method that joins another topic also drops the generator's fixed `x` / `...`
 lines and sorts after that topic's own block. `@describeIn` works on the
 methods whose wrapper is a plain R function (S3 instance methods, static
 methods, S4 constructors) and is a compile error elsewhere; see the same
-section. R6
+section. Trait-impl methods (`impl Trait for Type`) forward only their
+`@param` lines and these page tags: `@describeIn`, `@rdname`, `@name`,
+`@order`, `@inheritParams`, `@inherit` and `@inheritDotParams`. R6
 constructor and instance methods are documented on the class page whatever
 their tags, so they keep the generated line. The one exception is class
 systems whose
