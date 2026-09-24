@@ -897,10 +897,16 @@ fn param_names_token(tag: &str) -> Option<&str> {
 /// `@rdname` of a standalone function is injected by the wrapper registry at
 /// write time, and the class-page `@rdname` of a method is appended by the
 /// class generators. No other block documents the arguments on those pages,
-/// so they keep their generated lines.
-pub(crate) fn params_documented_elsewhere(tags: &[String]) -> bool {
+/// so they keep their generated lines. For the same reason, an author
+/// `@rdname` that names `default_page` (the class page a method or class block
+/// lands on anyway) does not count. A standalone function passes `None`: its
+/// file-stem page is only known at write time.
+pub(crate) fn params_documented_elsewhere(tags: &[String], default_page: Option<&str>) -> bool {
     tags.iter().any(|tag| match roxygen_tag_name(tag) {
-        Some("rdname" | "describeIn" | "inheritParams") => true,
+        Some("rdname") => {
+            default_page.is_none() || rdname_value(std::slice::from_ref(tag)) != default_page
+        }
+        Some("describeIn" | "inheritParams") => true,
         Some("inherit") => inherit_covers_params(tag),
         _ => false,
     })
@@ -909,8 +915,7 @@ pub(crate) fn params_documented_elsewhere(tags: &[String]) -> bool {
 /// Whether an `@inherit source [fields...]` tag inherits the parameters:
 /// roxygen2 inherits every field when none is listed.
 fn inherit_covers_params(tag: &str) -> bool {
-    let mut words = tag.split_whitespace().skip(2); // `@inherit`, source
-    let mut fields = words.by_ref().peekable();
+    let mut fields = tag.split_whitespace().skip(2).peekable(); // `@inherit`, source
     fields.peek().is_none() || fields.any(|field| field == "params")
 }
 
@@ -936,7 +941,7 @@ pub(crate) fn push_fn_param_tags(
     c_ident: &str,
 ) -> Vec<(String, String)> {
     let mut match_arg_doc_placeholders = Vec::new();
-    if params_documented_elsewhere(tags) {
+    if params_documented_elsewhere(tags, None) {
         return match_arg_doc_placeholders;
     }
     for arg in inputs {

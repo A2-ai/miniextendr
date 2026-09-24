@@ -4504,11 +4504,14 @@ fn s7_constructor_param_filler_follows_the_class_block_tags() {
         generate_s7_r_wrapper(&parse_impl(ClassSystem::S7, item_impl))
     };
 
-    let own_page = build(None);
-    assert!(
-        own_page.contains("#' @param step (undocumented)"),
-        "got:\n{own_page}"
-    );
+    // No author page tag, or a redundant one naming the class page itself.
+    for impl_doc in [None, Some("@rdname Counter")] {
+        let own_page = build(impl_doc);
+        assert!(
+            own_page.contains("#' @param step (undocumented)"),
+            "{impl_doc:?}: got:\n{own_page}"
+        );
+    }
 
     for tag in ["@inheritParams counter_args", "@rdname counter_family"] {
         let wrapper = build(Some(tag));

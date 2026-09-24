@@ -1099,11 +1099,15 @@ fn test_s7_trait_shortcut_param_filler_follows_method_page() {
         .unwrap()
     };
 
-    let type_page = generate(&method);
-    assert!(
-        type_page.contains("#' @param times (undocumented)"),
-        "got:\n{type_page}"
-    );
+    // No method-level `@rdname`, or a redundant one naming the type page.
+    for rdname in [None, Some("Foo")] {
+        method.rdname = rdname.map(str::to_string);
+        let type_page = generate(&method);
+        assert!(
+            type_page.contains("#' @param times (undocumented)"),
+            "{rdname:?}: got:\n{type_page}"
+        );
+    }
 
     method.rdname = Some("foo_steps".to_string());
     let split = generate(&method);

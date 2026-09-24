@@ -1057,11 +1057,26 @@ fn params_documented_elsewhere_for_topic_and_inheritance_tags() {
         "@inherit observed",
         "@inherit observed params return",
     ] {
+        let block = tag_list(&["@param x Values.", tag]);
         assert!(
-            params_documented_elsewhere(&tag_list(&["@param x Values.", tag])),
+            params_documented_elsewhere(&block, None),
             "`{tag}` takes the arguments from another block"
         );
+        assert!(
+            params_documented_elsewhere(&block, Some("Counter")),
+            "`{tag}` leaves the class page for another block"
+        );
     }
+}
+
+/// An author `@rdname` naming the page the block lands on anyway (a method's
+/// class page) changes nothing, so the block keeps its generated lines.
+#[test]
+fn rdname_naming_the_default_page_keeps_the_filler() {
+    let block = tag_list(&["@rdname Counter"]);
+    assert!(!params_documented_elsewhere(&block, Some("Counter")));
+    assert!(params_documented_elsewhere(&block, Some("Gauge")));
+    assert!(params_documented_elsewhere(&block, None));
 }
 
 #[test]
@@ -1079,7 +1094,7 @@ fn params_not_documented_elsewhere_for_own_page_tags() {
         tag_list(&["@rdnamex observed", "@inheritParamsx observed"]),
     ] {
         assert!(
-            !params_documented_elsewhere(&block),
+            !params_documented_elsewhere(&block, None),
             "{block:?} has no other block documenting its arguments"
         );
     }

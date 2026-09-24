@@ -970,12 +970,13 @@ impl<'a> MethodDocBuilder<'a> {
         // Auto-generate @param for undocumented method parameters, unless the
         // method's own tags send it to a topic that documents them (`@rdname`,
         // `@describeIn`) or inherit them (`@inheritParams`, #1590). The class
-        // page default below is not in `doc_tags`, so it never suppresses them.
+        // page default below is not in `doc_tags`, and an author `@rdname`
+        // naming the class page is the same page, so neither suppresses them.
         // Split on top-level commas only — a naive `split(", ")` shreds a
         // `mode = c("fast", "slow")` default into a bogus `"slow")` formal,
         // which surfaces as a spurious @param and an R CMD check warning.
         if let Some(params) = self.r_params
-            && !crate::roxygen::params_documented_elsewhere(self.doc_tags)
+            && !crate::roxygen::params_documented_elsewhere(self.doc_tags, Some(self.class_name))
         {
             for param in crate::roxygen::split_r_formals(params) {
                 let param_name = crate::roxygen::formal_name(param);
@@ -1157,7 +1158,8 @@ mod tests {
     /// A method whose own tags join or inherit a topic gets no generated
     /// `@param` lines (#1590); its own `@param` stays. The class-page default
     /// the builder appends is not an author tag, so a method on the class page
-    /// keeps the filler for each undocumented argument.
+    /// keeps the filler for each undocumented argument, also when the author
+    /// names that page with a redundant `@rdname Counter`.
     #[test]
     fn method_param_filler_only_on_the_class_page() {
         let type_ident: syn::Ident = syn::parse_quote!(Counter);
@@ -1169,12 +1171,18 @@ mod tests {
                 .join("\n")
         };
 
-        let class_page = build(&["@param by Step size."]);
-        assert!(class_page.contains("#' @rdname Counter"), "{class_page}");
-        assert!(
-            class_page.contains("#' @param times (undocumented)"),
-            "{class_page}"
-        );
+        // No author page tag, or one naming the class page itself.
+        for tags in [
+            &["@param by Step size."][..],
+            &["@param by Step size.", "@rdname Counter"][..],
+        ] {
+            let class_page = build(tags);
+            assert!(class_page.contains("#' @rdname Counter"), "{class_page}");
+            assert!(
+                class_page.contains("#' @param times (undocumented)"),
+                "{class_page}"
+            );
+        }
 
         for tag in ["@rdname counter_ops", "@inheritParams counter_ops"] {
             let docs = build(&["@param by Step size.", tag]);
