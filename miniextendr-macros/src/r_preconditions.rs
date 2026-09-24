@@ -224,7 +224,9 @@ impl ExplicitChecks {
         let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
         let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
         if self.no_na {
-            let verb = if crate::miniextendr_fn::is_vector_like_type(value_ty) {
+            let verb = if crate::miniextendr_fn::is_vector_like_type(value_ty)
+                || r_check_for_type(value_ty).is_some_and(|check| check.is_vector())
+            {
                 "contain"
             } else {
                 "be"
@@ -561,7 +563,9 @@ impl RTypeCheck {
     /// `a single <noun>` (`a single integer`, `a single string`, `TRUE or
     /// FALSE`), vectors name the R type (`numeric`, `character`, `a list`).
     /// `AsNumeric` / `AsNumericVec` say `a single number` / `numeric`, the
-    /// value they produce, rather than the inputs they read.
+    /// value they produce, rather than the inputs they read; `AsCharacter` /
+    /// `AsCharacterVec` say what they read, `a single atomic value` /
+    /// `atomic` (base R's `'x' must be atomic`).
     fn expectation(&self) -> String {
         match self {
             RTypeCheck::ScalarNumeric | RTypeCheck::ScalarNumericOrText => "a single number".into(),
@@ -573,6 +577,7 @@ impl RTypeCheck {
                 "logical" => "TRUE or FALSE".into(),
                 "character" => "a single string".into(),
                 "integer" | "double" => format!("a single {r_type}"),
+                // `raw`, `complex`, `atomic` (`AsCharacter`).
                 other => format!("a single {other} value"),
             },
             RTypeCheck::VectorNumeric | RTypeCheck::VectorNumericOrText => "numeric".into(),
@@ -585,6 +590,23 @@ impl RTypeCheck {
             },
             RTypeCheck::List => "a list".into(),
         }
+    }
+
+    /// Whether the check admits an atomic vector of any length, so a `no_na`
+    /// failure reads `must not contain NA` rather than `must not be NA`. This
+    /// covers the vector markers (`AsNumericVec`, `AsCharacterVec`) that
+    /// [`crate::miniextendr_fn::is_vector_like_type`] does not see as
+    /// containers.
+    fn is_vector(&self) -> bool {
+        matches!(
+            self,
+            RTypeCheck::VectorLogicalOrInteger
+                | RTypeCheck::VectorNumeric
+                | RTypeCheck::VectorIntegerStrict
+                | RTypeCheck::VectorIntegerWide
+                | RTypeCheck::Vector(_)
+                | RTypeCheck::VectorNumericOrText
+        )
     }
 }
 
@@ -1281,6 +1303,12 @@ mod tests {
         assert_eq!(exp("Vec<bool>", true), some("logical or integer"));
         assert_eq!(exp("HashMap<String, i32>", false), some("a list"));
         assert_eq!(exp("Missing<f64>", false), some("a single double"));
+        assert_eq!(exp("AsCharacter", false), some("a single atomic value"));
+        assert_eq!(exp("AsCharacterVec", false), some("atomic"));
+        assert_eq!(
+            exp("Option<AsCharacter>", false),
+            some("NULL or a single atomic value")
+        );
         // Choice parameters, including the `Missing` / `Option` / `Either`
         // layers of #1551, have no expectation: their conversion errors read
         // `invalid '<p>' argument: <reason>`.
@@ -1395,15 +1423,15 @@ mod tests {
     fn as_character_markers_admit_atomic_vectors() {
         let asserts = assertions_for("AsCharacter", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be atomic");
+        assert_eq!(asserts[0].message(), "'x' must be atomic");
         assert_eq!(asserts[0].condition, "is.atomic(x)");
-        assert_eq!(asserts[1].message, "'x' must have length 1");
+        assert_eq!(asserts[1].message(), "'x' must have length 1");
         assert_eq!(asserts[1].condition, "length(x) == 1L");
 
         // Path-qualified spellings resolve by their last segment.
         let asserts = assertions_for("miniextendr_api::AsCharacterVec", "x");
         assert_eq!(asserts.len(), 1);
-        assert_eq!(asserts[0].message, "'x' must be atomic");
+        assert_eq!(asserts[0].message(), "'x' must be atomic");
         assert_eq!(asserts[0].condition, "is.atomic(x)");
     }
 
@@ -1411,12 +1439,12 @@ mod tests {
     fn optional_as_character_is_nullable() {
         let asserts = assertions_for("Option<AsCharacter>", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be NULL or atomic");
+        assert_eq!(asserts[0].message(), "'x' must be NULL or atomic");
         assert_eq!(asserts[0].condition, "is.null(x) || is.atomic(x)");
-        assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
+        assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
         let asserts = assertions_for("Option<AsCharacterVec>", "x");
         assert_eq!(asserts.len(), 1);
-        assert_eq!(asserts[0].message, "'x' must be NULL or atomic");
+        assert_eq!(asserts[0].message(), "'x' must be NULL or atomic");
         assert_eq!(asserts[0].condition, "is.null(x) || is.atomic(x)");
     }
 
@@ -1424,12 +1452,10 @@ mod tests {
     fn as_character_vec_with_no_na_checks_type_then_na() {
         let out = explicit_output("fn f(x: AsCharacterVec)", &[("x", no_na())], false);
         assert_eq!(
-            out.static_checks,
+            out.guards(None),
             vec![
-                "stopifnot(",
-                "  \"'x' must be atomic\" = is.atomic(x),",
-                "  \"'x' must not be NA\" = !anyNA(x)",
-                ")",
+                "if (!isTRUE(is.atomic(x))) .miniextendr_arg_error(\"x\", \"must be atomic\")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
             ]
         );
     }
@@ -1662,6 +1688,21 @@ mod tests {
         );
         let slice = explicit_output("fn f(x: &[f64])", &[("x", no_na())], true);
         assert!(slice.guards(None)[0].contains("must not contain NA"));
+        // The vector markers are vectors too; their scalar forms are not.
+        for (ty, verb) in [
+            ("AsNumericVec", "contain"),
+            ("AsCharacterVec", "contain"),
+            ("Option<AsCharacterVec>", "contain"),
+            ("AsNumeric", "be"),
+            ("AsCharacter", "be"),
+        ] {
+            let out = explicit_output(&format!("fn f(x: {ty})"), &[("x", no_na())], true);
+            assert!(
+                out.guards(None)[0].contains(&format!("must not {verb} NA")),
+                "{ty}: {:?}",
+                out.guards(None)
+            );
+        }
     }
 
     #[test]

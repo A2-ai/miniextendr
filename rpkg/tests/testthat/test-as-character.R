@@ -3,10 +3,11 @@
 # with NA of any type as NA.
 #
 # The conversion's own text ("as.character() failed", ...) is matched exactly;
-# the "failed to convert parameter" prefix belongs to the macro's conversion
-# error. R precondition failures are matched on stable fragments (the parameter
-# name and the requirement), not on the full sentence the generated check
-# happens to use.
+# the "'x' must be atomic: " prefix before it is the macro's argument-error
+# wording (#1591). R precondition failures are matched on stable fragments (the
+# parameter name and the requirement), not on the full sentence the generated
+# check happens to use. Both raise the same argument error: `rust_error`,
+# `kind = "conversion"` and `e$param`, plus `e$rust_type` on a conversion.
 
 as_chr_vec <- function(x) miniextendr:::test_as_character_vec(x)
 as_chr <- function(x) miniextendr:::test_as_character(x)
@@ -117,7 +118,10 @@ test_that("A failing as.character() method is a conversion error", {
   )
   e <- tryCatch(as_chr_vec(structure(1L, class = "mx_test_boom")), error = identity)
   expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
   expect_identical(e$param, "x")
+  expect_identical(e$rust_type, "AsCharacterVec")
+  expect_match(conditionMessage(e), "^'x' must be atomic: as\\.character\\(\\) failed: ")
   expect_match(conditionMessage(e), "no labels here", fixed = TRUE)
   .S3method("as.character", "mx_test_numeric", function(x, ...) unclass(x))
   expect_error(
@@ -145,6 +149,11 @@ test_that("AsCharacterVec refuses lists and data frames at the R boundary", {
   expect_error(as_chr_vec(data.frame(id = 1:2)), msg)
   expect_error(as_chr_vec(NULL), msg)
   expect_error(as_chr_vec(as.POSIXlt("2024-01-15")), msg)
+  e <- tryCatch(as_chr_vec(list(1)), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_null(e$rust_type)
 })
 
 # endregion
@@ -162,6 +171,11 @@ test_that("no_na refuses NA in R, and NaN with it", {
   expect_identical(as_chr_no_na(factor("a")), "a")
   msg <- "'x'.*not.*NA"
   expect_error(as_chr_no_na(c(1L, NA)), msg)
+  # A vector marker "contains" an NA; the check raises the argument error.
+  e <- tryCatch(as_chr_no_na(c(1L, NA)), error = identity)
+  expect_identical(conditionMessage(e), "'x' must not contain NA")
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$param, "x")
   expect_error(as_chr_no_na(factor(c("a", NA))), msg)
   expect_error(as_chr_no_na(c(1, NaN)), msg)
   # The string "NA" is a value, not a missing value.
