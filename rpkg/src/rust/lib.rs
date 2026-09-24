@@ -129,6 +129,7 @@ mod altrep_sexp_tests;
 mod arrow_adapter_tests;
 #[cfg(feature = "arrow")]
 mod arrow_na_tests;
+mod as_character_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;

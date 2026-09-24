@@ -496,6 +496,12 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
         "AsNumeric" => Some(RTypeCheck::ScalarNumericOrText),
         "AsNumericVec" => Some(RTypeCheck::VectorNumericOrText),
 
+        // `as.character()`-style markers: any atomic vector (a list or data
+        // frame is refused, as `as.character()` would flatten it), with length
+        // one for the scalar. "'x' must be atomic" is base R's own wording.
+        "AsCharacter" => Some(RTypeCheck::Scalar("atomic")),
+        "AsCharacterVec" => Some(RTypeCheck::Vector("atomic")),
+
         // Option<T> → Nullable
         "Option" => {
             let inner_ty = extract_single_generic_arg(segment)?;
@@ -1160,6 +1166,49 @@ mod tests {
         let asserts = assertions_for("Option<AsNumericVec>", "x");
         assert_eq!(asserts.len(), 1);
         assert!(asserts[0].condition.starts_with("is.null(x) || "));
+    }
+
+    #[test]
+    fn as_character_markers_admit_atomic_vectors() {
+        let asserts = assertions_for("AsCharacter", "x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(asserts[0].message, "'x' must be atomic");
+        assert_eq!(asserts[0].condition, "is.atomic(x)");
+        assert_eq!(asserts[1].message, "'x' must have length 1");
+        assert_eq!(asserts[1].condition, "length(x) == 1L");
+
+        // Path-qualified spellings resolve by their last segment.
+        let asserts = assertions_for("miniextendr_api::AsCharacterVec", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].message, "'x' must be atomic");
+        assert_eq!(asserts[0].condition, "is.atomic(x)");
+    }
+
+    #[test]
+    fn optional_as_character_is_nullable() {
+        let asserts = assertions_for("Option<AsCharacter>", "x");
+        assert_eq!(asserts.len(), 2);
+        assert_eq!(asserts[0].message, "'x' must be NULL or atomic");
+        assert_eq!(asserts[0].condition, "is.null(x) || is.atomic(x)");
+        assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
+        let asserts = assertions_for("Option<AsCharacterVec>", "x");
+        assert_eq!(asserts.len(), 1);
+        assert_eq!(asserts[0].message, "'x' must be NULL or atomic");
+        assert_eq!(asserts[0].condition, "is.null(x) || is.atomic(x)");
+    }
+
+    #[test]
+    fn as_character_vec_with_no_na_checks_type_then_na() {
+        let out = explicit_output("fn f(x: AsCharacterVec)", &[("x", no_na())], false);
+        assert_eq!(
+            out.static_checks,
+            vec![
+                "stopifnot(",
+                "  \"'x' must be atomic\" = is.atomic(x),",
+                "  \"'x' must not be NA\" = !anyNA(x)",
+                ")",
+            ]
+        );
     }
 
     #[test]

@@ -74,7 +74,9 @@
 //! the conversion control-surface analysis (`analysis/conversion-control-surface-2026-06-07.md`,
 //! §3.4 / §4.5) and issue #871.
 
+mod as_character;
 mod as_numeric;
+pub use as_character::{AsCharacter, AsCharacterVec};
 pub use as_numeric::{AsNumeric, AsNumericVec};
 
 use crate::RNativeType;
