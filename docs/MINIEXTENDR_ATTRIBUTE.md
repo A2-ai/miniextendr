@@ -759,42 +759,50 @@ impl MyClass {
 #[miniextendr(s7)]
 impl MyClass {
     // Computed property getter
-    #[miniextendr(getter, prop = "area")]
+    #[miniextendr(s7(getter, prop = "area"))]
     pub fn get_area(&self) -> f64 { self.width * self.height }
 
     // Property setter
-    #[miniextendr(setter, prop = "area")]
+    #[miniextendr(s7(setter, prop = "area"))]
     pub fn set_area(&mut self, value: f64) { /* ... */ }
 
     // Property validator
-    #[miniextendr(validate, prop = "width")]
+    #[miniextendr(s7(validate, prop = "width"))]
     pub fn validate_width(value: f64) -> Result<(), String> {
         if value < 0.0 { Err("width must be non-negative".into()) } else { Ok(()) }
     }
 
     // Property with defaults + constraints
-    #[miniextendr(required)]      // no default, must be provided
+    #[miniextendr(s7(getter, required))]      // no default, must be provided
     pub fn name(&self) -> String { self.name.clone() }
 
-    #[miniextendr(frozen)]        // immutable after creation
+    #[miniextendr(s7(getter, frozen))]        // immutable after creation
     pub fn id(&self) -> i32 { self.id }
 
-    #[miniextendr(default = "0")] // R expression for default
+    #[miniextendr(s7(getter, default = "0"))] // R expression for default
     pub fn score(&self) -> f64 { self.score }
 
     // Remove ... from generic signature
-    #[miniextendr(no_dots)]
+    #[miniextendr(s7(no_dots))]
     pub fn length(&self) -> i32 { self.len }
 
-    // Multiple dispatch
-    #[miniextendr(dispatch = "x,y")]
+    // Multiple dispatch: the receiver `x`, then the leading parameter `other`
+    #[miniextendr(s7(dispatch = "x, other"))]
     pub fn combine(&self, other: &Self) -> Self { /* ... */ }
 
+    // Ops operator: dispatches on (e1, e2); the operand is named `e2`
+    #[miniextendr(s7(generic = "+"))]
+    pub fn add(&self, e2: &Self) -> Self { /* ... */ }
+
+    // Another package's generic, attached when that package loads
+    #[miniextendr(s7(generic = "generics::tidy"))]
+    pub fn tidy(&self) -> BuiltDataFrame { /* ... */ }
+
     // Type conversion methods
-    #[miniextendr(convert_from = "OtherClass")]
+    #[miniextendr(s7(convert_from = "OtherClass"))]
     pub fn from_other(other: OtherClass) -> Self { /* ... */ }
 
-    #[miniextendr(convert_to = "OtherClass")]
+    #[miniextendr(s7(convert_to = "OtherClass"))]
     pub fn to_other(&self) -> OtherClass { /* ... */ }
 }
 ```
