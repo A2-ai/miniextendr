@@ -256,7 +256,7 @@ fn strict_input_i64_rejects_fractional_and_na() {
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::strict::checked_try_from_sexp_i64;
         let mut g = Guard(0);
-        let s = unsafe { scalar_real(3.14, &mut g) };
+        let s = unsafe { scalar_real(2.5, &mut g) };
         let err = checked_try_from_sexp_i64(s).unwrap_err();
         assert!(
             matches!(&err, SexpError::InvalidValue(m) if m == "precision loss"),

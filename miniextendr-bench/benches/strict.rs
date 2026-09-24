@@ -113,7 +113,7 @@ mod scalar_input {
     #[divan::bench]
     fn strict_intsxp_to_i64() {
         let sexp = make_intsxp(1);
-        let val = strict::checked_try_from_sexp_i64(sexp, "x");
+        let val = strict::checked_try_from_sexp_i64(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -129,7 +129,7 @@ mod scalar_input {
     #[divan::bench]
     fn strict_realsxp_to_i64() {
         let sexp = make_realsxp(1);
-        let val = strict::checked_try_from_sexp_i64(sexp, "x");
+        let val = strict::checked_try_from_sexp_i64(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -145,7 +145,7 @@ mod scalar_input {
     #[divan::bench]
     fn strict_intsxp_to_u64() {
         let sexp = make_intsxp(1);
-        let val = strict::checked_try_from_sexp_u64(sexp, "x");
+        let val = strict::checked_try_from_sexp_u64(sexp).unwrap();
         divan::black_box(val);
     }
 }
@@ -231,7 +231,7 @@ mod vec_input {
     #[divan::bench(args = VEC_SIZES)]
     fn strict_intsxp_to_vec_i64(len: usize) {
         let sexp = make_intsxp(len);
-        let val = strict::checked_vec_try_from_sexp_i64(sexp, "x");
+        let val = strict::checked_vec_try_from_sexp_i64(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -247,7 +247,7 @@ mod vec_input {
     #[divan::bench(args = VEC_SIZES)]
     fn strict_realsxp_to_vec_i64(len: usize) {
         let sexp = make_realsxp(len);
-        let val = strict::checked_vec_try_from_sexp_i64(sexp, "x");
+        let val = strict::checked_vec_try_from_sexp_i64(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -263,7 +263,7 @@ mod vec_input {
     #[divan::bench(args = VEC_SIZES)]
     fn strict_intsxp_to_vec_u64(len: usize) {
         let sexp = make_intsxp(len);
-        let val = strict::checked_vec_try_from_sexp_u64(sexp, "x");
+        let val = strict::checked_vec_try_from_sexp_u64(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -279,7 +279,7 @@ mod vec_input {
     #[divan::bench(args = VEC_SIZES)]
     fn strict_intsxp_to_vec_isize(len: usize) {
         let sexp = make_intsxp(len);
-        let val = strict::checked_vec_try_from_sexp_isize(sexp, "x");
+        let val = strict::checked_vec_try_from_sexp_isize(sexp).unwrap();
         divan::black_box(val);
     }
 
@@ -295,7 +295,7 @@ mod vec_input {
     #[divan::bench(args = VEC_SIZES)]
     fn strict_intsxp_to_vec_usize(len: usize) {
         let sexp = make_intsxp(len);
-        let val = strict::checked_vec_try_from_sexp_usize(sexp, "x");
+        let val = strict::checked_vec_try_from_sexp_usize(sexp).unwrap();
         divan::black_box(val);
     }
 }

@@ -695,11 +695,13 @@ fn generate_setter_body(
             let prefix = crate::r_preconditions::conversion_expectation(ty, false)
                 .map(|expected| format!("'{field_r_name}' must be {expected}"));
             let err_value = crate::rust_conversion_builder::conversion_value_tokens(
-                prefix.as_deref(),
-                &field_r_name,
-                "value",
-                crate::type_inspect::is_option_type(ty),
-                Some(&rust_type),
+                &crate::rust_conversion_builder::ConversionSubject {
+                    static_prefix: prefix.as_deref(),
+                    quoted: &field_r_name,
+                    param: "value",
+                    nullable: crate::type_inspect::is_option_type(ty),
+                    rust_type: &rust_type,
+                },
                 &crate_class,
                 &quote::quote!(::core::option::Option::None),
                 syn::spanned::Spanned::span(ty),

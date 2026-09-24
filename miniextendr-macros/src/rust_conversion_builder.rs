@@ -792,11 +792,13 @@ fn conversion_err_arm(
         nullable,
     } = ctx;
     let value = conversion_value_tokens(
-        expected_known.then_some(prefix.as_str()),
-        r_name,
-        r_name,
-        *nullable,
-        Some(rust_type),
+        &ConversionSubject {
+            static_prefix: expected_known.then_some(prefix.as_str()),
+            quoted: r_name,
+            param: r_name,
+            nullable: *nullable,
+            rust_type,
+        },
         crate_class,
         &quote! { Some(__miniextendr_call) },
         span,
@@ -808,12 +810,26 @@ fn conversion_err_arm(
     }
 }
 
+/// What a conversion failure is about: the value it names and how.
+pub(crate) struct ConversionSubject<'a> {
+    /// `'<p>' must be <expected>` when the macro knows the R-facing
+    /// expectation, else `None` (asked of the error at run time).
+    pub(crate) static_prefix: Option<&'a str>,
+    /// The name quoted in the message: the parameter, or a sidecar's field.
+    pub(crate) quoted: &'a str,
+    /// `e$param`: the R formal that failed.
+    pub(crate) param: &'a str,
+    /// The value may be `NULL` (`Option<_>`): a run-time expectation reads
+    /// `NULL or <expected>`.
+    pub(crate) nullable: bool,
+    /// `e$rust_type`: the Rust type as written.
+    pub(crate) rust_type: &'a str,
+}
+
 /// The `conversion_condition_value(...)` expression for the error bound as
-/// `e`: `quoted` named in the message (the parameter, or a sidecar's field),
-/// parameter `param` (`e$param`), Rust type `rust_type` (`e$rust_type`), the crate
-/// class and `call`.
+/// `e` on `subject`, with the crate class and `call`.
 ///
-/// With `static_prefix` (the macro knows the R-facing expectation,
+/// With a `static_prefix` (the macro knows the R-facing expectation,
 /// `'<p>' must be <expected>`) the prefix is that literal. Without one, the
 /// error may know what the value should have been (a `match_arg` choice
 /// error: `one of "fast", "slow"`, #1594), so the prefix is built on the
@@ -822,19 +838,19 @@ fn conversion_err_arm(
 /// back to `invalid '<p>' argument`. Shared by the argument conversions and
 /// the sidecar setters.
 pub(crate) fn conversion_value_tokens(
-    static_prefix: Option<&str>,
-    quoted: &str,
-    param: &str,
-    nullable: bool,
-    rust_type: Option<&str>,
+    subject: &ConversionSubject,
     crate_class: &[String],
     call: &TokenStream,
     span: proc_macro2::Span,
 ) -> TokenStream {
-    let rust_type = match rust_type {
-        Some(t) => quote! { ::core::option::Option::Some(#t) },
-        None => quote! { ::core::option::Option::None },
-    };
+    let ConversionSubject {
+        static_prefix,
+        quoted,
+        param,
+        nullable,
+        rust_type,
+    } = subject;
+    let rust_type = quote! { ::core::option::Option::Some(#rust_type) };
     match static_prefix {
         Some(prefix) => quote_spanned! {span=>
             ::miniextendr_api::error_value::conversion_condition_value(
