@@ -332,31 +332,31 @@ fn test_layered_choice_decoders() {
 }
 
 /// A layered choice parameter's `Err` arm is the argument error of #1591:
-/// the `invalid '<p>' argument` prefix (a choice type has no R-facing
-/// expectation), the full Rust type as `e$rust_type`, and the crate class,
-/// on every layer shape the decoder composes.
+/// the full Rust type as `e$rust_type` and the crate class, on every layer
+/// shape the decoder composes. A choice type has no static R-facing
+/// expectation, so the prefix is built on the failure path from the error
+/// (`'mode' must be one of ...` for a `match_arg` choice error, `NULL or`
+/// under `Option`, #1594); a `choices` `Either<String, R>` names both sides.
 #[test]
 fn test_layered_choice_err_arm_is_the_argument_error() {
-    for (src, leaf, rust_type) in [
+    for (src, leaf, rust_type, nullable) in [
         (
             "mode: Missing<Option<Mode>>",
             ChoiceLeaf::MatchArg,
             "Missing<Option<Mode>>",
+            true,
         ),
         (
             "mode: Missing<Vec<Mode>>",
             ChoiceLeaf::MatchArgSeveral,
             "Missing<Vec<Mode>>",
+            false,
         ),
         (
             "mode: Either<Route, DataFrame>",
             ChoiceLeaf::MatchArg,
             "Either<Route, DataFrame>",
-        ),
-        (
-            "mode: Option<Either<String, f64>>",
-            ChoiceLeaf::Literal,
-            "Option<Either<String, f64>>",
+            false,
         ),
     ] {
         let builder = RustConversionBuilder::new()
@@ -365,14 +365,37 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
         let s = conversion_text(&builder, src);
         assert!(s.contains("match_arg_"), "{src}: {s}");
         assert!(
+            s.contains("__mx_conversion_expectation ! (e)"),
+            "{src}: {s}"
+        );
+        assert!(
             s.contains(&format!(
-                "\"invalid 'mode' argument\" , \"mode\" , :: core :: option :: Option :: Some (\"{rust_type}\") , & [\"pkg_error_argument\"]"
+                "conversion_prefix (\"mode\" , {nullable} , __mx_expected . as_deref () ,)"
             )),
             "{src}: {s}"
         );
         assert!(
-            s.contains("__mx_conversion_err_parts ! (e , false)"),
+            s.contains(&format!(
+                "\"mode\" , :: core :: option :: Option :: Some (\"{rust_type}\") , & [\"pkg_error_argument\"]"
+            )),
+            "{src}: {s}"
+        );
+        assert!(
+            s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
             "{src}: {s}"
         );
     }
+
+    let builder = RustConversionBuilder::new()
+        .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
+        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
+    let s = conversion_text(&builder, "mode: Option<Either<String, f64>>");
+    assert!(s.contains("match_arg_"), "{s}");
+    assert!(
+        s.contains(
+            "\"'mode' must be NULL or a single string or a single double\" , \"mode\" , :: core :: option :: Option :: Some (\"Option<Either<String, f64>>\") , & [\"pkg_error_argument\"]"
+        ),
+        "{s}"
+    );
+    assert!(s.contains("__mx_conversion_err_parts ! (e , true)"), "{s}");
 }
