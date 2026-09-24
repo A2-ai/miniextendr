@@ -329,7 +329,8 @@ test_that("an Either choice raises the argument error on both paths", {
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "route")
   expect_identical(e$rust_type, "Either<Route, DataFrame>")
-  expect_match(conditionMessage(e), "^invalid 'route' argument: ")
+  # The data frame arm refuses the type in R terms, not SEXPTYPE names.
+  expect_identical(conditionMessage(e), "invalid 'route' argument: expected list, got integer")
   expect_equal(conditionCall(e), quote(match_arg_either_route(route = 1:3)))
   # A built-in conversion error in the other arm reads in R terms, after an
   # expectation naming both sides.

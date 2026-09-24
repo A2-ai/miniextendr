@@ -203,7 +203,8 @@ fn dispatch_as_character(sexp: SEXP) -> Result<OwnedProtect, SexpError> {
         let actual = result.get().type_of();
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpError::InvalidValue(format!(
-                "as.character() returned {actual:?}, not a character vector"
+                "as.character() returned {}, not a character vector",
+                crate::typed_list::sexptype_name(actual)
             )));
         }
         Ok(result)

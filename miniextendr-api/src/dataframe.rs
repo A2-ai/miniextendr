@@ -34,7 +34,7 @@
 //! internal `RSerdeError` is bridged via `From<RSerdeError>`; the parallel R→Rust reader
 //! reports through `DataFrameError` rather than a bare `String`.
 
-use crate::from_r::{SexpError, TryFromSexp};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
@@ -52,8 +52,8 @@ pub use group::{GroupKey, GroupedDataFrame, group_rows};
 /// columnar path, the parallel R→Rust reader, and validation all surface a `DataFrameError`.
 #[derive(Debug, Clone)]
 pub enum DataFrameError {
-    /// The SEXP is not a VECSXP.
-    NotList(String),
+    /// The SEXP is not a VECSXP; carries the SEXPTYPE it was.
+    NotList(SEXPTYPE),
     /// The object does not inherit from `data.frame`.
     NotDataFrame,
     /// The list has no `names` attribute (columns must be named).
@@ -117,7 +117,11 @@ pub enum DataFrameError {
 impl std::fmt::Display for DataFrameError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DataFrameError::NotList(msg) => write!(f, "not a list: {}", msg),
+            DataFrameError::NotList(actual) => write!(
+                f,
+                "expected a data frame, got {}",
+                crate::typed_list::sexptype_name(*actual)
+            ),
             DataFrameError::NotDataFrame => write!(f, "object does not inherit from data.frame"),
             DataFrameError::NoNames => write!(f, "data.frame has no column names"),
             DataFrameError::BadRowNames(msg) => {
@@ -244,10 +248,7 @@ impl DataFrame {
     pub fn from_sexp(sexp: SEXP) -> Result<Self, DataFrameError> {
         let stype = sexp.type_of();
         if stype != SEXPTYPE::VECSXP {
-            return Err(DataFrameError::NotList(format!(
-                "expected VECSXP, got {:?}",
-                stype
-            )));
+            return Err(DataFrameError::NotList(stype));
         }
         if !sexp.is_data_frame() {
             return Err(DataFrameError::NotDataFrame);
@@ -726,7 +727,16 @@ impl TryFromSexp for DataFrame {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        DataFrame::from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))
+        // A non-list is a type error, worded in R terms by the argument error
+        // (`got integer`); any other failure is the data frame's own message.
+        DataFrame::from_sexp(sexp).map_err(|e| match e {
+            DataFrameError::NotList(actual) => SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into(),
+            other => SexpError::InvalidValue(other.to_string()),
+        })
     }
 }
 

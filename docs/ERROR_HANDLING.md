@@ -665,6 +665,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |
 | `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), when both have one |
 | `(A, B, ...)` | `a list of length N` |
+| `DataFrame` | `a data frame` |
 | a `match_arg` enum | `one of "fast", "slow"` (`NULL or one of ...` for `Option<T>`), from the choice error at run time, with or without `#[miniextendr(match_arg)]` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |

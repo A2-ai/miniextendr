@@ -129,7 +129,7 @@ test_that("A failing as.character() method is a conversion error", {
   .S3method("as.character", "mx_test_numeric", function(x, ...) unclass(x))
   expect_error(
     as_chr_vec(structure(1L, class = "mx_test_numeric")),
-    "as.character() returned INTSXP, not a character vector",
+    "as.character() returned integer, not a character vector",
     fixed = TRUE
   )
   # A length-1 argument whose method gives two strings passes the R-side

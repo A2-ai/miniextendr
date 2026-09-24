@@ -670,6 +670,7 @@ pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<St
 /// | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (the input `T` is parsed from) |
 /// | `Either<L, R>` | `<L> or <R>`, when both sides have one (`a single integer or a single string`) |
 /// | `(A, B, ...)` | `a list of length N` |
+/// | `DataFrame` | `a data frame` |
 /// | `Option<T>` of the above | `NULL or <T>` |
 fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
     match ty {
@@ -681,6 +682,7 @@ fn unchecked_expectation(ty: &syn::Type) -> Option<String> {
             match segment.ident.to_string().as_str() {
                 "AsFromStr" => Some("a single string".into()),
                 "AsFromStrVec" => Some("character".into()),
+                "DataFrame" => Some("a data frame".into()),
                 "Either" => {
                     let left = crate::type_inspect::first_type_argument(segment)?;
                     let right = crate::type_inspect::second_type_argument(segment)?;
@@ -1424,6 +1426,7 @@ mod tests {
             some("NULL or a single integer or a single string")
         );
         assert_eq!(exp("(i32, String)", false), some("a list of length 2"));
+        assert_eq!(exp("DataFrame", false), some("a data frame"));
         // Choice parameters, including the `Missing` / `Option` / `Either`
         // layers of #1551, have no static expectation: their conversion error
         // supplies it at run time (`one of "a", "b"`). An opaque side leaves
