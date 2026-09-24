@@ -1743,6 +1743,15 @@ pub fn vec_real_altrep(n: i32) -> Altrep<Vec<f64>> {
     Altrep((1..=len).map(|i| i as f64 * 0.5).collect())
 }
 
+/// Wrap a double vector, bit for bit, in the built-in `Vec<f64>` ALTREP class,
+/// so R's `anyNA()` / `sum()` / `min()` / `max()` go through its `no_na` /
+/// `sum` / `min` / `max` methods.
+/// @param x A double vector.
+#[miniextendr(noexport)]
+pub fn vec_real_altrep_from(x: Vec<f64>) -> Altrep<Vec<f64>> {
+    Altrep(x)
+}
+
 /// Create a `Vec<Rcomplex>` ALTREP complex vector.
 /// @rdname altrep_vec
 /// @param n Number of elements.

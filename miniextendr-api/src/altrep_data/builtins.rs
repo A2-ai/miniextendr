@@ -12,7 +12,6 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use crate::altrep_traits::NA_REAL;
 use crate::from_r::is_na_real;
 use crate::{Rcomplex, SEXP};
 
@@ -233,8 +232,8 @@ fn real_slice_no_na(s: &[f64]) -> bool {
 /// `sum` for a double slice, following R's `rsum`.
 ///
 /// With `na_rm`, every `NA` and `NaN` is skipped (`ISNAN`). Without it, the
-/// result is `NA` if any element is R's NA (`R_IsNA`, so a computed NA such as
-/// `NA_real_ * 1` counts), else `NaN` if any element is another NaN. R leaves
+/// result is the first element that is R's NA (`R_IsNA`, so a computed NA such
+/// as `NA_real_ * 1` counts), else `NaN` if any element is another NaN. R leaves
 /// the NA-vs-NaN outcome of a sum unspecified; letting NA win matches `min` and
 /// `max`.
 fn real_slice_sum(s: &[f64], na_rm: bool) -> f64 {
@@ -246,7 +245,7 @@ fn real_slice_sum(s: &[f64], na_rm: bool) -> f64 {
                 continue;
             }
             if is_na_real(x) {
-                return NA_REAL;
+                return x;
             }
             nan = true;
         } else {
@@ -260,8 +259,9 @@ fn real_slice_sum(s: &[f64], na_rm: bool) -> f64 {
 ///
 /// Missing values are handled as in [`real_slice_sum`]: skipped with `na_rm`,
 /// otherwise an NA (`R_IsNA`) wins over a NaN ("any NA trumps all NaNs" in
-/// R's source). `None` when nothing is left to compare (R then computes the
-/// `Inf` / `-Inf` result and its warning itself).
+/// R's source) and is returned as is, bits included, as R's loop does. `None`
+/// when nothing is left to compare (R then computes the `Inf` / `-Inf` result
+/// and its warning itself).
 fn real_slice_extreme(s: &[f64], na_rm: bool, pick: fn(f64, f64) -> f64) -> Option<f64> {
     let mut best: Option<f64> = None;
     let mut nan = false;
@@ -271,7 +271,7 @@ fn real_slice_extreme(s: &[f64], na_rm: bool, pick: fn(f64, f64) -> f64) -> Opti
                 continue;
             }
             if is_na_real(x) {
-                return Some(NA_REAL);
+                return Some(x);
             }
             nan = true;
         } else {
@@ -1238,6 +1238,7 @@ impl_serialize_cow!(Rcomplex);
 mod tests {
     use super::*;
     use crate::altrep_data::AltRealData;
+    use crate::altrep_traits::NA_REAL;
 
     /// `NA_real_ * 1` as R computes it: arithmetic quiets the NaN, so the
     /// high word differs from `NA_REAL`'s while the low word stays 1954.
@@ -1346,7 +1347,7 @@ mod tests {
     fn vec_f64_sum_computed_na() {
         let v: Vec<f64> = vec![1.0, COMPUTED_NA, 3.0];
         let na = AltRealData::sum(&v, false).expect("sum is always computed");
-        assert_eq!(na.to_bits(), NA_REAL.to_bits());
+        assert!(is_na_real(na), "{:#x}", na.to_bits());
         assert_eq!(AltRealData::sum(&v, true), Some(4.0));
     }
 
@@ -1363,15 +1364,15 @@ mod tests {
                 AltRealData::max(&v, false),
                 AltRealData::sum(&v, false),
             ] {
-                let bits = extreme.expect("missing values give a result").to_bits();
-                assert_eq!(bits, NA_REAL.to_bits(), "{v:?}");
+                let value = extreme.expect("missing values give a result");
+                assert!(is_na_real(value), "{v:?} gave {:#x}", value.to_bits());
             }
             assert_eq!(AltRealData::min(&v, true), Some(1.0));
             assert_eq!(AltRealData::max(&v, true), Some(1.0));
         }
         let nan_only = vec![3.0, f64::NAN, 1.0];
         let min = AltRealData::min(&nan_only, false).expect("NaN gives a result");
-        assert!(min.is_nan() && !crate::from_r::is_na_real(min));
+        assert!(min.is_nan() && !is_na_real(min));
         assert_eq!(AltRealData::min(&nan_only, true), Some(1.0));
         assert_eq!(AltRealData::max(&nan_only, true), Some(3.0));
         let all_missing = vec![NA_REAL, f64::NAN];
