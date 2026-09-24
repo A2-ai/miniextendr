@@ -2,10 +2,10 @@
 //!
 //! `R/range_summaries.R` holds the `range_summaries` topic, whose block
 //! documents every argument once (`lower,upper` as one grouped entry, and
-//! `x` / `...` for the `RangeBox` S3 methods). The functions and methods here
-//! join that page with `@rdname` / `@describeIn`, or take the descriptions
-//! with `@inheritParams`, so their generated wrappers add no `@param` line
-//! that would replace the shared descriptions. The R file sorts after
+//! `x` / `...` for the `RangeBox` S3 methods). The functions, methods and
+//! trait-impl methods here join that page with `@rdname` / `@describeIn`, or
+//! take the descriptions with `@inheritParams`, so their generated wrappers
+//! add no `@param` line that would replace the shared descriptions. The R file sorts after
 //! `R/miniextendr-wrappers.R`: the joining blocks sort after the page's own
 //! block (`@order NaN`), so it still names and titles the page.
 
@@ -100,9 +100,9 @@ pub struct RangeBox {
     upper: f64,
 }
 
-/// A closed range as an S3 object. The constructor is documented here; the
-/// methods join the shared `range_summaries` page, whose R block documents
-/// `x` and `...` for them.
+/// A closed range as an S3 object. The constructor and `box_share()` are
+/// documented here; the other methods join the shared `range_summaries`
+/// page, whose R block documents `x` and `...` for them.
 #[miniextendr(s3)]
 impl RangeBox {
     /// Create a range box.
@@ -131,5 +131,48 @@ impl RangeBox {
     pub fn from_values(values: Vec<f64>) -> Self {
         let (lower, upper) = min_max(&values);
         RangeBox { lower, upper }
+    }
+}
+
+/// Measures of a range box, whose trait-impl methods take the same page tags
+/// as the inherent methods above (#1590).
+#[miniextendr]
+pub trait RangeMeasure {
+    fn box_midpoint(&self) -> f64;
+    fn box_clamp(&self, values: Vec<f64>) -> Vec<f64>;
+    fn box_share(&self, values: Vec<f64>) -> f64;
+}
+
+/// `box_midpoint()` is listed on the shared `range_summaries` page
+/// (`@describeIn`), `box_clamp()` joins it (`@rdname`), and `box_share()`
+/// stays on the `RangeBox` page but takes the description of `values` from
+/// the shared page (`@inheritParams`).
+#[miniextendr(s3)]
+impl RangeMeasure for RangeBox {
+    /// @describeIn range_summaries Midpoint of a range box, halfway between
+    /// its bounds.
+    fn box_midpoint(&self) -> f64 {
+        (self.lower + self.upper) / 2.0
+    }
+
+    /// @rdname range_summaries
+    fn box_clamp(&self, values: Vec<f64>) -> Vec<f64> {
+        values
+            .into_iter()
+            .map(|value| value.clamp(self.lower, self.upper))
+            .collect()
+    }
+
+    /// @inheritParams range_summaries
+    fn box_share(&self, values: Vec<f64>) -> f64 {
+        let (inside, total) = values.iter().fold((0.0, 0.0), |(inside, total), &value| {
+            let hit = if self.lower <= value && value <= self.upper {
+                1.0
+            } else {
+                0.0
+            };
+            (inside + hit, total + 1.0)
+        });
+        inside / total
     }
 }

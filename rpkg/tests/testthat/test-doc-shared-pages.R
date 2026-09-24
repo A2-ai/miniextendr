@@ -120,7 +120,40 @@ test_that("method-level @describeIn lists S3 methods on the destination page (#1
   expect_true(all(c("box_width.RangeBox", "box_covers.RangeBox", "rangebox_from_values") %in% rd_aliases(rd)))
   class_page <- db[["RangeBox.Rd"]]
   expect_false(any(grepl("box_width|box_covers|rangebox_from_values", rd_aliases(class_page))))
-  expect_identical(names(rd_argument_items(class_page)), c("lower", "upper"))
+})
+
+test_that("trait-impl methods take the same page tags as inherent methods (#1590)", {
+  db <- shared_pages_rd_db()
+  rd <- db[["range_summaries.Rd"]]
+  # `@describeIn` lists the trait method's S3 method; its (wrapped)
+  # description is the entry.
+  expect_match(
+    rd_section_text(rd, "\\section"),
+    "box_midpoint(RangeBox): Midpoint of a range box, halfway between its bounds.",
+    fixed = TRUE
+  )
+  usage <- rd_section_text(rd, "\\usage")
+  for (call in c("box_midpoint", "box_clamp")) {
+    expect_match(usage, call, fixed = TRUE)
+  }
+  # The S3 generic blocks named after the methods follow them (the alias
+  # stays on one page), and their structural `x` / `...` lines stay off the
+  # family page: the family's own entries are kept.
+  expect_true(all(c("box_midpoint.RangeBox", "box_clamp.RangeBox") %in% rd_aliases(rd)))
+  args <- rd_argument_items(rd)
+  expect_identical(args[["x"]], "A RangeBox object.")
+  expect_identical(args[["..."]], "Unused; accepted for S3 method compatibility.")
+  expect_identical(args[["values"]], "A numeric vector.")
+  expect_false(grepl("S3 generic for", rd_section_text(rd, "\\description"), fixed = TRUE))
+
+  # `@inheritParams` keeps `box_share()` on the class page and fills `values`
+  # from the family page (no generated line blocks the inheritance).
+  class_page <- db[["RangeBox.Rd"]]
+  expect_true("box_share.RangeBox" %in% rd_aliases(class_page))
+  expect_false(any(grepl("box_midpoint|box_clamp", rd_aliases(class_page))))
+  class_args <- rd_argument_items(class_page)
+  expect_setequal(names(class_args), c("lower", "upper", "x", "values", "..."))
+  expect_identical(class_args[["values"]], args[["values"]])
 })
 
 test_that("a method split onto its own page documents the S3 method arguments itself (#1590)", {
@@ -162,6 +195,9 @@ test_that("the range-summary functions behave as documented", {
   expect_identical(box_width(box), 7)
   expect_identical(box_covers(box, c(1, 2, 9, 10)), c(FALSE, TRUE, TRUE, FALSE))
   expect_identical(box_width(new_rangebox(1, 4)), 3)
+  expect_identical(box_midpoint(box), 5.5)
+  expect_identical(box_clamp(new_rangebox(3, 8), x), c(3, 5, 8))
+  expect_equal(box_share(new_rangebox(3, 8), x), 1 / 3)
 })
 
 test_that("the file-stem page functions behave as documented", {
