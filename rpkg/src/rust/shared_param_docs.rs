@@ -1,10 +1,13 @@
 //! Functions documented on a shared R help page (#1590).
 //!
-//! `R/doc_range_summaries.R` holds the `range_summaries` topic, whose block
-//! documents every argument once (`lower,upper` as one grouped entry). The
-//! functions here join that page with `@rdname` / `@describeIn`, or take the
-//! descriptions with `@inheritParams`, so their generated wrappers add no
-//! `@param` placeholder that would replace the shared descriptions.
+//! `R/range_summaries.R` holds the `range_summaries` topic, whose block
+//! documents every argument once (`lower,upper` as one grouped entry, and
+//! `x` / `...` for the `RangeBox` S3 methods). The functions and methods here
+//! join that page with `@rdname` / `@describeIn`, or take the descriptions
+//! with `@inheritParams`, so their generated wrappers add no `@param` line
+//! that would replace the shared descriptions. The R file sorts after
+//! `R/miniextendr-wrappers.R`: the joining blocks sort after the page's own
+//! block (`@order NaN`), so it still names and titles the page.
 
 use miniextendr_api::miniextendr;
 
@@ -87,4 +90,46 @@ pub fn range_share_within(values: Vec<f64>, lower: f64, upper: f64) -> f64 {
         (inside + hit, total + 1.0)
     });
     inside / total
+}
+
+/// A closed range `[lower, upper]`, whose methods are documented on the
+/// shared `range_summaries` page.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct RangeBox {
+    lower: f64,
+    upper: f64,
+}
+
+/// A closed range as an S3 object. The constructor is documented here; the
+/// methods join the shared `range_summaries` page, whose R block documents
+/// `x` and `...` for them.
+#[miniextendr(s3)]
+impl RangeBox {
+    /// Create a range box.
+    /// @param lower Lower bound.
+    /// @param upper Upper bound.
+    pub fn new(lower: f64, upper: f64) -> Self {
+        RangeBox { lower, upper }
+    }
+
+    /// @describeIn range_summaries Width of a range box.
+    pub fn box_width(&self) -> f64 {
+        self.upper - self.lower
+    }
+
+    /// Which values a range box covers, bounds included.
+    /// @rdname range_summaries
+    pub fn box_covers(&self, values: Vec<f64>) -> Vec<bool> {
+        values
+            .iter()
+            .map(|&value| self.lower <= value && value <= self.upper)
+            .collect()
+    }
+
+    /// @describeIn range_summaries The smallest range box holding every
+    /// value.
+    pub fn from_values(values: Vec<f64>) -> Self {
+        let (lower, upper) = min_max(&values);
+        RangeBox { lower, upper }
+    }
 }

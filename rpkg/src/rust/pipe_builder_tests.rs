@@ -73,8 +73,11 @@ impl GreetingBuilder {
     /// Documented on its own help page (`man/greeting_build.Rd`, reached via
     /// `?build.GreetingBuilder`) rather than the shared `GreetingBuilder` page:
     /// a method-level `@rdname` is honoured by the generator instead of being
-    /// overwritten by the class default.
+    /// overwritten by the class default. The page is the method's own, so it
+    /// documents the S3 method's `x` and `...` itself.
     /// @rdname greeting_build
+    /// @param x A `GreetingBuilder`.
+    /// @param ... Unused; accepted for S3 method compatibility.
     pub fn build(&self) -> String {
         let name = if self.name.is_empty() {
             "world"

@@ -61,7 +61,7 @@ re_map_b_roundtrip_par(df)
 re_map_h_roundtrip_ok()
 }
 \arguments{
-\item{df}{(no documentation available)}
+\item{df}{data.frame from \code{re_map_b_align(...)}.}
 }
 \description{
 Scalar tagged-union enum round-trip. Columns: \verb{_type}, \code{id}, \code{x}, \code{name}.
