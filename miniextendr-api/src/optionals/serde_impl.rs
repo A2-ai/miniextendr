@@ -332,17 +332,32 @@ pub fn json_from_sexp_permissive(sexp: SEXP) -> Result<JsonValue, SexpError> {
 }
 
 /// Helper to handle NA values according to options.
-fn handle_na(opts: &JsonOptions, context: Option<usize>) -> Result<JsonValue, SexpError> {
+fn handle_na(opts: &JsonOptions) -> Result<JsonValue, SexpError> {
     match &opts.na {
         NaHandling::Null => Ok(JsonValue::Null),
-        NaHandling::Error => {
-            let msg = match context {
-                Some(i) => format!("NA at index {} not allowed", i),
-                None => "NA not allowed".into(),
-            };
-            Err(SexpError::InvalidValue(msg))
-        }
+        NaHandling::Error => Err(SexpError::InvalidValue("NA is not allowed".into())),
         NaHandling::String(s) => Ok(JsonValue::String(s.clone())),
+    }
+}
+
+/// Collect the elements of an atomic vector into a JSON array, batching every
+/// element that cannot be represented (its reason and 1-based position) into
+/// one error instead of stopping at the first.
+fn json_array(
+    elements: impl Iterator<Item = Result<JsonValue, SexpError>>,
+) -> Result<JsonValue, SexpError> {
+    let mut out = Vec::new();
+    let mut errors = crate::from_r::BatchedErrors::default();
+    for (i, element) in elements.enumerate() {
+        match element {
+            Ok(v) => out.push(v),
+            Err(e) => errors.push(i, || e.r_reason(false)),
+        }
+    }
+    if errors.is_empty() {
+        Ok(JsonValue::Array(out))
+    } else {
+        Err(errors.into_element_error())
     }
 }
 
@@ -366,21 +381,19 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             if len == 1 {
                 let val = sexp.logical_elt(0);
                 if val == NA_LOGICAL {
-                    return handle_na(opts, None);
+                    return handle_na(opts);
                 }
                 Ok(JsonValue::Bool(val != 0))
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
-                    .map(|i| {
-                        let val = sexp.logical_elt(isize::try_from(i).expect("index overflow"));
-                        if val == NA_LOGICAL {
-                            handle_na(opts, Some(i))
-                        } else {
-                            Ok(JsonValue::Bool(val != 0))
-                        }
-                    })
-                    .collect();
-                Ok(JsonValue::Array(arr?))
+                let arr = (0..len).map(|i| {
+                    let val = sexp.logical_elt(isize::try_from(i).expect("index overflow"));
+                    if val == NA_LOGICAL {
+                        handle_na(opts)
+                    } else {
+                        Ok(JsonValue::Bool(val != 0))
+                    }
+                });
+                json_array(arr)
             }
         }
         SEXPTYPE::INTSXP => {
@@ -388,59 +401,49 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
             if len == 1 {
                 let val = slice[0];
                 if val == NA_INTEGER {
-                    return handle_na(opts, None);
+                    return handle_na(opts);
                 }
                 Ok(JsonValue::Number(serde_json::Number::from(val)))
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = slice
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &val)| {
-                        if val == NA_INTEGER {
-                            handle_na(opts, Some(i))
-                        } else {
-                            Ok(JsonValue::Number(serde_json::Number::from(val)))
-                        }
-                    })
-                    .collect();
-                Ok(JsonValue::Array(arr?))
+                let arr = slice.iter().map(|&val| {
+                    if val == NA_INTEGER {
+                        handle_na(opts)
+                    } else {
+                        Ok(JsonValue::Number(serde_json::Number::from(val)))
+                    }
+                });
+                json_array(arr)
             }
         }
         SEXPTYPE::REALSXP => {
             let slice: &[f64] = unsafe { SexpExt::as_slice(&sexp) };
             if len == 1 {
                 let val = slice[0];
-                real_to_json(val, opts, None)
+                real_to_json(val, opts)
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = slice
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &val)| real_to_json(val, opts, Some(i)))
-                    .collect();
-                Ok(JsonValue::Array(arr?))
+                let arr = slice.iter().map(|&val| real_to_json(val, opts));
+                json_array(arr)
             }
         }
         SEXPTYPE::STRSXP => {
             if len == 1 {
                 let charsxp = sexp.string_elt(0);
                 if charsxp == SEXP::na_string() {
-                    return handle_na(opts, None);
+                    return handle_na(opts);
                 }
                 let s = unsafe { charsxp_to_str(charsxp) };
                 Ok(JsonValue::String(s.to_string()))
             } else {
-                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
-                    .map(|i| {
-                        let charsxp = sexp.string_elt(isize::try_from(i).expect("index overflow"));
-                        if charsxp == SEXP::na_string() {
-                            handle_na(opts, Some(i))
-                        } else {
-                            let s = unsafe { charsxp_to_str(charsxp) };
-                            Ok(JsonValue::String(s.to_string()))
-                        }
-                    })
-                    .collect();
-                Ok(JsonValue::Array(arr?))
+                let arr = (0..len).map(|i| {
+                    let charsxp = sexp.string_elt(isize::try_from(i).expect("index overflow"));
+                    if charsxp == SEXP::na_string() {
+                        handle_na(opts)
+                    } else {
+                        let s = unsafe { charsxp_to_str(charsxp) };
+                        Ok(JsonValue::String(s.to_string()))
+                    }
+                });
+                json_array(arr)
             }
         }
         SEXPTYPE::VECSXP => {
@@ -465,6 +468,8 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
                 Ok(JsonValue::Object(map))
             } else {
                 // Convert to array
+                // A nested element's error carries its own positions, so the
+                // first one is reported as is.
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
                         let elem = sexp.vector_elt(isize::try_from(i).expect("index overflow"));
@@ -481,26 +486,18 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
     }
 }
 
-fn real_to_json(
-    val: f64,
-    opts: &JsonOptions,
-    context: Option<usize>,
-) -> Result<JsonValue, SexpError> {
+fn real_to_json(val: f64, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
     // Check for NA (NA_REAL is a specific NaN bit pattern)
     if val.to_bits() == NA_REAL.to_bits() {
-        return handle_na(opts, context);
+        return handle_na(opts);
     }
 
     // Check for NaN
     if val.is_nan() {
         return match &opts.nan {
-            SpecialFloatHandling::Error => {
-                let msg = match context {
-                    Some(i) => format!("NaN at index {} cannot be represented in JSON", i),
-                    None => "NaN cannot be represented in JSON".into(),
-                };
-                Err(SexpError::InvalidValue(msg))
-            }
+            SpecialFloatHandling::Error => Err(SexpError::InvalidValue(
+                "NaN cannot be represented in JSON".into(),
+            )),
             SpecialFloatHandling::Null => Ok(JsonValue::Null),
             SpecialFloatHandling::String => Ok(JsonValue::String("NaN".into())),
         };
@@ -509,13 +506,9 @@ fn real_to_json(
     // Check for Inf
     if val.is_infinite() {
         return match &opts.inf {
-            SpecialFloatHandling::Error => {
-                let msg = match context {
-                    Some(i) => format!("Infinity at index {} cannot be represented in JSON", i),
-                    None => "Infinity cannot be represented in JSON".into(),
-                };
-                Err(SexpError::InvalidValue(msg))
-            }
+            SpecialFloatHandling::Error => Err(SexpError::InvalidValue(
+                "Infinity cannot be represented in JSON".into(),
+            )),
             SpecialFloatHandling::Null => Ok(JsonValue::Null),
             SpecialFloatHandling::String => {
                 if val.is_sign_positive() {
@@ -553,22 +546,18 @@ fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError
     if len == 1 {
         let idx = slice[0];
         if idx == NA_INTEGER {
-            return handle_na(opts, None);
+            return handle_na(opts);
         }
         Ok(index_to_json(idx))
     } else {
-        let arr: Result<Vec<JsonValue>, SexpError> = slice
-            .iter()
-            .enumerate()
-            .map(|(i, &idx)| {
-                if idx == NA_INTEGER {
-                    handle_na(opts, Some(i))
-                } else {
-                    Ok(index_to_json(idx))
-                }
-            })
-            .collect();
-        Ok(JsonValue::Array(arr?))
+        let arr = slice.iter().map(|&idx| {
+            if idx == NA_INTEGER {
+                handle_na(opts)
+            } else {
+                Ok(index_to_json(idx))
+            }
+        });
+        json_array(arr)
     }
 }
 // endregion
@@ -1273,7 +1262,7 @@ mod tests {
     #[test]
     fn real_to_json_normal() {
         let opts = JsonOptions::default();
-        let result = real_to_json(std::f64::consts::PI, &opts, None);
+        let result = real_to_json(std::f64::consts::PI, &opts);
         assert!(result.is_ok());
         let val = result.unwrap();
         assert!(RJsonValueOps::is_number(&val));
@@ -1285,7 +1274,7 @@ mod tests {
             nan: SpecialFloatHandling::Error,
             ..Default::default()
         };
-        let result = real_to_json(f64::NAN, &opts, None);
+        let result = real_to_json(f64::NAN, &opts);
         assert!(result.is_err());
     }
 
@@ -1295,7 +1284,7 @@ mod tests {
             nan: SpecialFloatHandling::Null,
             ..Default::default()
         };
-        let result = real_to_json(f64::NAN, &opts, None);
+        let result = real_to_json(f64::NAN, &opts);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
     }
@@ -1306,7 +1295,7 @@ mod tests {
             inf: SpecialFloatHandling::Null,
             ..Default::default()
         };
-        let result = real_to_json(f64::INFINITY, &opts, None);
+        let result = real_to_json(f64::INFINITY, &opts);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
     }

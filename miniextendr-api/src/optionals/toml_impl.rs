@@ -166,27 +166,37 @@ impl TryFromSexp for TomlValue {
 // Use macro for Option<TomlValue>
 impl_option_try_from_sexp!(TomlValue);
 
+/// Parse every element of a character vector through `elt`, batching every
+/// failing element (its reason and 1-based position) into one error.
+fn parse_toml_elements<U>(
+    sexp: SEXP,
+    elt: impl Fn(Option<String>) -> Result<U, String>,
+) -> Result<Vec<U>, SexpError> {
+    let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+    let mut out = Vec::with_capacity(strings.len());
+    let mut errors = crate::from_r::BatchedErrors::default();
+    for (i, opt) in strings.into_iter().enumerate() {
+        match elt(opt) {
+            Ok(v) => out.push(v),
+            Err(reason) => errors.push(i, || reason),
+        }
+    }
+    if errors.is_empty() {
+        Ok(out)
+    } else {
+        Err(errors.into_element_error())
+    }
+}
+
 // Vec conversions have custom logic (parse from Vec<String>, not VECSXP)
 impl TryFromSexp for Vec<TomlValue> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        strings
-            .into_iter()
-            .enumerate()
-            .map(|(i, opt)| {
-                let s = opt.ok_or_else(|| {
-                    SexpError::InvalidValue(format!(
-                        "NA at index {} not allowed for TOML parsing",
-                        i
-                    ))
-                })?;
-                toml_from_str(&s).map_err(|e| {
-                    SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
-                })
-            })
-            .collect()
+        parse_toml_elements(sexp, |opt| {
+            let s = opt.ok_or_else(|| "NA is not allowed".to_string())?;
+            toml_from_str(&s).map_err(|e| format!("invalid TOML: {e}"))
+        })
     }
 }
 
@@ -194,17 +204,12 @@ impl TryFromSexp for Vec<Option<TomlValue>> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
-        strings
-            .into_iter()
-            .enumerate()
-            .map(|(i, opt)| match opt {
-                None => Ok(None),
-                Some(s) => toml_from_str(&s).map(Some).map_err(|e| {
-                    SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
-                }),
-            })
-            .collect()
+        parse_toml_elements(sexp, |opt| match opt {
+            None => Ok(None),
+            Some(s) => toml_from_str(&s)
+                .map(Some)
+                .map_err(|e| format!("invalid TOML: {e}")),
+        })
     }
 }
 // endregion

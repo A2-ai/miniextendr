@@ -36,20 +36,19 @@ use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Fold a batched strict-vec [`BatchedErrors`] into the single panic every
-/// `checked_vec_*_into_sexp` raises, under `container` (e.g. `"Vec<i64>"`).
+/// `checked_vec_*_into_sexp` raises for the return value of Rust type
+/// `container` (e.g. `"Vec<i64>"`).
 ///
-/// Reuses [`BatchedErrors::into_error`]'s `"<container> conversion failed:
-/// invalid value at index <i>: ...; and N more"` grammar (#1192/#1097), but
-/// extracts the inner message directly rather than going through
-/// `SexpError`'s `Display` impl — that impl wraps every variant as `"invalid
-/// value: {msg}"`, which would read as a doubled "invalid value: `Vec<i64>`
-/// conversion failed: invalid value at index 0: ..." in a panic message.
+/// Uses [`BatchedErrors::element_message`]'s grammar (#1192/#1097), each
+/// reason with the 1-based positions of the elements in the returned vector:
+/// `strict conversion failed for Vec<i64>: i64 value 3000000000 is outside R
+/// integer range (-2147483647..=2147483647) (element 2); use a non-strict ...`.
+/// A return value has no `e$rust_type`, so the message names the type.
 fn panic_strict_vec_batched(container: &str, errors: BatchedErrors) -> ! {
-    let SexpError::InvalidValue(msg) = errors.into_error(container) else {
-        unreachable!("BatchedErrors::into_error always returns SexpError::InvalidValue")
-    };
     panic!(
-        "strict conversion failed: {msg}; use a non-strict function to allow lossy f64 widening"
+        "strict conversion failed for {container}: {}; use a non-strict function to allow \
+         lossy f64 widening",
+        errors.element_message()
     );
 }
 
@@ -110,10 +109,9 @@ pub fn checked_vec_i64_into_sexp(val: Vec<i64>) -> SEXP {
         if x > i32::MIN as i64 && x <= i32::MAX as i64 {
             coerced.push(x as i32);
         } else {
-            errors.push(|| {
+            errors.push(i, || {
                 format!(
-                    "invalid value at index {i}: i64 value {x} is outside R integer range \
-                     ({}..={})",
+                    "i64 value {x} is outside R integer range ({}..={})",
                     i32::MIN as i64 + 1,
                     i32::MAX
                 )
@@ -137,11 +135,8 @@ pub fn checked_vec_u64_into_sexp(val: Vec<u64>) -> SEXP {
         if x <= i32::MAX as u64 {
             coerced.push(x as i32);
         } else {
-            errors.push(|| {
-                format!(
-                    "invalid value at index {i}: u64 value {x} exceeds R integer max ({})",
-                    i32::MAX
-                )
+            errors.push(i, || {
+                format!("u64 value {x} exceeds R integer max ({})", i32::MAX)
             });
         }
     }
@@ -176,10 +171,9 @@ pub fn checked_vec_option_i64_into_sexp(val: Vec<Option<i64>>) -> SEXP {
                 if x > i32::MIN as i64 && x <= i32::MAX as i64 {
                     coerced.push(Some(x as i32));
                 } else {
-                    errors.push(|| {
+                    errors.push(i, || {
                         format!(
-                            "invalid value at index {i}: i64 value {x} is outside R integer range \
-                             ({}..={})",
+                            "i64 value {x} is outside R integer range ({}..={})",
                             i32::MIN as i64 + 1,
                             i32::MAX
                         )
@@ -208,11 +202,8 @@ pub fn checked_vec_option_u64_into_sexp(val: Vec<Option<u64>>) -> SEXP {
                 if x <= i32::MAX as u64 {
                     coerced.push(Some(x as i32));
                 } else {
-                    errors.push(|| {
-                        format!(
-                            "invalid value at index {i}: u64 value {x} exceeds R integer max ({})",
-                            i32::MAX
-                        )
+                    errors.push(i, || {
+                        format!("u64 value {x} exceeds R integer max ({})", i32::MAX)
                     });
                 }
             }
@@ -268,84 +259,67 @@ pub fn checked_option_usize_into_sexp(val: Option<usize>) -> SEXP {
 }
 
 // region: Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
+//
+// A rejected input is an argument error, not a panic (#1594): each helper
+// returns `Result<_, SexpError>`, and the generated wrapper turns an `Err`
+// into the same `kind = "conversion"` condition as any other conversion
+// failure (`'x' must be a single whole number: got logical`, `e$param`,
+// `e$rust_type`). The vector helpers walk the whole input and report every
+// failing element at once, with R's 1-based positions.
+
+/// The element reason for an R `NA` in a strict input that cannot hold one.
+const NA_NOT_ALLOWED: &str = "NA is not allowed";
 
 /// Convert R SEXP to `i64` in strict mode.
 ///
 /// Only INTSXP and REALSXP are accepted. RAWSXP and LGLSXP are rejected.
-/// For REALSXP, uses `TryCoerce` to reject fractional, NaN, and out-of-range values.
+/// For REALSXP, uses `TryCoerce` to reject fractional, NaN, and out-of-range
+/// values; `NA` is rejected too.
 #[inline]
-pub fn checked_try_from_sexp_i64(sexp: SEXP, param: &str) -> i64 {
-    checked_try_from_sexp_numeric_scalar::<i64>(sexp, param)
+pub fn checked_try_from_sexp_i64(sexp: SEXP) -> Result<i64, SexpError> {
+    checked_try_from_sexp_numeric_scalar::<i64>(sexp)
 }
 
 /// Convert R SEXP to `u64` in strict mode.
 #[inline]
-pub fn checked_try_from_sexp_u64(sexp: SEXP, param: &str) -> u64 {
-    checked_try_from_sexp_numeric_scalar::<u64>(sexp, param)
+pub fn checked_try_from_sexp_u64(sexp: SEXP) -> Result<u64, SexpError> {
+    checked_try_from_sexp_numeric_scalar::<u64>(sexp)
 }
 
 /// Convert R SEXP to `isize` in strict mode.
 #[inline]
-pub fn checked_try_from_sexp_isize(sexp: SEXP, param: &str) -> isize {
-    let val = checked_try_from_sexp_i64(sexp, param);
-    isize::try_from(val).unwrap_or_else(|_| {
-        panic!(
-            "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
-            param, val
-        )
-    })
+pub fn checked_try_from_sexp_isize(sexp: SEXP) -> Result<isize, SexpError> {
+    let val = checked_try_from_sexp_i64(sexp)?;
+    narrow::<i64, isize>(val).map_err(SexpError::InvalidValue)
 }
 
 /// Convert R SEXP to `usize` in strict mode.
 #[inline]
-pub fn checked_try_from_sexp_usize(sexp: SEXP, param: &str) -> usize {
-    let val = checked_try_from_sexp_u64(sexp, param);
-    usize::try_from(val).unwrap_or_else(|_| {
-        panic!(
-            "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
-            param, val
-        )
-    })
+pub fn checked_try_from_sexp_usize(sexp: SEXP) -> Result<usize, SexpError> {
+    let val = checked_try_from_sexp_u64(sexp)?;
+    narrow::<u64, usize>(val).map_err(SexpError::InvalidValue)
 }
 
 /// Convert R SEXP to `Vec<i64>` in strict mode.
-pub fn checked_vec_try_from_sexp_i64(sexp: SEXP, param: &str) -> Vec<i64> {
-    checked_vec_try_from_sexp_numeric::<i64>(sexp, param)
+pub fn checked_vec_try_from_sexp_i64(sexp: SEXP) -> Result<Vec<i64>, SexpError> {
+    checked_vec_try_from_sexp_numeric::<i64>(sexp)
 }
 
 /// Convert R SEXP to `Vec<u64>` in strict mode.
-pub fn checked_vec_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<u64> {
-    checked_vec_try_from_sexp_numeric::<u64>(sexp, param)
+pub fn checked_vec_try_from_sexp_u64(sexp: SEXP) -> Result<Vec<u64>, SexpError> {
+    checked_vec_try_from_sexp_numeric::<u64>(sexp)
 }
 
 /// Convert R SEXP to `Vec<isize>` in strict mode.
-pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
-    checked_vec_try_from_sexp_i64(sexp, param)
-        .into_iter()
-        .map(|x| {
-            isize::try_from(x).unwrap_or_else(|_| {
-            panic!(
-                "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
-                param, x
-            )
-        })
-        })
-        .collect()
+pub fn checked_vec_try_from_sexp_isize(sexp: SEXP) -> Result<Vec<isize>, SexpError> {
+    let vals = checked_vec_try_from_sexp_i64(sexp)?;
+    batch_elements(&vals, narrow::<i64, isize>)
 }
 
 /// Convert R SEXP to `Vec<usize>` in strict mode.
-pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
-    checked_vec_try_from_sexp_u64(sexp, param)
-        .into_iter()
-        .map(|x| {
-            usize::try_from(x).unwrap_or_else(|_| {
-            panic!(
-                "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
-                param, x
-            )
-        })
-        })
-        .collect()
+pub fn checked_vec_try_from_sexp_usize(sexp: SEXP) -> Result<Vec<usize>, SexpError> {
+    let vals = checked_vec_try_from_sexp_u64(sexp)?;
+    batch_elements(&vals, narrow::<u64, usize>)
 }
 
 /// Convert R SEXP to `Vec<Option<i64>>` in strict mode.
@@ -353,139 +327,146 @@ pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
 /// Applies the same input-SEXP-type gate as [`checked_vec_try_from_sexp_i64`]
 /// — only INTSXP and REALSXP are accepted; LGLSXP and RAWSXP are rejected.
 /// NA elements become `None`; type strictness and missingness are orthogonal.
-pub fn checked_vec_option_try_from_sexp_i64(sexp: SEXP, param: &str) -> Vec<Option<i64>> {
-    checked_vec_option_try_from_sexp_numeric::<i64>(sexp, param)
+pub fn checked_vec_option_try_from_sexp_i64(sexp: SEXP) -> Result<Vec<Option<i64>>, SexpError> {
+    checked_vec_option_try_from_sexp_numeric::<i64>(sexp)
 }
 
 /// Convert R SEXP to `Vec<Option<u64>>` in strict mode.
-pub fn checked_vec_option_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<Option<u64>> {
-    checked_vec_option_try_from_sexp_numeric::<u64>(sexp, param)
+pub fn checked_vec_option_try_from_sexp_u64(sexp: SEXP) -> Result<Vec<Option<u64>>, SexpError> {
+    checked_vec_option_try_from_sexp_numeric::<u64>(sexp)
 }
 
 /// Convert R SEXP to `Vec<Option<isize>>` in strict mode.
-pub fn checked_vec_option_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<Option<isize>> {
-    checked_vec_option_try_from_sexp_i64(sexp, param)
-        .into_iter()
-        .map(|opt| {
-            opt.map(|x| {
-                isize::try_from(x).unwrap_or_else(|_| {
-                    panic!(
-                        "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
-                        param, x
-                    )
-                })
-            })
-        })
-        .collect()
+pub fn checked_vec_option_try_from_sexp_isize(sexp: SEXP) -> Result<Vec<Option<isize>>, SexpError> {
+    let vals = checked_vec_option_try_from_sexp_i64(sexp)?;
+    batch_elements(&vals, |opt| opt.map(narrow::<i64, isize>).transpose())
 }
 
 /// Convert R SEXP to `Vec<Option<usize>>` in strict mode.
-pub fn checked_vec_option_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<Option<usize>> {
-    checked_vec_option_try_from_sexp_u64(sexp, param)
-        .into_iter()
-        .map(|opt| {
-            opt.map(|x| {
-                usize::try_from(x).unwrap_or_else(|_| {
-                    panic!(
-                        "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
-                        param, x
-                    )
-                })
-            })
-        })
-        .collect()
+pub fn checked_vec_option_try_from_sexp_usize(sexp: SEXP) -> Result<Vec<Option<usize>>, SexpError> {
+    let vals = checked_vec_option_try_from_sexp_u64(sexp)?;
+    batch_elements(&vals, |opt| opt.map(narrow::<u64, usize>).transpose())
 }
 
-/// Generic strict scalar conversion: only INTSXP and REALSXP allowed.
-#[inline]
-fn checked_try_from_sexp_numeric_scalar<T>(sexp: SEXP, param: &str) -> T
+/// Narrow a 64-bit value to the pointer-sized type, with the reason of a
+/// failure (only reachable on a 32-bit target).
+fn narrow<S, T>(val: S) -> Result<T, String>
 where
-    i32: TryCoerce<T>,
-    f64: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    S: Copy + std::fmt::Display,
+    T: TryFrom<S>,
 {
-    let actual = sexp.type_of();
-    match actual {
-        SEXPTYPE::INTSXP => {
-            let value: i32 = TryFromSexp::try_from_sexp(sexp).unwrap_or_else(|e| {
-                panic!(
-                    "strict conversion failed for parameter '{}': {:?}",
-                    param, e
-                )
-            });
-            TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
-                panic!(
-                    "strict conversion failed for parameter '{}': {:?}",
-                    param, e
-                )
-            })
+    T::try_from(val).map_err(|_| format!("{val} does not fit in {}", std::any::type_name::<T>()))
+}
+
+/// The strict input-type gate: only INTSXP and REALSXP are accepted.
+fn strict_type_error(actual: SEXPTYPE) -> SexpError {
+    crate::from_r::SexpTypeError {
+        expected: SEXPTYPE::INTSXP,
+        actual,
+    }
+    .into()
+}
+
+/// Convert every element of `slice`, batching every failure (its reason and
+/// 1-based position) into one [`SexpError::InvalidValue`] instead of stopping
+/// at the first.
+fn batch_elements<S: Copy, U>(
+    slice: &[S],
+    convert: impl Fn(S) -> Result<U, String>,
+) -> Result<Vec<U>, SexpError> {
+    let mut out = Vec::with_capacity(slice.len());
+    let mut errors = BatchedErrors::default();
+    for (i, &v) in slice.iter().enumerate() {
+        match convert(v) {
+            Ok(x) => out.push(x),
+            Err(reason) => errors.push(i, || reason),
         }
-        SEXPTYPE::REALSXP => {
-            let value: f64 = TryFromSexp::try_from_sexp(sexp).unwrap_or_else(|e| {
-                panic!(
-                    "strict conversion failed for parameter '{}': {:?}",
-                    param, e
-                )
-            });
-            TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
-                panic!(
-                    "strict conversion failed for parameter '{}': {:?}",
-                    param, e
-                )
-            })
-        }
-        _ => panic!(
-            "strict conversion failed for parameter '{}': expected integer or double, got {:?}",
-            param, actual
-        ),
+    }
+    if errors.is_empty() {
+        Ok(out)
+    } else {
+        Err(errors.into_element_error())
     }
 }
 
-/// Generic strict vector conversion: only INTSXP and REALSXP allowed.
-fn checked_vec_try_from_sexp_numeric<T>(sexp: SEXP, param: &str) -> Vec<T>
+/// One INTSXP element: `NA_integer_` is `None`; any other value coerces.
+fn strict_int_elt<T>(v: i32) -> Result<Option<T>, String>
+where
+    i32: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+{
+    if v == crate::altrep_traits::NA_INTEGER {
+        return Ok(None);
+    }
+    TryCoerce::<T>::try_coerce(v)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+/// One REALSXP element: `NA_real_` is `None`; any other value coerces, so a
+/// fractional, NaN or out-of-range double fails.
+fn strict_real_elt<T>(v: f64) -> Result<Option<T>, String>
+where
+    f64: TryCoerce<T>,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+{
+    if crate::from_r::is_na_real(v) {
+        return Ok(None);
+    }
+    TryCoerce::<T>::try_coerce(v)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+/// Generic strict scalar conversion: only INTSXP and REALSXP allowed, of
+/// length 1 and not `NA`.
+#[inline]
+fn checked_try_from_sexp_numeric_scalar<T>(sexp: SEXP) -> Result<T, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     let actual = sexp.type_of();
-    match actual {
+    let value = match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+            strict_int_elt::<T>(value)
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+            strict_real_elt::<T>(value)
+        }
+        _ => return Err(strict_type_error(actual)),
+    };
+    match value {
+        Ok(Some(v)) => Ok(v),
+        Ok(None) => Err(crate::from_r::SexpNaError { sexp_type: actual }.into()),
+        Err(reason) => Err(SexpError::InvalidValue(reason)),
+    }
+}
+
+/// Generic strict vector conversion: only INTSXP and REALSXP allowed; an `NA`
+/// element is an error, like any other element that does not convert.
+fn checked_vec_try_from_sexp_numeric<T>(sexp: SEXP) -> Result<Vec<T>, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+{
+    let required = |v: Option<T>| v.ok_or_else(|| NA_NOT_ALLOWED.to_string());
+    match sexp.type_of() {
         SEXPTYPE::INTSXP => {
             let slice: &[i32] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .copied()
-                .map(|v| {
-                    TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
-                        panic!(
-                            "strict conversion failed for parameter '{}': {:?}",
-                            param, e
-                        )
-                    })
-                })
-                .collect()
+            batch_elements(slice, |v| strict_int_elt::<T>(v).and_then(required))
         }
         SEXPTYPE::REALSXP => {
             let slice: &[f64] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .copied()
-                .map(|v| {
-                    TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
-                        panic!(
-                            "strict conversion failed for parameter '{}': {:?}",
-                            param, e
-                        )
-                    })
-                })
-                .collect()
+            batch_elements(slice, |v| strict_real_elt::<T>(v).and_then(required))
         }
-        _ => panic!(
-            "strict conversion failed for parameter '{}': expected integer or double vector, got {:?}",
-            param, actual
-        ),
+        actual => Err(strict_type_error(actual)),
     }
 }
 
@@ -494,57 +475,23 @@ where
 /// Mirrors [`checked_vec_try_from_sexp_numeric`] but maps R's NA sentinel
 /// (`NA_INTEGER` for INTSXP, `NA_REAL` for REALSXP) to `None` instead of
 /// erroring — missingness is orthogonal to the input-type gate.
-fn checked_vec_option_try_from_sexp_numeric<T>(sexp: SEXP, param: &str) -> Vec<Option<T>>
+fn checked_vec_option_try_from_sexp_numeric<T>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
-    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
-    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Display,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    let actual = sexp.type_of();
-    match actual {
+    match sexp.type_of() {
         SEXPTYPE::INTSXP => {
             let slice: &[i32] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .copied()
-                .map(|v| {
-                    if v == crate::altrep_traits::NA_INTEGER {
-                        None
-                    } else {
-                        Some(TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
-                            panic!(
-                                "strict conversion failed for parameter '{}': {:?}",
-                                param, e
-                            )
-                        }))
-                    }
-                })
-                .collect()
+            batch_elements(slice, strict_int_elt::<T>)
         }
         SEXPTYPE::REALSXP => {
             let slice: &[f64] = unsafe { sexp.as_slice() };
-            slice
-                .iter()
-                .copied()
-                .map(|v| {
-                    if crate::from_r::is_na_real(v) {
-                        None
-                    } else {
-                        Some(TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
-                            panic!(
-                                "strict conversion failed for parameter '{}': {:?}",
-                                param, e
-                            )
-                        }))
-                    }
-                })
-                .collect()
+            batch_elements(slice, strict_real_elt::<T>)
         }
-        _ => panic!(
-            "strict conversion failed for parameter '{}': expected integer or double vector, got {:?}",
-            param, actual
-        ),
+        actual => Err(strict_type_error(actual)),
     }
 }
 
@@ -600,11 +547,12 @@ mod tests {
             std::panic::catch_unwind(|| checked_vec_i64_into_sexp(vec![1, i64::MAX, 2, i64::MIN]));
         let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
         assert!(
-            msg.starts_with("strict conversion failed: Vec<i64> conversion failed:"),
+            msg.starts_with("strict conversion failed for Vec<i64>: i64 value"),
             "{msg}"
         );
-        assert!(msg.contains("invalid value at index 1: i64 value"), "{msg}");
-        assert!(msg.contains("invalid value at index 3: i64 value"), "{msg}");
+        assert!(msg.contains("(element 2)"), "{msg}");
+        assert!(msg.contains("(element 4)"), "{msg}");
+        assert!(!msg.contains("index"), "{msg}");
         assert!(
             !msg.contains("and "),
             "should not summarize under the cap: {msg}"
@@ -629,11 +577,11 @@ mod tests {
         let result = std::panic::catch_unwind(|| checked_vec_u64_into_sexp(vec![0, bad, 1, bad]));
         let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
         assert!(
-            msg.starts_with("strict conversion failed: Vec<u64> conversion failed:"),
+            msg.starts_with("strict conversion failed for Vec<u64>: u64 value"),
             "{msg}"
         );
-        assert!(msg.contains("invalid value at index 1: u64 value"), "{msg}");
-        assert!(msg.contains("invalid value at index 3: u64 value"), "{msg}");
+        assert!(msg.contains("(elements 2, 4)"), "{msg}");
+        assert!(!msg.contains("index"), "{msg}");
     }
 
     #[test]
@@ -643,11 +591,12 @@ mod tests {
         });
         let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
         assert!(
-            msg.starts_with("strict conversion failed: Vec<Option<i64>> conversion failed:"),
+            msg.starts_with("strict conversion failed for Vec<Option<i64>>: i64 value"),
             "{msg}"
         );
-        assert!(msg.contains("invalid value at index 1: i64 value"), "{msg}");
-        assert!(msg.contains("invalid value at index 3: i64 value"), "{msg}");
+        assert!(msg.contains("(element 2)"), "{msg}");
+        assert!(msg.contains("(element 4)"), "{msg}");
+        assert!(!msg.contains("index"), "{msg}");
     }
 
     #[test]
@@ -658,11 +607,11 @@ mod tests {
         });
         let msg = panic_message(result.expect_err("should panic for out-of-range elements"));
         assert!(
-            msg.starts_with("strict conversion failed: Vec<Option<u64>> conversion failed:"),
+            msg.starts_with("strict conversion failed for Vec<Option<u64>>: u64 value"),
             "{msg}"
         );
-        assert!(msg.contains("invalid value at index 1: u64 value"), "{msg}");
-        assert!(msg.contains("invalid value at index 3: u64 value"), "{msg}");
+        assert!(msg.contains("(elements 2, 4)"), "{msg}");
+        assert!(!msg.contains("index"), "{msg}");
     }
 }
 // endregion

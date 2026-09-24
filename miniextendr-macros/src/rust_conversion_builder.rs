@@ -377,19 +377,19 @@ impl RustConversionBuilder {
             _ => {
                 let param_name = crate::naming::ident_name(ident);
 
-                // Strict mode: use checked input helpers for lossy types
+                // Strict mode: use checked input helpers for lossy types. A
+                // rejected input is the same argument error as any other
+                // conversion failure (#1594), worded against what strict
+                // accepts (`a single whole number`).
                 if self.strict
                     && let Some(strict_expr) =
                         crate::return_type_analysis::strict_input_conversion_for_type(
-                            ty,
-                            sexp_ident,
-                            &param_name,
+                            ty, sexp_ident,
                         )
                 {
                     let span = ty.span();
-                    let stmt = quote_spanned! {span=>
-                        let #ident: #ty = #strict_expr;
-                    };
+                    let strict_ctx = ArgContext::strict(&r_name, ty);
+                    let stmt = self.conversion_stmt(strict_expr, &strict_ctx, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
 
@@ -734,7 +734,25 @@ impl ArgContext {
     /// The context of parameter `r_name` of type `ty`; `coerced` when the
     /// `coerce` knob applies to it (the expectation widens with the gate).
     fn new(r_name: &str, ty: &syn::Type, coerced: bool) -> Self {
-        let expected = crate::r_preconditions::conversion_expectation(ty, coerced);
+        Self::with_expectation(
+            r_name,
+            ty,
+            crate::r_preconditions::conversion_expectation(ty, coerced),
+        )
+    }
+
+    /// The context of a `strict` lossy-integer parameter (#1594): the
+    /// expectation names what strict accepts, a whole number, since a
+    /// logical, raw or fractional input is refused.
+    fn strict(r_name: &str, ty: &syn::Type) -> Self {
+        Self::with_expectation(
+            r_name,
+            ty,
+            crate::r_preconditions::strict_conversion_expectation(ty),
+        )
+    }
+
+    fn with_expectation(r_name: &str, ty: &syn::Type, expected: Option<String>) -> Self {
         let prefix = match &expected {
             Some(expected) => format!("'{r_name}' must be {expected}"),
             None => format!("invalid '{r_name}' argument"),

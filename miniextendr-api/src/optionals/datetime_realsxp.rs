@@ -30,8 +30,8 @@
 //! |---|---|---|
 //! | `T` scalar | NaN | `Err(SexpError::Na)` |
 //! | `Option<T>` scalar | NaN | `Ok(None)` |
-//! | `Vec<T>` | NaN at index `i` | `Err(InvalidValue("NA at index {i} not allowed for Vec<T>"))` |
-//! | `Vec<Option<T>>` | NaN at index `i` | `None` element |
+//! | `Vec<T>` | NaN at element `i` | batched `Err(InvalidValue("NA is not allowed (element i)"))`, 1-based |
+//! | `Vec<Option<T>>` | NaN at element `i` | `None` element |
 //!
 //! ## Not applicable (stay hand-rolled)
 //!
@@ -144,16 +144,22 @@ macro_rules! impl_realsxp_datetime {
                 }
                 let src: &[f64] = unsafe { sexp.as_slice() };
                 let mut result = Vec::with_capacity(src.len());
+                let mut errors = $crate::from_r::BatchedErrors::default();
                 for (i, &v) in src.iter().enumerate() {
                     if v.is_nan() {
-                        return Err($crate::from_r::SexpError::InvalidValue(format!(
-                            concat!("NA at index {} not allowed for Vec<", stringify!($ty), ">"),
-                            i
-                        )));
+                        errors.push(i, || "NA is not allowed".to_string());
+                        continue;
                     }
-                    result.push(($decode)(v)?);
+                    match ($decode)(v) {
+                        Ok(t) => result.push(t),
+                        Err(e) => errors.push(i, || e.r_reason(false)),
+                    }
                 }
-                Ok(result)
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err(errors.into_element_error())
+                }
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
@@ -180,14 +186,22 @@ macro_rules! impl_realsxp_datetime {
                 }
                 let src: &[f64] = unsafe { sexp.as_slice() };
                 let mut result = Vec::with_capacity(src.len());
-                for &v in src.iter() {
+                let mut errors = $crate::from_r::BatchedErrors::default();
+                for (i, &v) in src.iter().enumerate() {
                     if v.is_nan() {
                         result.push(None);
-                    } else {
-                        result.push(Some(($decode)(v)?));
+                        continue;
+                    }
+                    match ($decode)(v) {
+                        Ok(t) => result.push(Some(t)),
+                        Err(e) => errors.push(i, || e.r_reason(false)),
                     }
                 }
-                Ok(result)
+                if errors.is_empty() {
+                    Ok(result)
+                } else {
+                    Err(errors.into_element_error())
+                }
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: $crate::SEXP) -> Result<Self, Self::Error> {

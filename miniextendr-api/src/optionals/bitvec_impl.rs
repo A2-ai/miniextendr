@@ -78,14 +78,16 @@ impl TryFromSexp for RBitVec {
         let slice: &[crate::RLogical] = unsafe { sexp.as_slice() };
         let mut bits = RBitVec::with_capacity(slice.len());
 
+        let mut errors = crate::from_r::BatchedErrors::default();
         for (i, &val) in slice.iter().enumerate() {
             if val.is_na() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for RBitVec",
-                    i
-                )));
+                errors.push(i, || "NA is not allowed".to_string());
+                continue;
             }
             bits.push(val.to_i32() != 0);
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
 
         Ok(bits)
@@ -155,14 +157,16 @@ impl TryFromSexp for BitVec<u8, Msb0> {
         let slice: &[crate::RLogical] = unsafe { sexp.as_slice() };
         let mut bits = BitVec::<u8, Msb0>::with_capacity(slice.len());
 
+        let mut errors = crate::from_r::BatchedErrors::default();
         for (i, &val) in slice.iter().enumerate() {
             if val.is_na() {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for BitVec",
-                    i
-                )));
+                errors.push(i, || "NA is not allowed".to_string());
+                continue;
             }
             bits.push(val.to_i32() != 0);
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
 
         Ok(bits)

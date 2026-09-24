@@ -242,10 +242,7 @@ impl TryFromSexp for Vec<Option<u8>> {
 }
 
 #[inline]
-fn try_from_sexp_numeric_option_vec<T>(
-    sexp: SEXP,
-    container: &str,
-) -> Result<Vec<Option<T>>, SexpError>
+fn try_from_sexp_numeric_option_vec<T>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
@@ -256,7 +253,6 @@ where
 {
     from_numeric_vec_with(
         sexp,
-        container,
         |v: i32| {
             if v == crate::altrep_traits::NA_INTEGER {
                 Ok(None)
@@ -289,11 +285,11 @@ macro_rules! impl_vec_option_try_from_sexp_numeric {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_option_vec(sexp, concat!("Vec<Option<", stringify!($t), ">>"))
+                try_from_sexp_numeric_option_vec(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_option_vec(sexp, concat!("Vec<Option<", stringify!($t), ">>"))
+                try_from_sexp_numeric_option_vec(sexp)
             }
         }
     };

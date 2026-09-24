@@ -258,14 +258,115 @@ pub enum SexpError {
     DuplicateName(String),
     /// Failed to convert to `Either<L, R>` - both branches failed.
     ///
-    /// Contains the error messages from attempting both conversions.
+    /// Contains the errors from attempting both conversions, so the argument
+    /// error can word them for R (see [`SexpError::r_reason`]).
     #[cfg(feature = "either")]
     EitherConversion {
         /// Error from attempting to convert to the Left type
-        left_error: String,
+        left_error: Box<SexpError>,
         /// Error from attempting to convert to the Right type
-        right_error: String,
+        right_error: Box<SexpError>,
     },
+}
+
+impl SexpTypeError {
+    /// The reason of this type error in R terms (#1591): `got character`, or
+    /// `expected integer, got character` when `expected_known` is `false`
+    /// (nothing before the reason says what the value should be). The type
+    /// names are [`sexptype_name`](crate::typed_list::sexptype_name)'s
+    /// (`numeric` for a double, `list`, `NULL`, ...), not SEXPTYPE names.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        let got = crate::typed_list::sexptype_name(self.actual);
+        if expected_known {
+            format!("got {got}")
+        } else {
+            format!(
+                "expected {}, got {got}",
+                crate::typed_list::sexptype_name(self.expected)
+            )
+        }
+    }
+}
+
+impl SexpLengthError {
+    /// The reason of this length error in R terms: `got length 2`, or
+    /// `expected length 1, got length 2` when `expected_known` is `false`.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        if expected_known {
+            format!("got length {}", self.actual)
+        } else {
+            format!(
+                "expected length {}, got length {}",
+                self.expected, self.actual
+            )
+        }
+    }
+}
+
+impl SexpError {
+    /// The reason of this conversion error in R terms, the text after
+    /// `'<p>' must be <expected>: ` in an argument error (#1591). `Display`
+    /// is written for the package author (SEXPTYPE names, `invalid value: `);
+    /// this says what was wrong with the value:
+    ///
+    /// | error | `expected_known` | reason |
+    /// |-------|------------------|--------|
+    /// | type | yes | `got character` |
+    /// | type | no | `expected integer, got character` |
+    /// | length | yes | `got length 2` |
+    /// | length | no | `expected length 1, got length 2` |
+    /// | NA | either | `NA is not allowed` |
+    /// | invalid value | either | the value's own text, without `invalid value: ` |
+    /// | missing field / duplicate name | either | `missing field 'x'` / `duplicate name 'x'` |
+    /// | `Either` | either | see below |
+    ///
+    /// `expected_known` says whether the text before the reason already
+    /// states what the value should be (`'x' must be a single integer`); the
+    /// reason then does not repeat it. A per-element reason inside a batched
+    /// message is worded with `expected_known = false`.
+    ///
+    /// Both branches of an `Either` failed. A type error means the value was
+    /// not of that branch's type at all; any other error means it was, and
+    /// failed later (length, NA, value), which is the more useful reason. So:
+    /// when both are type errors, one reason for the value's type
+    /// (`got numeric`, or `expected integer or character, got numeric`);
+    /// when exactly one is, the other branch's reason; otherwise both
+    /// branches' reasons, once if they agree, else joined with `; `.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        match self {
+            SexpError::Type(e) => e.r_reason(expected_known),
+            SexpError::Length(e) => e.r_reason(expected_known),
+            SexpError::Na(_) => "NA is not allowed".to_string(),
+            SexpError::InvalidValue(msg) => msg.clone(),
+            SexpError::MissingField(name) => format!("missing field '{name}'"),
+            SexpError::DuplicateName(name) => format!("duplicate name '{name}'"),
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion {
+                left_error,
+                right_error,
+            } => match (left_error.as_ref(), right_error.as_ref()) {
+                (SexpError::Type(l), SexpError::Type(r)) => {
+                    let got = crate::typed_list::sexptype_name(l.actual);
+                    if expected_known {
+                        format!("got {got}")
+                    } else {
+                        format!(
+                            "expected {} or {}, got {got}",
+                            crate::typed_list::sexptype_name(l.expected),
+                            crate::typed_list::sexptype_name(r.expected)
+                        )
+                    }
+                }
+                (SexpError::Type(_), other) | (other, SexpError::Type(_)) => {
+                    other.r_reason(expected_known)
+                }
+                (l, r) => {
+                    let (l, r) = (l.r_reason(expected_known), r.r_reason(expected_known));
+                    if l == r { l } else { format!("{l}; {r}") }
+                }
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for SexpError {
@@ -1068,7 +1169,7 @@ pub fn try_from_sexp_coerced_bool(sexp: SEXP) -> Result<bool, SexpError> {
 pub fn try_from_sexp_coerced_bool_vec(sexp: SEXP) -> Result<Vec<bool>, SexpError> {
     if sexp.type_of() == SEXPTYPE::INTSXP {
         let slice: &[i32] = TryFromSexp::try_from_sexp(sexp)?;
-        coerce_slice_to_vec(slice, "Vec<bool>")
+        coerce_slice_to_vec(slice)
     } else {
         Vec::<bool>::try_from_sexp(sexp)
     }
@@ -1131,7 +1232,6 @@ pub fn try_from_sexp_coerced_i32_vec(sexp: SEXP) -> Result<Vec<i32>, SexpError> 
     }
     from_numeric_vec_with(
         sexp,
-        "Vec<i32>",
         Ok,
         |v: f64| {
             if is_na_real(v) {
@@ -1157,7 +1257,6 @@ pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> 
     }
     from_numeric_vec_with(
         sexp,
-        "Vec<f64>",
         |v: i32| {
             Ok(if v == crate::altrep_traits::NA_INTEGER {
                 crate::altrep_traits::NA_REAL
@@ -1186,12 +1285,12 @@ pub fn try_from_sexp_coerced_f64_vec(sexp: SEXP) -> Result<Vec<f64>, SexpError> 
 /// Helper to coerce a slice element-wise into a Vec.
 ///
 /// Walks the whole slice, accumulating every per-element coercion failure into
-/// one batched [`SexpError::InvalidValue`] via [`BatchedErrors`] (`container`
-/// names the target type, e.g. `"Vec<bool>"`) instead of bailing on the first
+/// one batched [`SexpError::InvalidValue`] via [`BatchedErrors`]
+/// (`value out of range (elements 2, 3)`) instead of bailing on the first
 /// `Err`. The happy path allocates nothing for diagnostics, and a large
 /// all-failing slice never builds more than [`BATCHED_ERROR_CAP`] messages.
 #[inline]
-fn coerce_slice_to_vec<R, T>(slice: &[R], container: &str) -> Result<Vec<T>, SexpError>
+fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<T>, SexpError>
 where
     R: Copy + TryCoerce<T>,
     <R as TryCoerce<T>>::Error: std::fmt::Display,
@@ -1201,30 +1300,27 @@ where
     for (i, v) in slice.iter().copied().enumerate() {
         match v.try_coerce() {
             Ok(x) => result.push(x),
-            Err(e) => errors.push(|| format!("invalid value at index {i}: {e}")),
+            Err(e) => errors.push(i, || e.to_string()),
         }
     }
     if errors.is_empty() {
         Ok(result)
     } else {
-        Err(errors.into_error(container))
+        Err(errors.into_element_error())
     }
 }
 
 /// Drive a per-element coercion, batching every failure into one diagnostic.
 ///
 /// Backs [`from_numeric_vec_with`]'s four SEXP-type branches: successes go into
-/// the output `Vec`, failures accumulate as `"invalid value at index <i>: <err>"`
-/// and are combined via [`BatchedErrors`] (matching the message grammar of the
-/// `Vec<T>` arm of `try_from_sexp_via_str_parse!`). The per-element closure wraps
-/// coercion failures as [`SexpError::InvalidValue`]; we unwrap that inner message
-/// so the batched entry reads `"...: value out of range"` rather than the doubled
-/// `"...: invalid value: value out of range"` that `SexpError`'s `Display` would
-/// produce. The happy path allocates nothing for diagnostics, and a large
+/// the output `Vec`, failures accumulate by reason and position via
+/// [`BatchedErrors`] (`value out of range (elements 2, 3)`, the grammar of the
+/// `Vec<T>` arm of `try_from_sexp_via_str_parse!`). Each failure's reason is
+/// [`SexpError::r_reason`]: an `InvalidValue`'s own text, `NA is not allowed`
+/// for an NA. The happy path allocates nothing for diagnostics, and a large
 /// all-failing vector never builds more than [`BATCHED_ERROR_CAP`] messages.
 #[inline]
 fn collect_coerced<U>(
-    container: &str,
     len: usize,
     iter: impl Iterator<Item = Result<U, SexpError>>,
 ) -> Result<Vec<U>, SexpError> {
@@ -1233,16 +1329,13 @@ fn collect_coerced<U>(
     for (i, item) in iter.enumerate() {
         match item {
             Ok(v) => result.push(v),
-            Err(SexpError::InvalidValue(msg)) => {
-                errors.push(|| format!("invalid value at index {i}: {msg}"))
-            }
-            Err(other) => errors.push(|| format!("invalid value at index {i}: {other}")),
+            Err(e) => errors.push(i, || e.r_reason(false)),
         }
     }
     if errors.is_empty() {
         Ok(result)
     } else {
-        Err(errors.into_error(container))
+        Err(errors.into_element_error())
     }
 }
 
@@ -1256,12 +1349,12 @@ fn collect_coerced<U>(
 /// sentinels here; any NA-to-`None` policy is the caller's closure to encode.
 ///
 /// Per-element coercion failures are accumulated (not short-circuited) and
-/// reported as one batched diagnostic; `container` names the target type for the
-/// message (e.g. `"Vec<u32>"`, `"HashSet<i64>"`). See [`collect_coerced`].
+/// reported as one batched diagnostic, by reason and 1-based position (see
+/// [`collect_coerced`]). Any other SEXPTYPE is a type error naming `numeric`,
+/// as the `AsNumeric` markers do.
 #[inline]
 pub(crate) fn from_numeric_vec_with<U, FI, FD, FR, FL>(
     sexp: SEXP,
-    container: &str,
     map_i32: FI,
     map_f64: FD,
     map_u8: FR,
@@ -1277,24 +1370,25 @@ where
     match actual {
         SEXPTYPE::INTSXP => {
             let slice: &[i32] = unsafe { sexp.as_slice() };
-            collect_coerced(container, slice.len(), slice.iter().copied().map(map_i32))
+            collect_coerced(slice.len(), slice.iter().copied().map(map_i32))
         }
         SEXPTYPE::REALSXP => {
             let slice: &[f64] = unsafe { sexp.as_slice() };
-            collect_coerced(container, slice.len(), slice.iter().copied().map(map_f64))
+            collect_coerced(slice.len(), slice.iter().copied().map(map_f64))
         }
         SEXPTYPE::RAWSXP => {
             let slice: &[u8] = unsafe { sexp.as_slice() };
-            collect_coerced(container, slice.len(), slice.iter().copied().map(map_u8))
+            collect_coerced(slice.len(), slice.iter().copied().map(map_u8))
         }
         SEXPTYPE::LGLSXP => {
             let slice: &[RLogical] = unsafe { sexp.as_slice() };
-            collect_coerced(container, slice.len(), slice.iter().copied().map(map_lgl))
+            collect_coerced(slice.len(), slice.iter().copied().map(map_lgl))
         }
-        _ => Err(SexpError::InvalidValue(format!(
-            "expected integer, numeric, logical, or raw; got {:?}",
-            actual
-        ))),
+        _ => Err(SexpTypeError {
+            expected: SEXPTYPE::REALSXP,
+            actual,
+        }
+        .into()),
     }
 }
 
@@ -1461,10 +1555,9 @@ pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
 /// and a logical `NA` are caught here (the `i32::MIN` sentinel would otherwise
 /// coerce to a finite number), `NA_real_` fails the `f64` coercion as NaN. Bind
 /// `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA. Per-element
-/// failures batch into one diagnostic (`container` names the target type for the
-/// message, e.g. `"Vec<u32>"`).
+/// failures batch into one diagnostic, by reason and 1-based position.
 #[inline]
-fn try_from_sexp_numeric_vec<T>(sexp: SEXP, container: &str) -> Result<Vec<T>, SexpError>
+fn try_from_sexp_numeric_vec<T>(sexp: SEXP) -> Result<Vec<T>, SexpError>
 where
     i32: TryCoerce<T>,
     f64: TryCoerce<T>,
@@ -1475,7 +1568,6 @@ where
 {
     from_numeric_vec_with(
         sexp,
-        container,
         |v: i32| {
             if v == crate::altrep_traits::NA_INTEGER {
                 Err(SexpNaError {
@@ -1508,11 +1600,11 @@ macro_rules! impl_vec_try_from_sexp_numeric {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_vec(sexp, concat!("Vec<", stringify!($target), ">"))
+                try_from_sexp_numeric_vec(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_vec(sexp, concat!("Vec<", stringify!($target), ">"))
+                try_from_sexp_numeric_vec(sexp)
             }
         }
     };
@@ -1542,7 +1634,7 @@ impl TryFromSexp for Vec<bool> {
             .into());
         }
         let slice: &[RLogical] = unsafe { sexp.as_slice() };
-        coerce_slice_to_vec(slice, "Vec<bool>")
+        coerce_slice_to_vec(slice)
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -1555,10 +1647,9 @@ impl TryFromSexp for Vec<bool> {
 
 /// Convert numeric/logical/raw vectors to a set type with element-wise coercion.
 ///
-/// Inherits [`try_from_sexp_numeric_vec`]'s batching; `container` names the target
-/// set type for the message (e.g. `"HashSet<u32>"`).
+/// Inherits [`try_from_sexp_numeric_vec`]'s batching.
 #[inline]
-fn try_from_sexp_numeric_set<T, S>(sexp: SEXP, container: &str) -> Result<S, SexpError>
+fn try_from_sexp_numeric_set<T, S>(sexp: SEXP) -> Result<S, SexpError>
 where
     S: std::iter::FromIterator<T>,
     i32: TryCoerce<T>,
@@ -1568,7 +1659,7 @@ where
     <f64 as TryCoerce<T>>::Error: std::fmt::Display,
     <u8 as TryCoerce<T>>::Error: std::fmt::Display,
 {
-    let vec = try_from_sexp_numeric_vec(sexp, container)?;
+    let vec = try_from_sexp_numeric_vec(sexp)?;
     Ok(vec.into_iter().collect())
 }
 
@@ -1578,17 +1669,11 @@ macro_rules! impl_set_try_from_sexp_numeric {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(
-                    sexp,
-                    concat!(stringify!($set_ty), "<", stringify!($target), ">"),
-                )
+                try_from_sexp_numeric_set(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                try_from_sexp_numeric_set(
-                    sexp,
-                    concat!(stringify!($set_ty), "<", stringify!($target), ">"),
-                )
+                try_from_sexp_numeric_set(sexp)
             }
         }
     };
@@ -2144,55 +2229,59 @@ macro_rules! impl_vec_option_try_from_sexp_list {
 /// drifting from the inbound [`BatchedErrors`] path.
 pub(crate) const BATCHED_ERROR_CAP: usize = 10;
 
-/// Bounded accumulator that folds indexed per-element conversion failures into
-/// one batched [`SexpError::InvalidValue`].
+/// Bounded accumulator that folds per-element conversion failures into one
+/// batched [`SexpError::InvalidValue`], with the elements numbered as R
+/// counts them (1-based).
 ///
-/// Backs the `Vec<T>` / `Vec<Option<T>>` arms of
-/// [`try_from_sexp_via_str_parse!`] (string-parse paths, #1143) **and** the
-/// numeric-coercion vector shells [`from_numeric_vec_with`] / [`collect_coerced`]
-/// / [`coerce_slice_to_vec`] (#1192): instead of bailing on the first NA or
-/// coercion failure, those walk the whole vector and record each failure here.
+/// Backs every vector conversion that walks its input: the `Vec<T>` /
+/// `Vec<Option<T>>` arms of [`try_from_sexp_via_str_parse!`] (#1143), the
+/// numeric-coercion vector shells [`from_numeric_vec_with`] /
+/// [`collect_coerced`] / [`coerce_slice_to_vec`] (#1192), tuples, factors,
+/// the `As*Vec` markers and the optional integrations. Instead of bailing on
+/// the first NA or failing element, they walk the whole vector and record
+/// each failure here with its 0-based index; the message says where each one
+/// is, `(element 2)`.
 ///
-/// Only the first [`BATCHED_ERROR_CAP`] messages are retained; every later
-/// failure is counted but its message closure is never invoked. This keeps an
-/// all-failing N-element vector from materialising N `String`s just to discard
-/// all but 10 — the memory held is bounded regardless of input size. On
-/// [`into_error`](Self::into_error) the retained entries are joined with `"; "`
-/// and the remainder is summarized as `"and N more"`.
+/// Only the first [`BATCHED_ERROR_CAP`] failures are retained; every later
+/// failure is counted but its closure is never invoked. This keeps an
+/// all-failing N-element vector from materialising N `String`s just to
+/// discard all but 10: the memory held is bounded regardless of input size.
+/// The remainder is summarized as `"; and N more"`.
 ///
-/// The recorded item type `T` defaults to a formatted per-element message
-/// (`String`, folded by [`into_error`](BatchedErrors::into_error)). Value-listing
-/// diagnostics record `(index, value)` pairs instead and fold them with
-/// [`into_value_error`](BatchedErrors::into_value_error), as
-/// [`AsNumericVec`](crate::convert::AsNumericVec) does.
+/// Two foldings:
+/// - [`into_element_error`](Self::into_element_error): each entry is the
+///   failure's reason (`NA is not allowed`, `value out of range`); entries
+///   with the same reason share one position list:
+///   `NA is not allowed (elements 2, 4); value out of range (element 3)`.
+/// - [`into_value_error`](Self::into_value_error): each entry is the
+///   offending value, listed with the positions after them, as
+///   [`AsNumericVec`](crate::convert::AsNumericVec) does:
+///   `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`.
+///
+/// Neither names the Rust type: an argument's conversion condition carries it
+/// as `e$rust_type` (#1591).
 ///
 /// Public (but hidden) because `try_from_sexp_via_str_parse!` is
 /// `#[macro_export]` and expands in downstream crates — not intended to be
 /// used directly.
 #[doc(hidden)]
-pub struct BatchedErrors<T = String> {
-    listed: Vec<T>,
+#[derive(Default)]
+pub struct BatchedErrors {
+    /// `(0-based index, reason or value)` of the first [`BATCHED_ERROR_CAP`]
+    /// failures.
+    listed: Vec<(usize, String)>,
     total: usize,
 }
 
-// Hand-written so `T` needs no `Default` bound.
-impl<T> Default for BatchedErrors<T> {
-    fn default() -> Self {
-        Self {
-            listed: Vec::new(),
-            total: 0,
-        }
-    }
-}
-
-impl<T> BatchedErrors<T> {
-    /// Record one per-element failure. `item` is evaluated (and whatever it
-    /// allocates) only for the first [`BATCHED_ERROR_CAP`] failures; later ones
-    /// are counted for the `"and N more"` tail but never built.
+impl BatchedErrors {
+    /// Record the failure of the element at 0-based `index`. `item` (its
+    /// reason or value) is evaluated, with whatever it allocates, only for the
+    /// first [`BATCHED_ERROR_CAP`] failures; later ones are counted for the
+    /// `"and N more"` tail but never built.
     #[inline]
-    pub fn push(&mut self, item: impl FnOnce() -> T) {
+    pub fn push(&mut self, index: usize, item: impl FnOnce() -> String) {
         if self.listed.len() < BATCHED_ERROR_CAP {
-            self.listed.push(item());
+            self.listed.push((index, item()));
         }
         self.total += 1;
     }
@@ -2210,20 +2299,39 @@ impl<T> BatchedErrors<T> {
             let _ = write!(msg, "; and {} more", self.total - self.listed.len());
         }
     }
-}
 
-impl BatchedErrors<String> {
-    /// Fold the recorded failures into one [`SexpError::InvalidValue`] under
-    /// `container` (e.g. `"Vec<u32>"`).
-    pub fn into_error(self, container: &str) -> SexpError {
-        debug_assert!(self.total > 0, "batching zero conversion errors");
-        let mut msg = format!("{container} conversion failed: {}", self.listed.join("; "));
-        self.write_more_tail(&mut msg);
-        SexpError::InvalidValue(msg)
+    /// Fold the recorded `(index, reason)` failures into one
+    /// [`SexpError::InvalidValue`]; see [`element_message`](Self::element_message).
+    pub fn into_element_error(self) -> SexpError {
+        SexpError::InvalidValue(self.element_message())
     }
-}
 
-impl BatchedErrors<(usize, String)> {
+    /// The message behind [`into_element_error`](Self::into_element_error):
+    /// each distinct reason once, in the order it first occurred, followed by
+    /// the 1-based positions of the elements that failed with it:
+    ///
+    /// `NA is not allowed (elements 2, 4); value out of range (element 3)`
+    pub fn element_message(&self) -> String {
+        debug_assert!(self.total > 0, "batching zero conversion errors");
+        let mut groups: Vec<(&str, Vec<usize>)> = Vec::new();
+        for (index, reason) in &self.listed {
+            match groups.iter_mut().find(|(r, _)| *r == reason.as_str()) {
+                Some((_, indices)) => indices.push(*index),
+                None => groups.push((reason.as_str(), vec![*index])),
+            }
+        }
+        let mut msg = String::new();
+        for (k, (reason, indices)) in groups.iter().enumerate() {
+            if k > 0 {
+                msg.push_str("; ");
+            }
+            msg.push_str(reason);
+            push_element_positions(&mut msg, indices.iter().copied());
+        }
+        self.write_more_tail(&mut msg);
+        msg
+    }
+
     /// Fold recorded `(0-based index, offending value)` pairs into one
     /// [`SexpError::InvalidValue`] that shows the values and where they are:
     ///
@@ -2231,7 +2339,7 @@ impl BatchedErrors<(usize, String)> {
     ///
     /// Values are quoted (Rust `Debug` escaping, so invisible characters show),
     /// and element numbers are 1-based, as R counts them. Past the cap, the
-    /// `"; and N more"` tail matches [`into_error`](Self::into_error).
+    /// `"; and N more"` tail matches [`into_element_error`](Self::into_element_error).
     pub fn into_value_error(self, what: &str) -> SexpError {
         SexpError::InvalidValue(self.value_message(what))
     }
@@ -2247,21 +2355,40 @@ impl BatchedErrors<(usize, String)> {
             }
             let _ = write!(msg, "{value:?}");
         }
-        msg.push_str(if self.listed.len() == 1 {
-            " (element "
-        } else {
-            " (elements "
-        });
-        for (k, (index, _)) in self.listed.iter().enumerate() {
-            if k > 0 {
-                msg.push_str(", ");
-            }
-            let _ = write!(msg, "{}", index + 1);
-        }
-        msg.push(')');
+        push_element_positions(&mut msg, self.listed.iter().map(|(index, _)| *index));
         self.write_more_tail(&mut msg);
         msg
     }
+}
+
+/// Append ` (element 2)` / ` (elements 2, 5)` for the given 0-based indices,
+/// numbered as R counts them. The one spelling of an element position in a
+/// conversion message.
+pub(crate) fn push_element_positions(
+    msg: &mut String,
+    indices: impl ExactSizeIterator<Item = usize>,
+) {
+    use std::fmt::Write;
+    msg.push_str(if indices.len() == 1 {
+        " (element "
+    } else {
+        " (elements "
+    });
+    for (k, index) in indices.enumerate() {
+        if k > 0 {
+            msg.push_str(", ");
+        }
+        let _ = write!(msg, "{}", index + 1);
+    }
+    msg.push(')');
+}
+
+/// ` (element <k>)` for one 0-based `index`: the position suffix of a single
+/// per-element failure, as [`BatchedErrors`] writes it.
+pub(crate) fn element_position(index: usize) -> String {
+    let mut s = String::new();
+    push_element_positions(&mut s, std::iter::once(index));
+    s
 }
 
 /// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
@@ -2279,10 +2406,11 @@ impl BatchedErrors<(usize, String)> {
 ///   `InvalidValue("invalid <label>: <err>")`.
 /// - `Option<T>`: `NA_character_` / `NULL` → `None`.
 /// - `Vec<T>`: NA elements and parse failures are collected across the whole
-///   vector into one batched `InvalidValue` (see [`BatchedErrors`]).
-///   Per-element entries keep the `"NA at index <i> not allowed for Vec<T>"`
-///   and `"invalid <label> at index <i>: <err>"` shapes; the first 10 are
-///   listed and the remainder is summarized as `"and N more"`.
+///   vector into one batched `InvalidValue` (see [`BatchedErrors`]), each
+///   reason followed by the 1-based positions that failed with it:
+///   `NA is not allowed (element 2); invalid <label>: <err> (elements 3, 5)`.
+///   The first 10 failures are listed and the remainder is summarized as
+///   `"and N more"`.
 /// - `Vec<Option<T>>`: NA elements → `None`; parse failures batch as above.
 ///
 /// The parse body is a closure-style `|s| expr` where `s: &str`, returning
@@ -2341,23 +2469,13 @@ macro_rules! try_from_sexp_via_str_parse {
                 let mut errors = $crate::from_r::BatchedErrors::default();
                 for (i, opt) in values.into_iter().enumerate() {
                     match opt {
-                        None => errors.push(|| {
-                            format!(
-                                concat!(
-                                    "NA at index {} not allowed for Vec<",
-                                    stringify!($ty),
-                                    ">"
-                                ),
-                                i
-                            )
-                        }),
+                        None => errors.push(i, || "NA is not allowed".to_string()),
                         Some(s) => {
                             let $s: &str = &s;
                             match ($parse) {
                                 Ok(v) => result.push(v),
-                                Err(e) => errors.push(|| {
-                                    format!(concat!("invalid ", $label, " at index {}: {}"), i, e)
-                                }),
+                                Err(e) => errors
+                                    .push(i, || format!(concat!("invalid ", $label, ": {}"), e)),
                             }
                         }
                     }
@@ -2365,7 +2483,7 @@ macro_rules! try_from_sexp_via_str_parse {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err(errors.into_error(concat!("Vec<", stringify!($ty), ">")))
+                    Err(errors.into_element_error())
                 }
             }
         }
@@ -2384,9 +2502,8 @@ macro_rules! try_from_sexp_via_str_parse {
                             let $s: &str = &s;
                             match ($parse) {
                                 Ok(v) => result.push(Some(v)),
-                                Err(e) => errors.push(|| {
-                                    format!(concat!("invalid ", $label, " at index {}: {}"), i, e)
-                                }),
+                                Err(e) => errors
+                                    .push(i, || format!(concat!("invalid ", $label, ": {}"), e)),
                             }
                         }
                     }
@@ -2394,7 +2511,7 @@ macro_rules! try_from_sexp_via_str_parse {
                 if errors.is_empty() {
                     Ok(result)
                 } else {
-                    Err(errors.into_error(concat!("Vec<Option<", stringify!($ty), ">>")))
+                    Err(errors.into_element_error())
                 }
             }
         }
@@ -2420,16 +2537,16 @@ mod tests {
 
     #[test]
     fn batched_value_error_lists_values_and_one_based_elements() {
-        let mut errors = BatchedErrors::<(usize, String)>::default();
-        errors.push(|| (1, "n/a".to_string()));
-        errors.push(|| (4, "<0.1".to_string()));
+        let mut errors = BatchedErrors::default();
+        errors.push(1, || "n/a".to_string());
+        errors.push(4, || "<0.1".to_string());
         assert_eq!(
             errors.value_message("non-numeric"),
             r#"non-numeric value(s): "n/a", "<0.1" (elements 2, 5)"#
         );
 
-        let mut one = BatchedErrors::<(usize, String)>::default();
-        one.push(|| (0, "a\"b\u{a0}".to_string()));
+        let mut one = BatchedErrors::default();
+        one.push(0, || "a\"b\u{a0}".to_string());
         assert_eq!(
             one.value_message("non-numeric"),
             r#"non-numeric value(s): "a\"b\u{a0}" (element 1)"#
@@ -2438,9 +2555,9 @@ mod tests {
 
     #[test]
     fn batched_value_error_caps_the_listing() {
-        let mut errors = BatchedErrors::<(usize, String)>::default();
+        let mut errors = BatchedErrors::default();
         for i in 0..12 {
-            errors.push(|| (i, format!("x{i}")));
+            errors.push(i, || format!("x{i}"));
         }
         let msg = errors.value_message("non-numeric");
         assert!(
@@ -2452,5 +2569,36 @@ mod tests {
             "{msg}"
         );
         assert!(!msg.contains("x10"), "{msg}");
+    }
+
+    #[test]
+    fn batched_element_error_groups_reasons_with_one_based_positions() {
+        let mut errors = BatchedErrors::default();
+        errors.push(1, || "NA is not allowed".to_string());
+        errors.push(2, || "value out of range".to_string());
+        errors.push(4, || "NA is not allowed".to_string());
+        assert_eq!(
+            errors.element_message(),
+            "NA is not allowed (elements 2, 5); value out of range (element 3)"
+        );
+
+        let mut one = BatchedErrors::default();
+        one.push(0, || "precision loss".to_string());
+        let SexpError::InvalidValue(msg) = one.into_element_error() else {
+            unreachable!()
+        };
+        assert_eq!(msg, "precision loss (element 1)");
+    }
+
+    #[test]
+    fn batched_element_error_caps_the_listing() {
+        let mut errors = BatchedErrors::default();
+        for i in 0..13 {
+            errors.push(i, || "NA is not allowed".to_string());
+        }
+        assert_eq!(
+            errors.element_message(),
+            "NA is not allowed (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 3 more"
+        );
     }
 }

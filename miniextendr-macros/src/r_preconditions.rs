@@ -659,6 +659,24 @@ pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<St
     Some(check.expectation())
 }
 
+/// The R-facing expectation of a `strict` lossy-integer parameter (`i64`,
+/// `u64`, `isize`, `usize` and their `Vec` / `Vec<Option<_>>` forms), whose
+/// Rust conversion accepts only integer and whole-number double input
+/// (#1594): `a single whole number` / `a single non-negative whole number`
+/// for a scalar, the vector's usual `integer or whole-number numeric`
+/// otherwise.
+pub(crate) fn strict_conversion_expectation(ty: &syn::Type) -> Option<String> {
+    let scalar = match ty {
+        syn::Type::Path(tp) => tp.path.segments.last().map(|s| s.ident.to_string()),
+        _ => None,
+    };
+    match scalar.as_deref() {
+        Some("i64" | "isize") => Some("a single whole number".into()),
+        Some("u64" | "usize") => Some("a single non-negative whole number".into()),
+        _ => conversion_expectation(ty, false),
+    }
+}
+
 /// Keep the R gate in sync with the conversion actually selected for this type.
 ///
 /// Native `i32` widens to whole-number doubles (plus logical/raw), so its gate

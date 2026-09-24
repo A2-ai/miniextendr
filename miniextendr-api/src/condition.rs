@@ -1204,28 +1204,22 @@ impl<E: RConditionError> ConversionErrClassed for E {
 /// ([`SexpError`](crate::from_r::SexpError) and the
 /// [`SexpTypeError`](crate::from_r::SexpTypeError) /
 /// [`SexpLengthError`](crate::from_r::SexpLengthError) /
-/// [`SexpNaError`](crate::from_r::SexpNaError) it wraps), reworded for R
+/// [`SexpNaError`](crate::from_r::SexpNaError) it wraps, and
+/// [`MatchArgError`](crate::match_arg::MatchArgError)), reworded for R
 /// users (#1591).
 ///
 /// Their `Display` text is written for the package author: SEXPTYPE names
 /// (`expected INTSXP, got STRSXP`) and a variant prefix (`invalid value: ...`).
-/// The condition message says instead what the argument should have been:
-///
-/// | error | `expected_known` | reason |
-/// |-------|------------------|--------|
-/// | type | yes | `got character` |
-/// | type | no | `expected integer, got character` |
-/// | length | yes | `got length 2` |
-/// | length | no | `expected length 1, got length 2` |
-/// | NA | either | `NA is not allowed` |
-/// | invalid value | either | the value's own text, without `invalid value: ` |
-/// | missing field / duplicate name | either | `missing field 'x'` / `duplicate name 'x'` |
+/// The condition message says instead what the argument should have been,
+/// with the reason from `SexpError::r_reason` (`got character`,
+/// `got length 2`, `NA is not allowed`, the invalid value's own text, ...)
+/// or `MatchArgError::r_reason` (`got "zzz"`).
 ///
 /// `expected_known` is set by the macro when it knows the argument's R-facing
 /// expectation and puts it in the message prefix (`'x' must be a single
 /// integer`); the reason then does not repeat it. The type names are those of
 /// [`sexptype_name`](crate::typed_list::sexptype_name) (`numeric` for a
-/// double, `list`, `NULL`, ...). Other variants keep their `Display` text.
+/// double, `list`, `NULL`, ...).
 #[doc(hidden)]
 pub trait ConversionErrBuiltin {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
@@ -1243,28 +1237,13 @@ fn builtin_reason_parts(message: String) -> ErrParts {
 
 impl ConversionErrBuiltin for crate::from_r::SexpTypeError {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        let got = crate::typed_list::sexptype_name(self.actual);
-        builtin_reason_parts(if expected_known {
-            format!("got {got}")
-        } else {
-            format!(
-                "expected {}, got {got}",
-                crate::typed_list::sexptype_name(self.expected)
-            )
-        })
+        builtin_reason_parts(self.r_reason(expected_known))
     }
 }
 
 impl ConversionErrBuiltin for crate::from_r::SexpLengthError {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(if expected_known {
-            format!("got length {}", self.actual)
-        } else {
-            format!(
-                "expected length {}, got length {}",
-                self.expected, self.actual
-            )
-        })
+        builtin_reason_parts(self.r_reason(expected_known))
     }
 }
 
@@ -1276,21 +1255,13 @@ impl ConversionErrBuiltin for crate::from_r::SexpNaError {
 
 impl ConversionErrBuiltin for crate::from_r::SexpError {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        use crate::from_r::SexpError;
-        match self {
-            SexpError::Type(e) => e.__mx_conversion_parts(expected_known),
-            SexpError::Length(e) => e.__mx_conversion_parts(expected_known),
-            SexpError::Na(e) => e.__mx_conversion_parts(expected_known),
-            SexpError::InvalidValue(msg) => builtin_reason_parts(msg.clone()),
-            SexpError::MissingField(name) => {
-                builtin_reason_parts(format!("missing field '{name}'"))
-            }
-            SexpError::DuplicateName(name) => {
-                builtin_reason_parts(format!("duplicate name '{name}'"))
-            }
-            #[cfg(feature = "either")]
-            SexpError::EitherConversion { .. } => builtin_reason_parts(self.to_string()),
-        }
+        builtin_reason_parts(self.r_reason(expected_known))
+    }
+}
+
+impl ConversionErrBuiltin for crate::match_arg::MatchArgError {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
+        builtin_reason_parts(self.r_reason(expected_known))
     }
 }
 
@@ -2329,11 +2300,39 @@ mod condition_macro_tests {
             "expected numeric, got list"
         );
 
-        let e = crate::match_arg::MatchArgError::IsNa;
+        // `MatchArgError` takes the built-in arm too: R-worded, and after the
+        // `one of ...` expectation just the input.
+        use crate::match_arg::MatchArgError;
+        let e = MatchArgError::IsNa;
         let parts = crate::__mx_conversion_err_parts!(e);
-        assert_eq!(parts.message, "match.arg: input is NA");
+        assert_eq!(parts.message, "NA is not allowed");
         assert!(parts.class.is_empty());
         assert!(parts.data.is_none());
+        let e = MatchArgError::NoMatch {
+            input: "zzz".into(),
+            choices: &["fast", "slow"],
+        };
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e.clone()).message,
+            r#"expected one of "fast", "slow", got "zzz""#
+        );
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            r#"got "zzz""#
+        );
+        let e = MatchArgError::InvalidType(SEXPTYPE::REALSXP);
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e.clone()).message,
+            "expected a string or factor, got numeric"
+        );
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            "got numeric"
+        );
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(MatchArgError::InvalidLength(2), true).message,
+            "got length 2"
+        );
 
         // A plain `&str` / `String` error (neither `Serialize`-classed nor
         // `Debug`-quoted, unlike the `Result` probe).

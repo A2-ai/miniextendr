@@ -93,27 +93,55 @@ pub enum MatchArgError {
     },
 }
 
+impl MatchArgError {
+    /// The reason of this error in R terms, after `'<p>' must be one of "a",
+    /// "b": ` in an argument error (#1591): `got "zzz"`, `got numeric`,
+    /// `got length 2`, `NA is not allowed`. With `expected_known = false`
+    /// (nothing before the reason names the choices) it is the `Display`
+    /// text, which says what was expected.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        if !expected_known {
+            return self.to_string();
+        }
+        match self {
+            MatchArgError::InvalidType(ty) => {
+                format!("got {}", crate::typed_list::sexptype_name(*ty))
+            }
+            MatchArgError::InvalidLength(len) => format!("got length {len}"),
+            MatchArgError::IsNa => "NA is not allowed".to_string(),
+            MatchArgError::NoMatch { input, .. } => format!("got {input:?}"),
+        }
+    }
+}
+
+/// `one of "fast", "slow"`: what a `match_arg` / `choices` argument must be,
+/// in the words of an argument error (`'mode' must be one of "fast", "slow":
+/// got "zzz"`, #1591). The generated wrappers call it with the enum's
+/// [`MatchArg::CHOICES`] when the conversion fails.
+#[doc(hidden)]
+pub fn one_of(choices: &[&str]) -> String {
+    let quoted: Vec<String> = choices.iter().map(|c| format!("{c:?}")).collect();
+    format!("one of {}", quoted.join(", "))
+}
+
+/// The text is complete on its own, for a conversion outside an argument
+/// (and after `invalid '<p>' argument: ` in one whose type the macro does
+/// not know as a `match_arg` enum): `expected one of "fast", "slow", got
+/// "zzz"`, `expected a string or factor, got numeric`.
 impl std::fmt::Display for MatchArgError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MatchArgError::InvalidType(ty) => {
-                write!(f, "match.arg: expected character or factor, got {:?}", ty)
-            }
+            MatchArgError::InvalidType(ty) => write!(
+                f,
+                "expected a string or factor, got {}",
+                crate::typed_list::sexptype_name(*ty)
+            ),
             MatchArgError::InvalidLength(len) => {
-                write!(f, "match.arg: expected length 1, got {}", len)
+                write!(f, "expected length 1, got length {len}")
             }
-            MatchArgError::IsNa => write!(f, "match.arg: input is NA"),
+            MatchArgError::IsNa => write!(f, "NA is not allowed"),
             MatchArgError::NoMatch { input, choices } => {
-                write!(
-                    f,
-                    "'arg' should be one of {}, got {:?}",
-                    choices
-                        .iter()
-                        .map(|c| format!("{:?}", c))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    input,
-                )
+                write!(f, "expected {}, got {input:?}", one_of(choices))
             }
         }
     }

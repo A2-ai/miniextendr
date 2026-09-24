@@ -262,6 +262,47 @@ where
     }
 }
 
+/// Read one non-NA integer as flags, with the reason of a failure.
+fn flags_elt<T>(int_val: i32) -> Result<RFlags<T>, String>
+where
+    T: Flags,
+    T::Bits: TryFrom<i32>,
+{
+    let bits = T::Bits::try_from(int_val)
+        .map_err(|_| format!("value {int_val} out of range for bitflags"))?;
+    T::from_bits(bits)
+        .map(RFlags)
+        .ok_or_else(|| format!("invalid bits 0x{int_val:x}"))
+}
+
+/// Read every element of an integer vector through `elt`, batching every
+/// failing element (its reason and 1-based position) into one error.
+fn read_flags<U>(sexp: SEXP, elt: impl Fn(i32) -> Result<U, String>) -> Result<Vec<U>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::INTSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::INTSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let slice: &[i32] = unsafe { sexp.as_slice() };
+    let mut out = Vec::with_capacity(slice.len());
+    let mut errors = crate::from_r::BatchedErrors::default();
+    for (i, &int_val) in slice.iter().enumerate() {
+        match elt(int_val) {
+            Ok(v) => out.push(v),
+            Err(reason) => errors.push(i, || reason),
+        }
+    }
+    if errors.is_empty() {
+        Ok(out)
+    } else {
+        Err(errors.into_element_error())
+    }
+}
+
 impl<T> TryFromSexp for Vec<RFlags<T>>
 where
     T: Flags,
@@ -270,39 +311,12 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
+        read_flags(sexp, |int_val| {
+            if int_val == NA_INTEGER {
+                return Err("NA is not allowed".to_string());
             }
-            .into());
-        }
-
-        let slice: &[i32] = unsafe { sexp.as_slice() };
-        slice
-            .iter()
-            .enumerate()
-            .map(|(i, &int_val)| {
-                if int_val == NA_INTEGER {
-                    return Err(SexpError::InvalidValue(format!(
-                        "NA at index {} not allowed for bitflags",
-                        i
-                    )));
-                }
-
-                let bits = T::Bits::try_from(int_val).map_err(|_| {
-                    SexpError::InvalidValue(format!(
-                        "value {} out of range for bitflags at index {}",
-                        int_val, i
-                    ))
-                })?;
-
-                T::from_bits(bits).map(RFlags).ok_or_else(|| {
-                    SexpError::InvalidValue(format!("invalid bits 0x{:x} at index {}", int_val, i))
-                })
-            })
-            .collect()
+            flags_elt(int_val)
+        })
     }
 }
 
@@ -314,42 +328,12 @@ where
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
+        read_flags(sexp, |int_val| {
+            if int_val == NA_INTEGER {
+                return Ok(None);
             }
-            .into());
-        }
-
-        let slice: &[i32] = unsafe { sexp.as_slice() };
-        slice
-            .iter()
-            .enumerate()
-            .map(|(i, &int_val)| {
-                if int_val == NA_INTEGER {
-                    return Ok(None);
-                }
-
-                let bits = T::Bits::try_from(int_val).map_err(|_| {
-                    SexpError::InvalidValue(format!(
-                        "value {} out of range for bitflags at index {}",
-                        int_val, i
-                    ))
-                })?;
-
-                T::from_bits(bits)
-                    .map(RFlags)
-                    .ok_or_else(|| {
-                        SexpError::InvalidValue(format!(
-                            "invalid bits 0x{:x} at index {}",
-                            int_val, i
-                        ))
-                    })
-                    .map(Some)
-            })
-            .collect()
+            flags_elt(int_val).map(Some)
+        })
     }
 }
 

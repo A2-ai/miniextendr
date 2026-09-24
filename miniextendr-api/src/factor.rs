@@ -29,7 +29,9 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
-use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{
+    BatchedErrors, SexpError, SexpLengthError, SexpNaError, TryFromSexp, charsxp_to_str,
+};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::{Rf_allocVector, Rf_install};
@@ -364,47 +366,71 @@ pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<()
 
 // region: Conversion helpers (used by derive macro)
 
+/// The reason a factor code does not name one of the levels (a malformed
+/// factor: [`validate_factor_levels`] has already checked the level set).
+fn code_not_a_level(code: i32) -> String {
+    format!("code {code} is not a level of the factor")
+}
+
+/// Read every code of a factor through `elt`, batching every failing element
+/// (its reason and 1-based position) into one error instead of stopping at
+/// the first.
+fn read_factor_codes<U>(
+    sexp: SEXP,
+    elt: impl Fn(i32) -> Result<U, String>,
+) -> Result<Vec<U>, SexpError> {
+    let len = sexp.len();
+    let mut result = Vec::with_capacity(len);
+    let mut errors = BatchedErrors::default();
+    for i in 0..len {
+        match elt(sexp.integer_elt(i as isize)) {
+            Ok(v) => result.push(v),
+            Err(reason) => errors.push(i, || reason),
+        }
+    }
+    if errors.is_empty() {
+        Ok(result)
+    } else {
+        Err(errors.into_element_error())
+    }
+}
+
 /// Convert an R factor SEXP to a single enum value.
 #[inline]
 pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
 
-    let len = sexp.xlength();
+    let len = sexp.len();
     if len != 1 {
-        return Err(SexpError::InvalidValue(format!(
-            "expected length 1, got {}",
-            len
-        )));
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
+        }
+        .into());
     }
 
     let idx = sexp.integer_elt(0);
     if idx == NA_INTEGER {
-        return Err(SexpError::InvalidValue("unexpected NA".into()));
+        return Err(SexpNaError {
+            sexp_type: SEXPTYPE::INTSXP,
+        }
+        .into());
     }
 
-    T::from_level_index(idx).ok_or_else(|| SexpError::InvalidValue("index out of range".into()))
+    T::from_level_index(idx).ok_or_else(|| SexpError::InvalidValue(code_not_a_level(idx)))
 }
 
-/// Convert an R factor SEXP to a Vec of enum values.
+/// Convert an R factor SEXP to a Vec of enum values. Every `NA` and every
+/// code outside the levels is reported, with its position.
 #[inline]
 pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
-
-    let len = sexp.len();
-    let mut result = Vec::with_capacity(len);
-
-    for i in 0..len {
-        let idx = sexp.integer_elt(i as isize);
+    read_factor_codes(sexp, |idx| {
         if idx == NA_INTEGER {
-            return Err(SexpError::InvalidValue(format!("NA at index {}", i)));
+            return Err("NA is not allowed".to_string());
         }
-        result.push(
-            T::from_level_index(idx)
-                .ok_or_else(|| SexpError::InvalidValue("index out of range".into()))?,
-        );
-    }
-
-    Ok(result)
+        T::from_level_index(idx).ok_or_else(|| code_not_a_level(idx))
+    })
 }
 
 /// Convert an R factor SEXP to a Vec of Option enum values (NA → None).
@@ -413,22 +439,14 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
     sexp: SEXP,
 ) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
-
-    let len = sexp.len();
-    let mut result = Vec::with_capacity(len);
-
-    for i in 0..len {
-        let idx = sexp.integer_elt(i as isize);
+    read_factor_codes(sexp, |idx| {
         if idx == NA_INTEGER {
-            result.push(None);
-        } else {
-            result.push(Some(T::from_level_index(idx).ok_or_else(|| {
-                SexpError::InvalidValue("index out of range".into())
-            })?));
+            return Ok(None);
         }
-    }
-
-    Ok(result)
+        T::from_level_index(idx)
+            .map(Some)
+            .ok_or_else(|| code_not_a_level(idx))
+    })
 }
 
 /// Convert an R factor SEXP to a `Vec<Option<T>>` using [`UnitEnumFactor`] (NA → `None`).
@@ -442,22 +460,14 @@ pub fn unit_factor_option_vec_from_sexp<T: UnitEnumFactor>(
     sexp: SEXP,
 ) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::FACTOR_LEVELS)?;
-
-    let len = sexp.len();
-    let mut result = Vec::with_capacity(len);
-
-    for i in 0..len {
-        let idx = sexp.integer_elt(i as isize);
+    read_factor_codes(sexp, |idx| {
         if idx == NA_INTEGER {
-            result.push(None);
-        } else {
-            result.push(Some(T::from_factor_index(idx).ok_or_else(|| {
-                SexpError::InvalidValue("factor index out of range".into())
-            })?));
+            return Ok(None);
         }
-    }
-
-    Ok(result)
+        T::from_factor_index(idx)
+            .map(Some)
+            .ok_or_else(|| code_not_a_level(idx))
+    })
 }
 // endregion
 

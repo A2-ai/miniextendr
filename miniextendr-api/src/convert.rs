@@ -1060,9 +1060,9 @@ where
 ///
 /// Each element of the R character vector is parsed into `T`. Every failure is
 /// collected into one error (the first 10 listed, then `"and N more"`), each
-/// with its 0-based index and quoted value (`index 1: "n/a": invalid digit found
-/// in string`). An `NA_character_` element is reported as
-/// `NA at index <i> not allowed`, not parsed as `""`.
+/// with its quoted value and 1-based position (`"n/a": invalid digit found in
+/// string (element 2)`). An `NA_character_` element is refused
+/// (`NA is not allowed (element 3)`), not parsed as `""`.
 ///
 /// For numbers read like R's `as.numeric()`, with `NA` as `None`, use
 /// [`AsNumericVec`] instead.
@@ -1093,17 +1093,17 @@ where
         let mut errors = crate::from_r::BatchedErrors::default();
         for (i, s) in strings.into_iter().enumerate() {
             match s {
-                None => errors.push(|| format!("NA at index {i} not allowed")),
+                None => errors.push(i, || "NA is not allowed".to_string()),
                 Some(s) => match s.parse::<T>() {
                     Ok(v) => result.push(v),
-                    Err(e) => errors.push(|| format!("index {i}: {s:?}: {e}")),
+                    Err(e) => errors.push(i, || format!("{s:?}: {e}")),
                 },
             }
         }
         if errors.is_empty() {
             Ok(AsFromStrVec(result))
         } else {
-            Err(errors.into_error("AsFromStrVec"))
+            Err(errors.into_element_error())
         }
     }
 }

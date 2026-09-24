@@ -1,7 +1,7 @@
 //! Tests for the `try_from_sexp_via_str_parse!` string-parse conversions
 //! (uuid / url / regex / num-bigint), including the NA-policy standardization:
 //! scalar NA errors (`SexpError::Na`), `Option` NA maps to `None`, `Vec<T>`
-//! rejects NA with an indexed error, `Vec<Option<T>>` maps NA to `None`.
+//! rejects NA at its 1-based position (`NA is not allowed (element 2)`), `Vec<Option<T>>` maps NA to `None`.
 //!
 //! The `Vec<T>` / `Vec<Option<T>>` arms batch all per-element failures into
 //! one diagnostic (capped at 10 + "and N more") instead of bailing on the
@@ -72,10 +72,9 @@ fn uuid_vec_rejects_na_with_index() {
         let sexp = vec![Some(VALID_UUID.to_string()), None].into_sexp();
         let err = <Vec<Uuid> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         let msg = err.to_string();
-        assert!(
-            msg.contains("NA at index 1 not allowed for Vec<Uuid>"),
-            "got: {msg}"
-        );
+        // 1-based, as R numbers the elements; the Rust type is not named.
+        assert!(msg.ends_with("NA is not allowed (element 2)"), "got: {msg}");
+        assert!(!msg.contains("Vec<Uuid>"), "got: {msg}");
     });
 }
 
@@ -86,7 +85,8 @@ fn uuid_vec_parse_error_carries_index() {
         let sexp = vec![VALID_UUID.to_string(), "nope".to_string()].into_sexp();
         let err = <Vec<Uuid> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("invalid UUID at index 1"), "got: {msg}");
+        assert!(msg.contains("invalid UUID: "), "got: {msg}");
+        assert!(msg.ends_with("(element 2)"), "got: {msg}");
     });
 }
 
@@ -119,13 +119,16 @@ fn uuid_vec_batches_all_na_and_parse_failures() {
         .into_sexp();
         let err = <Vec<Uuid> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("Vec<Uuid> conversion failed"), "got: {msg}");
+        assert!(!msg.contains("Vec<Uuid>"), "got: {msg}");
+        assert!(msg.contains("NA is not allowed (element 2)"), "got: {msg}");
+        // Elements 3 and 5 fail to parse: one reason with both positions when
+        // the parser says the same, else one entry each.
+        assert!(msg.contains("invalid UUID: "), "got: {msg}");
         assert!(
-            msg.contains("NA at index 1 not allowed for Vec<Uuid>"),
+            msg.contains("(elements 3, 5)")
+                || (msg.contains("(element 3)") && msg.contains("(element 5)")),
             "got: {msg}"
         );
-        assert!(msg.contains("invalid UUID at index 2"), "got: {msg}");
-        assert!(msg.contains("invalid UUID at index 4"), "got: {msg}");
     });
 }
 
@@ -136,10 +139,13 @@ fn uuid_vec_batch_caps_at_ten_and_summarizes_rest() {
         let sexp: Vec<String> = (0..15).map(|i| format!("bad-{i}")).collect();
         let err = <Vec<Uuid> as TryFromSexp>::try_from_sexp(sexp.into_sexp()).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("invalid UUID at index 0"), "got: {msg}");
-        assert!(msg.contains("invalid UUID at index 9"), "got: {msg}");
-        assert!(!msg.contains("at index 10"), "got: {msg}");
-        assert!(msg.contains("and 5 more"), "got: {msg}");
+        assert!(msg.contains("invalid UUID: "), "got: {msg}");
+        // Ten positions listed (1-based, the last is 10), the rest summarized.
+        assert!(
+            msg.contains(", 10)") || msg.contains("(element 10)"),
+            "got: {msg}"
+        );
+        assert!(msg.ends_with("; and 5 more"), "got: {msg}");
     });
 }
 
@@ -157,14 +163,14 @@ fn uuid_vec_option_na_stays_none_while_parse_failures_batch() {
         .into_sexp();
         let err = <Vec<Option<Uuid>> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         let msg = err.to_string();
+        assert!(!msg.contains("Vec<Option<Uuid>>"), "got: {msg}");
         assert!(
-            msg.contains("Vec<Option<Uuid>> conversion failed"),
+            msg.contains("(elements 3, 5)")
+                || (msg.contains("(element 3)") && msg.contains("(element 5)")),
             "got: {msg}"
         );
-        assert!(msg.contains("invalid UUID at index 2"), "got: {msg}");
-        assert!(msg.contains("invalid UUID at index 4"), "got: {msg}");
         // NA elements are still allowed as None — they must not appear as errors.
-        assert!(!msg.contains("NA at index"), "got: {msg}");
+        assert!(!msg.contains("NA is not allowed"), "got: {msg}");
     });
 }
 
@@ -182,9 +188,13 @@ fn url_vec_batches_all_parse_failures() {
         let err = <Vec<Url> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         assert!(matches!(err, SexpError::InvalidValue(_)), "got: {err:?}");
         let msg = err.to_string();
-        assert!(msg.contains("Vec<Url> conversion failed"), "got: {msg}");
-        assert!(msg.contains("invalid URL at index 1"), "got: {msg}");
-        assert!(msg.contains("invalid URL at index 2"), "got: {msg}");
+        assert!(!msg.contains("Vec<Url>"), "got: {msg}");
+        assert!(msg.contains("invalid URL: "), "got: {msg}");
+        assert!(
+            msg.contains("(elements 2, 3)")
+                || (msg.contains("(element 2)") && msg.contains("(element 3)")),
+            "got: {msg}"
+        );
     });
 }
 
@@ -203,9 +213,13 @@ fn bigint_vec_batches_all_parse_failures() {
         let err = <Vec<BigInt> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         assert!(matches!(err, SexpError::InvalidValue(_)), "got: {err:?}");
         let msg = err.to_string();
-        assert!(msg.contains("Vec<BigInt> conversion failed"), "got: {msg}");
-        assert!(msg.contains("invalid BigInt at index 1"), "got: {msg}");
-        assert!(msg.contains("invalid BigInt at index 3"), "got: {msg}");
+        assert!(!msg.contains("Vec<BigInt>"), "got: {msg}");
+        assert!(msg.contains("invalid BigInt: "), "got: {msg}");
+        assert!(
+            msg.contains("(elements 2, 4)")
+                || (msg.contains("(element 2)") && msg.contains("(element 4)")),
+            "got: {msg}"
+        );
     });
 }
 
@@ -224,8 +238,7 @@ fn regex_na_rejected_not_silently_empty_pattern() {
         let sexp = vec![Some("^a+$".to_string()), None].into_sexp();
         let err = <Vec<Regex> as TryFromSexp>::try_from_sexp(sexp).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("NA at index 1 not allowed for Vec<Regex>"),
+            err.to_string().ends_with("NA is not allowed (element 2)"),
             "got: {err}"
         );
     });

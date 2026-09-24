@@ -165,6 +165,6 @@ fn from_str_reports_na_and_quotes_values() {
     let msg = invalid_message(AsFromStrVec::<i32>::try_from_sexp(sexp).unwrap_err());
     assert_eq!(
         msg,
-        r#"AsFromStrVec conversion failed: index 1: "n/a": invalid digit found in string; NA at index 2 not allowed"#
+        r#""n/a": invalid digit found in string (element 2); NA is not allowed (element 3)"#
     );
 }

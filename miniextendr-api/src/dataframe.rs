@@ -92,7 +92,8 @@ pub enum DataFrameError {
     MissingGroupRows,
     /// A `.rows` list element was not an integer / integerish index vector.
     BadGroupRows {
-        /// The 0-based group (row of the `groups` frame) that carried it.
+        /// The 0-based group (row of the `groups` frame) that carried it; the
+        /// message numbers it from 1, as R does.
         group: usize,
         /// The offending element's SEXPTYPE (or `"non-integer double"`),
         /// rendered for the message.
@@ -100,7 +101,8 @@ pub enum DataFrameError {
     },
     /// A `.rows` index was `< 1` or `> nrow` of the source frame.
     GroupIndexOutOfRange {
-        /// The 0-based group whose `.rows` carried the bad index.
+        /// The 0-based group whose `.rows` carried the bad index; the message
+        /// numbers it from 1, as R does.
         group: usize,
         /// The offending 1-based index value.
         value: i64,
@@ -156,13 +158,17 @@ impl std::fmt::Display for DataFrameError {
             DataFrameError::BadGroupRows { group, type_of } => write!(
                 f,
                 "grouped_df `.rows` element for group {} is not an integer index vector ({})",
-                group, type_of
+                group + 1,
+                type_of
             ),
             DataFrameError::GroupIndexOutOfRange { group, value, nrow } => write!(
                 f,
                 "grouped_df `.rows` index {} for group {} is out of range (source frame has \
                  {} rows; valid indices are 1..={})",
-                value, group, nrow, nrow
+                value,
+                group + 1,
+                nrow,
+                nrow
             ),
             DataFrameError::Conversion(msg) => write!(f, "{}", msg),
         }

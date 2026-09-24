@@ -371,16 +371,16 @@ pub(crate) fn strict_conversion_for_type(
 ///
 /// Returns `Some(TokenStream)` if the type is a lossy scalar, `Vec<lossy>`,
 /// or `Vec<Option<lossy>>`, otherwise `None` (falls through to standard
-/// `TryFromSexp`).
+/// `TryFromSexp`). The expression is a `Result<_, SexpError>`: the caller
+/// binds it like any other conversion, so a rejected input is the argument
+/// error (`kind = "conversion"`, `e$param`, `e$rust_type`), not a panic.
 ///
 /// # Parameters
 /// - `ty`: The Rust parameter type to check
 /// - `sexp_ident`: Identifier for the SEXP variable holding the R value
-/// - `param_name`: Parameter name string (used in error messages)
 pub(crate) fn strict_input_conversion_for_type(
     ty: &syn::Type,
     sexp_ident: &syn::Ident,
-    param_name: &str,
 ) -> Option<proc_macro2::TokenStream> {
     let type_name = last_segment_ident(ty)?;
     let name = type_name.to_string();
@@ -389,7 +389,7 @@ pub(crate) fn strict_input_conversion_for_type(
     if LOSSY_SCALARS.contains(&name.as_str()) {
         let helper = quote::format_ident!("checked_try_from_sexp_{}", name);
         return Some(quote::quote! {
-            ::miniextendr_api::strict::#helper(#sexp_ident, #param_name)
+            ::miniextendr_api::strict::#helper(#sexp_ident)
         });
     }
 
@@ -401,7 +401,7 @@ pub(crate) fn strict_input_conversion_for_type(
         if LOSSY_SCALARS.contains(&inner_name.as_str()) {
             let helper = quote::format_ident!("checked_vec_try_from_sexp_{}", inner_name);
             return Some(quote::quote! {
-                ::miniextendr_api::strict::#helper(#sexp_ident, #param_name)
+                ::miniextendr_api::strict::#helper(#sexp_ident)
             });
         }
         // Check for Vec<Option<lossy>> — must apply the same input-SEXP-type
@@ -415,7 +415,7 @@ pub(crate) fn strict_input_conversion_for_type(
                 let helper =
                     quote::format_ident!("checked_vec_option_try_from_sexp_{}", option_inner_name);
                 return Some(quote::quote! {
-                    ::miniextendr_api::strict::#helper(#sexp_ident, #param_name)
+                    ::miniextendr_api::strict::#helper(#sexp_ident)
                 });
             }
         }

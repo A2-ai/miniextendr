@@ -183,15 +183,17 @@ impl TryFromSexp for Vec<Complex<f64>> {
 
         let slice: &[Rcomplex] = unsafe { SexpExt::as_slice(&sexp) };
         let mut result = Vec::with_capacity(slice.len());
+        let mut errors = crate::from_r::BatchedErrors::default();
 
         for (i, rcomplex) in slice.iter().enumerate() {
             if is_na_rcomplex(rcomplex) {
-                return Err(SexpError::InvalidValue(format!(
-                    "NA at index {} not allowed for Vec<Complex<f64>>",
-                    i
-                )));
+                errors.push(i, || "NA is not allowed".to_string());
+                continue;
             }
             result.push(from_rcomplex(*rcomplex));
+        }
+        if !errors.is_empty() {
+            return Err(errors.into_element_error());
         }
 
         Ok(result)

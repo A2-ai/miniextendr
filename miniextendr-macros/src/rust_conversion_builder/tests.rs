@@ -148,6 +148,49 @@ fn test_several_ok_array_length_is_an_argument_error() {
     assert_eq!(s.matches("conversion_condition_value").count(), 2, "{s}");
 }
 
+/// Strict input rejections are argument errors (#1594), not panics: the
+/// checked helper returns a `Result` bound like any other conversion, with
+/// an expectation naming what strict accepts.
+#[test]
+fn test_strict_input_rejection_is_an_argument_error() {
+    let builder = RustConversionBuilder::new().with_strict();
+    for (src, helper, prefix) in [
+        (
+            "n: i64",
+            "checked_try_from_sexp_i64",
+            "'n' must be a single whole number",
+        ),
+        (
+            "n: usize",
+            "checked_try_from_sexp_usize",
+            "'n' must be a single non-negative whole number",
+        ),
+        (
+            "xs: Vec<u64>",
+            "checked_vec_try_from_sexp_u64",
+            "'xs' must be integer or whole-number numeric",
+        ),
+        (
+            "xs: Vec<Option<isize>>",
+            "checked_vec_option_try_from_sexp_isize",
+            "'xs' must be integer or whole-number numeric",
+        ),
+    ] {
+        let s = conversion_text(&builder, src);
+        assert!(
+            s.contains(&format!("strict :: {helper} (arg_0)")),
+            "{src}: {s}"
+        );
+        assert!(s.contains(&format!("\"{prefix}\"")), "{src}: {s}");
+        assert!(s.contains("conversion_condition_value"), "{src}: {s}");
+        assert!(
+            s.contains("__mx_conversion_err_parts ! (e , true)"),
+            "{src}: {s}"
+        );
+        assert!(!s.contains("panic"), "{src}: {s}");
+    }
+}
+
 /// Every conversion site binds a typed `let`, which the `Err` arm's probe
 /// needs; borrowed slices and `&str` carry the lifetime-erased type.
 #[test]
