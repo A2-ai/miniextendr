@@ -970,19 +970,24 @@ pub(crate) fn params_documented_elsewhere(tags: &[String], default_page: Option<
 /// is why joining blocks also drop their generated `@param` lines.
 pub(crate) const ORDER_AFTER_TOPIC_BLOCKS: &str = "@order NaN";
 
-/// Push `#' @order NaN` ([`ORDER_AFTER_TOPIC_BLOCKS`]) when the block joins
-/// an author topic ([`joins_author_topic`] against `default_page`), unless the
-/// author ordered the block with their own `@order` or it renders no page
-/// (`@noRd`).
+/// Whether a block with the author's `tags` gets `@order NaN`
+/// ([`ORDER_AFTER_TOPIC_BLOCKS`]): it joins an author topic
+/// ([`joins_author_topic`] against `default_page`), the author did not order
+/// it with their own `@order`, and it renders a page (no `@noRd`).
+pub(crate) fn orders_after_topic_blocks(tags: &[String], default_page: &str) -> bool {
+    joins_author_topic(tags, Some(default_page))
+        && !has_roxygen_tag(tags, "order")
+        && !has_roxygen_tag(tags, "noRd")
+}
+
+/// Push `#' @order NaN` ([`ORDER_AFTER_TOPIC_BLOCKS`]) when
+/// [`orders_after_topic_blocks`] holds.
 pub(crate) fn push_order_after_topic_blocks(
     lines: &mut Vec<String>,
     tags: &[String],
     default_page: &str,
 ) {
-    if joins_author_topic(tags, Some(default_page))
-        && !has_roxygen_tag(tags, "order")
-        && !has_roxygen_tag(tags, "noRd")
-    {
+    if orders_after_topic_blocks(tags, default_page) {
         lines.push(format!("#' {ORDER_AFTER_TOPIC_BLOCKS}"));
     }
 }

@@ -1,0 +1,5 @@
+error: `@describeIn` is not supported on the S7 trait instance method `value` without a fast-path shortcut: its R wrapper is not an R function roxygen2 can list in the destination's "Functions" section, so roxygen2 would drop the block. Use `@rdname <topic>` to document it on that page instead. On trait impls `@describeIn` works on S3, vctrs and S4 instance methods, on S4 static methods, and on S7 instance methods with a fast-path shortcut.
+  --> tests/ui/trait_describe_in_s7_no_shortcut.rs:17:8
+   |
+17 |     fn value(&self) -> i32 {
+   |        ^^^^^

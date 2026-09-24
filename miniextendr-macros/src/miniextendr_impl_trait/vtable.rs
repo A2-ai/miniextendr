@@ -547,14 +547,9 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 &attrs.defaults,
             )?;
 
-            // Extract @param tags (and a per-method @rdname override) from
-            // method doc comments
-            let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
-            let rdname = crate::roxygen::rdname_value(&all_tags).map(str::to_owned);
-            let param_tags: Vec<String> = all_tags
-                .into_iter()
-                .filter(|tag| tag.starts_with("@param"))
-                .collect();
+            // The author's tags; the R wrapper generators pick the `@param`
+            // lines and the page tags from them.
+            let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
 
             // Validate and peel a return-visibility marker (#1213): the
             // codegen sees the inner type, `.0` unwraps the value.
@@ -599,8 +594,7 @@ fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
                 serialize: attrs.serialize,
                 return_wrap,
                 param_defaults: attrs.defaults,
-                param_tags,
-                rdname,
+                doc_tags,
                 skip: attrs.skip,
                 r_name: attrs.r_name,
                 strict: attrs.strict,

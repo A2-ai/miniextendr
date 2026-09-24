@@ -724,9 +724,9 @@ impl RoxygenBuilder {
         if let Some((ref generic, ref class)) = self.method {
             lines.push(format!("#' @method {} {}", generic, class));
         }
-        for tag in &self.custom_tags {
-            lines.push(format!("#' {}", tag));
-        }
+        // A tag the author wrapped (`@param`, `@describeIn`, ...) keeps its
+        // continuation lines, each with its own `#' ` lead.
+        crate::roxygen::push_roxygen_tags(&mut lines, &self.custom_tags);
         if self.export {
             lines.push("#' @export".to_string());
         }
