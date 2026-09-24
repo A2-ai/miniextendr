@@ -849,10 +849,12 @@ Rules:
   both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
   follows the function's call attribution.
 - **Sidecar setters** (`Type_set_<field>`, and the R6 / S7 bindings over them)
-  raise the same condition on their `value` formal:
-  `'value' must be <expected>: <reason>` (`'value' must be a number: got "abc"`,
-  `'value' must be character: got integer`), with `e$param == "value"` and the
-  field's Rust type as `e$rust_type`.
+  raise the same condition on their `value` formal, naming the field:
+  `'<field>' must be <expected>: <reason>` (`'count' must be a number: got "abc"`,
+  `'tags' must be character: got integer`), with `e$param == "value"` and the
+  field's Rust type as `e$rust_type`. The field is in the message because an
+  R6 active binding's or S7 property's condition call is the binding's own
+  anonymous function, which does not name it.
 - **Strict mode** (`#[miniextendr(strict)]` on lossy integer types) rejects a
   logical, raw, fractional, out-of-range or `NA` input with the same
   condition (`'n' must be a single whole number: got logical`), every failing

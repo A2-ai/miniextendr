@@ -794,6 +794,7 @@ fn conversion_err_arm(
     let value = conversion_value_tokens(
         expected_known.then_some(prefix.as_str()),
         r_name,
+        r_name,
         *nullable,
         Some(rust_type),
         crate_class,
@@ -808,7 +809,8 @@ fn conversion_err_arm(
 }
 
 /// The `conversion_condition_value(...)` expression for the error bound as
-/// `e`: parameter `param`, Rust type `rust_type` (`e$rust_type`), the crate
+/// `e`: `quoted` named in the message (the parameter, or a sidecar's field),
+/// parameter `param` (`e$param`), Rust type `rust_type` (`e$rust_type`), the crate
 /// class and `call`.
 ///
 /// With `static_prefix` (the macro knows the R-facing expectation,
@@ -821,6 +823,7 @@ fn conversion_err_arm(
 /// the sidecar setters.
 pub(crate) fn conversion_value_tokens(
     static_prefix: Option<&str>,
+    quoted: &str,
     param: &str,
     nullable: bool,
     rust_type: Option<&str>,
@@ -847,7 +850,7 @@ pub(crate) fn conversion_value_tokens(
             let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
             ::miniextendr_api::error_value::conversion_condition_value(
                 &::miniextendr_api::condition::conversion_prefix(
-                    #param,
+                    #quoted,
                     #nullable,
                     __mx_expected.as_deref(),
                 ),

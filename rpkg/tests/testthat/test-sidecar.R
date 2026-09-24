@@ -440,16 +440,16 @@ test_that("sidecar int setter rejects un-convertible input (no silent NA store)"
 
   e <- tryCatch(suppressWarnings(SidecarEnv_set_count(obj, "oops")), error = identity)
   expect_s3_class(e, "rust_error")
-  expect_identical(conditionMessage(e), "'value' must be a number: got \"oops\"")
+  expect_identical(conditionMessage(e), "'count' must be a number: got \"oops\"")
   expect_identical(e$rust_type, "i32")
   expect_error(
     SidecarEnv_set_count(obj, NA_integer_),
-    "'value' must be a number: NA is not allowed",
+    "'count' must be a number: NA is not allowed",
     fixed = TRUE
   )
   expect_error(
     SidecarEnv_set_count(obj, integer()),
-    "'value' must be a number: got length 0",
+    "'count' must be a number: got length 0",
     fixed = TRUE
   )
   # Failed sets must not have written anything
@@ -461,12 +461,12 @@ test_that("sidecar real and logical setters reject NA (no silent sentinel store)
 
   expect_error(
     SidecarEnv_set_score(obj, NA_real_),
-    "'value' must be a number: NA is not allowed",
+    "'score' must be a number: NA is not allowed",
     fixed = TRUE
   )
   expect_error(
     SidecarEnv_set_flag(obj, NA),
-    "'value' must be TRUE or FALSE: NA is not allowed",
+    "'flag' must be TRUE or FALSE: NA is not allowed",
     fixed = TRUE
   )
   expect_identical(SidecarEnv_get_score(obj), 2.5)
@@ -478,14 +478,15 @@ test_that("sidecar conversion setter surfaces TryFromSexp errors (no silent drop
 
   expect_error(
     SidecarEnv_set_name(obj, 123),
-    "'value' must be a single string: got numeric",
+    "'name' must be a single string: got numeric",
     fixed = TRUE,
     class = "rust_error"
   )
   expect_identical(SidecarEnv_get_name(obj), "keep")
 
-  # Like every argument-conversion condition (#1594), it names the failing
-  # formal and carries the field's Rust type.
+  # Like every argument-conversion condition (#1594): e$param is the failing
+  # formal (`value`), the message names the field (what an R6 / S7 binding
+  # user assigned to), and e$rust_type is the field's Rust type.
   e <- tryCatch(SidecarEnv_set_name(obj, 123), error = function(e) e)
   expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
   expect_equal(e$kind, "conversion")
@@ -539,7 +540,7 @@ test_that("SidecarS7 property setter propagates conversion errors", {
 
   expect_error(
     obj@prop_int <- NA_integer_,
-    "'value' must be a number: NA is not allowed",
+    "'prop_int' must be a number: NA is not allowed",
     fixed = TRUE,
     class = "rust_error"
   )

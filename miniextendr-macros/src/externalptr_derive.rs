@@ -589,18 +589,23 @@ fn generate_setter_body(
     };
 
     // Conversion-failure condition, the argument error of #1594 on the
-    // setter's `value` formal: `'value' must be <expected>: <reason>` with the
-    // field's R-facing expectation, `e$param == "value"`, the field's Rust type
-    // as `e$rust_type` and the crate's `conversion_error_class`. A
-    // `Conversion` slot's expectation comes from the same type table as an
-    // argument's, else from the error at run time, else `invalid 'value'
-    // argument` (`rust_conversion_builder::conversion_value_tokens`); a scalar
+    // setter's `value` formal: `'<field>' must be <expected>: <reason>` with
+    // the field's R-facing expectation. The message names the field, which is
+    // what an R6 active binding (`obj$count <- x`) or an S7 property
+    // (`obj@count <- x`) user assigned to: their condition call is the
+    // binding's anonymous function. `e$param == "value"` (the formal), the
+    // field's Rust type is `e$rust_type`, and the crate's
+    // `conversion_error_class` applies. A `Conversion` slot's expectation comes
+    // from the same type table as an argument's, else from the error at run
+    // time, else `invalid '<field>' argument`
+    // (`rust_conversion_builder::conversion_value_tokens`); a scalar
     // slot reads its value with `Rf_as*`, which has no error value, so the
     // reason is worded from the rejected value (`from_r::scalar_rejection_reason`).
     let crate_class = crate::crate_config::conversion_error_class();
     let rust_type = crate::type_inspect::type_display(&slot.ty);
+    let field_r_name = crate::naming::ident_name(field_name);
     let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
-        let prefix = format!("'value' must be {expected}");
+        let prefix = format!("'{field_r_name}' must be {expected}");
         quote::quote! {
             ::miniextendr_api::error_value::conversion_condition_value(
                 #prefix,
@@ -688,9 +693,10 @@ fn generate_setter_body(
             // The field type's expectation, else the one the error knows at
             // run time (a `match_arg` enum field), as for an argument.
             let prefix = crate::r_preconditions::conversion_expectation(ty, false)
-                .map(|expected| format!("'value' must be {expected}"));
+                .map(|expected| format!("'{field_r_name}' must be {expected}"));
             let err_value = crate::rust_conversion_builder::conversion_value_tokens(
                 prefix.as_deref(),
+                &field_r_name,
                 "value",
                 crate::type_inspect::is_option_type(ty),
                 Some(&rust_type),
@@ -1470,8 +1476,8 @@ mod tests {
     }
 
     /// A sidecar setter's conversion failure is the argument error of #1594
-    /// on its `value` formal: `'value' must be <expected>`, the field's Rust
-    /// type as `e$rust_type`, and the reason probed from the error (a
+    /// on its `value` formal (`e$param`), naming the field: `'f' must be
+    /// <expected>`, the field's Rust type as `e$rust_type`, and the reason probed from the error (a
     /// `Conversion` slot) or worded from the rejected value (a scalar slot).
     #[test]
     fn sidecar_setter_raises_the_argument_error() {
@@ -1495,25 +1501,29 @@ mod tests {
         };
 
         let s = body(syn::parse_quote!(i32), super::SlotKind::ScalarInt);
-        assert!(s.contains("\"'value' must be a number\""), "{s}");
+        assert!(s.contains("\"'f' must be a number\" , \"value\""), "{s}");
         assert!(s.contains("scalar_rejection_reason (value)"), "{s}");
         assert!(s.contains("Some (\"i32\")"), "{s}");
         assert!(s.contains("__mx_conversion_err_parts ! ("), "{s}");
         assert!(!s.contains("failed to convert"), "{s}");
 
         let s = body(syn::parse_quote!(bool), super::SlotKind::ScalarLogical);
-        assert!(s.contains("\"'value' must be TRUE or FALSE\""), "{s}");
+        assert!(s.contains("\"'f' must be TRUE or FALSE\""), "{s}");
 
         let s = body(syn::parse_quote!(Vec<String>), super::SlotKind::Conversion);
-        assert!(s.contains("\"'value' must be character\""), "{s}");
+        assert!(s.contains("\"'f' must be character\" , \"value\""), "{s}");
         assert!(s.contains("Some (\"Vec<String>\")"), "{s}");
         assert!(s.contains(", true)"), "{s}");
 
         // No static expectation: the error may supply one at run time (a
-        // `match_arg` enum field), else `invalid 'value' argument`.
+        // `match_arg` enum field), else `invalid 'f' argument`.
         let s = body(syn::parse_quote!(MyType), super::SlotKind::Conversion);
         assert!(s.contains("__mx_conversion_expectation ! (e)"), "{s}");
-        assert!(s.contains("conversion_prefix (\"value\" , false ,"), "{s}");
+        assert!(s.contains("conversion_prefix (\"f\" , false ,"), "{s}");
+        assert!(
+            s.contains(") , \"value\" , :: core :: option :: Option :: Some (\"MyType\")"),
+            "{s}"
+        );
         assert!(s.contains("Some (\"MyType\")"), "{s}");
     }
 
