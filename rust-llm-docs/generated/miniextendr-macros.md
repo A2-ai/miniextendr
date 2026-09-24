@@ -215,8 +215,8 @@ both the `extern "C-unwind"` wrapper and the corresponding `R_CallMethodDef` con
   - How `Err` values become condition parts. Set by `#[miniextendr(serde_error)]`.
 - `match_arg_several_ok_params`: `Vec<String>`
   - Parameter names with `#[miniextendr(match_arg, several_ok)]` — use
-- `match_arg_optional_params`: `Vec<String>`
-  - `Option<T>`-typed scalar `match_arg` parameter names — converted via
+- `layered_choice_params`: `Vec<(String, crate::rust_conversion_builder::ChoiceLeaf)>`
+  - Choice parameters whose type wraps the choice in `Missing` / `Option`
 - `preserve_param_names`: `bool`
   - When `true`, preserve original parameter names from `inputs` in the C wrapper
 - `vis`: `syn::Visibility`
@@ -372,17 +372,18 @@ fn inputs(self: Self, inputs: syn::punctuated::Punctuated<syn::FnArg, $crate::to
 Sets the function parameters (excluding `self` receiver).
 Each input becomes a `SEXP` argument in the C wrapper.
 
-#### `match_arg_optional`
+#### `layered_choice`
 
 ```rust
-fn match_arg_optional(self: Self, param_name: String) -> Self
+fn layered_choice(self: Self, param_name: String, leaf: crate::rust_conversion_builder::ChoiceLeaf) -> Self
 ```
 
-Record a parameter as an `Option<T>` scalar `match_arg` (#1473).
+Record a choice parameter whose type wraps the choice in `Missing` /
+`Option` layers (#1473, #1551).
 
-Passed through to `RustConversionBuilder::with_match_arg_optional`, which
-converts the parameter with `match_arg_option_from_sexp::<Inner>` so `NULL`
-becomes `None` and any other value is matched against `MatchArg::CHOICES`.
+Passed through to `RustConversionBuilder::with_layered_choice`, which
+decodes the layers outermost first (an omitted argument is
+`Missing::Absent`, `NULL` is `None`) and the choice itself from `leaf`.
 
 #### `match_arg_several_ok`
 
@@ -2417,19 +2418,19 @@ Add a single parameter name that should use coercion.
 `param_name` is matched against the identifier in the function signature.
 Can be called multiple times to add several parameters.
 
-#### `with_match_arg_optional`
+#### `with_layered_choice`
 
 ```rust
-fn with_match_arg_optional(self: Self, param_name: String) -> Self
+fn with_layered_choice(self: Self, param_name: String, leaf: ChoiceLeaf) -> Self
 ```
 
-Mark a parameter as an `Option<T>` scalar `match_arg` — uses
-`match_arg_option_from_sexp` instead of `TryFromSexp` for converting
-NULL / STRSXP → `Option<EnumType>`. There is no `TryFromSexp for
-Option<T>` a downstream crate could provide for its own enum (orphan
-rule), and a `T: MatchArg` blanket would collide with the newtype
-blanket in `miniextendr_api::newtype`, so the wrapper calls the
-helper directly.
+Mark a choice parameter whose type wraps the choice in `Missing` /
+`Option` layers (#1473, #1551): it is decoded layer by layer with the
+`miniextendr_api::match_arg_*` helpers (see [`layered_choice_expr`])
+instead of `TryFromSexp`. There is no `TryFromSexp for Option<T>` a
+downstream crate could provide for its own enum (orphan rule), and a
+`T: MatchArg` blanket would collide with the newtype blanket in
+`miniextendr_api::newtype`, so the wrapper calls the helpers directly.
 
 #### `with_match_arg_several_ok`
 
@@ -2932,21 +2933,25 @@ function that wants no call does not take one.
 #### `match_arg_statement`
 
 ```rust
-fn match_arg_statement(self: Self, param: &str, choices: &str, several_ok: bool, optional: bool) -> String
+fn match_arg_statement(self: Self, param: &str, choices: &str, attrs: &crate::miniextendr_fn::ParamAttrs) -> String
 ```
 
 The R statement validating a choice parameter (`match_arg` / `choices`).
 `choices` is the R expression for the choice list: a literal
-`c("a", "b")`, or the write-time placeholder for an enum.
+`c("a", "b")`, or the write-time placeholder for an enum. `attrs` are
+the parameter's own attributes, which carry `several_ok` and the
+type's layers.
 
 Every form is one call to a preamble helper (`.miniextendr_match_arg`
-for a scalar, wrapped in `if (!is.null(..))` for an `Option<T>`,
-`.miniextendr_match_arg_several` for `several_ok`, #1472). The helpers
-name the argument in their messages, read a factor as its labels, and
-attribute the error to the wrapper's own call by default; under
-[`CallAttribution::Caller`] the statement passes `.mx_call` so the
-caller is named instead (#1548). The list is spelled out because the
-helpers, unlike `base::match.arg(param)`, do not read it off the formal.
+for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
+#1472), guarded by the layers of the parameter type: `!missing(..)`
+for `Missing<..>` (#1551), then `!is.null(..)` for `Option<..>`
+(#1473). The helpers name the argument in their messages, read a
+factor as its labels, and attribute the error to the wrapper's own call
+by default; under [`CallAttribution::Caller`] the statement passes
+`.mx_call` so the caller is named instead (#1548). The list is spelled
+out because the helpers, unlike `base::match.arg(param)`, do not read
+it off the formal.
 
 #### `name`
 
@@ -3013,6 +3018,21 @@ marker, the `call = ...` attribute (`no_call_attribution` / `fast` spell
 arbitrary user code, so it keeps `wrapper`. The explicit spellings are
 validated before this runs (a `caller` marker or attribute on an
 exported function is a compile error, not a fallback).
+
+### `rust_conversion_builder::ChoiceLeaf`
+
+```rust
+pub enum ChoiceLeaf
+```
+
+Where the innermost value of a layered choice parameter comes from.
+
+**Variants:**
+
+- `MatchArg`
+  - A scalar `match_arg` type (`T: MatchArg`), decoded with
+- `MatchArgSeveral`
+  - A `match_arg` + `several_ok` container (`Vec<T>` / `Box<[T]>`),
 
 ### `typed_list::ParsedTypeSpec`
 

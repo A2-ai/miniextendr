@@ -27,9 +27,10 @@ pub struct RustConversionBuilder {
     strict: bool,
     /// Parameter names with `match_arg + several_ok` — use `match_arg_vec_from_sexp` instead of `TryFromSexp`.
     match_arg_several_ok_params: Vec<String>,
-    /// `Option<T>`-typed scalar `match_arg` parameter names — use
-    /// `match_arg_option_from_sexp` instead of `TryFromSexp` (#1473).
-    match_arg_optional_params: Vec<String>,
+    /// Choice parameters whose type wraps the choice in `Missing` / `Option`
+    /// layers (#1473, #1551), with the kind of their innermost value. Decoded
+    /// by [`layered_choice_expr`] instead of `TryFromSexp`.
+    layered_choice_params: Vec<(String, ChoiceLeaf)>,
     /// The crate's `conversion_error_class` (`[package.metadata.miniextendr]`),
     /// appended to every conversion condition's class vector.
     conversion_error_class: Vec<String>,
@@ -44,7 +45,7 @@ impl RustConversionBuilder {
             coerce_params: Vec::new(),
             strict: false,
             match_arg_several_ok_params: Vec::new(),
-            match_arg_optional_params: Vec::new(),
+            layered_choice_params: Vec::new(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
         }
     }
@@ -85,15 +86,15 @@ impl RustConversionBuilder {
         self
     }
 
-    /// Mark a parameter as an `Option<T>` scalar `match_arg` — uses
-    /// `match_arg_option_from_sexp` instead of `TryFromSexp` for converting
-    /// NULL / STRSXP → `Option<EnumType>`. There is no `TryFromSexp for
-    /// Option<T>` a downstream crate could provide for its own enum (orphan
-    /// rule), and a `T: MatchArg` blanket would collide with the newtype
-    /// blanket in `miniextendr_api::newtype`, so the wrapper calls the
-    /// helper directly.
-    pub fn with_match_arg_optional(mut self, param_name: String) -> Self {
-        self.match_arg_optional_params.push(param_name);
+    /// Mark a choice parameter whose type wraps the choice in `Missing` /
+    /// `Option` layers (#1473, #1551): it is decoded layer by layer with the
+    /// `miniextendr_api::match_arg_*` helpers (see [`layered_choice_expr`])
+    /// instead of `TryFromSexp`. There is no `TryFromSexp for Option<T>` a
+    /// downstream crate could provide for its own enum (orphan rule), and a
+    /// `T: MatchArg` blanket would collide with the newtype blanket in
+    /// `miniextendr_api::newtype`, so the wrapper calls the helpers directly.
+    pub fn with_layered_choice(mut self, param_name: String, leaf: ChoiceLeaf) -> Self {
+        self.layered_choice_params.push((param_name, leaf));
         self
     }
 
@@ -415,17 +416,16 @@ impl RustConversionBuilder {
                     return (vec![stmt], vec![]);
                 }
 
-                // Option<T> match_arg (#1473): NULL → None, else the scalar match.
-                if self
-                    .match_arg_optional_params
-                    .contains(&param_name.to_string())
-                    && let Some(inner_ty) = crate::option_inner_type(ty)
+                // A choice under `Missing` / `Option` layers (#1473, #1551):
+                // decoded layer by layer, outermost first.
+                if let Some((_, leaf)) = self
+                    .layered_choice_params
+                    .iter()
+                    .find(|(name, _)| *name == param_name)
                 {
                     let span = ty.span();
                     let context = convert_context(&r_name, ty);
-                    let try_expr = quote_spanned! {span=>
-                        ::miniextendr_api::match_arg_option_from_sexp::<#inner_ty>(#sexp_ident)
-                    };
+                    let try_expr = layered_choice_expr(ty, *leaf, sexp_ident, span);
                     let stmt = self.conversion_stmt(try_expr, &context, &r_name, ident, ty, span);
                     return (vec![stmt], vec![]);
                 }
@@ -586,6 +586,141 @@ impl Default for RustConversionBuilder {
         Self::new()
     }
 }
+
+// region: layered choice parameters
+
+/// Where the innermost value of a layered choice parameter comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChoiceLeaf {
+    /// A scalar `match_arg` type (`T: MatchArg`), decoded with
+    /// `match_arg_from_sexp::<T>`.
+    MatchArg,
+    /// A `match_arg` + `several_ok` container (`Vec<T>` / `Box<[T]>`),
+    /// decoded with `match_arg_vec_from_sexp::<T>`.
+    MatchArgSeveral,
+}
+
+/// A layer around a choice parameter's value, outermost first.
+enum ChoiceLayer {
+    /// `Missing<..>`: the missing-argument sentinel is `Missing::Absent`.
+    Missing,
+    /// `Option<..>`: `NULL` is `None`.
+    Null,
+}
+
+/// The decoding expression for a choice parameter of type `ty` whose value
+/// sits under `Missing` / `Option` layers (#1473, #1551), applied to the
+/// `SEXP` binding `sexp`. Each layer is one `miniextendr_api::match_arg_*`
+/// helper that takes the decoder of the layers below it, so
+/// `Missing<Option<Mode>>` becomes
+///
+/// ```ignore
+/// ::miniextendr_api::match_arg_missing_or(sexp, ::miniextendr_api::match_arg_option_from_sexp::<Mode>)
+/// ```
+fn layered_choice_expr(
+    ty: &syn::Type,
+    leaf: ChoiceLeaf,
+    sexp: &syn::Ident,
+    span: proc_macro2::Span,
+) -> TokenStream {
+    let layers = crate::type_inspect::choice_layers(ty);
+    let mut wraps = Vec::new();
+    if layers.missing {
+        wraps.push(ChoiceLayer::Missing);
+    }
+    if layers.nullable {
+        wraps.push(ChoiceLayer::Null);
+    }
+    let value = LayeredValue::new(layers.value, leaf);
+    let expr = value.apply(&wraps, &quote! { #sexp });
+    quote_spanned! {span=> #expr }
+}
+
+/// The innermost value of a layered choice parameter.
+struct LayeredValue<'a> {
+    leaf: ChoiceLeaf,
+    /// The `MatchArg` type: the value itself for a scalar, the element type
+    /// of a `several_ok` container.
+    choice_ty: &'a syn::Type,
+    /// A `Box<[T]>` container, converted from the decoded `Vec<T>`.
+    boxed: bool,
+}
+
+impl<'a> LayeredValue<'a> {
+    fn new(value: &'a syn::Type, leaf: ChoiceLeaf) -> Self {
+        let (choice_ty, boxed) = match (leaf, crate::classify_several_ok_container(value)) {
+            (ChoiceLeaf::MatchArgSeveral, Some((container, inner))) => (
+                inner,
+                matches!(container, crate::SeveralOkContainer::BoxedSlice),
+            ),
+            _ => (value, false),
+        };
+        Self {
+            leaf,
+            choice_ty,
+            boxed,
+        }
+    }
+
+    /// `layers` over this value, decoding the argument `sexp`: the outermost
+    /// layer's helper called on `sexp` with the decoder of the rest.
+    fn apply(&self, layers: &[ChoiceLayer], sexp: &TokenStream) -> TokenStream {
+        let t = self.choice_ty;
+        match layers {
+            [] => match (self.leaf, self.boxed) {
+                (ChoiceLeaf::MatchArg, _) => {
+                    quote! { ::miniextendr_api::match_arg_from_sexp::<#t>(#sexp) }
+                }
+                (ChoiceLeaf::MatchArgSeveral, false) => {
+                    quote! { ::miniextendr_api::match_arg_vec_from_sexp::<#t>(#sexp) }
+                }
+                (ChoiceLeaf::MatchArgSeveral, true) => quote! {
+                    ::miniextendr_api::match_arg_vec_from_sexp::<#t>(#sexp)
+                        .map(::std::vec::Vec::into_boxed_slice)
+                },
+            },
+            // `Option<T>` over a scalar choice (#1473) keeps its dedicated helper.
+            [ChoiceLayer::Null] if self.leaf == ChoiceLeaf::MatchArg => {
+                quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t>(#sexp) }
+            }
+            [first, rest @ ..] => {
+                let inner = self.decoder(rest);
+                match first {
+                    ChoiceLayer::Missing => {
+                        quote! { ::miniextendr_api::match_arg_missing_or(#sexp, #inner) }
+                    }
+                    ChoiceLayer::Null => {
+                        quote! { ::miniextendr_api::match_arg_null_or(#sexp, #inner) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// `layers` over this value as a decoder (`FnOnce(SEXP) -> Result<_, _>`):
+    /// a function path where one exists, a closure otherwise.
+    fn decoder(&self, layers: &[ChoiceLayer]) -> TokenStream {
+        let t = self.choice_ty;
+        match (layers, self.leaf, self.boxed) {
+            ([], ChoiceLeaf::MatchArg, _) => {
+                quote! { ::miniextendr_api::match_arg_from_sexp::<#t> }
+            }
+            ([], ChoiceLeaf::MatchArgSeveral, false) => {
+                quote! { ::miniextendr_api::match_arg_vec_from_sexp::<#t> }
+            }
+            ([ChoiceLayer::Null], ChoiceLeaf::MatchArg, _) => {
+                quote! { ::miniextendr_api::match_arg_option_from_sexp::<#t> }
+            }
+            _ => {
+                let arg = quote! { __mx_sexp };
+                let body = self.apply(layers, &arg);
+                quote! { |#arg| #body }
+            }
+        }
+    }
+}
+
+// endregion
 
 // region: conversion-failure conditions
 

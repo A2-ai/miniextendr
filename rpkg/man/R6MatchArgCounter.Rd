@@ -13,6 +13,7 @@ Static method with a choices() param — validates the \code{choices(...)} path 
     \item \href{#method-R6MatchArgCounter-initialize}{\code{R6MatchArgCounter$new()}}
     \item \href{#method-R6MatchArgCounter-mode}{\code{R6MatchArgCounter$mode()}}
     \item \href{#method-R6MatchArgCounter-record}{\code{R6MatchArgCounter$record()}}
+    \item \href{#method-R6MatchArgCounter-peek}{\code{R6MatchArgCounter$peek()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -61,6 +62,25 @@ Static method with a choices() param — validates the \code{choices(...)} path 
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{mode}}{One of "Fast", "Safe", "Debug".}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-R6MatchArgCounter-peek"></a>}}
+\if{latex}{\out{\hypertarget{method-R6MatchArgCounter-peek}{}}}
+\subsection{\code{R6MatchArgCounter$peek()}}{
+  Omittable optional mode (#1551): the formal keeps the choice vector, an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{R6MatchArgCounter$peek(mode = c("Fast", "Safe", "Debug"))}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{mode}}{One of "Fast", "Safe", "Debug", or NULL; omitting the argument means no choice.}
     }
     \if{html}{\out{</div>}}
   }

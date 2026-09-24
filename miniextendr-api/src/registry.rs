@@ -266,10 +266,11 @@ pub struct MatchArgParamDocEntry {
     /// `true` for `several_ok` params (emits "One or more of …");
     /// `false` for plain `match_arg` (emits "One of …").
     pub several_ok: bool,
-    /// `true` for an `Option<T>`-typed scalar param (#1473): the R formal
-    /// defaults to `NULL`, so the rendered line ends in ", or NULL for no
-    /// choice".
-    pub optional: bool,
+    /// Text after the rendered choice list, before the closing period:
+    /// `""` for a plain param, `", or NULL for no choice"` for an `Option<T>`
+    /// one (#1473), an omission note for `Missing<T>` (#1551). Composed by
+    /// the macro from the parameter type.
+    pub suffix: &'static str,
     /// Function that returns the choices as a comma-separated quoted string,
     /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
     pub choices_str: fn() -> String,
@@ -1595,12 +1596,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
         } else {
             "One of"
         };
-        let suffix = if entry.optional {
-            ", or NULL for no choice"
-        } else {
-            ""
-        };
-        let replacement = format!("{prefix} {choices}{suffix}.");
+        let replacement = format!("{prefix} {choices}{}.", entry.suffix);
         content = content.replace(entry.placeholder, &replacement);
     }
 

@@ -7,7 +7,7 @@
 
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{Call, CallerCall};
+use miniextendr_api::{Call, CallerCall, Missing};
 
 use crate::match_arg_tests::Mode;
 
@@ -78,6 +78,22 @@ pub fn call_attr_checked_impl(
         metrics.join("+"),
         level.as_deref().unwrap_or("none")
     )
+}
+
+/// Internal entry point with an omittable choice (#1551) under `call = caller`:
+/// the omission guard wraps the same caller-attributed check. The
+/// hand-written `call_attr_omitted()` in `R/call_attribution.R` forwards its
+/// argument without a default, so an omitted argument stays missing here.
+///
+/// @param mode One of the modes, NULL, or omitted.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn call_attr_omitted_impl(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
+    match mode {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(mode)) => format!("{mode:?}"),
+    }
 }
 
 /// Default attribution for comparison: the same shape without `call = caller`

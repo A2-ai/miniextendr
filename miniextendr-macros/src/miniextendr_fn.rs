@@ -280,6 +280,9 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
 ///   choice list; the `match_arg` placeholder would shadow the literal list
 ///   and, with no `MatchArg` entry to resolve it, dangle in the R formals)
 /// - `default` on a `&Dots` parameter
+///
+/// The type-dependent checks of a choice parameter live in
+/// [`classify_choice_param`], shared with the method paths.
 pub(crate) fn validate_per_param_attr_conflicts(
     attr: &PerParamMiniextendrAttr,
     param_name: &str,
@@ -337,39 +340,6 @@ pub(crate) fn validate_per_param_attr_conflicts(
                 param_name
             ),
         ));
-    }
-    if attr.has_several_ok
-        && let Some(ty) = ty
-    {
-        // Unwrap Missing<T> so several_ok is allowed on optional vector params.
-        let check_ty = get_missing_inner_type(ty).unwrap_or(ty);
-        if !is_vector_like_type(check_ty) {
-            return Err(syn::Error::new(
-                span,
-                format!(
-                    "several_ok requires a vector type on parameter `{}`; \
-                     several_ok enables multi-value match.arg which returns a character vector. \
-                     Use `Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]` instead of a scalar type",
-                    param_name
-                ),
-            ));
-        }
-    }
-    if (attr.has_match_arg || attr.choices.is_some())
-        && !attr.has_several_ok
-        && let Some(ty) = ty
-    {
-        // Scalar choice params: `Option<T>` is the optional form (#1473) and
-        // takes no default; `Missing<T>` cannot carry the choice-vector formal.
-        if is_missing_type(ty) {
-            return Err(syn::Error::new(span, missing_scalar_choice_msg(param_name)));
-        }
-        if crate::is_option_type(ty) && attr.default_value.is_some() {
-            return Err(syn::Error::new(
-                span,
-                optional_choice_default_msg(param_name),
-            ));
-        }
     }
     if is_dots && !attr.checks.is_empty() {
         return Err(syn::Error::new(
@@ -635,14 +605,157 @@ pub(crate) struct ParamAttrs {
     pub several_ok: bool,
     pub choices: Option<Vec<String>>,
     pub default: Option<String>,
-    /// `Option<T>`-typed scalar `match_arg` / `choices` parameter (#1473). The
-    /// R formal defaults to `NULL` (no choice) instead of the choice vector,
-    /// the prelude names the choices explicitly and skips `match.arg()` for
-    /// `NULL`, and the `@param` line says so. Set from the parameter type once
-    /// the signature is known; never `true` together with `several_ok`.
+    /// `Option<..>` layer of a scalar `match_arg` / `choices` parameter
+    /// (#1473): `NULL` means no choice, so the prelude skips the check for it
+    /// and Rust sees `None`. Unless [`Self::omittable`] is set too, the R
+    /// formal is `NULL` instead of the choice vector. Set from the parameter
+    /// type by [`classify_choice_param`]; never `true` together with
+    /// `several_ok`.
     pub optional: bool,
+    /// `Missing<..>` layer of a `match_arg` / `choices` parameter (#1551): the
+    /// R formal keeps the choice vector, the prelude skips the check for an
+    /// omitted argument, and Rust sees `Missing::Absent`. Set by
+    /// [`classify_choice_param`].
+    pub omittable: bool,
     /// R-side checks named by the author: `inherits` / `no_na`.
     pub checks: crate::r_preconditions::ExplicitChecks,
+}
+
+impl ParamAttrs {
+    /// Whether this is a `match_arg` / `choices` parameter.
+    pub(crate) fn is_choice(&self) -> bool {
+        self.match_arg || self.choices.is_some()
+    }
+
+    /// The R formal default of a choice parameter, given its choice list
+    /// (`c("a", "b")` or the write-time placeholder): `NULL` for the
+    /// `Option<T>` form (#1473), the choice list otherwise, including
+    /// `Missing<Option<T>>`, whose omission is reported by `Missing` (#1551).
+    pub(crate) fn choice_formal(&self, choices: &str) -> String {
+        if self.optional && !self.omittable {
+            "NULL".to_string()
+        } else {
+            choices.to_string()
+        }
+    }
+
+    /// The text after the quoted choice list in the auto-generated `@param`
+    /// line (`One of "a", "b"<suffix>.`): `, or NULL for no choice` for
+    /// `Option<T>`, `, or NULL; omitting the argument means no choice` for
+    /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
+    /// `Missing<T>`, and nothing for a plain choice.
+    pub(crate) fn choice_doc_suffix(&self) -> String {
+        let mut suffix = String::new();
+        if self.optional {
+            suffix.push_str(if self.omittable {
+                ", or NULL"
+            } else {
+                ", or NULL for no choice"
+            });
+        }
+        if self.omittable {
+            suffix.push_str("; omitting the argument means no choice");
+        }
+        suffix
+    }
+
+    /// How the C wrapper decodes this parameter when a plain `TryFromSexp`
+    /// cannot: a `match_arg` parameter with a `Missing` / `Option` layer.
+    /// `None` for every other parameter (a `choices` string type converts
+    /// through `TryFromSexp` with its layers; a plain `several_ok` container
+    /// has its own path).
+    pub(crate) fn layered_leaf(&self) -> Option<crate::rust_conversion_builder::ChoiceLeaf> {
+        use crate::rust_conversion_builder::ChoiceLeaf;
+        if !self.match_arg || !(self.optional || self.omittable) {
+            return None;
+        }
+        Some(if self.several_ok {
+            ChoiceLeaf::MatchArgSeveral
+        } else {
+            ChoiceLeaf::MatchArg
+        })
+    }
+}
+
+/// Record the layers of a `match_arg` / `choices` parameter's type on its
+/// [`ParamAttrs`] (`optional`, `omittable`) and reject the shapes the codegen
+/// cannot serve, now that the type is known. Shared by the standalone-fn
+/// parser and [`finalize_method_param_attrs`] so the two cannot classify a
+/// type differently. A no-op for other parameters.
+///
+/// Accepted: a scalar `T`, `Option<T>` (#1473), `Missing<T>` and
+/// `Missing<Option<T>>` (#1551); a `several_ok` container, or a
+/// `Missing<Vec<T>>` / `Missing<Box<[T]>>` one. `has_default` says whether
+/// the parameter carries a `default` (an `Option<T>` choice cannot; the
+/// `Missing<T>` + default conflict is reported by the callers' own check).
+pub(crate) fn classify_choice_param(
+    attrs: &mut ParamAttrs,
+    param_name: &str,
+    ty: &syn::Type,
+    has_default: bool,
+) -> syn::Result<()> {
+    use syn::spanned::Spanned;
+    if !attrs.is_choice() {
+        return Ok(());
+    }
+    let layers = crate::type_inspect::choice_layers(ty);
+    if let Some(layer) = crate::type_inspect::choice_layer_name(layers.value) {
+        return Err(syn::Error::new(
+            ty.span(),
+            format!(
+                "match_arg/choices parameter `{param_name}` has `{layer}<..>` inside another \
+                 wrapper; `Missing<..>` has to be the outermost one: write `Missing<T>`, \
+                 `Option<T>` or `Missing<Option<T>>`"
+            ),
+        ));
+    }
+    if attrs.several_ok {
+        if layers.nullable {
+            return Err(syn::Error::new(
+                ty.span(),
+                format!(
+                    "several_ok parameter `{param_name}` cannot be `Option<..>`; an omitted \
+                     argument and NULL both select every choice. Use `Missing<Vec<T>>` to \
+                     tell an omitted argument apart"
+                ),
+            ));
+        }
+        if !is_vector_like_type(layers.value) {
+            return Err(syn::Error::new(
+                ty.span(),
+                format!(
+                    "several_ok requires a vector type on parameter `{param_name}`; \
+                     several_ok enables multi-value match.arg which returns a character vector. \
+                     Use `Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]` instead of a scalar type"
+                ),
+            ));
+        }
+        if layers.missing
+            && !matches!(
+                crate::classify_several_ok_container(layers.value),
+                Some((
+                    crate::SeveralOkContainer::Vec | crate::SeveralOkContainer::BoxedSlice,
+                    _
+                ))
+            )
+        {
+            return Err(syn::Error::new(
+                ty.span(),
+                format!(
+                    "several_ok parameter `{param_name}` can be omittable only as \
+                     `Missing<Vec<T>>` or `Missing<Box<[T]>>`"
+                ),
+            ));
+        }
+    } else if layers.nullable && !layers.missing && has_default {
+        return Err(syn::Error::new(
+            ty.span(),
+            optional_choice_default_msg(param_name),
+        ));
+    }
+    attrs.optional = layers.nullable;
+    attrs.omittable = layers.missing;
+    Ok(())
 }
 
 /// The non-empty [`ParamAttrs::checks`] of `per_param` (keyed by Rust name),
@@ -663,18 +776,15 @@ pub(crate) fn explicit_checks_by_r_name(
         .collect()
 }
 
-/// Fill in [`ParamAttrs::optional`] for an impl or trait method and reject the
-/// scalar `match_arg` / `choices` shapes that cannot work, now that the
-/// signature is known. The standalone-fn path does the same inline while
-/// parsing (`validate_per_param_attr_conflicts` plus the `Parse` impl); this is
-/// the twin for method-level attributes, whose parameter names arrive before
-/// the types.
+/// Classify the choice parameters of an impl or trait method (see
+/// [`classify_choice_param`]) now that the signature is known. The
+/// standalone-fn path does the same while parsing; this is the twin for
+/// method-level attributes, whose parameter names arrive before the types.
 pub(crate) fn finalize_method_param_attrs(
     per_param: &mut std::collections::HashMap<String, ParamAttrs>,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     defaults: &std::collections::HashMap<String, String>,
 ) -> syn::Result<()> {
-    use syn::spanned::Spanned;
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -686,32 +796,10 @@ pub(crate) fn finalize_method_param_attrs(
         let Some(attrs) = per_param.get_mut(&name) else {
             continue;
         };
-        if !(attrs.match_arg || attrs.choices.is_some()) || attrs.several_ok {
-            continue;
-        }
-        let ty = pt.ty.as_ref();
-        if is_missing_type(ty) {
-            return Err(syn::Error::new(ty.span(), missing_scalar_choice_msg(&name)));
-        }
-        if crate::is_option_type(ty) {
-            if attrs.default.is_some() || defaults.contains_key(&name) {
-                return Err(syn::Error::new(
-                    ty.span(),
-                    optional_choice_default_msg(&name),
-                ));
-            }
-            attrs.optional = true;
-        }
+        let has_default = attrs.default.is_some() || defaults.contains_key(&name);
+        classify_choice_param(attrs, &name, pt.ty.as_ref(), has_default)?;
     }
     Ok(())
-}
-
-fn missing_scalar_choice_msg(param_name: &str) -> String {
-    format!(
-        "`Missing<T>` parameter `{param_name}` cannot be a scalar match_arg/choices parameter; \
-         the choice list lives in the R formal default, which `Missing<T>` forbids. \
-         Use `Option<T>` (NULL means no choice) or a plain `T` (the first choice is the default)"
-    )
 }
 
 fn optional_choice_default_msg(param_name: &str) -> String {
@@ -847,7 +935,22 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     ));
                 }
             };
-            let param_name_for_validation = param_name.clone();
+            // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
+            let per_param_combined = PerParamMiniextendrAttr {
+                has_coerce: had_coerce_attr,
+                has_match_arg: had_match_arg_attr,
+                default_value: default_with_span.clone(),
+                choices: had_choices.clone(),
+                has_several_ok: had_several_ok,
+                checks: had_checks.clone(),
+            };
+            validate_per_param_attr_conflicts(
+                &per_param_combined,
+                &param_name,
+                is_dots_type(pat_type.ty.as_ref()),
+                Some(pat_type.ty.as_ref()),
+                pat_type.ty.span(),
+            )?;
 
             // Record per-parameter attrs in one entry instead of five side-tables.
             if had_coerce_attr
@@ -858,45 +961,19 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 || !had_checks.is_empty()
             {
                 let entry = per_param.entry(param_name.clone()).or_default();
-                entry.checks = had_checks.clone();
-                if had_coerce_attr {
-                    entry.coerce = true;
-                }
-                if had_match_arg_attr {
-                    entry.match_arg = true;
-                }
-                if had_several_ok {
-                    entry.several_ok = true;
-                }
-                if let Some(choices) = had_choices.clone() {
-                    entry.choices = Some(choices);
-                }
-                if let Some((default, span)) = default_with_span.clone() {
+                entry.checks = had_checks;
+                entry.coerce = had_coerce_attr;
+                entry.match_arg = had_match_arg_attr;
+                entry.several_ok = had_several_ok;
+                entry.choices = had_choices;
+                if let Some((default, span)) = default_with_span {
                     entry.default = Some(default);
-                    per_param_default_spans.insert(param_name, span);
+                    per_param_default_spans.insert(param_name.clone(), span);
                 }
-                // `Option<T>` scalar choice param: the optional form (#1473).
-                entry.optional = (had_match_arg_attr || had_choices.is_some())
-                    && !had_several_ok
-                    && crate::is_option_type(pat_type.ty.as_ref());
+                // The `Option` / `Missing` layers of a choice parameter (#1473, #1551).
+                let has_default = entry.default.is_some();
+                classify_choice_param(entry, &param_name, pat_type.ty.as_ref(), has_default)?;
             }
-
-            // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
-            let per_param_combined = PerParamMiniextendrAttr {
-                has_coerce: had_coerce_attr,
-                has_match_arg: had_match_arg_attr,
-                default_value: default_with_span,
-                choices: had_choices,
-                has_several_ok: had_several_ok,
-                checks: had_checks,
-            };
-            validate_per_param_attr_conflicts(
-                &per_param_combined,
-                &param_name_for_validation,
-                is_dots_type(pat_type.ty.as_ref()),
-                Some(pat_type.ty.as_ref()),
-                pat_type.ty.span(),
-            )?;
         }
 
         // Insert destructuring let-bindings for pattern parameters at the start of the function body
@@ -1042,10 +1119,11 @@ impl MiniextendrFunctionParsed {
         self.per_param.get(param_name).is_some_and(|a| a.several_ok)
     }
 
-    /// Check if a `match_arg` / `choices` parameter is the optional
-    /// `Option<T>` form (R formal `NULL`, `NULL` means no choice; #1473).
-    pub(crate) fn is_optional_choice(&self, param_name: &str) -> bool {
-        self.per_param.get(param_name).is_some_and(|a| a.optional)
+    /// The per-parameter attribute state of `param_name`, if it carried any
+    /// `#[miniextendr(...)]` option. Choice parameters read their layers
+    /// (`Option` / `Missing`, #1473 / #1551) from here.
+    pub(crate) fn param_attrs(&self, param_name: &str) -> Option<&ParamAttrs> {
+        self.per_param.get(param_name)
     }
 
     /// The `inherits` / `no_na` checks of every parameter, keyed by R name

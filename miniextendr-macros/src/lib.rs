@@ -225,8 +225,8 @@ compile_error!(
 
 pub(crate) use type_inspect::{
     SeveralOkContainer, classify_several_ok_container, first_type_argument,
-    is_main_thread_bound_input, is_main_thread_bound_return, is_option_type, is_sexp_type,
-    match_arg_choices_ty, option_inner_type, second_type_argument,
+    is_main_thread_bound_input, is_main_thread_bound_return, is_sexp_type, match_arg_choices_ty,
+    second_type_argument,
 };
 pub(crate) use util::{extract_cfg_attrs, r_wrapper_raw_literal, source_location_doc};
 
@@ -1134,10 +1134,12 @@ pub fn miniextendr(
 
     let source_loc_doc = source_location_doc(rust_ident.span());
 
-    // Build individual per-parameter coerce and match_arg_several_ok lists
+    // Build individual per-parameter coerce, match_arg_several_ok and layered
+    // choice lists (a choice type wrapped in `Missing` / `Option`, #1473 / #1551)
     let mut coerce_params_list: Vec<String> = Vec::new();
     let mut match_arg_several_ok_params_list: Vec<String> = Vec::new();
-    let mut match_arg_optional_params_list: Vec<String> = Vec::new();
+    let mut layered_choice_params_list: Vec<(String, rust_conversion_builder::ChoiceLeaf)> =
+        Vec::new();
     for input in inputs.iter() {
         if let syn::FnArg::Typed(pt) = input
             && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
@@ -1146,12 +1148,13 @@ pub fn miniextendr(
             if parsed.has_coerce_attr(&param_name) {
                 coerce_params_list.push(param_name.clone());
             }
-            if parsed.has_match_arg_attr(&param_name) && parsed.has_several_ok(&param_name) {
-                match_arg_several_ok_params_list.push(param_name);
-            } else if parsed.has_match_arg_attr(&param_name)
-                && parsed.is_optional_choice(&param_name)
+            if let Some(leaf) = parsed
+                .param_attrs(&param_name)
+                .and_then(miniextendr_fn::ParamAttrs::layered_leaf)
             {
-                match_arg_optional_params_list.push(param_name);
+                layered_choice_params_list.push((param_name, leaf));
+            } else if parsed.has_match_arg_attr(&param_name) && parsed.has_several_ok(&param_name) {
+                match_arg_several_ok_params_list.push(param_name);
             }
         }
     }
@@ -1247,8 +1250,8 @@ pub fn miniextendr(
     for param in match_arg_several_ok_params_list {
         c_wrapper_builder = c_wrapper_builder.match_arg_several_ok(param);
     }
-    for param in match_arg_optional_params_list {
-        c_wrapper_builder = c_wrapper_builder.match_arg_optional(param);
+    for (param, leaf) in layered_choice_params_list {
+        c_wrapper_builder = c_wrapper_builder.layered_choice(param, leaf);
     }
     if check_interrupt {
         c_wrapper_builder = c_wrapper_builder.check_interrupt();
@@ -1290,13 +1293,13 @@ pub fn miniextendr(
             None => String::new(),
         };
         let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
-        if parsed.is_optional_choice(match_arg_param) {
-            // `Option<T>` (#1473): the formal is `NULL` (no choice); the prelude
-            // spells the choices out through the same placeholder instead.
-            merged_defaults.insert(r_name.clone(), "NULL".to_string());
-        } else {
-            merged_defaults.insert(r_name.clone(), placeholder.clone());
-        }
+        // `Option<T>` (#1473): the formal is `NULL` (no choice); the prelude
+        // spells the choices out through the same placeholder instead.
+        let formal = match parsed.param_attrs(match_arg_param) {
+            Some(attrs) => attrs.choice_formal(&placeholder),
+            None => placeholder.clone(),
+        };
+        merged_defaults.insert(r_name.clone(), formal);
         match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg
@@ -1304,14 +1307,12 @@ pub fn miniextendr(
     for (param_name, choices) in parsed.choices_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
-        let optional = parsed.is_optional_choice(param_name);
-        merged_defaults.entry(r_name).or_insert_with(|| {
-            if optional {
-                "NULL".to_string()
-            } else {
-                format!("c({})", quoted.join(", "))
-            }
-        });
+        let choices_expr = format!("c({})", quoted.join(", "));
+        let formal = match parsed.param_attrs(param_name) {
+            Some(attrs) => attrs.choice_formal(&choices_expr),
+            None => choices_expr,
+        };
+        merged_defaults.entry(r_name).or_insert(formal);
     }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 
@@ -1493,11 +1494,10 @@ pub fn miniextendr(
             } else {
                 "One of"
             };
-            let suffix = if parsed.is_optional_choice(&rust_name) {
-                ", or NULL for no choice"
-            } else {
-                ""
-            };
+            let suffix = parsed
+                .param_attrs(&rust_name)
+                .map(miniextendr_fn::ParamAttrs::choice_doc_suffix)
+                .unwrap_or_default();
             roxygen_tags.push(format!(
                 "@param {r_name} {prefix} {}{suffix}.",
                 quoted.join(", ")
@@ -1598,16 +1598,14 @@ pub fn miniextendr(
             // `c("a", "b", ...)`; it substitutes every occurrence). Strict
             // several_ok (#1472): every element must match; NULL selects every
             // choice. `Option<T>` (#1473): NULL means no choice and skips the
-            // check. The helpers read a factor as its labels (#1552). Under
-            // `call = caller` every form raises with `.mx_call` (#1548).
+            // check; `Missing<T>` (#1551) skips it for an omitted argument. The
+            // helpers read a factor as its labels (#1552). Under `call = caller`
+            // every form raises with `.mx_call` (#1548).
             let placeholder =
                 crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), r_param);
-            lines.push(call_attribution.match_arg_statement(
-                r_param,
-                &placeholder,
-                parsed.has_several_ok(rust_name),
-                parsed.is_optional_choice(rust_name),
-            ));
+            if let Some(attrs) = parsed.param_attrs(rust_name) {
+                lines.push(call_attribution.match_arg_statement(r_param, &placeholder, attrs));
+            }
         }
         lines.join("\n  ")
     };
@@ -1621,18 +1619,15 @@ pub fn miniextendr(
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
                 let rust_name = crate::naming::ident_name(&pat_ident.ident);
-                if let Some(choices) = parsed.choices_for_param(&rust_name) {
+                if let Some(attrs) = parsed.param_attrs(&rust_name)
+                    && let Some(choices) = attrs.choices.as_ref()
+                {
                     let r_name =
                         r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
                     let choices_expr = format!("c({})", quoted.join(", "));
-                    lines.push(call_attribution.match_arg_statement(
-                        &r_name,
-                        &choices_expr,
-                        parsed.has_several_ok(&rust_name),
-                        parsed.is_optional_choice(&rust_name),
-                    ));
+                    lines.push(call_attribution.match_arg_statement(&r_name, &choices_expr, attrs));
                 }
             }
         }
@@ -1836,8 +1831,7 @@ pub fn miniextendr(
             .iter()
             .filter_map(|(doc_placeholder, rust_param)| {
                 let choices_ty = choices_ty_for(rust_param)?;
-                let several_ok_lit = parsed.has_several_ok(rust_param);
-                let optional_lit = parsed.is_optional_choice(rust_param);
+                let attrs = parsed.param_attrs(rust_param)?;
                 let entry_ident = syn::Ident::new(
                     &format!(
                         "match_arg_param_doc_entry_{}",
@@ -1849,8 +1843,8 @@ pub fn miniextendr(
                     &cfg_attrs,
                     &entry_ident,
                     doc_placeholder,
-                    several_ok_lit,
-                    optional_lit,
+                    attrs.several_ok,
+                    &attrs.choice_doc_suffix(),
                     choices_ty,
                 ))
             })

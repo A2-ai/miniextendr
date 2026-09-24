@@ -1,0 +1,5 @@
+error: match_arg/choices parameter `mode` has `Missing<..>` inside another wrapper; `Missing<..>` has to be the outermost one: write `Missing<T>`, `Option<T>` or `Missing<Option<T>>`
+ --> tests/ui/match_arg_layer_order.rs:9:52
+  |
+9 | fn bad_layer_order(#[miniextendr(match_arg)] mode: Option<Missing<Mode>>) {}
+  |                                                    ^^^^^^

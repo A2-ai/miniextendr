@@ -2481,6 +2481,12 @@ forwarding impls in [`crate::newtype`], and a downstream crate cannot add
 one for its own enum under the orphan rule), so a hand-written `MatchArg`
 impl needs nothing extra.
 
+A `Missing<..>` around the parameter type (`Missing<T>`,
+`Missing<Option<T>>`, `Missing<Vec<T>>` for `several_ok`) keeps the choice
+vector as the R formal and reports an omitted argument as
+`Missing::Absent` (#1551); the C wrapper decodes it with
+[`match_arg_missing_or`] around the decoder of the inner type.
+
 `several_ok` parameters are validated strictly on the R side: every element
 has to match a choice, and `NULL` selects every choice (the same fallback
 [`match_arg_vec_from_sexp`] applies).
@@ -8041,6 +8047,10 @@ and `#[serde(crate = "miniextendr_api::serde_crate")]` to avoid a direct `serde`
 ### `pub use match_arg::choices_sexp;`
 
 ### `pub use match_arg::match_arg_from_sexp;`
+
+### `pub use match_arg::match_arg_missing_or;`
+
+### `pub use match_arg::match_arg_null_or;`
 
 ### `pub use match_arg::match_arg_option_from_sexp;`
 
@@ -20893,8 +20903,8 @@ choice descriptions.
   - Placeholder string in the `@param` roxygen tag, e.g.
 - `several_ok`: `bool`
   - `true` for `several_ok` params (emits "One or more of …");
-- `optional`: `bool`
-  - `true` for an `Option<T>`-typed scalar param (#1473): the R formal
+- `suffix`: `&'static str`
+  - Text after the rendered choice list, before the closing period:
 - `choices_str`: `fn() -> String`
   - Function that returns the choices as a comma-separated quoted string,
 
@@ -33309,6 +33319,37 @@ fn match_arg_from_sexp<T: MatchArg>(sexp: crate::SEXP) -> Result<T, MatchArgErro
 Extract a single string from an R SEXP and match it against a `MatchArg` type.
 
 Used by the generated `TryFromSexp for T` implementation (single-value `match.arg`).
+
+### `match_arg::match_arg_missing_or`
+
+```rust
+fn match_arg_missing_or<U, E>(sexp: crate::SEXP, inner: impl FnOnce(crate::SEXP) -> Result<U, E>) -> Result<crate::Missing<U>, E>
+```
+
+The `Missing<_>` layer of a choice parameter (#1551): the missing-argument
+sentinel is [`Missing::Absent`](crate::Missing::Absent), anything else
+(`NULL` included) is decoded by `inner` and becomes `Missing::Present`.
+
+The generated R wrapper keeps the choice vector as the formal default,
+skips the `match.arg()` check for an omitted argument and forwards R's
+missing-argument sentinel (`if (missing(x)) quote(expr=) else x`), so
+`#[miniextendr(match_arg)] mode: Missing<Option<Mode>>` reaches Rust as
+`Absent` when omitted, `Present(None)` for `NULL`, and
+`Present(Some(mode))` for a matched choice. The C wrapper decodes it with
+`match_arg_missing_or(sexp, match_arg_option_from_sexp::<Mode>)`.
+
+### `match_arg::match_arg_null_or`
+
+```rust
+fn match_arg_null_or<U, E>(sexp: crate::SEXP, inner: impl FnOnce(crate::SEXP) -> Result<U, E>) -> Result<Option<U>, E>
+```
+
+The `Option<_>` layer of a choice parameter: `NULL` is `None`, anything
+else is decoded by `inner` and becomes `Some`.
+
+Generated C wrappers compose this with the other layer helpers
+([`match_arg_missing_or`]) around the decoder of the choice itself;
+[`match_arg_option_from_sexp`] is the scalar case.
 
 ### `match_arg::match_arg_option_from_sexp`
 

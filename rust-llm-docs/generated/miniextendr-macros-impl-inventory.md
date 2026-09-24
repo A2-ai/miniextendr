@@ -8,36 +8,36 @@ Traits with impls: 28
 
 | Trait | # impls | # non-blanket non-synthetic |
 |---|---|---|
-| `Any` | 110 | 0 |
-| `Borrow` | 110 | 0 |
-| `BorrowMut` | 110 | 0 |
-| `Freeze` | 110 | 0 |
-| `From` | 110 | 0 |
-| `Into` | 110 | 0 |
-| `RefUnwindSafe` | 110 | 0 |
-| `Send` | 110 | 0 |
-| `Sync` | 110 | 0 |
-| `TryFrom` | 110 | 0 |
-| `TryInto` | 110 | 0 |
-| `Unpin` | 110 | 0 |
-| `UnsafeUnpin` | 110 | 0 |
-| `UnwindSafe` | 110 | 0 |
-| `Debug` | 37 | 37 |
-| `Clone` | 28 | 28 |
-| `CloneToUninit` | 28 | 0 |
-| `ToOwned` | 28 | 0 |
+| `Any` | 114 | 0 |
+| `Borrow` | 114 | 0 |
+| `BorrowMut` | 114 | 0 |
+| `Freeze` | 114 | 0 |
+| `From` | 114 | 0 |
+| `Into` | 114 | 0 |
+| `RefUnwindSafe` | 114 | 0 |
+| `Send` | 114 | 0 |
+| `Sync` | 114 | 0 |
+| `TryFrom` | 114 | 0 |
+| `TryInto` | 114 | 0 |
+| `Unpin` | 114 | 0 |
+| `UnsafeUnpin` | 114 | 0 |
+| `UnwindSafe` | 114 | 0 |
+| `Debug` | 39 | 39 |
+| `Clone` | 30 | 30 |
+| `CloneToUninit` | 30 | 0 |
+| `ToOwned` | 30 | 0 |
 | `Default` | 24 | 24 |
-| `Eq` | 17 | 17 |
-| `PartialEq` | 17 | 17 |
-| `StructuralPartialEq` | 17 | 17 |
-| `Copy` | 13 | 13 |
+| `Eq` | 18 | 18 |
+| `PartialEq` | 18 | 18 |
+| `StructuralPartialEq` | 18 | 18 |
+| `Copy` | 15 | 15 |
 | `Parse` | 13 | 13 |
 | `Display` | 2 | 2 |
 | `FromStr` | 2 | 2 |
 | `ToString` | 2 | 0 |
 | `ParsedImplExt` | 1 | 1 |
 
-## `Debug` — 37 impls
+## `Debug` — 39 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -52,9 +52,9 @@ Traits with impls: 28
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `VariadicDots` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:102 |
-| `ROnExit` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1430 |
-| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
-| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:631 |
+| `ROnExit` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1508 |
+| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
+| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:601 |
 | `ClassSystem` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `VctrsAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:358 |
@@ -77,9 +77,11 @@ Traits with impls: 28
 | `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
 | `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:22 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
-| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:583 |
+| `ChoiceLeaf` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
+| `ChoiceLayers<'a>` | `<'a>` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:571 |
+| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:637 |
 
-## `Clone` — 28 impls
+## `Clone` — 30 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -95,10 +97,10 @@ Traits with impls: 28
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
 | `VariadicDots` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:102 |
-| `ROnExit` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1430 |
-| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
-| `ReturnPref` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1737 |
-| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:631 |
+| `ROnExit` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1508 |
+| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
+| `ReturnPref` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1815 |
+| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:601 |
 | `ClassSystem` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `VctrsAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:358 |
@@ -110,7 +112,9 @@ Traits with impls: 28
 | `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
 | `ReturnWrap` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:22 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
-| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:583 |
+| `ChoiceLeaf` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
+| `ChoiceLayers<'a>` | `<'a>` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:571 |
+| `SeveralOkContainer` | `` | concrete | 1 | miniextendr-macros/src/type_inspect.rs:637 |
 
 ## `Default` — 24 impls
 
@@ -125,11 +129,11 @@ Traits with impls: 28
 | `LifecycleSpec` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:140 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `MatchArgAttrs` | `` | concrete | 1 | miniextendr-macros/src/match_arg_derive.rs:46 |
-| `MiniextendrFnAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1300 |
-| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
-| `ReturnPref` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1737 |
-| `PerParamMiniextendrAttr` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:431 |
-| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:631 |
+| `MiniextendrFnAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1378 |
+| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
+| `ReturnPref` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1815 |
+| `PerParamMiniextendrAttr` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:401 |
+| `ParamAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:601 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `VctrsAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:358 |
 | `R6MethodAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:465 |
@@ -138,10 +142,10 @@ Traits with impls: 28
 | `ExplicitChecks` | `` | concrete | 1 | miniextendr-macros/src/r_preconditions.rs:116 |
 | `PreconditionOptions` | `` | concrete | 1 | miniextendr-macros/src/r_preconditions.rs:85 |
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
-| `RoxygenBuilder` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:742 |
+| `RoxygenBuilder` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:747 |
 | `RustConversionBuilder` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:584 |
 
-## `Eq` — 17 impls
+## `Eq` — 18 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -154,7 +158,7 @@ Traits with impls: 28
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
-| `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
+| `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
 | `ClassSystem` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
@@ -162,8 +166,9 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
+| `ChoiceLeaf` | `` | concrete | 0 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
 
-## `PartialEq` — 17 impls
+## `PartialEq` — 18 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -176,7 +181,7 @@ Traits with impls: 28
 | `SlotKind` | `` | concrete | 1 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 1 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 1 | miniextendr-macros/src/method_return_builder.rs:92 |
-| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
+| `SerdeErrorSpec` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
 | `ClassSystem` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:373 |
@@ -184,8 +189,9 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 1 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `ConversionKind` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 1 | miniextendr-macros/src/return_wrap.rs:9 |
+| `ChoiceLeaf` | `` | concrete | 1 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
 
-## `StructuralPartialEq` — 17 impls
+## `StructuralPartialEq` — 18 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -198,7 +204,7 @@ Traits with impls: 28
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
-| `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1473 |
+| `SerdeErrorSpec` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1551 |
 | `ClassSystem` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
@@ -206,8 +212,9 @@ Traits with impls: 28
 | `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
+| `ChoiceLeaf` | `` | concrete | 0 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
 
-## `Copy` — 13 impls
+## `Copy` — 15 impls
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
@@ -217,13 +224,15 @@ Traits with impls: 28
 | `SlotKind` | `` | concrete | 0 | miniextendr-macros/src/externalptr_derive.rs:281 |
 | `LifecycleStage` | `` | concrete | 0 | miniextendr-macros/src/lifecycle.rs:32 |
 | `ReturnStrategy` | `` | concrete | 0 | miniextendr-macros/src/method_return_builder.rs:92 |
-| `ReturnPref` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1737 |
+| `ReturnPref` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_fn.rs:1815 |
 | `ClassSystem` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:263 |
 | `VctrsKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:327 |
 | `ReceiverKind` | `` | concrete | 0 | miniextendr-macros/src/miniextendr_impl.rs:373 |
 | `CallAttribution` | `` | concrete | 0 | miniextendr-macros/src/r_wrapper_builder.rs:323 |
 | `ConversionKind` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:16 |
 | `Container` | `` | concrete | 0 | miniextendr-macros/src/return_wrap.rs:9 |
+| `ChoiceLeaf` | `` | concrete | 0 | miniextendr-macros/src/rust_conversion_builder.rs:593 |
+| `ChoiceLayers<'a>` | `<'a>` | concrete | 0 | miniextendr-macros/src/type_inspect.rs:571 |
 
 ## `Parse` — 13 impls
 
@@ -231,9 +240,9 @@ Traits with impls: 28
 |---|---|---|---|---|
 | `ListInput` | `` | concrete | 1 | miniextendr-macros/src/list_macro.rs:62 |
 | `ListEntry` | `` | concrete | 1 | miniextendr-macros/src/list_macro.rs:77 |
-| `RenamePair` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1672 |
-| `MiniextendrFnAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1772 |
-| `MiniextendrFunctionParsed` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:745 |
+| `RenamePair` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1750 |
+| `MiniextendrFnAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:1850 |
+| `MiniextendrFunctionParsed` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_fn.rs:833 |
 | `ImplAttrs` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl.rs:871 |
 | `TpieInput` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl_trait.rs:563 |
 | `TpieMethod` | `` | concrete | 1 | miniextendr-macros/src/miniextendr_impl_trait.rs:671 |
@@ -261,4 +270,4 @@ Traits with impls: 28
 
 | for-type | generics | kind | #items | span |
 |---|---|---|---|---|
-| `crate::miniextendr_impl::ParsedImpl` | `` | concrete | 6 | miniextendr-macros/src/r_class_formatter.rs:1070 |
+| `crate::miniextendr_impl::ParsedImpl` | `` | concrete | 6 | miniextendr-macros/src/r_class_formatter.rs:1053 |

@@ -206,12 +206,7 @@ pub(crate) fn build_match_arg_prelude(
         }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let placeholder = match_arg_placeholder(c_ident, &r_name);
-        lines.push(CallAttribution::Wrapper.match_arg_statement(
-            &r_name,
-            &placeholder,
-            attrs.several_ok,
-            attrs.optional,
-        ));
+        lines.push(CallAttribution::Wrapper.match_arg_statement(&r_name, &placeholder, attrs));
     }
 
     for (rust_name, attrs) in per_param {
@@ -221,12 +216,7 @@ pub(crate) fn build_match_arg_prelude(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
-        lines.push(CallAttribution::Wrapper.match_arg_statement(
-            &r_name,
-            &choices_expr,
-            attrs.several_ok,
-            attrs.optional,
-        ));
+        lines.push(CallAttribution::Wrapper.match_arg_statement(&r_name, &choices_expr, attrs));
     }
 
     lines
@@ -306,11 +296,7 @@ pub(crate) fn effective_r_defaults(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         // `Option<T>` (#1473): the formal is NULL (no choice); the prelude
         // spells the choices out through the placeholder instead.
-        let default = if attrs.optional {
-            "NULL".to_string()
-        } else {
-            match_arg_placeholder(c_ident, &r_name)
-        };
+        let default = attrs.choice_formal(&match_arg_placeholder(c_ident, &r_name));
         defaults.insert(r_name, default);
     }
     // choices(...) → c("a", "b", ...) formal (NULL for the `Option<T>` form).
@@ -320,11 +306,8 @@ pub(crate) fn effective_r_defaults(
         if let Some(choices) = attrs.choices.as_ref() {
             let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
             defaults.entry(r_name).or_insert_with(|| {
-                if attrs.optional {
-                    return "NULL".to_string();
-                }
                 let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
-                format!("c({})", quoted.join(", "))
+                attrs.choice_formal(&format!("c({})", quoted.join(", ")))
             });
         }
     }

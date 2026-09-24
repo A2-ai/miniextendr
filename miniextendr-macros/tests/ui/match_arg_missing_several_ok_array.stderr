@@ -1,0 +1,5 @@
+error: several_ok parameter `modes` can be omittable only as `Missing<Vec<T>>` or `Missing<Box<[T]>>`
+ --> tests/ui/match_arg_missing_several_ok_array.rs:8:67
+  |
+8 | fn bad_missing_array(#[miniextendr(match_arg, several_ok)] modes: Missing<[Mode; 2]>) {}
+  |                                                                   ^^^^^^^

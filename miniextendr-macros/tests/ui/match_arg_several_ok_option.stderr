@@ -1,0 +1,5 @@
+error: several_ok parameter `modes` cannot be `Option<..>`; an omitted argument and NULL both select every choice. Use `Missing<Vec<T>>` to tell an omitted argument apart
+ --> tests/ui/match_arg_several_ok_option.rs:8:71
+  |
+8 | fn bad_several_ok_option(#[miniextendr(match_arg, several_ok)] modes: Option<Vec<Mode>>) {}
+  |                                                                       ^^^^^^

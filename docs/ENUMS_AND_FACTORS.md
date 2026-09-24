@@ -238,11 +238,75 @@ run("X")          # Error: 'arg' should be one of "Fast", "Safe", "Debug"
 The same works for `choices(...)` on an `Option<String>` / `Option<&str>`
 parameter. A `default = "..."` on an `Option<T>` choice parameter is a compile
 error (the formal is `NULL` by definition; drop the `Option` to make a choice
-the default). `Missing<T>` is not accepted for a scalar choice parameter, since
-the choice list lives in the R formal default, which `Missing<T>` forbids.
-The generated C wrapper decodes the argument with
+the default). The generated C wrapper decodes the argument with
 `match_arg_option_from_sexp`, so any `MatchArg` type works, derived or
 hand-written.
+
+### Omitted Choice
+
+`Option<T>` gives up the choice vector in the usage line: the formal has to be
+`NULL`. To keep `mode = c("Fast", "Safe", "Debug")` visible in `?run` and still
+learn that the caller made no choice, wrap the type in `Missing<..>`. Omission
+and nullability stay separate contracts: `Missing` reports the first, `Option`
+the second, and neither turns into the other (#1551).
+
+```rust
+use miniextendr_api::Missing;
+
+#[miniextendr]
+pub fn run(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
+    match mode {
+        Missing::Absent => "inherit the mode from elsewhere".into(),
+        Missing::Present(None) => "explicitly no mode".into(),
+        Missing::Present(Some(mode)) => format!("running {mode:?}"),
+    }
+}
+```
+
+```r
+run <- function(mode = c("Fast", "Safe", "Debug")) {
+  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  .Call(C_mypkg_run, .call = match.call(), if (missing(mode)) quote(expr=) else mode)
+}
+
+run()             # Missing::Absent
+run(NULL)         # Missing::Present(None)
+run("Sa")         # Missing::Present(Some(Safe))
+run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
+```
+
+The wrapper skips the check for an omitted argument and forwards R's
+missing-argument sentinel to Rust (the same `quote(expr=)` forwarding every
+`Missing<T>` parameter uses), so the formal default is only documentation.
+Explicit `NULL` is `Present(None)`, exactly as for any `Missing<Option<T>>`;
+collapse the two with `mode.into_option().flatten()` when the difference does
+not matter. The auto-generated `@param` line ends in ", or NULL; omitting the
+argument means no choice".
+
+The other forms follow the same rule, `Missing<X>` behaves like `X` for every
+supplied value and adds `Absent` for an omitted one:
+
+| Parameter type | Formal | Omitted | `NULL` | `"Sa"` |
+|----------------|--------|---------|--------|--------|
+| `Mode` | choices | `Fast` (first) | `Fast` | `Safe` |
+| `Option<Mode>` | `NULL` | `None` | `None` | `Some(Safe)` |
+| `Missing<Mode>` | choices | `Absent` | `Present(Fast)` | `Present(Safe)` |
+| `Missing<Option<Mode>>` | choices | `Absent` | `Present(None)` | `Present(Some(Safe))` |
+| `Missing<Vec<Mode>>` (`several_ok`) | choices | `Absent` | `Present` (all) | `Present(vec![Safe])` |
+
+`choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
+has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
+it cannot carry a `default = "..."`. Impl methods take the same types
+through the method-level `match_arg(p)` / `choices(p = "...")` attributes;
+trait methods accept `choices(p = "...")` only, so they take the string
+forms.
+
+A hand-written R function in front of such a wrapper passes omission on only
+if its own formal has no default: `run <- function(mode) run_impl(mode)`
+reaches Rust as `Absent` when called as `run()`, while
+`function(mode = c("Fast", "Safe")) run_impl(mode)` hands the default vector
+over as a supplied value (R's `missing()` does not see through a formal with a
+default).
 
 ### Rename Variants
 
@@ -374,14 +438,17 @@ pub fn pick_metrics(
 ) -> String { ... }
 ```
 
-Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, `[T; N]`, and
-`Missing<Vec<T>>` (optional). `several_ok` without `match_arg` or `choices`
-is a compile error (no choice list to validate against). `several_ok` on a
-scalar type (e.g. `Mode` without a `Vec`) is also a compile error.
+Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, and `[T; N]`.
+`several_ok` without `match_arg` or `choices` is a compile error (no choice
+list to validate against). `several_ok` on a scalar type (e.g. `Mode` without
+a `Vec`) is also a compile error, and so is `Option<Vec<T>>`.
 
 An omitted argument, and an explicit `NULL`, select the full choice list.
 Pass a single string to get partial matching, or a character vector to select
 several choices; each element is matched exactly or as a unique prefix.
+`Missing<Vec<T>>` (or `Missing<Box<[T]>>`) keeps the choice vector as the
+formal and reports an omitted argument as `Missing::Absent` instead; `NULL`
+still selects every choice (see [Omitted Choice](#omitted-choice)).
 
 Validation is stricter than `base::match.arg(several.ok = TRUE)`, which keeps
 the elements that match and silently drops the rest as long as one element
@@ -503,6 +570,7 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 | R storage | `factor(1, levels=c(...))` | `"Fast"` (character) |
 | Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
 | Default on NULL | Error | First choice (`Option<T>`: `None`; `several_ok`: all choices) |
+| Omitted argument | Error | First choice (`Option<T>`: `None`; `Missing<..>`: `Absent`) |
 | Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | `Vec<T>` return + `several_ok` inputs |
 | Partial matching | No | Yes (`"F"` → `"Fast"`) |
 | Factor input | Native | Converted to character first |

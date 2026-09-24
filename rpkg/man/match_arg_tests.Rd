@@ -26,6 +26,12 @@
 \alias{match_arg_optional_mode}
 \alias{choices_optional_color}
 \alias{match_arg_optional_mixed}
+\alias{match_arg_omitted_mode}
+\alias{match_arg_omitted_plain}
+\alias{match_arg_omitted_modes}
+\alias{match_arg_omitted_modes_boxed}
+\alias{choices_omitted_color}
+\alias{choices_omitted_colors}
 \alias{match_arg_log_level}
 \title{match_arg_set_mode}
 \usage{
@@ -79,12 +85,24 @@ choices_optional_color(color = NULL)
 
 match_arg_optional_mixed(n, mode = NULL)
 
+match_arg_omitted_mode(mode = c("Fast", "Safe", "Debug"))
+
+match_arg_omitted_plain(mode = c("Fast", "Safe", "Debug"))
+
+match_arg_omitted_modes(modes = c("Fast", "Safe", "Debug"))
+
+match_arg_omitted_modes_boxed(modes = c("Fast", "Safe", "Debug"))
+
+choices_omitted_color(color = c("red", "green", "blue"))
+
+choices_omitted_colors(colors = c("red", "green", "blue"))
+
 match_arg_log_level(
   level = c("off", "error", "warn", "info", "debug", "trace")
 )
 }
 \arguments{
-\item{mode}{One of "Fast", "Safe", "Debug", or NULL for no choice.}
+\item{mode}{One of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
 
 \item{status}{A BuildStatus enum value.}
 
@@ -92,19 +110,19 @@ match_arg_log_level(
 
 \item{x}{First value.}
 
-\item{modes}{Exactly two Mode values.}
+\item{modes}{One or more of "Fast", "Safe", "Debug"; omitting the argument means no choice.}
 
 \item{y}{Second value.}
 
 \item{method}{One of "pearson", "kendall", "spearman".}
 
-\item{color}{One of "red", "green", "blue", or NULL for no choice.}
+\item{color}{One of "red", "green", "blue", or NULL; omitting the argument means no choice.}
 
 \item{n}{Count.}
 
 \item{verbose}{Whether to print details.}
 
-\item{colors}{One or more colors.}
+\item{colors}{One or more of "red", "green", "blue"; omitting the argument means no choice.}
 
 \item{metrics}{One or more metrics.}
 
@@ -159,6 +177,18 @@ Optional mode: the R formal defaults to \code{NULL}, which means no choice.
 Optional inline choice on an \verb{Option<String>} parameter.
 
 Optional mode next to a regular parameter; \code{mode} is auto-documented.
+
+Omittable optional mode: the formal keeps the choice vector, an omitted argument is \code{Absent} and \code{NULL} is \code{Present(None)}.
+
+Omittable mode without \code{Option}: \code{NULL} selects the first choice, as for a plain \code{Mode}.
+
+Omittable several_ok list: an omitted argument is \code{Absent}, \code{NULL} still selects every choice.
+
+Omittable several_ok list in a boxed slice.
+
+Omittable optional inline choice on a \verb{Missing<Option<String>>}.
+
+Omittable several_ok inline choice on a \verb{Missing<Vec<String>>}.
 
 Smoke test: a \verb{#[miniextendr]} fn taking a \code{log::LevelFilter} via match_arg. The generated R wrapper should bake in the same lowercase choices that \verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
 }

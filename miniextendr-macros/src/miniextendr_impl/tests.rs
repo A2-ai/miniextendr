@@ -3620,6 +3620,26 @@ fn snapshot_env_defaults() {
     insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
 }
 
+/// Omittable choice parameters on methods (#1551): the formal keeps the
+/// choice vector, the prelude skips the check for an omitted argument, and the
+/// `.Call()` forwards the missing-argument sentinel.
+#[test]
+fn snapshot_env_match_arg_omitted() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Picker {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(match_arg(mode), choices(color = "red, green"))]
+            pub fn pick(&self, mode: Missing<Option<Mode>>, color: Missing<String>) -> String {
+                unimplemented!()
+            }
+            #[miniextendr(match_arg_several_ok(modes))]
+            pub fn pick_many(&self, modes: Missing<Vec<Mode>>) -> String { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
+}
+
 #[test]
 fn snapshot_r6_basic() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {

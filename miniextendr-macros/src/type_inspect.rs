@@ -558,25 +558,79 @@ pub(crate) fn option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     first_type_argument(seg)
 }
 
+// region: choice-parameter layers (`match_arg` / `choices`)
+
+/// The wrappers around the value of a `match_arg` / `choices` parameter,
+/// peeled outermost first: `Missing<..>`, then `Option<..>`. A plain `T` (or
+/// a plain `several_ok` container) has none.
+///
+/// Each layer changes one contract and leaves the rest to the layer below:
+/// `Missing` reports an omitted argument as `Missing::Absent` and keeps the
+/// choice vector as the R formal (#1551), `Option` turns `NULL` into `None`
+/// (#1473).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ChoiceLayers<'a> {
+    /// `Missing<..>` is the outermost wrapper.
+    pub missing: bool,
+    /// `Option<..>` wraps the value (inside `Missing`, if present).
+    pub nullable: bool,
+    /// The type under the layers: the `MatchArg` type (or the string type of a
+    /// `choices` parameter) for a scalar, the container for `several_ok`.
+    pub value: &'a syn::Type,
+}
+
+/// Peel the [`ChoiceLayers`] of a choice parameter's type.
+pub(crate) fn choice_layers(ty: &syn::Type) -> ChoiceLayers<'_> {
+    let (missing, ty) = match crate::miniextendr_fn::get_missing_inner_type(ty) {
+        Some(inner) => (true, inner),
+        None => (false, ty),
+    };
+    let (nullable, value) = match option_inner_type(ty) {
+        Some(inner) => (true, inner),
+        None => (false, ty),
+    };
+    ChoiceLayers {
+        missing,
+        nullable,
+        value,
+    }
+}
+
+/// The layer name (`"Missing"` / `"Option"`) when `ty` is itself a layer
+/// type, i.e. when it sits where the choice value should be. Used to reject
+/// layers in an unsupported order, such as `Option<Missing<T>>`.
+pub(crate) fn choice_layer_name(ty: &syn::Type) -> Option<&'static str> {
+    if crate::miniextendr_fn::get_missing_inner_type(ty).is_some() {
+        Some("Missing")
+    } else if option_inner_type(ty).is_some() {
+        Some("Option")
+    } else {
+        None
+    }
+}
+
 /// Resolve the `MatchArg`-bound type behind a `match_arg` parameter.
 ///
-/// A `several_ok` parameter is a container (`Vec<T>`, `Box<[T]>`, `[T; N]`,
-/// `&[T]`), so the element type is the one carrying `CHOICES`. A scalar
-/// parameter may be `Option<T>` (the optional form, #1473), in which case `T`
-/// is. Anything else is returned unchanged, and the `MatchArg` bound on the
+/// The [`ChoiceLayers`] are peeled first. A `several_ok` parameter is then a
+/// container (`Vec<T>`, `Box<[T]>`, `[T; N]`, `&[T]`), so the element type is
+/// the one carrying `CHOICES`; a scalar parameter's value is that type itself.
+/// Anything else is returned unchanged, and the `MatchArg` bound on the
 /// generated code reports the mistake.
 ///
 /// Shared by the standalone-fn path (`lib.rs`) and the impl-method path
 /// (`miniextendr_impl.rs`) so the two cannot resolve the type differently.
 pub(crate) fn match_arg_choices_ty(param_ty: &syn::Type, several_ok: bool) -> &syn::Type {
+    let value = choice_layers(param_ty).value;
     if several_ok {
-        classify_several_ok_container(param_ty)
+        classify_several_ok_container(value)
             .map(|(_, inner)| inner)
-            .unwrap_or(param_ty)
+            .unwrap_or(value)
     } else {
-        option_inner_type(param_ty).unwrap_or(param_ty)
+        value
     }
 }
+
+// endregion
 
 /// Container family for a `several_ok` parameter, returned by
 /// [`classify_several_ok_container`].

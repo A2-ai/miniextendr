@@ -489,22 +489,38 @@ fn call_attribution_resolve_precedence() {
     );
 }
 
+/// The attributes of a `match_arg` parameter of type `ty`, classified the way
+/// the parser does it.
+fn choice_attrs(ty: &str, several_ok: bool) -> crate::miniextendr_fn::ParamAttrs {
+    let mut attrs = crate::miniextendr_fn::ParamAttrs {
+        match_arg: true,
+        several_ok,
+        ..Default::default()
+    };
+    let ty: syn::Type = syn::parse_str(ty).unwrap();
+    crate::miniextendr_fn::classify_choice_param(&mut attrs, "mode", &ty, false).unwrap();
+    attrs
+}
+
 #[test]
 fn match_arg_statement_per_attribution() {
+    let scalar = choice_attrs("Mode", false);
+    let optional = choice_attrs("Option<Mode>", false);
+    let several = choice_attrs("Vec<Mode>", true);
     // Wrapper attribution (and `no_call_attribution`): the preamble helpers
     // with their default call, i.e. the wrapper's own frame (#1552 folded the
     // factor coercion and `base::match.arg()` into them).
     for attribution in [CallAttribution::Wrapper, CallAttribution::None] {
         assert_eq!(
-            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", false, false),
+            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
             "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
         );
         assert_eq!(
-            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", false, true),
+            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
             "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
         );
         assert_eq!(
-            attribution.match_arg_statement("modes", ".__MX_CHOICES__", true, false),
+            attribution.match_arg_statement("modes", ".__MX_CHOICES__", &several),
             "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\")"
         );
     }
@@ -512,15 +528,72 @@ fn match_arg_statement_per_attribution() {
     // argument; the scalar helper gets the choice list explicitly.
     let caller = CallAttribution::Caller;
     assert_eq!(
-        caller.match_arg_statement("mode", "c(\"a\", \"b\")", false, false),
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
         "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
     );
     assert_eq!(
-        caller.match_arg_statement("mode", "c(\"a\", \"b\")", false, true),
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
         "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
     );
     assert_eq!(
-        caller.match_arg_statement("modes", ".__MX_CHOICES__", true, true),
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", &several),
         "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );
+}
+
+/// Every accepted choice-parameter shape: the R formal, the prelude statement
+/// under the default and the `call = caller` attribution, and the `@param`
+/// line (#1473, #1551).
+#[test]
+fn snapshot_choice_param_forms() {
+    let forms = [
+        ("Mode", false),
+        ("Option<Mode>", false),
+        ("Missing<Mode>", false),
+        ("Missing<Option<Mode>>", false),
+        ("Vec<Mode>", true),
+        ("Missing<Vec<Mode>>", true),
+        ("Missing<Box<[Mode]>>", true),
+    ];
+    let choices = "c(\"fast\", \"safe\")";
+    let mut output = String::new();
+    for (ty, several_ok) in forms {
+        let attrs = choice_attrs(ty, several_ok);
+        let prefix = if several_ok {
+            "One or more of"
+        } else {
+            "One of"
+        };
+        output.push_str(&format!(
+            "{ty}{}\n  formal:  mode = {}\n  wrapper: {}\n  caller:  {}\n  @param:  mode {prefix} \"fast\", \"safe\"{}.\n",
+            if several_ok { " (several_ok)" } else { "" },
+            attrs.choice_formal(choices),
+            CallAttribution::Wrapper.match_arg_statement("mode", choices, &attrs),
+            CallAttribution::Caller.match_arg_statement("mode", choices, &attrs),
+            attrs.choice_doc_suffix(),
+        ));
+    }
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn classify_choice_param_rejects_unsupported_layers() {
+    let err = |ty: &str, several_ok: bool, has_default: bool| {
+        let mut attrs = crate::miniextendr_fn::ParamAttrs {
+            match_arg: true,
+            several_ok,
+            ..Default::default()
+        };
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        crate::miniextendr_fn::classify_choice_param(&mut attrs, "mode", &ty, has_default)
+            .unwrap_err()
+            .to_string()
+    };
+    assert!(err("Option<Missing<Mode>>", false, false).contains("outermost"));
+    assert!(err("Missing<Missing<Mode>>", false, false).contains("outermost"));
+    assert!(err("Option<Vec<Mode>>", true, false).contains("cannot be `Option<..>`"));
+    assert!(err("Missing<[Mode; 2]>", true, false).contains("`Missing<Vec<T>>`"));
+    assert!(err("Missing<&[Mode]>", true, false).contains("`Missing<Vec<T>>`"));
+    assert!(err("Missing<Mode>", true, false).contains("requires a vector type"));
+    assert!(err("Option<Mode>", false, true).contains("cannot have a default"));
 }
