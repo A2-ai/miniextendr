@@ -248,6 +248,15 @@ test_that("S7 trait methods and their shortcuts with omittable inline choices", 
   )
 })
 
+test_that("an omitted trait-method argument crosses the trait ABI as Absent", {
+  # Through the trait's View (the cross-package dispatch path), not the impl's
+  # own R wrapper: `Missing::Absent` travels as R's missing-argument sentinel.
+  expect_equal(
+    omit_grade_through_view(),
+    c("absent", "null", "mid", "absent", "low,high")
+  )
+})
+
 test_that("S3 trait generics and vctrs static helpers are exported by name", {
   exports <- getNamespaceExports("miniextendr")
   # The S3 trait wrappers export the generic, not `generic.Class` as a plain

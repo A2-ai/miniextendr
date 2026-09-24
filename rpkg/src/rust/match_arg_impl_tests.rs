@@ -447,6 +447,30 @@ impl OmitGrade for OmitPickS3 {
     }
 }
 
+/// Calls the `OmitGrade` methods through the trait's View, the path another
+/// package takes: an omitted, a `NULL` and a supplied grade, then an omitted
+/// and a supplied list of grades.
+#[miniextendr(no_worker)]
+pub fn omit_grade_through_view() -> Vec<String> {
+    unsafe {
+        let erased = __mx_wrap_omitpicks3(OmitPickS3);
+        let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
+            miniextendr_api::trait_abi::ccall::mx_wrap(erased),
+        );
+        let view = OmitGradeView::from_sexp(sexp.get());
+        vec![
+            view.omit_grade(Missing::Absent),
+            view.omit_grade(Missing::Present(None)),
+            view.omit_grade(Missing::Present(Some("mid".to_string()))),
+            view.omit_grades(Missing::Absent),
+            view.omit_grades(Missing::Present(vec![
+                "low".to_string(),
+                "high".to_string(),
+            ])),
+        ]
+    }
+}
+
 #[miniextendr(s7)]
 impl OmitGrade for OmitPickS7 {
     #[miniextendr(choices(grade = "low, mid, high"))]
