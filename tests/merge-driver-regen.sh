@@ -4,19 +4,20 @@
 # this checkout's attributes files and driver script.
 #
 # Covered:
-#   - with the driver: a rebase over both-sides changes to an llm-docs file,
-#     a pin-only Cargo.lock conflict and rpkg/NAMESPACE (-merge, routed by the
-#     install recipe) continues, keeps the current side (our pins, plus the
-#     other side's non-conflicting lock edit), and lists each path in
+#   - with the driver: a rebase over both-sides changes to a pin-only
+#     Cargo.lock conflict and rpkg/NAMESPACE (-merge, routed by the install
+#     recipe) continues, keeps the current side (our pins, plus the other
+#     side's non-conflicting lock edit), and lists each path in
 #     $(git rev-parse --git-dir)/mx-regenerate;
 #   - a Cargo.lock conflict beyond the pins still stops the rebase, with
 #     conflict markers, and is not listed;
-#   - without the driver, the llm-docs conflict gets git's default text merge
-#     (markers, rebase stops);
+#   - without the driver, the Cargo.lock pin conflict gets git's default text
+#     merge (markers, rebase stops);
 #   - without the recipe's info/attributes block, rpkg/NAMESPACE keeps its
-#     tracked -merge behaviour (rebase stops, no markers);
-#   - in a linked worktree the list lands in that worktree's git dir, and the
-#     install recipe is idempotent;
+#     tracked -merge behaviour (rebase stops, no markers) while Cargo.lock,
+#     routed by the tracked .gitattributes, still goes through the driver;
+#   - in a linked worktree the -merge routing applies and the list lands in
+#     that worktree's git dir, and the install recipe is idempotent;
 #   - regenerate-merged is a no-op without a list and refuses unknown paths.
 set -euo pipefail
 
@@ -64,7 +65,7 @@ EOF
 }
 
 # Repository with a base commit, then `main` and `feature` commits that both
-# change the llm-docs file, the pins in Cargo.lock and rpkg/NAMESPACE.
+# change the pins in Cargo.lock and rpkg/NAMESPACE.
 # <feature libc> lets a scenario add a lock edit beyond the pins on feature.
 make_repo() { # <dir> <feature libc version>
   local repo=$1
@@ -73,25 +74,22 @@ make_repo() { # <dir> <feature libc version>
   git config user.email test@example.invalid
   git config user.name test
   git config commit.gpgsign false
-  mkdir -p scripts rpkg/src/rust rust-llm-docs/generated
+  mkdir -p scripts rpkg/src/rust
   cp "$root/.gitattributes" .gitattributes
   cp "$root/rpkg/.gitattributes" rpkg/.gitattributes
   cp "$root/scripts/merge-driver-regen.sh" scripts/
-  printf 'intro\ngenerated from base\noutro\n' > rust-llm-docs/generated/api.md
   write_lock rpkg/src/rust/Cargo.lock "$sha_base" 0.2.170
   printf 'export(a)\n' > rpkg/NAMESPACE
   printf 'source\n' > src.txt
   git add -A && git commit -qm base
 
   git checkout -qb feature
-  printf 'intro\ngenerated on feature\noutro\n' > rust-llm-docs/generated/api.md
   write_lock rpkg/src/rust/Cargo.lock "$sha_feature" "$2"
   printf 'export(a)\nexport(feature)\n' > rpkg/NAMESPACE
   printf 'source\nfeature change\n' > src.txt
   git commit -qam feature
 
   git checkout -q main
-  printf 'intro\ngenerated on main\noutro\n' > rust-llm-docs/generated/api.md
   write_lock rpkg/src/rust/Cargo.lock "$sha_main" 0.2.170
   printf 'export(a)\nexport(main)\n' > rpkg/NAMESPACE
   git commit -qam main
@@ -118,7 +116,6 @@ install_driver
 check "check-attr routes the -merge paths to the driver after install" \
   test "$(git check-attr merge -- rpkg/NAMESPACE)" = "rpkg/NAMESPACE: merge: mx-regen"
 check "rebase continues over generated-file conflicts" rebase_ok
-check "llm-docs file keeps the current side" same_as_main rust-llm-docs/generated/api.md
 check "NAMESPACE keeps the current side" same_as_main rpkg/NAMESPACE
 check "Cargo.lock keeps the current side's pin" \
   grep -qF "miniextendr#$sha_main\"" rpkg/src/rust/Cargo.lock
@@ -126,10 +123,10 @@ check "Cargo.lock keeps the other side's non-conflicting edit" \
   grep -qxF 'version = "0.2.171"' rpkg/src/rust/Cargo.lock
 check "Cargo.lock has no conflict markers" no_markers rpkg/src/rust/Cargo.lock
 check "the replayed source change survives" grep -qxF 'feature change' src.txt
-for path in rust-llm-docs/generated/api.md rpkg/NAMESPACE rpkg/src/rust/Cargo.lock; do
+for path in rpkg/NAMESPACE rpkg/src/rust/Cargo.lock; do
   check "$path is listed for regeneration" listed "$path"
 done
-check "each path is listed once" test "$(regen_list | wc -l | tr -d ' ')" = 3
+check "each path is listed once" test "$(regen_list | wc -l | tr -d ' ')" = 2
 
 # Idempotent install, and a linked worktree gets its own list.
 install_driver
@@ -138,18 +135,19 @@ check "install is idempotent" \
 git branch -q feature2 main~1
 git worktree add -q "$tmp/installed-wt" feature2
 cd "$tmp/installed-wt"
-printf 'intro\ngenerated on feature2\noutro\n' > rust-llm-docs/generated/api.md
+printf 'export(a)\nexport(feature2)\n' > rpkg/NAMESPACE
 printf 'source\nfeature2 change\n' > src.txt
 git commit -qam feature2
 check "worktree sees the driver for -merge paths" \
   test "$(git check-attr merge -- rpkg/configure)" = "rpkg/configure: merge: mx-regen"
 check "worktree rebase continues" rebase_ok
-check "worktree list names the llm-docs file" listed rust-llm-docs/generated/api.md
+check "worktree NAMESPACE keeps the current side" same_as_main rpkg/NAMESPACE
+check "worktree list names NAMESPACE" listed rpkg/NAMESPACE
 check "worktree list lives in the worktree git dir" \
   test -s "$(git rev-parse --git-common-dir)/worktrees/installed-wt/mx-regenerate"
 cd "$tmp/installed"
 check "main worktree list is untouched by the worktree rebase" \
-  test "$(regen_list | wc -l | tr -d ' ')" = 3
+  test "$(regen_list | wc -l | tr -d ' ')" = 2
 cd "$root"
 # endregion
 
@@ -171,10 +169,10 @@ cd "$root"
 
 # region: no driver installed
 make_repo "$tmp/no-driver" 0.2.170
-check "check-attr names the driver" \
-  test "$(git check-attr merge -- rust-llm-docs/generated/api.md)" = "rust-llm-docs/generated/api.md: merge: mx-regen"
+check "check-attr names the driver for Cargo.lock" \
+  test "$(git check-attr merge -- rpkg/src/rust/Cargo.lock)" = "rpkg/src/rust/Cargo.lock: merge: mx-regen"
 check "without the driver the rebase stops" rebase_stops
-check "llm-docs file gets default text-merge markers" has_markers rust-llm-docs/generated/api.md
+check "Cargo.lock pin conflict gets default text-merge markers" has_markers rpkg/src/rust/Cargo.lock
 check "NAMESPACE keeps its -merge behaviour (no markers)" no_markers rpkg/NAMESPACE
 check "NAMESPACE is unmerged" unmerged rpkg/NAMESPACE
 check "nothing is listed" test -z "$(regen_list)"
@@ -192,7 +190,7 @@ check "check-attr is back to -merge for NAMESPACE" \
 check "rebase stops on the -merge NAMESPACE" rebase_stops
 check "NAMESPACE is unmerged without markers" unmerged rpkg/NAMESPACE
 check "NAMESPACE has no markers" no_markers rpkg/NAMESPACE
-check "the llm-docs file still went through the driver" listed rust-llm-docs/generated/api.md
+check "Cargo.lock still went through the driver" listed rpkg/src/rust/Cargo.lock
 git rebase --abort
 cd "$root"
 # endregion

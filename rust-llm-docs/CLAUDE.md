@@ -25,11 +25,13 @@ python rustdoc_megadoc.py <input.json> [output.md]
 - `input.json`: Path to the rustdoc JSON file
 - `output.md`: Optional output file (defaults to `<input>.md` if not specified)
 
-### Regenerate the committed miniextendr corpus
+### Regenerate the miniextendr corpus
 ```bash
 just llm-docs
 just llm-docs-check
 ```
+`just llm-docs` writes `generated/` (gitignored, never committed);
+`just llm-docs-check` runs the `test_*.py` renderer tests, then regenerates.
 
 ### Generate split markdown documentation
 ```bash
@@ -91,6 +93,6 @@ The `root` field in the JSON indicates the crate root ID, and structs/enums have
 
 - Both scripts filter to only document public items (`visibility == "public"`)
 - By default, only items from the current crate are documented (`crate_id == 0`)
-- The generated `docs/` directory is gitignored
+- The generated `docs/` and `generated/` directories are gitignored
 - Function signatures are fully rendered including async/const/unsafe modifiers and generic constraints
 - Type rendering is recursive and handles nested generic arguments properly

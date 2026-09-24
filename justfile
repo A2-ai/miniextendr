@@ -57,7 +57,7 @@
 #     just site-build          - Build Zola site (run site-docs first for doc changes)
 #     just site-serve          - Local preview server (run site-docs first for doc changes)
 #     just llm-docs            - Regenerate LLM-ready Rust API docs
-#     just llm-docs-check      - Test renderer and verify committed LLM docs are current
+#     just llm-docs-check      - Test the renderer and regenerate the LLM docs
 #     just bump-version <v>    - Bump version across all Cargo.toml + DESCRIPTION files
 #
 #   Issue cache:
@@ -1336,11 +1336,11 @@ issues-refresh output_dir="ISSUES":
     bash scripts/refresh-issues-cache.sh "{{output_dir}}"
 
 # Merge driver for regenerated files (scripts/merge-driver-regen.sh). The
-# root .gitattributes routes rust-llm-docs/generated/*.md and
-# rpkg/src/rust/Cargo.lock to `merge=mx-regen`; this recipe defines the
-# driver in the repository config and, in the shared info/attributes, also
-# routes the paths that the tracked attributes mark `-merge` (rpkg's NAMESPACE,
-# man pages and configure, and patches/templates.patch). The tracked `-merge`
+# root .gitattributes routes rpkg/src/rust/Cargo.lock to `merge=mx-regen`;
+# this recipe defines the driver in the repository config and, in the shared
+# info/attributes, also routes the paths that the tracked attributes mark
+# `-merge` (rpkg's NAMESPACE, man pages and configure, and
+# patches/templates.patch). The tracked `-merge`
 # stays for clones without the driver and for scaffolded packages, which
 # inherit rpkg/.gitattributes. Both the config and info/attributes are shared
 # by every worktree of this clone. Re-running replaces the managed block.
@@ -1379,10 +1379,9 @@ regenerate-merged:
       echo "regenerate-merged: nothing to regenerate ($list is empty or absent)"
       exit 0
     fi
-    llm_docs=0 rpkg_docs=0 configure=0 templates=0 lock=0 unknown=()
+    rpkg_docs=0 configure=0 templates=0 lock=0 unknown=()
     while IFS= read -r path; do
       case "$path" in
-        rust-llm-docs/generated/*) llm_docs=1 ;;
         rpkg/NAMESPACE | rpkg/man/*) rpkg_docs=1 ;;
         rpkg/configure) configure=1 ;;
         patches/templates.patch) templates=1 ;;
@@ -1407,9 +1406,6 @@ regenerate-merged:
     if [ "$templates" = 1 ]; then
       just templates-approve
       just templates-check
-    fi
-    if [ "$llm_docs" = 1 ]; then
-      just llm-docs
     fi
     if [ "$lock" = 1 ]; then
       just configure
@@ -1701,17 +1697,18 @@ bindgen-corpus-remove-packages:
 
 # ── Documentation site ──────────────────────────────────────────────────────
 
-# Regenerate the committed, LLM-ready Rust API corpus from rustdoc JSON.
+# Regenerate the LLM-ready Rust API corpus from rustdoc JSON into
+# rust-llm-docs/generated/ (gitignored, regenerated on demand).
 llm-docs:
     bash rust-llm-docs/generate-miniextendr-docs.sh
 
-# Test the renderer, regenerate the corpus, and fail if committed output drifted.
+# Test the renderer, then regenerate the corpus. The regeneration fails on any
+# rustdoc item kind the renderer does not cover (rustdoc_megadoc.py).
 [script("bash")]
 llm-docs-check:
     set -euo pipefail
     python3 -m unittest discover -s rust-llm-docs -p 'test_*.py'
     just llm-docs
-    git diff --exit-code -- rust-llm-docs/generated
 
 # Regenerate site/content/manual/ from docs/.
 # Run before site-build or site-serve when previewing doc changes locally.
