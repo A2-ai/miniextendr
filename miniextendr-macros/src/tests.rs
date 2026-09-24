@@ -18,6 +18,9 @@ fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
         panic!("expected ident pattern");
     };
     assert_eq!(pat_ident.ident, "__miniextendr_dots");
+    // The synthetic binding is recognised as the dots parameter, so it never
+    // gets a generated `@param miniextendr_dots` line.
+    assert!(parsed.is_dots_param(&pat_ident.ident));
 
     let syn::Type::Reference(r) = pat_type.ty.as_ref() else {
         panic!("expected reference type");

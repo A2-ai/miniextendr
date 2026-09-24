@@ -29,6 +29,7 @@ pub struct NativeList(pub i32);
 /// @name convert_pref_tests
 /// @rdname convert_pref_tests
 /// @description Wraps a type implementing ExternalPtr, IntoList, and RNativeType with `AsList` to force VECSXP.
+/// @param x An integer stored in the wrapped value.
 /// @examples
 /// hybrid_as_list(1L)
 pub fn hybrid_as_list(x: i32) -> AsList<Hybrid> {

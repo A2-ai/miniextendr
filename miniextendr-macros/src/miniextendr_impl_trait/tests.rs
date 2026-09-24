@@ -90,8 +90,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         serialize: false,
         return_wrap: None,
         param_defaults: Default::default(),
-        param_tags: vec![],
-        rdname: None,
+        doc_tags: vec![],
         skip: false,
         r_name: None,
         strict: false,
@@ -1073,9 +1072,9 @@ fn test_trait_method_rdname_override_all_systems() {
     let type_ident = format_ident!("Foo");
     let trait_name = format_ident!("Bar");
     let mut inst = make_test_method("value", true);
-    inst.rdname = Some("foo_value".to_string());
+    inst.doc_tags = vec!["@rdname foo_value".to_string()];
     let mut stat = make_test_method("make", false);
-    stat.rdname = Some("foo_make".to_string());
+    stat.doc_tags = vec!["@rdname foo_make".to_string()];
     let methods = vec![inst, stat];
 
     for class_system in [
@@ -1147,8 +1146,75 @@ fn test_trait_method_rdname_override_all_systems() {
                 !result.contains("#' @title S3 generic for `value`"),
                 "split S3 guard must not carry the filler title, got:\n{result}"
             );
+            // The author's topic describes the method and documents `x` and
+            // `...` itself (#1590).
+            assert!(
+                !result.contains("#' @param x ") && !result.contains("#' @param ... "),
+                "split S3 blocks must leave `x` / `...` to the topic, got:\n{result}"
+            );
+            assert!(
+                !result.contains("#' @description S3 generic for `value`"),
+                "split S3 guard must not add a structural description, got:\n{result}"
+            );
         }
+        // Every block on an author topic sorts after the topic's own block
+        // (#1590), and only those: one per `@rdname foo_*` line.
+        assert_eq!(
+            result
+                .matches(&format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS))
+                .count(),
+            expected_value + 1,
+            "{class_system:?}: got:\n{result}"
+        );
     }
+}
+
+/// The S7 trait shortcut documents each formal. On the type page an
+/// undocumented one gets the `(undocumented)` filler; a method-level
+/// `@rdname` sends the shortcut to a topic that documents its arguments, so
+/// the filler is left out there (#1590). The method's own `@param` is kept.
+#[test]
+fn test_s7_trait_shortcut_param_filler_follows_method_page() {
+    let type_ident = format_ident!("Foo");
+    let trait_name = format_ident!("Bar");
+    let mut method = make_test_method("step", true);
+    method.sig = syn::parse_quote!(fn step(&self, by: i32, times: i32) -> i32);
+    let by_doc = "@param by Step size.".to_string();
+    method.doc_tags = vec![by_doc.clone()];
+    let generate = |method: &TraitMethod| {
+        generate_trait_r_wrapper(
+            &type_ident,
+            &trait_name,
+            std::slice::from_ref(method),
+            &[],
+            opts(ClassSystem::S7, false, false, false),
+        )
+        .unwrap()
+    };
+
+    // No method-level `@rdname`, or a redundant one naming the type page.
+    for rdname in [None, Some("Foo")] {
+        method.doc_tags = std::iter::once(by_doc.clone())
+            .chain(rdname.map(|topic| format!("@rdname {topic}")))
+            .collect();
+        let type_page = generate(&method);
+        assert!(
+            type_page.contains("#' @param times (undocumented)"),
+            "{rdname:?}: got:\n{type_page}"
+        );
+    }
+
+    method.doc_tags = vec![by_doc.clone(), "@rdname foo_steps".to_string()];
+    let split = generate(&method);
+    assert!(!split.contains("#' @param times "), "got:\n{split}");
+    // The structural `self` / `...` lines are left to the topic too (#1590).
+    assert!(!split.contains("#' @param self "), "got:\n{split}");
+    assert!(!split.contains("#' @param ... "), "got:\n{split}");
+    assert_eq!(
+        split.matches("#' @param by Step size.").count(),
+        1,
+        "got:\n{split}"
+    );
 }
 
 #[test]
@@ -1214,3 +1280,287 @@ fn s3_operator_names_are_quoted_in_trait_wrappers() {
         );
     }
 }
+
+// region: author page tags on trait-impl methods (#1590)
+
+/// Generate one class system's trait wrapper for `methods` on `Foo: Bar`.
+fn page_tag_wrapper(class_system: ClassSystem, methods: &[TraitMethod]) -> syn::Result<String> {
+    generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        methods,
+        &[],
+        opts(class_system, false, false, false),
+    )
+}
+
+/// The roxygen block (the `#'` lines) directly above the first line of `r`
+/// that starts with `anchor`.
+fn block_above<'a>(r: &'a str, anchor: &str) -> Vec<&'a str> {
+    let lines: Vec<&str> = r.lines().collect();
+    let at = lines
+        .iter()
+        .position(|l| l.starts_with(anchor))
+        .unwrap_or_else(|| panic!("no line starting with {anchor:?} in:\n{r}"));
+    let start = lines[..at]
+        .iter()
+        .rposition(|l| !l.starts_with("#'"))
+        .map_or(0, |i| i + 1);
+    lines[start..at].to_vec()
+}
+
+/// A method-level `@describeIn` lists the method's own block in the
+/// destination's "Functions" section wherever that block documents an R
+/// function or method: S3 / vctrs instance methods (`generic.Foo`), S4
+/// instance methods (`setMethod()`), S4 statics (`Foo_Bar_make`) and the S7
+/// shortcut (`Foo_value`). The block then carries the author's (wrapped) tag
+/// but no generated `@name` / `@rdname` / structural title, which roxygen2
+/// rejects next to it, sorts after the topic's block, and leaves `x` / `...`
+/// / `self` to the topic.
+#[test]
+fn test_trait_method_describe_in_routes_own_block() {
+    let describe_in = "@describeIn family Value of a\nfoo.".to_string();
+    let mut inst = make_test_method("value", true);
+    inst.doc_tags = vec![describe_in.clone()];
+    let mut stat = make_test_method("make", false);
+    stat.doc_tags = vec![describe_in.clone()];
+    let order = format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS);
+
+    // (class system, methods, anchor line of each method's own block)
+    let cases: Vec<(ClassSystem, Vec<TraitMethod>, Vec<&str>)> = vec![
+        (ClassSystem::S3, vec![inst.clone()], vec!["value.Foo <- "]),
+        (
+            ClassSystem::Vctrs,
+            vec![inst.clone()],
+            vec!["value.Foo <- "],
+        ),
+        (
+            ClassSystem::S4,
+            vec![inst.clone(), stat.clone()],
+            vec![
+                "methods::setMethod(\"s4_trait_Bar_value\"",
+                "Foo_Bar_make <- ",
+            ],
+        ),
+        (ClassSystem::S7, vec![inst.clone()], vec!["Foo_value <- "]),
+    ];
+    for (class_system, methods, anchors) in cases {
+        let r = page_tag_wrapper(class_system, &methods).unwrap();
+        for anchor in anchors {
+            let block = block_above(&r, anchor);
+            let at = block
+                .iter()
+                .position(|l| *l == "#' @describeIn family Value of a")
+                .unwrap_or_else(|| panic!("{class_system:?} {anchor}: no @describeIn in:\n{r}"));
+            assert_eq!(
+                block[at + 1],
+                "#' foo.",
+                "{class_system:?}: wrapped tag, got:\n{r}"
+            );
+            for tag in ["#' @name ", "#' @rdname ", "#' @title ", "#' @param "] {
+                assert!(
+                    !block.iter().any(|l| l.starts_with(tag)),
+                    "{class_system:?} {anchor}: `{tag}` next to @describeIn, got:\n{r}"
+                );
+            }
+            assert!(
+                block.contains(&order.as_str()),
+                "{class_system:?}: got:\n{r}"
+            );
+            // No prose of the block's own (an intro line or the S7 advisory's
+            // description) that would join the destination's description or
+            // title it.
+            let prose = block
+                .iter()
+                .filter(|l| !l.starts_with("#' @") && **l != "#' foo.")
+                .count();
+            // S7 keeps the advisory's first line: the block's title, inert on
+            // the destination (the topic's block comes first).
+            let expected_prose = usize::from(matches!(class_system, ClassSystem::S7));
+            assert_eq!(prose, expected_prose, "{class_system:?}: got:\n{r}");
+        }
+        if matches!(class_system, ClassSystem::S3 | ClassSystem::Vctrs) {
+            // The generic block is named after the S3 method (`value.Foo`, its
+            // alias), so it follows the method onto the destination page.
+            let generic = block_above(&r, "if (!base::exists(\"value\"");
+            assert!(generic.contains(&"#' @rdname family"), "got:\n{r}");
+            assert!(generic.contains(&order.as_str()), "got:\n{r}");
+            assert!(
+                !generic
+                    .iter()
+                    .any(|l| l.starts_with("#' @title ") || l.starts_with("#' @param ")),
+                "got:\n{r}"
+            );
+            assert!(!r.contains("S3 generic for `value`"), "got:\n{r}");
+        }
+        if matches!(class_system, ClassSystem::S4 | ClassSystem::S7) {
+            // The S4 / S7 generic stays on the type page.
+            assert!(r.contains("#' @rdname Foo"), "{class_system:?}: got:\n{r}");
+        }
+    }
+}
+
+/// Where the method's own block is a `Type$Trait$method` namespace member
+/// (every static method except S4's, and Env / R6 instance methods), or an S7
+/// instance method has no shortcut, roxygen2 has no object to list, so
+/// `@describeIn` is a compile error naming `@rdname`.
+#[test]
+fn test_trait_method_describe_in_rejected_without_listable_object() {
+    let with_describe_in = |mut method: TraitMethod| {
+        method.doc_tags = vec!["@describeIn family A method.".to_string()];
+        method
+    };
+    let inst = with_describe_in(make_test_method("value", true));
+    let stat = with_describe_in(make_test_method("make", false));
+    let mut no_shortcut = inst.clone();
+    no_shortcut.no_shortcut = true;
+    let cases = [
+        (
+            ClassSystem::Env,
+            &inst,
+            "Env trait instance method `value`:",
+        ),
+        (ClassSystem::Env, &stat, "Env trait static method `make`:"),
+        (ClassSystem::R6, &inst, "R6 trait instance method `value`:"),
+        (ClassSystem::R6, &stat, "R6 trait static method `make`:"),
+        (ClassSystem::S3, &stat, "S3 trait static method `make`:"),
+        (
+            ClassSystem::Vctrs,
+            &stat,
+            "vctrs trait static method `make`:",
+        ),
+        (ClassSystem::S7, &stat, "S7 trait static method `make`:"),
+        (
+            ClassSystem::S7,
+            &no_shortcut,
+            "S7 trait instance method `value` without a fast-path shortcut:",
+        ),
+    ];
+    for (class_system, method, kind) in cases {
+        let err = page_tag_wrapper(class_system, std::slice::from_ref(method))
+            .expect_err(&format!("{class_system:?}: {kind} must be rejected"))
+            .to_string();
+        assert!(
+            err.contains(&format!("`@describeIn` is not supported on the {kind}")),
+            "{class_system:?}: got {err}"
+        );
+        assert!(err.contains("Use `@rdname <topic>`"), "got {err}");
+    }
+    // Every rejected method is reported at once.
+    let err = page_tag_wrapper(ClassSystem::Env, &[inst.clone(), stat.clone()]).unwrap_err();
+    assert_eq!(err.into_iter().count(), 2);
+    // `@rdname` stays available everywhere.
+    let mut rdname = make_test_method("make", false);
+    rdname.doc_tags = vec!["@rdname family".to_string()];
+    for class_system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::Vctrs,
+    ] {
+        page_tag_wrapper(class_system, std::slice::from_ref(&rdname)).unwrap();
+    }
+}
+
+/// The author's `@name`, `@order` and parameter-inheritance tags reach the
+/// method's own block: `@name` replaces the generated topic name, an author
+/// `@order` replaces `@order NaN`, and `@inheritParams` / `@inherit` /
+/// `@inheritDotParams` are forwarded verbatim (roxygen2 fills the arguments
+/// the page leaves undocumented). Prose is not forwarded.
+#[test]
+fn test_trait_method_forwards_author_page_tags() {
+    let mut method = make_test_method("make", false);
+    method.doc_tags = vec![
+        "@description Dropped: trait wrappers forward no prose.".to_string(),
+        "@name foo_make".to_string(),
+        "@rdname family".to_string(),
+        "@order 2".to_string(),
+        "@inheritParams family".to_string(),
+        "@inherit other return".to_string(),
+        "@inheritDotParams base::paste".to_string(),
+    ];
+    for (class_system, generated_name) in [
+        (ClassSystem::Env, "Foo$Bar$make"),
+        (ClassSystem::R6, "Foo$Bar$make"),
+        (ClassSystem::S3, "Foo$Bar$make"),
+        (ClassSystem::S4, "Foo_Bar_make"),
+        (ClassSystem::S7, "Foo$Bar$make"),
+    ] {
+        let r = page_tag_wrapper(class_system, std::slice::from_ref(&method)).unwrap();
+        for tag in &method.doc_tags[1..] {
+            assert_eq!(
+                r.matches(&format!("#' {tag}\n")).count(),
+                1,
+                "{class_system:?}: `{tag}` once, got:\n{r}"
+            );
+        }
+        assert!(
+            !r.contains(&format!("#' @name {generated_name}\n")),
+            "got:\n{r}"
+        );
+        assert!(!r.contains("Dropped"), "got:\n{r}");
+        assert!(
+            !r.contains(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS),
+            "{class_system:?}: the author's @order wins, got:\n{r}"
+        );
+    }
+}
+
+/// On the type page an S7 shortcut documents each formal with a filler; a
+/// method that inherits its arguments gets no `(undocumented)` filler (it
+/// would block the inheritance) but keeps the structural `self` / `...`
+/// lines, since it stays on the type page (#1590).
+#[test]
+fn test_s7_trait_shortcut_inherit_params_drops_fillers_only() {
+    let mut method = make_test_method("step", true);
+    method.sig = syn::parse_quote!(fn step(&self, by: i32) -> i32);
+    method.doc_tags = vec!["@inheritParams family".to_string()];
+    let r = page_tag_wrapper(ClassSystem::S7, &[method]).unwrap();
+    let block = block_above(&r, "Foo_step <- ");
+    assert!(!r.contains("#' @param by "), "got:\n{r}");
+    assert!(
+        block.contains(&"#' @param self A `Foo` object."),
+        "got:\n{r}"
+    );
+    assert!(
+        block.iter().any(|l| l.starts_with("#' @param ... ")),
+        "got:\n{r}"
+    );
+    assert!(block.contains(&"#' @inheritParams family"), "got:\n{r}");
+    assert!(block.contains(&"#' @rdname Foo"), "got:\n{r}");
+    assert!(
+        !r.contains(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS),
+        "the type page is no author topic, got:\n{r}"
+    );
+}
+
+/// A wrapped `@param` keeps its continuation line inside the roxygen block on
+/// every block that carries the method's parameters (a bare continuation
+/// line would be R code).
+#[test]
+fn test_trait_method_wrapped_param_stays_in_roxygen() {
+    let mut method = make_test_method("add", true);
+    method.sig = syn::parse_quote!(fn add(&mut self, n: i32) -> i32);
+    method.doc_tags = vec!["@param n Amount\nto add.".to_string()];
+    for (class_system, blocks) in [
+        (ClassSystem::S3, 1),
+        (ClassSystem::Vctrs, 1),
+        (ClassSystem::S4, 2),
+        (ClassSystem::S7, 1),
+    ] {
+        let r = page_tag_wrapper(class_system, std::slice::from_ref(&method)).unwrap();
+        assert_eq!(
+            r.matches("#' @param n Amount\n#' to add.\n").count(),
+            blocks,
+            "{class_system:?}: got:\n{r}"
+        );
+        assert!(
+            !r.lines().any(|l| l == "to add."),
+            "{class_system:?}: got:\n{r}"
+        );
+    }
+}
+
+// endregion

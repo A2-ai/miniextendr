@@ -1041,3 +1041,260 @@ fn source_tag_renders_only_when_enabled() {
 }
 
 // endregion
+
+// region: generated @param lines vs topics that document the arguments (#1590)
+
+fn tag_list(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(|line| line.to_string()).collect()
+}
+
+#[test]
+fn params_documented_elsewhere_for_topic_and_inheritance_tags() {
+    for tag in [
+        "@rdname observed",
+        "@describeIn observed Largest value.",
+        "@inheritParams observed",
+        "@inherit observed",
+        "@inherit observed params return",
+    ] {
+        let block = tag_list(&["@param x Values.", tag]);
+        assert!(
+            params_documented_elsewhere(&block, None),
+            "`{tag}` takes the arguments from another block"
+        );
+        assert!(
+            params_documented_elsewhere(&block, Some("Counter")),
+            "`{tag}` leaves the class page for another block"
+        );
+    }
+}
+
+/// An author `@rdname` naming the page the block lands on anyway (a method's
+/// class page) changes nothing, so the block keeps its generated lines.
+#[test]
+fn rdname_naming_the_default_page_keeps_the_filler() {
+    let block = tag_list(&["@rdname Counter"]);
+    assert!(!params_documented_elsewhere(&block, Some("Counter")));
+    assert!(params_documented_elsewhere(&block, Some("Gauge")));
+    assert!(params_documented_elsewhere(&block, None));
+}
+
+#[test]
+fn params_not_documented_elsewhere_for_own_page_tags() {
+    for block in [
+        tag_list(&[]),
+        tag_list(&["@param x Values."]),
+        // `@name` documents the block's own page (#1476); nothing fills it.
+        tag_list(&["@name observed", "@title Observed values"]),
+        // A field list without `params`: the arguments are not inherited.
+        tag_list(&["@inherit observed return description"]),
+        // Only `...` is inherited, and `...` never gets a generated line.
+        tag_list(&["@inheritDotParams observed"]),
+        // Tag names match exactly, not by prefix.
+        tag_list(&["@rdnamex observed", "@inheritParamsx observed"]),
+    ] {
+        assert!(
+            !params_documented_elsewhere(&block, None),
+            "{block:?} has no other block documenting its arguments"
+        );
+    }
+}
+
+/// Run the standalone-function `@param` generation over a parsed fn item.
+fn generated_fn_param_tags(item: proc_macro2::TokenStream) -> (Vec<String>, Vec<(String, String)>) {
+    let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed =
+        syn::parse2(item).expect("fixture fn parses");
+    let mut tags = roxygen_tags_from_attrs(parsed.attrs());
+    let placeholders = push_fn_param_tags(&mut tags, parsed.inputs(), &parsed, "C_pkg_summary");
+    (tags, placeholders)
+}
+
+/// The same signature under each doc block: one argument the author
+/// documents, one plain, one `match_arg`, one `choices`, plus unnamed dots
+/// (never given a generated line).
+fn summary_fn(doc_tag: Option<&str>) -> proc_macro2::TokenStream {
+    let doc_tag = doc_tag.map(|tag| quote::quote!(#[doc = #tag]));
+    quote::quote! {
+        /// @param values Numbers to summarise.
+        #doc_tag
+        fn summary(
+            values: Vec<f64>,
+            weights: Vec<f64>,
+            #[miniextendr(match_arg)] mode: Mode,
+            #[miniextendr(choices("low", "high"))] side: &str,
+            ...
+        ) -> f64 {
+            0.0
+        }
+    }
+}
+
+/// The `@param` lines of a tag list; a generated one keeps its
+/// [`PARAM_FILLER_MARKER`] prefix.
+fn param_lines(tags: &[String]) -> Vec<&str> {
+    tags.iter()
+        .map(String::as_str)
+        .filter(|tag| tag.starts_with("@param") || tag.starts_with(PARAM_FILLER_MARKER))
+        .collect()
+}
+
+/// The generated lines a standalone function gets for `summary_fn`'s
+/// undocumented arguments, each marked for the wrapper registry.
+fn summary_filler_lines(mode_placeholder: &str) -> Vec<String> {
+    [
+        "@param weights (no documentation available)".to_string(),
+        format!("@param mode {mode_placeholder}"),
+        "@param side One of \"low\", \"high\".".to_string(),
+    ]
+    .into_iter()
+    .map(|line| format!("{PARAM_FILLER_MARKER}{line}"))
+    .collect()
+}
+
+#[test]
+fn fn_param_tags_fill_every_undocumented_argument_on_its_own_page() {
+    let (tags, placeholders) = generated_fn_param_tags(summary_fn(None));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(summary_filler_lines(&mode_placeholder));
+    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
+    assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
+}
+
+/// An `@rdname topic` may name the function's own file-stem page, which only
+/// the wrapper registry knows, so the fillers stay, marked, for it to decide.
+#[test]
+fn fn_param_tags_leave_an_rdname_block_to_the_registry() {
+    let (tags, placeholders) = generated_fn_param_tags(summary_fn(Some("@rdname summaries")));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(summary_filler_lines(&mode_placeholder));
+    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
+    assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
+}
+
+#[test]
+fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
+    for doc_tag in [
+        "@describeIn summaries Weighted summary.",
+        "@inheritParams summaries",
+        "@inherit summaries params",
+    ] {
+        let (tags, placeholders) = generated_fn_param_tags(summary_fn(Some(doc_tag)));
+        // The author's own `@param` stays, exactly once; nothing is generated.
+        assert_eq!(
+            param_lines(&tags),
+            ["@param values Numbers to summarise."],
+            "`{doc_tag}`: got {tags:?}"
+        );
+        assert!(
+            placeholders.is_empty(),
+            "`{doc_tag}`: a match_arg doc placeholder needs its @param line"
+        );
+    }
+}
+
+/// A layered `choices` parameter's generated line names what else the
+/// argument takes (#1551, #1599). It is a filler like the others: marked for
+/// the registry on the function's own page, dropped under `@describeIn`.
+#[test]
+fn fn_param_tags_describe_layered_choices() {
+    let route_fn = |doc_tag: Option<&str>| {
+        let doc_tag = doc_tag.map(|tag| quote::quote!(#[doc = #tag]));
+        quote::quote! {
+            /// @param dose Amount per administration.
+            #doc_tag
+            fn route(
+                dose: f64,
+                #[miniextendr(choices("oral", "bolus"))] route: Either<String, DataFrame>,
+                #[miniextendr(choices("low", "high"))] side: Missing<Option<String>>,
+            ) {}
+        }
+    };
+    let (tags, _) = generated_fn_param_tags(route_fn(None));
+    assert_eq!(
+        param_lines(&tags),
+        vec![
+            "@param dose Amount per administration.".to_string(),
+            format!(
+                "{PARAM_FILLER_MARKER}@param route One of \"oral\", \"bolus\", or a data frame."
+            ),
+            format!(
+                "{PARAM_FILLER_MARKER}@param side One of \"low\", \"high\", or NULL; omitting the \
+                 argument means no choice."
+            ),
+        ],
+        "got {tags:?}"
+    );
+    let (tags, _) = generated_fn_param_tags(route_fn(Some("@describeIn routes By route.")));
+    assert_eq!(
+        param_lines(&tags),
+        ["@param dose Amount per administration."],
+        "got {tags:?}"
+    );
+}
+
+#[test]
+fn describe_in_topic_is_the_first_word() {
+    assert_eq!(
+        describe_in_topic(&tag_list(&["@describeIn observed Largest\nvalue."])),
+        Some("observed")
+    );
+    assert_eq!(
+        describe_in_topic(&tag_list(&["@describeInx observed"])),
+        None
+    );
+    assert_eq!(describe_in_topic(&tag_list(&["@rdname observed"])), None);
+}
+
+/// A block joins an author topic through `@describeIn`, or through an
+/// `@rdname` naming another page than the framework's default; the page its
+/// companion blocks follow is that topic.
+#[test]
+fn joins_author_topic_and_method_page() {
+    let describe = tag_list(&["@describeIn counter_ops Add a step."]);
+    let rdname_other = tag_list(&["@rdname counter_ops"]);
+    let rdname_class = tag_list(&["@rdname Counter"]);
+    let inherit_only = tag_list(&["@inheritParams counter_ops"]);
+
+    for tags in [&describe, &rdname_other] {
+        assert!(joins_author_topic(tags, Some("Counter")), "{tags:?}");
+        assert!(joins_author_topic(tags, None), "{tags:?}");
+        assert_eq!(method_page(tags, "Counter"), "counter_ops");
+    }
+    assert!(!joins_author_topic(&rdname_class, Some("Counter")));
+    assert!(joins_author_topic(&rdname_class, None));
+    assert_eq!(method_page(&rdname_class, "Counter"), "Counter");
+    // Inheritance fills the arguments but keeps the block on its own page.
+    assert!(!joins_author_topic(&inherit_only, Some("Counter")));
+    assert!(params_documented_elsewhere(&inherit_only, Some("Counter")));
+    assert_eq!(method_page(&inherit_only, "Counter"), "Counter");
+}
+
+#[test]
+fn order_after_topic_blocks_only_on_an_author_topic() {
+    let order_line = format!("#' {ORDER_AFTER_TOPIC_BLOCKS}");
+    let pushed = |tags: &[&str]| {
+        let mut lines = Vec::new();
+        push_order_after_topic_blocks(&mut lines, &tag_list(tags), "Counter");
+        lines
+    };
+    for tags in [
+        &["@rdname counter_ops"][..],
+        &["@describeIn counter_ops Add a step."][..],
+    ] {
+        assert_eq!(pushed(tags), std::slice::from_ref(&order_line), "{tags:?}");
+    }
+    for tags in [
+        &[][..],
+        &["@rdname Counter"][..],
+        &["@inheritParams counter_ops"][..],
+        // The author's own order wins; a block without a page needs none.
+        &["@rdname counter_ops", "@order 2"][..],
+        &["@rdname counter_ops", "@noRd"][..],
+    ] {
+        assert!(pushed(tags).is_empty(), "{tags:?}");
+    }
+}
+
+// endregion

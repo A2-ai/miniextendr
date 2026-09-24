@@ -232,6 +232,7 @@ mod macro_equivalence;
 mod match_arg_either_tests;
 mod match_arg_foreign_tests;
 mod match_arg_impl_tests;
+mod match_arg_omitted_tests;
 mod match_arg_tests;
 #[cfg(feature = "md5")]
 mod md5_adapter_tests;
@@ -294,7 +295,9 @@ mod serde_r_tests;
 mod serialize_attr_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
+mod shared_param_docs;
 mod shared_trait_test;
+mod stem_page_docs;
 mod streaming_altrep_tests;
 #[cfg(feature = "tabled")]
 mod tabled_adapter_tests;

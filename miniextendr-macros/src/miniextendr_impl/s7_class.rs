@@ -449,6 +449,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let ctor_tag = crate::roxygen::find_param_tag(&ctx.method.doc_tags, param_name);
                 if let Some(tag) = ctor_tag {
                     lines.push(format!("#' {}", tag));
+                } else if crate::roxygen::params_documented_elsewhere(
+                    class_doc_tags,
+                    Some(&class_name),
+                ) {
+                    // The class block joins (`@rdname`) or inherits from a
+                    // topic that documents the argument (#1590).
+                    continue;
                 } else if let Some(placeholder) = mx_doc.get(param_name) {
                     // match_arg'd constructor param — placeholder rewritten at
                     // cdylib write time to rendered choice description (#210).
@@ -458,8 +465,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
             }
         }
-        // .ptr is always a constructor param
-        if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
+        // .ptr is always a constructor param. On an author topic (impl-level
+        // `@rdname other`) the topic's own block documents it: the class block
+        // sorts after that block, and roxygen2 keeps the later `@param` (#1590).
+        if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
+            && !crate::roxygen::joins_author_topic(class_doc_tags, Some(&class_name))
+        {
             lines.push(
                 "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
                     .to_string(),
@@ -1158,6 +1169,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 {
                     lines.push(format!("#' @title convert-{}-to-{}", from_type, class_name));
                 }
+                crate::roxygen::push_order_after_topic_blocks(
+                    &mut lines,
+                    &method.doc_tags,
+                    &class_name,
+                );
                 lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 // The generic belongs to S7. Giving every class page its
                 // `convert` alias duplicates that alias across the package.
@@ -1219,6 +1235,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 {
                     lines.push(format!("#' @title convert-{}-to-{}", class_name, to_type));
                 }
+                crate::roxygen::push_order_after_topic_blocks(
+                    &mut lines,
+                    &method.doc_tags,
+                    &class_name,
+                );
                 lines.extend(crate::roxygen::method_source_tag(type_ident, &method.ident));
                 lines.push("#' @usage NULL".to_string());
                 lines.push(format!(

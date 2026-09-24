@@ -721,6 +721,13 @@ impl<'a> ClassDocBuilder<'a> {
         }
         crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
         if !suppress_rd {
+            // An impl-level `@rdname topic` puts the class block on an author
+            // topic, whose own block names and titles the page (#1590).
+            crate::roxygen::push_order_after_topic_blocks(
+                &mut lines,
+                self.doc_tags,
+                self.class_name,
+            );
             lines.extend(crate::roxygen::class_source_tag(self.type_ident));
         }
         if let Some(ref imports) = self.imports
@@ -870,7 +877,9 @@ impl<'a> MethodDocBuilder<'a> {
     ///
     /// When set, auto-generates `@param name (undocumented)` for any parameter
     /// not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
-    /// `...` parameters.
+    /// `...` parameters. Generates nothing when the method's own tags take the
+    /// arguments from another topic (`@rdname`, `@describeIn`,
+    /// `@inheritParams`; see `roxygen::params_documented_elsewhere`).
     pub fn with_r_params(mut self, params: &'a str) -> Self {
         self.r_params = Some(params);
         self
@@ -890,6 +899,9 @@ impl<'a> MethodDocBuilder<'a> {
     /// Returns a vector of strings, each a complete roxygen comment line. If the parent
     /// class has `@noRd`, returns only `["#' @noRd"]`. Otherwise generates `@name`,
     /// `@rdname`, `@source`, and optionally `@export` tags, plus any user-provided tags.
+    /// A method that joins an author topic (`@rdname other`, `@describeIn other`)
+    /// gets no `@name` / `@rdname` next to `@describeIn`, and sorts after the
+    /// topic's own block (`roxygen::ORDER_AFTER_TOPIC_BLOCKS`).
     pub fn build(&self) -> Vec<String> {
         let mut lines = Vec::new();
 
@@ -952,11 +964,17 @@ impl<'a> MethodDocBuilder<'a> {
             }
         }
 
-        // Auto-generate @param for undocumented method parameters. Split on
-        // top-level commas only — a naive `split(", ")` shreds a
+        // Auto-generate @param for undocumented method parameters, unless the
+        // method's own tags send it to a topic that documents them (`@rdname`,
+        // `@describeIn`) or inherit them (`@inheritParams`, #1590). The class
+        // page default below is not in `doc_tags`, and an author `@rdname`
+        // naming the class page is the same page, so neither suppresses them.
+        // Split on top-level commas only — a naive `split(", ")` shreds a
         // `mode = c("fast", "slow")` default into a bogus `"slow")` formal,
         // which surfaces as a spurious @param and an R CMD check warning.
-        if let Some(params) = self.r_params {
+        if let Some(params) = self.r_params
+            && !crate::roxygen::params_documented_elsewhere(self.doc_tags, Some(self.class_name))
+        {
             for param in crate::roxygen::split_r_formals(params) {
                 let param_name = crate::roxygen::formal_name(param);
                 if param_name == ".ptr" || param_name == "..." || param_name == "self" {
@@ -985,7 +1003,14 @@ impl<'a> MethodDocBuilder<'a> {
             self.method_name.to_string()
         };
 
-        if !crate::roxygen::has_roxygen_tag(self.doc_tags, "name") {
+        // A method-level `@describeIn topic ...` lists the method in `topic`'s
+        // "Functions" section. roxygen2 rejects it next to `@name` or `@rdname`
+        // ("can not be used with @name") and takes the page from the method's
+        // object, so the builder pushes neither, and the destination topic
+        // supplies the title. Only generators whose method block documents an
+        // R object get here with the tag (`reject_unsupported_describe_in`).
+        let describe_in = crate::roxygen::describe_in_topic(self.doc_tags).is_some();
+        if !describe_in && !crate::roxygen::has_roxygen_tag(self.doc_tags, "name") {
             lines.push(format!("#' @name {}", r_name));
         }
 
@@ -997,13 +1022,19 @@ impl<'a> MethodDocBuilder<'a> {
         // structural R name as the title unless the author wrote one. A
         // `@noRd` block renders no page, so it needs no title (#1552).
         let has_no_rd = crate::roxygen::has_roxygen_tag(self.doc_tags, "noRd");
-        if crate::roxygen::has_roxygen_tag(self.doc_tags, "rdname") {
-            if !has_no_rd && !crate::roxygen::has_roxygen_tag(self.doc_tags, "title") {
-                lines.push(format!("#' @title {}", r_name));
+        if !describe_in {
+            if crate::roxygen::has_roxygen_tag(self.doc_tags, "rdname") {
+                if !has_no_rd && !crate::roxygen::has_roxygen_tag(self.doc_tags, "title") {
+                    lines.push(format!("#' @title {}", r_name));
+                }
+            } else {
+                lines.push(format!("#' @rdname {}", self.class_name));
             }
-        } else {
-            lines.push(format!("#' @rdname {}", self.class_name));
         }
+        // On an author topic the topic's own block names and titles the page
+        // (`ORDER_AFTER_TOPIC_BLOCKS`); the structural title above only
+        // matters for a page no other block defines.
+        crate::roxygen::push_order_after_topic_blocks(&mut lines, self.doc_tags, self.class_name);
 
         lines.extend(crate::roxygen::source_tag(format!(
             "Generated by miniextendr from `{}::{}`",
@@ -1132,6 +1163,96 @@ mod tests {
                 "{docs}"
             );
         }
+    }
+
+    /// A method whose own tags join or inherit a topic gets no generated
+    /// `@param` lines (#1590); its own `@param` stays. The class-page default
+    /// the builder appends is not an author tag, so a method on the class page
+    /// keeps the filler for each undocumented argument, also when the author
+    /// names that page with a redundant `@rdname Counter`.
+    #[test]
+    fn method_param_filler_only_on_the_class_page() {
+        let type_ident: syn::Ident = syn::parse_quote!(Counter);
+        let build = |tags: &[&str]| {
+            let tags: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
+            super::MethodDocBuilder::new("Counter", "add", &type_ident, &tags)
+                .with_r_params("by, times = 1L")
+                .build()
+                .join("\n")
+        };
+
+        // No author page tag, or one naming the class page itself.
+        for tags in [
+            &["@param by Step size."][..],
+            &["@param by Step size.", "@rdname Counter"][..],
+        ] {
+            let class_page = build(tags);
+            assert!(class_page.contains("#' @rdname Counter"), "{class_page}");
+            assert!(
+                class_page.contains("#' @param times (undocumented)"),
+                "{class_page}"
+            );
+        }
+
+        for tag in ["@rdname counter_ops", "@inheritParams counter_ops"] {
+            let docs = build(&["@param by Step size.", tag]);
+            assert_eq!(
+                docs.matches("#' @param ").count(),
+                1,
+                "`{tag}`: only the author's @param, got:\n{docs}"
+            );
+            assert!(docs.contains("#' @param by Step size."), "{docs}");
+        }
+    }
+
+    /// A method-level `@describeIn` block carries neither `@name` nor
+    /// `@rdname` (roxygen2: "@describeIn can not be used with @name") nor a
+    /// structural title, sorts after the destination's own block, and leaves
+    /// undocumented arguments to it. An `@rdname` naming another page sorts
+    /// last too; the class page keeps the defaults.
+    #[test]
+    fn method_describe_in_drops_name_and_rdname() {
+        let type_ident: syn::Ident = syn::parse_quote!(Counter);
+        let order = format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS);
+        let build = |tags: &[&str]| {
+            let tags: Vec<String> = tags.iter().map(|t| t.to_string()).collect();
+            super::MethodDocBuilder::new("Counter", "add", &type_ident, &tags)
+                .with_r_params("by, times = 1L")
+                .with_r_name("add.Counter".to_string())
+                .build()
+        };
+
+        let described = build(&[
+            "@describeIn counter_ops Add a step.",
+            "@param by Step size.",
+        ]);
+        assert_eq!(
+            described,
+            [
+                "#' @describeIn counter_ops Add a step.",
+                "#' @param by Step size.",
+                order.as_str(),
+            ],
+            "{described:#?}"
+        );
+
+        let split = build(&["@rdname counter_ops"]);
+        assert!(
+            split.contains(&"#' @name add.Counter".to_string()),
+            "{split:#?}"
+        );
+        assert!(
+            split.contains(&"#' @title add.Counter".to_string()),
+            "{split:#?}"
+        );
+        assert!(split.contains(&order), "{split:#?}");
+
+        let class_page = build(&[]);
+        assert!(
+            class_page.contains(&"#' @rdname Counter".to_string()),
+            "{class_page:#?}"
+        );
+        assert!(!class_page.contains(&order), "{class_page:#?}");
     }
 
     use super::ClassDocBuilder;

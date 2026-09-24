@@ -37,7 +37,7 @@ new_percent(x, ...)
 \method{vec_cast}{double.percent}(x, to, ...)
 }
 \arguments{
-\item{x}{(no documentation available)}
+\item{x}{Numeric values (as proportions, e.g., 0.5 for 50\%).}
 
 \item{...}{Additional arguments (ignored, for vctrs compatibility).}
 

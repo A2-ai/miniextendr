@@ -1,0 +1,5 @@
+error: `@describeIn` is not supported on the S3 trait static method `make`: its R wrapper is not an R function roxygen2 can list in the destination's "Functions" section, so roxygen2 would drop the block. Use `@rdname <topic>` to document it on that page instead. On trait impls `@describeIn` works on S3, vctrs and S4 instance methods, on S4 static methods, and on S7 instance methods with a fast-path shortcut.
+  --> tests/ui/trait_describe_in_s3_static.rs:16:8
+   |
+16 |     fn make() -> i32 {
+   |        ^^^^

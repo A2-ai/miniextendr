@@ -1820,6 +1820,9 @@ Build the roxygen `#' @tag` lines for the method.
 Returns a vector of strings, each a complete roxygen comment line. If the parent
 class has `@noRd`, returns only `["#' @noRd"]`. Otherwise generates `@name`,
 `@rdname`, `@source`, and optionally `@export` tags, plus any user-provided tags.
+A method that joins an author topic (`@rdname other`, `@describeIn other`)
+gets no `@name` / `@rdname` next to `@describeIn`, and sorts after the
+topic's own block (`roxygen::ORDER_AFTER_TOPIC_BLOCKS`).
 
 #### `new`
 
@@ -1895,7 +1898,9 @@ Set the method's formal parameter names (comma-separated R params string).
 
 When set, auto-generates `@param name (undocumented)` for any parameter
 not already covered by a user `@param` tag. Skips `self`, `.ptr`, and
-`...` parameters.
+`...` parameters. Generates nothing when the method's own tags take the
+arguments from another topic (`@rdname`, `@describeIn`,
+`@inheritParams`; see `roxygen::params_documented_elsewhere`).
 
 #### `with_suppress_params`
 
