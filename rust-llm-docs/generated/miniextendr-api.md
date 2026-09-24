@@ -13530,6 +13530,11 @@ Subsets every column (each a vector or list-column) to the specified rows
 and rebuilds compact integer `row.names`. Used by the enum reader to
 densify a flattened sub-frame before recursing into the inner type's reader.
 
+Each column keeps all of its attributes except `names`, `dim` and
+`dimnames` (`Rf_copyMostAttrib`, the `vctrs::vec_slice()` rule), so a
+`POSIXct` column keeps its `tzone` and a `difftime` its `units`. Element
+names, if any, are subset with the values.
+
 ##### PROTECT discipline
 
 Allocates one new column vector per column — `OwnedProtect`s the output list
