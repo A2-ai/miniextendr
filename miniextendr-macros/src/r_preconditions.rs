@@ -28,6 +28,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::naming::r_string_escape;
+
 /// A single R-side check on one parameter: a requirement and the R condition
 /// enforcing it.
 ///
@@ -318,38 +320,6 @@ fn merge_message(
         }
         (_, None) => Ok(()),
     }
-}
-
-/// Escape `s` for the inside of an R double-quoted string literal (the
-/// requirement text, the class names in `inherits()` and the author's
-/// messages).
-///
-/// Besides `\` and `"`, a newline, carriage return or tab becomes its escape
-/// (a guard stays on one line of the wrappers file), any other control
-/// character and every non-ASCII character a `\u{..}` / `\U{..}` escape: R
-/// code in a package must be ASCII, and R reads these escapes back to the
-/// same UTF-8 text. A NUL cannot be written (R strings cannot hold one);
-/// the attribute parser rejects it in a message.
-fn r_string_escape(s: &str) -> String {
-    use std::fmt::Write as _;
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_ascii() && !c.is_ascii_control() => out.push(c),
-            c if u32::from(c) <= 0xFFFF => {
-                let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
-            }
-            c => {
-                let _ = write!(out, "\\U{{{:x}}}", u32::from(c));
-            }
-        }
-    }
-    out
 }
 
 /// Classification of an R-side type check for a function parameter.

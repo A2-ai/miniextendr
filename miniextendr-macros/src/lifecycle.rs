@@ -198,7 +198,9 @@ impl LifecycleSpec {
     pub fn r_prelude(&self, fn_name: &str) -> Option<String> {
         let signal_fn = self.stage.signal_fn()?;
 
-        let what = self.what.as_deref().unwrap_or(fn_name);
+        // Every argument is an R string literal built from user text.
+        let esc = crate::naming::r_string_escape;
+        let what = esc(self.what.as_deref().unwrap_or(fn_name));
 
         match self.stage {
             LifecycleStage::Experimental | LifecycleStage::Superseded => {
@@ -209,22 +211,22 @@ impl LifecycleSpec {
             | LifecycleStage::Deprecated
             | LifecycleStage::Defunct => {
                 // lifecycle::deprecate_*(when, what, with, details, id)
-                let when = self.when.as_deref().unwrap_or("0.0.0");
+                let when = esc(self.when.as_deref().unwrap_or("0.0.0"));
                 let what_arg = format!("\"{}()\"", what);
                 let with_arg = self
                     .with
                     .as_ref()
-                    .map(|w| format!(", \"{}\"", w))
+                    .map(|w| format!(", \"{}\"", esc(w)))
                     .unwrap_or_default();
                 let details_arg = self
                     .details
                     .as_ref()
-                    .map(|d| format!(", details = \"{}\"", d.replace('"', "\\\"")))
+                    .map(|d| format!(", details = \"{}\"", esc(d)))
                     .unwrap_or_default();
                 let id_arg = self
                     .id
                     .as_ref()
-                    .map(|id| format!(", id = \"{}\"", id))
+                    .map(|id| format!(", id = \"{}\"", esc(id)))
                     .unwrap_or_default();
 
                 Some(format!(
@@ -515,6 +517,24 @@ mod tests {
         assert!(prelude.contains("0.4.0"));
         assert!(prelude.contains("old_fn()"));
         assert!(prelude.contains("new_fn()"));
+    }
+
+    /// User text lands in R string literals: `\` and `"` are escaped, `\` first.
+    #[test]
+    fn test_r_prelude_escapes_string_arguments() {
+        let spec = LifecycleSpec {
+            stage: LifecycleStage::Deprecated,
+            when: Some("0.4.0".into()),
+            what: None,
+            with: Some("new_fn()".into()),
+            details: Some(r#"Use "C:\data" instead."#.into()),
+            id: None,
+        };
+        let prelude = spec.r_prelude("old_fn").unwrap();
+        assert!(
+            prelude.contains(r#"details = "Use \"C:\\data\" instead.""#),
+            "{prelude}"
+        );
     }
 
     #[test]
