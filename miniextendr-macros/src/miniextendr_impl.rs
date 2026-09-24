@@ -1528,6 +1528,46 @@ impl ParsedMethod {
                         method_attrs.defaults.insert(param_name, value.value());
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("no_na") {
+                    // `no_na(param1, param2, ...)` — R-side `!anyNA(param)` checks.
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        method_attrs.per_param.entry(name).or_default().checks.no_na = true;
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("inherits") {
+                    // `inherits(param = "cls_a, cls_b")` — R-side `inherits(param, c(...))`.
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    meta.parse_nested_meta(|inner| {
+                        let name = inner
+                            .path
+                            .get_ident()
+                            .ok_or_else(|| inner.error("expected parameter name"))?
+                            .to_string();
+                        let _: syn::Token![=] = inner.input.parse()?;
+                        let value: syn::LitStr = inner.input.parse()?;
+                        let classes = crate::r_wrapper_builder::split_choice_list(&value.value());
+                        if classes.is_empty() {
+                            return Err(syn::Error::new(
+                                value.span(),
+                                "`inherits(param = \"...\")` needs one or more class names",
+                            ));
+                        }
+                        method_attrs
+                            .per_param
+                            .entry(name)
+                            .or_default()
+                            .checks
+                            .inherits
+                            .get_or_insert_with(Vec::new)
+                            .extend(classes);
+                        Ok(())
+                    })?;
                 } else if meta.path.is_ident("match_arg") {
                     // `match_arg(param1, param2, ...)` — scalar match_arg params.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
@@ -1831,7 +1871,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -1985,7 +2025,7 @@ impl ParsedMethod {
             })
             .collect();
         for annotated in method_attrs.per_param.iter().filter_map(|(name, a)| {
-            if a.match_arg || a.choices.is_some() {
+            if a.match_arg || a.choices.is_some() || !a.checks.is_empty() {
                 Some(name)
             } else {
                 None
@@ -1996,7 +2036,9 @@ impl ParsedMethod {
                     method_attrs
                         .match_arg_span
                         .unwrap_or_else(|| item.sig.ident.span()),
-                    format!("match_arg/choices references non-existent parameter `{annotated}`"),
+                    format!(
+                        "match_arg/choices/inherits/no_na references non-existent parameter `{annotated}`"
+                    ),
                 ));
             }
         }

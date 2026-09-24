@@ -365,6 +365,28 @@ pub(crate) fn validate_per_param_attr_conflicts(
             ));
         }
     }
+    if is_dots && !attr.checks.is_empty() {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "`inherits` / `no_na` cannot apply to the variadic (...) parameter `{}`; \
+                 use `dots = typed_list!(...)` to check the entries",
+                param_name
+            ),
+        ));
+    }
+    if let Some(classes) = &attr.checks.inherits
+        && (classes.is_empty() || classes.iter().any(String::is_empty))
+    {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "`inherits` on parameter `{}` needs one or more non-empty class names, \
+                 e.g. `inherits = \"pkg_obj\"` or `inherits(\"pkg_a\", \"pkg_b\")`",
+                param_name
+            ),
+        ));
+    }
     if is_dots && attr.default_value.is_some() {
         return Err(syn::Error::new(
             span,
@@ -416,6 +438,9 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `several_ok` was present, enabling multi-value `match.arg(several.ok = TRUE)`.
     /// Only valid with `choices(...)` or `match_arg`.
     pub has_several_ok: bool,
+    /// `inherits = "cls"` / `inherits("a", "b")` and `no_na`: R-side checks
+    /// named by the author (see [`crate::r_preconditions::ExplicitChecks`]).
+    pub checks: crate::r_preconditions::ExplicitChecks,
 }
 
 /// Parse all per-parameter options from a `#[miniextendr(...)]` attribute.
@@ -463,6 +488,9 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
                 } else if path.is_ident("several_ok") {
                     result.has_several_ok = true;
                     is_per_param = true;
+                } else if path.is_ident("no_na") {
+                    result.checks.no_na = true;
+                    is_per_param = true;
                 }
                 // Other paths (like `strict`) are function-level, ignore here
             }
@@ -474,6 +502,18 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
                     }) = &nv.value
                 {
                     result.default_value = Some((lit_str.value(), attr.span()));
+                    is_per_param = true;
+                } else if nv.path.is_ident("inherits")
+                    && let syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(lit_str),
+                        ..
+                    }) = &nv.value
+                {
+                    result
+                        .checks
+                        .inherits
+                        .get_or_insert_with(Vec::new)
+                        .push(lit_str.value());
                     is_per_param = true;
                 }
                 // Other name-value pairs are function-level, ignore here
@@ -489,6 +529,20 @@ pub(crate) fn parse_per_param_attr(attr: &syn::Attribute) -> Option<PerParamMini
                     };
                     let choices: Vec<String> = choice_lits.iter().map(|l| l.value()).collect();
                     result.choices = Some(choices);
+                    is_per_param = true;
+                } else if list.path.is_ident("inherits") {
+                    // inherits("a", "b") — any-of class list, like `inherits(x, c(...))`
+                    let class_lits = match list.parse_args_with(
+                        syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated,
+                    ) {
+                        Ok(lits) => lits,
+                        Err(_) => continue,
+                    };
+                    result
+                        .checks
+                        .inherits
+                        .get_or_insert_with(Vec::new)
+                        .extend(class_lits.iter().map(|l| l.value()));
                     is_per_param = true;
                 }
                 // Other list forms are function-level, ignore here
@@ -516,14 +570,6 @@ pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
 /// `#[miniextendr(match_arg, choices("a", "b"))]`).
 pub(crate) fn is_miniextendr_match_arg_attr(attr: &syn::Attribute) -> bool {
     parse_per_param_attr(attr).is_some_and(|a| a.has_match_arg)
-}
-
-/// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `choices(...)`.
-///
-/// The `choices(...)` option may be combined with other per-parameter options (e.g.,
-/// `#[miniextendr(match_arg, choices("a", "b"))]`).
-pub(crate) fn is_miniextendr_choices_attr(attr: &syn::Attribute) -> bool {
-    parse_per_param_attr(attr).is_some_and(|a| a.choices.is_some())
 }
 
 /// Returns `true` if `attr` is a `#[miniextendr(...)]` attribute containing `several_ok`.
@@ -589,6 +635,26 @@ pub(crate) struct ParamAttrs {
     /// `NULL`, and the `@param` line says so. Set from the parameter type once
     /// the signature is known; never `true` together with `several_ok`.
     pub optional: bool,
+    /// R-side checks named by the author: `inherits` / `no_na`.
+    pub checks: crate::r_preconditions::ExplicitChecks,
+}
+
+/// The non-empty [`ParamAttrs::checks`] of `per_param` (keyed by Rust name),
+/// re-keyed by R-normalized parameter name for
+/// [`crate::r_preconditions::PreconditionOptions::explicit`].
+pub(crate) fn explicit_checks_by_r_name(
+    per_param: &std::collections::HashMap<String, ParamAttrs>,
+) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {
+    per_param
+        .iter()
+        .filter(|(_, a)| !a.checks.is_empty())
+        .map(|(name, a)| {
+            (
+                crate::r_wrapper_builder::normalize_r_arg_string(name),
+                a.checks.clone(),
+            )
+        })
+        .collect()
 }
 
 /// Fill in [`ParamAttrs::optional`] for an impl or trait method and reject the
@@ -719,15 +785,19 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             let had_several_ok = pat_type.attrs.iter().any(is_miniextendr_several_ok_attr);
             let default_with_span = pat_type.attrs.iter().find_map(parse_default_attr);
             let had_choices = pat_type.attrs.iter().find_map(parse_choices_attr);
+            let had_checks = pat_type.attrs.iter().filter_map(parse_per_param_attr).fold(
+                crate::r_preconditions::ExplicitChecks::default(),
+                |mut acc, attr| {
+                    acc.merge(attr.checks);
+                    acc
+                },
+            );
 
-            // Remove miniextendr attributes from parameters (coerce, match_arg, choices, several_ok, default)
-            pat_type.attrs.retain(|attr| {
-                !is_miniextendr_coerce_attr(attr)
-                    && !is_miniextendr_match_arg_attr(attr)
-                    && !is_miniextendr_choices_attr(attr)
-                    && !is_miniextendr_several_ok_attr(attr)
-                    && parse_default_attr(attr).is_none()
-            });
+            // Remove the per-parameter miniextendr attributes (coerce, match_arg,
+            // choices, several_ok, default, inherits, no_na)
+            pat_type
+                .attrs
+                .retain(|attr| parse_per_param_attr(attr).is_none());
 
             // Validate type-based constraints (Missing nesting, Missing<Dots>)
             validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
@@ -779,8 +849,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 || had_several_ok
                 || had_choices.is_some()
                 || default_with_span.is_some()
+                || !had_checks.is_empty()
             {
                 let entry = per_param.entry(param_name.clone()).or_default();
+                entry.checks = had_checks.clone();
                 if had_coerce_attr {
                     entry.coerce = true;
                 }
@@ -810,6 +882,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 default_value: default_with_span,
                 choices: had_choices,
                 has_several_ok: had_several_ok,
+                checks: had_checks,
             };
             validate_per_param_attr_conflicts(
                 &per_param_combined,
@@ -967,6 +1040,14 @@ impl MiniextendrFunctionParsed {
     /// `Option<T>` form (R formal `NULL`, `NULL` means no choice; #1473).
     pub(crate) fn is_optional_choice(&self, param_name: &str) -> bool {
         self.per_param.get(param_name).is_some_and(|a| a.optional)
+    }
+
+    /// The `inherits` / `no_na` checks of every parameter, keyed by R name
+    /// (see [`explicit_checks_by_r_name`]).
+    pub(crate) fn explicit_checks(
+        &self,
+    ) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {
+        explicit_checks_by_r_name(&self.per_param)
     }
 
     /// Returns all parameter defaults as an owned map from parameter name to

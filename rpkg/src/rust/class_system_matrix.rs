@@ -338,6 +338,8 @@ impl ScalerR6 {
 
 #[miniextendr(r6)]
 impl Scaler for ScalerR6 {
+    /// `no_na(...)` on a trait method: `x_factor = NA` is refused in R.
+    #[miniextendr(no_na(x_factor))]
     fn scale(&mut self, x_factor: f64) -> f64 {
         self.value *= x_factor;
         self.value

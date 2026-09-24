@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// A single `stopifnot()` assertion: `"message" = condition`.
 ///
@@ -88,6 +88,12 @@ pub struct PreconditionOptions {
     pub coerce_all: bool,
     /// R-normalized names of parameters with a per-param `coerce` attribute.
     pub coerce_params: HashSet<String>,
+    /// Checks the author named per parameter (`inherits`, `no_na`), keyed by
+    /// R-normalized parameter name.
+    pub explicit: HashMap<String, ExplicitChecks>,
+    /// `no_preconditions` / `fast`: drop the checks derived from parameter
+    /// types. The [`explicit`](Self::explicit) checks are still emitted.
+    pub no_type_checks: bool,
 }
 
 impl PreconditionOptions {
@@ -96,6 +102,105 @@ impl PreconditionOptions {
     fn is_coerced(&self, r_name: &str) -> bool {
         self.coerce_all || self.coerce_params.contains(r_name)
     }
+}
+
+/// R-side checks the author asked for by name on one parameter, rather than
+/// ones derived from its Rust type.
+///
+/// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
+/// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
+/// method. They run after the type checks, in the same `stopifnot()` block
+/// (or `call = caller` guards), and survive `no_preconditions` / `fast`: the
+/// Rust conversion cannot check them, so dropping them would change what the
+/// function accepts.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ExplicitChecks {
+    /// `inherits = "cls"` / `inherits("a", "b")`: the argument must inherit
+    /// from at least one of these classes (`inherits(x, c(...))`).
+    pub inherits: Option<Vec<String>>,
+    /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
+    /// is refused too, as `is.na()` does).
+    pub no_na: bool,
+}
+
+impl ExplicitChecks {
+    /// Whether any check is requested.
+    pub fn is_empty(&self) -> bool {
+        self.inherits.is_none() && !self.no_na
+    }
+
+    /// Merge `other` into `self` (a parameter may carry several attributes).
+    pub fn merge(&mut self, other: ExplicitChecks) {
+        if let Some(classes) = other.inherits {
+            self.inherits.get_or_insert_with(Vec::new).extend(classes);
+        }
+        self.no_na |= other.no_na;
+    }
+
+    /// The assertions for parameter `param` of type `ty`.
+    ///
+    /// An `Option<T>` parameter passes `NULL`, and a `Missing<T>` parameter
+    /// passes when the argument was omitted. The failure message names only
+    /// the failed requirement: it is shown only for a present, non-`NULL`
+    /// value.
+    fn assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
+        let mut out = Vec::new();
+        let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
+        let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
+        if self.no_na {
+            let verb = if crate::miniextendr_fn::is_vector_like_type(value_ty) {
+                "contain"
+            } else {
+                "be"
+            };
+            out.push(RAssertion::new(
+                format!("'{param}' must not {verb} NA"),
+                format!("!anyNA({param})"),
+            ));
+        }
+        if let Some(classes) = &self.inherits {
+            let quoted: Vec<String> = classes
+                .iter()
+                .map(|c| format!("'{}'", r_string_escape(c)))
+                .collect();
+            let literals: Vec<String> = classes
+                .iter()
+                .map(|c| format!("\"{}\"", r_string_escape(c)))
+                .collect();
+            let what = match quoted.as_slice() {
+                [one] => one.clone(),
+                [init @ .., last] => format!("{} or {last}", init.join(", ")),
+                [] => unreachable!("inherits() is parsed as a non-empty class list"),
+            };
+            let class_arg = match literals.as_slice() {
+                [one] => one.clone(),
+                _ => format!("c({})", literals.join(", ")),
+            };
+            out.push(RAssertion::new(
+                format!("'{param}' must inherit from {what}"),
+                format!("inherits({param}, {class_arg})"),
+            ));
+        }
+        let guard = if crate::miniextendr_fn::is_missing_type(ty) {
+            Some(format!("missing({param})"))
+        } else if crate::type_inspect::is_option_type(ty) {
+            Some(format!("is.null({param})"))
+        } else {
+            None
+        };
+        if let Some(guard) = guard {
+            for a in &mut out {
+                a.condition = format!("{guard} || {}", a.condition);
+            }
+        }
+        out
+    }
+}
+
+/// Escape `s` for the inside of an R double-quoted string literal (the
+/// `stopifnot()` message and the class names in `inherits()`).
+fn r_string_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Classification of an R-side type check for a function parameter.
@@ -608,6 +713,10 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// - `self`/`&self`/`&mut self` (receiver args)
 /// - Parameters in `skip_params` (e.g., match_arg params already validated)
 /// - Skip types (SEXP, Dots, ExternalPtr, etc.)
+/// - Every type-derived check under `opts.no_type_checks`
+///
+/// A parameter's [`ExplicitChecks`] follow its type checks and are never
+/// skipped.
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
@@ -630,20 +739,25 @@ pub fn build_precondition_checks(
         // Use the R-normalized name for the check (matches the R formal)
         let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
 
-        // Skip match_arg params (already validated by match.arg())
-        if skip_params.contains(&r_name) {
-            continue;
+        // Type-derived checks: skipped for match_arg params (already validated
+        // by match.arg()) and under `no_preconditions` / `fast`.
+        if !opts.no_type_checks && !skip_params.contains(&r_name) {
+            // Preserve the ordinary input domain and include any coercion extensions.
+            if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
+                if opts.is_coerced(&r_name) {
+                    check = coerce_widened(check, pt.ty.as_ref());
+                }
+                assertions.extend(check.assertions(&r_name));
+            } else if needs_fallback(pt.ty.as_ref()) {
+                // Unknown type → record for potential future validation
+                fallback_params.push(FallbackParam {
+                    r_name: r_name.clone(),
+                });
+            }
         }
 
-        // Preserve the ordinary input domain and include any coercion extensions.
-        if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
-            if opts.is_coerced(&r_name) {
-                check = coerce_widened(check, pt.ty.as_ref());
-            }
-            assertions.extend(check.assertions(&r_name));
-        } else if needs_fallback(pt.ty.as_ref()) {
-            // Unknown type → record for potential future validation
-            fallback_params.push(FallbackParam { r_name });
+        if let Some(checks) = opts.explicit.get(&r_name) {
+            assertions.extend(checks.assertions(&r_name, pt.ty.as_ref()));
         }
     }
 
@@ -920,8 +1034,8 @@ mod tests {
         let mut coerce_params = HashSet::new();
         coerce_params.insert("x".to_string());
         let opts = PreconditionOptions {
-            coerce_all: false,
             coerce_params,
+            ..Default::default()
         };
         let output = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts);
         let joined = output.static_checks.join("\n");
@@ -1185,5 +1299,172 @@ mod tests {
         );
         assert!(output.static_checks.is_empty());
         assert!(output.fallback_params.is_empty());
+    }
+
+    /// Build checks for `sig` with the given explicit checks keyed by R name.
+    fn explicit_output(
+        sig: &str,
+        explicit: &[(&str, ExplicitChecks)],
+        no_type_checks: bool,
+    ) -> PreconditionOutput {
+        let sig: syn::Signature = syn::parse_str(sig).unwrap();
+        let opts = PreconditionOptions {
+            explicit: explicit
+                .iter()
+                .map(|(name, checks)| (name.to_string(), checks.clone()))
+                .collect(),
+            no_type_checks,
+            ..Default::default()
+        };
+        build_precondition_checks(&sig.inputs, &HashSet::new(), &opts)
+    }
+
+    fn inherits(classes: &[&str]) -> ExplicitChecks {
+        ExplicitChecks {
+            inherits: Some(classes.iter().map(|c| c.to_string()).collect()),
+            no_na: false,
+        }
+    }
+
+    fn no_na() -> ExplicitChecks {
+        ExplicitChecks {
+            inherits: None,
+            no_na: true,
+        }
+    }
+
+    #[test]
+    fn inherits_follows_the_type_check() {
+        let out = explicit_output("fn f(x: List)", &[("x", inherits(&["pkg_obj"]))], false);
+        assert_eq!(
+            out.static_checks,
+            vec![
+                "stopifnot(",
+                "  \"'x' must be a list\" = is.list(x),",
+                "  \"'x' must inherit from 'pkg_obj'\" = inherits(x, \"pkg_obj\")",
+                ")",
+            ]
+        );
+    }
+
+    #[test]
+    fn inherits_any_of_several_classes() {
+        let out = explicit_output("fn f(x: SEXP)", &[("x", inherits(&["a", "b", "c"]))], false);
+        assert_eq!(
+            out.static_checks,
+            vec![
+                "stopifnot(\"'x' must inherit from 'a', 'b' or 'c'\" = inherits(x, c(\"a\", \"b\", \"c\")))"
+            ]
+        );
+    }
+
+    #[test]
+    fn inherits_escapes_quotes_and_backslashes() {
+        let out = explicit_output("fn f(x: SEXP)", &[("x", inherits(&["a\"b\\c"]))], false);
+        assert_eq!(
+            out.static_checks,
+            vec![
+                "stopifnot(\"'x' must inherit from 'a\\\"b\\\\c'\" = inherits(x, \"a\\\"b\\\\c\"))"
+            ]
+        );
+    }
+
+    #[test]
+    fn no_na_wording_follows_the_shape() {
+        let scalar = explicit_output("fn f(x: f64)", &[("x", no_na())], true);
+        assert_eq!(
+            scalar.static_checks,
+            vec!["stopifnot(\"'x' must not be NA\" = !anyNA(x))"]
+        );
+        let vector = explicit_output("fn f(x: Vec<f64>)", &[("x", no_na())], true);
+        assert_eq!(
+            vector.static_checks,
+            vec!["stopifnot(\"'x' must not contain NA\" = !anyNA(x))"]
+        );
+        let slice = explicit_output("fn f(x: &[f64])", &[("x", no_na())], true);
+        assert!(slice.static_checks[0].contains("must not contain NA"));
+    }
+
+    #[test]
+    fn explicit_checks_pass_null_and_missing() {
+        let optional = explicit_output(
+            "fn f(x: Option<List>)",
+            &[("x", inherits(&["pkg_obj"]))],
+            true,
+        );
+        assert_eq!(
+            optional.static_checks,
+            vec![
+                "stopifnot(\"'x' must inherit from 'pkg_obj'\" = is.null(x) || inherits(x, \"pkg_obj\"))"
+            ]
+        );
+        let missing = explicit_output("fn f(x: Missing<f64>)", &[("x", no_na())], true);
+        assert_eq!(
+            missing.static_checks,
+            vec!["stopifnot(\"'x' must not be NA\" = missing(x) || !anyNA(x))"]
+        );
+        let optional_vec = explicit_output("fn f(x: Option<Vec<f64>>)", &[("x", no_na())], true);
+        assert!(optional_vec.static_checks[0].contains("must not contain NA"));
+    }
+
+    #[test]
+    fn explicit_checks_survive_no_type_checks() {
+        let both = ExplicitChecks {
+            inherits: Some(vec!["pkg_obj".into()]),
+            no_na: true,
+        };
+        let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
+        // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
+        // NA first.
+        assert_eq!(
+            out.static_checks,
+            vec![
+                "stopifnot(",
+                "  \"'x' must not be NA\" = !anyNA(x),",
+                "  \"'x' must inherit from 'pkg_obj'\" = inherits(x, \"pkg_obj\")",
+                ")",
+            ]
+        );
+        let none = explicit_output("fn f(n: i32)", &[], true);
+        assert!(none.static_checks.is_empty());
+    }
+
+    #[test]
+    fn explicit_checks_apply_to_match_arg_params() {
+        let sig: syn::Signature = syn::parse_str("fn f(mode: String)").unwrap();
+        let opts = PreconditionOptions {
+            explicit: [("mode".to_string(), no_na())].into_iter().collect(),
+            ..Default::default()
+        };
+        let skip: HashSet<String> = ["mode".to_string()].into_iter().collect();
+        let out = build_precondition_checks(&sig.inputs, &skip, &opts);
+        assert_eq!(
+            out.static_checks,
+            vec!["stopifnot(\"'mode' must not be NA\" = !anyNA(mode))"]
+        );
+    }
+
+    #[test]
+    fn explicit_checks_get_the_attributed_guard_form() {
+        let out = explicit_output("fn f(x: f64)", &[("x", no_na())], true);
+        assert_eq!(
+            out.attributed_checks(".mx_call"),
+            vec!["if (!isTRUE(!anyNA(x))) stop(simpleError(\"'x' must not be NA\", .mx_call))"]
+        );
+    }
+
+    #[test]
+    fn explicit_checks_merge() {
+        let mut a = inherits(&["a"]);
+        a.merge(no_na());
+        a.merge(inherits(&["b"]));
+        assert_eq!(
+            a,
+            ExplicitChecks {
+                inherits: Some(vec!["a".into(), "b".into()]),
+                no_na: true,
+            }
+        );
+        assert!(ExplicitChecks::default().is_empty());
     }
 }

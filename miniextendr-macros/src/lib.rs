@@ -1601,13 +1601,12 @@ pub fn miniextendr(
     for (param_name, _) in parsed.choices_params() {
         skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
     }
-    // `#[miniextendr(no_preconditions)]` / `fast` opts out of the stopifnot
-    // prelude entirely. TryFromSexp still raises a typed Rust error on
+    // `#[miniextendr(no_preconditions)]` / `fast` drops the type-derived
+    // stopifnot checks. TryFromSexp still raises a typed Rust error on
     // mismatched input — see analysis/scaffolding-deep-findings-2026-05-20.md
-    // for why this is ~1230 ns / 1-arg or ~3900 ns / 5-arg of savings.
-    let precondition_prelude = if no_preconditions {
-        String::new()
-    } else {
+    // for why this is ~1230 ns / 1-arg or ~3900 ns / 5-arg of savings. The
+    // per-parameter `inherits` / `no_na` checks stay: nothing in Rust repeats them.
+    let precondition_prelude = {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
         // holds Rust names; normalize to R names.
@@ -1617,6 +1616,8 @@ pub fn miniextendr(
                 .iter()
                 .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
                 .collect(),
+            explicit: parsed.explicit_checks(),
+            no_type_checks: no_preconditions,
         };
         let precondition_output =
             r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);

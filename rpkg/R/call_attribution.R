@@ -40,3 +40,10 @@ call_marker_wrapper <- function(value) {
 hyperparams_total_caller <- function(hyper) {
   hyperparams_total_caller_impl(hyper)
 }
+
+# Delegates to a `call = caller` entry point with per-parameter `inherits` /
+# `no_na` checks (src/rust/param_check_tests.rs): a failed check surfaces as
+# `Error in param_checks_caller(...)`, like the type checks above.
+param_checks_caller <- function(x, y) {
+  param_checks_caller_impl(x, y)
+}

@@ -195,6 +195,48 @@ pub fn exact_value(x: i64) -> i64 { x }
 pub fn get_record() -> MyStruct { /* ... */ }
 ```
 
+#### Parameter Attributes
+
+Written on a single parameter of a standalone function:
+
+| Attribute | Effect |
+|-----------|--------|
+| `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
+| `default = "..."` | R formal default (an R expression) |
+| `match_arg` | Validate against the parameter type's `MatchArg` choices |
+| `choices("a", "b")` | Validate a string against a literal choice list |
+| `several_ok` | With `match_arg` / `choices`: accept several values |
+| `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
+| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too |
+
+```rust
+#[miniextendr]
+pub fn obj_summary(#[miniextendr(inherits = "pkg_obj")] x: List) -> String { /* ... */ }
+
+#[miniextendr]
+pub fn scale_by(#[miniextendr(no_na)] factor: f64, #[miniextendr(no_na)] xs: Vec<f64>) -> Vec<f64> { /* ... */ }
+```
+
+```r
+stopifnot(
+  "'x' must be a list" = is.list(x),
+  "'x' must inherit from 'pkg_obj'" = inherits(x, "pkg_obj")
+)
+```
+
+`inherits` and `no_na` follow the parameter's type checks in the same
+`stopifnot()` block (under `call = caller`, the same guards raising with the
+caller's call). An `Option<T>` parameter passes `NULL` and a `Missing<T>`
+parameter an omitted argument. Unlike the type checks, they stay under
+`no_preconditions` / `fast`: nothing in the Rust conversion repeats them. A
+plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
+NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
+
+Impl and trait methods cannot carry parameter attributes, so the same options
+are method-level and name the parameter: `match_arg(p)`,
+`match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
+`inherits(p = "cls_a, cls_b")`, `no_na(p, q)`.
+
 #### Error Handling
 
 | Attribute | Effect |
@@ -462,6 +504,9 @@ impl Person {
 | `r_entry = "..."` | Inject R code at method entry |
 | `r_post_checks = "..."` | Inject R code after checks |
 | `r_on_exit = "..."` | Register `on.exit()` cleanup |
+| `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
+| `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
+| `no_na(p, q)` | R check `!anyNA(p)` |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,
