@@ -7,7 +7,7 @@
 \alias{EnvPipeBuilder$total}
 \alias{$.EnvPipeBuilder}
 \alias{[[.EnvPipeBuilder}
-\title{EnvPipeBuilder  Class}
+\title{EnvPipeBuilder Class}
 \usage{
 EnvPipeBuilder
 

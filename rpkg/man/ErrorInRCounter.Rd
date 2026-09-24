@@ -9,7 +9,7 @@
 \alias{ErrorInRCounter$failing_method}
 \alias{$.ErrorInRCounter}
 \alias{[[.ErrorInRCounter}
-\title{ErrorInRCounter  Class}
+\title{ErrorInRCounter Class}
 \usage{
 ErrorInRCounter
 

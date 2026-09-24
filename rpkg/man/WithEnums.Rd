@@ -8,7 +8,7 @@
 \alias{WithEnums$from_r}
 \alias{$.WithEnums}
 \alias{[[.WithEnums}
-\title{WithEnums  Class}
+\title{WithEnums Class}
 \usage{
 WithEnums
 
@@ -22,5 +22,5 @@ WithEnums
 \item{name}{Method name for dispatch.}
 }
 \description{
-WithEnums  Class
+WithEnums Class
 }

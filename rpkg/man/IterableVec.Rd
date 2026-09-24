@@ -8,7 +8,7 @@
 \alias{$.IterableVec}
 \alias{[[.IterableVec}
 \alias{IterableVec$RMakeIter$make_iter}
-\title{IterableVec  Class}
+\title{IterableVec Class}
 \usage{
 IterableVec
 

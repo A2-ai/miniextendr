@@ -9,7 +9,7 @@
 \alias{IntSet$RToVec$to_vec}
 \alias{IntSet$RToVec$len}
 \alias{IntSet$RToVec$is_empty}
-\title{IntSet  Class}
+\title{IntSet Class}
 \usage{
 IntSet
 

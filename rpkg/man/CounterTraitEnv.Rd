@@ -10,7 +10,7 @@
 \alias{CounterTraitEnv$MatrixCounter$custom_add}
 \alias{CounterTraitEnv$MatrixCounter$default_value}
 \alias{CounterTraitEnv$StaticXParam$from_value}
-\title{CounterTraitEnv  Class}
+\title{CounterTraitEnv Class}
 \usage{
 CounterTraitEnv
 
@@ -24,5 +24,5 @@ CounterTraitEnv
 \item{name}{Method name for dispatch.}
 }
 \description{
-CounterTraitEnv  Class
+CounterTraitEnv Class
 }

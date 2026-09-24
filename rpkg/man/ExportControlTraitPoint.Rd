@@ -5,11 +5,11 @@
 \alias{ExportControlTraitPoint$new}
 \alias{ExportControlTraitPoint$RDebug$debug_str}
 \alias{ExportControlTraitPoint$RDebug$debug_str_pretty}
-\title{ExportControlTraitPoint  Class}
+\title{ExportControlTraitPoint Class}
 \usage{
 ExportControlTraitPoint
 }
 \description{
-ExportControlTraitPoint  Class
+ExportControlTraitPoint Class
 }
 \keyword{internal}

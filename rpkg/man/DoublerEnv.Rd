@@ -9,7 +9,7 @@
 \alias{DoublerEnv$Doubler$doubled}
 \alias{DoublerEnv$Doubler$duplicate}
 \alias{DoublerEnv$Doubler$spawn}
-\title{DoublerEnv  Class}
+\title{DoublerEnv Class}
 \usage{
 DoublerEnv
 

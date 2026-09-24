@@ -10,7 +10,7 @@
 \alias{IterableVecIter$RIterator$collect_n}
 \alias{IterableVecIter$RIterator$skip}
 \alias{IterableVecIter$RIterator$nth}
-\title{IterableVecIter  Class}
+\title{IterableVecIter Class}
 \usage{
 IterableVecIter
 

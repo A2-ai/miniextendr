@@ -13,7 +13,7 @@
 \alias{EnvRaiser$env_raise_condition_classed}
 \alias{$.EnvRaiser}
 \alias{[[.EnvRaiser}
-\title{EnvRaiser  Class}
+\title{EnvRaiser Class}
 \usage{
 EnvRaiser
 
@@ -27,5 +27,5 @@ EnvRaiser
 \item{name}{Method name for dispatch.}
 }
 \description{
-EnvRaiser  Class
+EnvRaiser Class
 }

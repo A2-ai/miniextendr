@@ -11,7 +11,7 @@
 \alias{SeededNormal$RDistributionOps$mean}
 \alias{SeededNormal$RDistributionOps$variance}
 \alias{SeededNormal$RDistributionOps$std_dev}
-\title{SeededNormal  Class}
+\title{SeededNormal Class}
 \usage{
 SeededNormal
 

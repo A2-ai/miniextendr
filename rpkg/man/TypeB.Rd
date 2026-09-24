@@ -6,7 +6,7 @@
 \alias{TypeB$get_val}
 \alias{$.TypeB}
 \alias{[[.TypeB}
-\title{TypeB  Class}
+\title{TypeB Class}
 \usage{
 TypeB
 
@@ -20,5 +20,5 @@ TypeB
 \item{name}{Method name for dispatch.}
 }
 \description{
-TypeB  Class
+TypeB Class
 }

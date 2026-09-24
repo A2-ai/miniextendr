@@ -8,7 +8,7 @@
 \alias{Rectangle$from_r}
 \alias{$.Rectangle}
 \alias{[[.Rectangle}
-\title{Rectangle  Class}
+\title{Rectangle Class}
 \usage{
 Rectangle
 
@@ -22,5 +22,5 @@ Rectangle
 \item{name}{Method name for dispatch.}
 }
 \description{
-Rectangle  Class
+Rectangle Class
 }

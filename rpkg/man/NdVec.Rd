@@ -25,7 +25,7 @@
 \alias{NdVec$from_range}
 \alias{$.NdVec}
 \alias{[[.NdVec}
-\title{NdVec  Class}
+\title{NdVec Class}
 \usage{
 NdVec
 

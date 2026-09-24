@@ -6,7 +6,7 @@
 \alias{PtrIdentityTest$value}
 \alias{$.PtrIdentityTest}
 \alias{[[.PtrIdentityTest}
-\title{PtrIdentityTest  Class}
+\title{PtrIdentityTest Class}
 \usage{
 PtrIdentityTest
 
@@ -20,5 +20,5 @@ PtrIdentityTest
 \item{name}{Method name for dispatch.}
 }
 \description{
-PtrIdentityTest  Class
+PtrIdentityTest Class
 }

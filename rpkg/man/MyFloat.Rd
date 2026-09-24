@@ -8,7 +8,7 @@
 \alias{$.MyFloat}
 \alias{[[.MyFloat}
 \alias{MyFloat$RPartialOrd$partial_cmp}
-\title{MyFloat  Class}
+\title{MyFloat Class}
 \usage{
 MyFloat
 

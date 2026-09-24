@@ -10,7 +10,7 @@
 \alias{EnvConsumingBuilder$finish}
 \alias{$.EnvConsumingBuilder}
 \alias{[[.EnvConsumingBuilder}
-\title{EnvConsumingBuilder  Class}
+\title{EnvConsumingBuilder Class}
 \usage{
 EnvConsumingBuilder
 

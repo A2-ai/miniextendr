@@ -10,7 +10,7 @@
 \alias{$.SerializeHost}
 \alias{[[.SerializeHost}
 \alias{SerializeHost$SerializeValues$values}
-\title{SerializeHost  Class}
+\title{SerializeHost Class}
 \usage{
 SerializeHost
 

@@ -10,7 +10,7 @@
 \alias{OptsTarget$OptionsDemo$with_exit}
 \alias{OptsTarget$OptionsDemo$with_checks}
 \alias{OptsTarget$OptionsDemo$deprecated_method}
-\title{OptsTarget  Class}
+\title{OptsTarget Class}
 \usage{
 OptsTarget
 
@@ -24,5 +24,5 @@ OptsTarget
 \item{name}{Method name for dispatch.}
 }
 \description{
-OptsTarget  Class
+OptsTarget Class
 }

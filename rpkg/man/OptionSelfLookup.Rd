@@ -9,7 +9,7 @@
 \alias{OptionSelfLookup$try_find}
 \alias{$.OptionSelfLookup}
 \alias{[[.OptionSelfLookup}
-\title{OptionSelfLookup  Class}
+\title{OptionSelfLookup Class}
 \usage{
 OptionSelfLookup
 

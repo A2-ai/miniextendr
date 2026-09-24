@@ -10,7 +10,7 @@
 \alias{SharedSimpleCounter$SharedCounter$increment}
 \alias{SharedSimpleCounter$SharedCounter$add}
 \alias{SharedSimpleCounter$SharedCounter$reset}
-\title{SharedSimpleCounter  Class}
+\title{SharedSimpleCounter Class}
 \usage{
 SharedSimpleCounter
 
@@ -24,5 +24,5 @@ SharedSimpleCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-SharedSimpleCounter  Class
+SharedSimpleCounter Class
 }

@@ -27,7 +27,7 @@
 \alias{NdArrayDyn$ones}
 \alias{$.NdArrayDyn}
 \alias{[[.NdArrayDyn}
-\title{NdArrayDyn  Class}
+\title{NdArrayDyn Class}
 \usage{
 NdArrayDyn
 

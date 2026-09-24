@@ -6,7 +6,7 @@
 \alias{FdefaultProbe$probe_value}
 \alias{$.FdefaultProbe}
 \alias{[[.FdefaultProbe}
-\title{FdefaultProbe  Class}
+\title{FdefaultProbe Class}
 \usage{
 FdefaultProbe
 

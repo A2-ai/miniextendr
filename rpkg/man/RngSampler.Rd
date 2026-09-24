@@ -9,7 +9,7 @@
 \alias{RngSampler$static_sample}
 \alias{$.RngSampler}
 \alias{[[.RngSampler}
-\title{RngSampler  Class}
+\title{RngSampler Class}
 \usage{
 RngSampler
 

@@ -7,7 +7,7 @@
 \alias{Maps$from_r}
 \alias{$.Maps}
 \alias{[[.Maps}
-\title{Maps  Class}
+\title{Maps Class}
 \usage{
 Maps
 
@@ -21,5 +21,5 @@ Maps
 \item{name}{Method name for dispatch.}
 }
 \description{
-Maps  Class
+Maps Class
 }

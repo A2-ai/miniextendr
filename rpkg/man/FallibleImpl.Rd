@@ -8,7 +8,7 @@
 \alias{[[.FallibleImpl}
 \alias{FallibleImpl$Fallible$get_value}
 \alias{FallibleImpl$Fallible$will_panic}
-\title{FallibleImpl  Class}
+\title{FallibleImpl Class}
 \usage{
 FallibleImpl
 
