@@ -2445,6 +2445,12 @@ fn vctrs_wrapper_rcrd_full_snapshot() {
 
     // Verify vec_cast self-coercion
     assert!(wrapper.contains("vec_cast.Rational.Rational <- function(x, to, ...) x"));
+
+    // A static helper is exported, like the S3 / S4 / S7 static methods.
+    assert!(
+        wrapper.contains("#' @export\nrational_numerator <- function(n, d)"),
+        "{wrapper}"
+    );
 }
 
 #[test]

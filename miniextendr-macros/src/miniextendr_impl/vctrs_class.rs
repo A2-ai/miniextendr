@@ -364,6 +364,12 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .with_r_name(r_name.clone())
                     .with_class_no_rd(class_has_no_rd);
             lines.extend(method_doc.build());
+            // Export the helper so users can call it, as the S3 / S4 / S7
+            // generators do for their static methods; without it the
+            // function was documented on the class page but unreachable.
+            if should_export {
+                lines.push("#' @export".to_string());
+            }
         }
 
         // Protocol methods accept `...` so `format(x, nsmall = 2)` and similar
