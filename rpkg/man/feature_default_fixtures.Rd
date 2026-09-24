@@ -43,7 +43,7 @@ Logical identity under the build's default conversion mode: under \code{coerce-d
 
 Same as \code{fdefault_coerce_flag} with \code{no_coerce}: requires a logical even under \code{coerce-default}.
 
-i32 identity, bare (no knob attrs): under \code{fast-default} the R-side \code{stopifnot(...)} precondition is dropped, so bad input surfaces as a \code{rust_error} from \code{TryFromSexp} instead; otherwise it raises the stopifnot-shaped error.
+i32 identity, bare (no knob attrs): under \code{fast-default} the R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} instead (\verb{'x' must be a single integer: ...}); otherwise the R-side check raises \verb{'x' must be integer}. Both are the same argument-error condition.
 
 Same as \code{fdefault_fast_bare_i32} with \code{no_fast}: preconditions are restored even under \code{fast-default}.
 }

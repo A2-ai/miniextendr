@@ -374,15 +374,19 @@ pub fn scale_by(#[miniextendr(no_na)] factor: f64, #[miniextendr(no_na)] xs: Vec
 ```
 
 ```r
-stopifnot(
-  "'x' must be a list" = is.list(x),
-  "'x' must inherit from 'pkg_obj'" = inherits(x, "pkg_obj")
-)
+if (!isTRUE(is.list(x))) .miniextendr_arg_error("x", "must be a list")
+if (!isTRUE(inherits(x, "pkg_obj"))) .miniextendr_arg_error("x", "must inherit from 'pkg_obj'")
 ```
 
-`inherits` and `no_na` follow the parameter's type checks in the same
-`stopifnot()` block (under `call = caller`, the same guards raising with the
-caller's call). An `Option<T>` parameter passes `NULL` and a `Missing<T>`
+`inherits` and `no_na` follow the parameter's type checks, one guard per
+check (under `call = caller`, the same guards raising with the caller's call).
+A failure raises the same condition as a failed Rust conversion: the crate's
+`conversion_error_class`, `rust_error`, `kind = "conversion"` and `e$param`,
+with the message `'x' must inherit from 'pkg_obj'`
+([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)). The
+`match_arg` / `choices` validation raises it too
+(`'mode' should be one of "fast", "slow"`). An `Option<T>` parameter passes
+`NULL` and a `Missing<T>`
 parameter an omitted argument. Unlike the type checks, they stay under
 `no_preconditions` / `fast`: nothing in the Rust conversion repeats them. A
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
@@ -477,7 +481,7 @@ Generated wrapper layout:
 fn_name <- function(formals) {
   # r_entry code
   on.exit(...)         # r_on_exit
-  # missing defaults, lifecycle, stopifnot, match.arg
+  # missing defaults, lifecycle, preconditions, match.arg
   # r_post_checks code
   .Call(C_mypkg_fn_name, ...)
 }

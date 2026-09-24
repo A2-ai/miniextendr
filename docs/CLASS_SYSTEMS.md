@@ -99,10 +99,8 @@ users — R-facing function and class names are unchanged.
 Counter <- new.env(parent = emptyenv())
 
 Counter$new <- function(initial) {
-  stopifnot(
-    "'initial' must be integer" = is.integer(initial),
-    "'initial' must have length 1" = length(initial) == 1L
-  )
+  if (!isTRUE(is.integer(initial))) .miniextendr_arg_error("initial", "must be integer")
+  if (!isTRUE(length(initial) == 1L)) .miniextendr_arg_error("initial", "must have length 1")
   .val <- .Call(C_mypkg_Counter__new, .call = match.call(), initial)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val

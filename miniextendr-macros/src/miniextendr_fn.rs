@@ -1269,11 +1269,10 @@ const FN_NESTED_OPTIONS_HELP: &str =
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `prefer = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
-/// - `no_preconditions`: drop the R-side `stopifnot(...)` block. `TryFromSexp`
-///   still raises on bad input; the message comes from Rust rather than R.
-///   Saves ~300 ns per assertion (~600 ns per scalar arg, ~1230 ns for a 1-arg
-///   numeric scalar fn). Hot-path opt-in. Opt out with `no_fast` when `fast-default`
-///   is enabled.
+/// - `no_preconditions`: drop the R-side type checks. `TryFromSexp` still
+///   raises on bad input, with the same argument-error condition (#1591); the
+///   message comes from the conversion. Saves one `isTRUE()` guard per check.
+///   Hot-path opt-in. Opt out with `no_fast` when `fast-default` is enabled.
 /// - `call = none | wrapper | caller`: which call the wrapper attributes
 ///   conditions to (#1566). `wrapper` (the framework default) passes
 ///   `.call = match.call()`; `caller` binds the caller's matched call first
@@ -1317,13 +1316,13 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub(crate) serde_error: Option<SerdeErrorSpec>,
-    /// Skip emission of the R-side `stopifnot(...)` precondition block.
+    /// Skip emission of the R-side type-check guards.
     ///
-    /// `TryFromSexp` already raises a typed Rust error on mismatched input,
-    /// so the information isn't lost — just routed through the Rust error
-    /// message rather than R's stopifnot text. Useful for hot paths where the
-    /// per-call precondition cost (~300 ns per assertion, ~600 ns per arg for
-    /// numeric scalars) dominates over actual work.
+    /// `TryFromSexp` already raises the same argument-error condition on
+    /// mismatched input (#1591), so the information isn't lost: it is
+    /// worded by the conversion rather than by the R check. Useful for hot
+    /// paths where the per-call precondition cost (one `isTRUE()` guard per
+    /// check) dominates over actual work.
     ///
     /// Set by `#[miniextendr(no_preconditions)]` or implied by `fast`.
     /// Use `no_fast` to opt out when `fast-default` is enabled.
@@ -1401,7 +1400,7 @@ pub(crate) struct MiniextendrFnAttrs {
     /// R code to inject at the very top of the wrapper body (before all built-in checks).
     ///
     /// Use `#[miniextendr(r_entry = "x <- as.integer(x)")]` to run R code before
-    /// missing-default handling, lifecycle checks, stopifnot, and match.arg.
+    /// missing-default handling, lifecycle checks, preconditions, and match.arg.
     /// Multi-line via `\n`. No validation of R syntax.
     pub(crate) r_entry: Option<String>,
     /// R code to inject after all built-in checks, immediately before `.Call()`.

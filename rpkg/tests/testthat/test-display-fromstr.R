@@ -67,7 +67,7 @@ test_that("AsFromStr quotes the value it cannot parse", {
 test_that("AsFromStr refuses NA instead of parsing an empty string", {
   expect_error(
     miniextendr:::test_fromstr_int(NA_character_),
-    "unexpected NA value",
+    "invalid 's' argument: NA is not allowed",
     fixed = TRUE
   )
 })

@@ -588,11 +588,11 @@ fn generate_setter_body(
             .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
     };
 
-    // Conversion-failure condition: the message prefix mirrors the main path's
-    // "failed to convert parameter '<name>' to <ty>: ..." wording, and `e$param`
-    // names the setter's `value` formal, as on every conversion condition. The
-    // scalar slots have no error value, so their `expected ...` text goes
-    // through the same probe as a `&str` (its `Display` arm).
+    // Conversion-failure condition: the message names the field and its type,
+    // and `e$param` names the setter's `value` formal, as on every conversion
+    // condition; there is no `e$rust_type` (the field, not a parameter, has
+    // the type). The scalar slots have no error value, so their `expected ...`
+    // text goes through the same probe as a `&str` (its `Display` arm).
     let err_prefix = syn::LitStr::new(
         &format!(
             "failed to convert value for sidecar field '{}' on `{}`",
@@ -606,6 +606,7 @@ fn generate_setter_body(
             ::miniextendr_api::error_value::conversion_condition_value(
                 #err_prefix,
                 "value",
+                ::core::option::Option::None,
                 &[#(#crate_class),*],
                 ::miniextendr_api::__mx_conversion_err_parts!(#err),
                 ::core::option::Option::None,

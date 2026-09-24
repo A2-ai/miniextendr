@@ -20,12 +20,10 @@ Range <- S7::new_class("Range",
   ),
   constructor = function(start, end, .ptr = NULL) {
     if (is.null(.ptr)) {
-      stopifnot(
-        "'start' must be double" = is.double(start),
-        "'start' must have length 1" = length(start) == 1L,
-        "'end' must be double" = is.double(end),
-        "'end' must have length 1" = length(end) == 1L
-      )
+      if (!isTRUE(is.double(start))) .miniextendr_arg_error("start", "must be double")
+      if (!isTRUE(length(start) == 1L)) .miniextendr_arg_error("start", "must have length 1")
+      if (!isTRUE(is.double(end))) .miniextendr_arg_error("end", "must be double")
+      if (!isTRUE(length(end) == 1L)) .miniextendr_arg_error("end", "must have length 1")
     }
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)

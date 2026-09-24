@@ -75,26 +75,77 @@ fn test_str_conversion_worker_copies_then_borrows() {
     }
 }
 
-/// The `Err` arm names the parameter by its R formal (`_x` → `x`), renders the
-/// type with source spacing, drops the old fixed "wrong type, length, or
-/// contains NA" phrase, and passes an empty crate class list by default.
+/// Build the conversion statements of one parameter, joined as a string.
+fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
+    let syn::FnArg::Typed(pat_type) = parse_param(src) else {
+        unreachable!()
+    };
+    let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+    builder
+        .build_conversion(&pat_type, &sexp_ident)
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A type without an R-facing expectation: the `Err` arm names the parameter
+/// by its R formal (`_x` → `x`) in the `invalid '<p>' argument` prefix, passes
+/// the Rust type (with source spacing) as `e$rust_type` rather than in the
+/// message, probes without an expectation, and passes an empty crate class
+/// list by default (#1591).
 #[test]
-fn test_conversion_err_arm_context_and_param() {
+fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
+    let s = conversion_text(&RustConversionBuilder::new(), "_nums: AsFromStrVec<i32>");
+    assert!(s.contains("conversion_condition_value"), "{s}");
+    assert!(s.contains("__mx_conversion_err_parts ! (e , false)"), "{s}");
+    assert!(
+        s.contains("\"invalid 'nums' argument\" , \"nums\" , :: core :: option :: Option :: Some (\"AsFromStrVec<i32>\") , & []"),
+        "{s}"
+    );
+    assert!(!s.contains("failed to convert"), "{s}");
+}
+
+/// A type with an R-facing expectation: `'<p>' must be <expected>`, the same
+/// classification as the R-side check, and the probe told the expectation is
+/// stated.
+#[test]
+fn test_conversion_err_arm_states_the_r_expectation() {
     let builder = RustConversionBuilder::new();
-    let param = parse_param("_nums: AsFromStrVec<i32>");
-    if let syn::FnArg::Typed(pat_type) = param {
-        let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-        let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-        let s = stmts[0].to_string();
-        assert!(s.contains("conversion_condition_value"), "{s}");
-        assert!(s.contains("__mx_conversion_err_parts"), "{s}");
+    for (src, prefix) in [
+        ("dv: AsNumericVec", "'dv' must be numeric"),
+        ("num: AsNumeric", "'num' must be a single number"),
+        ("x: i32", "'x' must be a single integer"),
+        ("x: Option<f64>", "'x' must be NULL or a single double"),
+        ("s: &str", "'s' must be a single string"),
+        ("flag: bool", "'flag' must be TRUE or FALSE"),
+        ("xs: &[f64]", "'xs' must be double"),
+    ] {
+        let s = conversion_text(&builder, src);
+        assert!(s.contains(&format!("\"{prefix}\"")), "{src}: {s}");
         assert!(
-            s.contains("\"failed to convert parameter 'nums' to AsFromStrVec<i32>\""),
-            "{s}"
+            s.contains("__mx_conversion_err_parts ! (e , true)"),
+            "{src}: {s}"
         );
-        assert!(s.contains("\"nums\" , & []"), "{s}");
-        assert!(!s.contains("wrong type"), "{s}");
     }
+    // `coerce` widens the expectation with the gate.
+    let s = conversion_text(
+        &RustConversionBuilder::new().with_coerce_param("x".to_string()),
+        "x: i32",
+    );
+    assert!(s.contains("\"'x' must be a single whole number\""), "{s}");
+}
+
+/// A `several_ok` fixed-size array whose selection has the wrong length is an
+/// argument error too (#1591), not a panic.
+#[test]
+fn test_several_ok_array_length_is_an_argument_error() {
+    let builder = RustConversionBuilder::new().with_match_arg_several_ok("modes".to_string());
+    let s = conversion_text(&builder, "modes: [Mode; 2]");
+    assert!(!s.contains("panic"), "{s}");
+    assert!(s.contains("\"'modes' must be of length 2\""), "{s}");
+    assert!(s.contains("got length {}"), "{s}");
+    assert_eq!(s.matches("conversion_condition_value").count(), 2, "{s}");
 }
 
 /// Every conversion site binds a typed `let`, which the `Err` arm's probe

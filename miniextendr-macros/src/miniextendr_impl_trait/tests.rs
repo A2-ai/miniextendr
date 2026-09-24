@@ -752,7 +752,7 @@ fn test_bug1_x_prefixed_param_not_corrupted_r6() {
 /// BUG2 regression: `trait_method_preamble_lines` (the pre-refactor prelude)
 /// emitted only r_entry/on.exit/lifecycle/r_post_checks — it silently skipped
 /// `precondition_checks`, so a trait method's typed params got no
-/// `stopifnot()` validation an identical inherent method would have.
+/// precondition validation an identical inherent method would have.
 #[test]
 fn test_bug2_precondition_checks_emitted_for_trait_method() {
     let type_ident = format_ident!("Foo");
@@ -770,12 +770,12 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
     .unwrap();
 
     assert!(
-        result.contains("stopifnot("),
-        "trait method with a typed param should emit stopifnot() preconditions, got:\n{}",
+        result.contains("if (!isTRUE(is.integer(amount)))"),
+        "trait method with a typed param should emit precondition guards, got:\n{}",
         result
     );
     assert!(
-        result.contains("'amount' must be integer"),
+        result.contains(".miniextendr_arg_error(\"amount\", \"must be integer\")"),
         "precondition message should mention the param, got:\n{}",
         result
     );

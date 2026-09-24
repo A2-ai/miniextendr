@@ -1,76 +1,98 @@
 //! R-side precondition generation for type checking.
 //!
-//! Generates `stopifnot()` checks in R wrapper functions that run BEFORE the `.Call()` boundary.
+//! Generates argument checks in R wrapper functions that run BEFORE the `.Call()` boundary.
 //! This gives users clear, idiomatic R error messages with proper stack traces instead of
 //! Rust panic messages.
 //!
-//! Each assertion checks ONE thing with a precise error message:
+//! Each check tests ONE thing and names the requirement it enforces:
 //!
 //! ```r
 //! add <- function(a, b) {
-//!   stopifnot(
-//!     "'a' must be integer" = is.integer(a),
-//!     "'a' must have length 1" = length(a) == 1L,
-//!     "'b' must be integer" = is.integer(b),
-//!     "'b' must have length 1" = length(b) == 1L
-//!   )
+//!   if (!isTRUE(is.integer(a))) .miniextendr_arg_error("a", "must be integer")
+//!   if (!isTRUE(length(a) == 1L)) .miniextendr_arg_error("a", "must have length 1")
+//!   if (!isTRUE(is.integer(b))) .miniextendr_arg_error("b", "must be integer")
+//!   if (!isTRUE(length(b) == 1L)) .miniextendr_arg_error("b", "must have length 1")
 //!   .Call(C_add, .call = match.call(), a, b)
 //! }
 //! ```
+//!
+//! A failing check calls the preamble helper `.miniextendr_arg_error`
+//! (`miniextendr-api/src/registry.rs`), which raises the same condition as a
+//! failed Rust conversion: the crate's `conversion_error_class`, `rust_error`,
+//! `kind = "conversion"` and `e$param`, with the message `'a' must be integer`
+//! (#1591). A passing check costs one `isTRUE()` test; the condition is only
+//! built on failure. `isTRUE()` keeps `stopifnot()`'s failure semantics (`NA`
+//! fails too), and the guards are cheaper than the `stopifnot()` call they
+//! replace. [`conversion_expectation`] gives the Rust conversion the same
+//! vocabulary for its messages.
 
 use std::collections::{HashMap, HashSet};
 
-/// A single `stopifnot()` assertion: `"message" = condition`.
+/// A single R-side check on one parameter: a requirement and the R condition
+/// enforcing it.
 ///
-/// When formatted, produces a named argument for R's `stopifnot()`:
-/// `"'x' must be numeric" = is.numeric(x)`.
+/// Formatted as a guard (see [`RAssertion::to_guard`]):
+/// `if (!isTRUE(is.numeric(x))) .miniextendr_arg_error("x", "must be numeric")`.
 struct RAssertion {
-    /// Human-readable error message shown when the assertion fails.
-    message: String,
+    /// R name of the checked parameter (`e$param` on failure).
+    param: String,
+    /// What the parameter must satisfy, without the parameter name
+    /// (`must be numeric`). The condition message is `'<param>' <requirement>`.
+    requirement: String,
     /// R expression that must evaluate to `TRUE` for the check to pass.
     condition: String,
 }
 
 impl RAssertion {
-    /// Create a new assertion with the given error message and R condition expression.
-    fn new(message: impl Into<String>, condition: impl Into<String>) -> Self {
+    /// Create a new assertion on `param` with its requirement and R condition expression.
+    fn new(
+        param: impl Into<String>,
+        requirement: impl Into<String>,
+        condition: impl Into<String>,
+    ) -> Self {
         Self {
-            message: message.into(),
+            param: param.into(),
+            requirement: requirement.into(),
             condition: condition.into(),
         }
     }
 
-    /// Format as a `stopifnot()` named argument: `"message" = condition`.
-    fn to_stopifnot_arg(&self) -> String {
-        format!("\"{}\" = {}", self.message, self.condition)
+    /// The condition message a failure raises: `'<param>' <requirement>`.
+    #[cfg(test)]
+    fn message(&self) -> String {
+        format!("'{}' {}", self.param, self.requirement)
     }
 
-    /// Format as a guard that raises with an explicit call:
-    /// `if (!isTRUE(condition)) stop(simpleError("message", call))`.
-    /// `isTRUE()` keeps `stopifnot()`'s failure semantics (`NA` fails too).
-    fn to_attributed_guard(&self, call: &str) -> String {
+    /// Format as a guard that raises an argument error on failure:
+    /// `if (!isTRUE(condition)) .miniextendr_arg_error("param", "requirement")`.
+    ///
+    /// `call` is the call the error is attributed to. `None` leaves the
+    /// helper's default, the wrapper's own call (what `stopifnot()` reported);
+    /// a `call = caller` wrapper passes `.mx_call` (#1548).
+    fn to_guard(&self, call: Option<&str>) -> String {
+        let call_arg = call.map(|c| format!(", {c}")).unwrap_or_default();
         format!(
-            "if (!isTRUE({})) stop(simpleError(\"{}\", {}))",
-            self.condition, self.message, call
+            "if (!isTRUE({})) .miniextendr_arg_error(\"{}\", \"{}\"{})",
+            self.condition, self.param, self.requirement, call_arg
         )
     }
 
     /// Wrap for nullable: prepend `is.null(param) || ` to the condition,
-    /// and adjust the message to mention NULL.
-    fn nullable(self, param: &str) -> Self {
-        let message = if self.message.contains("must be ") {
-            // "'x' must be character" → "'x' must be NULL or character"
-            self.message.replacen("must be ", "must be NULL or ", 1)
-        } else if self.message.contains("must have ") {
-            // "'x' must have length 1" → "'x' must be NULL or have length 1"
-            self.message
-                .replacen("must have ", "must be NULL or have ", 1)
+    /// and adjust the requirement to mention NULL.
+    fn nullable(self) -> Self {
+        let requirement = if let Some(rest) = self.requirement.strip_prefix("must be ") {
+            // "must be character" → "must be NULL or character"
+            format!("must be NULL or {rest}")
+        } else if let Some(rest) = self.requirement.strip_prefix("must have ") {
+            // "must have length 1" → "must be NULL or have length 1"
+            format!("must be NULL or have {rest}")
         } else {
-            format!("{} (or NULL)", self.message)
+            format!("{} (or NULL)", self.requirement)
         };
         Self {
-            message,
-            condition: format!("is.null({}) || {}", param, self.condition),
+            condition: format!("is.null({}) || {}", self.param, self.condition),
+            param: self.param,
+            requirement,
         }
     }
 }
@@ -109,8 +131,8 @@ impl PreconditionOptions {
 ///
 /// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
 /// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
-/// method. They run after the type checks, in the same `stopifnot()` block
-/// (or `call = caller` guards), and survive `no_preconditions` / `fast`: the
+/// method. They run after the type checks, as the same kind of guards
+/// raising the same argument error, and survive `no_preconditions` / `fast`: the
 /// Rust conversion cannot check them, so dropping them would change what the
 /// function accepts.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -154,7 +176,8 @@ impl ExplicitChecks {
                 "be"
             };
             out.push(RAssertion::new(
-                format!("'{param}' must not {verb} NA"),
+                param,
+                format!("must not {verb} NA"),
                 format!("!anyNA({param})"),
             ));
         }
@@ -177,7 +200,8 @@ impl ExplicitChecks {
                 _ => format!("c({})", literals.join(", ")),
             };
             out.push(RAssertion::new(
-                format!("'{param}' must inherit from {what}"),
+                param,
+                format!("must inherit from {what}"),
                 format!("inherits({param}, {class_arg})"),
             ));
         }
@@ -198,14 +222,14 @@ impl ExplicitChecks {
 }
 
 /// Escape `s` for the inside of an R double-quoted string literal (the
-/// `stopifnot()` message and the class names in `inherits()`).
+/// requirement text and the class names in `inherits()`).
 fn r_string_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Classification of an R-side type check for a function parameter.
 ///
-/// Each variant maps to a specific set of `stopifnot()` assertions. Numeric checks
+/// Each variant maps to a specific set of R-side checks. Numeric checks
 /// use a broad predicate (`is.numeric || is.logical || is.raw`) because R coerces
 /// logical to numeric freely and raw to integer is valid for byte-sized types.
 /// Borderline cases (e.g., raw to i64 in strict mode) pass the precondition and
@@ -313,58 +337,58 @@ fn numeric_or_text_check(param: &str) -> String {
 }
 
 impl RTypeCheck {
-    /// Produce the individual `stopifnot()` assertions for this type check.
+    /// Produce the individual checks for this type check.
     ///
-    /// Returns one or more `RAssertion` values, each representing a single
-    /// `"message" = condition` entry in the `stopifnot()` call. The `param`
-    /// argument is the R parameter name to use in messages and conditions.
+    /// Returns one or more `RAssertion` values, each one requirement on
+    /// `param` (the R parameter name used in the conditions and messages).
     fn assertions(&self, param: &str) -> Vec<RAssertion> {
+        let length_one = || {
+            RAssertion::new(
+                param,
+                "must have length 1",
+                format!("length({param}) == 1L"),
+            )
+        };
         match self {
             RTypeCheck::ScalarNumeric => vec![
                 RAssertion::new(
-                    format!("'{}' must be numeric, logical, or raw", param),
+                    param,
+                    "must be numeric, logical, or raw",
                     numeric_type_check(param),
                 ),
-                RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
+                length_one(),
             ],
             RTypeCheck::ScalarLogicalOrInteger => vec![
                 RAssertion::new(
-                    format!("'{}' must be logical or integer", param),
+                    param,
+                    "must be logical or integer",
                     format!("is.logical({p}) || is.integer({p})", p = param),
                 ),
-                RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
+                length_one(),
             ],
             RTypeCheck::VectorLogicalOrInteger => vec![RAssertion::new(
-                format!("'{}' must be logical or integer", param),
+                param,
+                "must be logical or integer",
                 format!("is.logical({p}) || is.integer({p})", p = param),
             )],
             RTypeCheck::ScalarIntegerWide => vec![
                 RAssertion::new(
-                    format!("'{}' must be integer or whole-number numeric", param),
+                    param,
+                    "must be integer or whole-number numeric",
                     integer_vector_wide_check(param),
                 ),
-                RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
+                length_one(),
             ],
             RTypeCheck::ScalarNonNeg => vec![
                 RAssertion::new(
-                    format!("'{}' must be numeric, logical, or raw", param),
+                    param,
+                    "must be numeric, logical, or raw",
                     numeric_type_check(param),
                 ),
+                length_one(),
                 RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
-                RAssertion::new(
-                    format!("'{}' must be non-negative", param),
+                    param,
+                    "must be non-negative",
                     // raw is always non-negative; guard with is.raw() to avoid
                     // "comparison not implemented" error for raw values
                     format!("is.raw({p}) || {p} >= 0", p = param),
@@ -372,55 +396,113 @@ impl RTypeCheck {
             ],
             RTypeCheck::Scalar(r_type) => vec![
                 RAssertion::new(
-                    format!("'{}' must be {}", param, r_type),
-                    format!("is.{}({})", r_type, param),
+                    param,
+                    format!("must be {r_type}"),
+                    format!("is.{r_type}({param})"),
                 ),
-                RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
+                length_one(),
             ],
             RTypeCheck::VectorNumeric => vec![RAssertion::new(
-                format!("'{}' must be numeric, logical, or raw", param),
+                param,
+                "must be numeric, logical, or raw",
                 numeric_type_check(param),
             )],
             RTypeCheck::VectorIntegerStrict => vec![RAssertion::new(
-                format!("'{}' must be an integer vector", param),
-                format!("is.integer({})", param),
+                param,
+                "must be an integer vector",
+                format!("is.integer({param})"),
             )],
             RTypeCheck::VectorIntegerWide => vec![RAssertion::new(
-                format!("'{}' must be integer or whole-number numeric", param),
+                param,
+                "must be integer or whole-number numeric",
                 integer_vector_wide_check(param),
             )],
             RTypeCheck::Vector(r_type) => vec![RAssertion::new(
-                format!("'{}' must be {}", param, r_type),
-                format!("is.{}({})", r_type, param),
+                param,
+                format!("must be {r_type}"),
+                format!("is.{r_type}({param})"),
             )],
             RTypeCheck::ScalarNumericOrText => vec![
                 RAssertion::new(
-                    format!("'{}' must be numeric, logical, character, or factor", param),
+                    param,
+                    "must be numeric, logical, character, or factor",
                     numeric_or_text_check(param),
                 ),
-                RAssertion::new(
-                    format!("'{}' must have length 1", param),
-                    format!("length({}) == 1L", param),
-                ),
+                length_one(),
             ],
             RTypeCheck::VectorNumericOrText => vec![RAssertion::new(
-                format!("'{}' must be numeric, logical, character, or factor", param),
+                param,
+                "must be numeric, logical, character, or factor",
                 numeric_or_text_check(param),
             )],
             RTypeCheck::Nullable(inner) => inner
                 .assertions(param)
                 .into_iter()
-                .map(|a| a.nullable(param))
+                .map(RAssertion::nullable)
                 .collect(),
             RTypeCheck::List => vec![RAssertion::new(
-                format!("'{}' must be a list", param),
-                format!("is.list({})", param),
+                param,
+                "must be a list",
+                format!("is.list({param})"),
             )],
         }
     }
+
+    /// What an argument of this type must be, in R terms: the `<expected>` of
+    /// a Rust conversion failure's message, `'<p>' must be <expected>: <reason>`
+    /// (#1591).
+    ///
+    /// The R-side checks test one requirement at a time (type, then length);
+    /// a conversion failure names the whole expectation once. Scalars read
+    /// `a single <noun>` (`a single integer`, `a single string`, `TRUE or
+    /// FALSE`), vectors name the R type (`numeric`, `character`, `a list`).
+    /// `AsNumeric` / `AsNumericVec` say `a single number` / `numeric`, the
+    /// value they produce, rather than the inputs they read.
+    fn expectation(&self) -> String {
+        match self {
+            RTypeCheck::ScalarNumeric | RTypeCheck::ScalarNumericOrText => "a single number".into(),
+            RTypeCheck::ScalarLogicalOrInteger => "a single logical or integer".into(),
+            RTypeCheck::VectorLogicalOrInteger => "logical or integer".into(),
+            RTypeCheck::ScalarIntegerWide => "a single whole number".into(),
+            RTypeCheck::ScalarNonNeg => "a single non-negative number".into(),
+            RTypeCheck::Scalar(r_type) => match *r_type {
+                "logical" => "TRUE or FALSE".into(),
+                "character" => "a single string".into(),
+                "integer" | "double" => format!("a single {r_type}"),
+                other => format!("a single {other} value"),
+            },
+            RTypeCheck::VectorNumeric | RTypeCheck::VectorNumericOrText => "numeric".into(),
+            RTypeCheck::VectorIntegerStrict => "integer".into(),
+            RTypeCheck::VectorIntegerWide => "integer or whole-number numeric".into(),
+            RTypeCheck::Vector(r_type) => (*r_type).into(),
+            RTypeCheck::Nullable(inner) => match inner.expectation().as_str() {
+                "TRUE or FALSE" => "NULL, TRUE or FALSE".into(),
+                inner => format!("NULL or {inner}"),
+            },
+            RTypeCheck::List => "a list".into(),
+        }
+    }
+}
+
+/// The R-facing expectation for a parameter of Rust type `ty`, for the
+/// message of its Rust conversion failure: `'<p>' must be <expected>: ...`
+/// (see [`RTypeCheck::expectation`]).
+///
+/// Derived from the same type classification as the R-side checks, including
+/// the `coerce` widening (`coerced`) and the `Missing<T>` / `Option<T>`
+/// wrappers, so the two paths describe an argument the same way. `None` for
+/// a type without an R-side check (a custom `TryFromSexp` type, `Either`,
+/// the `AsFromStr` family, ...): the conversion then reports
+/// `invalid '<p>' argument: <reason>`.
+pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<String> {
+    let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
+    let check = r_check_for_type(ty)?;
+    let check = if coerced {
+        coerce_widened(check, ty)
+    } else {
+        check
+    };
+    Some(check.expectation())
 }
 
 /// Keep the R gate in sync with the conversion actually selected for this type.
@@ -630,18 +712,11 @@ pub struct FallbackParam {
 
 /// Output of precondition analysis for a function's parameters.
 ///
-/// Contains both the generated R `stopifnot()` code for known types and a list
-/// of parameters with unknown types that were not statically prechecked.
+/// Holds the R-side checks for known types and a list of parameters with
+/// unknown types that were not statically prechecked.
 pub struct PreconditionOutput {
-    /// Lines forming a `stopifnot(...)` call for known types.
-    ///
-    /// Empty if no parameters have known type checks. For a single assertion,
-    /// contains one line (`stopifnot(...)`). For multiple assertions, contains
-    /// `stopifnot(`, indented assertion lines, and `)`.
-    pub static_checks: Vec<String>,
-    /// The assertions behind `static_checks`, in order, for wrappers that
-    /// attribute a failure to a captured call instead of their own frame
-    /// (see [`PreconditionOutput::attributed_checks`]).
+    /// The checks, in parameter order, each parameter's type checks followed
+    /// by its [`ExplicitChecks`]. Rendered by [`PreconditionOutput::guards`].
     assertions: Vec<RAssertion>,
     /// Parameters with unknown custom types that were not prechecked.
     #[allow(dead_code)] // Read in tests
@@ -649,18 +724,16 @@ pub struct PreconditionOutput {
 }
 
 impl PreconditionOutput {
-    /// The same checks as `static_checks`, one guard line per assertion, each
-    /// raising `simpleError(<message>, <call>)`.
+    /// One guard line per check, raising an argument error through
+    /// `.miniextendr_arg_error` when it fails (#1591); empty when there is
+    /// nothing to check.
     ///
-    /// `stopifnot()` signals with the call of the function that invoked it,
-    /// which is the wrapper's own call. A `call = caller` wrapper has already
-    /// bound the caller's matched call as `.mx_call` when the checks run, and
-    /// this form hands that call to every failure (#1548).
-    pub fn attributed_checks(&self, call: &str) -> Vec<String> {
-        self.assertions
-            .iter()
-            .map(|a| a.to_attributed_guard(call))
-            .collect()
+    /// `call` is the call every failure is attributed to: `None` for the
+    /// wrapper's own call (the helper's default, the call `stopifnot()`
+    /// reported), or `.mx_call` for a `call = caller` wrapper, which binds the
+    /// caller's matched call before the checks run (#1548).
+    pub fn guards(&self, call: Option<&str>) -> Vec<String> {
+        self.assertions.iter().map(|a| a.to_guard(call)).collect()
     }
 }
 
@@ -697,16 +770,12 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 
 /// Build precondition checks for a function's parameters.
 ///
-/// Returns:
-/// - **`static_checks`**: Lines forming a `stopifnot(...)` call for known types
-/// - **`fallback_params`**: Parameters needing validation (unknown custom types)
-///
-/// Static checks produce R-side `stopifnot()`:
+/// Returns the checks for known types (render them with
+/// [`PreconditionOutput::guards`]) and the parameters with unknown custom
+/// types (`fallback_params`). The guards read:
 /// ```r
-/// stopifnot(
-///   "'a' must be integer" = is.integer(a),
-///   "'a' must have length 1" = length(a) == 1L
-/// )
+/// if (!isTRUE(is.integer(a))) .miniextendr_arg_error("a", "must be integer")
+/// if (!isTRUE(length(a) == 1L)) .miniextendr_arg_error("a", "must have length 1")
 /// ```
 ///
 /// Skips:
@@ -761,27 +830,7 @@ pub fn build_precondition_checks(
         }
     }
 
-    let args: Vec<String> = assertions
-        .iter()
-        .map(RAssertion::to_stopifnot_arg)
-        .collect();
-    let static_checks = match args.len() {
-        0 => Vec::new(),
-        1 => vec![format!("stopifnot({})", args[0])],
-        _ => {
-            let mut lines = Vec::with_capacity(args.len() + 2);
-            lines.push("stopifnot(".to_string());
-            for (i, arg) in args.iter().enumerate() {
-                let comma = if i < args.len() - 1 { "," } else { "" };
-                lines.push(format!("  {}{}", arg, comma));
-            }
-            lines.push(")".to_string());
-            lines
-        }
-    };
-
     PreconditionOutput {
-        static_checks,
         assertions,
         fallback_params,
     }
@@ -806,12 +855,12 @@ mod tests {
     fn scalar_numeric_produces_two_assertions() {
         let asserts = assertions_for("i64", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be numeric, logical, or raw");
+        assert_eq!(asserts[0].message(), "'x' must be numeric, logical, or raw");
         assert_eq!(
             asserts[0].condition,
             "is.numeric(x) || is.logical(x) || is.raw(x)"
         );
-        assert_eq!(asserts[1].message, "'x' must have length 1");
+        assert_eq!(asserts[1].message(), "'x' must have length 1");
         assert_eq!(asserts[1].condition, "length(x) == 1L");
     }
 
@@ -820,10 +869,10 @@ mod tests {
         // `i32` / `f64` convert from one SEXPTYPE, so the gate says so (#1112).
         let asserts = assertions_for("i32", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be integer");
+        assert_eq!(asserts[0].message(), "'x' must be integer");
         assert_eq!(asserts[0].condition, "is.integer(x)");
         let asserts = assertions_for("f64", "x");
-        assert_eq!(asserts[0].message, "'x' must be double");
+        assert_eq!(asserts[0].message(), "'x' must be double");
         assert_eq!(asserts[0].condition, "is.double(x)");
         let asserts = assertions_for("Vec<f64>", "x");
         assert_eq!(asserts.len(), 1);
@@ -859,9 +908,9 @@ mod tests {
     fn scalar_non_neg_produces_three_assertions() {
         let asserts = assertions_for("u32", "n");
         assert_eq!(asserts.len(), 3);
-        assert_eq!(asserts[0].message, "'n' must be numeric, logical, or raw");
-        assert_eq!(asserts[1].message, "'n' must have length 1");
-        assert_eq!(asserts[2].message, "'n' must be non-negative");
+        assert_eq!(asserts[0].message(), "'n' must be numeric, logical, or raw");
+        assert_eq!(asserts[1].message(), "'n' must have length 1");
+        assert_eq!(asserts[2].message(), "'n' must be non-negative");
         assert_eq!(asserts[2].condition, "is.raw(n) || n >= 0");
     }
 
@@ -882,7 +931,7 @@ mod tests {
     fn scalar_logical() {
         let asserts = assertions_for("bool", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be logical");
+        assert_eq!(asserts[0].message(), "'x' must be logical");
         assert_eq!(asserts[0].condition, "is.logical(x)");
         assert_eq!(asserts[1].condition, "length(x) == 1L");
     }
@@ -892,7 +941,7 @@ mod tests {
         for ty_str in &["String", "char", "PathBuf"] {
             let asserts = assertions_for(ty_str, "s");
             assert_eq!(asserts.len(), 2);
-            assert_eq!(asserts[0].message, "'s' must be character");
+            assert_eq!(asserts[0].message(), "'s' must be character");
             assert_eq!(asserts[0].condition, "is.character(s)");
         }
     }
@@ -909,7 +958,7 @@ mod tests {
     fn scalar_raw() {
         let asserts = assertions_for("u8", "x");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'x' must be raw");
+        assert_eq!(asserts[0].message(), "'x' must be raw");
         assert_eq!(asserts[0].condition, "is.raw(x)");
     }
 
@@ -932,7 +981,7 @@ mod tests {
         let asserts = assertions_for("Vec<i32>", "x");
         assert_eq!(asserts.len(), 1);
         assert_eq!(asserts[0].condition, "is.integer(x)");
-        assert_eq!(asserts[0].message, "'x' must be an integer vector");
+        assert_eq!(asserts[0].message(), "'x' must be an integer vector");
     }
 
     #[test]
@@ -959,7 +1008,7 @@ mod tests {
                 ty_str
             );
             assert_eq!(
-                asserts[0].message,
+                asserts[0].message(),
                 "'x' must be integer or whole-number numeric"
             );
         }
@@ -979,7 +1028,7 @@ mod tests {
         let asserts = coerce_widened(r_check_for_type(&ty).unwrap(), &ty).assertions("x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(
-            asserts[0].message,
+            asserts[0].message(),
             "'x' must be integer or whole-number numeric"
         );
         assert!(asserts[0].condition.contains("x == trunc(x)"));
@@ -1038,15 +1087,17 @@ mod tests {
             ..Default::default()
         };
         let output = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts);
-        let joined = output.static_checks.join("\n");
+        let joined = output.guards(None).join("\n");
         assert!(joined.contains("is.integer(x)"));
         assert!(joined.contains("trunc(x)"));
     }
 
+    /// Every check is one guard raising the shared argument error (#1591):
+    /// the wrapper's own call by default, the captured `.mx_call` under
+    /// `call = caller` (#1548). The requirement leaves out the parameter name,
+    /// which the helper puts in front.
     #[test]
-    fn attributed_checks_guard_each_assertion_with_the_given_call() {
-        // `call = caller` wrappers (#1548): the same assertions as the
-        // `stopifnot()` block, each raising with the captured `.mx_call`.
+    fn guards_raise_the_argument_error_with_the_given_call() {
         let sig: syn::Signature = syn::parse_str("fn f(n: i32, xs: Vec<f64>)").unwrap();
         let output = build_precondition_checks(
             &sig.inputs,
@@ -1054,22 +1105,80 @@ mod tests {
             &PreconditionOptions::default(),
         );
         assert_eq!(
-            output.attributed_checks(".mx_call"),
+            output.guards(None),
             vec![
-                "if (!isTRUE(is.integer(n))) stop(simpleError(\"'n' must be integer\", .mx_call))",
-                "if (!isTRUE(length(n) == 1L)) stop(simpleError(\"'n' must have length 1\", .mx_call))",
-                "if (!isTRUE(is.double(xs))) stop(simpleError(\"'xs' must be double\", .mx_call))",
+                "if (!isTRUE(is.integer(n))) .miniextendr_arg_error(\"n\", \"must be integer\")",
+                "if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error(\"n\", \"must have length 1\")",
+                "if (!isTRUE(is.double(xs))) .miniextendr_arg_error(\"xs\", \"must be double\")",
             ]
         );
-        // Both forms cover the same assertions in the same order.
-        assert_eq!(output.static_checks.len(), 3 + 2);
+        assert_eq!(
+            output.guards(Some(".mx_call")),
+            vec![
+                "if (!isTRUE(is.integer(n))) .miniextendr_arg_error(\"n\", \"must be integer\", .mx_call)",
+                "if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error(\"n\", \"must have length 1\", .mx_call)",
+                "if (!isTRUE(is.double(xs))) .miniextendr_arg_error(\"xs\", \"must be double\", .mx_call)",
+            ]
+        );
         let no_params: syn::Signature = syn::parse_str("fn g()").unwrap();
         let empty = build_precondition_checks(
             &no_params.inputs,
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        assert!(empty.attributed_checks(".mx_call").is_empty());
+        assert!(empty.guards(None).is_empty());
+        assert!(empty.guards(Some(".mx_call")).is_empty());
+    }
+
+    /// The conversion-side expectation (#1591) reads the same classification:
+    /// scalars name one value, vectors the R type, `Option` adds `NULL`,
+    /// `coerce` widens with the gate, and types without a check have none.
+    #[test]
+    fn conversion_expectation_follows_the_type_check() {
+        let exp = |ty: &str, coerced: bool| conversion_expectation(&parse_type(ty), coerced);
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(exp("AsNumericVec", false), some("numeric"));
+        assert_eq!(exp("AsNumeric", false), some("a single number"));
+        assert_eq!(
+            exp("Option<AsNumeric>", false),
+            some("NULL or a single number")
+        );
+        assert_eq!(exp("i32", false), some("a single integer"));
+        assert_eq!(exp("i32", true), some("a single whole number"));
+        assert_eq!(exp("f64", false), some("a single double"));
+        assert_eq!(exp("f64", true), some("a single number"));
+        assert_eq!(exp("i64", false), some("a single number"));
+        assert_eq!(exp("u32", false), some("a single non-negative number"));
+        assert_eq!(exp("bool", false), some("TRUE or FALSE"));
+        assert_eq!(exp("Option<bool>", false), some("NULL, TRUE or FALSE"));
+        assert_eq!(exp("bool", true), some("a single logical or integer"));
+        assert_eq!(exp("String", false), some("a single string"));
+        assert_eq!(exp("&str", false), some("a single string"));
+        assert_eq!(exp("u8", false), some("a single raw value"));
+        assert_eq!(exp("Rcomplex", false), some("a single complex value"));
+        assert_eq!(exp("Vec<i32>", false), some("integer"));
+        assert_eq!(
+            exp("Vec<i32>", true),
+            some("integer or whole-number numeric")
+        );
+        assert_eq!(
+            exp("Vec<u16>", false),
+            some("integer or whole-number numeric")
+        );
+        assert_eq!(exp("Vec<f64>", false), some("double"));
+        assert_eq!(exp("&[f64]", false), some("double"));
+        assert_eq!(exp("Vec<Option<String>>", false), some("character"));
+        assert_eq!(exp("Vec<bool>", true), some("logical or integer"));
+        assert_eq!(exp("HashMap<String, i32>", false), some("a list"));
+        assert_eq!(exp("Missing<f64>", false), some("a single double"));
+        for unknown in [
+            "Hyperparams",
+            "Either<i32, String>",
+            "AsFromStrVec<i32>",
+            "SEXP",
+        ] {
+            assert_eq!(exp(unknown, false), None, "{unknown}");
+        }
     }
 
     #[test]
@@ -1099,7 +1208,7 @@ mod tests {
         let asserts = assertions_for("Option<i64>", "x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(
-            asserts[0].message,
+            asserts[0].message(),
             "'x' must be NULL or numeric, logical, or raw"
         );
         assert_eq!(
@@ -1108,7 +1217,7 @@ mod tests {
         );
         let asserts = assertions_for("Option<i32>", "x");
         assert_eq!(asserts[0].condition, "is.null(x) || is.integer(x)");
-        assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
+        assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
         assert_eq!(asserts[1].condition, "is.null(x) || length(x) == 1L");
     }
 
@@ -1116,9 +1225,9 @@ mod tests {
     fn nullable_character() {
         let asserts = assertions_for("Option<String>", "s");
         assert_eq!(asserts.len(), 2);
-        assert_eq!(asserts[0].message, "'s' must be NULL or character");
+        assert_eq!(asserts[0].message(), "'s' must be NULL or character");
         assert_eq!(asserts[0].condition, "is.null(s) || is.character(s)");
-        assert_eq!(asserts[1].message, "'s' must be NULL or have length 1");
+        assert_eq!(asserts[1].message(), "'s' must be NULL or have length 1");
     }
 
     #[test]
@@ -1127,18 +1236,18 @@ mod tests {
         let asserts = assertions_for("AsNumeric", "x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(
-            asserts[0].message,
+            asserts[0].message(),
             "'x' must be numeric, logical, character, or factor"
         );
         assert_eq!(asserts[0].condition, condition);
-        assert_eq!(asserts[1].message, "'x' must have length 1");
+        assert_eq!(asserts[1].message(), "'x' must have length 1");
         assert_eq!(asserts[1].condition, "length(x) == 1L");
 
         // Path-qualified spellings resolve by their last segment.
         let asserts = assertions_for("miniextendr_api::AsNumericVec", "x");
         assert_eq!(asserts.len(), 1);
         assert_eq!(
-            asserts[0].message,
+            asserts[0].message(),
             "'x' must be numeric, logical, character, or factor"
         );
         assert_eq!(asserts[0].condition, condition);
@@ -1149,14 +1258,14 @@ mod tests {
         let asserts = assertions_for("Option<AsNumeric>", "x");
         assert_eq!(asserts.len(), 2);
         assert_eq!(
-            asserts[0].message,
+            asserts[0].message(),
             "'x' must be NULL or numeric, logical, character, or factor"
         );
         assert_eq!(
             asserts[0].condition,
             "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)"
         );
-        assert_eq!(asserts[1].message, "'x' must be NULL or have length 1");
+        assert_eq!(asserts[1].message(), "'x' must be NULL or have length 1");
         let asserts = assertions_for("Option<AsNumericVec>", "x");
         assert_eq!(asserts.len(), 1);
         assert!(asserts[0].condition.starts_with("is.null(x) || "));
@@ -1195,55 +1304,50 @@ mod tests {
     }
 
     #[test]
-    fn single_param_produces_multi_line() {
-        // i32 produces 2 assertions → always multi-line now
+    fn scalar_param_produces_one_guard_per_check() {
         let sig: syn::Signature = syn::parse_str("fn f(n: i32)").unwrap();
         let output = build_precondition_checks(
             &sig.inputs,
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        let checks = &output.static_checks;
-        assert_eq!(checks.len(), 4); // stopifnot( + 2 args + )
-        assert_eq!(checks[0], "stopifnot(");
-        assert!(checks[1].contains("must be integer"));
-        assert!(checks[2].contains("length 1"));
-        assert_eq!(checks[3], ")");
+        let checks = output.guards(None);
+        assert_eq!(checks.len(), 2);
+        assert!(checks[0].contains("\"must be integer\""));
+        assert!(checks[1].contains("\"must have length 1\""));
         assert!(output.fallback_params.is_empty());
     }
 
     #[test]
-    fn vector_param_single_line() {
-        // Vec<f64> produces 1 assertion → single line
+    fn vector_param_single_guard() {
+        // Vec<f64> produces 1 check → one guard line
         let sig: syn::Signature = syn::parse_str("fn f(x: Vec<f64>)").unwrap();
         let output = build_precondition_checks(
             &sig.inputs,
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        let checks = &output.static_checks;
-        assert_eq!(checks.len(), 1);
-        assert!(checks[0].starts_with("stopifnot("));
-        assert!(checks[0].ends_with(')'));
+        assert_eq!(
+            output.guards(None),
+            vec!["if (!isTRUE(is.double(x))) .miniextendr_arg_error(\"x\", \"must be double\")"]
+        );
     }
 
     #[test]
-    fn two_scalar_params_produces_six_lines() {
+    fn two_scalar_params_produce_four_guards_in_order() {
         let sig: syn::Signature = syn::parse_str("fn f(a: i32, b: f64)").unwrap();
         let output = build_precondition_checks(
             &sig.inputs,
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        let checks = &output.static_checks;
-        // stopifnot( + 4 assertions (2 per param) + )
-        assert_eq!(checks.len(), 6);
-        assert_eq!(checks[0], "stopifnot(");
-        assert!(checks[1].contains("'a'") && checks[1].contains("integer"));
-        assert!(checks[2].contains("'a'") && checks[2].contains("length 1"));
-        assert!(checks[3].contains("'b'") && checks[3].contains("double"));
-        assert!(checks[4].contains("'b'") && checks[4].contains("length 1"));
-        assert_eq!(checks[5], ")");
+        let checks = output.guards(None);
+        // 2 checks per param
+        assert_eq!(checks.len(), 4);
+        assert!(checks[0].contains("(\"a\", ") && checks[0].contains("integer"));
+        assert!(checks[1].contains("(\"a\", ") && checks[1].contains("length 1"));
+        assert!(checks[2].contains("(\"b\", ") && checks[2].contains("double"));
+        assert!(checks[3].contains("(\"b\", ") && checks[3].contains("length 1"));
     }
 
     #[test]
@@ -1252,10 +1356,10 @@ mod tests {
         let mut skip = HashSet::new();
         skip.insert("mode".to_string());
         let output = build_precondition_checks(&sig.inputs, &skip, &PreconditionOptions::default());
-        // Only n's 2 assertions remain
-        let joined = output.static_checks.join("\n");
-        assert!(joined.contains("'n'"));
-        assert!(!joined.contains("'mode'"));
+        // Only n's 2 checks remain
+        let joined = output.guards(None).join("\n");
+        assert!(joined.contains("(\"n\", "));
+        assert!(!joined.contains("mode"));
     }
 
     #[test]
@@ -1266,7 +1370,7 @@ mod tests {
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        assert!(output.static_checks.is_empty());
+        assert!(output.guards(None).is_empty());
         assert_eq!(output.fallback_params.len(), 1);
         assert_eq!(output.fallback_params[0].r_name, "x");
     }
@@ -1279,11 +1383,11 @@ mod tests {
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        // a (i32) and c (String) are known → static checks
-        let joined = output.static_checks.join("\n");
-        assert!(joined.contains("'a'"));
-        assert!(joined.contains("'c'"));
-        assert!(!joined.contains("'b'"));
+        // a (i32) and c (String) are known → checks
+        let joined = output.guards(None).join("\n");
+        assert!(joined.contains("(\"a\", "));
+        assert!(joined.contains("(\"c\", "));
+        assert!(!joined.contains("(\"b\", "));
         // b (MyType) is unknown → fallback
         assert_eq!(output.fallback_params.len(), 1);
         assert_eq!(output.fallback_params[0].r_name, "b");
@@ -1297,7 +1401,7 @@ mod tests {
             &HashSet::new(),
             &PreconditionOptions::default(),
         );
-        assert!(output.static_checks.is_empty());
+        assert!(output.guards(None).is_empty());
         assert!(output.fallback_params.is_empty());
     }
 
@@ -1337,12 +1441,10 @@ mod tests {
     fn inherits_follows_the_type_check() {
         let out = explicit_output("fn f(x: List)", &[("x", inherits(&["pkg_obj"]))], false);
         assert_eq!(
-            out.static_checks,
+            out.guards(None),
             vec![
-                "stopifnot(",
-                "  \"'x' must be a list\" = is.list(x),",
-                "  \"'x' must inherit from 'pkg_obj'\" = inherits(x, \"pkg_obj\")",
-                ")",
+                "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")",
+                "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
             ]
         );
     }
@@ -1351,9 +1453,9 @@ mod tests {
     fn inherits_any_of_several_classes() {
         let out = explicit_output("fn f(x: SEXP)", &[("x", inherits(&["a", "b", "c"]))], false);
         assert_eq!(
-            out.static_checks,
+            out.guards(None),
             vec![
-                "stopifnot(\"'x' must inherit from 'a', 'b' or 'c'\" = inherits(x, c(\"a\", \"b\", \"c\")))"
+                "if (!isTRUE(inherits(x, c(\"a\", \"b\", \"c\")))) .miniextendr_arg_error(\"x\", \"must inherit from 'a', 'b' or 'c'\")"
             ]
         );
     }
@@ -1362,9 +1464,9 @@ mod tests {
     fn inherits_escapes_quotes_and_backslashes() {
         let out = explicit_output("fn f(x: SEXP)", &[("x", inherits(&["a\"b\\c"]))], false);
         assert_eq!(
-            out.static_checks,
+            out.guards(None),
             vec![
-                "stopifnot(\"'x' must inherit from 'a\\\"b\\\\c'\" = inherits(x, \"a\\\"b\\\\c\"))"
+                "if (!isTRUE(inherits(x, \"a\\\"b\\\\c\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'a\\\"b\\\\c'\")"
             ]
         );
     }
@@ -1373,16 +1475,16 @@ mod tests {
     fn no_na_wording_follows_the_shape() {
         let scalar = explicit_output("fn f(x: f64)", &[("x", no_na())], true);
         assert_eq!(
-            scalar.static_checks,
-            vec!["stopifnot(\"'x' must not be NA\" = !anyNA(x))"]
+            scalar.guards(None),
+            vec!["if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\")"]
         );
         let vector = explicit_output("fn f(x: Vec<f64>)", &[("x", no_na())], true);
         assert_eq!(
-            vector.static_checks,
-            vec!["stopifnot(\"'x' must not contain NA\" = !anyNA(x))"]
+            vector.guards(None),
+            vec!["if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")"]
         );
         let slice = explicit_output("fn f(x: &[f64])", &[("x", no_na())], true);
-        assert!(slice.static_checks[0].contains("must not contain NA"));
+        assert!(slice.guards(None)[0].contains("must not contain NA"));
     }
 
     #[test]
@@ -1393,18 +1495,20 @@ mod tests {
             true,
         );
         assert_eq!(
-            optional.static_checks,
+            optional.guards(None),
             vec![
-                "stopifnot(\"'x' must inherit from 'pkg_obj'\" = is.null(x) || inherits(x, \"pkg_obj\"))"
+                "if (!isTRUE(is.null(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")"
             ]
         );
         let missing = explicit_output("fn f(x: Missing<f64>)", &[("x", no_na())], true);
         assert_eq!(
-            missing.static_checks,
-            vec!["stopifnot(\"'x' must not be NA\" = missing(x) || !anyNA(x))"]
+            missing.guards(None),
+            vec![
+                "if (!isTRUE(missing(x) || !anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\")"
+            ]
         );
         let optional_vec = explicit_output("fn f(x: Option<Vec<f64>>)", &[("x", no_na())], true);
-        assert!(optional_vec.static_checks[0].contains("must not contain NA"));
+        assert!(optional_vec.guards(None)[0].contains("must not contain NA"));
     }
 
     #[test]
@@ -1417,16 +1521,14 @@ mod tests {
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
         // NA first.
         assert_eq!(
-            out.static_checks,
+            out.guards(None),
             vec![
-                "stopifnot(",
-                "  \"'x' must not be NA\" = !anyNA(x),",
-                "  \"'x' must inherit from 'pkg_obj'\" = inherits(x, \"pkg_obj\")",
-                ")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\")",
+                "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
             ]
         );
         let none = explicit_output("fn f(n: i32)", &[], true);
-        assert!(none.static_checks.is_empty());
+        assert!(none.guards(None).is_empty());
     }
 
     #[test]
@@ -1439,17 +1541,19 @@ mod tests {
         let skip: HashSet<String> = ["mode".to_string()].into_iter().collect();
         let out = build_precondition_checks(&sig.inputs, &skip, &opts);
         assert_eq!(
-            out.static_checks,
-            vec!["stopifnot(\"'mode' must not be NA\" = !anyNA(mode))"]
+            out.guards(None),
+            vec!["if (!isTRUE(!anyNA(mode))) .miniextendr_arg_error(\"mode\", \"must not be NA\")"]
         );
     }
 
     #[test]
-    fn explicit_checks_get_the_attributed_guard_form() {
+    fn explicit_checks_take_the_caller_call() {
         let out = explicit_output("fn f(x: f64)", &[("x", no_na())], true);
         assert_eq!(
-            out.attributed_checks(".mx_call"),
-            vec!["if (!isTRUE(!anyNA(x))) stop(simpleError(\"'x' must not be NA\", .mx_call))"]
+            out.guards(Some(".mx_call")),
+            vec![
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not be NA\", .mx_call)"
+            ]
         );
     }
 

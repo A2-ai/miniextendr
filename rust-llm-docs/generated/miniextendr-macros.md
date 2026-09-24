@@ -808,7 +808,7 @@ attribute formats like `#[miniextendr(r6, class = "Custom", label = "ops")]`.
 - `strict`: `bool`
   - When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
 - `no_preconditions`: `bool`
-  - When true, drop the R-side `stopifnot(...)` precondition block from all
+  - When true, drop the R-side type-check guards from all generated method
 - `no_call_attribution`: `bool`
   - When true, emit `.call = NULL` instead of `.call = match.call()` in all
 - `internal`: `bool`
@@ -949,7 +949,7 @@ R wrapper generators and [`generate_method_c_wrapper`].
 - `strict`: `bool`
   - Strict conversion mode: methods returning lossy types use checked conversions.
 - `no_preconditions`: `bool`
-  - Drop the R-side `stopifnot(...)` precondition block from method wrappers.
+  - Drop the R-side type-check guards from method wrappers.
 - `no_call_attribution`: `bool`
   - Emit `.call = NULL` instead of `.call = match.call()` in method wrappers.
 - `internal`: `bool`
@@ -1581,7 +1581,7 @@ focus on its specific formatting logic.
 - `args`: `String`
   - R call arguments string without defaults (e.g., `"value, step"`), used
 - `no_preconditions`: `bool`
-  - Drop the R-side `stopifnot(...)` block from the generated wrapper.
+  - Drop the R-side type-check guards from the generated wrapper.
 - `no_call_attribution`: `bool`
   - Emit `.call = NULL` instead of `.call = match.call()` in non-lambda
 
@@ -1612,7 +1612,7 @@ generated R method body, in order:
 1. `r_entry` — user code injected before any checks
 2. `r_on_exit` — `on.exit(...)` cleanup
 3. `lifecycle_prelude` — deprecation/superseded banner (class-system-specific label)
-4. `precondition_checks` — `stopifnot(is.*(param))` for typed params
+4. `precondition_checks` — one `isTRUE()` guard per check on typed params
 5. `match_arg_prelude` — `base::match.arg(param)` validation
 6. `r_post_checks` — user code after all checks, before `.Call()`
 
@@ -1752,14 +1752,14 @@ from `ImplAttrs`.
 fn precondition_checks(self: &Self) -> Vec<String>
 ```
 
-Build R-side precondition `stopifnot()` lines for this method's parameters.
+Build the R-side precondition guard lines for this method's parameters.
 
 Returns static checks for known types. Custom types not in the static table
 are identified as fallback params but no R-side precheck is generated for them.
 
 Skips `self`/receiver parameters automatically (they are `FnArg::Receiver`) and
 any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
-those already have a stronger runtime guarantee than `stopifnot(is.character(...))`.
+those already have a stronger runtime guarantee than an `is.character()` check.
 
 `no_preconditions` drops the type-derived checks; the per-parameter
 `inherits(...)` / `no_na(...)` checks stay.
@@ -1918,8 +1918,8 @@ ones derived from its Rust type.
 
 Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
 parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
-method. They run after the type checks, in the same `stopifnot()` block
-(or `call = caller` guards), and survive `no_preconditions` / `fast`: the
+method. They run after the type checks, as the same kind of guards
+raising the same argument error, and survive `no_preconditions` / `fast`: the
 Rust conversion cannot check them, so dropping them would change what the
 function accepts.
 
@@ -1997,31 +1997,30 @@ pub struct PreconditionOutput
 
 Output of precondition analysis for a function's parameters.
 
-Contains both the generated R `stopifnot()` code for known types and a list
-of parameters with unknown types that were not statically prechecked.
+Holds the R-side checks for known types and a list of parameters with
+unknown types that were not statically prechecked.
 
 **Fields:**
 
-- `static_checks`: `Vec<String>`
-  - Lines forming a `stopifnot(...)` call for known types.
 - `fallback_params`: `Vec<FallbackParam>`
   - Parameters with unknown custom types that were not prechecked.
 
 **Inherent associated items:**
 
-#### `attributed_checks`
+#### `guards`
 
 ```rust
-fn attributed_checks(self: &Self, call: &str) -> Vec<String>
+fn guards(self: &Self, call: Option<&str>) -> Vec<String>
 ```
 
-The same checks as `static_checks`, one guard line per assertion, each
-raising `simpleError(<message>, <call>)`.
+One guard line per check, raising an argument error through
+`.miniextendr_arg_error` when it fails (#1591); empty when there is
+nothing to check.
 
-`stopifnot()` signals with the call of the function that invoked it,
-which is the wrapper's own call. A `call = caller` wrapper has already
-bound the caller's matched call as `.mx_call` when the checks run, and
-this form hands that call to every failure (#1548).
+`call` is the call every failure is attributed to: `None` for the
+wrapper's own call (the helper's default, the call `stopifnot()`
+reported), or `.mx_call` for a `call = caller` wrapper, which binds the
+caller's matched call before the checks run (#1548).
 
 ### `r_wrapper_builder::DotCallBuilder`
 
@@ -3926,16 +3925,12 @@ fn build_precondition_checks(inputs: &syn::punctuated::Punctuated<syn::FnArg, $c
 
 Build precondition checks for a function's parameters.
 
-Returns:
-- **`static_checks`**: Lines forming a `stopifnot(...)` call for known types
-- **`fallback_params`**: Parameters needing validation (unknown custom types)
-
-Static checks produce R-side `stopifnot()`:
+Returns the checks for known types (render them with
+[`PreconditionOutput::guards`]) and the parameters with unknown custom
+types (`fallback_params`). The guards read:
 ```r
-stopifnot(
-  "'a' must be integer" = is.integer(a),
-  "'a' must have length 1" = length(a) == 1L
-)
+if (!isTRUE(is.integer(a))) .miniextendr_arg_error("a", "must be integer")
+if (!isTRUE(length(a) == 1L)) .miniextendr_arg_error("a", "must have length 1")
 ```
 
 Skips:

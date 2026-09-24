@@ -217,27 +217,35 @@ pub unsafe fn result_err_condition_value(
 /// Build the tagged value for an argument that failed its Rust-side
 /// conversion: `kind = "conversion"`, the parts probed off the error by
 /// [`crate::__mx_conversion_err_parts!`] (class, message and data from an
-/// [`RConditionError`](crate::condition::RConditionError) impl, else the
-/// `Display` text), with `context` prefixed to the message, the crate's
-/// `conversion_error_class` (`crate_class`, emitted by the macro from
-/// `[package.metadata.miniextendr]`) after the error's own classes, and the
-/// parameter's R name as `e$param`. See
-/// [`crate::condition::conversion_err_parts`] for how they combine.
+/// [`RConditionError`](crate::condition::RConditionError) impl, the R-worded
+/// reason for a built-in conversion error, else the `Display` text), with
+/// `prefix` before the message (`'x' must be a single integer`, or
+/// `invalid 'x' argument` when the macro has no R-facing expectation for the
+/// type), the crate's `conversion_error_class` (`crate_class`, emitted by the
+/// macro from `[package.metadata.miniextendr]`) after the error's own
+/// classes, the parameter's R name as `e$param` and the Rust type as
+/// `e$rust_type`. See [`crate::condition::conversion_err_parts`] for how they
+/// combine.
+///
+/// The R-side argument checks raise the same condition from R
+/// (`.miniextendr_arg_error`, #1591), so a handler for the crate class, or
+/// for `rust_error`, sees every argument error whichever side caught it.
 ///
 /// # Safety
 ///
 /// Same contract as [`make_rust_condition_value_with_data`]: R main thread,
 /// valid allocation context. Every generated conversion `Err` arm runs inside
-/// the wrapper's `with_r_unwind_protect` closure (or, for sidecar setters, the
-/// `.Call` entry point itself), which satisfies it.
+/// the wrapper's `with_r_unwind_protect` closure, which satisfies it.
 pub unsafe fn conversion_condition_value(
-    context: &str,
+    prefix: &str,
     param: &str,
+    rust_type: Option<&str>,
     crate_class: &[&str],
     parts: crate::condition::ErrParts,
     call: Option<SEXP>,
 ) -> SEXP {
-    let parts = crate::condition::conversion_err_parts(context, param, crate_class, parts);
+    let parts =
+        crate::condition::conversion_err_parts(prefix, param, rust_type, crate_class, parts);
     // SAFETY: forwarded from the caller.
     unsafe {
         make_rust_condition_value_with_data(

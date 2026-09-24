@@ -4,7 +4,7 @@
 \alias{FastCounterFast}
 \title{FastCounterFast R6 Class}
 \description{
-Fast-mode counter: every method wrapper drops stopifnot + match.call.
+Fast-mode counter: every method wrapper drops preconditions + match.call.
 }
 \keyword{internal}
 \section{Methods}{

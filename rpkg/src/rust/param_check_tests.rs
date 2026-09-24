@@ -4,7 +4,7 @@
 //! Standalone fns spell them on the parameter
 //! (`#[miniextendr(inherits = "cls", no_na)]`); impl and trait methods on the
 //! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
-//! generated `stopifnot()` block after the type checks and survive
+//! generated precondition guards after the type checks and survive
 //! `no_preconditions` / `fast`.
 
 use miniextendr_api::{List, Missing, SEXP, miniextendr};

@@ -126,7 +126,11 @@ The generated R precondition for `AsNumeric` / `AsNumericVec` is
 `is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)` ("'x' must
 be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
 `is.null(x) ||` under `Option<…>`). `AsFromStr` / `AsFromStrVec` have no R
-precondition; their errors come from the conversion.
+precondition; their errors come from the conversion. Either way the argument
+error is the same condition (#1591); a conversion failure reads
+`'dv' must be numeric: non-numeric value(s): "BLQ" (element 2)`
+(`a single number` for `AsNumeric`), with the Rust type in `e$rust_type`
+([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)).
 
 ---
 

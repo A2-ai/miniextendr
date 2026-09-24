@@ -8,10 +8,8 @@ expression: generate_s3_r_wrapper(&parsed)
 #' @rdname Counter
 #' @export
 new_counter <- function(value) {
-  stopifnot(
-    "'value' must be integer" = is.integer(value),
-    "'value' must have length 1" = length(value) == 1L
-  )
+  if (!isTRUE(is.integer(value))) .miniextendr_arg_error("value", "must be integer")
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
   .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   structure(.val, class = "Counter")

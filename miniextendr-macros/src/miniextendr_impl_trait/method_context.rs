@@ -237,7 +237,7 @@ impl<'a> TraitMethodContext<'a> {
         crate::r_class_formatter::build_match_arg_prelude(&self.method.per_param, &self.c_ident)
     }
 
-    /// R-side `stopifnot()` precondition checks for this method's parameters.
+    /// R-side precondition guards for this method's parameters.
     /// See `MethodContext::precondition_checks` for the inherent-impl twin.
     pub(super) fn precondition_checks(&self) -> Vec<String> {
         crate::r_class_formatter::build_method_precondition_checks(

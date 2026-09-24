@@ -265,7 +265,7 @@ Without the option the error would read `Error in summarise_impl(x = as.integer(
 leaking the bridge that `noexport` exists to hide. The wrapper's own R-side
 checks follow the same rule: `summarise("a")` reports
 `Error in summarise(value = "a") : 'x' must be integer`, not the wrapper's
-`stopifnot()` frame. See
+own frame. See
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution) for
 how the frame is chosen, the top-level fallback and the shape of those checks.
 

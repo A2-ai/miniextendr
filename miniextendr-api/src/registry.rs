@@ -103,6 +103,17 @@ pub static MX_CLASS_NAMES: [ClassNameEntry];
 #[distributed_slice]
 pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 
+/// The package crate's `conversion_error_class`. **Host-only.**
+///
+/// `miniextendr_init!` emits one entry, with the classes it reads from the
+/// crate's `[package.metadata.miniextendr]` (empty when unset). During
+/// `write_r_wrappers_to_file` it becomes `.miniextendr_conversion_error_class`,
+/// the classes `.miniextendr_arg_error` gives every R-side argument error, so
+/// they match the ones the macro emits into the Rust conversion arms (#1591).
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_CONVERSION_ERROR_CLASS: [ConversionErrorClassEntry];
+
 // endregion
 
 // region: Runtime slice access (cfg-uniform)
@@ -239,6 +250,13 @@ pub struct RWrapperEntry {
 
 // SAFETY: All fields are immutable and valid for 'static lifetime.
 unsafe impl Sync for RWrapperEntry {}
+
+/// The package crate's `conversion_error_class`, registered by
+/// `miniextendr_init!` in [`MX_CONVERSION_ERROR_CLASS`].
+pub struct ConversionErrorClassEntry {
+    /// The classes, most specific first; empty when the crate sets none.
+    pub classes: &'static [&'static str],
+}
 
 /// Entry for replacing match_arg placeholder defaults with actual choices.
 pub struct MatchArgChoicesEntry {
@@ -1460,6 +1478,42 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
   invisible(NULL)
 }"#;
 
+/// The `.miniextendr_conversion_error_class` binding that closes the wrappers
+/// preamble: the classes `.miniextendr_arg_error` puts on every R-side
+/// argument error, from the [`MX_CONVERSION_ERROR_CLASS`] entry that
+/// `miniextendr_init!` registers for the package crate (#1591).
+///
+/// The Rust conversion arms carry the same classes, emitted by the macro from
+/// the same `[package.metadata.miniextendr]` key, so the two paths agree for
+/// every item of that crate. A package has one `miniextendr_init!`, hence one
+/// entry; with none (or a crate that sets no class) the binding is `NULL`.
+#[cfg(not(target_arch = "wasm32"))]
+fn conversion_error_class_binding() -> String {
+    let classes = MX_CONVERSION_ERROR_CLASS
+        .first()
+        .map_or(&[][..], |entry| entry.classes);
+    format_conversion_error_class_binding(classes)
+}
+
+/// [`conversion_error_class_binding`] for an explicit class list.
+#[cfg(not(target_arch = "wasm32"))]
+fn format_conversion_error_class_binding(classes: &[&str]) -> String {
+    let value = if classes.is_empty() {
+        "NULL".to_string()
+    } else {
+        let quoted: Vec<String> = classes
+            .iter()
+            .map(|c| format!("\"{}\"", c.replace('\\', "\\\\").replace('"', "\\\"")))
+            .collect();
+        format!("c({})", quoted.join(", "))
+    };
+    format!(
+        "# Internal: the crate's `conversion_error_class` ([package.metadata.miniextendr]),\n\
+         # the classes of every argument error ahead of `rust_error`; NULL when unset.\n\
+         .miniextendr_conversion_error_class <- {value}"
+    )
+}
+
 /// Write all R wrapper entries to a file.
 ///
 /// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
@@ -1519,51 +1573,72 @@ pub fn write_r_wrappers_to_file(path: &str) {
   }
 }
 
+# Internal helper: raise an argument error from an R-side check (#1591): a
+# type / length precondition, `no_na`, `inherits`, or a `match_arg` /
+# `choices` value. The condition is the one a failed Rust conversion raises:
+# the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
+# at the end of this preamble), then `rust_error`, with
+# `kind = \"conversion\"` and `e$param`, so one handler catches an argument
+# error whichever side finds it. The message is `'<param>' <what>`. `call`
+# defaults to the wrapper's own call, as `stopifnot()` reported it; a
+# `call = caller` wrapper passes `.mx_call` (#1548). Only a failing check
+# calls this: the passing path is one `isTRUE()` test per check.
+.miniextendr_arg_error <- function(param, what, call = sys.call(-1L)) {
+  stop(structure(
+    list(message = sprintf(\"'%s' %s\", param, what), call = call, kind = \"conversion\", param = param),
+    class = c(.miniextendr_conversion_error_class, \"rust_error\", \"simpleError\", \"error\", \"condition\")
+  ))
+}
+
 # Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
 # Base R keeps only the elements that match as long as one of them does, so a
 # misspelled entry silently shortens the selection and the per-element check on
 # the Rust side never sees it (#1472). Here every element has to match a choice
 # (exactly or as a unique prefix), the first that does not is reported with its
 # position, and `NULL` selects every choice, like an omitted argument does. A
-# factor is read as its labels. The error is attributed to `call`: by default
-# the wrapper's own call, not this helper; a `call = caller` wrapper passes its
-# caller's matched call (#1548).
+# factor is read as its labels. The error is an argument error
+# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
+# call, not this helper; a `call = caller` wrapper passes its caller's matched
+# call (#1548).
 .miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
   if (is.null(arg)) return(choices)
   if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) stop(simpleError(sprintf(\"'%s' must be NULL or a character vector\", arg_name), call))
-  if (length(arg) == 0L) stop(simpleError(sprintf(\"'%s' must be of length >= 1\", arg_name), call))
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, \"must be NULL or a character vector\", call)
+  if (length(arg) == 0L) .miniextendr_arg_error(arg_name, \"must be of length >= 1\", call)
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   bad <- which(is.na(i) | i == 0L)
   if (length(bad)) {
-    stop(simpleError(sprintf(\"'%s' element %d (\\\"%s\\\") should be one of %s\", arg_name, bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = \", \")), call))
+    .miniextendr_arg_error(arg_name, sprintf(\"element %d (\\\"%s\\\") should be one of %s\", bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = \", \")), call)
   }
   choices[i]
 }
 
 # Internal helper: scalar `match.arg()` for `match_arg` / `choices` params.
 # `base::match.arg()` says `'arg'` in its messages and reports its own frame;
-# this names the argument and attributes the error to `call`: by default the
-# wrapper's own call, for a `call = caller` wrapper its caller's matched call
-# (#1548). Semantics follow `match.arg(arg, choices)`: `NULL` and the full
-# choice vector (the formal default) select the first choice; otherwise exactly
-# one string that matches a choice exactly or as a unique prefix. A factor is
-# read as its labels (#1552).
+# this names the argument and raises an argument error
+# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
+# call, for a `call = caller` wrapper its caller's matched call (#1548).
+# Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
+# (the formal default) select the first choice; otherwise exactly one string
+# that matches a choice exactly or as a unique prefix. A factor is read as its
+# labels (#1552).
 .miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
   if (is.null(arg)) return(choices[[1L]])
   if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) stop(simpleError(sprintf(\"'%s' must be NULL or a character vector\", arg_name), call))
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, \"must be NULL or a character vector\", call)
   if (identical(arg, choices)) return(arg[[1L]])
-  if (length(arg) != 1L) stop(simpleError(sprintf(\"'%s' must be of length 1\", arg_name), call))
+  if (length(arg) != 1L) .miniextendr_arg_error(arg_name, \"must be of length 1\", call)
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   if (is.na(i) || i == 0L) {
-    stop(simpleError(sprintf(\"'%s' should be one of %s\", arg_name, paste(dQuote(choices, FALSE), collapse = \", \")), call))
+    .miniextendr_arg_error(arg_name, sprintf(\"should be one of %s\", paste(dQuote(choices, FALSE), collapse = \", \")), call)
   }
   choices[[i]]
 }
 
 ",
     );
+    content.push_str(&conversion_error_class_binding());
+    content.push_str("\n\n");
 
     for fragment in collect_r_wrappers() {
         content.push_str(fragment.as_ref());
@@ -3165,6 +3240,39 @@ mod tests {
         assert_eq!(parse_top_level_fn_def_name("x <- 1L"), None);
         // Comment / arbitrary line.
         assert_eq!(parse_top_level_fn_def_name("# a comment"), None);
+    }
+
+    /// The preamble's class binding (#1591): the crate classes as an R
+    /// character vector, escaped, or `NULL` when the crate sets none. It is a
+    /// plain assignment, not a function definition, so the duplicate-name
+    /// scan skips it.
+    #[test]
+    fn conversion_error_class_binding_quotes_or_nulls() {
+        let last_line = |classes: &[&str]| {
+            format_conversion_error_class_binding(classes)
+                .lines()
+                .last()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(
+            last_line(&[]),
+            ".miniextendr_conversion_error_class <- NULL"
+        );
+        assert_eq!(
+            last_line(&["pkg_error_argument", "pkg_error"]),
+            ".miniextendr_conversion_error_class <- c(\"pkg_error_argument\", \"pkg_error\")"
+        );
+        assert_eq!(
+            last_line(&["a\"b\\c"]),
+            ".miniextendr_conversion_error_class <- c(\"a\\\"b\\\\c\")"
+        );
+        let binding = format_conversion_error_class_binding(&["pkg_error"]);
+        assert!(
+            binding
+                .lines()
+                .all(|l| parse_top_level_fn_def_name(l).is_none())
+        );
     }
 
     #[test]

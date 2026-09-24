@@ -87,7 +87,9 @@ test_that("coerced Vec<u16> batches every failing element (issue #1217 item 1)",
     miniextendr:::test_coerce_attr_vec_u16(c(-1L, 5L, 70000L))
   )
   msg <- conditionMessage(err)
-  expect_match(msg, "failed to coerce parameter 'x'", fixed = TRUE)
+  # The argument context is in R terms (#1591); the batched reason keeps its
+  # own grammar.
+  expect_match(msg, "'x' must be integer or whole-number numeric: ", fixed = TRUE)
   expect_match(msg, "Vec<u16> conversion failed", fixed = TRUE)
   expect_match(msg, "invalid value at index 0", fixed = TRUE)
   expect_match(msg, "invalid value at index 2", fixed = TRUE)

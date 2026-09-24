@@ -16,10 +16,8 @@ SidecarOnly <- S7::new_class("SidecarOnly",
   ), .rdata_properties_SidecarOnly),
   constructor = function(value, .ptr = NULL) {
     if (is.null(.ptr)) {
-      stopifnot(
-        "'value' must be integer" = is.integer(value),
-        "'value' must have length 1" = length(value) == 1L
-      )
+      if (!isTRUE(is.integer(value))) .miniextendr_arg_error("value", "must be integer")
+      if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
     }
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)

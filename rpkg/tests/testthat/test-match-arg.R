@@ -204,11 +204,20 @@ test_that("match_arg several_ok [T; N]: exact length works", {
   expect_equal(match_arg_multi_mode_array(c("Safe", "Fast")), "Safe, Fast")
 })
 
-test_that("match_arg several_ok [T; N]: wrong length panics with clear message", {
+test_that("match_arg several_ok [T; N]: wrong length is an argument error (#1591)", {
   # Too few values
-  expect_error(match_arg_multi_mode_array("Fast"), "expected 2 values")
+  expect_error(
+    match_arg_multi_mode_array("Fast"),
+    "'modes' must be of length 2: got length 1",
+    fixed = TRUE,
+    class = "rust_error"
+  )
   # Too many values
-  expect_error(match_arg_multi_mode_array(c("Fast", "Safe", "Debug")), "expected 2 values")
+  expect_error(
+    match_arg_multi_mode_array(c("Fast", "Safe", "Debug")),
+    "'modes' must be of length 2: got length 3",
+    fixed = TRUE
+  )
 })
 
 test_that("match_arg several_ok [T; N]: any invalid value errors in the prelude (#1472)", {

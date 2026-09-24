@@ -280,7 +280,7 @@ fn build_native_sexp_altrep(values: &[i32]) -> SEXP {
 /// @param values An integer vector.
 /// @return An ALTREP-backed integer vector.
 /// @export
-// The framework now emits `stopifnot(is.integer(values))` for `Vec<i32>` args
+// The framework now emits an `is.integer(values)` check for `Vec<i32>` args
 // automatically (issue #616) — `Vec<i32>` is an INTSXP-only element type whose
 // Rust inbound conversion rejects REALSXP, so the old `r_entry` workaround from
 // #554 hard-coding the same check is no longer needed.

@@ -66,9 +66,9 @@ pub fn fdefault_no_coerce_flag(x: bool) -> bool {
 }
 
 /// i32 identity, bare (no knob attrs): under `fast-default` the R-side
-/// `stopifnot(...)` precondition is dropped, so bad input surfaces as a
-/// `rust_error` from `TryFromSexp` instead; otherwise it raises the
-/// stopifnot-shaped error.
+/// type check is dropped, so bad input surfaces from `TryFromSexp` instead
+/// (`'x' must be a single integer: ...`); otherwise the R-side check raises
+/// `'x' must be integer`. Both are the same argument-error condition.
 /// @param x Integer-like scalar.
 #[miniextendr]
 pub fn fdefault_fast_bare_i32(x: i32) -> i32 {
