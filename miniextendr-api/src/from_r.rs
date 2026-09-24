@@ -10,7 +10,7 @@
 //! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
 //! | CPLXSXP | `Rcomplex` | `COMPLEX()` / `DATAPTR_RO` |
-//! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` (UTF-8 locale asserted at init) |
+//! | STRSXP | `&str`, `String` | `STRING_ELT()` + encoding-aware UTF-8 extraction |
 //!
 //! # Submodules
 //!
@@ -72,11 +72,14 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 
 // region: CHARSXP to string conversion
 
-/// Convert CHARSXP to `&str` — zero-copy from R's string data.
+/// Convert CHARSXP to `&str`, translating to UTF-8 when required.
 ///
-/// Uses `R_CHAR` + `LENGTH` (O(1), no strlen). UTF-8 validity is guaranteed
-/// by `miniextendr_assert_utf8_locale()` at package init, so no per-string
-/// validation is needed.
+/// UTF-8 and native strings (including ASCII) borrow directly from the
+/// CHARSXP via `R_CHAR` + `LENGTH`. Package initialization requires a UTF-8
+/// locale, so native strings have the same interpretation.
+/// Latin-1 and other translatable strings use `Rf_translateCharUTF8`; that
+/// buffer lives on R's memory stack for the enclosing `.Call`. Strings marked
+/// with R's `bytes` encoding are rejected because they are not text.
 ///
 /// # Safety
 ///
@@ -84,38 +87,98 @@ pub(crate) fn is_na_real(value: f64) -> bool {
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(charsxp.r_char(), charsxp) }
-}
-
-/// Unchecked version of [`charsxp_to_str`] (skips R thread checks on `R_CHAR`).
-#[inline]
-pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
-    unsafe { charsxp_to_str_impl(charsxp.r_char_unchecked(), charsxp) }
-}
-
-/// Shared implementation: given a data pointer and CHARSXP, produce `&str`.
-///
-/// UTF-8 locale is asserted at init — `from_utf8_unchecked` is safe.
-#[inline]
-unsafe fn charsxp_to_str_impl(ptr: *const std::os::raw::c_char, charsxp: SEXP) -> &'static str {
     unsafe {
-        let len: usize = charsxp.len();
-        let bytes = r_slice(ptr.cast::<u8>(), len);
-        // SAFETY: miniextendr_assert_utf8_locale() at init guarantees all
-        // CHARSXPs in this session are valid UTF-8 or ASCII.
-        debug_assert!(
-            std::str::from_utf8(bytes).is_ok(),
-            "CHARSXP contains non-UTF-8 bytes (locale assertion may have been skipped)"
-        );
-        std::str::from_utf8_unchecked(bytes)
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
+            return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
+        }
+        reject_bytes_encoding(encoding);
+        translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp))
     }
 }
 
-/// `charsxp_to_cow` is now just an alias — all CHARSXPs are UTF-8 (asserted
-/// at init), so there's no non-UTF-8 fallback path. Returns `Cow::Borrowed`.
+/// Unchecked version of [`charsxp_to_str`] (skips R thread checks on R API calls).
+#[inline]
+pub(crate) unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
+    unsafe {
+        let encoding = crate::sys::Rf_getCharCE_unchecked(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
+            return charsxp_utf8_bytes(charsxp.r_char_unchecked(), charsxp.len_unchecked());
+        }
+        reject_bytes_encoding(encoding);
+        translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8_unchecked(charsxp))
+    }
+}
+
+#[inline]
+unsafe fn charsxp_utf8_bytes(ptr: *const std::os::raw::c_char, len: usize) -> &'static str {
+    unsafe {
+        let bytes = r_slice(ptr.cast::<u8>(), len);
+        std::str::from_utf8(bytes).expect("R string marked as UTF-8 contains invalid UTF-8 bytes")
+    }
+}
+
+/// Borrow directly from a UTF-8 or native CHARSXP in the required UTF-8 locale.
+///
+/// Unlike [`charsxp_to_str`], this never returns R's temporary translation
+/// buffer. Use it for views whose borrow may be tied to the source STRSXP
+/// rather than merely to the enclosing `.Call`.
+#[inline]
+pub(crate) unsafe fn charsxp_to_borrowed_str(charsxp: SEXP) -> &'static str {
+    unsafe {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
+            return charsxp_utf8_bytes(charsxp.r_char(), charsxp.len());
+        }
+        reject_bytes_encoding(encoding);
+        panic!("cannot borrow a non-UTF-8 R string; use Cow<str> or String to translate it");
+    }
+}
+
+#[inline]
+fn reject_bytes_encoding(encoding: crate::cetype_t) {
+    if matches!(encoding, crate::cetype_t::CE_BYTES) {
+        panic!("cannot convert an R string marked as bytes to Rust UTF-8");
+    }
+}
+
+#[inline]
+unsafe fn translated_charsxp_to_str(ptr: *const std::os::raw::c_char) -> &'static str {
+    assert!(!ptr.is_null(), "R returned a null UTF-8 translation");
+    unsafe { std::ffi::CStr::from_ptr(ptr) }
+        .to_str()
+        .expect("R string translation produced invalid UTF-8")
+}
+
+/// Convert CHARSXP to `Cow<str>`.
+///
+/// UTF-8/native strings borrow directly from R. Strings that require encoding
+/// translation become owned Rust strings so the translated buffer cannot be
+/// invalidated independently of the returned value.
 #[inline]
 pub(crate) unsafe fn charsxp_to_cow(charsxp: SEXP) -> std::borrow::Cow<'static, str> {
-    std::borrow::Cow::Borrowed(unsafe { charsxp_to_str(charsxp) })
+    unsafe {
+        let encoding = crate::sys::Rf_getCharCE(charsxp);
+        if matches!(
+            encoding,
+            crate::cetype_t::CE_UTF8 | crate::cetype_t::CE_NATIVE
+        ) {
+            return std::borrow::Cow::Borrowed(charsxp_utf8_bytes(charsxp.r_char(), charsxp.len()));
+        }
+        reject_bytes_encoding(encoding);
+        std::borrow::Cow::Owned(
+            translated_charsxp_to_str(crate::sys::Rf_translateCharUTF8(charsxp)).to_owned(),
+        )
+    }
 }
 
 /// Convert CHARSXP to an owned, lossy `String`.
