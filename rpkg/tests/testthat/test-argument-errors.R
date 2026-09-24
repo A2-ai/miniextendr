@@ -331,12 +331,16 @@ test_that("an Either choice raises the argument error on both paths", {
   expect_identical(e$rust_type, "Either<Route, DataFrame>")
   expect_match(conditionMessage(e), "^invalid 'route' argument: ")
   expect_equal(conditionCall(e), quote(match_arg_either_route(route = 1:3)))
-  # A built-in conversion error in the other arm reads in R terms.
+  # A built-in conversion error in the other arm reads in R terms, after an
+  # expectation naming both sides.
   e <- caught(choices_either_level(TRUE))
   expect_identical(class(e), layers)
   expect_identical(e$param, "level")
   expect_identical(e$rust_type, "Either<String, f64>")
-  expect_identical(conditionMessage(e), "invalid 'level' argument: expected numeric, got logical")
+  expect_identical(
+    conditionMessage(e),
+    "'level' must be a single string or a single double: got logical"
+  )
 })
 
 # endregion

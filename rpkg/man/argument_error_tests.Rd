@@ -12,6 +12,7 @@
 \alias{arg_error_u16s}
 \alias{arg_error_pair}
 \alias{arg_error_strict_inputs}
+\alias{arg_error_plain_mode}
 \title{arg_error_ratio}
 \usage{
 arg_error_ratio(num, den)
@@ -28,18 +29,20 @@ arg_error_strings_unchecked(xs)
 
 arg_error_named_checks(x, mode = c("fast", "slow"))
 
-arg_error_no_na_peak(dv)
+arg_error_no_na_peak(obs)
 
-arg_error_u16s(xs)
+arg_error_u16s(counts)
 
 arg_error_pair(pair)
 
-arg_error_strict_inputs(n, xs)
+arg_error_strict_inputs(n, ids)
+
+arg_error_plain_mode(speed)
 }
 \arguments{
 \item{num, den}{A number, string or factor label of length 1.}
 
-\item{dv}{Numbers, strings or factor labels, none of them \code{NA}.}
+\item{dv}{Numbers, strings or factor labels.}
 
 \item{x}{A classed double vector without NA.}
 
@@ -47,13 +50,21 @@ arg_error_strict_inputs(n, xs)
 
 \item{s}{A single string.}
 
-\item{xs}{Whole numbers.}
+\item{xs}{A character vector.}
 
 \item{mode}{One of \code{"fast"}, \code{"slow"}.}
+
+\item{obs}{Numbers, strings or factor labels, none of them \code{NA}.}
+
+\item{counts}{Whole numbers from 0 to 65535.}
 
 \item{pair}{\verb{list(<integer>, <string>)}.}
 
 \item{n}{A whole number.}
+
+\item{ids}{Whole numbers.}
+
+\item{speed}{One of \code{"Fast"}, \code{"Safe"}, \code{"Debug"}.}
 }
 \description{
 Ratio of two numbers read like \code{as.numeric()}.
@@ -77,5 +88,7 @@ Largest value of a vector read like \code{as.numeric()}.
 A tuple argument: an unnamed list of a whole number and a string.
 
 \code{strict} input: a logical, raw, fractional or out-of-range value is the argument error, not a panic.
+
+A \code{MatchArg} enum parameter without \verb{#[miniextendr(match_arg)]}: no R-side \code{match.arg()} check, so a bad value reaches the conversion, whose error still names the choices.
 }
 \keyword{internal}
