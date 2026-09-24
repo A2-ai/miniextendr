@@ -72,6 +72,12 @@ rooted at every link and safe across R allocations (#1247). `rename` /
 `strip_prefix` edit the `names` attribute in place; on a `BuiltDataFrame`
 receiver the handle carries through the chain.
 
+`select_rows(&[usize])` (0-based row indices, in output order; also what
+`group_by` sub-frames are cut with) keeps every column attribute except
+`names`, `dim` and `dimnames`, the `vctrs::vec_slice()` rule. So a `POSIXct`
+column keeps its `tzone`, a `difftime` its `units`, and a plain column its
+label. Base `[` drops the last one. Element names are subset with the values.
+
 ```rust
 let df: BuiltDataFrame = rows.into_dataframe()?;
 

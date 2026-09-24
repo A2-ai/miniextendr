@@ -258,3 +258,45 @@ test_that("gc_stress_group_by_multi smoke-runs and preserves all rows", {
   expect_true(length(na_names) > 0)
   expect_identical(tail(names(out), length(na_names)), na_names)
 })
+
+test_that("select_rows keeps every column attribute, not just class and levels", {
+  df <- data.frame(
+    t = as.POSIXct(c("2026-01-01 08:00", "2026-01-02 09:00", "2026-01-03 10:00"), tz = "UTC"),
+    d = as.difftime(c(1, 2, 3), units = "hours"),
+    f = factor(c("b", "a", "b"), levels = c("b", "a")),
+    x = c(10, 20, 30)
+  )
+  attr(df$x, "label") <- "a label"
+
+  out <- miniextendr:::dataframe_select_rows(df, c(3L, 1L))
+
+  expect_identical(attr(out$t, "tzone"), "UTC")
+  expect_identical(format(out$t), format(df$t[c(3, 1)]))
+  expect_identical(attr(out$d, "units"), "hours")
+  expect_identical(levels(out$f), c("b", "a"))
+  expect_identical(attr(out$x, "label"), "a label")
+  expect_identical(as.numeric(out$x), c(30, 10))
+  expect_equal(out, df[c(3, 1), , drop = FALSE], ignore_attr = c("row.names", "label"))
+})
+
+test_that("select_rows subsets element names with the values", {
+  # `$<-.data.frame` strips element names, so build the frame directly.
+  df <- structure(
+    list(x = c(a = 1L, b = 2L, c = 3L)),
+    class = "data.frame",
+    row.names = c(NA_integer_, -3L)
+  )
+  out <- miniextendr:::dataframe_select_rows(df, c(2L, 3L))
+  expect_identical(names(out$x), c("b", "c"))
+  expect_identical(unname(out$x), c(2L, 3L))
+})
+
+test_that("group_by sub-frames keep a POSIXct column's time zone", {
+  df <- data.frame(
+    g = c("a", "b", "a"),
+    t = as.POSIXct(c("2026-01-01 08:00", "2026-01-02 09:00", "2026-01-03 10:00"), tz = "UTC")
+  )
+  ours <- group_by_frames(df, "g")
+  expect_identical(attr(ours$a$t, "tzone"), "UTC")
+  expect_identical(attr(ours$b$t, "tzone"), "UTC")
+})

@@ -497,6 +497,11 @@ impl DataFrame {
     /// and rebuilds compact integer `row.names`. Used by the enum reader to
     /// densify a flattened sub-frame before recursing into the inner type's reader.
     ///
+    /// Each column keeps all of its attributes except `names`, `dim` and
+    /// `dimnames` (`Rf_copyMostAttrib`, the `vctrs::vec_slice()` rule), so a
+    /// `POSIXct` column keeps its `tzone` and a `difftime` its `units`. Element
+    /// names, if any, are subset with the values.
+    ///
     /// # PROTECT discipline
     ///
     /// Allocates one new column vector per column — `OwnedProtect`s the output list
@@ -528,25 +533,28 @@ impl DataFrame {
                 let new_col: SEXP = crate::convert::gather_column(src_col, idx);
 
                 // Root new_col in the protected output list BEFORE touching its
-                // attributes. `gather_column` returns an unprotected SEXP, and
-                // `set_class`/`set_levels` (Rf_setAttrib) allocate and can trigger
-                // GC. set_vector_elt does not allocate, so this ordering keeps
-                // new_col reachable (via new_list) across every allocating call.
+                // attributes. `gather_column` returns an unprotected SEXP, and the
+                // attribute writes below allocate and can trigger GC.
+                // set_vector_elt does not allocate, so this ordering keeps new_col
+                // reachable (via new_list) across every allocating call.
                 new_list.set_vector_elt(col_j, new_col);
                 if names_sexp != SEXP::nil() {
                     new_names.set_string_elt(col_j, names_sexp.string_elt(col_j));
                 }
 
-                // Copy column attributes: class (for factor / Date / POSIXct) and
-                // levels (for factor columns). Safe now — new_col is rooted in the
-                // protected new_list, so GC during set_class/set_levels can't reap it.
-                let class_attr = src_col.get_class();
-                if class_attr != SEXP::nil() {
-                    new_col.set_class(class_attr);
-                }
-                let levels_attr = src_col.get_levels();
-                if levels_attr != SEXP::nil() {
-                    new_col.set_levels(levels_attr);
+                // Copy every column attribute except names/dim/dimnames, as
+                // `vctrs::vec_slice()` does: `class` and `levels` (factor, Date),
+                // `tzone` (POSIXct), `units` (difftime), labels, and anything else a
+                // package keeps on a column. Base `[` would drop the last kind on an
+                // unclassed column; a row subset should not change a column's meaning.
+                crate::sys::Rf_copyMostAttrib(src_col, new_col);
+
+                // Element names are per row, so they are subset with the values.
+                let col_names = src_col.get_names();
+                if col_names != SEXP::nil() {
+                    let new_col_names =
+                        crate::OwnedProtect::new(crate::convert::gather_column(col_names, idx));
+                    new_col.set_names(*new_col_names);
                 }
             }
 

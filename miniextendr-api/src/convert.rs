@@ -294,8 +294,9 @@ unsafe fn gather_native<T: RNativeType + Copy>(src: crate::SEXP, idx: &[usize]) 
 /// not flat buffers. The output type mirrors the input; any other type falls back
 /// to a logical `NA` column (normal `data.frame` columns never reach it).
 ///
-/// Column attributes (`class`/`levels` for factor / Date / POSIXct) are **not**
-/// copied — the caller restores those after rooting the gathered column.
+/// Column attributes (`class`, `levels`, `tzone`, element `names`, …) are **not**
+/// copied — the caller restores them after rooting the gathered column
+/// (`DataFrame::select_rows` uses `Rf_copyMostAttrib` plus a names gather).
 ///
 /// # Safety
 ///
