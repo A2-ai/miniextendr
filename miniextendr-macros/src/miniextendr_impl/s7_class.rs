@@ -1028,15 +1028,24 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                             .to_string(),
                     );
                 }
-                // Pass empty doc_tags: the method's own prose (@title/description)
-                // is already rendered on the shared @rdname page by the generic
-                // block above; re-emitting it here would duplicate it. We only
-                // need the @name / @rdname / @source / @param scaffolding so the
-                // shortcut's \usage is fully documented.
+                // Pass only the method's `@param` tags: its prose
+                // (@title/description) is already rendered on the shared @rdname
+                // page by the generic block above, and re-emitting it here would
+                // duplicate it. The generic block suppresses `@param` (an S7
+                // method assignment has no \usage), so the shortcut's \usage is
+                // the only place those formals are documented; without them each
+                // one fell back to `(undocumented)`. Mirrors the trait shortcut,
+                // which forwards `param_tags`.
                 let mx_doc = ctx.match_arg_doc_placeholders();
-                let no_tags: [String; 0] = [];
+                let param_tags: Vec<String> = ctx
+                    .method
+                    .doc_tags
+                    .iter()
+                    .filter(|tag| crate::roxygen::roxygen_tag_name(tag) == Some("param"))
+                    .cloned()
+                    .collect();
                 let method_doc =
-                    MethodDocBuilder::new(&class_name, &method_name, type_ident, &no_tags)
+                    MethodDocBuilder::new(&class_name, &method_name, type_ident, &param_tags)
                         .with_r_params(&shortcut_formals)
                         .with_match_arg_doc_placeholders(&mx_doc)
                         .with_r_name(shortcut_name.clone());

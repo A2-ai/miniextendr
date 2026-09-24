@@ -1377,6 +1377,54 @@ fn operator_r_names_quote_static_and_member_definitions() {
     assert!(wrapper.contains("Foo$`[[` <- function(i) {"), "{wrapper}");
 }
 
+/// The shortcut's \usage is the only place an S7 method's formals are
+/// documented, so its block carries the method's `@param` tags (and none of
+/// its prose, which the generic block already renders on the class page).
+#[test]
+fn s7_shortcut_docs_carry_the_method_param_tags() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Foo {
+                /// Values at positions.
+                /// @param i Integer positions to keep.
+                #[miniextendr(s7(generic = "["))]
+                pub fn subset(&self, i: Vec<i32>, n: i32) -> Vec<f64> { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let shortcut_block = wrapper
+        .split("#' Fast-path shortcut for the `subset` S7 method on `Foo`.")
+        .nth(1)
+        .and_then(|rest| rest.split("Foo_subset <- function(").next())
+        .expect("shortcut block");
+    assert!(
+        shortcut_block.contains("#' @param i Integer positions to keep."),
+        "{shortcut_block}"
+    );
+    assert!(
+        !shortcut_block.contains("@param i (undocumented)"),
+        "{shortcut_block}"
+    );
+    // Formals the method did not document still get a placeholder.
+    assert!(
+        shortcut_block.contains("#' @param n (undocumented)"),
+        "{shortcut_block}"
+    );
+    assert!(
+        !shortcut_block.contains("Values at positions."),
+        "{shortcut_block}"
+    );
+    // The S7 method block itself stays free of @param (no \usage there).
+    let method_block = wrapper
+        .split("#' @name Foo-[")
+        .nth(1)
+        .and_then(|rest| rest.split("S7::method(`[`, Foo)").next())
+        .expect("method block");
+    assert!(!method_block.contains("@param"), "{method_block}");
+}
+
 /// Syntactic names keep the bare spelling (no churn in ordinary wrappers).
 #[test]
 fn s7_syntactic_names_stay_bare() {

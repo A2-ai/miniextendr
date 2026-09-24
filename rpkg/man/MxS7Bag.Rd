@@ -22,7 +22,7 @@ MxS7Bag_subset(self, i, ...)
 
 \item{self}{A \code{MxS7Bag} object.}
 
-\item{i}{(undocumented)}
+\item{i}{Integer positions to keep.}
 
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
