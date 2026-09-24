@@ -247,6 +247,8 @@ dnl work, or, when this build directory is a tree of symlinks into the package,
 dnl stages the dependencies from there into this tree. Tarball mode is
 dnl vendored, so it is skipped.
 if test "$IS_TARBALL_INSTALL" != "true"; then
+  test -f "${srcdir}/tools/dev-bootstrap.R" || \
+    AC_MSG_ERROR([tools/dev-bootstrap.R not found. It ships with the package template; restore it, e.g. with minirextendr::upgrade_miniextendr_package().])
   "${R_HOME}/bin/Rscript" "${srcdir}/tools/dev-bootstrap.R" configure || \
     AC_MSG_ERROR([a path dependency outside the package is missing; see the message above])
 fi

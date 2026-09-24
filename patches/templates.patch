@@ -187,8 +187,8 @@ diff -ruN -U2 a/monorepo/rpkg/build.rs b/monorepo/rpkg/build.rs
          );
      }
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-09-24 16:30:32
-+++ b/monorepo/rpkg/configure.ac	2026-09-24 16:30:51
+--- a/monorepo/rpkg/configure.ac	2026-09-24 18:00:20
++++ b/monorepo/rpkg/configure.ac	2026-09-24 18:00:21
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -354,7 +354,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
  RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
  RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
-@@ -282,6 +246,7 @@
+@@ -284,6 +248,7 @@
    if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
      AC_MSG_ERROR([wasm32 install requires src/rust/wasm_registry.rs.
 -Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
@@ -364,7 +364,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +wasm builder.])
    fi
  fi
-@@ -290,7 +255,10 @@
+@@ -292,7 +257,10 @@
  dnl CARGO_BUILD_TARGET is AC_SUBST'd later in the Cargo target/profile section.
  
 +dnl Convenience: cargo command that includes optional toolchain selector
@@ -375,20 +375,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
  AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
  CARGO_TARGET_DIR_USER_SET=false
-@@ -305,4 +273,6 @@
+@@ -307,4 +275,6 @@
  AC_SUBST([CARGO_TARGET_DIR])
  
 +dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 +dnl These are used in .cargo/config.toml which Cargo reads directly
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR"
  if test "x$CYGPATH" != "xno"; then
-@@ -313,4 +283,5 @@
+@@ -315,4 +285,5 @@
  AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
  : ${CARGO_PROFILE="release"}
 +dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
  if test "$CARGO_PROFILE" = "debug"; then
    AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
-@@ -319,4 +290,7 @@
+@@ -321,4 +292,7 @@
  AC_SUBST([CARGO_PROFILE])
  
 +dnl Cargo output directory differs from profile name:
@@ -396,7 +396,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -325,25 +299,21 @@
+@@ -327,25 +301,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -434,7 +434,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
    ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
-@@ -371,4 +341,8 @@
+@@ -373,4 +343,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -443,7 +443,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -378,21 +352,29 @@
+@@ -380,21 +354,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -483,7 +483,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -402,18 +384,20 @@
+@@ -404,18 +386,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -513,27 +513,27 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  AC_ARG_VAR([VENDOR_OUT], [Shared vendor cache root (optional; entries are keyed by vendor.tar.xz contents)])
  VENDOR_OUT_USER_SET=false
-@@ -705,4 +689,5 @@
+@@ -707,4 +691,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -768,5 +753,5 @@
+@@ -770,5 +755,5 @@
  dnl
  dnl WARNING: stale inst/vendor.tar.xz hazard.
 -dnl   'just r-cmd-build' and 'just r-cmd-check' create inst/vendor.tar.xz
 +dnl   miniextendr_vendor() / a CRAN-prep build create inst/vendor.tar.xz
  dnl   transiently and remove it via a 'trap ... EXIT' handler; if the process is killed
  dnl   before the trap fires, the file is left behind.  Configure then detects
-@@ -943,5 +928,5 @@
+@@ -945,5 +930,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -959,13 +944,22 @@
+@@ -961,13 +946,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
@@ -716,8 +716,8 @@ diff -ruN -U2 a/rpkg/build.rs b/rpkg/build.rs
          );
      }
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-09-24 16:30:32
-+++ b/rpkg/configure.ac	2026-09-24 16:30:51
+--- a/rpkg/configure.ac	2026-09-24 18:00:20
++++ b/rpkg/configure.ac	2026-09-24 18:00:21
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [0.1.0])
 +AC_INIT([{{package}}], [0.1.0])
@@ -865,7 +865,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
  RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
  RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
-@@ -282,6 +250,7 @@
+@@ -284,6 +252,7 @@
    if test ! -f "$srcdir/src/rust/wasm_registry.rs"; then
      AC_MSG_ERROR([wasm32 install requires src/rust/wasm_registry.rs.
 -Run 'R CMD INSTALL' (or 'just rcmdinstall') on the host first to regenerate
@@ -875,7 +875,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +wasm builder.])
    fi
  fi
-@@ -290,7 +259,10 @@
+@@ -292,7 +261,10 @@
  dnl CARGO_BUILD_TARGET is AC_SUBST'd later in the Cargo target/profile section.
  
 +dnl Convenience: cargo command that includes optional toolchain selector
@@ -886,20 +886,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
  AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
  CARGO_TARGET_DIR_USER_SET=false
-@@ -305,4 +277,6 @@
+@@ -307,4 +279,6 @@
  AC_SUBST([CARGO_TARGET_DIR])
  
 +dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 +dnl These are used in .cargo/config.toml which Cargo reads directly
  CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR"
  if test "x$CYGPATH" != "xno"; then
-@@ -313,4 +287,5 @@
+@@ -315,4 +289,5 @@
  AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
  : ${CARGO_PROFILE="release"}
 +dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
  if test "$CARGO_PROFILE" = "debug"; then
    AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
-@@ -319,4 +294,7 @@
+@@ -321,4 +296,7 @@
  AC_SUBST([CARGO_PROFILE])
  
 +dnl Cargo output directory differs from profile name:
@@ -907,7 +907,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl   --profile release → target/release/
  if test "$CARGO_PROFILE" = "dev"; then
    CARGO_PROFILE_DIR="debug"
-@@ -325,25 +303,21 @@
+@@ -327,25 +305,21 @@
  fi
  
 +dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
@@ -945,7 +945,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl position-independent by default, so it was a no-op. See miniextendr #745.)
  if test "$is_wasm_install" = true; then
    ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
-@@ -371,4 +345,8 @@
+@@ -373,4 +347,8 @@
  AC_SUBST([CARGO_BUILD_TARGET])
  
 +dnl Compute Cargo libdir path:
@@ -954,7 +954,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
  if test -n "$CARGO_BUILD_TARGET"; then
    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
-@@ -378,21 +356,29 @@
+@@ -380,21 +358,29 @@
  AC_SUBST([CARGO_LIBDIR])
  
 -AC_MSG_NOTICE([R_HOME               = $R_HOME])
@@ -994,7 +994,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl MSYS2/MinGW tar interprets D: in paths as remote host — --force-local fixes this
  case "$host_os" in
    *msys*|*cygwin*|*mingw*) TAR_FORCE_LOCAL="--force-local" ;;
-@@ -402,18 +388,20 @@
+@@ -404,18 +390,20 @@
  
  dnl ---- Native R package include paths (for bindgen C shim compilation) ----
 +dnl Populated by minirextendr::use_native_package(). Each native package
@@ -1024,27 +1024,27 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl as CARGO_TARGET_DIR above).
  AC_ARG_VAR([VENDOR_OUT], [Shared vendor cache root (optional; entries are keyed by vendor.tar.xz contents)])
  VENDOR_OUT_USER_SET=false
-@@ -705,4 +693,5 @@
+@@ -707,4 +695,5 @@
  
  dnl ---- output files ----
 +dnl Create .cargo directory (it's a hidden dir not included in tarball)
  dnl AC_CONFIG_FILES handles Makevars and the win.def. The cargo config is
  dnl written by AC_CONFIG_COMMANDS below because its contents differ across
-@@ -768,5 +757,5 @@
+@@ -770,5 +759,5 @@
  dnl
  dnl WARNING: stale inst/vendor.tar.xz hazard.
 -dnl   'just r-cmd-build' and 'just r-cmd-check' create inst/vendor.tar.xz
 +dnl   miniextendr_vendor() / a CRAN-prep build create inst/vendor.tar.xz
  dnl   transiently and remove it via a 'trap ... EXIT' handler; if the process is killed
  dnl   before the trap fires, the file is left behind.  Configure then detects
-@@ -943,5 +932,5 @@
+@@ -945,5 +934,5 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating" >&2
 +      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-@@ -959,13 +948,22 @@
+@@ -961,13 +950,22 @@
  AC_CONFIG_COMMANDS([post-config],
  [
 +  dnl Ensure Cargo.lock exists (needed by cargo for reproducible builds)
