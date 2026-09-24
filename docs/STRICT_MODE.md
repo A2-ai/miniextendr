@@ -110,7 +110,20 @@ Use `#[miniextendr(no_strict)]` to opt out.
 
 ## Error Messages
 
-Strict panics produce descriptive messages:
+A rejected **input** (a logical, raw, fractional, out-of-range or `NA` value
+for a lossy integer parameter) is an argument error, the same condition as
+any other failed conversion (`kind = "conversion"`, `e$param`, `e$rust_type`;
+see [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)). A vector
+reports every failing element at once, with R's 1-based positions:
+
+```text
+'count' must be a single whole number: got logical
+'ids' must be integer or whole-number numeric: precision loss (elements 2, 4); NA is not allowed (element 3)
+```
+
+A **return value** that does not fit an R integer is a panic (`kind =
+"panic"`), caught and converted to an R error; a vector names its Rust type
+and the positions in the returned vector:
 
 ```text
 strict conversion failed: i64 value 1099511627776 is outside R integer range
@@ -118,10 +131,10 @@ strict conversion failed: i64 value 1099511627776 is outside R integer range
 ```
 
 ```text
-strict conversion failed for parameter 'count': expected integer or double, got LGLSXP
+strict conversion failed for Vec<i64>: i64 value 1099511627776 is outside R integer
+range (-2147483647..=2147483647) (element 2); use a non-strict function to allow lossy
+f64 widening
 ```
-
-These panics are caught and converted to R errors.
 
 ## When to Use Strict Mode
 

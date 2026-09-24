@@ -411,7 +411,8 @@ additionally accept `NULL` as `None`.
 The markers are input-only; return the inner `Vec<Option<f64>>` /
 `Option<f64>`. For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
 `AsFromStrVec<T>`: character input only, `NA` refused, and each failing value
-quoted in the error (`index 1: "n/a": invalid digit found in string`).
+quoted in the error with its 1-based position
+(`"n/a": invalid digit found in string (element 2)`).
 
 ### Labels from any atomic vector (`AsCharacter`)
 
@@ -632,8 +633,10 @@ pub fn label_grid(x: Array2<Option<String>>) -> Array2<Option<String>> {
 A value that fails its Rust-side conversion raises an R error with
 `e$kind == "conversion"`, `e$param` set to the parameter's R name,
 `e$rust_type` set to the Rust type, and a message in R terms:
-`'<p>' must be <expected>: <reason>` (`invalid '<p>' argument: <reason>` for a
-type without an R-facing expectation). Most built-in types are checked by an
+`'<p>' must be <expected>: <reason>` (`invalid '<p>' argument: <reason>` for an
+opaque custom type without an R-facing expectation). A vector reports every
+failing element at once, by reason and 1-based position
+(`NA is not allowed (elements 2, 4)`). Most built-in types are checked by an
 R-side precondition first, which raises the same condition with its own
 message (`'x' must have length 1`); the examples below use `no_preconditions`
 so the value reaches Rust. An argument type whose error implements
