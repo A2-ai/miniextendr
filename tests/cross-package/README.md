@@ -36,25 +36,33 @@ Common helpers from `tests/cross-package/justfile`:
 - `just build-all` - install both packages in dependency order
 - `just test-all` - run both test suites
 - `just check-all` - run `devtools::check()` for both packages
-- `just clean` - remove build artifacts
+- `just clean` - remove build artifacts and the package library
+- `just bench-interop` - run `bench-interop.R` against the installed packages
+
+The recipes install both packages into `.r-lib/` in this directory (gitignored)
+and put it first on `.libPaths()` through `R_LIBS`, so each checkout keeps its
+own installs.
 
 ### Manual build
 
 If you are not using `just`, the equivalent manual flow is:
 
 ```bash
+# R ignores an R_LIBS entry that does not exist yet
+mkdir -p .r-lib
+
 # Build producer.pkg
 cd producer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
 bash ./configure
-Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+R_LIBS=../.r-lib Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 
 # Build consumer.pkg
 cd consumer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
 bash ./configure
-Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
+R_LIBS=../.r-lib Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
 cd ..
 ```
 

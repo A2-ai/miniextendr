@@ -9,6 +9,14 @@ just cross-test      # run testthat across the pair
 just cross-check     # R CMD check both
 ```
 
+The recipes install into, load from and test against `tests/cross-package/.r-lib/`
+(gitignored, one per checkout): `tests/cross-package/justfile` exports `R_LIBS`
+with it first, so worktrees never share `producer.pkg` / `consumer.pkg` installs
+through the user library. `just r-lib` (in this directory) prints the path. Run
+R by hand against it with `R_LIBS="$(just --evaluate R_LIBS)" Rscript ...` from
+this directory; from the repo root, rv's `.Rprofile` replaces `.libPaths()` and
+hides it.
+
 ## Layout
 - `producer/` + `producer.pkg/` — split source vs scaffolded tarball.
 - `consumer/` + `consumer.pkg/` — same.
