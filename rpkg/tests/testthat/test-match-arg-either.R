@@ -111,3 +111,125 @@ test_that("the auto-generated @param line names the other kind", {
   expect_match(page, "\"high\", or a number.", fixed = TRUE)
   expect_match(rd_text("EitherRoutePlanner"), "\"infusion\", or a data frame.", fixed = TRUE)
 })
+
+# region: S3 / S4 / S7 / vctrs methods and trait methods
+
+levels <- c("low", "mid", "high")
+
+# The `plan*` fixtures report `route=<..>;level=<..>` for a match_arg
+# `Either<Route, DataFrame>` and an omittable `choices(...)`
+# `Missing<Either<String, f64>>`. `f` forwards its arguments through `...`,
+# which keeps an omitted argument missing.
+expect_route_level <- function(f) {
+  expect_equal(f(), "route=Oral;level=absent")
+  expect_equal(f("inf"), "route=Infusion;level=absent")
+  expect_equal(f(factor("bolus")), "route=Bolus;level=absent")
+  expect_equal(f(doses), "route=frame:2x2;level=absent")
+  expect_equal(f(level = "mi"), "route=Oral;level=level:mid")
+  expect_equal(f(level = factor("high")), "route=Oral;level=level:high")
+  expect_equal(f(doses, level = 2.5), "route=frame:2x2;level=number:2.5")
+  expect_choice_error(f("iv"), "route", routes)
+  expect_choice_error(f(level = "max"), "level", levels)
+  # NULL is not a choice: it goes to the `DataFrame` arm, which rejects it.
+  expect_error(f(NULL), "route")
+}
+
+# The formals keep both choice vectors.
+expect_route_level_formals <- function(fn) {
+  fmls <- formals(fn)
+  expect_equal(eval(fmls$route), routes)
+  expect_equal(eval(fmls$level), levels)
+}
+
+test_that("S3 method with Either choice parameters", {
+  p <- new_eitherroutes3()
+  expect_route_level_formals(getS3method("plan_s3", "EitherRouteS3"))
+  expect_route_level(function(...) plan_s3(p, ...))
+})
+
+test_that("S4 method with Either choice parameters", {
+  h <- EitherRouteS4()
+  expect_equal(names(formals(s4_plan)), c("x", "..."))
+  expect_route_level_formals(
+    methods::unRematchDefinition(methods::getMethod("s4_plan", "EitherRouteS4"))
+  )
+  expect_route_level(function(...) s4_plan(h, ...))
+})
+
+test_that("S7 constructor, method and shortcut with Either choice parameters", {
+  expect_equal(eval(formals(EitherRouteS7)$start), routes)
+  expect_equal(route_given(EitherRouteS7()), "absent")
+  expect_equal(route_given(EitherRouteS7(start = "inf")), "Infusion")
+  expect_equal(route_given(EitherRouteS7(start = factor("oral"))), "Oral")
+  expect_equal(route_given(EitherRouteS7(start = doses)), "frame:2x2")
+  expect_choice_error(EitherRouteS7(start = "iv"), "start", routes)
+
+  h <- EitherRouteS7()
+  expect_route_level_formals(S7::method(plan_s7, EitherRouteS7))
+  expect_route_level_formals(EitherRouteS7_plan_s7)
+  expect_route_level(function(...) plan_s7(h, ...))
+  expect_route_level(function(...) EitherRouteS7_plan_s7(h, ...))
+})
+
+test_that("vctrs constructor and static method with Either choice parameters", {
+  expect_equal(eval(formals(new_eitherroutevctrs)$route), routes)
+  expect_equal(vctrs::vec_data(new_eitherroutevctrs()), 1)
+  expect_equal(vctrs::vec_data(new_eitherroutevctrs("bo")), 2)
+  expect_equal(vctrs::vec_data(new_eitherroutevctrs(factor("infusion"))), 3)
+  expect_equal(vctrs::vec_data(new_eitherroutevctrs(doses)), c(0, 0))
+  expect_choice_error(new_eitherroutevctrs("iv"), "route", routes)
+
+  expect_route_level_formals(eitherroutevctrs_plan)
+  expect_route_level(eitherroutevctrs_plan)
+})
+
+# The `EitherGrade` trait method reports `absent` or the grade (`level:<name>`
+# / `number:<n>`) for an omittable `choices(...)` `Either<String, f64>`.
+expect_either_grade <- function(grade) {
+  expect_equal(grade(), "absent")
+  expect_equal(grade(grade = "hi"), "level:high")
+  expect_equal(grade(grade = 4), "number:4")
+  expect_choice_error(grade(grade = "max"), "grade", levels)
+}
+
+test_that("S3 trait method with an omittable Either choice", {
+  p <- new_eitherroutes3()
+  expect_equal(eval(formals(getS3method("either_grade", "EitherRouteS3"))$grade), levels)
+  expect_either_grade(function(...) either_grade(p, ...))
+})
+
+test_that("S7 trait method and its shortcut with an omittable Either choice", {
+  h <- EitherRouteS7()
+  expect_equal(
+    eval(formals(S7::method(s7_trait_EitherGrade_either_grade, EitherRouteS7))$grade),
+    levels
+  )
+  expect_equal(eval(formals(EitherRouteS7_either_grade)$grade), levels)
+  expect_either_grade(function(...) s7_trait_EitherGrade_either_grade(h, ...))
+  expect_either_grade(function(...) EitherRouteS7_either_grade(h, ...))
+})
+
+test_that("method Either choice params name the other kind in their @param line", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_text <- function(topic) {
+    pages <- vapply(rd_db, function(rd) {
+      gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
+    }, character(1))
+    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
+    expect_length(page, 1L)
+    page[[1L]]
+  }
+  level_or_number <- "One of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice."
+  for (topic in c("EitherRouteS3", "EitherRouteS7", "EitherRouteVctrs")) {
+    expect_match(rd_text(topic), level_or_number, fixed = TRUE)
+  }
+  # The S7 constructor's `start` (inlined in `new_class()`).
+  expect_match(
+    rd_text("EitherRouteS7"),
+    "\"infusion\", or a data frame; omitting the argument means no choice.",
+    fixed = TRUE
+  )
+})
+
+# endregion

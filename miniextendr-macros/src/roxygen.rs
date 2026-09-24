@@ -1048,21 +1048,11 @@ pub(crate) fn push_fn_param_tags(
             continue;
         }
 
-        if let Some(choices) = parsed.choices_for_param(&rust_name) {
-            let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
-            let prefix = if parsed.has_several_ok(&rust_name) {
-                "One or more of"
-            } else {
-                "One of"
-            };
-            let suffix = parsed
-                .param_attrs(&rust_name)
-                .map(crate::miniextendr_fn::ParamAttrs::choice_doc_suffix)
-                .unwrap_or_default();
-            tags.push(format!(
-                "{PARAM_FILLER_MARKER}@param {r_name} {prefix} {}{suffix}.",
-                quoted.join(", ")
-            ));
+        if let Some(doc) = parsed
+            .param_attrs(&rust_name)
+            .and_then(crate::miniextendr_fn::ParamAttrs::literal_choices_doc)
+        {
+            tags.push(format!("{PARAM_FILLER_MARKER}@param {r_name} {doc}"));
         } else if parsed.has_match_arg_attr(&rust_name) {
             let doc_placeholder = crate::match_arg_keys::param_doc_placeholder(c_ident, &r_name);
             tags.push(format!(

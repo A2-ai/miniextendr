@@ -160,6 +160,31 @@ where
     x.into_sexp()
 }
 
+/// Convert a `Missing<T>` trait-method argument to the SEXP the vtable shim
+/// receives: [`Missing::Absent`](crate::Missing::Absent) is R's
+/// missing-argument sentinel, which the shim's `TryFromSexp for Missing<T>`
+/// reads back as `Absent` (the same sentinel an R wrapper forwards for an
+/// omitted argument), and `Present(value)` converts `value` with
+/// [`to_sexp`].
+///
+/// `Missing<T>` has no `IntoR` impl on purpose: the sentinel is an argument
+/// marker, not a value to hand back to R. Only the View's argument array
+/// needs this direction.
+///
+/// # Safety
+///
+/// Same as [`to_sexp`].
+#[inline]
+pub unsafe fn missing_to_sexp<T>(x: crate::Missing<T>) -> SEXP
+where
+    T: crate::IntoR,
+{
+    match x {
+        crate::Missing::Absent => SEXP::missing_arg(),
+        crate::Missing::Present(value) => unsafe { to_sexp(value) },
+    }
+}
+
 /// Convert an R SEXP to a Rust type, returning a Result.
 ///
 /// Unlike [`from_sexp`], this function returns a `Result` instead of

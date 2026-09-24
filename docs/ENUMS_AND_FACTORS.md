@@ -301,10 +301,14 @@ supplied value and adds `Absent` for an omitted one:
 
 `choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
 has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
-it cannot carry a `default = "..."`. Impl methods take the same types
-through the method-level `match_arg(p)` / `choices(p = "...")` attributes;
-trait methods accept `choices(p = "...")` only, so they take the string
-forms.
+it cannot carry a `default = "..."`. Impl methods of every class system take
+the same types through the method-level `match_arg(p)` /
+`match_arg_several_ok(p)` / `choices(p = "...")` attributes; trait methods
+accept `choices(p = "...")` / `choices_several_ok(p = "...")` only, so they
+take the string forms (`Missing<String>`, `Missing<Option<String>>`,
+`Missing<Vec<String>>`). An omitted argument crosses the trait ABI of a
+`#[miniextendr]` trait as R's missing-argument sentinel, so a cross-package
+call sees `Absent` too.
 
 A hand-written R function in front of such a wrapper passes omission on only
 if its own formal has no default: `run <- function(mode) run_impl(mode)`
@@ -367,7 +371,11 @@ The layers of the previous sections compose with it, outermost first:
 vector and report an omitted argument as `Absent`. `choices("a", "b")` works
 the same way on `Either<String, R>`. Impl methods take all of these through
 `match_arg(p)` / `choices(p = "...")`, trait methods the `choices` forms
-(`choices(p = "...")` on `Either<String, R>`). The other arm's name in
+(`choices(p = "...")` on `Either<String, R>` or `Missing<Either<String, R>>`).
+The parameter types of a `#[miniextendr]` trait also cross its trait ABI,
+which converts each one with `TryFromSexp` / `IntoR`; `Option<Either<..>>`
+has neither, so the `Option` layer is not available on a trait method.
+The other arm's name in
 the `@param` line comes from its Rust type (`DataFrame` is "a data frame",
 `List` "a list", `f64` "a number", `Vec<String>` "a character vector"; a type
 R has no name for is shown in code format). `several_ok` does not take an
@@ -573,20 +581,44 @@ constructor regardless of return type.
 ### Auto-Injected `@param` Docs
 
 When you leave a `match_arg` parameter undocumented, miniextendr fills in
-the roxygen `@param` line at write time using the enum's `CHOICES`:
+the roxygen `@param` line at write time using the enum's `CHOICES`; a
+`choices(...)` parameter gets the same line from its literal list:
 
 ```r
 #' @param mode One of "Fast", "Safe", "Debug".
 ```
 
-This runs for both standalone functions and impl-block methods across every
-class system. Explicit `@param` lines you write yourself are preserved
-verbatim; only missing entries are auto-generated. A block with
-`@describeIn`, `@inheritParams`, or an `@rdname` naming another page gets no
-generated line: the page it joins or the topic it inherits from documents the
-parameter. On a file-stem page shared by several functions the line is kept
-only when no function there documents the parameter (see
+The line also names the other accepted values and what omitting the argument
+means (see the sections above). This runs for standalone functions and for
+impl-block and trait methods across every class system, with one exception:
+R6 trait methods. They live in `Type$Trait$method`, not among the R6
+generator's public methods, so roxygen2 has no method section to list their
+arguments in; a plain `@param` there lands in a top-level `\arguments` of the
+class page, detached from any usage. Explicit `@param` lines you write
+yourself are preserved verbatim; only missing entries are auto-generated. A
+block with `@describeIn`, `@inheritParams`, or an `@rdname` naming another
+page gets no generated line: the page it joins or the topic it inherits from
+documents the parameter. On a file-stem page shared by several functions the
+line is kept only when no function there documents the parameter (see
 [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages)).
+
+#### One entry per parameter name on a shared page
+
+Functions documented on one Rd page (the functions of one source file by
+default, a shared `@rdname`, or the methods of one class) get one `\item` per
+parameter name. roxygen2 merges the blocks of a page in file order, and when
+two blocks document the same name the later block's line replaces the
+earlier one. On a class page that includes a method's generated line
+replacing an explicit `@param` written on an earlier method's block. On a
+file-stem page the generated line is left out when another function there
+documents the parameter, but when none does, every function's generated
+line is written. Two functions on one page that take a `mode` of different
+types (`Mode` and `Missing<Option<Mode>>`) therefore show only the last
+one's text.
+
+miniextendr does not merge the texts into one line. Give such parameters
+distinct names, keep functions whose same-named parameters differ in their own
+source file, or send one of them to its own page with `@rdname`.
 
 ---
 

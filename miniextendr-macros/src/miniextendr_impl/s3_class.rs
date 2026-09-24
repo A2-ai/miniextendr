@@ -173,11 +173,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         } else {
             let qualified_name = format!("{}.{}", generic_name, class_name);
-            let mx_doc = ctx.match_arg_doc_placeholders();
+            let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(qualified_name);
             lines.extend(method_doc.build());
             lines.push(format!("#' @method {} {}", generic_name, class_name));
@@ -224,11 +224,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = ctx.method.r_method_name();
         let fn_name = format!("{}_{}", class_name.to_lowercase(), method_name);
 
-        let mx_doc = ctx.match_arg_doc_placeholders();
+        let mx_doc = ctx.choice_param_docs();
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                 .with_r_params(&ctx.params)
-                .with_match_arg_doc_placeholders(&mx_doc)
+                .with_choice_param_docs(&mx_doc)
                 .with_r_name(fn_name.clone())
                 .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());

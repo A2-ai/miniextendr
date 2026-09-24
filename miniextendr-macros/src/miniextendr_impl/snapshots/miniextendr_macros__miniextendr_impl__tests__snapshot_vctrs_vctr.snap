@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3957
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Percent::new (1:1)
@@ -42,6 +43,7 @@ vec_cast.Percent.Percent <- function(x, to, ...) x
 #' @param amounts (undocumented)
 #' @name percent_value
 #' @rdname Percent
+#' @export
 percent_value <- function(amounts) {
   if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
   .val <- .Call(C_miniextendr_macros_Percent__value, .call = match.call(), amounts)
@@ -54,6 +56,7 @@ percent_value <- function(amounts) {
 #' @param factor (undocumented)
 #' @name percent_scale
 #' @rdname Percent
+#' @export
 percent_scale <- function(amounts, factor) {
   if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
   if (!isTRUE(is.double(factor))) .miniextendr_arg_error("factor", "must be double")

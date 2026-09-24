@@ -1,5 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 3979
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Rational::new (1:1)
@@ -44,6 +45,7 @@ vec_cast.Rational.Rational <- function(x, to, ...) x
 #' @param n (undocumented)
 #' @name rational_numerator
 #' @rdname Rational
+#' @export
 rational_numerator <- function(n) {
   if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be an integer vector")
   .val <- .Call(C_miniextendr_macros_Rational__numerator, .call = match.call(), n)

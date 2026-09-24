@@ -88,11 +88,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
             // Use class name as @name to avoid duplicate "new" alias across S4 classes
-            let mx_doc = ctx.match_arg_doc_placeholders();
+            let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(class_name.clone());
             lines.extend(method_doc.build());
         }
@@ -221,11 +221,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Skip documentation if class has @noRd
         if !class_has_no_rd {
-            let mx_doc = ctx.match_arg_doc_placeholders();
+            let mx_doc = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_r_params(&ctx.params)
-                    .with_match_arg_doc_placeholders(&mx_doc)
+                    .with_choice_param_docs(&mx_doc)
                     .with_r_name(fn_name.clone());
             lines.extend(method_doc.build());
         }

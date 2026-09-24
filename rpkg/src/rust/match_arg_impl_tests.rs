@@ -223,3 +223,265 @@ impl VctrsMatchArgScale {
 }
 
 // endregion
+
+// region: omittable choices on S3 / S4 / S7 / vctrs methods and on trait methods (#1551)
+//
+// `Missing<..>` choice parameters on the class systems that #1551's own
+// fixtures (R6, env) do not reach. Each class has its own Rd page: a class page
+// lists a parameter name once, so a `mode` here would replace the `mode` line
+// of the classes above.
+
+/// `"absent"` for an omitted argument, `"null"` for `NULL`, the matched mode
+/// otherwise.
+fn omitted_mode(mode: Missing<Option<ImplMode>>) -> String {
+    match mode {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(mode)) => format!("{mode:?}"),
+    }
+}
+
+/// `"absent"` for an omitted argument, the matched modes (comma-separated)
+/// otherwise; `NULL` selects every choice.
+fn omitted_modes(modes: Missing<Vec<ImplMode>>) -> String {
+    match modes {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(modes) => modes
+            .iter()
+            .map(|mode| format!("{mode:?}"))
+            .collect::<Vec<_>>()
+            .join(","),
+    }
+}
+
+/// `mode=<..>;modes=<..>;level=<..>`: what reached Rust for each of the three
+/// omittable choice parameters (`level` is `"absent"` or the matched string).
+fn omitted_report(
+    mode: Missing<Option<ImplMode>>,
+    modes: Missing<Vec<ImplMode>>,
+    level: Missing<String>,
+) -> String {
+    format!(
+        "mode={};modes={};level={}",
+        omitted_mode(mode),
+        omitted_modes(modes),
+        level.into_option().unwrap_or_else(|| "absent".to_string())
+    )
+}
+
+/// S3 class whose method takes omittable choices.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct OmitPickS3;
+
+#[miniextendr(s3)]
+impl OmitPickS3 {
+    pub fn new() -> Self {
+        OmitPickS3
+    }
+
+    /// Omittable choices on an S3 method: reports what reached Rust for each
+    /// of `mode`, `modes` and `level`.
+    #[miniextendr(
+        match_arg(mode),
+        match_arg_several_ok(modes),
+        choices(level = "low, mid, high")
+    )]
+    pub fn omit_pick_s3(
+        &self,
+        mode: Missing<Option<ImplMode>>,
+        modes: Missing<Vec<ImplMode>>,
+        level: Missing<String>,
+    ) -> String {
+        omitted_report(mode, modes, level)
+    }
+}
+
+/// S4 class whose method takes omittable choices.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct OmitPickS4;
+
+#[miniextendr(s4)]
+impl OmitPickS4 {
+    pub fn new() -> Self {
+        OmitPickS4
+    }
+
+    // Generic `s4_omit_pick(x, ...)`. The method's formals differ from it, so
+    // R wraps the method in `.local()`; `missing()` still sees an omitted
+    // argument there.
+    /// Omittable choices on an S4 method: reports what reached Rust for each
+    /// of `mode`, `modes` and `level`.
+    #[miniextendr(
+        match_arg(mode),
+        match_arg_several_ok(modes),
+        choices(level = "low, mid, high")
+    )]
+    pub fn omit_pick(
+        &self,
+        mode: Missing<Option<ImplMode>>,
+        modes: Missing<Vec<ImplMode>>,
+        level: Missing<String>,
+    ) -> String {
+        omitted_report(mode, modes, level)
+    }
+}
+
+/// S7 class whose method (and its fast-path shortcut) takes omittable
+/// choices.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct OmitPickS7;
+
+#[miniextendr(s7)]
+impl OmitPickS7 {
+    pub fn new() -> Self {
+        OmitPickS7
+    }
+
+    /// Omittable choices on an S7 method: reports what reached Rust for each
+    /// of `mode`, `modes` and `level`.
+    #[miniextendr(
+        match_arg(mode),
+        match_arg_several_ok(modes),
+        choices(level = "low, mid, high")
+    )]
+    pub fn omit_pick_s7(
+        &self,
+        mode: Missing<Option<ImplMode>>,
+        modes: Missing<Vec<ImplMode>>,
+        level: Missing<String>,
+    ) -> String {
+        omitted_report(mode, modes, level)
+    }
+}
+
+/// vctrs fixture whose constructor, static method and `format` protocol
+/// method take omittable choices. The payload tells an omitted constructor
+/// argument (`0`) from `NULL` (`-1`) and from each mode.
+pub struct VctrsOmitScale;
+
+#[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "omit"))]
+impl VctrsOmitScale {
+    /// @param mode One of "Fast", "Safe", "Debug", or NULL; omitting the
+    ///   argument means no choice.
+    #[allow(clippy::new_ret_no_self)]
+    #[miniextendr(match_arg(mode))]
+    pub fn new(mode: Missing<Option<ImplMode>>) -> Vec<f64> {
+        match mode {
+            Missing::Absent => vec![0.0],
+            Missing::Present(None) => vec![-1.0],
+            Missing::Present(Some(ImplMode::Fast)) => vec![1.0],
+            Missing::Present(Some(ImplMode::Safe)) => vec![2.0],
+            Missing::Present(Some(ImplMode::Debug)) => vec![3.0],
+        }
+    }
+
+    /// Omittable choices on a vctrs static method: reports what reached Rust
+    /// for each of `mode`, `modes` and `level`.
+    #[miniextendr(
+        match_arg(mode),
+        match_arg_several_ok(modes),
+        choices(level = "low, mid, high")
+    )]
+    pub fn omit_pick(
+        mode: Missing<Option<ImplMode>>,
+        modes: Missing<Vec<ImplMode>>,
+        level: Missing<String>,
+    ) -> String {
+        omitted_report(mode, modes, level)
+    }
+
+    /// `format()` protocol method with an omittable inline choice: `style`
+    /// omitted formats each value as `<value>`, otherwise as `<style>:<value>`.
+    ///
+    /// @param x The vctrs payload.
+    #[miniextendr(vctrs(format), choices(style = "short, long"))]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn format_omit_scale(x: Vec<f64>, style: Missing<String>) -> Vec<String> {
+        let style = style.into_option();
+        x.iter()
+            .map(|value| match &style {
+                None => format!("{value}"),
+                Some(style) => format!("{style}:{value}"),
+            })
+            .collect()
+    }
+}
+
+/// Omittable inline choices through the trait-method codegen path, which
+/// takes `choices(p = "...")` / `choices_several_ok(p = "...")` on string
+/// types only.
+#[miniextendr]
+pub trait OmitGrade {
+    /// `"absent"`, `"null"` or the matched grade.
+    fn omit_grade(&self, grade: Missing<Option<String>>) -> String;
+    /// `"absent"` or the matched grades, comma-separated.
+    fn omit_grades(&self, grades: Missing<Vec<String>>) -> String;
+}
+
+/// `"absent"` / `"null"` / the matched grade.
+fn omitted_grade(grade: Missing<Option<String>>) -> String {
+    match grade {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(grade)) => grade,
+    }
+}
+
+/// `"absent"` / the matched grades.
+fn omitted_grades(grades: Missing<Vec<String>>) -> String {
+    grades
+        .into_option()
+        .map_or_else(|| "absent".to_string(), |grades| grades.join(","))
+}
+
+#[miniextendr(s3)]
+impl OmitGrade for OmitPickS3 {
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn omit_grade(&self, grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+
+    #[miniextendr(choices_several_ok(grades = "low, mid, high"))]
+    fn omit_grades(&self, grades: Missing<Vec<String>>) -> String {
+        omitted_grades(grades)
+    }
+}
+
+/// Calls the `OmitGrade` methods through the trait's View, the path another
+/// package takes: an omitted, a `NULL` and a supplied grade, then an omitted
+/// and a supplied list of grades.
+#[miniextendr(no_worker)]
+pub fn omit_grade_through_view() -> Vec<String> {
+    unsafe {
+        let erased = __mx_wrap_omitpicks3(OmitPickS3);
+        let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
+            miniextendr_api::trait_abi::ccall::mx_wrap(erased),
+        );
+        let view = OmitGradeView::from_sexp(sexp.get());
+        vec![
+            view.omit_grade(Missing::Absent),
+            view.omit_grade(Missing::Present(None)),
+            view.omit_grade(Missing::Present(Some("mid".to_string()))),
+            view.omit_grades(Missing::Absent),
+            view.omit_grades(Missing::Present(vec![
+                "low".to_string(),
+                "high".to_string(),
+            ])),
+        ]
+    }
+}
+
+#[miniextendr(s7)]
+impl OmitGrade for OmitPickS7 {
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn omit_grade(&self, grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+
+    #[miniextendr(choices_several_ok(grades = "low, mid, high"))]
+    fn omit_grades(&self, grades: Missing<Vec<String>>) -> String {
+        omitted_grades(grades)
+    }
+}
+
+// endregion

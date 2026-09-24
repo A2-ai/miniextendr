@@ -2445,6 +2445,12 @@ fn vctrs_wrapper_rcrd_full_snapshot() {
 
     // Verify vec_cast self-coercion
     assert!(wrapper.contains("vec_cast.Rational.Rational <- function(x, to, ...) x"));
+
+    // A static helper is exported, like the S3 / S4 / S7 static methods.
+    assert!(
+        wrapper.contains("#' @export\nrational_numerator <- function(n, d)"),
+        "{wrapper}"
+    );
 }
 
 #[test]
@@ -3688,6 +3694,54 @@ fn snapshot_env_match_arg_omitted() {
     };
     let parsed = parse_impl(ClassSystem::Env, item_impl);
     insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
+}
+
+/// A method's `choices(...)` parameter gets the same auto `@param` text as a
+/// standalone function's (`One of "a", "b"` plus the layer suffix), and a
+/// `match_arg` one the write-time placeholder, on every generator that
+/// auto-documents method params (S3, S7 generic shortcut, R6).
+#[test]
+fn method_choice_params_get_choice_text() {
+    let item_impl = || -> syn::ItemImpl {
+        syn::parse_quote! {
+            impl Picker {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(match_arg(mode), choices(color = "red, green"), choices_several_ok(tags = "a, b"))]
+                pub fn pick(
+                    &self,
+                    mode: Missing<Option<Mode>>,
+                    color: Missing<String>,
+                    tags: Vec<String>,
+                ) -> String {
+                    unimplemented!()
+                }
+            }
+        }
+    };
+    let color = "@param color One of \"red\", \"green\"; omitting the argument means no choice.";
+    let tags = "@param tags One or more of \"a\", \"b\".";
+    let mode = "@param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__";
+    for (class_system, wrapper) in [
+        (
+            ClassSystem::S3,
+            generate_s3_r_wrapper(&parse_impl(ClassSystem::S3, item_impl())),
+        ),
+        (
+            ClassSystem::S7,
+            generate_s7_r_wrapper(&parse_impl(ClassSystem::S7, item_impl())),
+        ),
+        (
+            ClassSystem::R6,
+            generate_r6_r_wrapper(&parse_impl(ClassSystem::R6, item_impl())),
+        ),
+    ] {
+        for line in [color, tags, mode] {
+            assert!(
+                wrapper.contains(line),
+                "{class_system:?}: missing `{line}` in:\n{wrapper}"
+            );
+        }
+    }
 }
 
 #[test]

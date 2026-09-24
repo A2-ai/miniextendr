@@ -891,6 +891,26 @@ impl ParamAttrs {
         suffix
     }
 
+    /// The auto-generated `@param` text of a `choices(...)` parameter:
+    /// `One of "a", "b"<suffix>.` (`One or more of` for `several_ok`), with
+    /// [`Self::choice_doc_suffix`]. `None` without a literal choice list; a
+    /// `match_arg` parameter's text is only known at write time (its
+    /// placeholder, #210).
+    pub(crate) fn literal_choices_doc(&self) -> Option<String> {
+        let choices = self.choices.as_ref()?;
+        let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+        let prefix = if self.several_ok {
+            "One or more of"
+        } else {
+            "One of"
+        };
+        Some(format!(
+            "{prefix} {}{}.",
+            quoted.join(", "),
+            self.choice_doc_suffix()
+        ))
+    }
+
     /// How the C wrapper decodes this parameter when a plain `TryFromSexp`
     /// cannot: a `match_arg` parameter with a `Missing` / `Option` / `Either`
     /// layer, or a `choices` parameter with an `Either` layer. `None` for
@@ -1383,13 +1403,6 @@ impl MiniextendrFunctionParsed {
         self.per_param
             .iter()
             .filter_map(|(name, a)| if a.match_arg { Some(name) } else { None })
-    }
-
-    /// Get the choices for a parameter, if any.
-    pub(crate) fn choices_for_param(&self, param_name: &str) -> Option<&[String]> {
-        self.per_param
-            .get(param_name)
-            .and_then(|a| a.choices.as_deref())
     }
 
     /// Iterator over parameter names annotated with `#[miniextendr(choices(…))]`,
