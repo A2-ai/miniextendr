@@ -2,6 +2,8 @@
 # bootstrap runs in the checkout; cleanup activates only in R CMD build's copy.
 # Development builds stage via `cargo revendor --dev`; without that tool, and for
 # distribution builds without it, the base-R stager below produces the same shape.
+# configure checks that no path dependency outside the package went missing on
+# the way to the build directory (an installer that skipped bootstrap.R).
 dev_bootstrap_paths <- function(root = ".") {
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
   list(root = root, manifest = file.path(root, "src/rust/Cargo.toml"),
@@ -74,6 +76,56 @@ cargo_manifest <- function(manifest) {
 }
 
 path_inside <- function(path, root) startsWith(paste0(path, "/"), paste0(root, "/"))
+
+# Cargo joins a `path` to its manifest's directory and collapses `.` and `..`
+# lexically. normalizePath() returns a missing path unchanged, `..` included,
+# which would place `<pkg>/src/rust/../../../core` inside the package.
+collapse_dots <- function(path) {
+  path <- gsub("\\", "/", path, fixed = TRUE)
+  parts <- strsplit(path, "/", fixed = TRUE)[[1L]]
+  kept <- character()
+  for (part in parts[-1L]) {
+    if (part %in% c("", ".")) next
+    kept <- if (part == "..") kept[-length(kept)] else c(kept, part)
+  }
+  # A UNC path keeps its leading `//`.
+  paste0(if (startsWith(path, "//")) "/", paste(c(parts[[1L]], kept), collapse = "/"))
+}
+
+path_literal <- "(?<![A-Za-z0-9_-])path\\s*=\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*')"
+
+# The directory a `path = "..."` literal names, from the manifest directory `base`.
+path_literal_dir <- function(hit, base) {
+  quoted <- sub(path_literal, "\\1", hit, perl = TRUE)
+  value <- substr(quoted, 2L, nchar(quoted) - 1L)
+  if (startsWith(quoted, '"')) value <- gsub("\\\\(.)", "\\1", value, perl = TRUE)
+  if (!grepl("^([A-Za-z]:)?[/\\\\]", value)) value <- file.path(base, value)
+  normalizePath(collapse_dots(value), winslash = "/", mustWork = FALSE)
+}
+
+# Every `path = "..."` literal of a manifest outside comments: its line, the
+# table it sits in ("" at the top level), and the directory it resolves to.
+path_literals <- function(lines, base) {
+  rows <- list(data.frame(line = integer(), hit = character(), section = character(), dir = character()))
+  section <- ""
+  for (i in which(!startsWith(trimws(lines), "#"))) {
+    s <- trimws(lines[[i]])
+    if (startsWith(s, "[")) {
+      section <- sub("\\]\\s*#.*$", "]", s)
+      next
+    }
+    hits <- regmatches(lines[[i]], gregexpr(path_literal, lines[[i]], perl = TRUE))[[1L]]
+    if (length(hits)) {
+      rows[[length(rows) + 1L]] <- data.frame(line = i, hit = hits, section = section,
+        dir = vapply(hits, path_literal_dir, "", base = base, USE.NAMES = FALSE))
+    }
+  }
+  do.call(rbind, rows)
+}
+
+dependency_table <- function(section) {
+  grepl("dependencies(\\.[^]]+)?\\]$", section) & !startsWith(section, "[patch")
+}
 
 # Path-dependency closure of the R crate. Every root edge ships (R builds the
 # root as a workspace member, dev-dependencies included); siblings ship only
@@ -191,31 +243,17 @@ restore_sibling_paths <- function(node, lines, slots) {
 # its checkout (a [patch] or [replace] source, a target outside the package).
 portable_manifest <- function(paths, plan) {
   lines <- plan$lines
-  base <- dirname(paths$manifest)
-  literal <- "(?<![A-Za-z0-9_-])path\\s*=\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|'[^']*')"
-  resolve <- function(hit) {
-    quoted <- sub(literal, "\\1", hit, perl = TRUE)
-    value <- substr(quoted, 2L, nchar(quoted) - 1L)
-    if (startsWith(quoted, '"')) value <- gsub("\\\\(.)", "\\1", value, perl = TRUE)
-    if (!grepl("^([A-Za-z]:)?[/\\\\]", value)) value <- file.path(base, value)
-    normalizePath(value, winslash = "/", mustWork = FALSE)
-  }
+  literals <- path_literals(lines, dirname(paths$manifest))
   rewritten <- character()
   outside <- character()
-  section <- ""
-  for (i in which(!startsWith(trimws(lines), "#"))) {
-    s <- trimws(lines[[i]])
-    if (startsWith(s, "[")) {
-      section <- sub("\\]\\s*#.*$", "]", s)
-      next
-    }
-    m <- gregexpr(literal, lines[[i]], perl = TRUE)
-    hits <- regmatches(lines[[i]], m)[[1L]]
-    if (!length(hits)) next
-    deps <- grepl("dependencies(\\.[^]]+)?\\]$", section) && !startsWith(section, "[patch")
-    regmatches(lines[[i]], m) <- list(vapply(hits, function(hit) {
-      dir <- resolve(hit)
-      if (deps && !is.null(plan$nodes[[dir]])) {
+  for (i in unique(literals$line)) {
+    here <- literals[literals$line == i, ]
+    m <- gregexpr(path_literal, lines[[i]], perl = TRUE)
+    regmatches(lines[[i]], m) <- list(vapply(seq_len(nrow(here)), function(j) {
+      hit <- here$hit[[j]]
+      dir <- here$dir[[j]]
+      section <- here$section[[j]]
+      if (dependency_table(section) && !is.null(plan$nodes[[dir]])) {
         rewritten <<- c(rewritten, dir)
         return(sprintf('path = "vendor/%s"', plan$slots[[dir]]))
       }
@@ -229,7 +267,7 @@ portable_manifest <- function(paths, plan) {
                                        paths$manifest, hit, if (nzchar(section)) section else "the top level", fix))
       }
       hit
-    }, "", USE.NAMES = FALSE))
+    }, ""))
   }
   deps <- plan$root$deps[!is.na(plan$root$deps$path), ]
   dirs <- normalizePath(deps$path, winslash = "/", mustWork = FALSE)
@@ -256,8 +294,9 @@ portable_manifest <- function(paths, plan) {
 # Stage every node of the plan under src/rust/vendor/<name>-<version>/.
 # No .cargo-checksum.json: path crates need none.
 stage_path_dependencies <- function(paths, plan) {
-  # Same prefix as the backups, so an interrupted run stays ignored.
-  stage <- tempfile(".dev-vendor-backup-", dirname(paths$manifest))
+  # Same prefix as the backups, so an interrupted run stays ignored. Beside the
+  # output, which is not the manifest's directory when staging a linked tree.
+  stage <- tempfile(".dev-vendor-backup-", dirname(paths$vendor))
   tree <- file.path(stage, "vendor")
   dir.create(tree, recursive = TRUE)
   on.exit(unlink(stage, recursive = TRUE), add = TRUE)
@@ -386,8 +425,102 @@ activate_dev_bootstrap <- function(root = ".") {
   invisible(TRUE)
 }
 
+# region: configure-time check
+
+# Path literals in the tables cargo loads (every dependency table, dev and
+# target-specific ones included, [workspace.dependencies], and [patch] sources)
+# that leave the package and name no crate here. bootstrap.R stages such crates
+# while the package still sits in its checkout; they go missing when an
+# installer takes the package directory out without running it.
+missing_path_dependencies <- function(paths) {
+  # Resolved from the manifest's own path, as cargo does, not from the file a
+  # symlinked manifest points at.
+  literals <- path_literals(readLines(paths$manifest, warn = FALSE), dirname(paths$manifest))
+  loaded <- dependency_table(literals$section) | startsWith(literals$section, "[patch")
+  inside <- vapply(literals$dir, path_inside, logical(1), root = paths$root, USE.NAMES = FALSE)
+  literals[loaded & !inside & !file.exists(file.path(literals$dir, "Cargo.toml")), ]
+}
+
+# The package directory a build tree of symlinks mirrors (rv up to 0.12.0 links
+# every file of the package into a temporary directory), or NULL. Cargo.toml and
+# DESCRIPTION must both resolve into one package directory other than this one.
+linked_origin <- function(paths) {
+  if (!nzchar(Sys.readlink(paths$manifest))) return(NULL)
+  manifest <- normalizePath(paths$manifest, winslash = "/", mustWork = TRUE)
+  root <- dirname(dirname(dirname(manifest)))
+  description <- normalizePath(file.path(paths$root, "DESCRIPTION"), winslash = "/", mustWork = FALSE)
+  if (!identical(file.path(root, "src/rust/Cargo.toml"), manifest) || identical(root, paths$root) ||
+      !identical(description, file.path(root, "DESCRIPTION"))) {
+    return(NULL)
+  }
+  list(root = root, manifest = manifest)
+}
+
+# Stage the path dependencies of the package a linked tree mirrors into the
+# tree. Every write is a new entry of the tree: the staged crates, then the
+# portable manifest and a copy of the lockfile renamed over their symlinks, so
+# neither this step nor cargo later writes through to the mirrored package.
+stage_linked_tree <- function(paths, origin) {
+  if (file.exists(paths$vendor)) {
+    stop(paths$vendor, " already exists, so the path dependencies cannot be staged beside it.", call. = FALSE)
+  }
+  source <- list(root = origin$root, manifest = origin$manifest, vendor = paths$vendor,
+                 portable = tempfile(".Cargo.toml.linked-", dirname(paths$vendor)))
+  on.exit(unlink(source$portable), add = TRUE)
+  stage_path_dependencies(source, path_dependency_plan(source))
+  lock <- file.path(dirname(paths$manifest), "Cargo.lock")
+  if (nzchar(Sys.readlink(lock))) {
+    copy <- tempfile(".Cargo.lock.linked-", dirname(lock))
+    if (!file.copy(lock, copy) || !file.rename(copy, lock)) stop("Unable to copy ", lock, call. = FALSE)
+  }
+  if (!file.rename(source$portable, paths$manifest)) stop("Unable to replace ", paths$manifest, call. = FALSE)
+  invisible(TRUE)
+}
+
+installs_with_bootstrap <- c(
+  "Install the package in one of these ways, which run bootstrap.R while the repository is present:",
+  "  - rv >= 0.23.0 with a git source plus `directory` naming the package's subdirectory",
+  "  - pak with a repository ref and a subdirectory, e.g. pak::pak(\"<owner>/<repo>/<subdirectory>\")",
+  "  - build the tarball in the checkout with devtools::build() and install that tarball"
+)
+
+# configure: recover a linked tree from the package it mirrors, or stop before
+# cargo with the path that is missing and the installs that work. A vendored
+# tarball and a staged or activated bootstrap leave nothing missing.
+configure_path_dependencies <- function(root = ".") {
+  paths <- dev_bootstrap_paths(root)
+  if (file.exists(file.path(paths$root, "inst/vendor.tar.xz"))) return(invisible(FALSE))
+  missing <- missing_path_dependencies(paths)
+  if (!nrow(missing)) return(invisible(FALSE))
+  origin <- linked_origin(paths)
+  intro <- c("bootstrap.R did not run for this build. It stages the crates that the package's",
+             "src/rust/Cargo.toml reaches outside the package directory, but the installer took",
+             "the package directory out of its repository without running it.")
+  if (!is.null(origin) && all(file.exists(file.path(
+    vapply(missing$hit, path_literal_dir, "", base = dirname(origin$manifest), USE.NAMES = FALSE), "Cargo.toml")))) {
+    message(paste(c(intro, sprintf("This build directory links to %s; staging its path dependencies from there.",
+                                   origin$root)), collapse = "\n"))
+    return(tryCatch(stage_linked_tree(paths, origin), error = function(e) {
+      stop(paste(c(sprintf("Staging the path dependencies of %s failed:", origin$root), conditionMessage(e),
+                   installs_with_bootstrap), collapse = "\n"), call. = FALSE)
+    }))
+  }
+  stop(paste(c("Path dependencies outside the package directory are missing:",
+               sprintf("  - `%s` under %s in src/rust/Cargo.toml: %s has no Cargo.toml",
+                       missing$hit, missing$section, missing$dir),
+               intro,
+               if (!is.null(origin)) sprintf("This build directory links to %s, where they are missing too.", origin$root),
+               installs_with_bootstrap), collapse = "\n"), call. = FALSE)
+}
+
+# endregion
+
 if (sys.nframe() == 0L) {
-  action <- match.arg(commandArgs(trailingOnly = TRUE)[[1L]], c("prepare", "activate", "clear"))
+  action <- match.arg(commandArgs(trailingOnly = TRUE)[[1L]], c("prepare", "activate", "clear", "configure"))
   switch(action, prepare = prepare_dev_bootstrap(), activate = activate_dev_bootstrap(),
-         clear = clear_dev_bootstrap())
+         clear = clear_dev_bootstrap(),
+         configure = tryCatch(configure_path_dependencies(), error = function(e) {
+           message(conditionMessage(e))
+           quit(save = "no", status = 1L)
+         }))
 }

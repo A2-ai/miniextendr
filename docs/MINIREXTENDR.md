@@ -299,49 +299,40 @@ vendor_sync(path = "mypackage")
 miniextendr_available_versions()
 ```
 
-### Wrapping a local Rust crate: use an absolute path
+### Wrapping a local Rust crate outside the package
 
 When your R package depends on a Rust crate that lives **outside the package**
-(e.g. an "engine" crate in the same monorepo, or a sibling library on disk),
-the `path = ...` dependency you add to `src/rust/Cargo.toml` **must be
-absolute**, not relative.
-
-`R CMD INSTALL` and `devtools::install()` copy the package into a temporary
-build directory (e.g. `/private/tmp/.../R.INSTALL.../<pkg>/`) *before*
-compiling the Rust staticlib. A relative path resolves against that temporary
-location — which doesn't contain your engine crate — and the build fails:
+(e.g. an "engine" crate in the same monorepo), declare it with a **relative**
+`path`, as `create_miniextendr_monorepo()` does:
 
 ```toml
-# ❌ breaks: relative path resolves against the temp build dir
-my_engine = { path = "../../../engine" }
+core_library = { package = "core", path = "../../../core" }
 ```
 
-```
-error: failed to load manifest for dependency `my_engine`
-  ... No such file or directory
-```
+`R CMD INSTALL` of the package directory in its checkout builds in place, so
+the path resolves. Anything that seals or copies the package directory alone
+leaves the sibling behind, which is what `bootstrap.R` is for. Build frontends
+that honor `Config/build/bootstrap: TRUE` (devtools, pkgbuild, pak with a
+repository ref and a subdirectory, rv 0.23.0 or later) run it while the
+repository is still around the package: with `cargo-revendor` on PATH it
+freezes the sibling into `inst/vendor.tar.xz`, and without it
+`tools/dev-bootstrap.R` stages the sibling under `src/rust/vendor/`. Either way
+the built tarball carries the crate.
 
-An **absolute** path is read live from its real location, so the temp-copy
-doesn't matter:
+An installer that copies the package directory alone (pak `local::`, older rv
+releases, a plain `R CMD build` of the package directory) cannot reach the
+sibling. The build stops with an error that names the missing path and the
+installs that work, from `bootstrap.R` when the installer runs it in its copy,
+and from configure, before cargo, when it does not. See
+[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#distribution-bootstrap-without-cargo-revendor)
+for the installer matrix.
 
-```toml
-# ✅ works: absolute path is read from its real location at install time
-my_engine = { path = "/abs/path/to/engine" }
-```
+An absolute `path` is no way around this: it resolves only on the machine that
+wrote it.
 
-How this interacts with vendoring: `cargo vendor` / the vendor tarball captures
-only the engine crate's **registry** dependencies (its transitive crates.io
-deps). The engine's *own source* is **not** vendored — it is read from the
-`path` at install time. That's why the path has to keep resolving after the
-temp-copy, and why it must be absolute in **source-install mode**.
-
-> **Note:** `use_vendor_lib()` (below) is the supported way to wire a
-> monorepo crate in. It writes a *relative* `dev_path` into
-> `[patch.crates-io]` on purpose — its generated `configure.ac` block rewrites
-> that path to the extracted vendor copy in **tarball/CRAN mode**, so the
-> relative path never reaches the offline build. The absolute-path requirement
-> above applies to a **hand-added** `path = ...` dependency that has no such
-> rewriting machinery. If you hand-roll the dependency, use an absolute path.
+> **Note:** `use_vendor_lib()` (below) wires a monorepo crate in through
+> `[patch.crates-io]` instead. Its generated `configure.ac` block rewrites the
+> relative `dev_path` to the extracted vendor copy in **tarball/CRAN mode**.
 
 ### Depending on a local miniextendr framework checkout (dev-only)
 
@@ -377,10 +368,10 @@ No such file or directory (os error 2)
 ```
 
 An **absolute** path (`/Users/you/src/miniextendr/miniextendr-api`) keeps
-pointing at the real checkout regardless of where the package is staged. This is
-the same absolute-path principle that applies to `use_vendor_lib()` and a
-package's own local engine crate — see the local-engine notes in
-[TROUBLESHOOTING.md](TROUBLESHOOTING.md) and the `use_vendor_lib()` man page.
+pointing at the real checkout regardless of where the package is staged. That is
+fine here because the override is development-only and never ships. A crate the
+package itself depends on ships with it instead, through bootstrap staging; see
+[Wrapping a local Rust crate outside the package](#wrapping-a-local-rust-crate-outside-the-package).
 
 #### Why tarball mode breaks (patch vs. vendored-sources)
 

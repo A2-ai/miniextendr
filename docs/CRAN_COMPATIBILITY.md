@@ -44,7 +44,8 @@ The build warns first. A distribution `bootstrap.R` run without `cargo-revendor`
 on PATH ends with an R `warning()` ("this tarball downloads crates.io and git
 dependencies at install time and is not CRAN-ready"), whether or not it staged
 path dependencies. `devtools::build()` and other non-quiet pkgbuild builds print
-it; pak and rv run bootstrap quietly and show it only in failure logs. Treat a
+it; pak and rv (0.23.0 or later; older rv never runs bootstrap) run bootstrap
+quietly and show it only in failure logs. Treat a
 tarball whose build printed that warning as a development artifact, never a
 release artifact. The warning is unconditional: no environment variable silences
 it, and there is no `NOT_CRAN` switch (see "Why" below).

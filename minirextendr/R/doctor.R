@@ -150,26 +150,31 @@ miniextendr_doctor <- function(path = ".", webr = FALSE) {
     }
     frozen_deps <- Filter(function(entry) entry$section == "dependencies", frozen)
     frozen_names <- vapply(frozen_deps, `[[`, character(1), "crate")
-    rel_path_deps <- Filter(function(entry) !entry$crate %in% frozen_names,
-                            parse_relative_path_deps(cargo_contents))
-    if (length(rel_path_deps) > 0L) {
-      for (dep_info in rel_path_deps) {
+    # Only a path that leaves the package needs bootstrap.R to carry it along.
+    rust_dir <- usethis::proj_path("src", "rust")
+    outside_path_deps <- Filter(function(entry) {
+      resolved <- fs::path_norm(fs::path_abs(entry$path, start = rust_dir))
+      !entry$crate %in% frozen_names && !fs::path_has_parent(resolved, usethis::proj_get())
+    }, parse_relative_path_deps(cargo_contents))
+    if (length(outside_path_deps) > 0L) {
+      for (dep_info in outside_path_deps) {
         cli::cli_alert_warning(
           paste0(
             "{.path src/rust/Cargo.toml} {.code [dependencies]} entry ",
-            "{.val {dep_info$crate}} uses a relative {.code path = {dep_info$path}}. ",
-            "This will break under {.code R CMD INSTALL} (path resolves against the ",
-            "temp build dir, not your package root). Use an absolute path or manage ",
-            "it via {.code use_vendor_lib()}."
+            "{.val {dep_info$crate}} uses {.code path = {dep_info$path}}, outside the ",
+            "package. Only a build that runs {.path bootstrap.R} while the repository ",
+            "is present carries it along ({.code devtools::build()}, pak with a ",
+            "repository ref and a subdirectory, rv 0.23.0 or later); an installer ",
+            "that copies the package directory alone stops in configure."
           )
         )
         results$warn <- c(
           results$warn,
-          paste0("relative path dep in [dependencies]: ", dep_info$crate)
+          paste0("path dep outside the package in [dependencies]: ", dep_info$crate)
         )
       }
     } else if (!length(frozen)) {
-      results$pass <- c(results$pass, "no relative path deps in [dependencies]")
+      results$pass <- c(results$pass, "no path deps outside the package in [dependencies]")
     }
   }
 

@@ -58,10 +58,15 @@ Related symptom of the same latch: **your Rust edits are silently ignored**
 
 ## Cargo build / link failures
 
-- Local `path = "../.."` dependency fails under `R CMD INSTALL` but works with
-  `cargo build`: R copies the package to a temp dir before compiling, so
-  **relative** path deps break. Use an absolute path in `src/rust/Cargo.toml`,
-  or vendor the crate (`minirextendr::use_vendor_lib()`).
+- A `path = "../../../core"` dependency outside the package fails once an
+  installer copies the package directory alone: configure stops with
+  `bootstrap.R did not run for this build` and names the missing path (an older
+  `configure.ac` lets cargo fail with `failed to load manifest for dependency`).
+  Keep the relative path; `bootstrap.R` stages the crate into the package while
+  the repository is present. Install with rv 0.23.0 or later (git source plus
+  `directory`), pak with a repository ref and a subdirectory
+  (`pak::pak("owner/repo/rpkg")`), or `devtools::build()` in the checkout and
+  install that tarball. An absolute path resolves only on your machine.
 - `Cargo.lock` shape errors in tarball mode →
   `minirextendr::miniextendr_repair_lock()`.
 

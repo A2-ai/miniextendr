@@ -236,6 +236,23 @@ if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
   AC_MSG_ERROR([rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM])
 fi
 
+dnl ---- path dependencies outside the package ----
+dnl A path dependency outside the package directory is not source-replaceable:
+dnl bootstrap.R stages it under src/rust/vendor while the package still sits in
+dnl its repository. An installer that takes the package directory out without
+dnl running bootstrap.R (older rv releases, a plain R CMD build of the package
+dnl directory) strands it, and cargo would fail later with an opaque manifest
+dnl error. The check stops here naming the missing path and the installs that
+dnl work, or, when this build directory is a tree of symlinks into the package,
+dnl stages the dependencies from there into this tree. Tarball mode is
+dnl vendored, so it is skipped.
+if test "$IS_TARBALL_INSTALL" != "true"; then
+  test -f "${srcdir}/tools/dev-bootstrap.R" || \
+    AC_MSG_ERROR([tools/dev-bootstrap.R not found. It ships with the package template; restore it, e.g. with minirextendr::upgrade_miniextendr_package().])
+  "${R_HOME}/bin/Rscript" "${srcdir}/tools/dev-bootstrap.R" configure || \
+    AC_MSG_ERROR([a path dependency outside the package is missing; see the message above])
+fi
+
 dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolchain)
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])
 : ${RUST_TOOLCHAIN=""}

@@ -31,8 +31,9 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
     for (file in c("Makevars.in", "win.def.in")) {
       file.copy(file.path(template, file), file.path(pkg, "src", file))
     }
-    file.copy(file.path(template, "tools", "lock-shape-check.R"),
-              file.path(pkg, "tools", "lock-shape-check.R"))
+    for (file in c("lock-shape-check.R", "dev-bootstrap.R")) {
+      file.copy(file.path(template, "tools", file), file.path(pkg, "tools", file))
+    }
     for (file in c("config.guess", "config.sub")) {
       file.copy(file.path(scripts, file), file.path(pkg, "tools", file))
     }

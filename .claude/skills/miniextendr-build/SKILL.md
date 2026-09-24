@@ -87,6 +87,13 @@ the `cargo-config` or `unpack-vendor-tarball` command blocks.
    for the leaked-tarball guard (#1029).
 3. Detects install mode from `[ -f inst/vendor.tar.xz ]`.
 4. Discovers `cargo`, `rustc`, `sed`. Enforces rustc 1.85+ (edition 2024).
+   Outside tarball mode, runs `tools/dev-bootstrap.R configure`: a `path`
+   dependency (or `[patch]` source) that leaves the package and names no crate
+   means the installer skipped `bootstrap.R`. A build directory of symlinks
+   into the package (rv up to 0.12.0) is restaged from the package it mirrors;
+   anything else stops before cargo, naming the path and the installs that
+   work (see `docs/R_BUILD_SYSTEM.md`, "Distribution bootstrap without
+   cargo-revendor").
 5. Detects webR/wasm32 via `CC=emcc`.
 6. Resolves monorepo siblings by walking parent directories for
    `miniextendr-api/Cargo.toml`.
