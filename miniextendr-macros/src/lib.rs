@@ -657,7 +657,8 @@ fn build_match_arg_helpers(
 /// Control how S7 generics are created:
 ///
 /// - `#[miniextendr(s7(no_dots))]` - Create strict generic without `...`
-/// - `#[miniextendr(s7(dispatch = "x,y"))]` - Multi-dispatch on multiple arguments
+/// - `#[miniextendr(s7(dispatch = "x, other"))]` - Multi-dispatch: the receiver
+///   (`x`), then the method's leading parameters (`other`), in order
 /// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all).
 ///   The generated R wrapper uses `tryCatch(x@.ptr, error = function(e) x)` to
 ///   safely extract the self argument, so non-miniextendr objects won't crash with

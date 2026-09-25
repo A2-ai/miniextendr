@@ -249,9 +249,17 @@ S7 generates:
 - Fallback methods: `S7::method(generic, S7::class_any)` for methods that accept
   any S7 object. Since non-S7 objects cannot use `@`, the generated code guards:
   `if (inherits(x, "S7_object")) x@.ptr else stop(...)`.
-- External generics: `S7::new_external_generic("pkg", "name")` for overriding
-  generics from other packages.
-- Multiple dispatch: via `#[miniextendr(s7(dispatch = "x,y"))]`.
+- Generic target (`s7_class::s7_generic_target`): an unqualified name is the
+  package's own generic (defined, or shadowing a plain function, or reused;
+  exported with a generic page); `s7(generic = "pkg::name")` binds
+  `S7::new_external_generic("pkg", "name", <dispatch args>)` under the bare
+  name (S7 attaches the method when `pkg` loads, via `S7::methods_register()`
+  in `.onLoad`); a base operator (`[`, `[[`, `$`, `Ops`, `%*%`) attaches to
+  base's generic with no export or page.
+- Multiple dispatch: `#[miniextendr(s7(dispatch = "x, other"))]`. Name-based:
+  the first name is the receiver, the rest are the method's leading
+  parameters in order (no defaults); signature `list(Class, S7::class_any)`.
+  `check_s7_dispatch` enforces this at compile time.
 - Static methods: `<Class>_<method>(...)`.
 - Convert methods: `S7::method(convert, list(From, To))` for `convert_from`/`convert_to`.
 - Methods for other packages' generics (base operators, `format()`, external
@@ -462,10 +470,12 @@ later, unpredictably.
 - **S7 operator methods**: `r_name = "[["` or `s7(generic = "[")` on an S7
   instance method dispatches through `obj[[i]]` / `obj[i]`; the generated R
   backtick-quotes the operator and an operator `r_name` gets no
-  `Type_<method>` shortcut. The `Ops` operators (`+`, `==`, `!`, `%*%`, ...) are
-  a compile error, since S7 needs a two-class `(e1, e2)` method for them:
-  register those in R through the shortcut
-  (`` S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2) ``).
+  `Type_<method>` shortcut. The `Ops` operators (`+`, `==`, ...) and `%*%`
+  dispatch on `(e1, e2)` / `(x, y)`: the method's single parameter must be
+  named `e2` / `y`, and it is registered as
+  `` S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) ``.
+  `!` is a compile error (S7 does not dispatch it); `1 + money` and unary
+  `-money` are not covered (S7 limitations).
 
 - **S3 `@export` on conditional generic**: `if (!exists("generic", mode = "function")) { generic <- function(x, ...) UseMethod("generic") }` is not introspectable by roxygen2. Adding `#' @export` directly above it causes roxygen to drift the export onto the next function. Use `#' @export generic_name` (explicit target) instead. The macro generator handles this correctly.
 

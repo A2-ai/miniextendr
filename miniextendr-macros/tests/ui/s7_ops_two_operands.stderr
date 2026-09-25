@@ -1,0 +1,5 @@
+error: `equals` implements the `==` operator, so it takes exactly one parameter besides the receiver: the right operand, named `e2` (S7 calls the method as `e1 == e2`); the R parameters of `equals` are `e2`, `tolerance`
+  --> tests/ui/s7_ops_two_operands.rs:13:8
+   |
+13 |     fn equals(&self, e2: f64, tolerance: f64) -> bool {
+   |        ^^^^^^

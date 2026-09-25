@@ -6,8 +6,8 @@
 //! with `@`-access semantics, including read-only computed properties and
 //! read-write dynamic ones. Similar formal power to S4 with cleaner syntax,
 //! but the S7 ecosystem is younger and the R-package dependency surface is
-//! evolving. Pick S7 for **new** packages wanting modern formal OOP; use S4
-//! when you need Bioconductor compatibility or multi-dispatch.
+//! evolving. Pick S7 for **new** packages wanting modern formal OOP (including
+//! multiple dispatch); use S4 when you need Bioconductor compatibility.
 
 use super::{ParsedImpl, ParsedMethod};
 use crate::r_class_formatter::{class_ref_or_verbatim, is_bare_identifier};
@@ -83,6 +83,213 @@ pub(crate) fn s7_shortcut_name(class_name: &str, method_name: &str) -> Option<St
     crate::naming::is_syntactic_r_name(&name).then_some(name)
 }
 
+// region: S7 generic targets and dispatch arguments
+
+/// R's `Ops` group operators. S7 dispatches them on both operands through its
+/// own `(e1, e2, ...)` generics.
+pub(crate) const S7_OPS_OPERATORS: &[&str] = &[
+    "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", "<=", ">=", ">", "&", "|",
+];
+
+/// Operators base R always provides and S7 dispatches on the receiver alone
+/// (through the base primitive as an S3 generic).
+const S7_BASE_S3_OPERATORS: &[&str] = &["[", "[[", "$"];
+
+/// The dispatch arguments S7 fixes for a two-operand operator generic:
+/// `(e1, e2)` for the `Ops` group, `(x, y)` for `%*%` (the `matrixOps` group).
+pub(crate) fn s7_operator_dispatch_args(op: &str) -> Option<[&'static str; 2]> {
+    if S7_OPS_OPERATORS.contains(&op) {
+        Some(["e1", "e2"])
+    } else if op == "%*%" {
+        Some(["x", "y"])
+    } else {
+        None
+    }
+}
+
+/// Where an S7 instance method's generic comes from.
+#[derive(Debug)]
+pub(crate) enum S7GenericTarget {
+    /// A base R operator (`[`, `[[`, `$`, the `Ops` group, `%*%`). It always
+    /// exists, so the method attaches to it directly: the package neither
+    /// defines, exports nor documents the generic.
+    BaseOperator(String),
+    /// `s7(generic = "pkg::name")`: another package's generic. It is bound as
+    /// `S7::new_external_generic()` under its bare name, which S7 resolves
+    /// whether or not `pkg` is loaded (registration waits for its `onLoad`).
+    External { package: String, name: String },
+    /// The package's own generic (`r_name`, the Rust name, or an unqualified
+    /// `s7(generic = ...)`). Reused when a usable generic already exists,
+    /// otherwise defined here; exported with a standalone doc page.
+    Local(String),
+}
+
+impl S7GenericTarget {
+    /// The generic's bare R name (no `pkg::` prefix).
+    pub(crate) fn name(&self) -> &str {
+        match self {
+            Self::BaseOperator(name) | Self::Local(name) => name,
+            Self::External { name, .. } => name,
+        }
+    }
+}
+
+/// Classify a method's generic name (`ctx.generic_name()`).
+pub(crate) fn s7_generic_target(generic_name: &str) -> S7GenericTarget {
+    let (package, name) = match generic_name.split_once("::") {
+        Some((package, name)) => (Some(package), name),
+        None => (None, generic_name),
+    };
+    let base_operator =
+        S7_BASE_S3_OPERATORS.contains(&name) || s7_operator_dispatch_args(name).is_some();
+    match package {
+        None | Some("base") if base_operator => S7GenericTarget::BaseOperator(name.to_string()),
+        Some(package) => S7GenericTarget::External {
+            package: package.to_string(),
+            name: name.to_string(),
+        },
+        None => S7GenericTarget::Local(name.to_string()),
+    }
+}
+
+/// The S7 dispatch arguments of an instance method: `s7(dispatch = "a, b")`,
+/// else the pair an operator generic fixes (`e1, e2`), else `x`.
+///
+/// The first argument names the receiver; the others are the method's
+/// leading parameters (validated by `check_s7_dispatch`).
+pub(crate) fn s7_dispatch_args(method: &ParsedMethod, target: &S7GenericTarget) -> Vec<String> {
+    if let Some(dispatch) = method.method_attrs.s7.dispatch.as_deref() {
+        return dispatch.split(',').map(|a| a.trim().to_string()).collect();
+    }
+    match s7_operator_dispatch_args(target.name()) {
+        Some(pair) => pair.iter().map(|a| a.to_string()).collect(),
+        None => vec!["x".to_string()],
+    }
+}
+
+/// The `S7::method()` signature: the class (or `S7::class_any` for a
+/// fallback) for the receiver, and `S7::class_any` for every other dispatch
+/// argument.
+///
+/// The other arguments are not narrowed. The method's own argument checks and
+/// Rust conversions are the type check, and they report the parameter by name.
+/// No single S7 class matches what a parameter accepts in general (an
+/// `ExternalPtr<T>` takes the class object, a bare external pointer or a list
+/// with `.ptr`; `coerce` widens numeric parameters), so a narrower class would
+/// turn accepted values into "Can't find method" errors. A more specific
+/// method registered in R still wins over this one.
+fn s7_method_signature(class_name: &str, n_dispatch: usize, fallback: bool) -> String {
+    let receiver = if fallback {
+        "S7::class_any"
+    } else {
+        class_name
+    };
+    if n_dispatch <= 1 {
+        receiver.to_string()
+    } else {
+        let mut parts = vec![receiver];
+        parts.extend(std::iter::repeat_n("S7::class_any", n_dispatch - 1));
+        format!("list({})", parts.join(", "))
+    }
+}
+
+/// A character vector literal: `"x"` or `c("x", "y")`.
+fn r_chr_vector(values: &[String]) -> String {
+    let quoted: Vec<String> = values.iter().map(|v| format!("\"{v}\"")).collect();
+    match quoted.as_slice() {
+        [single] => single.clone(),
+        _ => format!("c({})", quoted.join(", ")),
+    }
+}
+
+/// Emit the load-time definition of a package-local S7 generic: define it
+/// when no binding exists, shadow a plain (non-generic) function, otherwise
+/// reuse the existing generic.
+///
+/// The generic's formals are the dispatch arguments (plus `...` unless
+/// `no_dots`); the shadow's `class_any` fallback takes the same formals and
+/// forwards them, so every method S7 registers on it is signature-compatible.
+fn emit_s7_local_generic(
+    lines: &mut Vec<String>,
+    generic_name: &str,
+    dispatch_args: &[String],
+    include_dots: bool,
+) {
+    let generic_symbol = crate::naming::r_def_name(generic_name);
+    let dispatch_vec = r_chr_vector(dispatch_args);
+    let mut generic_formals = dispatch_args.join(", ");
+    if include_dots {
+        generic_formals.push_str(", ...");
+    }
+    let generic_fun = format!("function({generic_formals}) S7::S7_dispatch()");
+    let class_any_spec = s7_method_signature("S7::class_any", dispatch_args.len(), true);
+
+    // Classify any existing binding of `generic_name` (#1114). A bare
+    // `exists(...)` check is wrong: if the name resolves to a *plain*
+    // base/stats closure (var, get, row, col, diag, reshape, ...),
+    // `S7::method(<closure>, ...) <-` errors at load ("generic is a
+    // function, but not an S3 generic function") and the package fails
+    // to install. Only create/reuse when the existing binding is
+    // something S7::method<- accepts as a generic: an S7 generic, a
+    // primitive, an S3 standard generic, or an S4 generic. Otherwise
+    // shadow it with a package-local S7 generic.
+    //
+    // Emit an `if (!base::exists(...))` / `else if ({classifier})` chain
+    // rather than a top-level `.mx_gen <- ...` assignment. The leading
+    // statement must NOT be an assignment: roxygen2 documents the first
+    // top-level binding after the doc block, and a `.mx_gen <- ...` there
+    // pollutes every S7 man page with a bogus \alias{.mx_gen}/\usage. The
+    // `.mx_gen` binding used by the classifier lives inside the braced
+    // `else if` condition, which roxygen2 does not descend into.
+    //
+    // `base::exists`/`base::get`: once we define a shadow generic named
+    // e.g. `get`, a bare `get(...)` in a later generic's classifier would
+    // route through our own generic. Qualify to stay robust.
+    lines.push(format!(
+        "if (!base::exists(\"{generic_name}\", mode = \"function\")) {{"
+    ));
+    lines.push("  # No existing binding; define a plain package-local S7 generic.".to_string());
+    lines.push(format!(
+        "  {generic_symbol} <- S7::new_generic(\"{generic_name}\", {dispatch_vec}, {generic_fun})"
+    ));
+    lines.push(format!(
+        "}} else if (local({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }})) {{"
+    ));
+    lines.push(format!(
+        "  # `{generic_name}` resolves to a plain (non-generic) function S7 cannot"
+    ));
+    lines.push(
+        "  # attach a method to. Define a package-local S7 generic that shadows it,".to_string(),
+    );
+    lines.push(
+        "  # with a class_any fallback delegating to the masked function so ordinary".to_string(),
+    );
+    lines.push(
+        "  # (non-S7) calls (e.g. var(1:10)) keep working. S4 generics also take this".to_string(),
+    );
+    lines.push("  # path; the fallback preserves their dispatch.".to_string());
+    // `local()` gives the fallback closure its own environment holding an
+    // eagerly-assigned `.mx_masked` (assignment forces the value now: a
+    // function *argument* would stay an unforced promise and later see the
+    // reused `.mx_gen`, which is why we don't pass it as one).
+    lines.push(format!("  {generic_symbol} <- local({{"));
+    lines.push(format!(
+        "    .mx_masked <- base::get(\"{generic_name}\", mode = \"function\")"
+    ));
+    lines.push(format!(
+        "    .mx_g <- S7::new_generic(\"{generic_name}\", {dispatch_vec}, {generic_fun})"
+    ));
+    lines.push(format!(
+        "    S7::method(.mx_g, {class_any_spec}) <- function({generic_formals}) .mx_masked({generic_formals})"
+    ));
+    lines.push("    .mx_g".to_string());
+    lines.push("  })".to_string());
+    lines.push("}".to_string());
+    lines.push("# else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.".to_string());
+}
+
+// endregion
+
 /// Roxygen prose for the fast-path dispatch shortcut advisory block.
 ///
 /// Shared between the inherent-impl S7 generator ([`generate_s7_r_wrapper`])
@@ -100,8 +307,8 @@ pub(crate) fn shortcut_advisory_lines(method_name: &str, class_name: &str) -> Ve
         "#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`".to_string(),
         "#' (the class walk + method-table lookup). Use in hot loops where the".to_string(),
         "#' per-call dispatch overhead matters. **Footgun:** this shortcut does not".to_string(),
-        "#' perform subclass dispatch \u{2014} a method override defined on a child class"
-            .to_string(),
+        // ASCII only: a standalone `tools::checkRd()` flags non-ASCII Rd text.
+        "#' perform subclass dispatch: a method override defined on a child class".to_string(),
         "#' will *not* be honoured. Use the generic when subclassing is possible.".to_string(),
     ]
 }
@@ -234,10 +441,12 @@ pub(super) fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 ///   with `#[miniextendr(s7(getter))]` etc., with support for class constraints,
 ///   defaults, required, frozen, and deprecated modifiers
 /// - Instance methods: `S7::new_generic(...)` + `S7::method(generic, class)` pairs
-///   dispatching to Rust `.Call()` wrappers via `x@.ptr`
-/// - External generics: `S7::new_external_generic("pkg", "name")` for overriding
-///   generics from other packages
-/// - Multiple dispatch: via `#[miniextendr(s7(dispatch = "x,y"))]`
+///   dispatching to Rust `.Call()` wrappers via `x@.ptr` (see
+///   [`S7GenericTarget`] for where the generic comes from)
+/// - External generics: `S7::new_external_generic("pkg", "name", dispatch_args)`
+///   for `s7(generic = "pkg::name")`
+/// - Multiple dispatch: via `#[miniextendr(s7(dispatch = "x, other"))]`, and on
+///   `(e1, e2)` for the `Ops` operators
 /// - Fallback methods: `S7::method(generic, S7::class_any)` with `tryCatch` for
 ///   safe slot access on non-S7 objects
 /// - Static methods: regular functions named `ClassName_method(...)`
@@ -718,55 +927,59 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             continue;
         }
 
-        let generic_name = ctx.generic_name();
-        let full_params = ctx.instance_formals(true); // adds x, ..., params
         let method_attrs = &ctx.method.method_attrs;
+        let target = s7_generic_target(&ctx.generic_name());
+        // The bare generic name (a `pkg::` qualifier only picks the target).
+        let generic_name = target.name().to_string();
+        // The generic in R symbol position (assignment target, first argument
+        // of `S7::method`); string literals keep the bare name (#1475).
+        let generic_symbol = crate::naming::r_def_name(&generic_name);
+
+        // The first dispatch argument names the receiver; the others are the
+        // method's leading parameters (`check_s7_dispatch` enforces this), so
+        // the method's formals start with exactly the generic's dispatch
+        // arguments, as S7 requires.
+        let dispatch_args = s7_dispatch_args(ctx.method, &target);
+        let receiver = dispatch_args[0].as_str();
+        let include_dots = !method_attrs.s7.no_dots;
+        let method_formals = ctx.instance_formals_with_receiver(receiver, include_dots);
+        let signature =
+            s7_method_signature(&class_name, dispatch_args.len(), method_attrs.s7.fallback);
 
         // Emit the generic-doc marker BEFORE the source comment so that the
         // write-time pass can place the standalone Rd page before the method block.
         // This ensures the synthesised doc block (ending with NULL) is always
-        // separated from the method's roxygen comment by the source `# comment` line
-        // — preventing roxygen2 from merging the two blocks into one.
+        // separated from the method's roxygen comment by the source `# comment` line,
+        // preventing roxygen2 from merging the two blocks into one.
         //
-        // Only package-owned (non-external, non-override) generics get a marker;
-        // fallback methods dispatch on S7::class_any and don't define a new generic.
-        if !ctx.has_generic_override() && !method_attrs.s7.fallback && !class_has_no_rd {
-            let dispatch_str = method_attrs
-                .s7
-                .dispatch
-                .as_deref()
-                .unwrap_or("x")
-                .replace(' ', "");
-            let no_dots_str = if method_attrs.s7.no_dots {
-                "true"
-            } else {
-                "false"
-            };
+        // Only package-owned generics get a marker; fallback methods dispatch on
+        // S7::class_any, and base operators / external generics belong elsewhere.
+        if matches!(target, S7GenericTarget::Local(_))
+            && !method_attrs.s7.fallback
+            && !class_has_no_rd
+        {
+            let no_dots_str = if include_dots { "false" } else { "true" };
             lines.push(format!(
-                ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"{generic_name}\", class=\"{class_name}\", export={should_export}, dispatch=\"{dispatch_str}\", no_dots={no_dots_str})"
+                ".__MX_GENERIC_DOC__(kind=\"S7\", generic=\"{generic_name}\", class=\"{class_name}\", export={should_export}, dispatch=\"{}\", no_dots={no_dots_str})",
+                dispatch_args.join(",")
             ));
         }
 
         lines.push(ctx.source_comment(type_ident));
 
         // For fallback methods (class_any), check class before using @ to extract
-        // the pointer. Non-S7 objects can't have @.ptr — error in R rather than
+        // the pointer. Non-S7 objects can't have @.ptr: error in R rather than
         // passing a wrong type to Rust (which would segfault). The error is the
-        // shared argument error on the receiver `x` (#1591), attributed like
+        // shared argument error on the receiver (#1591), attributed like
         // `stop()` was to the method's call.
         let self_expr = if method_attrs.s7.fallback {
-            "if (inherits(x, \"S7_object\")) x@.ptr else .miniextendr_arg_error(\"x\", paste0(\"must be an S7 object, got \", class(x)[[1L]]))"
+            format!(
+                "if (inherits({receiver}, \"S7_object\")) {receiver}@.ptr else .miniextendr_arg_error(\"{receiver}\", paste0(\"must be an S7 object, got \", class({receiver})[[1L]]))"
+            )
         } else {
-            "x@.ptr"
+            format!("{receiver}@.ptr")
         };
-        let call = ctx.instance_call(self_expr);
-
-        // Determine dispatch class (fallback -> class_any, normal -> class_name)
-        let method_class = if method_attrs.s7.fallback {
-            "S7::class_any".to_string()
-        } else {
-            class_name.clone()
-        };
+        let call = ctx.instance_call(&self_expr);
 
         // Documentation - skip if class has @noRd.
         // Use class-qualified @name to avoid duplicate \alias{generic} warnings
@@ -781,220 +994,69 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .with_r_name(qualified_name);
             let mut doc_lines = method_doc.build();
             doc_lines.push(format!("#' @aliases {}${}", class_name, generic_name));
+            // With no generic definition in between, roxygen2 would document the
+            // `S7::method(`[[`, Class) <-` right below as an S7 method and write a
+            // `\usage` (`x[[i, ...]]`) whose formals and operator alias this block
+            // does not provide. Keep base-operator methods usage-free, like every
+            // other S7 method block.
+            if matches!(target, S7GenericTarget::BaseOperator(_)) {
+                doc_lines.push("#' @usage NULL".to_string());
+            }
             lines.extend(doc_lines);
         }
 
-        if ctx.has_generic_override() {
-            // Parse "pkg::name" format for external generics
-            let (pkg, gen_name) = if generic_name.contains("::") {
-                let parts: Vec<&str> = generic_name.split("::").collect();
-                (parts[0].to_string(), parts[1].to_string())
-            } else {
-                ("base".to_string(), generic_name.clone())
-            };
-
-            // The generic appears as an R symbol (assignment target, first
-            // argument of `S7::method`) and as a string. Operator generics such
-            // as `[` need backticks in symbol position only (#1475).
-            let gen_symbol = crate::naming::r_def_name(&gen_name);
-
-            // Use S7::new_external_generic for existing generics from other packages
-            lines.push(format!(
-                "if (!exists(\"{gen_name}\", mode = \"function\")) {{"
-            ));
-            lines.push(format!(
-                "  {gen_symbol} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
-            ));
-            lines.push("}".to_string());
-
-            // Define method using the resolved generic name
-            let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let body_lines = crate::MethodReturnBuilder::new(call.clone())
-                .with_strategy(strategy)
-                .with_invisible(ctx.method.is_invisible())
-                .with_class_name(class_name.clone())
-                .with_return_class_from_method(ctx.method)
-                .build_s7_body();
-
-            let what = format!("{}.{}", generic_name, class_name);
-            lines.push(format!(
-                "S7::method({gen_symbol}, {method_class}) <- function({full_params}) {{"
-            ));
-            ctx.emit_method_prelude(&mut lines, "  ", &what);
-            lines.extend(body_lines);
-            lines.push("}".to_string());
-        } else {
-            // The generic in R symbol position (assignment target, first argument
-            // of `S7::method`); string literals keep the bare name (#1475).
-            let generic_symbol = crate::naming::r_def_name(&generic_name);
-
-            // Create new S7 generic if it doesn't exist
-            // Use @rawNamespace to explicitly export the bare generic name.
-            // Plain @export would export the qualified @name (e.g., "ClassName-method")
-            // instead of the bare generic. The raw directive is not quoted by
-            // roxygen2, so an operator generic is written `export("[[")`.
-            if should_export {
+        match &target {
+            // `[[`, `+`, ... always exist in base, and S7 resolves them itself
+            // (the `Ops` operators through its own two-argument generics).
+            S7GenericTarget::BaseOperator(_) => {}
+            S7GenericTarget::External { package, name } => {
+                // Bind the external generic under the generic's own name: when S7
+                // registers the method for an S3 generic of a package that is not
+                // loaded yet, it looks this binding up by name to find the package.
+                // Calls to `name()` elsewhere in the package are unaffected, since
+                // R's function lookup skips a non-function binding. The guard keeps
+                // the assignment out of roxygen2's view and lets a second class's
+                // method on the same generic reuse the binding.
                 lines.push(format!(
-                    "#' @rawNamespace export({})",
-                    crate::naming::r_namespace_name(&generic_name)
+                    "if (!base::inherits(base::get0(\"{name}\", inherits = FALSE), \"S7_external_generic\")) {{"
                 ));
+                lines.push(format!(
+                    "  {generic_symbol} <- S7::new_external_generic(\"{package}\", \"{name}\", {})",
+                    r_chr_vector(&dispatch_args)
+                ));
+                lines.push("}".to_string());
             }
-
-            // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
-            let dispatch_args = if let Some(ref dispatch) = method_attrs.s7.dispatch {
-                // Multiple dispatch: "x,y" -> c("x", "y")
-                let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
-                if args.len() == 1 {
-                    format!("\"{}\"", args[0])
-                } else {
-                    format!(
-                        "c({})",
-                        args.iter()
-                            .map(|a| format!("\"{}\"", a))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
+            S7GenericTarget::Local(_) => {
+                // Use @rawNamespace to explicitly export the bare generic name.
+                // Plain @export would export the qualified @name (e.g., "ClassName-method")
+                // instead of the bare generic. The raw directive is not quoted by
+                // roxygen2, so an operator generic is written `export("%op%")`.
+                if should_export {
+                    lines.push(format!(
+                        "#' @rawNamespace export({})",
+                        crate::naming::r_namespace_name(&generic_name)
+                    ));
                 }
-            } else {
-                "\"x\"".to_string()
-            };
-
-            // Determine function signature (with or without ...)
-            let generic_sig = if method_attrs.s7.no_dots {
-                // no_dots: strict generic without ...
-                if let Some(ref dispatch) = method_attrs.s7.dispatch {
-                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
-                    format!("function({}) S7::S7_dispatch()", args.join(", "))
-                } else {
-                    "function(x) S7::S7_dispatch()".to_string()
-                }
-            } else {
-                // Default: include ... for extra args
-                if let Some(ref dispatch) = method_attrs.s7.dispatch {
-                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
-                    format!("function({}, ...) S7::S7_dispatch()", args.join(", "))
-                } else {
-                    "function(x, ...) S7::S7_dispatch()".to_string()
-                }
-            };
-
-            // Classify any existing binding of `generic_name` (#1114). A bare
-            // `exists(...)` check is wrong: if the name resolves to a *plain*
-            // base/stats closure (var, get, row, col, diag, reshape, ...),
-            // `S7::method(<closure>, ...) <-` errors at load ("generic is a
-            // function, but not an S3 generic function") and the package fails
-            // to install. Only create/reuse when the existing binding is
-            // something S7::method<- accepts as a generic: an S7 generic, a
-            // primitive, an S3 standard generic, or an S4 generic. Otherwise
-            // shadow it with a package-local S7 generic.
-            let dispatch_arg_names: Vec<String> =
-                if let Some(ref dispatch) = method_attrs.s7.dispatch {
-                    dispatch.split(',').map(|s| s.trim().to_string()).collect()
-                } else {
-                    vec!["x".to_string()]
-                };
-            // Fallback signature/forwarding args mirror the generic's formals so
-            // the class_any method S7 registers is signature-compatible.
-            let fallback_sig = {
-                let mut sig = dispatch_arg_names.join(", ");
-                if !method_attrs.s7.no_dots {
-                    if sig.is_empty() {
-                        sig.push_str("...");
-                    } else {
-                        sig.push_str(", ...");
-                    }
-                }
-                sig
-            };
-            let class_any_spec = if dispatch_arg_names.len() > 1 {
-                format!(
-                    "list({})",
-                    vec!["S7::class_any"; dispatch_arg_names.len()].join(", ")
-                )
-            } else {
-                "S7::class_any".to_string()
-            };
-
-            // Emit an `if (!base::exists(...))` / `else if ({classifier})` chain
-            // rather than a top-level `.mx_gen <- ...` assignment. The leading
-            // statement must NOT be an assignment: roxygen2 documents the first
-            // top-level binding after the doc block, and a `.mx_gen <- ...` there
-            // pollutes every S7 man page with a bogus \alias{.mx_gen}/\usage. The
-            // `.mx_gen` binding used by the classifier lives inside the braced
-            // `else if` condition, which roxygen2 does not descend into.
-            //
-            // `base::exists`/`base::get`: once we define a shadow generic named
-            // e.g. `get`, a bare `get(...)` in a later generic's classifier would
-            // route through our own generic. Qualify to stay robust.
-            lines.push(format!(
-                "if (!base::exists(\"{generic_name}\", mode = \"function\")) {{"
-            ));
-            lines.push(
-                "  # No existing binding; define a plain package-local S7 generic.".to_string(),
-            );
-            lines.push(format!(
-                "  {generic_symbol} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
-            ));
-            lines.push(format!(
-                "}} else if (local({{ .mx_gen <- base::get(\"{generic_name}\", mode = \"function\"); !(inherits(.mx_gen, \"S7_generic\") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric(\"{generic_name}\")) }})) {{"
-            ));
-            lines.push(format!(
-                "  # `{generic_name}` resolves to a plain (non-generic) function S7 cannot"
-            ));
-            lines.push(
-                "  # attach a method to. Define a package-local S7 generic that shadows it,"
-                    .to_string(),
-            );
-            lines.push(
-                "  # with a class_any fallback delegating to the masked function so ordinary"
-                    .to_string(),
-            );
-            lines.push(
-                "  # (non-S7) calls (e.g. var(1:10)) keep working. S4 generics also take this"
-                    .to_string(),
-            );
-            lines.push("  # path; the fallback preserves their dispatch.".to_string());
-            // `local()` gives the fallback closure its own environment holding an
-            // eagerly-assigned `.mx_masked` (assignment forces the value now — a
-            // function *argument* would stay an unforced promise and later see the
-            // reused `.mx_gen`, which is why we don't pass it as one).
-            lines.push(format!("  {generic_symbol} <- local({{"));
-            lines.push(format!(
-                "    .mx_masked <- base::get(\"{generic_name}\", mode = \"function\")"
-            ));
-            lines.push(format!(
-                "    .mx_g <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
-            ));
-            lines.push(format!(
-                "    S7::method(.mx_g, {class_any_spec}) <- function({fallback_sig}) .mx_masked({fallback_sig})"
-            ));
-            lines.push("    .mx_g".to_string());
-            lines.push("  })".to_string());
-            lines.push("}".to_string());
-            lines.push(
-                "# else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.".to_string(),
-            );
-
-            // Define method
-            let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let body_lines = crate::MethodReturnBuilder::new(call)
-                .with_strategy(strategy)
-                .with_invisible(ctx.method.is_invisible())
-                .with_class_name(class_name.clone())
-                .with_return_class_from_method(ctx.method)
-                .build_s7_body();
-
-            // Use matching formals for method (with or without ...)
-            let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7.no_dots);
-
-            let what = format!("{}.{}", generic_name, class_name);
-            lines.push(format!(
-                "S7::method({generic_symbol}, {method_class}) <- function({method_formals}) {{"
-            ));
-            ctx.emit_method_prelude(&mut lines, "  ", &what);
-            lines.extend(body_lines);
-            lines.push("}".to_string());
+                emit_s7_local_generic(&mut lines, &generic_name, &dispatch_args, include_dots);
+            }
         }
+
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let body_lines = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_invisible(ctx.method.is_invisible())
+            .with_class_name(class_name.clone())
+            .with_return_class_from_method(ctx.method)
+            .with_chain_var(receiver.to_string())
+            .build_s7_body();
+
+        let what = format!("{}.{}", generic_name, class_name);
+        lines.push(format!(
+            "S7::method({generic_symbol}, {signature}) <- function({method_formals}) {{"
+        ));
+        ctx.emit_method_prelude(&mut lines, "  ", &what);
+        lines.extend(body_lines);
+        lines.push("}".to_string());
         lines.push(String::new());
 
         // Per-class fast-path dispatch shortcut (#949).

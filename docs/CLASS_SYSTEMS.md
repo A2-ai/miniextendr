@@ -634,6 +634,68 @@ functions emitted for static methods. A collision inside one impl block
 avoid naming an instance method `get_<field>`/`set_<field>` for a sidecar
 field, or use `s7(no_shortcut)` (see #991).
 
+### Which generic a method attaches to
+
+The generic is the method's R name (`r_name`, or the Rust name), unless
+`s7(generic = "...")` names another one. Three cases:
+
+- **The package's own generic**: any unqualified name, such as `area` or a new
+  operator `%scale%`. If no usable generic of that name exists when the package
+  loads, a package-local `S7::new_generic()` is defined (shadowing a plain,
+  non-generic function of the same name); otherwise the existing S7, S3, S4 or
+  primitive generic is reused. The generic is exported and gets a standalone
+  help page listing the classes with methods for it.
+- **Another package's generic**: `s7(generic = "pkg::name")`, such as
+  `base::print` or `generics::tidy`. The generic is bound with
+  `S7::new_external_generic("pkg", "name", <dispatch args>)` and is neither
+  exported nor documented here. The package does not have to import `pkg`, or
+  even list more than `Suggests:` for it: when `pkg` is not loaded, S7 attaches
+  the method once it loads. That needs `S7::methods_register()` in the
+  package's `.onLoad()`, as S7 recommends for every package (see
+  "Registering methods when the package loads" below).
+- **A base operator** (`[`, `[[`, `$`, the `Ops` group, `%*%`): the method
+  attaches to base's operator directly. Nothing is defined, exported or
+  documented as a package generic.
+
+### Multiple dispatch
+
+`s7(dispatch = "x, other")` makes the generic dispatch on several arguments.
+The first name is the receiver (the object the method is defined on, `x` by
+default); the others are the method's leading parameters, in order:
+
+```rust
+#[miniextendr(s7)]
+impl Left {
+    /// Pair `x` with `other`.
+    #[miniextendr(s7(dispatch = "x, other"))]
+    pub fn pair(&self, other: f64, sep: String) -> String { ... }
+}
+```
+
+```r
+pair <- S7::new_generic("pair", c("x", "other"), function(x, other, ...) S7::S7_dispatch())
+S7::method(pair, list(Left, S7::class_any)) <- function(x, other, sep, ...) {
+  .Call(C_mypkg_Left__pair, .call = match.call(), x@.ptr, other, sep)
+}
+```
+
+The receiver is registered for the class, and every other dispatch argument for
+`S7::class_any`. The method's own argument checks and Rust conversions are the
+type check, and their errors name the parameter. No single S7 class matches
+what a parameter accepts in general (an `ExternalPtr<T>` takes the class
+object, a bare external pointer or a list with `.ptr`; `coerce` widens numeric
+parameters), so a narrower class would turn accepted values into "Can't find
+method" errors. A more specific method registered in R,
+such as `S7::method(pair, list(Left, Right))`, still takes precedence over the
+generated one for those argument classes.
+
+The names are checked at compile time: they must be distinct, syntactic
+argument names; the receiver name cannot also be a parameter name; the others
+must be the method's first parameters in the same order and cannot have
+defaults (S7 rejects defaults on dispatch arguments). With `s7(no_dots)` the
+generic has no `...`, so S7 requires every formal of the method to be a
+dispatch argument.
+
 ### Operator methods
 
 An instance method can be called through R's operator syntax by giving it an
@@ -642,7 +704,7 @@ operator as its generic:
 ```rust
 #[miniextendr(s7)]
 impl Bag {
-    /// `bag[i]`, registered on the existing `[` generic.
+    /// `bag[i]`, registered on base's `[`.
     #[miniextendr(s7(generic = "["))]
     pub fn subset(&self, i: Vec<i32>) -> Vec<f64> { ... }
 
@@ -653,6 +715,10 @@ impl Bag {
     /// `bag %scale% k`, a package-local generic.
     #[miniextendr(r_name = "%scale%")]
     pub fn scale(&self, k: f64) -> Vec<f64> { ... }
+
+    /// `bag %cat% other`, also a package-local generic.
+    #[miniextendr(s7(generic = "%cat%"))]
+    pub fn concat(&self, other: Vec<f64>) -> Vec<f64> { ... }
 }
 ```
 
@@ -661,19 +727,38 @@ The generated R backtick-quotes the operator wherever it is an R symbol
 generic such as `%scale%` as `export("%scale%")`. An operator `r_name` gets no
 fast-path shortcut, because `Bag_[[` is not a syntactic R name; the
 `s7(generic = ...)` spelling on an ordinary Rust name keeps one (`Bag_subset()`
-above). `s7(generic = ...)` attaches to a generic that already exists, so spell
-a new operator such as `%scale%` with `r_name`.
+and `Bag_concat()` above).
 
 R's `Ops` group (`+`, `-`, `*`, `/`, `^`, `%%`, `%/%`, `==`, `!=`, `<`, `<=`,
-`>=`, `>`, `&`, `|`, `!`) and `%*%` are a compile error on S7 methods. S7
-dispatches those operators on both operands, which needs a two-class signature
-and `(e1, e2)` formals, and it does not dispatch `!` at all. Keep the method
-under an ordinary name and register the operator in an R file collated after
-the generated wrappers, through the shortcut:
+`>=`, `>`, `&`, `|`) and `%*%` are dispatched by S7 on both operands, through
+its own `(e1, e2, ...)` and `(x, y, ...)` generics. A method on one of them
+dispatches on that pair without an `s7(dispatch = ...)`: the receiver becomes
+`e1` (`x` for `%*%`), and the method takes exactly one parameter, the right
+operand, which must be named `e2` (`y`):
+
+```rust
+#[miniextendr(s7)]
+impl Money {
+    /// `a + b`
+    #[miniextendr(s7(generic = "+"))]
+    pub fn add(&self, e2: &Money) -> Self { ... }
+
+    /// `a * k`
+    #[miniextendr(r_name = "*")]
+    pub fn times(&self, e2: f64) -> Self { ... }
+}
+```
 
 ```r
-S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2) Money_add(e1, e2)
+S7::method(`+`, list(Money, S7::class_any)) <- function(e1, e2, ...) { ... }
 ```
+
+A wrong operand name, a second parameter, a conflicting `s7(dispatch = ...)` or
+`s7(fallback)` are compile errors, and so is `!`, which S7 does not dispatch.
+Two S7 limitations apply to these methods: only `Money + x` is registered, so
+`1 + money` needs a reversed method in R
+(`` S7::method(`+`, list(S7::class_any, Money)) ``), and unary `-money` fails
+inside S7, which always calls the method with two operands.
 
 ### Registering methods when the package loads
 

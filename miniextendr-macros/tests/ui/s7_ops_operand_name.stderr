@@ -1,0 +1,5 @@
+error: S7 dispatches `+` on `e1` and `e2`: the receiver becomes `e1` and the right operand of `add` must be named `e2`. Rename the parameter `other` to `e2`.
+  --> tests/ui/s7_ops_operand_name.rs:14:8
+   |
+14 |     fn add(&self, other: f64) -> f64 {
+   |        ^^^

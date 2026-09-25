@@ -28,6 +28,7 @@ Suggests:
     bench,
     callr,
     dplyr,
+    generics,
     ggplot2,
     jsonlite,
     scales,

@@ -3907,58 +3907,176 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
-/// R's `Ops` group generics plus the `matrixOps` group (`%*%`).
+/// Validate the S7 dispatch arguments of every S7 instance method: an explicit
+/// `s7(dispatch = "...")`, and the pair S7 fixes for an `Ops` / `%*%`
+/// operator generic (`e1, e2` / `x, y`).
 ///
-/// S7 dispatches the binary ones on both operands, so a method needs a
-/// two-class signature (`list(Foo, S7::class_any)`) and `(e1, e2)` formals;
-/// `S7::method(`+`, Foo)` fails at package load with "`signature` must be a
-/// list for multidispatch generics". `!` is not dispatched by S7 at all.
-const S7_OPS_GENERICS: &[&str] = &[
-    "+", "-", "*", "/", "^", "%%", "%/%", "==", "!=", "<", "<=", ">=", ">", "&", "|", "!", "%*%",
-];
-
-/// Reject S7 instance methods whose generic is an `Ops` / `matrixOps` operator.
-///
-/// The S7 class generator emits a single-class signature with an `x` receiver,
-/// which S7 cannot register for these generics, so the generated wrappers
-/// would stop the package from loading. Fail at compile time instead and point
-/// at the R-side registration that works. Non-S7 class systems are a no-op, as
-/// are static methods (plain functions) and property accessors.
-fn check_s7_ops_generics(parsed: &ParsedImpl) -> syn::Result<()> {
+/// S7 registers a method only when its formals start with the generic's
+/// dispatch arguments, in order and without defaults, and it rejects the
+/// wrong number of classes in the signature; any violation stops the package
+/// from loading. The generator names the receiver after the first dispatch
+/// argument and takes the others from the method's leading parameters, so the
+/// rules are checked here, where the error can name the fix. `!` is rejected
+/// outright because S7 does not dispatch it. Non-S7 class systems, static
+/// methods and property accessors are a no-op.
+fn check_s7_dispatch(parsed: &ParsedImpl) -> syn::Result<()> {
     if parsed.class_system != ClassSystem::S7 {
         return Ok(());
     }
-    let class_name = parsed.class_name();
     for m in parsed.instance_methods() {
         if m.method_attrs.s7.getter || m.method_attrs.s7.setter || m.method_attrs.s7.validate {
             continue;
         }
-        let generic = m
-            .method_attrs
-            .generic
-            .clone()
-            .unwrap_or_else(|| m.r_method_name());
-        let op = generic.rsplit("::").next().unwrap_or(&generic);
-        if !S7_OPS_GENERICS.contains(&op) {
-            continue;
+        let ctx =
+            crate::r_class_formatter::MethodContext::new(m, &parsed.type_ident, parsed.label());
+        check_s7_method_dispatch(m, &ctx.params)
+            .map_err(|message| syn::Error::new(m.ident.span(), message))?;
+    }
+    Ok(())
+}
+
+/// [`check_s7_dispatch`] for one method; `params` is its R formals string
+/// (normalized names, with defaults).
+fn check_s7_method_dispatch(m: &ParsedMethod, params: &str) -> Result<(), String> {
+    use s7_class::{S7GenericTarget, s7_dispatch_args, s7_generic_target};
+
+    let rust_name = crate::naming::ident_name(&m.ident);
+    let generic = m
+        .method_attrs
+        .generic
+        .clone()
+        .unwrap_or_else(|| m.r_method_name());
+    let target = s7_generic_target(&generic);
+    let op = target.name();
+    if op == "!" {
+        return Err(
+            "S7 methods cannot be generated for the `!` operator: S7 does not dispatch \
+                    `!` (its Ops handling covers the binary operators only). Keep this method \
+                    under an ordinary name and call it directly."
+                .to_string(),
+        );
+    }
+
+    let dispatch = s7_dispatch_args(m, &target);
+    let spec = m
+        .method_attrs
+        .s7
+        .dispatch
+        .clone()
+        .unwrap_or_else(|| dispatch.join(", "));
+    let formals = crate::roxygen::split_r_formals(params);
+    let names: Vec<&str> = formals
+        .iter()
+        .map(|f| crate::roxygen::formal_name(f))
+        .collect();
+    let listed = if names.is_empty() {
+        format!("`{rust_name}` has no parameters besides the receiver")
+    } else {
+        format!(
+            "the R parameters of `{rust_name}` are {}",
+            names
+                .iter()
+                .map(|n| format!("`{n}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+
+    let mut seen = std::collections::HashSet::new();
+    for d in &dispatch {
+        // `...` / `..1` pass R's syntactic-name rule but are not arguments.
+        if !crate::naming::is_syntactic_r_name(d) || d.starts_with("..") {
+            return Err(format!(
+                "`s7(dispatch = \"{spec}\")` on `{rust_name}`: `{d}` is not a syntactic R \
+                 argument name (S7 dispatch arguments are plain names, and `...` cannot be one)"
+            ));
         }
-        let message = if op == "!" {
-            "S7 methods cannot be generated for the `!` operator: S7 does not dispatch `!` \
-             (its Ops handling covers the binary operators only). Keep this method under an \
-             ordinary name and call it directly."
-                .to_string()
-        } else {
-            let rust_name = crate::naming::ident_name(&m.ident);
-            format!(
-                "S7 methods cannot be generated for the `{op}` operator: S7 dispatches R's \
-                 Ops group generics on both operands, which needs a two-class signature and \
-                 `(e1, e2)` formals rather than the single-class `x` method generated here. \
-                 Keep this method under an ordinary name and register the operator in R \
-                 through its fast-path shortcut: S7::method(`{op}`, list({class_name}, \
-                 S7::class_any)) <- function(e1, e2) {class_name}_{rust_name}(e1, e2)"
-            )
+        if !seen.insert(d.as_str()) {
+            return Err(format!(
+                "`s7(dispatch = \"{spec}\")` on `{rust_name}` names `{d}` twice"
+            ));
+        }
+    }
+
+    let is_base_operator = matches!(target, S7GenericTarget::BaseOperator(_));
+    if let Some(pair) = s7_class::s7_operator_dispatch_args(op).filter(|_| is_base_operator) {
+        let [left, right] = pair;
+        if dispatch != pair {
+            return Err(format!(
+                "S7 dispatches `{op}` on `{left}` and `{right}`, so `s7(dispatch = \"{spec}\")` \
+                 cannot be used on `{rust_name}`: drop it (the pair is the default for `{op}`)"
+            ));
+        }
+        if m.method_attrs.s7.fallback {
+            return Err(format!(
+                "`s7(fallback)` cannot be combined with the `{op}` operator on `{rust_name}`: \
+                 it would register the method for every pair of operands, not for this class"
+            ));
+        }
+        let operands: Vec<&str> = names.iter().copied().filter(|n| *n != "...").collect();
+        if operands.len() != 1 {
+            return Err(format!(
+                "`{rust_name}` implements the `{op}` operator, so it takes exactly one parameter \
+                 besides the receiver: the right operand, named `{right}` (S7 calls the method \
+                 as `{left} {op} {right}`); {listed}"
+            ));
+        }
+        if operands[0] != right {
+            return Err(format!(
+                "S7 dispatches `{op}` on `{left}` and `{right}`: the receiver becomes `{left}` and \
+                 the right operand of `{rust_name}` must be named `{right}`. Rename the parameter \
+                 `{}` to `{right}`.",
+                operands[0]
+            ));
+        }
+    }
+    if is_base_operator && s7_class::s7_operator_dispatch_args(op).is_none() && dispatch.len() > 1 {
+        return Err(format!(
+            "S7 dispatches `{op}` through the base primitive on its first argument only, so \
+             `s7(dispatch = \"{spec}\")` cannot be used on `{rust_name}`: drop it"
+        ));
+    }
+
+    let receiver = dispatch[0].as_str();
+    if names.contains(&receiver) {
+        return Err(format!(
+            "`s7(dispatch = \"{spec}\")` on `{rust_name}`: the first dispatch argument \
+             (`{receiver}`) names the receiver, so it cannot also be a parameter name; {listed}"
+        ));
+    }
+    for (i, d) in dispatch.iter().enumerate().skip(1) {
+        let Some(&found) = names.get(i - 1) else {
+            return Err(format!(
+                "`s7(dispatch = \"{spec}\")` on `{rust_name}`: dispatch argument `{d}` must be \
+                 parameter {i} of the method (S7 needs a method's formals to start with the \
+                 generic's dispatch arguments, the first naming the receiver), but {listed}"
+            ));
         };
-        return Err(syn::Error::new(m.ident.span(), message));
+        if found != d {
+            return Err(format!(
+                "`s7(dispatch = \"{spec}\")` on `{rust_name}`: dispatch argument `{d}` must be \
+                 parameter {i} of the method, found `{found}` (S7 needs a method's formals to \
+                 start with the generic's dispatch arguments, in order, the first naming the \
+                 receiver); {listed}"
+            ));
+        }
+        if formals[i - 1].contains('=') {
+            return Err(format!(
+                "`s7(dispatch = \"{spec}\")` on `{rust_name}`: dispatch argument `{d}` has a \
+                 default value (`{}`), which S7 does not allow on dispatch arguments",
+                formals[i - 1].trim()
+            ));
+        }
+    }
+    if m.method_attrs.s7.no_dots
+        && matches!(target, S7GenericTarget::Local(_))
+        && let Some(extra) = names.get(dispatch.len() - 1)
+    {
+        return Err(format!(
+            "`s7(no_dots)` on `{rust_name}` makes a generic without `...`, and S7 then requires \
+             every method's formals to equal its dispatch arguments, but `{extra}` is not one. \
+             Add it to `s7(dispatch = \"...\")` or drop `no_dots`."
+        ));
     }
     Ok(())
 }
@@ -4017,9 +4135,10 @@ pub fn expand_impl(
     if let Err(e) = check_s7_shortcut_collisions(&parsed) {
         return e.into_compile_error().into();
     }
-    // S7 cannot take a single-class method for the Ops operators (`+`, `==`,
-    // ...); the generated wrappers would stop the package from loading.
-    if let Err(e) = check_s7_ops_generics(&parsed) {
+    // S7 only registers a method whose formals start with the generic's
+    // dispatch arguments (`s7(dispatch)`, the `e1, e2` of an Ops operator);
+    // anything else would stop the package from loading.
+    if let Err(e) = check_s7_dispatch(&parsed) {
         return e.into_compile_error().into();
     }
 
