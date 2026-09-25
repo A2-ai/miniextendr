@@ -7,7 +7,7 @@ fn parse_param(s: &str) -> syn::FnArg {
 
 #[test]
 fn test_unit_type() {
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     let param = parse_param("_unused: ()");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -19,7 +19,7 @@ fn test_unit_type() {
 
 #[test]
 fn test_basic_conversion() {
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     let param = parse_param("x: i32");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -31,7 +31,7 @@ fn test_basic_conversion() {
 
 #[test]
 fn test_slice_conversion() {
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     let param = parse_param("x: &[i32]");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -45,7 +45,7 @@ fn test_slice_conversion() {
 fn test_str_conversion_main_thread_borrows_zero_copy() {
     // Main-thread path (`build_conversion`): `&str` borrows R's CHARSXP pool
     // directly — a single zero-copy `TryFromSexp` binding, no `String` allocation.
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     let param = parse_param("s: &str");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -63,7 +63,7 @@ fn test_str_conversion_main_thread_borrows_zero_copy() {
 fn test_str_conversion_worker_copies_then_borrows() {
     // Worker path (`build_conversion_split`): `&str` must be owned-then-borrowed
     // because a borrowed view over R's CHARSXP pool is `!Send`.
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     let param = parse_param("s: &str");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -96,7 +96,10 @@ fn conversion_text(builder: &RustConversionBuilder, src: &str) -> String {
 /// expectation, and passes an empty crate class list by default (#1591).
 #[test]
 fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
-    let s = conversion_text(&RustConversionBuilder::new(), "_nums: Hyperparams<i32>");
+    let s = conversion_text(
+        &RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call)),
+        "_nums: Hyperparams<i32>",
+    );
     assert!(s.contains("conversion_condition_value"), "{s}");
     // The error may still know its expectation (a `match_arg` choice error,
     // #1594): the prefix is built on the failure path, `invalid 'nums'
@@ -122,7 +125,7 @@ fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
 /// stated.
 #[test]
 fn test_conversion_err_arm_states_the_r_expectation() {
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     for (src, prefix) in [
         ("dv: AsNumericVec", "'dv' must be numeric"),
         ("num: AsNumeric", "'num' must be a single number"),
@@ -148,7 +151,8 @@ fn test_conversion_err_arm_states_the_r_expectation() {
     }
     // `coerce` widens the expectation with the gate.
     let s = conversion_text(
-        &RustConversionBuilder::new().with_coerce_param("x".to_string()),
+        &RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
+            .with_coerce_param("x".to_string()),
         "x: i32",
     );
     assert!(s.contains("\"'x' must be a single whole number\""), "{s}");
@@ -158,7 +162,8 @@ fn test_conversion_err_arm_states_the_r_expectation() {
 /// argument error too (#1591), not a panic.
 #[test]
 fn test_several_ok_array_length_is_an_argument_error() {
-    let builder = RustConversionBuilder::new().with_match_arg_several_ok("modes".to_string());
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
+        .with_match_arg_several_ok("modes".to_string());
     let s = conversion_text(&builder, "modes: [Mode; 2]");
     assert!(!s.contains("panic"), "{s}");
     assert!(s.contains("\"'modes' must be of length 2\""), "{s}");
@@ -171,7 +176,7 @@ fn test_several_ok_array_length_is_an_argument_error() {
 /// an expectation naming what strict accepts.
 #[test]
 fn test_strict_input_rejection_is_an_argument_error() {
-    let builder = RustConversionBuilder::new().with_strict();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call)).with_strict();
     for (src, helper, prefix) in [
         (
             "n: i64",
@@ -213,7 +218,7 @@ fn test_strict_input_rejection_is_an_argument_error() {
 /// needs; borrowed slices and `&str` carry the lifetime-erased type.
 #[test]
 fn test_borrowed_bindings_are_typed_with_erased_lifetimes() {
-    let builder = RustConversionBuilder::new();
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call));
     for (src, binding) in [
         ("x: &'a [f64]", "let x : & '_ [f64]"),
         ("s: &'a str", "let s : & '_ str"),
@@ -232,10 +237,11 @@ fn test_borrowed_bindings_are_typed_with_erased_lifetimes() {
 /// The crate-level `conversion_error_class` is emitted into every arm.
 #[test]
 fn test_conversion_err_arm_carries_the_crate_class() {
-    let builder = RustConversionBuilder::new().with_conversion_error_class(vec![
-        "pkg_error_argument".to_string(),
-        "pkg_error".to_string(),
-    ]);
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
+        .with_conversion_error_class(vec![
+            "pkg_error_argument".to_string(),
+            "pkg_error".to_string(),
+        ]);
     for src in ["x: i32", "x: &[f64]", "s: &str"] {
         let param = parse_param(src);
         let syn::FnArg::Typed(pat_type) = param else {
@@ -252,7 +258,8 @@ fn test_conversion_err_arm_carries_the_crate_class() {
 
 #[test]
 fn test_coercion() {
-    let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
+        .with_coerce_param("x".to_string());
     let param = parse_param("x: u16");
     if let syn::FnArg::Typed(pat_type) = param {
         let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
@@ -359,7 +366,7 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             false,
         ),
     ] {
-        let builder = RustConversionBuilder::new()
+        let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
             .with_layered_choice("mode".to_string(), leaf)
             .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
         let s = conversion_text(&builder, src);
@@ -386,7 +393,7 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
         );
     }
 
-    let builder = RustConversionBuilder::new()
+    let builder = RustConversionBuilder::new(syn::parse_quote!(__miniextendr_call))
         .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
         .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
     let s = conversion_text(&builder, "mode: Option<Either<String, f64>>");
