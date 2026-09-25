@@ -6,7 +6,7 @@
 \alias{AliasGuardProbe$check}
 \alias{$.AliasGuardProbe}
 \alias{[[.AliasGuardProbe}
-\title{AliasGuardProbe  Class}
+\title{AliasGuardProbe Class}
 \usage{
 AliasGuardProbe
 
