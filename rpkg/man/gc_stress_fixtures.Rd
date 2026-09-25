@@ -3,16 +3,22 @@
 \name{into_sexp_altrep}
 \alias{into_sexp_altrep}
 \alias{str_borrow_len}
+\alias{gc_stress_factor_construction}
 \title{into_sexp_altrep}
 \usage{
 into_sexp_altrep(x)
 
 str_borrow_len(s)
+
+gc_stress_factor_construction()
 }
 \arguments{
 \item{x}{An integer, numeric, or character vector to convert.}
 
 \item{s}{(no documentation available)}
+}
+\value{
+Three factors: codes 8, NA for the first; 8, NA, 1, 4, 8 for the others.
 }
 \description{
 Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping. Dispatches on \code{type_of()}: INTSXP, REALSXP, STRSXP.
@@ -20,4 +26,8 @@ Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping
 Production helper for the \verb{&str} zero-copy argument-borrow path (#664).
 
 On the main-thread default, \verb{#[miniextendr]} lowers a \verb{&str} argument to a \emph{direct} zero-copy borrow over R's CHARSXP pool (no owning-\code{String} copy). This fn just measures the borrow and echoes it back so the round-trip can be asserted from the GC driver below.
+
+Build factors through the raw-levels, one-shot, and cached-levels paths.
+
+Each call interns new level names for the first two factors. A fresh R process also exercises the cold factor-class and permanent-level caches.
 }
