@@ -176,6 +176,7 @@ local({
     expect_true(file.exists(file.path(tmp, "testpkg", "DESCRIPTION")))
     expect_true(file.exists(file.path(tmp, "testpkg", "configure.ac")))
     expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.in")))
+    expect_true(file.exists(file.path(tmp, "testpkg", "src", "Makevars.win")))
     expect_true(file.exists(file.path(tmp, "testpkg", "src", "stub.c")))
     expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "lib.rs")))
     expect_true(file.exists(file.path(tmp, "testpkg", "src", "rust", "Cargo.toml")))
