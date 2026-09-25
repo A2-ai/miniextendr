@@ -89,11 +89,18 @@ and silently corrupting R's heap would be worse than a loud failure.
 If this happens:
 
 - **Inside `with_r_unwind_protect`** (default path): `R_UnwindProtect` catches
-  the longjmp, Rust destructors run normally
-- **Inside `run_on_worker`** (with `worker-thread` feature): same protection
-  via `R_UnwindProtect`
-- **Outside protected context**: Rust destructors are **skipped**, causing resource
-  leaks (files, locks, etc.)
+  the longjmp at the guard boundary and the wrapper resumes it, but the Rust
+  locals inside the protected closure are **skipped** (R has already jumped
+  past their frames before the cleanup callback runs, #1507). Keep owned
+  resources outside the closure.
+- **During a worker wrapper's input conversion**: every checked R call is
+  fenced in its own `R_UnwindProtect` (#1302), so converter locals and earlier
+  converted arguments drop before the R error resumes.
+- **Inside `run_on_worker`** (with `worker-thread` feature): R API calls route
+  through `with_r_thread`; the main-thread callback has the same limitation as
+  `with_r_unwind_protect`.
+- **Outside any protected context**: the longjmp leaves R's C frames and Rust
+  destructors are **skipped**, causing resource leaks (files, locks, etc.)
 
 Best practice: use `RAllocator` inside `with_r_unwind_protect` or the worker
 thread pattern, where unwind protection is active.

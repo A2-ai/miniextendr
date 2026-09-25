@@ -83,7 +83,9 @@ R: receives result SEXP
 
 Key safety properties:
 - Panics in Rust are caught via `catch_unwind` and converted to R errors
-- `R_UnwindProtect` ensures Rust destructors run even when R longjmps
+- `R_UnwindProtect` lets an R longjmp be caught and resumed at the FFI boundary;
+  locals inside the protected closure are not dropped by that outer guard
+  (#1507), so worker input conversions fence each checked R call (#1302)
 - GC protection keeps SEXPs alive while Rust holds references
 
 ## Build system
