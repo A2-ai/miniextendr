@@ -1518,10 +1518,11 @@ jobs:
     # (a cold miniextendr-api compile each).
     timeout-minutes: 30
     needs: changes
-    if: needs.changes.outputs.r == 'true'
+    if: needs.changes.outputs.r == 'true' || needs.changes.outputs.rust == 'true'
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      MINIEXTENDR_CLI: ${{ github.workspace }}/target/debug/miniextendr
 
     steps:
       - uses: actions/checkout@v7
@@ -1560,6 +1561,12 @@ jobs:
         uses: ./.github/actions/setup-vendor
         with:
           configure-and-vendor: 'false'
+
+      - name: Build CLI for R interoperability tests
+        run: just cli-build --locked --target-dir target
+
+      - name: Install minirextendr for CLI subprocesses
+        run: just minirextendr-install
 
       - name: Run tests
         working-directory: minirextendr
