@@ -120,12 +120,9 @@ test_that("serde bridge restores full state in a new session (rds)", {
   expect_equal(res$id, "3735928559")  # 0xDEADBEEF
   expect_equal(res$a, 1L)
   expect_equal(res$b, 2L)
-  # Pins current behavior: Option::None from a class METHOD raises NONE_ERR
-  # ("returned no value") instead of returning NA as the standalone-fn
-  # absence contract documents. When #1415 is fixed, flip this to
-  # expect_true(is.na(res$missing$val)).
-  expect_false(res$missing$ok)
-  expect_match(res$missing$msg, "returned no value")
+  # Option::None from a class method is the typed NA a standalone fn returns.
+  expect_true(res$missing$ok)
+  expect_identical(res$missing$val, NA_integer_)
   # Lower → save → load → rebuild → lower is a fixed point.
   expect_equal(res$data2, data)
 })
