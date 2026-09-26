@@ -68,7 +68,7 @@ Returns the label.
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Returns the numeric payload.
@@ -76,15 +76,15 @@ Returns the numeric payload.
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Returns the optional note. Note: as a class METHOD, \code{Option::None} raises the typed NONE_ERR condition instead of returning NA — the method path diverges from the standalone-fn absence contract (#1415).
+Returns the optional note, or \code{NA_character_} when there is none.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Returns the u64 id formatted as a string (value exceeds R's i32).
@@ -92,15 +92,15 @@ Returns the u64 id formatted as a string (value exceeds R's i32).
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Looks up a key in the Rust-side map. A missing key raises the typed NONE_ERR condition ("returned no value") rather than returning NA — the method path diverges from the standalone-fn absence contract (#1415); the cross-session test pins this behavior.
+Looks up a key in the Rust-side map. A missing key returns \code{NA_integer_}, as the same return type does from a standalone function.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Lowers the full Rust state to plain R data (a named list) via serde — safe to \code{saveRDS}/\code{save} and reload in another session.
@@ -108,7 +108,7 @@ Lowers the full Rust state to plain R data (a named list) via serde — safe to 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch — a method override defined on a child class
+perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Rebuilds a live object from serde-lowered R data; wraps into a classed S7 object exactly like the constructor does.
