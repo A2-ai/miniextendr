@@ -260,7 +260,10 @@ and trait-implementation methods. Qualified scalar paths (such as
 `Option<std::string::String>`) and `Option<&str>` are recognized too. For other
 method return types, the macro cannot infer arbitrary `Option<T>: IntoR` impls:
 unrecognized types retain the unwrap-or-error fallback, and `Option<Self>` keeps
-its fallible-constructor behavior.
+its fallible-constructor behavior. That fallback still covers the container and
+borrowed-reference rows (`Option<Vec<T>>` and the other collections,
+`Option<&T>`): they return `NULL` on `None` from standalone functions, but a
+method returning one of them raises a tagged `rust_*` condition instead.
 
 See also [COLUMNAR_OPTION_NONE.md](COLUMNAR_OPTION_NONE.md) for how an
 all-`None` `Option<T>` **column** in a `DataFrameRow`/columnar context (as
