@@ -184,6 +184,8 @@ test_that("a scaffolded S7 package's operator method works in a fresh session", 
   skip_on_cran()
   skip_on_os("windows")
   skip_if_no_local_repo()
+  # The scaffold imports S7, so R CMD INSTALL needs it installed.
+  skip_if_not_installed("S7")
   for (command in c("cargo", "autoconf")) {
     skip_if_not(nzchar(Sys.which(command)), paste(command, "not available"))
   }
