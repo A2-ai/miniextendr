@@ -71,9 +71,7 @@ impl S7SerdePersist {
         self.values.clone()
     }
 
-    /// Returns the optional note. Note: as a class METHOD, `Option::None`
-    /// raises the typed NONE_ERR condition instead of returning NA — the
-    /// method path diverges from the standalone-fn absence contract (#1415).
+    /// Returns the optional note, or `NA_character_` when there is none.
     pub fn s7_persist_note(&self) -> Option<String> {
         self.maybe_note.clone()
     }
@@ -83,10 +81,8 @@ impl S7SerdePersist {
         self.id.to_string()
     }
 
-    /// Looks up a key in the Rust-side map. A missing key raises the typed
-    /// NONE_ERR condition ("returned no value") rather than returning NA —
-    /// the method path diverges from the standalone-fn absence contract
-    /// (#1415); the cross-session test pins this behavior.
+    /// Looks up a key in the Rust-side map. A missing key returns
+    /// `NA_integer_`, as the same return type does from a standalone function.
     /// @param key Character scalar key.
     pub fn s7_persist_lookup_get(&self, key: String) -> Option<i32> {
         self.lookup.get(&key).copied()
