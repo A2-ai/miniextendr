@@ -3479,3 +3479,68 @@ pub fn gc_stress_trait_view_args() -> String {
 }
 
 // endregion
+
+// region: Factor constructor roots (#1408)
+
+/// Build factors through the raw-levels, one-shot, and cached-levels paths.
+///
+/// Each call interns new level names for the first two factors. A fresh R
+/// process also exercises the cold factor-class and permanent-level caches.
+/// @return Three factors: codes 8, NA for the first; 8, NA, 1, 4, 8 for the others.
+#[miniextendr]
+pub fn gc_stress_factor_construction() -> SEXP {
+    use miniextendr_api::factor::{
+        build_factor, build_factor_with_levels, build_levels_sexp, build_levels_sexp_cached,
+    };
+    use miniextendr_api::gc_protect::ProtectScope;
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static INVOCATION: AtomicUsize = AtomicUsize::new(0);
+    static CACHED_LEVELS: OnceLock<SEXP> = OnceLock::new();
+    let invocation = INVOCATION.fetch_add(1, Ordering::Relaxed);
+    let indices = [8, miniextendr_api::altrep_traits::NA_INTEGER, 1, 4, 8];
+    unsafe {
+        let scope = ProtectScope::new();
+        let result = scope.alloc_vecsxp(3);
+        for (index, path) in ["raw", "one_shot"].into_iter().enumerate() {
+            // Eight pointers use the same R allocation size class as these
+            // fresh strings, making a collected container likely to be reused.
+            let names = [
+                "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+            ]
+            .map(|level| format!("miniextendr_factor_1408_{invocation}_{path}_{level}"));
+            let names = names.each_ref().map(String::as_str);
+            let factor = if path == "raw" {
+                let levels = scope.protect(build_levels_sexp(&names));
+                // Two integer codes use the same size class as the cold
+                // one-element factor-class STRSXP.
+                build_factor(&indices[..2], levels.get())
+            } else {
+                build_factor_with_levels(&indices, &names)
+            };
+            let factor = scope.protect(factor);
+            result.set_vector_elt(
+                index.try_into().expect("factor index fits R_xlen_t"),
+                factor.get(),
+            );
+        }
+        let levels = *CACHED_LEVELS.get_or_init(|| {
+            build_levels_sexp_cached(&[
+                "miniextendr_factor_1408_cached_alpha",
+                "miniextendr_factor_1408_cached_beta",
+                "miniextendr_factor_1408_cached_gamma",
+                "miniextendr_factor_1408_cached_delta",
+                "miniextendr_factor_1408_cached_epsilon",
+                "miniextendr_factor_1408_cached_zeta",
+                "miniextendr_factor_1408_cached_eta",
+                "miniextendr_factor_1408_cached_theta",
+            ])
+        });
+        let factor = scope.protect(build_factor(&indices, levels));
+        result.set_vector_elt(2, factor.get());
+        result.get()
+    }
+}
+
+// endregion
