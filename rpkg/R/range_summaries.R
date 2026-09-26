@@ -39,6 +39,6 @@
 #' box <- rangebox_from_values(x)
 #' box_width(box)
 #' box_covers(box, c(1, 5))
-#' @aliases box_width box_covers
+#' @aliases box_width box_covers box_midpoint box_clamp
 #' @name range_summaries
 NULL

@@ -88,6 +88,12 @@ NULL
 #' @name s3_value
 NULL
 
+#' Share of values a range box covers, via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name box_share
+NULL
+
 #' Return the constructor dots count via S3 dispatch
 #' @param x An object.
 #' @param ... Additional arguments.
