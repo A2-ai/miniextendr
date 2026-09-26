@@ -286,6 +286,7 @@ mod s7_conversion_marker_tests;
 mod s7_dispatch_tests;
 mod s7_nonsyntactic_tests;
 mod s7_tests;
+mod scalar_option_return_tests;
 mod scatter_complex_raw_test;
 #[cfg(feature = "serde")]
 mod serde_error_tests;

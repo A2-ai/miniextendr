@@ -8,9 +8,7 @@ skip_if_ndarray_disabled <- function() {
   skip_if_not("ndarray" %in% miniextendr::miniextendr_enabled_features(), "ndarray feature not enabled")
 }
 
-# =============================================================================
-# NdVec tests (1D array)
-# =============================================================================
+# region: NdVec tests (1D array)
 
 test_that("NdVec can be created", {
   skip_if_ndarray_disabled()
@@ -88,10 +86,10 @@ test_that("NdVec RNdSlice - first and last", {
   expect_equal(v$first(), 1)
   expect_equal(v$last(), 3)
 
-  # Empty vector - no value becomes an error
+  # Empty scalar lookups use the same NA contract as standalone functions.
   empty <- NdVec$new(numeric(0))
-  expect_error(empty$first(), "returned no value")
-  expect_error(empty$last(), "returned no value")
+  expect_identical(empty$first(), NA_real_)
+  expect_identical(empty$last(), NA_real_)
 })
 
 test_that("NdVec RNdSlice - slice_1d", {
@@ -143,9 +141,9 @@ test_that("NdVec to_r returns R vector", {
   expect_equal(r_vec, c(1, 2, 3))
 })
 
-# =============================================================================
-# NdMatrix tests (2D array)
-# =============================================================================
+# endregion
+
+# region: NdMatrix tests (2D array)
 
 test_that("NdMatrix can be created from R matrix", {
   skip_if_ndarray_disabled()
@@ -242,9 +240,9 @@ test_that("NdMatrix to_r returns R matrix", {
   expect_equal(dim(r_mat), c(2, 3))
 })
 
-# =============================================================================
-# NdArrayDyn tests (N-dimensional array)
-# =============================================================================
+# endregion
+
+# region: NdArrayDyn tests (N-dimensional array)
 
 test_that("NdArrayDyn can be created", {
   skip_if_ndarray_disabled()
@@ -384,9 +382,9 @@ test_that("NdArrayDyn RNdIndex - reshape", {
   expect_error(arr$reshape(c(2L, 2L)), "does not match")
 })
 
-# =============================================================================
-# NdIntVec tests (integer array)
-# =============================================================================
+# endregion
+
+# region: NdIntVec tests (integer array)
 
 test_that("NdIntVec can be created", {
   skip_if_ndarray_disabled()
@@ -423,9 +421,9 @@ test_that("NdIntVec to_r returns R integer vector", {
   expect_equal(r_vec, 1:5)
 })
 
-# =============================================================================
-# Round-trip conversion tests
-# =============================================================================
+# endregion
+
+# region: Round-trip conversion tests
 
 test_that("ndarray_roundtrip_vec preserves data", {
   skip_if_ndarray_disabled()
@@ -462,9 +460,9 @@ test_that("ndarray_roundtrip_int_matrix preserves data", {
   expect_equal(result, x)
 })
 
-# =============================================================================
-# Additional tests for methods not covered above
-# =============================================================================
+# endregion
+
+# region: Additional tests for methods not covered above
 
 test_that("NdVec view_to_r returns R vector view", {
   skip_if_ndarray_disabled()
@@ -571,9 +569,9 @@ test_that("NdIntVec variance and std work", {
   expect_equal(v$std(), 2)
 })
 
-# =============================================================================
-# String array conversions (#1348)
-# =============================================================================
+# endregion
+
+# region: String array conversions (#1348)
 
 test_that("character matrix round-trips with values, dim, and NA preserved", {
   skip_if_ndarray_disabled()
@@ -672,3 +670,5 @@ test_that("gc_stress_ndarray_string returns the expected matrix shape", {
   expect_true(anyNA(out))
   expect_type(out, "character")
 })
+
+# endregion

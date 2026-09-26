@@ -29,12 +29,11 @@ fn return_handling_detection() {
         ReturnHandling::ExternalPtr
     ));
 
-    // -> Option<i32> -> OptionIntoRUnwrap (default: unwrap + error on None)
-    // Use ReturnHandling::OptionIntoR explicitly when Option<T>: IntoR is known.
+    // -> Option<i32> -> OptionIntoR (None becomes NA_integer_).
     let option_ty: syn::ReturnType = syn::parse_quote!(-> Option<i32>);
     assert!(matches!(
         detect_return_handling(&option_ty),
-        ReturnHandling::OptionIntoRUnwrap
+        ReturnHandling::OptionIntoR
     ));
 
     // -> Option<()> -> OptionUnit
@@ -87,6 +86,80 @@ fn return_handling_detection() {
     assert!(matches!(
         detect_return_handling(&option_self_ty),
         ReturnHandling::OptionExternalPtr
+    ));
+}
+
+#[test]
+fn scalar_options_use_the_whole_option_conversion() {
+    for inner in [
+        "i32",
+        "f64",
+        "bool",
+        "String",
+        "Rboolean",
+        "RLogical",
+        "Rcomplex",
+        "i8",
+        "i16",
+        "u16",
+        "u32",
+        "f32",
+        "i64",
+        "u64",
+        "isize",
+        "usize",
+        "PathBuf",
+        "OsString",
+        "&str",
+        "&'static str",
+        "std::string::String",
+        "std::path::PathBuf",
+        "std::ffi::OsString",
+        "miniextendr_api::Rcomplex",
+        "std::primitive::i32",
+    ] {
+        let output = syn::parse_str::<syn::ReturnType>(&format!("-> Option<{inner}>"))
+            .expect("valid scalar return type");
+        assert!(
+            matches!(detect_return_handling(&output), ReturnHandling::OptionIntoR),
+            "{inner}"
+        );
+        assert!(
+            matches!(
+                detect_return_handling_standalone_fn(&output),
+                ReturnHandling::OptionIntoR
+            ),
+            "{inner}"
+        );
+    }
+}
+
+#[test]
+fn other_options_keep_their_existing_return_strategies() {
+    for inner in [
+        "u8",
+        "Custom",
+        "Self::Item",
+        "<Self as Trait>::Item",
+        "Vec<i32>",
+        "&i32",
+        "&mut str",
+        "String<T>",
+    ] {
+        let output = syn::parse_str::<syn::ReturnType>(&format!("-> Option<{inner}>"))
+            .expect("valid non-scalar return type");
+        assert!(
+            matches!(
+                detect_return_handling(&output),
+                ReturnHandling::OptionIntoRUnwrap
+            ),
+            "{inner}"
+        );
+    }
+    let sexp: syn::ReturnType = syn::parse_quote!(-> Option<miniextendr_api::SEXP>);
+    assert!(matches!(
+        detect_return_handling(&sexp),
+        ReturnHandling::OptionSexp
     ));
 }
 
