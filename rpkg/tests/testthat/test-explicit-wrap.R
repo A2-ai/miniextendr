@@ -1,6 +1,6 @@
 test_that("an Env instance returns usable objects in each selected class system", {
   factory <- WrapFactory$new()
-  for (name in c("build", "build_attr")) {
+  for (name in c("build", "build_attr", "build_handle", "build_handle_attr")) {
     board <- factory[[name]](3L, 4L)
     expect_s3_class(board, "WrapBoard")
     expect_identical(board$dimensions(), c(3L, 4L))

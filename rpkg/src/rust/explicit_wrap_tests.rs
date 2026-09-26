@@ -54,6 +54,17 @@ impl WrapFactory {
     pub fn build_attr(&self, w: i32, h: i32) -> WrapBoard {
         WrapBoard::new(w, h)
     }
+    /// A marker around an `ExternalPtr` handle wraps like the bare class (#1375).
+    /// @param w,h Board dimensions.
+    pub fn build_handle(&self, w: i32, h: i32) -> WrapAsR6<ExternalPtr<WrapBoard>> {
+        WrapAsR6(ExternalPtr::new(WrapBoard::new(w, h)))
+    }
+    /// The attribute spelling accepts the same handle return.
+    /// @param w,h Board dimensions.
+    #[miniextendr(wrap = "r6")]
+    pub fn build_handle_attr(&self, w: i32, h: i32) -> ExternalPtr<WrapBoard> {
+        ExternalPtr::new(WrapBoard::new(w, h))
+    }
     /// Wrap an S7 counter.
     pub fn s7(&self) -> WrapAsS7<S7Counter> {
         WrapAsS7(S7Counter::new(7))

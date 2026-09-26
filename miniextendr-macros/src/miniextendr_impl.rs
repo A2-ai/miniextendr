@@ -2520,18 +2520,15 @@ impl ParsedMethod {
     ///   `Vec<T>` carries `PathArguments::AngleBracketed`.
     /// - `ExternalPtr<T>` (#1375): the explicit-handle spelling wraps
     ///   identically to a bare `T` at the value level (`IntoR for
-    ///   ExternalPtr<T>` already produces a bare `EXTPTRSXP`), so this
-    ///   recurses into the wrapped type rather than rejecting it outright.
+    ///   ExternalPtr<T>` already produces a bare `EXTPTRSXP`), so the handle
+    ///   is peeled with the same helper the explicit `wrap` path uses.
     fn inner_class_ident(ty: &syn::Type) -> Option<syn::Ident> {
-        let syn::Type::Path(p) = ty else {
+        let syn::Type::Path(p) = crate::type_inspect::peel_external_ptr(ty) else {
             return None;
         };
         let seg = p.path.segments.last()?;
         match &seg.arguments {
             syn::PathArguments::None => Self::class_ident_from_ident(&seg.ident),
-            syn::PathArguments::AngleBracketed(_) if seg.ident == "ExternalPtr" => {
-                Self::inner_class_ident(crate::first_type_argument(seg)?)
-            }
             _ => None,
         }
     }
