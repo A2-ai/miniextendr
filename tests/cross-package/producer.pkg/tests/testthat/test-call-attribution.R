@@ -14,6 +14,15 @@ test_that("noexport free functions take the crate-level caller attribution", {
   expect_identical(producer.pkg:::producer_attributed(3L), 3L)
 })
 
+test_that("a helper passes on the call to report through `.call` (#1613)", {
+  e <- tryCatch(producer.pkg:::producer_via_helper(-1L), error = function(e) e)
+  expect_s3_class(e, "rust_error")
+  expect_equal(conditionCall(e), quote(producer.pkg:::producer_via_helper(value = -1L)))
+  expect_identical(producer.pkg:::producer_via_helper(3L), 3L)
+  # A zero-argument entry point takes `.call` alone.
+  expect_identical(names(formals(producer.pkg:::producer_internal_probe_impl)), ".call")
+})
+
 test_that("a per-item `call = wrapper` wins over the crate default", {
   e <- tryCatch(producer.pkg:::producer_self_attributed(-1L), error = function(e) e)
   expect_s3_class(e, "rust_error")

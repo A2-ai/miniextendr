@@ -138,11 +138,13 @@ Error in call_attr_self_impl(x = value) : x must be positive, got -1
 
 `#[miniextendr(noexport, call = caller)]` moves the attribution one frame up.
 The wrapper resolves its caller's call as the first thing in its body, then
-hands that call to every R-side check, to `.Call()` and to the raise fallback:
+hands that call to every R-side check, to `.Call()` and to the raise fallback.
+Its last formal, `.call = NULL`, lets a helper in between pass on a different
+call ([below](#a-helper-in-between-call)):
 
 ```r
-call_attr_caller_impl <- function(x) {
-  .mx_call <- .miniextendr_caller_call()
+call_attr_caller_impl <- function(x, .call = NULL) {
+  .mx_call <- .miniextendr_caller_call(.call)
   if (!isTRUE(is.integer(x))) .miniextendr_arg_error("x", "must be integer", .mx_call)
   if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1", .mx_call)
   .val <- .Call(C_mypkg_call_attr_caller_impl, .call = .mx_call, x)
@@ -183,16 +185,18 @@ downstream package's tests pinned `conditionCall()` for such a failure to
 the `_impl` wrapper or to `match.arg()`, they now see the public call.
 
 `.miniextendr_caller_call()` is defined once at the top of the generated
-wrappers file. Called from the wrapper's body, it looks two frames up for the
-wrapper's caller, and returns that call with the caller's formals matched. It
-falls back to the wrapper's own matched call in two cases: there is no parent
-frame (called from top level, also under `tryCatch()` there), or the parent
-frame's function is not a closure. The second case covers `eval()`'d code (a
-testthat block, `source()`, `local()`): R gives such a frame the `eval`
-primitive as its function, and `match.call()` rejects a non-closure
-`definition`. The helper resolves the frames from its own body, never inside
-a promise forced by `match.call()`, where `sys.call(0)` would resolve to
-`match.call`'s frame.
+wrappers file. Called from the wrapper's body with the wrapper's `.call`, it
+returns that argument's call when one was passed (see
+[below](#a-helper-in-between-call)). For the default `NULL` it looks two
+frames up for the wrapper's caller, and returns that call with the caller's
+formals matched. It falls back to the wrapper's own matched call, without
+`.call`, in two cases: there is no parent frame (called from top level, also
+under `tryCatch()` there), or the parent frame's function is not a closure.
+The second case covers `eval()`'d code (a testthat block, `source()`,
+`local()`): R gives such a frame the `eval` primitive as its function, and
+`match.call()` rejects a non-closure `definition`. The helper resolves the
+frames from its own body, never inside a promise forced by `match.call()`,
+where `sys.call(0)` would resolve to `match.call`'s frame.
 
 The `envir` the helper hands to `match.call()` is the frame the caller's call
 was evaluated in: the caller's caller. `match.call()` only consults `envir` to
@@ -216,10 +220,80 @@ of the same option, and `[package.metadata.miniextendr] call_attribution =
 through `lapply()` reports `FUN(value = X[[i]])`, and one reached through
 `do.call()` reports the call `do.call()` built (`call_attr_caller(value = -1L)`
 for a function name, the deparsed function for a function object), the same way
-`sys.call(-1)` would. Fixture pair:
+`sys.call(-1)` would. A helper that calls the entry point through `do.call()`
+on behalf of a public function passes that function's frame as `.call`
+instead (next subsection). Fixture pair:
 `call_attr_caller_impl` / `call_attr_self_impl` in
 `rpkg/src/rust/call_attribution_demo.rs` with the delegates in
 `rpkg/R/call_attribution.R`, verified by `test-call-attribution.R`.
+
+### A helper in between: `.call`
+
+The calling frame is one frame. When a hand-written helper sits between the
+public function and the entry point, the entry point's caller is the helper,
+and the condition names it:
+
+```r
+.prepare <- function(value) call_attr_caller_impl(value)
+call_attr_via_plain_helper <- function(value) .prepare(value)
+# Error in .prepare(value = value) : x must be positive, got -1
+```
+
+Every wrapper whose attribution resolves to `caller` (the attribute, the
+`CallerCall` marker or the crate default) therefore ends its formals with
+`.call = NULL`. The helper takes its own caller's frame, following the vctrs /
+rlang `call = caller_env()` convention, and passes it on:
+
+```r
+.prepare <- function(value, call = parent.frame()) {
+  call_attr_caller_impl(value, .call = call)
+}
+call_attr_via_helper <- function(value) .prepare(value)
+# Error in call_attr_via_helper(value = -1L) : x must be positive, got -1
+```
+
+What `.call` accepts:
+
+- `NULL`, the default: the wrapper's caller, resolved as above.
+- An environment: the call of the closure whose frame it is, with that
+  closure's formals matched and a literal `...` in the call expanded, as for
+  the default. `parent.frame()` in a helper's formals names the helper's
+  caller; `environment()` names the function that passes it. A frame
+  passes unchanged through nested helpers (each forwards `call = call`),
+  `lapply()`, `...` forwarding, `local()` and `do.call()`. An environment
+  that is no closure's live frame, such as `globalenv()`, counts as `NULL`.
+- A call object: used as is, `.call = quote(verb(x = 1))`.
+- Anything else: an argument error on `.call` (`e$param == ".call"`, class
+  `rust_error`) reported against the wrapper's own call. This also catches a
+  positional argument too many, `call_attr_caller_impl(-1L, 2)`, which used to
+  be R's `unused argument` error.
+
+**Pass a frame, not a call.** `do.call()` evaluates the arguments it is given
+as a call, so a call object in the argument list runs the function it names
+again:
+
+```r
+f <- function(x, .call = NULL) { force(.call); x }   # the wrapper forces .call first
+g <- function() { n <<- n + 1; if (n > 3) stop("re-entered"); do.call(f, list(1, .call = quote(g()))) }
+n <- 0; try(g())   # Error in g() : re-entered. Passing environment() instead returns 1.
+```
+
+An environment is a value, so it evaluates to itself. A call object needs
+`do.call(..., quote = TRUE)`.
+
+On a wrapper with `...`, `.call` follows the dots
+(`function(x, ..., .call = NULL)`): positional extras land in the dots, and
+`.call` is matched by name only, as R requires for any formal after `...`. Pass
+it by name everywhere. Two cases keep today's shape. An S3 method has no
+`.call`, because a formal the generic lacks breaks generic/method consistency;
+its conditions name the generic's caller. A `CallerCall` body receives the
+resolved call, which is still `is.call()`. An `internal` wrapper, which
+renders a page, gets a generated `@param .call` line. Fixtures: the
+`call_attr_via_*` delegates in `rpkg/R/call_attribution.R`,
+`call_attr_internal_impl` / `call_attr_dots_impl` in
+`rpkg/src/rust/call_attribution_demo.rs`, and `producer_via_helper` in
+`tests/cross-package/producer.pkg` (the crate default), verified by the
+`test-call-attribution.R` files.
 
 ## Choosing the attribution: marker, attribute, crate default
 
@@ -262,7 +336,11 @@ call_attribution = "caller"
 The marker is **not an R formal**: the generated wrapper's formals are the
 other parameters (`scale <- function(x)`), and the C wrapper binds the marker
 from its hidden `__miniextendr_call` slot, so the body receives exactly the
-SEXP the wrapper passed as `.call = ...`. Both markers are `repr(transparent)`
+SEXP the wrapper passed as `.call = ...`. A `caller` wrapper, `CallerCall`
+included, still takes its own trailing `.call = NULL` formal
+(`scale2_impl <- function(x, .call = NULL)`, see
+[A helper in between](#a-helper-in-between-call)); the body then receives the
+call that resolves to. Both markers are `repr(transparent)`
 newtypes over `SEXP` (`.sexp()`, `Deref`, `From<CallerCall> for Call`), and a
 function taking one runs on R's main thread like one taking `SEXP`. The marker
 selects the attribution the same way the attribute does: `Call` is `wrapper`,
@@ -291,7 +369,7 @@ and the crate default in `tests/cross-package/producer.pkg`
 
 ## Where this is emitted
 
-Every `.Call()` inside generated R wrappers goes through one source of truth: `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which always prepends `.call = match.call()`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
+Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = match.call()` (or `.call = NULL` under `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = match.call()` for `wrapper`, `.call = .mx_call` for `caller`, `.call = NULL` for `none`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
 
 It applies uniformly to:
 

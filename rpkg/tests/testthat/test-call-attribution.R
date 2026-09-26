@@ -204,7 +204,8 @@ test_that("a `Call` marker hands the wrapper's own match.call() to Rust", {
 })
 
 test_that("a `CallerCall` marker hands the caller's matched call to Rust", {
-  expect_equal(names(formals(miniextendr:::call_marker_caller_impl)), "x")
+  # The marker is not an R formal; the `.call` of a `caller` wrapper is (#1613).
+  expect_equal(names(formals(miniextendr:::call_marker_caller_impl)), c("x", ".call"))
   expect_equal(
     miniextendr:::call_marker_caller(2L),
     quote(miniextendr:::call_marker_caller(value = 2L))
@@ -239,6 +240,127 @@ test_that("marker fixtures are not exported", {
   ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
   expect_false(any(grepl("call_marker_", ns)))
   expect_false(any(grepl("call_attr_none", ns)))
+})
+
+# endregion
+
+# region: a helper in between passes on the call to report (#1613)
+
+test_that("a helper without `.call` is what a `caller` entry point reports", {
+  e <- tryCatch(miniextendr:::call_attr_via_plain_helper(-1L), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_equal(conditionCall(e), quote(.call_attr_prepare_plain(value = value)))
+})
+
+test_that("a helper passing `call = parent.frame()` as `.call` names its caller", {
+  e <- tryCatch(miniextendr:::call_attr_via_helper(-1L), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_match(conditionMessage(e), "x must be positive, got -1", fixed = TRUE)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_helper(value = -1L)))
+  expect_equal(miniextendr:::call_attr_via_helper(3L), 3L)
+  # Through `lapply()` the caller is `FUN`, as without a helper.
+  e <- tryCatch(lapply(list(-1L), miniextendr:::call_attr_via_helper), error = identity)
+  expect_equal(conditionCall(e), quote(FUN(value = X[[i]])))
+})
+
+test_that("two helpers threading `call` down name the outermost function", {
+  e <- tryCatch(miniextendr:::call_attr_via_nested(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_nested(value = -1L)))
+  expect_equal(miniextendr:::call_attr_via_nested(2L), 2L)
+})
+
+test_that("a frame passes through `do.call()` without re-running the caller", {
+  e <- tryCatch(miniextendr:::call_attr_via_do_call(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_do_call(value = -1L)))
+  runs <- 0L
+  counted <- function(value) {
+    runs <<- runs + 1L
+    miniextendr:::.call_attr_prepare_do(value)
+  }
+  e <- tryCatch(counted(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(counted(value = -1L)))
+  expect_equal(runs, 1L)
+})
+
+test_that("a helper's frame reaches the R-side checks", {
+  e <- tryCatch(miniextendr:::call_attr_checked_via_helper(n = 1.5), error = identity)
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked_via_helper(n = 1.5)))
+  expect_equal(conditionMessage(e), "'n' must be integer")
+  expect_equal(miniextendr:::call_attr_checked_via_helper(4L), "Fast:mean:4:none")
+})
+
+test_that("a `CallerCall` body receives the call a helper passed on", {
+  expect_equal(
+    miniextendr:::call_marker_via_helper(2L),
+    quote(miniextendr:::call_marker_via_helper(value = 2L))
+  )
+})
+
+test_that("`.call` takes a call object as is", {
+  e <- tryCatch(
+    miniextendr:::call_attr_caller_impl(-1L, .call = quote(verb(v = 1))),
+    error = identity
+  )
+  expect_equal(conditionCall(e), quote(verb(v = 1)))
+})
+
+test_that("`.call = environment()` names the function that passed it", {
+  own <- function(value) miniextendr:::call_attr_caller_impl(value, .call = environment())
+  e <- tryCatch(own(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(own(value = -1L)))
+})
+
+test_that("an environment that is no closure's frame counts as NULL", {
+  # Called from the test block, NULL means the wrapper's own call, without `.call`.
+  e <- tryCatch(
+    miniextendr:::call_attr_caller_impl(-1L, .call = globalenv()),
+    error = identity
+  )
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(x = -1L)))
+  # Called from a closure, NULL means that closure's call.
+  via <- function(value) miniextendr:::call_attr_caller_impl(value, .call = globalenv())
+  e <- tryCatch(via(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(via(value = -1L)))
+})
+
+test_that("anything else passed as `.call` is an argument error on `.call`", {
+  # A positional argument too many lands in `.call` on a wrapper without `...`.
+  e <- tryCatch(miniextendr:::call_attr_caller_impl(-1L, 2), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_equal(e$param, ".call")
+  expect_equal(conditionMessage(e), "'.call' must be NULL, an environment or a call")
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(-1L, 2)))
+})
+
+test_that("`.call` leaves an omitted `Missing<T>` argument missing", {
+  expect_equal(miniextendr:::call_attr_omitted_impl(.call = quote(f())), "absent")
+})
+
+test_that("on a `caller` wrapper with `...`, `.call` follows the dots", {
+  expect_equal(names(formals(miniextendr:::call_attr_dots_impl)), c("x", "...", ".call"))
+  # Positional extras go to the dots; `.call` stays NULL.
+  expect_equal(miniextendr:::call_attr_dots_impl(1L, 2, 3), 3L)
+  via <- function(v) miniextendr:::call_attr_dots_impl(v, .call = environment())
+  e <- tryCatch(via(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(via(v = -1L)))
+})
+
+test_that("only `caller` wrappers take `.call`", {
+  expect_equal(names(formals(miniextendr:::call_attr_caller_impl)), c("x", ".call"))
+  expect_equal(names(formals(miniextendr:::call_attr_internal_impl)), c("x", ".call"))
+  expect_equal(names(formals(miniextendr:::call_attr_self_impl)), "x")
+  expect_equal(names(formals(miniextendr:::call_attr_none_impl)), "x")
+  expect_equal(miniextendr:::call_attr_internal_impl(5L), 5L)
+})
+
+test_that("an `internal` `caller` wrapper documents `.call`", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_name <- grep("^call_attribution_demo", names(rd_db), value = TRUE)[1]
+  skip_if(is.na(rd_name), "call_attribution_demo.Rd not found — package not documented")
+  rd_text <- paste(capture.output(print(rd_db[[rd_name]])), collapse = "\n")
+  expect_match(rd_text, "call_attr_internal_impl(x, .call = NULL)", fixed = TRUE)
+  expect_match(rd_text, "\\item{.call}{", fixed = TRUE)
 })
 
 # endregion

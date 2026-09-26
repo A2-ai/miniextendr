@@ -1102,10 +1102,24 @@ fn params_not_documented_elsewhere_for_own_page_tags() {
 
 /// Run the standalone-function `@param` generation over a parsed fn item.
 fn generated_fn_param_tags(item: proc_macro2::TokenStream) -> (Vec<String>, Vec<(String, String)>) {
+    generated_fn_param_tags_with_call(item, None)
+}
+
+/// The same for a wrapper whose `.call` formal gets `call_param_doc` (#1613).
+fn generated_fn_param_tags_with_call(
+    item: proc_macro2::TokenStream,
+    call_param_doc: Option<&str>,
+) -> (Vec<String>, Vec<(String, String)>) {
     let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed =
         syn::parse2(item).expect("fixture fn parses");
     let mut tags = roxygen_tags_from_attrs(parsed.attrs());
-    let placeholders = push_fn_param_tags(&mut tags, parsed.inputs(), &parsed, "C_pkg_summary");
+    let placeholders = push_fn_param_tags(
+        &mut tags,
+        parsed.inputs(),
+        &parsed,
+        "C_pkg_summary",
+        call_param_doc,
+    );
     (tags, placeholders)
 }
 
@@ -1192,6 +1206,51 @@ fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
             "`{doc_tag}`: a match_arg doc placeholder needs its @param line"
         );
     }
+}
+
+/// A `call = caller` wrapper's `.call` formal gets its filler after the
+/// parameters' lines, under the same rules (#1613): none under `@describeIn`
+/// or inherited params, none when the author documented `.call`.
+#[test]
+fn fn_param_tags_fill_the_call_formal_last() {
+    let call_doc = crate::r_wrapper_builder::CallAttribution::Caller
+        .param_doc()
+        .expect("caller documents its formal");
+    let (tags, _) = generated_fn_param_tags_with_call(summary_fn(None), Some(call_doc));
+    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+    expected.extend(summary_filler_lines(&mode_placeholder));
+    expected.push(format!("{PARAM_FILLER_MARKER}@param .call {call_doc}"));
+    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
+
+    for doc_tag in [
+        "@describeIn summaries Weighted summary.",
+        "@inheritParams summaries",
+    ] {
+        let (tags, _) =
+            generated_fn_param_tags_with_call(summary_fn(Some(doc_tag)), Some(call_doc));
+        assert_eq!(
+            param_lines(&tags),
+            ["@param values Numbers to summarise."],
+            "`{doc_tag}`: got {tags:?}"
+        );
+    }
+
+    let (tags, _) = generated_fn_param_tags_with_call(
+        summary_fn(Some("@param .call Where the error points.")),
+        Some(call_doc),
+    );
+    let lines = param_lines(&tags);
+    assert!(
+        lines.contains(&"@param .call Where the error points."),
+        "got {tags:?}"
+    );
+    assert!(
+        !lines
+            .iter()
+            .any(|line| line.starts_with(PARAM_FILLER_MARKER) && line.contains(".call")),
+        "the author's `.call` line keeps its text: got {tags:?}"
+    );
 }
 
 /// A layered `choices` parameter's generated line names what else the

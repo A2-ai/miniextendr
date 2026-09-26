@@ -413,16 +413,59 @@ fn call_attribution_strings() {
     assert_eq!(CallAttribution::Wrapper.raise_default(), "sys.call()");
     assert_eq!(CallAttribution::None.raise_default(), "sys.call()");
     assert_eq!(CallAttribution::Caller.raise_default(), ".mx_call");
-    assert_eq!(CallAttribution::Wrapper.prelude("  "), "");
-    assert_eq!(CallAttribution::None.prelude("  "), "");
+    for call_formal in [false, true] {
+        assert_eq!(CallAttribution::Wrapper.prelude(call_formal), "");
+        assert_eq!(CallAttribution::None.prelude(call_formal), "");
+    }
     // One line since #1552: the frame arithmetic lives in the preamble helper.
+    // With the `.call` formal (#1613) the helper resolves what was passed
+    // there; an S3 method has no formal and keeps the zero-argument call.
     assert_eq!(
-        CallAttribution::Caller.prelude("  "),
+        CallAttribution::Caller.prelude(true),
+        ".mx_call <- .miniextendr_caller_call(.call)"
+    );
+    assert_eq!(
+        CallAttribution::Caller.prelude(false),
         ".mx_call <- .miniextendr_caller_call()"
     );
     assert_eq!(CallAttribution::Wrapper.r_check_call(), None);
     assert_eq!(CallAttribution::None.r_check_call(), None);
     assert_eq!(CallAttribution::Caller.r_check_call(), Some(".mx_call"));
+}
+
+#[test]
+fn call_attribution_formal_is_caller_only() {
+    assert_eq!(CallAttribution::Caller.formal(), Some(".call = NULL"));
+    assert_eq!(CallAttribution::Wrapper.formal(), None);
+    assert_eq!(CallAttribution::None.formal(), None);
+    let doc = CallAttribution::Caller
+        .param_doc()
+        .expect("caller documents .call");
+    assert!(doc.contains("parent.frame()"), "{doc}");
+    assert!(doc.contains("Pass it by name"), "{doc}");
+    assert_eq!(CallAttribution::Wrapper.param_doc(), None);
+    assert_eq!(CallAttribution::None.param_doc(), None);
+}
+
+/// The `.call` formal goes last (#1613): after `...`, so positional extras
+/// land in the dots and `.call` is name-only; alone on a wrapper without other
+/// formals.
+#[test]
+fn call_formal_is_appended_after_the_dots() {
+    let formal = CallAttribution::Caller.formal();
+    // `RArgumentBuilder::new` reads a trailing `&Dots` parameter as `...`.
+    let formals = |sig: &str| RArgumentBuilder::new(&parse_inputs(sig)).build_formals();
+    assert_eq!(
+        with_call_formal(&formals("x: i32"), formal),
+        "x, .call = NULL"
+    );
+    assert_eq!(
+        with_call_formal(&formals("x: i32, _dots: &Dots"), formal),
+        "x, ..., .call = NULL"
+    );
+    assert_eq!(with_call_formal(&formals(""), formal), ".call = NULL");
+    assert_eq!(with_call_formal("x, y = 1L", None), "x, y = 1L");
+    assert_eq!(with_call_formal("", None), "");
 }
 
 #[test]

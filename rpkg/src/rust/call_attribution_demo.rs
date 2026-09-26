@@ -5,6 +5,7 @@
 //! `extern "C-unwind"`, which has no generated R wrapper and so no call slot.
 //! The R-side error rendering is dramatically different.
 
+use miniextendr_api::dots::Dots;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
 use miniextendr_api::{Call, CallerCall, Missing};
@@ -162,6 +163,40 @@ pub fn call_attr_none_impl(x: i32) -> Result<i32, String> {
         return Err(format!("x must be positive, got {x}"));
     }
     Ok(x)
+}
+
+// endregion
+
+// region: a helper in between passes on the call to report (#1613)
+
+/// A `call = caller` entry point that renders a page (`internal`), so
+/// `R CMD check` compares its usage and arguments with the wrapper, whose
+/// formals end with `.call = NULL`.
+///
+/// @param x Must be positive.
+#[miniextendr(internal, call = caller)]
+pub fn call_attr_internal_impl(x: i32) -> Result<i32, String> {
+    if x <= 0 {
+        return Err(format!("x must be positive, got {x}"));
+    }
+    Ok(x)
+}
+
+/// A `call = caller` entry point taking `...`: the `.call` formal follows the
+/// dots (`function(x, ..., .call = NULL)`), so positional extras land in the
+/// dots and `.call` is matched by name only. Returns `x` plus the number of
+/// extras.
+///
+/// @param x Must be non-negative.
+/// @param ... Counted.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn call_attr_dots_impl(x: i32, dots: &Dots) -> Result<i32, String> {
+    if x < 0 {
+        return Err(format!("x must be non-negative, got {x}"));
+    }
+    let extras = i32::try_from(dots.len()).map_err(|e| e.to_string())?;
+    Ok(x + extras)
 }
 
 // endregion
