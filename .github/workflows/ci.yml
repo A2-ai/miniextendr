@@ -167,6 +167,8 @@ jobs:
               - 'rpkg/**'
               - 'minirextendr/**'
               - 'tests/cross-package/**'
+              # The webR smoke's Rosetta rerun helper is tested in Sync Checks.
+              - 'tests/webr-smoke*.sh'
               - 'miniextendr-api/**'
               - 'miniextendr-macros/**'
               - 'miniextendr-engine/**'
@@ -301,6 +303,9 @@ jobs:
 
       - name: Merge driver for regenerated files
         run: just test-merge-drivers
+
+      - name: webR smoke Rosetta rerun helper
+        run: just test-webr-smoke-retry
 
       - name: Check docs index coverage
         shell: bash

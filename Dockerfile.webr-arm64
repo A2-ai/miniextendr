@@ -45,21 +45,27 @@
 #   EMSDK_ARM64      — arm64 emcc base; pinned to 4.0.8-arm64 by digest.
 #   JUST_VERSION     — `just` release to install. Apt's is too old.
 
+# Both base-image ARGs are global (declared before the first FROM): an ARG
+# declared inside a stage is not in scope for a later stage's FROM line.
+#
+# WEBR_AMD64_DONOR is pinned to the SAME digest as Dockerfile.webr's WEBR_BASE
+# so the copied wasm sysroot (incl. the prebuilt wasm R version) stays aligned.
+# Bump both together.
+ARG WEBR_AMD64_DONOR=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
+# EMSDK_ARM64: emscripten/emsdk:4.0.8-arm64, linux/arm64/v8, Emscripten 4.0.8
+# (matches the donor's wasm R ABI; see the Q1 note above).
+ARG EMSDK_ARM64=emscripten/emsdk:4.0.8-arm64@sha256:9d471ceb4bd9e19f85e6a0924e851971d26bddd19e0bf6aa956b1be865bda6eb
+
 # ── Stage 0: amd64 sysroot donor (filesystem copy only — never executed) ─────
-# Pinned to the SAME digest as Dockerfile.webr's WEBR_BASE so the copied wasm
-# sysroot (incl. the prebuilt wasm R version) stays aligned. Bump both together.
 # `--platform=linux/amd64` forces the amd64 manifest even on an arm64 host; we
 # only `COPY --from=` out of it, so nothing amd64 ever runs under qemu.
-ARG WEBR_AMD64_DONOR=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
 FROM --platform=linux/amd64 ${WEBR_AMD64_DONOR} AS webr-amd64
 
 # ── Stage 1: arm64-native toolchain ──────────────────────────────────────────
-# emscripten/emsdk:4.0.8-arm64 — linux/arm64/v8, Emscripten 4.0.8 (matches the
-# donor's wasm R ABI; see Q1 note above). Base OS is Ubuntu Noble; emcc is on
-# PATH at /emsdk/upstream/emscripten, EMSDK=/emsdk, and Node 22.16.0 ships
-# bundled at /emsdk/node/22.16.0_64bit/bin — so the tier-3 Node smoke needs no
-# separate node install.
-ARG EMSDK_ARM64=emscripten/emsdk:4.0.8-arm64@sha256:9d471ceb4bd9e19f85e6a0924e851971d26bddd19e0bf6aa956b1be865bda6eb
+# The emsdk base (EMSDK_ARM64, above) is Ubuntu Noble; emcc is on PATH at
+# /emsdk/upstream/emscripten, EMSDK=/emsdk, and Node 22.16.0 ships bundled at
+# /emsdk/node/22.16.0_64bit/bin — so the tier-3 Node smoke needs no separate
+# node install.
 FROM ${EMSDK_ARM64}
 
 ARG JUST_VERSION=1.36.0
@@ -157,6 +163,9 @@ COPY --from=webr-amd64 /opt/webr/dist     /opt/webr/dist
 # /opt/webr/src; the tier-3 Node bundle is rebuilt from here. Copied separately
 # so the intent is explicit.
 COPY --from=webr-amd64 /opt/webr/src      /opt/webr/src
+# src/Makefile reads ../R/R-VERSION into webR/config.ts (webR.versionR) when
+# the Node bundle is rebuilt; without it make warns and the version is empty.
+COPY --from=webr-amd64 /opt/webr/R/R-VERSION /opt/webr/R/R-VERSION
 
 ENV WEBR_ROOT="/opt/webr"
 
