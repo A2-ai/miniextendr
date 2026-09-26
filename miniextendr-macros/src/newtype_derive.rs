@@ -109,17 +109,24 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let wrap_val = nt.wrap(&quote! { val });
     let wrap_inner = nt.wrap(&quote! { inner });
+    let field = nt.unwrap(&quote! { self });
     let from_where = where_with(
         base_where,
         quote! { #inner: ::miniextendr_api::TryFromSexp },
     );
 
+    // `__mx_has_na` forwards too, so `no_na` on a newtype of a reading marker
+    // (`struct Dose(AsNumeric)`) refuses what the marker reads as `NA`.
     Ok(quote! {
         #[automatically_derived]
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #from_where {
             type Error = <#inner as ::miniextendr_api::TryFromSexp>::Error;
             const NATIVE_BORROW: ::core::option::Option<::miniextendr_api::from_r::NativeBorrow> =
                 <#inner as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW;
+            #[inline]
+            fn __mx_has_na(&self) -> bool {
+                <#inner as ::miniextendr_api::TryFromSexp>::__mx_has_na(&#field)
+            }
             #[inline]
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
                 <#inner as ::miniextendr_api::TryFromSexp>::try_from_sexp(sexp).map(|val| #wrap_val)
@@ -201,4 +208,32 @@ pub fn derive_into_r(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// `#[derive(TryFromSexp)]` forwards the hidden `no_na` probe to the inner
+    /// type, for tuple and named newtypes alike.
+    #[test]
+    fn try_from_sexp_derive_forwards_no_na() {
+        for (input, field) in [
+            (
+                syn::parse_quote! { struct Dose(AsNumeric); },
+                "__mx_has_na (& self . 0)",
+            ),
+            (
+                syn::parse_quote! { struct Dose { value: AsNumeric } },
+                "__mx_has_na (& self . value)",
+            ),
+        ] {
+            let out = super::derive_try_from_sexp(input).unwrap().to_string();
+            assert!(out.contains("fn __mx_has_na (& self) -> bool"), "{out}");
+            assert!(
+                out.contains(&format!(
+                    "< AsNumeric as :: miniextendr_api :: TryFromSexp > :: {field}"
+                )),
+                "{out}"
+            );
+        }
+    }
 }

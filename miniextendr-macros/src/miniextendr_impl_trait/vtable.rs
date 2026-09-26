@@ -1239,9 +1239,14 @@ pub(super) fn generate_trait_method_c_wrapper(
     // A `choices(...)` string under an `Either<.., R>` layer decodes with the
     // choice-or-other split instead of `TryFromSexp` (the other layers of a
     // `choices` string convert through `TryFromSexp` directly).
+    // `no_na(..)` parameters also have their converted value checked, for what
+    // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.per_param {
         if let Some(leaf) = attrs.layered_leaf() {
             builder = builder.layered_choice(rust_name.clone(), leaf);
+        }
+        if attrs.checks.no_na {
+            builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
         }
     }
 

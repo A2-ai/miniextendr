@@ -5,6 +5,8 @@
 \alias{ParamCheckHolder$new}
 \alias{ParamCheckHolder$add}
 \alias{ParamCheckHolder$add_checked}
+\alias{ParamCheckHolder$add_dose}
+\alias{ParamCheckHolder$add_doses}
 \alias{$.ParamCheckHolder}
 \alias{[[.ParamCheckHolder}
 \title{ParamCheckHolder Class}
@@ -35,5 +37,17 @@ Add \code{y} if \code{x} is an \code{mx_obj}.
 \describe{
 \item{\code{x}}{An object of class \code{mx_obj} or \code{mx_other}.}
 \item{\code{y}}{A non-NA double.}
+}
+
+Add a dose read like \code{as.numeric()}; \code{" NA "} is refused as \code{NA} is.
+
+\describe{
+\item{\code{dose}}{A number, string or factor label that is not missing.}
+}
+
+Add several doses, with a method-level message for a missing one.
+
+\describe{
+\item{\code{doses}}{Numbers, strings or factor labels, none of them missing.}
 }
 }

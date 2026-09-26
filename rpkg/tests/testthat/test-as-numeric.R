@@ -120,6 +120,13 @@ test_that("AsNumeric reads one value of any accepted type", {
   expect_identical(as_num(TRUE), 1)
 })
 
+test_that("no_na refuses the text \"NA\" the marker reads as missing", {
+  # anyNA("NA") is FALSE, so the refusal comes from the check after the
+  # conversion; the full table is in test-param-checks.R.
+  expect_identical(as_num("NA"), NA_real_)
+  expect_error(miniextendr:::param_no_na_number("NA"), "'x' must not be NA", fixed = TRUE)
+})
+
 test_that("AsNumeric requires length 1 and names a bad value", {
   expect_error(as_num(c(1, 2)), "'x' must have length 1", fixed = TRUE)
   expect_error(as_num(character(0)), "'x' must have length 1", fixed = TRUE)

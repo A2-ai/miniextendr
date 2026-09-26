@@ -165,7 +165,8 @@ fn to_cstring_lossy(s: &str, fallback: &str) -> std::ffi::CString {
 /// None` and at most one class. Generated code uses it for the unclassed
 /// kinds (`Option::None`); classed `Result::Err` values go through
 /// [`result_err_condition_value`], argument-conversion failures through
-/// [`conversion_condition_value`], and the user-facing `error!()` /
+/// [`conversion_condition_value`], a post-conversion `no_na` refusal through
+/// [`arg_check_condition_value`], and the user-facing `error!()` /
 /// `warning!()` / `message!()` / `condition!()` macros (routed through
 /// [`crate::unwind_protect`]) attach their own `data`.
 ///
@@ -246,6 +247,41 @@ pub unsafe fn conversion_condition_value(
 ) -> SEXP {
     let parts =
         crate::condition::conversion_err_parts(prefix, param, rust_type, crate_class, parts);
+    // SAFETY: forwarded from the caller.
+    unsafe {
+        make_rust_condition_value_with_data(
+            &parts.message,
+            kind::CONVERSION,
+            &parts.class,
+            call,
+            parts.data,
+        )
+    }
+}
+
+/// Build the tagged value for an argument check that failed in Rust after
+/// the conversion: `#[miniextendr(no_na)]` on a value its type reads as
+/// missing where R's `anyNA()` saw none (the text `"NA"` or a blank string
+/// for `AsNumeric*`, a factor `NA` level for `AsCharacter*`, ...).
+///
+/// The condition is the one `no_na`'s R guard raises
+/// (`.miniextendr_arg_error`): `kind = "conversion"`, `message` as given,
+/// the crate's `conversion_error_class` (`crate_class`) before `rust_error`,
+/// and `e$param`. See [`crate::condition::arg_check_parts`].
+///
+/// # Safety
+///
+/// Same contract as [`make_rust_condition_value_with_data`]: R main thread,
+/// valid allocation context. The generated check runs right after the
+/// argument's conversion, where the conversion `Err` arms run, which
+/// satisfies it.
+pub unsafe fn arg_check_condition_value(
+    message: &str,
+    param: &str,
+    crate_class: &[&str],
+    call: Option<SEXP>,
+) -> SEXP {
+    let parts = crate::condition::arg_check_parts(message, param, crate_class);
     // SAFETY: forwarded from the caller.
     unsafe {
         make_rust_condition_value_with_data(

@@ -74,7 +74,12 @@ pub struct AsCharacter(pub Option<String>);
 /// Unlike [`AsNumericVec`](crate::convert::AsNumericVec), which reads the
 /// token `"NA"` and blank strings as missing, only `NA` itself is `None`
 /// here: `as.character()` keeps `"NA"` and `""` as strings. `NaN` becomes
-/// `"NaN"` (`no_na` refuses it in R, as `anyNA()` counts it).
+/// `"NaN"` (`no_na` refuses it in R, as `anyNA()` counts it). `no_na` also
+/// checks the converted value after the call, so it refuses an `NA` only the
+/// conversion produces: a factor `NA` level (`factor(x, exclude = NULL)`,
+/// whose code is not `NA`) or a class's `as.character()` method returning
+/// `NA`. A type alias or a `#[derive(TryFromSexp)]` newtype of the marker is
+/// checked the same way.
 ///
 /// `Option<AsCharacterVec>` (and `Option<AsCharacter>`) also accept `NULL` as
 /// `None`. The markers are input-only: there is no `IntoR`. Return the inner
@@ -102,6 +107,10 @@ pub struct AsCharacterVec(pub Vec<Option<String>>);
 
 impl TryFromSexp for AsCharacterVec {
     type Error = SexpError;
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.0.iter().any(Option::is_none)
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         read_character(sexp).map(AsCharacterVec)
@@ -110,6 +119,10 @@ impl TryFromSexp for AsCharacterVec {
 
 impl TryFromSexp for AsCharacter {
     type Error = SexpError;
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.0.is_none()
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // The type is checked before the length, so a length-1 list reports
@@ -211,3 +224,28 @@ fn dispatch_as_character(sexp: SEXP) -> Result<OwnedProtect, SexpError> {
     }
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `no_na` refuses what the markers read as `None`; the strings `"NA"`,
+    /// `""` and `"NaN"` are values here.
+    #[test]
+    fn no_na_refuses_none_only() {
+        assert!(!AsCharacter(Some("NA".to_string())).__mx_has_na());
+        assert!(!AsCharacter(Some(String::new())).__mx_has_na());
+        assert!(AsCharacter(None).__mx_has_na());
+
+        let values =
+            |v: &[Option<&str>]| AsCharacterVec(v.iter().map(|s| s.map(str::to_string)).collect());
+        assert!(!values(&[]).__mx_has_na());
+        assert!(!values(&[Some("a"), Some("NaN"), Some("")]).__mx_has_na());
+        assert!(values(&[Some("a"), None]).__mx_has_na());
+
+        assert!(!None::<AsCharacter>.__mx_has_na());
+        assert!(Some(AsCharacter(None)).__mx_has_na());
+        assert!(!crate::Missing::<AsCharacterVec>::Absent.__mx_has_na());
+        assert!(crate::Missing::Present(values(&[None])).__mx_has_na());
+    }
+}

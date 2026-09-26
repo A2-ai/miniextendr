@@ -231,3 +231,34 @@ fn alias_guard_covers_native_scalar_and_boxed_borrows() {
         );
     }
 }
+
+/// A `no_na` parameter's converted value is checked in both wrappers; in the
+/// worker wrapper the check runs on the main thread, before `run_on_worker`.
+#[test]
+fn no_na_check_renders_in_main_thread_and_worker_wrappers() {
+    let sig: syn::ItemFn = syn::parse_quote!(
+        fn dose(x: AsNumeric) -> f64 {}
+    );
+    let ctx = |strategy: ThreadStrategy| {
+        CWrapperContext::builder(sig.sig.ident.clone(), syn::parse_quote!(C_dose))
+            .r_wrapper_const(syn::parse_quote!(R_WRAPPER_dose))
+            .call_expr(quote::quote!(dose(x)))
+            .inputs(sig.sig.inputs.clone())
+            .output(sig.sig.output.clone())
+            .thread_strategy(strategy)
+            .no_na("x".to_string(), None)
+            .build()
+            .generate()
+            .to_string()
+    };
+    let check = ":: miniextendr_api :: TryFromSexp :: __mx_has_na (& x)";
+
+    let main = ctx(ThreadStrategy::MainThread);
+    assert!(main.contains(check), "{main}");
+    assert!(main.contains("\"'x' must not be NA\""), "{main}");
+
+    let worker = ctx(ThreadStrategy::WorkerThread);
+    let at = worker.find(check).expect("the check in the worker wrapper");
+    let dispatch = worker.find("run_on_worker").expect("the worker dispatch");
+    assert!(at < dispatch, "{worker}");
+}

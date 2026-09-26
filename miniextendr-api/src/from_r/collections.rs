@@ -28,7 +28,13 @@ macro_rules! impl_map_try_from_sexp {
         {
             const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = crate::from_r::NativeBorrow::in_list(V::NATIVE_BORROW);
 
-    type Error = SexpError;
+            type Error = SexpError;
+            // Each value is a top-level element of the named list, read by its
+            // own type: `no_na` stays top-level on a map.
+            #[inline]
+            fn __mx_has_na(&self) -> bool {
+                self.values().any(V::__mx_has_na)
+            }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 named_list_to_map(sexp, $create)

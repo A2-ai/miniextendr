@@ -1135,12 +1135,14 @@ pub fn miniextendr(
 
     let source_loc_doc = source_location_doc(rust_ident.span());
 
-    // Build individual per-parameter coerce, match_arg_several_ok and layered
-    // choice lists (a choice type wrapped in `Missing` / `Option`, #1473 / #1551)
+    // Build individual per-parameter coerce, match_arg_several_ok, layered
+    // choice (a choice type wrapped in `Missing` / `Option`, #1473 / #1551) and
+    // `no_na` lists (the value is checked after the conversion too)
     let mut coerce_params_list: Vec<String> = Vec::new();
     let mut match_arg_several_ok_params_list: Vec<String> = Vec::new();
     let mut layered_choice_params_list: Vec<(String, rust_conversion_builder::ChoiceLeaf)> =
         Vec::new();
+    let mut no_na_params_list: Vec<(String, Option<String>)> = Vec::new();
     for input in inputs.iter() {
         if let syn::FnArg::Typed(pt) = input
             && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
@@ -1148,6 +1150,11 @@ pub fn miniextendr(
             let param_name = crate::naming::ident_name(&pat_ident.ident);
             if parsed.has_coerce_attr(&param_name) {
                 coerce_params_list.push(param_name.clone());
+            }
+            if let Some(attrs) = parsed.param_attrs(&param_name)
+                && attrs.checks.no_na
+            {
+                no_na_params_list.push((param_name.clone(), attrs.checks.no_na_message.clone()));
             }
             if let Some(leaf) = parsed
                 .param_attrs(&param_name)
@@ -1253,6 +1260,9 @@ pub fn miniextendr(
     }
     for (param, leaf) in layered_choice_params_list {
         c_wrapper_builder = c_wrapper_builder.layered_choice(param, leaf);
+    }
+    for (param, message) in no_na_params_list {
+        c_wrapper_builder = c_wrapper_builder.no_na(param, message);
     }
     if check_interrupt {
         c_wrapper_builder = c_wrapper_builder.check_interrupt();
@@ -1628,7 +1638,9 @@ pub fn miniextendr(
     // checks. TryFromSexp still raises a typed Rust error on mismatched
     // input. The savings were measured against the former `stopifnot()` block
     // (~1230 ns / 1-arg or ~3900 ns / 5-arg); the guards cost about half. The
-    // per-parameter `inherits` / `no_na` checks stay: nothing in Rust repeats them.
+    // per-parameter `inherits` / `no_na` checks stay: the Rust conversion does
+    // not repeat them. (The C wrapper's post-conversion `no_na` check covers only
+    // what a type reads as `NA` beyond `anyNA()`, such as `"NA"` for `AsNumeric`.)
     let precondition_prelude = {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`

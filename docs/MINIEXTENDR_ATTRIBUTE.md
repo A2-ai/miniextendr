@@ -378,7 +378,7 @@ Written on a single parameter of a standalone function:
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
-| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too |
+| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too |
 | `no_na(message = "...")` | The same check, failing with your message |
 
 ```rust
@@ -404,13 +404,32 @@ with the message `'x' must inherit from 'pkg_obj'`
 (`'mode' should be one of "fast", "slow"`). An `Option<T>` parameter passes
 `NULL` and a `Missing<T>`
 parameter an omitted argument. Unlike the type checks, they stay under
-`no_preconditions` / `fast`: nothing in the Rust conversion repeats them. A
+`no_preconditions` / `fast`: the Rust conversion does not repeat them. A
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
 NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
 The `no_na` message says `'x' must not contain NA` for an argument that holds
 several values (`Vec<T>`, slices, arrays, maps and lists, and the vector
 markers such as `AsNumericVec` or `AsFromStrVec<T>`) and `'x' must not be NA`
 for a scalar.
+
+The reading markers read some inputs as missing that `anyNA()` passes, so on
+them `no_na` also checks the converted value, in the C wrapper right after the
+conversion. `AsNumeric` / `AsNumericVec` refuse the text `"NA"` and blank
+strings (and factor labels among those), and `NaN` read from the text `"NaN"`,
+as the R guard refuses a numeric `NaN`. `AsCharacter` / `AsCharacterVec`
+refuse a factor `NA` level (`factor(x, exclude = NULL)`) and an `NA` returned
+by a class's `as.character()` method; `"NA"` and `""` stay values there. The
+check follows the type, not its name, so a type alias (`type Dose =
+AsNumeric`) or a `#[derive(TryFromSexp)]` newtype of a marker is checked too.
+The condition is the R guard's (same classes, `kind`, `e$param`, message,
+your `message` when given, no `e$rust_type`); only its call differs: the
+matched call, as for a conversion failure (the caller's call under
+`call = caller`). It stays under `no_preconditions` / `fast`. On
+`Option<AsNumeric>`, `NULL` is still "not given" and passes as `None`.
+
+On a list or map, `no_na` checks the top-level elements only: R's `anyNA()`
+on the list, and for a map of reading markers (`HashMap<String, AsNumeric>`)
+each value as the marker reads it. `list(a = c(1, NA))` passes.
 
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a
@@ -727,7 +746,7 @@ impl Person {
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
-| `no_na(p, q)` | R check `!anyNA(p)` |
+| `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,

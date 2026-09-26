@@ -19,7 +19,9 @@
 //!
 //! [`FromRNewtype`] / [`IntoRNewtype`] / [`IntoRVecElement`] are **plumbing**:
 //! they are emitted by the derives, not implemented by hand. Implementing them
-//! manually is supported but unusual.
+//! manually is supported but unusual; a hand-written [`FromRNewtype`] also
+//! needs a `TryFromSexp` impl on the newtype for `Option<T>` to convert (the
+//! derive emits both).
 //!
 //! # The asymmetries
 //!
@@ -144,13 +146,21 @@ where
     }
 }
 
-impl<T: FromRNewtype> TryFromSexp for Option<T>
+// `T: TryFromSexp` lets `__mx_has_na` ask the newtype itself (`FromRNewtype`
+// has no inner accessor, and an override cannot add a bound, E0276). The
+// derive always emits both impls.
+impl<T: FromRNewtype + TryFromSexp> TryFromSexp for Option<T>
 where
     Option<T::Inner>: TryFromSexp,
 {
     type Error = <Option<T::Inner> as TryFromSexp>::Error;
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
         <Option<T::Inner> as TryFromSexp>::NATIVE_BORROW;
+    // `NULL` (`None`) is "not given" and passes `no_na`.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.as_ref().is_some_and(T::__mx_has_na)
+    }
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
