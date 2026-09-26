@@ -144,17 +144,15 @@ impl RustConversionBuilder {
             }
             _ => {
                 if self.strict
-                    && crate::return_type_analysis::strict_input_conversion_for_type(
-                        ty,
-                        sexp_ident,
-                        &param_name,
-                    )
-                    .is_some()
+                    && crate::return_type_analysis::strict_input_conversion_for_type(ty, sexp_ident)
+                        .is_some()
                 {
                     return None;
                 }
-                if self.match_arg_optional_params.contains(&param_name)
-                    && crate::option_inner_type(ty).is_some()
+                if self
+                    .layered_choice_params
+                    .iter()
+                    .any(|(name, _)| *name == param_name)
                 {
                     return None;
                 }

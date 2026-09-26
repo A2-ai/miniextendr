@@ -432,7 +432,8 @@ fn native_metadata_matches_selected_conversion_paths() {
         );
     }
     // A layered choice parameter (#1551) decodes through `match_arg_*` helpers.
-    let builder = RustConversionBuilder::new().with_layered_choice("x".into(), ChoiceLeaf::MatchArg);
+    let builder =
+        RustConversionBuilder::new().with_layered_choice("x".into(), ChoiceLeaf::MatchArg);
     let syn::FnArg::Typed(param) = parse_param("x: Option<Mode>") else {
         unreachable!()
     };
