@@ -1707,11 +1707,8 @@ impl AltrepDataptr<u8> for UInt8Array {
 // On readRDS, the native vector is loaded directly (no Rust/Arrow needed).
 
 // Arrow serialized_state impls allocate and copy directly instead of calling
-// self.clone().into_sexp(). The IntoR path for Float64Array/Int32Array/UInt8Array
-// includes try_recover_r_sexp which speculatively probes whether the Arrow buffer
-// is R-backed. In serialized_state, the data is always Rust-owned (no R SEXP to
-// recover), so the speculative probe would read garbage memory for no benefit.
-// Bypassing it avoids false positives that can cause segfaults on some platforms.
+// self.clone().into_sexp(). The state only needs a plain native vector, so the
+// clone and the ownership-record lookup in `IntoR` (see `r_buffers`) buy nothing.
 
 impl crate::altrep_data::AltrepSerialize for Float64Array {
     fn serialized_state(&self) -> SEXP {

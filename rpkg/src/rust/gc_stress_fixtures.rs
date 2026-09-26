@@ -2592,14 +2592,14 @@ pub fn gc_stress_datafusion_global_aggregate() {
 
 /// Materialize a `RecordBatch` whose columns are *sliced views* of R-backed
 /// Arrow buffers, exercising `RecordBatch::into_sexp` → `arrow_array_to_sexp`
-/// → the per-array zero-copy SEXP-recovery path under GC pressure.
+/// → the per-array ownership-record lookup under GC pressure.
 ///
 /// Regression fixture for #867. The subquery fixture (now folded into
 /// `test_df_sql_query`) segfaulted on the strict
 /// glibc Linux runner because DataFusion's contiguous-run filter optimization
 /// returns a *slice* of the R-backed input column: `values().as_ptr()` then
-/// points into the middle of the R vector, and the speculative
-/// `try_recover_r_sexp` probe (which subtracts the SEXPREC header offset)
+/// points into the middle of the R vector, and the old speculative
+/// `try_recover_r_sexp` probe (which subtracted the SEXPREC header offset)
 /// read off into unrelated memory and false-positived as a "recovered SEXP".
 /// The crash was heap-layout-dependent — deterministic on the strict runner,
 /// silent elsewhere — so a no-arg fixture is the only portable guard.
