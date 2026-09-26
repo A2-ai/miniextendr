@@ -1800,7 +1800,7 @@ docker-webr-smoke *args: docker-webr-build
 # validation checklist in docs/WEBR.md.
 #
 # `Dockerfile.webr-arm64` builds natively on an arm64 host (Apple Silicon) from
-# prebuilt parts — emscripten/emsdk:4.0.8-arm64 (matches the wasm R's emcc ABI)
+# prebuilt parts — emscripten/emsdk:5.0.7-arm64 (matches the wasm R's emcc ABI)
 # + native arm64 Rust/R, with the portable wasm sysroot COPY'd out of the amd64
 # mirror. No qemu, no source emcc/flang/R→wasm build. Contrast docker-webr-*
 # above, which runs the amd64 image under Rosetta.

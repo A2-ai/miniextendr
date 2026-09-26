@@ -55,11 +55,10 @@
 #                     arm64 hardware; validation checklist tracked in #1254).
 #                     Selects Dockerfile.webr-arm64 + the
 #                     arm64 image, and orchestrates both R passes through the
-#                     native arm64 R on PATH (the donor's amd64 host-R binaries
-#                     under /opt/webr/host + /opt/R can't execute on arm64; the
-#                     wasm sysroot they sit beside is portable and is what emcc
-#                     actually links against). Unset/default = the amd64 path
-#                     (Rosetta under Docker Desktop), unchanged.
+#                     native arm64 R on PATH (the donor's amd64 host R trees
+#                     are not copied into the arm64 image, only the portable
+#                     wasm sysroot emcc links against). Unset/default = the
+#                     amd64 path (Rosetta under Docker Desktop).
 #   WEBR_IMAGE=<tag>  Image to run, and to build from the Dockerfile when the
 #                     tag is missing locally or --rebuild-image is given.
 #                     Default: miniextendr-webr-dev:latest, or
@@ -91,8 +90,8 @@ SMOKE_TMP="/tmp/webr-smoke"
 if [[ "$WEBR_ARM64" == "1" ]]; then
     IMAGE="${WEBR_IMAGE:-miniextendr-webr-dev-arm64:latest}"
     DOCKERFILE="${MX_ROOT}/Dockerfile.webr-arm64"
-    # On arm64 the donor's amd64 host-R binaries (/opt/webr/host/R-4.6.0,
-    # /opt/R/current) cannot execute — use the native rig-installed arm64 R on
+    # The arm64 image carries no amd64 host R (/opt/webr/host/R-4.6.0 and the
+    # donor's /opt/R are not copied) — use the native rig-installed arm64 R on
     # PATH for BOTH passes. webr-vars.mk still drives CC=emcc for the wasm pass,
     # so which R orchestrates the install doesn't change the compiler.
     R_HOST_EXE="R"
