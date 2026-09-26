@@ -636,6 +636,21 @@ pub(crate) fn option_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     first_type_argument(seg)
 }
 
+/// Return `T` for an `ExternalPtr<T>` class handle, `ty` itself otherwise.
+///
+/// `IntoR for ExternalPtr<T>` produces the same bare `EXTPTRSXP` as a bare
+/// `T`, so both return-wrapping paths (inferred and explicit `wrap` /
+/// `WrapAs*`) name the class through the handle (#1375).
+pub(crate) fn peel_external_ptr(ty: &syn::Type) -> &syn::Type {
+    let syn::Type::Path(tp) = ty else {
+        return ty;
+    };
+    match tp.path.segments.last() {
+        Some(seg) if seg.ident == "ExternalPtr" => first_type_argument(seg).unwrap_or(ty),
+        _ => ty,
+    }
+}
+
 // region: choice-parameter layers (`match_arg` / `choices`)
 
 /// The wrappers around the value of a `match_arg` / `choices` parameter,

@@ -176,7 +176,9 @@ pub(crate) fn resolve(
         }
         None => (attribute.ok_or_else(|| syn::Error::new_spanned(ty, "place WrapAs* directly around the class payload, inside Option, Result, or Vec"))?, leaf.clone()),
     };
-    let leaf = &payload;
+    // An `ExternalPtr<Class>` payload names `Class`; the Rust return type keeps
+    // the handle, which converts to the same `EXTPTRSXP` (#1375).
+    let leaf = crate::type_inspect::peel_external_ptr(&payload);
     let Type::Path(path) = leaf else {
         return Err(syn::Error::new_spanned(
             leaf,
@@ -367,6 +369,41 @@ mod tests {
                 .contains("different class systems")
         );
         assert!(resolve(&output, Some(ClassSystem::R6)).is_ok());
+    }
+
+    /// An `ExternalPtr<Class>` payload wraps as `Class` in both spellings and
+    /// keeps the handle as the Rust return type, like inferred wrapping (#1375).
+    #[test]
+    fn external_ptr_payload_names_its_class() {
+        for (output, attribute, peeled) in [
+            (
+                "-> WrapAsR6<ExternalPtr<Board>>",
+                None,
+                "-> ExternalPtr<Board>",
+            ),
+            (
+                "-> ExternalPtr<Board>",
+                Some(ClassSystem::R6),
+                "-> ExternalPtr<Board>",
+            ),
+            (
+                "-> Option<Vec<WrapAsR6<ExternalPtr<Board>>>>",
+                None,
+                "-> Option<Vec<ExternalPtr<Board>>>",
+            ),
+        ] {
+            let (plan, output) = resolve(&syn::parse_str(output).unwrap(), attribute).unwrap();
+            let expected: ReturnType = syn::parse_str(peeled).unwrap();
+            assert_eq!(
+                output.to_token_stream().to_string(),
+                expected.to_token_stream().to_string()
+            );
+            assert!(
+                plan.unwrap()
+                    .r_expression(".val", None)
+                    .contains("Board$new(.ptr = ")
+            );
+        }
     }
 
     #[test]

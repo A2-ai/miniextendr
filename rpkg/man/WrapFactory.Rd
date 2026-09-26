@@ -5,6 +5,8 @@
 \alias{WrapFactory$new}
 \alias{WrapFactory$build}
 \alias{WrapFactory$build_attr}
+\alias{WrapFactory$build_handle}
+\alias{WrapFactory$build_handle_attr}
 \alias{WrapFactory$s7}
 \alias{WrapFactory$s7_attr}
 \alias{WrapFactory$s4}
@@ -43,6 +45,18 @@ Return a usable R6 board from an Env instance method.
 }
 
 The equivalent attribute spelling keeps the Rust return type unchanged.
+
+\describe{
+\item{\code{w,h}}{Board dimensions.}
+}
+
+A marker around an \code{ExternalPtr} handle wraps like the bare class (#1375).
+
+\describe{
+\item{\code{w,h}}{Board dimensions.}
+}
+
+The attribute spelling accepts the same handle return.
 
 \describe{
 \item{\code{w,h}}{Board dimensions.}
