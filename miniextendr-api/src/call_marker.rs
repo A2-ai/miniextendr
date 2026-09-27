@@ -37,8 +37,12 @@
 //! other parameters, and the C wrapper binds the marker from its hidden call
 //! slot. `Call` selects `wrapper` attribution, `CallerCall` selects `caller`
 //! (and, like the attribute, needs `noexport` or `internal`: an exported
-//! function's caller is arbitrary user code). A marker and a `call = ...`
-//! attribute that disagree are a compile error, as are two markers on one
+//! function's caller is arbitrary user code). A `caller` wrapper, however
+//! spelled, takes one extra R formal, `.call = NULL`: a hand-written helper
+//! between the public function and the entry point passes its caller's frame
+//! there (`call = parent.frame()`) or a call object, and the body receives the
+//! call that resolves to. A marker and a `call = ...` attribute that disagree
+//! are a compile error, as are two markers on one
 //! function, a marker on an `extern "C-unwind"` function (no generated call
 //! slot) and a marker on a class method (methods keep the wrapper's own call).
 //! A function taking a marker runs on R's main thread, like one taking `SEXP`.
@@ -60,7 +64,8 @@ use crate::sexp_ext::SexpExt;
 pub struct Call(SEXP);
 
 /// The call of the R function that called this wrapper, with that function's
-/// formals matched (`.miniextendr_caller_call()` in the generated wrapper).
+/// formals matched (`.miniextendr_caller_call(.call)` in the generated
+/// wrapper), or the call a helper passed as the wrapper's `.call` formal.
 /// Taking it selects `caller` attribution; the function must be `noexport` or
 /// `internal`. See the [module docs](self).
 #[repr(transparent)]

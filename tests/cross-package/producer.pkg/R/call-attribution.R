@@ -24,3 +24,14 @@ producer_ratio_caller <- function(num, den) {
 producer_peak_caller <- function(dv) {
   producer_peak_impl(dv)
 }
+
+# A helper between a public function and an entry point under the crate
+# default (#1613): it passes its caller's frame on as `.call`, so the error
+# names `producer_via_helper()`, not the helper.
+.producer_prepare <- function(value, call = parent.frame()) {
+  producer_attributed_probe_impl(value, .call = call)
+}
+
+producer_via_helper <- function(value) {
+  .producer_prepare(value)
+}

@@ -1018,15 +1018,22 @@ pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 /// 2. `match_arg`: a placeholder the cdylib resolves at write time (#210);
 /// 3. anything else: `(no documentation available)`.
 ///
+/// `call_param_doc` is the text for a `call = caller` wrapper's trailing
+/// `.call` formal ([`CallAttribution::param_doc`], #1613), appended after the
+/// parameters' lines unless the author documented `.call`.
+///
 /// Each line carries [`PARAM_FILLER_MARKER`], so the wrapper registry decides
 /// whether it is written. Nothing is generated when the block takes its
 /// arguments from elsewhere whatever page it sits on: `@describeIn` (the
 /// destination documents them) or inherited params ([`inherits_params`]).
+///
+/// [`CallAttribution::param_doc`]: crate::r_wrapper_builder::CallAttribution::param_doc
 pub(crate) fn push_fn_param_tags(
     tags: &mut Vec<String>,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     parsed: &crate::miniextendr_fn::MiniextendrFunctionParsed,
     c_ident: &str,
+    call_param_doc: Option<&str>,
 ) -> Vec<(String, String)> {
     let mut match_arg_doc_placeholders = Vec::new();
     if describe_in_topic(tags).is_some() || inherits_params(tags) {
@@ -1064,6 +1071,11 @@ pub(crate) fn push_fn_param_tags(
                 "{PARAM_FILLER_MARKER}@param {r_name} (no documentation available)"
             ));
         }
+    }
+    if let Some(doc) = call_param_doc
+        && !param_documented(tags, ".call")
+    {
+        tags.push(format!("{PARAM_FILLER_MARKER}@param .call {doc}"));
     }
     match_arg_doc_placeholders
 }

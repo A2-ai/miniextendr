@@ -56,7 +56,7 @@ fn internal_helper(x: i32) -> i32 {
 | `export` | Force `@export` on a non-`pub` function |
 | `r_name = "..."` | Rename the R wrapper (e.g. `r_name = "is.widget"`); does not affect NAMESPACE membership |
 | `postfix = "..."` | Append a suffix to the Rust name for the R wrapper (`postfix = "_impl"` on `fn f` gives `f_impl`); states the "hand-written `f()` delegates to generated `f_impl()`" convention once. Exclusive with `r_name` and `s3(...)`. A crate-wide default for `noexport` / `internal` functions lives in `Cargo.toml` (see [below](#crate-level-default-from-the-manifest)) |
-| `call = none \| wrapper \| caller` | Which call conditions are attributed to. `caller` names the wrapper's caller (the hand-written R function delegating to this internal entry point) instead of the wrapper's own call: Rust-side errors and the wrapper's own R-side checks (`stopifnot` preconditions, `match_arg` / `choices`) alike; requires `noexport` or `internal`. `wrapper` is the default (`match.call()`), `none` passes `.call = NULL`. A `Call` / `CallerCall` parameter spells `wrapper` / `caller` at the type level, and `Cargo.toml` can set a crate default (see [below](#call-caller-attribute-conditions-to-the-hand-written-caller)) |
+| `call = none \| wrapper \| caller` | Which call conditions are attributed to. `caller` names the wrapper's caller (the hand-written R function delegating to this internal entry point) instead of the wrapper's own call: Rust-side errors and the wrapper's own R-side checks (`stopifnot` preconditions, `match_arg` / `choices`) alike; requires `noexport` or `internal`. A `caller` wrapper ends its formals with `.call = NULL`, through which a hand-written helper in between passes on the frame or call to report. `wrapper` is the default (`match.call()`), `none` passes `.call = NULL`. A `Call` / `CallerCall` parameter spells `wrapper` / `caller` at the type level, and `Cargo.toml` can set a crate default (see [below](#call-caller-attribute-conditions-to-the-hand-written-caller)) |
 | `c_symbol = "..."` | Rename the C symbol used in `.Call()` and `R_CallMethodDef`. The value is used verbatim — no crate prefix is added, so **you** own its cross-package uniqueness on webR (see `docs/WEBR.md`) |
 
 ### When to use each option
@@ -269,11 +269,27 @@ own frame. See
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution) for
 how the frame is chosen, the top-level fallback and the shape of those checks.
 
+The generated wrapper is `summarise_impl <- function(x, .call = NULL)`. A
+helper between `summarise()` and the entry point passes its caller's frame
+there, so the error still names `summarise()`:
+
+```r
+.check_summary <- function(value, call = parent.frame()) {
+  summarise_impl(as.integer(value), .call = call)
+}
+summarise <- function(value) .check_summary(value)
+#> Error in summarise(value = -1) : x must be positive, got -1
+```
+
+Pass a frame, not a call object: `do.call()` evaluates a call in its argument
+list ([details](CALL_ATTRIBUTION.md#a-helper-in-between-call)).
+
 The same decision has two more spellings (#1566). A `CallerCall` parameter
 (`miniextendr_api::CallerCall`) selects caller attribution at the type level
 and hands the body the call the wrapper attributed to; it is not an R formal,
-so `summarise_impl <- function(x)` is unchanged. Its sibling `Call` spells the
-default, `call = wrapper`, and `call = none` spells `no_call_attribution`. A
+so the wrapper is `summarise_impl <- function(x, .call = NULL)` either way.
+Its sibling `Call` spells the default, `call = wrapper`, and `call = none`
+spells `no_call_attribution`. A
 package whose hand-written layer delegates to many internal entry points sets
 the default once, next to `noexport_postfix`:
 

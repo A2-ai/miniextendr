@@ -1340,7 +1340,8 @@ pub fn miniextendr(
     // (#1566). `none` emits `.call = NULL` instead of `match.call()` — saves
     // ~1200 ns/call; the R-side .miniextendr_raise_condition helper falls back
     // to sys.call() so the error UX is preserved (positional args instead of
-    // named).
+    // named). `caller` also gives the wrapper a trailing `.call = NULL` formal
+    // (#1613, S3 methods excluded; see `call_formal` below).
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
@@ -1391,6 +1392,14 @@ pub fn miniextendr(
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
+    // The trailing `.call = NULL` formal of a `caller` wrapper (#1613): a
+    // hand-written helper between the public function and the entry point
+    // passes its caller's frame there. S3 methods keep the zero-argument
+    // prelude: a formal the generic lacks breaks generic/method consistency.
+    // `.call` joins the formals string only, never `inputs`, so the
+    // precondition builder, the marker peels and the parameter fillers never
+    // see it as a Rust parameter.
+    let call_formal = call_attribution.formal().filter(|_| !is_s3_method);
     // Crate-level default for internal entry points (#1454):
     // `[package.metadata.miniextendr] noexport_postfix = "..."` applies to
     // every `noexport` / `internal` free function that names itself neither
@@ -1442,7 +1451,7 @@ pub fn miniextendr(
 
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
-    let formals_joined = r_formals;
+    let formals_joined = r_wrapper_builder::with_call_formal(&r_formals, call_formal);
     let mut roxygen_tags = if let Some(ref doc_text) = doc {
         // Custom doc override: each line becomes a separate roxygen tag entry
         doc_text.lines().map(|l| l.to_string()).collect()
@@ -1466,9 +1475,16 @@ pub fn miniextendr(
     // unless the block takes them from a `@describeIn` topic or
     // `@inheritParams` (#1590); the wrapper registry decides the rest per page
     // at write time. The match_arg placeholders feed the
-    // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver.
-    let match_arg_param_doc_placeholders =
-        crate::roxygen::push_fn_param_tags(&mut roxygen_tags, inputs, &parsed, &c_ident_str);
+    // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver. A `caller`
+    // wrapper's `.call` formal gets its line after the parameters' (#1613).
+    let call_param_doc = call_formal.and(call_attribution.param_doc());
+    let match_arg_param_doc_placeholders = crate::roxygen::push_fn_param_tags(
+        &mut roxygen_tags,
+        inputs,
+        &parsed,
+        &c_ident_str,
+        call_param_doc,
+    );
 
     // A standalone function's reference page is titled by its R wrapper name — never
     // the doc-comment prose. rustdoc summaries are markdown (intra-doc links, code
@@ -1643,7 +1659,7 @@ pub fn miniextendr(
     // — see `build_call_args_vec` — because a prelude binding of the missing
     // sentinel errors on lookup.)
     let on_exit_str = r_on_exit.as_ref().map(|oe| oe.to_r_code());
-    let attribution_prelude = call_attribution.prelude("  ");
+    let attribution_prelude = call_attribution.prelude(call_formal.is_some());
     let combined_prelude = {
         let mut parts = Vec::new();
         if !attribution_prelude.is_empty() {

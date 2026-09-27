@@ -339,6 +339,15 @@ pub enum CallAttribution {
     /// primitive as its frame function, and `match.call()` rejects a
     /// non-closure definition. For a `noexport` entry point behind a
     /// hand-written R function (`#[miniextendr(noexport, call = caller)]`).
+    ///
+    /// A standalone wrapper with this attribution also takes a trailing
+    /// `.call = NULL` formal ([`CallAttribution::formal`], #1613), which the
+    /// prelude hands to the helper: a hand-written helper sitting between the
+    /// public function and the entry point passes its own caller's frame
+    /// (`call = parent.frame()` in the helper's formals, `.call = call` in its
+    /// body), and the condition names the public function. `.call` also takes a
+    /// call object, used as is. S3 methods keep the zero-argument prelude: a
+    /// trailing formal would break generic/method consistency.
     Caller,
     /// `.call = NULL`: `no_call_attribution` / `fast`; the raise helper falls
     /// back to the wrapper's `sys.call()`.
@@ -424,12 +433,45 @@ impl CallAttribution {
     /// for [`CallAttribution::Caller`], which binds `.mx_call`. It is the
     /// first part of the wrapper prelude, ahead of the R-side checks
     /// (preconditions, `match.arg`), so that those checks can attribute their
-    /// failures to the caller too (#1548). `indent` is unused today (a single
-    /// line) and kept for the multi-line case.
-    pub fn prelude(self, _indent: &str) -> String {
+    /// failures to the caller too (#1548). `call_formal` says whether the
+    /// wrapper has the `.call` formal ([`CallAttribution::formal`]); the
+    /// helper then resolves whatever the caller passed there (#1613).
+    pub fn prelude(self, call_formal: bool) -> String {
         match self {
+            CallAttribution::Caller if call_formal => {
+                ".mx_call <- .miniextendr_caller_call(.call)".to_string()
+            }
             CallAttribution::Caller => ".mx_call <- .miniextendr_caller_call()".to_string(),
             CallAttribution::Wrapper | CallAttribution::None => String::new(),
+        }
+    }
+
+    /// The trailing formal a standalone wrapper with this attribution takes
+    /// (#1613): `.call = NULL` for [`CallAttribution::Caller`], so a
+    /// hand-written helper between the public function and the entry point
+    /// can pass on the call to report. `NULL` keeps the helper's own
+    /// resolution; an environment names the closure owning that frame
+    /// (`parent.frame()` from a helper); a call object is used as is. Rust
+    /// identifiers cannot start with `.`, so the name never collides with a
+    /// parameter. The caller leaves S3 methods out.
+    pub fn formal(self) -> Option<&'static str> {
+        match self {
+            CallAttribution::Caller => Some(".call = NULL"),
+            CallAttribution::Wrapper | CallAttribution::None => Option::None,
+        }
+    }
+
+    /// The generated `@param` text for the [`CallAttribution::formal`], for a
+    /// wrapper that renders a page (`internal`); the wrapper registry drops it
+    /// with the other fillers on a `@noRd` block.
+    pub fn param_doc(self) -> Option<&'static str> {
+        match self {
+            CallAttribution::Caller => Some(
+                "The call conditions from this function report: NULL (the default) for \
+                 the calling function's call, a frame such as parent.frame() for the call \
+                 of the function owning that frame, or a call object. Pass it by name.",
+            ),
+            CallAttribution::Wrapper | CallAttribution::None => Option::None,
         }
     }
 
@@ -497,6 +539,19 @@ impl CallAttribution {
         } else {
             format!("if ({}) {statement}", guards.join(" && "))
         }
+    }
+}
+
+/// Append a standalone wrapper's [`CallAttribution::formal`] to its joined
+/// `formals` (#1613). The formal goes last, after `...` when the wrapper has
+/// dots (a Rust `&Dots` parameter is always the last one), so positional
+/// extras land in the dots and `.call` is matched by name only; a wrapper
+/// without other formals takes it alone.
+pub(crate) fn with_call_formal(formals: &str, call_formal: Option<&str>) -> String {
+    match call_formal {
+        Some(formal) if formals.is_empty() => formal.to_string(),
+        Some(formal) => format!("{formals}, {formal}"),
+        None => formals.to_string(),
     }
 }
 

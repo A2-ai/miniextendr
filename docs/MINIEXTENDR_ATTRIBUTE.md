@@ -285,7 +285,7 @@ spellings (#1566), most specific first:
 
 | | `wrapper` (default) | `caller` | `none` |
 |-|---------------------|----------|--------|
-| `.call =` | `match.call()` | `.mx_call`, the caller's matched call | `NULL` (R falls back to `sys.call()`) |
+| `.call =` | `match.call()` | `.mx_call`, the caller's matched call, or the frame / call passed as `.call` | `NULL` (R falls back to `sys.call()`) |
 | Marker parameter | `call: Call` | `call: CallerCall` | — |
 | Attribute | `call = wrapper`, `no_fast` | `call = caller` | `call = none`, `no_call_attribution`, `fast` |
 | `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
@@ -314,8 +314,12 @@ one runs on the main thread. `caller`, in either spelling, requires
 functions only and leaves exported ones at `wrapper`. Two spellings on one
 function must agree, a function takes at most one marker, per-parameter
 options do not apply to it, and class / trait methods accept none of the three
-(they keep the wrapper's own call). Details, the `fast-default` interaction and
-the fixtures: [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
+(they keep the wrapper's own call). A `caller` standalone wrapper (S3 methods
+aside) ends its formals with `.call = NULL`, so a hand-written helper in
+between can pass on its caller's frame (`call = parent.frame()`) or a call
+([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)). Details,
+the `fast-default` interaction and the fixtures:
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
 #### Threading
 

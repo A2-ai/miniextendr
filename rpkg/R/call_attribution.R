@@ -72,3 +72,72 @@ arg_error_ratio_caller <- function(num, den) {
 arg_error_peak_caller <- function(dv) {
   arg_error_peak_caller_impl(dv)
 }
+
+# region: a helper in between passes on the call to report (#1613)
+
+# A hand-written helper between a public function and a `call = caller` entry
+# point takes its caller's frame (`call = parent.frame()`, the vctrs / rlang
+# convention) and passes it on as `.call`: a condition names the public
+# function, not the helper.
+.call_attr_prepare <- function(value, call = parent.frame()) {
+  call_attr_caller_impl(value, .call = call)
+}
+
+call_attr_via_helper <- function(value) {
+  .call_attr_prepare(value)
+}
+
+# The same helper without `.call`: the entry point reports the helper's call.
+.call_attr_prepare_plain <- function(value) {
+  call_attr_caller_impl(value)
+}
+
+call_attr_via_plain_helper <- function(value) {
+  .call_attr_prepare_plain(value)
+}
+
+# Two helpers threading `call` down: the outermost function is named.
+.call_attr_outer <- function(value, call = parent.frame()) {
+  .call_attr_inner(value, call = call)
+}
+
+.call_attr_inner <- function(value, call = parent.frame()) {
+  call_attr_caller_impl(value, .call = call)
+}
+
+call_attr_via_nested <- function(value) {
+  .call_attr_outer(value)
+}
+
+# A helper reaching the entry point through `do.call()`: a frame passes
+# through the argument list unchanged (`do.call()` would evaluate a call
+# object there).
+.call_attr_prepare_do <- function(value, call = parent.frame()) {
+  do.call(call_attr_caller_impl, list(value, .call = call))
+}
+
+call_attr_via_do_call <- function(value) {
+  .call_attr_prepare_do(value)
+}
+
+# Into an entry point with R-side checks: a failed check names the public
+# function too.
+.call_attr_checked_prepare <- function(n, call = parent.frame()) {
+  call_attr_checked_impl("Fast", "mean", n, NULL, .call = call)
+}
+
+call_attr_checked_via_helper <- function(n) {
+  .call_attr_checked_prepare(n)
+}
+
+# Into a `CallerCall` entry point: the Rust body receives the public
+# function's call.
+.call_marker_prepare <- function(value, call = parent.frame()) {
+  call_marker_caller_impl(value, .call = call)
+}
+
+call_marker_via_helper <- function(value) {
+  .call_marker_prepare(value)
+}
+
+# endregion
