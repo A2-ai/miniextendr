@@ -3998,6 +3998,81 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// Check the R formals of every generated method
+/// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
+/// the names each class system's wrapper binds itself:
+///
+/// - the receiver of an instance method: `self` for Env, `x` for S3 and S4,
+///   the first dispatch argument (`x` unless `s7(dispatch)` or an operator
+///   says otherwise) for S7, plus `self` when S7 also emits the
+///   `<Class>_<method>` fast-path shortcut;
+/// - `self` and `private`, which R6 binds inside `initialize` and every method
+///   of the class: the wrapper reads the pointer from `private$.ptr` and
+///   returns `self` from a chaining method.
+///
+/// Static methods and the other constructors are plain functions and reserve
+/// nothing; S7 property accessors have fixed formals; vctrs impls take no
+/// instance methods (MXL120).
+fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
+    let class_name = parsed.class_name();
+    let receiver = |name: &str, method: &str| {
+        (
+            name.to_string(),
+            format!("is the receiver of the generated {method}"),
+        )
+    };
+    for m in parsed.included_methods() {
+        let is_ctor = parsed.is_method_constructor(m);
+        let instance = m.env.is_instance() && !is_ctor && !m.is_finalizer();
+        let s7 = &m.method_attrs.s7;
+        let reserved = match parsed.class_system {
+            ClassSystem::Env if instance => vec![receiver("self", "Env-class method")],
+            ClassSystem::R6 if instance || is_ctor => vec![
+                (
+                    "self".to_string(),
+                    "is R6's `self` binding inside the class, the object the generated \
+                     method works on"
+                        .to_string(),
+                ),
+                (
+                    "private".to_string(),
+                    "is R6's `private` binding inside the class, where the generated method \
+                     reads the object's pointer"
+                        .to_string(),
+                ),
+            ],
+            ClassSystem::S3 if instance => vec![receiver("x", "S3 method")],
+            ClassSystem::S4 if instance => vec![receiver("x", "S4 method")],
+            ClassSystem::S7 if instance && !(s7.getter || s7.setter || s7.validate) => {
+                let generic = m
+                    .method_attrs
+                    .generic
+                    .clone()
+                    .unwrap_or_else(|| m.r_method_name());
+                let dispatch =
+                    s7_class::s7_dispatch_args(m, &s7_class::s7_generic_target(&generic));
+                let mut reserved = vec![receiver(&dispatch[0], "S7 method")];
+                if !(s7.fallback || s7.no_shortcut)
+                    && let Some(shortcut) =
+                        s7_class::s7_shortcut_name(&class_name, &m.r_method_name())
+                {
+                    reserved.push((
+                        "self".to_string(),
+                        format!(
+                            "is the receiver of the fast-path shortcut `{shortcut}()` generated \
+                             for this S7 method (`s7(no_shortcut)` drops the shortcut)"
+                        ),
+                    ));
+                }
+                reserved
+            }
+            _ => Vec::new(),
+        };
+        crate::r_wrapper_builder::check_r_formals(&m.sig.inputs, &reserved)?;
+    }
+    Ok(())
+}
+
 /// Validate the S7 dispatch arguments of every S7 instance method: an explicit
 /// `s7(dispatch = "...")`, and the pair S7 fixes for an `Ops` / `%*%`
 /// operator generic (`e1, e2` / `x, y`).
@@ -4128,13 +4203,8 @@ fn check_s7_method_dispatch(m: &ParsedMethod, params: &str) -> Result<(), String
         ));
     }
 
-    let receiver = dispatch[0].as_str();
-    if names.contains(&receiver) {
-        return Err(format!(
-            "`s7(dispatch = \"{spec}\")` on `{rust_name}`: the first dispatch argument \
-             (`{receiver}`) names the receiver, so it cannot also be a parameter name; {listed}"
-        ));
-    }
+    // A parameter named like the receiver (`dispatch[0]`) is rejected earlier,
+    // by `check_method_formals`.
     for (i, d) in dispatch.iter().enumerate().skip(1) {
         let Some(&found) = names.get(i - 1) else {
             return Err(format!(
@@ -4218,6 +4288,11 @@ pub fn expand_impl(
         Err(e) => return e.into_compile_error().into(),
     };
 
+    // Every R formal must parse, be distinct, and leave the names the class
+    // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
+    if let Err(e) = check_method_formals(&parsed) {
+        return e.into_compile_error().into();
+    }
     // Detect S7 fast-path shortcut name collisions (#986). The shortcut
     // `<ClassName>_<method>` shares a namespace with the standalone functions
     // emitted for static methods — an `r_name` override (or a static method

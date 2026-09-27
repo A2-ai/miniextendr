@@ -1,0 +1,5 @@
+error: parameter `_x` becomes the R argument `x`, which is the receiver of the generated S3 method. Rename the parameter.
+  --> tests/ui/impl_method_param_names_receiver.rs:16:25
+   |
+16 |     pub fn shift(&self, _x: i32) -> i32 {
+   |                         ^^
