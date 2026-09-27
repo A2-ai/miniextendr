@@ -233,3 +233,249 @@ test_that("method Either choice params name the other kind in their @param line"
 })
 
 # endregion
+
+# region: `several_ok` choice lists with another kind of value (#1612)
+#
+# `Either<Vec<T>, R>` / `Either<Box<[T]>, R>`: character or factor input is
+# matched element by element and reaches Rust as `Left(Vec<T>)`, an omitted
+# argument selects every choice, and anything else (NULL included) goes to the
+# `R` arm. The fixtures report routes as `"Oral,Bolus"` and a data frame as
+# `"frame:<rows>x<cols>"`.
+
+all_routes <- "Oral,Bolus,Infusion"
+
+test_that("several_ok Either<Vec<T>, DataFrame>: choices formal, character and factor go Left, a data frame goes Right", {
+  expect_equal(eval(formals(match_arg_either_routes)$routes), routes)
+  expect_equal(match_arg_either_routes(), all_routes)
+  expect_equal(match_arg_either_routes(routes), all_routes)
+  expect_equal(match_arg_either_routes("inf"), "Infusion")
+  expect_equal(match_arg_either_routes(c("inf", "or")), "Infusion,Oral")
+  expect_equal(match_arg_either_routes(c("oral", "oral")), "Oral,Oral")
+  expect_equal(match_arg_either_routes(factor(c("bolus", "oral"))), "Bolus,Oral")
+  expect_equal(match_arg_either_routes(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes(c("oral", "iv")), "routes", routes)
+  expect_match(
+    conditionMessage(tryCatch(match_arg_either_routes(c("oral", "iv")), error = identity)),
+    "element 2",
+    fixed = TRUE
+  )
+})
+
+test_that("several_ok Either<Vec<T>, DataFrame>: empty, NA, NULL and other input", {
+  # An empty character vector is a choice list with no element, not the `R`
+  # arm: the several-choice helper refuses it.
+  e <- tryCatch(match_arg_either_routes(character(0)), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "routes")
+  expect_match(conditionMessage(e), "length", fixed = TRUE)
+  expect_choice_error(match_arg_either_routes(NA_character_), "routes", routes)
+  # NULL is not a choice under `Either`: it goes to `R`, which rejects it.
+  expect_error(match_arg_either_routes(NULL), "routes")
+  expect_error(match_arg_either_routes(1:3), "routes")
+})
+
+test_that("several_ok Either<Box<[T]>, DataFrame>", {
+  expect_equal(eval(formals(match_arg_either_routes_boxed)$route_set), routes)
+  expect_equal(match_arg_either_routes_boxed(), all_routes)
+  expect_equal(match_arg_either_routes_boxed(c("bo", "inf")), "Bolus,Infusion")
+  expect_equal(match_arg_either_routes_boxed(factor("oral")), "Oral")
+  expect_equal(match_arg_either_routes_boxed(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes_boxed("iv"), "route_set", routes)
+})
+
+test_that("several_ok Missing<Either<Vec<T>, R>> reports omission", {
+  expect_equal(eval(formals(match_arg_either_routes_omitted)$route_list), routes)
+  expect_equal(match_arg_either_routes_omitted(), "absent")
+  expect_equal(match_arg_either_routes_omitted(c("inf", "or")), "Infusion,Oral")
+  expect_equal(match_arg_either_routes_omitted(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes_omitted("iv"), "route_list", routes)
+  # An explicit NULL is present and goes to `R`.
+  expect_error(match_arg_either_routes_omitted(NULL), "route_list")
+})
+
+test_that("several_ok Option<Either<Vec<T>, R>>: NULL formal, NULL is None", {
+  expect_null(formals(match_arg_either_routes_optional)$maybe_routes)
+  expect_equal(match_arg_either_routes_optional(), "none")
+  expect_equal(match_arg_either_routes_optional(NULL), "none")
+  expect_equal(match_arg_either_routes_optional(c("bo", "inf")), "Bolus,Infusion")
+  expect_equal(match_arg_either_routes_optional(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes_optional("iv"), "maybe_routes", routes)
+})
+
+test_that("several_ok Missing<Option<Either<Vec<T>, R>>>: omitted is Absent, NULL is Present(None)", {
+  expect_equal(eval(formals(match_arg_either_routes_omitted_optional)$route_pick), routes)
+  expect_equal(match_arg_either_routes_omitted_optional(), "absent")
+  expect_equal(match_arg_either_routes_omitted_optional(NULL), "null")
+  expect_equal(match_arg_either_routes_omitted_optional("inf"), "Infusion")
+  expect_equal(match_arg_either_routes_omitted_optional(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes_omitted_optional("iv"), "route_pick", routes)
+})
+
+test_that("choices(), several_ok on Either<Vec<String>, f64>", {
+  expect_equal(eval(formals(choices_either_tiers)$tiers), levels)
+  expect_equal(choices_either_tiers(), "tiers:low,mid,high")
+  expect_equal(choices_either_tiers(c("hi", "lo")), "tiers:high,low")
+  expect_equal(choices_either_tiers(factor("mid")), "tiers:mid")
+  expect_equal(choices_either_tiers(2.5), "number:2.5")
+  expect_choice_error(choices_either_tiers("max"), "tiers", levels)
+})
+
+# The `plan*` fixtures below report `routes=<..>;tiers=<..>` for a
+# `match_arg_several_ok` `Either<Vec<Route>, DataFrame>` and an omittable
+# `choices_several_ok` `Missing<Either<Vec<String>, f64>>`. `f` forwards its
+# arguments through `...`, which keeps an omitted argument missing.
+expect_routes_tiers <- function(f) {
+  expect_equal(f(), paste0("routes=", all_routes, ";tiers=absent"))
+  expect_equal(f(c("inf", "or")), "routes=Infusion,Oral;tiers=absent")
+  expect_equal(f(factor(c("bolus", "oral"))), "routes=Bolus,Oral;tiers=absent")
+  expect_equal(f(doses), "routes=frame:2x2;tiers=absent")
+  expect_equal(f(tiers = c("hi", "lo")), paste0("routes=", all_routes, ";tiers=tiers:high,low"))
+  expect_equal(f(tiers = factor("mid")), paste0("routes=", all_routes, ";tiers=tiers:mid"))
+  expect_equal(f(doses, tiers = 2.5), "routes=frame:2x2;tiers=number:2.5")
+  expect_choice_error(f(c("oral", "iv")), "routes", routes)
+  expect_choice_error(f(tiers = "max"), "tiers", levels)
+  # NULL is not a choice: it goes to the `DataFrame` arm, which rejects it.
+  expect_error(f(NULL), "routes")
+}
+
+# The formals keep both choice vectors.
+expect_routes_tiers_formals <- function(fn) {
+  fmls <- formals(fn)
+  expect_equal(eval(fmls$routes), routes)
+  expect_equal(eval(fmls$tiers), levels)
+}
+
+test_that("env method with several_ok Either choice lists", {
+  e <- EitherRoutesEnv$new()
+  expect_routes_tiers_formals(EitherRoutesEnv$plan)
+  expect_routes_tiers(function(...) e$plan(...))
+})
+
+test_that("R6 method and trait method with several_ok Either choice lists", {
+  p <- EitherRoutesR6$new()
+  expect_routes_tiers_formals(p$plan)
+  expect_routes_tiers(function(...) p$plan(...))
+
+  tiers <- EitherRoutesR6$RouteTiers$tiers
+  expect_equal(eval(formals(tiers)$tiers), levels)
+  expect_equal(tiers(p), "tiers:low,mid,high")
+  expect_equal(tiers(p, tiers = c("hi", "lo")), "tiers:high,low")
+  expect_equal(tiers(p, tiers = 4), "number:4")
+  expect_choice_error(tiers(p, tiers = "max"), "tiers", levels)
+})
+
+test_that("S3 method with several_ok Either choice lists", {
+  p <- new_eitherroutess3()
+  expect_routes_tiers_formals(getS3method("plan_routes_s3", "EitherRoutesS3"))
+  expect_routes_tiers(function(...) plan_routes_s3(p, ...))
+})
+
+test_that("S4 method with several_ok Either choice lists", {
+  h <- EitherRoutesS4()
+  expect_equal(names(formals(s4_plan_routes)), c("x", "..."))
+  expect_routes_tiers_formals(
+    methods::unRematchDefinition(methods::getMethod("s4_plan_routes", "EitherRoutesS4"))
+  )
+  expect_routes_tiers(function(...) s4_plan_routes(h, ...))
+})
+
+test_that("S7 constructor, method and shortcut with several_ok Either choice lists", {
+  expect_equal(eval(formals(EitherRoutesS7)$start), routes)
+  expect_equal(routes_given(EitherRoutesS7()), "absent")
+  expect_equal(routes_given(EitherRoutesS7(start = "inf")), "Infusion")
+  expect_equal(routes_given(EitherRoutesS7(start = factor(c("oral", "bolus")))), "Oral,Bolus")
+  expect_equal(routes_given(EitherRoutesS7(start = doses)), "frame:2x2")
+  expect_choice_error(EitherRoutesS7(start = c("oral", "iv")), "start", routes)
+
+  h <- EitherRoutesS7()
+  expect_routes_tiers_formals(S7::method(plan_routes_s7, EitherRoutesS7))
+  expect_routes_tiers_formals(EitherRoutesS7_plan_routes_s7)
+  expect_routes_tiers(function(...) plan_routes_s7(h, ...))
+  expect_routes_tiers(function(...) EitherRoutesS7_plan_routes_s7(h, ...))
+})
+
+test_that("vctrs constructor and static method with several_ok Either choice lists", {
+  expect_equal(eval(formals(new_eitherroutesvctrs)$routes), routes)
+  expect_equal(vctrs::vec_data(new_eitherroutesvctrs()), c(1, 2, 3))
+  expect_equal(vctrs::vec_data(new_eitherroutesvctrs("bo")), 2)
+  expect_equal(vctrs::vec_data(new_eitherroutesvctrs(c("inf", "or"))), c(3, 1))
+  expect_equal(vctrs::vec_data(new_eitherroutesvctrs(factor("infusion"))), 3)
+  expect_equal(vctrs::vec_data(new_eitherroutesvctrs(doses)), c(0, 0))
+  expect_choice_error(new_eitherroutesvctrs("iv"), "routes", routes)
+
+  expect_routes_tiers_formals(eitherroutesvctrs_plan_routes)
+  expect_routes_tiers(eitherroutesvctrs_plan_routes)
+})
+
+# The `EitherGrades` trait method reports `absent` or the grades
+# (`tiers:<a>,<b>` / `number:<n>`) for an omittable `choices_several_ok`
+# `Either<Vec<String>, f64>`.
+expect_either_grades <- function(grades) {
+  expect_equal(grades(), "absent")
+  expect_equal(grades(grades = c("hi", "lo")), "tiers:high,low")
+  expect_equal(grades(grades = 4), "number:4")
+  expect_choice_error(grades(grades = "max"), "grades", levels)
+}
+
+test_that("S3 trait method with an omittable several_ok Either choice list", {
+  p <- new_eitherroutess3()
+  expect_equal(eval(formals(getS3method("either_grades", "EitherRoutesS3"))$grades), levels)
+  expect_either_grades(function(...) either_grades(p, ...))
+})
+
+test_that("S7 trait method and its shortcut with an omittable several_ok Either choice list", {
+  h <- EitherRoutesS7()
+  expect_equal(
+    eval(formals(S7::method(s7_trait_EitherGrades_either_grades, EitherRoutesS7))$grades),
+    levels
+  )
+  expect_equal(eval(formals(EitherRoutesS7_either_grades)$grades), levels)
+  expect_either_grades(function(...) s7_trait_EitherGrades_either_grades(h, ...))
+  expect_either_grades(function(...) EitherRoutesS7_either_grades(h, ...))
+})
+
+test_that("several_ok Either choice lists name the other kind in their @param line", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_text <- function(topic) {
+    pages <- vapply(rd_db, function(rd) {
+      gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
+    }, character(1))
+    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
+    expect_length(page, 1L)
+    page[[1L]]
+  }
+  # The standalone fixtures share one page with the scalar ones; every
+  # parameter name here is new, so each line survives.
+  page <- rd_text("match_arg_either_routes")
+  expect_match(page, "One or more of \"oral\", \"bolus\", \"infusion\", or a data frame.", fixed = TRUE)
+  expect_match(page, "One or more of \"low\", \"mid\", \"high\", or a number.", fixed = TRUE)
+  expect_match(
+    page,
+    "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL for no choice.",
+    fixed = TRUE
+  )
+  expect_match(
+    page,
+    "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL; omitting the argument means no choice.",
+    fixed = TRUE
+  )
+  tiers_or_number <- "One or more of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice."
+  for (topic in c("EitherRoutesS3", "EitherRoutesS7", "EitherRoutesVctrs")) {
+    expect_match(rd_text(topic), tiers_or_number, fixed = TRUE)
+  }
+  expect_match(
+    rd_text("EitherRoutesR6"),
+    "One or more of \"oral\", \"bolus\", \"infusion\", or a data frame.",
+    fixed = TRUE
+  )
+  # The S7 constructor's `start` (inlined in `new_class()`).
+  expect_match(
+    rd_text("EitherRoutesS7"),
+    "One or more of \"oral\", \"bolus\", \"infusion\", or a data frame; omitting the argument means no choice.",
+    fixed = TRUE
+  )
+})
+
+# endregion

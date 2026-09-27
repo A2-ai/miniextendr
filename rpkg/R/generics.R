@@ -325,6 +325,21 @@ NULL
 #' @name either_grade
 NULL
 
+# `several_ok` `Either` choice-list fixtures (#1612): the S3 generics of the
+# EitherRoutesS3 method and of its EitherGrades trait impl.
+
+#' Describe route names or a data frame, and tiers, through an S3 method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name plan_routes_s3
+NULL
+
+#' Describe grade names or a number through an S3 trait method
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name either_grades
+NULL
+
 # Trait generics of the Counter / MatrixCounter S3 impls (S3TraitCounter,
 # CounterTraitS3). The S3 trait wrappers export the generic by name, so it
 # needs an alias like the inherent-impl generics above.
