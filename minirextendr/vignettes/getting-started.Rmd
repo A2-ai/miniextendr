@@ -375,7 +375,7 @@ files, then `miniextendr_configure()` to regenerate.
 
 ## Next Steps
 
-- See the [miniextendr documentation](https://github.com/CGMossa/miniextendr)
+- See the [miniextendr documentation](https://a2-ai.github.io/miniextendr/)
   for the full API reference, class systems, ALTREP support, and more
 - Run `miniextendr_doctor()` regularly to catch configuration issues early
 - Use `miniextendr_status()` to verify your project setup
