@@ -1420,6 +1420,10 @@ regenerate-merged:
 test-merge-drivers:
     bash tests/merge-driver-regen.sh
 
+# Test the webR smoke's rerun-once-on-a-Rosetta-trap helper (no Docker needed)
+test-webr-smoke-retry:
+    bash tests/webr-smoke-retry-test.sh
+
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================
@@ -1748,13 +1752,15 @@ bump-version version:
 docker_webr_image := "miniextendr-webr-dev:latest"
 
 # Build the local webR dev image. Re-run when Dockerfile.webr changes.
-docker-webr-build:
-    docker build -f Dockerfile.webr -t {{docker_webr_image}} .
+docker-webr-build *args:
+    docker build -f Dockerfile.webr {{args}} -t {{docker_webr_image}} .
 
 # Drop into an interactive shell in the webR dev container with this repo
 # bind-mounted at /work. From inside, run `just configure / rcmdinstall /
 # devtools-test` etc. as if on Linux. The container is amd64-only (webR
-# upstream); on Apple Silicon Docker emulates via Rosetta — slower but works.
+# upstream); on Apple Silicon Docker runs it under Rosetta, which is slower and
+# can kill node with SIGTRAP (docs/WEBR.md, "Rosetta: node traps on Apple
+# Silicon").
 docker-webr-shell:
     docker run --rm -it \
         -v "{{justfile_directory()}}:/work" \
@@ -1776,7 +1782,7 @@ docker-webr-run *cmd:
 # wasm32-unknown-emscripten` — `configure` writes the right `[patch."git+url"]`
 # overrides into `.cargo/config.toml` for the workspace siblings.
 docker-webr-test: docker-webr-build
-    just docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"
+    just docker_webr_image={{docker_webr_image}} docker-webr-run "cargo check --target wasm32-unknown-emscripten -p miniextendr-api"
 
 # Run the webR/wasm32 smoke test for rpkg.
 # Builds rpkg as a wasm32 side-module inside the dev container and loads it
@@ -1785,16 +1791,16 @@ docker-webr-test: docker-webr-build
 # (#1255; counts reported, test failures never gate — disable with
 # SMOKE_TESTTHAT=0).
 docker-webr-smoke *args: docker-webr-build
-    bash tests/webr-smoke.sh {{args}}
+    WEBR_IMAGE={{docker_webr_image}} bash tests/webr-smoke.sh {{args}}
 
 # ── arm64-native webR dev container (#788) ───────────────────────────────────
 #
-# ⚠️ DRAFT — composed but NOT YET VALIDATED on arm64 hardware (no Docker /
-# arm64 build in the dev sandbox). See Dockerfile.webr-arm64's header + the
+# ⚠️ DRAFT (#1254) — builds on Apple Silicon; the smoke passes once
+# miniextendr-api compiles for aarch64 Linux (the `c_char` fix). See the
 # validation checklist in docs/WEBR.md.
 #
 # `Dockerfile.webr-arm64` builds natively on an arm64 host (Apple Silicon) from
-# prebuilt parts — emscripten/emsdk:4.0.8-arm64 (matches the wasm R's emcc ABI)
+# prebuilt parts — emscripten/emsdk:5.0.7-arm64 (matches the wasm R's emcc ABI)
 # + native arm64 Rust/R, with the portable wasm sysroot COPY'd out of the amd64
 # mirror. No qemu, no source emcc/flang/R→wasm build. Contrast docker-webr-*
 # above, which runs the amd64 image under Rosetta.
@@ -1804,8 +1810,8 @@ docker_webr_arm64_image := "miniextendr-webr-dev-arm64:latest"
 # Build the arm64-native webR dev image. Re-run when Dockerfile.webr-arm64
 # changes. Must run on an arm64 host (the emsdk base + native toolchain are
 # arm64); the donor stage is pinned `--platform=linux/amd64` for the FS copy.
-docker-webr-arm64-build:
-    docker build -f Dockerfile.webr-arm64 -t {{docker_webr_arm64_image}} .
+docker-webr-arm64-build *args:
+    docker build -f Dockerfile.webr-arm64 {{args}} -t {{docker_webr_arm64_image}} .
 
 # Interactive shell in the arm64 dev container, repo bind-mounted at /work.
 docker-webr-arm64-shell: docker-webr-arm64-build
@@ -1826,4 +1832,4 @@ docker-webr-arm64-run *cmd: docker-webr-arm64-build
 # against the arm64 image (WEBR_ARM64=1 selects the native-R orchestration +
 # arm64 image inside tests/webr-smoke.sh).
 docker-webr-arm64-smoke *args: docker-webr-arm64-build
-    WEBR_ARM64=1 bash tests/webr-smoke.sh {{args}}
+    WEBR_ARM64=1 WEBR_IMAGE={{docker_webr_arm64_image}} bash tests/webr-smoke.sh {{args}}

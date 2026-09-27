@@ -10,9 +10,22 @@
 # Disable with SMOKE_TESTTHAT=0; only a harness error before the counts
 # line turns the gate red.
 #
+# Every phase runs in ONE container (`docker run -d ... sleep infinity`, then
+# `docker exec` per step): each phase reads what the previous one left under
+# /tmp (the wasm library, the scaffolds) and /opt/webr/src/dist (the Node
+# bundle), which a fresh `docker run --rm` per step would lose (#1290). CI
+# gets the same effect from its single job container.
+#
+# On Apple Silicon the amd64 image runs under Rosetta, which can kill node
+# with SIGTRAP after printing "BasicBlock requested for unrecognized address"
+# (#1254). A phase that fails with that assertion in its output is rerun once
+# (tests/webr-smoke-retry.sh); a second trap fails the run. The arm64-native
+# image (WEBR_ARM64=1) does not run under Rosetta.
+#
 # Exit codes:
-#   0  — miniextendr loaded in the webR session
-#   1  — infrastructure failure (docker, build error, library() crash)
+#   0     miniextendr loaded in the webR session
+#   else  the failing step's exit status: 1 for an infrastructure failure
+#         (docker, build error, library() crash); 133 is SIGTRAP
 #
 # Usage:
 #   bash tests/webr-smoke.sh [--rebuild-image] [--no-cache] [--keep] [--scaffold] [-h|--help]
@@ -20,7 +33,9 @@
 # Options:
 #   --rebuild-image   Force re-build of the docker image before running.
 #   --no-cache        Pass --no-cache to docker build (implies --rebuild-image).
-#   --keep            Don't clean up /tmp/webr-smoke inside the container on exit.
+#   --keep            Leave the container running on exit, with every phase's
+#                     output in place; the script prints how to enter and
+#                     remove it.
 #   --scaffold        Add the scaffold-leg phase (#1270), reproducing the CI
 #                     scaffold legs (#1259 standalone, #1271 monorepo) locally:
 #                     installs minirextendr from this checkout, scaffolds a
@@ -36,15 +51,18 @@
 #   -h, --help        Show this help text and exit.
 #
 # Environment:
-#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT — unvalidated on
-#                     arm64 hardware; validation checklist tracked in #1254).
+#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT: Phase 1 needs
+#                     miniextendr-api to compile for aarch64 Linux, #1254).
 #                     Selects Dockerfile.webr-arm64 + the
 #                     arm64 image, and orchestrates both R passes through the
-#                     native arm64 R on PATH (the donor's amd64 host-R binaries
-#                     under /opt/webr/host + /opt/R can't execute on arm64; the
-#                     wasm sysroot they sit beside is portable and is what emcc
-#                     actually links against). Unset/default = the amd64 path
-#                     (Rosetta under Docker Desktop), unchanged.
+#                     native arm64 R on PATH (the donor's amd64 host R trees
+#                     are not copied into the arm64 image, only the portable
+#                     wasm sysroot emcc links against). Unset/default = the
+#                     amd64 path (Rosetta under Docker Desktop).
+#   WEBR_IMAGE=<tag>  Image to run, and to build from the Dockerfile when the
+#                     tag is missing locally or --rebuild-image is given.
+#                     Default: miniextendr-webr-dev:latest, or
+#                     miniextendr-webr-dev-arm64:latest with WEBR_ARM64=1.
 #   WEBR_SCAFFOLD=1   Same as --scaffold.
 #   SMOKE_TESTTHAT=0  Skip the informational testthat pass in Phase 3
 #                     (default: enabled, #1255). Test failures never gate
@@ -68,18 +86,21 @@ WASM_TOOLS="${WEBR_ROOT}/tools"
 R_SOURCE="${WEBR_ROOT}/R/build/R-${R_VERSION}"
 WEBR_VARS_MK="${WEBR_ROOT}/packages/webr-vars.mk"
 SMOKE_TMP="/tmp/webr-smoke"
+# Library both R binaries read (R_LIBS_USER) for rpkg's Imports in Phase 2 and
+# the scaffold tooling, as in CI's job-level R_LIBS_USER (webr.yml).
+SHARED_R_LIBS="/tmp/r-shared-lib"
 
 if [[ "$WEBR_ARM64" == "1" ]]; then
-    IMAGE="miniextendr-webr-dev-arm64:latest"
+    IMAGE="${WEBR_IMAGE:-miniextendr-webr-dev-arm64:latest}"
     DOCKERFILE="${MX_ROOT}/Dockerfile.webr-arm64"
-    # On arm64 the donor's amd64 host-R binaries (/opt/webr/host/R-4.6.0,
-    # /opt/R/current) cannot execute — use the native rig-installed arm64 R on
+    # The arm64 image carries no amd64 host R (/opt/webr/host/R-4.6.0 and the
+    # donor's /opt/R are not copied) — use the native rig-installed arm64 R on
     # PATH for BOTH passes. webr-vars.mk still drives CC=emcc for the wasm pass,
     # so which R orchestrates the install doesn't change the compiler.
     R_HOST_EXE="R"
     R_NATIVE_EXE="R"
 else
-    IMAGE="miniextendr-webr-dev:latest"
+    IMAGE="${WEBR_IMAGE:-miniextendr-webr-dev:latest}"
     DOCKERFILE="${MX_ROOT}/Dockerfile.webr"
     R_HOST_EXE="${WEBR_ROOT}/host/R-${R_VERSION}/bin/R"
     R_NATIVE_EXE="/opt/R/current/bin/R"
@@ -97,7 +118,7 @@ SCAFFOLD_PKG_NAME="mxsmoke"
 SCAFFOLD_DIR="/tmp/scaffold"
 SCAFFOLD_PKG_DIR="${SCAFFOLD_DIR}/${SCAFFOLD_PKG_NAME}"
 SCAFFOLD_NATIVE_LIB="/tmp/scaffold-native-lib"
-SCAFFOLD_R_LIBS="/tmp/r-shared-lib"
+SCAFFOLD_R_LIBS="${SHARED_R_LIBS}"
 
 # ── Monorepo scaffold leg (#1271) constants ─────────────────────────────────
 # Local parity with the CI "Monorepo scaffold leg" steps (main-push/dispatch
@@ -152,42 +173,64 @@ warn() { printf "${CLR_YELLOW}[ warn]${CLR_RESET} %s\n" "$*" >&2; }
 fail() { printf "${CLR_RED}[FAIL ]${CLR_RESET} %s\n" "$*" >&2; }
 step() { printf "\n${CLR_BOLD}==> %s${CLR_RESET}\n" "$*"; }
 
+# run_with_rosetta_retry (uses warn / fail above).
+# shellcheck source=tests/webr-smoke-retry.sh
+source "${SCRIPT_DIR}/webr-smoke-retry.sh"
+
 # ── docker helpers ────────────────────────────────────────────────────────────
 
-# docker_run: run a bash -c script inside the container with the repo bind-mounted.
-# Extra positional args (after $script) are passed through to `docker run` as
-# additional flags (before the image name) — used by phase_scaffold to inject
-# `-e VAR=value` env vars so its (single-quoted, verbatim) R heredocs never
-# need to fight bash's own double-quote/backslash escaping rules.
+# The one container every phase runs in (#1290). Set by start_container only
+# once `docker run` succeeded, so cleanup knows whether there is one.
+CONTAINER=""
+
+# start_container: start the smoke container with the repo bind-mounted at
+# /work. `sleep infinity` keeps it alive between `docker exec` calls; --init
+# reaps the exec'd processes; --rm removes it once it is stopped.
+start_container() {
+    local name="miniextendr-webr-smoke-$$"
+    log "Starting container ${name} from ${IMAGE}..."
+    docker run -d --rm --init --name "$name" \
+        -v "${MX_ROOT}:/work" \
+        -w /work \
+        "${IMAGE}" \
+        sleep infinity >/dev/null
+    CONTAINER="$name"
+    ok "Container ${CONTAINER} running."
+}
+
+# docker_run: run a bash -c script inside the smoke container.
+# Extra positional args (after $script) are passed through to `docker exec` as
+# additional flags (before the container name) — used by phase_scaffold to
+# inject `-e VAR=value` env vars so its (single-quoted, verbatim) R heredocs
+# never need to fight bash's own double-quote/backslash escaping rules.
 docker_run() {
     local script="$1"
     shift || true
-    docker run --rm \
-        -v "${MX_ROOT}:/work" \
-        -w /work \
-        "$@" \
-        "${IMAGE}" \
-        bash -c "$script"
+    docker exec -w /work "$@" "$CONTAINER" bash -c "$script"
 }
 
-# docker_pipe: pipe stdin as a script to bash inside the container.
-docker_pipe() {
-    docker run --rm -i \
-        -v "${MX_ROOT}:/work" \
-        -w /work \
-        "${IMAGE}" \
-        bash
+# docker_step <label> <script> [docker exec flags...]: run a phase body. On a
+# Rosetta trap the step is rerun once (tests/webr-smoke-retry.sh); every
+# phase body is safe to rerun in the same container. Verification queries
+# whose stdout is captured stay plain docker_run.
+docker_step() {
+    local label="$1"
+    shift
+    run_with_rosetta_retry "$label" docker_run "$@"
 }
 
 # ── Cleanup trap ─────────────────────────────────────────────────────────────
 # Runs native configure inside the container to restore rpkg/src/Makevars
 # to host (non-wasm) state. Phase 2 leaves Makevars in wasm-mode; this
-# ensures the user's checkout isn't left in a broken state.
+# ensures the user's checkout isn't left in a broken state. Then removes the
+# container, unless --keep.
 
 _cleanup_done=0
 cleanup() {
     if [[ $_cleanup_done -eq 1 ]]; then return; fi
     _cleanup_done=1
+    # No container yet: preflight (or the image build) failed.
+    if [[ -z "$CONTAINER" ]]; then return; fi
 
     log "Running cleanup: scrubbing build objects + restoring native Makevars..."
     docker_run "
@@ -197,17 +240,13 @@ cleanup() {
     " || warn "Cleanup configure failed — rpkg/src/Makevars may still be in wasm-mode. Run: cd rpkg && bash ./configure"
 
     if [[ $KEEP -eq 0 ]]; then
-        log "Removing ${SMOKE_TMP} inside container..."
-        docker_run "rm -rf ${SMOKE_TMP}" 2>/dev/null || true
-        if [[ "$SCAFFOLD" == "1" ]]; then
-            log "Removing scaffold dirs + temp libs inside container..."
-            docker_run "rm -rf ${SCAFFOLD_DIR} ${SCAFFOLD_NATIVE_LIB} ${SCAFFOLD_R_LIBS} ${MONO_DIR} ${MONO_NATIVE_LIB}" 2>/dev/null || true
-        fi
+        log "Removing container ${CONTAINER}..."
+        docker rm -f "$CONTAINER" >/dev/null 2>&1 \
+            || warn "Could not remove container ${CONTAINER}. Run: docker rm -f ${CONTAINER}"
     else
-        log "--keep set: leaving ${SMOKE_TMP} inside container for inspection."
-        if [[ "$SCAFFOLD" == "1" ]]; then
-            log "--keep set: leaving scaffold dirs + temp libs inside container for inspection."
-        fi
+        log "--keep set: container ${CONTAINER} is still running, every phase's output in place."
+        log "  Enter it:  docker exec -it ${CONTAINER} bash"
+        log "  Remove it: docker rm -f ${CONTAINER}"
     fi
 }
 trap cleanup EXIT
@@ -242,8 +281,7 @@ preflight() {
         fi
     fi
 
-    log "Creating ${SMOKE_TMP} in container..."
-    docker_run "mkdir -p ${SMOKE_TMP}"
+    start_container
 }
 
 # ── Phase 1: Native install (regenerates wasm_registry.rs) ──────────────────
@@ -255,7 +293,7 @@ phase_native_install() {
     step "Phase 1: Native install (regenerating wasm_registry.rs)"
 
     log "Running native R CMD INSTALL inside container..."
-    docker_run "
+    docker_step "Phase 1 (native install)" "
         set -euo pipefail
         mkdir -p ${SMOKE_TMP}/native-lib
         # Scrub stale build objects: the bind-mounted /work is shared with the
@@ -294,12 +332,31 @@ phase_wasm_build() {
     step "Phase 2: wasm32 side-module build"
 
     log "Running wasm32 R CMD INSTALL inside container..."
-    docker_run "
+    docker_step "Phase 2 (wasm32 install)" "
         set -euo pipefail
         # Scrub Phase 1's native objects so emcc recompiles .c -> wasm .o
         # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
         rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
         ( cd /work/rpkg && CC=emcc bash ./configure )
+        # INSTALL's lazy-load loads rpkg's Imports in the R that runs it. In
+        # the amd64 image that is webR's host R, whose library tree is not
+        # the native R's: it cannot see transitive Imports such as rlang
+        # (lifecycle -> rlang), which the native R keeps in its own system
+        # library. Like CI tier 2 (webr.yml), install the Imports, derived
+        # from rpkg/DESCRIPTION, through that R into a shared R_LIBS_USER.
+        export R_LIBS_USER=${SHARED_R_LIBS}
+        mkdir -p ${SHARED_R_LIBS}
+        cat > /tmp/smoke-imports.R <<'RSCRIPT'
+imports <- trimws(strsplit(read.dcf('/work/rpkg/DESCRIPTION')[1, 'Imports'], ',')[[1]])
+imports <- sub('[ (].*', '', imports)
+imports <- setdiff(imports, rownames(installed.packages(priority = 'base')))
+install.packages(imports, dependencies = c('Depends', 'Imports', 'LinkingTo'),
+                 repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest',
+                 lib = Sys.getenv('R_LIBS_USER'))
+miss <- imports[!vapply(imports, requireNamespace, logical(1), quietly = TRUE)]
+if (length(miss)) stop('Unloadable after install: ', paste(miss, collapse = ', '))
+RSCRIPT
+        ${R_HOST_RSCRIPT} /tmp/smoke-imports.R
         # Install to an empty host-side temp library, NOT directly into the
         # wasm tree. INSTALL's tail-end lazy-load spawns a sub-R that adds
         # --library to .libPaths(); if that path contains wasm grDevices.so
@@ -320,10 +377,14 @@ phase_wasm_build() {
 
     # Verify the wasm library landed. Phase 3 NODEFS-mounts /tmp/wasm-lib
     # directly (matching CI tier-3 / smoke.mjs's HOST_WASM_LIB), so this is
-    # the canonical location — no copy into the wasm site-lib needed.
+    # the canonical location — no copy into the wasm site-lib needed. The
+    # side-module must start with the wasm magic bytes (00 61 73 6d): an ELF
+    # file there means the install silently fell back to the native compiler.
     log "Verifying wasm library installation..."
-    if ! docker_run "test -d '/tmp/wasm-lib/miniextendr'"; then
-        fail "wasm library not found at /tmp/wasm-lib/miniextendr"
+    local so="/tmp/wasm-lib/miniextendr/libs/miniextendr.so"
+    if ! docker_run "test -f ${so} && [ \"\$(od -An -tx1 -N4 ${so} | tr -d ' \n')\" = 0061736d ]"; then
+        fail "${so} is missing or is not a wasm module."
+        docker_run "ls -la /tmp/wasm-lib/miniextendr/libs/; od -An -tx1 -N16 ${so}" >&2 || true
         exit 1
     fi
 
@@ -347,13 +408,15 @@ phase_wasm_build() {
 # this when $SCAFFOLD == 1; without the flag this phase never runs and
 # behavior is byte-identical to today.
 #
-# The whole leg runs as a single docker_run() invocation (one container),
-# not one call per CI step: /tmp/scaffold, /tmp/scaffold-native-lib, and
-# /tmp/r-shared-lib are container-local paths (not bind-mounted like
-# /work), so later steps must run in the SAME container as the steps that
-# produced their inputs. The R snippets are written to temp .R files via
+# The whole leg runs as a single docker_step() invocation, not one call per
+# CI step, so a Rosetta rerun repeats the leg from the top (every step is
+# idempotent: apt and install.packages, rm -rf before each create, git init
+# reinitialises, installs overwrite). /tmp/scaffold, /tmp/scaffold-native-lib,
+# /tmp/r-shared-lib and /tmp/wasm-lib are container-local paths (not
+# bind-mounted like /work); the shared smoke container keeps them for
+# Phase 3. The R snippets are written to temp .R files via
 # backslash-escaped (verbatim, no-expansion) heredocs and the few
-# container-side values that vary by WEBR_ARM64 are passed in as `docker run
+# container-side values that vary by WEBR_ARM64 are passed in as `docker exec
 # -e` env vars — both choices sidestep nesting this script's own R string
 # literals (which contain unescaped double quotes and regex `$`/`\` chars)
 # inside this file's bash double-quoting.
@@ -361,15 +424,17 @@ phase_scaffold() {
     step "Phase Scaffold: end-user scaffolded-package wasm path (#1270 standalone, #1271 monorepo)"
 
     log "Installing minirextendr + roxygen tooling, scaffolding mxsmoke + mxmono, and building native + wasm..."
-    docker_run '
+    # shellcheck disable=SC2016  # expanded inside the container
+    docker_step "Phase Scaffold" '
         set -euo pipefail
 
         # Scaffold leg — install minirextendr + roxygen tooling into a
         # shared lib both R binaries below can see (mirrors CI job-level
         # R_LIBS_USER). git/libgit2-dev: git-init guard below + usethis
-        # git probing / gert (libgit2 runtime dep).
+        # git probing / gert (libgit2 runtime dep). file: the wasm-vs-ELF
+        # checks below (the webR base does not ship it; CI apt-installs it).
         apt-get update -qq
-        apt-get install -y --no-install-recommends git libgit2-dev
+        apt-get install -y --no-install-recommends git libgit2-dev file
         mkdir -p "$SCAFFOLD_R_LIBS"
         export R_LIBS_USER="$SCAFFOLD_R_LIBS"
         cat > /tmp/scaffold-step1.R <<\RSCRIPT
@@ -591,7 +656,7 @@ phase_webr_session() {
     # the browser build); the image deletes src/dist + src/node_modules to stay
     # small, so rebuild before importing. ~20s on a warm image.
     log "Rebuilding webR's Node bundle (cd /opt/webr/src && make ...)..."
-    docker_run "
+    docker_step "Phase 3 (Node bundle rebuild)" "
         set -euo pipefail
         cd /opt/webr/src
         if [ ! -f package-lock.json ]; then
@@ -626,7 +691,7 @@ phase_webr_session() {
     if [[ "$smoke_testthat" == "1" ]]; then
         smoke_timeout=2400
     fi
-    docker_run "
+    docker_step "Phase 3 (webR Node session)" "
         set -euo pipefail
         cd /work/tests/webr-node-smoke
         timeout ${smoke_timeout} node smoke.mjs
@@ -638,12 +703,12 @@ phase_webr_session() {
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
-    printf "\n${CLR_BOLD}miniextendr webR smoke test${CLR_RESET}\n"
+    printf '\n%bminiextendr webR smoke test%b\n' "${CLR_BOLD}" "${CLR_RESET}"
     printf "Image:    %s\n" "${IMAGE}"
     printf "Repo:     %s\n" "${MX_ROOT}"
     printf "R:        %s\n" "${R_VERSION}"
     if [[ "$WEBR_ARM64" == "1" ]]; then
-        printf "Arch:     ${CLR_YELLOW}arm64-native (DRAFT, #788 — unvalidated)${CLR_RESET}\n"
+        printf 'Arch:     %barm64-native (DRAFT, #1254)%b\n' "${CLR_YELLOW}" "${CLR_RESET}"
     else
         printf "Arch:     amd64 (Rosetta on Apple Silicon)\n"
     fi
@@ -662,7 +727,12 @@ main() {
     fi
     phase_webr_session
 
-    printf "\n${CLR_GREEN}${CLR_BOLD}Smoke test PASSED.${CLR_RESET}\n\n"
+    if [[ $ROSETTA_RERUNS -gt 0 ]]; then
+        printf '\n%b%bSmoke test PASSED (%s step(s) rerun after a Rosetta trap, see docs/WEBR.md).%b\n\n' \
+            "${CLR_GREEN}" "${CLR_BOLD}" "${ROSETTA_RERUNS}" "${CLR_RESET}"
+    else
+        printf '\n%b%bSmoke test PASSED.%b\n\n' "${CLR_GREEN}" "${CLR_BOLD}" "${CLR_RESET}"
+    fi
 }
 
 main

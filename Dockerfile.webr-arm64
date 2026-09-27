@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# ⚠️ DRAFT — NOT YET VALIDATED ON arm64 HARDWARE. See #788.
+# ⚠️ DRAFT (#1254) — builds on Apple Silicon, and the arm64 smoke passes once
+# miniextendr-api compiles for aarch64 Linux (the `c_char` fix, see
+# docs/WEBR.md "arm64-native dev image"). See #788.
 #
 # arm64-native webR dev container, composed from prebuilt parts — no source
 # build of emcc / flang / R→wasm. The blocker that this works around is purely
@@ -24,15 +26,16 @@
 #     lifted out of the amd64 image with `COPY --from=` — a pure filesystem
 #     copy, no emulated execution of amd64 binaries.
 #
-# ── Q1 (emcc ABI), RESOLVED ──────────────────────────────────────────────────
+# ── Q1 (emcc ABI) ────────────────────────────────────────────────────────────
 # The emcc that links `miniextendr.so` must match the emcc that built the
-# prebuilt wasm R, or the side-module won't load. The wasm R in the mirror was
-# built with Emscripten **4.0.8**. `emscripten/emsdk` publishes per-arch
-# *suffixed* tags (NOT a multi-arch manifest): the bare `:4.0.8` tag is
-# linux/amd64 only, but `:4.0.8-arm64` is a genuine linux/arm64/v8 build of the
-# *same* Emscripten 4.0.8 release (pushed 2025-04-30, digest below). Same emcc
-# version ⇒ same wasm ABI ⇒ no version-skew risk. This is the best-case Q1
-# outcome — no need to drift to a different emcc version.
+# prebuilt wasm R, or the side-module won't load. The donor pinned below
+# (webR v0.6.0, #755) was built with Emscripten **5.0.7** (commit 263db4cf).
+# `emscripten/emsdk` publishes a linux/arm64/v8 build of the same release as
+# `:5.0.7-arm64` (pushed 2026-04-30, the arm64 half of the multi-arch `:5.0.7`),
+# pinned below by digest. Same emcc release and commit ⇒ same wasm ABI. The
+# sanity layer compares the two emscripten-version.txt files, so a donor bump
+# without the matching emsdk bump fails the build instead of linking a skewed
+# side-module (the first cut paired emsdk 4.0.8 with this 5.0.7 donor).
 #
 # ── Usage (local dev) ────────────────────────────────────────────────────────
 #   just docker-webr-arm64-build         # build natively on an arm64 host
@@ -42,24 +45,32 @@
 # ── Build args ───────────────────────────────────────────────────────────────
 #   WEBR_AMD64_DONOR — pinned amd64 mirror digest the sysroot is copied from.
 #                      Keep in lockstep with Dockerfile.webr's WEBR_BASE.
-#   EMSDK_ARM64      — arm64 emcc base; pinned to 4.0.8-arm64 by digest.
+#   EMSDK_ARM64      — arm64 emcc base; pinned to 5.0.7-arm64 by digest. Must
+#                      carry the donor's emcc release (see Q1).
 #   JUST_VERSION     — `just` release to install. Apt's is too old.
 
+# Both base-image ARGs are global (declared before the first FROM): an ARG
+# declared inside a stage is not in scope for a later stage's FROM line.
+#
+# WEBR_AMD64_DONOR is pinned to the SAME digest as Dockerfile.webr's WEBR_BASE
+# so the copied wasm sysroot (incl. the prebuilt wasm R version) stays aligned.
+# Bump both together, and move EMSDK_ARM64 to the donor's emcc release.
+ARG WEBR_AMD64_DONOR=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
+# EMSDK_ARM64: emscripten/emsdk:5.0.7-arm64, linux/arm64/v8, Emscripten 5.0.7
+# (the donor's emcc; see the Q1 note above).
+ARG EMSDK_ARM64=emscripten/emsdk:5.0.7-arm64@sha256:19b3a361d84262c1cd133a29fb84368678bab32aee47e074fcd83a216566330c
+
 # ── Stage 0: amd64 sysroot donor (filesystem copy only — never executed) ─────
-# Pinned to the SAME digest as Dockerfile.webr's WEBR_BASE so the copied wasm
-# sysroot (incl. the prebuilt wasm R version) stays aligned. Bump both together.
 # `--platform=linux/amd64` forces the amd64 manifest even on an arm64 host; we
 # only `COPY --from=` out of it, so nothing amd64 ever runs under qemu.
-ARG WEBR_AMD64_DONOR=ghcr.io/a2-ai/webr-mirror@sha256:3fbf3dc3537c5b31bca94dd797dc25364693b18d71b1d0975f318fbfd6269d86
 FROM --platform=linux/amd64 ${WEBR_AMD64_DONOR} AS webr-amd64
 
 # ── Stage 1: arm64-native toolchain ──────────────────────────────────────────
-# emscripten/emsdk:4.0.8-arm64 — linux/arm64/v8, Emscripten 4.0.8 (matches the
-# donor's wasm R ABI; see Q1 note above). Base OS is Ubuntu Noble; emcc is on
-# PATH at /emsdk/upstream/emscripten, EMSDK=/emsdk, and Node 22.16.0 ships
-# bundled at /emsdk/node/22.16.0_64bit/bin — so the tier-3 Node smoke needs no
-# separate node install.
-ARG EMSDK_ARM64=emscripten/emsdk:4.0.8-arm64@sha256:9d471ceb4bd9e19f85e6a0924e851971d26bddd19e0bf6aa956b1be865bda6eb
+# The emsdk base (EMSDK_ARM64, above) is Ubuntu 24.04 Noble (glibc 2.39, so
+# the posit PM `__linux__/noble` binaries below load); emcc is on PATH at
+# /emsdk/upstream/emscripten, EMSDK=/emsdk, and Node 22.16.0 ships bundled at
+# /emsdk/node/22.16.0_64bit/bin — so the tier-3 Node smoke needs no separate
+# node install.
 FROM ${EMSDK_ARM64}
 
 ARG JUST_VERSION=1.36.0
@@ -142,12 +153,11 @@ RUN Rscript -e 'install.packages(c("cli","lifecycle","R6","S7","vctrs","pak"), r
 # the tier-3 Node smoke rebuilds the bundle out of /opt/webr/src (under
 # /opt/webr) and runs it.
 #
-# NOTE: this also copies the donor's amd64 host R under /opt/webr/host and
-# /opt/R — those amd64 binaries CANNOT run on arm64. The smoke's arm64 path
-# uses the native rig-installed R (on PATH) for BOTH the native pass and the
+# The donor's amd64 host R trees (/opt/webr/host, /opt/R/4.6.0) are NOT
+# copied: they cannot run on arm64. The smoke's arm64 path uses the native
+# rig-installed R (on PATH, under /opt/R) for BOTH the native pass and the
 # wasm `R CMD INSTALL` (webr-vars.mk drives CC=emcc regardless of which R
-# orchestrates it). See tests/webr-smoke.sh's WEBR_ARM64 branch + the
-# validation checklist in docs/WEBR.md.
+# orchestrates it). See tests/webr-smoke.sh's WEBR_ARM64 branch.
 COPY --from=webr-amd64 /opt/webr/wasm     /opt/webr/wasm
 COPY --from=webr-amd64 /opt/webr/R/build  /opt/webr/R/build
 COPY --from=webr-amd64 /opt/webr/tools    /opt/webr/tools
@@ -157,20 +167,24 @@ COPY --from=webr-amd64 /opt/webr/dist     /opt/webr/dist
 # /opt/webr/src; the tier-3 Node bundle is rebuilt from here. Copied separately
 # so the intent is explicit.
 COPY --from=webr-amd64 /opt/webr/src      /opt/webr/src
+# src/Makefile reads ../R/R-VERSION into webR/config.ts (webR.versionR) when
+# the Node bundle is rebuilt; without it make warns and the version is empty.
+COPY --from=webr-amd64 /opt/webr/R/R-VERSION /opt/webr/R/R-VERSION
+# The donor's emcc version, checked against this image's emcc below (Q1).
+COPY --from=webr-amd64 /opt/emsdk/upstream/emscripten/emscripten-version.txt /opt/webr/donor-emscripten-version.txt
 
 ENV WEBR_ROOT="/opt/webr"
 
 # ── Sanity checks — fail the build early if a piece is missing ───────────────
-# NOTE (DRAFT): these verify the image *composed*, NOT that the copied wasm
-# sysroot actually links + loads under the arm64 emcc end-to-end. That is the
-# load-bearing unknown and needs on-arm64-hardware validation (see #788 /
-# docs/WEBR.md checklist).
+# These verify the image *composed*; the end-to-end check that the copied
+# wasm sysroot links and loads under the arm64 emcc is the smoke,
+# `WEBR_ARM64=1 bash tests/webr-smoke.sh` (#1254, docs/WEBR.md checklist).
 RUN set -eux \
     && rustup target list --installed | grep -q wasm32-unknown-emscripten \
     && rustup component list --installed | grep -q rust-src \
     && cargo --version \
     && emcc --version >/dev/null \
-    && [ "$(emcc --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" = "4.0.8" ] \
+    && [ "$(cat /emsdk/upstream/emscripten/emscripten-version.txt)" = "$(cat /opt/webr/donor-emscripten-version.txt)" ] \
     && R --version >/dev/null \
     && [ -d /opt/webr/wasm ] && [ -d /opt/webr/R/build ] && [ -d /opt/webr/tools ] \
     && [ -f /opt/webr/packages/webr-vars.mk ] \

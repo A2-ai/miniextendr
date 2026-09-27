@@ -280,8 +280,10 @@ jobs:
   #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
   #              Imports from repo.r-wasm.org, drives library(miniextendr),
   #              library(mxsmoke), and (main-push/dispatch) library(mxmono).
-  # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners have no Rosetta
-  # and plenty of disk (the local arm64 dev path hits both limits). Phase 2
+  # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners run the image
+  # natively with plenty of disk; on Apple Silicon the amd64 image runs under
+  # Rosetta (slow, and node can trap, see docs/WEBR.md), which
+  # `Dockerfile.webr-arm64` is meant to avoid (#1254). Phase 2
   # is also the empirical validator for the side-module RUSTFLAGS
   # (`-Zdefault-visibility=hidden`): if the emcc side-module link breaks under
   # them, Phase 2 fails here. (#494's `-C relocation-model=pic` was validated
