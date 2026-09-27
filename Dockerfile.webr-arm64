@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 #
-# ⚠️ DRAFT — NOT YET VALIDATED ON arm64 HARDWARE. See #788.
+# ⚠️ DRAFT (#1254) — builds on Apple Silicon, and the arm64 smoke passes once
+# miniextendr-api compiles for aarch64 Linux (the `c_char` fix, see
+# docs/WEBR.md "arm64-native dev image"). See #788.
 #
 # arm64-native webR dev container, composed from prebuilt parts — no source
 # build of emcc / flang / R→wasm. The blocker that this works around is purely
@@ -174,10 +176,9 @@ COPY --from=webr-amd64 /opt/emsdk/upstream/emscripten/emscripten-version.txt /op
 ENV WEBR_ROOT="/opt/webr"
 
 # ── Sanity checks — fail the build early if a piece is missing ───────────────
-# NOTE (DRAFT): these verify the image *composed*, NOT that the copied wasm
-# sysroot actually links + loads under the arm64 emcc end-to-end. That is the
-# load-bearing unknown and needs on-arm64-hardware validation (see #788 /
-# docs/WEBR.md checklist).
+# These verify the image *composed*; the end-to-end check that the copied
+# wasm sysroot links and loads under the arm64 emcc is the smoke,
+# `WEBR_ARM64=1 bash tests/webr-smoke.sh` (#1254, docs/WEBR.md checklist).
 RUN set -eux \
     && rustup target list --installed | grep -q wasm32-unknown-emscripten \
     && rustup component list --installed | grep -q rust-src \
