@@ -4308,6 +4308,64 @@ fn method_choice_params_get_choice_text() {
     }
 }
 
+/// A method's choice parameters come out in signature order: first the
+/// `match_arg` checks, then the `choices` ones, each group in the order of the
+/// signature, the same as a standalone function. The C helpers of the
+/// `match_arg` parameters follow the signature too. The per-parameter map is a
+/// `HashMap`, whose order differs between maps (and between compiler runs), so
+/// before this the wrapper text could change from one build to the next. Each
+/// parse builds a new map; twenty parses of these five parameters coming out
+/// in signature order by chance would be about one in 12^20.
+#[test]
+fn method_choice_params_emit_in_signature_order() {
+    let position = |haystack: &str, needle: &str| {
+        haystack
+            .find(needle)
+            .unwrap_or_else(|| panic!("missing `{needle}` in:\n{haystack}"))
+    };
+    for _ in 0..20 {
+        let parsed = parse_impl(
+            ClassSystem::Env,
+            syn::parse_quote! {
+                impl Picker {
+                    pub fn new() -> Self { unimplemented!() }
+                    #[miniextendr(match_arg(zeta, alpha, mid), choices(omega = "x, y", beta = "p, q"))]
+                    pub fn pick(
+                        &self,
+                        zeta: Mode,
+                        omega: String,
+                        alpha: Mode,
+                        beta: String,
+                        mid: Mode,
+                    ) -> String {
+                        unimplemented!()
+                    }
+                }
+            },
+        );
+
+        let wrapper = generate_env_r_wrapper(&parsed);
+        let prelude: Vec<usize> = ["zeta", "alpha", "mid", "omega", "beta"]
+            .iter()
+            .map(|name| position(&wrapper, &format!("{name} <- .miniextendr_match_arg")))
+            .collect();
+        assert!(
+            prelude.is_sorted(),
+            "prelude out of signature order:\n{wrapper}"
+        );
+
+        let tokens = c_wrapper_tokens(&parsed, "pick");
+        let helpers: Vec<usize> = ["zeta", "alpha", "mid"]
+            .iter()
+            .map(|name| position(&tokens, &format!("__match_arg_choices__{name}")))
+            .collect();
+        assert!(
+            helpers.is_sorted(),
+            "match_arg helpers out of signature order:\n{tokens}"
+        );
+    }
+}
+
 #[test]
 fn snapshot_r6_basic() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {

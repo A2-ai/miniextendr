@@ -860,6 +860,48 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
     );
 }
 
+/// A trait method's `choices(...)` checks come out in signature order, not in
+/// the order of the per-parameter `HashMap`, which differs between maps and
+/// between compiler runs (see `method_choice_params_emit_in_signature_order`
+/// for inherent impls). Each parse builds a new map; twenty parses of these
+/// four parameters coming out in signature order by chance would be about one
+/// in 24^20.
+#[test]
+fn test_trait_method_choices_prelude_in_signature_order() {
+    for _ in 0..20 {
+        let impl_item: syn::ItemImpl = syn::parse_quote! {
+            impl Bar for Foo {
+                #[miniextendr(choices(zeta = "a, b", alpha = "c, d", mid = "e, f", omega = "g, h"))]
+                fn pick(&self, zeta: String, alpha: String, mid: String, omega: String) -> String {
+                    unimplemented!()
+                }
+            }
+        };
+        let methods = super::vtable::extract_methods(&impl_item).unwrap();
+        let result = generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &methods,
+            &[],
+            opts(ClassSystem::S3, false, false, false),
+        )
+        .unwrap();
+        let positions: Vec<usize> = ["zeta", "alpha", "mid", "omega"]
+            .iter()
+            .map(|name| {
+                let line = format!("{name} <- .miniextendr_match_arg");
+                result
+                    .find(&line)
+                    .unwrap_or_else(|| panic!("missing `{line}` in:\n{result}"))
+            })
+            .collect();
+        assert!(
+            positions.is_sorted(),
+            "prelude out of signature order:\n{result}"
+        );
+    }
+}
+
 /// Trait methods parse the method-level `inherits(p(class = ..., message = ...))`
 /// / `no_na(p(message = ...))` forms with the inherent-impl parser's helpers,
 /// from the attribute through to the guard.

@@ -1284,11 +1284,8 @@ pub fn miniextendr(
     //
     // Tuple: (placeholder, rust_param, preferred_default_unquoted_or_empty)
     let mut match_arg_placeholders: Vec<(String, String, String)> = Vec::new();
-    // (r_name, rust_param) pairs — used later to build @param doc placeholders
-    let mut match_arg_r_names: Vec<(String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
-        match_arg_r_names.push((r_name.clone(), match_arg_param.clone()));
         let preferred = match merged_defaults.get(&r_name) {
             Some(raw) => crate::match_arg_keys::extract_match_arg_default(raw),
             None => String::new(),

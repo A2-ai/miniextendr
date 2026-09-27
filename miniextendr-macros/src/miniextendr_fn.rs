@@ -1027,6 +1027,25 @@ pub(crate) fn classify_choice_param(
     Ok(())
 }
 
+/// The entries of `per_param` in the order their parameters appear in
+/// `inputs`. Code that emits one line or item per parameter walks this, never
+/// the map itself: a `HashMap`'s order differs between maps and between
+/// compiler runs, so the generated R wrapper (and the Rust items) would too.
+pub(crate) fn per_param_in_signature_order<'a>(
+    inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    per_param: &'a std::collections::HashMap<String, ParamAttrs>,
+) -> impl Iterator<Item = (&'a String, &'a ParamAttrs)> {
+    inputs.iter().filter_map(|arg| {
+        let syn::FnArg::Typed(pt) = arg else {
+            return None;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            return None;
+        };
+        per_param.get_key_value(&crate::naming::ident_name(&pat_ident.ident))
+    })
+}
+
 /// The non-empty [`ParamAttrs::checks`] of `per_param` (keyed by Rust name),
 /// re-keyed by R-normalized parameter name for
 /// [`crate::r_preconditions::PreconditionOptions::explicit`].
@@ -1398,18 +1417,17 @@ impl MiniextendrFunctionParsed {
         self.per_param.get(param_name).is_some_and(|a| a.match_arg)
     }
 
-    /// Iterator over parameter names annotated with `#[miniextendr(match_arg)]`.
+    /// Iterator over parameter names annotated with `#[miniextendr(match_arg)]`,
+    /// in signature order.
     pub(crate) fn match_arg_params(&self) -> impl Iterator<Item = &String> {
-        self.per_param
-            .iter()
+        per_param_in_signature_order(&self.item.sig.inputs, &self.per_param)
             .filter_map(|(name, a)| if a.match_arg { Some(name) } else { None })
     }
 
     /// Iterator over parameter names annotated with `#[miniextendr(choices(…))]`,
-    /// together with their choice lists.
+    /// together with their choice lists, in signature order.
     pub(crate) fn choices_params(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
-        self.per_param
-            .iter()
+        per_param_in_signature_order(&self.item.sig.inputs, &self.per_param)
             .filter_map(|(name, a)| a.choices.as_ref().map(|c| (name, c)))
     }
 
