@@ -26,7 +26,7 @@ testthat-under-wasm pass (#1255, `SMOKE_TESTTHAT=1` — see "Building locally"
 below). Open follow-ups: #495 (cross-crate trait dispatch), #1254 (the
 arm64-native dev image, `Dockerfile.webr-arm64` from #788 / PR #916: it
 builds and passes the smoke on Apple Silicon, but Phase 1 fails until
-miniextendr-api compiles for aarch64 Linux, the `c_char` fix; see
+miniextendr-api compiles for aarch64 Linux, the `c_char` fix, PR #1618; see
 "arm64-native dev image" below), #747 (drop mirror creds once the GHCR
 package is public).
 
@@ -84,7 +84,7 @@ amd64-only. On Apple Silicon Docker Desktop runs it under Rosetta, which is
 slow and can kill node mid-run (see "Rosetta: node traps on Apple Silicon"
 below). The native-arm64 alternative, "arm64-native dev image" below
 (`Dockerfile.webr-arm64`), does not work on main yet: its Phase 1 needs the
-aarch64 `c_char` fix (#1254).
+aarch64 `c_char` fix (PR #1618, #1254).
 
 ```bash
 just docker-webr-build         # one-time image build (~5–10 min cold)
@@ -206,19 +206,20 @@ inside `make`'s npm child still triggers it (make exits 2, the text is in the
 log). The arm64-native image below takes Rosetta out of the loop once its
 Phase 1 compiles on aarch64 Linux.
 
-## arm64-native dev image (DRAFT — #788; Phase 1 needs the aarch64 `c_char` fix, #1254)
+## arm64-native dev image (DRAFT — #788; Phase 1 needs the aarch64 `c_char` fix, PR #1618)
 
 > **Status: built and run on Apple Silicon on 2026-09-27** (macOS 26.6.2,
 > Docker Desktop 29.8.0). The image builds. On main the smoke fails in
 > Phase 1: miniextendr-api does not compile for `aarch64-unknown-linux-gnu`
 > (`expected *const u8, found *const i8`), because `c_char` is `u8` on
 > aarch64 Linux and some ALTREP signatures hard-code `i8`. With that fix
-> (the aarch64 `c_char` fix) applied, the whole smoke passes: the arm64-built
-> side-module loads in the webR Node session (`library(miniextendr)`), and the
-> informational testthat pass reports passed=9062, failed=6, skipped=50,
-> errors=100. Until the fix lands, the amd64 image under Rosetta remains the
-> route: it passes the same smoke with the same counts, after one automatic
-> rerun of a trapped step (see "Rosetta: node traps on Apple Silicon" above).
+> (the aarch64 `c_char` fix, PR #1618) applied, the whole smoke passes: the
+> arm64-built side-module loads in the webR Node session
+> (`library(miniextendr)`), and the informational testthat pass reports
+> passed=9062, failed=6, skipped=50, errors=100. Until the fix lands, the
+> amd64 image under Rosetta remains the route: it passes the same smoke with
+> the same counts, after one automatic rerun of a trapped step (see
+> "Rosetta: node traps on Apple Silicon" above).
 
 The amd64 image runs on Apple Silicon only under Rosetta — slow, node can
 trap there (see "Rosetta: node traps on Apple Silicon" above), and the
@@ -286,8 +287,8 @@ the pinned digest (see "Base image and tags" above) and running
       rig-installed arm64 `R` on `PATH` (configure and the cargo build start),
       but on main Phase 1's native build fails: miniextendr-api does not
       compile for `aarch64-unknown-linux-gnu` (`expected *const u8, found
-      *const i8`, `c_char` is `u8` there). With the fix applied it passes and
-      regenerates `wasm_registry.rs`.
+      *const i8`, `c_char` is `u8` there). With the fix (PR #1618) applied
+      it passes and regenerates `wasm_registry.rs`.
 - [x] **Node bundle rebuild** — `make /opt/webr/src/dist/webr.mjs` succeeds
       with the copied `/opt/webr/src` tree and the bundled Node 22.16.0, and
       `webR/config.ts` carries R 4.6.0 (the image copies `R/R-VERSION`).
