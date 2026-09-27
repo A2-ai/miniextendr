@@ -495,13 +495,16 @@ impl CallAttribution {
     /// for a scalar, `.miniextendr_match_arg_several` for `several_ok`,
     /// #1472), guarded by the layers of the parameter type: `!missing(..)`
     /// for `Missing<..>` (#1551), then `!is.null(..)` for `Option<..>`
-    /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>`,
-    /// which leaves `NULL` out too. The helpers name the argument in their messages, read a
-    /// factor as its labels, and attribute the error to the wrapper's own call
-    /// by default; under [`CallAttribution::Caller`] the statement passes
-    /// `.mx_call` so the caller is named instead (#1548). The list is spelled
-    /// out because the helpers, unlike `base::match.arg(param)`, do not read
-    /// it off the formal.
+    /// (#1473), or `is.character(..) || is.factor(..)` for `Either<T, R>` and
+    /// `Either<Vec<T>, R>` (#1612), which leaves `NULL` out too: Rust reads it
+    /// as `None` under `Option`, and otherwise converts it to the `R` arm, even
+    /// for `several_ok`, whose plain form reads `NULL` as every choice. The
+    /// helpers name the argument in their messages, read a factor as its
+    /// labels, and attribute the error to the wrapper's own call by default;
+    /// under [`CallAttribution::Caller`] the statement passes `.mx_call` so the
+    /// caller is named instead (#1548). The list is spelled out because the
+    /// helpers, unlike `base::match.arg(param)`, do not read it off the
+    /// formal.
     pub fn match_arg_statement(
         self,
         param: &str,

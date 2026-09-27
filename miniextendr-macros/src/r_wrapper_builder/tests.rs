@@ -601,6 +601,11 @@ fn snapshot_choice_param_forms() {
         ("Option<Either<Mode, DataFrame>>", false),
         ("Missing<Either<Mode, f64>>", false),
         ("Missing<Option<Either<Mode, List>>>", false),
+        ("Either<Vec<Mode>, DataFrame>", true),
+        ("Either<Box<[Mode]>, List>", true),
+        ("Missing<Either<Vec<Mode>, f64>>", true),
+        ("Option<Either<Vec<Mode>, DataFrame>>", true),
+        ("Missing<Option<Either<Vec<Mode>, List>>>", true),
     ];
     let choices = "c(\"fast\", \"safe\")";
     let mut output = String::new();
@@ -646,7 +651,21 @@ fn classify_choice_param_rejects_unsupported_layers() {
     assert!(err("Option<Either<Mode, List>>", false, true).contains("cannot have a default"));
     assert!(err("Either<Option<Mode>, List>", false, false).contains("outermost"));
     assert!(err("Either<Either<Mode, f64>, List>", false, false).contains("outermost"));
-    assert!(err("Either<Vec<Mode>, List>", true, false).contains("cannot be an `Either<..>`"));
+    // `several_ok` under `Either` (#1612): only the owned containers decode,
+    // bare or under `Missing`; a scalar gets the narrower container hint.
+    for ty in [
+        "Either<[Mode; 2], List>",
+        "Either<&[Mode], List>",
+        "Missing<Either<&[Mode], List>>",
+    ] {
+        assert!(err(ty, true, false).contains("`Either<Vec<T>, R>`"), "{ty}");
+    }
+    let scalar = err("Either<Mode, List>", true, false);
+    assert!(scalar.contains("requires a vector type"), "{scalar}");
+    assert!(scalar.contains("`Vec<T>` or `Box<[T]>`"), "{scalar}");
+    assert!(!scalar.contains("&[T]"), "{scalar}");
+    // A `NULL` formal makes a default meaningless, `several_ok` or not.
+    assert!(err("Option<Either<Vec<Mode>, List>>", true, true).contains("cannot have a default"));
 }
 
 #[test]
@@ -674,4 +693,51 @@ fn either_choice_layers_record_the_other_arm() {
         Some(crate::rust_conversion_builder::ChoiceLeaf::Literal)
     );
     assert_eq!(literal("Missing<Option<String>>"), None);
+
+    // A `several_ok` list with another kind of value (#1612).
+    let several = choice_attrs("Either<Vec<Mode>, DataFrame>", true);
+    assert_eq!(several.either_noun.as_deref(), Some("a data frame"));
+    assert!(!several.optional && !several.omittable);
+    assert_eq!(
+        several.layered_leaf(),
+        Some(crate::rust_conversion_builder::ChoiceLeaf::MatchArgSeveral)
+    );
+    let optional = choice_attrs("Option<Either<Vec<Mode>, DataFrame>>", true);
+    assert!(optional.optional && !optional.omittable);
+    assert_eq!(optional.choice_formal("c(\"a\")"), "NULL");
+    let mut literal_several = crate::miniextendr_fn::ParamAttrs {
+        choices: Some(vec!["a".into(), "b".into()]),
+        several_ok: true,
+        ..Default::default()
+    };
+    let ty: syn::Type = syn::parse_str("Either<Vec<String>, f64>").unwrap();
+    crate::miniextendr_fn::classify_choice_param(&mut literal_several, "tiers", &ty, false)
+        .unwrap();
+    assert_eq!(
+        literal_several.layered_leaf(),
+        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal)
+    );
+    assert_eq!(
+        literal_several.literal_choices_doc().as_deref(),
+        Some("One or more of \"a\", \"b\", or a number.")
+    );
+}
+
+/// `several_ok` under `Either` and `Missing` with `call = caller` (#1612): the
+/// several-choice helper carries `.mx_call` and sits behind both guards.
+#[test]
+fn match_arg_statement_several_either_caller() {
+    let either = choice_attrs("Either<Vec<Mode>, DataFrame>", true);
+    let omitted = choice_attrs("Missing<Either<Vec<Mode>, DataFrame>>", true);
+    let caller = CallAttribution::Caller;
+    assert_eq!(
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", &either),
+        "if (is.character(modes) || is.factor(modes)) modes <- \
+         .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
+    );
+    assert_eq!(
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", &omitted),
+        "if (!missing(modes) && (is.character(modes) || is.factor(modes))) modes <- \
+         .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
+    );
 }

@@ -6,6 +6,12 @@
 \alias{match_arg_either_route_omitted}
 \alias{match_arg_either_route_omitted_optional}
 \alias{choices_either_level}
+\alias{match_arg_either_routes}
+\alias{match_arg_either_routes_boxed}
+\alias{match_arg_either_routes_omitted}
+\alias{match_arg_either_routes_optional}
+\alias{match_arg_either_routes_omitted_optional}
+\alias{choices_either_tiers}
 \title{match_arg_either_route}
 \usage{
 match_arg_either_route(route = c("oral", "bolus", "infusion"))
@@ -17,6 +23,20 @@ match_arg_either_route_omitted(route = c("oral", "bolus", "infusion"))
 match_arg_either_route_omitted_optional(route = c("oral", "bolus", "infusion"))
 
 choices_either_level(level = c("low", "mid", "high"))
+
+match_arg_either_routes(routes = c("oral", "bolus", "infusion"))
+
+match_arg_either_routes_boxed(route_set = c("oral", "bolus", "infusion"))
+
+match_arg_either_routes_omitted(route_list = c("oral", "bolus", "infusion"))
+
+match_arg_either_routes_optional(maybe_routes = NULL)
+
+match_arg_either_routes_omitted_optional(
+  route_pick = c("oral", "bolus", "infusion")
+)
+
+choices_either_tiers(tiers = c("low", "mid", "high"))
 }
 \arguments{
 \item{route}{One of "oral", "bolus", "infusion", a data frame, or NULL; omitting the argument means no choice.}
@@ -24,6 +44,18 @@ choices_either_level(level = c("low", "mid", "high"))
 \item{maybe_route}{One of "oral", "bolus", "infusion", a data frame, or NULL for no choice.}
 
 \item{level}{One of "low", "mid", "high", or a number.}
+
+\item{routes}{One or more of "oral", "bolus", "infusion", or a data frame.}
+
+\item{route_set}{One or more of "oral", "bolus", "infusion", or a data frame.}
+
+\item{route_list}{One or more of "oral", "bolus", "infusion", or a data frame; omitting the argument means no choice.}
+
+\item{maybe_routes}{One or more of "oral", "bolus", "infusion", a data frame, or NULL for no choice.}
+
+\item{route_pick}{One or more of "oral", "bolus", "infusion", a data frame, or NULL; omitting the argument means no choice.}
+
+\item{tiers}{One or more of "low", "mid", "high", or a number.}
 }
 \description{
 A route name or a data frame of doses.
@@ -35,4 +67,16 @@ A route name or data frame whose omission is reported.
 An optional route name or data frame whose omission is reported.
 
 An inline level name or a number.
+
+Route names or a data frame of doses.
+
+Route names or a data frame of doses, as a boxed slice.
+
+Route names or a data frame whose omission is reported.
+
+Optional route names or a data frame: \code{NULL} is no choice.
+
+Optional route names or a data frame whose omission is reported.
+
+Inline tier names or a number.
 }

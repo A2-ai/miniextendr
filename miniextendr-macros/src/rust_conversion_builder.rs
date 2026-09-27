@@ -562,7 +562,8 @@ pub enum ChoiceLeaf {
     /// `match_arg_from_sexp::<T>`.
     MatchArg,
     /// A `match_arg` + `several_ok` container (`Vec<T>` / `Box<[T]>`),
-    /// decoded with `match_arg_vec_from_sexp::<T>`.
+    /// decoded with `match_arg_vec_from_sexp::<T>`: under `Missing<..>`, or
+    /// on the left of an `Either<.., R>` (#1612).
     MatchArgSeveral,
     /// The string type of a `choices(...)` parameter, decoded with its own
     /// `TryFromSexp` (the R prelude already matched it against the list).
@@ -590,10 +591,17 @@ enum ChoiceLayer<'a> {
 /// ::miniextendr_api::match_arg_missing_or(sexp, ::miniextendr_api::match_arg_option_from_sexp::<Mode>)
 /// ```
 ///
-/// and `Either<Route, DataFrame>` becomes
+/// `Either<Route, DataFrame>` becomes
 ///
 /// ```ignore
 /// ::miniextendr_api::match_arg_either_or::<_, DataFrame, _>(sexp, ::miniextendr_api::match_arg_from_sexp::<Route>)
+/// ```
+///
+/// and a `several_ok` list with another kind of value (#1612),
+/// `Either<Vec<Fill>, DataFrame>`, becomes
+///
+/// ```ignore
+/// ::miniextendr_api::match_arg_either_or::<_, DataFrame, _>(sexp, ::miniextendr_api::match_arg_vec_from_sexp::<Fill>)
 /// ```
 fn layered_choice_expr(
     ty: &syn::Type,

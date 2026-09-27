@@ -820,23 +820,26 @@ pub(crate) struct ParamAttrs {
     pub several_ok: bool,
     pub choices: Option<Vec<String>>,
     pub default: Option<String>,
-    /// `Option<..>` layer of a scalar `match_arg` / `choices` parameter
-    /// (#1473): `NULL` means no choice, so the prelude skips the check for it
-    /// and Rust sees `None`. Unless [`Self::omittable`] is set too, the R
-    /// formal is `NULL` instead of the choice vector. Set from the parameter
-    /// type by [`classify_choice_param`]; never `true` together with
-    /// `several_ok`.
+    /// `Option<..>` layer of a `match_arg` / `choices` parameter (#1473):
+    /// `NULL` means no choice, so the prelude skips the check for it and Rust
+    /// sees `None`. Unless [`Self::omittable`] is set too, the R formal is
+    /// `NULL` instead of the choice vector. Set from the parameter type by
+    /// [`classify_choice_param`]; together with `several_ok` only under an
+    /// `Either` layer (`Option<Either<Vec<T>, R>>`), since a plain
+    /// `several_ok` list already reads `NULL` as every choice.
     pub optional: bool,
     /// `Missing<..>` layer of a `match_arg` / `choices` parameter (#1551): the
     /// R formal keeps the choice vector, the prelude skips the check for an
     /// omitted argument, and Rust sees `Missing::Absent`. Set by
     /// [`classify_choice_param`].
     pub omittable: bool,
-    /// `Either<T, R>` layer of a scalar `match_arg` / `choices` parameter: the
-    /// R-facing name of the `R` arm (`"a data frame"`, see
-    /// [`crate::type_inspect::r_value_noun`]) for the `@param` line. The
-    /// prelude checks only character or factor input; anything else reaches
-    /// Rust unchanged and decodes as `R`. Set by [`classify_choice_param`].
+    /// `Either<.., R>` layer of a `match_arg` / `choices` parameter, over a
+    /// scalar choice (`Either<T, R>`) or a `several_ok` list
+    /// (`Either<Vec<T>, R>` / `Either<Box<[T]>, R>`): the R-facing name of the
+    /// `R` arm (`"a data frame"`, see [`crate::type_inspect::r_value_noun`])
+    /// for the `@param` line. The prelude checks only character or factor
+    /// input; anything else, `NULL` included, reaches Rust unchanged and
+    /// decodes as `R`. Set by [`classify_choice_param`].
     pub either_noun: Option<String>,
     /// R-side checks named by the author: `inherits` / `no_na`.
     pub checks: crate::r_preconditions::ExplicitChecks,
@@ -913,10 +916,12 @@ impl ParamAttrs {
 
     /// How the C wrapper decodes this parameter when a plain `TryFromSexp`
     /// cannot: a `match_arg` parameter with a `Missing` / `Option` / `Either`
-    /// layer, or a `choices` parameter with an `Either` layer. `None` for
-    /// every other parameter (a `choices` string type converts through
-    /// `TryFromSexp` with its `Missing` / `Option` layers; a plain
-    /// `several_ok` container has its own path).
+    /// layer (`MatchArgSeveral` for a `several_ok` list, `Either<Vec<T>, R>`
+    /// included), or a `choices` parameter with an `Either` layer (its string
+    /// type or `several_ok` string list on the left). `None` for every other
+    /// parameter (a `choices` string type converts through `TryFromSexp` with
+    /// its `Missing` / `Option` layers; a plain `several_ok` container has its
+    /// own path).
     pub(crate) fn layered_leaf(&self) -> Option<crate::rust_conversion_builder::ChoiceLeaf> {
         use crate::rust_conversion_builder::ChoiceLeaf;
         let either = self.either_noun.is_some();
@@ -943,10 +948,16 @@ impl ParamAttrs {
 /// Accepted, outermost layer first: an optional `Missing<..>` (#1551), an
 /// optional `Option<..>` (#1473), an optional `Either<.., R>`, then the
 /// scalar choice type (so `T`, `Option<T>`, `Missing<Option<T>>`,
-/// `Either<T, R>`, `Option<Either<T, R>>`, ...); a `several_ok` container, or
-/// a `Missing<Vec<T>>` / `Missing<Box<[T]>>` one. `has_default` says whether
-/// the parameter carries a `default` (an `Option<T>` choice cannot; the
-/// `Missing<T>` + default conflict is reported by the callers' own check).
+/// `Either<T, R>`, `Option<Either<T, R>>`, ...). A `several_ok` parameter
+/// takes any container (`Vec<T>`, `Box<[T]>`, `&[T]`, `[T; N]`) bare, and
+/// only the owned `Vec<T>` / `Box<[T]>` under a layer: `Missing<Vec<T>>`,
+/// `Either<Vec<T>, R>` (#1612) and the `Missing` / `Option` stacks over that
+/// `Either`, which follow the scalar `Either` rule. A bare
+/// `Option<Vec<T>>` stays rejected: its `NULL` already means every choice,
+/// while under `Either` it goes to `R`. `has_default` says whether the
+/// parameter carries a `default` (a choice with a `NULL` formal, `Option<..>`
+/// without `Missing`, cannot; the `Missing<T>` + default conflict is reported
+/// by the callers' own check).
 pub(crate) fn classify_choice_param(
     attrs: &mut ParamAttrs,
     param_name: &str,
@@ -969,16 +980,10 @@ pub(crate) fn classify_choice_param(
         ));
     }
     if attrs.several_ok {
-        if layers.either_right.is_some() {
-            return Err(syn::Error::new(
-                ty.span(),
-                format!(
-                    "several_ok parameter `{param_name}` cannot be an `Either<..>`; the \
-                     choice-or-other split applies to a scalar choice, `Either<T, R>`"
-                ),
-            ));
-        }
-        if layers.nullable {
+        let either = layers.either_right.is_some();
+        // Under `Either`, `NULL` goes to the `R` arm, so `Option<Either<Vec<T>, R>>`
+        // has a `None` of its own; a bare `Option<Vec<T>>` does not.
+        if layers.nullable && !either {
             return Err(syn::Error::new(
                 ty.span(),
                 format!(
@@ -989,24 +994,38 @@ pub(crate) fn classify_choice_param(
             ));
         }
         if !is_vector_like_type(layers.value) {
+            // Under `Missing` / `Either` only the owned containers decode.
+            let containers = if layers.missing || either {
+                "`Vec<T>` or `Box<[T]>`"
+            } else {
+                "`Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]`"
+            };
             return Err(syn::Error::new(
                 ty.span(),
                 format!(
                     "several_ok requires a vector type on parameter `{param_name}`; \
                      several_ok enables multi-value match.arg which returns a character vector. \
-                     Use `Vec<T>`, `Box<[T]>`, `&[T]`, or `[T; N]` instead of a scalar type"
+                     Use {containers} instead of a scalar type"
                 ),
             ));
         }
-        if layers.missing
-            && !matches!(
-                crate::classify_several_ok_container(layers.value),
-                Some((
-                    crate::SeveralOkContainer::Vec | crate::SeveralOkContainer::BoxedSlice,
-                    _
-                ))
-            )
-        {
+        let owned = matches!(
+            crate::classify_several_ok_container(layers.value),
+            Some((
+                crate::SeveralOkContainer::Vec | crate::SeveralOkContainer::BoxedSlice,
+                _
+            ))
+        );
+        if either && !owned {
+            return Err(syn::Error::new(
+                ty.span(),
+                format!(
+                    "several_ok parameter `{param_name}` can take another kind of value only \
+                     as `Either<Vec<T>, R>` or `Either<Box<[T]>, R>`"
+                ),
+            ));
+        }
+        if layers.missing && !owned {
             return Err(syn::Error::new(
                 ty.span(),
                 format!(
@@ -1015,7 +1034,10 @@ pub(crate) fn classify_choice_param(
                 ),
             ));
         }
-    } else if layers.nullable && !layers.missing && has_default {
+    }
+    // A `NULL` formal (`Option<..>` without `Missing`) makes a `default`
+    // meaningless, for a scalar choice and for `Option<Either<Vec<T>, R>>`.
+    if layers.nullable && !layers.missing && has_default {
         return Err(syn::Error::new(
             ty.span(),
             optional_choice_default_msg(param_name),
