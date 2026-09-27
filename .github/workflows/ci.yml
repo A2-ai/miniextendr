@@ -359,6 +359,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: aarch64-unknown-linux-gnu
 
       - uses: mozilla-actions/sccache-action@v0.0.10
 
@@ -436,6 +437,22 @@ jobs:
           -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_all_s7.log"
         shell: bash
 
+      # `c_char` is `u8` on aarch64 Linux but `i8` on x86_64 Linux and on
+      # macOS, so an FFI signature that hard-codes `i8` compiles on every
+      # other CI target and fails only there (it stopped the arm64 webR image
+      # in #1254). `cargo check` compiles no C and links nothing, so no cross
+      # toolchain is needed; the dummy R_HOME above satisfies build.rs. The
+      # feature list is clippy_all's minus zstd and blake3, whose build
+      # scripts compile C and would need an aarch64 cross compiler.
+      - name: Check (aarch64-unknown-linux-gnu)
+        id: check_aarch64
+        continue-on-error: true
+        run: >-
+          cargo check --workspace --locked --target aarch64-unknown-linux-gnu
+          --features full-codegen,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs,tinyvec,borsh,jiff,md5,globset
+          2>&1 | tee "$RUNNER_TEMP/check_aarch64.log"
+        shell: bash
+
       # rpkg/src/rust is a standalone workspace, so none of the root
       # `--workspace` invocations above reach its fixture crate. The dedicated
       # recipe supplies local framework patches without requiring configure or
@@ -475,6 +492,7 @@ jobs:
           clippy_default="${{ steps.clippy_default.outcome }}"
           clippy_all="${{ steps.clippy_all.outcome }}"
           clippy_all_s7="${{ steps.clippy_all_s7.outcome }}"
+          check_aarch64="${{ steps.check_aarch64.outcome }}"
           clippy_rpkg="${{ steps.clippy_rpkg.outcome }}"
           clippy_revendor="${{ steps.clippy_revendor.outcome }}"
           doc_revendor="${{ steps.doc_revendor.outcome }}"
@@ -484,6 +502,7 @@ jobs:
           echo "clippy_default:   $clippy_default"
           echo "clippy_all:       $clippy_all"
           echo "clippy_all_s7:    $clippy_all_s7"
+          echo "check_aarch64:    $check_aarch64"
           echo "clippy_rpkg:      $clippy_rpkg"
           echo "clippy_revendor:  $clippy_revendor"
           echo "doc_revendor:     $doc_revendor"
@@ -508,6 +527,7 @@ jobs:
           dump_failed clippy_default   "$clippy_default"
           dump_failed clippy_all       "$clippy_all"
           dump_failed clippy_all_s7    "$clippy_all_s7"
+          dump_failed check_aarch64    "$check_aarch64"
           dump_failed clippy_rpkg      "$clippy_rpkg"
           dump_failed clippy_revendor  "$clippy_revendor"
           dump_failed doc_revendor     "$doc_revendor"

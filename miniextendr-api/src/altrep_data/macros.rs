@@ -28,8 +28,8 @@ macro_rules! __impl_inferbase {
             const BASE: $crate::altrep::RBase = $crate::altrep::RBase::$base;
 
             unsafe fn make_class(
-                class_name: *const i8,
-                pkg_name: *const i8,
+                class_name: *const ::core::ffi::c_char,
+                pkg_name: *const ::core::ffi::c_char,
             ) -> $crate::sys::altrep::R_altrep_class_t {
                 // Use stored DllInfo from package_init. R needs this to find
                 // the ALTREP class during cross-session deserialization (readRDS).
