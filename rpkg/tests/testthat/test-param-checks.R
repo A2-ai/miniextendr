@@ -241,6 +241,25 @@ test_that("no_na on a map of markers reads each top-level value", {
   )
 })
 
+test_that("no_na on Result<AsNumeric, ()> lets NULL through and checks a value", {
+  expect_identical(miniextendr:::param_no_na_number_result(), "NULL")
+  expect_identical(miniextendr:::param_no_na_number_result(" 3 "), "3")
+  expect_identical(
+    caught_msg(miniextendr:::param_no_na_number_result("NA")),
+    "'x' must not be NA"
+  )
+})
+
+test_that("no_na on Either<AsNumericVec, R> checks the side the value took", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  expect_identical(miniextendr:::param_no_na_numbers_either(c("1", "2")), 0L)
+  expect_identical(miniextendr:::param_no_na_numbers_either(as.raw(1:2)), -1L)
+  expect_identical(
+    caught_msg(miniextendr:::param_no_na_numbers_either("NA")),
+    "'x' must not be NA"
+  )
+})
+
 test_that("impl methods check the converted value of a no_na marker", {
   h <- ParamCheckHolder$new()
   expect_identical(h$add_dose(" 2 "), 2)

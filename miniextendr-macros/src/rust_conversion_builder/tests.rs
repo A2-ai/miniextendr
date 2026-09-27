@@ -599,9 +599,10 @@ fn no_na_check_is_in_the_owned_vector_of_the_split() {
 }
 
 /// The special conversion arms never carry the check: a coerced type (one
-/// with a coercion mapping), a borrowed slice and a strict lossy integer are
-/// converted by their own helpers and keep only the R guard. A marker with
-/// `coerce` has no coercion mapping, so it takes the plain arm and is checked.
+/// with a coercion mapping), a borrowed slice, a `&T` borrow and a strict
+/// lossy integer are converted by their own helpers and keep only the R guard.
+/// A marker with `coerce` has no coercion mapping, so it takes the plain arm
+/// and is checked.
 #[test]
 fn no_na_check_skips_the_special_arms() {
     let coerced = RustConversionBuilder::new()
@@ -612,6 +613,7 @@ fn no_na_check_skips_the_special_arms() {
 
     let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
     assert!(!conversion_text(&builder, "x: &[f64]").contains("__mx_has_na"));
+    assert!(!conversion_text(&builder, "x: &i32").contains("__mx_has_na"));
 
     let strict = RustConversionBuilder::new()
         .with_strict()

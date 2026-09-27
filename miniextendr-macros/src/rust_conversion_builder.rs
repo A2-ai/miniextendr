@@ -115,6 +115,9 @@ impl RustConversionBuilder {
     /// [`no_na_value_stmt`]). No type is named: Rust resolves the call on the
     /// value's real type, so aliases and derived newtypes of a marker are
     /// checked too, and for any other type the default `false` optimises out.
+    /// The reference arms (`&T`, `&[T]`, `&str`) emit no check and keep only
+    /// the R guard: they convert through the reference type's own impl, and
+    /// no reading marker converts by reference.
     pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
         self

@@ -923,6 +923,11 @@ where
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = T::NATIVE_BORROW;
 
     type Error = SexpError;
+    // `NULL` (`Err(())`) is "not given" and passes `no_na`.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.as_ref().is_ok_and(T::__mx_has_na)
+    }
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
