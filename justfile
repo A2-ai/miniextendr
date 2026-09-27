@@ -634,8 +634,17 @@ configure-fast:
 # --force re-runs the full vendor even when cargo-revendor's cache thinks the
 # output is current. Cheap insurance against a stale committed tarball when
 # the workspace crates have edits that don't bump Cargo.lock.
+#
+# The lock stamp in step 1 rewrites a file the wrapper provenance record
+# fingerprints, so the vendor pass runs under `_preserve-wrapper-record`.
+#
+# Vendor rpkg's dependencies into rpkg/inst/vendor.tar.xz (CRAN release prep)
+vendor: (_preserve-wrapper-record "_vendor")
+
+# Body of `vendor`, run with the wrapper provenance record kept current.
+[private]
 [script("bash")]
-vendor:
+_vendor:
     set -euo pipefail
     # cargo-revendor auto-reads [patch."git+url"] from .cargo/config.toml
     # (written by `configure` in dev-monorepo mode) to resolve AND copy
@@ -692,6 +701,26 @@ vendor:
     echo "Vendored framework crates from local workspace: miniextendr-{api,lint,macros}"
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
     echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
+
+# Run RECIPE, which rewrites rpkg/src/rust/Cargo.lock without changing what the
+# R wrappers are generated from, and keep a wrapper provenance record that was
+# current beforehand current afterwards (#1512). The record fingerprints the
+# lock. Without this, restoring the committed lock after a source-mode install
+# (whose [patch] override drifted it) or stamping it in `vendor` leaves the
+# record stale, and a tarball built from the tree regenerates its wrappers at
+# install time instead of reusing the shipped copy (#1022). bootstrap.R wraps
+# its `cargo revendor --freeze` in the same preserve_wrapper_record() helper.
+# A stale record stays stale, and a failing RECIPE re-records nothing. Without
+# a record (a fresh checkout, or a Rust-only job with no R) RECIPE just runs.
+[private]
+[script("bash")]
+_preserve-wrapper-record recipe:
+    set -euo pipefail
+    if [ ! -f rpkg/tools/wrapper-inputs.rds ]; then
+      just {{recipe}}
+      exit 0
+    fi
+    Rscript -e 'source("rpkg/tools/wrapper-freshness.R"); preserve_wrapper_record("rpkg", "rpkg/R/miniextendr-wrappers.R", function() if (system2("just", "{{recipe}}") != 0L) stop("just {{recipe}} failed", call. = FALSE))'
 
 # Remove a leaked rpkg/inst/vendor.tar.xz.
 # inst/vendor.tar.xz is the single signal that flips configure into tarball mode.
@@ -921,10 +950,12 @@ document-all: devtools-document minirextendr-document
 # This includes: rpkg and cross-package test packages (minirextendr has no configure step)
 configure-all: configure cross-configure
 
+# The install records its wrappers against the [patch]-drifted Cargo.lock it
+# built with; the lock restore keeps that record current for the committed lock.
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} rpkg
-    @just cargo-lock-restore
+    @just _preserve-wrapper-record cargo-lock-restore
 
 # Build R package tarball
 # Depends on `r-cmd-install` so the host wrapper-gen pass regenerates the UNTRACKED
