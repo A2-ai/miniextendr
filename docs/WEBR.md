@@ -23,12 +23,10 @@ release (#755), dependency guidance (#752 — see "Dependencies and webR"
 below), the compiled-imports lint (#925,
 `minirextendr::miniextendr_webr_import_lint()`), and the informational
 testthat-under-wasm pass (#1255, `SMOKE_TESTTHAT=1` — see "Building locally"
-below). Open follow-ups: #495 (cross-crate trait dispatch), #1254 (the
-arm64-native dev image, `Dockerfile.webr-arm64` from #788 / PR #916: it
-builds and passes the smoke on Apple Silicon, but Phase 1 fails until
-miniextendr-api compiles for aarch64 Linux, the `c_char` fix, PR #1618; see
-"arm64-native dev image" below), #747 (drop mirror creds once the GHCR
-package is public).
+below), and the arm64-native dev image (`Dockerfile.webr-arm64`, #788 / PR
+#916, validated on Apple Silicon in #1254 — see "arm64-native dev image"
+below). Open follow-ups: #495 (cross-crate trait dispatch), #747 (drop
+mirror creds once the GHCR package is public).
 
 ## Target
 
@@ -82,9 +80,9 @@ Everything lives inside the `Dockerfile.webr` image (inherits
 `ghcr.io/r-wasm/webr` digest-pinned, layers `just`/`autoconf`/`cargo-limit`).
 amd64-only. On Apple Silicon Docker Desktop runs it under Rosetta, which is
 slow and can kill node mid-run (see "Rosetta: node traps on Apple Silicon"
-below). The native-arm64 alternative, "arm64-native dev image" below
-(`Dockerfile.webr-arm64`), does not work on main yet: its Phase 1 needs the
-aarch64 `c_char` fix (PR #1618, #1254).
+below). On Apple Silicon, prefer the native-arm64 alternative,
+"arm64-native dev image" below (`Dockerfile.webr-arm64`, `WEBR_ARM64=1`),
+which runs no amd64 code.
 
 ```bash
 just docker-webr-build         # one-time image build (~5–10 min cold)
@@ -203,22 +201,21 @@ by `just test-webr-smoke-retry`), says why, and counts the reruns in its
 final `Smoke test PASSED` line; a second trap on the same step fails the
 run. Exit 133 alone never triggers the rerun (133 is any SIGTRAP), and a trap
 inside `make`'s npm child still triggers it (make exits 2, the text is in the
-log). The arm64-native image below takes Rosetta out of the loop once its
-Phase 1 compiles on aarch64 Linux.
+log). The arm64-native image below takes Rosetta out of the loop.
 
-## arm64-native dev image (DRAFT — #788; Phase 1 needs the aarch64 `c_char` fix, PR #1618)
+## arm64-native dev image (#788, validated in #1254)
 
-> **Status: built and run on Apple Silicon on 2026-09-27** (macOS 26.6.2,
-> Docker Desktop 29.8.0). The image builds. On main the smoke fails in
-> Phase 1: miniextendr-api does not compile for `aarch64-unknown-linux-gnu`
-> (`expected *const u8, found *const i8`), because `c_char` is `u8` on
-> aarch64 Linux and some ALTREP signatures hard-code `i8`. With that fix
-> (the aarch64 `c_char` fix, PR #1618) applied, the whole smoke passes: the
-> arm64-built side-module loads in the webR Node session
-> (`library(miniextendr)`), and the informational testthat pass reports
-> passed=9062, failed=6, skipped=50, errors=100. Until the fix lands, the
-> amd64 image under Rosetta remains the route: it passes the same smoke with
-> the same counts, after one automatic rerun of a trapped step (see
+> **Status: validated on Apple Silicon on 2026-09-27** (macOS 26.6.2,
+> Docker Desktop 29.8.0). The image builds and the whole arm64 smoke passes
+> in 27 minutes cold: the native aarch64 Linux install regenerates
+> `wasm_registry.rs`, the arm64-built side-module loads in the webR Node
+> session (`library(miniextendr)`), and the informational testthat pass
+> reports passed=9062, failed=6, skipped=50, errors=100. Phase 1 needed
+> miniextendr-api to compile for `aarch64-unknown-linux-gnu`, where `c_char`
+> is `u8`; the ALTREP class-name pointers now use `c_char` (PR #1618), and
+> the Rust lint CI job runs `cargo check --target aarch64-unknown-linux-gnu`
+> so it stays that way. The amd64 image under Rosetta passes the same smoke
+> with the same counts, after one automatic rerun of a trapped step (see
 > "Rosetta: node traps on Apple Silicon" above).
 
 The amd64 image runs on Apple Silicon only under Rosetta — slow, node can
@@ -279,16 +276,14 @@ the pinned digest (see "Base image and tags" above) and running
       donor pull took 2 minutes on its own).
 - [x] **Side-module ABI load** — Phase 2 links `miniextendr.so` with the
       arm64 emcc (the file starts with the wasm magic bytes) and Phase 3's
-      `library(miniextendr)` loads it in a webR Node session, with the
-      aarch64 `c_char` fix applied.
+      `library(miniextendr)` loads it in a webR Node session.
 - [x] **Sysroot link/load** — the amd64-built wasm sysroot under `/opt/webr`
       links and loads under the arm64-host emcc end to end (same run).
-- [ ] **Native-R orchestration on arm64** — both passes run through the
-      rig-installed arm64 `R` on `PATH` (configure and the cargo build start),
-      but on main Phase 1's native build fails: miniextendr-api does not
-      compile for `aarch64-unknown-linux-gnu` (`expected *const u8, found
-      *const i8`, `c_char` is `u8` there). With the fix (PR #1618) applied
-      it passes and regenerates `wasm_registry.rs`.
+- [x] **Native-R orchestration on arm64** — both passes run through the
+      rig-installed arm64 `R` on `PATH`, and Phase 1's native aarch64 Linux
+      install regenerates `wasm_registry.rs`. This needed the `c_char` fix
+      (PR #1618): before it, miniextendr-api did not compile for
+      `aarch64-unknown-linux-gnu` (`expected *const u8, found *const i8`).
 - [x] **Node bundle rebuild** — `make /opt/webr/src/dist/webr.mjs` succeeds
       with the copied `/opt/webr/src` tree and the bundled Node 22.16.0, and
       `webR/config.ts` carries R 4.6.0 (the image copies `R/R-VERSION`).
@@ -614,8 +609,8 @@ both legs is `tests/webr-smoke.sh --scaffold` (#1270, above).
   Rosetta trap is rerun once (`tests/webr-smoke-retry.sh`, #1254);
   `WEBR_ARM64=1` selects the `Dockerfile.webr-arm64` native-arm64 path
   (#788).
-- `Dockerfile.webr-arm64` — native-arm64 dev image (#788, still marked
-  DRAFT until its Phase 1 compiles on aarch64 Linux): amd64 sysroot donor +
+- `Dockerfile.webr-arm64` — native-arm64 dev image (#788, validated in
+  #1254): amd64 sysroot donor +
   `emscripten/emsdk:5.0.7-arm64` + native arm64 Rust/R. See
   "arm64-native dev image" above for the validation checklist.
 - `.webr/` — vendored clone of the webR repo for offline reference.

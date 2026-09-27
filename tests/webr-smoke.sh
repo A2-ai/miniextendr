@@ -51,8 +51,7 @@
 #   -h, --help        Show this help text and exit.
 #
 # Environment:
-#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT: Phase 1 needs
-#                     miniextendr-api to compile for aarch64 Linux, #1254).
+#   WEBR_ARM64=1      arm64-native dev path (#788, validated in #1254).
 #                     Selects Dockerfile.webr-arm64 + the
 #                     arm64 image, and orchestrates both R passes through the
 #                     native arm64 R on PATH (the donor's amd64 host R trees
@@ -708,7 +707,7 @@ main() {
     printf "Repo:     %s\n" "${MX_ROOT}"
     printf "R:        %s\n" "${R_VERSION}"
     if [[ "$WEBR_ARM64" == "1" ]]; then
-        printf 'Arch:     %barm64-native (DRAFT, #1254)%b\n' "${CLR_YELLOW}" "${CLR_RESET}"
+        printf "Arch:     arm64-native\n"
     else
         printf "Arch:     amd64 (Rosetta on Apple Silicon)\n"
     fi

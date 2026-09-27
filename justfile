@@ -1795,8 +1795,7 @@ docker-webr-smoke *args: docker-webr-build
 
 # ── arm64-native webR dev container (#788) ───────────────────────────────────
 #
-# ⚠️ DRAFT (#1254) — builds on Apple Silicon; the smoke passes once
-# miniextendr-api compiles for aarch64 Linux (the `c_char` fix). See the
+# Validated on Apple Silicon in #1254 (image build and full smoke). See the
 # validation checklist in docs/WEBR.md.
 #
 # `Dockerfile.webr-arm64` builds natively on an arm64 host (Apple Silicon) from
