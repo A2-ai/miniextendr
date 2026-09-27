@@ -1,8 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
-# ⚠️ DRAFT (#1254) — builds on Apple Silicon, and the arm64 smoke passes once
-# miniextendr-api compiles for aarch64 Linux (the `c_char` fix, see
-# docs/WEBR.md "arm64-native dev image"). See #788.
+# Validated on Apple Silicon in #1254: builds, and the arm64 smoke passes end
+# to end (see the checklist in docs/WEBR.md "arm64-native dev image"). See #788.
 #
 # arm64-native webR dev container, composed from prebuilt parts — no source
 # build of emcc / flang / R→wasm. The blocker that this works around is purely

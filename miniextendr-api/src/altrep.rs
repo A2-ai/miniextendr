@@ -184,8 +184,8 @@ pub fn assert_altrep_class_uniqueness() {
 /// # Safety
 /// Must be called during R initialization (after `set_altrep_dll_info`).
 pub unsafe fn make_class_by_base(
-    class_name: *const i8,
-    pkg_name: *const i8,
+    class_name: *const ::core::ffi::c_char,
+    pkg_name: *const ::core::ffi::c_char,
     base: RBase,
 ) -> R_altrep_class_t {
     let dll = crate::altrep_dll_info();

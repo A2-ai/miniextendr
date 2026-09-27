@@ -377,8 +377,8 @@ pub trait InferBase {
     /// # Safety
     /// Must be called during R initialization.
     unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
+        class_name: *const ::core::ffi::c_char,
+        pkg_name: *const ::core::ffi::c_char,
     ) -> crate::sys::altrep::R_altrep_class_t;
 
     /// Install ALTREP methods on the class.

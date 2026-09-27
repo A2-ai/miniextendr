@@ -81,8 +81,8 @@ macro_rules! impl_altrep_array_numeric {
             const BASE: crate::altrep::RBase = $rbase;
 
             unsafe fn make_class(
-                class_name: *const i8,
-                pkg_name: *const i8,
+                class_name: *const ::core::ffi::c_char,
+                pkg_name: *const ::core::ffi::c_char,
             ) -> crate::sys::altrep::R_altrep_class_t {
                 let cls = unsafe { $make_class_fn(class_name, pkg_name, crate::altrep_dll_info()) };
                 let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
@@ -183,8 +183,8 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
     const BASE: crate::altrep::RBase = crate::altrep::RBase::Logical;
 
     unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
+        class_name: *const ::core::ffi::c_char,
+        pkg_name: *const ::core::ffi::c_char,
     ) -> crate::sys::altrep::R_altrep_class_t {
         let cls = unsafe {
             crate::sys::altrep::R_make_altlogical_class(
@@ -232,8 +232,8 @@ impl<const N: usize> crate::altrep_data::InferBase for [String; N] {
     const BASE: crate::altrep::RBase = crate::altrep::RBase::String;
 
     unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
+        class_name: *const ::core::ffi::c_char,
+        pkg_name: *const ::core::ffi::c_char,
     ) -> crate::sys::altrep::R_altrep_class_t {
         let cls = unsafe {
             crate::sys::altrep::R_make_altstring_class(
