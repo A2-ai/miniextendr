@@ -28,6 +28,7 @@ Suggests:
     rcmdcheck,
     rmarkdown,
     roxygen2,
+    S7,
     testthat (>= 3.0.0),
     withr,
     yaml

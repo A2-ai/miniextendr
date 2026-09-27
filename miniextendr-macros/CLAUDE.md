@@ -33,6 +33,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - `tests.rs` — UI tests in `tests/ui/*.stderr` snapshots; update when error messages change.
 
 ## Gotchas specific to this crate
+- **Native-borrow metadata follows the selected converter.** `Call`/`CallerCall` do not convert from SEXP; omit their metadata query so method rejection keeps its intended diagnostic. `CoercionMapping::Numeric` delegates to `TryFromSexp`, so preserve its `NATIVE_BORROW`; only coercion helpers that bypass that trait omit the query. Keep minimal-feature UI coverage alongside full-feature Clippy.
 - **Two C-wrapper codegen paths with different signatures.** `c_wrapper_builder.rs` prepends `__miniextendr_call: SEXP` for all `#[miniextendr]` fns/methods; `externalptr_derive.rs` does NOT for sidecar accessors. Don't unify R-side emission without unifying C-side first (#348).
 - **`#[miniextendr]` on 1-field structs is removed.** Use ALTREP derives instead.
 - **Lifetime params ARE allowed on `#[miniextendr]`.** Lifetimes are erased at codegen — `#[no_mangle] extern "C-unwind" fn f<'a>(...)` produces a single monomorphic symbol and is FFI-safe. Only type/const generic params are rejected (they require monomorphization → multiple symbols → incompatible with `#[no_mangle]`). Borrowed fields on `#[derive(DataFrameRow)]` structs also work (`Vec<Option<&str>>` / `Vec<Option<&[T]>>` companion columns since PR #465).

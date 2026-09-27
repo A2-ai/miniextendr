@@ -122,6 +122,8 @@ where
     Vec<T::Inner>: TryFromSexp,
 {
     type Error = <Vec<T::Inner> as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <Vec<T::Inner> as TryFromSexp>::NATIVE_BORROW;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -147,6 +149,8 @@ where
     Option<T::Inner>: TryFromSexp,
 {
     type Error = <Option<T::Inner> as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <Option<T::Inner> as TryFromSexp>::NATIVE_BORROW;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -167,6 +171,8 @@ where
     Vec<Option<T::Inner>>: TryFromSexp,
 {
     type Error = <Vec<Option<T::Inner>> as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <Vec<Option<T::Inner>> as TryFromSexp>::NATIVE_BORROW;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
