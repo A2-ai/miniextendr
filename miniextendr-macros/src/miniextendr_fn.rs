@@ -1455,6 +1455,13 @@ impl MiniextendrFunctionParsed {
         explicit_checks_by_r_name(&self.per_param)
     }
 
+    /// R names of the `match_arg` and `choices(...)` parameters, whose
+    /// type-derived preconditions are skipped because `match.arg()` already
+    /// validates them. The method paths build the same set.
+    pub(crate) fn precondition_skip_params(&self) -> std::collections::HashSet<String> {
+        crate::r_class_formatter::match_arg_skip_set(&self.per_param)
+    }
+
     /// Returns all parameter defaults as an owned map from parameter name to
     /// default value string (the raw R expression used in the wrapper formals,
     /// e.g. `"NULL"`, `"TRUE"`, `"\"Safe\""`).

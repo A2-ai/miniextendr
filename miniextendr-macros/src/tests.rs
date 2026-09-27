@@ -303,6 +303,35 @@ fn method_level_param_check_spellings_and_errors() {
     }
 }
 
+/// `match_arg` and `choices(...)` parameters skip their type-derived checks
+/// under their R names, the names `build_precondition_checks` compares: a
+/// leading underscore is dropped (`_mode` is the R formal `mode`).
+#[test]
+fn parsed_fn_precondition_skips_use_r_names() {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn f(
+            #[miniextendr(match_arg)] _mode: Mode,
+            #[miniextendr(choices("low", "high"))] _level: String,
+            label: String,
+        ) {}
+    })
+    .expect("should parse");
+    let skip = parsed.precondition_skip_params();
+    let expected: std::collections::HashSet<String> =
+        ["mode", "level"].map(String::from).into_iter().collect();
+    assert_eq!(skip, expected);
+
+    // Only `label` reaches the type-derived checks.
+    let output = crate::r_preconditions::build_precondition_checks(
+        &parsed.item().sig.inputs,
+        &skip,
+        &crate::r_preconditions::PreconditionOptions::default(),
+    );
+    let guards = output.guards(None);
+    assert!(guards.iter().all(|g| g.contains("label")), "{guards:?}");
+    assert!(output.fallback_params.is_empty());
+}
+
 // endregion
 
 #[test]

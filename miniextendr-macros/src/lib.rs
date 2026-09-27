@@ -1619,11 +1619,7 @@ pub fn miniextendr(
 
     // Generate R-side precondition checks (one `isTRUE()` guard per check)
     // Skip both match_arg and choices params (already validated by match.arg)
-    let mut skip_params: std::collections::HashSet<String> =
-        parsed.match_arg_params().cloned().collect();
-    for (param_name, _) in parsed.choices_params() {
-        skip_params.insert(r_wrapper_builder::normalize_r_arg_string(param_name));
-    }
+    let skip_params = parsed.precondition_skip_params();
     // `#[miniextendr(no_preconditions)]` / `fast` drops the type-derived
     // checks. TryFromSexp still raises a typed Rust error on mismatched
     // input. The savings were measured against the former `stopifnot()` block
