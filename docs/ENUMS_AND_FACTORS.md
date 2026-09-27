@@ -298,6 +298,7 @@ supplied value and adds `Absent` for an omitted one:
 | `Missing<Mode>` | choices | `Absent` | `Present(Fast)` | `Present(Safe)` |
 | `Missing<Option<Mode>>` | choices | `Absent` | `Present(None)` | `Present(Some(Safe))` |
 | `Missing<Vec<Mode>>` (`several_ok`) | choices | `Absent` | `Present` (all) | `Present(vec![Safe])` |
+| `Missing<Either<Vec<Mode>, R>>` (`several_ok`) | choices | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(vec![Safe]))` |
 
 `choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
 has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
@@ -306,9 +307,10 @@ the same types through the method-level `match_arg(p)` /
 `match_arg_several_ok(p)` / `choices(p = "...")` attributes; trait methods
 accept `choices(p = "...")` / `choices_several_ok(p = "...")` only, so they
 take the string forms (`Missing<String>`, `Missing<Option<String>>`,
-`Missing<Vec<String>>`). An omitted argument crosses the trait ABI of a
-`#[miniextendr]` trait as R's missing-argument sentinel, so a cross-package
-call sees `Absent` too.
+`Missing<Vec<String>>`, and with the `either` feature
+`Missing<Either<String, R>>` / `Missing<Either<Vec<String>, R>>`). An omitted
+argument crosses the trait ABI of a `#[miniextendr]` trait as R's
+missing-argument sentinel, so a cross-package call sees `Absent` too.
 
 A hand-written R function in front of such a wrapper passes omission on only
 if its own formal has no default: `run <- function(mode) run_impl(mode)`
@@ -378,9 +380,62 @@ has neither, so the `Option` layer is not available on a trait method.
 The other arm's name in
 the `@param` line comes from its Rust type (`DataFrame` is "a data frame",
 `List` "a list", `f64` "a number", `Vec<String>` "a character vector"; a type
-R has no name for is shown in code format). `several_ok` does not take an
-`Either`, and a layer inside the left arm (`Either<Option<T>, R>`) is rejected:
-both are compile errors. The choice type has to be the left arm.
+R has no name for is shown in code format). A layer inside the left arm
+(`Either<Option<T>, R>`) is a compile error: the choice type has to be the left
+arm.
+
+#### Several Choices or Another Value
+
+`several_ok` takes the same split with a list on the left: `Either<Vec<T>, R>`
+or `Either<Box<[T]>, R>` accepts one or more choices or a value of another kind
+(#1612):
+
+```rust
+#[miniextendr]
+pub fn set_routes(
+    #[miniextendr(match_arg, several_ok)] routes: Either<Vec<Route>, DataFrame>,
+) -> String {
+    match routes {
+        Either::Left(routes) => format!("{} routes", routes.len()),
+        Either::Right(doses) => format!("{} dose rows", doses.nrow()),
+    }
+}
+```
+
+```r
+set_routes <- function(routes = c("oral", "bolus", "infusion")) {
+  if (is.character(routes) || is.factor(routes)) routes <- .miniextendr_match_arg_several(routes, c("oral", "bolus", "infusion"), "routes")
+  .Call(C_mypkg_set_routes, .call = match.call(), routes)
+}
+
+set_routes()                        # Left([Oral, Bolus, Infusion]), every choice
+set_routes(c("inf", "or"))          # Left([Infusion, Oral]), in the order given
+set_routes(data.frame(amt = 1:2))   # Right(<data frame>)
+set_routes(c("oral", "iv"))         # Error: 'routes' element 2 ("iv") should be one of ...
+set_routes(character(0))            # Error: 'routes' must be of length >= 1
+```
+
+Character or factor input is matched element by element, as for a plain
+`several_ok` list (see [Multiple Choices with
+`several_ok`](#multiple-choices-with-several-ok)), and an omitted argument
+selects every choice as `Left`. Anything else goes to `R`. An explicit `NULL`
+goes to `R` too: that is the one difference from `several_ok` on `Vec<T>`,
+where `NULL` selects every choice. Only the owned containers decode under
+`Either`: `Either<[T; N], R>` and `Either<&[T], R>` are compile errors.
+
+The layers stack as for a scalar `Either`: `Missing<Either<Vec<T>, R>>` keeps
+the choice vector and reports an omitted argument as `Absent` (an explicit
+`NULL` is `Present` of the `R` conversion), `Option<Either<Vec<T>, R>>` has a
+`NULL` formal and reads both an omitted argument and `NULL` as `None`, and
+`Missing<Option<Either<Vec<T>, R>>>` keeps the choice vector with `Absent` for
+an omitted argument and `Present(None)` for `NULL`. A bare `Option<Vec<T>>`
+stays a compile error, since `NULL` already means every choice there.
+`choices("a", "b"), several_ok` works the same way on `Either<Vec<String>, R>`.
+Impl methods take all of these through `match_arg_several_ok(p)` /
+`choices_several_ok(p = "...")`; trait methods take
+`choices_several_ok(p = "...")` on `Either<Vec<String>, R>` or
+`Missing<Either<Vec<String>, R>>`. The auto-generated `@param` line reads
+`One or more of "oral", "bolus", "infusion", or a data frame.`
 
 ### Rename Variants
 
@@ -512,12 +567,16 @@ pub fn pick_metrics(
 ) -> String { ... }
 ```
 
-Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, and `[T; N]`.
+Accepted container shapes: `Vec<T>`, `Box<[T]>`, `&[T]`, and `[T; N]`; under
+`Missing<..>` or `Either<.., R>`, `Vec<T>` and `Box<[T]>` only.
 `several_ok` without `match_arg` or `choices` is a compile error (no choice
 list to validate against). `several_ok` on a scalar type (e.g. `Mode` without
 a `Vec`) is also a compile error, and so is `Option<Vec<T>>`.
+`Either<Vec<T>, R>` takes one or more choices or a value of another kind (see
+[Several Choices or Another Value](#several-choices-or-another-value)).
 
-An omitted argument, and an explicit `NULL`, select the full choice list.
+An omitted argument, and an explicit `NULL`, select the full choice list
+(under `Either`, `NULL` goes to the `R` arm instead).
 Pass a single string to get partial matching, or a character vector to select
 several choices; each element is matched exactly or as a unique prefix.
 `Missing<Vec<T>>` (or `Missing<Box<[T]>>`) keeps the choice vector as the
@@ -672,7 +731,7 @@ fn lookup<T: MatchArg>(choice: &str) -> Option<T> {
 |---------|---------|----------|
 | R storage | `factor(1, levels=c(...))` | `"Fast"` (character) |
 | Validation | Type check (is factor with correct levels) | `match.arg()` with partial matching |
-| Default on NULL | Error | First choice (`Option<T>`: `None`; `several_ok`: all choices) |
+| Default on NULL | Error | First choice (`Option<T>`: `None`; `several_ok`: all choices; under `Either`: the `R` arm) |
 | Omitted argument | Error | First choice (`Option<T>`: `None`; `Missing<..>`: `Absent`) |
 | Vec support | `FactorVec<T>`, `FactorOptionVec<T>` | `Vec<T>` return + `several_ok` inputs |
 | Partial matching | No | Yes (`"F"` → `"Fast"`) |

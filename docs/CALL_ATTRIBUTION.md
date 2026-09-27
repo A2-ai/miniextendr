@@ -176,8 +176,10 @@ helper:
 for an `Option<T>` choice (`if (!missing(kind) && ...)` when it is wrapped in
 `Missing<..>`, #1551), and
 `.miniextendr_match_arg_several(kinds, c(...), "kinds", .mx_call)` for
-`several_ok`. Default-attribution wrappers emit the same statements without
-the call argument, so the helper reports the wrapper's own call (#1552).
+`several_ok`, behind `if (is.character(kinds) || is.factor(kinds))` when the
+list sits in an `Either<Vec<T>, R>` (#1612). Default-attribution wrappers emit
+the same statements without the call argument, so the helper reports the
+wrapper's own call (#1552).
 Both helpers name the argument (`'kind' should be one of "a", "b"`). If a
 downstream package's tests pinned `conditionCall()` for such a failure to
 the `_impl` wrapper or to `match.arg()`, they now see the public call.
