@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/r_wrapper_builder/tests.rs
-assertion_line: 580
+assertion_line: 585
 expression: output
 ---
 Mode
@@ -58,3 +58,28 @@ Missing<Option<Either<Mode, List>>>
   wrapper: if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode")
   caller:  if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg(mode, c("fast", "safe"), "mode", .mx_call)
   @param:  mode One of "fast", "safe", a list, or NULL; omitting the argument means no choice.
+Either<Vec<Mode>, DataFrame> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe", or a data frame.
+Either<Box<[Mode]>, List> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe", or a list.
+Missing<Either<Vec<Mode>, f64>> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe", or a number; omitting the argument means no choice.
+Option<Either<Vec<Mode>, DataFrame>> (several_ok)
+  formal:  mode = NULL
+  wrapper: if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (is.character(mode) || is.factor(mode)) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe", a data frame, or NULL for no choice.
+Missing<Option<Either<Vec<Mode>, List>>> (several_ok)
+  formal:  mode = c("fast", "safe")
+  wrapper: if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode")
+  caller:  if (!missing(mode) && (is.character(mode) || is.factor(mode))) mode <- .miniextendr_match_arg_several(mode, c("fast", "safe"), "mode", .mx_call)
+  @param:  mode One or more of "fast", "safe", a list, or NULL; omitting the argument means no choice.

@@ -325,6 +325,42 @@ fn test_layered_choice_decoders() {
                 "{api}match_arg_either_or::<_,f64,_>(s,<Stringas::miniextendr_api::TryFromSexp>::try_from_sexp)"
             ),
         ),
+        // `several_ok` lists with another kind of value (#1612).
+        (
+            "Either<Vec<Route>, DataFrame>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!(
+                "{api}match_arg_either_or::<_,DataFrame,_>(s,{api}match_arg_vec_from_sexp::<Route>)"
+            ),
+        ),
+        (
+            "Either<Box<[Route]>, DataFrame>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!(
+                "{api}match_arg_either_or::<_,DataFrame,_>(s,|__mx_sexp|{api}match_arg_vec_from_sexp::<Route>(__mx_sexp).map(::std::vec::Vec::into_boxed_slice))"
+            ),
+        ),
+        (
+            "Missing<Either<Vec<Route>, DataFrame>>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!(
+                "{api}match_arg_missing_or(s,|__mx_sexp|{api}match_arg_either_or::<_,DataFrame,_>(__mx_sexp,{api}match_arg_vec_from_sexp::<Route>))"
+            ),
+        ),
+        (
+            "Option<Either<Vec<Route>, DataFrame>>",
+            ChoiceLeaf::MatchArgSeveral,
+            format!(
+                "{api}match_arg_null_or(s,|__mx_sexp|{api}match_arg_either_or::<_,DataFrame,_>(__mx_sexp,{api}match_arg_vec_from_sexp::<Route>))"
+            ),
+        ),
+        (
+            "Either<Vec<String>, f64>",
+            ChoiceLeaf::Literal,
+            format!(
+                "{api}match_arg_either_or::<_,f64,_>(s,<Vec<String>as::miniextendr_api::TryFromSexp>::try_from_sexp)"
+            ),
+        ),
     ];
     for (ty, leaf, want) in cases {
         assert_eq!(decoder(ty, leaf), want, "decoder for `{ty}`");
@@ -356,6 +392,12 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             "mode: Either<Route, DataFrame>",
             ChoiceLeaf::MatchArg,
             "Either<Route, DataFrame>",
+            false,
+        ),
+        (
+            "mode: Either<Vec<Route>, DataFrame>",
+            ChoiceLeaf::MatchArgSeveral,
+            "Either<Vec<Route>, DataFrame>",
             false,
         ),
     ] {
@@ -398,4 +440,16 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
         "{s}"
     );
     assert!(s.contains("__mx_conversion_err_parts ! (e , true)"), "{s}");
+
+    // A `choices(...)` `several_ok` string list with another kind of value
+    // (#1612) names both sides too.
+    let builder = RustConversionBuilder::new()
+        .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
+        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
+    let s = conversion_text(&builder, "mode: Either<Vec<String>, f64>");
+    assert!(s.contains("match_arg_either_or"), "{s}");
+    assert!(
+        s.contains("\"'mode' must be character or a single double\" , \"mode\""),
+        "{s}"
+    );
 }

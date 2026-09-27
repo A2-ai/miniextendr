@@ -606,6 +606,23 @@ mod tests {
             )),
             "Mode"
         );
+        // A `several_ok` list with another kind of value (#1612).
+        assert_eq!(
+            layers("Either<Vec<Mode>, DataFrame>"),
+            (
+                false,
+                false,
+                Some("DataFrame".to_string()),
+                "Vec<Mode>".to_string()
+            )
+        );
+        assert_eq!(
+            type_display(match_arg_choices_ty(
+                &ty("Missing<Either<Vec<Mode>, DataFrame>>"),
+                true
+            )),
+            "Mode"
+        );
     }
 
     #[test]
@@ -655,7 +672,8 @@ pub(crate) fn peel_external_ptr(ty: &syn::Type) -> &syn::Type {
 
 /// The wrappers around the value of a `match_arg` / `choices` parameter,
 /// peeled outermost first: `Missing<..>`, then `Option<..>`, then
-/// `Either<T, R>` with the choice on the left. A plain `T` (or a plain
+/// `Either<T, R>` with the choice on the left (a scalar choice, or a
+/// `several_ok` list: `Either<Vec<T>, R>`, #1612). A plain `T` (or a plain
 /// `several_ok` container) has none.
 ///
 /// Each layer changes one contract and leaves the rest to the layer below:

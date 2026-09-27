@@ -4260,6 +4260,28 @@ fn snapshot_env_match_arg_omitted() {
     insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
 }
 
+/// `several_ok` choice lists with another kind of value on a method (#1612):
+/// the prelude matches only character or factor input (behind `!missing()`
+/// for the omittable one), and the formals keep the choice vectors.
+#[test]
+fn snapshot_env_match_arg_several_either() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Picker {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(match_arg_several_ok(modes), choices_several_ok(tags = "a, b"))]
+            pub fn pick(
+                &self,
+                modes: Either<Vec<Mode>, DataFrame>,
+                tags: Missing<Either<Vec<String>, f64>>,
+            ) -> String {
+                unimplemented!()
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
+}
+
 /// A method's `choices(...)` parameter gets the same auto `@param` text as a
 /// standalone function's (`One of "a", "b"` plus the layer suffix), and a
 /// `match_arg` one the write-time placeholder, on every generator that

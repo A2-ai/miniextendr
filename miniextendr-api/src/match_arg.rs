@@ -44,11 +44,15 @@
 //!
 //! With the `either` feature, `Either<T, R>` takes a choice or a value of
 //! another kind: character or factor input is matched and becomes `Left(T)`,
-//! anything else converts to `R` (`match_arg_either_or`).
+//! anything else converts to `R` (`match_arg_either_or`). A `several_ok` list
+//! takes the same split as `Either<Vec<T>, R>` or `Either<Box<[T]>, R>`
+//! (#1612): character or factor input is matched element by element and
+//! becomes `Left(Vec<T>)`, anything else converts to `R`.
 //!
 //! `several_ok` parameters are validated strictly on the R side: every element
 //! has to match a choice, and `NULL` selects every choice (the same fallback
-//! [`match_arg_vec_from_sexp`] applies).
+//! [`match_arg_vec_from_sexp`] applies). Under `Either`, `NULL` is not a
+//! choice: it goes to `R` (or is `None` under `Option<Either<..>>`).
 
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::ProtectScope;
@@ -377,8 +381,10 @@ pub fn match_arg_missing_or<U, E>(
 /// never tried as a choice. For `#[miniextendr(match_arg)] route:
 /// Either<Route, DataFrame>` the C wrapper decodes with
 /// `match_arg_either_or::<_, DataFrame, _>(sexp, match_arg_from_sexp::<Route>)`;
-/// a `choices(...)` parameter on `Either<String, R>` passes the string's
-/// `TryFromSexp` as `left`.
+/// for a `several_ok` list, `Either<Vec<Route>, DataFrame>` (#1612), `left` is
+/// [`match_arg_vec_from_sexp::<Route>`](match_arg_vec_from_sexp); a
+/// `choices(...)` parameter on `Either<String, R>` (or `Either<Vec<String>, R>`
+/// with `several_ok`) passes the string type's `TryFromSexp` as `left`.
 ///
 /// This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
 /// every input and would decode `NULL` as the first choice.
@@ -481,10 +487,12 @@ impl<T: MatchArg> crate::newtype::IntoRVecElement for T {
 /// NULL input returns all variants. The R prelude's strict `several_ok`
 /// helper maps `NULL` the same way and rejects any element that matches no
 /// choice before the value reaches this function, so the per-element check
-/// here is the second line of defence, not the only one (#1472).
+/// here is the second line of defence, not the only one (#1472). Under an
+/// `Either<Vec<T>, R>` parameter (#1612), [`match_arg_either_or`] calls it
+/// only for character or factor input, so `NULL` never reaches it there.
 ///
 /// Note: factors (INTSXP) are not handled here — the R wrapper coerces factors
-/// to character before the `.Call()` boundary.
+/// to character before the `.Call()` boundary, on the `Either` path too.
 pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchArgError> {
     // NIL → all choices (match.arg default with several.ok = TRUE).
     if sexp.type_of() == SEXPTYPE::NILSXP {

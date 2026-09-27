@@ -1413,9 +1413,17 @@ mod tests {
             "Either<Route, DataFrame>",
             "Option<Either<Route, DataFrame>>",
             "Missing<Option<Either<Mode, List>>>",
+            "Either<Vec<Mode>, DataFrame>",
+            "Option<Either<Vec<Mode>, DataFrame>>",
         ] {
             assert_eq!(exp(unknown, false), None, "{unknown}");
         }
+        // A `choices(...)` `several_ok` string list with another kind of value
+        // (#1612).
+        assert_eq!(
+            exp("Either<Vec<String>, f64>", false),
+            some("character or a single double")
+        );
     }
 
     #[test]
