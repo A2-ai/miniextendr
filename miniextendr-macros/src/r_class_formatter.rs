@@ -197,18 +197,23 @@ pub(crate) fn choice_param_doc_map(
 /// `effective_r_defaults` puts in the formal); for `choices(...)` it is the
 /// literal.
 ///
+/// The `match_arg` statements come first, then the `choices(...)` ones, each
+/// group in signature order (`inputs`), as in a standalone function's wrapper.
+///
 /// Shared by `MethodContext::match_arg_prelude` (inherent impls) and
 /// `TraitMethodContext::match_arg_prelude` (trait impls) — see
 /// `audit/2026-07-03-dogfooding-macros-codegen.md` finding #1 (trait methods
 /// previously had no match_arg support at all).
 pub(crate) fn build_match_arg_prelude(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
 ) -> Vec<String> {
+    use crate::miniextendr_fn::per_param_in_signature_order;
     use crate::r_wrapper_builder::CallAttribution;
     let mut lines = Vec::new();
 
-    for (rust_name, attrs) in per_param {
+    for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
         if !attrs.match_arg {
             continue;
         }
@@ -217,7 +222,7 @@ pub(crate) fn build_match_arg_prelude(
         lines.push(CallAttribution::Wrapper.match_arg_statement(&r_name, &placeholder, attrs));
     }
 
-    for (rust_name, attrs) in per_param {
+    for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
         let Some(choices) = attrs.choices.as_ref() else {
             continue;
         };
@@ -415,7 +420,11 @@ impl<'a> MethodContext<'a> {
     /// Callers should include these lines in the R wrapper body after parameter
     /// defaulting but before the `.Call()`.
     pub fn match_arg_prelude(&self) -> Vec<String> {
-        build_match_arg_prelude(&self.method.method_attrs.per_param, &self.c_ident)
+        build_match_arg_prelude(
+            &self.method.sig.inputs,
+            &self.method.method_attrs.per_param,
+            &self.c_ident,
+        )
     }
 
     /// Build the `.Call()` expression for a static/constructor call.

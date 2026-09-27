@@ -78,6 +78,34 @@ fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
     );
 }
 
+/// The choice parameters of a function are listed in signature order, not in
+/// the order of the per-parameter `HashMap` (which differs between maps and
+/// between compiler runs). The standalone wrapper emits its write-time
+/// `match_arg` entries in this order. Each parse builds a new map; twenty
+/// parses coming out in signature order by chance would be about one in 12^20.
+#[test]
+fn parsed_fn_lists_choice_params_in_signature_order() {
+    for _ in 0..20 {
+        let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+            fn f(
+                #[miniextendr(match_arg)] zeta: Mode,
+                #[miniextendr(choices("x", "y"))] omega: String,
+                #[miniextendr(match_arg)] alpha: Mode,
+                #[miniextendr(choices("p", "q"))] beta: String,
+                #[miniextendr(match_arg)] mid: Mode,
+            ) {}
+        })
+        .unwrap();
+        let match_arg: Vec<&str> = parsed.match_arg_params().map(String::as_str).collect();
+        assert_eq!(match_arg, ["zeta", "alpha", "mid"]);
+        let choices: Vec<&str> = parsed
+            .choices_params()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(choices, ["omega", "beta"]);
+    }
+}
+
 #[test]
 fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
     let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {

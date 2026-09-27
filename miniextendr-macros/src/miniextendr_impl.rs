@@ -3506,7 +3506,11 @@ fn generate_method_match_arg_helpers(
 
     let mut out = TokenStream::new();
 
-    for (rust_name, attrs) in method.method_attrs.per_param.iter() {
+    // Signature order, so the emitted items don't follow the map's order.
+    for (rust_name, attrs) in crate::miniextendr_fn::per_param_in_signature_order(
+        &method.sig.inputs,
+        &method.method_attrs.per_param,
+    ) {
         if !attrs.match_arg {
             continue;
         }
