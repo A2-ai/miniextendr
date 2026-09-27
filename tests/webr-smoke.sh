@@ -51,8 +51,8 @@
 #   -h, --help        Show this help text and exit.
 #
 # Environment:
-#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT — unvalidated on
-#                     arm64 hardware; validation checklist tracked in #1254).
+#   WEBR_ARM64=1      arm64-native dev path (#788, ⚠️ DRAFT: Phase 1 needs
+#                     miniextendr-api to compile for aarch64 Linux, #1254).
 #                     Selects Dockerfile.webr-arm64 + the
 #                     arm64 image, and orchestrates both R passes through the
 #                     native arm64 R on PATH (the donor's amd64 host R trees
@@ -86,6 +86,9 @@ WASM_TOOLS="${WEBR_ROOT}/tools"
 R_SOURCE="${WEBR_ROOT}/R/build/R-${R_VERSION}"
 WEBR_VARS_MK="${WEBR_ROOT}/packages/webr-vars.mk"
 SMOKE_TMP="/tmp/webr-smoke"
+# Library both R binaries read (R_LIBS_USER) for rpkg's Imports in Phase 2 and
+# the scaffold tooling, as in CI's job-level R_LIBS_USER (webr.yml).
+SHARED_R_LIBS="/tmp/r-shared-lib"
 
 if [[ "$WEBR_ARM64" == "1" ]]; then
     IMAGE="${WEBR_IMAGE:-miniextendr-webr-dev-arm64:latest}"
@@ -115,7 +118,7 @@ SCAFFOLD_PKG_NAME="mxsmoke"
 SCAFFOLD_DIR="/tmp/scaffold"
 SCAFFOLD_PKG_DIR="${SCAFFOLD_DIR}/${SCAFFOLD_PKG_NAME}"
 SCAFFOLD_NATIVE_LIB="/tmp/scaffold-native-lib"
-SCAFFOLD_R_LIBS="/tmp/r-shared-lib"
+SCAFFOLD_R_LIBS="${SHARED_R_LIBS}"
 
 # ── Monorepo scaffold leg (#1271) constants ─────────────────────────────────
 # Local parity with the CI "Monorepo scaffold leg" steps (main-push/dispatch
@@ -335,6 +338,25 @@ phase_wasm_build() {
         # (same stale-mtime trap as Phase 1, but native-poisoning-wasm here).
         rm -f /work/rpkg/src/*.o /work/rpkg/src/*.so
         ( cd /work/rpkg && CC=emcc bash ./configure )
+        # INSTALL's lazy-load loads rpkg's Imports in the R that runs it. In
+        # the amd64 image that is webR's host R, whose library tree is not
+        # the native R's: it cannot see transitive Imports such as rlang
+        # (lifecycle -> rlang), which the native R keeps in its own system
+        # library. Like CI tier 2 (webr.yml), install the Imports, derived
+        # from rpkg/DESCRIPTION, through that R into a shared R_LIBS_USER.
+        export R_LIBS_USER=${SHARED_R_LIBS}
+        mkdir -p ${SHARED_R_LIBS}
+        cat > /tmp/smoke-imports.R <<'RSCRIPT'
+imports <- trimws(strsplit(read.dcf('/work/rpkg/DESCRIPTION')[1, 'Imports'], ',')[[1]])
+imports <- sub('[ (].*', '', imports)
+imports <- setdiff(imports, rownames(installed.packages(priority = 'base')))
+install.packages(imports, dependencies = c('Depends', 'Imports', 'LinkingTo'),
+                 repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest',
+                 lib = Sys.getenv('R_LIBS_USER'))
+miss <- imports[!vapply(imports, requireNamespace, logical(1), quietly = TRUE)]
+if (length(miss)) stop('Unloadable after install: ', paste(miss, collapse = ', '))
+RSCRIPT
+        ${R_HOST_RSCRIPT} /tmp/smoke-imports.R
         # Install to an empty host-side temp library, NOT directly into the
         # wasm tree. INSTALL's tail-end lazy-load spawns a sub-R that adds
         # --library to .libPaths(); if that path contains wasm grDevices.so
@@ -686,7 +708,7 @@ main() {
     printf "Repo:     %s\n" "${MX_ROOT}"
     printf "R:        %s\n" "${R_VERSION}"
     if [[ "$WEBR_ARM64" == "1" ]]; then
-        printf 'Arch:     %barm64-native (DRAFT, #788 — unvalidated)%b\n' "${CLR_YELLOW}" "${CLR_RESET}"
+        printf 'Arch:     %barm64-native (DRAFT, #1254)%b\n' "${CLR_YELLOW}" "${CLR_RESET}"
     else
         printf "Arch:     amd64 (Rosetta on Apple Silicon)\n"
     fi
