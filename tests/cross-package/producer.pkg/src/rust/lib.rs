@@ -161,6 +161,8 @@ pub struct S3Point {
 #[miniextendr(s3)]
 impl S3Point {
     /// Create a new point
+    /// @param x X coordinate.
+    /// @param y Y coordinate.
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }

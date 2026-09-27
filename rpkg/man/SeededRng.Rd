@@ -30,4 +30,10 @@ SeededRng
 }
 \description{
 SeededRng inherent methods: constructor.
+
+Arguments of \code{SeededRng$new()}:
+
+\describe{
+\item{\code{seed}}{Integer seed (absolute value is used).}
+}
 }

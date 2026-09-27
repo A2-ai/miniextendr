@@ -4428,6 +4428,91 @@ fn method_choice_params_get_choice_text() {
             );
         }
     }
+
+    // Env methods have no usage section: the same text is a `\describe` item,
+    // and no `@param` line is emitted.
+    let env = generate_env_r_wrapper(&parse_impl(ClassSystem::Env, item_impl()));
+    let pick_block = env
+        .split("# Picker::pick ")
+        .nth(1)
+        .and_then(|rest| rest.split("Picker$pick <- function(").next())
+        .expect("Picker$pick block");
+    for item in [
+        "\\item{\\code{color}}{One of \"red\", \"green\"; omitting the argument means no choice.}",
+        "\\item{\\code{tags}}{One or more of \"a\", \"b\".}",
+        "\\item{\\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}",
+    ] {
+        assert!(
+            pick_block.contains(item),
+            "Env: missing `{item}` in:\n{env}"
+        );
+    }
+    assert!(
+        !pick_block.contains("@param"),
+        "Env: no @param line in:\n{env}"
+    );
+}
+
+/// S3 and vctrs constructors document their own formals on the class block:
+/// choice text for a choice parameter (the same line a method gets),
+/// `(undocumented)` for a plain one.
+#[test]
+fn constructor_choice_params_get_choice_text() {
+    // An S3 constructor returns `Self`, a vctrs one the vector payload.
+    let item_impl = |ret: syn::Type| -> syn::ItemImpl {
+        syn::parse_quote! {
+            impl Picker {
+                #[miniextendr(match_arg(mode), choices(color = "red, green"))]
+                pub fn new(mode: Missing<Option<Mode>>, color: Missing<String>, size: i32) -> #ret {
+                    unimplemented!()
+                }
+            }
+        }
+    };
+    let lines = [
+        "#' @param mode .__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__new_mode__",
+        "#' @param color One of \"red\", \"green\"; omitting the argument means no choice.",
+        "#' @param size (undocumented)",
+    ];
+    let mut vctrs_attrs = default_impl_attrs(ClassSystem::Vctrs);
+    vctrs_attrs.vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: None,
+    };
+    for (class_system, wrapper) in [
+        (
+            ClassSystem::S3,
+            generate_s3_r_wrapper(&parse_impl(
+                ClassSystem::S3,
+                item_impl(syn::parse_quote!(Self)),
+            )),
+        ),
+        (
+            ClassSystem::Vctrs,
+            generate_vctrs_r_wrapper(
+                &ParsedImpl::parse(vctrs_attrs, item_impl(syn::parse_quote!(Vec<f64>))).unwrap(),
+            ),
+        ),
+    ] {
+        let class_block = wrapper
+            .split("new_picker <- function(")
+            .next()
+            .expect("constructor block");
+        for line in lines {
+            assert!(
+                class_block.contains(&format!("{line}\n")),
+                "{class_system:?}: missing `{line}` in:\n{wrapper}"
+            );
+        }
+        let export = class_block.find("#' @export").expect("@export");
+        assert!(
+            class_block.find(lines[2]).expect("size") < export,
+            "{class_system:?}: @param after @export in:\n{wrapper}"
+        );
+    }
 }
 
 /// A method's choice parameters come out in signature order: first the

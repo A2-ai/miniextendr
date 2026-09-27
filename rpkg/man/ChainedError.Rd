@@ -24,4 +24,11 @@ ChainedError
 }
 \description{
 ChainedError inherent methods: constructors with and without source errors.
+
+Arguments of \code{ChainedError$new()}:
+
+\describe{
+\item{\code{outer_msg}}{Character string for the outer error message.}
+\item{\code{inner_msg}}{Character string for the inner (source) error message.}
+}
 }

@@ -69,10 +69,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
+            let choice_docs = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
                     .with_name_prefix("$")
-                    .with_params_as_details();
+                    .with_params_as_details()
+                    .with_r_params(&ctx.params)
+                    .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
@@ -98,10 +101,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
+            let choice_docs = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_name_prefix("$")
-                    .with_params_as_details();
+                    .with_params_as_details()
+                    .with_r_params(&ctx.params)
+                    .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());
         }
 
@@ -135,10 +141,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(ctx.source_comment(type_ident));
         // Skip method documentation if class has @noRd
         if !class_has_no_rd {
+            let choice_docs = ctx.choice_param_docs();
             let method_doc =
                 MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
                     .with_name_prefix("$")
-                    .with_params_as_details();
+                    .with_params_as_details()
+                    .with_r_params(&ctx.params)
+                    .with_choice_param_docs(&choice_docs);
             lines.extend(method_doc.build());
         }
 

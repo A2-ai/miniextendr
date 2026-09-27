@@ -26,4 +26,10 @@ GrowableVec
 }
 \description{
 GrowableVec inherent methods: constructors, conversion, and clearing.
+
+Arguments of \code{GrowableVec$from_vec()}:
+
+\describe{
+\item{\code{data}}{Integer vector of initial elements.}
+}
 }

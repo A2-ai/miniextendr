@@ -62,9 +62,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let mut ctor_doc_tags = Vec::new();
         ctor_doc_tags.extend(class_doc_tags.iter().cloned());
         ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
+        let ctor_choice_docs = ctx.choice_param_docs();
 
         lines.extend(
             ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3")
+                .with_ctor_params(&ctx.params, &ctor_choice_docs)
                 .with_export_control(parsed_impl.internal, parsed_impl.noexport)
                 .build(),
         );

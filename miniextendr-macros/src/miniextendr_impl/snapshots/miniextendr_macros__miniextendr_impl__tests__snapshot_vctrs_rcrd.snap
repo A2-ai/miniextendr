@@ -1,12 +1,14 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3979
+assertion_line: 4615
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Rational::new (1:1)
 #' @title Rational vctrs S3 Class
 #' @name Rational
 #' @rdname Rational
+#' @param n (undocumented)
+#' @param d (undocumented)
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
 new_rational <- function(n, d) {

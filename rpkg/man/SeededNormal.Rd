@@ -26,4 +26,12 @@ SeededNormal
 }
 \description{
 SeededNormal inherent methods: constructor.
+
+Arguments of \code{SeededNormal$new()}:
+
+\describe{
+\item{\code{mean}}{Mean of the normal distribution.}
+\item{\code{sd}}{Standard deviation (must be finite).}
+\item{\code{seed}}{Integer seed (absolute value is used).}
+}
 }

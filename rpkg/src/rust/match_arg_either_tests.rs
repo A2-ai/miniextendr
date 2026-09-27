@@ -230,7 +230,6 @@ pub struct EitherRouteVctrs;
 
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "route"))]
 impl EitherRouteVctrs {
-    /// @param route One of "oral", "bolus", "infusion", or a data frame.
     #[allow(clippy::new_ret_no_self)]
     #[miniextendr(match_arg(route))]
     pub fn new(route: Either<Route, DataFrame>) -> Vec<f64> {
@@ -556,7 +555,6 @@ pub struct EitherRoutesVctrs;
 
 #[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "routes"))]
 impl EitherRoutesVctrs {
-    /// @param routes One or more of "oral", "bolus", "infusion", or a data frame.
     #[allow(clippy::new_ret_no_self)]
     #[miniextendr(match_arg_several_ok(routes))]
     pub fn new(routes: Either<Vec<Route>, DataFrame>) -> Vec<f64> {

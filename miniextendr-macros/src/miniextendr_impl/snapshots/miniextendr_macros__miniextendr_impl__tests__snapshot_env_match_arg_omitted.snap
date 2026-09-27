@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3640
+assertion_line: 4260
 expression: generate_env_r_wrapper(&parsed)
 ---
 #' @title Picker Class
@@ -21,6 +21,12 @@ Picker$new <- function() {
 }
 
 # Picker::pick (1:1)
+#' @description Arguments of \code{Picker$pick()}:
+#'
+#' \describe{
+#'   \item{\code{mode}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_mode__}
+#'   \item{\code{color}}{One of "red", "green"; omitting the argument means no choice.}
+#' }
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
@@ -32,6 +38,11 @@ Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker
 }
 
 # Picker::pick_many (1:1)
+#' @description Arguments of \code{Picker$pick_many()}:
+#'
+#' \describe{
+#'   \item{\code{modes}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_many_modes__}
+#' }
 #' @name Picker$pick_many
 #' @rdname Picker
 Picker$pick_many <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__) {
