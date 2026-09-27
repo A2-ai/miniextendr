@@ -134,6 +134,99 @@ fn parsed_fn_errors_on_non_ident_dots_pattern() {
     );
 }
 
+/// A parameter whose R argument (leading underscores dropped) is an R reserved
+/// word, starts with a digit, or repeats another parameter's is a compile
+/// error: the wrappers file would not parse. Dots become `...` and are exempt.
+#[test]
+fn parsed_fn_rejects_unparsable_r_formals() {
+    let err = |tokens: proc_macro2::TokenStream| {
+        syn::parse2::<MiniextendrFunctionParsed>(tokens)
+            .err()
+            .expect("must be rejected")
+            .to_string()
+    };
+    for (tokens, formal) in [
+        (
+            quote::quote!(
+                fn f(_if: i32) {}
+            ),
+            "if",
+        ),
+        (
+            quote::quote!(
+                fn f(r#in: i32) {}
+            ),
+            "in",
+        ),
+        (
+            quote::quote!(
+                fn f(_for: i32) {}
+            ),
+            "for",
+        ),
+        (
+            quote::quote!(
+                fn f(__function: i32) {}
+            ),
+            "function",
+        ),
+        (
+            quote::quote!(
+                fn f(_TRUE: bool) {}
+            ),
+            "TRUE",
+        ),
+        (
+            quote::quote!(
+                fn f(_NA_integer_: i32) {}
+            ),
+            "NA_integer_",
+        ),
+    ] {
+        let msg = err(tokens);
+        assert!(
+            msg.contains(&format!(
+                "becomes the R argument `{formal}`, which is an R reserved word"
+            )) && msg.contains(&format!("for example `{formal}_`")),
+            "{msg}"
+        );
+    }
+    let msg = err(quote::quote!(
+        fn f(_1: i32) {}
+    ));
+    assert!(
+        msg.contains("parameter `_1` becomes the R argument `1`, which starts with a digit"),
+        "{msg}"
+    );
+    let msg = err(quote::quote!(
+        fn f(x: i32, _x: i32) {}
+    ));
+    assert!(
+        msg.contains("parameters `x` and `_x` both become the R argument `x`"),
+        "{msg}"
+    );
+    let msg = err(quote::quote!(
+        fn f(__: i32, ___: i32) {}
+    ));
+    assert!(msg.contains("both become the R argument `arg`"), "{msg}");
+
+    // Words that are only reserved in Rust, spelled raw, and names that merely
+    // contain a reserved word are fine; so is a dots binding named like one.
+    for tokens in [
+        quote::quote!(
+            fn f(r#type: i32, r#match: i32, iffy: i32, if_: i32) {}
+        ),
+        quote::quote!(
+            fn f(x: i32, _if: ...) {}
+        ),
+        quote::quote!(
+            fn f(_self: i32, _private: i32) {}
+        ),
+    ] {
+        syn::parse2::<MiniextendrFunctionParsed>(tokens).expect("accepted");
+    }
+}
+
 // region: per-parameter `inherits` / `no_na` and their messages
 
 /// The `inherits` / `no_na` spellings of one parameter, keyed by R name.

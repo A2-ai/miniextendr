@@ -1852,9 +1852,15 @@ fn s7_dispatch_names_are_validated() {
     assert!(msg.contains("found `other`"), "{msg}");
     let msg = err("other, other", quote::quote!(other: i32));
     assert!(msg.contains("names `other` twice"), "{msg}");
-    let msg = err("other", quote::quote!(other: i32));
+    // The receiver named like a parameter is `check_method_formals`' job.
+    let msg = check_method_formals(&parse_s7_method(
+        quote::quote!(#[miniextendr(s7(dispatch = "other"))]),
+        quote::quote!(other: i32),
+    ))
+    .expect_err("receiver named like a parameter")
+    .to_string();
     assert!(
-        msg.contains("names the receiver, so it cannot also be a parameter name"),
+        msg.contains("parameter `other` becomes the R argument `other`, which is the receiver"),
         "{msg}"
     );
     let msg = err("x, ...", quote::quote!(other: i32));
@@ -6101,3 +6107,135 @@ fn s3_operator_names_are_quoted_in_methods_and_generic_guards() {
         }
     }
 }
+
+// region: R formal names (receivers, R6 bindings, reserved words)
+
+/// A method parameter must not take the R argument name the class system's
+/// wrapper binds itself: the receiver (`self` for Env, `x` for S3 / S4 / S7,
+/// `self` for the S7 fast-path shortcut) or R6's `self` / `private` inside the
+/// class. Static methods and non-R6 constructors are plain functions.
+#[test]
+fn method_formals_reject_receiver_and_class_bindings() {
+    let rejected = |class_system: ClassSystem, item: syn::ItemImpl, expected: &str| {
+        let msg = check_method_formals(&parse_impl(class_system, item))
+            .expect_err("must be rejected")
+            .to_string();
+        assert!(msg.contains(expected), "{class_system:?}: {msg}");
+    };
+    rejected(
+        ClassSystem::Env,
+        syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32) -> i32 { 0 } }),
+        "parameter `_self` becomes the R argument `self`, which is the receiver of the \
+         generated Env-class method. Rename the parameter.",
+    );
+    for params in [quote::quote!(_self: i32), quote::quote!(__private: i32)] {
+        let item: syn::ItemImpl =
+            syn::parse_quote!(impl Coll { pub fn m(&self, #params) -> i32 { 0 } });
+        rejected(ClassSystem::R6, item, "binding inside the class");
+    }
+    rejected(
+        ClassSystem::R6,
+        syn::parse_quote!(impl Coll { pub fn new(_private: i32) -> Self { Coll } }),
+        "is R6's `private` binding inside the class, where the generated method reads the \
+         object's pointer",
+    );
+    rejected(
+        ClassSystem::S3,
+        syn::parse_quote!(impl Coll { pub fn m(&self, x: i32) -> i32 { 0 } }),
+        "parameter `x` becomes the R argument `x`, which is the receiver of the generated S3 \
+         method",
+    );
+    rejected(
+        ClassSystem::S4,
+        syn::parse_quote!(impl Coll { pub fn m(&self, _x: i32) -> i32 { 0 } }),
+        "parameter `_x` becomes the R argument `x`, which is the receiver of the generated S4 \
+         method",
+    );
+    rejected(
+        ClassSystem::S7,
+        syn::parse_quote!(impl Coll { pub fn m(&self, r#x: i32) -> i32 { 0 } }),
+        "which is the receiver of the generated S7 method",
+    );
+    rejected(
+        ClassSystem::S7,
+        syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32) -> i32 { 0 } }),
+        "which is the receiver of the fast-path shortcut `Coll_m()` generated for this S7 \
+         method (`s7(no_shortcut)` drops the shortcut)",
+    );
+    // Reserved words and repeated names, on any method.
+    rejected(
+        ClassSystem::R6,
+        syn::parse_quote!(impl Coll { pub fn m(&self, _in: i32) -> i32 { 0 } }),
+        "parameter `_in` becomes the R argument `in`, which is an R reserved word",
+    );
+    rejected(
+        ClassSystem::S3,
+        syn::parse_quote!(impl Coll { pub fn st(y: i32, __y: i32) -> i32 { 0 } }),
+        "parameters `y` and `__y` both become the R argument `y`",
+    );
+
+    let accepted = |class_system: ClassSystem, item: syn::ItemImpl| {
+        check_method_formals(&parse_impl(class_system, item))
+            .unwrap_or_else(|e| panic!("{class_system:?}: {e}"));
+    };
+    for class_system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        // Static methods reserve nothing.
+        accepted(
+            class_system,
+            syn::parse_quote!(impl Coll {
+                pub fn st(_self: i32, _private: i32, x: i32) -> i32 { 0 }
+            }),
+        );
+    }
+    // Constructors outside R6 are plain functions.
+    for class_system in [
+        ClassSystem::Env,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        accepted(
+            class_system,
+            syn::parse_quote!(impl Coll {
+                pub fn new(_self: i32, _private: i32, x: i32) -> Self { Coll }
+            }),
+        );
+    }
+    // Each system reserves its own names only: `x` is free on Env and R6,
+    // `self` and `private` on S3.
+    accepted(
+        ClassSystem::Env,
+        syn::parse_quote!(impl Coll { pub fn m(&self, x: i32, _private: i32) -> i32 { 0 } }),
+    );
+    accepted(
+        ClassSystem::R6,
+        syn::parse_quote!(impl Coll { pub fn m(&self, x: i32) -> i32 { 0 } }),
+    );
+    accepted(
+        ClassSystem::S3,
+        syn::parse_quote!(impl Coll { pub fn m(&self, _self: i32, _private: i32) -> i32 { 0 } }),
+    );
+    // Without the shortcut `self` is free; an explicit dispatch receiver frees `x`.
+    accepted(
+        ClassSystem::S7,
+        syn::parse_quote!(impl Coll {
+            #[miniextendr(s7(no_shortcut))]
+            pub fn m(&self, _self: i32) -> i32 { 0 }
+        }),
+    );
+    accepted(
+        ClassSystem::S7,
+        syn::parse_quote!(impl Coll {
+            #[miniextendr(s7(dispatch = "obj"))]
+            pub fn m(&self, x: i32) -> i32 { 0 }
+        }),
+    );
+}
+
+// endregion

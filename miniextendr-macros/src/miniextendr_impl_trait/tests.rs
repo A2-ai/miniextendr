@@ -1802,3 +1802,93 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
 }
 
 // endregion
+
+// region: R formal names
+
+/// Every class system names a trait instance method's receiver `x`, and the
+/// S7 fast-path shortcut names its receiver `self`: a parameter taking either
+/// name (after its leading underscores are dropped) is a compile error. R6
+/// trait methods live outside the class, so `self` / `private` stay free.
+#[test]
+fn trait_method_formals_reject_the_receiver() {
+    let wrapper = |class_system: ClassSystem, method: TraitMethod| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &[method],
+            &[],
+            opts(class_system, false, false, false),
+        )
+    };
+    let with_sig = |has_self: bool, sig: syn::Signature| {
+        let mut method = make_test_method("m", has_self);
+        method.sig = sig;
+        method
+    };
+    for (class_system, system) in [
+        (ClassSystem::Env, "Env-class"),
+        (ClassSystem::R6, "R6"),
+        (ClassSystem::S3, "S3"),
+        (ClassSystem::S4, "S4"),
+        (ClassSystem::S7, "S7"),
+        (ClassSystem::Vctrs, "vctrs"),
+    ] {
+        let msg = wrapper(
+            class_system,
+            with_sig(true, syn::parse_quote!(fn m(&self, _x: i32) -> i32)),
+        )
+        .expect_err("receiver")
+        .to_string();
+        assert!(
+            msg.contains(&format!(
+                "parameter `_x` becomes the R argument `x`, which is the receiver of the \
+                 generated {system} trait method"
+            )),
+            "{class_system:?}: {msg}"
+        );
+        // Static methods are plain functions.
+        wrapper(
+            class_system,
+            with_sig(false, syn::parse_quote!(fn m(x: i32, _self: i32) -> i32)),
+        )
+        .unwrap_or_else(|e| panic!("{class_system:?}: {e}"));
+        let msg = wrapper(
+            class_system,
+            with_sig(false, syn::parse_quote!(fn m(_while: i32) -> i32)),
+        )
+        .expect_err("reserved word")
+        .to_string();
+        assert!(msg.contains("which is an R reserved word"), "{msg}");
+    }
+    wrapper(
+        ClassSystem::R6,
+        with_sig(
+            true,
+            syn::parse_quote!(fn m(&self, _self: i32, _private: i32) -> i32),
+        ),
+    )
+    .expect("R6 trait methods live outside the class");
+
+    let shortcut = with_sig(true, syn::parse_quote!(fn m(&self, _self: i32) -> i32));
+    let msg = wrapper(ClassSystem::S7, shortcut.clone())
+        .expect_err("shortcut receiver")
+        .to_string();
+    assert!(
+        msg.contains(
+            "which is the receiver of the fast-path shortcut `Foo_m()` generated for this S7 \
+             trait method"
+        ),
+        "{msg}"
+    );
+    wrapper(
+        ClassSystem::S7,
+        TraitMethod {
+            no_shortcut: true,
+            ..shortcut.clone()
+        },
+    )
+    .expect("no shortcut, no `self` receiver");
+    wrapper(ClassSystem::S3, shortcut).expect("`self` is free outside S7");
+}
+
+// endregion

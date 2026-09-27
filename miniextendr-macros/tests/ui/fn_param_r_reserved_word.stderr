@@ -1,0 +1,5 @@
+error: parameter `_if` becomes the R argument `if`, which is an R reserved word, so the generated R wrapper would not parse. Rename the parameter (for example `if_`).
+ --> tests/ui/fn_param_r_reserved_word.rs:9:13
+  |
+9 | pub fn pick(_if: bool) -> bool {
+  |             ^^^

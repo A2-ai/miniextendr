@@ -1375,6 +1375,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             ));
         }
 
+        crate::r_wrapper_builder::check_r_formals(&item.sig.inputs, &[])?;
+
         Ok(Self {
             item,
             has_dots,

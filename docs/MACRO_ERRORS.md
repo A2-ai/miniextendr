@@ -217,6 +217,26 @@ The R handle stores the value itself, so a method can take `self`,
 `self: Box<Self>`, `Rc<Self>`, `Arc<Self>` and friends cannot be handed over;
 unwrap to `self` or take `&self`.
 
+### "parameter `_x` becomes the R argument `x`, which ..."
+
+Every parameter becomes an argument of the generated R function under its own
+name with the leading underscores dropped (`_x` becomes `x`, `r#in` becomes
+`in`). Callers pass arguments by name, so the macro never renames one. Instead
+it rejects the names R cannot use:
+
+- an R reserved word (`if`, `in`, `for`, `function`, `TRUE`, `NA`, ...) or a
+  name that starts with a digit: the wrappers file would not parse;
+- two parameters with the same R name (`x` and `_x`): R rejects a repeated
+  argument name;
+- a name the class system's wrapper binds itself: the receiver of an instance
+  method (`self` for Env, `x` for S3, S4 and every trait method, the first
+  dispatch argument for S7, `x` by default, and `self` for the S7 fast-path
+  shortcut, which `s7(no_shortcut)` drops) and
+  R6's `self` and `private` inside the class (`initialize` and every method).
+
+Rename the Rust parameter. Static methods and constructors outside R6 are plain
+functions and reserve nothing.
+
 ### "`postfix` and `r_name` both set the R wrapper name"
 
 `postfix = "_impl"` derives the R name from the Rust identifier; `r_name = "..."`

@@ -49,8 +49,9 @@ pub(super) fn generate_trait_r_wrapper(
         noexport,
     } = opts;
     reject_unsupported_describe_in(methods, class_system)?;
+    check_trait_method_formals(type_ident, methods, class_system)?;
     let result = match class_system {
-        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
+        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
@@ -253,6 +254,52 @@ fn push_param_tags(lines: &mut Vec<String>, method: &TraitMethod) {
     crate::roxygen::push_roxygen_tags(lines, &params);
 }
 
+/// Check the R formals of every trait method
+/// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)). Every
+/// class system names an instance method's receiver `x`; S7 also emits a
+/// `<Type>_<method>` fast-path shortcut whose receiver is `self`. Static
+/// methods are plain functions and reserve nothing.
+fn check_trait_method_formals(
+    type_ident: &syn::Ident,
+    methods: &[TraitMethod],
+    class_system: ClassSystem,
+) -> syn::Result<()> {
+    let system = match class_system {
+        ClassSystem::Env => "Env-class",
+        ClassSystem::R6 => "R6",
+        ClassSystem::S3 => "S3",
+        ClassSystem::S4 => "S4",
+        ClassSystem::S7 => "S7",
+        ClassSystem::Vctrs => "vctrs",
+    };
+    for method in methods {
+        let mut reserved = Vec::new();
+        if method.has_self {
+            reserved.push((
+                "x".to_string(),
+                format!("is the receiver of the generated {system} trait method"),
+            ));
+            if class_system == ClassSystem::S7
+                && !method.no_shortcut
+                && let Some(shortcut) = crate::miniextendr_impl::s7_class::s7_shortcut_name(
+                    &type_ident.to_string(),
+                    &method.r_method_name(),
+                )
+            {
+                reserved.push((
+                    "self".to_string(),
+                    format!(
+                        "is the receiver of the fast-path shortcut `{shortcut}()` generated for \
+                         this S7 trait method (`s7(no_shortcut)` drops the shortcut)"
+                    ),
+                ));
+            }
+        }
+        crate::r_wrapper_builder::check_r_formals(&method.sig.inputs, &reserved)?;
+    }
+    Ok(())
+}
+
 /// Reject a method-level `@describeIn` that roxygen2 cannot honour on the
 /// trait wrapper (#1590), the rule `ParsedImpl::reject_unsupported_describe_in`
 /// applies to inherent methods.
@@ -334,15 +381,12 @@ fn reject_unsupported_describe_in(
 /// (invisibly only when marked `Invisible<..>`, #1213).
 ///
 /// Static methods and constants also live under `Type$Trait$name`.
-///
-/// Returns an error if an instance method has a parameter named `x` (collides
-/// with the self parameter in env-class dispatch).
 fn generate_trait_env_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-) -> syn::Result<String> {
+) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
     let mut lines = Vec::new();
@@ -382,22 +426,6 @@ fn generate_trait_env_r_wrapper(
             Some(&target),
             Some(&target),
         ));
-
-        // Check for 'x' parameter collision in instance methods
-        if method.has_self {
-            for input in &method.sig.inputs {
-                if let syn::FnArg::Typed(pt) = input
-                    && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-                    && pat_ident.ident == "x"
-                {
-                    return Err(syn::Error::new_spanned(
-                        &pat_ident.ident,
-                        "trait instance method parameter cannot be named `x` \
-                         (collides with self parameter in env-class dispatch)",
-                    ));
-                }
-            }
-        }
 
         // Build .Call() invocation — C name uses Rust ident, R name uses r_name
         let (full_params, call) = if method.has_self {
@@ -452,7 +480,7 @@ fn generate_trait_env_r_wrapper(
         lines.push(String::new());
     }
 
-    Ok(lines.join("\n"))
+    lines.join("\n")
 }
 
 /// Generate S3-style R wrapper code (generic + method.Type).

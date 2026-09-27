@@ -243,6 +243,11 @@ const R_RESERVED_WORDS: &[&str] = &[
     "in",
 ];
 
+/// Whether `name` is one of R's reserved words (`if`, `in`, `TRUE`, `NA`, ...).
+pub(crate) fn is_r_reserved_word(name: &str) -> bool {
+    R_RESERVED_WORDS.contains(&name)
+}
+
 /// Whether `name` is a syntactic R name: ASCII letters, digits, `.` and `_`
 /// only; starts with a letter, or with a `.` that is not followed by a digit;
 /// and is not a reserved word. Anything else (`[.foo`, `$.foo`, `==.foo`,
@@ -260,7 +265,7 @@ pub(crate) fn is_syntactic_r_name(name: &str) -> bool {
     }
     name.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
-        && !R_RESERVED_WORDS.contains(&name)
+        && !is_r_reserved_word(name)
 }
 
 /// The left-hand side of a generated `<name> <- function(...)` definition.

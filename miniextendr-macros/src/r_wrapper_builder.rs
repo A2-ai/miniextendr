@@ -64,6 +64,76 @@ pub fn normalize_r_arg_string(name: &str) -> String {
     }
 }
 
+/// Check the R formals a signature produces, before any wrapper is generated.
+///
+/// Each parameter becomes the formal [`normalize_r_arg_string`] gives it; the
+/// trailing dots parameter becomes `...` and is skipped. A formal must be an R
+/// name (not a reserved word such as `if` or `in`, not starting with a digit),
+/// distinct from the others (`x` and `_x` both become `x`), and not one of the
+/// `reserved` names the generated wrapper binds itself (a method's receiver,
+/// R6's `self` and `private`), each paired with what it is. Any of these would
+/// break the wrapper: a parse error in the wrappers file, or a parameter that
+/// hides the object the method works on.
+///
+/// Every case is a compile error rather than a rename: callers pass arguments
+/// by name, so the R formal has to stay the parameter's own name.
+pub(crate) fn check_r_formals(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    reserved: &[(String, String)],
+) -> syn::Result<()> {
+    let has_dots = crate::miniextendr_fn::trailing_dots_ident(inputs).is_some();
+    let last_idx = inputs.len().saturating_sub(1);
+    let mut seen: std::collections::HashMap<String, &syn::Ident> = std::collections::HashMap::new();
+    for (idx, input) in inputs.iter().enumerate() {
+        let syn::FnArg::Typed(pat_type) = input else {
+            continue;
+        };
+        if has_dots && idx == last_idx {
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            continue;
+        };
+        let ident = &pat_ident.ident;
+        let formal = normalize_r_arg_string(&crate::naming::ident_name(ident));
+        let problem = if crate::naming::is_r_reserved_word(&formal) {
+            Some(format!(
+                "is an R reserved word, so the generated R wrapper would not parse. \
+                 Rename the parameter (for example `{formal}_`)"
+            ))
+        } else if formal.starts_with(|c: char| c.is_ascii_digit()) {
+            Some(
+                "starts with a digit, so the generated R wrapper would not parse. \
+                 Rename the parameter so that, without its leading underscores, it \
+                 starts with a letter"
+                    .to_string(),
+            )
+        } else {
+            reserved
+                .iter()
+                .find(|(name, _)| *name == formal)
+                .map(|(_, role)| format!("{role}. Rename the parameter"))
+        };
+        if let Some(problem) = problem {
+            return Err(syn::Error::new(
+                ident.span(),
+                format!("parameter `{ident}` becomes the R argument `{formal}`, which {problem}."),
+            ));
+        }
+        if let Some(first) = seen.insert(formal.clone(), ident) {
+            return Err(syn::Error::new(
+                ident.span(),
+                format!(
+                    "parameters `{first}` and `{ident}` both become the R argument `{formal}` \
+                     (the R name drops leading underscores), and R rejects a repeated argument \
+                     name. Rename one of them."
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)
 /// into individual trimmed entries. Surrounding double-quotes are tolerated so
 /// users can spell the list either way: `"a, b"` or `"\"a\", \"b\""`.

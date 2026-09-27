@@ -1,0 +1,5 @@
+error: parameter `_private` becomes the R argument `private`, which is R6's `private` binding inside the class, where the generated method reads the object's pointer. Rename the parameter.
+  --> tests/ui/impl_r6_param_private.rs:17:24
+   |
+17 |     pub fn bump(&self, _private: i32) -> i32 {
+   |                        ^^^^^^^^
