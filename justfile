@@ -900,12 +900,13 @@ minirextendr-install-deps:
 # Depends on `vendor` for the same reason as r-cmd-build — devtools::build
 # wraps R CMD build, and the resulting tarball is meaningful only with
 # inst/vendor.tar.xz inside.
-# Cleanup: inst/vendor.tar.xz is removed on exit so the source tree is never
-# left in tarball mode after this recipe finishes.
+# Cleanup: inst/vendor.tar.xz is removed and the committed Cargo.lock restored
+# on exit, so the source tree is never left in tarball mode or with `vendor`'s
+# lock stamp after this recipe finishes (see r-cmd-build).
 [script("bash")]
 devtools-build: configure vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
 # No _assert-no-vendor-leak dep — devtools::check internally calls
@@ -977,11 +978,16 @@ r-cmd-install *args: _assert-no-vendor-leak configure
 # the next `just rcmdinstall` / `devtools::install("rpkg")` silently switch
 # to tarball mode (configure's only signal is `[ -f inst/vendor.tar.xz ]`),
 # which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
+# The same goes for the `source = "git+<url>#<current commit>"` lines `vendor`
+# stamps into rpkg/src/rust/Cargo.lock: the built tarball needs them, the tree
+# gets the committed lock back, and `_preserve-wrapper-record` keeps the wrapper
+# record current across that restore. `--log` writes rpkg-00build.log to the
+# repository root, which .gitignore covers.
 alias rcmdbuild := r-cmd-build
 [script("bash")]
 r-cmd-build *args: r-cmd-install vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
@@ -996,7 +1002,7 @@ alias rcmdcheck := r-cmd-check
 [script("bash")]
 r-cmd-check *args: r-cmd-install vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
     ERROR_ON="warning"
     CHECK_DIR=""
     for arg in {{args}}; do
