@@ -31,24 +31,6 @@ pub fn fast_i32_no_preconditions(x: i32) -> i32 {
     x
 }
 
-/// Identity (i32) with `no_call_attribution` — wrapper emits `.call = NULL`
-/// instead of `match.call()`. Error UX falls back to `sys.call()`.
-/// @param x Input value.
-/// @export
-#[miniextendr(no_call_attribution)]
-pub fn fast_i32_no_call_attribution(x: i32) -> i32 {
-    x
-}
-
-/// Identity (i32) with `fast` — bundle of `no_preconditions` +
-/// `no_call_attribution`. Largest single-fn perf win.
-/// @param x Input value.
-/// @export
-#[miniextendr(fast)]
-pub fn fast_i32_fast(x: i32) -> i32 {
-    x
-}
-
 // ---------------------------------------------------------------------------
 // Multi-arg shape — to validate that preconditions scale by arg count.
 // ---------------------------------------------------------------------------
@@ -61,10 +43,10 @@ pub fn fast_sum3_default(a: i32, b: i32, c: i32) -> i32 {
     a + b + c
 }
 
-/// Three-arg numeric sum, `fast` mode.
+/// Three-arg numeric sum, `no_preconditions` mode.
 /// @param a,b,c Numeric scalars.
 /// @export
-#[miniextendr(fast)]
+#[miniextendr(no_preconditions)]
 pub fn fast_sum3_fast(a: i32, b: i32, c: i32) -> i32 {
     a + b + c
 }
@@ -110,7 +92,7 @@ pub struct FastCounterFast {
 }
 
 /// Fast-mode counter: every method wrapper drops preconditions + match.call.
-#[miniextendr(r6, internal, fast)]
+#[miniextendr(r6, internal, no_preconditions)]
 impl FastCounterFast {
     /// @param initial Initial counter value.
     pub fn new(initial: i32) -> Self {

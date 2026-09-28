@@ -917,7 +917,7 @@ pub fn miniextendr(
         let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
             continue;
         };
-        let marker = kind.marker_name().unwrap_or("Call");
+        let marker = kind.marker_name();
         if let Some((first, _)) = &call_marker {
             return syn::Error::new_spanned(
                 pt,
@@ -955,17 +955,11 @@ pub fn miniextendr(
         if let Some(attr) = call_attribution_attr
             && attr != kind
         {
-            let spellings = match attr {
-                r_wrapper_builder::CallAttribution::None => ", `no_call_attribution` or `fast`",
-                r_wrapper_builder::CallAttribution::Wrapper => " or `no_fast`",
-                r_wrapper_builder::CallAttribution::Caller => "",
-            };
             return syn::Error::new_spanned(
                 pt,
                 format!(
                     "the `{marker}` parameter selects `{}` attribution but the attribute \
-                     selects `{}` (`call = {}`{spellings}); keep one of them (or make them \
-                     agree)",
+                     selects `{}` (`call = {}`); keep one of them (or make them agree)",
                     kind.name(),
                     attr.name(),
                     attr.name(),
@@ -1341,20 +1335,18 @@ pub fn miniextendr(
     };
 
     // Prepend the `.call` parameter if using the internal C wrapper. Marker
-    // (`Call` / `CallerCall`) > attribute (`call = none | wrapper | caller`,
-    // `no_call_attribution` / `fast`, `no_fast`) > crate default
-    // (`call_attribution = "..."`) > `fast-default` feature > `wrapper`
-    // (#1566). `none` emits `.call = NULL` instead of `match.call()` — saves
-    // ~1200 ns/call; the R-side .miniextendr_raise_condition helper falls back
-    // to sys.call() so the error UX is preserved (positional args instead of
-    // named). `caller` also gives the wrapper a trailing `.call = NULL` formal
-    // (#1613, S3 methods excluded; see `call_formal` below).
+    // (`Call` / `CallerCall`) > attribute (`call = wrapper | caller`) > crate
+    // default (`call_attribution = "..."`, where `caller` applies to
+    // `noexport` / `internal` entry points only) > `wrapper` (#1566). Every
+    // form passes the call as written: `sys.call()` for `wrapper`, the
+    // caller's `sys.call()` for `caller`. `caller` also gives the wrapper a
+    // trailing `.call = NULL` formal (#1613, S3 methods excluded; see
+    // `call_formal` below). Attribution is independent of `no_preconditions`.
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
         crate_config.call_attribution,
         noexport || internal,
-        cfg!(feature = "fast-default"),
     );
     if uses_internal_c_wrapper {
         r_call_args_strs.insert(0, call_attribution.dot_call_arg().to_string());
@@ -1627,7 +1619,7 @@ pub fn miniextendr(
     // Generate R-side precondition checks (one `isTRUE()` guard per check)
     // Skip both match_arg and choices params (already validated by match.arg)
     let skip_params = parsed.precondition_skip_params();
-    // `#[miniextendr(no_preconditions)]` / `fast` drops the type-derived
+    // `#[miniextendr(no_preconditions)]` drops the type-derived
     // checks. TryFromSexp still raises a typed Rust error on mismatched
     // input. The savings were measured against the former `stopifnot()` block
     // (~1230 ns / 1-arg or ~3900 ns / 5-arg); the guards cost about half. The

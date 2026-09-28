@@ -78,7 +78,7 @@ pub fn fdefault_fast_bare_i32(x: i32) -> i32 {
 /// Same as `fdefault_fast_bare_i32` with `no_fast`: preconditions are
 /// restored even under `fast-default`.
 /// @param x Integer-like scalar.
-#[miniextendr(no_fast)]
+#[miniextendr(preconditions)]
 pub fn fdefault_no_fast_i32(x: i32) -> i32 {
     x
 }

@@ -11,11 +11,10 @@
 //! |-------------|---------------------------|-----------------------------------------|
 //! | `wrapper`   | `sys.call()`              | the wrapper's own call (the default)    |
 //! | `caller`    | `.mx_call` (caller frame) | the hand-written R function delegating  |
-//! | `none`      | `NULL`                    | nothing; R falls back to `sys.call()`   |
 //!
 //! A `#[miniextendr]` function chooses its attribution in one of three
 //! equivalent spellings, most specific first: a **marker parameter** on the
-//! signature, the **`call = none | wrapper | caller`** attribute, or the
+//! signature, the **`call = wrapper | caller`** attribute, or the
 //! crate-wide default in `Cargo.toml`
 //! (`[package.metadata.miniextendr] call_attribution = "..."`). The framework
 //! default is `wrapper`.
@@ -47,14 +46,13 @@
 //! slot) and a marker on a class method (methods keep the wrapper's own call).
 //! A function taking a marker runs on R's main thread, like one taking `SEXP`.
 //!
-//! Both types are transparent newtypes over [`SEXP`]: the language object R
-//! matched (`is.call()`), or `R_NilValue` when the wrapper attributed nothing.
-//! They are handles for inspection, `deparse()` in a log line say, never
-//! roots: the object lives only as long as the `.Call()` frame that carried
-//! it, so it must not outlive the function call it was passed to.
+//! Both types are transparent newtypes over [`SEXP`]: the language object of
+//! the call as written (`is.call()`). They are handles for inspection,
+//! `deparse()` in a log line say, never roots: the object lives only as long
+//! as the `.Call()` frame that carried it, so it must not outlive the function
+//! call it was passed to.
 
 use crate::SEXP;
-use crate::sexp_ext::SexpExt;
 
 /// The call this wrapper attributes conditions to: the call as the user wrote
 /// it (`sys.call()` in the generated wrapper). Taking it selects `wrapper`
@@ -84,17 +82,10 @@ macro_rules! call_marker_impls {
                 $name(call)
             }
 
-            /// The call as an R language object, or `R_NilValue` when the
-            /// wrapper attributed nothing.
+            /// The call as an R language object.
             #[inline]
             pub const fn sexp(self) -> SEXP {
                 self.0
-            }
-
-            /// Whether the wrapper handed over `NULL` instead of a call.
-            #[inline]
-            pub fn is_nil(self) -> bool {
-                self.0.is_nil()
             }
         }
 

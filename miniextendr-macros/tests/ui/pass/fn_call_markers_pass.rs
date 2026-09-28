@@ -1,15 +1,15 @@
 //! Compile-pass test for the three spellings of condition-call attribution
 //! (#1566): a `Call` / `CallerCall` marker parameter, the
-//! `call = none | wrapper | caller` attribute (path and string forms, plus the
-//! `no_call_attribution` / `fast` / `no_fast` shorthands) and agreeing
-//! combinations. The marker is not an R formal: it is bound from the C
+//! `call = wrapper | caller` attribute (path and string forms) and agreeing
+//! combinations, with and without `no_preconditions`, which is independent of
+//! the attribution. The marker is not an R formal: it is bound from the C
 //! wrapper's hidden call slot, so the generated wrapper takes only `x`.
 
 #![allow(dead_code)]
 
 use miniextendr_api::{Call, CallerCall, miniextendr};
 
-/// `Call` selects `wrapper` attribution; the body sees the wrapper's `match.call()`.
+/// `Call` selects `wrapper` attribution; the body sees the wrapper's `sys.call()`.
 #[miniextendr]
 pub fn with_call(x: i32, call: Call) -> i32 {
     let _ = call.sexp();
@@ -45,24 +45,20 @@ pub fn attr_caller_impl(x: i32) -> i32 {
     x
 }
 
-#[miniextendr(call = none)]
-pub fn attr_none(x: i32) -> i32 {
+#[miniextendr(noexport, call = "caller")]
+pub fn attr_caller_string_impl(x: i32) -> i32 {
     x
 }
 
-#[miniextendr(call = "none", no_call_attribution)]
-pub fn attr_none_string_and_shorthand(x: i32) -> i32 {
+/// `no_preconditions` drops the R-side checks only; a marker still gets the call.
+#[miniextendr(no_preconditions)]
+pub fn unchecked_with_marker(x: i32, _call: Call) -> i32 {
     x
 }
 
-#[miniextendr(fast, call = none)]
-pub fn attr_fast_agrees(x: i32) -> i32 {
-    x
-}
-
-#[miniextendr(no_fast, call = wrapper)]
-pub fn attr_no_fast_agrees(x: i32) -> i32 {
-    x
+#[miniextendr(noexport, no_preconditions, call = caller)]
+pub fn unchecked_caller_impl(x: i32) -> Result<i32, String> {
+    Ok(x)
 }
 
 fn main() {}

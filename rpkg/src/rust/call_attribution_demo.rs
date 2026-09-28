@@ -151,20 +151,6 @@ pub fn call_marker_checked_impl(x: i32, _call: Call) -> Result<i32, String> {
     Ok(x)
 }
 
-/// `call = none`: the attribute spelling of `no_call_attribution`. The wrapper
-/// passes `.call = NULL`; on error R's `sys.call()` fallback still names the
-/// wrapper, but without the formals matched.
-///
-/// @param x Must be positive.
-/// @noRd
-#[miniextendr(noexport, call = none)]
-pub fn call_attr_none_impl(x: i32) -> Result<i32, String> {
-    if x <= 0 {
-        return Err(format!("x must be positive, got {x}"));
-    }
-    Ok(x)
-}
-
 // endregion
 
 // region: a helper in between passes on the call to report (#1613)

@@ -415,20 +415,16 @@ pub enum CallAttribution {
     /// call object, used as is. S3 methods keep the zero-argument prelude: a
     /// trailing formal would break generic/method consistency.
     Caller,
-    /// `.call = NULL`: `no_call_attribution` / `fast`; the raise helper falls
-    /// back to the wrapper's `sys.call()`.
-    None,
 }
 
 impl CallAttribution {
-    /// The spelling shared by the attribute (`call = none | wrapper | caller`)
-    /// and the crate default (`call_attribution = "none" | "wrapper" | "caller"`).
+    /// The spelling shared by the attribute (`call = wrapper | caller`) and
+    /// the crate default (`call_attribution = "wrapper" | "caller"`).
     pub fn parse_name(name: &str) -> Option<Self> {
         match name {
-            "none" => Some(CallAttribution::None),
             "wrapper" => Some(CallAttribution::Wrapper),
             "caller" => Some(CallAttribution::Caller),
-            _ => Option::None,
+            _ => None,
         }
     }
 
@@ -437,44 +433,39 @@ impl CallAttribution {
         match self {
             CallAttribution::Wrapper => "wrapper",
             CallAttribution::Caller => "caller",
-            CallAttribution::None => "none",
         }
     }
 
     /// The parameter marker type that selects this attribution (#1566): `Call`
-    /// for `wrapper`, `CallerCall` for `caller`. `none` has no marker: a
-    /// function that wants no call does not take one.
-    pub fn marker_name(self) -> Option<&'static str> {
+    /// for `wrapper`, `CallerCall` for `caller`.
+    pub fn marker_name(self) -> &'static str {
         match self {
-            CallAttribution::Wrapper => Some("Call"),
-            CallAttribution::Caller => Some("CallerCall"),
-            CallAttribution::None => Option::None,
+            CallAttribution::Wrapper => "Call",
+            CallAttribution::Caller => "CallerCall",
         }
     }
 
     /// Resolve a standalone function's attribution from its three spellings
     /// (#1566), most specific first: the `Call` / `CallerCall` parameter
-    /// marker, the `call = ...` attribute (`no_call_attribution` / `fast` spell
-    /// `none`, `no_fast` spells `wrapper`), the crate's
-    /// `[package.metadata.miniextendr] call_attribution` default, then the
-    /// `fast-default` feature (`none`) and finally the framework default,
-    /// `wrapper`. A crate default of `caller` applies to internal entry points
-    /// (`noexport` / `internal`) only; an exported function's caller is
-    /// arbitrary user code, so it keeps `wrapper`. The explicit spellings are
-    /// validated before this runs (a `caller` marker or attribute on an
-    /// exported function is a compile error, not a fallback).
+    /// marker, the `call = wrapper | caller` attribute, the crate's
+    /// `[package.metadata.miniextendr] call_attribution` default and finally
+    /// the framework default, `wrapper`. A crate default of `caller` applies
+    /// to internal entry points (`noexport` / `internal`) only; an exported
+    /// function's caller is arbitrary user code, so it keeps `wrapper`. The
+    /// explicit spellings are validated before this runs (a `caller` marker
+    /// or attribute on an exported function is a compile error, not a
+    /// fallback). Class and trait methods always use `wrapper`, except the
+    /// R6 / S7 lambda frames ([`DotCallBuilder::null_call_attribution`]).
     pub fn resolve(
         marker: Option<Self>,
         attribute: Option<Self>,
         crate_default: Option<Self>,
         internal_entry: bool,
-        fast_default: bool,
     ) -> Self {
         marker.or(attribute).unwrap_or(match crate_default {
             Some(CallAttribution::Caller) if !internal_entry => CallAttribution::Wrapper,
             Some(default) => default,
-            Option::None if fast_default => CallAttribution::None,
-            Option::None => CallAttribution::Wrapper,
+            None => CallAttribution::Wrapper,
         })
     }
 
@@ -483,7 +474,6 @@ impl CallAttribution {
         match self {
             CallAttribution::Wrapper => ".call = sys.call()",
             CallAttribution::Caller => ".call = .mx_call",
-            CallAttribution::None => ".call = NULL",
         }
     }
 
@@ -491,7 +481,7 @@ impl CallAttribution {
     pub fn raise_default(self) -> &'static str {
         match self {
             CallAttribution::Caller => ".mx_call",
-            CallAttribution::Wrapper | CallAttribution::None => "sys.call()",
+            CallAttribution::Wrapper => "sys.call()",
         }
     }
 
@@ -508,7 +498,7 @@ impl CallAttribution {
                 ".mx_call <- .miniextendr_caller_call(.call)".to_string()
             }
             CallAttribution::Caller => ".mx_call <- .miniextendr_caller_call()".to_string(),
-            CallAttribution::Wrapper | CallAttribution::None => String::new(),
+            CallAttribution::Wrapper => String::new(),
         }
     }
 
@@ -523,7 +513,7 @@ impl CallAttribution {
     pub fn formal(self) -> Option<&'static str> {
         match self {
             CallAttribution::Caller => Some(".call = NULL"),
-            CallAttribution::Wrapper | CallAttribution::None => Option::None,
+            CallAttribution::Wrapper => None,
         }
     }
 
@@ -537,7 +527,7 @@ impl CallAttribution {
                  the calling function's call, a frame such as parent.frame() for the call \
                  of the function owning that frame, or a call object. Pass it by name.",
             ),
-            CallAttribution::Wrapper | CallAttribution::None => Option::None,
+            CallAttribution::Wrapper => None,
         }
     }
 
@@ -547,7 +537,7 @@ impl CallAttribution {
     pub fn r_check_call(self) -> Option<&'static str> {
         match self {
             CallAttribution::Caller => Some(".mx_call"),
-            CallAttribution::Wrapper | CallAttribution::None => None,
+            CallAttribution::Wrapper => None,
         }
     }
 

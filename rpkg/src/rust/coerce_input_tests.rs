@@ -158,7 +158,7 @@ pub fn coerce_input_vector_f64(x: Vec<f64>) -> Vec<f64> {
 
 /// Fast wrapper for the widened native vector: the Rust side batches failures.
 /// @param x Doubles, possibly fractional, NaN, or out of range.
-#[miniextendr(coerce, fast, noexport)]
+#[miniextendr(coerce, no_preconditions, noexport)]
 pub fn coerce_input_fast_i32(x: Vec<i32>) -> Vec<i32> {
     x
 }
@@ -209,7 +209,7 @@ pub fn coerce_input_optional(x: Option<bool>) -> bool {
 
 /// Fast wrappers reach the coercion checker without an R precondition.
 /// @param x Integer-like values, possibly invalid.
-#[miniextendr(coerce, fast, noexport)]
+#[miniextendr(coerce, no_preconditions, noexport)]
 pub fn coerce_input_fast(x: Vec<u16>) -> Vec<u16> {
     x
 }

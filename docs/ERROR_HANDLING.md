@@ -629,23 +629,23 @@ e2$rust_type
 #> [1] "AsNumericVec"
 ```
 
-`conditionCall(e)` follows the function's call attribution as before: an
-R-side check reports the wrapper's call as written (what `stopifnot()` used
-to), a conversion the wrapper's matched call, and under `call = caller` both
-name the caller's matched call ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
+`conditionCall(e)` is the same call whichever side refused the argument: the
+wrapper's call as written (what `stopifnot()` reports), or under
+`call = caller` the caller's call ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
 `no_na` on a reading marker (`AsNumeric*`, `AsCharacter*`) runs on both
 sides: the R guard refuses R's `NA`, and the C wrapper refuses what the
 marker reads as missing after the conversion (`"NA"`, a blank string, a
 factor `NA` level). A handler sees one condition either way, with the same
-classes, `e$param` and message; the Rust-side refusal reports the matched
-call, like a conversion:
+classes, `e$param`, message and call:
 
 ```r
 peak_no_na <- function(dv) ...   # #[miniextendr(no_na)] dv: AsNumericVec
 e_r <- tryCatch(peak_no_na(c("1", NA)), error = identity)     # R guard
 e_rust <- tryCatch(peak_no_na(c("1", "NA")), error = identity) # after the conversion
 identical(class(e_r), class(e_rust))
+#> [1] TRUE
+identical(conditionCall(e_r)[[1]], conditionCall(e_rust)[[1]])
 #> [1] TRUE
 conditionMessage(e_rust)
 #> [1] "'dv' must not contain NA"

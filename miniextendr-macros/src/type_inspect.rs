@@ -238,8 +238,7 @@ pub(crate) fn is_main_thread_bound_return(ty: &syn::Type) -> bool {
 /// segment like the visibility markers; a segment carrying generic arguments
 /// (`Call<T>`) is some other type. References and wrappers (`&Call`,
 /// `Option<Call>`) are not markers: the C wrapper binds the marker by value
-/// from its hidden call slot. Whichever attribution `None` would spell has no
-/// marker, so this never returns `CallAttribution::None`.
+/// from its hidden call slot.
 pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::CallAttribution> {
     let syn::Type::Path(p) = ty else {
         return None;

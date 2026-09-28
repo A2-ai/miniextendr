@@ -766,12 +766,8 @@ pub struct ParsedImpl {
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
     /// Drop the R-side type-check guards from method wrappers.
-    /// Inherited from [`ImplAttrs::no_preconditions`] (set by
-    /// `#[miniextendr(no_preconditions)]` or `fast`).
+    /// Inherited from [`ImplAttrs::no_preconditions`].
     pub no_preconditions: bool,
-    /// Emit `.call = NULL` instead of `.call = match.call()` in method wrappers.
-    /// Inherited from [`ImplAttrs::no_call_attribution`].
-    pub no_call_attribution: bool,
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -846,17 +842,14 @@ pub struct ImplAttrs {
     /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
     pub strict: bool,
     // endregion
-    // region: Fast-path knobs
+    // region: Preconditions
     /// When true, drop the R-side type-check guards from all generated method
     /// wrappers. TryFromSexp still raises on bad input, with the same
     /// argument-error condition; the message comes from the conversion. Set by
-    /// `#[miniextendr(no_preconditions)]` or implied by `fast`.
+    /// the bare `#[miniextendr(no_preconditions)]`, cleared by the bare
+    /// `preconditions` (the last one written wins); unset, it follows the
+    /// `fast-default` feature.
     pub no_preconditions: bool,
-    /// When true, emit `.call = NULL` instead of `.call = match.call()` in all
-    /// generated method wrappers. Error fallback `sys.call()` preserves
-    /// attribution (positional args). Saves ~1200 ns per call. Set by
-    /// `#[miniextendr(no_call_attribution)]` or implied by `fast`.
-    pub no_call_attribution: bool,
     // endregion
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
@@ -867,6 +860,12 @@ pub struct ImplAttrs {
     /// ARE generated from the method signatures in the body.
     pub blanket: bool,
 }
+
+/// Every impl-block option, for the "unknown impl block option" errors of the
+/// bare and the `key = value` forms.
+const IMPL_OPTIONS_HELP: &str = "env, r6, r6(...), s3, s4, s7, s7(...), vctrs, vctrs(...) \
+     (class system), class = \"...\" (R class name), label = \"...\" (multi-impl label), \
+     blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport";
 
 impl syn::parse::Parse for ImplAttrs {
     /// Parses `#[miniextendr(...)]` impl-level options.
@@ -892,7 +891,6 @@ impl syn::parse::Parse for ImplAttrs {
         let mut r_data_accessors = false;
         let mut strict: Option<bool> = None;
         let mut no_preconditions: Option<bool> = None;
-        let mut no_call_attribution: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
         let mut blanket = false;
@@ -929,12 +927,8 @@ impl syn::parse::Parse for ImplAttrs {
                         return Err(syn::Error::new(
                             ident.span(),
                             format!(
-                                "unknown impl block option `{}`; expected one of: \
-                                 env, r6, s3, s4, s7, vctrs (class system), \
-                                 class = \"...\" (R class name), \
-                                 label = \"...\" (multi-impl label), \
-                                 strict (strict type conversion)",
-                                ident_str,
+                                "unknown impl block option `{ident_str}`; expected one of: \
+                                 {IMPL_OPTIONS_HELP}"
                             ),
                         ));
                     }
@@ -1155,27 +1149,25 @@ impl syn::parse::Parse for ImplAttrs {
                 strict = Some(true);
             } else if ident_str == "no_strict" {
                 strict = Some(false);
+            } else if ident_str == "preconditions" {
+                no_preconditions = Some(false);
             } else if ident_str == "no_preconditions" {
                 no_preconditions = Some(true);
-            } else if ident_str == "no_call_attribution" {
-                no_call_attribution = Some(true);
-            } else if ident_str == "fast" {
-                // Bundle alias: drop the two biggest R-side overheads in generated wrappers.
-                no_preconditions = Some(true);
-                no_call_attribution = Some(true);
-            } else if ident_str == "no_fast" {
-                // Explicit opt-out: restore full error UX even when `fast-default` is enabled.
-                no_preconditions = Some(false);
-                no_call_attribution = Some(false);
             } else if ident_str == "internal" {
                 internal = true;
             } else if ident_str == "noexport" {
                 noexport = true;
             } else {
-                // This is a class system identifier
-                let parsed_system: ClassSystem = ident_str
-                    .parse()
-                    .map_err(|e| syn::Error::new(ident.span(), e))?;
+                // A class system identifier, or no option at all.
+                let parsed_system: ClassSystem = ident_str.parse().map_err(|_| {
+                    syn::Error::new(
+                        ident.span(),
+                        format!(
+                            "unknown impl block option `{ident_str}`; expected one of: \
+                             {IMPL_OPTIONS_HELP}"
+                        ),
+                    )
+                })?;
                 if let Some((prev_name, _prev_span)) = class_system_span {
                     return Err(syn::Error::new(
                         ident.span(),
@@ -1220,7 +1212,6 @@ impl syn::parse::Parse for ImplAttrs {
             r_data_accessors,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
-            no_call_attribution: no_call_attribution.unwrap_or(cfg!(feature = "fast-default")),
             internal,
             noexport,
             blanket,
@@ -2931,7 +2922,6 @@ impl ParsedImpl {
             r_data_accessors: attrs.r_data_accessors,
             strict: attrs.strict,
             no_preconditions: attrs.no_preconditions,
-            no_call_attribution: attrs.no_call_attribution,
             internal: attrs.internal,
             noexport: attrs.noexport,
             param_warnings,
@@ -3764,9 +3754,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Build method context for .Call generation
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_no_preconditions(
             parsed_impl.no_preconditions,
-            parsed_impl.no_call_attribution,
         );
 
         // Normalize coercion target for R generic name.

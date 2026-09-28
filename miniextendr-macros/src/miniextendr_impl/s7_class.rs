@@ -1217,9 +1217,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_from (static method pattern)
         // S7 convert signature is function(from, to) - one parameter for the source object
         if let Some(ref from_type) = attrs.s7.convert_from {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_no_preconditions(
                 parsed_impl.no_preconditions,
-                parsed_impl.no_call_attribution,
             );
 
             // Documentation for convert method (skip if class has @noRd)
@@ -1286,9 +1285,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_to (instance method pattern)
         // S7 convert signature is function(from, to) - self becomes from
         if let Some(ref to_type) = attrs.s7.convert_to {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_no_preconditions(
                 parsed_impl.no_preconditions,
-                parsed_impl.no_call_attribution,
             );
 
             // Documentation for convert method (skip if class has @noRd)

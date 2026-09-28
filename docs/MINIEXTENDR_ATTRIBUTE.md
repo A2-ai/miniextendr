@@ -56,7 +56,7 @@ Generates:
 | `noexport` | Suppress `@export` only |
 | `invisible` | Wrap R return in `invisible()` (same as an `Invisible<T>` return type) |
 | `visible` | Force visible return (same as a `Visible<T>` return type) |
-| `call = none \| wrapper \| caller` | Which call conditions are attributed to (same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`. See [below](#condition-call-markers-and-defaults) |
+| `call = wrapper \| caller` | Which call conditions are attributed to (same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`. See [below](#condition-call-markers-and-defaults) |
 | `doc = "..."` | Custom roxygen block (replaces auto-generated) |
 
 ```rust
@@ -280,30 +280,27 @@ return markers, renamed imports and type aliases do not select the syntax.
 
 Every generated wrapper passes a call object to its C entry point
 (`.Call(C_pkg_f, .call = <call>, ...)`), and conditions raised from Rust are
-attributed to it. Which call it is has three attributions and three equivalent
-spellings (#1566), most specific first:
+attributed to it, as written. Which call it is has two attributions and three
+equivalent spellings (#1566), most specific first:
 
-| | `wrapper` (default) | `caller` | `none` |
-|-|---------------------|----------|--------|
-| `.call =` | `match.call()` | `.mx_call`, the caller's matched call, or the frame / call passed as `.call` | `NULL` (R falls back to `sys.call()`) |
-| Marker parameter | `call: Call` | `call: CallerCall` | — |
-| Attribute | `call = wrapper`, `no_fast` | `call = caller` | `call = none`, `no_call_attribution`, `fast` |
-| `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
+| | `wrapper` (default) | `caller` |
+|-|---------------------|----------|
+| `.call =` | `sys.call()` | `.mx_call`, the caller's call, or the frame / call passed as `.call` |
+| Marker parameter | `call: Call` | `call: CallerCall` |
+| Attribute | `call = wrapper` | `call = caller` |
+| `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` |
 
 ```rust
 use miniextendr_api::{Call, CallerCall, miniextendr};
 
 #[miniextendr]
 pub fn scale(x: f64, call: Call) -> f64 {      // R wrapper: scale <- function(x)
-    let _ = call.sexp();                        // the wrapper's match.call()
+    let _ = call.sexp();                        // the wrapper's sys.call()
     x * 2.0
 }
 
 #[miniextendr(noexport)]                        // behind a hand-written scale2()
 pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
-
-#[miniextendr(call = none)]                     // .call = NULL
-pub fn hot_path(x: f64) -> f64 { x * 2.0 }
 ```
 
 The marker (`miniextendr_api::{Call, CallerCall}`, `repr(transparent)` over
@@ -317,8 +314,8 @@ options do not apply to it, and class / trait methods accept none of the three
 (they keep the wrapper's own call). A `caller` standalone wrapper (S3 methods
 aside) ends its formals with `.call = NULL`, so a hand-written helper in
 between can pass on its caller's frame (`call = parent.frame()`) or a call
-([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)). Details,
-the `fast-default` interaction and the fixtures:
+([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)). The
+attribution is independent of `no_preconditions`. Details and the fixtures:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
 #### Threading
@@ -404,7 +401,7 @@ with the message `'x' must inherit from 'pkg_obj'`
 (`'mode' should be one of "fast", "slow"`). An `Option<T>` parameter passes
 `NULL` and a `Missing<T>`
 parameter an omitted argument. Unlike the type checks, they stay under
-`no_preconditions` / `fast`: the Rust conversion does not repeat them. A
+`no_preconditions`: the Rust conversion does not repeat them. A
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
 NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
 The `no_na` message says `'x' must not contain NA` for an argument that holds
@@ -422,9 +419,8 @@ by a class's `as.character()` method; `"NA"` and `""` stay values there. The
 check follows the type, not its name, so a type alias (`type Dose =
 AsNumeric`) or a `#[derive(TryFromSexp)]` newtype of a marker is checked too.
 The condition is the R guard's (same classes, `kind`, `e$param`, message,
-your `message` when given, no `e$rust_type`); only its call differs: the
-matched call, as for a conversion failure (the caller's call under
-`call = caller`). It stays under `no_preconditions` / `fast`. On
+your `message` when given, no `e$rust_type`, the same call: the caller's
+under `call = caller`). It stays under `no_preconditions`. On
 `Option<AsNumeric>`, `NULL` is still "not given" and passes as `None`.
 
 On a list or map, `no_na` checks the top-level elements only: R's `anyNA()`

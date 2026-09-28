@@ -408,14 +408,11 @@ fn call_attribution_strings() {
         CallAttribution::Wrapper.dot_call_arg(),
         ".call = sys.call()"
     );
-    assert_eq!(CallAttribution::None.dot_call_arg(), ".call = NULL");
     assert_eq!(CallAttribution::Caller.dot_call_arg(), ".call = .mx_call");
     assert_eq!(CallAttribution::Wrapper.raise_default(), "sys.call()");
-    assert_eq!(CallAttribution::None.raise_default(), "sys.call()");
     assert_eq!(CallAttribution::Caller.raise_default(), ".mx_call");
     for call_formal in [false, true] {
         assert_eq!(CallAttribution::Wrapper.prelude(call_formal), "");
-        assert_eq!(CallAttribution::None.prelude(call_formal), "");
     }
     // One line since #1552: the frame arithmetic lives in the preamble helper.
     // With the `.call` formal (#1613) the helper resolves what was passed
@@ -429,7 +426,6 @@ fn call_attribution_strings() {
         ".mx_call <- .miniextendr_caller_call()"
     );
     assert_eq!(CallAttribution::Wrapper.r_check_call(), None);
-    assert_eq!(CallAttribution::None.r_check_call(), None);
     assert_eq!(CallAttribution::Caller.r_check_call(), Some(".mx_call"));
 }
 
@@ -437,14 +433,12 @@ fn call_attribution_strings() {
 fn call_attribution_formal_is_caller_only() {
     assert_eq!(CallAttribution::Caller.formal(), Some(".call = NULL"));
     assert_eq!(CallAttribution::Wrapper.formal(), None);
-    assert_eq!(CallAttribution::None.formal(), None);
     let doc = CallAttribution::Caller
         .param_doc()
         .expect("caller documents .call");
     assert!(doc.contains("parent.frame()"), "{doc}");
     assert!(doc.contains("Pass it by name"), "{doc}");
     assert_eq!(CallAttribution::Wrapper.param_doc(), None);
-    assert_eq!(CallAttribution::None.param_doc(), None);
 }
 
 /// The `.call` formal goes last (#1613): after `...`, so positional extras
@@ -470,64 +464,50 @@ fn call_formal_is_appended_after_the_dots() {
 
 #[test]
 fn call_attribution_names_and_markers_round_trip() {
-    for attribution in [
-        CallAttribution::None,
-        CallAttribution::Wrapper,
-        CallAttribution::Caller,
-    ] {
+    for attribution in [CallAttribution::Wrapper, CallAttribution::Caller] {
         assert_eq!(
             CallAttribution::parse_name(attribution.name()),
             Some(attribution)
         );
     }
     assert_eq!(CallAttribution::parse_name("parent"), None);
-    assert_eq!(CallAttribution::Wrapper.marker_name(), Some("Call"));
-    assert_eq!(CallAttribution::Caller.marker_name(), Some("CallerCall"));
-    assert_eq!(CallAttribution::None.marker_name(), None);
+    assert_eq!(CallAttribution::parse_name("none"), None);
+    assert_eq!(CallAttribution::Wrapper.marker_name(), "Call");
+    assert_eq!(CallAttribution::Caller.marker_name(), "CallerCall");
 }
 
 #[test]
 fn call_attribution_resolve_precedence() {
-    use CallAttribution::{Caller, None as NoCall, Wrapper};
-    // Nothing said: framework default, or `none` under `fast-default`.
+    use CallAttribution::{Caller, Wrapper};
+    // Nothing said: the framework default.
+    assert_eq!(CallAttribution::resolve(None, None, None, false), Wrapper);
+    assert_eq!(CallAttribution::resolve(None, None, None, true), Wrapper);
+    // The crate default; `caller` applies to internal entries only.
     assert_eq!(
-        CallAttribution::resolve(None, None, None, false, false),
+        CallAttribution::resolve(None, None, Some(Wrapper), false),
         Wrapper
     );
     assert_eq!(
-        CallAttribution::resolve(None, None, None, false, true),
-        NoCall
-    );
-    // Crate default beats the feature; `caller` applies to internal entries only.
-    assert_eq!(
-        CallAttribution::resolve(None, None, Some(NoCall), false, false),
-        NoCall
-    );
-    assert_eq!(
-        CallAttribution::resolve(None, None, Some(Wrapper), false, true),
-        Wrapper
-    );
-    assert_eq!(
-        CallAttribution::resolve(None, None, Some(Caller), true, false),
+        CallAttribution::resolve(None, None, Some(Caller), true),
         Caller
     );
     assert_eq!(
-        CallAttribution::resolve(None, None, Some(Caller), false, false),
+        CallAttribution::resolve(None, None, Some(Caller), false),
         Wrapper
     );
     // Attribute beats the crate default; marker beats the attribute (they are
     // validated to agree before this runs, so the order only matters for the
     // fallbacks).
     assert_eq!(
-        CallAttribution::resolve(None, Some(Wrapper), Some(NoCall), false, true),
+        CallAttribution::resolve(None, Some(Wrapper), Some(Caller), true),
         Wrapper
     );
     assert_eq!(
-        CallAttribution::resolve(Some(Caller), None, Some(NoCall), true, true),
+        CallAttribution::resolve(Some(Caller), None, Some(Wrapper), true),
         Caller
     );
     assert_eq!(
-        CallAttribution::resolve(Some(Wrapper), Some(Wrapper), Some(Caller), true, false),
+        CallAttribution::resolve(Some(Wrapper), Some(Wrapper), Some(Caller), true),
         Wrapper
     );
 }
@@ -550,23 +530,22 @@ fn match_arg_statement_per_attribution() {
     let scalar = choice_attrs("Mode", false);
     let optional = choice_attrs("Option<Mode>", false);
     let several = choice_attrs("Vec<Mode>", true);
-    // Wrapper attribution (and `no_call_attribution`): the preamble helpers
-    // with their default call, i.e. the wrapper's own frame (#1552 folded the
-    // factor coercion and `base::match.arg()` into them).
-    for attribution in [CallAttribution::Wrapper, CallAttribution::None] {
-        assert_eq!(
-            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
-            "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
-        );
-        assert_eq!(
-            attribution.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
-            "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
-        );
-        assert_eq!(
-            attribution.match_arg_statement("modes", ".__MX_CHOICES__", &several),
-            "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\")"
-        );
-    }
+    // Wrapper attribution: the preamble helpers with their default call, i.e.
+    // the wrapper's own frame (#1552 folded the factor coercion and
+    // `base::match.arg()` into them).
+    let wrapper = CallAttribution::Wrapper;
+    assert_eq!(
+        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
+        "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
+    );
+    assert_eq!(
+        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
+        "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
+    );
+    assert_eq!(
+        wrapper.match_arg_statement("modes", ".__MX_CHOICES__", &several),
+        "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\")"
+    );
     // `call = caller` (#1548): every form raises with `.mx_call` and names the
     // argument; the scalar helper gets the choice list explicitly.
     let caller = CallAttribution::Caller;
