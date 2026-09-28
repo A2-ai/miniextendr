@@ -492,6 +492,23 @@ pub trait TryFromSexp: Sized {
         // Default: just call the checked version
         Self::try_from_sexp(sexp)
     }
+
+    /// Whether the converted argument holds a value `#[miniextendr(no_na)]`
+    /// refuses after the conversion.
+    ///
+    /// The default is `false`, because `no_na`'s R guard (`!anyNA(x)`) already
+    /// refuses R's `NA` before the conversion runs. The reading markers
+    /// (`AsNumeric*`, `AsCharacter*`) override it: they read more inputs as
+    /// missing than `anyNA()` sees (the text `"NA"`, blank strings, a factor
+    /// `NA` level, ...). The layers a marker can sit in (`Option`, `Missing`,
+    /// the named-list maps, `#[derive(TryFromSexp)]` newtypes) forward it, so
+    /// a type alias or a newtype of a marker is checked too. The generated C
+    /// wrapper calls it on the value of every `no_na` parameter.
+    #[doc(hidden)]
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        false
+    }
 }
 
 // region: Box<[T]> delegates to Vec<T>
@@ -1071,6 +1088,11 @@ macro_rules! impl_option_map_try_from_sexp {
                 <$map_ty<String, V> as TryFromSexp>::NATIVE_BORROW;
 
             type Error = SexpError;
+            #[inline]
+            fn __mx_has_na(&self) -> bool {
+                self.as_ref()
+                    .is_some_and(<$map_ty<String, V> as TryFromSexp>::__mx_has_na)
+            }
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -2181,6 +2203,12 @@ macro_rules! impl_option_try_from_sexp {
                 <$t as $crate::from_r::TryFromSexp>::NATIVE_BORROW;
 
             type Error = $crate::from_r::SexpError;
+            // `NULL` (`None`) is "not given" and passes `no_na`.
+            #[inline]
+            fn __mx_has_na(&self) -> bool {
+                self.as_ref()
+                    .is_some_and(<$t as $crate::from_r::TryFromSexp>::__mx_has_na)
+            }
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 use $crate::{SEXPTYPE, SexpExt};

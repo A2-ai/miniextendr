@@ -408,6 +408,13 @@ token `"NA"` follows `scan()` / `type.convert()`: `as.numeric("NA")` also gives
 `NA`, but with a coercion warning. `Option<AsNumeric>` / `Option<AsNumericVec>`
 additionally accept `NULL` as `None`.
 
+`#[miniextendr(no_na)]` refuses everything the markers read as missing, not
+only what R's `anyNA()` sees: after the conversion the C wrapper also refuses
+the token `"NA"`, blank strings, factor labels among those, and `NaN` read from
+the text `"NaN"` (as the R guard refuses a numeric `NaN`), with the same
+`'x' must not be NA` / `'x' must not contain NA` condition. On
+`Option<AsNumeric>`, `NULL` still passes as `None`.
+
 The markers are input-only; return the inner `Vec<Option<f64>>` /
 `Option<f64>`. For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
 `AsFromStrVec<T>`: character input only, `NA` refused, and each failing value
@@ -461,7 +468,10 @@ that method becomes the conversion error. Names and `dim` are dropped, as
 Unlike `AsNumeric`, which reads the token `"NA"` and blank strings as missing,
 `AsCharacter` keeps `"NA"` and `""` as strings, as `as.character()` does: only
 `NA` itself is `None`. `NaN` becomes `"NaN"`; `#[miniextendr(no_na)]` refuses it
-along with `NA`, since `anyNA()` counts it. `Option<AsCharacter>` /
+along with `NA`, since `anyNA()` counts it. `no_na` also refuses an `NA` that
+only the conversion produces, checked after it: a factor `NA` level
+(`factor(x, exclude = NULL)`, whose code is not `NA`) and a class's
+`as.character()` method returning `NA`. `Option<AsCharacter>` /
 `Option<AsCharacterVec>` also accept `NULL` as `None`, and the markers are
 input-only: return the inner `Vec<Option<String>>` / `Option<String>`.
 

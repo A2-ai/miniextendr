@@ -810,4 +810,12 @@ pub fn producer_named_checks_msg(
     x.iter().sum()
 }
 
+/// `no_na` on a reading marker: the text `"NA"` passes `anyNA()` and is
+/// refused after the conversion, with the crate classes like the R guard.
+/// @param dv Numbers, strings or factor labels, none of them missing.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_no_na_dv(#[miniextendr(no_na)] dv: AsNumericVec) -> f64 {
+    dv.0.into_iter().flatten().sum()
+}
+
 // endregion

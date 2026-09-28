@@ -1439,6 +1439,25 @@ pub fn conversion_err_parts(
     }
 }
 
+/// The parts of an argument check that failed in Rust after the conversion:
+/// `#[miniextendr(no_na)]` on a reading marker (`AsNumeric*`,
+/// `AsCharacter*`) whose converted value holds an `NA` that R's `anyNA()`
+/// did not see (the hidden `TryFromSexp::__mx_has_na` says so).
+///
+/// The shape is the R guard's (`.miniextendr_arg_error`): `message` as given
+/// (the macro writes `'<p>' must not be NA` or the author's own message),
+/// the classes `crate_class` (the crate's `conversion_error_class`), and
+/// `param` as the only data field, `e$param`. No `rust_type`: the R guard
+/// has none, and the two paths raise one condition.
+#[doc(hidden)]
+pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrParts {
+    ErrParts {
+        message: message.to_string(),
+        class: crate_class.iter().map(|c| (*c).to_string()).collect(),
+        data: Some(vec![(CONVERSION_PARAM_FIELD.to_string(), param.into())]),
+    }
+}
+
 // endregion
 
 // region: Serde-tagged Result errors (#[miniextendr(serde_error)])
@@ -2600,6 +2619,25 @@ mod condition_macro_tests {
             classed.class,
             ["pkg_error_negative", "pkg_error", "pkg_error_argument"]
         );
+    }
+
+    /// `arg_check_parts`: the message as given, the crate class alone, and
+    /// `param` as the only field (no `rust_type`), as the R guard raises it.
+    #[test]
+    fn arg_check_parts_matches_the_r_guard() {
+        use super::arg_check_parts;
+
+        let parts = arg_check_parts("'dv' must not contain NA", "dv", &[]);
+        assert_eq!(parts.message, "'dv' must not contain NA");
+        assert!(parts.class.is_empty());
+        assert_eq!(field_names(&parts), ["param"]);
+        assert_eq!(character_field(&parts, "param"), Some("dv"));
+
+        let custom = "`x` can't be NA: 100% \"sure\"\ncaf\u{e9}()";
+        let parts = arg_check_parts(custom, "x", &["pkg_error_argument", "pkg_error"]);
+        assert_eq!(parts.message, custom);
+        assert_eq!(parts.class, ["pkg_error_argument", "pkg_error"]);
+        assert_eq!(field_names(&parts), ["param"]);
     }
 
     /// A `param` or `rust_type` field of the error type's own wins: the

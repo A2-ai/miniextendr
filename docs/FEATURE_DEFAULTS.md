@@ -191,6 +191,8 @@ default to every `#[miniextendr]` function and impl block:
   the conversion (`'x' must be a single integer: got character`) rather than
   by the R check (`'x' must be integer`). Checks named per parameter
   (`inherits`, `no_na`) are kept: the Rust conversion does not repeat them.
+  `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`) also checks
+  the converted value, and that check stays too.
 
 - **`no_call_attribution`** (spelled `call = none` since #1566): emits
   `.call = NULL` instead of `.call = match.call()` in the `.Call(...)`

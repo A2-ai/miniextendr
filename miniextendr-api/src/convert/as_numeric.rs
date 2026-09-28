@@ -18,7 +18,9 @@ use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 ///
 /// It follows the same reading rules as [`AsNumericVec`], and also requires
 /// length 1 ([`SexpError::Length`] otherwise). A value that is not a number
-/// fails with `non-numeric value(s): "n/a" (element 1)`.
+/// fails with `non-numeric value(s): "n/a" (element 1)`. Under
+/// `#[miniextendr(no_na)]` it refuses the same values as the vector marker
+/// (see [`AsNumericVec`], "`no_na`"), with `'x' must not be NA`.
 ///
 /// # Example
 ///
@@ -74,6 +76,17 @@ pub struct AsNumeric(pub Option<f64>);
 ///   `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`, with 1-based
 ///   element numbers and at most 10 values listed (the rest as `"; and N more"`).
 ///
+/// # `no_na`
+///
+/// `#[miniextendr(no_na)]` refuses everything this marker reads as missing,
+/// not only what R's `anyNA()` sees: the R guard refuses `NA` (and a numeric
+/// `NaN`) before the call, and the C wrapper checks the converted value
+/// after it, refusing `None` (the token `"NA"`, blank strings, factor labels
+/// among those) and `NaN` (from the text `"NaN"` too). Both raise the same
+/// `'x' must not contain NA` argument error. `NULL` given to an
+/// `Option<AsNumericVec>` is still `None`, as not given. A type alias or a
+/// `#[derive(TryFromSexp)]` newtype of the marker is checked the same way.
+///
 /// `Option<AsNumericVec>` (and `Option<AsNumeric>`) also accept `NULL` as
 /// `None`. The markers are input-only: there is no `IntoR`. Return the inner
 /// `Vec<Option<f64>>` / `Option<f64>`, which already converts to a double
@@ -98,6 +111,10 @@ pub struct AsNumericVec(pub Vec<Option<f64>>);
 
 impl TryFromSexp for AsNumericVec {
     type Error = SexpError;
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.0.iter().copied().any(refused_by_no_na)
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         read_numeric(sexp).map(AsNumericVec)
@@ -106,6 +123,10 @@ impl TryFromSexp for AsNumericVec {
 
 impl TryFromSexp for AsNumeric {
     type Error = SexpError;
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        refused_by_no_na(self.0)
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // The type is checked before the length, so a length-1 list reports
@@ -126,6 +147,13 @@ impl TryFromSexp for AsNumeric {
 
 impl_option_try_from_sexp!(AsNumeric);
 impl_option_try_from_sexp!(AsNumericVec);
+
+/// Whether `#[miniextendr(no_na)]` refuses a value the markers read: `None`
+/// (every kind of `NA`, the text `"NA"`, a blank string) and `NaN` (also read
+/// from the text `"NaN"`), as R's `anyNA()` refuses a numeric `NaN`.
+fn refused_by_no_na(value: Option<f64>) -> bool {
+    value.is_none_or(f64::is_nan)
+}
 // endregion
 
 // region: SEXP dispatch
@@ -352,6 +380,57 @@ mod tests {
         for s in ["na", "N A", "NAN", "NA1", "<NA>", "\u{00A0}NA"] {
             assert!(!is_na_token(s), "{s:?} should not be the NA token");
         }
+    }
+
+    /// `no_na` refuses what the markers read as missing, and `NaN`.
+    #[test]
+    fn no_na_refuses_none_and_nan() {
+        assert!(!AsNumeric(Some(2.5)).__mx_has_na());
+        assert!(!AsNumeric(Some(f64::INFINITY)).__mx_has_na());
+        assert!(AsNumeric(None).__mx_has_na());
+        assert!(AsNumeric(Some(f64::NAN)).__mx_has_na());
+
+        assert!(!AsNumericVec(vec![]).__mx_has_na());
+        assert!(!AsNumericVec(vec![Some(1.0), Some(-0.0)]).__mx_has_na());
+        assert!(AsNumericVec(vec![Some(1.0), None]).__mx_has_na());
+        assert!(AsNumericVec(vec![Some(f64::NAN), Some(1.0)]).__mx_has_na());
+    }
+
+    /// The layers a marker comes in forward the check: `NULL` (`None`) and an
+    /// omitted argument (`Absent`) pass, a present marker is asked. A type
+    /// that is not a marker keeps the default `false`.
+    #[test]
+    fn no_na_is_forwarded_through_the_layers() {
+        use crate::Missing;
+        use std::collections::{BTreeMap, HashMap};
+
+        assert!(!None::<AsNumeric>.__mx_has_na());
+        assert!(!Some(AsNumeric(Some(1.0))).__mx_has_na());
+        assert!(Some(AsNumeric(None)).__mx_has_na());
+        assert!(Some(AsNumericVec(vec![None])).__mx_has_na());
+
+        assert!(!Missing::<AsNumeric>::Absent.__mx_has_na());
+        assert!(!Missing::Present(AsNumeric(Some(1.0))).__mx_has_na());
+        assert!(Missing::Present(AsNumeric(None)).__mx_has_na());
+        assert!(!Missing::<Option<AsNumeric>>::Present(None).__mx_has_na());
+        assert!(Missing::Present(Some(AsNumeric(None))).__mx_has_na());
+
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), AsNumeric(Some(1.0)));
+        assert!(!map.__mx_has_na());
+        map.insert("b".to_string(), AsNumeric(None));
+        assert!(map.__mx_has_na());
+        assert!(Some(map).__mx_has_na());
+        assert!(!None::<HashMap<String, AsNumeric>>.__mx_has_na());
+
+        let tree: BTreeMap<String, AsNumericVec> =
+            [("a".to_string(), AsNumericVec(vec![Some(1.0), None]))].into();
+        assert!(tree.__mx_has_na());
+
+        assert!(!Some(f64::NAN).__mx_has_na());
+        assert!(!None::<f64>.__mx_has_na());
+        assert!(!Missing::<f64>::Absent.__mx_has_na());
+        assert!(!vec![None::<f64>].__mx_has_na());
     }
 
     #[test]

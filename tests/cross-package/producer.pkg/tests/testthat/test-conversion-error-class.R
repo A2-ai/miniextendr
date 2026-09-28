@@ -119,3 +119,23 @@ test_that("a check with the author's message keeps the crate classes", {
   expect_identical(conditionMessage(e), "`x` must be a `producer_num`")
   expect_equal(conditionCall(e), quote(producer.pkg:::producer_named_checks_msg_impl(c(1, 2))))
 })
+
+test_that("no_na's check after the conversion carries the crate classes", {
+  expect_identical(producer.pkg:::producer_no_na_dv_impl(c("1", " 2 ")), 3)
+  e_r <- tryCatch(producer.pkg:::producer_no_na_dv_impl(c("1", NA)), error = function(e) e)
+  e_rust <- tryCatch(producer.pkg:::producer_no_na_dv_impl(c("1", "NA")), error = function(e) e)
+  expect_identical(class(e_rust), crate_classes)
+  expect_identical(class(e_rust), class(e_r))
+  expect_identical(e_rust$kind, "conversion")
+  expect_identical(e_rust$param, "dv")
+  expect_identical(conditionMessage(e_rust), "'dv' must not contain NA")
+  expect_identical(conditionMessage(e_rust), conditionMessage(e_r))
+  expect_null(e_rust$rust_type)
+  expect_identical(
+    tryCatch(
+      producer.pkg:::producer_no_na_dv_impl(""),
+      producer_error_argument = function(e) e$param
+    ),
+    "dv"
+  )
+})

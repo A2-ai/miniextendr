@@ -9,8 +9,16 @@
 //! `message = "..."`, the condition message of a failure, used verbatim
 //! (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`,
 //! method level `inherits(x(class = "cls", message = "..."))`).
+//!
+//! On a reading marker (`AsNumeric*`, `AsCharacter*`, and aliases or derived
+//! newtypes of them) `no_na` also checks the converted value, for what the
+//! marker reads as `NA` beyond `anyNA()`.
 
-use miniextendr_api::{List, Missing, SEXP, miniextendr};
+use std::collections::HashMap;
+
+use miniextendr_api::{
+    AsCharacter, AsNumeric, AsNumericVec, List, Missing, SEXP, TryFromSexp, miniextendr,
+};
 
 // region: standalone fns
 
@@ -162,6 +170,146 @@ pub fn param_checks_caller_msg_impl(
 }
 // endregion
 
+// region: no_na on the reading markers
+//
+// `AsNumeric*` read the text `"NA"`, blank strings and `"NaN"` as missing
+// (`NaN` as a value), `AsCharacter*` a factor `NA` level or an `NA` from a
+// class's `as.character()`: inputs R's `anyNA()` passes. The C wrapper checks
+// the converted value too and raises the R guard's condition, so every body
+// below sees present, non-`NaN` values only.
+
+/// A number read like `as.numeric()`, without `NA`.
+/// @param x A number, string or factor label; not `NA`, `"NA"`, blank or `"NaN"`.
+#[miniextendr(noexport)]
+pub fn param_no_na_number(#[miniextendr(no_na)] x: AsNumeric) -> f64 {
+    x.0.expect("no_na refuses a missing value")
+}
+
+/// Numbers read like `as.numeric()`: the count of missing values, always 0.
+/// @param x Numbers, strings or factor labels, none of them missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_numbers(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
+    count_refused(&x.0)
+}
+
+/// `Option<AsNumeric>`: `NULL` is "not given" and passes as `None`.
+/// @param x `NULL`, or a number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_number_opt(
+    #[miniextendr(no_na, default = "NULL")] x: Option<AsNumeric>,
+) -> String {
+    describe(x.map(|v| v.0))
+}
+
+/// `Missing<AsNumeric>`: an omitted argument passes.
+/// @param x A number that is not missing, or omitted.
+#[miniextendr(noexport)]
+pub fn param_no_na_number_missing(#[miniextendr(no_na)] x: Missing<AsNumeric>) -> String {
+    match x {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(v) => describe(Some(v.0)),
+    }
+}
+
+/// `fast` drops the type checks; the `no_na` guard and the Rust check stay.
+/// @param x Numbers, strings or factor labels, none of them missing.
+#[miniextendr(noexport, fast)]
+pub fn param_no_na_numbers_fast(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
+    count_refused(&x.0)
+}
+
+/// A label read like `as.character()`, without `NA`.
+/// @param x An atomic value or factor of length 1; not `NA`.
+#[miniextendr(noexport)]
+pub fn param_no_na_label(#[miniextendr(no_na)] x: AsCharacter) -> String {
+    x.0.expect("no_na refuses a missing label")
+}
+
+/// The message of `param_no_na_custom`, on a marker: the Rust check passes
+/// the same text verbatim.
+/// @param dose A number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_number_custom(
+    #[miniextendr(no_na(
+        message = "`x` can't be NA: it's \"required\" \\ 100% sure\nsee caf\u{e9}()"
+    ))]
+    dose: AsNumeric,
+) -> f64 {
+    dose.0.expect("no_na refuses a missing value")
+}
+
+/// On the worker path the check runs on the main thread, before dispatch.
+/// @param x Numbers, strings or factor labels, none of them missing.
+#[cfg(feature = "worker-thread")]
+#[miniextendr(worker, noexport)]
+pub fn param_no_na_numbers_worker(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
+    count_refused(&x.0)
+}
+
+/// Under `call = caller` the Rust check names the caller, like the R guard
+/// (`R/call_attribution.R`, `param_no_na_number_caller()`).
+/// @param x A number that is not missing.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn param_no_na_number_caller_impl(#[miniextendr(no_na)] x: AsNumeric) -> f64 {
+    x.0.expect("no_na refuses a missing value")
+}
+
+/// A type alias of a marker: the check follows the type, not its name.
+pub type Dose = AsNumeric;
+
+/// `no_na` on an alias of `AsNumeric`.
+/// @param x A number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_alias(#[miniextendr(no_na)] x: Dose) -> f64 {
+    x.0.expect("no_na refuses a missing value")
+}
+
+/// A `#[derive(TryFromSexp)]` newtype of a marker, which forwards the check.
+#[derive(TryFromSexp)]
+pub struct DoseNt(AsNumeric);
+
+/// `no_na` on a derived newtype of `AsNumeric`.
+/// @param x A number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_newtype(#[miniextendr(no_na)] x: DoseNt) -> f64 {
+    x.0.0.expect("no_na refuses a missing value")
+}
+
+/// `Option<DoseNt>` (the newtype container blanket): `NULL` passes.
+/// @param x `NULL`, or a number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_newtype_opt(
+    #[miniextendr(no_na, default = "NULL")] x: Option<DoseNt>,
+) -> String {
+    describe(x.map(|v| v.0.0))
+}
+
+/// A map of markers: each top-level value is read by the marker.
+/// @param x A named list of numbers, none of them missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_map(#[miniextendr(no_na)] x: HashMap<String, AsNumeric>) -> i32 {
+    let values: Vec<Option<f64>> = x.into_values().map(|v| v.0).collect();
+    count_refused(&values)
+}
+
+/// How many values `no_na` should have refused: missing or `NaN`.
+fn count_refused(values: &[Option<f64>]) -> i32 {
+    let n = values.iter().filter(|v| v.is_none_or(f64::is_nan)).count();
+    i32::try_from(n).expect("count fits i32")
+}
+
+/// `"NULL"` for `None`, the number for a value, `"missing"` for a value
+/// `no_na` should have refused (a leak).
+fn describe(value: Option<Option<f64>>) -> String {
+    match value {
+        None => "NULL".to_string(),
+        Some(Some(v)) if !v.is_nan() => v.to_string(),
+        Some(_) => "missing".to_string(),
+    }
+}
+// endregion
+
 // region: impl methods
 
 /// Holder for the impl-method `inherits(...)` / `no_na(...)` fixture.
@@ -200,6 +348,22 @@ impl ParamCheckHolder {
     )]
     pub fn add_checked(&mut self, x: List, y: f64) -> f64 {
         self.add(x, y)
+    }
+
+    /// Add a dose read like `as.numeric()`; `" NA "` is refused as `NA` is.
+    /// @param dose A number, string or factor label that is not missing.
+    #[miniextendr(no_na(dose))]
+    pub fn add_dose(&mut self, dose: AsNumeric) -> f64 {
+        self.total += dose.0.expect("no_na refuses a missing value");
+        self.total
+    }
+
+    /// Add several doses, with a method-level message for a missing one.
+    /// @param doses Numbers, strings or factor labels, none of them missing.
+    #[miniextendr(no_na(doses(message = "every dose must be a number")))]
+    pub fn add_doses(&mut self, doses: AsNumericVec) -> f64 {
+        self.total += doses.0.into_iter().flatten().sum::<f64>();
+        self.total
     }
 }
 // endregion

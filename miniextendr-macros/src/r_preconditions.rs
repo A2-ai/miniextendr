@@ -166,9 +166,16 @@ impl PreconditionOptions {
 /// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
 /// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
 /// method. They run after the type checks, as the same kind of guards
-/// raising the same argument error, and survive `no_preconditions` / `fast`: the
-/// Rust conversion cannot check them, so dropping them would change what the
-/// function accepts.
+/// raising the same argument error, and survive `no_preconditions` / `fast`:
+/// the Rust conversion does not repeat them, so dropping them would change
+/// what the function accepts.
+///
+/// `no_na` also has a Rust half. A type can read more inputs as missing than
+/// `anyNA()` sees (the reading markers `AsNumeric*` / `AsCharacter*` read the
+/// text `"NA"`, blank strings, a factor `NA` level as `NA`), so the C wrapper
+/// checks the converted value too (`TryFromSexp::__mx_has_na`, see
+/// `RustConversionBuilder::with_no_na`) and raises the same condition with
+/// the same message ([`no_na_message`]).
 ///
 /// Each check can carry the author's own condition message
 /// (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`;
@@ -184,7 +191,8 @@ pub struct ExplicitChecks {
     /// check, for all of its classes. Only set together with `inherits`.
     pub inherits_message: Option<String>,
     /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
-    /// is refused too, as `is.na()` does).
+    /// is refused too, as `is.na()` does), nor a value its type reads as `NA`
+    /// (checked in Rust after the conversion).
     pub no_na: bool,
     /// `no_na(message = "...")`: the message of a failed NA check. Only set
     /// together with `no_na`.
@@ -223,21 +231,10 @@ impl ExplicitChecks {
     /// value.
     fn assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
         let mut out = Vec::new();
-        let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-        let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
         if self.no_na {
-            let verb = if is_vector_valued(value_ty) {
-                "contain"
-            } else {
-                "be"
-            };
             out.push(
-                RAssertion::new(
-                    param,
-                    format!("must not {verb} NA"),
-                    format!("!anyNA({param})"),
-                )
-                .with_message(self.no_na_message.as_ref()),
+                RAssertion::new(param, no_na_requirement(ty), format!("!anyNA({param})"))
+                    .with_message(self.no_na_message.as_ref()),
             );
         }
         if let Some(classes) = &self.inherits {
@@ -280,6 +277,37 @@ impl ExplicitChecks {
             }
         }
         out
+    }
+}
+
+/// What a `no_na` parameter of Rust type `ty` must satisfy, without the
+/// parameter name: `must not contain NA` for a value holding several values
+/// ([`is_vector_valued`], after peeling `Missing` and `Option`), else
+/// `must not be NA`.
+///
+/// Shared by the R guard and the Rust check that the C wrapper runs after the
+/// conversion (see [`no_na_message`]), so both word a failure alike.
+pub(crate) fn no_na_requirement(ty: &syn::Type) -> String {
+    let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
+    let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
+    let verb = if is_vector_valued(value_ty) {
+        "contain"
+    } else {
+        "be"
+    };
+    format!("must not {verb} NA")
+}
+
+/// The condition message of a failed `no_na` check on parameter `param` of
+/// type `ty`: the author's `no_na(message = "...")` verbatim (`custom`), else
+/// `'<param>' must not be NA` / `'<param>' must not contain NA`
+/// ([`no_na_requirement`]). The R guard builds the same text in R
+/// (`.miniextendr_arg_error`); the C wrapper's post-conversion check passes
+/// this one to `arg_check_condition_value`.
+pub(crate) fn no_na_message(param: &str, ty: &syn::Type, custom: Option<&str>) -> String {
+    match custom {
+        Some(message) => message.to_string(),
+        None => format!("'{param}' {}", no_na_requirement(ty)),
     }
 }
 
@@ -1847,7 +1875,36 @@ mod tests {
             ("fn f(x: MyCustomType)", "be"),
         ] {
             assert_eq!(verb(sig), expected, "{sig}");
+            // The Rust check words it the same way.
+            let ty = match syn::parse_str::<syn::Signature>(sig).unwrap().inputs[0].clone() {
+                syn::FnArg::Typed(pt) => *pt.ty,
+                syn::FnArg::Receiver(_) => unreachable!(),
+            };
+            assert_eq!(
+                no_na_requirement(&ty),
+                format!("must not {expected} NA"),
+                "{sig}"
+            );
         }
+    }
+
+    /// The message the Rust `no_na` check raises: generated from the
+    /// parameter's R name and type, or the author's message verbatim.
+    #[test]
+    fn no_na_message_is_generated_or_custom() {
+        let ty = |s: &str| syn::parse_str::<syn::Type>(s).unwrap();
+        assert_eq!(
+            no_na_message("x", &ty("AsNumeric"), None),
+            "'x' must not be NA"
+        );
+        assert_eq!(
+            no_na_message("dv", &ty("Missing<Option<AsNumericVec>>"), None),
+            "'dv' must not contain NA"
+        );
+        // A vector alias not named `...Vec` reads `be`, as its R guard does.
+        assert_eq!(no_na_message("d", &ty("Doses"), None), "'d' must not be NA");
+        let custom = "`x` can't be NA: it's \"required\" \\ 100%\ncaf\u{e9}()";
+        assert_eq!(no_na_message("x", &ty("AsNumeric"), Some(custom)), custom);
     }
 
     #[test]

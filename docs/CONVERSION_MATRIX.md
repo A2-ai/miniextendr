@@ -137,6 +137,13 @@ failure reads `'dv' must be numeric: non-numeric value(s): "BLQ" (element 2)`
 (`a single number` for `AsNumeric`), with the Rust type in `e$rust_type`
 ([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)).
 
+`#[miniextendr(no_na)]` on these four markers is also a post-conversion check:
+the R guard `!anyNA(x)` runs first, then the C wrapper asks the converted value
+and refuses what the marker read as `None` (`"NA"`, blank strings, a factor
+`NA` level, an `NA` from a class's `as.character()`), plus `NaN` for
+`AsNumeric*`. The refusal is the R guard's condition: same classes, `kind`,
+`e$param` and message, no `e$rust_type`, reported with the matched call.
+
 ---
 
 ## Rust-to-R Conversions (Output: IntoR)

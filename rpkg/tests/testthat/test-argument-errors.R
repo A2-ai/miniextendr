@@ -464,6 +464,28 @@ test_that("no_na on a vector marker says 'must not contain NA'", {
   expect_identical(miniextendr:::arg_error_no_na_peak(c("1", "4")), 4)
 })
 
+test_that("no_na's Rust check after the conversion raises the R guard's condition", {
+  # `NA` is refused by the R guard; the text "NA" passes `anyNA()` and is
+  # refused after the conversion, which reads it as missing.
+  e_r <- caught(miniextendr:::arg_error_no_na_peak(c("1", NA)))
+  e_rust <- caught(miniextendr:::arg_error_no_na_peak(c("1", "NA")))
+  expect_identical(class(e_rust), class(e_r))
+  expect_identical(e_rust$kind, e_r$kind)
+  expect_identical(e_rust$param, e_r$param)
+  expect_identical(conditionMessage(e_rust), conditionMessage(e_r))
+  expect_identical(names(e_rust), names(e_r))
+  expect_identical(names(e_rust), c("message", "call", "kind", "param"))
+  expect_null(e_rust$rust_type)
+  # The one difference: the Rust side reports the matched call, the R guard
+  # the call as written.
+  expect_equal(conditionCall(e_rust), quote(miniextendr:::arg_error_no_na_peak(obs = c("1", "NA"))))
+  expect_equal(conditionCall(e_r), quote(miniextendr:::arg_error_no_na_peak(c("1", NA))))
+  # Under `call = caller` both name the caller.
+  e <- caught(miniextendr:::param_no_na_number_caller(""))
+  expect_identical(class(e), layers)
+  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller(x = "")))
+})
+
 test_that("a match_arg enum's conversion error names its choices", {
   # No match_arg attribute, so no R-side match.arg(): the conversion refuses
   # the value, and the error says what it must be.

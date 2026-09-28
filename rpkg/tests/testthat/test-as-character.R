@@ -191,6 +191,30 @@ test_that("no_na refuses NA in R, and NaN with it", {
   expect_identical(as_chr_no_na("NA"), "NA")
 })
 
+test_that("no_na refuses an NA only the conversion produces", {
+  # A factor NA level (`exclude = NULL`) has a non-NA code, so `anyNA()`
+  # passes it; its label is NA_character_. The Rust check refuses it.
+  x <- factor(c("a", NA), exclude = NULL)
+  expect_false(anyNA(x))
+  expect_error(as_chr_no_na(x), "'x' must not contain NA", fixed = TRUE)
+  expect_error(
+    miniextendr:::param_no_na_label(factor(NA, exclude = NULL)),
+    "'x' must not be NA",
+    fixed = TRUE
+  )
+  # A class whose as.character() method returns NA.
+  assign(
+    "as.character.mx_na_lbl",
+    function(x, ...) rep(NA_character_, length(x)),
+    envir = globalenv()
+  )
+  on.exit(rm("as.character.mx_na_lbl", envir = globalenv()), add = TRUE)
+  e <- tryCatch(as_chr_no_na(structure(1:2, class = "mx_na_lbl")), error = identity)
+  expect_identical(conditionMessage(e), "'x' must not contain NA")
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$param, "x")
+})
+
 # endregion
 
 # region: identifiers as labels

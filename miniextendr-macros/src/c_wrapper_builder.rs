@@ -275,6 +275,11 @@ pub struct CWrapperContext {
     /// `TryFromSexp`, which no downstream crate can implement for
     /// `Option<ItsEnum>`.
     pub layered_choice_params: Vec<(String, crate::rust_conversion_builder::ChoiceLeaf)>,
+    /// `#[miniextendr(no_na)]` parameters (Rust name) with the author's
+    /// `no_na(message = ..)`, if any. Their converted value is checked right
+    /// after the conversion (`RustConversionBuilder::with_no_na`), after the R
+    /// guard `!anyNA(x)` already ran.
+    pub no_na_params: Vec<(String, Option<String>)>,
     /// When `true`, preserve original parameter names from `inputs` in the C wrapper
     /// signature instead of renaming to `arg_0`, `arg_1`, ... The fn path preserves
     /// user identifiers for rustdoc visibility; impl method path uses `arg_N` for safety.
@@ -321,6 +326,7 @@ impl CWrapperContext {
             err_parts: ErrPartsMode::from_spec(None),
             match_arg_several_ok_params: Vec::new(),
             layered_choice_params: Vec::new(),
+            no_na_params: Vec::new(),
             preserve_param_names: false,
             vis: syn::Visibility::Inherited,
             generics: syn::Generics::default(),
@@ -462,6 +468,9 @@ impl CWrapperContext {
         }
         for (param, leaf) in &self.layered_choice_params {
             builder = builder.with_layered_choice(param.clone(), *leaf);
+        }
+        for (param, message) in &self.no_na_params {
+            builder = builder.with_no_na(param.clone(), message.clone());
         }
         builder
     }
@@ -1496,6 +1505,8 @@ pub struct CWrapperContextBuilder {
     /// Layered choice parameters — forwarded to
     /// `RustConversionBuilder::with_layered_choice`.
     layered_choice_params: Vec<(String, crate::rust_conversion_builder::ChoiceLeaf)>,
+    /// `no_na` parameters, forwarded to `RustConversionBuilder::with_no_na`.
+    no_na_params: Vec<(String, Option<String>)>,
     /// When `true`, use original parameter names in C wrapper signature (for rustdoc).
     preserve_param_names: bool,
     /// Visibility of the generated `extern "C-unwind"` wrapper.
@@ -1642,6 +1653,17 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Record a `#[miniextendr(no_na)]` parameter (its Rust name) and the
+    /// author's `no_na(message = "...")`, if any.
+    ///
+    /// Passed through to `RustConversionBuilder::with_no_na`, which checks the
+    /// converted value (`TryFromSexp::__mx_has_na`) right after its binding,
+    /// for what the type reads as `NA` beyond the R guard's `anyNA()`.
+    pub fn no_na(mut self, param_name: String, message: Option<String>) -> Self {
+        self.no_na_params.push((param_name, message));
+        self
+    }
+
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -1741,6 +1763,7 @@ impl CWrapperContextBuilder {
             err_parts: self.err_parts,
             match_arg_several_ok_params: self.match_arg_several_ok_params,
             layered_choice_params: self.layered_choice_params,
+            no_na_params: self.no_na_params,
             preserve_param_names: self.preserve_param_names,
             vis: self.vis,
             generics: self.generics,

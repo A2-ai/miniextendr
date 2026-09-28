@@ -511,3 +511,112 @@ fn native_metadata_matches_selected_conversion_paths() {
         );
     }
 }
+
+// region: post-conversion no_na check
+
+/// The emitted post-conversion `no_na` check of binding `x`.
+const NO_NA_CHECK: &str = ":: miniextendr_api :: TryFromSexp :: __mx_has_na (& x)";
+
+/// A `no_na` parameter converted through plain `TryFromSexp` gets the check
+/// right after its binding, returning the R guard's condition with the
+/// generated message: `be` for a scalar marker, `contain` for a vector one.
+#[test]
+fn no_na_checks_the_converted_value() {
+    for (src, message) in [
+        ("x: AsNumeric", "'x' must not be NA"),
+        ("x: AsNumericVec", "'x' must not contain NA"),
+        ("x: Option<AsCharacterVec>", "'x' must not contain NA"),
+        ("_x: Missing<AsCharacter>", "'x' must not be NA"),
+    ] {
+        let name = if src.starts_with('_') { "_x" } else { "x" };
+        let builder = RustConversionBuilder::new().with_no_na(name.to_string(), None);
+        let s = conversion_text(&builder, src);
+        let check = NO_NA_CHECK.replace("& x", &format!("& {name}"));
+        assert!(s.contains(&check), "{src}: {s}");
+        assert!(
+            s.contains(&format!(
+                "arg_check_condition_value (\"{message}\" , \"x\" , & [] , Some (__miniextendr_call) ,)"
+            )),
+            "{src}: {s}"
+        );
+        // The check follows the conversion binding.
+        let binding = s.find(&format!("let {name}")).expect("the binding");
+        assert!(binding < s.find(&check).unwrap(), "{src}: {s}");
+    }
+}
+
+/// No name gate: the check is emitted for a type the macro does not know (an
+/// alias of a marker) and for a plain type, where the trait default `false`
+/// optimises it out. Rust resolves `__mx_has_na` on the real type.
+#[test]
+fn no_na_check_is_type_driven_not_name_matched() {
+    let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
+    for src in ["x: MyDoseAlias", "x: f64", "x: HashMap<String, Dose>"] {
+        let s = conversion_text(&builder, src);
+        assert!(s.contains(NO_NA_CHECK), "{src}: {s}");
+    }
+}
+
+/// `no_na(message = "...")` reaches the check verbatim, and the crate class is
+/// passed like on a conversion failure.
+#[test]
+fn no_na_check_uses_the_custom_message_and_crate_class() {
+    let builder = RustConversionBuilder::new()
+        .with_no_na("dose".to_string(), Some("need a dose".to_string()))
+        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
+    let s = conversion_text(&builder, "dose: AsNumeric");
+    assert!(
+        s.contains(
+            "arg_check_condition_value (\"need a dose\" , \"dose\" , & [\"pkg_error_argument\"] , Some (__miniextendr_call) ,)"
+        ),
+        "{s}"
+    );
+}
+
+/// Without `no_na`, or for another parameter, no check is emitted.
+#[test]
+fn no_na_check_only_for_listed_params() {
+    let s = conversion_text(&RustConversionBuilder::new(), "x: AsNumeric");
+    assert!(!s.contains("__mx_has_na"), "{s}");
+    let builder = RustConversionBuilder::new().with_no_na("y".to_string(), None);
+    let s = conversion_text(&builder, "x: AsNumeric");
+    assert!(!s.contains("__mx_has_na"), "{s}");
+}
+
+/// Under the worker split the check is an owned (pre-closure) statement: it
+/// runs on the main thread, where it may allocate the condition.
+#[test]
+fn no_na_check_is_in_the_owned_vector_of_the_split() {
+    let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
+    let syn::FnArg::Typed(pat_type) = parse_param("x: AsNumericVec") else {
+        unreachable!()
+    };
+    let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+    let (owned, borrowed) = builder.build_conversion_split(&pat_type, &sexp_ident);
+    assert_eq!(owned.len(), 2);
+    assert!(borrowed.is_empty());
+    assert!(owned[1].to_string().contains(NO_NA_CHECK), "{}", owned[1]);
+}
+
+/// The special conversion arms never carry the check: a coerced type (one
+/// with a coercion mapping), a borrowed slice and a strict lossy integer are
+/// converted by their own helpers and keep only the R guard. A marker with
+/// `coerce` has no coercion mapping, so it takes the plain arm and is checked.
+#[test]
+fn no_na_check_skips_the_special_arms() {
+    let coerced = RustConversionBuilder::new()
+        .with_coerce_param("x".to_string())
+        .with_no_na("x".to_string(), None);
+    assert!(!conversion_text(&coerced, "x: f64").contains("__mx_has_na"));
+    assert!(conversion_text(&coerced, "x: AsNumeric").contains(NO_NA_CHECK));
+
+    let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
+    assert!(!conversion_text(&builder, "x: &[f64]").contains("__mx_has_na"));
+
+    let strict = RustConversionBuilder::new()
+        .with_strict()
+        .with_no_na("x".to_string(), None);
+    assert!(!conversion_text(&strict, "x: i64").contains("__mx_has_na"));
+}
+
+// endregion

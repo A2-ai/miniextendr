@@ -30,11 +30,13 @@ pub fn test_as_character_n_distinct(x: AsCharacterVec) -> i32 {
     i32::try_from(distinct.len()).expect("distinct label count fits i32")
 }
 
-/// With `no_na`, R refuses `NA` before the call, so every value is present.
+/// With `no_na`, R refuses `NA` before the call, and the C wrapper refuses an
+/// `NA` that only the conversion produces (a factor `NA` level, a class's
+/// `as.character()` returning `NA`), so every value is present.
 #[miniextendr(noexport)]
 pub fn test_as_character_no_na(#[miniextendr(no_na)] x: AsCharacterVec) -> Vec<String> {
     x.0.into_iter()
-        .map(|v| v.expect("no_na refuses NA in R"))
+        .map(|v| v.expect("no_na refuses NA"))
         .collect()
 }
 

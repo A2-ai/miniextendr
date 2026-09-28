@@ -61,6 +61,13 @@ param_checks_caller_msg <- function(x, y) {
   param_checks_caller_msg_impl(x, y)
 }
 
+# Delegates to a `call = caller` entry point taking a `no_na` `AsNumeric`: an
+# `NA` refused by the R guard (`NA`) or by the Rust check after the conversion
+# (`"NA"`) surfaces as `Error in param_no_na_number_caller(...)` either way.
+param_no_na_number_caller <- function(x) {
+  param_no_na_number_caller_impl(x)
+}
+
 # Delegate to `call = caller` entry points taking `AsNumeric` / `AsNumericVec`
 # (src/rust/argument_error_tests.rs, #1591): an argument error surfaces as
 # `Error in arg_error_ratio_caller(...)` / `arg_error_peak_caller(...)` whether

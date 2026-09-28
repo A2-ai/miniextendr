@@ -31,6 +31,10 @@ pub struct RustConversionBuilder {
     /// layers (#1473, #1551), with the kind of their innermost value. Decoded
     /// by [`layered_choice_expr`] instead of `TryFromSexp`.
     layered_choice_params: Vec<(String, ChoiceLeaf)>,
+    /// `no_na` parameters (Rust name) with the author's `no_na(message = ..)`,
+    /// if any: their converted value is checked right after the conversion
+    /// (see [`Self::with_no_na`]).
+    no_na_params: Vec<(String, Option<String>)>,
     /// The crate's `conversion_error_class` (`[package.metadata.miniextendr]`),
     /// appended to every conversion condition's class vector.
     conversion_error_class: Vec<String>,
@@ -46,6 +50,7 @@ impl RustConversionBuilder {
             strict: false,
             match_arg_several_ok_params: Vec::new(),
             layered_choice_params: Vec::new(),
+            no_na_params: Vec::new(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
         }
     }
@@ -95,6 +100,23 @@ impl RustConversionBuilder {
     /// `miniextendr_api::newtype`, so the wrapper calls the helpers directly.
     pub fn with_layered_choice(mut self, param_name: String, leaf: ChoiceLeaf) -> Self {
         self.layered_choice_params.push((param_name, leaf));
+        self
+    }
+
+    /// Mark a `#[miniextendr(no_na)]` parameter (`param_name` is its Rust
+    /// name), with the author's `no_na(message = "...")` if given.
+    ///
+    /// The R guard `!anyNA(x)` runs first; a type can still read an input as
+    /// missing that `anyNA()` does not see (the reading markers `AsNumeric*` /
+    /// `AsCharacter*` read the text `"NA"` or a blank string as `NA`). So when
+    /// the parameter converts through plain `TryFromSexp`, the converted value
+    /// is asked `TryFromSexp::__mx_has_na` right after its binding, and a
+    /// refusal returns the R guard's own condition (see
+    /// [`no_na_value_stmt`]). No type is named: Rust resolves the call on the
+    /// value's real type, so aliases and derived newtypes of a marker are
+    /// checked too, and for any other type the default `false` optimises out.
+    pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
+        self.no_na_params.push((param_name, message));
         self
     }
 
@@ -582,7 +604,31 @@ impl RustConversionBuilder {
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        self.conversion_stmt(try_expr, &ctx, ident, ty, span)
+                        let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
+                        // `ty: TryFromSexp` is proven here, so a `no_na`
+                        // parameter's value can be asked after the binding.
+                        // Owned vector: it runs on the main thread, before a
+                        // worker closure, like the conversion's `Err` arm.
+                        if let Some((_, message)) = self
+                            .no_na_params
+                            .iter()
+                            .find(|(name, _)| *name == param_name)
+                        {
+                            let message = crate::r_preconditions::no_na_message(
+                                &r_name,
+                                ty,
+                                message.as_deref(),
+                            );
+                            let check = no_na_value_stmt(
+                                ident,
+                                &r_name,
+                                &message,
+                                &self.conversion_error_class,
+                                span,
+                            );
+                            return (vec![stmt, check], vec![]);
+                        }
+                        stmt
                     }
                 };
                 (vec![stmt], vec![])
@@ -883,6 +929,37 @@ fn conversion_err_arm(
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
         Err(e) => return unsafe { #value },
+    }
+}
+
+/// The post-conversion `no_na` check of the binding `ident` (R name
+/// `r_name`): when the value holds what its type reads as `NA`
+/// (`TryFromSexp::__mx_has_na`), return the tagged `kind = "conversion"`
+/// value `no_na`'s R guard would raise, with `message` verbatim, the crate's
+/// `conversion_error_class` and `e$param` (`arg_check_condition_value`). The
+/// call is the wrapper's call slot, as for a conversion failure.
+fn no_na_value_stmt(
+    ident: &syn::Ident,
+    r_name: &str,
+    message: &str,
+    crate_class: &[String],
+    span: proc_macro2::Span,
+) -> TokenStream {
+    // SAFETY (of the emitted `unsafe`): the check runs right after the
+    // argument's conversion, where the conversion `Err` arm runs: on the R
+    // main thread, inside the wrapper's with_r_unwind_protect closure or
+    // before the worker closure.
+    quote_spanned! {span=>
+        if ::miniextendr_api::TryFromSexp::__mx_has_na(&#ident) {
+            return unsafe {
+                ::miniextendr_api::error_value::arg_check_condition_value(
+                    #message,
+                    #r_name,
+                    &[#(#crate_class),*],
+                    Some(__miniextendr_call),
+                )
+            };
+        }
     }
 }
 

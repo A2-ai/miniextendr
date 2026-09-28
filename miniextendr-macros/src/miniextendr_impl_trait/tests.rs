@@ -1018,6 +1018,40 @@ fn test_trait_method_rejects_unknown_parameter_names() {
     assert!(methods[0].per_param["type"].checks.no_na);
 }
 
+/// A trait method's `no_na(..)` parameter has its converted value checked in
+/// the method's C wrapper too, with the method-level message when given.
+#[test]
+fn trait_method_no_na_checks_the_converted_value() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Dosing for Foo {
+            #[miniextendr(no_na(d, doses(message = "need doses")))]
+            fn dose(&self, d: AsNumeric, doses: AsNumericVec) -> f64 { unimplemented!() }
+        }
+    };
+    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let out = super::vtable::generate_trait_method_c_wrapper(
+        &methods[0],
+        &format_ident!("Foo"),
+        &format_ident!("Dosing"),
+        &syn::parse_quote!(Dosing),
+    )
+    .to_string();
+    for (binding, message) in [("d", "'d' must not be NA"), ("doses", "need doses")] {
+        assert!(
+            out.contains(&format!(
+                ":: miniextendr_api :: TryFromSexp :: __mx_has_na (& {binding})"
+            )),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!(
+                "arg_check_condition_value (\"{message}\" , \"{binding}\""
+            )),
+            "{out}"
+        );
+    }
+}
+
 /// Related fix bundled into the same prelude parity: trait methods used to
 /// build `.Call()` args via `collect_param_idents`, which had no `Missing<T>`
 /// handling. A truly-missing R argument forwarded as a bare binding errors on

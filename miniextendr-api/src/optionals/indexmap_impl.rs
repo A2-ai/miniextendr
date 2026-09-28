@@ -67,6 +67,12 @@ where
         crate::from_r::NativeBorrow::in_list(T::NATIVE_BORROW);
 
     type Error = SexpError;
+    // Each value is a top-level element of the named list, read by its own
+    // type: `no_na` stays top-level on a map.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.values().any(T::__mx_has_na)
+    }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -276,6 +282,19 @@ impl<T> RIndexMapOps<T> for IndexMap<String, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `no_na` reads each top-level value by its own type, like the
+    /// `HashMap` / `BTreeMap` impls.
+    #[test]
+    fn indexmap_forwards_no_na_to_its_values() {
+        use crate::convert::AsNumeric;
+
+        let mut map = IndexMap::new();
+        map.insert("a".to_string(), AsNumeric(Some(1.0)));
+        assert!(!map.__mx_has_na());
+        map.insert("b".to_string(), AsNumeric(None));
+        assert!(map.__mx_has_na());
+    }
 
     #[test]
     fn indexmap_preserves_order() {

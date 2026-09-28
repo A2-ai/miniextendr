@@ -3457,11 +3457,16 @@ pub fn generate_method_c_wrapper(
     // A choice type under `Missing` / `Option` layers (#1473, #1551) likewise
     // bypasses `TryFromSexp`: no `Option<UserEnum>` impl can exist downstream
     // (orphan rule).
+    // `no_na(..)` parameters also have their converted value checked, for what
+    // the type reads as `NA` beyond the R guard's `anyNA()`.
     for (rust_name, attrs) in &method.method_attrs.per_param {
         if let Some(leaf) = attrs.layered_leaf() {
             builder = builder.layered_choice(rust_name.clone(), leaf);
         } else if attrs.match_arg && attrs.several_ok {
             builder = builder.match_arg_several_ok(rust_name.clone());
+        }
+        if attrs.checks.no_na {
+            builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
         }
     }
 
