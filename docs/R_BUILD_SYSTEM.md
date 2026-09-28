@@ -74,7 +74,11 @@ generation from the freshly linked library.
 `bootstrap.R` keeps a current record current across `cargo revendor --freeze`,
 which rewrites the fingerprinted Cargo files without changing what the wrappers
 are generated from; any other rewrite of those files invalidates the record,
-even when the resulting wrappers are identical. If the existing R wrapper
+even when the resulting wrappers are identical. In this repository the
+maintainer recipes do the same for rpkg: `just rcmdinstall` around the
+committed-lock restore after its `[patch]`-drifted build, and `just vendor`
+around its lock stamp, so a `just r-cmd-build` or `just r-cmd-check` tarball
+installs with the pre-shipped wrappers. If the existing R wrapper
 changes, installation stops with its filename and recovery instructions before
 R's namespace load check. Generation compares a temporary copy, preserving the
 shipped wrapper on failure so a repeated install cannot bypass the check.
