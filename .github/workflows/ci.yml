@@ -1307,8 +1307,8 @@ jobs:
   # Feature runtime legs (scheduled only)
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
-  # (worker-default, strict-default, coerce-default, fast-default, r6-default,
-  # s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
+  # (worker-default, strict-default, coerce-default, no-preconditions-default,
+  # r6-default, s7-default), nonapi, indicatif, and growth-debug, so no PR-gating job ever
   # builds — let alone runs — the R wrappers those features generate
   # (audit A5/A10). Each leg rebuilds rpkg with one bundle of denylisted
   # features on top of the auto-detected base set and runs testthat against it.
@@ -1319,12 +1319,13 @@ jobs:
   # block in rpkg explicitly `env` — the class flip now only reaches the one
   # deliberately bare probe (FdefaultProbe in feature_default_fixtures.rs) plus
   # the divergence assertions in tests/testthat/test-feature-defaults.R.
-  # The strict-default, coerce-default, and fast-default legs stay filtered to
-  # targeted fixture tests (including coercion regressions): they flip conversion semantics /
-  # preconditions for every parameter suite-wide, so the pre-existing suite
-  # fails by design under them.
-  # The fast-default leg additionally runs the two fast_default unit tests in
-  # miniextendr-macros/src/tests.rs, which no other job compiles+runs.
+  # The strict-default, coerce-default, and no-preconditions-default legs stay
+  # filtered to targeted fixture tests (including coercion regressions): they
+  # flip conversion semantics / preconditions for every parameter suite-wide,
+  # so the pre-existing suite fails by design under them.
+  # The no-preconditions-default leg additionally runs the two
+  # no_preconditions_default unit tests in miniextendr-macros/src/tests.rs,
+  # which no other job compiles+runs.
   #
   # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
@@ -1362,8 +1363,8 @@ jobs:
           - leg: coerce-default
             features: coerce-default
             filter: "feature-defaults|coerce"
-          - leg: fast-default
-            features: fast-default
+          - leg: no-preconditions-default
+            features: no-preconditions-default
             filter: feature-defaults
 
     env:
@@ -1403,12 +1404,13 @@ jobs:
           shared-key: feature-leg-${{ matrix.leg }}
           cache-on-failure: true
 
-      # The fast-default leg is also the only place the two fast_default
-      # unit tests in miniextendr-macros/src/tests.rs run: clippy_all compiles
-      # them (full-codegen includes fast-default) but never executes them.
-      - name: Run fast_default unit tests (miniextendr-macros)
-        if: matrix.leg == 'fast-default'
-        run: cargo test -p miniextendr-macros --features fast-default fast_default
+      # The no-preconditions-default leg is also the only place the two
+      # no_preconditions_default unit tests in miniextendr-macros/src/tests.rs
+      # run: clippy_all compiles them (full-codegen includes
+      # no-preconditions-default) but never executes them.
+      - name: Run no_preconditions_default unit tests (miniextendr-macros)
+        if: matrix.leg == 'no-preconditions-default'
+        run: cargo test -p miniextendr-macros --features no-preconditions-default no_preconditions_default
 
       # configure.ac skips feature auto-detection when CARGO_FEATURES is set,
       # so the base set is composed here: what detect-features.R would have

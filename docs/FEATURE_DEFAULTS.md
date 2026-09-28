@@ -44,7 +44,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 |---------|--------|-------|-----------------|
 | `strict-default` | Strict checked conversions for lossy types (i64, u64, isize, usize) | fns + impl blocks | `no_strict` |
 | `coerce-default` | Widen native `i32`/`f64` (and `Vec`) to the other numeric sources; preserve non-native numeric inputs; also accept integer `0`/`1` for `bool` and `Vec<bool>` | fns + methods | `no_coerce` |
-| `fast-default` | Fast-path knobs: drop the R-side type checks and emit `.call = NULL` | fns + impl blocks | `no_fast` |
+| `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks | `preconditions` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
@@ -69,15 +69,15 @@ The following were previously opt-in features but are now **always enabled by de
 
 ### Orthogonality
 
-`fast-default` is **orthogonal** to `strict-default` and `coerce-default` — any
-combination is valid:
+`no-preconditions-default` is **orthogonal** to `strict-default` and
+`coerce-default` — any combination is valid:
 
 | Features | Effect |
 |----------|--------|
-| `fast-default` only | Fast wrappers with permissive conversions |
-| `fast-default` + `strict-default` | Fast wrappers with strict i64/u64/… checking |
-| `fast-default` + `coerce-default` | Fast wrappers with auto-coercion |
-| All three | Fast + strict + coerce |
+| `no-preconditions-default` only | Unchecked wrappers with permissive conversions |
+| `no-preconditions-default` + `strict-default` | Unchecked wrappers with strict i64/u64/… checking |
+| `no-preconditions-default` + `coerce-default` | Unchecked wrappers with auto-coercion |
+| All three | Unchecked + strict + coerce |
 
 ### Mutual Exclusivity
 
@@ -91,7 +91,7 @@ Features are defined in `miniextendr-macros` and forwarded by `miniextendr-api`:
 
 ```text
 miniextendr-api/strict-default  →  miniextendr-macros/strict-default
-miniextendr-api/fast-default    →  miniextendr-macros/fast-default
+miniextendr-api/no-preconditions-default  →  miniextendr-macros/no-preconditions-default
 ```
 
 Users should enable features on `miniextendr-api` (or their package's `Cargo.toml`
@@ -180,63 +180,50 @@ impl MyType {
 }
 ```
 
-### `fast-default`
+### `no-preconditions-default`
 
-The `fast-default` feature bundles two performance knobs that are applied by
-default to every `#[miniextendr]` function and impl block:
+The `no-preconditions-default` feature applies `no_preconditions` to every
+`#[miniextendr]` function and impl block: the generated wrappers drop their
+R-side type checks, one `isTRUE()` guard per check. Type errors still
+propagate from Rust's `TryFromSexp`, as the same argument-error condition
+(#1591), but worded by the conversion (`'x' must be a single integer: got
+character`) rather than by the R check (`'x' must be integer`). Checks named
+per parameter (`inherits`, `no_na`) are kept: the Rust conversion does not
+repeat them. `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`)
+also checks the converted value, and that check stays too.
 
-- **`no_preconditions`**: drops the R-side type checks, one `isTRUE()`
-  guard per check. When omitted, type errors still propagate from Rust's
-  `TryFromSexp`, as the same argument-error condition (#1591), but worded by
-  the conversion (`'x' must be a single integer: got character`) rather than
-  by the R check (`'x' must be integer`). Checks named per parameter
-  (`inherits`, `no_na`) are kept: the Rust conversion does not repeat them.
-  `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`) also checks
-  the converted value, and that check stays too.
+The feature does not touch the call a wrapper reports: every wrapper passes
+`.call = sys.call()` (or the caller's call under `call = caller`), so
+conditions, including deferred warnings, name the call as written either way
+(see [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
-- **`no_call_attribution`** (spelled `call = none` since #1566): emits
-  `.call = NULL` instead of `.call = match.call()` in the `.Call(...)`
-  invocation. This saves ~1200 ns per call by skipping R's `match.call()`
-  evaluation. On the error path, R's `stop()` fills in `sys.call()` for the
-  calling frame (because `call.` defaults to `TRUE`), so `conditionCall(e)`
-  remains non-NULL — the error UX difference is subtle: `match.call()`
-  captures named argument positions, while `sys.call()` does not. For
-  standalone functions the feature sits below a `Call` / `CallerCall`
-  parameter, the `call = ...` attribute and the crate's
-  `[package.metadata.miniextendr] call_attribution` default, so a crate that
-  sets `call_attribution = "caller"` keeps its internal entry points attributed
-  under `fast-default` (see
-  [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default)).
-
-Combined, `fast` (= `no_preconditions` + `no_call_attribution`) delivers a
-**7.78× speedup** on the single-call fast path and **8.54×** for
-three-argument functions (see `analysis/scaffolding-deep-findings-2026-05-20.md`).
+Each dropped check saves one `isTRUE()` guard on every call.
 
 ```rust
-// With fast-default feature enabled:
+// With the no-preconditions-default feature enabled:
 
-#[miniextendr]                   // no_preconditions=true, no_call_attribution=true
-fn fast_fn(x: i32) -> i32 { x }
+#[miniextendr]                   // no_preconditions = true
+fn hot_fn(x: i32) -> i32 { x }
 
-// Opt out for a function where R-side type errors need the full UX:
-#[miniextendr(no_fast)]          // no_preconditions=false, no_call_attribution=false
+// Keep the checks for a function where R-side type errors need the full UX:
+#[miniextendr(preconditions)]    // no_preconditions = false
 fn user_facing_fn(x: i32) -> i32 { x }
-
-// Or restore just one knob:
-#[miniextendr(no_call_attribution = false)]  // preconditions dropped, match.call() restored
-fn semi_fast(x: i32) -> i32 { x }
 ```
+
+On a function the pair also takes `= true` / `= false`
+(`preconditions = false` is `no_preconditions`), and on a function or an impl
+block the last one written wins, like `worker` / `no_worker`.
 
 The same applies to impl blocks:
 
 ```rust
-// With fast-default + r6-default:
+// With no-preconditions-default + r6-default:
 
-#[miniextendr]                   // R6, fast (all methods inherit)
+#[miniextendr]                   // R6, every method unchecked
 impl MyCounter { ... }
 
 // One impl block where the full UX matters:
-#[miniextendr(no_fast)]
+#[miniextendr(preconditions)]
 impl UserFacingType { ... }
 ```
 
@@ -309,10 +296,8 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `strict-default` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
-| `no_fast` | `#[miniextendr(no_fast)]` on fn or impl | `fast-default` feature (restores both the type checks + `match.call()`) |
-| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl | Drops the R-side type checks (can be used independently of `no_call_attribution`) |
-| `no_call_attribution` | `#[miniextendr(no_call_attribution)]` on fn or impl | Emits `.call = NULL` (can be used independently of `no_preconditions`); on a fn also spelled `call = none`, with `call = wrapper` / `call = caller`, a `Call` / `CallerCall` parameter and the `Cargo.toml` `call_attribution` default as the other spellings (#1566) |
-| `fast` | `#[miniextendr(fast)]` on fn or impl | Bundle alias for both `no_preconditions` + `no_call_attribution`; also opts back in when used with `no_fast` |
+| `preconditions` | `#[miniextendr(preconditions)]` on fn or impl (`preconditions = true` on a fn) | `no-preconditions-default` feature (keeps the R-side type checks) |
+| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl (`no_preconditions = true` on a fn) | Built-in default: drops the R-side type checks |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `worker-default` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `r6-default` or `s7-default` feature |

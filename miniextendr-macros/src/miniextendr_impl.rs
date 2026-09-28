@@ -848,7 +848,7 @@ pub struct ImplAttrs {
     /// argument-error condition; the message comes from the conversion. Set by
     /// the bare `#[miniextendr(no_preconditions)]`, cleared by the bare
     /// `preconditions` (the last one written wins); unset, it follows the
-    /// `fast-default` feature.
+    /// `no-preconditions-default` feature.
     pub no_preconditions: bool,
     // endregion
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
@@ -1211,7 +1211,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
-            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
+            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "no-preconditions-default")),
             internal,
             noexport,
             blanket,

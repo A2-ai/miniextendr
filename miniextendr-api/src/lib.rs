@@ -209,7 +209,7 @@
 //! | `worker-default` | Default to worker thread dispatch (implies `worker-thread`) |
 //! | `strict-default` | Default to strict mode for lossy integer conversions |
 //! | `coerce-default` | Default to coerce mode for type conversions |
-//! | `fast-default` | Default to fast wrappers and unchecked conversion paths |
+//! | `no-preconditions-default` | Drop the R-side type checks by default (`preconditions` keeps them per item) |
 //!
 //! ### Development / Diagnostics
 //!

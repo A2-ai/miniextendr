@@ -576,7 +576,7 @@ the Rust conversion (`TryFromSexp`) for what only Rust can judge, such as a
 non-numeric string given to `AsNumeric`. The arguments without an R-side type
 check convert in Rust directly: every custom `TryFromSexp` type,
 `Either<L, R>`, the `AsFromStr` family, and every argument of a function built
-with `no_preconditions` or `fast-default`.
+with `no_preconditions` or `no-preconditions-default`.
 
 Both places raise the same error condition (#1591):
 
@@ -708,7 +708,7 @@ listed, the rest counted (`; and 5 more`). The Rust type is in
 `e$rust_type`, not in the message.
 
 The examples below are for functions without the R-side checks
-(`no_preconditions` / `fast-default`), where these values reach Rust.
+(`no_preconditions` / `no-preconditions-default`), where these values reach Rust.
 
 ### Type mismatch
 

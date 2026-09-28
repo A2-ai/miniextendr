@@ -1782,15 +1782,15 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
 }
 // endregion
 
-// region: preconditions / no_preconditions and the fast-default feature
+// region: preconditions / no_preconditions and the no-preconditions-default feature
 
-/// Under the `fast-default` feature a bare `#[miniextendr]` drops the R-side
+/// Under the `no-preconditions-default` feature a bare `#[miniextendr]` drops the R-side
 /// type checks. The call attribution is independent: it resolves to `wrapper`.
 ///
-/// Run with: `cargo test -p miniextendr-macros --features fast-default`
-#[cfg(feature = "fast-default")]
+/// Run with: `cargo test -p miniextendr-macros --features no-preconditions-default`
+#[cfg(feature = "no-preconditions-default")]
 #[test]
-fn fast_default_fn_attrs_drop_preconditions() {
+fn no_preconditions_default_fn_attrs_drop_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
     assert!(
         attrs.no_preconditions,
@@ -1806,9 +1806,9 @@ fn fast_default_fn_attrs_drop_preconditions() {
 }
 
 /// `preconditions` restores the checks one item at a time under the feature.
-#[cfg(feature = "fast-default")]
+#[cfg(feature = "no-preconditions-default")]
 #[test]
-fn fast_default_preconditions_restores_checks() {
+fn no_preconditions_default_preconditions_restores_checks() {
     for input in [
         quote::quote! { preconditions },
         quote::quote! { preconditions = true },
@@ -1822,7 +1822,7 @@ fn fast_default_preconditions_restores_checks() {
     assert!(!impl_attrs.no_preconditions);
 }
 
-#[cfg(not(feature = "fast-default"))]
+#[cfg(not(feature = "no-preconditions-default"))]
 #[test]
 fn default_fn_attrs_keep_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();

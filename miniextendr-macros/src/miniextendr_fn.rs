@@ -1699,7 +1699,7 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   bad input, with the same argument-error condition (#1591); the message
 ///   comes from the conversion. Saves one `isTRUE()` guard per check.
 ///   Hot-path opt-in; `preconditions` keeps the checks when the
-///   `fast-default` feature drops them crate-wide. The last one written wins.
+///   `no-preconditions-default` feature drops them crate-wide. The last one written wins.
 /// - `call = wrapper | caller`: which call the wrapper attributes conditions
 ///   to (#1566), always as written. `wrapper` (the framework default) passes
 ///   `.call = sys.call()`; `caller` binds the caller's call first and passes
@@ -1742,7 +1742,7 @@ pub(crate) struct MiniextendrFnAttrs {
     ///
     /// Set by `#[miniextendr(no_preconditions)]` (or `no_preconditions =
     /// true`), cleared by `preconditions` (or `preconditions = true`); unset,
-    /// it follows the `fast-default` feature.
+    /// it follows the `no-preconditions-default` feature.
     pub(crate) no_preconditions: bool,
     /// The attribution the attribute asked for, if any (#1566):
     /// `call = wrapper | caller`. `None` here means the attribute said
@@ -2650,7 +2650,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             serialize,
             wrap,
             serde_error,
-            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
+            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "no-preconditions-default")),
             call_attribution: call_attr,
             return_pref,
             return_pref_span,

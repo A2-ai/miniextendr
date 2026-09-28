@@ -1,6 +1,7 @@
 //! Runtime fixtures for the feature-controlled `#[miniextendr]` option
 //! defaults (`worker-default` / `strict-default` / `coerce-default` /
-//! `fast-default` / `r6-default` / `s7-default`) and their `no_*` opt-outs.
+//! `no-preconditions-default` / `r6-default` / `s7-default`) and their
+//! opt-outs.
 //! See docs/FEATURE_DEFAULTS.md.
 //!
 //! Compiled unconditionally: on a default build every pair behaves identically
@@ -65,21 +66,21 @@ pub fn fdefault_no_coerce_flag(x: bool) -> bool {
     x
 }
 
-/// i32 identity, bare (no knob attrs): under `fast-default` the R-side
-/// type check is dropped, so bad input surfaces from `TryFromSexp` instead
+/// i32 identity, bare (no knob attrs): under `no-preconditions-default` the
+/// R-side type check is dropped, so bad input surfaces from `TryFromSexp` instead
 /// (`'x' must be a single integer: ...`); otherwise the R-side check raises
 /// `'x' must be integer`. Both are the same argument-error condition.
 /// @param x Integer-like scalar.
 #[miniextendr]
-pub fn fdefault_fast_bare_i32(x: i32) -> i32 {
+pub fn fdefault_bare_i32(x: i32) -> i32 {
     x
 }
 
-/// Same as `fdefault_fast_bare_i32` with `no_fast`: preconditions are
-/// restored even under `fast-default`.
+/// Same as `fdefault_bare_i32` with `preconditions`: the checks are kept
+/// even under `no-preconditions-default`.
 /// @param x Integer-like scalar.
 #[miniextendr(preconditions)]
-pub fn fdefault_no_fast_i32(x: i32) -> i32 {
+pub fn fdefault_checks_restored_i32(x: i32) -> i32 {
     x
 }
 
