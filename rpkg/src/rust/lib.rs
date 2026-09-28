@@ -45,6 +45,7 @@
 //! # Trait ABI
 //!
 //! - [`trait_abi_tests`]: Cross-package trait dispatch tests
+//! - [`trait_marker_tests`]: Reading-marker parameters on trait methods, through the View
 //! - [`shared_trait_test`]: Shared trait implementation tests
 //!
 //! # Feature-Gated Modules
@@ -317,6 +318,7 @@ mod tinyvec_adapter_tests;
 #[cfg(feature = "toml")]
 mod toml_adapter_tests;
 mod trait_abi_tests;
+mod trait_marker_tests;
 mod trait_method_options_tests;
 mod trait_r6_collision;
 mod typed_dataframe_tests;

@@ -74,6 +74,45 @@
 //! the conversion control-surface analysis (`analysis/conversion-control-surface-2026-06-07.md`,
 //! §3.4 / §4.5) and issue #871.
 
+/// `IntoR` for `Option<marker>` of a reading marker: `Some` converts the
+/// marker, `None` gives `NULL`, as for the other containers. The marker's
+/// `Option` `TryFromSexp` reads `NULL` back as `None`.
+macro_rules! impl_option_into_r_null {
+    ($t:ty) => {
+        impl $crate::into_r::IntoR for Option<$t> {
+            type Error = <$t as $crate::into_r::IntoR>::Error;
+            #[inline]
+            fn try_into_sexp(self) -> Result<$crate::SEXP, Self::Error> {
+                match self {
+                    Some(v) => v.try_into_sexp(),
+                    None => Ok($crate::SEXP::nil()),
+                }
+            }
+            #[inline]
+            unsafe fn try_into_sexp_unchecked(self) -> Result<$crate::SEXP, Self::Error> {
+                match self {
+                    Some(v) => unsafe { v.try_into_sexp_unchecked() },
+                    None => Ok($crate::SEXP::nil()),
+                }
+            }
+            #[inline]
+            fn into_sexp(self) -> $crate::SEXP {
+                match self {
+                    Some(v) => v.into_sexp(),
+                    None => $crate::SEXP::nil(),
+                }
+            }
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> $crate::SEXP {
+                match self {
+                    Some(v) => unsafe { v.into_sexp_unchecked() },
+                    None => $crate::SEXP::nil(),
+                }
+            }
+        }
+    };
+}
+
 mod as_character;
 mod as_numeric;
 pub use as_character::{AsCharacter, AsCharacterVec};
@@ -1058,6 +1097,35 @@ where
     }
 }
 
+/// The value's `Display` text as a character scalar, which the marker parses
+/// back. A trait's View passes an `AsFromStr` argument this way, so the value
+/// crosses unchanged when `T::from_str(&t.to_string()) == t` (the std
+/// numbers, `IpAddr`, `Uuid`, ...). This `IntoR` exists for the trait ABI; to
+/// return text from a function, use [`AsDisplay`].
+impl<T: std::fmt::Display> IntoR for AsFromStr<T> {
+    type Error = <String as IntoR>::Error;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        self.0.to_string().try_into_sexp()
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        unsafe { self.0.to_string().try_into_sexp_unchecked() }
+    }
+
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        self.0.to_string().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        unsafe { self.0.to_string().into_sexp_unchecked() }
+    }
+}
+
 /// Wrap a `Vec<T: FromStr>` parsed from an R character vector.
 ///
 /// Each element of the R character vector is parsed into `T`. Every failure is
@@ -1108,6 +1176,36 @@ where
             Err(errors.into_element_error())
         }
     }
+}
+
+/// Each value's `Display` text as a character vector, which the marker parses
+/// back element by element (see [`AsFromStr`]'s `IntoR`).
+impl<T: std::fmt::Display> IntoR for AsFromStrVec<T> {
+    type Error = <Vec<String> as IntoR>::Error;
+
+    #[inline]
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        display_strings(self.0).try_into_sexp()
+    }
+
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        unsafe { display_strings(self.0).try_into_sexp_unchecked() }
+    }
+
+    #[inline]
+    fn into_sexp(self) -> crate::SEXP {
+        display_strings(self.0).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::SEXP {
+        unsafe { display_strings(self.0).into_sexp_unchecked() }
+    }
+}
+
+fn display_strings<T: std::fmt::Display>(values: Vec<T>) -> Vec<String> {
+    values.into_iter().map(|v| v.to_string()).collect()
 }
 // endregion
 
@@ -1328,3 +1426,28 @@ where
     }
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A trait's View converts each argument with `IntoR`, so every reading
+    /// marker (and the `Option` of those that read `NULL`) is `IntoR`. The
+    /// round trip through a real R is tested in `tests/as_numeric.rs` and
+    /// `tests/as_character.rs` (`markers_round_trip`), and through a trait's
+    /// View in rpkg (`marker_args_through_view`).
+    #[test]
+    fn reading_markers_are_into_r() {
+        fn into_r<T: IntoR>() {}
+        into_r::<AsNumeric>();
+        into_r::<AsNumericVec>();
+        into_r::<Option<AsNumeric>>();
+        into_r::<Option<AsNumericVec>>();
+        into_r::<AsCharacter>();
+        into_r::<AsCharacterVec>();
+        into_r::<Option<AsCharacter>>();
+        into_r::<Option<AsCharacterVec>>();
+        into_r::<AsFromStr<std::net::IpAddr>>();
+        into_r::<AsFromStrVec<std::net::IpAddr>>();
+    }
+}

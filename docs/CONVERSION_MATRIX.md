@@ -110,11 +110,16 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
 
-### Parsing and Reading Markers (input-only)
+### Parsing and Reading Markers
 
 Argument markers that read a value the way an R function would (`as.numeric()`,
-`as.character()`), or parse it from its text. They have no `IntoR`; return the
-inner value instead.
+`as.character()`), or parse it from its text. Their `IntoR` hands back the inner
+value (`AsFromStr` its `Display` text), which the marker reads back unchanged:
+that is how a `#[miniextendr]` trait method takes a marker parameter through the
+trait ABI. A function returning `AsNumeric*` / `AsCharacter*` gives the same R
+value as returning `.0`; for these, returning `.0` stays the idiom.
+`AsFromStr`'s `IntoR` exists for the trait ABI: to return text, use
+`AsDisplay<T>` / `AsDisplayVec<T>`.
 
 | Rust Type | Accepted R Type(s) | Element Behavior | On failure |
 |-----------|--------------------|------------------|------------|
@@ -203,9 +208,11 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 the return type, and the divergence is easy to trip over: changing a Rust
 return type from `Option<i32>` to `Option<&i32>`, or from `Option<i32>` to
 `Option<Vec<i32>>`, silently flips the R-visible absence value from
-`NA_integer_` to `NULL`. There is no compiler warning and no macro
-diagnostic. R code written as `is.na(x)` against the old contract will error
-("argument is of length zero") the moment it sees `NULL` instead.
+`NA_integer_` to `NULL`; changing `Option<f64>` to `Option<AsNumeric>` (or
+`Option<String>` to `Option<AsCharacter>`) flips `NA` to `NULL` the same way.
+There is no compiler warning and no macro diagnostic. R code written as
+`is.na(x)` against the old contract will error ("argument is of length zero")
+the moment it sees `NULL` instead.
 
 | Rust Return Type | `None` becomes | Test with | Why |
 |-------------------|-----------------|-----------|-----|
@@ -214,6 +221,7 @@ diagnostic. R code written as `is.na(x)` against the old contract will error
 | `Option<&str>` | `NA_character_` | `is.na(x)` | **Exception** to the `Option<&T>` row below: `str` is unsized, so it cannot use the generic `Copy`-bounded blanket impl. It has a hand-written impl instead that deliberately mirrors `Option<String>`. |
 | `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
 | `Option<Vec<T>>` / `Option<Vec<String>>` / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
+| `Option<AsNumeric>` / `Option<AsNumericVec>` / `Option<AsCharacter>` / `Option<AsCharacterVec>` | `NULL` | `is.null(x)` | `NA` is already `Some(marker(None))`; `NULL` is what the marker's `Option` reads as `None`. So switching a return from `Option<f64>` to `Option<AsNumeric>` changes `NA` to `NULL` |
 | `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
 | `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
 
@@ -348,12 +356,13 @@ not gaps:
 | `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
 | `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
-| `AsNumeric` / `AsNumericVec` | `TryFromSexp` only | They describe how an argument is *read* (from text or factor labels). An `IntoR` would only repeat `Option<f64>` / `Vec<Option<f64>>`, which already return a double vector with NA; return `.0`. |
-| `AsCharacter` / `AsCharacterVec` | `TryFromSexp` only | Same shape: they describe how an argument is read (through `as.character()`). `Option<String>` / `Vec<Option<String>>` already return a character vector with NA; return `.0`. |
-| `AsFromStr<T>` / `AsFromStrVec<T>` | `TryFromSexp` only | Parsing adapters. The outbound counterpart is `AsDisplay<T>` / `AsDisplayVec<T>`. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
-because the R representation (a string) is faithful in both directions.
+because the R representation (a string) is faithful in both directions. The
+reading markers round-trip too: `AsNumeric*` / `AsCharacter*` convert to R as
+their inner value (`NA` for `None`, `NULL` for an `Option<marker>` that is
+`None`), and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text, which
+reads back unchanged when `T::from_str(&t.to_string()) == t`.
 
 ---
 

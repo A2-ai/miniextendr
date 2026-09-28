@@ -112,6 +112,17 @@ let value = view.value();  // Calls through vtable
 view.increment();
 ```
 
+### Argument types
+
+The View converts each argument to R with `IntoR`, and the shim reads it back
+with `TryFromSexp`, so a trait-method parameter type needs both. `Missing<T>`
+crosses as R's missing-argument sentinel when absent. The reading markers
+(`AsNumeric`, `AsNumericVec`, `AsCharacter`, `AsCharacterVec`) cross as their
+inner value, and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text.
+Parameter checks such as `no_na` and `inherits` run in the implementing
+method's R-facing wrappers: they check R arguments, not the typed values a
+View caller passes.
+
 ## Multiple Traits Per Type
 
 A single type can implement multiple traits. All are automatically registered via `#[miniextendr]`:

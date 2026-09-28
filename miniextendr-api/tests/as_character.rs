@@ -1,13 +1,14 @@
 //! `AsCharacter` / `AsCharacterVec` against a real R runtime: every atomic
 //! type gives exactly the strings `as.character()` gives, factors read by
 //! their labels, classed vectors go through their `as.character()` method,
-//! and lists or other non-atomic input are refused.
+//! and lists or other non-atomic input are refused. Also each marker's `IntoR`
+//! value read back by its `TryFromSexp`.
 
 mod r_test_utils;
 
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use miniextendr_api::gc_protect::OwnedProtect;
-use miniextendr_api::{AsCharacter, AsCharacterVec, SEXP, r_str};
+use miniextendr_api::{AsCharacter, AsCharacterVec, IntoR, SEXP, SEXPTYPE, SexpExt, r_str};
 
 /// Evaluate `src` and convert the result. The conversion allocates (the
 /// coerced vector, deferred-string elements, the dispatch call), so the
@@ -33,6 +34,14 @@ fn strings(values: &[Option<&str>]) -> Vec<Option<String>> {
     values.iter().map(|v| v.map(str::to_owned)).collect()
 }
 
+/// `value` to R and back, the way a trait's View hands an argument to the
+/// implementing method: the R value's type, and the value read back from it.
+fn round_trip<T: IntoR + TryFromSexp<Error = SexpError>>(value: T) -> (SEXPTYPE, T) {
+    let sexp = unsafe { OwnedProtect::new(value.into_sexp()) };
+    let back = T::try_from_sexp(sexp.get()).expect("a marker reads its own R value back");
+    (sexp.get().type_of(), back)
+}
+
 fn invalid_message(err: SexpError) -> String {
     match err {
         SexpError::InvalidValue(msg) => msg,
@@ -51,6 +60,7 @@ fn as_character_suite() {
         dims_and_names_are_dropped();
         other_types_are_refused();
         scalar_checks_length();
+        markers_round_trip();
     });
 }
 
@@ -220,4 +230,28 @@ fn scalar_checks_length() {
 
     let sexp = r_str!("NULL").unwrap();
     assert_eq!(Option::<AsCharacter>::try_from_sexp(sexp).unwrap(), None);
+}
+
+fn markers_round_trip() {
+    // `Some(marker(None))` is `NA`, not `NULL`, so it comes back as itself.
+    assert_eq!(
+        round_trip(Some(AsCharacter(None))),
+        (SEXPTYPE::STRSXP, Some(AsCharacter(None)))
+    );
+    assert_eq!(round_trip(None::<AsCharacter>), (SEXPTYPE::NILSXP, None));
+    // The token "NA" and blank strings stay strings.
+    let v = AsCharacterVec(strings(&[Some("NA"), None, Some("")]));
+    assert_eq!(
+        round_trip(Some(v.clone())),
+        (SEXPTYPE::STRSXP, Some(v.clone()))
+    );
+    assert_eq!(round_trip(v.clone()), (SEXPTYPE::STRSXP, v));
+    assert_eq!(round_trip(None::<AsCharacterVec>), (SEXPTYPE::NILSXP, None));
+
+    let blank = AsCharacter(Some(String::new()));
+    assert_eq!(round_trip(blank.clone()), (SEXPTYPE::STRSXP, blank));
+    assert_eq!(
+        round_trip(AsCharacterVec(vec![])),
+        (SEXPTYPE::STRSXP, AsCharacterVec(vec![]))
+    );
 }

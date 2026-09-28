@@ -59,10 +59,17 @@
 //! - Containers (`Option<Vec<T>>`, `Option<HashMap<..>>`, `Option<HashSet<..>>`,
 //!   `Option<BTreeMap<..>>`, `Option<BTreeSet<..>>`) → `NULL`. No container
 //!   type has a native R NA sentinel either.
+//! - The reading markers' `Option` (`Option<AsNumeric>`,
+//!   `Option<AsNumericVec>`, `Option<AsCharacter>`, `Option<AsCharacterVec>`;
+//!   see [`AsNumeric`](crate::convert::AsNumeric) and
+//!   [`AsCharacter`](crate::convert::AsCharacter)) → `NULL`. `NA` already
+//!   means `Some(marker(None))`, so `NULL` is what the marker's `Option`
+//!   reads back as `None`.
 //!
 //! Changing a return type from `Option<i32>` to `Option<&i32>` or
 //! `Option<Vec<i32>>` therefore silently flips the R-visible absence value
-//! from `NA_integer_` to `NULL`, with no compiler warning. See
+//! from `NA_integer_` to `NULL`, and switching a return from `Option<f64>`
+//! to `Option<AsNumeric>` changes `NA` to `NULL`, with no compiler warning. See
 //! [`result`] for the analogous (and differently-shaped) contract on
 //! `Result::Err`.
 
