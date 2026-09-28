@@ -1,8 +1,9 @@
 //! RAII guard for transient `Cargo.toml` mutations.
 //!
-//! Both `run_cargo_vendor` (vendor.rs) and `package_local_crates` (package.rs)
-//! temporarily append a `[patch.crates-io]` block to the workspace manifest,
-//! shell out to cargo, then restore the original. Without a guard, a panic,
+//! `run_cargo_vendor` (vendor.rs) temporarily appends a `[patch.crates-io]`
+//! block to the workspace manifest, and `package_local_crates` (package.rs)
+//! adds `version` keys to a crate's path dependencies; both shell out to
+//! cargo, then restore the original. Without a guard, a panic,
 //! `?`-propagated error, or SIGINT between the mutation and the restore
 //! leaves the user's `Cargo.toml` pointing at paths that don't exist yet —
 //! a confusing state that requires manual `git checkout` to recover.

@@ -3,10 +3,14 @@
 //! `cargo package` resolves workspace inheritance (version.workspace = true),
 //! producing standalone Cargo.toml files that work outside the workspace.
 //!
-//! To resolve inter-crate dependencies during packaging, we create a temporary
-//! `.cargo/config.toml` with `[patch.crates-io]` entries pointing each local
-//! crate to its path. This lets `cargo package` find siblings that aren't
-//! published to crates.io.
+//! By default `cargo package` also writes a Cargo.lock into the package, which
+//! it resolves as if the crate came from crates.io. For a crate that depends on
+//! an unpublished local sibling that resolution fails ("no matching package
+//! named ..."), and a `[patch]` table cannot help, because packaging drops it.
+//! A vendored crate needs no lockfile of its own, so the package is built with
+//! `--exclude-lockfile` (Cargo 1.87 and later), which skips that resolution.
+//! With an older Cargo such a crate falls back to a direct copy of its
+//! directory, whose workspace inheritance the caller resolves itself.
 
 use crate::metadata::LocalPackage;
 use anyhow::{Context, Result, bail};
@@ -16,10 +20,13 @@ use std::process::Command;
 /// Package each local crate, returning (name, crate_archive_path) pairs
 ///
 /// `local_pkgs` — crates to actually package
-/// `all_patch_pkgs` — ALL workspace crates (for [patch.crates-io] config)
+/// `all_local_pkgs` — ALL local crates, so a path dependency on any of them
+/// gets the `version` key `cargo package` requires
+///
+/// A crate `cargo package` cannot package comes back as its source directory.
 pub fn package_local_crates(
     local_pkgs: &[LocalPackage],
-    all_patch_pkgs: &[LocalPackage],
+    all_local_pkgs: &[LocalPackage],
     _target_manifest: &Path,
     staging_dir: &Path,
     allow_dirty: bool,
@@ -27,12 +34,11 @@ pub fn package_local_crates(
 ) -> Result<Vec<(String, PathBuf)>> {
     let mut results = Vec::new();
 
-    // Build [patch.crates-io] config so all workspace crates can find each other
-    let patch_config = build_patch_config(all_patch_pkgs);
-
     // Build a set of all local package names for path dep detection
     let local_names: std::collections::HashSet<&str> =
-        all_patch_pkgs.iter().map(|p| p.name.as_str()).collect();
+        all_local_pkgs.iter().map(|p| p.name.as_str()).collect();
+
+    let exclude_lockfile = supports_exclude_lockfile();
 
     for pkg in local_pkgs {
         if v.info() {
@@ -41,19 +47,13 @@ pub fn package_local_crates(
 
         let target_dir = staging_dir.join("package-target");
 
-        // Find workspace root — needed before guards so we know which manifest
-        // to snapshot.
-        let ws_root = crate::find_workspace_root(&pkg.path)?;
-        let ws_manifest = ws_root.join("Cargo.toml");
-
-        // Snapshot both the inner crate manifest and the workspace manifest.
-        // The guards restore both on drop (scope exits at the end of this
-        // iteration, or earlier via `?` / panic unwind).
+        // Snapshot the crate manifest, rewritten below. The guards restore
+        // their files on drop (scope exits at the end of this iteration, or
+        // earlier via `?` / panic unwind).
         let _inner_guard = crate::manifest_guard::ManifestGuard::snapshot(&pkg.manifest_path)?;
-        let _ws_guard = crate::manifest_guard::ManifestGuard::snapshot(&ws_manifest)?;
-        // Cargo package can record transient patches as [[patch.unused]] in
-        // an existing source-workspace lockfile. Restore that file too.
-        let ws_lock = ws_root.join("Cargo.lock");
+        // Cargo package loads the workspace and can rewrite an existing
+        // source-workspace lockfile. Restore that file too.
+        let ws_lock = crate::find_workspace_root(&pkg.path)?.join("Cargo.lock");
         let _ws_lock_guard = ws_lock
             .is_file()
             .then(|| crate::manifest_guard::ManifestGuard::snapshot(&ws_lock))
@@ -70,14 +70,6 @@ pub fn package_local_crates(
             }
         }
 
-        // Add [patch.crates-io] to workspace root Cargo.toml
-        // (cargo ignores [patch] in .cargo/config.toml — only Cargo.toml works)
-        let ws_manifest_original = std::fs::read_to_string(&ws_manifest)?;
-        if !ws_manifest_original.contains("[patch.crates-io]") {
-            let patched_ws = format!("{}\n{}", ws_manifest_original, patch_config);
-            std::fs::write(&ws_manifest, &patched_ws)?;
-        }
-
         // Unset CARGO_TARGET_DIR so cargo package uses its own target directory
         let mut cmd = Command::new("cargo");
         cmd.arg("package")
@@ -88,6 +80,9 @@ pub fn package_local_crates(
             .arg(&target_dir)
             .env_remove("CARGO_TARGET_DIR");
 
+        if exclude_lockfile {
+            cmd.arg("--exclude-lockfile");
+        }
         if allow_dirty {
             cmd.arg("--allow-dirty");
         }
@@ -96,16 +91,17 @@ pub fn package_local_crates(
             .output()
             .with_context(|| format!("failed to run cargo package for {}", pkg.name))?;
 
-        // Guards (_inner_guard, _ws_guard) restore both manifests on drop —
+        // Guards (_inner_guard, _ws_lock_guard) restore their files on drop —
         // no explicit restore needed. Drops run at end of this iteration.
 
         if !output.status.success() {
-            // Fallback: cargo package failed (likely unpublished deps).
-            // Copy the crate directly and resolve workspace inheritance manually.
+            // Fallback: copy the crate directory; the caller resolves its
+            // workspace inheritance.
             if v.info() {
                 eprintln!(
-                    "  cargo package failed for {}, using direct copy fallback",
-                    pkg.name
+                    "  cargo package failed for {} ({}); copying the crate directory instead",
+                    pkg.name,
+                    cargo_error_summary(&String::from_utf8_lossy(&output.stderr))
                 );
             }
             if v.debug() {
@@ -116,9 +112,17 @@ pub fn package_local_crates(
             continue;
         }
 
-        // Find the .crate file
-        let package_dir = target_dir.join("package");
-        let crate_file = find_crate_file(&package_dir, &pkg.name)?;
+        // The archive cargo just wrote (other crates share the directory)
+        let crate_file = target_dir
+            .join("package")
+            .join(format!("{}-{}.crate", pkg.name, pkg.version));
+        if !crate_file.is_file() {
+            bail!(
+                "cargo package succeeded for {} but wrote no {}",
+                pkg.name,
+                crate_file.display()
+            );
+        }
 
         if v.info() {
             eprintln!("  Packaged: {}", crate_file.display());
@@ -186,49 +190,28 @@ fn ensure_version(dep: &mut toml_edit::Item) -> bool {
     }
 }
 
-/// Build a `[patch.crates-io]` config string for all local packages
-fn build_patch_config(local_pkgs: &[LocalPackage]) -> String {
-    let mut lines = vec!["[patch.crates-io]".to_string()];
-    for pkg in local_pkgs {
-        lines.push(format!(
-            "{} = {{ path = \"{}\" }}",
-            pkg.name,
-            crate::path_to_toml(&pkg.path)
-        ));
-    }
-    lines.join("\n")
+/// Whether this Cargo has `cargo package --exclude-lockfile` (Cargo 1.87+).
+fn supports_exclude_lockfile() -> bool {
+    Command::new("cargo")
+        .args(["package", "--help"])
+        .output()
+        .is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("--exclude-lockfile"))
 }
 
-/// Find the .crate archive for a package
-fn find_crate_file(package_dir: &Path, name: &str) -> Result<PathBuf> {
-    if !package_dir.exists() {
-        bail!("package output dir not found: {}", package_dir.display());
+/// Condense cargo's stderr to its error and first cause, for a one-line message.
+fn cargo_error_summary(stderr: &str) -> String {
+    let mut lines = stderr.lines().map(str::trim);
+    let Some(error) = lines.find_map(|line| line.strip_prefix("error: ")) else {
+        return stderr.trim().to_string();
+    };
+    let cause = lines
+        .skip_while(|line| *line != "Caused by:")
+        .nth(1)
+        .filter(|line| !line.is_empty());
+    match cause {
+        Some(cause) => format!("{error}: {cause}"),
+        None => error.to_string(),
     }
-
-    let prefix = format!("{}-", name);
-    let mut candidates: Vec<_> = std::fs::read_dir(package_dir)?
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            let fname = e.file_name();
-            let s = fname.to_string_lossy();
-            s.starts_with(&prefix) && s.ends_with(".crate")
-        })
-        .collect();
-
-    // Sort by mtime descending (newest first)
-    candidates.sort_by(|a, b| {
-        let ma = a.metadata().and_then(|m| m.modified()).ok();
-        let mb = b.metadata().and_then(|m| m.modified()).ok();
-        mb.cmp(&ma)
-    });
-
-    candidates.first().map(|e| e.path()).with_context(|| {
-        format!(
-            "no .crate file found for {} in {}",
-            name,
-            package_dir.display()
-        )
-    })
 }
 
 #[cfg(test)]
@@ -284,6 +267,66 @@ mod tests {
             "expected cargo package to produce an archive"
         );
         assert_eq!(std::fs::read(&lock).unwrap(), before);
+    }
+
+    #[test]
+    fn packaging_archives_a_crate_with_an_unpublished_local_dependency() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut packages = Vec::new();
+        for (name, deps) in [("core", ""), ("app", "core = { path = \"../core\" }\n")] {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(path.join("src")).unwrap();
+            std::fs::write(path.join("src/lib.rs"), "pub fn hello() {}\n").unwrap();
+            let manifest_path = path.join("Cargo.toml");
+            std::fs::write(
+                &manifest_path,
+                format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n{deps}"
+                ),
+            )
+            .unwrap();
+            packages.push(LocalPackage {
+                name: name.into(),
+                version: "0.1.0".into(),
+                path,
+                manifest_path,
+            });
+        }
+        let manifest_before = std::fs::read(&packages[1].manifest_path).unwrap();
+        let staging = dir.path().join("staging");
+        std::fs::create_dir(&staging).unwrap();
+        let archives = package_local_crates(
+            &packages[1..],
+            &packages,
+            &packages[1].manifest_path,
+            &staging,
+            true,
+            crate::Verbosity(0),
+        )
+        .unwrap();
+        // `core` is on no registry. Resolving it for the package's own
+        // Cargo.lock used to fail, sending `app` to the direct-copy fallback
+        // (its directory instead of an archive).
+        assert_eq!(archives[0].1.is_file(), supports_exclude_lockfile());
+        assert_eq!(
+            std::fs::read(&packages[1].manifest_path).unwrap(),
+            manifest_before
+        );
+    }
+
+    #[test]
+    fn cargo_error_summary_joins_the_error_and_its_first_cause() {
+        let stderr = "   Packaging app v0.1.0 (/tmp/app)\n    Updating crates.io index\n\
+            error: failed to prepare local package for uploading\n\nCaused by:\n  \
+            no matching package named `core` found\n  location searched: crates.io index\n";
+        assert_eq!(
+            cargo_error_summary(stderr),
+            "failed to prepare local package for uploading: no matching package named `core` found"
+        );
+        assert_eq!(
+            cargo_error_summary("error: unexpected argument '--frobnicate' found\n"),
+            "unexpected argument '--frobnicate' found"
+        );
     }
 
     #[test]

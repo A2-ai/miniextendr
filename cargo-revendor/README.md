@@ -124,9 +124,11 @@ same for every invocation; flags toggle individual steps on or off.
    a "cached" message and zero file system changes.
 5. **`cargo package`** runs once per local crate. This is the step that
    resolves workspace inheritance; the `.crate` archive contains a flat,
-   standalone `Cargo.toml`. A transient `[patch.crates-io]` block on the
-   target manifest, guarded by `ManifestGuard`, lets local crates reference
-   each other during packaging without polluting the user's manifest.
+   standalone `Cargo.toml`. Path dependencies on other local crates get a
+   transient `version = "*"` (cargo package requires one), guarded by
+   `ManifestGuard`, and `--exclude-lockfile` skips the per-package lockfile
+   whose registry resolution would fail on those unpublished siblings. Before
+   Cargo 1.87, which lacks the flag, such a crate is copied directly instead.
 6. **`cargo vendor`** runs against the target manifest plus any `--sync`
    manifests. External crates land in the staging directory.
 7. **Extract local archives.** Each `.crate` from step 5 is untarred into
