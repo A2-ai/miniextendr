@@ -353,8 +353,9 @@ pub fn lazy_strings(prefix: &str, n: i32) -> SEXP {
 
 `sexp_to_arrow_buffer` wraps an R vector's data in an Arrow buffer without
 copying. It preserves the vector (`R_PreserveObject`) for as long as the
-buffer lives, and records the buffer in a registry: data address and byte
-length → the SEXP. The buffer's guard removes the entry when it drops.
+buffer lives, and, for a standard (non-ALTREP) vector, records the buffer in
+a registry: data address and byte length → the SEXP. The buffer's guard
+removes the entry when it drops.
 
 `IntoR` for `Float64Array`, `Int32Array` and `UInt8Array` hands back the source
 vector only on an exact registry hit, pointer and byte length. Anything else is
@@ -363,7 +364,12 @@ copied into a fresh R vector:
 - buffers Arrow or DataFusion allocated, such as the `vec![v; 1]` of a
   one-row aggregate column;
 - a slice of an R-backed buffer, such as DataFusion's contiguous-run filter
-  output, which starts or ends elsewhere (#867).
+  output, which starts or ends elsewhere (#867);
+- a buffer over an ALTREP vector, such as `1:n`. An ALTREP vector's data can
+  be another object's memory (the vector R's wrapper class wraps, or the Rust
+  buffer behind an Arrow ALTREP vector), so two live vectors can share one
+  data address. A standard vector's data lies inside its own allocation, which
+  is what lets the registry key name exactly one SEXP.
 
 Earlier versions guessed instead. They read the bytes in front of the data
 pointer as an R vector header and accepted them if the type, ALTREP bit and

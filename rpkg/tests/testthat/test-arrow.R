@@ -338,4 +338,8 @@ test_that("a Rust buffer behind a copied R header is not taken for R memory", {
   expect_null(miniextendr:::gc_stress_arrow_header_shaped_rust_buffer())
 })
 
+test_that("registered vectors round-trip, ALTREP views over one buffer copy", {
+  expect_null(miniextendr:::gc_stress_arrow_registry_roundtrip())
+})
+
 # endregion

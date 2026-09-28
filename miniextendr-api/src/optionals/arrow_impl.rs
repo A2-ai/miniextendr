@@ -279,10 +279,11 @@ impl std::fmt::Debug for RStringArray {
 /// dropped on non-main threads (Arrow is `Send + Sync`).
 ///
 /// `key` is the buffer's [`R_BACKED_BUFFERS`] entry (data address, byte
-/// length), which the guard gives up again when it drops.
+/// length), which the guard gives up again when it drops. It is `None` for an
+/// ALTREP vector, which is never registered.
 struct RPreservedSexp {
     sexp: SEXP,
-    key: (usize, usize),
+    key: Option<BufferKey>,
 }
 
 // SAFETY: R_PreserveObject/R_ReleaseObject are mutex-protected in R 4.0+.
@@ -296,7 +297,9 @@ impl std::panic::RefUnwindSafe for RPreservedSexp {}
 
 impl Drop for RPreservedSexp {
     fn drop(&mut self) {
-        forget_r_backed_buffer(self.key);
+        if let Some(key) = self.key {
+            forget_r_backed_buffer(key);
+        }
         // SAFETY: R_ReleaseObject is thread-safe (mutex-protected in R 4.0+).
         // We use _unchecked because this Drop may fire off the R main thread.
         unsafe { sys::R_ReleaseObject_unchecked(self.sexp) }
@@ -326,12 +329,23 @@ type BufferKey = (usize, usize);
 /// `Vec`, and when they looked like a header the data.frame got a SEXP
 /// pointing into Rust memory freed with the batch.
 ///
+/// Only standard (non-ALTREP) vectors are registered. A standard vector's
+/// data lies inside its own allocation, so while it is preserved no other
+/// live vector has that data address, and a key names exactly one SEXP. An
+/// ALTREP vector's data pointer can be another object's memory: the vector R's
+/// wrapper class wraps, the expansion a compact sequence materializes, or the
+/// Rust buffer behind one of this crate's Arrow ALTREP classes. Two such
+/// vectors can then share a key, and an entry kept for the first would outlive
+/// its guard while the second's guard is still counted. A buffer over an
+/// ALTREP vector is therefore always copied on the way back, as it was when
+/// recovery read the header.
+///
 /// Addresses are stored as `usize` so the map is `Send`; an entry is turned
 /// back into a SEXP only on R's main thread, while the buffer being converted
-/// keeps its guard, and so the entry and the preserved vector, alive. The
-/// count covers several guards over one vector (the same SEXP converted to
-/// Arrow twice). Guards drop wherever Arrow drops the buffer, possibly off R's
-/// main thread, hence the lock.
+/// points into the registered vector's data and so keeps it alive. The count
+/// covers several guards over one vector (the same SEXP converted to Arrow
+/// twice). Guards drop wherever Arrow drops the buffer, possibly off R's main
+/// thread, hence the lock.
 static R_BACKED_BUFFERS: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<BufferKey, (usize, usize)>>,
 > = std::sync::LazyLock::new(Default::default);
@@ -345,12 +359,17 @@ fn r_backed_buffers()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Record a new guard over `sexp`, whose data the buffer `key` covers.
+/// Record a new guard over the standard vector `sexp`, whose data the buffer
+/// `key` covers.
 fn remember_r_backed_buffer(key: BufferKey, sexp: SEXP) {
+    let sexp = sexp.0 as usize;
     r_backed_buffers()
         .entry(key)
-        .and_modify(|entry| entry.1 += 1)
-        .or_insert((sexp.0 as usize, 1));
+        .and_modify(|entry| {
+            debug_assert_eq!(entry.0, sexp, "two live vectors share a data address");
+            entry.1 += 1;
+        })
+        .or_insert((sexp, 1));
 }
 
 /// Give up one guard's entry for `key`.
@@ -380,7 +399,8 @@ fn r_backed_buffer_sexp(key: BufferKey) -> Option<SEXP> {
 /// [`sexp_to_arrow_buffer`] made over a whole R vector: its data address and
 /// the byte length of `len` elements of `T` must be an exact
 /// [`R_BACKED_BUFFERS`] entry. A slice of such a buffer (DataFusion's
-/// contiguous-run filter output, #867) starts or ends elsewhere and misses.
+/// contiguous-run filter output, #867) starts or ends elsewhere and misses,
+/// and a buffer over an ALTREP vector was never registered.
 ///
 /// The hit is a live, preserved vector, so checking its type is a plain read.
 ///
@@ -432,10 +452,13 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
     let byte_len = len * std::mem::size_of::<T>();
 
     // Preserve the R object so it won't be GC'd while Arrow holds a reference,
-    // and record the buffer as R memory for the way back (see R_BACKED_BUFFERS).
+    // and record a standard vector's buffer as R memory for the way back (see
+    // R_BACKED_BUFFERS for why ALTREP vectors are left out).
     unsafe { sys::R_PreserveObject(sexp) };
-    let key = (ptr as usize, byte_len);
-    remember_r_backed_buffer(key, sexp);
+    let key = (!sexp.is_altrep()).then_some((ptr as usize, byte_len));
+    if let Some(key) = key {
+        remember_r_backed_buffer(key, sexp);
+    }
     let guard = Arc::new(RPreservedSexp { sexp, key });
 
     // SAFETY: R vectors have contiguous memory. The guard keeps the SEXP alive.

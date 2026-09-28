@@ -2441,9 +2441,9 @@ pub fn gc_stress_reader_enum_map() {
 /// `test_df_sql_query`) segfaulted on the strict
 /// glibc Linux runner because DataFusion's contiguous-run filter optimization
 /// returns a *slice* of the R-backed input column: `values().as_ptr()` then
-/// points into the middle of the R vector, and the speculative
-/// `try_recover_r_sexp` probe (which subtracts the SEXPREC header offset)
-/// read off into unrelated memory and false-positived as a "recovered SEXP".
+/// points into the middle of the R vector, and the speculative recovery probe
+/// of the time (which subtracted the SEXPREC header offset from the data
+/// pointer, since replaced by the buffer registry) read off into unrelated memory and false-positived as a "recovered SEXP".
 /// The crash was heap-layout-dependent — deterministic on the strict runner,
 /// silent elsewhere — so a no-arg fixture is the only portable guard.
 ///
@@ -2587,6 +2587,76 @@ pub fn gc_stress_arrow_header_shaped_rust_buffer() {
     let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
     let values: &[i32] = unsafe { out.as_slice() };
     assert_eq!(values, [5]);
+}
+
+/// Drive the R-backed buffer registry's hit and ALTREP paths.
+///
+/// A standard R vector converted to Arrow twice (two guards over one vector)
+/// must come back as the same SEXP after one of the two arrays has dropped.
+///
+/// Two ALTREP views over one Arrow buffer share a data address. When the
+/// registry kept the first view's entry and only counted the second guard,
+/// dropping the first view's array left an entry naming a vector nothing
+/// preserved any more, and the second view's array "recovered" it. Buffers
+/// over ALTREP vectors are never registered, so the second array must come
+/// back as a fresh copy.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_registry_roundtrip() {
+    use miniextendr_api::IntoRAltrep;
+    use miniextendr_api::arrow_impl::{Float64Array, Int32Array, UInt8Array};
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+
+    // Hit: each standard vector comes back as itself.
+    let f = vec![1.0f64, 2.0, 3.0].into_sexp();
+    let _f_guard = unsafe { miniextendr_api::OwnedProtect::new(f) };
+    let first = Float64Array::try_from_sexp(f).expect("float64 from R");
+    let second = Float64Array::try_from_sexp(f).expect("float64 from R");
+    drop(first);
+    assert!(
+        second.into_sexp() == f,
+        "Float64Array lost its source vector"
+    );
+
+    let i = vec![1i32, 2, 3].into_sexp();
+    let _i_guard = unsafe { miniextendr_api::OwnedProtect::new(i) };
+    let first = Int32Array::try_from_sexp(i).expect("int32 from R");
+    let second = Int32Array::try_from_sexp(i).expect("int32 from R");
+    drop(first);
+    assert!(second.into_sexp() == i, "Int32Array lost its source vector");
+
+    let u = vec![1u8, 2, 3].into_sexp();
+    let _u_guard = unsafe { miniextendr_api::OwnedProtect::new(u) };
+    let first = UInt8Array::try_from_sexp(u).expect("uint8 from R");
+    let second = UInt8Array::try_from_sexp(u).expect("uint8 from R");
+    drop(first);
+    assert!(second.into_sexp() == u, "UInt8Array lost its source vector");
+
+    // ALTREP: two views over one Arrow buffer, so one data address.
+    let values = Float64Array::from(vec![4.0, 5.0, 6.0]);
+    let view_a = values.clone().into_sexp_altrep();
+    let _a_guard = unsafe { miniextendr_api::OwnedProtect::new(view_a) };
+    let view_b = values.into_sexp_altrep();
+    let _b_guard = unsafe { miniextendr_api::OwnedProtect::new(view_b) };
+    let from_a = Float64Array::try_from_sexp(view_a).expect("float64 from ALTREP");
+    let from_b = Float64Array::try_from_sexp(view_b).expect("float64 from ALTREP");
+    drop(from_a);
+    let out = from_b.into_sexp();
+    assert!(
+        out != view_a,
+        "an array over one ALTREP view came back as another view"
+    );
+    assert!(
+        out != view_b,
+        "a buffer over an ALTREP vector was not copied"
+    );
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    let copied: &[f64] = unsafe { out.as_slice() };
+    assert_eq!(copied, [4.0, 5.0, 6.0]);
 }
 
 // endregion
