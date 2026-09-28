@@ -102,6 +102,14 @@ test_that("existing monorepos build twice and restore their path dependencies (#
   repo <- find_miniextendr_repo()
   skip_if_not_installed("callr")
   skip_if_not_installed("pkgload")
+  # R CMD check exports _R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_=TRUE to every
+  # process it starts, tests included, so under check each nested R CMD INSTALL
+  # also runs `nm -Pg` over the Rust staticlib to write R's symbols.rds. The
+  # macOS system nm can be older than rustc's LLVM and then fails on the bitcode
+  # in the precompiled std objects ("Unknown attribute kind"), which R reports
+  # as a warning. Build the way a plain install does under any test harness, so
+  # the no-warning assertion below still covers every warning from the build.
+  withr::local_envvar(c("_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_" = "false"))
 
   for (virtual in c(FALSE, TRUE)) {
     root <- withr::local_tempdir()
