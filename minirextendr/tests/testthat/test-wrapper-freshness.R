@@ -97,6 +97,61 @@ test_that("a current record survives a Cargo rewrite, a stale one does not", {
   expect_false(helper$wrappers_current(root, wrappers))
 })
 
+test_that("vendor_crates_io keeps a current wrapper record current across --freeze", {
+  helper <- freshness_helper()
+  root <- withr::local_tempdir()
+  dir.create(file.path(root, "src/rust"), recursive = TRUE)
+  dir.create(file.path(root, "tools"))
+  dir.create(file.path(root, "R"))
+  writeLines(c("Package: probe", "Version: 0.0.1"), file.path(root, "DESCRIPTION"))
+  file.copy(system.file("templates/rpkg/tools/wrapper-freshness.R", package = "minirextendr"),
+            file.path(root, "tools"))
+  wrappers <- file.path(root, "R/probe-wrappers.R")
+  writeLines("probe <- function() 1L", wrappers)
+  writeLines("pub fn probe() -> i32 { 1 }", file.path(root, "src/rust/lib.rs"))
+  writeLines('[package]\nname = "probe"', file.path(root, "src/rust/Cargo.toml"))
+  lock <- file.path(root, "src/rust/Cargo.lock")
+  writeLines("version = 4", lock)
+  writeLines(c("CARGO_PROFILE = release", "CARGO_FEATURES_FLAG ="),
+             file.path(root, "src/Makevars"))
+
+  # `cargo revendor --freeze` stamps the lock (and may freeze the manifest),
+  # which the record fingerprints; the wrappers do not change.
+  revendor_ok <- TRUE
+  local_mocked_bindings(
+    check_rust = function() invisible(TRUE),
+    check_cargo_revendor = function() invisible(TRUE),
+    run_with_logging = function(command, args, log_prefix, wd) {
+      cat('# source = "git+https://github.com/A2-ai/miniextendr#0000000"\n',
+          file = lock, append = TRUE)
+      list(status = if (revendor_ok) 0L else 101L, output = character(),
+           log_file = "", success = revendor_ok)
+    },
+    .package = "minirextendr"
+  )
+
+  # Current before vendoring: still current after it.
+  helper$write_wrapper_record(root, wrappers)
+  suppressMessages(vendor_crates_io(root))
+  expect_true(helper$wrappers_current(root, wrappers))
+
+  # A failing revendor re-records nothing.
+  record <- readRDS(helper$wrapper_record_path(root))
+  revendor_ok <- FALSE
+  expect_error(suppressMessages(vendor_crates_io(root)), "cargo revendor failed")
+  expect_identical(readRDS(helper$wrapper_record_path(root)), record)
+  expect_false(helper$wrappers_current(root, wrappers))
+
+  # A stale record stays stale.
+  revendor_ok <- TRUE
+  suppressMessages(vendor_crates_io(root))
+  expect_false(helper$wrappers_current(root, wrappers))
+
+  # A package without the helper (scaffolded before it existed) just vendors.
+  unlink(file.path(root, "tools/wrapper-freshness.R"))
+  expect_no_error(suppressMessages(vendor_crates_io(root)))
+})
+
 test_that("a stale S3 tarball fails before R accepts a dangling registration", {
   skip_on_cran()
   skip_on_os("windows")
