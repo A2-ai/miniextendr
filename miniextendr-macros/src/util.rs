@@ -25,8 +25,18 @@ pub(crate) fn source_location_doc(span: proc_macro2::Span) -> String {
 }
 
 /// Build a `TokenStream` containing a raw string literal from an R wrapper string.
-pub(crate) fn r_wrapper_raw_literal(s: &str) -> proc_macro2::TokenStream {
+///
+/// Every generated wrapper is finalized here, so this is also where calls a
+/// formal would shadow are qualified: `formals` holds every R formal of the
+/// wrappers in `s`, and each call to a base function that shares a name with
+/// one of them is written `base::name(...)`
+/// ([`qualify_shadowed_calls`](crate::r_shadowing::qualify_shadowed_calls)).
+pub(crate) fn r_wrapper_raw_literal(
+    s: &str,
+    formals: &std::collections::BTreeSet<String>,
+) -> proc_macro2::TokenStream {
     use std::str::FromStr;
+    let s = crate::r_shadowing::qualify_shadowed_calls(s, formals);
     let raw = format!("r#\"\n{}\n\"#", s);
     proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
 }

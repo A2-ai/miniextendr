@@ -190,7 +190,9 @@ of the vector — `match.arg(arg)` returns `arg[1]` when `arg` matches the forma
 default, so the rotated value becomes the effective default while the rest of
 the choices remain visible: `function(mode = c("Safe", "Fast", "Debug"))`. The
 default value must be one of the enum's choices; otherwise wrapper generation panics
-at write time.
+at write time. When another parameter is named `c`, the formal default and the
+usage line read `mode = base::c("Fast", "Safe", "Debug")`
+([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameters-named-like-a-base-function)).
 
 From R:
 

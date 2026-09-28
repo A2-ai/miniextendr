@@ -194,7 +194,10 @@ pub(super) fn generate_vtable_static(
     }
 
     // Format R wrapper as raw string literal
-    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
+    let r_wrapper_str = crate::r_wrapper_raw_literal(
+        &r_wrapper_string,
+        &crate::r_shadowing::formal_names(methods_owned.iter().map(|m| &m.sig.inputs)),
+    );
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let source_start = type_ident.span().start();
     let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());

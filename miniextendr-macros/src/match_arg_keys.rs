@@ -27,10 +27,19 @@ fn c_stem(c_ident: &str) -> &str {
     c_ident.trim_start_matches("C_")
 }
 
+/// Start of every [`choices_placeholder`]. The shadowing pass
+/// (`r_shadowing`) reads a name with this prefix as a call to `c`, which is
+/// what the placeholder becomes.
+pub(crate) const CHOICES_PLACEHOLDER_PREFIX: &str = ".__MX_MATCH_ARG_CHOICES_";
+
 /// R-side placeholder that the cdylib resolves to a `c("a", "b", ...)` literal
 /// at write time. Substituted by `MX_MATCH_ARG_CHOICES` entries.
 pub(crate) fn choices_placeholder(c_ident: &str, r_param: &str) -> String {
-    format!(".__MX_MATCH_ARG_CHOICES_{}_{}__", c_stem(c_ident), r_param)
+    format!(
+        "{CHOICES_PLACEHOLDER_PREFIX}{}_{}__",
+        c_stem(c_ident),
+        r_param
+    )
 }
 
 /// R-side placeholder for the `@param` doc line, substituted by

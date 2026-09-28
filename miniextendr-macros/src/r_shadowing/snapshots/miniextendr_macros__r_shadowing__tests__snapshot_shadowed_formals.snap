@@ -1,0 +1,16 @@
+---
+source: miniextendr-macros/src/r_shadowing/tests.rs
+assertion_line: 241
+expression: "qualify_shadowed_calls(&wrapper, &names)"
+---
+#' @param length Length, `length(x)` in the docs is left alone.
+shadowed <- function(overwrite = FALSE, length, mode = base::.__MX_MATCH_ARG_CHOICES_shadowed_mode__, c) {
+  if (!isTRUE(is.logical(overwrite))) .miniextendr_arg_error("overwrite", "must be logical")
+  if (!isTRUE(base::length(overwrite) == 1L)) .miniextendr_arg_error("overwrite", "must have length 1")
+  if (!isTRUE(is.double(length))) .miniextendr_arg_error("length", "must be double")
+  if (!isTRUE(base::length(length) == 1L)) .miniextendr_arg_error("length", "must have length 1")
+  mode <- .miniextendr_match_arg(mode, base::.__MX_MATCH_ARG_CHOICES_shadowed_mode__, "mode")
+  .val <- .Call(C_shadowed, .call = match.call(), overwrite, length, mode, if (missing(c)) quote(expr=) else c)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}

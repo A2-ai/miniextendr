@@ -185,6 +185,7 @@ mod lifecycle;
 mod list_derive;
 mod r_class_formatter;
 mod r_preconditions;
+mod r_shadowing;
 mod return_type_analysis;
 mod roxygen;
 
@@ -1727,7 +1728,8 @@ pub fn miniextendr(
         )
     };
     // Use a raw string literal for better readability in macro expansion
-    let r_wrapper_str = r_wrapper_raw_literal(&r_wrapper_string);
+    let r_wrapper_str =
+        r_wrapper_raw_literal(&r_wrapper_string, &r_shadowing::formal_names([inputs]));
 
     // endregion
 
