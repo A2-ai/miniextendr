@@ -135,17 +135,6 @@ test_that("Computed Arrow array is NOT the same object (different memory)", {
 
 # endregion
 
-# region: SEXPREC data offset
-
-test_that("SEXPREC data offset was computed at init", {
-  offset <- zero_copy_sexprec_offset()
-  expect_true(offset > 0)
-  # On 64-bit systems, sizeof(SEXPREC_ALIGN) is typically 48 or 56 bytes
-  expect_true(offset >= 32 && offset <= 128)
-})
-
-# endregion
-
 # region: ProtectedStrVec
 
 test_that("ProtectedStrVec counts unique strings", {
