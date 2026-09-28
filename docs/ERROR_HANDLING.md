@@ -590,7 +590,8 @@ Both places raise the same error condition (#1591):
 - a message in R terms. An R-side check says the one requirement that failed
   (`'x' must have length 1`, `'x' must not contain NA`,
   `'mode' should be one of "fast", "slow"`), or gives the package author's
-  own message for an `inherits` / `no_na` check that sets one
+  own message for an `inherits` check (which also covers that parameter's
+  type checks) or a `no_na` check that sets one
   ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
   A conversion says what the argument must be and why it is not:
   `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`

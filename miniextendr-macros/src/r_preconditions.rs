@@ -44,7 +44,8 @@ struct RAssertion {
     /// R expression that must evaluate to `TRUE` for the check to pass.
     condition: String,
     /// The author's own condition message (`message = "..."` on `inherits` /
-    /// `no_na`), used verbatim instead of `'<param>' <requirement>`.
+    /// `no_na`; an `inherits` message also on the parameter's type checks),
+    /// used verbatim instead of `'<param>' <requirement>`.
     message: Option<String>,
 }
 
@@ -165,10 +166,13 @@ impl PreconditionOptions {
 ///
 /// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
 /// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
-/// method. They run after the type checks, as the same kind of guards
-/// raising the same argument error, and survive `no_preconditions`:
-/// the Rust conversion does not repeat them, so dropping them would change
-/// what the function accepts.
+/// method. They are the same kind of guards as the type checks, raising the
+/// same argument error. The class check runs before the parameter's type
+/// checks, so a value of the wrong class gets the class message whatever its
+/// type. An `inherits` message also replaces the messages of the parameter's
+/// type checks. The NA check runs after the type checks, with its own
+/// message. Both survive `no_preconditions`: the Rust conversion does not
+/// repeat them, so dropping them would change what the function accepts.
 ///
 /// `no_na` also has a Rust half. A type can read more inputs as missing than
 /// `anyNA()` sees (the reading markers `AsNumeric*` / `AsCharacter*` read the
@@ -188,7 +192,8 @@ pub struct ExplicitChecks {
     /// from at least one of these classes (`inherits(x, c(...))`).
     pub inherits: Option<Vec<String>>,
     /// `message = "..."` in `inherits(...)`: the message of a failed class
-    /// check, for all of its classes. Only set together with `inherits`.
+    /// check, for all of its classes, and of that parameter's R type checks.
+    /// Only set together with `inherits`.
     pub inherits_message: Option<String>,
     /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
     /// is refused too, as `is.na()` does), nor a value its type reads as `NA`
@@ -223,20 +228,13 @@ impl ExplicitChecks {
         Ok(())
     }
 
-    /// The assertions for parameter `param` of type `ty`.
+    /// The class check (`inherits`) for parameter `param` of type `ty`, which
+    /// runs before the parameter's type checks. Empty without `inherits`.
     ///
-    /// An `Option<T>` parameter passes `NULL`, and a `Missing<T>` parameter
-    /// passes when the argument was omitted. The failure message names only
-    /// the failed requirement: it is shown only for a present, non-`NULL`
-    /// value.
-    fn assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
+    /// An `Option<T>` / `Missing<T>` parameter passes `NULL` / an omitted
+    /// argument (see [`guarded`]).
+    fn class_assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
         let mut out = Vec::new();
-        if self.no_na {
-            out.push(
-                RAssertion::new(param, no_na_requirement(ty), format!("!anyNA({param})"))
-                    .with_message(self.no_na_message.as_ref()),
-            );
-        }
         if let Some(classes) = &self.inherits {
             let quoted: Vec<String> = classes
                 .iter()
@@ -264,20 +262,53 @@ impl ExplicitChecks {
                 .with_message(self.inherits_message.as_ref()),
             );
         }
-        let guard = if crate::miniextendr_fn::is_missing_type(ty) {
-            Some(format!("missing({param})"))
-        } else if crate::type_inspect::is_option_type(ty) {
-            Some(format!("is.null({param})"))
-        } else {
-            None
-        };
-        if let Some(guard) = guard {
-            for a in &mut out {
-                a.condition = format!("{guard} || {}", a.condition);
-            }
-        }
-        out
+        guarded(param, ty, out)
     }
+
+    /// The NA check (`no_na`) for parameter `param` of type `ty`, which runs
+    /// after the parameter's type checks, with its own message. Empty without
+    /// `no_na`.
+    ///
+    /// An `Option<T>` / `Missing<T>` parameter passes `NULL` / an omitted
+    /// argument (see [`guarded`]).
+    fn value_assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
+        let mut out = Vec::new();
+        if self.no_na {
+            out.push(
+                RAssertion::new(param, no_na_requirement(ty), format!("!anyNA({param})"))
+                    .with_message(self.no_na_message.as_ref()),
+            );
+        }
+        guarded(param, ty, out)
+    }
+
+    /// The message of the parameter's R type checks: the `inherits` message,
+    /// when there is one. Without it the type checks keep their generated
+    /// messages.
+    fn type_check_message(&self) -> Option<&String> {
+        self.inherits_message.as_ref()
+    }
+}
+
+/// Let an `Option<T>` parameter pass `NULL`, and a `Missing<T>` parameter an
+/// omitted argument, in the named checks `out` on parameter `param` of type
+/// `ty`: each condition gains an `is.null(param) || ` / `missing(param) || `
+/// prefix. The failure message names only the failed requirement: it is shown
+/// only for a present, non-`NULL` value.
+fn guarded(param: &str, ty: &syn::Type, mut out: Vec<RAssertion>) -> Vec<RAssertion> {
+    let guard = if crate::miniextendr_fn::is_missing_type(ty) {
+        Some(format!("missing({param})"))
+    } else if crate::type_inspect::is_option_type(ty) {
+        Some(format!("is.null({param})"))
+    } else {
+        None
+    };
+    if let Some(guard) = guard {
+        for a in &mut out {
+            a.condition = format!("{guard} || {}", a.condition);
+        }
+    }
+    out
 }
 
 /// What a `no_na` parameter of Rust type `ty` must satisfy, without the
@@ -953,8 +984,9 @@ pub struct FallbackParam {
 /// Holds the R-side checks for known types and a list of parameters with
 /// unknown types that were not statically prechecked.
 pub struct PreconditionOutput {
-    /// The checks, in parameter order, each parameter's type checks followed
-    /// by its [`ExplicitChecks`]. Rendered by [`PreconditionOutput::guards`].
+    /// The checks, in parameter order: each parameter's class check, its type
+    /// checks, then its NA check ([`ExplicitChecks`]). Rendered by
+    /// [`PreconditionOutput::guards`].
     assertions: Vec<RAssertion>,
     /// Parameters with unknown custom types that were not prechecked.
     #[allow(dead_code)] // Read in tests
@@ -1022,8 +1054,9 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// - Skip types (SEXP, Dots, ExternalPtr, etc.)
 /// - Every type-derived check under `opts.no_type_checks`
 ///
-/// A parameter's [`ExplicitChecks`] follow its type checks and are never
-/// skipped.
+/// A parameter's [`ExplicitChecks`] are never skipped: its class check comes
+/// before its type checks, which take the class check's message when it has
+/// one, and its NA check after them.
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
@@ -1045,6 +1078,13 @@ pub fn build_precondition_checks(
 
         // Use the R-normalized name for the check (matches the R formal)
         let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
+        let explicit = opts.explicit.get(&r_name);
+
+        // The class check first, so a value of the wrong class gets its
+        // message whatever its type.
+        if let Some(checks) = explicit {
+            assertions.extend(checks.class_assertions(&r_name, pt.ty.as_ref()));
+        }
 
         // Type-derived checks: skipped for match_arg params (already validated
         // by match.arg()) and under `no_preconditions`.
@@ -1054,7 +1094,14 @@ pub fn build_precondition_checks(
                 if opts.is_coerced(&r_name) {
                     check = coerce_widened(check, pt.ty.as_ref());
                 }
-                assertions.extend(check.assertions(&r_name));
+                let mut type_assertions = check.assertions(&r_name);
+                // An `inherits` message covers the type checks too.
+                if let Some(message) = explicit.and_then(ExplicitChecks::type_check_message) {
+                    for a in &mut type_assertions {
+                        a.message = Some(message.clone());
+                    }
+                }
+                assertions.extend(type_assertions);
             } else if needs_fallback(pt.ty.as_ref()) {
                 // Unknown type → record for potential future validation
                 fallback_params.push(FallbackParam {
@@ -1063,8 +1110,8 @@ pub fn build_precondition_checks(
             }
         }
 
-        if let Some(checks) = opts.explicit.get(&r_name) {
-            assertions.extend(checks.assertions(&r_name, pt.ty.as_ref()));
+        if let Some(checks) = explicit {
+            assertions.extend(checks.value_assertions(&r_name, pt.ty.as_ref()));
         }
     }
 
@@ -1799,13 +1846,113 @@ mod tests {
     }
 
     #[test]
-    fn inherits_follows_the_type_check() {
+    fn inherits_precedes_the_type_check() {
         let out = explicit_output("fn f(x: List)", &[("x", inherits(&["pkg_obj"]))], false);
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")",
                 "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
+                "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")",
+            ]
+        );
+    }
+
+    /// An `inherits` message is the message of every type check on the
+    /// parameter too: storage and length alike.
+    #[test]
+    fn inherits_message_covers_the_type_checks() {
+        let out = explicit_output(
+            "fn f(x: f64)",
+            &[("x", with_inherits_message(&["pkg_unit"], "need a pkg_unit"))],
+            false,
+        );
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(x, \"pkg_unit\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_unit\")",
+                "if (!isTRUE(is.double(x))) .miniextendr_arg_error(\"x\", message = \"need a pkg_unit\")",
+                "if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error(\"x\", message = \"need a pkg_unit\")",
+            ]
+        );
+    }
+
+    #[test]
+    fn inherits_message_on_option() {
+        let out = explicit_output(
+            "fn f(x: Option<List>)",
+            &[("x", with_inherits_message(&["pkg_obj"], "need a pkg_obj"))],
+            false,
+        );
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(is.null(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")",
+                "if (!isTRUE(is.null(x) || is.list(x))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")",
+            ]
+        );
+    }
+
+    /// The `inherits` message does not cover the NA check, which keeps its
+    /// generated message.
+    #[test]
+    fn no_na_keeps_its_own_message() {
+        let mut checks = with_inherits_message(&["pkg_num"], "need a pkg_num");
+        checks.merge(no_na()).unwrap();
+        let out = explicit_output("fn f(x: Vec<f64>)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(x, \"pkg_num\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_num\")",
+                "if (!isTRUE(is.double(x))) .miniextendr_arg_error(\"x\", message = \"need a pkg_num\")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
+            ]
+        );
+    }
+
+    /// `coerce` widens the type checks; the widened checks carry the message.
+    #[test]
+    fn inherits_message_with_coerce() {
+        let sig: syn::Signature = syn::parse_str("fn f(x: i32)").unwrap();
+        let opts = PreconditionOptions {
+            coerce_all: true,
+            explicit: [(
+                "x".to_string(),
+                with_inherits_message(&["pkg_count"], "need a pkg_count"),
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let out = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts);
+        let guards = out.guards(None);
+        assert_eq!(guards.len(), 3, "{guards:?}");
+        assert!(guards[0].starts_with("if (!isTRUE(inherits(x, \"pkg_count\")))"));
+        assert!(
+            guards[1].contains("is.integer(x) || is.logical(x) || is.raw(x)"),
+            "{}",
+            guards[1]
+        );
+        assert!(guards[2].contains("length(x) == 1L"), "{}", guards[2]);
+        for guard in &guards {
+            assert!(
+                guard.ends_with(".miniextendr_arg_error(\"x\", message = \"need a pkg_count\")"),
+                "{guard}"
+            );
+        }
+    }
+
+    /// `Missing<T>` has no R type check, so the class check is its only guard.
+    #[test]
+    fn inherits_message_on_missing() {
+        let out = explicit_output(
+            "fn f(x: Missing<List>)",
+            &[("x", with_inherits_message(&["pkg_obj"], "need a pkg_obj"))],
+            false,
+        );
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(missing(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")"
             ]
         );
     }
@@ -1970,12 +2117,13 @@ mod tests {
         };
         let out = explicit_output("fn f(n: i32, x: List)", &[("x", both)], true);
         // `n`'s type checks and `x`'s `is.list()` are gone; the named checks stay,
-        // NA first. A list holds several values, so its NA check says `contain`.
+        // the class first. A list holds several values, so its NA check says
+        // `contain`.
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
                 "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_obj'\")",
+                "if (!isTRUE(!anyNA(x))) .miniextendr_arg_error(\"x\", \"must not contain NA\")",
             ]
         );
         let none = explicit_output("fn f(n: i32)", &[], true);
@@ -2042,7 +2190,8 @@ mod tests {
     /// The author's message replaces `'<p>' <requirement>` verbatim: the
     /// helper gets it as `message = `, and the call, when there is one, by
     /// name too (after a named `message` a positional call would bind to
-    /// `what`). One message covers every class of the check.
+    /// `what`). One message covers every class of the check, and the
+    /// parameter's type checks.
     #[test]
     fn custom_messages_are_passed_verbatim_by_name() {
         let checks = ExplicitChecks {
@@ -2055,23 +2204,41 @@ mod tests {
         assert_eq!(
             out.guards(None),
             vec![
-                "if (!isTRUE(is.list(model))) .miniextendr_arg_error(\"model\", \"must be a list\")",
-                "if (!isTRUE(!anyNA(model))) .miniextendr_arg_error(\"model\", message = \"no NA in `model`\")",
                 "if (!isTRUE(inherits(model, c(\"pkg_a\", \"pkg_b\")))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\")",
+                "if (!isTRUE(is.list(model))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\")",
+                "if (!isTRUE(!anyNA(model))) .miniextendr_arg_error(\"model\", message = \"no NA in `model`\")",
             ]
         );
         let caller = out.guards(Some(".mx_call"));
         assert!(
-            caller[0].ends_with(".miniextendr_arg_error(\"model\", \"must be a list\", .mx_call)"),
+            caller[0].ends_with(
+                ".miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\", call = .mx_call)"
+            ),
             "{}",
             caller[0]
         );
+        // A type check with the class message names the call too.
         assert!(
             caller[1].ends_with(
-                ".miniextendr_arg_error(\"model\", message = \"no NA in `model`\", call = .mx_call)"
+                ".miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`; see pkg_model().\", call = .mx_call)"
             ),
             "{}",
             caller[1]
+        );
+        assert!(
+            caller[2].ends_with(
+                ".miniextendr_arg_error(\"model\", message = \"no NA in `model`\", call = .mx_call)"
+            ),
+            "{}",
+            caller[2]
+        );
+        // A type check without a class message keeps the positional call.
+        let plain = explicit_output("fn f(model: List)", &[("model", no_na())], false);
+        assert!(
+            plain.guards(Some(".mx_call"))[0]
+                .ends_with(".miniextendr_arg_error(\"model\", \"must be a list\", .mx_call)"),
+            "{:?}",
+            plain.guards(Some(".mx_call"))
         );
         // The `Option` / `Missing` guards are unchanged.
         let optional = explicit_output(
@@ -2085,7 +2252,7 @@ mod tests {
                 "if (!isTRUE(is.null(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")"
             ]
         );
-        let asserts = with_no_na_message("mine").assertions("x", &parse_type("f64"));
+        let asserts = with_no_na_message("mine").value_assertions("x", &parse_type("f64"));
         assert_eq!(asserts[0].message(), "mine");
     }
 

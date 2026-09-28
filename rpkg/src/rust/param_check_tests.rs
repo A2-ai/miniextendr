@@ -4,11 +4,13 @@
 //! Standalone fns spell them on the parameter
 //! (`#[miniextendr(inherits = "cls", no_na)]`); impl and trait methods on the
 //! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
-//! generated precondition guards after the type checks and survive
-//! `no_preconditions`. Either spelling takes an optional
+//! generated precondition guards (`inherits` before the type checks, `no_na`
+//! after them) and survive `no_preconditions`. Either spelling takes an
+//! optional
 //! `message = "..."`, the condition message of a failure, used verbatim
 //! (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`,
-//! method level `inherits(x(class = "cls", message = "..."))`).
+//! method level `inherits(x(class = "cls", message = "..."))`). An `inherits`
+//! message also covers the parameter's type checks.
 //!
 //! On a reading marker (`AsNumeric*`, `AsCharacter*`, and aliases or derived
 //! newtypes of them) `no_na` also checks the converted value, for what the
@@ -17,7 +19,7 @@
 use std::collections::HashMap;
 
 use miniextendr_api::{
-    AsCharacter, AsNumeric, AsNumericVec, List, Missing, SEXP, TryFromSexp, miniextendr,
+    AsCharacter, AsNumeric, AsNumericVec, List, Missing, NamedList, SEXP, TryFromSexp, miniextendr,
 };
 
 // region: standalone fns
@@ -152,6 +154,48 @@ pub fn param_no_na_custom(
 #[miniextendr(noexport, no_preconditions)]
 pub fn param_no_na_custom_no_preconditions(
     #[miniextendr(no_na(message = "no NA here"))] x: f64,
+) -> f64 {
+    x
+}
+
+/// `param_model_custom` under `no_preconditions`: the class check stays, the
+/// type checks are gone, so a value of the class that is not a list reaches
+/// the Rust conversion and gets its message.
+/// @param model An `mx_model` or `mx_model2` object.
+#[miniextendr(noexport, no_preconditions)]
+pub fn param_model_custom_no_preconditions(
+    #[miniextendr(inherits(
+        "mx_model",
+        "mx_model2",
+        message = "`model` must be an `mx_model` object; create one with `mx_model()`."
+    ))]
+    model: List,
+) -> i32 {
+    i32::try_from(model.len()).expect("list length fits i32")
+}
+
+/// `param_model_custom` on a `Missing<NamedList>`: an omitted argument
+/// passes. `Missing<T>` has no R type check, so a value of the class that is
+/// not a named list gets the Rust conversion's message.
+/// @param model A named `mx_model` or `mx_model2` object, or omitted.
+#[miniextendr(noexport)]
+pub fn param_model_custom_missing(
+    #[miniextendr(inherits(
+        "mx_model",
+        "mx_model2",
+        message = "`model` must be an `mx_model` object; create one with `mx_model()`."
+    ))]
+    model: Missing<NamedList>,
+) -> bool {
+    model.is_present()
+}
+
+/// A classed double scalar: the class message covers the storage and the
+/// length checks.
+/// @param x A number of class `mx_unit`.
+#[miniextendr(noexport)]
+pub fn param_classed_scalar(
+    #[miniextendr(inherits(class = "mx_unit", message = "`x` must be an `mx_unit` number"))] x: f64,
 ) -> f64 {
     x
 }

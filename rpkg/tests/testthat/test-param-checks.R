@@ -9,8 +9,14 @@ test_that("inherits = \"cls\" accepts the class and refuses anything else", {
     "'x' must inherit from 'mx_obj'",
     fixed = TRUE
   )
-  # The type check runs first.
-  expect_error(miniextendr:::param_inherits_one(1), "'x' must be a list", fixed = TRUE)
+  # The class check runs first.
+  expect_error(miniextendr:::param_inherits_one(1), "'x' must inherit from 'mx_obj'", fixed = TRUE)
+  # Without a message, the type check keeps its generated one.
+  expect_error(
+    miniextendr:::param_inherits_one(structure(1, class = "mx_obj")),
+    "'x' must be a list",
+    fixed = TRUE
+  )
 })
 
 test_that("inherits(\"a\", \"b\") accepts any of the classes", {
@@ -29,6 +35,11 @@ test_that("inherits on an Option<List> lets NULL through", {
   expect_true(miniextendr:::param_inherits_optional(mx_obj()))
   expect_error(
     miniextendr:::param_inherits_optional(list()),
+    "'x' must inherit from 'mx_obj'",
+    fixed = TRUE
+  )
+  expect_error(
+    miniextendr:::param_inherits_optional(1),
     "'x' must inherit from 'mx_obj'",
     fixed = TRUE
   )
@@ -58,12 +69,19 @@ test_that("no_na on a Missing<f64> lets an omitted argument through", {
   expect_error(miniextendr:::param_no_na_missing(NA_real_), "'x' must not be NA", fixed = TRUE)
 })
 
-test_that("both checks on one parameter run NA first, then the class", {
+test_that("both checks on one parameter run the class first, then NA", {
   x <- structure(c(1, 2), class = "mx_num")
   expect_identical(miniextendr:::param_checks_both(x), 3)
   expect_error(
     miniextendr:::param_checks_both(structure(c(1, NA), class = "mx_num")),
     "'x' must not contain NA",
+    fixed = TRUE
+  )
+  expect_error(miniextendr:::param_checks_both(c(1, NA)), "'x' must inherit from 'mx_num'", fixed = TRUE)
+  expect_error(miniextendr:::param_checks_both("a"), "'x' must inherit from 'mx_num'", fixed = TRUE)
+  expect_error(
+    miniextendr:::param_checks_both(structure("a", class = "mx_num")),
+    "'x' must be double",
     fixed = TRUE
   )
   expect_error(miniextendr:::param_checks_both(c(1, 2)), "'x' must inherit from 'mx_num'", fixed = TRUE)
@@ -94,6 +112,7 @@ test_that("impl methods take inherits(...) / no_na(...) at method level", {
   expect_identical(h$add(mx_obj(), 2), 2)
   expect_identical(h$add(structure(list(), class = "mx_other"), 3), 5)
   expect_error(h$add(list(), 1), "'x' must inherit from 'mx_obj' or 'mx_other'", fixed = TRUE)
+  expect_error(h$add(1, 1), "'x' must inherit from 'mx_obj' or 'mx_other'", fixed = TRUE)
   expect_error(h$add(mx_obj(), NA_real_), "'y' must not be NA", fixed = TRUE)
 })
 
@@ -102,6 +121,55 @@ test_that("trait methods take no_na(...) at method level", {
   expect_equal(ScalerR6$Scaler$scale(obj, x_factor = 3), 6)
   expect_error(ScalerR6$Scaler$scale(obj, x_factor = NA_real_), "'x_factor' must not be NA", fixed = TRUE)
 })
+
+# region: where an inherits message reaches
+#
+# The class check runs before the type checks, and an `inherits` message also
+# replaces the type checks' messages. Without an R type check (under
+# `no_preconditions`, or for `Missing<T>`), a value of the right class that
+# the Rust conversion refuses gets the conversion's message.
+
+model_msg <- "`model` must be an `mx_model` object; create one with `mx_model()`."
+
+test_that("no_preconditions keeps the class check; the Rust conversion judges the type", {
+  expect_identical(
+    miniextendr:::param_model_custom_no_preconditions(structure(list(1), class = "mx_model")),
+    1L
+  )
+  e <- tryCatch(miniextendr:::param_model_custom_no_preconditions(1), error = identity)
+  expect_identical(conditionMessage(e), model_msg)
+  e <- tryCatch(
+    miniextendr:::param_model_custom_no_preconditions(structure(1, class = "mx_model")),
+    error = identity
+  )
+  expect_s3_class(e, "rust_error")
+  expect_false(grepl(model_msg, conditionMessage(e), fixed = TRUE))
+})
+
+test_that("on a Missing<NamedList> the class check is the only R guard", {
+  expect_false(miniextendr:::param_model_custom_missing())
+  expect_true(miniextendr:::param_model_custom_missing(structure(list(a = 1), class = "mx_model")))
+  e <- tryCatch(miniextendr:::param_model_custom_missing(1), error = identity)
+  expect_identical(conditionMessage(e), model_msg)
+  e <- tryCatch(
+    miniextendr:::param_model_custom_missing(structure(1, class = "mx_model")),
+    error = identity
+  )
+  expect_s3_class(e, "rust_error")
+  expect_false(grepl(model_msg, conditionMessage(e), fixed = TRUE))
+})
+
+test_that("an inherits message covers a scalar's storage and length checks", {
+  unit_msg <- "`x` must be an `mx_unit` number"
+  expect_identical(miniextendr:::param_classed_scalar(structure(2.5, class = "mx_unit")), 2.5)
+  for (x in list(2.5, structure(c(1, 2), class = "mx_unit"), structure(1L, class = "mx_unit"))) {
+    e <- tryCatch(miniextendr:::param_classed_scalar(x), error = identity)
+    expect_identical(conditionMessage(e), unit_msg)
+    expect_identical(e$param, "x")
+  }
+})
+
+# endregion
 
 # region: no_na on the reading markers
 #

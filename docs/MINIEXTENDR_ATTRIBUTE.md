@@ -387,12 +387,13 @@ pub fn scale_by(#[miniextendr(no_na)] factor: f64, #[miniextendr(no_na)] xs: Vec
 ```
 
 ```r
-if (!isTRUE(is.list(x))) .miniextendr_arg_error("x", "must be a list")
 if (!isTRUE(inherits(x, "pkg_obj"))) .miniextendr_arg_error("x", "must inherit from 'pkg_obj'")
+if (!isTRUE(is.list(x))) .miniextendr_arg_error("x", "must be a list")
 ```
 
-`inherits` and `no_na` follow the parameter's type checks, one guard per
-check (under `call = caller`, the same guards raising with the caller's call).
+`inherits` runs before the parameter's type checks and `no_na` after them,
+one guard per check (under `call = caller`, the same guards raising with the
+caller's call).
 A failure raises the same condition as a failed Rust conversion: the crate's
 `conversion_error_class`, `rust_error`, `kind = "conversion"` and `e$param`,
 with the message `'x' must inherit from 'pkg_obj'`
@@ -445,12 +446,20 @@ pub fn fit_summary(
 ```
 
 ```r
-if (!isTRUE(is.list(model))) .miniextendr_arg_error("model", "must be a list")
 if (!isTRUE(inherits(model, "pkg_model"))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; create one with `pkg_model()`.")
+if (!isTRUE(is.list(model))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; create one with `pkg_model()`.")
 if (!isTRUE(is.double(weight))) .miniextendr_arg_error("weight", "must be double")
 if (!isTRUE(length(weight) == 1L)) .miniextendr_arg_error("weight", "must have length 1")
 if (!isTRUE(!anyNA(weight))) .miniextendr_arg_error("weight", message = "`weight` must be a number, not NA")
 ```
+
+The `inherits` message also replaces the messages of the parameter's type
+checks. Any value that is not a list of that class gets it: a number, `NULL`,
+or a classed double. A parameter without a message keeps the generated type
+messages. Under `no_preconditions`, and on a type without an R type check
+(`Missing<T>`, `DataFrame`, custom newtypes), no type check carries the
+message: a value of the right class that the Rust conversion refuses gets the
+conversion's message. `no_na` keeps its own message.
 
 The message becomes the condition message as written, without a `'model'`
 prefix. Everything else stays the same: the classes, `kind = "conversion"`,
