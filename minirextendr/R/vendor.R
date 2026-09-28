@@ -52,36 +52,39 @@ vendor_crates_io <- function(path = ".") {
 
   cli::cli_alert("Running cargo revendor...")
 
-  result <- run_with_logging(
-    "cargo",
-    args = c(
-      "revendor",
-      "--manifest-path", cargo_toml,
-      "--output", vendor_dir,
-      # --strip-toml-sections strips [[test]] / [[bench]] / [[example]] /
-      # [[bin]] / [dev-dependencies] from each vendored Cargo.toml and
-      # prunes dangling [features] refs (see #330, #322), but leaves
-      # tests/, benches/, examples/ on disk so crates that
-      # include_str!() into those dirs (e.g. zerocopy) keep building.
-      "--strip-toml-sections",
-      # --freeze rewrites any local path-dependency sibling (a core crate at
-      # `path = "../../../my-core"`) to point at vendor/, so the sealed tarball
-      # is self-contained — a path dep is NOT source-replaceable, so without
-      # this the shipped Cargo.toml would reference a sibling that does not
-      # travel in the tarball. It mutates src/rust/Cargo.{toml,lock} in place;
-      # the manifest stays frozen so the subsequent `R CMD build` seals it (see
-      # miniextendr_vendor()'s closing guidance for restoring source shape).
-      # cargo-revendor keeps the pre-freeze bytes in
-      # src/rust/.Cargo.toml.prefreeze (#1509), which is what
-      # miniextendr_clean_vendor_leak() restores from.
-      # Inert for a git-only package with no path sibling to rewrite.
-      "--freeze"
-    ),
-    log_prefix = "cargo-revendor",
-    wd = usethis::proj_get()
+  args <- c(
+    "revendor",
+    "--manifest-path", cargo_toml,
+    "--output", vendor_dir,
+    # --strip-toml-sections strips [[test]] / [[bench]] / [[example]] /
+    # [[bin]] / [dev-dependencies] from each vendored Cargo.toml and
+    # prunes dangling [features] refs (see #330, #322), but leaves
+    # tests/, benches/, examples/ on disk so crates that
+    # include_str!() into those dirs (e.g. zerocopy) keep building.
+    "--strip-toml-sections",
+    # --freeze rewrites any local path-dependency sibling (a core crate at
+    # `path = "../../../my-core"`) to point at vendor/, so the sealed tarball
+    # is self-contained — a path dep is NOT source-replaceable, so without
+    # this the shipped Cargo.toml would reference a sibling that does not
+    # travel in the tarball. It mutates src/rust/Cargo.{toml,lock} in place;
+    # the manifest stays frozen so the subsequent `R CMD build` seals it (see
+    # miniextendr_vendor()'s closing guidance for restoring source shape).
+    # cargo-revendor keeps the pre-freeze bytes in
+    # src/rust/.Cargo.toml.prefreeze (#1509), which is what
+    # miniextendr_clean_vendor_leak() restores from.
+    # Inert for a git-only package with no path sibling to rewrite.
+    "--freeze"
   )
-
-  check_result(result, "cargo revendor")
+  # --freeze rewrites src/rust/Cargo.{toml,lock}, which the wrapper
+  # provenance record fingerprints (#1512), without changing what the wrappers
+  # are generated from. Keep a record that was current beforehand current
+  # afterwards, as bootstrap.R does around the same call, so the release
+  # tarball installs with its pre-shipped wrappers (#1022).
+  preserve_package_wrapper_record(function() {
+    result <- run_with_logging("cargo", args = args, log_prefix = "cargo-revendor",
+                               wd = usethis::proj_get())
+    check_result(result, "cargo revendor")
+  })
 
   # cargo-revendor's --strip-toml-sections (above) handles all the
   # CRAN-relevant trims: stripping `[[test]]` / `[[bench]]` / `[[example]]`
@@ -99,6 +102,32 @@ vendor_crates_io <- function(path = ".") {
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
   invisible(TRUE)
+}
+
+#' Run a Cargo rewrite, keeping the package's wrapper record current
+#'
+#' Runs `rewrite` through `preserve_wrapper_record()` from the package's own
+#' `tools/wrapper-freshness.R`, the helper `bootstrap.R` and the Makevars
+#' wrapper pass use: a record that was current before `rewrite` is written
+#' again after it; a stale or missing record, or an error in `rewrite`,
+#' re-records nothing. A package scaffolded before the helper existed just
+#' runs `rewrite`.
+#'
+#' @param rewrite Function that rewrites `src/rust/Cargo.{toml,lock}` without
+#'   changing what the wrappers are generated from, and errors on failure.
+#' @return The value of `rewrite()`, invisibly.
+#' @noRd
+preserve_package_wrapper_record <- function(rewrite) {
+  root <- usethis::proj_get()
+  helper <- fs::path(root, "tools", "wrapper-freshness.R")
+  if (!fs::file_exists(helper)) {
+    return(invisible(rewrite()))
+  }
+  env <- new.env(parent = baseenv())
+  sys.source(helper, envir = env)
+  pkg <- read.dcf(fs::path(root, "DESCRIPTION"), fields = "Package")[[1L]]
+  wrappers <- fs::path(root, "R", paste0(pkg, "-wrappers.R"))
+  env$preserve_wrapper_record(root, wrappers, rewrite)
 }
 
 #' Verify `cargo revendor` is installed
