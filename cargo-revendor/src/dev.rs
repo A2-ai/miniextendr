@@ -113,8 +113,8 @@ pub fn prepare(
         }
         let path = copied.join("Cargo.toml");
         let mut doc: toml_edit::DocumentMut = std::fs::read_to_string(&path)?.parse()?;
-        // Cargo package drops patches; the direct-copy fallback can retain
-        // its temporary packaging table. Dev artifacts use normal sources.
+        // Cargo package drops patches; the direct-copy fallback keeps the
+        // crate's own. Dev artifacts use normal sources.
         doc.remove("patch");
         doc.remove("workspace");
         if pkg.id == root.id {
