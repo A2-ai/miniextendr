@@ -2503,6 +2503,92 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
     assert_eq!(ys, [30.0, 40.0, 50.0]);
 }
 
+/// Materialize a one-row `RecordBatch` built the way DataFusion builds a
+/// global aggregate's columns: `PrimitiveArray::from_value(v, 1)`, which is a
+/// `vec![v; 1]` buffer with offset 0 and exactly `len * size_of::<T>()` bytes of
+/// capacity. That shape passed the old buffer-shape gate, so every conversion
+/// read the heap bytes in front of the `Vec` as an R vector header; when they
+/// looked like one, the data.frame got a bogus SEXP into memory freed with the
+/// batch (the "RDataFrame global aggregation" segfault). The column must come
+/// back as a fresh copy with the right value.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_from_value_recordbatch() {
+    use miniextendr_api::arrow_impl::{
+        ArrayRef, DataType, Field, Float64Array, Int32Array, RecordBatch, Schema,
+    };
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    for _ in 0..20 {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("avg_y", DataType::Float64, false),
+            Field::new("max_x", DataType::Int32, false),
+        ]));
+        let cols: Vec<ArrayRef> = vec![
+            Arc::new(Float64Array::from_value(30.0, 1)),
+            Arc::new(Int32Array::from_value(5, 1)),
+        ];
+        let batch = RecordBatch::try_new(schema, cols).expect("record batch");
+        let out = batch.into_sexp();
+        let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+        let avg: &[f64] = unsafe { out.vector_elt(0).as_slice() };
+        let max: &[i32] = unsafe { out.vector_elt(1).as_slice() };
+        assert_eq!(avg, [30.0]);
+        assert_eq!(max, [5]);
+    }
+}
+
+/// An Arrow buffer over Rust memory whose preceding bytes are an exact copy of
+/// a live R vector header is still copied, not "recovered".
+///
+/// This is the old failure made deterministic: the header of a real one-element
+/// INTSXP is copied in front of a four-byte value, and the buffer is given the
+/// exact capacity of an R-backed one. Reading the header in front of a data
+/// pointer can never tell these bytes from R memory; only knowing where the
+/// buffer came from can. The result must be a fresh vector, not the address
+/// inside the Rust allocation.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_header_shaped_rust_buffer() {
+    use miniextendr_api::arrow_impl::{Int32Array, arrow_buffer};
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    let real = vec![7i32].into_sexp();
+    let _real_guard = unsafe { miniextendr_api::OwnedProtect::new(real) };
+    let real_addr = real.0 as usize;
+    let header = unsafe { miniextendr_api::sys::DATAPTR_RO(real) } as usize - real_addr;
+
+    // [ copy of the INTSXP header | 4-byte value ], owned by Rust.
+    let mut bytes = vec![0u8; header + 4];
+    unsafe { std::ptr::copy_nonoverlapping(real_addr as *const u8, bytes.as_mut_ptr(), header) };
+    bytes[header..].copy_from_slice(&5i32.to_ne_bytes());
+    let bytes = Arc::new(bytes);
+    let data = unsafe { std::ptr::NonNull::new_unchecked(bytes.as_ptr().add(header).cast_mut()) };
+    let buffer =
+        unsafe { arrow_buffer::Buffer::from_custom_allocation(data, 4, Arc::clone(&bytes) as _) };
+    let array = Int32Array::new(arrow_buffer::ScalarBuffer::from(buffer), None);
+
+    // Check the address before R ever sees `out` (protecting a pointer into
+    // the Rust allocation would hand R garbage).
+    let out = array.into_sexp();
+    let start = bytes.as_ptr() as usize;
+    assert!(
+        !(start..start + bytes.len()).contains(&(out.0 as usize)),
+        "a Rust buffer came back as a SEXP inside its own allocation"
+    );
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    let values: &[i32] = unsafe { out.as_slice() };
+    assert_eq!(values, [5]);
+}
+
 // endregion
 
 // region: Cow<[T]> borrowed sub-slice round-trip (#880)

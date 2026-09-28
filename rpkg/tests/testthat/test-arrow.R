@@ -322,3 +322,20 @@ test_that("arrow_arrayref_type_name returns type string", {
 })
 
 # endregion
+
+# region: Arrow -> R recovers only registered R-backed buffers
+
+# Arrow -> R hands back the source R vector only for a buffer made over one
+# (a registry lookup). A one-row DataFusion aggregate column is a Vec-backed
+# buffer that the old header-reading guess could take for R memory, which
+# crashed "RDataFrame global aggregation" now and then.
+
+test_that("a from_value(v, 1) column converts to a fresh R vector", {
+  expect_null(miniextendr:::gc_stress_arrow_from_value_recordbatch())
+})
+
+test_that("a Rust buffer behind a copied R header is not taken for R memory", {
+  expect_null(miniextendr:::gc_stress_arrow_header_shaped_rust_buffer())
+})
+
+# endregion
