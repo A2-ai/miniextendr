@@ -1175,6 +1175,40 @@ fn fn_param_tags_fill_every_undocumented_argument_on_its_own_page() {
     assert_eq!(placeholders, [(mode_placeholder, "mode".to_string())]);
 }
 
+/// An explicit `&Dots` parameter is `...` in `\usage` wherever it sits, so it
+/// gets no `@param rest` filler (that line would document an argument the
+/// usage does not have). The formal after it still gets its own.
+#[test]
+fn fn_param_tags_skip_an_explicit_dots_parameter() {
+    for item in [
+        quote::quote! {
+            /// @param x A number.
+            /// @param ... More values.
+            fn f(x: i32, rest: &Dots) {}
+        },
+        quote::quote! {
+            /// @param x A number.
+            /// @param ... More values.
+            fn f(x: i32, rest: &Dots, flag: bool) {}
+        },
+    ] {
+        let (tags, _) = generated_fn_param_tags(item.clone());
+        let lines = param_lines(&tags);
+        assert!(
+            !lines.iter().any(|line| line.contains("@param rest")),
+            "{item}: got {tags:?}"
+        );
+        let has_flag = item.to_string().contains("flag");
+        assert_eq!(
+            lines
+                .iter()
+                .any(|line| line.contains("@param flag (no documentation available)")),
+            has_flag,
+            "{item}: got {tags:?}"
+        );
+    }
+}
+
 /// An `@rdname topic` may name the function's own file-stem page, which only
 /// the wrapper registry knows, so the fillers stay, marked, for it to decide.
 #[test]

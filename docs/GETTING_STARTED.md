@@ -412,12 +412,10 @@ increment(5, 3)  # 8
 ### Variadic Arguments (Dots)
 
 ```rust
-use miniextendr_api::dots::Dots;
-
 #[miniextendr]
-pub fn count_args(...) -> i32 {
-    // `...` automatically creates a `_dots: &Dots` parameter.
-    _dots.len() as i32
+pub fn count_args(args: ...) -> usize {
+    // `args: ...` becomes an `args: &Dots` parameter.
+    args.len()
 }
 ```
 

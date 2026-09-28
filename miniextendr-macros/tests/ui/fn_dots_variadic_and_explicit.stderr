@@ -1,0 +1,5 @@
+error: this function already takes `...` as `rest: &Dots`; remove one of them
+ --> tests/ui/fn_dots_variadic_and_explicit.rs:6:62
+  |
+6 | pub fn both_dots(rest: &miniextendr_api::dots::Dots, x: i32, more: ...) -> i32 {
+  |                                                              ^^^^

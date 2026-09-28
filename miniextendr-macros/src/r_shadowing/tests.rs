@@ -256,6 +256,9 @@ fn formal_names_pool_signatures_and_skip_receivers_and_dots() {
         formal_names([&method, &other]),
         formals(&["c", "length", "list"])
     );
+    // The dots are skipped wherever they sit; the formal after them counts.
+    let mid_dots = parse_inputs("&self, n: i32, rest: &Dots, r#c: bool");
+    assert_eq!(formal_names([&mid_dots]), formals(&["c", "n"]));
 }
 
 /// Formals come from Rust identifiers through `normalize_r_arg_string`, which

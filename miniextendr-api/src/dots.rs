@@ -37,8 +37,10 @@ use crate::{SEXP, SexpExt};
 /// so `Dots` holds a list SEXP. Use [`as_list`](Dots::as_list) or
 /// [`try_list`](Dots::try_list) to access elements by name or position.
 ///
-/// Declare as the last parameter: `fn foo(x: i32, _dots: &Dots)`.
-/// Use `name: ...` syntax for a custom parameter name.
+/// Declare it as a `&Dots` parameter at any position, one per function:
+/// `fn foo(x: i32, rest: &Dots, flag: bool)` becomes the R formals
+/// `x, ..., flag`, and parameters after it are matched by name only in R.
+/// Rust `...` (or `name: ...`) is the same as a trailing `&Dots` parameter.
 #[derive(Debug)]
 pub struct Dots {
     // Dots is always passed to us, they need no protection.

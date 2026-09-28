@@ -365,17 +365,8 @@ impl<'a> MethodContext<'a> {
             &method.method_attrs.per_param,
             &c_ident,
         );
-        let mut arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs);
-        if method.method_attrs.has_dots {
-            arg_builder = arg_builder.with_dots(
-                method
-                    .method_attrs
-                    .named_dots
-                    .as_ref()
-                    .map(|ident| ident.to_string()),
-            );
-        }
-        arg_builder = arg_builder.with_defaults(effective_defaults);
+        let arg_builder = crate::r_wrapper_builder::RArgumentBuilder::new(&method.sig.inputs)
+            .with_defaults(effective_defaults);
         let params = arg_builder.build_formals();
         let args = arg_builder.build_call_args();
         Self {

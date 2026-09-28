@@ -926,7 +926,7 @@ fn extract_single_generic_arg(segment: &syn::PathSegment) -> Option<&syn::Type> 
 /// for them -- the Rust-side conversion handles type errors with its own messages.
 #[allow(dead_code)] // Read in tests
 pub struct FallbackParam {
-    /// R-normalized parameter name (e.g., `_dots` becomes `.dots`).
+    /// R-normalized parameter name (e.g., `_dots` becomes `dots`).
     pub r_name: String,
 }
 

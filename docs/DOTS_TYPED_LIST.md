@@ -8,19 +8,19 @@ When an R function accepts `...`, miniextendr converts it to a `&Dots` parameter
 
 ## Basic Dots Usage
 
-When you use `...` in a function signature, miniextendr creates a parameter named `_dots` of type `&Dots`:
+When you use `...` in a function signature, miniextendr replaces it with a `&Dots` parameter. An unnamed `...` binds the synthetic name `__miniextendr_dots`, which is not meant for your code, so name the dots when the body reads them (see [Named Dots](#named-dots)):
 
 ```rust
 #[miniextendr]
-pub fn my_func(...) -> i32 {
-    // `_dots: &Dots` is automatically created from `...`
+pub fn count_args(args: ...) -> i32 {
+    // `args: &Dots` is created from `args: ...`.
     // Access the underlying list:
-    let list = _dots.as_list();
+    let list = args.as_list();
     list.len() as i32
 }
 ```
 
-The underscore prefix (`_dots`) suppresses unused variable warnings if you don't use it.
+Use a plain `...` (or `_args: ...`) when the function accepts dots it ignores.
 
 ### Dots Methods
 
@@ -30,17 +30,57 @@ The underscore prefix (`_dots`) suppresses unused variable warnings if you don't
 
 ### Named Dots
 
-You can give dots a custom name using the `name: ...` syntax (instead of the default `_dots`):
+You give dots a name with the `name: ...` syntax, which becomes a `name: &Dots` parameter:
 
 ```rust
 #[miniextendr]
 pub fn my_func(args: ...) -> i32 {
-    // Use `args` instead of `_dots`
     args.as_list().len() as i32
 }
 ```
 
-This is useful when you want a more descriptive name or need to avoid the underscore prefix.
+Writing the parameter yourself, `args: &Dots`, is the same thing. The name stays on the Rust side: the R formal is always plain `...`.
+
+### Formals after `...`
+
+The parameter of type `&Dots` is R's `...` at its own position, so formals can follow it. Rust's `...` syntax only parses as the last parameter; spell a formal after the dots with an explicit `&Dots` parameter:
+
+```rust
+/// @param x A number.
+/// @param ... Values to write.
+/// @param overwrite Whether to overwrite.
+#[miniextendr]
+pub fn write_all(
+    x: i32,
+    rest: &Dots,
+    #[miniextendr(default = "FALSE")] overwrite: bool,
+) -> String {
+    format!("x = {x}, {} values, overwrite = {overwrite}", rest.len())
+}
+```
+
+```r
+write_all <- function(x, ..., overwrite = FALSE) {
+  # ...
+  .Call(C_pkg_write_all, .call = sys.call(), x, list(...), overwrite)
+}
+```
+
+The R formals and the `.Call()` arguments follow the Rust order. R matches a formal after `...` by its exact name only:
+
+```r
+write_all(1L, 2, 3, overwrite = TRUE)   # the dots hold 2 and 3
+write_all(1L, over = TRUE)              # `over` is a dot; overwrite stays FALSE
+write_all(1L, TRUE)                     # a positional extra is a dot too
+```
+
+The same holds for methods in every class system: `fn collect(&self, n: i32, rest: &Dots, flag: bool)` has the R formals `n, ..., flag` (after the receiver for S3, S4 and S7), with no second dispatch `...`.
+
+- A function takes at most one `...`. A second `&Dots` parameter, or Rust `...` next to an explicit `&Dots`, is a compile error.
+- The dots parameter takes no default, `match_arg` or check; `Missing<&Dots>` is refused. The dots are always present.
+- On a `call = caller` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
+- `#[miniextendr(dots = typed_list!(...))]` reads an explicit `&Dots` the same way it reads `...`.
+- A function with dots runs on the R main thread, even under `worker`: the dots are an R list.
 
 ## typed_list! Macro
 
@@ -91,8 +131,8 @@ Call `.typed()` explicitly in your function body:
 use miniextendr_api::typed_list;
 
 #[miniextendr]
-pub fn validate_args(...) -> Result<String, String> {
-    let args = _dots.typed(typed_list!(
+pub fn validate_args(dots: ...) -> Result<String, String> {
+    let args = dots.typed(typed_list!(
         alpha => numeric(4),
         beta => list(),
         gamma? => character()  // optional
@@ -119,9 +159,11 @@ pub fn my_func(...) -> String {
 }
 ```
 
-This injects validation at the start of the function body:
+This injects validation at the start of the function body, over the dots binding (`__miniextendr_dots` for an unnamed `...`, otherwise the name of the `name: ...` or `name: &Dots` parameter, at any position):
 ```rust
-let dots_typed = _dots.typed(typed_list!(...)).expect("dots validation failed");
+let dots_typed = __miniextendr_dots
+    .typed(typed_list!(...))
+    .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
 ```
 
 ### With Optional Fields

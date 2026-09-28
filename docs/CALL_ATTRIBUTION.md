@@ -291,9 +291,10 @@ n <- 0; try(g())   # Error in g() : re-entered. Passing environment() instead re
 An environment is a value, so it evaluates to itself. A call object needs
 `do.call(..., quote = TRUE)`.
 
-On a wrapper with `...`, `.call` follows the dots
-(`function(x, ..., .call = NULL)`): positional extras land in the dots, and
-`.call` is matched by name only, as R requires for any formal after `...`. Pass
+On a wrapper with `...`, `.call` follows the dots and any formal after them
+(`function(x, ..., .call = NULL)`, `function(x, ..., flag = FALSE, .call = NULL)`):
+positional extras land in the dots, and `.call` is matched by name only, as R
+requires for any formal after `...`. Pass
 it by name everywhere. Two cases keep today's shape. An S3 method has no
 `.call`, because a formal the generic lacks breaks generic/method consistency;
 its conditions name the generic's caller. A `CallerCall` body receives the

@@ -523,13 +523,13 @@ impl Counter {
 
 ### "I want to accept R's `...` (dots)"
 
-Use `_dots: &Dots` as the last parameter:
+Take one `&Dots` parameter, at any position (one per function). A formal after it is matched by name only in R:
 
 ```rust
 #[miniextendr]
-fn sum_all(x: f64, _dots: &Dots) -> f64 {
-    // x is the first argument; _dots captures the rest
-    x  // dots are validated but not directly accessible as Rust values
+fn count_all(x: f64, rest: &Dots, #[miniextendr(default = "FALSE")] verbose: bool) -> usize {
+    // R: count_all(x, ..., verbose = FALSE); `rest` holds the extras as a list
+    rest.len()
 }
 ```
 

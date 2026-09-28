@@ -452,7 +452,7 @@ pub struct ParsedMethod {
     /// Parameter default values from `#[miniextendr(default = "...")]`
     pub param_defaults: std::collections::HashMap<String, String>,
     /// Whether this method accepts dots, either from raw `...` rewritten to
-    /// `&Dots` or from an explicit trailing `&Dots` parameter.
+    /// `&Dots` or from an explicit `&Dots` parameter, anywhere.
     pub has_dots: bool,
 }
 
@@ -609,11 +609,6 @@ pub struct MethodAttrs {
     pub coerce: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate)
     pub rng: bool,
-    /// Whether this method accepts dots, either from raw `...` rewritten to
-    /// `&Dots` or from an explicit trailing `&Dots` parameter.
-    pub has_dots: bool,
-    /// User-provided dots binding, if one exists.
-    pub named_dots: Option<syn::Ident>,
     /// `typed_list!(...)` spec from `#[miniextendr(dots = typed_list!(...))]` on
     /// this method, mirroring `MiniextendrFnAttrs.dots_spec`. When set, a
     /// `dots_typed` binding is injected at the top of the method body. Per-method
@@ -1949,16 +1944,11 @@ impl ParsedMethod {
         let env = Self::detect_env(&item.sig);
         let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
-        let variadic_dots = crate::miniextendr_fn::rewrite_variadic_dots(&mut item.sig)?;
-        let explicit_dots = if variadic_dots.has_dots {
-            None
-        } else {
-            crate::miniextendr_fn::trailing_dots_ident(&item.sig.inputs)
-        };
-        let has_dots = variadic_dots.has_dots || explicit_dots.is_some();
-        let named_dots = variadic_dots.named_dots.clone().or(explicit_dots);
-        method_attrs.has_dots = has_dots;
-        method_attrs.named_dots = named_dots.clone();
+        // The `&Dots` parameter is R's `...` wherever it sits (Rust `...`
+        // becomes a trailing one); at most one per method.
+        crate::miniextendr_fn::rewrite_variadic_dots(&mut item.sig)?;
+        let dots_ident = crate::miniextendr_fn::find_dots_param(&item.sig.inputs)?;
+        let has_dots = dots_ident.is_some();
 
         // `dots = typed_list!(...)` sugar: inject the `dots_typed` binding at the
         // top of the method body, reusing the shared helper that the standalone-fn
@@ -1966,14 +1956,14 @@ impl ParsedMethod {
         // as `original_impl` (see `ParsedImpl::parse`), so it covers all six class
         // systems by construction (they emit only R/C wrappers, not the Rust body).
         if let Some(spec) = &method_attrs.dots_spec {
-            let dots_ident = named_dots.clone().ok_or_else(|| {
+            let dots_ident = dots_ident.as_ref().ok_or_else(|| {
                 syn::Error::new(
                     item.sig.ident.span(),
                     "dots = typed_list!(...) requires the method to take a dots parameter \
-                     (a trailing `...` or `&Dots`)",
+                     (`...` or a `&Dots` parameter)",
                 )
             })?;
-            let stmt = crate::build_dots_validation_stmt(&dots_ident, spec);
+            let stmt = crate::build_dots_validation_stmt(dots_ident, spec);
             item.block.stmts.insert(0, stmt);
         }
 

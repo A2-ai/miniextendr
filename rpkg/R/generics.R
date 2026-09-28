@@ -106,6 +106,12 @@ NULL
 #' @name impl_dots_s3_add_with_dots
 NULL
 
+#' Report a count with a formal after the dots, via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name dots_pos_s3_collect
+NULL
+
 #' Get current mode (S7)
 #' @param x An object.
 #' @param ... Additional arguments.

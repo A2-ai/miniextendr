@@ -5,7 +5,7 @@ fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
         syn::parse2(quote::quote! { fn f(a: i32, ...) -> i32 { a } }).unwrap();
 
     assert!(parsed.has_dots());
-    assert!(parsed.named_dots().is_none());
+    assert_eq!(parsed.dots_ident().unwrap(), "__miniextendr_dots");
     assert!(parsed.item().sig.variadic.is_none());
 
     let last = parsed.inputs().last().unwrap();
@@ -42,7 +42,7 @@ fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
         syn::parse2(quote::quote! { fn f(a: i32, dots: ...) -> i32 { a } }).unwrap();
 
     assert!(parsed.has_dots());
-    assert_eq!(parsed.named_dots().unwrap(), "dots");
+    assert_eq!(parsed.dots_ident().unwrap(), "dots");
 
     let last = parsed.inputs().last().unwrap();
     let syn::FnArg::Typed(pat_type) = last else {
@@ -133,6 +133,107 @@ fn parsed_fn_errors_on_non_ident_dots_pattern() {
             .contains("variadic pattern must be a simple identifier")
     );
 }
+
+// region: the `&Dots` parameter at any position
+
+fn inputs_of(sig: &str) -> syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma> {
+    syn::parse_str::<syn::Signature>(&format!("fn f({sig})"))
+        .unwrap()
+        .inputs
+}
+
+/// `find_dots_param` finds the `&Dots` parameter by type, wherever it sits,
+/// under any path spelling.
+#[test]
+fn find_dots_param_by_type_at_any_position() {
+    use crate::miniextendr_fn::{dots_index, find_dots_param};
+    for (sig, ident, index) in [
+        ("x: i32, y: f64", None, None),
+        ("x: i32, rest: &Dots", Some("rest"), Some(1)),
+        ("x: i32, rest: &Dots, flag: bool", Some("rest"), Some(1)),
+        ("rest: &Dots, x: i32", Some("rest"), Some(0)),
+        (
+            "x: i32, rest: &::miniextendr_api::dots::Dots, flag: bool",
+            Some("rest"),
+            Some(1),
+        ),
+        (
+            "&self, n: i32, rest: &Dots, flag: bool",
+            Some("rest"),
+            Some(2),
+        ),
+    ] {
+        let inputs = inputs_of(sig);
+        let found = find_dots_param(&inputs).expect(sig);
+        assert_eq!(found.map(|i| i.to_string()).as_deref(), ident, "{sig}");
+        assert_eq!(dots_index(&inputs), index, "{sig}");
+    }
+}
+
+/// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
+/// next to an explicit `&Dots`, are compile errors.
+#[test]
+fn parsed_fn_refuses_a_second_dots_parameter() {
+    let err = |tokens: proc_macro2::TokenStream| {
+        syn::parse2::<MiniextendrFunctionParsed>(tokens)
+            .err()
+            .expect("must be rejected")
+            .to_string()
+    };
+    let msg = err(quote::quote! { fn f(x: i32, a: &Dots, b: &Dots) {} });
+    assert!(
+        msg.contains("a function takes at most one `...`: `a` and `b` both have type `&Dots`"),
+        "{msg}"
+    );
+    let msg = err(quote::quote! { fn f(a: &Dots, ...) {} });
+    assert!(
+        msg.contains("this function already takes `...` as `a: &Dots`; remove one of them"),
+        "{msg}"
+    );
+    let msg = err(quote::quote! { fn f(a: &Dots, more: ...) {} });
+    assert!(msg.contains("already takes `...` as `a: &Dots`"), "{msg}");
+}
+
+/// An explicit `&Dots` parameter is the dots wherever it sits: the rewrite
+/// leaves it alone, and it is the dots binding (no `@param` filler, main
+/// thread, `dots_typed` source).
+#[test]
+fn parsed_fn_explicit_dots_at_any_position() {
+    for tokens in [
+        quote::quote! { fn f(x: i32, rest: &Dots) {} },
+        quote::quote! { fn f(x: i32, rest: &Dots, flag: bool) {} },
+        quote::quote! { fn f(rest: &Dots, x: i32) {} },
+    ] {
+        let parsed: MiniextendrFunctionParsed = syn::parse2(tokens.clone()).expect("parses");
+        assert!(parsed.has_dots(), "{tokens}");
+        assert_eq!(parsed.dots_ident().unwrap(), "rest", "{tokens}");
+        let rest = syn::Ident::new("rest", proc_macro2::Span::call_site());
+        assert!(parsed.is_dots_param(&rest), "{tokens}");
+        let x = syn::Ident::new("x", proc_macro2::Span::call_site());
+        assert!(!parsed.is_dots_param(&x), "{tokens}");
+        // The rewrite added no parameter: the signature is the user's.
+        let original = syn::parse2::<syn::ItemFn>(tokens.clone()).unwrap();
+        assert_eq!(parsed.inputs(), &original.sig.inputs, "{tokens}");
+    }
+}
+
+/// The standalone wrapper of a middle `&Dots`: `...` / `list(...)` at its
+/// position, the formal after it keeping its default.
+#[test]
+fn parsed_fn_mid_dots_formals_and_call_args() {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+        fn probe(x: i32, rest: &Dots, #[miniextendr(default = "FALSE")] flag: bool) -> i32 {
+            x
+        }
+    })
+    .expect("parses");
+    let builder = crate::r_wrapper_builder::RArgumentBuilder::new(parsed.inputs())
+        .with_defaults(parsed.param_defaults());
+    assert_eq!(builder.build_formals(), "x, ..., flag = FALSE");
+    assert_eq!(builder.build_call_args(), "x, list(...), flag");
+}
+
+// endregion
 
 /// A parameter whose R argument (leading underscores dropped) is an R reserved
 /// word, starts with a digit, or repeats another parameter's is a compile
