@@ -415,6 +415,10 @@ mod tests {
         assert!(!Missing::<Option<AsNumeric>>::Present(None).__mx_has_na());
         assert!(Missing::Present(Some(AsNumeric(None))).__mx_has_na());
 
+        assert!(!Err::<AsNumeric, ()>(()).__mx_has_na());
+        assert!(!Ok::<AsNumeric, ()>(AsNumeric(Some(1.0))).__mx_has_na());
+        assert!(Ok::<AsNumeric, ()>(AsNumeric(None)).__mx_has_na());
+
         let mut map = HashMap::new();
         map.insert("a".to_string(), AsNumeric(Some(1.0)));
         assert!(!map.__mx_has_na());

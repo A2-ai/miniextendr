@@ -108,6 +108,14 @@ where
     R::Error: Into<SexpError>,
 {
     type Error = SexpError;
+    // `no_na` asks whichever side the value converted to.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        match self {
+            Either::Left(l) => L::__mx_has_na(l),
+            Either::Right(r) => R::__mx_has_na(r),
+        }
+    }
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -181,5 +189,18 @@ mod tests {
     fn either_can_be_created() {
         let _left: Either<i32, String> = Left(42);
         let _right: Either<i32, String> = Right("hello".to_string());
+    }
+
+    #[test]
+    fn either_forwards_no_na_to_its_side() {
+        use crate::convert::{AsCharacter, AsNumericVec};
+
+        let left: Either<AsNumericVec, AsCharacter> = Left(AsNumericVec(vec![Some(1.0), None]));
+        assert!(left.__mx_has_na());
+        let left: Either<AsNumericVec, AsCharacter> = Left(AsNumericVec(vec![Some(1.0)]));
+        assert!(!left.__mx_has_na());
+        let right: Either<AsNumericVec, AsCharacter> = Right(AsCharacter(None));
+        assert!(right.__mx_has_na());
+        assert!(!Either::<AsNumericVec, i32>::Right(1).__mx_has_na());
     }
 }

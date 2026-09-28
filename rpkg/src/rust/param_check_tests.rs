@@ -295,6 +295,30 @@ pub fn param_no_na_map(#[miniextendr(no_na)] x: HashMap<String, AsNumeric>) -> i
     count_refused(&values)
 }
 
+/// `Result<AsNumeric, ()>`: `NULL` (`Err(())`) passes, a value is checked.
+/// @param x `NULL`, or a number that is not missing.
+#[miniextendr(noexport)]
+pub fn param_no_na_number_result(
+    #[miniextendr(no_na, default = "NULL")] x: Result<AsNumeric, ()>,
+) -> String {
+    describe(x.ok().map(|v| v.0))
+}
+
+/// `Either<AsNumericVec, Vec<u8>>`: the side the value converted to is
+/// checked. Returns the count of missing numbers (always 0), or -1 for raw.
+/// @param x Numbers, strings or factor labels, none of them missing, or a raw
+///   vector.
+#[cfg(feature = "either")]
+#[miniextendr(noexport)]
+pub fn param_no_na_numbers_either(
+    #[miniextendr(no_na)] x: miniextendr_api::either_impl::Either<AsNumericVec, Vec<u8>>,
+) -> i32 {
+    match x {
+        miniextendr_api::either_impl::Either::Left(v) => count_refused(&v.0),
+        miniextendr_api::either_impl::Either::Right(_) => -1,
+    }
+}
+
 /// How many values `no_na` should have refused: missing or `NaN`.
 fn count_refused(values: &[Option<f64>]) -> i32 {
     let n = values.iter().filter(|v| v.is_none_or(f64::is_nan)).count();
