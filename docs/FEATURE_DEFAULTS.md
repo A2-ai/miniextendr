@@ -197,7 +197,12 @@ The feature does not touch the call a wrapper reports: every wrapper passes
 conditions, including deferred warnings, name the call as written either way
 (see [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
-Each dropped check saves one `isTRUE()` guard on every call.
+Each dropped check saves one `isTRUE()` guard on every call. On the rpkg
+fixtures (installed, byte-compiled wrappers, `bench::mark`, median of five
+one-second runs on an arm64 Mac), a one-argument `i32` identity takes 1.4 µs
+with the checks and 0.7 µs without (`fast_i32_default` /
+`fast_i32_no_preconditions`), about 2×; a three-argument sum takes 3.0 µs and
+0.9 µs (`fast_sum3_default` / `fast_sum3_no_preconditions`), about 3.3×.
 
 ```rust
 // With the no-preconditions-default feature enabled:
