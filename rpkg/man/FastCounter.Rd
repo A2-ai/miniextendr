@@ -4,7 +4,7 @@
 \alias{FastCounter}
 \title{FastCounter R6 Class}
 \description{
-Default-mode counter (R6 wrapper with full preconditions + match.call).
+Default-mode counter (R6 wrapper with the full R-side type checks).
 }
 \keyword{internal}
 \section{Methods}{

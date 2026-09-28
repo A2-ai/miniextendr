@@ -5,7 +5,7 @@
 //! (`#[miniextendr(inherits = "cls", no_na)]`); impl and trait methods on the
 //! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
 //! generated precondition guards after the type checks and survive
-//! `no_preconditions` / `fast`. Either spelling takes an optional
+//! `no_preconditions`. Either spelling takes an optional
 //! `message = "..."`, the condition message of a failure, used verbatim
 //! (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`,
 //! method level `inherits(x(class = "cls", message = "..."))`).
@@ -78,11 +78,11 @@ pub fn param_checks_both(
     x.iter().sum()
 }
 
-/// `fast` drops the type checks but keeps `no_na`: `"a"` fails in Rust,
+/// `no_preconditions` drops the type checks but keeps `no_na`: `"a"` fails in Rust,
 /// `NA_real_` in R.
 /// @param x A non-NA double.
 #[miniextendr(noexport, no_preconditions)]
-pub fn param_no_na_fast(#[miniextendr(no_na)] x: f64) -> f64 {
+pub fn param_no_na_no_preconditions(#[miniextendr(no_na)] x: f64) -> f64 {
     x
 }
 
@@ -147,10 +147,10 @@ pub fn param_no_na_custom(
     x
 }
 
-/// `fast` keeps a check with a message, like any named check.
+/// `no_preconditions` keeps a check with a message, like any named check.
 /// @param x A non-NA double.
 #[miniextendr(noexport, no_preconditions)]
-pub fn param_no_na_custom_fast(#[miniextendr(no_na(message = "no NA here"))] x: f64) -> f64 {
+pub fn param_no_na_custom_no_preconditions(#[miniextendr(no_na(message = "no NA here"))] x: f64) -> f64 {
     x
 }
 
@@ -211,10 +211,10 @@ pub fn param_no_na_number_missing(#[miniextendr(no_na)] x: Missing<AsNumeric>) -
     }
 }
 
-/// `fast` drops the type checks; the `no_na` guard and the Rust check stay.
+/// `no_preconditions` drops the type checks; the `no_na` guard and the Rust check stay.
 /// @param x Numbers, strings or factor labels, none of them missing.
 #[miniextendr(noexport, no_preconditions)]
-pub fn param_no_na_numbers_fast(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
+pub fn param_no_na_numbers_no_preconditions(#[miniextendr(no_na)] x: AsNumericVec) -> i32 {
     count_refused(&x.0)
 }
 

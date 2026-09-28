@@ -32,10 +32,9 @@ test_that("the R-side check and the Rust conversion raise the same condition", {
   # R-side check has none.
   expect_null(e1$rust_type)
   expect_identical(e2$rust_type, "AsNumericVec")
-  # The calls are as before: the R-side check names the wrapper's call as
-  # written (what stopifnot() reported), the conversion its matched call.
+  # Both name the wrapper's call as written (what stopifnot() reports).
   expect_equal(conditionCall(e1), quote(miniextendr:::arg_error_ratio(c(1, 2), 3)))
-  expect_equal(conditionCall(e2), quote(miniextendr:::arg_error_peak(dv = c("1", "BLQ"))))
+  expect_equal(conditionCall(e2), quote(miniextendr:::arg_error_peak(c("1", "BLQ"))))
 })
 
 test_that("one handler catches both paths", {
@@ -67,8 +66,8 @@ test_that("under call = caller both paths name the caller's call", {
   expect_identical(class(e2), layers)
   expect_identical(e1$param, "num")
   expect_identical(e2$param, "dv")
-  expect_equal(conditionCall(e1), quote(miniextendr:::arg_error_ratio_caller(num = c(1, 2), den = 3)))
-  expect_equal(conditionCall(e2), quote(miniextendr:::arg_error_peak_caller(dv = c("1", "BLQ"))))
+  expect_equal(conditionCall(e1), quote(miniextendr:::arg_error_ratio_caller(c(1, 2), 3)))
+  expect_equal(conditionCall(e2), quote(miniextendr:::arg_error_peak_caller(c("1", "BLQ"))))
 })
 
 # endregion
@@ -171,11 +170,11 @@ test_that("method and trait-method checks raise the same condition", {
   expect_identical(e$param, "x_factor")
 })
 
-test_that("fast keeps the named check and the conversion error is the same kind", {
-  e <- caught(miniextendr:::param_no_na_fast(NA_real_))
+test_that("no_preconditions keeps the named check and the conversion error is the same kind", {
+  e <- caught(miniextendr:::param_no_na_no_preconditions(NA_real_))
   expect_identical(class(e), layers)
   expect_identical(e$param, "x")
-  e <- caught(miniextendr:::param_no_na_fast("a"))
+  e <- caught(miniextendr:::param_no_na_no_preconditions("a"))
   expect_identical(class(e), layers)
   expect_identical(e$param, "x")
   expect_identical(e$rust_type, "f64")
@@ -245,8 +244,8 @@ test_that("a no_na message reaches R unchanged", {
   expect_identical(miniextendr:::param_no_na_custom(1.5), 1.5)
 })
 
-test_that("fast keeps a check that has a message", {
-  e <- caught(miniextendr:::param_no_na_custom_fast(NA_real_))
+test_that("no_preconditions keeps a check that has a message", {
+  e <- caught(miniextendr:::param_no_na_custom_no_preconditions(NA_real_))
   expect_identical(conditionMessage(e), "no NA here")
   expect_identical(class(e), layers)
   expect_identical(e$param, "x")
@@ -261,12 +260,12 @@ test_that("under call = caller a custom message keeps the caller's call", {
   expect_identical(class(e2), class(e1))
   expect_identical(e2$kind, e1$kind)
   expect_identical(e2$param, e1$param)
-  expect_equal(conditionCall(e1), quote(miniextendr:::param_checks_caller(x = list(), y = 1)))
-  expect_equal(conditionCall(e2), quote(miniextendr:::param_checks_caller_msg(x = list(), y = 1)))
+  expect_equal(conditionCall(e1), quote(miniextendr:::param_checks_caller(list(), 1)))
+  expect_equal(conditionCall(e2), quote(miniextendr:::param_checks_caller_msg(list(), 1)))
   e <- caught(miniextendr:::param_checks_caller_msg(obj, NA_real_))
   expect_identical(conditionMessage(e), "`y` must not be NA")
   expect_identical(e$param, "y")
-  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller_msg(x = obj, y = NA_real_)))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller_msg(obj, NA_real_)))
 })
 
 test_that("impl and trait methods take the method-level messages", {
@@ -331,7 +330,7 @@ test_that("an Either choice raises the argument error on both paths", {
   expect_identical(e$rust_type, "Either<Route, DataFrame>")
   # The data frame arm refuses the type in R terms, not SEXPTYPE names.
   expect_identical(conditionMessage(e), "invalid 'route' argument: expected list, got integer")
-  expect_equal(conditionCall(e), quote(match_arg_either_route(route = 1:3)))
+  expect_equal(conditionCall(e), quote(match_arg_either_route(1:3)))
   # A built-in conversion error in the other arm reads in R terms, after an
   # expectation naming both sides.
   e <- caught(choices_either_level(TRUE))
@@ -476,14 +475,13 @@ test_that("no_na's Rust check after the conversion raises the R guard's conditio
   expect_identical(names(e_rust), names(e_r))
   expect_identical(names(e_rust), c("message", "call", "kind", "param"))
   expect_null(e_rust$rust_type)
-  # The one difference: the Rust side reports the matched call, the R guard
-  # the call as written.
-  expect_equal(conditionCall(e_rust), quote(miniextendr:::arg_error_no_na_peak(obs = c("1", "NA"))))
+  # Both sides report the call in the same form, as the test wrote it.
+  expect_equal(conditionCall(e_rust), quote(miniextendr:::arg_error_no_na_peak(c("1", "NA"))))
   expect_equal(conditionCall(e_r), quote(miniextendr:::arg_error_no_na_peak(c("1", NA))))
   # Under `call = caller` both name the caller.
   e <- caught(miniextendr:::param_no_na_number_caller(""))
   expect_identical(class(e), layers)
-  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller(x = "")))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller("")))
 })
 
 test_that("a match_arg enum's conversion error names its choices", {

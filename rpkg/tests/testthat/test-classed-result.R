@@ -106,7 +106,7 @@ test_that("a classed TryFromSexp error classes the conversion condition", {
     conditionMessage(e),
     "^invalid 'hyper' argument: expected a named numeric vector \\("
   )
-  expect_equal(conditionCall(e), quote(hyperparams_total(hyper = 1:3)))
+  expect_equal(conditionCall(e), quote(hyperparams_total(1:3)))
 
   # Family and member handlers both dispatch.
   expect_equal(tryCatch(hyperparams_total("a"), mx_fixture_error = function(e) e$param), "hyper")
@@ -140,7 +140,7 @@ test_that("classed conversion errors reach the worker path", {
   expect_s3_class(e, "mx_fixture_bad_arg")
   expect_equal(e$kind, "conversion")
   expect_equal(e$param, "hyper")
-  expect_equal(conditionCall(e), quote(hyperparams_total_worker(hyper = 1:3)))
+  expect_equal(conditionCall(e), quote(hyperparams_total_worker(1:3)))
   expect_equal(hyperparams_total_worker(c(alpha = 2)), 2)
 })
 
@@ -150,7 +150,7 @@ test_that("classed conversion errors reach the call = caller path", {
   expect_equal(e$param, "a")
   expect_equal(
     conditionCall(e),
-    quote(miniextendr:::hyperparams_total_caller(hyper = c(a = -1)))
+    quote(miniextendr:::hyperparams_total_caller(c(a = -1)))
   )
 })
 

@@ -71,9 +71,9 @@ test_that("coerced native i32 and f64 widen from the other numeric sources", {
   expect_identical(real_vector(c(TRUE, FALSE, NA)), c(1, 0, NA))
   expect_identical(real_vector(c(1L, NA_integer_)), c(1, NA))
 
-  # Without the R gate (fast), the Rust side batches every failing element,
+  # Without the R gate (no_preconditions), the Rust side batches every failing element,
   # by reason and 1-based position; the NA (element 5) is a valid NA_integer_.
-  err <- expect_error(miniextendr:::coerce_input_fast_i32(c(1, 2.5, NaN, 2^31, NA)))
+  err <- expect_error(miniextendr:::coerce_input_no_preconditions_i32(c(1, 2.5, NaN, 2^31, NA)))
   expect_identical(
     conditionMessage(err),
     paste0(
@@ -116,7 +116,7 @@ test_that("per-argument, worker, and optional bool coercion agree with their R g
 })
 
 test_that("newly accepted vectors retain batched conversion diagnostics", {
-  err <- expect_error(miniextendr:::coerce_input_fast(c(-1, 5, 70000, 1.5, NaN)))
+  err <- expect_error(miniextendr:::coerce_input_no_preconditions(c(-1, 5, 70000, 1.5, NaN)))
   msg <- conditionMessage(err)
   expect_s3_class(err, "rust_error")
   # Each reason once, with the 1-based positions that failed with it; the Rust

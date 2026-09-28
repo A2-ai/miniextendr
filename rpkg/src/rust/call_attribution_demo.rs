@@ -1,7 +1,7 @@
 //! Side-by-side fixture for `docs/CALL_ATTRIBUTION.md`.
 //!
 //! Two functions raise the same error message. One goes through the standard
-//! `#[miniextendr]` wrapper (which emits `.call = match.call()`); the other is
+//! `#[miniextendr]` wrapper (which emits `.call = sys.call()`); the other is
 //! `extern "C-unwind"`, which has no generated R wrapper and so no call slot.
 //! The R-side error rendering is dramatically different.
 
@@ -12,7 +12,7 @@ use miniextendr_api::{Call, CallerCall, Missing};
 
 use crate::match_arg_tests::Mode;
 
-/// Wrapped path. The generated R wrapper passes `.call = match.call()` into the
+/// Wrapped path. The generated R wrapper passes `.call = sys.call()` into the
 /// C entry; on panic, `Rf_errorcall(call, msg)` shows the user's call frame.
 ///
 /// @param left Ignored.
@@ -43,7 +43,7 @@ pub extern "C-unwind" fn C_call_attr_without(_left: SEXP, _right: SEXP) -> SEXP 
 
 /// Internal entry point that attributes conditions to its caller. The
 /// hand-written `call_attr_caller()` in `R/call_attribution.R` delegates here,
-/// so `conditionCall(e)` names that public function with its formals matched.
+/// so `conditionCall(e)` names that public function, as written.
 ///
 /// @param x Must be positive.
 /// @noRd
@@ -98,7 +98,7 @@ pub fn call_attr_omitted_impl(#[miniextendr(match_arg)] mode: Missing<Option<Mod
 }
 
 /// Default attribution for comparison: the same shape without `call = caller`
-/// reports its own wrapper call (`call_attr_self_impl(x = value)`).
+/// reports its own wrapper call (`call_attr_self_impl(value)`).
 ///
 /// @param x Must be positive.
 /// @noRd
@@ -117,7 +117,7 @@ pub fn call_attr_self_impl(x: i32) -> Result<i32, String> {
 /// `Call` marker: the type-level spelling of `wrapper` attribution. The
 /// marker is not an R formal (the wrapper takes `x` only); the C wrapper binds
 /// it from its hidden call slot, so the body sees the wrapper's own
-/// `match.call()`, here returned to R for the test to compare.
+/// `sys.call()`, here returned to R for the test to compare.
 ///
 /// @param x Ignored.
 /// @noRd
@@ -128,7 +128,7 @@ pub fn call_marker_wrapper_impl(_x: i32, call: Call) -> SEXP {
 
 /// `CallerCall` marker: the type-level spelling of `call = caller`. Behind the
 /// hand-written `call_marker_caller()` in `R/call_attribution.R` the body sees
-/// that function's matched call; called directly it sees its own.
+/// that function's call as written; called directly it sees its own.
 ///
 /// @param x Ignored.
 /// @noRd

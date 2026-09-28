@@ -69,11 +69,11 @@ test_that("both checks on one parameter run NA first, then the class", {
   expect_error(miniextendr:::param_checks_both(c(1, 2)), "'x' must inherit from 'mx_num'", fixed = TRUE)
 })
 
-test_that("fast keeps no_na but drops the type checks", {
-  expect_identical(miniextendr:::param_no_na_fast(2), 2)
-  expect_error(miniextendr:::param_no_na_fast(NA_real_), "'x' must not be NA", fixed = TRUE)
+test_that("no_preconditions keeps no_na but drops the type checks", {
+  expect_identical(miniextendr:::param_no_na_no_preconditions(2), 2)
+  expect_error(miniextendr:::param_no_na_no_preconditions(NA_real_), "'x' must not be NA", fixed = TRUE)
   # "a" reaches Rust: the conversion error, not an R-side type check.
-  e <- tryCatch(miniextendr:::param_no_na_fast("a"), error = identity)
+  e <- tryCatch(miniextendr:::param_no_na_no_preconditions("a"), error = identity)
   expect_s3_class(e, "rust_error")
   expect_false(grepl("must be double", conditionMessage(e), fixed = TRUE))
 })
@@ -83,10 +83,10 @@ test_that("under call = caller the checks are attributed to the caller", {
   expect_identical(miniextendr:::param_checks_caller(obj, 1), 1)
   e <- tryCatch(miniextendr:::param_checks_caller(list(), 1), error = identity)
   expect_identical(conditionMessage(e), "'x' must inherit from 'mx_obj'")
-  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller(x = list(), y = 1)))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller(list(), 1)))
   e <- tryCatch(miniextendr:::param_checks_caller(obj, NA_real_), error = identity)
   expect_identical(conditionMessage(e), "'y' must not be NA")
-  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller(x = obj, y = NA_real_)))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_checks_caller(obj, NA_real_)))
 })
 
 test_that("impl methods take inherits(...) / no_na(...) at method level", {
@@ -174,14 +174,14 @@ test_that("no_na on Missing<AsNumeric> lets an omitted argument through", {
   expect_identical(caught_msg(miniextendr:::param_no_na_number_missing("")), "'x' must not be NA")
 })
 
-test_that("fast drops the type checks but keeps both no_na checks", {
-  expect_identical(miniextendr:::param_no_na_numbers_fast(c("1", "2")), 0L)
+test_that("no_preconditions drops the type checks but keeps both no_na checks", {
+  expect_identical(miniextendr:::param_no_na_numbers_no_preconditions(c("1", "2")), 0L)
   expect_identical(
-    caught_msg(miniextendr:::param_no_na_numbers_fast(c(1, NA))),
+    caught_msg(miniextendr:::param_no_na_numbers_no_preconditions(c(1, NA))),
     "'x' must not contain NA"
   )
   expect_identical(
-    caught_msg(miniextendr:::param_no_na_numbers_fast(c("1", "NA"))),
+    caught_msg(miniextendr:::param_no_na_numbers_no_preconditions(c("1", "NA"))),
     "'x' must not contain NA"
   )
 })
@@ -215,9 +215,9 @@ test_that("under call = caller the Rust check names the caller", {
   expect_identical(miniextendr:::param_no_na_number_caller(" 4 "), 4)
   e <- tryCatch(miniextendr:::param_no_na_number_caller("NA"), error = identity)
   expect_identical(conditionMessage(e), "'x' must not be NA")
-  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller(x = "NA")))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller("NA")))
   e <- tryCatch(miniextendr:::param_no_na_number_caller(NA), error = identity)
-  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller(x = NA)))
+  expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller(NA)))
 })
 
 test_that("no_na follows the type through an alias and a derived newtype", {

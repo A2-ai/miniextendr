@@ -1,14 +1,14 @@
 //! M2 — C-side wrapper attribution.
 //!
 //! Decompose the ~287 ns floor that the R-side bench measures for
-//! `fast_i32_fast(42L)` (a wrapper with stopifnot + match.call stripped) into:
+//! `fast_i32_no_preconditions(42L)` (a wrapper without its R-side type checks) into:
 //!
 //! 1. raw closure call (Rust noop)
 //! 2. `catch_unwind` only (no R API contact)
 //! 3. `with_r_unwind_protect_or_raise` (legacy raise-as-R-error path)
 //! 4. `with_r_unwind_protect` (the tagged-SEXP transport used by `#[miniextendr]`)
 //! 5. `with_r_unwind_protect` + `TryFromSexp<i32>` + `IntoR<i32>`
-//!    (the full body of a `fast`-mode wrapper)
+//!    (the full body of a `no_preconditions` wrapper)
 //!
 //! Each step adds one layer. Deltas attribute cost to that layer.
 //!
@@ -94,7 +94,7 @@ fn l4_unwind_tagged_noop() -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 5: full body of a `fast`-mode wrapper:
+// Layer 5: full body of a `no_preconditions` wrapper:
 // with_r_unwind_protect { TryFromSexp<i32> → IntoR<i32> → SEXP }.
 // ---------------------------------------------------------------------------
 

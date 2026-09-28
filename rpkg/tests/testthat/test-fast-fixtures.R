@@ -1,5 +1,5 @@
-# Tests for the `#[miniextendr(no_preconditions)]`,
-# `no_call_attribution`, and `fast` options.
+# Tests for the `#[miniextendr(no_preconditions)]` option (fixtures in
+# src/rust/fast_fixtures.rs).
 
 test_that("fast_i32_default works on the happy path", {
   expect_identical(fast_i32_default(42L), 42L)
@@ -8,16 +8,14 @@ test_that("fast_i32_default works on the happy path", {
 test_that("all variants agree on the happy path", {
   expect_identical(fast_i32_default(42L), 42L)
   expect_identical(fast_i32_no_preconditions(42L), 42L)
-  expect_identical(fast_i32_no_call_attribution(42L), 42L)
-  expect_identical(fast_i32_fast(42L), 42L)
 })
 
-test_that("multi-arg fast variant agrees on the happy path", {
+test_that("multi-arg no_preconditions variant agrees on the happy path", {
   expect_identical(fast_sum3_default(1L, 2L, 3L), 6L)
-  expect_identical(fast_sum3_fast(1L, 2L, 3L), 6L)
+  expect_identical(fast_sum3_no_preconditions(1L, 2L, 3L), 6L)
 })
 
-test_that("default wrapper raises stopifnot for bad input", {
+test_that("default wrapper raises the R-side check for bad input", {
   expect_error(fast_i32_default("not an int"),
                regexp = "must be integer")
 })
@@ -31,47 +29,24 @@ test_that("no_preconditions wrapper raises a rust_error for bad input", {
   expect_identical(e$rust_type, "i32")
 })
 
-test_that("no_call_attribution wrapper still rejects bad input via stopifnot", {
-  expect_error(fast_i32_no_call_attribution("not an int"),
-               regexp = "must be integer")
+test_that("no_preconditions passes the call as written", {
+  # No guard, but the same `.call = sys.call()` slot as every wrapper.
+  body_text <- paste(deparse(body(fast_i32_no_preconditions)), collapse = "\n")
+  expect_match(body_text, ".call = sys.call()", fixed = TRUE)
+  expect_false(grepl("miniextendr_arg_error", body_text, fixed = TRUE))
+  e <- tryCatch(fast_i32_no_preconditions("not an int"), error = function(e) e)
+  expect_identical(conditionCall(e), quote(fast_i32_no_preconditions("not an int")))
 })
 
-test_that("fast wrapper raises a rust_error for bad input", {
-  e <- tryCatch(fast_i32_fast("not an int"), error = function(e) e)
+test_that("default wrapper's Rust conversion error reports the call as written", {
+  # `NA_integer_` passes the R-side type and length checks; the Rust `i32`
+  # conversion refuses it.
+  e <- tryCatch(fast_i32_default(NA_integer_), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
+  expect_identical(conditionCall(e), quote(fast_i32_default(NA_integer_)))
 })
 
-test_that("no_call_attribution: error$call falls back to sys.call()", {
-  e <- tryCatch(fast_i32_no_call_attribution("not an int"),
-                error = function(e) e)
-  # We don't get to compare to match.call() here because stopifnot fires
-  # first. Instead exercise the conversion path:
-  e2 <- tryCatch(fast_i32_fast("not an int"), error = function(e) e)
-  expect_s3_class(e2, "rust_error")
-  # call slot is populated (not NULL) — the wrapper's sys.call() fallback
-  # surfaces the user invocation.
-  expect_false(is.null(conditionCall(e2)))
-  expect_match(deparse(conditionCall(e2)), "fast_i32_fast")
-})
-
-test_that("default wrapper's error$call uses match.call() (named args)", {
-  e <- tryCatch(fast_i32_default(x = -2147483649),
-                error = function(e) e)
-  # The min-int sentinel is NA_integer_ in R; this triggers the
-  # length-1 / numeric check downstream of stopifnot. Just verify the
-  # call slot is named when match.call() is in play.
-  # (Exact behaviour: stopifnot fires first for "not an int", but for a
-  # valid integer-shaped NA the error still trips eventually.)
-  # We're not testing the precise error class here, just call attribution.
-  if (!is.null(conditionCall(e))) {
-    expect_true(grepl("fast_i32_default", deparse(conditionCall(e))))
-  }
-})
-
-# ----------------------------------------------------------------------------
-# Impl-block fast-path (R6) tests
-# ----------------------------------------------------------------------------
+# region: impl-block no_preconditions (R6)
 
 test_that("default R6 FastCounter works", {
   ns <- getNamespace("miniextendr")
@@ -81,25 +56,28 @@ test_that("default R6 FastCounter works", {
   expect_identical(c$value(), 15L)
 })
 
-test_that("fast R6 FastCounterFast works (same semantics, fast wrappers)", {
+test_that("R6 FastCounterNoPreconditions works (same semantics, unchecked wrappers)", {
   ns <- getNamespace("miniextendr")
-  c <- ns$FastCounterFast$new(10L)
+  c <- ns$FastCounterNoPreconditions$new(10L)
   expect_identical(c$value(), 10L)
   expect_identical(c$add(5L), 15L)
   expect_identical(c$value(), 15L)
 })
 
-test_that("fast R6 class still raises rust_error on bad input", {
+test_that("no_preconditions R6 class still raises rust_error on bad input", {
   ns <- getNamespace("miniextendr")
-  c <- ns$FastCounterFast$new(0L)
+  c <- ns$FastCounterNoPreconditions$new(0L)
   e <- tryCatch(c$add("not an int"), error = function(e) e)
   expect_s3_class(e, "rust_error")
   expect_identical(conditionMessage(e), "'n' must be a single integer: got character")
+  expect_identical(conditionCall(e), quote(c$add("not an int")))
 })
 
-test_that("default R6 class raises stopifnot on bad input", {
+test_that("default R6 class raises the R-side check on bad input", {
   ns <- getNamespace("miniextendr")
   c <- ns$FastCounter$new(0L)
   expect_error(c$add("not an int"),
                regexp = "must be integer")
 })
+
+# endregion

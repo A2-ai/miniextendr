@@ -13,15 +13,13 @@ test_that("call_attr_with produces rust_error with call attribution", {
   expect_match(call_str, "call_attr_with")
 })
 
-test_that("call_attr_with conditionCall includes formal parameter names", {
-  # match.call() captures named formals: left = ..., right = ...
+test_that("call_attr_with conditionCall is the call as written", {
+  # sys.call(): positional arguments stay positional.
   e <- tryCatch(
     miniextendr:::call_attr_with(1L, 2L),
     error = function(e) e
   )
-  call_str <- deparse(conditionCall(e))
-  expect_match(call_str, "left")
-  expect_match(call_str, "right")
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_with(1L, 2L)))
 })
 
 # endregion
@@ -37,9 +35,10 @@ test_that("unsafe_C_call_attr_without produces simpleError without rust_error cl
   expect_s3_class(e, "simpleError")
 })
 
-test_that("wrapped and unwrapped paths differ in call attribution", {
-  # The wrapped path (call_attr_with) goes through error_in_r and match.call(),
-  # so conditionCall includes formal names. The unwrapped path (Rf_error) does not.
+test_that("wrapped and unwrapped paths differ in condition class", {
+  # The wrapped path (call_attr_with) goes through the tagged-condition
+  # transport with the wrapper's sys.call(); the unwrapped path (Rf_error) does
+  # not. Both name the function as written.
   e_with <- tryCatch(
     miniextendr:::call_attr_with(1L, 2L),
     error = function(e) e
@@ -51,12 +50,9 @@ test_that("wrapped and unwrapped paths differ in call attribution", {
   # Only the wrapped path emits rust_error class
   expect_true(inherits(e_with, "rust_error"))
   expect_false(inherits(e_without, "rust_error"))
-  # Wrapped path conditionCall includes formal parameter names
-  call_with_str <- deparse(conditionCall(e_with))
-  expect_match(call_with_str, "left")
+  expect_equal(conditionCall(e_with), quote(miniextendr:::call_attr_with(1L, 2L)))
   # Unwrapped path's conditionCall is non-NULL and names the function;
-  # see docs/CALL_ATTRIBUTION.md:93-94. Rf_error captures the C-level
-  # call expression, just without match.call()'s formal-name wiring.
+  # Rf_error captures the C-level call expression.
   expect_false(is.null(conditionCall(e_without)))
   call_without_str <- deparse(conditionCall(e_without))
   expect_match(call_without_str, "unsafe_C_call_attr_without")
@@ -81,46 +77,41 @@ test_that("call = caller attributes the condition to the hand-written caller", {
   expect_s3_class(e, "rust_error")
   # `Result<_, String>` renders the Err through Debug (quoted) by default.
   expect_match(conditionMessage(e), "x must be positive, got -1", fixed = TRUE)
-  # The caller's call, with the caller's formals matched.
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(value = -1L)))
+  # The caller's call, as written.
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(-1L)))
   expect_equal(miniextendr:::call_attr_caller(3L), 3L)
 })
 
-test_that("call = caller expands a literal `...` in the caller's call (#1462)", {
-  # The caller's call is `miniextendr:::call_attr_caller(...)`; the dots are
-  # bound in the helper's frame, one above the caller. The wrapper hands that
-  # frame to `match.call(envir = )`, so the matched call carries the forwarded
-  # arguments. Before the fix this failed on the success path too.
+test_that("call = caller reports a `...` forwarder's call as written (#1462)", {
+  # The caller's call is `miniextendr:::call_attr_caller(...)`, and that is
+  # what the condition names, however the dots were filled.
   via_dots <- function(...) miniextendr:::call_attr_caller(...)
   expect_equal(via_dots(3L), 3L)
   e <- tryCatch(via_dots(0L), error = function(e) e)
   expect_s3_class(e, "rust_error")
   expect_match(conditionMessage(e), "x must be positive, got 0", fixed = TRUE)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(value = 0L)))
-  # A named argument travelling through `...` matches the caller's formal too.
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(...)))
   e <- tryCatch(via_dots(value = 0L), error = function(e) e)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(value = 0L)))
-  # R's `match.call()` inlines constants forwarded through `...` (above) but
-  # renders symbols and calls as `..1`, `..2`: `-1L` is a call to unary minus.
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(...)))
   e <- tryCatch(via_dots(-1L), error = function(e) e)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(value = ..1)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller(...)))
 })
 
-test_that("call = caller expands lapply()'s `FUN(X[[i]], ...)` call (#1462)", {
+test_that("call = caller reports lapply()'s `FUN(X[[i]], ...)` call (#1462)", {
   expect_equal(lapply(list(3L, 4L), miniextendr:::call_attr_caller), list(3L, 4L))
   e <- tryCatch(lapply(list(-1L), miniextendr:::call_attr_caller), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_equal(conditionCall(e), quote(FUN(value = X[[i]])))
+  expect_equal(conditionCall(e), quote(FUN(X[[i]], ...)))
 })
 
 test_that("default noexport attribution still names the wrapper", {
   e <- tryCatch(miniextendr:::call_attr_self(-1L), error = function(e) e)
-  expect_equal(conditionCall(e), quote(call_attr_self_impl(x = value)))
+  expect_equal(conditionCall(e), quote(call_attr_self_impl(value)))
 })
 
 test_that("call = caller falls back to the wrapper's own call when called directly", {
   e <- tryCatch(miniextendr:::call_attr_caller_impl(-1L), error = function(e) e)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(x = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(-1L)))
 })
 
 test_that("call = caller fixtures are not exported", {
@@ -163,11 +154,11 @@ test_that("call = caller attributes R-side check failures to the caller (#1548)"
   expect_equal(conditionMessage(e), "'n' must have length 1")
 })
 
-test_that("call = caller R-side checks expand a literal `...` in the caller's call", {
+test_that("call = caller R-side checks report a `...` forwarder's call as written", {
   via_dots <- function(...) miniextendr:::call_attr_checked(...)
   expect_equal(via_dots("Debug"), "Debug:mean:1:none")
   e <- tryCatch(via_dots(n = 1.5), error = identity)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(n = 1.5)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_checked(...)))
   expect_equal(conditionMessage(e), "'n' must be integer")
 })
 
@@ -189,31 +180,31 @@ test_that("default attribution of R-side checks is unchanged", {
 
 # region: the three spellings of the attribution (#1566)
 
-test_that("a `Call` marker hands the wrapper's own match.call() to Rust", {
+test_that("a `Call` marker hands the wrapper's own call as written to Rust", {
   # The marker is not an R formal.
   expect_equal(names(formals(miniextendr:::call_marker_wrapper_impl)), "x")
   expect_equal(
     miniextendr:::call_marker_wrapper_impl(1L),
-    quote(miniextendr:::call_marker_wrapper_impl(x = 1L))
+    quote(miniextendr:::call_marker_wrapper_impl(1L))
   )
   # Behind a delegate it still names the bridge: `Call` is `wrapper` attribution.
   expect_equal(
     miniextendr:::call_marker_wrapper(2L),
-    quote(call_marker_wrapper_impl(x = value))
+    quote(call_marker_wrapper_impl(value))
   )
 })
 
-test_that("a `CallerCall` marker hands the caller's matched call to Rust", {
+test_that("a `CallerCall` marker hands the caller's call as written to Rust", {
   # The marker is not an R formal; the `.call` of a `caller` wrapper is (#1613).
   expect_equal(names(formals(miniextendr:::call_marker_caller_impl)), c("x", ".call"))
   expect_equal(
     miniextendr:::call_marker_caller(2L),
-    quote(miniextendr:::call_marker_caller(value = 2L))
+    quote(miniextendr:::call_marker_caller(2L))
   )
   # Called directly, the wrapper's own call is the caller's call.
   expect_equal(
     miniextendr:::call_marker_caller_impl(3L),
-    quote(miniextendr:::call_marker_caller_impl(x = 3L))
+    quote(miniextendr:::call_marker_caller_impl(3L))
   )
 })
 
@@ -221,25 +212,13 @@ test_that("a `Call` marker leaves error attribution at the wrapper", {
   e <- tryCatch(miniextendr:::call_marker_checked_impl(-1L), error = function(e) e)
   expect_s3_class(e, "rust_error")
   expect_match(conditionMessage(e), "x must be positive, got -1", fixed = TRUE)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_marker_checked_impl(x = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_marker_checked_impl(-1L)))
   expect_equal(miniextendr:::call_marker_checked_impl(4L), 4L)
-})
-
-test_that("`call = none` passes .call = NULL and falls back to sys.call()", {
-  body_text <- paste(deparse(body(miniextendr:::call_attr_none_impl)), collapse = "\n")
-  expect_match(body_text, ".call = NULL", fixed = TRUE)
-  expect_false(grepl("match.call()", body_text, fixed = TRUE))
-  e <- tryCatch(miniextendr:::call_attr_none_impl(-1L), error = function(e) e)
-  expect_s3_class(e, "rust_error")
-  # `sys.call()` keeps the call as written: positional, not matched.
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_none_impl(-1L)))
-  expect_equal(miniextendr:::call_attr_none_impl(5L), 5L)
 })
 
 test_that("marker fixtures are not exported", {
   ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
   expect_false(any(grepl("call_marker_", ns)))
-  expect_false(any(grepl("call_attr_none", ns)))
 })
 
 # endregion
@@ -249,36 +228,36 @@ test_that("marker fixtures are not exported", {
 test_that("a helper without `.call` is what a `caller` entry point reports", {
   e <- tryCatch(miniextendr:::call_attr_via_plain_helper(-1L), error = identity)
   expect_s3_class(e, "rust_error")
-  expect_equal(conditionCall(e), quote(.call_attr_prepare_plain(value = value)))
+  expect_equal(conditionCall(e), quote(.call_attr_prepare_plain(value)))
 })
 
 test_that("a helper passing `call = parent.frame()` as `.call` names its caller", {
   e <- tryCatch(miniextendr:::call_attr_via_helper(-1L), error = identity)
   expect_s3_class(e, "rust_error")
   expect_match(conditionMessage(e), "x must be positive, got -1", fixed = TRUE)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_helper(value = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_helper(-1L)))
   expect_equal(miniextendr:::call_attr_via_helper(3L), 3L)
   # Through `lapply()` the caller is `FUN`, as without a helper.
   e <- tryCatch(lapply(list(-1L), miniextendr:::call_attr_via_helper), error = identity)
-  expect_equal(conditionCall(e), quote(FUN(value = X[[i]])))
+  expect_equal(conditionCall(e), quote(FUN(X[[i]], ...)))
 })
 
 test_that("two helpers threading `call` down name the outermost function", {
   e <- tryCatch(miniextendr:::call_attr_via_nested(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_nested(value = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_nested(-1L)))
   expect_equal(miniextendr:::call_attr_via_nested(2L), 2L)
 })
 
 test_that("a frame passes through `do.call()` without re-running the caller", {
   e <- tryCatch(miniextendr:::call_attr_via_do_call(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_do_call(value = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_via_do_call(-1L)))
   runs <- 0L
   counted <- function(value) {
     runs <<- runs + 1L
     miniextendr:::.call_attr_prepare_do(value)
   }
   e <- tryCatch(counted(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(counted(value = -1L)))
+  expect_equal(conditionCall(e), quote(counted(-1L)))
   expect_equal(runs, 1L)
 })
 
@@ -292,7 +271,7 @@ test_that("a helper's frame reaches the R-side checks", {
 test_that("a `CallerCall` body receives the call a helper passed on", {
   expect_equal(
     miniextendr:::call_marker_via_helper(2L),
-    quote(miniextendr:::call_marker_via_helper(value = 2L))
+    quote(miniextendr:::call_marker_via_helper(2L))
   )
 })
 
@@ -307,7 +286,7 @@ test_that("`.call` takes a call object as is", {
 test_that("`.call = environment()` names the function that passed it", {
   own <- function(value) miniextendr:::call_attr_caller_impl(value, .call = environment())
   e <- tryCatch(own(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(own(value = -1L)))
+  expect_equal(conditionCall(e), quote(own(-1L)))
 })
 
 test_that("an environment that is no closure's frame counts as NULL", {
@@ -316,11 +295,11 @@ test_that("an environment that is no closure's frame counts as NULL", {
     miniextendr:::call_attr_caller_impl(-1L, .call = globalenv()),
     error = identity
   )
-  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(x = -1L)))
+  expect_equal(conditionCall(e), quote(miniextendr:::call_attr_caller_impl(-1L)))
   # Called from a closure, NULL means that closure's call.
   via <- function(value) miniextendr:::call_attr_caller_impl(value, .call = globalenv())
   e <- tryCatch(via(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(via(value = -1L)))
+  expect_equal(conditionCall(e), quote(via(-1L)))
 })
 
 test_that("anything else passed as `.call` is an argument error on `.call`", {
@@ -342,14 +321,13 @@ test_that("on a `caller` wrapper with `...`, `.call` follows the dots", {
   expect_equal(miniextendr:::call_attr_dots_impl(1L, 2, 3), 3L)
   via <- function(v) miniextendr:::call_attr_dots_impl(v, .call = environment())
   e <- tryCatch(via(-1L), error = identity)
-  expect_equal(conditionCall(e), quote(via(v = -1L)))
+  expect_equal(conditionCall(e), quote(via(-1L)))
 })
 
 test_that("only `caller` wrappers take `.call`", {
   expect_equal(names(formals(miniextendr:::call_attr_caller_impl)), c("x", ".call"))
   expect_equal(names(formals(miniextendr:::call_attr_internal_impl)), c("x", ".call"))
   expect_equal(names(formals(miniextendr:::call_attr_self_impl)), "x")
-  expect_equal(names(formals(miniextendr:::call_attr_none_impl)), "x")
   expect_equal(miniextendr:::call_attr_internal_impl(5L), 5L)
 })
 
@@ -361,6 +339,58 @@ test_that("an `internal` `caller` wrapper documents `.call`", {
   rd_text <- paste(capture.output(print(rd_db[[rd_name]])), collapse = "\n")
   expect_match(rd_text, "call_attr_internal_impl(x, .call = NULL)", fixed = TRUE)
   expect_match(rd_text, "\\item{.call}{", fixed = TRUE)
+})
+
+# endregion
+
+# region: one form: the R-side checks and Rust report the same call
+
+test_that("a positional call reports the same form from the R guard and from Rust", {
+  # R guard: `num` has length 2. Rust conversion: "BLQ" is not a number.
+  guard <- tryCatch(miniextendr:::arg_error_ratio(c(1, 2), 3), error = identity)
+  rust <- tryCatch(miniextendr:::arg_error_peak(c("1", "BLQ")), error = identity)
+  expect_null(guard$rust_type)
+  expect_identical(rust$rust_type, "AsNumericVec")
+  expect_equal(conditionCall(guard), quote(miniextendr:::arg_error_ratio(c(1, 2), 3)))
+  expect_equal(conditionCall(rust), quote(miniextendr:::arg_error_peak(c("1", "BLQ"))))
+})
+
+test_that("a `...` forwarder reports the same form from the R guard and from Rust", {
+  via_ratio <- function(...) miniextendr:::arg_error_ratio(...)
+  via_peak <- function(...) miniextendr:::arg_error_peak(...)
+  guard <- tryCatch(via_ratio(c(1, 2), den = 3), error = identity)
+  rust <- tryCatch(via_peak(dv = c("1", "BLQ")), error = identity)
+  expect_equal(conditionCall(guard), quote(miniextendr:::arg_error_ratio(...)))
+  expect_equal(conditionCall(rust), quote(miniextendr:::arg_error_peak(...)))
+})
+
+test_that("an R6 method reports the same form from the R guard and from Rust", {
+  counter <- getNamespace("miniextendr")$FastCounter$new(0L)
+  # R guard: not an integer. Rust conversion: `NA_integer_` is no `i32`.
+  guard <- tryCatch(counter$add("x"), error = identity)
+  rust <- tryCatch(counter$add(NA_integer_), error = identity)
+  expect_null(guard$rust_type)
+  expect_identical(rust$rust_type, "i32")
+  expect_equal(conditionCall(guard), quote(counter$add("x")))
+  expect_equal(conditionCall(rust), quote(counter$add(NA_integer_)))
+})
+
+test_that("a `caller` entry point behind a helper reports the public call from both sides", {
+  guard <- tryCatch(miniextendr:::call_attr_checked_via_helper(1.5), error = identity)
+  rust <- tryCatch(miniextendr:::call_attr_via_helper(-1L), error = identity)
+  expect_equal(conditionMessage(guard), "'n' must be integer")
+  expect_match(conditionMessage(rust), "x must be positive, got -1", fixed = TRUE)
+  expect_equal(conditionCall(guard), quote(miniextendr:::call_attr_checked_via_helper(1.5)))
+  expect_equal(conditionCall(rust), quote(miniextendr:::call_attr_via_helper(-1L)))
+})
+
+test_that("a marker body sees the call the R guard reports", {
+  guard <- tryCatch(miniextendr:::call_marker_caller_impl(1.5), error = identity)
+  expect_equal(conditionCall(guard), quote(miniextendr:::call_marker_caller_impl(1.5)))
+  expect_equal(
+    miniextendr:::call_marker_caller_impl(3L),
+    quote(miniextendr:::call_marker_caller_impl(3L))
+  )
 })
 
 # endregion

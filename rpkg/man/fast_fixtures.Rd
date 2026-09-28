@@ -3,23 +3,17 @@
 \name{fast_i32_default}
 \alias{fast_i32_default}
 \alias{fast_i32_no_preconditions}
-\alias{fast_i32_no_call_attribution}
-\alias{fast_i32_fast}
 \alias{fast_sum3_default}
-\alias{fast_sum3_fast}
+\alias{fast_sum3_no_preconditions}
 \title{fast_i32_default}
 \usage{
 fast_i32_default(x)
 
 fast_i32_no_preconditions(x)
 
-fast_i32_no_call_attribution(x)
-
-fast_i32_fast(x)
-
 fast_sum3_default(a, b, c)
 
-fast_sum3_fast(a, b, c)
+fast_sum3_no_preconditions(a, b, c)
 }
 \arguments{
 \item{x}{Input value.}
@@ -31,11 +25,7 @@ Identity (i32) with the standard wrapper. Baseline for comparison.
 
 Identity (i32) with \code{no_preconditions} — wrapper drops the R-side type checks. TryFromSexp still raises on bad input, message comes from Rust.
 
-Identity (i32) with \code{no_call_attribution} — wrapper emits \code{.call = NULL} instead of \code{match.call()}. Error UX falls back to \code{sys.call()}.
-
-Identity (i32) with \code{fast} — bundle of \code{no_preconditions} + \code{no_call_attribution}. Largest single-fn perf win.
-
 Three-arg numeric sum, standard wrapper.
 
-Three-arg numeric sum, \code{fast} mode.
+Three-arg numeric sum, \code{no_preconditions} mode.
 }
