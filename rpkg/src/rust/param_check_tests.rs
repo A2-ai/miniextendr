@@ -150,7 +150,9 @@ pub fn param_no_na_custom(
 /// `no_preconditions` keeps a check with a message, like any named check.
 /// @param x A non-NA double.
 #[miniextendr(noexport, no_preconditions)]
-pub fn param_no_na_custom_no_preconditions(#[miniextendr(no_na(message = "no NA here"))] x: f64) -> f64 {
+pub fn param_no_na_custom_no_preconditions(
+    #[miniextendr(no_na(message = "no NA here"))] x: f64,
+) -> f64 {
     x
 }
 

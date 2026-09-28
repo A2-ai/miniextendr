@@ -2650,7 +2650,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             serialize,
             wrap,
             serde_error,
-            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "no-preconditions-default")),
+            no_preconditions: no_preconditions
+                .unwrap_or(cfg!(feature = "no-preconditions-default")),
             call_attribution: call_attr,
             return_pref,
             return_pref_span,

@@ -409,9 +409,7 @@ fn env_wrapper_full_snapshot() {
     assert!(wrapper.contains("Counter$get <- function()"));
     assert!(wrapper.contains("Counter$increment <- function()"));
     assert!(wrapper.contains("Counter$add <- function(n)"));
-    assert!(
-        wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), self)")
-    );
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), self)"));
     assert!(
         wrapper
             .contains(".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), self)")
@@ -423,8 +421,7 @@ fn env_wrapper_full_snapshot() {
     // Verify static methods
     assert!(wrapper.contains("Counter$from_string <- function(s)"));
     assert!(
-        wrapper
-            .contains(".Call(C_miniextendr_macros_Counter__from_string, .call = sys.call(), s)")
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__from_string, .call = sys.call(), s)")
     );
 
     // Verify $ dispatch
@@ -524,9 +521,8 @@ fn r6_wrapper_full_snapshot() {
     assert!(wrapper.contains("Counter$set(\"public\", \"get\", function()"));
     assert!(wrapper.contains("Counter$set(\"public\", \"increment\", function()"));
     assert!(
-        wrapper.contains(
-            ".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), private$.ptr)"
-        )
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), private$.ptr)")
     );
     assert!(wrapper.contains(
         ".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), private$.ptr)"
@@ -544,8 +540,7 @@ fn r6_wrapper_full_snapshot() {
     // Verify static methods as separate functions
     assert!(wrapper.contains("Counter$from_value <- function(v)"));
     assert!(
-        wrapper
-            .contains(".Call(C_miniextendr_macros_Counter__from_value, .call = sys.call(), v)")
+        wrapper.contains(".Call(C_miniextendr_macros_Counter__from_value, .call = sys.call(), v)")
     );
 }
 
@@ -1153,9 +1148,8 @@ fn s7_wrapper_full_snapshot() {
         wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), x@.ptr)")
     );
     assert!(
-        wrapper.contains(
-            ".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x@.ptr)"
-        )
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x@.ptr)")
     );
 
     // Verify static methods

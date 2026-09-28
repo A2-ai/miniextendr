@@ -1211,7 +1211,8 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
-            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "no-preconditions-default")),
+            no_preconditions: no_preconditions
+                .unwrap_or(cfg!(feature = "no-preconditions-default")),
             internal,
             noexport,
             blanket,
@@ -3754,9 +3755,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Build method context for .Call generation
-        let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_no_preconditions(
-            parsed_impl.no_preconditions,
-        );
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+            .with_no_preconditions(parsed_impl.no_preconditions);
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal

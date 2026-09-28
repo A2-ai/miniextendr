@@ -437,9 +437,8 @@ fn test_s7_trait_impl_emits_fast_path_shortcut() {
         result
     );
     assert!(
-        result.contains(
-            ".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), self@.ptr)"
-        ),
+        result
+            .contains(".Call(C_miniextendr_macros_Foo__Bar__value, .call = sys.call(), self@.ptr)"),
         "shortcut should .Call through self@.ptr directly, got:\n{}",
         result
     );

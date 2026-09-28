@@ -1106,45 +1106,40 @@ impl ParsedImplExt for ParsedImpl {
         let type_ident = &self.type_ident;
         let label = self.label();
         let no_prec = self.no_preconditions;
-        self.instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec)
-        })
+        self.instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
     }
 
     fn static_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
         let no_prec = self.no_preconditions;
-        self.static_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec)
-        })
+        self.static_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
     }
 
     fn public_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
         let no_prec = self.no_preconditions;
-        self.public_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec)
-        })
+        self.public_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
     }
 
     fn private_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
         let no_prec = self.no_preconditions;
-        self.private_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec)
-        })
+        self.private_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
     }
 
     fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
         let no_prec = self.no_preconditions;
-        self.active_instance_methods().map(move |m| {
-            MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec)
-        })
+        self.active_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
     }
 }
 

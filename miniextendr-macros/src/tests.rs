@@ -710,7 +710,11 @@ fn miniextendr_attr_call_parses_and_validates() {
         "{err}"
     );
 
-    for value in [quote::quote!(parent), quote::quote!(none), quote::quote!("none")] {
+    for value in [
+        quote::quote!(parent),
+        quote::quote!(none),
+        quote::quote!("none"),
+    ] {
         let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = #value))
             .err()
             .expect("unknown attribution must fail");
@@ -1798,7 +1802,12 @@ fn no_preconditions_default_fn_attrs_drop_preconditions() {
     );
     assert_eq!(attrs.call_attribution, None);
     assert_eq!(
-        crate::r_wrapper_builder::CallAttribution::resolve(None, attrs.call_attribution, None, false),
+        crate::r_wrapper_builder::CallAttribution::resolve(
+            None,
+            attrs.call_attribution,
+            None,
+            false
+        ),
         crate::r_wrapper_builder::CallAttribution::Wrapper,
     );
     let impl_attrs: crate::miniextendr_impl::ImplAttrs = syn::parse2(quote::quote! {}).unwrap();
@@ -1891,7 +1900,10 @@ fn unknown_fn_flags_get_the_unknown_option_error() {
             .err()
             .unwrap_or_else(|| panic!("{input} must fail"))
             .to_string();
-        assert!(err.starts_with("unknown `#[miniextendr]` option `"), "{err}");
+        assert!(
+            err.starts_with("unknown `#[miniextendr]` option `"),
+            "{err}"
+        );
         assert!(err.contains("preconditions, no_preconditions"), "{err}");
     }
 }
