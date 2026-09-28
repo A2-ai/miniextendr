@@ -206,6 +206,30 @@ impl std::fmt::Display for SexpTypeError {
 impl std::error::Error for SexpTypeError {}
 
 #[derive(Debug, Clone, Copy)]
+/// Error describing a value that is not the kind of R object a conversion
+/// reads, where that kind is a class rather than a `SEXPTYPE` (a data frame
+/// is a list with a class).
+pub struct SexpClassError {
+    /// What the value should have been, in R terms, with its article:
+    /// `"a data frame"`.
+    pub expected: &'static str,
+    /// Actual R type encountered.
+    pub actual: SEXPTYPE,
+}
+
+impl std::fmt::Display for SexpClassError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "class mismatch: expected {}, got {:?}",
+            self.expected, self.actual
+        )
+    }
+}
+
+impl std::error::Error for SexpClassError {}
+
+#[derive(Debug, Clone, Copy)]
 /// Error describing an unexpected R object length.
 pub struct SexpLengthError {
     /// Required length.
@@ -246,6 +270,10 @@ impl std::error::Error for SexpNaError {}
 pub enum SexpError {
     /// `SEXPTYPE` did not match the expected one.
     Type(SexpTypeError),
+    /// The value is not the kind of R object this conversion reads, where
+    /// that kind is a class (a data frame is a list with a class), not a
+    /// `SEXPTYPE`.
+    Class(SexpClassError),
     /// Length did not match the expected one.
     Length(SexpLengthError),
     /// Missing value encountered where disallowed.
@@ -291,6 +319,19 @@ impl SexpTypeError {
     }
 }
 
+impl SexpClassError {
+    /// The reason of this class error in R terms: `got list`, or
+    /// `expected a data frame, got list` when `expected_known` is `false`.
+    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+        let got = crate::typed_list::sexptype_name(self.actual);
+        if expected_known {
+            format!("got {got}")
+        } else {
+            format!("expected {}, got {got}", self.expected)
+        }
+    }
+}
+
 impl SexpLengthError {
     /// The reason of this length error in R terms: `got length 2`, or
     /// `expected length 1, got length 2` when `expected_known` is `false`.
@@ -306,15 +347,87 @@ impl SexpLengthError {
     }
 }
 
+/// What one arm of an `Either` expected, when the value was not of that arm's
+/// kind at all (see [`SexpError::kind_mismatch`]).
+#[cfg(feature = "either")]
+enum KindExpected {
+    /// A kind in R terms: `numeric`, `a data frame`, or the joined
+    /// expectation of a nested `Either`.
+    Noun(String),
+    /// A `match_arg` choice, which reads only a string or factor.
+    Choices(&'static [&'static str]),
+}
+
+#[cfg(feature = "either")]
+impl KindExpected {
+    /// The expectation of an `Either` over this arm (left) and `right`:
+    /// `numeric or a data frame`, `one of "a", "b", or numeric`,
+    /// `numeric or one of "a", "b"`, and one `one of` over two choice lists.
+    fn join(&self, right: &KindExpected) -> String {
+        use crate::match_arg::choice_expectation;
+        match (self, right) {
+            (KindExpected::Noun(l), KindExpected::Noun(r)) => format!("{l} or {r}"),
+            (KindExpected::Choices(l), KindExpected::Noun(r)) => {
+                choice_expectation(l, false, &format!(", or {r}"))
+            }
+            (KindExpected::Noun(l), KindExpected::Choices(r)) => {
+                format!("{l} or {}", choice_expectation(r, false, ""))
+            }
+            (KindExpected::Choices(l), KindExpected::Choices(r)) => {
+                let mut both: Vec<&str> = l.to_vec();
+                both.extend(r.iter().filter(|c| !l.contains(c)));
+                choice_expectation(&both, false, "")
+            }
+        }
+    }
+}
+
 impl SexpError {
     /// What the value should have been, in R terms, when the error itself
-    /// knows (a `match_arg` choice: `one of "fast", "slow"`) and the argument's
-    /// Rust type does not tell the macro (#1594): the generated wrapper then
+    /// knows and the argument's Rust type does not tell the macro (#1594): a
+    /// `match_arg` choice (`one of "fast", "slow"`), a class (`a data
+    /// frame`), or an `Either` whose arms both refused the kind of value
+    /// (`one of "fast", "slow", or numeric`). The generated wrapper then
     /// writes `'<p>' must be <this>: <reason>` instead of
-    /// `invalid '<p>' argument: <reason>`.
+    /// `invalid '<p>' argument: <reason>`. A type error alone gives none: the
+    /// `SEXPTYPE` it expected is the storage the conversion reads, which for
+    /// an opaque type need not be all it accepts.
     pub(crate) fn r_expectation(&self) -> Option<String> {
         match self {
             SexpError::MatchArg(e) => Some(e.expectation()),
+            SexpError::Class(e) => Some(e.expected.to_string()),
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion {
+                left_error,
+                right_error,
+            } => both_kind_mismatches(left_error, right_error).map(|(expected, _)| expected),
+            _ => None,
+        }
+    }
+
+    /// What this error expected and the value's `SEXPTYPE`, when it means the
+    /// value was not of the conversion's kind at all: a type error, a class
+    /// error, a `match_arg` refusal of a value that is not a string or factor,
+    /// or an `Either` whose arms both mean that. `None` when the value was of
+    /// the right kind and failed later (length, NA, value, a choice that did
+    /// not match).
+    #[cfg(feature = "either")]
+    fn kind_mismatch(&self) -> Option<(KindExpected, SEXPTYPE)> {
+        match self {
+            SexpError::Type(e) => Some((
+                KindExpected::Noun(crate::typed_list::sexptype_name(e.expected)),
+                e.actual,
+            )),
+            SexpError::Class(e) => Some((KindExpected::Noun(e.expected.to_string()), e.actual)),
+            SexpError::MatchArg(crate::match_arg::MatchArgError::InvalidType {
+                actual,
+                choices,
+            }) => Some((KindExpected::Choices(choices), *actual)),
+            SexpError::EitherConversion {
+                left_error,
+                right_error,
+            } => both_kind_mismatches(left_error, right_error)
+                .map(|(expected, actual)| (KindExpected::Noun(expected), actual)),
             _ => None,
         }
     }
@@ -328,6 +441,8 @@ impl SexpError {
     /// |-------|------------------|--------|
     /// | type | yes | `got character` |
     /// | type | no | `expected integer, got character` |
+    /// | class | yes | `got list` |
+    /// | class | no | `expected a data frame, got list` |
     /// | length | yes | `got length 2` |
     /// | length | no | `expected length 1, got length 2` |
     /// | NA | either | `NA is not allowed` |
@@ -342,16 +457,19 @@ impl SexpError {
     /// reason then does not repeat it. A per-element reason inside a batched
     /// message is worded with `expected_known = false`.
     ///
-    /// Both branches of an `Either` failed. A type error means the value was
-    /// not of that branch's type at all; any other error means it was, and
-    /// failed later (length, NA, value), which is the more useful reason. So:
-    /// when both are type errors, one reason for the value's type
-    /// (`got numeric`, or `expected integer or character, got numeric`);
-    /// when exactly one is, the other branch's reason; otherwise both
-    /// branches' reasons, once if they agree, else joined with `; `.
+    /// Both branches of an `Either` failed. A type or class error, or a
+    /// `match_arg` refusal of a value that is not a string or factor, means
+    /// the value was not of that branch's kind at all; any other error means
+    /// it was, and failed later (length, NA, value), which is the more useful
+    /// reason. So: when both branches refused the kind, one reason for the
+    /// value's type (`got numeric`, or `expected integer or character, got
+    /// numeric`, `expected one of "a", "b", or numeric, got logical`); when
+    /// exactly one did, the other branch's reason; otherwise both branches'
+    /// reasons, once if they agree, else joined with `; `.
     pub(crate) fn r_reason(&self, expected_known: bool) -> String {
         match self {
             SexpError::Type(e) => e.r_reason(expected_known),
+            SexpError::Class(e) => e.r_reason(expected_known),
             SexpError::Length(e) => e.r_reason(expected_known),
             SexpError::Na(_) => "NA is not allowed".to_string(),
             SexpError::InvalidValue(msg) => msg.clone(),
@@ -362,35 +480,43 @@ impl SexpError {
             SexpError::EitherConversion {
                 left_error,
                 right_error,
-            } => match (left_error.as_ref(), right_error.as_ref()) {
-                (SexpError::Type(l), SexpError::Type(r)) => {
-                    let got = crate::typed_list::sexptype_name(l.actual);
+            } => {
+                let (l, r) = (left_error.as_ref(), right_error.as_ref());
+                if let Some((expected, actual)) = both_kind_mismatches(l, r) {
+                    let got = crate::typed_list::sexptype_name(actual);
                     if expected_known {
                         format!("got {got}")
                     } else {
-                        format!(
-                            "expected {} or {}, got {got}",
-                            crate::typed_list::sexptype_name(l.expected),
-                            crate::typed_list::sexptype_name(r.expected)
-                        )
+                        format!("expected {expected}, got {got}")
                     }
-                }
-                (SexpError::Type(_), other) | (other, SexpError::Type(_)) => {
-                    other.r_reason(expected_known)
-                }
-                (l, r) => {
+                } else if l.kind_mismatch().is_some() {
+                    r.r_reason(expected_known)
+                } else if r.kind_mismatch().is_some() {
+                    l.r_reason(expected_known)
+                } else {
                     let (l, r) = (l.r_reason(expected_known), r.r_reason(expected_known));
                     if l == r { l } else { format!("{l}; {r}") }
                 }
-            },
+            }
         }
     }
+}
+
+/// The joined expectation of an `Either` whose two branches both refused the
+/// kind of value, with the value's `SEXPTYPE`; `None` if either branch got
+/// further (see [`SexpError::r_reason`]).
+#[cfg(feature = "either")]
+fn both_kind_mismatches(left: &SexpError, right: &SexpError) -> Option<(String, SEXPTYPE)> {
+    let (l, actual) = left.kind_mismatch()?;
+    let (r, _) = right.kind_mismatch()?;
+    Some((l.join(&r), actual))
 }
 
 impl std::fmt::Display for SexpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             SexpError::Type(e) => write!(f, "{}", e),
+            SexpError::Class(e) => write!(f, "{}", e),
             SexpError::Length(e) => write!(f, "{}", e),
             SexpError::Na(e) => write!(f, "{}", e),
             SexpError::InvalidValue(msg) => write!(f, "invalid value: {}", msg),
@@ -414,6 +540,7 @@ impl std::error::Error for SexpError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             SexpError::Type(e) => Some(e),
+            SexpError::Class(e) => Some(e),
             SexpError::Length(e) => Some(e),
             SexpError::Na(e) => Some(e),
             SexpError::InvalidValue(_) => None,
@@ -429,6 +556,12 @@ impl std::error::Error for SexpError {
 impl From<SexpTypeError> for SexpError {
     fn from(e: SexpTypeError) -> Self {
         SexpError::Type(e)
+    }
+}
+
+impl From<SexpClassError> for SexpError {
+    fn from(e: SexpClassError) -> Self {
+        SexpError::Class(e)
     }
 }
 

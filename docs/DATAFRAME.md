@@ -722,7 +722,7 @@ A single error type covers every failure mode of both verbs:
 
 | Variant | Meaning |
 |---------|---------|
-| `NotList(msg)` | The SEXP is not a VECSXP. |
+| `NotList(actual)` | The SEXP is not a VECSXP; carries the SEXPTYPE it was. |
 | `NotDataFrame` | The object does not inherit from `data.frame`. |
 | `NoNames` | The list has no `names` attribute (columns must be named). |
 | `BadRowNames(msg)` | Could not extract `nrow` from the `row.names` attribute. |
@@ -738,6 +738,8 @@ A single error type covers every failure mode of both verbs:
 | `Conversion(msg)` | A serde or other conversion failure, carried as a message (also covers "this shape has no reader"). |
 
 It implements `std::error::Error` and `From<RSerdeError>`, so `?` works in functions that mix serde and data-frame conversions.
+
+As a `#[miniextendr]` argument, `NotList` and `NotDataFrame` become `SexpError::Class` and are worded `'df' must be a data frame: got list`; the other variants keep their own message.
 
 ## Migration from the legacy surface
 

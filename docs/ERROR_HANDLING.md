@@ -682,7 +682,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `AsNumericVec` | `numeric` |
 | `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |
-| `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), when both have one |
+| `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), when both have one; at run time, when both arms refuse the kind of value, even with an opaque or `match_arg` arm (`one of "fast", "slow", or numeric`) |
 | `(A, B, ...)` | `a list of length N` |
 | `DataFrame` | `a data frame` |
 | a `match_arg` enum | `one of "fast", "slow"` (`NULL or one of ...` for `Option<T>`), from the choice error at run time, with or without `#[miniextendr(match_arg)]` |
@@ -694,10 +694,11 @@ The `<expected>` part comes from the same type table as the R-side checks
 | Built-in error | `<reason>` |
 |----------------|------------|
 | type | `got character` (`expected integer, got character` without an `<expected>`) |
+| class (a `DataFrame` given a non-list, or a list that is not a data frame) | `got list` (`expected a data frame, got list` without an `<expected>`) |
 | length | `got length 2` (`expected length 1, got length 2` without an `<expected>`) |
 | NA | `NA is not allowed` |
 | invalid value | the value's own text, e.g. `non-numeric value(s): "BLQ" (element 2)` |
-| `Either` (both branches failed) | the reason of the branch whose type matched (`got length 2`), else one for the value's type (`got numeric`) |
+| `Either` (both branches failed) | the reason of the branch that took the kind of value (`got length 2`, `data.frame has no column names`), else one for the value's type (`got numeric`) |
 | `match_arg` enum | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
 
 A vector conversion checks every element and reports them together, each
@@ -739,19 +740,37 @@ either_int_or_str(1:2)
 # Error: 'value' must be a single integer or a single string: got length 2
 ```
 
+A list that is not a data frame is not a data frame at all, so a `DataFrame`
+arm (or parameter) refuses it by its type: `'x' must be double or a data
+frame: got list`. An arm is refused by its kind when it fails with a type or
+class error, or when a `match_arg` enum is given a value that is not a string
+or factor. When both arms are refused that way, the message names both, even
+when the macro knows neither arm's expectation (an opaque type, or a
+`match_arg` enum without `#[miniextendr(match_arg)]`):
+
+```r
+either_route_or_number(TRUE)   # x: Either<Route, f64>
+# Error: 'x' must be one of "oral", "bolus", "infusion", or numeric: got logical
+```
+
 A `match_arg` / `choices` parameter on `Either<T, R>` is decoded differently
 ("Choice or Another Value" in [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md)):
 the R prelude checks character or factor input against the choices, and
-anything else is converted to `R` alone, so the reason is that arm's own:
+anything else is converted to `R` alone. A value `R` refuses is refused
+against the whole parameter, in the words of its `@param` line, and `R`'s
+error gives the reason:
 
 ```r
 choices_either_level(TRUE)   # level: Either<String, f64>, choices("low", "mid", "high")
-# Error: 'level' must be a single string or a single double: got logical
+# Error: 'level' must be one of "low", "mid", "high", or a number: got logical
 ```
 
-Only an opaque custom type reads `invalid '<p>' argument`, with the error's
-own message (its `Display` text, or its `RConditionError` message) as the
-reason.
+`invalid '<p>' argument` is left for a type whose expectation neither the
+macro nor the error knows, with the error's own message (its `Display` text,
+or its `RConditionError` message) as the reason: an opaque custom type, or a
+plain `Either` with an opaque or `match_arg` arm where one arm took the kind
+of value and failed later (`either_route_or_number("zzz")` reads `invalid 'x'
+argument: expected one of "oral", "bolus", "infusion", got "zzz"`).
 
 ### NA Handling
 

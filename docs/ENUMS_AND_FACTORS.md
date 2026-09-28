@@ -367,7 +367,16 @@ follows the R prelude exactly, so a data frame is never tried as a choice and
 a misspelled choice never falls through to `R`. An explicit `NULL` is not a
 choice either: it goes to `R` (and fails for `DataFrame`). The auto-generated
 `@param` line names the other kind: `One of "oral", "bolus", "infusion", or a
-data frame.`
+data frame.` A value `R` refuses is refused in the same words:
+
+```r
+set_route(1:3)   # Error: 'route' must be one of "oral", "bolus", "infusion", or a data frame: got integer
+```
+
+On `Either<T, R>`, `NULL` goes to `R` (a `DataFrame` arm refuses it). To
+accept `NULL` as well, declare `Option<Either<T, R>>` (a `NULL` formal) or
+`Missing<Option<Either<T, R>>>` (the choice vector stays the formal; omitted
+is `Absent`, `NULL` is `Present(None)`).
 
 The layers of the previous sections compose with it, outermost first:
 `Option<Either<T, R>>` has a `NULL` formal and turns `NULL` into `None`,
@@ -420,7 +429,9 @@ set_routes(character(0))            # Error: 'routes' must be of length >= 1
 Character or factor input is matched element by element, as for a plain
 `several_ok` list (see [Multiple Choices with
 `several_ok`](#multiple-choices-with-several-ok)), and an omitted argument
-selects every choice as `Left`. Anything else goes to `R`. An explicit `NULL`
+selects every choice as `Left`. Anything else goes to `R`, and a value `R`
+refuses reads `'routes' must be one or more of "oral", "bolus", "infusion", or
+a data frame: got integer`. An explicit `NULL`
 goes to `R` too: that is the one difference from `several_ok` on `Vec<T>`,
 where `NULL` selects every choice. Only the owned containers decode under
 `Either`: `Either<[T; N], R>` and `Either<&[T], R>` are compile errors.

@@ -157,8 +157,20 @@ impl MatchArgError {
 /// in the words of an argument error (`'mode' must be one of "fast", "slow":
 /// got "zzz"`, #1594).
 pub fn one_of(choices: &[&str]) -> String {
+    choice_expectation(choices, false, "")
+}
+
+/// `one of "fast", "slow"<suffix>`, or `one or more of "fast", "slow"<suffix>`
+/// for a `several_ok` parameter (`several`), quoted as [`one_of`] quotes.
+/// The generated argument error of a `match_arg` / `choices` parameter on
+/// `Either<T, R>` passes the other accepted values as `suffix`
+/// (`, or a data frame`), in the words of its `@param` line; an `Either`
+/// whose arms both refused a value joins them with it too.
+#[doc(hidden)]
+pub fn choice_expectation(choices: &[&str], several: bool, suffix: &str) -> String {
     let quoted: Vec<String> = choices.iter().map(|c| format!("{c:?}")).collect();
-    format!("one of {}", quoted.join(", "))
+    let lead = if several { "one or more of" } else { "one of" };
+    format!("{lead} {}{suffix}", quoted.join(", "))
 }
 
 /// The text is complete on its own, for a conversion outside an argument:
@@ -386,6 +398,10 @@ pub fn match_arg_missing_or<U, E>(
 /// `choices(...)` parameter on `Either<String, R>` (or `Either<Vec<String>, R>`
 /// with `several_ok`) passes the string type's `TryFromSexp` as `left`.
 ///
+/// A value that `R` refuses is reported against the whole parameter:
+/// `'route' must be one of "oral", "bolus", "infusion", or a data frame: got
+/// integer`.
+///
 /// This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
 /// every input and would decode `NULL` as the first choice.
 #[cfg(feature = "either")]
@@ -538,5 +554,26 @@ mod tests {
         assert_eq!(escape_r_string("Fast"), "Fast");
         assert_eq!(escape_r_string("it's"), "it's");
         assert_eq!(escape_r_string(""), "");
+    }
+
+    /// The expectation of a choice parameter: one or several choices, the
+    /// other accepted values after them, quoted as `one_of` quotes.
+    #[test]
+    fn choice_expectation_names_the_choices_and_the_rest() {
+        use super::{choice_expectation, one_of};
+        assert_eq!(choice_expectation(&["fast"], false, ""), r#"one of "fast""#);
+        assert_eq!(
+            choice_expectation(&["fast", "slow"], false, ", or a data frame"),
+            r#"one of "fast", "slow", or a data frame"#
+        );
+        assert_eq!(
+            choice_expectation(&["fast", "slow"], true, ", or a number"),
+            r#"one or more of "fast", "slow", or a number"#
+        );
+        assert_eq!(
+            choice_expectation(&[r#"say "hi""#, "bye"], false, ""),
+            r#"one of "say \"hi\"", "bye""#
+        );
+        assert_eq!(one_of(&["fast", "slow"]), r#"one of "fast", "slow""#);
     }
 }

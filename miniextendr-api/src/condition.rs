@@ -1203,6 +1203,7 @@ impl<E: RConditionError> ConversionErrClassed for E {
 /// Conversion probe, built-in arm: the framework's own conversion errors
 /// ([`SexpError`](crate::from_r::SexpError) and the
 /// [`SexpTypeError`](crate::from_r::SexpTypeError) /
+/// [`SexpClassError`](crate::from_r::SexpClassError) /
 /// [`SexpLengthError`](crate::from_r::SexpLengthError) /
 /// [`SexpNaError`](crate::from_r::SexpNaError) it wraps, and
 /// [`MatchArgError`](crate::match_arg::MatchArgError)), reworded for R
@@ -1236,6 +1237,12 @@ fn builtin_reason_parts(message: String) -> ErrParts {
 }
 
 impl ConversionErrBuiltin for crate::from_r::SexpTypeError {
+    fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
+        builtin_reason_parts(self.r_reason(expected_known))
+    }
+}
+
+impl ConversionErrBuiltin for crate::from_r::SexpClassError {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
         builtin_reason_parts(self.r_reason(expected_known))
     }
@@ -1311,7 +1318,9 @@ macro_rules! __mx_conversion_err_parts {
 /// Expectation probe, built-in arm: an error that knows what the value should
 /// have been. A `match_arg` choice error (`MatchArgError`, or a `SexpError`
 /// carrying one, as `#[derive(MatchArg)]`'s `TryFromSexp` returns) names its
-/// choices: `one of "fast", "slow"`.
+/// choices: `one of "fast", "slow"`; a class error names the class
+/// (`a data frame`); an `Either` whose arms both refused the kind of value
+/// names both (`one of "fast", "slow", or numeric`).
 #[doc(hidden)]
 pub trait ConversionExpectBuiltin {
     fn __mx_conversion_expectation(&self) -> Option<String>;
@@ -1345,7 +1354,9 @@ impl<E> ConversionExpectNone for &E {
 /// Internal: what a failed argument conversion's error says the value should
 /// have been, for a parameter whose Rust type gives the macro no R-facing
 /// expectation (#1594). `Some("one of \"fast\", \"slow\"")` for a `match_arg`
-/// choice error, `None` otherwise. Not public API.
+/// choice error, `Some("a data frame")` for a class error, the joined
+/// expectation of an `Either` whose arms both refused the kind of value,
+/// `None` otherwise. Not public API.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_conversion_expectation {
@@ -2328,7 +2339,9 @@ mod condition_macro_tests {
     #[test]
     fn conversion_probe_rewords_builtin_errors() {
         use crate::SEXPTYPE;
-        use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError};
+        use crate::from_r::{
+            SexpClassError, SexpError, SexpLengthError, SexpNaError, SexpTypeError,
+        };
 
         // The probe takes the owned error, as in the generated `Err(e)` arm.
         let message = |e: &SexpError, known: bool| {
@@ -2348,6 +2361,17 @@ mod condition_macro_tests {
         });
         assert_eq!(message(&e, true), "got character");
         assert_eq!(message(&e, false), "expected integer, got character");
+        // The macro states a type error's expectation; the error gives none.
+        assert_eq!(e.r_expectation(), None);
+        // A class error names the class, as the expectation and in the
+        // per-element reason.
+        let e = SexpError::Class(SexpClassError {
+            expected: "a data frame",
+            actual: SEXPTYPE::VECSXP,
+        });
+        assert_eq!(message(&e, true), "got list");
+        assert_eq!(message(&e, false), "expected a data frame, got list");
+        assert_eq!(e.r_expectation().as_deref(), Some("a data frame"));
         let e = SexpError::Length(SexpLengthError {
             expected: 1,
             actual: 2,
@@ -2380,6 +2404,18 @@ mod condition_macro_tests {
         assert_eq!(
             crate::__mx_conversion_err_parts!(e).message,
             "expected numeric, got list"
+        );
+        let e = SexpClassError {
+            expected: "a data frame",
+            actual: SEXPTYPE::INTSXP,
+        };
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e, true).message,
+            "got integer"
+        );
+        assert_eq!(
+            crate::__mx_conversion_err_parts!(e).message,
+            "expected a data frame, got integer"
         );
 
         // `MatchArgError` takes the built-in arm too: R-worded, and after the
@@ -2474,6 +2510,131 @@ mod condition_macro_tests {
             r#"'mode' must be NULL or one of "fast", "slow""#
         );
         assert_eq!(conversion_prefix("x", true, None), "invalid 'x' argument");
+    }
+
+    /// An `Either` whose arms both refused the kind of value (a type or class
+    /// error, a `match_arg` refusal of a non-string, or a nested `Either` of
+    /// those) names both arms, as the reason and as the expectation; an arm
+    /// that got further gives the reason instead.
+    #[cfg(feature = "either")]
+    #[test]
+    fn either_conversion_names_both_arms_that_refused_the_kind() {
+        use crate::SEXPTYPE;
+        use crate::from_r::{SexpClassError, SexpError, SexpLengthError, SexpTypeError};
+        use crate::match_arg::MatchArgError;
+
+        let either = |l: SexpError, r: SexpError| SexpError::EitherConversion {
+            left_error: Box::new(l),
+            right_error: Box::new(r),
+        };
+        let ty = |expected, actual| SexpError::Type(SexpTypeError { expected, actual });
+        let frame = |actual| {
+            SexpError::Class(SexpClassError {
+                expected: "a data frame",
+                actual,
+            })
+        };
+        let refused =
+            |actual, choices| SexpError::MatchArg(MatchArgError::InvalidType { actual, choices });
+        const ROUTES: &[&str] = &["oral", "bolus"];
+        const MODES: &[&str] = &["fast", "bolus"];
+        // (error, reason with the expectation known, reason without it,
+        // expectation)
+        let check = |e: SexpError, known: &str, unknown: &str, expected: Option<&str>| {
+            assert_eq!(e.r_reason(true), known, "{e}");
+            assert_eq!(e.r_reason(false), unknown, "{e}");
+            assert_eq!(e.r_expectation().as_deref(), expected, "{e}");
+        };
+        use SEXPTYPE::{INTSXP, LGLSXP, REALSXP, STRSXP, VECSXP};
+
+        check(
+            either(ty(INTSXP, REALSXP), ty(STRSXP, REALSXP)),
+            "got numeric",
+            "expected integer or character, got numeric",
+            Some("integer or character"),
+        );
+        check(
+            either(ty(REALSXP, VECSXP), frame(VECSXP)),
+            "got list",
+            "expected numeric or a data frame, got list",
+            Some("numeric or a data frame"),
+        );
+        check(
+            either(frame(INTSXP), ty(STRSXP, INTSXP)),
+            "got integer",
+            "expected a data frame or character, got integer",
+            Some("a data frame or character"),
+        );
+        check(
+            either(refused(LGLSXP, ROUTES), ty(REALSXP, LGLSXP)),
+            "got logical",
+            r#"expected one of "oral", "bolus", or numeric, got logical"#,
+            Some(r#"one of "oral", "bolus", or numeric"#),
+        );
+        check(
+            either(ty(REALSXP, LGLSXP), refused(LGLSXP, ROUTES)),
+            "got logical",
+            r#"expected numeric or one of "oral", "bolus", got logical"#,
+            Some(r#"numeric or one of "oral", "bolus""#),
+        );
+        // Two choice lists read as one, each choice once.
+        check(
+            either(refused(REALSXP, ROUTES), refused(REALSXP, MODES)),
+            "got numeric",
+            r#"expected one of "oral", "bolus", "fast", got numeric"#,
+            Some(r#"one of "oral", "bolus", "fast""#),
+        );
+        // A nested `Either` whose arms both refused the kind is one arm.
+        let inner = either(refused(VECSXP, ROUTES), ty(REALSXP, VECSXP));
+        check(
+            either(ty(LGLSXP, VECSXP), inner),
+            "got list",
+            r#"expected logical or one of "oral", "bolus", or numeric, got list"#,
+            Some(r#"logical or one of "oral", "bolus", or numeric"#),
+        );
+
+        // A string that matched no choice got further than a type error: its
+        // reason, and no joined expectation.
+        let no_match = SexpError::MatchArg(MatchArgError::NoMatch {
+            input: "zzz".into(),
+            choices: ROUTES,
+        });
+        check(
+            either(no_match.clone(), ty(REALSXP, STRSXP)),
+            r#"got "zzz""#,
+            r#"expected one of "oral", "bolus", got "zzz""#,
+            None,
+        );
+        let length = SexpError::Length(SexpLengthError {
+            expected: 1,
+            actual: 2,
+        });
+        check(
+            either(refused(REALSXP, ROUTES), length.clone()),
+            "got length 2",
+            "expected length 1, got length 2",
+            None,
+        );
+        let bad_value = SexpError::InvalidValue("data.frame has no column names".into());
+        check(
+            either(ty(REALSXP, VECSXP), bad_value.clone()),
+            "data.frame has no column names",
+            "data.frame has no column names",
+            None,
+        );
+        check(
+            either(bad_value, length),
+            "data.frame has no column names; got length 2",
+            "data.frame has no column names; expected length 1, got length 2",
+            None,
+        );
+        // A nested `Either` that got further is not a kind mismatch.
+        check(
+            either(ty(LGLSXP, STRSXP), either(no_match, ty(REALSXP, STRSXP))),
+            r#"got "zzz""#,
+            r#"expected one of "oral", "bolus", got "zzz""#,
+            None,
+        );
     }
 
     /// The conversion probe's preferred arm: an `RConditionError` error type

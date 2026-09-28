@@ -906,22 +906,13 @@ impl ParamAttrs {
     /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
     /// `Missing<T>`, and nothing for a plain choice.
     pub(crate) fn choice_doc_suffix(&self) -> String {
-        let mut alternatives: Vec<&str> = Vec::new();
-        if let Some(noun) = &self.either_noun {
-            alternatives.push(noun);
-        }
-        if self.optional {
-            alternatives.push(if self.omittable {
-                "NULL"
-            } else {
-                "NULL for no choice"
-            });
-        }
-        let mut suffix = match alternatives.as_slice() {
-            [] => String::new(),
-            [only] => format!(", or {only}"),
-            [init @ .., last] => format!(", {}, or {last}", init.join(", ")),
+        let null_word = if self.omittable {
+            "NULL"
+        } else {
+            "NULL for no choice"
         };
+        let mut suffix =
+            choice_alternatives_suffix(self.either_noun.as_deref(), self.optional, null_word);
         if self.omittable {
             suffix.push_str("; omitting the argument means no choice");
         }
@@ -960,16 +951,37 @@ impl ParamAttrs {
         use crate::rust_conversion_builder::ChoiceLeaf;
         let either = self.either_noun.is_some();
         if self.match_arg && (self.optional || self.omittable || either) {
-            Some(if self.several_ok {
+            return Some(if self.several_ok {
                 ChoiceLeaf::MatchArgSeveral
             } else {
                 ChoiceLeaf::MatchArg
-            })
-        } else if self.choices.is_some() && either {
-            Some(ChoiceLeaf::Literal)
-        } else {
-            None
+            });
         }
+        let choices = self.choices.as_ref().filter(|_| either)?;
+        Some(ChoiceLeaf::Literal {
+            choices: choices.clone(),
+            several: self.several_ok,
+        })
+    }
+}
+
+/// The other values a choice parameter accepts, after its quoted choices:
+/// `, or a data frame` for an `Either<.., R>` layer (`noun`, the `R` arm),
+/// `, or <null_word>` for an `Option<..>` layer (`optional`), `, a data frame,
+/// or <null_word>` for both, nothing for neither. Shared by the parameter's
+/// `@param` line ([`ParamAttrs::choice_doc_suffix`], which passes
+/// `NULL for no choice`) and the argument error of an `Either` choice
+/// parameter (which passes `NULL`), so the two word the alternatives alike.
+pub(crate) fn choice_alternatives_suffix(
+    noun: Option<&str>,
+    optional: bool,
+    null_word: &str,
+) -> String {
+    match (noun, optional) {
+        (None, false) => String::new(),
+        (Some(only), false) => format!(", or {only}"),
+        (None, true) => format!(", or {null_word}"),
+        (Some(noun), true) => format!(", {noun}, or {null_word}"),
     }
 }
 

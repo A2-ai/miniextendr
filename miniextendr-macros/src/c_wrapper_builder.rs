@@ -467,7 +467,7 @@ impl CWrapperContext {
             builder = builder.with_match_arg_several_ok(param.clone());
         }
         for (param, leaf) in &self.layered_choice_params {
-            builder = builder.with_layered_choice(param.clone(), *leaf);
+            builder = builder.with_layered_choice(param.clone(), leaf.clone());
         }
         for (param, message) in &self.no_na_params {
             builder = builder.with_no_na(param.clone(), message.clone());

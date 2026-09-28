@@ -9,7 +9,7 @@
 //! lives in `tests/cross-package/producer.pkg`.
 
 use crate::match_arg_tests::Mode;
-use miniextendr_api::{AsNumeric, AsNumericVec, miniextendr};
+use miniextendr_api::{AsNumeric, AsNumericVec, DataFrame, miniextendr};
 
 // region: the two paths
 
@@ -121,6 +121,19 @@ pub fn arg_error_u16s(counts: Vec<u16>) -> i32 {
 #[miniextendr(internal)]
 pub fn arg_error_pair(pair: (i32, String)) -> String {
     format!("{}:{}", pair.0, pair.1)
+}
+
+/// A data frame behind a newtype the macro knows nothing about: the class
+/// error says what it should have been.
+#[derive(miniextendr_api::TryFromSexp)]
+pub struct FrameArg(pub DataFrame);
+
+/// The number of rows of a data frame given through a newtype.
+/// @param x A data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn frame_arg(x: FrameArg) -> i32 {
+    i32::try_from(x.0.nrow()).expect("fewer than 2^31 rows")
 }
 
 /// `strict` input: a logical, raw, fractional or out-of-range value is the

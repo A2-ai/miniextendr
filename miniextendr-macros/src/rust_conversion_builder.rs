@@ -486,16 +486,25 @@ impl RustConversionBuilder {
                     return (vec![stmt], vec![]);
                 }
 
-                // A choice under `Missing` / `Option` layers (#1473, #1551):
-                // decoded layer by layer, outermost first.
+                // A choice under `Missing` / `Option` / `Either` layers (#1473,
+                // #1551): decoded layer by layer, outermost first. Under an
+                // `Either<.., R>` layer, a value `R` refuses is reported against
+                // the whole parameter, in the words of its `@param` line.
                 if let Some((_, leaf)) = self
                     .layered_choice_params
                     .iter()
                     .find(|(name, _)| *name == param_name)
                 {
                     let span = ty.span();
-                    let try_expr = layered_choice_expr(ty, *leaf, sexp_ident, span);
-                    let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
+                    let try_expr = layered_choice_expr(ty, leaf.clone(), sexp_ident, span);
+                    let choice_ctx = ArgContext::either_choice(&r_name, ty, leaf);
+                    let stmt = self.conversion_stmt(
+                        try_expr,
+                        choice_ctx.as_ref().unwrap_or(&ctx),
+                        ident,
+                        ty,
+                        span,
+                    );
                     return (vec![stmt], vec![]);
                 }
 
@@ -673,7 +682,7 @@ impl Default for RustConversionBuilder {
 // region: layered choice parameters
 
 /// Where the innermost value of a layered choice parameter comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChoiceLeaf {
     /// A scalar `match_arg` type (`T: MatchArg`), decoded with
     /// `match_arg_from_sexp::<T>`.
@@ -684,7 +693,13 @@ pub enum ChoiceLeaf {
     MatchArgSeveral,
     /// The string type of a `choices(...)` parameter, decoded with its own
     /// `TryFromSexp` (the R prelude already matched it against the list).
-    Literal,
+    Literal {
+        /// The choice list, which the argument error of an `Either<.., R>`
+        /// parameter names.
+        choices: Vec<String>,
+        /// `several_ok`: one or more of the choices.
+        several: bool,
+    },
 }
 
 /// A layer around a choice parameter's value, outermost first.
@@ -755,7 +770,7 @@ struct LayeredValue {
 
 impl LayeredValue {
     fn new(value: &syn::Type, leaf: ChoiceLeaf) -> Self {
-        let (choice_ty, boxed) = match (leaf, crate::classify_several_ok_container(value)) {
+        let (choice_ty, boxed) = match (&leaf, crate::classify_several_ok_container(value)) {
             (ChoiceLeaf::MatchArgSeveral, Some((container, inner))) => (
                 inner.clone(),
                 matches!(container, crate::SeveralOkContainer::BoxedSlice),
@@ -810,14 +825,14 @@ impl LayeredValue {
     /// a function path where one exists, a closure otherwise.
     fn decoder(&self, layers: &[ChoiceLayer]) -> TokenStream {
         let t = &self.choice_ty;
-        match (layers, self.leaf) {
+        match (layers, &self.leaf) {
             ([], ChoiceLeaf::MatchArg) => {
                 quote! { ::miniextendr_api::match_arg_from_sexp::<#t> }
             }
             ([], ChoiceLeaf::MatchArgSeveral) if !self.boxed => {
                 quote! { ::miniextendr_api::match_arg_vec_from_sexp::<#t> }
             }
-            ([], ChoiceLeaf::Literal) => {
+            ([], ChoiceLeaf::Literal { .. }) => {
                 quote! { <#t as ::miniextendr_api::TryFromSexp>::try_from_sexp }
             }
             ([ChoiceLayer::Null], ChoiceLeaf::MatchArg) => {
@@ -848,6 +863,11 @@ struct ArgContext {
     /// reason does not repeat it (`got character` rather than
     /// `expected integer, got character`).
     expected_known: bool,
+    /// An expression yielding the expectation (a `String`) on the failure
+    /// path, when the macro knows it but not its text: the choices of a
+    /// `match_arg` type under an `Either<.., R>` layer come from
+    /// `MatchArg::CHOICES`. Takes the place of `prefix`.
+    expected_at_run_time: Option<TokenStream>,
     /// The R formal's name, `e$param`.
     r_name: String,
     /// The Rust type as written in the signature, `e$rust_type`: kept for the
@@ -890,10 +910,46 @@ impl ArgContext {
         Self {
             prefix,
             expected_known: expected.is_some(),
+            expected_at_run_time: None,
             r_name: r_name.to_string(),
             rust_type: crate::type_inspect::type_display(ty),
             nullable: crate::type_inspect::is_option_type(value_ty),
         }
+    }
+
+    /// The context of a choice parameter of type `ty` decoded as `leaf`, when
+    /// the type has an `Either<.., R>` layer; `None` otherwise. A value `R`
+    /// refuses is reported against the whole parameter, in the words of its
+    /// `@param` line: `'route' must be one of "oral", "bolus", or a data
+    /// frame` (`one or more of` for `several_ok`, `, a data frame, or NULL`
+    /// under `Option`). The choices are `MatchArg::CHOICES` for a `match_arg`
+    /// type and the literal list for `choices(...)`; the `R` arm is named by
+    /// its `@param` noun ([`crate::type_inspect::r_value_noun`]). The error
+    /// then supplies only the reason (`got integer`).
+    fn either_choice(r_name: &str, ty: &syn::Type, leaf: &ChoiceLeaf) -> Option<Self> {
+        let layers = crate::type_inspect::choice_layers(ty);
+        let right = layers.either_right?;
+        let suffix = crate::miniextendr_fn::choice_alternatives_suffix(
+            Some(&crate::type_inspect::r_value_noun(right)),
+            layers.nullable,
+            "NULL",
+        );
+        let (choices, several) = match leaf {
+            ChoiceLeaf::Literal { choices, several } => (quote! { &[#(#choices),*] }, *several),
+            ChoiceLeaf::MatchArg | ChoiceLeaf::MatchArgSeveral => {
+                let choice_ty = LayeredValue::new(layers.value, leaf.clone()).choice_ty;
+                (
+                    quote! { <#choice_ty as ::miniextendr_api::MatchArg>::CHOICES },
+                    *leaf == ChoiceLeaf::MatchArgSeveral,
+                )
+            }
+        };
+        Some(Self {
+            expected_at_run_time: Some(quote! {
+                ::miniextendr_api::match_arg::choice_expectation(#choices, #several, #suffix)
+            }),
+            ..Self::with_expectation(r_name, ty, None)
+        })
     }
 }
 
@@ -912,13 +968,19 @@ fn conversion_err_arm(
     let ArgContext {
         prefix,
         expected_known,
+        expected_at_run_time,
         r_name,
         rust_type,
         nullable,
     } = ctx;
+    let expected = match expected_at_run_time {
+        Some(expr) => Expected::RunTime(expr),
+        None if *expected_known => Expected::Literal(prefix),
+        None => Expected::FromError,
+    };
     let value = conversion_value_tokens(
         &ConversionSubject {
-            static_prefix: expected_known.then_some(prefix.as_str()),
+            expected,
             quoted: r_name,
             param: r_name,
             nullable: *nullable,
@@ -966,17 +1028,29 @@ fn no_na_value_stmt(
     }
 }
 
+/// Where the `<expected>` of a conversion failure's `'<p>' must be <expected>`
+/// comes from.
+pub(crate) enum Expected<'a> {
+    /// The macro knows it: the whole prefix, `'<p>' must be <expected>`.
+    Literal(&'a str),
+    /// An expression the macro wrote yields it on the failure path (the
+    /// choices of a `match_arg` type): the prefix is `'<p>' must be <it>`.
+    RunTime(&'a TokenStream),
+    /// The error may know it (`__mx_conversion_expectation!`), else the
+    /// prefix is `invalid '<p>' argument`.
+    FromError,
+}
+
 /// What a conversion failure is about: the value it names and how.
 pub(crate) struct ConversionSubject<'a> {
-    /// `'<p>' must be <expected>` when the macro knows the R-facing
-    /// expectation, else `None` (asked of the error at run time).
-    pub(crate) static_prefix: Option<&'a str>,
+    /// Where the expectation in the message prefix comes from.
+    pub(crate) expected: Expected<'a>,
     /// The name quoted in the message: the parameter, or a sidecar's field.
     pub(crate) quoted: &'a str,
     /// `e$param`: the R formal that failed.
     pub(crate) param: &'a str,
-    /// The value may be `NULL` (`Option<_>`): a run-time expectation reads
-    /// `NULL or <expected>`.
+    /// The value may be `NULL` (`Option<_>`): an expectation the error
+    /// supplies reads `NULL or <expected>` ([`Expected::FromError`] only).
     pub(crate) nullable: bool,
     /// `e$rust_type`: the Rust type as written.
     pub(crate) rust_type: &'a str,
@@ -985,14 +1059,15 @@ pub(crate) struct ConversionSubject<'a> {
 /// The `conversion_condition_value(...)` expression for the error bound as
 /// `e` on `subject`, with the crate class and `call`.
 ///
-/// With a `static_prefix` (the macro knows the R-facing expectation,
-/// `'<p>' must be <expected>`) the prefix is that literal. Without one, the
-/// error may know what the value should have been (a `match_arg` choice
-/// error: `one of "fast", "slow"`, #1594), so the prefix is built on the
-/// failure path from `__mx_conversion_expectation!(e)` by
-/// `condition::conversion_prefix` (`NULL or ...` when `nullable`), falling
-/// back to `invalid '<p>' argument`. Shared by the argument conversions and
-/// the sidecar setters.
+/// With [`Expected::Literal`] (the macro knows the R-facing expectation,
+/// `'<p>' must be <expected>`) the prefix is that literal; with
+/// [`Expected::RunTime`] it is `'<p>' must be ` and the expression's value.
+/// With [`Expected::FromError`] the error may know what the value should
+/// have been (a `match_arg` choice error: `one of "fast", "slow"`, #1594), so
+/// the prefix is built on the failure path from
+/// `__mx_conversion_expectation!(e)` by `condition::conversion_prefix`
+/// (`NULL or ...` when `nullable`), falling back to `invalid '<p>' argument`.
+/// Shared by the argument conversions and the sidecar setters.
 pub(crate) fn conversion_value_tokens(
     subject: &ConversionSubject,
     crate_class: &[String],
@@ -1000,15 +1075,15 @@ pub(crate) fn conversion_value_tokens(
     span: proc_macro2::Span,
 ) -> TokenStream {
     let ConversionSubject {
-        static_prefix,
+        expected,
         quoted,
         param,
         nullable,
         rust_type,
     } = subject;
     let rust_type = quote! { ::core::option::Option::Some(#rust_type) };
-    match static_prefix {
-        Some(prefix) => quote_spanned! {span=>
+    match expected {
+        Expected::Literal(prefix) => quote_spanned! {span=>
             ::miniextendr_api::error_value::conversion_condition_value(
                 #prefix,
                 #param,
@@ -1018,7 +1093,17 @@ pub(crate) fn conversion_value_tokens(
                 #call,
             )
         },
-        None => quote_spanned! {span=> {
+        Expected::RunTime(expr) => quote_spanned! {span=>
+            ::miniextendr_api::error_value::conversion_condition_value(
+                &::std::format!("'{}' must be {}", #quoted, #expr),
+                #param,
+                #rust_type,
+                &[#(#crate_class),*],
+                ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                #call,
+            )
+        },
+        Expected::FromError => quote_spanned! {span=> {
             let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
             ::miniextendr_api::error_value::conversion_condition_value(
                 &::miniextendr_api::condition::conversion_prefix(

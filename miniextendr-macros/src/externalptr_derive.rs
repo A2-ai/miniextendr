@@ -696,7 +696,10 @@ fn generate_setter_body(
                 .map(|expected| format!("'{field_r_name}' must be {expected}"));
             let err_value = crate::rust_conversion_builder::conversion_value_tokens(
                 &crate::rust_conversion_builder::ConversionSubject {
-                    static_prefix: prefix.as_deref(),
+                    expected: prefix.as_deref().map_or(
+                        crate::rust_conversion_builder::Expected::FromError,
+                        crate::rust_conversion_builder::Expected::Literal,
+                    ),
                     quoted: &field_r_name,
                     param: "value",
                     nullable: crate::type_inspect::is_option_type(ty),

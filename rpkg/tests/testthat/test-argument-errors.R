@@ -328,18 +328,63 @@ test_that("an Either choice raises the argument error on both paths", {
   expect_identical(e$kind, "conversion")
   expect_identical(e$param, "route")
   expect_identical(e$rust_type, "Either<Route, DataFrame>")
-  # The data frame arm refuses the type in R terms, not SEXPTYPE names.
-  expect_identical(conditionMessage(e), "invalid 'route' argument: expected list, got integer")
+  # The refusal names the whole parameter, in the words of its @param line;
+  # the data frame arm gives only the reason, in R terms.
+  expect_identical(
+    conditionMessage(e),
+    "'route' must be one of \"oral\", \"bolus\", \"infusion\", or a data frame: got integer"
+  )
   expect_equal(conditionCall(e), quote(match_arg_either_route(1:3)))
-  # A built-in conversion error in the other arm reads in R terms, after an
-  # expectation naming both sides.
+  route_error <- function(expr) conditionMessage(caught(expr))
+  expect_identical(
+    route_error(match_arg_either_route(NULL)),
+    "'route' must be one of \"oral\", \"bolus\", \"infusion\", or a data frame: got NULL"
+  )
+  # A list that is not a data frame is not a data frame at all.
+  expect_identical(
+    route_error(match_arg_either_route(list(1))),
+    "'route' must be one of \"oral\", \"bolus\", \"infusion\", or a data frame: got list"
+  )
+  # A data frame that fails later keeps its own reason.
+  expect_identical(
+    route_error(match_arg_either_route(structure(list(1), class = "data.frame"))),
+    paste0(
+      "'route' must be one of \"oral\", \"bolus\", \"infusion\", or a data frame: ",
+      "data.frame has no column names"
+    )
+  )
+  # several_ok, and `NULL` under an `Option` layer.
+  expect_identical(
+    route_error(match_arg_either_routes(1:3)),
+    "'routes' must be one or more of \"oral\", \"bolus\", \"infusion\", or a data frame: got integer"
+  )
+  expect_identical(
+    route_error(match_arg_either_route_optional(1:3)),
+    paste0(
+      "'maybe_route' must be one of \"oral\", \"bolus\", \"infusion\", ",
+      "a data frame, or NULL: got integer"
+    )
+  )
+  # A method takes the same branch.
+  e <- caught(EitherRoutePlanner$new()$plan(1:3))
+  expect_identical(e$param, "route")
+  expect_identical(
+    conditionMessage(e),
+    "'route' must be one of \"oral\", \"bolus\", \"infusion\", or a data frame: got integer"
+  )
+  # `choices(...)` names its list and the other arm's @param noun.
   e <- caught(choices_either_level(TRUE))
   expect_identical(class(e), layers)
   expect_identical(e$param, "level")
   expect_identical(e$rust_type, "Either<String, f64>")
   expect_identical(
     conditionMessage(e),
-    "'level' must be a single string or a single double: got logical"
+    "'level' must be one of \"low\", \"mid\", \"high\", or a number: got logical"
+  )
+  # `f64` stays storage-strict: an integer is not a number here.
+  expect_identical(
+    route_error(choices_either_level(1L)),
+    "'level' must be one of \"low\", \"mid\", \"high\", or a number: got integer"
   )
 })
 
@@ -407,6 +452,16 @@ test_that("Either, AsFromStr and tuple arguments say what they accept", {
     "'value' must be a single integer or a single string: got list"
   )
 
+  # A data frame argument given a list that is not a data frame.
+  e <- caught(df_option_scalar_none_count(list()))
+  expect_identical(e$param, "df")
+  expect_identical(conditionMessage(e), "'df' must be a data frame: got list")
+  # Behind a newtype the macro knows nothing about, the class error says what
+  # the value should have been.
+  e <- caught(miniextendr:::frame_arg(1))
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "'x' must be a data frame: got numeric")
+
   e <- caught(miniextendr:::test_fromstr_ip(1))
   expect_identical(e$param, "addr")
   expect_identical(conditionMessage(e), "'addr' must be a single string: got numeric")
@@ -431,6 +486,80 @@ test_that("Either, AsFromStr and tuple arguments say what they accept", {
     "'pair' must be a list of length 2: got length 1"
   )
   expect_identical(miniextendr:::arg_error_pair(list(3L, "x")), "3:x")
+})
+
+test_that("an Either whose arms both refuse the kind of value names both", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature not compiled in")
+  refusal <- function(expr) conditionMessage(caught(expr))
+  # Both arms known to the macro: the static prefix, and the reason for a list
+  # that is not a data frame is its type.
+  expect_identical(miniextendr:::either_num_or_df(c(1, 2)), "num:2")
+  expect_identical(
+    refusal(miniextendr:::either_num_or_df(list(4, 8, 12))),
+    "'x' must be double or a data frame: got list"
+  )
+  expect_identical(
+    refusal(miniextendr:::either_num_or_df(NULL)),
+    "'x' must be double or a data frame: got NULL"
+  )
+  # An opaque arm: the expectation comes from the two arms' errors.
+  expect_identical(miniextendr:::either_opaque_or_df(c("1", "2")), "num:2")
+  expect_identical(
+    refusal(miniextendr:::either_opaque_or_df(list(4, 8, 12))),
+    "'x' must be numeric or a data frame: got list"
+  )
+  expect_identical(
+    refusal(miniextendr:::either_opaque_or_df(NULL)),
+    "'x' must be numeric or a data frame: got NULL"
+  )
+  # A `match_arg` enum decoded by its own `TryFromSexp` (no `match_arg`
+  # attribute) refuses a value that is not a string by its kind too.
+  expect_identical(miniextendr:::either_route_or_number("oral"), "Oral")
+  expect_identical(miniextendr:::either_route_or_number(2.5), "number:2.5")
+  e <- caught(miniextendr:::either_route_or_number(TRUE))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "x")
+  expect_identical(e$rust_type, "Either<Route, f64>")
+  expect_identical(
+    conditionMessage(e),
+    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got logical"
+  )
+  expect_identical(
+    refusal(miniextendr:::either_route_or_number(1L)),
+    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got integer"
+  )
+  expect_identical(
+    refusal(miniextendr:::either_route_or_number(list(1))),
+    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got list"
+  )
+  # A string that matches no choice got further: the choice's reason.
+  expect_identical(
+    refusal(miniextendr:::either_route_or_number("zzz")),
+    "invalid 'x' argument: expected one of \"oral\", \"bolus\", \"infusion\", got \"zzz\""
+  )
+  # Only the number arm got as far as the length.
+  expect_identical(
+    refusal(miniextendr:::either_route_or_number(c(1, 2))),
+    "invalid 'x' argument: expected length 1, got length 2"
+  )
+  # A data frame that fails later keeps its own reason.
+  expect_identical(
+    refusal(miniextendr:::either_num_or_df(structure(list(1), class = "data.frame"))),
+    "'x' must be double or a data frame: data.frame has no column names"
+  )
+  # A nested `Either` whose arms both refused the value is one such arm.
+  expect_identical(miniextendr:::either_flag_or_route_or_number(TRUE), "flag:true")
+  expect_identical(miniextendr:::either_flag_or_route_or_number("bolus"), "Bolus")
+  expect_identical(
+    refusal(miniextendr:::either_flag_or_route_or_number(list())),
+    "'x' must be logical or one of \"oral\", \"bolus\", \"infusion\", or numeric: got list"
+  )
+  # Two choice lists read as one.
+  expect_identical(miniextendr:::either_route_or_mode("Safe"), "mode:Safe")
+  expect_identical(
+    refusal(miniextendr:::either_route_or_mode(1)),
+    "'x' must be one of \"oral\", \"bolus\", \"infusion\", \"Fast\", \"Safe\", \"Debug\": got numeric"
+  )
 })
 
 test_that("strict input rejections are argument errors, batched over a vector", {
