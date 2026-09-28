@@ -39,7 +39,7 @@ For every `#[miniextendr] pub fn foo(x: i32) -> String`, the macro generates:
 2. A `#[distributed_slice(MX_CALL_DEFS)]` entry containing the C function pointer
    and name string, registered with R at package load via `R_init_*`.
 3. A `#[distributed_slice(MX_R_WRAPPERS)]` entry containing an R wrapper function
-   string that calls `.Call(C_<crate>_foo, x, .call = sys.call())`. This string is
+   string that calls `.Call(C_<crate>_foo, .call = sys.call(), x)`. This string is
    written to `R/miniextendr-wrappers.R` during the cdylib build phase by
    `miniextendr_write_wrappers` in `miniextendr-api/src/registry.rs`.
 

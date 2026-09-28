@@ -61,7 +61,7 @@ Never returns — always raises a \code{rust_error}.
 \description{
 Vctrs ctors return vector payload (not Self) — vctrs::new_vctr wraps it.
 
-vctrs protocol override — emits \code{format.VctrsRaiser(x, ...)} for S3 dispatch via \code{UseMethod("format")}. Always panics so the test can inspect \code{conditionCall} for the dispatched generic name. Note that \code{format}-protocol dispatch is what's being exercised here, not arbitrary \verb{vctrs_*} S3 generics — \code{match.call()} inside \code{format.VctrsRaiser} captures the dispatched-method call frame, not the user's \code{format(obj)} call.
+vctrs protocol override — emits \code{format.VctrsRaiser(x, ...)} for S3 dispatch via \code{UseMethod("format")}. Always panics so the test can inspect \code{conditionCall} for the dispatched generic name. Note that \code{format}-protocol dispatch is what's being exercised here, not arbitrary \verb{vctrs_*} S3 generics — \code{sys.call()} inside \code{format.VctrsRaiser} captures the dispatched-method call frame, not the user's \code{format(obj)} call.
 
 The argument is named \code{x} (not \code{values}) so the generated S3 method signature \code{format.VctrsRaiser(x, ...)} matches the base S3 generic \code{format(x, ...)} — otherwise \verb{R CMD check} raises an S3 generic/method consistency WARNING.
 }

@@ -12,11 +12,11 @@
 //!
 //! 1. An instance method (`boom()`) that panics — exercises the normal
 //!    `#[miniextendr]` path on a class that **also** has sidecar fields.
-//!    `match.call()` is attached as usual; `conditionCall` reflects the R6
+//!    `sys.call()` is attached as usual; `conditionCall` reflects the R6
 //!    active-binding lambda or NULL.
 //! 2. A standalone fn (`sidecar_consumer_panic`) that accepts the sidecar
 //!    object as `ExternalPtr<PanickingSidecar>` and panics — exercises the
-//!    standalone-fn path where the caller carries full `match.call()`
+//!    standalone-fn path where the caller carries the `sys.call()`
 //!    attribution.
 //!
 //! Tests live in `rpkg/tests/testthat/test-conditions-comprehensive.R`.
@@ -75,7 +75,7 @@ pub fn panicking_sidecar_new(doom: String) -> ExternalPtr<PanickingSidecar> {
 }
 
 /// Standalone fn that accepts the sidecar object and panics. Exercises the
-/// standalone-fn path: the R wrapper carries `.call = match.call()` so
+/// standalone-fn path: the R wrapper carries `.call = sys.call()` so
 /// `conditionCall(e)` is non-NULL and references the wrapper.
 ///
 /// @param x A `PanickingSidecar` instance (unused; just exercises argument

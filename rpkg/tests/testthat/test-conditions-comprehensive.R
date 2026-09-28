@@ -324,7 +324,7 @@ test_that("Env: message!() raises rust_message", {
 # are exercised:
 #
 #   1. Static helpers — emit `vctrsraiser_vctrs_raise_*(values, …)` plain
-#      wrapped fns with full match.call() attribution.
+#      wrapped fns with the sys.call() attribution.
 #   2. `#[miniextendr(vctrs(format))]` — emits the S3 method
 #      `format.VctrsRaiser(x, ...)`; user calls `format(x)` which dispatches
 #      via `UseMethod("format")`. The Rust argument is named `_x` (not
@@ -426,7 +426,7 @@ test_that("Vctrs: format protocol override dispatches via UseMethod", {
 # with `numArgs = 1/2`, no call slot — see #348). When a panic surfaces
 # through a sidecar-bearing R6 class via the normal `#[miniextendr]` method
 # path, the call attribution still works because the panicking method takes
-# the `#[miniextendr]` path (full `match.call()`); only the *accessor*
+# the `#[miniextendr]` path (`.call = sys.call()`); only the *accessor*
 # wrappers omit it. These tests assert that:
 #
 #   - an instance method on a sidecar-bearing class panics with `rust_error`,
@@ -449,7 +449,7 @@ test_that("sidecar-class method panic preserves e$kind = 'error'", {
 
 test_that("sidecar field read survives before the panicking method runs", {
   obj <- PanickingSidecar$new("doom!")
-  # The sidecar accessor is the path *without* match.call(). Reading the
+  # The sidecar accessor is the path with no `.call` argument. Reading the
   # field through the active binding must succeed (no panic).
   expect_equal(obj$doom, "doom!")
 })
@@ -463,7 +463,7 @@ test_that("standalone fn consuming sidecar panics with rust_error (bare pointer)
   expect_true(inherits(e, "rust_error"))
   expect_equal(conditionMessage(e), "consumer boom")
   cl <- conditionCall(e)
-  # standalone fn carries match.call() — call is non-NULL and references the
+  # standalone fn carries sys.call() — call is non-NULL and references the
   # wrapper.
   expect_false(is.null(cl))
   expect_true(grepl("sidecar_consumer_panic", deparse(cl)[[1]]))
