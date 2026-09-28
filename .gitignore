@@ -16,6 +16,8 @@ target/
 # R package build artifacts
 *.Rcheck/
 *.tar.gz
+# `R CMD build --log` (just r-cmd-build) writes this next to the package dir
+rpkg-00build.log
 
 # R CMD INSTALL library location
 dev_lib/
