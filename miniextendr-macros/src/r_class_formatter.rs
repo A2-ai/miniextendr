@@ -450,7 +450,7 @@ impl<'a> MethodContext<'a> {
     /// Like [`instance_call`](Self::instance_call) but passes `.call = NULL`.
     ///
     /// Use for lambda dispatch sites (S7 property getter/setter) where
-    /// `match.call()` captures the S7 dispatch frame, not the user's call.
+    /// `sys.call()` names the S7 dispatch frame, not the user's call.
     pub fn instance_call_null_attr(&self, self_expr: &str) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
             .null_call_attribution()
@@ -1283,7 +1283,7 @@ mod tests {
     fn test_method_context_static_call_no_args() {
         // This is a unit test for the static_call method
         // We'd need a mock ParsedMethod to test fully, but we can test the logic
-        let call = ".Call(C_Test, .call = match.call())";
+        let call = ".Call(C_Test, .call = sys.call())";
         assert!(call.contains(".Call"));
     }
 

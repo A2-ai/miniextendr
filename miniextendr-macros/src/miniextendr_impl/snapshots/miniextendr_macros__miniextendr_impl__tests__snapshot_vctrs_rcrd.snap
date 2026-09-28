@@ -14,7 +14,7 @@ new_rational <- function(n, d) {
   if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
   if (!isTRUE(is.integer(d))) .miniextendr_arg_error("d", "must be integer")
   if (!isTRUE(length(d) == 1L)) .miniextendr_arg_error("d", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Rational__new, .call = match.call(), n, d)
+  .val <- .Call(C_miniextendr_macros_Rational__new, .call = sys.call(), n, d)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
   vctrs::new_rcrd(data, class = "Rational")
@@ -48,7 +48,7 @@ vec_cast.Rational.Rational <- function(x, to, ...) x
 #' @export
 rational_numerator <- function(n) {
   if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be an integer vector")
-  .val <- .Call(C_miniextendr_macros_Rational__numerator, .call = match.call(), n)
+  .val <- .Call(C_miniextendr_macros_Rational__numerator, .call = sys.call(), n)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

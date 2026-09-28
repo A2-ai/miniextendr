@@ -555,7 +555,7 @@ pub struct MethodAttrs {
     /// When set, generates an S3 method for R's `as.<class>()` generic:
     /// ```r
     /// as.data.frame.MyType <- function(x, ...) {
-    ///     .Call(C_MyType__as_data_frame, .call = match.call(), x)
+    ///     .Call(C_MyType__as_data_frame, .call = sys.call(), x)
     /// }
     /// ```
     ///
@@ -3735,7 +3735,7 @@ pub(crate) use vctrs_class::generate_vctrs_r_wrapper;
 /// #' @export
 /// #' @method as.data.frame MyType
 /// as.data.frame.MyType <- function(x, ...) {
-///     .Call(C_MyType__as_data_frame, .call = match.call(), x)
+///     .Call(C_MyType__as_data_frame, .call = sys.call(), x)
 /// }
 /// ```
 ///

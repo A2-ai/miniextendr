@@ -54,11 +54,11 @@ name — `mypkg` here — for webR cross-package uniqueness, see `docs/WEBR.md`)
 
 ```r
 as.data.frame.Person <- function(x, ...) {
-    .Call(C_mypkg_Person__as_data_frame, .call = match.call(), x)
+    .Call(C_mypkg_Person__as_data_frame, .call = sys.call(), x)
 }
 
 as.character.Person <- function(x, ...) {
-    .Call(C_mypkg_Person__as_character, .call = match.call(), x)
+    .Call(C_mypkg_Person__as_character, .call = sys.call(), x)
 }
 ```
 

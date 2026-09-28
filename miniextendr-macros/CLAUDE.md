@@ -18,8 +18,8 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - `miniextendr_impl_trait.rs` (+ `miniextendr_impl_trait/`) — trait-impl method codegen, ABI-compatible.
 - `miniextendr_trait.rs` — `#[miniextendr_trait]` declaration codegen. Trait-ABI vtable shims wrap in `with_r_unwind_protect_shim` (returns a tagged error SEXP that the View method re-panics into the consumer's outer `with_r_unwind_protect` guard) — see `miniextendr_trait.rs:808`.
 - `c_wrapper_builder.rs` (+ dir) — `CWrapperContext` for impl method C wrappers. **Prepends `__miniextendr_call: SEXP` as first param.**
-- `externalptr_derive.rs` — hand-rolls C wrappers for sidecar `*_get_field` / `*_set_field` accessors: `(x: SEXP)` / `(x, value: SEXP)`, `numArgs = 1/2`, **no call slot**. Adding `.call = match.call()` to the R side breaks at runtime (PR #344 reverted this).
-- `r_wrapper_builder.rs` (+ dir) — R-side `.Call(C_…, .call = match.call(), …)` emission. `DotCallBuilder` at ~L390 is the canonical site; use `.null_call_attribution()` for lambda contexts (R6 finalizer/deep_clone, S7 getter/setter/validator).
+- `externalptr_derive.rs` — hand-rolls C wrappers for sidecar `*_get_field` / `*_set_field` accessors: `(x: SEXP)` / `(x, value: SEXP)`, `numArgs = 1/2`, **no call slot**. Adding a `.call` argument to the R side breaks at runtime (PR #344 reverted this).
+- `r_wrapper_builder.rs` (+ dir) — R-side `.Call(C_…, .call = sys.call(), …)` emission (the call as written). `DotCallBuilder` at ~L390 is the canonical site; use `.null_call_attribution()` for lambda contexts (R6 finalizer/deep_clone, S7 getter/setter/validator).
 - `r_class_formatter.rs` — shared `MethodContext` for all 6 class generators.
 - `return_type_analysis.rs` — return-type → codegen for standalone fns (strict-aware).
 - `method_return_builder.rs` (+ dir) — same for impl methods.

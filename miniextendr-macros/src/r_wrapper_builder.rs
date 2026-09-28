@@ -392,23 +392,19 @@ pub(crate) fn is_missing_type(ty: &syn::Type) -> bool {
 /// the raise fallback (`.miniextendr_raise_condition(.val, <default>)`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CallAttribution {
-    /// `.call = match.call()`: the wrapper's own call, formals matched (default).
+    /// `.call = sys.call()`: the wrapper's own call, as written (default).
     #[default]
     Wrapper,
     /// `.call = .mx_call`, where the wrapper body first binds
-    /// `.mx_call <- .miniextendr_caller_call()`: the caller's call with the
-    /// caller's formals matched, resolved by the preamble helper in
-    /// `miniextendr-api/src/registry.rs` (one line per wrapper since #1552,
-    /// four before). The helper looks two frames up the calling chain for the
-    /// wrapper's caller, and hands `match.call()` the frame that call was
-    /// evaluated in, where a literal `...` in it is bound: a `function(...)`
-    /// helper forwarding into the caller, or `lapply()`'s `FUN(X[[i]], ...)`
-    /// (#1462). It falls back to the wrapper's own matched call when there is
-    /// no parent frame (top level) or the parent frame is not a closure:
-    /// `eval()`'d code such as a testthat block or `source()` has the `eval`
-    /// primitive as its frame function, and `match.call()` rejects a
-    /// non-closure definition. For a `noexport` entry point behind a
-    /// hand-written R function (`#[miniextendr(noexport, call = caller)]`).
+    /// `.mx_call <- .miniextendr_caller_call()`: the caller's call as written,
+    /// resolved by the preamble helper in `miniextendr-api/src/registry.rs`
+    /// (one line per wrapper since #1552, four before). The helper looks two
+    /// frames up the calling chain for the wrapper's caller. It falls back to
+    /// the wrapper's own call when there is no parent frame (top level) or the
+    /// parent frame is not a closure: `eval()`'d code such as a testthat block
+    /// or `source()` has the `eval` primitive as its frame function, whose call
+    /// names `eval`. For a `noexport` entry point behind a hand-written R
+    /// function (`#[miniextendr(noexport, call = caller)]`).
     ///
     /// A standalone wrapper with this attribution also takes a trailing
     /// `.call = NULL` formal ([`CallAttribution::formal`], #1613), which the
@@ -485,7 +481,7 @@ impl CallAttribution {
     /// The `.call = ...` argument for the `.Call()` line.
     pub fn dot_call_arg(self) -> &'static str {
         match self {
-            CallAttribution::Wrapper => ".call = match.call()",
+            CallAttribution::Wrapper => ".call = sys.call()",
             CallAttribution::Caller => ".call = .mx_call",
             CallAttribution::None => ".call = NULL",
         }
@@ -630,7 +626,7 @@ pub(crate) fn with_call_formal(formals: &str, call_formal: Option<&str>) -> Stri
 
 /// Builder for formatting `.Call()` invocations in R wrapper code.
 ///
-/// Handles the common pattern of `.Call(C_ident, .call = match.call(), args...)`.
+/// Handles the common pattern of `.Call(C_ident, .call = sys.call(), args...)`.
 ///
 /// # Example
 ///
@@ -638,13 +634,13 @@ pub(crate) fn with_call_formal(formals: &str, call_formal: Option<&str>) -> Stri
 /// let call = DotCallBuilder::new("C_Counter__increment")
 ///     .with_self("self")
 ///     .build();
-/// // => ".Call(C_Counter__increment, .call = match.call(), self)"
+/// // => ".Call(C_Counter__increment, .call = sys.call(), self)"
 ///
 /// let call = DotCallBuilder::new("C_Counter__add")
 ///     .with_self("x")
 ///     .with_args(&["n"])
 ///     .build();
-/// // => ".Call(C_Counter__add, .call = match.call(), x, n)"
+/// // => ".Call(C_Counter__add, .call = sys.call(), x, n)"
 /// ```
 pub struct DotCallBuilder {
     /// The C entry point symbol name (e.g., `"C_Counter__increment"`).
@@ -655,7 +651,7 @@ pub struct DotCallBuilder {
     self_var: Option<String>,
     /// Additional argument names passed after self (if any) in the `.Call()` invocation.
     args: Vec<String>,
-    /// Expression for the `.call` named argument. `None` means `match.call()` (the default).
+    /// Expression for the `.call` named argument. `None` means `sys.call()` (the default).
     /// Set via [`DotCallBuilder::null_call_attribution`] to emit `.call = NULL` instead.
     call_expr: Option<String>,
 }
@@ -694,13 +690,13 @@ impl DotCallBuilder {
         self
     }
 
-    /// Pass `.call = NULL` instead of `.call = match.call()`.
-    ///
-    /// Use for lambda dispatch sites (R6 finalizer/`deep_clone`, S7 property
-    /// getter/setter/validator) where `match.call()` captures an internal
-    /// dispatch frame instead of the user's call. With `NULL`, the
-    /// `if (is.null(.val$call)) .call_default else .val$call` fallback in `condition_check_lines` surfaces the
-    /// nearest meaningful frame instead.
+    /// Pass `.call = NULL` instead of `.call = sys.call()`: for the R6 / S7
+    /// lambda frames, which R6 / S7 dispatch calls (R6 finalizer / `deep_clone`, S7
+    /// property getter / setter / validator), where `sys.call()` names an
+    /// internal dispatch frame instead of the user's call. Not reachable from
+    /// any attribute. With `NULL`, the
+    /// `if (is.null(.val$call)) .call_default else .val$call` fallback in
+    /// `condition_check_lines` surfaces the nearest meaningful frame instead.
     pub fn null_call_attribution(mut self) -> Self {
         self.call_expr = Some("NULL".to_string());
         self
@@ -708,7 +704,7 @@ impl DotCallBuilder {
 
     /// Build the `.Call()` string.
     pub fn build(&self) -> String {
-        let call_arg = self.call_expr.as_deref().unwrap_or("match.call()");
+        let call_arg = self.call_expr.as_deref().unwrap_or("sys.call()");
 
         let mut all_args = Vec::new();
 

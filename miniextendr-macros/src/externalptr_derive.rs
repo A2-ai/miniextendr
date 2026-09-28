@@ -19,12 +19,12 @@
 //! |---|---|---|
 //! | First C param | `__miniextendr_call: SEXP` | none |
 //! | C `numArgs` | 1 + user args | `1` (getter) / `2` (setter) |
-//! | R `.Call` | `.Call(C_…, .call = match.call(), …)` | `.Call(C_…, x)` / `.Call(C_…, x, value)` |
+//! | R `.Call` | `.Call(C_…, .call = sys.call(), …)` | `.Call(C_…, x)` / `.Call(C_…, x, value)` |
 //! | Error transport | tagged-condition SEXP via `with_r_unwind_protect(…, Some(call))` | tagged-condition SEXP via `with_r_unwind_protect(…, None)`; the R guard's `sys.call()` supplies attribution |
 //!
-//! **Do not add `.call = match.call()` to a sidecar R wrapper.** The C
-//! function doesn't have a slot for it — R will throw "Incorrect number of
-//! arguments" at runtime. The two paths drifting apart is tracked in #348.
+//! **A sidecar R wrapper passes no `.call` argument.** The C function doesn't
+//! have a slot for it: R would throw "Incorrect number of arguments" at
+//! runtime (#344, #348).
 //!
 //! ## Usage
 //!
@@ -735,8 +735,8 @@ fn generate_setter_body(
 /// Each wrapper body carries the shared tagged-condition guard
 /// ([`crate::method_return_builder::standalone_body`]) so Rust-origin
 /// panics/conversion failures are re-raised as structured R conditions.
-/// Note the sidecar C functions have **no** `.call` slot — the `.Call()` must
-/// not pass `.call = match.call()` (#344/#348); `sys.call()` inside the guard
+/// Note the sidecar C functions have **no** `.call` slot — the `.Call()`
+/// passes no `.call` argument (#344/#348); `sys.call()` inside the guard
 /// supplies fallback attribution instead.
 fn generate_r_wrapper_for_slot(
     class_system: ClassSystem,
@@ -823,7 +823,7 @@ fn generate_class_integration_r_code(
 
     // Shared tagged-condition guard (one line); `sys.call()` supplies fallback
     // attribution because the sidecar C functions carry no `.call` slot
-    // (#344/#348 — never add `.call = match.call()` to a sidecar `.Call()`).
+    // (#344/#348 — a sidecar `.Call()` passes no `.call` argument).
     let guard =
         |indent: &str| crate::method_return_builder::condition_check_lines(indent).join("\n");
 
@@ -1430,11 +1430,11 @@ mod tests {
     ];
 
     /// Sidecar accessor C functions take only `x` (getter) or `x, value` (setter) —
-    /// no `__miniextendr_call` parameter. The R wrappers must NOT pass `.call = match.call()`
-    /// because that would be counted as an extra positional argument by `.Call()`, causing
+    /// no `__miniextendr_call` parameter. The R wrappers must pass no `.call` argument
+    /// because it would be counted as an extra positional argument by `.Call()`, causing
     /// "Incorrect number of arguments" errors at runtime. Cover every class system variant.
     #[test]
-    fn sidecar_accessors_do_not_pass_match_call() {
+    fn sidecar_accessors_pass_no_call_slot() {
         let getter_c = "C__mx_rdata_get_T_f";
         let setter_c = "C__mx_rdata_set_T_f";
 
@@ -1449,10 +1449,10 @@ mod tests {
                 out.contains(&format!(".Call({setter_c}, x, value)")),
                 "{cs:?} setter should call without .call:\n{out}"
             );
-            // Must NOT include the erroneous .call = match.call() form.
+            // No `.call =` in either spelling.
             assert!(
-                !out.contains(".call = match.call()"),
-                "{cs:?} sidecar wrapper must not pass .call = match.call():\n{out}"
+                !out.contains(".call ="),
+                "{cs:?} sidecar wrapper must not pass a .call argument:\n{out}"
             );
         }
     }
@@ -1554,8 +1554,8 @@ mod tests {
                 "{cs:?} integration getter+setter should each carry the condition guard:\n{out}"
             );
             assert!(
-                !out.contains(".call = match.call()"),
-                "{cs:?} integration code must not pass .call = match.call():\n{out}"
+                !out.contains(".call ="),
+                "{cs:?} integration code must not pass a .call argument:\n{out}"
             );
         }
     }

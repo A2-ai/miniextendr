@@ -4,12 +4,12 @@
 //! first slot, `.Call(C_pkg_f, .call = <call>, ...)`. Conditions raised from
 //! Rust (a panic, an `Err`, `error!()` & co.) and, for `caller` attribution,
 //! the wrapper's own R-side checks are attributed to that call, so
-//! `conditionCall()` names the function the user wrote with its formals
-//! matched. Which call it is comes from the wrapper's *attribution*:
+//! `conditionCall()` names the function as the user wrote it. Which call it is
+//! comes from the wrapper's *attribution*:
 //!
 //! | attribution | `.call =`                 | names                                   |
 //! |-------------|---------------------------|-----------------------------------------|
-//! | `wrapper`   | `match.call()`            | the wrapper's own call (the default)    |
+//! | `wrapper`   | `sys.call()`              | the wrapper's own call (the default)    |
 //! | `caller`    | `.mx_call` (caller frame) | the hand-written R function delegating  |
 //! | `none`      | `NULL`                    | nothing; R falls back to `sys.call()`   |
 //!
@@ -23,12 +23,12 @@
 //! ```ignore
 //! use miniextendr_api::{Call, CallerCall, miniextendr};
 //!
-//! /// `.call = match.call()`; `call` is that call, available to the body.
+//! /// `.call = sys.call()`; `call` is that call, available to the body.
 //! #[miniextendr]
 //! pub fn scale(x: f64, call: Call) -> f64 { let _ = call.sexp(); x * 2.0 }
 //!
 //! /// Internal entry point behind a hand-written `scale2()` in R/: the caller's
-//! /// call, with the caller's formals matched, reaches Rust as `call`.
+//! /// call, as written, reaches Rust as `call`.
 //! #[miniextendr(noexport)]
 //! pub fn scale2_impl(x: f64, _call: CallerCall) -> f64 { x * 2.0 }
 //! ```
@@ -56,16 +56,16 @@
 use crate::SEXP;
 use crate::sexp_ext::SexpExt;
 
-/// The call this wrapper attributes conditions to, as R matched it
-/// (`match.call()` in the generated wrapper). Taking it selects `wrapper`
+/// The call this wrapper attributes conditions to: the call as the user wrote
+/// it (`sys.call()` in the generated wrapper). Taking it selects `wrapper`
 /// attribution. See the [module docs](self).
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Call(SEXP);
 
-/// The call of the R function that called this wrapper, with that function's
-/// formals matched (`.miniextendr_caller_call(.call)` in the generated
-/// wrapper), or the call a helper passed as the wrapper's `.call` formal.
+/// The call of the R function that called this wrapper, as written
+/// (`.miniextendr_caller_call(.call)` in the generated wrapper), or the call a
+/// helper passed as the wrapper's `.call` formal.
 /// Taking it selects `caller` attribution; the function must be `noexport` or
 /// `internal`. See the [module docs](self).
 #[repr(transparent)]

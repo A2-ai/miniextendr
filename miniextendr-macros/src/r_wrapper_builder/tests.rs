@@ -79,7 +79,7 @@ fn test_underscore_normalization() {
 #[test]
 fn test_dot_call_no_args() {
     let call = DotCallBuilder::new("C_Counter__new").build();
-    assert_eq!(call, ".Call(C_Counter__new, .call = match.call())");
+    assert_eq!(call, ".Call(C_Counter__new, .call = sys.call())");
 }
 
 #[test]
@@ -87,7 +87,7 @@ fn test_dot_call_with_self() {
     let call = DotCallBuilder::new("C_Counter__value")
         .with_self("self")
         .build();
-    assert_eq!(call, ".Call(C_Counter__value, .call = match.call(), self)");
+    assert_eq!(call, ".Call(C_Counter__value, .call = sys.call(), self)");
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_dot_call_with_self_and_args() {
         .with_self("x")
         .with_args(&["n"])
         .build();
-    assert_eq!(call, ".Call(C_Counter__add, .call = match.call(), x, n)");
+    assert_eq!(call, ".Call(C_Counter__add, .call = sys.call(), x, n)");
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn test_dot_call_static_with_args() {
         .build();
     assert_eq!(
         call,
-        ".Call(C_Counter__from_parts, .call = match.call(), a, b, c)"
+        ".Call(C_Counter__from_parts, .call = sys.call(), a, b, c)"
     );
 }
 
@@ -115,7 +115,7 @@ fn test_dot_call_with_args_str_empty_skips_args() {
     let call = DotCallBuilder::new("C_Counter__new")
         .with_args_str("")
         .build();
-    assert_eq!(call, ".Call(C_Counter__new, .call = match.call())");
+    assert_eq!(call, ".Call(C_Counter__new, .call = sys.call())");
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn test_dot_call_with_args_str_passes_through() {
         .build();
     assert_eq!(
         call,
-        ".Call(C_Counter__update, .call = match.call(), self, step, verbose)"
+        ".Call(C_Counter__update, .call = sys.call(), self, step, verbose)"
     );
 }
 
@@ -406,7 +406,7 @@ fn call_attribution_strings() {
     assert_eq!(CallAttribution::default(), CallAttribution::Wrapper);
     assert_eq!(
         CallAttribution::Wrapper.dot_call_arg(),
-        ".call = match.call()"
+        ".call = sys.call()"
     );
     assert_eq!(CallAttribution::None.dot_call_arg(), ".call = NULL");
     assert_eq!(CallAttribution::Caller.dot_call_arg(), ".call = .mx_call");

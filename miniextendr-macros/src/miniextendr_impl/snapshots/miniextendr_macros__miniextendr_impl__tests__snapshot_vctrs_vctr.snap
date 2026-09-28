@@ -12,7 +12,7 @@ expression: generate_vctrs_r_wrapper(&parsed)
 new_percent <- function(x) {
   if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
   if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Percent__new, .call = match.call(), x)
+  .val <- .Call(C_miniextendr_macros_Percent__new, .call = sys.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   data <- .val
   vctrs::new_vctr(data, class = "Percent", inherit_base_type = FALSE)
@@ -46,7 +46,7 @@ vec_cast.Percent.Percent <- function(x, to, ...) x
 #' @export
 percent_value <- function(amounts) {
   if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
-  .val <- .Call(C_miniextendr_macros_Percent__value, .call = match.call(), amounts)
+  .val <- .Call(C_miniextendr_macros_Percent__value, .call = sys.call(), amounts)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -61,7 +61,7 @@ percent_scale <- function(amounts, factor) {
   if (!isTRUE(is.double(amounts))) .miniextendr_arg_error("amounts", "must be double")
   if (!isTRUE(is.double(factor))) .miniextendr_arg_error("factor", "must be double")
   if (!isTRUE(length(factor) == 1L)) .miniextendr_arg_error("factor", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Percent__scale, .call = match.call(), amounts, factor)
+  .val <- .Call(C_miniextendr_macros_Percent__scale, .call = sys.call(), amounts, factor)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

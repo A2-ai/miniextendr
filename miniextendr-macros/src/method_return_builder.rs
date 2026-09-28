@@ -215,7 +215,7 @@ struct ReturnTails<'a> {
 /// system has specialized builder methods (`build_r6_body`, `build_s3_body`,
 /// etc.) that produce idiomatic R code for that system.
 pub struct MethodReturnBuilder {
-    /// The `.Call()` expression string (e.g., `".Call(C_Counter__inc, .call = match.call(), self)"`).
+    /// The `.Call()` expression string (e.g., `".Call(C_Counter__inc, .call = sys.call(), self)"`).
     call_expr: String,
     /// How to handle the return value (direct, chaining, or Self wrapping).
     strategy: ReturnStrategy,

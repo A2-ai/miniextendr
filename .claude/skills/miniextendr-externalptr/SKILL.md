@@ -19,7 +19,7 @@ any work that exposes Rust structs to R code.
 - "What is the Box<Box<dyn Any>> layout and why?"
 - "What is cached_ptr and how must I handle its provenance?"
 - "How are sidecar field accessors generated?"
-- "Why does adding `.call = match.call()` to a sidecar wrapper break at runtime?"
+- "Why does adding a `.call` argument to a sidecar wrapper break at runtime?"
 - "How do I cross a crate boundary with an ExternalPtr?"
 - "What is the release_any finalizer?"
 
@@ -149,7 +149,7 @@ default) or as active bindings (R6) or property accessors (S7). These wrappers
 call `.Call(C_mypkg__mx_rdata_get_Type_field, self$.ptr)` directly (C symbols are crate-prefixed since #1273) — they do not pass a `.call`
 argument.
 
-Adding `.call = match.call()` to a sidecar R wrapper causes an "Incorrect
+Adding a `.call` argument to a sidecar R wrapper causes an "Incorrect
 number of arguments" error at runtime because the C wrapper expects `numArgs`
 arguments, not `numArgs + 1`. This was the root cause of a PR #344 regression
 that was subsequently reverted.
@@ -292,7 +292,7 @@ receive it:
   preserves this invariant by capturing the `*mut T` from `Box::into_raw`
   before erasing to `dyn Any`.
 
-- **Sidecar R wrappers must not include .call = match.call()**: sidecar
+- **Sidecar R wrappers must not pass a `.call` argument**: sidecar
   accessors have `numArgs: 1` (getter) or `numArgs: 2` (setter) with no
   `__miniextendr_call` slot. Adding `.call` to the `.Call()` invocation adds
   an extra argument and causes "Incorrect number of arguments" at runtime.

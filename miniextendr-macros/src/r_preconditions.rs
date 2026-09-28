@@ -12,7 +12,7 @@
 //!   if (!isTRUE(length(a) == 1L)) .miniextendr_arg_error("a", "must have length 1")
 //!   if (!isTRUE(is.integer(b))) .miniextendr_arg_error("b", "must be integer")
 //!   if (!isTRUE(length(b) == 1L)) .miniextendr_arg_error("b", "must have length 1")
-//!   .Call(C_add, .call = match.call(), a, b)
+//!   .Call(C_add, .call = sys.call(), a, b)
 //! }
 //! ```
 //!
