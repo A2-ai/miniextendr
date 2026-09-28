@@ -4350,7 +4350,12 @@ pub fn expand_impl(
     // Generate forwarding trait impls for as.<class>() coercion methods
     let trait_impls = generate_as_coercion_trait_impls(&parsed);
 
-    let r_wrapper_str = crate::r_wrapper_raw_literal(&r_wrapper_string);
+    // One text for the whole block, so the formals are pooled over its methods
+    // (the constructor included).
+    let r_wrapper_str = crate::r_wrapper_raw_literal(
+        &r_wrapper_string,
+        &crate::r_shadowing::formal_names(parsed.included_methods().map(|m| &m.sig.inputs)),
+    );
 
     // Generate doc comment linking to R wrapper constant
     let r_wrapper_doc = format!(

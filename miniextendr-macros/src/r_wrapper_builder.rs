@@ -81,21 +81,8 @@ pub(crate) fn check_r_formals(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
     reserved: &[(String, String)],
 ) -> syn::Result<()> {
-    let has_dots = crate::miniextendr_fn::trailing_dots_ident(inputs).is_some();
-    let last_idx = inputs.len().saturating_sub(1);
     let mut seen: std::collections::HashMap<String, &syn::Ident> = std::collections::HashMap::new();
-    for (idx, input) in inputs.iter().enumerate() {
-        let syn::FnArg::Typed(pat_type) = input else {
-            continue;
-        };
-        if has_dots && idx == last_idx {
-            continue;
-        }
-        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
-            continue;
-        };
-        let ident = &pat_ident.ident;
-        let formal = normalize_r_arg_string(&crate::naming::ident_name(ident));
+    for (formal, ident) in r_formal_names(inputs) {
         let problem = if crate::naming::is_r_reserved_word(&formal) {
             Some(format!(
                 "is an R reserved word, so the generated R wrapper would not parse. \
@@ -132,6 +119,36 @@ pub(crate) fn check_r_formals(
         }
     }
     Ok(())
+}
+
+/// The R formal each parameter of a signature becomes, with the parameter's
+/// ident: [`normalize_r_arg_string`] of its name. The trailing dots parameter
+/// becomes `...` and is skipped, as are receivers and non-ident patterns.
+///
+/// [`check_r_formals`] checks these names, and the shadowing pass
+/// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
+/// they would shadow, so the two agree on what each formal is named.
+pub(crate) fn r_formal_names(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+) -> impl Iterator<Item = (String, &syn::Ident)> {
+    let has_dots = crate::miniextendr_fn::trailing_dots_ident(inputs).is_some();
+    let last_idx = inputs.len().saturating_sub(1);
+    inputs.iter().enumerate().filter_map(move |(idx, input)| {
+        let syn::FnArg::Typed(pat_type) = input else {
+            return None;
+        };
+        if has_dots && idx == last_idx {
+            return None;
+        }
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let ident = &pat_ident.ident;
+        Some((
+            normalize_r_arg_string(&crate::naming::ident_name(ident)),
+            ident,
+        ))
+    })
 }
 
 /// Split a comma-separated choices list (as given to `choices(param = "a, b, c")`)

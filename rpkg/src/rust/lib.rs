@@ -298,6 +298,7 @@ mod serde_r_tests;
 mod serialize_attr_tests;
 #[cfg(feature = "sha2")]
 mod sha2_adapter_tests;
+mod shadowed_formal_tests;
 mod shared_param_docs;
 mod shared_trait_test;
 mod stem_page_docs;

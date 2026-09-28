@@ -474,6 +474,31 @@ comma-separated string, as in `choices(p = "a, b")`, because a nested option
 cannot hold a list of literals. At parameter level no class name is split, so
 `inherits(class = "a, b")` names one class, `a, b`.
 
+#### Parameters named like a base function
+
+A parameter may share its name with a base function that generated wrappers
+call, such as `length`, `c`, `list`, `missing`, `attr` or `inherits`. The
+wrapper then writes each call to that function as `base::length(...)`, so
+omitting the argument, or passing a function there, affects only that argument:
+
+```rust
+#[miniextendr]
+pub fn resample(overwrite: bool, length: f64) -> f64 { /* ... */ }
+```
+
+```r
+if (!isTRUE(base::length(overwrite) == 1L)) .miniextendr_arg_error("overwrite", "must have length 1")
+if (!isTRUE(is.double(length))) .miniextendr_arg_error("length", "must be double")
+if (!isTRUE(base::length(length) == 1L)) .miniextendr_arg_error("length", "must have length 1")
+```
+
+Your own R code in the wrapper (`r_entry`, `r_on_exit`, `r_post_checks`, a
+`default = "..."`) gets the same treatment, and so does the usage line: a
+choice formal next to a parameter named `c` reads `mode = base::c("a", "b")`.
+In an impl block, one method's parameter qualifies the calls of the whole
+class. Only these calls are qualified: `base::` costs time on every call, so
+wrappers without such a parameter keep the unqualified form.
+
 #### Error Handling
 
 | Attribute | Effect |
