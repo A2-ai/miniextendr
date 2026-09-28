@@ -12,7 +12,7 @@
 //!   if (!isTRUE(length(a) == 1L)) .miniextendr_arg_error("a", "must have length 1")
 //!   if (!isTRUE(is.integer(b))) .miniextendr_arg_error("b", "must be integer")
 //!   if (!isTRUE(length(b) == 1L)) .miniextendr_arg_error("b", "must have length 1")
-//!   .Call(C_add, .call = match.call(), a, b)
+//!   .Call(C_add, .call = sys.call(), a, b)
 //! }
 //! ```
 //!
@@ -147,7 +147,7 @@ pub struct PreconditionOptions {
     /// Checks the author named per parameter (`inherits`, `no_na`), keyed by
     /// R-normalized parameter name.
     pub explicit: HashMap<String, ExplicitChecks>,
-    /// `no_preconditions` / `fast`: drop the checks derived from parameter
+    /// `no_preconditions`: drop the checks derived from parameter
     /// types. The [`explicit`](Self::explicit) checks are still emitted.
     pub no_type_checks: bool,
 }
@@ -166,7 +166,7 @@ impl PreconditionOptions {
 /// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
 /// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
 /// method. They run after the type checks, as the same kind of guards
-/// raising the same argument error, and survive `no_preconditions` / `fast`:
+/// raising the same argument error, and survive `no_preconditions`:
 /// the Rust conversion does not repeat them, so dropping them would change
 /// what the function accepts.
 ///
@@ -1029,7 +1029,7 @@ pub fn build_precondition_checks(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
 
         // Type-derived checks: skipped for match_arg params (already validated
-        // by match.arg()) and under `no_preconditions` / `fast`.
+        // by match.arg()) and under `no_preconditions`.
         if !opts.no_type_checks && !skip_params.contains(&r_name) {
             // Preserve the ordinary input domain and include any coercion extensions.
             if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {

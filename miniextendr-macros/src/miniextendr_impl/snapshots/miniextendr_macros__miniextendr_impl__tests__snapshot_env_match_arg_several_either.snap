@@ -13,7 +13,7 @@ Picker <- new.env(parent = emptyenv())
 #' @name Picker$new
 #' @rdname Picker
 Picker$new <- function() {
-  .val <- .Call(C_miniextendr_macros_Picker__new, .call = match.call())
+  .val <- .Call(C_miniextendr_macros_Picker__new, .call = sys.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
   class(self) <- "Picker"
@@ -26,7 +26,7 @@ Picker$new <- function() {
 Picker$pick <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_modes__, tags = c("a", "b")) {
   if (is.character(modes) || is.factor(modes)) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_modes__, "modes")
   if (!missing(tags) && (is.character(tags) || is.factor(tags))) tags <- .miniextendr_match_arg_several(tags, c("a", "b"), "tags")
-  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = match.call(), self, modes, if (missing(tags)) quote(expr=) else tags)
+  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), self, modes, if (missing(tags)) quote(expr=) else tags)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

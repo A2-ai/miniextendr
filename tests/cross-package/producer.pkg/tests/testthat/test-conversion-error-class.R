@@ -64,8 +64,8 @@ test_that("the R-side length check and the Rust conversion raise one condition (
   expect_null(e1$rust_type)
   expect_identical(e2$rust_type, "AsNumericVec")
   # The crate default `call = caller` names the delegate on both paths.
-  expect_equal(conditionCall(e1), quote(producer.pkg:::producer_ratio_caller(num = c(1, 2), den = 3)))
-  expect_equal(conditionCall(e2), quote(producer.pkg:::producer_peak_caller(dv = c("1", "BLQ"))))
+  expect_equal(conditionCall(e1), quote(producer.pkg:::producer_ratio_caller(c(1, 2), 3)))
+  expect_equal(conditionCall(e2), quote(producer.pkg:::producer_peak_caller(c("1", "BLQ"))))
   # One handler for the package's argument errors catches both.
   catch_param <- function(expr) tryCatch(expr, producer_error_argument = function(e) e$param)
   expect_identical(catch_param(producer.pkg:::producer_ratio_caller(c(1, 2), 3)), "num")

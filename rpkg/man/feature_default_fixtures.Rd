@@ -7,8 +7,8 @@
 \alias{fdefault_no_strict_i64}
 \alias{fdefault_coerce_flag}
 \alias{fdefault_no_coerce_flag}
-\alias{fdefault_fast_bare_i32}
-\alias{fdefault_no_fast_i32}
+\alias{fdefault_bare_i32}
+\alias{fdefault_checks_restored_i32}
 \title{fdefault_worker_thread_name}
 \usage{
 fdefault_worker_thread_name()
@@ -23,9 +23,9 @@ fdefault_coerce_flag(x)
 
 fdefault_no_coerce_flag(x)
 
-fdefault_fast_bare_i32(x)
+fdefault_bare_i32(x)
 
-fdefault_no_fast_i32(x)
+fdefault_checks_restored_i32(x)
 }
 \arguments{
 \item{x}{Integer-like scalar.}
@@ -43,7 +43,7 @@ Logical identity under the build's default conversion mode: under \code{coerce-d
 
 Same as \code{fdefault_coerce_flag} with \code{no_coerce}: requires a logical even under \code{coerce-default}.
 
-i32 identity, bare (no knob attrs): under \code{fast-default} the R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} instead (\verb{'x' must be a single integer: ...}); otherwise the R-side check raises \verb{'x' must be integer}. Both are the same argument-error condition.
+i32 identity, bare (no knob attrs): under \code{no-preconditions-default} the R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} instead (\verb{'x' must be a single integer: ...}); otherwise the R-side check raises \verb{'x' must be integer}. Both are the same argument-error condition.
 
-Same as \code{fdefault_fast_bare_i32} with \code{no_fast}: preconditions are restored even under \code{fast-default}.
+Same as \code{fdefault_bare_i32} with \code{preconditions}: the checks are kept even under \code{no-preconditions-default}.
 }

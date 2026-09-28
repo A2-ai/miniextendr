@@ -1,6 +1,6 @@
 //! Test: `#[miniextendr(call = parent)]`.
 //!
-//! `call = ...` takes `none`, `wrapper` or `caller` (#1566).
+//! `call = ...` takes `wrapper` or `caller` (#1566).
 
 use miniextendr_macros::miniextendr;
 

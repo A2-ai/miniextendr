@@ -184,7 +184,7 @@ with `self` to support method chaining, visibly; `-> Invisible<()>` or
 `method_return_builder.rs` `build_r6_body` and `with_invisible`.
 
 The `DotCallBuilder` uses `.null_call_attribution()` for the R6 finalizer and
-deep_clone methods — `match.call()` in those contexts captures an internal
+deep_clone methods — `sys.call()` in those contexts names an internal
 dispatch frame rather than the user call.
 
 Static methods that return `Self` add a `.ptr` parameter to `initialize`, allowing
@@ -503,8 +503,8 @@ later, unpredictably.
   fires). Drop the `s4_` prefix from the Rust method name.
 
 - **`DotCallBuilder` vs sidecar wrappers**: `DotCallBuilder` (in `r_wrapper_builder.rs`)
-  emits `.call = match.call()`. Sidecar accessors from `externalptr_derive.rs` do
-  NOT use `DotCallBuilder` and have no call slot. Adding `.call = match.call()`
+  emits `.call = sys.call()`. Sidecar accessors from `externalptr_derive.rs` do
+  NOT use `DotCallBuilder` and have no call slot. Adding a `.call` argument
   to a hand-written sidecar wrapper causes "Incorrect number of arguments" at runtime.
   See the `miniextendr-macros` skill for details on the two codegen paths.
 

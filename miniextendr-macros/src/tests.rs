@@ -689,23 +689,18 @@ fn miniextendr_attr_call_parses_and_validates() {
         .expect("string form parses too");
     assert_eq!(attrs.call_attribution, Some(CallAttribution::Caller));
 
-    // The three spellings of the other two attributions (#1566).
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = wrapper)).unwrap();
     assert_eq!(attrs.call_attribution, Some(CallAttribution::Wrapper));
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = "none")).unwrap();
-    assert_eq!(attrs.call_attribution, Some(CallAttribution::None));
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(no_call_attribution)).unwrap();
-    assert_eq!(attrs.call_attribution, Some(CallAttribution::None));
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(fast)).unwrap();
-    assert_eq!(attrs.call_attribution, Some(CallAttribution::None));
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(no_fast)).unwrap();
-    assert_eq!(attrs.call_attribution, Some(CallAttribution::Wrapper));
-    // Agreeing spellings are fine; saying nothing leaves the decision to the
-    // marker / crate default / feature (`None` here).
-    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(fast, call = none)).unwrap();
-    assert_eq!(attrs.call_attribution, Some(CallAttribution::None));
+    // Saying nothing leaves the decision to the marker / crate default
+    // (`None` here).
     let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport)).unwrap();
     assert_eq!(attrs.call_attribution, None);
+    // Attribution and preconditions are independent knobs.
+    let attrs =
+        syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport, no_preconditions, call = caller))
+            .expect("no_preconditions + call = caller parses");
+    assert_eq!(attrs.call_attribution, Some(CallAttribution::Caller));
+    assert!(attrs.no_preconditions);
 
     let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = caller))
         .err()
@@ -715,38 +710,22 @@ fn miniextendr_attr_call_parses_and_validates() {
         "{err}"
     );
 
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport, call = caller, fast))
-        .err()
-        .expect("call = caller + fast must fail");
-    assert!(err.to_string().contains("no_call_attribution"), "{err}");
+    for value in [
+        quote::quote!(parent),
+        quote::quote!(none),
+        quote::quote!("none"),
+    ] {
+        let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = #value))
+            .err()
+            .expect("unknown attribution must fail");
+        assert!(
+            err.to_string()
+                .contains("accepts `wrapper` (the call as written, the default) or `caller`"),
+            "{err}"
+        );
+    }
 
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = wrapper, fast))
-        .err()
-        .expect("call = wrapper + fast must fail");
-    assert!(
-        err.to_string()
-            .contains("`call = wrapper` cannot be combined"),
-        "{err}"
-    );
-
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = none, no_fast))
-        .err()
-        .expect("call = none + no_fast must fail");
-    assert!(
-        err.to_string().contains("`call = none` cannot be combined"),
-        "{err}"
-    );
-
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = parent))
-        .err()
-        .expect("unknown attribution must fail");
-    assert!(
-        err.to_string()
-            .contains("accepts `none` (`.call = NULL`), `wrapper`"),
-        "{err}"
-    );
-
-    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = none, call = wrapper))
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = wrapper, call = wrapper))
         .err()
         .expect("two `call = ...` must fail");
     assert!(err.to_string().contains("set more than once"), "{err}");
@@ -1807,132 +1786,144 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
 }
 // endregion
 
-// region: fast-default feature resolution tests
+// region: preconditions / no_preconditions and the no-preconditions-default feature
 
-/// When `fast-default` feature is enabled, `no_preconditions` resolves to
-/// `true` by default (no annotation needed). The call attribution is resolved
-/// later, in `CallAttribution::resolve` (marker > attribute > crate default >
-/// feature), so the attribute itself still says nothing. With explicit
-/// `no_fast`, both resolve to the full-UX values even under the feature.
+/// Under the `no-preconditions-default` feature a bare `#[miniextendr]` drops the R-side
+/// type checks. The call attribution is independent: it resolves to `wrapper`.
 ///
-/// Run with: `cargo test -p miniextendr-macros --features fast-default`
-#[cfg(feature = "fast-default")]
+/// Run with: `cargo test -p miniextendr-macros --features no-preconditions-default`
+#[cfg(feature = "no-preconditions-default")]
 #[test]
-fn fast_default_fn_attrs_resolve_both_true() {
+fn no_preconditions_default_fn_attrs_drop_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
     assert!(
         attrs.no_preconditions,
-        "fast-default should set no_preconditions to true by default"
+        "the feature drops the checks by default"
     );
-    assert_eq!(
-        attrs.call_attribution, None,
-        "the feature is applied by CallAttribution::resolve, not the parser"
-    );
+    assert_eq!(attrs.call_attribution, None);
     assert_eq!(
         crate::r_wrapper_builder::CallAttribution::resolve(
             None,
             attrs.call_attribution,
             None,
-            false,
-            cfg!(feature = "fast-default"),
+            false
         ),
-        crate::r_wrapper_builder::CallAttribution::None,
-        "fast-default should resolve to `.call = NULL` by default"
+        crate::r_wrapper_builder::CallAttribution::Wrapper,
     );
+    let impl_attrs: crate::miniextendr_impl::ImplAttrs = syn::parse2(quote::quote! {}).unwrap();
+    assert!(impl_attrs.no_preconditions);
 }
 
-#[cfg(feature = "fast-default")]
+/// `preconditions` restores the checks one item at a time under the feature.
+#[cfg(feature = "no-preconditions-default")]
 #[test]
-fn fast_default_no_fast_opt_out_restores_false() {
-    // `no_fast` explicitly opts out of both, even under fast-default
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_fast }).unwrap();
-    assert!(
-        !attrs.no_preconditions,
-        "no_fast should set no_preconditions to false"
-    );
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::Wrapper),
-        "no_fast should spell `call = wrapper`"
-    );
+fn no_preconditions_default_preconditions_restores_checks() {
+    for input in [
+        quote::quote! { preconditions },
+        quote::quote! { preconditions = true },
+        quote::quote! { no_preconditions = false },
+    ] {
+        let attrs: MiniextendrFnAttrs = syn::parse2(input.clone()).unwrap();
+        assert!(!attrs.no_preconditions, "{input} keeps the checks");
+    }
+    let impl_attrs: crate::miniextendr_impl::ImplAttrs =
+        syn::parse2(quote::quote! { preconditions }).unwrap();
+    assert!(!impl_attrs.no_preconditions);
 }
 
-#[cfg(not(feature = "fast-default"))]
+#[cfg(not(feature = "no-preconditions-default"))]
 #[test]
-fn no_fast_default_fn_attrs_resolve_false() {
-    // Without the feature, empty attrs → both false
+fn default_fn_attrs_keep_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
-    assert!(
-        !attrs.no_preconditions,
-        "without fast-default, no_preconditions should be false"
-    );
+    assert!(!attrs.no_preconditions, "the checks are on by default");
     assert_eq!(
         attrs.call_attribution, None,
         "without an explicit spelling the attribute says nothing about the call"
     );
 }
 
+/// The pair joins the shared flag table: bare and `= bool` on a fn, and the
+/// last one written wins, like `worker` / `no_worker`.
 #[test]
-fn fast_bundle_alias_sets_both() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast }).unwrap();
-    assert!(attrs.no_preconditions, "fast should set no_preconditions");
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::None),
-        "fast should spell `call = none`"
-    );
+fn preconditions_pair_parses_on_fns_last_wins() {
+    let no_prec = |input: proc_macro2::TokenStream| {
+        syn::parse2::<MiniextendrFnAttrs>(input)
+            .unwrap()
+            .no_preconditions
+    };
+    assert!(no_prec(quote::quote! { no_preconditions }));
+    assert!(no_prec(quote::quote! { no_preconditions = true }));
+    assert!(!no_prec(quote::quote! { no_preconditions = false }));
+    assert!(!no_prec(quote::quote! { preconditions }));
+    assert!(!no_prec(quote::quote! { preconditions = true }));
+    assert!(no_prec(quote::quote! { preconditions = false }));
+    assert!(no_prec(quote::quote! { preconditions, no_preconditions }));
+    assert!(!no_prec(quote::quote! { no_preconditions, preconditions }));
 }
 
+/// On an impl block the pair is bare, like every impl flag, and last-wins.
 #[test]
-fn no_fast_clears_both() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_fast }).unwrap();
-    // In the non-fast-default case no_fast → Some(false), resolves to false.
-    // In the fast-default case same thing.
-    assert!(
-        !attrs.no_preconditions,
-        "no_fast should clear no_preconditions"
-    );
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::Wrapper),
-        "no_fast should spell `call = wrapper`"
-    );
+fn preconditions_pair_parses_on_impls_last_wins() {
+    let no_prec = |input: proc_macro2::TokenStream| {
+        syn::parse2::<crate::miniextendr_impl::ImplAttrs>(input)
+            .unwrap()
+            .no_preconditions
+    };
+    assert!(no_prec(quote::quote! { r6, no_preconditions }));
+    assert!(!no_prec(quote::quote! { preconditions }));
+    assert!(no_prec(quote::quote! { preconditions, no_preconditions }));
+    assert!(!no_prec(quote::quote! { no_preconditions, preconditions }));
 }
 
+/// A spelling the parser does not know gets the ordinary unknown-option error.
 #[test]
-fn fast_eq_false_name_value_clears_both() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast = false }).unwrap();
-    assert!(!attrs.no_preconditions);
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::Wrapper)
-    );
+fn unknown_fn_flags_get_the_unknown_option_error() {
+    for input in [
+        quote::quote! { fast },
+        quote::quote! { no_fast },
+        quote::quote! { no_call_attribution },
+    ] {
+        let err = syn::parse2::<MiniextendrFnAttrs>(input.clone())
+            .err()
+            .unwrap_or_else(|| panic!("{input} must fail"))
+            .to_string();
+        assert!(
+            err.starts_with("unknown `#[miniextendr]` option; expected one of:"),
+            "{err}"
+        );
+    }
+    for input in [
+        quote::quote! { fast = true },
+        quote::quote! { no_call_attribution = true },
+    ] {
+        let err = syn::parse2::<MiniextendrFnAttrs>(input.clone())
+            .err()
+            .unwrap_or_else(|| panic!("{input} must fail"))
+            .to_string();
+        assert!(
+            err.starts_with("unknown `#[miniextendr]` option `"),
+            "{err}"
+        );
+        assert!(err.contains("preconditions, no_preconditions"), "{err}");
+    }
 }
 
+/// An unknown bare impl ident is an unknown option, not an unknown class system.
 #[test]
-fn fast_eq_true_name_value_sets_both() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { fast = true }).unwrap();
-    assert!(attrs.no_preconditions);
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::None)
-    );
-}
-
-#[test]
-fn no_preconditions_independent_parse() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_preconditions }).unwrap();
-    assert!(attrs.no_preconditions);
-}
-
-#[test]
-fn no_call_attribution_independent_parse() {
-    let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! { no_call_attribution }).unwrap();
-    assert_eq!(
-        attrs.call_attribution,
-        Some(crate::r_wrapper_builder::CallAttribution::None)
-    );
-    assert!(!attrs.no_preconditions);
+fn unknown_impl_flags_get_the_unknown_option_error() {
+    for input in [
+        quote::quote! { flutter },
+        quote::quote! { fast },
+        quote::quote! { r6, no_fast },
+        quote::quote! { no_call_attribution },
+    ] {
+        let err = syn::parse2::<crate::miniextendr_impl::ImplAttrs>(input.clone())
+            .err()
+            .unwrap_or_else(|| panic!("{input} must fail"))
+            .to_string();
+        assert!(err.starts_with("unknown impl block option `"), "{err}");
+        assert!(err.contains("preconditions, no_preconditions"), "{err}");
+    }
 }
 // endregion
 

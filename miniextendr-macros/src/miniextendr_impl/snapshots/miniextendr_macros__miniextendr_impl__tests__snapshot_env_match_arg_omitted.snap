@@ -13,7 +13,7 @@ Picker <- new.env(parent = emptyenv())
 #' @name Picker$new
 #' @rdname Picker
 Picker$new <- function() {
-  .val <- .Call(C_miniextendr_macros_Picker__new, .call = match.call())
+  .val <- .Call(C_miniextendr_macros_Picker__new, .call = sys.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
   class(self) <- "Picker"
@@ -26,7 +26,7 @@ Picker$new <- function() {
 Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
   if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode")
   if (!missing(color)) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
-  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = match.call(), self, if (missing(mode)) quote(expr=) else mode, if (missing(color)) quote(expr=) else color)
+  .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), self, if (missing(mode)) quote(expr=) else mode, if (missing(color)) quote(expr=) else color)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -36,7 +36,7 @@ Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker
 #' @rdname Picker
 Picker$pick_many <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__) {
   if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes")
-  .val <- .Call(C_miniextendr_macros_Picker__pick_many, .call = match.call(), self, if (missing(modes)) quote(expr=) else modes)
+  .val <- .Call(C_miniextendr_macros_Picker__pick_many, .call = sys.call(), self, if (missing(modes)) quote(expr=) else modes)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }

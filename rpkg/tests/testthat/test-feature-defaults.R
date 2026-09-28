@@ -1,9 +1,9 @@
 # Runtime assertions for the feature-controlled #[miniextendr] option defaults
-# (docs/FEATURE_DEFAULTS.md) and their no_* opt-outs, driven by the fixtures in
+# (docs/FEATURE_DEFAULTS.md) and their opt-outs, driven by the fixtures in
 # src/rust/feature_default_fixtures.rs. On a default build every pair behaves
 # identically; the scheduled feature-legs CI job (.github/workflows/ci.yml)
-# rebuilds with worker-default / strict-default / coerce-default / fast-default /
-# r6-default / s7-default flipped on and re-runs this file, which is the only
+# rebuilds with worker-default / strict-default / coerce-default /
+# no-preconditions-default / r6-default / s7-default flipped on and re-runs this file, which is the only
 # runtime coverage those features have (audit A5/A10).
 
 test_that("worker-default routes bare functions to the worker thread", {
@@ -53,27 +53,27 @@ test_that("coerce-default converts bool params from R integers", {
   }
 })
 
-test_that("fast-default drops preconditions for bare fns, no_fast restores them", {
-  fast_on <- miniextendr_has_feature("fast-default")
+test_that("no-preconditions-default drops preconditions for bare fns, preconditions restores them", {
+  unchecked <- miniextendr_has_feature("no-preconditions-default")
   # Both paths raise the same argument-error condition (#1591); they differ
   # in which side words it.
-  if (fast_on) {
-    # The R-side check is gone under fast-default; TryFromSexp still rejects
+  if (unchecked) {
+    # The R-side check is gone under no-preconditions-default; TryFromSexp still rejects
     # bad input, worded by the conversion.
-    e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
+    e <- tryCatch(fdefault_bare_i32("nope"), error = function(e) e)
     expect_s3_class(e, "rust_error")
     expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
     expect_identical(e$rust_type, "i32")
-    # no_fast opts back out: preconditions restored, so the R-side check
+    # `preconditions` opts back out: the checks are restored, so the R-side check
     # words the error, and no Rust type is involved.
-    e2 <- tryCatch(fdefault_no_fast_i32("nope"), error = function(e) e)
+    e2 <- tryCatch(fdefault_checks_restored_i32("nope"), error = function(e) e)
     expect_s3_class(e2, "rust_error")
     expect_identical(conditionMessage(e2), "'x' must be integer")
     expect_null(e2$rust_type)
   } else {
     # Every default build: preconditions are on, the bare fn's R-side check
     # words the error.
-    e <- tryCatch(fdefault_fast_bare_i32("nope"), error = function(e) e)
+    e <- tryCatch(fdefault_bare_i32("nope"), error = function(e) e)
     expect_s3_class(e, "rust_error")
     expect_identical(e$kind, "conversion")
     expect_identical(e$param, "x")

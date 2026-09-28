@@ -64,7 +64,7 @@ main <- function() {
   #   strict-default,
   #   coerce-default       : project-wide #[miniextendr] option defaults -- these
   #                          change codegen semantics, so they are opt-in.
-  #   fast-default         : drops R-side preconditions crate-wide; runtime
+  #   no-preconditions-default: drops R-side preconditions crate-wide; runtime
   #                          coverage lives in the weekly feature-legs leg.
   #   r6-default,
   #   s7-default           : mutually exclusive class-system selectors; enabling
@@ -75,7 +75,7 @@ main <- function() {
   deny <- c(
     "default", "full", "nonapi",
     "macro-coverage", "growth-debug",
-    "strict-default", "coerce-default", "fast-default",
+    "strict-default", "coerce-default", "no-preconditions-default",
     "r6-default", "s7-default", "worker-default",
     "indicatif"
   )

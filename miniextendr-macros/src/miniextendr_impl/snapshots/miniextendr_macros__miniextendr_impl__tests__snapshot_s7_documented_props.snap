@@ -18,7 +18,7 @@ Documented <- S7::new_class("Documented",
     if (!is.null(.ptr)) {
       S7::new_object(S7::S7_object(), .ptr = .ptr)
     } else {
-      .val <- .Call(C_miniextendr_macros_Documented__new, .call = match.call())
+      .val <- .Call(C_miniextendr_macros_Documented__new, .call = sys.call())
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
       S7::new_object(S7::S7_object(), .ptr = .val)
     }

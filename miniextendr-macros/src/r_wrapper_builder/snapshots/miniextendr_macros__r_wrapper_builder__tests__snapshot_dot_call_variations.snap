@@ -3,13 +3,13 @@ source: miniextendr-macros/src/r_wrapper_builder/tests.rs
 expression: output
 ---
 # No args
-.Call(C_my_fn, .call = match.call())
+.Call(C_my_fn, .call = sys.call())
 
 # Self only
-.Call(C_Counter__get, .call = match.call(), self)
+.Call(C_Counter__get, .call = sys.call(), self)
 
 # Self + args
-.Call(C_Counter__add, .call = match.call(), x, n, verbose)
+.Call(C_Counter__add, .call = sys.call(), x, n, verbose)
 
 # Static with args
-.Call(C_Counter__from_parts, .call = match.call(), a, b, c)
+.Call(C_Counter__from_parts, .call = sys.call(), a, b, c)

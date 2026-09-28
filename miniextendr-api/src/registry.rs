@@ -1635,55 +1635,42 @@ fn resolve_list_return_wrappers(
 /// passed as the wrapper's `.call` formal (#1613).
 #[cfg(not(target_arch = "wasm32"))]
 const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr(noexport, call = caller)]` wrapper
-# attributes its conditions to (#1450, #1548, #1552, #1613). Called as the
-# wrapper's first statement, `.mx_call <- .miniextendr_caller_call(.call)`, with
-# the wrapper's trailing `.call = NULL` formal (an S3 method has none and calls
-# it without an argument), so the calling chain is
+# attributes its conditions to (#1450, #1548, #1552, #1613), as written. Called
+# as the wrapper's first statement, `.mx_call <- .miniextendr_caller_call(.call)`,
+# with the wrapper's trailing `.call = NULL` formal (an S3 method has none and
+# calls it without an argument), so the calling chain is
 # [caller's caller] <- [caller] <- [wrapper] <- [this helper]: `sys.parent(1L)`
 # is the wrapper's frame, `sys.parent(2L)` its caller's. `call` is what the
 # wrapper's caller passed as `.call`:
 # - an environment: a hand-written helper between the public function and the
 #   wrapper passes its caller's frame (`call = parent.frame()` in the helper's
-#   formals). The result is the call of the closure owning that frame, matched
-#   against its formals, with the frame that call was evaluated in as `envir`.
+#   formals). The result is the call of the closure owning that frame.
 #   `match(TRUE, ...)` takes the oldest frame with that environment, the
 #   closure's own, ahead of a later `eval()` over it. An environment that is no
 #   closure's live frame (`globalenv()`) counts as NULL.
 # - a call object: used as is.
 # - NULL, the default: when the wrapper's caller is a closure, that caller's
-#   call with its formals matched; `envir` is the frame the caller's call was
-#   evaluated in, where a literal `...` in that call is bound
-#   (`function(...) verb(...)`, `lapply()`'s `FUN(X[[i]], ...)`; #1462).
-#   Otherwise (top level, or an `eval()` frame such as a testthat block,
-#   `source()` or `local()`, whose frame function is not a closure) the
-#   wrapper's own matched call, without `.call`.
+#   call. Otherwise (top level, or an `eval()` frame such as a testthat block,
+#   `source()` or `local()`, whose frame function is not a closure and whose
+#   call names `eval`) the wrapper's own call, without `.call`.
 # - anything else: an argument error on `.call` against the wrapper's own call,
 #   which also catches a positional argument too many.
-# Every `sys.*` lookup is a plain statement in this helper's frame, never a
-# promise forced inside `match.call()`, where `sys.call(0)` would resolve to
-# `match.call`'s frame.
 .miniextendr_caller_call <- function(call = NULL) {
   wrapper <- sys.parent(1L)
   if (is.environment(call)) {
     frames <- sys.frames()
     i <- match(TRUE, vapply(frames, identical, NA, call))
-    if (!is.na(i) && typeof(sys.function(i)) == "closure") {
-      return(match.call(sys.function(i), sys.call(i), envir = sys.frame(sys.parents()[[i]])))
-    }
+    if (!is.na(i) && typeof(sys.function(i)) == "closure") return(sys.call(i))
   } else if (is.call(call)) {
     return(call)
   } else if (!is.null(call)) {
     .miniextendr_arg_error(".call", "must be NULL, an environment or a call", sys.call(wrapper))
   }
   parent <- sys.parent(2L)
-  def <- if (parent > 0L) sys.function(parent)
-  if (typeof(def) == "closure") {
-    match.call(def, sys.call(parent), envir = parent.frame(3L))
-  } else {
-    own <- match.call(sys.function(wrapper), sys.call(wrapper), envir = parent.frame(2L))
-    own$.call <- NULL
-    own
-  }
+  if (parent > 0L && typeof(sys.function(parent)) == "closure") return(sys.call(parent))
+  own <- sys.call(wrapper)
+  own$.call <- NULL
+  own
 }
 "#;
 
@@ -1798,13 +1785,14 @@ pub fn write_r_wrappers_to_file(path: &str) {
 
 # Internal helper: re-raise a tagged Rust error/condition value as an R condition.
 # Generated wrappers call this whenever `.Call()` returns a `rust_condition_value`.
-# `.call_default` is the wrapper's `sys.call()` (or its caller-derived
-# `.mx_call` for `#[miniextendr(noexport, call = caller)]` entry points, which
-# honours a `.call` a helper passed on), used as the fallback when the Rust
-# panic payload didn't carry a captured call (e.g. lambda contexts that pass
-# `.call = NULL` to `.Call`). For error/panic kinds `stop()` longjmps; for
-# warning/message/condition the helper signals and returns invisible(NULL),
-# which the wrapper's surrounding `return(...)` propagates as its result.
+# `.call_default` is the wrapper's `sys.call()` (or its `.mx_call`, the
+# caller's call as written, for `#[miniextendr(noexport, call = caller)]` entry
+# points, which honours a `.call` a helper passed on), used as the fallback
+# when the Rust panic payload didn't carry a captured call (e.g. lambda
+# contexts that pass `.call = NULL` to `.Call`). For error/panic kinds
+# `stop()` longjmps; for warning/message/condition the helper signals and
+# returns invisible(NULL), which the wrapper's surrounding `return(...)`
+# propagates as its result.
 ",
     );
     content.push_str(".miniextendr_raise_condition <- ");
@@ -3658,6 +3646,9 @@ mod tests {
         assert!(CALLER_CALL_HELPER.contains(".miniextendr_caller_call <- function(call = NULL) {"));
         // The fallback call leaves the plumbing formal out.
         assert!(CALLER_CALL_HELPER.contains("own$.call <- NULL"));
+        // Every call it returns is the call as written (`sys.call()`), never
+        // a matched one.
+        assert!(!CALLER_CALL_HELPER.contains("match.call"));
         assert!(CALLER_CALL_HELPER.ends_with("}\n"));
     }
 

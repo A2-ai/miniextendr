@@ -789,7 +789,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
             // Validator is called with just the value, not self.
             // Use null_call_attribution: this runs inside S7's dispatch lambda, so
-            // match.call() would capture S7 internals, not the user's call site.
+            // sys.call() would name S7 internals, not the user's call site.
             let validator_call = crate::r_wrapper_builder::DotCallBuilder::new(&ctx.c_ident)
                 .null_call_attribution()
                 .with_args(&["value"])
@@ -1217,10 +1217,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_from (static method pattern)
         // S7 convert signature is function(from, to) - one parameter for the source object
         if let Some(ref from_type) = attrs.s7.convert_from {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
-                parsed_impl.no_preconditions,
-                parsed_impl.no_call_attribution,
-            );
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+                .with_no_preconditions(parsed_impl.no_preconditions);
 
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
@@ -1286,10 +1284,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Handle convert_to (instance method pattern)
         // S7 convert signature is function(from, to) - self becomes from
         if let Some(ref to_type) = attrs.s7.convert_to {
-            let ctx = MethodContext::new(method, type_ident, parsed_impl.label()).with_fast_flags(
-                parsed_impl.no_preconditions,
-                parsed_impl.no_call_attribution,
-            );
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
+                .with_no_preconditions(parsed_impl.no_preconditions);
 
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {

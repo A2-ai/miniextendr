@@ -3,13 +3,13 @@
 # package-internal; tests reach them through `:::`.
 
 # Delegates to a `#[miniextendr(noexport, call = caller)]` entry point: a Rust
-# error surfaces as `Error in call_attr_caller(value = -1L)`.
+# error surfaces as `Error in call_attr_caller(-1L)`.
 call_attr_caller <- function(value) {
   call_attr_caller_impl(value)
 }
 
 # Delegates to a default `noexport` entry point: the same error surfaces as
-# `Error in call_attr_self_impl(x = value)`, naming the bridge.
+# `Error in call_attr_self_impl(value)`, naming the bridge.
 call_attr_self <- function(value) {
   call_attr_self_impl(value)
 }
@@ -36,7 +36,7 @@ call_marker_caller <- function(value) {
 }
 
 # Delegates to an entry point taking a `Call` marker: the wrapper's own
-# `match.call()` reaches Rust, naming the bridge with its formals matched.
+# `sys.call()` reaches Rust, naming the bridge as written.
 call_marker_wrapper <- function(value) {
   call_marker_wrapper_impl(value)
 }

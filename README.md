@@ -48,7 +48,7 @@ used to scaffold standalone packages and monorepos.
 Feature families in the runtime crate include:
 
 - Runtime/build: `nonapi`, `rayon`, `connections`, `indicatif`, `vctrs`,
-  `worker-thread`, `worker-default`, `fast-default`, `log`
+  `worker-thread`, `worker-default`, `no-preconditions-default`, `log`
 - Serialization/data: `serde` (native R), `serde_json` (JSON), `borsh`,
   `arrow`, `datafusion`
 - Ecosystem conversions: `either`, `uuid`, `regex`, `url`, `time`, `jiff`,

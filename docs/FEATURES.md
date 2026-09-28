@@ -70,7 +70,7 @@ Only `default` features are enabled automatically.
 | `macro-coverage` | Macro expansion coverage module for auditing | (none) |
 | `growth-debug` | Collection-growth counters and reports | (none) |
 | **Project defaults** | | |
-| `strict-default`, `coerce-default`, `fast-default` | Default conversion/wrapper policies | (forwarded to miniextendr-macros) |
+| `strict-default`, `coerce-default`, `no-preconditions-default` | Default conversion/wrapper policies | (forwarded to miniextendr-macros) |
 | `r6-default`, `s7-default` | Default class system (mutually exclusive) | (forwarded to miniextendr-macros) |
 | `worker-default` | Default worker dispatch | `worker-thread` |
 
@@ -1102,7 +1102,7 @@ See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
 |---------|--------|---------|
 | `strict-default` | Strict checked conversions for lossy types | `no_strict` |
 | `coerce-default` | Auto-coerce parameters | `no_coerce` |
-| `fast-default` | Remove R-side wrapper validation and prefer unchecked fast paths | `no_fast` |
+| `no-preconditions-default` | Drop the R-side type checks from every wrapper | `preconditions` |
 | `r6-default` | R6 class system for impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | `no_worker` |

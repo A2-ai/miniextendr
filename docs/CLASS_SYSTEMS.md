@@ -101,7 +101,7 @@ Counter <- new.env(parent = emptyenv())
 Counter$new <- function(initial) {
   if (!isTRUE(is.integer(initial))) .miniextendr_arg_error("initial", "must be integer")
   if (!isTRUE(length(initial) == 1L)) .miniextendr_arg_error("initial", "must have length 1")
-  .val <- .Call(C_mypkg_Counter__new, .call = match.call(), initial)
+  .val <- .Call(C_mypkg_Counter__new, .call = sys.call(), initial)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self <- .val
   class(self) <- "Counter"
@@ -109,13 +109,13 @@ Counter$new <- function(initial) {
 }
 
 Counter$value <- function() {
-  .val <- .Call(C_mypkg_Counter__value, .call = match.call(), self)
+  .val <- .Call(C_mypkg_Counter__value, .call = sys.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
 
 Counter$inc <- function() {
-  .val <- .Call(C_mypkg_Counter__inc, .call = match.call(), self)
+  .val <- .Call(C_mypkg_Counter__inc, .call = sys.call(), self)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self
 }
@@ -675,7 +675,7 @@ impl Left {
 ```r
 pair <- S7::new_generic("pair", c("x", "other"), function(x, other, ...) S7::S7_dispatch())
 S7::method(pair, list(Left, S7::class_any)) <- function(x, other, sep, ...) {
-  .Call(C_mypkg_Left__pair, .call = match.call(), x@.ptr, other, sep)
+  .Call(C_mypkg_Left__pair, .call = sys.call(), x@.ptr, other, sep)
 }
 ```
 

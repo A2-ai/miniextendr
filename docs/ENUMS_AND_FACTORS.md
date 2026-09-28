@@ -273,7 +273,7 @@ pub fn run(#[miniextendr(match_arg)] mode: Missing<Option<Mode>>) -> String {
 ```r
 run <- function(mode = c("Fast", "Safe", "Debug")) {
   if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
-  .Call(C_mypkg_run, .call = match.call(), if (missing(mode)) quote(expr=) else mode)
+  .Call(C_mypkg_run, .call = sys.call(), if (missing(mode)) quote(expr=) else mode)
 }
 
 run()             # Missing::Absent
@@ -351,7 +351,7 @@ anything else reaches Rust unchanged:
 ```r
 set_route <- function(route = c("oral", "bolus", "infusion")) {
   if (is.character(route) || is.factor(route)) route <- .miniextendr_match_arg(route, c("oral", "bolus", "infusion"), "route")
-  .Call(C_mypkg_set_route, .call = match.call(), route)
+  .Call(C_mypkg_set_route, .call = sys.call(), route)
 }
 
 set_route()                         # Left(Oral), the first choice
@@ -407,7 +407,7 @@ pub fn set_routes(
 ```r
 set_routes <- function(routes = c("oral", "bolus", "infusion")) {
   if (is.character(routes) || is.factor(routes)) routes <- .miniextendr_match_arg_several(routes, c("oral", "bolus", "infusion"), "routes")
-  .Call(C_mypkg_set_routes, .call = match.call(), routes)
+  .Call(C_mypkg_set_routes, .call = sys.call(), routes)
 }
 
 set_routes()                        # Left([Oral, Bolus, Infusion]), every choice

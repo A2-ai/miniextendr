@@ -211,7 +211,7 @@ Default features:
 | `vctrs` | Access to the vctrs C API and the `#[derive(Vctrs)]` proc macro. |
 | `worker-thread` | Enables the worker-thread infrastructure without changing proc-macro defaults by itself. |
 | `worker-default` | Makes worker-thread execution the proc-macro default and enables `worker-thread`. |
-| `fast-default` | Makes generated wrappers prefer the fast/unchecked policy by default. |
+| `no-preconditions-default` | Makes generated wrappers drop their R-side type checks by default (`preconditions` keeps them per item). |
 | `log` | Routes Rust `log` output to the R console during package init. |
 
 ### Proc-macro defaults

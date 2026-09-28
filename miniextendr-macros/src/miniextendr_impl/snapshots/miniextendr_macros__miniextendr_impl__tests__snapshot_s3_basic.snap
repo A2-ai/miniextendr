@@ -10,7 +10,7 @@ expression: generate_s3_r_wrapper(&parsed)
 new_counter <- function(value) {
   if (!isTRUE(is.integer(value))) .miniextendr_arg_error("value", "must be integer")
   if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Counter__new, .call = match.call(), value)
+  .val <- .Call(C_miniextendr_macros_Counter__new, .call = sys.call(), value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   structure(.val, class = "Counter")
 }
@@ -50,7 +50,7 @@ if (!base::exists("get", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 get.Counter <- function(x, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__get, .call = match.call(), x)
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 }
@@ -90,7 +90,7 @@ if (!base::exists("increment", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 increment.Counter <- function(x, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = match.call(), x)
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   x
 }
@@ -100,7 +100,7 @@ increment.Counter <- function(x, ...) {
 #' @rdname Counter
 #' @export
 counter_zero <- function() {
-  .val <- .Call(C_miniextendr_macros_Counter__zero, .call = match.call())
+  .val <- .Call(C_miniextendr_macros_Counter__zero, .call = sys.call())
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   structure(.val, class = "Counter")
 }

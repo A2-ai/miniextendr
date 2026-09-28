@@ -44,6 +44,17 @@ test_that("a deferred typed warning arrives with the value, classes, data and ca
   )
 })
 
+test_that("a deferred warning carries the call without the R-side checks too", {
+  # `no_preconditions` drops only the type checks; the call slot is the same
+  # `sys.call()`, so the flushed warning names the wrapper as written.
+  out <- collect_conditions(deferred_warning_value_no_preconditions(5L))
+  expect_identical(out$value, 3L)
+  w <- out$conditions[[1]]
+  expect_s3_class(w, "pkg_warning_truncated")
+  expect_identical(conditionCall(w)[[1]], as.name("deferred_warning_value_no_preconditions"))
+  expect_identical(conditionCall(w), quote(deferred_warning_value_no_preconditions(5L)))
+})
+
 test_that("queued conditions are signalled in order and keep their kinds", {
   out <- collect_conditions(deferred_mixed_order())
   expect_identical(out$value, 3L)

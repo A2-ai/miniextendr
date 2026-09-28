@@ -1673,8 +1673,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
      rng, unwrap_in_r, serialize, serde_error, strict, no_strict, \
-     no_preconditions, no_call_attribution, fast, no_fast, \
-     internal, noexport, export";
+     preconditions, no_preconditions, internal, noexport, export";
 
 /// Comma-separated list of fn-level nested options, for error messages.
 const FN_NESTED_OPTIONS_HELP: &str =
@@ -1695,29 +1694,20 @@ const FN_NESTED_OPTIONS_HELP: &str =
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `prefer = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
-/// - `no_preconditions`: drop the R-side type checks. `TryFromSexp` still
-///   raises on bad input, with the same argument-error condition (#1591); the
-///   message comes from the conversion. Saves one `isTRUE()` guard per check.
-///   Hot-path opt-in. Opt out with `no_fast` when `fast-default` is enabled.
-/// - `call = none | wrapper | caller`: which call the wrapper attributes
-///   conditions to (#1566). `wrapper` (the framework default) passes
-///   `.call = match.call()`; `caller` binds the caller's matched call first
-///   and passes that (internal entry points behind a hand-written R function;
-///   needs `noexport` / `internal`); `none` passes `.call = NULL`, and the
-///   error fallback `sys.call()` preserves wrapper-invocation attribution
-///   (positional args instead of named), saving ~1200 ns per call regardless
-///   of arg count. A `Call` / `CallerCall` parameter is the marker spelling
-///   of `wrapper` / `caller`, and `[package.metadata.miniextendr]
-///   call_attribution` the crate default; see `CallAttribution::resolve`.
-/// - `no_call_attribution`: spelling of `call = none`.
-/// - `fast`: shorthand for `no_preconditions + no_call_attribution`. The
-///   biggest single-knob wrapper speedup.
-/// - `no_fast`: explicit opt-out of both knobs (useful when `fast-default`
-///   feature is enabled crate-wide to restore full error UX for a specific fn);
-///   for the call slot it spells `call = wrapper`.
-///
-/// See `analysis/scaffolding-deep-findings-2026-05-20.md` for the measurement
-/// underlying these options (~13× speedup possible on the wrapper layer).
+/// - `no_preconditions` / `preconditions` (bare or `= true/false`): drop or
+///   keep the R-side type checks. Without them `TryFromSexp` still raises on
+///   bad input, with the same argument-error condition (#1591); the message
+///   comes from the conversion. Saves one `isTRUE()` guard per check.
+///   Hot-path opt-in; `preconditions` keeps the checks when the
+///   `no-preconditions-default` feature drops them crate-wide. The last one written wins.
+/// - `call = wrapper | caller`: which call the wrapper attributes conditions
+///   to (#1566), always as written. `wrapper` (the framework default) passes
+///   `.call = sys.call()`; `caller` binds the caller's call first and passes
+///   that (internal entry points behind a hand-written R function; needs
+///   `noexport` / `internal`). A `Call` / `CallerCall` parameter is the
+///   marker spelling of `wrapper` / `caller`, and
+///   `[package.metadata.miniextendr] call_attribution` the crate default; see
+///   `CallAttribution::resolve`.
 ///
 /// # Note
 ///
@@ -1750,24 +1740,15 @@ pub(crate) struct MiniextendrFnAttrs {
     /// paths where the per-call precondition cost (one `isTRUE()` guard per
     /// check) dominates over actual work.
     ///
-    /// Set by `#[miniextendr(no_preconditions)]` or implied by `fast`.
-    /// Use `no_fast` to opt out when `fast-default` is enabled.
+    /// Set by `#[miniextendr(no_preconditions)]` (or `no_preconditions =
+    /// true`), cleared by `preconditions` (or `preconditions = true`); unset,
+    /// it follows the `no-preconditions-default` feature.
     pub(crate) no_preconditions: bool,
-    /// Emit `.call = NULL` instead of `.call = match.call()` in the generated
-    /// R wrapper.
-    ///
-    /// `match.call()` costs ~1200 ns per call (fixed, independent of arg
-    /// count) but is only consulted on the error path by
-    /// `.miniextendr_raise_condition`. When `.call = NULL`, the helper falls
-    /// back to `sys.call()` which surfaces the same wrapper invocation
-    /// (positional args instead of named).
-    ///
-    /// The attribution the attribute asked for, if any (#1566): `call = none |
-    /// wrapper | caller`, or its spellings `no_call_attribution` / `fast`
-    /// (`none`) and `no_fast` (`wrapper`). `None` here means the attribute said
+    /// The attribution the attribute asked for, if any (#1566):
+    /// `call = wrapper | caller`. `None` here means the attribute said
     /// nothing; the codegen then falls back to a `Call` / `CallerCall`
-    /// parameter marker, the crate default, the `fast-default` feature and
-    /// finally `wrapper` (`crate::r_wrapper_builder::CallAttribution::resolve`).
+    /// parameter marker, the crate default and finally `wrapper`
+    /// (`crate::r_wrapper_builder::CallAttribution::resolve`).
     pub(crate) call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
@@ -2209,7 +2190,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut wrap = None;
         let mut serde_error: Option<SerdeErrorSpec> = None;
         let mut no_preconditions: Option<bool> = None;
-        let mut no_call_attribution: Option<bool> = None;
         let mut return_pref = ReturnPref::Auto;
         let mut return_pref_span: Option<proc_macro2::Span> = None;
         let mut s3_generic = None;
@@ -2270,20 +2250,10 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             strict = Some(true);
                         } else if ident == "no_strict" {
                             strict = Some(false);
+                        } else if ident == "preconditions" {
+                            no_preconditions = Some(false);
                         } else if ident == "no_preconditions" {
                             no_preconditions = Some(true);
-                        } else if ident == "no_call_attribution" {
-                            no_call_attribution = Some(true);
-                        } else if ident == "fast" {
-                            // Bundle alias: drop the two biggest R-side
-                            // overheads in the generated wrapper.
-                            no_preconditions = Some(true);
-                            no_call_attribution = Some(true);
-                        } else if ident == "no_fast" {
-                            // Explicit opt-out: restore full error UX even when
-                            // `fast-default` feature is enabled crate-wide.
-                            no_preconditions = Some(false);
-                            no_call_attribution = Some(false);
                         } else if ident == "internal" {
                             internal = true;
                         } else if ident == "noexport" {
@@ -2343,16 +2313,10 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 strict = Some(val);
                             } else if ident == "no_strict" {
                                 strict = Some(!val);
+                            } else if ident == "preconditions" {
+                                no_preconditions = Some(!val);
                             } else if ident == "no_preconditions" {
                                 no_preconditions = Some(val);
-                            } else if ident == "no_call_attribution" {
-                                no_call_attribution = Some(val);
-                            } else if ident == "fast" {
-                                no_preconditions = Some(val);
-                                no_call_attribution = Some(val);
-                            } else if ident == "no_fast" {
-                                no_preconditions = Some(!val);
-                                no_call_attribution = Some(!val);
                             } else if ident == "internal" {
                                 internal = val;
                             } else if ident == "noexport" {
@@ -2462,9 +2426,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         else {
                             return Err(syn::Error::new_spanned(
                                 &nv.value,
-                                "`call = ...` accepts `none` (`.call = NULL`), `wrapper` (the \
-                                 wrapper's own `match.call()`, the default) or `caller` (attribute \
-                                 conditions to the wrapper's caller)",
+                                "`call = ...` accepts `wrapper` (the call as written, the \
+                                 default) or `caller` (attribute conditions to the wrapper's \
+                                 caller)",
                             ));
                         };
                         if call_attr.is_some() {
@@ -2497,7 +2461,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = none | wrapper | caller`, `r_entry = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller`, `r_entry = \"...\"`, \
                                  `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
@@ -2641,10 +2605,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             ));
         }
 
-        // Validate: `call = caller` is for internal entry points only, and
-        // needs a call slot to point somewhere. `no_call_attribution` / `fast`
-        // spell `call = none` and `no_fast` spells `call = wrapper`; an explicit
-        // `call = ...` that says otherwise is a contradiction, not an override.
+        // Validate: `call = caller` is for internal entry points only.
         use crate::r_wrapper_builder::CallAttribution;
         if call_attr == Some(CallAttribution::Caller) && !(noexport || internal) {
             return Err(syn::Error::new(
@@ -2653,36 +2614,6 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                  meaningful for a package-internal entry point; add `noexport` or `internal`.",
             ));
         }
-        match (call_attr, no_call_attribution) {
-            (Some(CallAttribution::Caller), Some(true)) => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "`call = caller` cannot be combined with `no_call_attribution` / `fast`: those \
-                     emit `.call = NULL`, so there is no call slot to point at the caller.",
-                ));
-            }
-            (Some(CallAttribution::Wrapper), Some(true)) => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "`call = wrapper` cannot be combined with `no_call_attribution` / `fast`: those \
-                     emit `.call = NULL`; keep one of them.",
-                ));
-            }
-            (Some(CallAttribution::None), Some(false)) => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "`call = none` cannot be combined with `no_fast`, which restores \
-                     `.call = match.call()`; keep one of them.",
-                ));
-            }
-            _ => {}
-        }
-        let call_attribution = call_attr.or(match no_call_attribution {
-            Some(true) => Some(CallAttribution::None),
-            Some(false) => Some(CallAttribution::Wrapper),
-            None => None,
-        });
-
         if r_name.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
@@ -2719,8 +2650,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             serialize,
             wrap,
             serde_error,
-            no_preconditions: no_preconditions.unwrap_or(cfg!(feature = "fast-default")),
-            call_attribution,
+            no_preconditions: no_preconditions
+                .unwrap_or(cfg!(feature = "no-preconditions-default")),
+            call_attribution: call_attr,
             return_pref,
             return_pref_span,
             s3_generic,

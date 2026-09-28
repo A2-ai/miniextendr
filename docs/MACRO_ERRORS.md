@@ -278,26 +278,16 @@ wrapped by a hand-written R function, and wrong for an exported function whose
 caller is arbitrary user code. Add `noexport` or `internal`, or drop the option.
 See [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution).
 
-### "`call = caller` cannot be combined with `no_call_attribution` / `fast`"
+### "`call = ...` accepts `wrapper` (the call as written, the default) or `caller` (...)"
 
-Those options emit `.call = NULL` (no call captured at all), so there is no slot
-for `call = caller` to redirect. Keep one: `call = caller` for attributed errors
-from an internal entry point, `fast` for the no-attribution fast path. The same
-family covers `call = wrapper` + `fast` and `call = none` + `no_fast`: the
-shorthands spell `call = none` / `call = wrapper`, so an explicit `call = ...`
-that says otherwise is a contradiction.
-
-### "`call = ...` accepts `none` (`.call = NULL`), `wrapper` (...) or `caller` (...)"
-
-`call = parent`, `call = self` & co. name no attribution. The three values are
-`none`, `wrapper` (the default) and `caller`, as a path or a string; see
+`call = parent`, `call = self` & co. name no attribution. The two values are
+`wrapper` (the default) and `caller`, as a path or a string; see
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
 ### "the `Call` parameter selects `wrapper` attribution but the attribute selects `caller`"
 
-A `Call` / `CallerCall` parameter and the `call = ...` attribute (or its
-shorthands `no_call_attribution` / `fast` / `no_fast`) are two spellings of one
-decision, so `#[miniextendr(noexport, call = caller)] fn f(x: i32, call: Call)`
+A `Call` / `CallerCall` parameter and the `call = ...` attribute are two
+spellings of one decision, so `#[miniextendr(noexport, call = caller)] fn f(x: i32, call: Call)`
 has no meaning. Keep one spelling, or make them agree. The same family covers
 `a #[miniextendr] function takes at most one Call / CallerCall parameter` (the
 call slot is a single value), `a CallerCall parameter attributes conditions to
@@ -310,8 +300,8 @@ methods keep the wrapper's own call).
 
 ### "Cargo.toml: [package.metadata.miniextendr] `call_attribution` must be one of ..."
 
-The crate-wide default takes the same three values as the attribute, as a
-string: `call_attribution = "none"`, `"wrapper"` or `"caller"`, set once. A
+The crate-wide default takes the same two values as the attribute, as a
+string: `call_attribution = "wrapper"` or `"caller"`, set once. A
 `"caller"` default applies to `noexport` / `internal` free functions only;
 exported functions keep `wrapper`.
 

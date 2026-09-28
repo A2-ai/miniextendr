@@ -111,7 +111,7 @@ test_that("normal counter_get_value still works (no regression)", {
 #   - class layering (rust_*, with optional user class layered first),
 #   - e$kind round-trip,
 #   - conditionCall(e) reflecting the CONSUMER-side wrapper (the .Call carries
-#     .call = match.call()), not the producer-side vtable shim or R_NilValue.
+#     .call = sys.call()), not the producer-side vtable shim or R_NilValue.
 #
 # These migrated to the error_in_r tagged-SEXP transport in PR #349 (#345); the
 # direct Rf_error at miniextendr_trait.rs:808 is gone, so cross-package raises

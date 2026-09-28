@@ -23,7 +23,7 @@ Temperature <- R6::R6Class("Temperature",
       if (!is.null(.ptr)) {
         private$.ptr <- .ptr
       } else {
-        .val <- .Call(C_miniextendr_macros_Temperature__new, .call = match.call(), celsius)
+        .val <- .Call(C_miniextendr_macros_Temperature__new, .call = sys.call(), celsius)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
         private$.ptr <- .val
       }
@@ -43,27 +43,27 @@ Temperature <- R6::R6Class("Temperature",
 Temperature$set("public", "set_celsius", function(value) {
   if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
   if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
-  .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+  .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = sys.call(), private$.ptr, value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   self
 })
 
 Temperature$set("active", "celsius", function(value) {
   if (missing(value)) {
-    .val <- .Call(C_miniextendr_macros_Temperature__celsius, .call = match.call(), private$.ptr)
+    .val <- .Call(C_miniextendr_macros_Temperature__celsius, .call = sys.call(), private$.ptr)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     .val
   } else {
     if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double")
     if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1")
-    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = match.call(), private$.ptr, value)
+    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius, .call = sys.call(), private$.ptr, value)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
     invisible(self)
   }
 })
 
 Temperature$set("active", "fahrenheit", function() {
-  .val <- .Call(C_miniextendr_macros_Temperature__fahrenheit, .call = match.call(), private$.ptr)
+  .val <- .Call(C_miniextendr_macros_Temperature__fahrenheit, .call = sys.call(), private$.ptr)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val
 })

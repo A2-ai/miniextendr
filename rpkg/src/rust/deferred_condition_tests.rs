@@ -66,6 +66,18 @@ pub fn deferred_warning_value(n: i32) -> i32 {
     n - 2
 }
 
+/// `deferred_warning_value` without the R-side checks: the deferred warning
+/// still carries the wrapper's call as written.
+/// @param n Row count.
+#[miniextendr(noexport, no_preconditions)]
+pub fn deferred_warning_value_no_preconditions(n: i32) -> i32 {
+    defer_warning(PkgWarning::Truncated {
+        dropped: 2,
+        total: n,
+    });
+    n - 2
+}
+
 /// Three conditions in one call, two typed and one from the macro form, to
 /// check queue order and mixed kinds. Returns 3.
 #[miniextendr]
