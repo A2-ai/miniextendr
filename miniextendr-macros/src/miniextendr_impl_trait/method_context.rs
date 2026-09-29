@@ -111,6 +111,11 @@ pub(super) struct TraitMethodContext<'a> {
     /// context existed, trait methods built call args via
     /// `collect_param_idents` instead, which skipped that forwarding entirely.
     pub(super) args: String,
+    /// Drop the R-side type-check guards from the generated wrapper.
+    /// Inherited from `ImplAttrs::no_preconditions` (the impl block's
+    /// `no_preconditions` / `preconditions`, else the
+    /// `no-preconditions-default` feature).
+    pub(super) no_preconditions: bool,
 }
 
 impl<'a> TraitMethodContext<'a> {
@@ -138,7 +143,15 @@ impl<'a> TraitMethodContext<'a> {
             c_ident,
             params,
             args,
+            no_preconditions: false,
         }
+    }
+
+    /// Set the `no_preconditions` flag inherited from the impl block; the
+    /// twin of `MethodContext::with_no_preconditions`.
+    pub(super) fn with_no_preconditions(mut self, no_preconditions: bool) -> Self {
+        self.no_preconditions = no_preconditions;
+        self
     }
 
     /// The R-visible assignment target for this method within `class_system`'s
@@ -250,12 +263,14 @@ impl<'a> TraitMethodContext<'a> {
 
     /// R-side precondition guards for this method's parameters.
     /// See `MethodContext::precondition_checks` for the inherent-impl twin.
+    /// `no_preconditions` drops the type-derived checks; the per-parameter
+    /// `inherits(...)` / `no_na(...)` checks stay.
     pub(super) fn precondition_checks(&self) -> Vec<String> {
         crate::r_class_formatter::build_method_precondition_checks(
             &self.method.sig.inputs,
             &self.method.per_param,
             self.method.coerce,
-            false,
+            self.no_preconditions,
         )
     }
 

@@ -315,7 +315,8 @@ options do not apply to it, and class / trait methods accept none of the three
 aside) ends its formals with `.call = NULL`, so a hand-written helper in
 between can pass on its caller's frame (`call = parent.frame()`) or a call
 ([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)). The
-attribution is independent of `no_preconditions`. Details and the fixtures:
+attribution is independent of `no_preconditions`, which on an impl block
+applies to trait impls too. Details and the fixtures:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
 #### Threading

@@ -219,7 +219,8 @@ On a function the pair also takes `= true` / `= false`
 (`preconditions = false` is `no_preconditions`), and on a function or an impl
 block the last one written wins, like `worker` / `no_worker`.
 
-The same applies to impl blocks:
+The same applies to impl blocks, inherent and trait impls alike (including an
+empty-body trait impl and the setter of an R6 active binding):
 
 ```rust
 // With no-preconditions-default + r6-default:
@@ -301,8 +302,8 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `strict-default` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
-| `preconditions` | `#[miniextendr(preconditions)]` on fn or impl (`preconditions = true` on a fn) | `no-preconditions-default` feature (keeps the R-side type checks) |
-| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl (`no_preconditions = true` on a fn) | Built-in default: drops the R-side type checks |
+| `preconditions` | `#[miniextendr(preconditions)]` on fn or impl, inherent or trait (`preconditions = true` on a fn) | `no-preconditions-default` feature (keeps the R-side type checks) |
+| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl, inherent or trait (`no_preconditions = true` on a fn) | Built-in default: drops the R-side type checks |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `worker-default` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `r6-default` or `s7-default` feature |

@@ -433,3 +433,27 @@ fn view_method_passes_missing_args_as_the_sentinel() {
     );
 }
 // endregion
+
+// region: TPIE `macro_rules!` contract
+
+/// The TPIE helper a trait emits takes the impl's `no_preconditions` as its
+/// last token and forwards it to the expansion input.
+#[test]
+fn tpie_macro_forwards_no_preconditions() {
+    let trait_item: ItemTrait = syn::parse_quote! {
+        pub trait Scale {
+            fn scaled(&self, k: f64) -> f64;
+        }
+    };
+    let out = generate_trait_abi(&trait_item).to_string();
+    assert!(
+        out.contains("$ noexport : tt , $ no_preconditions : tt)"),
+        "{out}"
+    );
+    assert!(
+        out.contains("no_preconditions = $ no_preconditions ;"),
+        "{out}"
+    );
+}
+
+// endregion
