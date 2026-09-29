@@ -495,7 +495,7 @@ entirely — see the guidance below.
   builds you don't control (rwasm / repo.r-wasm.org) — there, keep compiled
   deps out of the namespace-load graph as above.
 
-This mirrors what the astra downstream did (moved its Shiny stack to
+This mirrors what a downstream package did (moved its Shiny stack to
 `Suggests` + `::`). Documented under #752; the lint is
 `minirextendr::miniextendr_webr_import_lint()` (also reachable as
 `miniextendr_doctor(webr = TRUE)`, #925). It statically probes each
