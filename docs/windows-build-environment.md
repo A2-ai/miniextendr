@@ -324,3 +324,12 @@ PATH="${R_CUSTOM_TOOLS_PATH:-${R_RTOOLS45_PATH}};${PATH}/"
    `/dev/shm` and `/dev/mqueue` as tmpfs before bash starts. The
    Option D profile above works fine despite the warnings, so only
    switch wrappers if the noise bothers you.
+
+## CI
+
+The `r-check-windows` job in `.github/workflows/ci.yml` runs `R CMD check`
+on `windows-latest` with this Rtools45 bash as its default shell and
+`CARGO_BUILD_TARGET=x86_64-pc-windows-gnu` (the runner's rustup default is the
+MSVC host). It runs on PRs carrying the `windows` label, on the weekly cron,
+and on manual dispatch, and it never blocks a merge. Apply the label to any PR
+that touches Windows support.

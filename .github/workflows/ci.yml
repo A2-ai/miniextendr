@@ -4,8 +4,9 @@ on:
   pull_request:
     # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
     # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
-    # rounds in r-tests) and `gc-stress` (r-stress-tests). The default activity
-    # types (opened/synchronize/reopened) cover everything else.
+    # rounds in r-tests), `gc-stress` (r-stress-tests) and `windows`
+    # (r-check-windows). The default activity types
+    # (opened/synchronize/reopened) cover everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -984,164 +985,171 @@ jobs:
   # ===========================================================================
   # R Package: R CMD check on Windows
   # ===========================================================================
-  # DISABLED: Windows CI is currently disabled. Uncomment the block below to
-  # re-enable. Remember to also re-add `r-check-windows` to `ci-success.needs`.
-  # r-check-windows:
-  #   name: R CMD check / Windows
-  #   runs-on: windows-latest
-  #   timeout-minutes: 90
-  #   needs: changes
-  #   if: needs.changes.outputs.r == 'true'
-  #   # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
-  #   # This matches R's own build system (SHELL = sh from Rtools).
-  #   # See docs/windows-build-environment.md for details.
-  #   defaults:
-  #     run:
-  #       shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
-  #   env:
-  #     GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-  #     R_KEEP_PKG_SOURCE: yes
-  #     SCCACHE_GHA_ENABLED: "true"
-  #     CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
-  #     # Dev profile: R CMD check doesn't benefit from optimized rustc output, and
-  #     # MinGW linking is the dominant cost on Windows. Dev profile is ~3-5x faster
-  #     # to compile/link than release and keeps codegen-units = 1 (linkme requirement).
-  #     CARGO_PROFILE: dev
-  #
-  #   steps:
-  #     - uses: actions/checkout@v7
-  #       with:
-  #         lfs: true
-  #
-  #     - name: Setup R
-  #       uses: r-lib/actions/setup-r@v2
-  #       with:
-  #         r-version: release
-  #         rtools-version: "45"
-  #         use-public-rspm: true
-  #
-  #     - name: Setup R dependencies
-  #       uses: r-lib/actions/setup-r-dependencies@v2
-  #       with:
-  #         working-directory: rpkg
-  #         extra-packages: any::rcmdcheck
-  #         needs: check
-  #
-  #     - name: Install Rust toolchain
-  #       uses: dtolnay/rust-toolchain@stable
-  #       with:
-  #         targets: x86_64-pc-windows-gnu
-  #
-  #     - name: Setup sccache
-  #       id: sccache
-  #       uses: mozilla-actions/sccache-action@v0.0.10
-  #       continue-on-error: true
-  #
-  #     - name: Set RUSTC_WRAPPER if sccache available
-  #       if: steps.sccache.outcome == 'success'
-  #       run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
-  #
-  #     - name: Cache Cargo
-  #       uses: Swatinem/rust-cache@v2
-  #       with:
-  #         workspaces: rpkg/src/rust -> target
-  #         shared-key: r-windows
-  #         cache-on-failure: true
-  #
-  #     - name: Configure Windows Rust environment
-  #       run: |
-  #         # Add Rtools to GITHUB_PATH for all subsequent steps
-  #         rtools_home="/c/rtools45"
-  #         echo "${rtools_home}/x86_64-w64-mingw32.static.posix/bin" >> "$GITHUB_PATH"
-  #         echo "${rtools_home}/usr/bin" >> "$GITHUB_PATH"
-  #         echo "$(cygpath -u "$(Rscript.exe -e 'cat(R.home())')")/bin/x64" >> "$GITHUB_PATH"
-  #         if [ -n "${CARGO_HOME:-}" ]; then
-  #           echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
-  #         fi
-  #
-  #         # Satisfy rustc's -lgcc_eh / -lgcc_s with the toolchain's real libgcc.
-  #         # Rtools45's `.static.posix` gcc ships a unified `libgcc.a` (no separate
-  #         # libgcc_eh.a / libgcc_s.a), so we stage symlinks to the real archive.
-  #         # Previous versions of this job used empty `ar crs` archives, which
-  #         # satisfied the linker but left `__gcc_personality_v0` unresolved at
-  #         # runtime — the panic machinery then aborted with
-  #         # "fatal runtime error: failed to initiate panic, error 5" whenever
-  #         # Rust tried to unwind on Windows. ld.bfd hid this; ld.lld exposes it.
-  #         mkdir -p libgcc_mock
-  #         real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
-  #         if [ ! -f "$real_libgcc" ]; then
-  #           echo "::error::gcc -print-libgcc-file-name returned non-file: $real_libgcc"
-  #           exit 1
-  #         fi
-  #         cp "$real_libgcc" libgcc_mock/libgcc_eh.a
-  #         cp "$real_libgcc" libgcc_mock/libgcc_s.a
-  #
-  #         # Configure Cargo for Windows GNU target
-  #         mkdir -p .cargo
-  #         pwd_slash="$(cygpath -m "$(pwd)")"
-  #         cat > .cargo/config.toml <<TOML
-  #         [target.x86_64-pc-windows-gnu]
-  #         linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
-  #         # lld is dramatically faster than MinGW's bfd linker. rustup's
-  #         # bundled rust-lld (shipped with the toolchain) satisfies -fuse-ld=lld.
-  #         rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-  #
-  #         [env]
-  #         LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
-  #         TOML
-  #
-  #     - name: Install just
-  #       uses: taiki-e/install-action@just
-  #
-  #     - name: Install cargo-revendor
-  #       run: cargo install --path cargo-revendor
-  #
-  #     - name: Configure and vendor
-  #       run: |
-  #         just configure
-  #         just vendor
-  #
-  #     - name: R CMD check
-  #       uses: r-lib/actions/check-r-package@v2
-  #       with:
-  #         working-directory: rpkg
-  #         args: 'c("--no-manual", "--as-cran")'
-  #         error-on: '"error"'
-  #         check-dir: '"check"'
-  #         # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
-  #       env:
-  #         # On Windows, DataFusion's Tokio runtime threads keep the test
-  #         # Rterm process alive after tests complete, preventing R CMD check
-  #         # from detecting test completion via stdout pipe close. This timeout
-  #         # (5 min) kills the test process if it hasn't exited (tests finish
-  #         # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
-  #         _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
-  #
-  #     - name: Print failed tests
-  #       if: always()
-  #       run: |
-  #         for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
-  #           [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
-  #         done || true
-  #
-  #     - name: Print 00check.log and 00install.out
-  #       if: always()
-  #       run: |
-  #         echo "=== 00install.out ==="
-  #         cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
-  #         echo ""
-  #         echo "=== 00check.log ==="
-  #         cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
-  #
-  #     - name: Upload check results
-  #       if: failure()
-  #       uses: actions/upload-artifact@v7
-  #       with:
-  #         name: logs-windows
-  #         path: |
-  #           rpkg/check
-  #           rpkg/config.log
-  #         retention-days: 7
+  # On demand: the `windows` PR label (apply it to a PR that touches Windows
+  # support: Makevars.win / configure.win, rtools linking, Windows-specific
+  # code paths), the weekly cron, and workflow_dispatch. Non-gating, so not
+  # in ci-success.needs: a labeled failure shows red on the PR without
+  # blocking it, same as the macOS job. The job hung past its timeout in
+  # April 2026 (#94) and was switched off until this opt-in; worker panics
+  # under pipe-redirected stdout can still abort (#104).
+  r-check-windows:
+    name: R CMD check / Windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      contains(github.event.pull_request.labels.*.name, 'windows')
+    # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
+    # This matches R's own build system (SHELL = sh from Rtools).
+    # See docs/windows-build-environment.md for details.
+    defaults:
+      run:
+        shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
+      # Dev profile: R CMD check doesn't benefit from optimized rustc output, and
+      # MinGW linking is the dominant cost on Windows. Dev profile is ~3-5x faster
+      # to compile/link than release and keeps codegen-units = 1 (linkme requirement).
+      CARGO_PROFILE: dev
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          rtools-version: "45"
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Setup sccache
+        id: sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+        continue-on-error: true
+
+      - name: Set RUSTC_WRAPPER if sccache available
+        if: steps.sccache.outcome == 'success'
+        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: r-windows
+          cache-on-failure: true
+
+      - name: Configure Windows Rust environment
+        run: |
+          # Add Rtools to GITHUB_PATH for all subsequent steps
+          rtools_home="/c/rtools45"
+          echo "${rtools_home}/x86_64-w64-mingw32.static.posix/bin" >> "$GITHUB_PATH"
+          echo "${rtools_home}/usr/bin" >> "$GITHUB_PATH"
+          echo "$(cygpath -u "$(Rscript.exe -e 'cat(R.home())')")/bin/x64" >> "$GITHUB_PATH"
+          if [ -n "${CARGO_HOME:-}" ]; then
+            echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
+          fi
+
+          # Satisfy rustc's -lgcc_eh / -lgcc_s with the toolchain's real libgcc.
+          # Rtools45's `.static.posix` gcc ships a unified `libgcc.a` (no separate
+          # libgcc_eh.a / libgcc_s.a), so we stage symlinks to the real archive.
+          # Previous versions of this job used empty `ar crs` archives, which
+          # satisfied the linker but left `__gcc_personality_v0` unresolved at
+          # runtime — the panic machinery then aborted with
+          # "fatal runtime error: failed to initiate panic, error 5" whenever
+          # Rust tried to unwind on Windows. ld.bfd hid this; ld.lld exposes it.
+          mkdir -p libgcc_mock
+          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
+          if [ ! -f "$real_libgcc" ]; then
+            echo "::error::gcc -print-libgcc-file-name returned non-file: $real_libgcc"
+            exit 1
+          fi
+          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
+          cp "$real_libgcc" libgcc_mock/libgcc_s.a
+
+          # Configure Cargo for Windows GNU target
+          mkdir -p .cargo
+          pwd_slash="$(cygpath -m "$(pwd)")"
+          cat > .cargo/config.toml <<TOML
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+          # lld is dramatically faster than MinGW's bfd linker. rustup's
+          # bundled rust-lld (shipped with the toolchain) satisfies -fuse-ld=lld.
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+          [env]
+          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
+          TOML
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
+
+      - name: R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: rpkg
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          check-dir: '"check"'
+          # No NOT_CRAN — configure.ac detects tarball install from inst/vendor.tar.xz
+        env:
+          # On Windows, DataFusion's Tokio runtime threads keep the test
+          # Rterm process alive after tests complete, preventing R CMD check
+          # from detecting test completion via stdout pipe close. This timeout
+          # (5 min) kills the test process if it hasn't exited (tests finish
+          # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
+          _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
+
+      - name: Print failed tests
+        if: always()
+        run: |
+          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
+            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
+          done || true
+
+      - name: Print 00check.log and 00install.out
+        if: always()
+        run: |
+          echo "=== 00install.out ==="
+          cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+          echo ""
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-windows
+          path: |
+            rpkg/check
+            rpkg/config.log
+          retention-days: 7
 
   # ===========================================================================
   # R Package: Test suite (Linux only)
@@ -1975,7 +1983,7 @@ jobs:
   # Summary job: the single check for branch protection / a ruleset to require
   # ===========================================================================
   # `needs` is the gating set and the only list to edit: a job left out
-  # (macOS, e2e, feature legs) never blocks a merge. success and skipped pass;
+  # (macOS, Windows, e2e, feature legs) never blocks a merge. success and skipped pass;
   # failure and cancelled fail. `if: always()` matters: without it a failed
   # dependency skips this job, and a skipped required check counts as passing.
   ci-success:
@@ -1990,7 +1998,7 @@ jobs:
       - changes
       - r-check-linux
       # - r-check-macos   # non-gating: runs only on workflow_dispatch + weekly cron, see #95
-      # - r-check-windows # DISABLED — re-enable when Windows job is uncommented above
+      # - r-check-windows # non-gating: `windows` label / weekly cron / dispatch, see #94
       - r-tests
       - r-stress-tests
       - cross-package-tests
