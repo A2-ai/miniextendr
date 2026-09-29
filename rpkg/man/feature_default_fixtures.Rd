@@ -31,19 +31,29 @@ fdefault_checks_restored_i32(x)
 \item{x}{Integer-like scalar.}
 }
 \description{
-Name of the thread the body runs on under the build's default dispatch: "miniextendr-worker" under \code{worker-default}, the R main thread otherwise.
+Name of the thread the body runs on under the build's default dispatch:
+"miniextendr-worker" under \code{worker-default}, the R main thread otherwise.
 
-Same body as \code{fdefault_worker_thread_name} with \code{no_worker}: pinned to the R main thread even under \code{worker-default}.
+Same body as \code{fdefault_worker_thread_name} with \code{no_worker}: pinned to the
+R main thread even under \code{worker-default}.
 
-i64 identity under the build's default conversion mode: rejects logical and raw inputs under \code{strict-default}, accepts them otherwise.
+i64 identity under the build's default conversion mode: rejects logical
+and raw inputs under \code{strict-default}, accepts them otherwise.
 
-Same as \code{fdefault_strict_i64} with \code{no_strict}: stays lenient even under \code{strict-default}.
+Same as \code{fdefault_strict_i64} with \code{no_strict}: stays lenient even under
+\code{strict-default}.
 
-Logical identity under the build's default conversion mode: under \code{coerce-default} also accepts integer \code{0L}/\code{1L}, preserving logical inputs.
+Logical identity under the build's default conversion mode: under
+\code{coerce-default} also accepts integer \code{0L}/\code{1L}, preserving logical inputs.
 
-Same as \code{fdefault_coerce_flag} with \code{no_coerce}: requires a logical even under \code{coerce-default}.
+Same as \code{fdefault_coerce_flag} with \code{no_coerce}: requires a logical even
+under \code{coerce-default}.
 
-i32 identity, bare (no knob attrs): under \code{no-preconditions-default} the R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} instead (\verb{'x' must be a single integer: ...}); otherwise the R-side check raises \verb{'x' must be integer}. Both are the same argument-error condition.
+i32 identity, bare (no knob attrs): under \code{no-preconditions-default} the
+R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} instead
+(\verb{'x' must be a single integer: ...}); otherwise the R-side check raises
+\verb{'x' must be integer}. Both are the same argument-error condition.
 
-Same as \code{fdefault_bare_i32} with \code{preconditions}: the checks are kept even under \code{no-preconditions-default}.
+Same as \code{fdefault_bare_i32} with \code{preconditions}: the checks are kept
+even under \code{no-preconditions-default}.
 }

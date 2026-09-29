@@ -52,12 +52,14 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 \describe{
 \item{\code{@length}}{Computed property: read-only length of the range.
 
-This becomes an S7 property accessed as \code{obj@length} in R. Since there's no setter, it is a computed (read-only) property.
+This becomes an S7 property accessed as \code{obj@length} in R.
+Since there's no setter, it is a computed (read-only) property.
 
 The value is always \code{end - start} and is recomputed on each access.}
 
 \item{\code{@midpoint}}{Dynamic property getter: read the midpoint.
 
-Combined with set_midpoint, this creates a dynamic property that can be both read and written.}
+Combined with set_midpoint, this creates a dynamic property
+that can be both read and written.}
 }}
 

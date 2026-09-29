@@ -82,19 +82,24 @@ Recursive (three-level) struct-flatten round-trip. Columns \code{id}, \code{mid_
 
 \verb{Vec::<RListVecRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{data} (list-column).
 
-\verb{Vec::<RListBoxRow>::from_dataframe(&df)} → rebuild. Columns \code{tag}, \code{xs} (list-column). Exercises \code{.into()} from \verb{Vec<i32>} to \verb{Box<[i32]>} per row.
+\verb{Vec::<RListBoxRow>::from_dataframe(&df)} → rebuild. Columns \code{tag}, \code{xs} (list-column).
+Exercises \code{.into()} from \verb{Vec<i32>} to \verb{Box<[i32]>} per row.
 
 \verb{Vec::<RListMultiRow>::from_dataframe(&df)} → rebuild. Columns \code{ids}, \code{names} (both list-columns).
 
 Parallel list-column round-trip (real off-thread index assembly). Columns \code{id}, \code{data}.
 
-\verb{Vec::<RMapRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{opts} (list of named lists). BTreeMap keys come back sorted.
+\verb{Vec::<RMapRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{opts}
+(list of named lists). BTreeMap keys come back sorted.
 
-\verb{Vec::<RHashMapRow>::from_dataframe(&df)} → rebuild. Columns \code{label}, \code{weights} (list of named lists). HashMap key order is non-deterministic — R-side assertions must sort by name.
+\verb{Vec::<RHashMapRow>::from_dataframe(&df)} → rebuild. Columns \code{label},
+\code{weights} (list of named lists). HashMap key order is non-deterministic —
+R-side assertions must sort by name.
 
 Parallel map-column round-trip (real off-thread index assembly). Columns \code{id}, \code{opts}.
 
-\verb{Vec::<WithIntMap>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{tally_keys}, \code{tally_values} (VECSXP of integer/double vectors). BTreeMap keys come back sorted.
+\verb{Vec::<WithIntMap>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{tally_keys},
+\code{tally_values} (VECSXP of integer/double vectors). BTreeMap keys come back sorted.
 
 Parallel non-String-keyed map round-trip. Columns \code{id}, \code{tally_keys}, \code{tally_values}.
 

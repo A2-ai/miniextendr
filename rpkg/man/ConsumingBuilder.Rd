@@ -48,7 +48,8 @@ S3 generic for \code{with_amount}
 
 S3 generic for \code{try_amount}
 
-\verb{self -> Result<Self, E>}: negative amounts are rejected and the object is left unchanged.
+\verb{self -> Result<Self, E>}: negative amounts are rejected and the
+object is left unchanged.
 
 S3 generic for \code{maybe_amount}
 

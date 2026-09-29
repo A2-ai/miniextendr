@@ -92,7 +92,8 @@ Create a compact table from raw string vectors.
 
 Concatenate two tables side-by-side by merging columns.
 
-Render a slice of \code{Tabled} rows via \code{table_to_string} (the generic entry point; the fixtures above only cover \code{table_from_vecs}/\code{Builder}).
+Render a slice of \code{Tabled} rows via \code{table_to_string} (the generic
+entry point; the fixtures above only cover \code{table_from_vecs}/\code{Builder}).
 
 \code{table_to_string} over an empty slice (headers only).
 }

@@ -61,7 +61,11 @@ Test creating an MxRecord and returning as list via PreferList.
 
 Construct an \code{MxFit} and return it as an R list (exercises \code{IntoList}).
 
-Round-trip an \code{MxFit} through \code{IntoList} and the (fixed) \code{TryFromList} derive, returning the reconstructed \code{estimate} vector. This is the only path that exercises the \verb{Vec<f64>} field's \code{try_from_sexp} extraction at runtime — list-mode structs are not generated as \verb{#[miniextendr]} argument types, so they cannot be reconstructed directly from an R call.
+Round-trip an \code{MxFit} through \code{IntoList} and the (fixed) \code{TryFromList}
+derive, returning the reconstructed \code{estimate} vector. This is the only
+path that exercises the \verb{Vec<f64>} field's \code{try_from_sexp} extraction at
+runtime — list-mode structs are not generated as \verb{#[miniextendr]} argument
+types, so they cannot be reconstructed directly from an R call.
 
 Test creating an MxObs dataframe with two sample rows.
 

@@ -57,5 +57,7 @@ Test that insertion order is preserved in IndexMap keys.
 
 Test roundtripping a single-entry IndexMap.
 
-Drive an \code{IndexMap} through the \code{RIndexMapOps} adapter trait (audit A7 — the conversions above call inherent \code{IndexMap} methods; the trait was unexercised). Calls are trait-qualified.
+Drive an \code{IndexMap} through the \code{RIndexMapOps} adapter trait (audit A7 —
+the conversions above call inherent \code{IndexMap} methods; the trait was
+unexercised). Calls are trait-qualified.
 }

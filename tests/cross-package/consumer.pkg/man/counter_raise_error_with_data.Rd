@@ -10,9 +10,14 @@ counter_raise_error_with_data(counter_sexp)
 \item{counter_sexp}{An ExternalPtr to any type implementing Counter}
 }
 \description{
-Raise an error!() with structured \verb{data =} fields through a Counter trait method via trait dispatch.
+Raise an error!() with structured \verb{data =} fields through a Counter trait
+method via trait dispatch.
 
-Exercises the \code{from_tagged_sexp} slot 4 round-trip path (issue #996 path-1): producer raises \verb{error!(class = "data_bearing_error", data = [...], "msg")}, the vtable shim returns a tagged SEXP, \code{repanic_if_rust_error} reconstructs the \code{RCondition} (including data), and the consumer's \code{with_r_unwind_protect} guard re-emits a new tagged SEXP with the data intact.
+Exercises the \code{from_tagged_sexp} slot 4 round-trip path (issue #996 path-1):
+producer raises \verb{error!(class = "data_bearing_error", data = [...], "msg")},
+the vtable shim returns a tagged SEXP, \code{repanic_if_rust_error} reconstructs
+the \code{RCondition} (including data), and the consumer's \code{with_r_unwind_protect}
+guard re-emits a new tagged SEXP with the data intact.
 
 R handlers can then access \code{e$field_a}, \code{e$field_b}, \code{e$flag}, \code{e$score}.
 }

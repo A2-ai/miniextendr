@@ -160,6 +160,8 @@ Optional inline choice on an \verb{Option<String>} parameter.
 
 Optional mode next to a regular parameter; \code{mode} is auto-documented.
 
-Smoke test: a \verb{#[miniextendr]} fn taking a \code{log::LevelFilter} via match_arg. The generated R wrapper should bake in the same lowercase choices that \verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
+Smoke test: a \verb{#[miniextendr]} fn taking a \code{log::LevelFilter} via match_arg.
+The generated R wrapper should bake in the same lowercase choices that
+\verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
 }
 \keyword{internal}

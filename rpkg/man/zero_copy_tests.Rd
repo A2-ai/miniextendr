@@ -71,13 +71,15 @@ zero_copy_protected_strvec_unique(strings)
 \item{strings}{(no documentation available)}
 }
 \description{
-Round-trip \verb{Cow<[i32]>} through TryFromSexp → IntoR and return the result. As of #880 this always copies into a fresh R vector.
+Round-trip \verb{Cow<[i32]>} through TryFromSexp → IntoR and return the result.
+As of #880 this always copies into a fresh R vector.
 
 Returns TRUE if \verb{RCow<f64>} round-trip returns the same R object (zero-copy).
 
 Returns TRUE if \verb{RCow<i32>} round-trip returns the same R object (zero-copy).
 
-Returns FALSE — a mutated \code{RCow} copies-on-write, so it is a new R object (but still value-correct, checked R-side).
+Returns FALSE — a mutated \code{RCow} copies-on-write, so it is a new R object
+(but still value-correct, checked R-side).
 
 Returns TRUE if \verb{Cow<str>} from R is Cow::Borrowed (zero-copy).
 
@@ -93,17 +95,20 @@ Returns FALSE — computed Arrow array has different backing memory.
 
 Verifies r_memory::sexprec_data_offset is nonzero (init ran).
 
-Round-trip Float64Array through Arrow and return the result. The zero-copy path returns the original R SEXP — serialization is trivial.
+Round-trip Float64Array through Arrow and return the result.
+The zero-copy path returns the original R SEXP — serialization is trivial.
 
 Round-trip Int32Array through Arrow and return the result.
 
-Create a Rust-allocated Float64Array (NOT R-backed) and return as ALTREP. The data lives in Rust memory — this is the interesting serialization case.
+Create a Rust-allocated Float64Array (NOT R-backed) and return as ALTREP.
+The data lives in Rust memory — this is the interesting serialization case.
 
 Create a Rust-allocated Int32Array and return as ALTREP.
 
 Create a Vec\if{html}{\out{<f64>}} ALTREP (not Arrow, just plain Rust vec).
 
-Allocate an R-backed Arrow buffer, fill it, return as Float64Array. Tests the alloc_r_backed_buffer → pointer recovery round-trip.
+Allocate an R-backed Arrow buffer, fill it, return as Float64Array.
+Tests the alloc_r_backed_buffer → pointer recovery round-trip.
 
 Slice a Float64Array and return it — recovery should fail (different pointer).
 

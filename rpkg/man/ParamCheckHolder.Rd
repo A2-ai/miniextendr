@@ -23,7 +23,8 @@ ParamCheckHolder
 \item{name}{Method name for dispatch.}
 }
 \description{
-Env class whose \code{add()} method checks its arguments with \code{inherits(...)} / \code{no_na(...)}.
+Env class whose \code{add()} method checks its arguments with
+\code{inherits(...)} / \code{no_na(...)}.
 
 Add \code{y} if \code{x} is an \code{mx_obj}.
 

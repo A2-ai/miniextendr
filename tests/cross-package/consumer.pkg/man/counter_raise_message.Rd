@@ -14,5 +14,7 @@ counter_raise_message(counter_sexp, msg)
 \description{
 Raise a message!() through a Counter trait method via trait dispatch.
 
-Verifies that a producer-side \verb{message!()} round-trips to \code{rust_message} / \code{e$kind == "message"} across the trait-ABI boundary, matching the in-process matrix's message rows.
+Verifies that a producer-side \verb{message!()} round-trips to \code{rust_message} /
+\code{e$kind == "message"} across the trait-ABI boundary, matching the in-process
+matrix's message rows.
 }

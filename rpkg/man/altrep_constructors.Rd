@@ -60,7 +60,8 @@ An ALTREP list.
 \description{
 Create a lazy integer sequence ALTREP (like R's \code{seq()}).
 
-Elements are computed on demand; materialization is deferred until R needs the full data pointer.
+Elements are computed on demand; materialization is deferred until
+R needs the full data pointer.
 
 Create a compact integer ALTREP from a lazy arithmetic sequence with printing on materialization.
 

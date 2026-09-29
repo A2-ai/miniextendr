@@ -61,7 +61,8 @@ Formats values as percentages (e.g., 0.5 -> "50\%").
 
 Get the proxy for subsetting operations.
 
-For percent vectors, the proxy is just the underlying numeric data without the class attribute.
+For percent vectors, the proxy is just the underlying numeric data
+without the class attribute.
 
 Restore from proxy after subsetting.
 

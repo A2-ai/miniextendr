@@ -13,5 +13,6 @@ increment_twice(counter_sexp)
 The counter's value after incrementing twice
 }
 \description{
-Increment a counter twice (generic over Counter trait) This function works with Counter objects from ANY package.
+Increment a counter twice (generic over Counter trait)
+This function works with Counter objects from ANY package.
 }

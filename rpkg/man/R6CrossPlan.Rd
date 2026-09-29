@@ -68,7 +68,9 @@ R6 builder fixture for cross-class return wrapping.
 \subsection{\code{R6CrossPlan$build_s7()}}{
   Materialize this plan into an \code{S7CrossBoard} (R6 source, S7 target).
 
-The write-time resolver keys off the \emph{returned} class, so the emitted wrapper uses S7's \code{S7CrossBoard(.ptr = .val)} constructor even though the enclosing method lives on an R6 class.
+The write-time resolver keys off the \emph{returned} class, so the emitted
+wrapper uses S7's \code{S7CrossBoard(.ptr = .val)} constructor even though
+the enclosing method lives on an R6 class.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build_s7(width, height)}
@@ -90,7 +92,11 @@ The write-time resolver keys off the \emph{returned} class, so the emitted wrapp
 \subsection{\code{R6CrossPlan$try_build()}}{
   Materialize this plan into an \code{R6CrossBoard}, or \code{None} when \code{fail} is set.
 
-Exercises the \verb{Option<Class>} cross-class return path: the C wrapper already unwraps \verb{Option<T>} and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful \code{.val} is a bare pointer wrapped with \code{R6CrossBoard}'s constructor, identical to the bare-class \code{build()} above.
+Exercises the \verb{Option<Class>} cross-class return path: the C wrapper
+already unwraps \verb{Option<T>} and raises on \code{None}
+(\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful
+\code{.val} is a bare pointer wrapped with \code{R6CrossBoard}'s constructor,
+identical to the bare-class \code{build()} above.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$try_build(width, height, fail)}
@@ -111,9 +117,11 @@ Exercises the \verb{Option<Class>} cross-class return path: the C wrapper alread
 \if{html}{\out{<a id="method-R6CrossPlan-checked_build"></a>}}
 \if{latex}{\out{\hypertarget{method-R6CrossPlan-checked_build}{}}}
 \subsection{\code{R6CrossPlan$checked_build()}}{
-  Materialize this plan into an \code{R6CrossBoard}, or an \code{Err} message when \code{fail} is set.
+  Materialize this plan into an \code{R6CrossBoard}, or an \code{Err} message when
+\code{fail} is set.
 
-Exercises the \verb{Result<Class, E>} cross-class return path (\code{ReturnHandling::ResultIntoR}).
+Exercises the \verb{Result<Class, E>} cross-class return path
+(\code{ReturnHandling::ResultIntoR}).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$checked_build(width, height, fail)}
@@ -136,7 +144,12 @@ Exercises the \verb{Result<Class, E>} cross-class return path (\code{ReturnHandl
 \subsection{\code{R6CrossPlan$build_many()}}{
   Materialize this plan into \code{count} boards (seeds \code{seed}, \code{seed + 1}, …).
 
-Exercises the \verb{Vec<Class>} cross-class return path (#1284): the C wrapper converts via the \code{IntoRVecElement} impl emitted by \verb{#[derive(ExternalPtr)]} into a bare list of external pointers, and the write-time list resolver wraps each element with \code{R6CrossBoard$new(.ptr = .el)} via \code{lapply}. \code{count = 0} returns \code{list()}.
+Exercises the \verb{Vec<Class>} cross-class return path (#1284): the C
+wrapper converts via the \code{IntoRVecElement} impl emitted by
+\verb{#[derive(ExternalPtr)]} into a bare list of external pointers, and the
+write-time list resolver wraps each element with
+\code{R6CrossBoard$new(.ptr = .el)} via \code{lapply}. \code{count = 0} returns
+\code{list()}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build_many(width, height, count)}
@@ -157,9 +170,13 @@ Exercises the \verb{Vec<Class>} cross-class return path (#1284): the C wrapper c
 \if{html}{\out{<a id="method-R6CrossPlan-build_many_s7"></a>}}
 \if{latex}{\out{\hypertarget{method-R6CrossPlan-build_many_s7}{}}}
 \subsection{\code{R6CrossPlan$build_many_s7()}}{
-  Materialize this plan into \code{count} \code{S7CrossBoard}s (R6 source, S7 element target).
+  Materialize this plan into \code{count} \code{S7CrossBoard}s (R6 source, S7
+element target).
 
-Mixed-system list return: the write-time resolver keys off the \emph{element} class, so the emitted \code{lapply} wrap uses S7's \code{S7CrossBoard(.ptr = .el)} constructor even though the enclosing method lives on an R6 class.
+Mixed-system list return: the write-time resolver keys off the
+\emph{element} class, so the emitted \code{lapply} wrap uses S7's
+\code{S7CrossBoard(.ptr = .el)} constructor even though the enclosing
+method lives on an R6 class.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build_many_s7(width, height, count)}
@@ -182,7 +199,10 @@ Mixed-system list return: the write-time resolver keys off the \emph{element} cl
 \subsection{\code{R6CrossPlan$try_build_many()}}{
   Materialize this plan into \code{count} boards, or \code{None} when \code{fail} is set.
 
-Exercises the \verb{Option<Vec<Class>>} cross-class return path: the C wrapper unwraps and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}), so on \code{Some} the successful \code{.val} is the same bare list \code{build_many} produces, wrapped by the same \code{lapply} resolver.
+Exercises the \verb{Option<Vec<Class>>} cross-class return path: the C
+wrapper unwraps and raises on \code{None} (\code{ReturnHandling::OptionIntoRUnwrap}),
+so on \code{Some} the successful \code{.val} is the same bare list \code{build_many}
+produces, wrapped by the same \code{lapply} resolver.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$try_build_many(width, height, count, fail)}
@@ -204,9 +224,11 @@ Exercises the \verb{Option<Vec<Class>>} cross-class return path: the C wrapper u
 \if{html}{\out{<a id="method-R6CrossPlan-checked_build_many"></a>}}
 \if{latex}{\out{\hypertarget{method-R6CrossPlan-checked_build_many}{}}}
 \subsection{\code{R6CrossPlan$checked_build_many()}}{
-  Materialize this plan into \code{count} boards, or an \code{Err} message when \code{fail} is set.
+  Materialize this plan into \code{count} boards, or an \code{Err} message when
+\code{fail} is set.
 
-Exercises the \verb{Result<Vec<Class>, E>} cross-class return path (\code{ReturnHandling::ResultIntoR}).
+Exercises the \verb{Result<Vec<Class>, E>} cross-class return path
+(\code{ReturnHandling::ResultIntoR}).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$checked_build_many(width, height, count, fail)}
@@ -228,9 +250,13 @@ Exercises the \verb{Result<Vec<Class>, E>} cross-class return path (\code{Return
 \if{html}{\out{<a id="method-R6CrossPlan-build_handle"></a>}}
 \if{latex}{\out{\hypertarget{method-R6CrossPlan-build_handle}{}}}
 \subsection{\code{R6CrossPlan$build_handle()}}{
-  Materialize this plan into an \code{R6CrossBoard}, spelled as the explicit handle type.
+  Materialize this plan into an \code{R6CrossBoard}, spelled as the explicit
+handle type.
 
-Exercises the scalar \verb{ExternalPtr<Class>} cross-class return path (#1375): \verb{IntoR for ExternalPtr<T>} already produces a bare \code{EXTPTRSXP} \code{.val}, identical in shape to the bare-\code{Class} case, so the write-time resolver wraps it the same way \code{build()} above does.
+Exercises the scalar \verb{ExternalPtr<Class>} cross-class return path
+(#1375): \verb{IntoR for ExternalPtr<T>} already produces a bare
+\code{EXTPTRSXP} \code{.val}, identical in shape to the bare-\code{Class} case, so
+the write-time resolver wraps it the same way \code{build()} above does.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build_handle(width, height)}
@@ -250,9 +276,12 @@ Exercises the scalar \verb{ExternalPtr<Class>} cross-class return path (#1375): 
 \if{html}{\out{<a id="method-R6CrossPlan-build_many_handles"></a>}}
 \if{latex}{\out{\hypertarget{method-R6CrossPlan-build_many_handles}{}}}
 \subsection{\code{R6CrossPlan$build_many_handles()}}{
-  Materialize this plan into \code{count} boards, spelled as a list of explicit handles.
+  Materialize this plan into \code{count} boards, spelled as a list of
+explicit handles.
 
-Exercises the \verb{Vec<ExternalPtr<Class>>} cross-class return path (#1375) — the sibling of \code{build_many()}'s \verb{Vec<Class>} spelling that \code{inner_class_ident} now peels the same way.
+Exercises the \verb{Vec<ExternalPtr<Class>>} cross-class return path
+(#1375) — the sibling of \code{build_many()}'s \verb{Vec<Class>} spelling that
+\code{inner_class_ident} now peels the same way.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossPlan$build_many_handles(width, height, count)}

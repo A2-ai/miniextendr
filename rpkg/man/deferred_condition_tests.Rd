@@ -71,27 +71,35 @@ deferred_guard_connection()
 \description{
 Returns \code{n - 2} and warns about the two dropped rows.
 
-Three conditions in one call, two typed and one from the macro form, to check queue order and mixed kinds. Returns 3.
+Three conditions in one call, two typed and one from the macro form, to
+check queue order and mixed kinds. Returns 3.
 
-\code{defer_message} with a struct payload (Display message, renamed and Debug fields). Returns \code{"done"}.
+\code{defer_message} with a struct payload (Display message, renamed and
+Debug fields). Returns \code{"done"}.
 
 \verb{defer_condition!} with a custom class: silent without a handler.
 
 \code{defer_condition} with a typed payload on a plain condition.
 
-A deferred warning followed by a classed \code{Err}: the warning is signalled first, then the error.
+A deferred warning followed by a classed \code{Err}: the warning is signalled
+first, then the error.
 
 A deferred warning followed by \verb{rust_error!} (the panic transport).
 
-A deferred warning followed by an immediate \verb{warning!} (which aborts the call): both arrive, deferred first, and the value is \code{NULL}.
+A deferred warning followed by an immediate \verb{warning!} (which aborts the
+call): both arrive, deferred first, and the value is \code{NULL}.
 
 Unit return: R gets \code{invisible(NULL)} plus the warning.
 
-The \code{rng} arm of the main-thread template (Get/PutRNGstate around the body). Returns 1.
+The \code{rng} arm of the main-thread template (Get/PutRNGstate around the
+body). Returns 1.
 
-Nested calls: evaluates an R closure that itself calls \code{deferred_warning_value()}; the inner call flushes only its own warning, this call flushes only "outer".
+Nested calls: evaluates an R closure that itself calls
+\code{deferred_warning_value()}; the inner call flushes only its own warning,
+this call flushes only "outer".
 
-Worker-thread template: the push happens on the worker, the signal on the main thread after the result is back. Returns 9.
+Worker-thread template: the push happens on the worker, the signal on
+the main thread after the result is back. Returns 9.
 
 Create an ALTREP whose element callback defers a warning and message.
 

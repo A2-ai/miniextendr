@@ -123,7 +123,9 @@ pub fn sum_sq(x: &[f64]) -> f64 {
 2. If it lives in a new file, add `mod my_module;` to `lib.rs` — unreachable
    modules are silently skipped.
 3. The `///` doc comment is real roxygen: `@param`/`@return`/`@export` flow
-   into the generated wrapper and `man/`.
+   into the generated wrapper and `man/`. Blank lines and indentation inside
+   a tag carry over: a blank line starts a new paragraph, and `@examples`
+   keeps its indent.
 4. Rebuild: `minirextendr::miniextendr_build()`.
 
 For quick experiments without a package rebuild, compile inline:

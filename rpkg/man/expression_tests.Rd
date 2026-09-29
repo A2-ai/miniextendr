@@ -20,9 +20,12 @@ expr_env_lookup(name)
 \item{name}{Character scalar name to look up.}
 }
 \description{
-Parse and evaluate R source in the global environment; returns the value of the last top-level expression (NULL for empty input).
+Parse and evaluate R source in the global environment; returns the value
+of the last top-level expression (NULL for empty input).
 
-Build and evaluate \code{sum(x, na.rm = TRUE)} via the RCall builder (positional + named argument paths).
+Build and evaluate \code{sum(x, na.rm = TRUE)} via the RCall builder
+(positional + named argument paths).
 
-Resolve \code{name} in the base namespace and report whether it is a function. Errors if the name does not resolve.
+Resolve \code{name} in the base namespace and report whether it is a function.
+Errors if the name does not resolve.
 }

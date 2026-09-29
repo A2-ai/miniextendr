@@ -13,5 +13,6 @@ reset_and_check(sexp)
 TRUE if the object is in default state after reset
 }
 \description{
-Reset an object and check if it's in default state This function works with Resettable objects from ANY package.
+Reset an object and check if it's in default state
+This function works with Resettable objects from ANY package.
 }

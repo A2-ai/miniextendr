@@ -43,7 +43,8 @@ OmitPickS7_omit_grades(self, grades = c("low", "mid", "high"), ...)
 \item{grades}{One or more of "low", "mid", "high"; omitting the argument means no choice.}
 }
 \description{
-Omittable choices on an S7 method: reports what reached Rust for each of \code{mode}, \code{modes} and \code{level}.
+Omittable choices on an S7 method: reports what reached Rust for each
+of \code{mode}, \code{modes} and \code{level}.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

@@ -13,9 +13,12 @@ unified_roundtrip_count(df)
 \item{df}{A data.frame with numeric \code{x}, \code{y} and character \code{label} columns.}
 }
 \description{
-Round-trip a \code{data.frame} through the unified verbs: read into \verb{Vec<Row>} with the \code{from_dataframe} reader, then rebuild with the \code{into_dataframe} writer.
+Round-trip a \code{data.frame} through the unified verbs: read into \verb{Vec<Row>} with
+the \code{from_dataframe} reader, then rebuild with the \code{into_dataframe} writer.
 
-Returns a fresh \code{data.frame} identical to the input, proving both public verbs compose. Takes a \code{SEXP} so it runs on the R main thread.
+Returns a fresh \code{data.frame} identical to the input, proving both public verbs
+compose. Takes a \code{SEXP} so it runs on the R main thread.
 
-Read a \code{data.frame} into \verb{Vec<UnifiedPoint>} via the unified \code{from_dataframe} reader and return the row count.
+Read a \code{data.frame} into \verb{Vec<UnifiedPoint>} via the unified \code{from_dataframe}
+reader and return the row count.
 }

@@ -22,7 +22,8 @@ A string \code{"x=<x> dots=<n> overwrite=<overwrite>"}.
 \description{
 Report \code{x}, the number of dots and \code{overwrite}, for a formal after \code{...}.
 
-An explicit trailing \verb{&Dots}: its \verb{\\usage} shows \code{...}, so the page documents \code{...} and has no line for the Rust name \code{rest}.
+An explicit trailing \verb{&Dots}: its \verb{\\usage} shows \code{...}, so the page
+documents \code{...} and has no line for the Rust name \code{rest}.
 }
 \examples{
 dots_mid(1L, 2, 3, overwrite = TRUE)

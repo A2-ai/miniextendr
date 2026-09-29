@@ -45,7 +45,8 @@ Free function whose parameters are all keywords.
 
 \code{choices(...)} (\code{match.arg}) on a keyword parameter.
 
-\code{match_arg} on a keyword parameter: the choices helper, the write-time placeholder, and the \code{match.arg()} prelude are all keyed by the plain name.
+\code{match_arg} on a keyword parameter: the choices helper, the write-time
+placeholder, and the \code{match.arg()} prelude are all keyed by the plain name.
 
 Per-parameter \code{coerce} on a keyword parameter (attribute keyed by the plain name).
 

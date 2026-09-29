@@ -25,7 +25,10 @@ Create a large parallel points data frame.
 
 Read a \code{ParPoint} data.frame in parallel and return the row count.
 
-Exercises the parallel from-R reader \code{ParPoint::try_from_dataframe_par}: columns are pulled out of R on the R thread, rows are assembled off-thread via rayon, then we recompute a checksum to prove the rows materialised correctly.
+Exercises the parallel from-R reader \code{ParPoint::try_from_dataframe_par}:
+columns are pulled out of R on the R thread, rows are assembled off-thread
+via rayon, then we recompute a checksum to prove the rows materialised
+correctly.
 
 Sequential counterpart to the parallel reader, for cross-checking.
 

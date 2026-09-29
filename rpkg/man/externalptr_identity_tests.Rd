@@ -12,5 +12,6 @@ ptr_pick_larger(a, b)
 \item{b}{An ExternalPtr wrapping a PtrIdentityTest.}
 }
 \description{
-Takes two ExternalPtrs, returns the one with the larger value. The returned SEXP should be the same as the input's SEXP.
+Takes two ExternalPtrs, returns the one with the larger value.
+The returned SEXP should be the same as the input's SEXP.
 }

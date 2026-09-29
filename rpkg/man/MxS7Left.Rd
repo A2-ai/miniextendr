@@ -29,7 +29,8 @@ S7 class with a \code{mx_s7_pair()} method that dispatches on two arguments.
 
 Pair this value with \code{other}, as \code{mx_s7_pair(x, other)}.
 
-The generic dispatches on \code{x} and \code{other}. This method is registered for any \code{other}; the Rust conversion reads it as a number.
+The generic dispatches on \code{x} and \code{other}. This method is registered
+for any \code{other}; the Rust conversion reads it as a number.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

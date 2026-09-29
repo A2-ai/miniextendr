@@ -239,7 +239,8 @@ Return a negative Timestamp (1960-01-01 00:00:00 UTC) to test floor-based split.
 
 Return a Timestamp with sub-second precision (1.5 seconds after epoch).
 
-Return a Timestamp just before midnight negative (tests floor correctness). -0.5 seconds before epoch = -1 second floor + 0.5 seconds subsec.
+Return a Timestamp just before midnight negative (tests floor correctness).
+-0.5 seconds before epoch = -1 second floor + 0.5 seconds subsec.
 
 Extract seconds-since-epoch from a Timestamp.
 
@@ -287,11 +288,14 @@ Check the i-th element (0-based) of a Timestamp POSIXct vector as f64 secs.
 
 Create a JiffZonedVec ALTREP from a character vector of RFC 9557 zoned strings.
 
-All elements must share the same IANA timezone. Returns a POSIXct REALSXP ALTREP vector backed by \verb{Arc<Vec<Zoned>>} with the \code{tzone} attribute set. Panics (error in R) if any element has a different timezone.
+All elements must share the same IANA timezone. Returns a POSIXct REALSXP
+ALTREP vector backed by \verb{Arc<Vec<Zoned>>} with the \code{tzone} attribute set.
+Panics (error in R) if any element has a different timezone.
 
 Return the first element of a JiffZonedVec as an RFC 9557 string.
 
-Useful for roundtrip tests: pass a POSIXct built by \code{jiff_zoned_vec_new} and get back the formatted string for the first element.
+Useful for roundtrip tests: pass a POSIXct built by \code{jiff_zoned_vec_new} and
+get back the formatted string for the first element.
 
 Create a new JiffSpan ExternalPtr from year/month/day components.
 

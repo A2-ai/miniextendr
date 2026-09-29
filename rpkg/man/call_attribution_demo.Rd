@@ -12,6 +12,8 @@ call_attr_internal_impl(x, .call = NULL)
 \item{.call}{The call conditions from this function report: NULL (the default) for the calling function's call, a frame such as parent.frame() for the call of the function owning that frame, or a call object. Pass it by name.}
 }
 \description{
-A \code{call = caller} entry point that renders a page (\code{internal}), so \verb{R CMD check} compares its usage and arguments with the wrapper, whose formals end with \code{.call = NULL}.
+A \code{call = caller} entry point that renders a page (\code{internal}), so
+\verb{R CMD check} compares its usage and arguments with the wrapper, whose
+formals end with \code{.call = NULL}.
 }
 \keyword{internal}

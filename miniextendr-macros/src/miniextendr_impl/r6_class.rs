@@ -149,7 +149,7 @@ fn active_binding_field_lines(method: &ParsedMethod, class_doc_tags: &[String]) 
     let mut description_lines = description.lines();
     let first = description_lines.next().unwrap_or("Active binding.");
     let mut lines = vec![format!("#' @field {prop_name} {first}")];
-    lines.extend(description_lines.map(|line| format!("#' {line}")));
+    lines.extend(description_lines.map(crate::roxygen::roxygen_line));
     lines
 }
 
@@ -285,7 +285,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 } else {
                     line.to_string()
                 };
-                lines.push(format!("    #' {}", line));
+                lines.push(format!("    {}", crate::roxygen::roxygen_line(&line)));
             }
         }
         // Document constructor params that aren't already documented.
@@ -507,7 +507,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 } else {
                     line.to_string()
                 };
-                lines.push(format!("#' {}", line));
+                lines.push(crate::roxygen::roxygen_line(&line));
             }
         }
         // Document method params that aren't already documented.

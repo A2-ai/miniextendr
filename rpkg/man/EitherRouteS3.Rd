@@ -34,7 +34,8 @@ EitherRouteS3
 \description{
 S3 generic for \code{plan_s3}
 
-A route name or a data frame of doses, and an omittable level name or number.
+A route name or a data frame of doses, and an omittable level name or
+number.
 
 S3 generic for \code{either_grade}
 }

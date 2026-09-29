@@ -31,11 +31,14 @@ choices_omitted_colors(colors = c("red", "green", "blue"))
 \item{colors}{One or more of "red", "green", "blue"; omitting the argument means no choice.}
 }
 \description{
-Omittable optional mode: the formal keeps the choice vector, an omitted argument is \code{Absent} and \code{NULL} is \code{Present(None)}.
+Omittable optional mode: the formal keeps the choice vector, an omitted
+argument is \code{Absent} and \code{NULL} is \code{Present(None)}.
 
-Omittable mode without \code{Option}: \code{NULL} selects the first choice, as for a plain \code{Mode}.
+Omittable mode without \code{Option}: \code{NULL} selects the first choice, as for a
+plain \code{Mode}.
 
-Omittable several_ok list: an omitted argument is \code{Absent}, \code{NULL} still selects every choice.
+Omittable several_ok list: an omitted argument is \code{Absent}, \code{NULL} still
+selects every choice.
 
 Omittable several_ok list in a boxed slice.
 

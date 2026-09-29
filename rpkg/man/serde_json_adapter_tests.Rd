@@ -92,13 +92,19 @@ Get the length of a JSON array, or 0 if not an array.
 
 Serialize a map from key-value pairs to JSON string.
 
-Parse JSON through the \code{RDeserialize} adapter trait's \code{from_json} (\code{None} → \code{NULL}-ish sentinel here) — the fixtures above only exercise the \code{RSerialize} side.
+Parse JSON through the \code{RDeserialize} adapter trait's \code{from_json}
+(\code{None} → \code{NULL}-ish sentinel here) — the fixtures above only exercise the
+\code{RSerialize} side.
 
-Parse JSON through \code{RDeserialize::from_json_result}, surfacing the parse error text on failure.
+Parse JSON through \code{RDeserialize::from_json_result}, surfacing the parse
+error text on failure.
 
-Serialize an R object to JSON under \code{JsonOptions::permissive()} — NA / NaN / Inf all become \code{null} instead of erroring.
+Serialize an R object to JSON under \code{JsonOptions::permissive()} —
+NA / NaN / Inf all become \code{null} instead of erroring.
 
-Serialize an R object to JSON under \code{JsonOptions::strict()} — special values produce an \code{Err} (surfaced to R as a condition when unwrapped).
+Serialize an R object to JSON under \code{JsonOptions::strict()} — special
+values produce an \code{Err} (surfaced to R as a condition when unwrapped).
 
-Exercise the \code{JsonOptions} builder methods (\code{new} + \code{na}/\code{nan}/\code{inf}): NA serializes as the string \code{"NA"}, NaN/Inf as \code{null}.
+Exercise the \code{JsonOptions} builder methods (\code{new} + \code{na}/\code{nan}/\code{inf}):
+NA serializes as the string \code{"NA"}, NaN/Inf as \code{null}.
 }

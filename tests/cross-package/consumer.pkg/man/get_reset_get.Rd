@@ -13,5 +13,6 @@ get_reset_get(sexp)
 The counter value after reset
 }
 \description{
-Get the value of a Counter, reset it, then get the value again Returns the value after reset.
+Get the value of a Counter, reset it, then get the value again
+Returns the value after reset.
 }

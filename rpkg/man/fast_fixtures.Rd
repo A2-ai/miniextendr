@@ -23,7 +23,8 @@ fast_sum3_no_preconditions(a, b, c)
 \description{
 Identity (i32) with the standard wrapper. Baseline for comparison.
 
-Identity (i32) with \code{no_preconditions} — wrapper drops the R-side type checks. TryFromSexp still raises on bad input, message comes from Rust.
+Identity (i32) with \code{no_preconditions} — wrapper drops the R-side type
+checks. TryFromSexp still raises on bad input, message comes from Rust.
 
 Three-arg numeric sum, standard wrapper.
 

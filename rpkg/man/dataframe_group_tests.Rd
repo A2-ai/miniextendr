@@ -48,21 +48,33 @@ Group key labels in group order for any supported key column.
 
 Group sizes in group order.
 
-Composite group-key labels (\code{.}-joined) in group order, for multiple key columns. Mirrors \code{group_by_keys} for \code{DataFrame::group_by_multi}.
+Composite group-key labels (\code{.}-joined) in group order, for multiple key
+columns. Mirrors \code{group_by_keys} for \code{DataFrame::group_by_multi}.
 
 Composite-key group sizes in group order.
 
-Named list of per-group sub-frames keyed by a composite \code{interaction()}-style key — the \code{split(df, interaction(...))} analogue (except NA-containing tuples form trailing groups instead of being dropped). Mirrors \code{group_by_frames}.
+Named list of per-group sub-frames keyed by a composite \code{interaction()}-style
+key — the \code{split(df, interaction(...))} analogue (except NA-containing tuples
+form trailing groups instead of being dropped). Mirrors \code{group_by_frames}.
 
-Named list of per-group sub-frames — the \code{split()} analogue (except NA keys form a trailing "NA" entry instead of being dropped).
+Named list of per-group sub-frames — the \code{split()} analogue (except NA
+keys form a trailing "NA" entry instead of being dropped).
 
-Group-key labels in dplyr's group order, read from a \code{grouped_df}'s \code{groups} attribute (no recomputation). Multi-column keys are \code{.}-joined.
+Group-key labels in dplyr's group order, read from a \code{grouped_df}'s
+\code{groups} attribute (no recomputation). Multi-column keys are \code{.}-joined.
 
-Per-group sizes in dplyr's group order, read from a \code{grouped_df}'s \code{groups} attribute. Empty (\code{.drop = FALSE}) groups appear as \code{0}.
+Per-group sizes in dplyr's group order, read from a \code{grouped_df}'s \code{groups}
+attribute. Empty (\code{.drop = FALSE}) groups appear as \code{0}.
 
-Named list of per-group sub-frames materialised from a \code{grouped_df}'s \code{groups} metadata — exercises the 1-based→0-based \code{.rows} conversion by row content (each sub-frame holds exactly the caller's grouped rows).
+Named list of per-group sub-frames materialised from a \code{grouped_df}'s
+\code{groups} metadata — exercises the 1-based→0-based \code{.rows} conversion by row
+content (each sub-frame holds exactly the caller's grouped rows).
 
-One typed extraction + move-partition: per-group sum and count of \code{v}, grouped by \code{g}. Input schema: \code{g} (character, no NAs), \code{v} (double). Returns a data.frame with columns key/sum/n in group order.
+One typed extraction + move-partition: per-group sum and count of \code{v},
+grouped by \code{g}. Input schema: \code{g} (character, no NAs), \code{v} (double).
+Returns a data.frame with columns key/sum/n in group order.
 
-Rung 1: rows synthesized internally, grouped Rust-side with \code{group_rows} (no SEXP contact in the grouping itself; \verb{Option<String>} keys give NA a home — \code{None} sorts first). Returns a key/sum/n summary frame.
+Rung 1: rows synthesized internally, grouped Rust-side with \code{group_rows}
+(no SEXP contact in the grouping itself; \verb{Option<String>} keys give NA a
+home — \code{None} sorts first). Returns a key/sum/n summary frame.
 }

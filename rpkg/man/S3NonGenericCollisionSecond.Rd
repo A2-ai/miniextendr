@@ -20,9 +20,13 @@ S3NonGenericCollisionSecond
 \item{...}{Additional arguments.}
 }
 \description{
-Second S3 class sharing the shadowed \code{var} generic with \code{S3NonGenericCollision}.
+Second S3 class sharing the shadowed \code{var} generic with
+\code{S3NonGenericCollision}.
 
 S3 generic for \code{var}
 
-Collides with \code{stats::var}, same as \code{S3NonGenericCollision::var}. Returns the \emph{product} (not the variance) so a test can distinguish dispatch to this class from the sibling class and from the masked \code{stats::var} fallback.
+Collides with \code{stats::var}, same as \code{S3NonGenericCollision::var}.
+Returns the \emph{product} (not the variance) so a test can distinguish
+dispatch to this class from the sibling class and from the masked
+\code{stats::var} fallback.
 }

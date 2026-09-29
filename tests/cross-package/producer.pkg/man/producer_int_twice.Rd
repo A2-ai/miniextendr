@@ -13,5 +13,6 @@ producer_int_twice(x)
 \item{x}{An integer scalar.}
 }
 \description{
-Plain \code{SexpError} conversion (no R-side precondition): a bad \code{x} gets only the crate default, \code{c("producer_error_argument", "producer_error", "rust_error", ...)}.
+Plain \code{SexpError} conversion (no R-side precondition): a bad \code{x} gets only
+the crate default, \code{c("producer_error_argument", "producer_error", "rust_error", ...)}.
 }

@@ -19,7 +19,8 @@ condition_error_empty()
 \item{n_chunks}{(no documentation available)}
 }
 \description{
-Panic with a non-\code{String}/non-\code{RCondition} payload — falls through to the generic panic→string fallback.
+Panic with a non-\code{String}/non-\code{RCondition} payload — falls through to the
+generic panic→string fallback.
 
 Long message exercises the \code{CString} + STRSXP encoding path.
 

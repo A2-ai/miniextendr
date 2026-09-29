@@ -34,5 +34,6 @@ S3 generic for \code{relabel}
 
 S3 generic for \code{maybe_relabel}
 
-Optional relabel (#1473): the R formal is \code{mode = NULL}, and \code{NULL} leaves the label unchanged instead of picking the first choice.
+Optional relabel (#1473): the R formal is \code{mode = NULL}, and \code{NULL}
+leaves the label unchanged instead of picking the first choice.
 }

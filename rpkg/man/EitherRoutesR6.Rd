@@ -37,7 +37,8 @@ EitherRoutesR6 R6 Class
 \if{html}{\out{<a id="method-EitherRoutesR6-plan"></a>}}
 \if{latex}{\out{\hypertarget{method-EitherRoutesR6-plan}{}}}
 \subsection{\code{EitherRoutesR6$plan()}}{
-  Route names or a data frame of doses, and omittable tier names or a number.
+  Route names or a data frame of doses, and omittable tier names or a
+number.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{EitherRoutesR6$plan(

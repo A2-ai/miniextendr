@@ -32,7 +32,8 @@ globset_which_match(patterns, path)
 \item{path}{Single path to test.}
 }
 \description{
-Match paths against glob patterns (path-aware defaults). Returns TRUE for each path matched by ANY pattern.
+Match paths against glob patterns (path-aware defaults).
+Returns TRUE for each path matched by ANY pattern.
 
 Match paths with explicit builder options.
 

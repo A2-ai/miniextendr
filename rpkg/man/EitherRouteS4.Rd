@@ -10,7 +10,8 @@
 EitherRouteS4()
 }
 \description{
-A route name or a data frame of doses, and an omittable level name or number.
+A route name or a data frame of doses, and an omittable level name or
+number.
 }
 \section{Slots}{
 

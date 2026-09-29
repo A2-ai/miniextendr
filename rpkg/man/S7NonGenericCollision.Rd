@@ -28,7 +28,9 @@ S7NonGenericCollision_get(self, ...)
 \description{
 S7 class exercising the #1114 base-name-collision fix.
 
-Collides with \code{stats::var}. Returns the \emph{sum} (not the variance) so a test can tell our dispatched method apart from the masked \code{stats::var} fallback.
+Collides with \code{stats::var}. Returns the \emph{sum} (not the variance) so a
+test can tell our dispatched method apart from the masked \code{stats::var}
+fallback.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

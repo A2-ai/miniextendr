@@ -18,5 +18,8 @@ A \code{producer_temp} vctrs vector.
 \description{
 Create a \code{producer_temp} vctrs vector (Celsius temperatures).
 
-This is the exported constructor consumer.pkg imports via \code{importFrom(producer.pkg, new_temperature)} to build a producer-owned vctrs type. Dispatch (format/coercion/\code{vec_c}) then resolves through R's S3 method registry once producer.pkg is loaded.
+This is the exported constructor consumer.pkg imports via
+\code{importFrom(producer.pkg, new_temperature)} to build a producer-owned vctrs
+type. Dispatch (format/coercion/\code{vec_c}) then resolves through R's S3 method
+registry once producer.pkg is loaded.
 }

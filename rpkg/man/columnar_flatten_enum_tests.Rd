@@ -20,11 +20,17 @@ flatten_enum_field_roundtrip(df)
 \code{user}, \code{action_variant}, \code{action_file}, \code{action_weight}, \code{action_path}).}
 }
 \description{
-The issue's concrete case: an externally-tagged enum field flattened into \code{action_variant} + the union of \code{action_file} / \code{action_weight} / \code{action_path}. Rows mix the \code{Add} and \code{Init} variants so NA-fill applies.
+The issue's concrete case: an externally-tagged enum field flattened into
+\code{action_variant} + the union of \code{action_file} / \code{action_weight} /
+\code{action_path}. Rows mix the \code{Add} and \code{Init} variants so NA-fill applies.
 
 Unit variant mixed with a data variant: the unit row's payload column is NA.
 
 \verb{Option<Enum>} with a \code{None} row: tag + payload columns are NA for it.
 
-Reverse of \code{flatten_enum_field_fixture} (#1060): read a flattened-enum data.frame back into \verb{Vec<AuditRow>} via \code{dataframe_to_vec}, then re-serialize it. A correct round trip returns an identical frame — the R-facing proof that the split/flattened enum reader is symmetric with the writer.
+Reverse of \code{flatten_enum_field_fixture} (#1060): read a flattened-enum
+data.frame back into \verb{Vec<AuditRow>} via \code{dataframe_to_vec}, then
+re-serialize it. A correct round trip returns an identical frame — the
+R-facing proof that the split/flattened enum reader is symmetric with the
+writer.
 }

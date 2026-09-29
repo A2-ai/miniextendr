@@ -49,13 +49,19 @@ uuid_ops_via_trait(uuid)
 \item{uuids}{Character vector of UUIDs from R.}
 }
 \description{
-Round-trip a \code{DocId} newtype through R. Exercises the derived scalar \code{TryFromSexp} (argument) and \code{IntoR} (return value).
+Round-trip a \code{DocId} newtype through R. Exercises the derived scalar
+\code{TryFromSexp} (argument) and \code{IntoR} (return value).
 
-Round-trip a \verb{Vec<DocId>} through R. Exercises the derived \verb{TryFromSexp for Vec<DocId>} (argument) and the \code{IntoRVecElement}-backed \verb{IntoR for Vec<DocId>} (return value) — both forward to the inner \verb{Vec<Uuid>} conversions.
+Round-trip a \verb{Vec<DocId>} through R. Exercises the derived \verb{TryFromSexp for Vec<DocId>} (argument) and the \code{IntoRVecElement}-backed \verb{IntoR for Vec<DocId>}
+(return value) — both forward to the inner \verb{Vec<Uuid>} conversions.
 
-Round-trip a \verb{Vec<Option<DocId>>} through R, preserving \code{NA}. Exercises the derived \verb{TryFromSexp for Vec<Option<DocId>>} (argument) and \verb{IntoR for Vec<Option<DocId>>} (return value); \code{NA_character_} maps to \code{None} and back.
+Round-trip a \verb{Vec<Option<DocId>>} through R, preserving \code{NA}. Exercises the
+derived \verb{TryFromSexp for Vec<Option<DocId>>} (argument) and \verb{IntoR for Vec<Option<DocId>>} (return value); \code{NA_character_} maps to \code{None} and back.
 
-Whether an optional \code{DocId} argument is present. Exercises the derived \verb{TryFromSexp for Option<DocId>} (R → Rust): \code{NA_character_} parses to \code{None}, a valid UUID string to \code{Some}. (\verb{Option<DocId>} → R is intentionally not granted — see the \code{newtype} module docs — so this returns a \code{bool}.)
+Whether an optional \code{DocId} argument is present. Exercises the derived
+\verb{TryFromSexp for Option<DocId>} (R → Rust): \code{NA_character_} parses to \code{None},
+a valid UUID string to \code{Some}. (\verb{Option<DocId>} → R is intentionally not
+granted — see the \code{newtype} module docs — so this returns a \code{bool}.)
 
 Test UUID roundtrip through R string.
 
@@ -71,5 +77,7 @@ Test extracting the version number from a UUID.
 
 Test whether a UUID is the nil UUID.
 
-Drive a \code{Uuid} through the \code{RUuidOps} adapter trait (audit A7 — the conversions above call inherent \code{Uuid} methods; the trait was unexercised). Calls are trait-qualified.
+Drive a \code{Uuid} through the \code{RUuidOps} adapter trait (audit A7 — the
+conversions above call inherent \code{Uuid} methods; the trait was
+unexercised). Calls are trait-qualified.
 }

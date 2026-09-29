@@ -115,7 +115,8 @@ Handlers can read \code{e$value} instead of parsing the message string.
 
 Raise a classed error carrying several heterogeneous scalar fields.
 
-Demonstrates the bracketed \verb{data = [(..), (..)]} form with mixed value types: integer, double, logical, and character.
+Demonstrates the bracketed \verb{data = [(..), (..)]} form with mixed value
+types: integer, double, logical, and character.
 
 Raise a classed error whose data field is a vector.
 
@@ -127,13 +128,16 @@ Signal a classed condition carrying structured data.
 
 Raise an error carrying NA-aware \code{Option} fields.
 
-\code{present} rides through as a value; \code{missing = NULL} lands as R \code{NA}. The field is \emph{present} on the condition object but its value is \code{NA} — distinct from a wholly absent field.
+\code{present} rides through as a value; \code{missing = NULL} lands as R \code{NA}. The
+field is \emph{present} on the condition object but its value is \code{NA} — distinct
+from a wholly absent field.
 
 Raise an error whose vector field carries embedded \code{NA} elements.
 
 Raise an error carrying a wide integer (\code{i64}) field.
 
-Values within \code{i32} range materialise as \code{integer(1)}; larger values become \code{double(1)} via the smart wide-integer ladder.
+Values within \code{i32} range materialise as \code{integer(1)}; larger values become
+\code{double(1)} via the smart wide-integer ladder.
 
 Raise an error carrying a nested named list under \code{details}.
 
@@ -141,11 +145,19 @@ Handlers read \code{e$details$min} / \code{e$details$max}.
 
 Raise an error using the \code{Debug}-stringify fallback variant.
 
-The Rust \code{RangeInclusive} has no R-native mapping, so it rides along as a \code{character(1)} of its \verb{\{:?\}} rendering.
+The Rust \code{RangeInclusive} has no R-native mapping, so it rides along as a
+\code{character(1)} of its \verb{\{:?\}} rendering.
 
 Raise an error using the keyed builder sugar (\verb{data = \{ k = v, ... \}}).
 
 Raise a classed error whose scalar \code{count} field is \code{NA_integer_}.
 
-Regression pin for issue #1103: the field is \emph{present} on the condition object with value \code{NA}, not silently dropped. #1103 described this as a limitation of the old \code{ConditionDataValue} type (no \code{Option}-bearing variants); that type no longer exists — \code{ConditionData} is \verb{Vec<(String, RValue)>} and \code{RValue}'s scalar variants are \code{Option}-aware (\verb{Vec<Option<i32>>} etc.), so \code{None} already round-trips as \code{NA} rather than being dropped. This fixture pins that behaviour directly against the issue's own example shape (\verb{data = ("count", <NA integer>)}).
+Regression pin for issue #1103: the field is \emph{present} on the condition
+object with value \code{NA}, not silently dropped. #1103 described this as a
+limitation of the old \code{ConditionDataValue} type (no \code{Option}-bearing
+variants); that type no longer exists — \code{ConditionData} is
+\verb{Vec<(String, RValue)>} and \code{RValue}'s scalar variants are \code{Option}-aware
+(\verb{Vec<Option<i32>>} etc.), so \code{None} already round-trips as \code{NA} rather
+than being dropped. This fixture pins that behaviour directly against the
+issue's own example shape (\verb{data = ("count", <NA integer>)}).
 }

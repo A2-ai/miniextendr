@@ -50,7 +50,8 @@ S7 bag with \code{[}, \code{[[}, \code{\%*\%}, \verb{\%mx_scale\%}, \verb{\%mx_c
 
 Values at 1-based positions, as \code{bag[i]}.
 
-Registered on the existing \code{[} generic; the Rust name keeps the \code{MxS7Bag_subset()} fast-path shortcut.
+Registered on the existing \code{[} generic; the Rust name keeps the
+\code{MxS7Bag_subset()} fast-path shortcut.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -64,7 +65,9 @@ Every value multiplied by \code{k}, as \code{bag \%mx_scale\% k}.
 
 The bag's values followed by \code{other}, as \code{bag \%mx_cat\% other}.
 
-\code{s7(generic = ...)} with a name no generic has yet defines the package-local \verb{\%mx_cat\%} operator; the Rust name keeps the \code{MxS7Bag_concat()} shortcut.
+\code{s7(generic = ...)} with a name no generic has yet defines the
+package-local \verb{\%mx_cat\%} operator; the Rust name keeps the
+\code{MxS7Bag_concat()} shortcut.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -74,7 +77,8 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Dot product with another bag, as \code{bag \%*\% y}.
 
-S7 dispatches \code{\%*\%} on \code{x} and \code{y}; the method is registered for any \code{y}, which the Rust conversion reads as another \code{MxS7Bag}.
+S7 dispatches \code{\%*\%} on \code{x} and \code{y}; the method is registered for any
+\code{y}, which the Rust conversion reads as another \code{MxS7Bag}.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -82,9 +86,11 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-The values as a data frame of \code{position} and \code{value}, as \code{generics::tidy(bag)}.
+The values as a data frame of \code{position} and \code{value}, as
+\code{generics::tidy(bag)}.
 
-Registered on the \code{tidy()} generic of the generics package, which the package does not import: the method is attached when generics loads.
+Registered on the \code{tidy()} generic of the generics package, which the
+package does not import: the method is attached when generics loads.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

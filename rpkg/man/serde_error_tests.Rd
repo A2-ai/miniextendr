@@ -55,11 +55,18 @@ The \code{Ok} arm is untouched by the serde path.
 
 Raise one of the externally tagged variants.
 
-No field option: \code{wrapped} (text equal to \code{Display}) drops the field, \code{parse} (text differs) and \code{call} hit the reserved-name error.
+No field option: \code{wrapped} (text equal to \code{Display}) drops the field,
+\code{parse} (text differs) and \code{call} hit the reserved-name error.
 
-\code{skip("message")}: the field is dropped for every variant that has it; \code{call} still hits the reserved-name error.
+\code{skip("message")}: the field is dropped for every variant that has it;
+\code{call} still hits the reserved-name error.
 
-\code{rename(message = "detail")}: the field reaches R as \code{e$detail}, also when its text equals \code{Display}; \code{call} still hits the reserved-name error.
+\code{rename(message = "detail")}: the field reaches R as \code{e$detail}, also when
+its text equals \code{Display}; \code{call} still hits the reserved-name error.
 
-\code{rename(message = "line")}: \code{parse} already carries \code{line}, so the condition would hold two \code{line} fields and \code{e$line} would read only the first; that is the duplicate-name error (#1459). \code{wrapped} has no \code{line} and reaches R with \code{e$line} holding the text; \code{call} still hits the reserved-name error.
+\code{rename(message = "line")}: \code{parse} already carries \code{line}, so the
+condition would hold two \code{line} fields and \code{e$line} would read only the
+first; that is the duplicate-name error (#1459). \code{wrapped} has no \code{line}
+and reaches R with \code{e$line} holding the text; \code{call} still hits the
+reserved-name error.
 }

@@ -56,9 +56,14 @@ Test roundtripping a character matrix through R and back (NA-safe).
 
 Test roundtripping an N-dimensional character array through R and back (NA-safe).
 
-Test roundtripping a character matrix through \verb{Array2<String>}. This path is lossy for missing values: \code{NA_character_} becomes \code{""}.
+Test roundtripping a character matrix through \verb{Array2<String>}.
+This path is lossy for missing values: \code{NA_character_} becomes \code{""}.
 
-Build a known 2x3 character matrix in Rust (standard/row-major layout) and return it, exercising the column-major write path.
+Build a known 2x3 character matrix in Rust (standard/row-major layout)
+and return it, exercising the column-major write path.
 
-Transpose a character matrix in Rust. \code{reversed_axes} swaps the strides without moving data, so the returned array is in non-standard layout — exercising the layout-independent column-major write path.
+Transpose a character matrix in Rust.
+\code{reversed_axes} swaps the strides without moving data, so the returned
+array is in non-standard layout — exercising the layout-independent
+column-major write path.
 }

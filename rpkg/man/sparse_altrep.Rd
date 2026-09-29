@@ -43,7 +43,9 @@ An ALTREP raw vector.
 \description{
 Create a sparse integer iterator ALTREP that skips elements.
 
-Elements are computed on-demand using Iterator::nth(). Once an element is skipped (a higher index is accessed first), it cannot be retrieved and will return NA.
+Elements are computed on-demand using Iterator::nth(). Once an element
+is skipped (a higher index is accessed first), it cannot be retrieved
+and will return NA.
 
 Create a sparse integer iterator ALTREP that generates squares (0, 1, 4, 9, ...).
 

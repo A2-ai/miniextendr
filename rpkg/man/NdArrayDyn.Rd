@@ -49,7 +49,9 @@ Get the element at the given n-dimensional 1-based index.
 \item{\code{indices}}{1-based indices, one per dimension. Errors on a non-positive index, an out-of-bounds index, or a length mismatch with the array's dimensionality.}
 }
 
-Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on both ends per dimension — R's \code{x[s1:e1, s2:e2, ...]} convention). Elements are returned flattened in column-major (R) order.
+Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on
+both ends per dimension — R's \code{x[s1:e1, s2:e2, ...]} convention).
+Elements are returned flattened in column-major (R) order.
 
 \describe{
 \item{\code{start}}{1-based inclusive start indices, one per dimension.}
@@ -58,7 +60,10 @@ Extract a subarray bounded by \code{start} and \code{end} (1-based, inclusive on
 
 Check if the given 1-based n-dimensional index is valid.
 
-Get all elements where dimension \code{axis} is fixed at position \code{index}. Both arguments are 1-based: \code{axis} follows R's \code{MARGIN} convention (1 = first dimension), and \code{index} matches \code{row}/\code{col}. Elements are returned in column-major (R) order.
+Get all elements where dimension \code{axis} is fixed at position \code{index}.
+Both arguments are 1-based: \code{axis} follows R's \code{MARGIN} convention
+(1 = first dimension), and \code{index} matches \code{row}/\code{col}. Elements are
+returned in column-major (R) order.
 
 \describe{
 \item{\code{axis}}{1-based dimension selector (R's \code{MARGIN} convention). Errors if out of \verb{1..=ndim}.}

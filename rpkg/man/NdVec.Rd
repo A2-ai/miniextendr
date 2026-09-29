@@ -47,7 +47,8 @@ Get the element at the given 1-based index.
 \item{\code{index}}{1-based index. Errors if out of \verb{1..=length}.}
 }
 
-Extract the elements \code{start:end} (1-based, inclusive on both ends — R's \code{x[start:end]} convention).
+Extract the elements \code{start:end} (1-based, inclusive on both ends —
+R's \code{x[start:end]} convention).
 
 \describe{
 \item{\code{start}}{1-based inclusive start index.}

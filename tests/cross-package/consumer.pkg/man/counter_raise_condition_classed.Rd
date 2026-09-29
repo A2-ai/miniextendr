@@ -14,7 +14,10 @@ counter_raise_condition_classed(counter_sexp, class_name, msg)
 \item{msg}{The condition message}
 }
 \description{
-Raise a classed condition!() through a Counter trait method via trait dispatch.
+Raise a classed condition!() through a Counter trait method via trait
+dispatch.
 
-Verifies that a producer-side \verb{condition!(class = …)} is catchable by the user class and round-trips to \code{e$kind == "condition"} across the trait-ABI boundary, matching the in-process matrix's condition!() rows.
+Verifies that a producer-side \verb{condition!(class = …)} is catchable by the
+user class and round-trips to \code{e$kind == "condition"} across the trait-ABI
+boundary, matching the in-process matrix's condition!() rows.
 }

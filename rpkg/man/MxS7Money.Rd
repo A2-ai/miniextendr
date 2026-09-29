@@ -36,7 +36,8 @@ S7 money class with \code{+}, \code{*}, \code{==} and \code{<} methods.
 
 Sum of two amounts, as \code{a + b}.
 
-Registered on the \code{+} operator; the Rust name keeps the \code{MxS7Money_add()} shortcut.
+Registered on the \code{+} operator; the Rust name keeps the
+\code{MxS7Money_add()} shortcut.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

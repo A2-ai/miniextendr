@@ -47,9 +47,12 @@ Test BigInt factorial computation.
 
 Test whether a BigInt parsed from string is positive.
 
-Drive \code{BigInt} through the \code{RBigIntOps} adapter trait (audit A7 — the conversion is tested above; the trait methods were not). Calls are trait-qualified so they cannot resolve to inherent \code{BigInt} methods.
+Drive \code{BigInt} through the \code{RBigIntOps} adapter trait (audit A7 — the
+conversion is tested above; the trait methods were not). Calls are
+trait-qualified so they cannot resolve to inherent \code{BigInt} methods.
 
-Drive \code{BigUint} through the \code{RBigUintOps} adapter trait. Includes the would-be-negative \code{sub_str} error path.
+Drive \code{BigUint} through the \code{RBigUintOps} adapter trait. Includes the
+would-be-negative \code{sub_str} error path.
 
 Byte-level round-trip through \code{RBigIntOps::to_bytes_be} / \code{to_bytes_le}.
 }

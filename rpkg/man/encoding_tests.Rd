@@ -12,11 +12,16 @@ assert_utf8_locale_now()
 \description{
 Whether \code{miniextendr_encoding_init()} populated the cached snapshot.
 
-On standard R-package builds this returns \code{FALSE} (encoding init is disabled because the underlying symbols aren't exported from libR). Embedded R builds with the \code{nonapi} feature can flip this to \code{TRUE}.
+On standard R-package builds this returns \code{FALSE} (encoding init is
+disabled because the underlying symbols aren't exported from libR).
+Embedded R builds with the \code{nonapi} feature can flip this to \code{TRUE}.
 
 Re-run the same UTF-8 assertion that fires inside \code{package_init}.
 
-Returns \code{TRUE} on success. If the current locale isn't UTF-8 the underlying \code{miniextendr_assert_utf8_locale()} calls \code{Rf_error}, which surfaces in R as a regular error caught by \code{tryCatch}/\code{expect_error}.
+Returns \code{TRUE} on success. If the current locale isn't UTF-8 the
+underlying \code{miniextendr_assert_utf8_locale()} calls \code{Rf_error}, which
+surfaces in R as a regular error caught by \code{tryCatch}/\code{expect_error}.
 
-Used by \code{tests/testthat/test-encoding.R} to verify both the success and failure paths after \code{Sys.setlocale()} flips \code{LC_CTYPE}.
+Used by \code{tests/testthat/test-encoding.R} to verify both the success and
+failure paths after \code{Sys.setlocale()} flips \code{LC_CTYPE}.
 }

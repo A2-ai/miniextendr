@@ -13,5 +13,6 @@ new_double_counter(initial)
 An external pointer to the wrapped DoubleCounter
 }
 \description{
-Create a new DoubleCounter (consumer's own Counter implementation) DoubleCounter increments by 2, demonstrating a different implementation.
+Create a new DoubleCounter (consumer's own Counter implementation)
+DoubleCounter increments by 2, demonstrating a different implementation.
 }

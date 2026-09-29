@@ -109,13 +109,17 @@ arrow_na_i32_zero_copy_identity(x)
 \item{x}{SEXP}
 }
 \description{
-Roundtrip f64 with NAs at specific positions. Returns the null count from the Arrow side.
+Roundtrip f64 with NAs at specific positions.
+Returns the null count from the Arrow side.
 
 Roundtrip f64 through Arrow, verifying NA positions survive.
 
-Create an Arrow array from R, compute on it (NAs become nulls in result), then return to R. Tests that Arrow null propagation works correctly.
+Create an Arrow array from R, compute on it (NAs become nulls in result),
+then return to R. Tests that Arrow null propagation works correctly.
 
-Double roundtrip: R → Arrow → compute → R → Arrow → R. The intermediate R vector should have NAs where Arrow had nulls, and the second Arrow conversion should re-detect those NAs.
+Double roundtrip: R → Arrow → compute → R → Arrow → R.
+The intermediate R vector should have NAs where Arrow had nulls,
+and the second Arrow conversion should re-detect those NAs.
 
 Return null positions as a logical vector (TRUE = null at that index).
 
@@ -147,7 +151,8 @@ Roundtrip data.frame with various NA patterns through Arrow.
 
 Return per-column null counts as integer vector.
 
-Create a Rust-computed Float64Array (with NAs) and return as ALTREP. Multiplies input by 10; NAs become Arrow nulls which map to R NAs in ALTREP elt().
+Create a Rust-computed Float64Array (with NAs) and return as ALTREP.
+Multiplies input by 10; NAs become Arrow nulls which map to R NAs in ALTREP elt().
 
 Create a Rust-computed Int32Array (with NAs) and return as ALTREP.
 
@@ -165,15 +170,23 @@ Create a Rust-computed StringArray (with NAs) and return as ALTREP.
 
 Create an all-null StringArray as ALTREP.
 
-Convert R vector to Arrow, return the Arrow null_count. The Arrow array holds a zero-copy reference to R's buffer. If R mutates the buffer after conversion, the Arrow null bitmap becomes stale.
+Convert R vector to Arrow, return the Arrow null_count.
+The Arrow array holds a zero-copy reference to R's buffer.
+If R mutates the buffer after conversion, the Arrow null bitmap becomes stale.
 
-This fixture takes the SEXP, converts to Float64Array (scanning for NAs), then reads element values and null status from the Arrow side. Returns: \verb{[null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]}
+This fixture takes the SEXP, converts to Float64Array (scanning for NAs),
+then reads element values and null status from the Arrow side.
+Returns: \verb{[null_count, value_at_0, is_null_at_0, value_at_1, is_null_at_1, ...]}
 
-Allocate an R-backed Arrow buffer, fill with non-NA values, then set one element to NA_REAL in the R buffer. Return the Arrow null_count (which was computed BEFORE the mutation) and the raw values.
+Allocate an R-backed Arrow buffer, fill with non-NA values, then
+set one element to NA_REAL in the R buffer. Return the Arrow null_count
+(which was computed BEFORE the mutation) and the raw values.
 
-This demonstrates the stale bitmap problem: Arrow's bitmap says "all valid" but the R buffer now contains an NA sentinel.
+This demonstrates the stale bitmap problem: Arrow's bitmap says "all valid"
+but the R buffer now contains an NA sentinel.
 
-Returns TRUE if the zero-copy round-trip preserves identity even with NAs. This tests that R's NA sentinels in the data buffer don't break pointer recovery.
+Returns TRUE if the zero-copy round-trip preserves identity even with NAs.
+This tests that R's NA sentinels in the data buffer don't break pointer recovery.
 
 Returns TRUE if the zero-copy round-trip preserves identity for i32 with NAs.
 }

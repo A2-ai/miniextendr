@@ -32,7 +32,8 @@ GreetingBuilder
 \description{
 Builder for a greeting string, demonstrating functional pipe chaining.
 
-The \verb{set_*} methods return \verb{&mut Self}, so they compose under R's native pipe operator \verb{|>} as free functions taking the object first.
+The \verb{set_*} methods return \verb{&mut Self}, so they compose under R's
+native pipe operator \verb{|>} as free functions taking the object first.
 
 Create a new greeting builder with empty defaults.
 

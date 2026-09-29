@@ -82,7 +82,8 @@ as_factor nested enum round-trip. Columns: \verb{_type}, \code{id}, \code{dir} (
 
 Produce the writer output for a mixed REMove frame. @export
 
-Nested payload-bearing enum flatten round-trip. Columns: \verb{_type}, \code{id}, \code{status_variant}, \code{status_code}.
+Nested payload-bearing enum flatten round-trip.
+Columns: \verb{_type}, \code{id}, \code{status_variant}, \code{status_code}.
 
 Produce the writer output for a mixed RETracked frame. @export
 
@@ -96,11 +97,17 @@ Parallel RELoc round-trip (delegates to sequential due to Struct field). @export
 
 BTreeMap map-column round-trip. Columns: \verb{_type}, \code{label}, \code{tally_keys}, \code{tally_values}.
 
-Produce the writer output for a mixed REMapB frame. Includes an empty-map row (\code{tally_keys}/\code{tally_values} are \code{character(0)}/\code{integer(0)}) and an absent-variant row (both list cells NULL). @export
+Produce the writer output for a mixed REMapB frame. Includes an empty-map row
+(\code{tally_keys}/\code{tally_values} are \code{character(0)}/\code{integer(0)}) and an absent-variant
+row (both list cells NULL). @export
 
 Parallel REMapB round-trip. @export
 
 HashMap map-column round-trip, asserted internally.
 
-Builds a mixed \code{REMapH} frame (payload + empty-map + absent-variant rows), writes it, reads it back with the reader, and compares the reconstructed rows to the originals. \code{HashMap} equality is order-independent, so this proves the \verb{_keys} / \verb{_values} list-columns regroup back into the correct key→value associations regardless of iteration order. Returns \code{TRUE} on success. @export
+Builds a mixed \code{REMapH} frame (payload + empty-map + absent-variant rows), writes
+it, reads it back with the reader, and compares the reconstructed rows to the
+originals. \code{HashMap} equality is order-independent, so this proves the \verb{_keys} /
+\verb{_values} list-columns regroup back into the correct key→value associations
+regardless of iteration order. Returns \code{TRUE} on success. @export
 }

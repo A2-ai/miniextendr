@@ -18,7 +18,11 @@ A double scalar.
 \description{
 Sum of a bag.
 
-Numeric summaries of \code{mx_bag} values. \code{mx_bag_len()} is documented on this page through \verb{@describeIn}, written in its Rust doc comment. roxygen2 sends a \verb{@describeIn} block to the destination \emph{object's own} topic, so the destination has to live on that page: \verb{@rdname mx_bag_sum} keeps it off the file-stem page this module would otherwise share.
+Numeric summaries of \code{mx_bag} values. \code{mx_bag_len()} is documented on this
+page through \verb{@describeIn}, written in its Rust doc comment. roxygen2 sends
+a \verb{@describeIn} block to the destination \emph{object's own} topic, so the
+destination has to live on that page: \verb{@rdname mx_bag_sum} keeps it off the
+file-stem page this module would otherwise share.
 }
 \section{Functions}{
 \itemize{

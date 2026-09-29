@@ -12,5 +12,6 @@ counter_panic_plain(counter_sexp)
 \description{
 Call panic_plain() on any Counter object via trait dispatch.
 
-Used by spike tests to verify rust_error class layering across the trait-ABI boundary.
+Used by spike tests to verify rust_error class layering across the
+trait-ABI boundary.
 }

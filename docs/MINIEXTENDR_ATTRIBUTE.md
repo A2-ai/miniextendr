@@ -46,6 +46,41 @@ Generates:
   whatever the R file order. See
   [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages).
 
+### Doc comments to roxygen
+
+The `///` comment is read line by line into the wrapper's `#'` block:
+
+- Text before the first `@tag` line is leading prose. It becomes
+  `@description` unless the comment has one, with its lines, blank lines and
+  indentation, so a markdown list or a fenced block renders as one. Rustdoc
+  intra-doc links (`` [`Foo`] ``) lose their brackets, outside code.
+- A tag runs from its `@tag` line to the next one.
+- A multi-line tag (`@description`, `@details`, `@param`, `@return`,
+  `@examples`, `@examplesIf`, `@section`, ...) keeps its blank lines, which
+  start a new roxygen2 paragraph (or leave a blank line in an example). It
+  also keeps the indentation of its continuation lines, less the one space
+  after `///`. Trailing blank lines are dropped.
+- roxygen2 markdown reads a continuation indented 4 or more spaces after a
+  blank line as a code block, as rustdoc does.
+- `@title`, `@keywords`, `@concept` and `@aliases` fold a wrapped line onto
+  one line.
+- A single-line tag (`@export`, `@noRd`, `@rdname topic`, ...) ends at its
+  line. The lines after it, up to the next tag, stay in rustdoc only.
+- rustdoc keeps the leading prose and those rustdoc-only lines, and drops
+  every tag with its text.
+
+```rust
+/// @description First paragraph.
+///
+/// Second paragraph.
+/// @examples
+/// x <- c(1, 2) |>
+///   sum()
+```
+
+gives `#' @description First paragraph.`, `#'`, `#' Second paragraph.`,
+`#' @examples`, `#' x <- c(1, 2) |>`, `#'   sum()`.
+
 ### Function Attributes
 
 #### Visibility & Export

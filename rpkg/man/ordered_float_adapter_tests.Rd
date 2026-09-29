@@ -58,7 +58,9 @@ Test negative zero roundtrip through OrderedFloat.
 
 Test sorting a vector containing Inf, -Inf, NaN, and normal values.
 
-Drive \verb{OrderedFloat<f64>} through the \code{ROrderedFloatOps} adapter trait (audit A7 — the fixtures above hit inherent/\code{FloatCore} methods via Deref; the trait was unexercised). Calls are trait-qualified.
+Drive \verb{OrderedFloat<f64>} through the \code{ROrderedFloatOps} adapter trait
+(audit A7 — the fixtures above hit inherent/\code{FloatCore} methods via Deref;
+the trait was unexercised). Calls are trait-qualified.
 
 Predicate methods of \code{ROrderedFloatOps}, via the trait.
 }

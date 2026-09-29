@@ -26,7 +26,8 @@ S7PipeBuilder_s7_total(self, ...)
 \item{...}{Additional arguments; ignored by the fast-path shortcut.}
 }
 \description{
-S7 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor. Chains under the native pipe as \code{b |> s7_add(1L) |> s7_add(2L) |> s7_total()}.
+S7 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.
+Chains under the native pipe as \code{b |> s7_add(1L) |> s7_add(2L) |> s7_total()}.
 
 Add \code{amount} in place and return the builder for chaining.
 

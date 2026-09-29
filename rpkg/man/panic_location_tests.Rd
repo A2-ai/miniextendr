@@ -31,19 +31,32 @@ panic_location_regression_option_none(x)
 \item{x}{Ignored; present only to force main-thread dispatch.}
 }
 \description{
-Direct panic on the MAIN thread. The R error message must carry \verb{(at panic_location_tests.rs:<panic line>)}.
+Direct panic on the MAIN thread. The R error message must carry
+\verb{(at panic_location_tests.rs:<panic line>)}.
 
-Nested panic on the MAIN thread — delegates to \code{plain_boom}. The location must resolve into \code{plain_boom}, not this wrapper.
+Nested panic on the MAIN thread — delegates to \code{plain_boom}. The location
+must resolve into \code{plain_boom}, not this wrapper.
 
-Direct panic on the WORKER thread. Exercises the worker→main path where the location is folded at the worker (origin) before the message crosses back.
+Direct panic on the WORKER thread. Exercises the worker→main path where the
+location is folded at the worker (origin) before the message crosses back.
 
 Nested panic on the WORKER thread — delegates to \code{plain_boom}.
 
-Panic inside a \code{with_r_thread} closure invoked from the WORKER thread (#1245 Gap 1). The closure panics on the MAIN thread (where \code{with_r_thread} routes it), then the worker re-panics to unwind out of \code{run_on_worker} — the R error must carry the location of THIS file's \verb{panic!}, never \code{worker.rs} (the worker's own relay call site).
+Panic inside a \code{with_r_thread} closure invoked from the WORKER thread
+(#1245 Gap 1). The closure panics on the MAIN thread (where
+\code{with_r_thread} routes it), then the worker re-panics to unwind out of
+\code{run_on_worker} — the R error must carry the location of THIS file's
+\verb{panic!}, never \code{worker.rs} (the worker's own relay call site).
 
-Regression guard: \verb{error!()} produces a typed \code{rust_error} condition with NO \verb{(at …)} suffix (it travels the \code{RCondition} branch, untouched by the location feature). Takes a \code{SEXP} arg to stay on the main-thread typed path.
+Regression guard: \verb{error!()} produces a typed \code{rust_error} condition with NO
+\verb{(at …)} suffix (it travels the \code{RCondition} branch, untouched by the
+location feature). Takes a \code{SEXP} arg to stay on the main-thread typed path.
 
-Regression guard: returning \code{Result::Err} gets NO \verb{(at …)} suffix (it travels the tagged-value return path, untouched by the location feature).
+Regression guard: returning \code{Result::Err} gets NO \verb{(at …)} suffix (it
+travels the tagged-value return path, untouched by the location feature).
 
-Regression guard: a required \code{Option::None} return raises the typed NONE_ERR condition ("returned no value") with NO \verb{(at …)} suffix. \verb{Option<()>} takes the raising path (unlike \verb{Option<i32>}, whose \code{None} maps to \code{NA}), so this actually exercises the untouched typed branch.
+Regression guard: a required \code{Option::None} return raises the typed
+NONE_ERR condition ("returned no value") with NO \verb{(at …)} suffix.
+\verb{Option<()>} takes the raising path (unlike \verb{Option<i32>}, whose \code{None}
+maps to \code{NA}), so this actually exercises the untouched typed branch.
 }

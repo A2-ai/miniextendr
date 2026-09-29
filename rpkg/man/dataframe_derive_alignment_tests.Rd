@@ -7,5 +7,6 @@
 standalone_dataframe_roundtrip()
 }
 \description{
-Returns a DataFrame built from standalone derives — this proves the companion type has IntoR.
+Returns a DataFrame built from standalone derives — this proves
+the companion type has IntoR.
 }

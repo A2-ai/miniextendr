@@ -127,7 +127,8 @@ Compute the determinant of a square matrix.
 
 Compute the inverse of a square matrix. Panics if singular.
 
-Compute real eigenvalues of a symmetric matrix. Returns eigenvalues sorted in ascending order.
+Compute real eigenvalues of a symmetric matrix.
+Returns eigenvalues sorted in ascending order.
 
 Construct a DMatrix from a row slice (row-major input).
 
@@ -137,7 +138,10 @@ Roundtrip a static SVector<f64, 3> through Rust.
 
 Reshape a matrix to new dimensions (total elements must match).
 
-Rotate a 2D point by an angle (radians), mirroring the upstream \code{transform_vector_point.rs} pattern of building a transform matrix and multiplying it by a point.
+Rotate a 2D point by an angle (radians), mirroring the upstream
+\code{transform_vector_point.rs} pattern of building a transform matrix and
+multiplying it by a point.
 
-Build a uniform 2D scaling (diagonal) matrix, mirroring the upstream \code{transform_matrix4.rs} pattern of constructing a scale transform.
+Build a uniform 2D scaling (diagonal) matrix, mirroring the upstream
+\code{transform_matrix4.rs} pattern of constructing a scale transform.
 }

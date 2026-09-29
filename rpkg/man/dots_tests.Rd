@@ -62,9 +62,16 @@ Test dots attribute sugar for typed_list validation (x and y numeric).
 
 Test dots attribute sugar with an optional field (greeting).
 
-Retrieve \code{numeric()} / \code{integer()} / \code{character()} typed_list fields as \emph{vectors} via \verb{.get::<Vec<_>>()} and \verb{.get_opt::<Vec<_>>()}.
+Retrieve \code{numeric()} / \code{integer()} / \code{character()} typed_list fields as
+\emph{vectors} via \verb{.get::<Vec<_>>()} and \verb{.get_opt::<Vec<_>>()}.
 
-Regression fixture for golife hiccup #5: before the fix, \code{get}/\code{get_opt} required \verb{T: TryFromSexp<Error = SexpError>}, which only scalar target types satisfy — every vector \code{TryFromSexp} impl uses the narrower \code{SexpTypeError}, so \verb{.get::<Vec<i32>>()} failed to \emph{compile}. The bound is now \code{T: TryFromSexp} where \code{T::Error: Display}, so vector targets work too.
+Regression fixture for golife hiccup #5: before the fix, \code{get}/\code{get_opt}
+required \verb{T: TryFromSexp<Error = SexpError>}, which only scalar target types
+satisfy — every vector \code{TryFromSexp} impl uses the narrower \code{SexpTypeError},
+so \verb{.get::<Vec<i32>>()} failed to \emph{compile}. The bound is now
+\code{T: TryFromSexp} where \code{T::Error: Display}, so vector targets work too.
 
-No arguments: the list is synthesised internally so the fixture is trivially callable from R (and picked up by the no-arg export sweep). Returns a summary string the testthat side asserts against.
+No arguments: the list is synthesised internally so the fixture is trivially
+callable from R (and picked up by the no-arg export sweep). Returns a summary
+string the testthat side asserts against.
 }

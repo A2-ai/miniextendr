@@ -282,6 +282,7 @@ mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
 mod rng_tests;
+mod roxygen_carry_tests;
 mod s3_nonsyntactic_tests;
 mod s3_tests;
 mod s4_helpers_tests;

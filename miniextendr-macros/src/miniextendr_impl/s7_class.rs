@@ -657,7 +657,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 // Check if documented in the constructor method's doc_tags
                 let ctor_tag = crate::roxygen::find_param_tag(&ctx.method.doc_tags, param_name);
                 if let Some(tag) = ctor_tag {
-                    lines.push(format!("#' {}", tag));
+                    // A wrapped `@param` keeps every line inside the block.
+                    crate::roxygen::push_roxygen_tags_str(&mut lines, &[tag.as_str()]);
                 } else if crate::roxygen::params_documented_elsewhere(
                     class_doc_tags,
                     Some(&class_name),
@@ -712,12 +713,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let doc = prop.doc.as_deref().unwrap_or("(undocumented property)");
             // Emit @prop with multi-line continuation support (roxygen2 8.0.0+).
             // First line: `#' @prop <name> <para1>`.
-            // Additional paragraphs: `#'   <continuation>` (two-space indent).
+            // Additional paragraphs: `#'   <continuation>` (two-space indent),
+            // a bare `#'` between them.
             let mut prop_lines = doc.lines();
             if let Some(first_line) = prop_lines.next() {
                 lines.push(format!("#' @prop {} {}", prop.name, first_line));
                 for continuation in prop_lines {
-                    lines.push(format!("#'   {}", continuation));
+                    lines.push(if continuation.trim().is_empty() {
+                        "#'".to_string()
+                    } else {
+                        format!("#'   {}", continuation)
+                    });
                 }
             } else {
                 lines.push(format!("#' @prop {} {}", prop.name, doc));

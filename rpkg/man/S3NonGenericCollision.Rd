@@ -24,5 +24,7 @@ S3 class exercising the #1248 base-name-collision fix.
 
 S3 generic for \code{var}
 
-Collides with \code{stats::var}. Returns the \emph{sum} (not the variance) so a test can tell our dispatched method apart from the masked \code{stats::var} fallback.
+Collides with \code{stats::var}. Returns the \emph{sum} (not the variance) so a
+test can tell our dispatched method apart from the masked
+\code{stats::var} fallback.
 }

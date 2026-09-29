@@ -61,7 +61,9 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 
 Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target).
 
-Mirror of \code{R6CrossPlan::build_s7}: the returned class drives the constructor choice, so this S7 method's wrapper builds the R6 target via \code{R6CrossBoard$new(.ptr = .val)}.
+Mirror of \code{R6CrossPlan::build_s7}: the returned class drives the
+constructor choice, so this S7 method's wrapper builds the R6 target via
+\code{R6CrossBoard$new(.ptr = .val)}.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -69,19 +71,13 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target), spelled as the explicit handle type.
+Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target),
+spelled as the explicit handle type.
 
-Mixed-system explicit-handle return (#1375): mirror of \code{Self::s7_build_r6} through the \verb{ExternalPtr<Class>} spelling — the write-time resolver still keys off the \emph{returned} class, so this S7 method's wrapper builds the R6 target via \code{R6CrossBoard$new(.ptr = .val)}.
-
-Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
-(the class walk + method-table lookup). Use in hot loops where the
-per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
-perform subclass dispatch: a method override defined on a child class
-will \emph{not} be honoured. Use the generic when subclassing is possible.
-
-Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target), or \code{None} when \code{fail} is set.
-
-Mixed-system container return: proves the target-keyed resolver picks the R6 constructor for the \code{Some} arm even though this method lives on an S7 class, mirroring \code{Self::s7_build_r6} but through the \verb{Option<Class>} cross-class return path.
+Mixed-system explicit-handle return (#1375): mirror of
+\code{Self::s7_build_r6} through the \verb{ExternalPtr<Class>} spelling — the
+write-time resolver still keys off the \emph{returned} class, so this S7
+method's wrapper builds the R6 target via \code{R6CrossBoard$new(.ptr = .val)}.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -89,9 +85,27 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Materialize this plan into \code{count} \code{R6CrossBoard}s (S7 source, R6 element target).
+Materialize this plan into an \code{R6CrossBoard} (S7 source, R6 target),
+or \code{None} when \code{fail} is set.
 
-Mixed-system list return (#1284): mirror of \code{R6CrossPlan::build_many_s7} — the element class drives the \code{lapply} wrap, so this S7 method's wrapper builds R6 targets via \code{R6CrossBoard$new(.ptr = .el)}.
+Mixed-system container return: proves the target-keyed resolver picks
+the R6 constructor for the \code{Some} arm even though this method lives on
+an S7 class, mirroring \code{Self::s7_build_r6} but through the
+\verb{Option<Class>} cross-class return path.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Materialize this plan into \code{count} \code{R6CrossBoard}s (S7 source, R6
+element target).
+
+Mixed-system list return (#1284): mirror of
+\code{R6CrossPlan::build_many_s7} — the element class drives the \code{lapply}
+wrap, so this S7 method's wrapper builds R6 targets via
+\code{R6CrossBoard$new(.ptr = .el)}.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the

@@ -117,7 +117,9 @@ Useful for capturing stderr output from Rust code via \code{capture.output()}.
 
 Open a null device connection from Rust and return it to R.
 
-The no-arg signature makes this eligible for the gctorture GC sweep. The returned connection is open; R will close it when it is GC'd or when the caller calls \code{close()} on it.
+The no-arg signature makes this eligible for the gctorture GC sweep.
+The returned connection is open; R will close it when it is GC'd or
+when the caller calls \code{close()} on it.
 
 Write a message to a new null connection from Rust (output discarded).
 
@@ -129,11 +131,13 @@ Drives the full set/drop lifecycle; auto-closes when the function returns.
 
 Run a style-3 progress bar from 0 to n, routing output to R's stderr.
 
-Lets tests verify the \code{file} builder option works and that output appears on the message channel (where \code{sink(type="message")} can capture it).
+Lets tests verify the \code{file} builder option works and that output appears
+on the message channel (where \code{sink(type="message")} can capture it).
 
 Exercise the explicit \code{close()} path — Drop is a no-op after this.
 
-Returns \code{TRUE} if \code{close()} succeeded. After \code{close()} consumes \code{self}, the \code{Drop} impl is skipped via \code{mem::forget}, so no double-close occurs.
+Returns \code{TRUE} if \code{close()} succeeded. After \code{close()} consumes \code{self},
+the \code{Drop} impl is skipped via \code{mem::forget}, so no double-close occurs.
 }
 \examples{
 \dontrun{

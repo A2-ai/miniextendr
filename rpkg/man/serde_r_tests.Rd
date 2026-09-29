@@ -154,7 +154,9 @@ Test deserializing an R character to String via serde_r.
 
 Test deserializing NA or NULL to \verb{Option<i32>::None} via serde_r (audit A5).
 
-Unlike the bare \code{i32} path (see \code{serde_r_deserialize_wrong_type}), an \verb{Option<i32>} field accepts \emph{either} \code{NA_integer_} or \code{NULL} as \code{None}, matching the macro \code{TryFromSexp} convention.
+Unlike the bare \code{i32} path (see \code{serde_r_deserialize_wrong_type}), an
+\verb{Option<i32>} field accepts \emph{either} \code{NA_integer_} or \code{NULL} as \code{None},
+matching the macro \code{TryFromSexp} convention.
 
 Test deserializing NA or NULL to \verb{Option<f64>::None} via serde_r (audit A5).
 
@@ -190,11 +192,15 @@ Test serializing a complex nested struct with points, rectangles, maps, and flag
 
 Test deserializing a complex nested R list and returning a summary string.
 
-Serialize through the \code{RSerializeNative} trait (blanket impl over \code{serde::Serialize}).
+Serialize through the \code{RSerializeNative} trait (blanket impl over
+\code{serde::Serialize}).
 
-Deserialize through the \code{RDeserializeNative} trait (blanket impl over \code{serde::Deserialize}); returns \code{x + y} of the decoded point.
+Deserialize through the \code{RDeserializeNative} trait (blanket impl over
+\code{serde::Deserialize}); returns \code{x + y} of the decoded point.
 
-Return a \code{Serialize} type via the \code{AsSerialize} IntoR wrapper — the value arrives in R as \code{list(x =, y =)} without a hand-written conversion.
+Return a \code{Serialize} type via the \code{AsSerialize} IntoR wrapper — the value
+arrives in R as \code{list(x =, y =)} without a hand-written conversion.
 
-\code{AsSerialize} over a Vec — a list of lists in R. Also exercises \code{AsSerialize::new} / \code{into_inner} / \code{as_ref}.
+\code{AsSerialize} over a Vec — a list of lists in R. Also exercises
+\code{AsSerialize::new} / \code{into_inner} / \code{as_ref}.
 }

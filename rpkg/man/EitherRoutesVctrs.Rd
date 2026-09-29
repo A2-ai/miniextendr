@@ -36,5 +36,6 @@ eitherroutesvctrs_plan_routes(
 \item{tiers}{One or more of "low", "mid", "high", or a number; omitting the argument means no choice.}
 }
 \description{
-Route names or a data frame of doses, and omittable tier names or a number.
+Route names or a data frame of doses, and omittable tier names or a
+number.
 }

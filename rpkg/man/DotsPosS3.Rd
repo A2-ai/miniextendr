@@ -24,7 +24,8 @@ DotsPosS3
 \item{flag}{A flag.}
 }
 \description{
-S3 class whose method takes a formal after its dots. Exported: roxygen2 wants every S3 method exported or registered.
+S3 class whose method takes a formal after its dots. Exported: roxygen2
+wants every S3 method exported or registered.
 
 Create the fixture.
 

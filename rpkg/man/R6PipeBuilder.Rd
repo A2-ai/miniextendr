@@ -4,7 +4,8 @@
 \alias{R6PipeBuilder}
 \title{R6PipeBuilder R6 Class}
 \description{
-R6 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor. Chains as \code{b$add(1L)$add(2L)$total()}.
+R6 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.
+Chains as \code{b$add(1L)$add(2L)$total()}.
 }
 \section{Methods}{
 \subsection{Public methods}{
