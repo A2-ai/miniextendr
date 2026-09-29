@@ -186,7 +186,7 @@ This demonstrates the stale bitmap problem: Arrow's bitmap says "all valid"
 but the R buffer now contains an NA sentinel.
 
 Returns TRUE if the zero-copy round-trip preserves identity even with NAs.
-This tests that R's NA sentinels in the data buffer don't break pointer recovery.
+This tests that R's NA sentinels in the data buffer don't break registry recovery.
 
 Returns TRUE if the zero-copy round-trip preserves identity for i32 with NAs.
 }

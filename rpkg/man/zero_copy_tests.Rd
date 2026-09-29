@@ -11,7 +11,6 @@
 \alias{zero_copy_arrow_i32_identity}
 \alias{zero_copy_arrow_u8_identity}
 \alias{zero_copy_arrow_f64_computed_is_different}
-\alias{zero_copy_sexprec_offset}
 \alias{zero_copy_arrow_f64_roundtrip}
 \alias{zero_copy_arrow_i32_roundtrip}
 \alias{zero_copy_arrow_f64_altrep}
@@ -42,8 +41,6 @@ zero_copy_arrow_i32_identity(x)
 zero_copy_arrow_u8_identity(x)
 
 zero_copy_arrow_f64_computed_is_different(x)
-
-zero_copy_sexprec_offset()
 
 zero_copy_arrow_f64_roundtrip(x)
 
@@ -93,8 +90,6 @@ Returns TRUE if UInt8Array round-trip returns the same R object.
 
 Returns FALSE — computed Arrow array has different backing memory.
 
-Verifies r_memory::sexprec_data_offset is nonzero (init ran).
-
 Round-trip Float64Array through Arrow and return the result.
 The zero-copy path returns the original R SEXP — serialization is trivial.
 
@@ -108,7 +103,7 @@ Create a Rust-allocated Int32Array and return as ALTREP.
 Create a Vec\if{html}{\out{<f64>}} ALTREP (not Arrow, just plain Rust vec).
 
 Allocate an R-backed Arrow buffer, fill it, return as Float64Array.
-Tests the alloc_r_backed_buffer → pointer recovery round-trip.
+Tests the alloc_r_backed_buffer → registry recovery round-trip.
 
 Slice a Float64Array and return it — recovery should fail (different pointer).
 
