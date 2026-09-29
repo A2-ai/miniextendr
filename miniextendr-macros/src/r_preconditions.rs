@@ -317,9 +317,13 @@ fn guarded(param: &str, ty: &syn::Type, mut out: Vec<RAssertion>) -> Vec<RAssert
 }
 
 /// Whether a `no_na` parameter of Rust type `ty` is checked for `NA` only
-/// in Rust, after the conversion, with no R guard: an `Either<L, R>`,
-/// also under `Missing` / `Option` layers (peeled as for a choice parameter,
-/// [`crate::type_inspect::choice_layers`]).
+/// in Rust, after the conversion, with no R guard: an `Either<L, R>`, also
+/// under `Missing`. The layers are peeled as for a choice parameter
+/// ([`crate::type_inspect::choice_layers`]), which also peels `Option`; that
+/// only reaches a choice `Option<Either<Mode, X>>`, which keeps the guard
+/// (see below), since a plain `Option<Either<..>>` has no `TryFromSexp` impl.
+/// The type is read as written: an alias, a newtype or a
+/// `Result<Either<..>, ()>` keeps the guard.
 ///
 /// One `!anyNA(x)` on the whole argument is wrong for an arm with its own
 /// reading of `NA` (a data frame arm whose cells may be missing), and it
@@ -2101,10 +2105,11 @@ mod tests {
         }
     }
 
-    /// `no_na` on an `Either` (also under `Missing` / `Option`) emits no R
-    /// guard: the C wrapper checks the input by the arm the value converted
-    /// to. A plain parameter keeps the guard, and so does a choice `Either`
-    /// (`match_arg` / `choices`), whose conversion has no Rust check.
+    /// `no_na` on an `Either` (also under `Missing`) emits no R guard: the C
+    /// wrapper checks the input by the arm the value converted to. A plain
+    /// parameter keeps the guard, and so does a choice `Either` (`match_arg`
+    /// / `choices`, also under `Option` / `Missing<Option<..>>`), whose
+    /// conversion has no Rust check.
     #[test]
     fn no_na_on_an_either_is_checked_after_the_conversion() {
         let guards = |sig: &str, skip: &[&str]| {
@@ -2121,7 +2126,6 @@ mod tests {
             "fn f(x: Either<Option<AsNumeric>, DataFrame>)",
             "fn f(x: either::Either<Vec<f64>, List>)",
             "fn f(x: Missing<Either<AsNumeric, DataFrame>>)",
-            "fn f(x: Option<Either<i32, String>>)",
         ] {
             assert!(
                 guards(sig, &[]).iter().all(|g| !g.contains("anyNA")),
@@ -2139,6 +2143,19 @@ mod tests {
                 guards
                     .last()
                     .is_some_and(|g| g.contains("!isTRUE(!anyNA(x))")),
+                "{sig}: {guards:?}"
+            );
+        }
+        // A choice `Either` under `Option` / `Missing<Option<..>>` keeps the
+        // guard too, after the layer's `is.null(x)` / `missing(x)` pass.
+        for (sig, layer) in [
+            ("fn f(x: Option<Either<Mode, DataFrame>>)", "is.null(x)"),
+            ("fn f(x: Missing<Option<Either<Mode, List>>>)", "missing(x)"),
+        ] {
+            let guards = guards(sig, &["x"]);
+            let expected = format!("!isTRUE({layer} || !anyNA(x))");
+            assert!(
+                guards.last().is_some_and(|g| g.contains(&expected)),
                 "{sig}: {guards:?}"
             );
         }

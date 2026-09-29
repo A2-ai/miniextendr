@@ -116,7 +116,9 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
     );
 
     // `__mx_has_na` forwards too, so `no_na` on a newtype of a reading marker
-    // (`struct Dose(AsNumeric)`) refuses what the marker reads as `NA`.
+    // (`struct Dose(AsNumeric)`) refuses what the marker reads as `NA`. So
+    // does `__mx_input_has_na`, so a newtype arm of an `Either` is checked as
+    // its inner type: `struct Table(DataFrame)` keeps its `NA` cells.
     Ok(quote! {
         #[automatically_derived]
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #from_where {
@@ -127,6 +129,10 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
             #[inline]
             fn __mx_has_na(&self) -> bool {
                 <#inner as ::miniextendr_api::TryFromSexp>::__mx_has_na(&#field)
+            }
+            #[inline]
+            fn __mx_input_has_na(&self, input: ::miniextendr_api::SEXP) -> bool {
+                <#inner as ::miniextendr_api::TryFromSexp>::__mx_input_has_na(&#field, input)
             }
             #[inline]
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
@@ -213,26 +219,35 @@ pub fn derive_into_r(input: DeriveInput) -> syn::Result<TokenStream> {
 
 #[cfg(test)]
 mod tests {
-    /// `#[derive(TryFromSexp)]` forwards the hidden `no_na` probe to the inner
-    /// type, for tuple and named newtypes alike.
+    /// `#[derive(TryFromSexp)]` forwards the hidden `no_na` probes to the
+    /// inner type, for tuple and named newtypes alike: `__mx_has_na` for the
+    /// value, and `__mx_input_has_na` for the input of an `Either` arm.
     #[test]
     fn try_from_sexp_derive_forwards_no_na() {
         for (input, field) in [
+            (syn::parse_quote! { struct Table(DataFrame); }, "self . 0"),
             (
-                syn::parse_quote! { struct Dose(AsNumeric); },
-                "__mx_has_na (& self . 0)",
-            ),
-            (
-                syn::parse_quote! { struct Dose { value: AsNumeric } },
-                "__mx_has_na (& self . value)",
+                syn::parse_quote! { struct Table { value: DataFrame } },
+                "self . value",
             ),
         ] {
             let out = super::derive_try_from_sexp(input).unwrap().to_string();
+            let forward = |call: &str| {
+                format!("< DataFrame as :: miniextendr_api :: TryFromSexp > :: {call}")
+            };
             assert!(out.contains("fn __mx_has_na (& self) -> bool"), "{out}");
             assert!(
-                out.contains(&format!(
-                    "< AsNumeric as :: miniextendr_api :: TryFromSexp > :: {field}"
-                )),
+                out.contains(&forward(&format!("__mx_has_na (& {field})"))),
+                "{out}"
+            );
+            assert!(
+                out.contains(
+                    "fn __mx_input_has_na (& self , input : :: miniextendr_api :: SEXP) -> bool"
+                ),
+                "{out}"
+            );
+            assert!(
+                out.contains(&forward(&format!("__mx_input_has_na (& {field} , input)"))),
                 "{out}"
             );
         }

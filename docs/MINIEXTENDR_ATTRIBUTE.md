@@ -411,7 +411,7 @@ Written on a single parameter of a standalone function:
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
-| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either`, the check runs only after the conversion, for the arm taken (see below) |
+| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 
 ```rust
@@ -493,6 +493,15 @@ The left arm is tried first, so `NULL` (given or by default) converts to
 `NA` and `"NA"` are still refused, with the same condition as on
 `Either<AsNumeric, DataFrame>`: the check reads the input, so an `NA` that the
 arm converts to `None` (as `Option<f64>` does) is refused too.
+
+The macro finds an `Either` by the type as written. An `Either` behind a type
+alias (`type NumberOrTable = Either<AsNumeric, DataFrame>`), a newtype or
+`Result<Either<..>, ()>` keeps the R guard, so a data frame with `NA` cells is
+refused again: write the outer `Either` out in the signature. The arms
+themselves can be wrapped. A `#[derive(TryFromSexp)]` newtype arm or a
+`Result<T, ()>` arm is checked as the `T` it wraps: with
+`struct Table(DataFrame)`, `Either<AsNumeric, Table>` lets a data frame with
+`NA` cells through, and a `Result<AsNumeric, ()>` arm still refuses `NA`.
 
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a

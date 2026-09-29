@@ -374,6 +374,28 @@ test_that("no_na on an Either is checked after the conversion, by the arm taken"
   }
 })
 
+test_that("no_na on an Either reads a newtype or Result arm by what it wraps", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  table <- data.frame(id = 1:2, v = c(1, NA))
+  for (f in list(miniextendr:::value_or_wrapped_table, miniextendr:::value_or_result_table)) {
+    expect_identical(f(3), "value Some(3.0)")
+    expect_identical(f(data.frame(id = 1:2, v = c(1, 2))), "table 2x2")
+    # The data frame behind the wrapper keeps its NA cells.
+    expect_identical(f(table), "table 2x2")
+    # The number arm still refuses what value_or_table() refuses, with the
+    # same condition.
+    for (x in list(NA, NA_real_, NaN, "NA")) {
+      refused <- tryCatch(f(x), error = identity)
+      plain <- tryCatch(miniextendr:::value_or_table(x), error = identity)
+      expect_identical(conditionMessage(refused), "'x' must not be NA")
+      expect_identical(class(refused), class(plain))
+      expect_identical(refused$param, "x")
+    }
+  }
+  # NULL is Err(()) on the Result arm: not given, and it holds no NA.
+  expect_identical(miniextendr:::value_or_result_table(NULL), "nothing")
+})
+
 test_that("no_na on a Missing<Either> passes an omitted argument", {
   skip_if_not(miniextendr_has_feature("either"), "either feature off")
   f <- miniextendr:::value_or_table_optional

@@ -755,7 +755,11 @@ pub trait TryFromSexp: Sized {
     /// check in Rust (R's `anyNA(input)`), then asks `__mx_has_na` for what a
     /// marker reads as `NA` beyond it. `Either` asks the arm the value
     /// converted to, `Missing` asks its value, and `DataFrame` refuses
-    /// nothing, so the NA cells of a data frame arm get through.
+    /// nothing, so the NA cells of a data frame arm get through. The wrappers
+    /// `Result<T, ()>` and `#[derive(TryFromSexp)]` newtypes ask their value
+    /// too, so a `Result<DataFrame, ()>` arm or a newtype of a `DataFrame`
+    /// keeps its NA cells as well. `Result`'s `Err(())` comes only from
+    /// `NULL`, which holds no `NA`, so it passes.
     ///
     /// An `Option` arm (`Either<Option<AsNumeric>, DataFrame>`) keeps the
     /// default, which reads the input rather than the value: `NULL` holds no
@@ -1186,6 +1190,16 @@ where
     #[inline]
     fn __mx_has_na(&self) -> bool {
         self.as_ref().is_ok_and(T::__mx_has_na)
+    }
+
+    // As an `Either` arm, a given value is read by `T` (a
+    // `Result<DataFrame, ()>` arm keeps its `NA` cells); `NULL` holds no `NA`.
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        match self {
+            Ok(v) => T::__mx_input_has_na(v, input),
+            Err(()) => false,
+        }
     }
 
     #[inline]

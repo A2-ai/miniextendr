@@ -119,12 +119,13 @@ impl RustConversionBuilder {
     /// the R guard: they convert through the reference type's own impl, and
     /// no reading marker converts by reference.
     ///
-    /// An `Either` parameter (also under `Missing` / `Option`) has no R guard
+    /// An `Either` parameter (also under `Missing`) has no R guard
     /// (`r_preconditions::no_na_checked_after_conversion`). Its value is asked
     /// `TryFromSexp::__mx_input_has_na` with the input SEXP instead: the arm
     /// the value converted to makes the guard's `anyNA()` check on the input
     /// in Rust, then its own `__mx_has_na`, and a `DataFrame` arm refuses
-    /// nothing.
+    /// nothing (also behind a derived newtype or `Result<_, ()>`, which
+    /// forward the call).
     pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
         self

@@ -162,6 +162,39 @@ pub fn value_or_table_nullable(
     }
 }
 
+/// A data frame behind a `#[derive(TryFromSexp)]` newtype: as an `Either`
+/// arm it is checked as the data frame it wraps.
+#[derive(miniextendr_api::TryFromSexp)]
+pub struct Table(pub DataFrame);
+
+/// `value_or_table()` with the data frame behind a newtype arm: the newtype
+/// forwards the check to `DataFrame`, so the table keeps its `NA` cells, and
+/// a missing number is still refused.
+/// @param x A number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_wrapped_table(#[miniextendr(no_na)] x: Either<AsNumeric, Table>) -> String {
+    match x {
+        Either::Left(n) => format!("value {:?}", n.0),
+        Either::Right(t) => format!("table {}x{}", t.0.nrow(), t.0.ncol()),
+    }
+}
+
+/// `value_or_table()` with the data frame behind a `Result<_, ()>` arm, which
+/// forwards the check as the newtype does.
+/// @param x A number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_result_table(
+    #[miniextendr(no_na)] x: Either<AsNumeric, Result<DataFrame, ()>>,
+) -> String {
+    match x {
+        Either::Left(n) => format!("value {:?}", n.0),
+        Either::Right(Ok(t)) => format!("table {}x{}", t.nrow(), t.ncol()),
+        Either::Right(Err(())) => "nothing".to_string(),
+    }
+}
+
 /// The right arm of `either_no_na_vector_or_list()`: an alias keeps the
 /// signature readable. The outer `Either` stays spelled out, since the macro
 /// sees an `Either` parameter by its type as written.
