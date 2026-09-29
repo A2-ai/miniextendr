@@ -1238,22 +1238,26 @@ jobs:
             Rscript -e "testthat::test_local()" || exit 1
           done
 
+      # Fails on memory errors (invalid reads/writes, uninitialised values) and
+      # definite leaks. "Possibly lost" blocks do not count: they are the
+      # thread-local storage of threads still alive at exit and similar
+      # interior pointers, not leaks.
       - name: Run ALTREP tests under Valgrind
         if: always()
         working-directory: rpkg
         shell: bash
         run: |
-          sudo apt-get install -y valgrind 2>/dev/null || true
-          if command -v valgrind &>/dev/null; then
-            echo "=== Valgrind memcheck on ALTREP materialization ==="
-            R -d "valgrind --tool=memcheck --leak-check=full --track-origins=yes --error-exitcode=1" \
-              -e 'library(miniextendr); testthat::test_local(filter = "altrep-materialization")' \
-              2>&1 | tee /tmp/valgrind.log || true
-            echo "=== Valgrind summary ==="
-            grep -A 5 "ERROR SUMMARY\|Invalid read\|Invalid write\|Use of uninitialised" /tmp/valgrind.log || echo "No errors found"
-          else
-            echo "Valgrind not available, skipping"
-          fi
+          sudo apt-get install -y valgrind
+          echo "=== Valgrind memcheck on ALTREP materialization ==="
+          set +e
+          R -d "valgrind --tool=memcheck --leak-check=full --errors-for-leak-kinds=definite --track-origins=yes --error-exitcode=1" \
+            -e 'library(miniextendr); testthat::test_local(filter = "altrep-materialization")' \
+            2>&1 | tee /tmp/valgrind.log
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "=== Valgrind summary ==="
+          grep -A 5 "ERROR SUMMARY\|definitely lost\|Invalid read\|Invalid write\|Use of uninitialised" /tmp/valgrind.log || echo "No errors found"
+          exit "$status"
 
       - name: Print the sccache server log
         if: always()
