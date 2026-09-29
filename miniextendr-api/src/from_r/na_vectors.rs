@@ -209,6 +209,7 @@ impl TryFromSexp for Vec<Option<RLogical>> {
 /// `NA_character_` elements are converted to `None`.
 impl TryFromSexp for Vec<Option<String>> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {

@@ -63,6 +63,7 @@ where
 /// mutate the string later — `to_mut()` will copy-on-write at that point.
 impl TryFromSexp for Cow<'static, str> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: &'static str = TryFromSexp::try_from_sexp(sexp)?;
@@ -87,6 +88,7 @@ impl TryFromSexp for Cow<'static, str> {
 /// Use `Vec<Option<Cow<'static, str>>>` to distinguish NA from empty strings.
 impl TryFromSexp for Vec<Cow<'static, str>> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
@@ -104,6 +106,7 @@ impl TryFromSexp for Vec<Cow<'static, str>> {
 /// `NA_character_` → `None`, valid strings → `Some(Cow::Borrowed(&str))`.
 impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
@@ -137,6 +140,7 @@ impl TryFromSexp for Vec<Option<Cow<'static, str>>> {
 /// common case where strings are known to be non-NA and properly encoded.
 impl TryFromSexp for Vec<String> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
@@ -155,6 +159,7 @@ impl TryFromSexp for Vec<String> {
 /// **Warning:** `NA_character_` values are converted to empty string `""`.
 impl TryFromSexp for Vec<&'static str> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
@@ -169,6 +174,7 @@ impl TryFromSexp for Vec<&'static str> {
 /// Convert R character vector to `Vec<Option<&str>>`.
 impl TryFromSexp for Vec<Option<&'static str>> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         map_strsxp_with(sexp, |charsxp, _i| {
@@ -188,6 +194,7 @@ macro_rules! impl_set_string_try_from_sexp {
         $(#[$meta])*
         impl TryFromSexp for $set_ty<String> {
             type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
@@ -225,6 +232,7 @@ macro_rules! impl_string_wrapper_try_from_sexp {
         $(#[$scalar_meta])*
         impl TryFromSexp for $ty {
             type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -242,6 +250,7 @@ macro_rules! impl_string_wrapper_try_from_sexp {
         $(#[$option_meta])*
         impl TryFromSexp for Option<$ty> {
             type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             #[inline]
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -259,6 +268,7 @@ macro_rules! impl_string_wrapper_try_from_sexp {
         $(#[$vec_meta])*
         impl TryFromSexp for Vec<$ty> {
             type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
@@ -274,6 +284,7 @@ macro_rules! impl_string_wrapper_try_from_sexp {
         $(#[$vec_option_meta])*
         impl TryFromSexp for Vec<Option<$ty>> {
             type Error = SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;

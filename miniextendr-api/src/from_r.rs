@@ -606,6 +606,49 @@ pub trait TryFromSexp: Sized {
     /// forward this metadata through their containers.
     const NATIVE_BORROW: Option<NativeBorrow> = None;
 
+    /// Whether this conversion accepts only character input: every value it
+    /// converts, other than `NULL`, is a character vector or a factor.
+    ///
+    /// `#[miniextendr]` reads it for choice parameters (`match_arg` /
+    /// `choices`) typed `Either<T, R>`. Their R wrapper sends all character
+    /// and factor input to the choice `T`, so an `R` with
+    /// `CHARACTER_ONLY = true` could receive at most `NULL`, and the macro
+    /// rejects the signature at compile time.
+    ///
+    /// Defaults to `false`, which is always safe: the check is skipped. Set it
+    /// to `true` in an implementation that reads only strings or factors, and
+    /// forward it (`<Inner as TryFromSexp>::CHARACTER_ONLY`) in one that
+    /// delegates to another conversion. Do not set it on a type that also
+    /// converts numbers, logicals or lists: that would reject valid
+    /// parameters.
+    ///
+    /// The built-in string and factor conversions, `#[derive(MatchArg)]`,
+    /// `#[derive(RFactor)]` and
+    /// [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse)
+    /// set it. `Option<T>`, `Vec<T>`, `Box<[T]>`,
+    /// [`Missing<T>`](crate::Missing) and `#[derive(TryFromSexp)]` newtypes
+    /// forward it. [`AsCharacter`](crate::AsCharacter) leaves it `false`,
+    /// since it also converts numbers.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use miniextendr_api::SEXP;
+    /// use miniextendr_api::from_r::{SexpError, TryFromSexp};
+    ///
+    /// pub struct Username(String);
+    ///
+    /// impl TryFromSexp for Username {
+    ///     type Error = SexpError;
+    ///     const CHARACTER_ONLY: bool = <String as TryFromSexp>::CHARACTER_ONLY;
+    ///
+    ///     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+    ///         String::try_from_sexp(sexp).map(Username)
+    ///     }
+    /// }
+    /// ```
+    const CHARACTER_ONLY: bool = false;
+
     /// The error type returned when conversion fails.
     type Error;
 
@@ -657,6 +700,7 @@ where
     Vec<T>: TryFromSexp,
 {
     const NATIVE_BORROW: Option<NativeBorrow> = <Vec<T> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Vec<T> as TryFromSexp>::CHARACTER_ONLY;
 
     type Error = <Vec<T> as TryFromSexp>::Error;
 
@@ -1189,6 +1233,7 @@ where
     <Vec<T> as TryFromSexp>::Error: Into<SexpError>,
 {
     const NATIVE_BORROW: Option<NativeBorrow> = <Vec<T> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Vec<T> as TryFromSexp>::CHARACTER_ONLY;
 
     type Error = SexpError;
 
@@ -1261,6 +1306,8 @@ macro_rules! impl_option_set_try_from_sexp {
             $set_ty<T>: TryFromSexp,
             <$set_ty<T> as TryFromSexp>::Error: Into<SexpError>,
         {
+            const CHARACTER_ONLY: bool = <$set_ty<T> as TryFromSexp>::CHARACTER_ONLY;
+
             type Error = SexpError;
 
             #[inline]
@@ -2339,6 +2386,7 @@ macro_rules! impl_option_try_from_sexp {
         impl $crate::from_r::TryFromSexp for Option<$t> {
             const NATIVE_BORROW: Option<$crate::from_r::NativeBorrow> =
                 <$t as $crate::from_r::TryFromSexp>::NATIVE_BORROW;
+            const CHARACTER_ONLY: bool = <$t as $crate::from_r::TryFromSexp>::CHARACTER_ONLY;
 
             type Error = $crate::from_r::SexpError;
             // `NULL` (`None`) is "not given" and passes `no_na`.
@@ -2708,6 +2756,7 @@ macro_rules! try_from_sexp_via_str_parse {
     ($ty:ty, $label:literal, |$s:ident| $parse:expr) => {
         impl $crate::from_r::TryFromSexp for $ty {
             type Error = $crate::from_r::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
@@ -2726,6 +2775,7 @@ macro_rules! try_from_sexp_via_str_parse {
 
         impl $crate::from_r::TryFromSexp for Option<$ty> {
             type Error = $crate::from_r::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
@@ -2746,6 +2796,7 @@ macro_rules! try_from_sexp_via_str_parse {
 
         impl $crate::from_r::TryFromSexp for Vec<$ty> {
             type Error = $crate::from_r::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
@@ -2774,6 +2825,7 @@ macro_rules! try_from_sexp_via_str_parse {
 
         impl $crate::from_r::TryFromSexp for Vec<Option<$ty>> {
             type Error = $crate::from_r::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;

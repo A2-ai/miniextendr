@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `Either` choice parameter `routes`: the other arm `Vec<String>` reads only character or factor input, and the choice check sends every character or factor argument to the choice arm, so at most NULL can reach `Vec<String>`. Give that arm a type that reads other input (a data frame, a number, a list); for a NULL alternative, declare the parameter as `Option<Either<..>>`.
+  --> tests/ui/match_arg_several_ok_either_character_right.rs:16:70
+   |
+16 |     #[miniextendr(match_arg, several_ok)] routes: Either<Vec<Route>, Vec<String>>,
+   |                                                                      ^^^ evaluation of `C_$CRATE_routes_or_texts::{closure#0}::_` failed here

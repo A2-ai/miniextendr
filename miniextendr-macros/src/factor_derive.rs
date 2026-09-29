@@ -281,6 +281,7 @@ fn derive_simple_factor(
 
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::factor_from_sexp(sexp)
@@ -505,6 +506,7 @@ fn derive_interaction_factor(
 
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
+            const CHARACTER_ONLY: bool = true;
 
             fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::factor_from_sexp(sexp)

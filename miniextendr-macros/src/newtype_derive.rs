@@ -123,6 +123,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = <#inner as ::miniextendr_api::TryFromSexp>::Error;
             const NATIVE_BORROW: ::core::option::Option<::miniextendr_api::from_r::NativeBorrow> =
                 <#inner as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW;
+            const CHARACTER_ONLY: bool = <#inner as ::miniextendr_api::TryFromSexp>::CHARACTER_ONLY;
             #[inline]
             fn __mx_has_na(&self) -> bool {
                 <#inner as ::miniextendr_api::TryFromSexp>::__mx_has_na(&#field)

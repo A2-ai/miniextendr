@@ -121,6 +121,7 @@ pub fn toml_to_string_pretty(v: &TomlValue) -> String {
 
 impl TryFromSexp for TomlValue {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     /// Parse a TOML value from an R character scalar.
     ///
@@ -191,6 +192,7 @@ fn parse_toml_elements<U>(
 // Vec conversions have custom logic (parse from Vec<String>, not VECSXP)
 impl TryFromSexp for Vec<TomlValue> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         parse_toml_elements(sexp, |opt| {
@@ -202,6 +204,7 @@ impl TryFromSexp for Vec<TomlValue> {
 
 impl TryFromSexp for Vec<Option<TomlValue>> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         parse_toml_elements(sexp, |opt| match opt {

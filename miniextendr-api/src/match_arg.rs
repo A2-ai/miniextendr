@@ -402,6 +402,10 @@ pub fn match_arg_missing_or<U, E>(
 /// `'route' must be one of "oral", "bolus", "infusion", or a data frame: got
 /// integer`.
 ///
+/// So `R` must read something other than character or factor input: an `R`
+/// whose [`TryFromSexp::CHARACTER_ONLY`] is `true` could receive at most
+/// `NULL`, and `#[miniextendr]` rejects the parameter at compile time.
+///
 /// This differs from `TryFromSexp for Either<L, R>`, which tries `L` first on
 /// every input and would decode `NULL` as the first choice.
 #[cfg(feature = "either")]
@@ -422,6 +426,48 @@ where
             .map_err(Into::into)
     }
 }
+
+/// Reads [`TryFromSexp::CHARACTER_ONLY`] of the `R` arm of an `Either<T, R>`
+/// choice parameter without requiring `R: TryFromSexp`.
+///
+/// `#[miniextendr]` emits, for each such arm (inside the generated C
+/// wrapper),
+///
+/// ```ignore
+/// {
+///     use ::miniextendr_api::match_arg::EitherArmProbeFallback as _;
+///     const _: () = ::core::assert!(
+///         !::miniextendr_api::match_arg::EitherArmProbe::<R>::CHARACTER_ONLY,
+///         "...",
+///     );
+/// }
+/// ```
+///
+/// The path resolves to the inherent const below when `R: TryFromSexp`
+/// holds. When it does not, path resolution rejects the inherent candidate
+/// (its impl bound fails) and falls back to the const of
+/// [`EitherArmProbeFallback`], which is `false`. So the check adds no error
+/// of its own for an `R` without a conversion: the decode's single "`R:
+/// TryFromSexp` is not satisfied" is the whole diagnostic. Naming
+/// `<R as TryFromSexp>::CHARACTER_ONLY` directly would report that missing
+/// impl a second time.
+#[doc(hidden)]
+pub struct EitherArmProbe<R>(core::marker::PhantomData<fn() -> R>);
+
+impl<R: TryFromSexp> EitherArmProbe<R> {
+    /// `R`'s [`TryFromSexp::CHARACTER_ONLY`].
+    pub const CHARACTER_ONLY: bool = R::CHARACTER_ONLY;
+}
+
+/// The fallback of [`EitherArmProbe`] for an `R` without `TryFromSexp`: the
+/// check passes, and the decode reports the missing impl.
+#[doc(hidden)]
+pub trait EitherArmProbeFallback {
+    /// Always `false`.
+    const CHARACTER_ONLY: bool = false;
+}
+
+impl<R> EitherArmProbeFallback for EitherArmProbe<R> {}
 
 /// Match a string against the choices of a `MatchArg` type (exact or partial).
 fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {

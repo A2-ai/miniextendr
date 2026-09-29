@@ -108,6 +108,8 @@ where
     R::Error: Into<SexpError>,
 {
     type Error = SexpError;
+    // Only character input when both sides read only character input.
+    const CHARACTER_ONLY: bool = L::CHARACTER_ONLY && R::CHARACTER_ONLY;
     // `no_na` asks whichever side the value converted to.
     #[inline]
     fn __mx_has_na(&self) -> bool {

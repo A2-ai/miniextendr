@@ -1080,6 +1080,7 @@ where
     T::Err: std::fmt::Display,
 {
     type Error = crate::from_r::SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         let charsxp = crate::from_r::scalar_charsxp(sexp)?;
@@ -1156,6 +1157,7 @@ where
     T::Err: std::fmt::Display,
 {
     type Error = crate::from_r::SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: crate::SEXP) -> Result<Self, Self::Error> {
         let strings: Vec<Option<&str>> = crate::from_r::TryFromSexp::try_from_sexp(sexp)?;

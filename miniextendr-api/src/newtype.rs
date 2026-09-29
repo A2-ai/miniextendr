@@ -4,8 +4,8 @@
 //! (`struct UserId(Uuid)`) emit the scalar forwarding impls *and* a small marker
 //! impl from this module. The container blankets here then light up
 //! `Vec<UserId>`, `Option<UserId>`, and `Vec<Option<UserId>>` automatically — the
-//! newtype inherits the inner type's exact SEXPTYPE checks, NA policy, and error
-//! text in every shape.
+//! newtype inherits the inner type's exact SEXPTYPE checks, NA policy, error
+//! text and `TryFromSexp::CHARACTER_ONLY` in every shape.
 //!
 //! # Why the markers live here and not in the derive
 //!
@@ -126,6 +126,7 @@ where
     type Error = <Vec<T::Inner> as TryFromSexp>::Error;
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
         <Vec<T::Inner> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Vec<T::Inner> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -156,6 +157,7 @@ where
     type Error = <Option<T::Inner> as TryFromSexp>::Error;
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
         <Option<T::Inner> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Option<T::Inner> as TryFromSexp>::CHARACTER_ONLY;
     // `NULL` (`None`) is "not given" and passes `no_na`.
     #[inline]
     fn __mx_has_na(&self) -> bool {
@@ -183,6 +185,7 @@ where
     type Error = <Vec<Option<T::Inner>> as TryFromSexp>::Error;
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
         <Vec<Option<T::Inner>> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Vec<Option<T::Inner>> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

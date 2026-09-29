@@ -489,7 +489,8 @@ impl RustConversionBuilder {
                 // A choice under `Missing` / `Option` / `Either` layers (#1473,
                 // #1551): decoded layer by layer, outermost first. Under an
                 // `Either<.., R>` layer, a value `R` refuses is reported against
-                // the whole parameter, in the words of its `@param` line.
+                // the whole parameter, in the words of its `@param` line, and an
+                // `R` that reads only character input is a compile error.
                 if let Some((_, leaf)) = self
                     .layered_choice_params
                     .iter()
@@ -505,7 +506,9 @@ impl RustConversionBuilder {
                         ty,
                         span,
                     );
-                    return (vec![stmt], vec![]);
+                    let mut stmts = either_arm_guards(&param_name, ty);
+                    stmts.push(stmt);
+                    return (stmts, vec![]);
                 }
 
                 // match_arg + several_ok: use match_arg_vec_from_sexp for container types
@@ -755,6 +758,69 @@ fn layered_choice_expr(
     let value = LayeredValue::new(layers.value, leaf);
     let expr = value.apply(&wraps, &quote! { #sexp });
     quote_spanned! {span=> #expr }
+}
+
+/// One compile-time assertion per leaf of the `R` arm of an `Either` choice
+/// parameter `param` of type `ty` (nested `Either`s on the `R` side peeled):
+/// compilation fails when the leaf's `TryFromSexp` is `CHARACTER_ONLY`, since
+/// the choice check never sends character or factor input there. Read
+/// through `EitherArmProbe`, so a leaf without `TryFromSexp` adds no error of
+/// its own. Empty without an `Either` layer.
+///
+/// Each guard is a block holding only items (the fallback trait import and a
+/// `const _` assertion), spanned on the leaf: the assertion is evaluated by
+/// `cargo check` too, and the error points at the arm.
+fn either_arm_guards(param: &str, ty: &syn::Type) -> Vec<TokenStream> {
+    fn leaves<'a>(ty: &'a syn::Type, out: &mut Vec<&'a syn::Type>) {
+        match crate::type_inspect::either_arms(ty) {
+            Some((left, right)) => {
+                leaves(left, out);
+                leaves(right, out);
+            }
+            None => out.push(ty),
+        }
+    }
+
+    let Some(right) = crate::type_inspect::choice_layers(ty).either_right else {
+        return Vec::new();
+    };
+    let nested = crate::type_inspect::either_arms(right).is_some();
+    let mut arms = Vec::new();
+    leaves(right, &mut arms);
+    arms.into_iter()
+        .map(|leaf| {
+            let shown = crate::type_inspect::type_display(leaf);
+            let arm = if nested {
+                format!(
+                    "the other arm's `{shown}` (in `{}`)",
+                    crate::type_inspect::type_display(right)
+                )
+            } else {
+                format!("the other arm `{shown}`")
+            };
+            let message = format!(
+                "`Either` choice parameter `{param}`: {arm} reads only character or factor \
+                 input, and the choice check sends every character or factor argument to the \
+                 choice arm, so at most NULL can reach `{shown}`. Give that arm a type that \
+                 reads other input (a data frame, a number, a list); for a NULL alternative, \
+                 declare the parameter as `Option<Either<..>>`."
+            );
+            // `assert!` reads a lone literal as a format string.
+            let message = message.replace('{', "{{").replace('}', "}}");
+            let probe = crate::type_inspect::erase_lifetimes(leaf);
+            quote_spanned! {leaf.span()=>
+                {
+                    #[allow(unused_imports)]
+                    use ::miniextendr_api::match_arg::EitherArmProbeFallback as _;
+                    #[allow(clippy::assertions_on_constants)]
+                    const _: () = ::core::assert!(
+                        !::miniextendr_api::match_arg::EitherArmProbe::<#probe>::CHARACTER_ONLY,
+                        #message
+                    );
+                }
+            }
+        })
+        .collect()
 }
 
 /// The innermost value of a layered choice parameter.
