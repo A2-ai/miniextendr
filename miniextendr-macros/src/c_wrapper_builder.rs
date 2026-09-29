@@ -280,6 +280,12 @@ pub struct CWrapperContext {
     /// after the conversion (`RustConversionBuilder::with_no_na`), after the R
     /// guard `!anyNA(x)` already ran (for an `Either`, in place of the guard).
     pub no_na_params: Vec<(String, Option<String>)>,
+    /// Parameters whose declared type carries parameter markers
+    /// (`Checked<T>` / `Unchecked<T>`, #1566), with the markers, outermost
+    /// first. `inputs` holds the inner type, which is what converts; the
+    /// value is then wrapped in the markers for the call
+    /// (`RustConversionBuilder::with_param_markers`).
+    pub param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
     /// When `true`, preserve original parameter names from `inputs` in the C wrapper
     /// signature instead of renaming to `arg_0`, `arg_1`, ... The fn path preserves
     /// user identifiers for rustdoc visibility; impl method path uses `arg_N` for safety.
@@ -327,6 +333,7 @@ impl CWrapperContext {
             match_arg_several_ok_params: Vec::new(),
             layered_choice_params: Vec::new(),
             no_na_params: Vec::new(),
+            param_markers: Vec::new(),
             preserve_param_names: false,
             vis: syn::Visibility::Inherited,
             generics: syn::Generics::default(),
@@ -471,6 +478,9 @@ impl CWrapperContext {
         }
         for (param, message) in &self.no_na_params {
             builder = builder.with_no_na(param.clone(), message.clone());
+        }
+        for (param, markers) in &self.param_markers {
+            builder = builder.with_param_markers(param.clone(), markers.clone());
         }
         builder
     }
@@ -1507,6 +1517,9 @@ pub struct CWrapperContextBuilder {
     layered_choice_params: Vec<(String, crate::rust_conversion_builder::ChoiceLeaf)>,
     /// `no_na` parameters, forwarded to `RustConversionBuilder::with_no_na`.
     no_na_params: Vec<(String, Option<String>)>,
+    /// Marked parameters, forwarded to
+    /// `RustConversionBuilder::with_param_markers`.
+    param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
     /// When `true`, use original parameter names in C wrapper signature (for rustdoc).
     preserve_param_names: bool,
     /// Visibility of the generated `extern "C-unwind"` wrapper.
@@ -1666,6 +1679,19 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Record a parameter (its Rust name) whose declared type carries the
+    /// parameter `markers` (`Checked<T>` / `Unchecked<T>`, #1566, outermost
+    /// first). The inputs hold the inner type; the converted value is wrapped
+    /// in the markers before the call.
+    pub fn param_markers(
+        mut self,
+        param_name: String,
+        markers: Vec<crate::type_inspect::ParamMarker>,
+    ) -> Self {
+        self.param_markers.push((param_name, markers));
+        self
+    }
+
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -1766,6 +1792,7 @@ impl CWrapperContextBuilder {
             match_arg_several_ok_params: self.match_arg_several_ok_params,
             layered_choice_params: self.layered_choice_params,
             no_na_params: self.no_na_params,
+            param_markers: self.param_markers,
             preserve_param_names: self.preserve_param_names,
             vis: self.vis,
             generics: self.generics,

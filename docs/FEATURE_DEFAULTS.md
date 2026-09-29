@@ -44,7 +44,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 |---------|--------|-------|-----------------|
 | `strict-default` | Strict checked conversions for lossy types (i64, u64, isize, usize) | fns + impl blocks | `no_strict` |
 | `coerce-default` | Widen native `i32`/`f64` (and `Vec`) to the other numeric sources; preserve non-native numeric inputs; also accept integer `0`/`1` for `bool` and `Vec<bool>` | fns + methods | `no_coerce` |
-| `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks | `preconditions` |
+| `no-preconditions-default` | Drop the R-side type checks | fns + impl blocks (below the crate's `preconditions` key) | `preconditions`, `Checked<T>` |
 | `r6-default` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `s7-default` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
 | `worker-default` | Force worker thread execution (implies `worker-thread`) | fns + methods | `no_worker` |
@@ -183,8 +183,14 @@ impl MyType {
 ### `no-preconditions-default`
 
 The `no-preconditions-default` feature applies `no_preconditions` to every
-`#[miniextendr]` function and impl block: the generated wrappers drop their
-R-side type checks, one `isTRUE()` guard per check. Type errors still
+`#[miniextendr]` function and impl block that says nothing else: the
+generated wrappers drop their R-side type checks, one `isTRUE()` guard per
+check. It is the lowest spelling that decides: a parameter's own
+(`Checked<T>` / `Unchecked<T>`, the per-parameter or method-list
+`preconditions` / `no_preconditions`), then the function's or method's, the
+impl block's, and the crate's `[package.metadata.miniextendr] preconditions =
+true | false` all come first
+([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#r-side-preconditions-markers-and-defaults)). Type errors still
 propagate from Rust's `TryFromSexp`, as the same argument-error condition
 (#1591), but worded by the conversion (`'x' must be a single integer: got
 character`) rather than by the R check (`'x' must be integer`). Checks named
@@ -207,12 +213,16 @@ with the checks and 0.7 µs without (`fast_i32_default` /
 ```rust
 // With the no-preconditions-default feature enabled:
 
-#[miniextendr]                   // no_preconditions = true
+#[miniextendr]                   // checks dropped
 fn hot_fn(x: i32) -> i32 { x }
 
 // Keep the checks for a function where R-side type errors need the full UX:
-#[miniextendr(preconditions)]    // no_preconditions = false
+#[miniextendr(preconditions)]    // checks kept
 fn user_facing_fn(x: i32) -> i32 { x }
+
+// Or for one parameter only:
+#[miniextendr]                   // `n` keeps its checks, `x` does not
+fn mixed_fn(n: Checked<i32>, x: f64) -> f64 { f64::from(*n) * x }
 ```
 
 On a function the pair also takes `= true` / `= false`
@@ -302,8 +312,8 @@ impl LightWrapper { ... }  // env (overridden)
 |---------|-------|---------|
 | `no_strict` | `#[miniextendr(no_strict)]` on fn, `#[miniextendr(no_strict)]` on impl | `strict-default` feature |
 | `no_coerce` | `#[miniextendr(no_coerce)]` on fn, `#[miniextendr(r6(no_coerce))]` on method | `coerce-default` feature |
-| `preconditions` | `#[miniextendr(preconditions)]` on fn or impl, inherent or trait (`preconditions = true` on a fn) | `no-preconditions-default` feature (keeps the R-side type checks) |
-| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn or impl, inherent or trait (`no_preconditions = true` on a fn) | Built-in default: drops the R-side type checks |
+| `preconditions` | `#[miniextendr(preconditions)]` on fn, method or impl, inherent or trait (`preconditions = true` on a fn); on a parameter, `#[miniextendr(preconditions)]`, `Checked<T>` or the method's `preconditions(p)`; `preconditions = true` in `[package.metadata.miniextendr]` | `no-preconditions-default` feature (keeps the R-side type checks) |
+| `no_preconditions` | `#[miniextendr(no_preconditions)]` on fn, method or impl, inherent or trait (`no_preconditions = true` on a fn); on a parameter, `#[miniextendr(no_preconditions)]`, `Unchecked<T>` or the method's `no_preconditions(p)`; `preconditions = false` in `[package.metadata.miniextendr]` | Built-in default: drops the R-side type checks |
 | `worker` | `#[miniextendr(worker)]` on fn, `#[miniextendr(r6(worker))]` on method | Built-in main thread default |
 | `no_worker` | `#[miniextendr(no_worker)]` on fn, `#[miniextendr(r6(no_worker))]` on method | `worker-default` feature |
 | `env` / `r6` / `s7` / `s3` / `s4` | `#[miniextendr(env)]` on impl | `r6-default` or `s7-default` feature |

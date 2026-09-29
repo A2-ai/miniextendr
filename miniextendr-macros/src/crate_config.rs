@@ -18,11 +18,12 @@
 //! source_tags = true
 //! call_attribution = "caller"
 //! conversion_error_class = ["pkg_error_argument", "pkg_error"]
+//! preconditions = false
 //! ```
 //!
 //! The reader is a deliberately small line-based scanner rather than a TOML
 //! dependency: the macro crate ships in every downstream build, and the only
-//! values it needs are strings, a boolean and a single-line string array
+//! values it needs are strings, booleans and a single-line string array
 //! under one well-known table.
 
 use std::collections::HashMap;
@@ -39,6 +40,8 @@ const SOURCE_TAGS_KEY: &str = "package.metadata.miniextendr.source_tags";
 const CALL_ATTRIBUTION_KEY: &str = "package.metadata.miniextendr.call_attribution";
 /// Dotted path of the `conversion_error_class` key.
 const CONVERSION_ERROR_CLASS_KEY: &str = "package.metadata.miniextendr.conversion_error_class";
+/// Dotted path of the `preconditions` key.
+const PRECONDITIONS_KEY: &str = "package.metadata.miniextendr.preconditions";
 /// The classes the R raise helper appends to every Rust error. A crate-level
 /// class naming one of them would duplicate a layer of the vector.
 const FRAMEWORK_ERROR_CLASSES: [&str; 4] = ["rust_error", "simpleError", "error", "condition"];
@@ -69,6 +72,13 @@ pub(crate) struct CrateConfig {
     /// `RConditionError` classes (duplicates skipped) and before the
     /// `rust_error` layering. Empty when unset.
     pub(crate) conversion_error_class: Vec<String>,
+    /// `preconditions = true | false`: whether the generated R wrappers of
+    /// the crate keep their type-derived argument checks (#1566). Below every
+    /// item-level and per-parameter spelling, above the
+    /// `no-preconditions-default` feature (see
+    /// `crate::r_preconditions::resolve_type_checks`). Unset means the feature
+    /// decides, and without it the checks are kept.
+    pub(crate) preconditions: Option<bool>,
 }
 
 /// A malformed `[package.metadata.miniextendr]` entry, reported as a compile
@@ -124,6 +134,17 @@ pub(crate) fn conversion_error_class() -> Vec<String> {
     crate_config()
         .map(|c| c.conversion_error_class)
         .unwrap_or_default()
+}
+
+/// The crate default of the type-derived R-side checks (`preconditions`),
+/// `None` when unset.
+///
+/// Read by the impl-block and trait-impl generators, which have no single
+/// item to hang a manifest error on; a malformed table reads as unset here and
+/// is reported as a compile error by the first `#[miniextendr]` function,
+/// which goes through [`crate_config`].
+pub(crate) fn preconditions_default() -> Option<bool> {
+    crate_config().ok().and_then(|c| c.preconditions)
 }
 
 /// [`crate_config`] for an explicit manifest directory (the cached entry point).
@@ -228,6 +249,18 @@ pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
             validate_conversion_error_class(&classes)?;
             config.conversion_error_class = classes;
             conversion_error_class_seen = true;
+            continue;
+        }
+        if full == PRECONDITIONS_KEY {
+            if config.preconditions.is_some() {
+                return Err("`preconditions` is set more than once".to_string());
+            }
+            config.preconditions = Some(parse_bool_value(value.trim()).ok_or_else(|| {
+                format!(
+                    "`preconditions` must be `true` or `false`, found `{}`",
+                    value.trim()
+                )
+            })?);
             continue;
         }
         if full == SOURCE_TAGS_KEY {
@@ -479,6 +512,37 @@ noexport_postfix = "also not ours"
                 .unwrap_err()
                 .contains("more than once")
         );
+    }
+
+    #[test]
+    fn preconditions_is_read_and_defaults_unset() {
+        let preconditions = |text: &str| parse_crate_config(text).map(|c| c.preconditions);
+        assert_eq!(preconditions(""), Ok(None));
+        assert_eq!(
+            preconditions("[package.metadata.miniextendr]\npreconditions = false # hot paths\n"),
+            Ok(Some(false))
+        );
+        assert_eq!(
+            preconditions("[package.metadata]\nminiextendr.preconditions = true\n"),
+            Ok(Some(true))
+        );
+        assert!(
+            preconditions("[package.metadata.miniextendr]\npreconditions = \"no\"\n")
+                .unwrap_err()
+                .contains("`preconditions` must be `true` or `false`, found `\"no\"`")
+        );
+        assert!(
+            preconditions(
+                "[package.metadata.miniextendr]\npreconditions = false\npreconditions = true\n"
+            )
+            .unwrap_err()
+            .contains("`preconditions` is set more than once")
+        );
+        // Next to the other keys.
+        let all = "[package.metadata.miniextendr]\nsource_tags = true\npreconditions = false\ncall_attribution = \"caller\"\n";
+        let config = parse_crate_config(all).unwrap();
+        assert_eq!(config.preconditions, Some(false));
+        assert!(config.source_tags);
     }
 
     #[test]

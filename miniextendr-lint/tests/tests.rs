@@ -256,6 +256,39 @@ fn mxl008_class_system_mismatch() {
     );
 }
 
+/// Bare impl flags after the class system (`no_preconditions`, `blanket`,
+/// ...) are not class systems: an R6 inherent impl with one and an R6 trait
+/// impl without it agree.
+#[test]
+fn mxl008_ignores_bare_flags_after_the_class_system() {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+        #[miniextendr(r6, noexport, no_preconditions)]
+        impl MyType {
+            fn new() -> Self { MyType }
+        }
+
+        #[miniextendr(r6, preconditions)]
+        impl MyTrait for MyType {
+            fn method(&self) -> i32 { 42 }
+        }
+        "#,
+    )
+    .unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    assert!(
+        report.errors.is_empty(),
+        "both impls are R6, got: {:?}",
+        report.errors
+    );
+}
+
 #[test]
 fn mxl008_s3_trait_on_s4_inherent_is_allowed() {
     let dir = tempfile::tempdir().unwrap();

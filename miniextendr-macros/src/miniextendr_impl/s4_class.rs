@@ -149,7 +149,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // match_arg'd params, and `match_arg_prelude()` emits the
         // `base::match.arg()` validation block injected below.
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
-            .with_no_preconditions(parsed_impl.no_preconditions);
+            .with_impl_preconditions(parsed_impl.preconditions);
         let call = ctx.instance_call("x@ptr");
         let full_params = ctx.instance_formals(true);
 

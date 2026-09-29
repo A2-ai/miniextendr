@@ -655,7 +655,7 @@ failing element at once, by reason and 1-based position
 (`NA is not allowed (elements 2, 4)`). Most built-in types are checked by an
 R-side precondition first, which raises the same condition with its own
 message (`'x' must have length 1`); the examples below use `no_preconditions`
-so the value reaches Rust. An argument type whose error implements
+(or, per argument, `Unchecked<T>`) so the value reaches Rust. An argument type whose error implements
 `RConditionError` contributes its own classes and fields; see
 [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) for the wording
 table and [classed conversion errors](ERROR_HANDLING.md#classed-conversion-errors).

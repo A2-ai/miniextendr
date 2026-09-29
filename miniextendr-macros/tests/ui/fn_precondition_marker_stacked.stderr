@@ -1,0 +1,5 @@
+error: at most one precondition marker per parameter: `Checked` already decides this parameter's R-side type checks, so drop `Unchecked`
+ --> tests/ui/fn_precondition_marker_stacked.rs:7:17
+  |
+7 | pub fn scale(n: miniextendr_api::Checked<miniextendr_api::Unchecked<i32>>) -> i32 {
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

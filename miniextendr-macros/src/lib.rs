@@ -770,7 +770,7 @@ pub fn miniextendr(
         serialize,
         wrap,
         serde_error,
-        no_preconditions,
+        preconditions,
         call_attribution: call_attribution_attr,
         return_pref,
         return_pref_span,
@@ -1265,6 +1265,9 @@ pub fn miniextendr(
     for (param, message) in no_na_params_list {
         c_wrapper_builder = c_wrapper_builder.no_na(param, message);
     }
+    for (param, markers) in parsed.param_markers() {
+        c_wrapper_builder = c_wrapper_builder.param_markers(param.clone(), markers.clone());
+    }
     if check_interrupt {
         c_wrapper_builder = c_wrapper_builder.check_interrupt();
     }
@@ -1344,7 +1347,7 @@ pub fn miniextendr(
     // form passes the call as written: `sys.call()` for `wrapper`, the
     // caller's `sys.call()` for `caller`. `caller` also gives the wrapper a
     // trailing `.call = NULL` formal (#1613, S3 methods excluded; see
-    // `call_formal` below). Attribution is independent of `no_preconditions`.
+    // `call_formal` below). Attribution is independent of the preconditions.
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
@@ -1622,14 +1625,18 @@ pub fn miniextendr(
     // Generate R-side precondition checks (one `isTRUE()` guard per check)
     // Skip both match_arg and choices params (already validated by match.arg)
     let skip_params = parsed.precondition_skip_params();
-    // `#[miniextendr(no_preconditions)]` drops the type-derived
-    // checks. TryFromSexp still raises a typed Rust error on mismatched
-    // input. The savings were measured against the former `stopifnot()` block
-    // (~1230 ns / 1-arg or ~3900 ns / 5-arg); the guards cost about half. The
-    // per-parameter `inherits` / `no_na` checks stay: the Rust conversion does
-    // not repeat them. (The C wrapper's post-conversion `no_na` check covers only
-    // what a type reads as `NA` beyond `anyNA()`, such as `"NA"` for `AsNumeric`,
-    // except on an `Either`, which has no R guard and is checked only in Rust.)
+    // A parameter drops its type-derived checks when its own spelling
+    // (`Unchecked<T>`, `#[miniextendr(no_preconditions)]` on it), else the
+    // function's `no_preconditions`, else the crate's `preconditions = false`,
+    // else the `no-preconditions-default` feature says so (#1566,
+    // `r_preconditions::resolve_type_checks`). TryFromSexp still raises a
+    // typed Rust error on mismatched input. The savings were measured against
+    // the former `stopifnot()` block (~1230 ns / 1-arg or ~3900 ns / 5-arg);
+    // the guards cost about half. The per-parameter `inherits` / `no_na`
+    // checks stay: the Rust conversion does not repeat them. (The C wrapper's
+    // post-conversion `no_na` check covers only what a type reads as `NA`
+    // beyond `anyNA()`, such as `"NA"` for `AsNumeric`, except on an
+    // `Either`, which has no R guard and is checked only in Rust.)
     let precondition_prelude = {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`
@@ -1641,7 +1648,13 @@ pub fn miniextendr(
                 .map(|p| r_wrapper_builder::normalize_r_arg_string(p))
                 .collect(),
             explicit: parsed.explicit_checks(),
-            no_type_checks: no_preconditions,
+            unchecked: r_preconditions::unchecked_params(
+                inputs,
+                |name| parsed.param_attrs(name).and_then(|a| a.preconditions),
+                preconditions,
+                None,
+                crate_config.preconditions,
+            ),
         };
         let precondition_output =
             r_preconditions::build_precondition_checks(inputs, &skip_params, &precondition_opts);

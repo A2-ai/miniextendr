@@ -25,9 +25,9 @@ pub(super) struct TraitWrapperOpts {
     /// Whether `#[miniextendr(noexport)]` is set, suppressing `@export`/`@exportMethod`
     /// without adding `@keywords internal`.
     pub(super) noexport: bool,
-    /// Whether the impl block drops the R-side type checks
-    /// (`ImplAttrs::no_preconditions`), as on an inherent impl.
-    pub(super) no_preconditions: bool,
+    /// The impl block's `preconditions` / `no_preconditions`
+    /// (`ImplAttrs::preconditions`), as on an inherent impl.
+    pub(super) impl_preconditions: Option<bool>,
 }
 
 /// Generate R wrapper code for trait methods and consts, dispatching by class system.
@@ -52,7 +52,7 @@ pub(super) fn generate_trait_r_wrapper(
         class_has_no_rd,
         internal,
         noexport,
-        no_preconditions,
+        impl_preconditions,
     } = opts;
     reject_unsupported_describe_in(methods, class_system)?;
     check_trait_method_formals(type_ident, methods, class_system)?;
@@ -64,7 +64,7 @@ pub(super) fn generate_trait_r_wrapper(
         ClassSystem::S7 => generate_trait_s7_r_wrapper,
         ClassSystem::R6 => generate_trait_r6_r_wrapper,
     };
-    let result = generate(type_ident, trait_name, methods, consts, no_preconditions);
+    let result = generate(type_ident, trait_name, methods, consts, impl_preconditions);
 
     // When the impl block has @noRd, suppress documentation generation. A plain
     // `noexport` (without `internal`) is folded into the same gate — it must
@@ -462,7 +462,7 @@ fn generate_trait_env_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    no_preconditions: bool,
+    impl_preconditions: Option<bool>,
 ) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
@@ -490,7 +490,7 @@ fn generate_trait_env_r_wrapper(
     for method in methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
 
         // Trait-namespace assignment target (`Type$Trait$method`), owned by
         // `trait_namespace_target` — see #1141. `symbol` is its R-code form.
@@ -581,7 +581,7 @@ fn generate_trait_s3_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    no_preconditions: bool,
+    impl_preconditions: Option<bool>,
 ) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
@@ -608,7 +608,7 @@ fn generate_trait_s3_r_wrapper(
         let generic_name = method.r_method_name();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
 
         // S3 generic roxygen (only create if doesn't exist). The type-qualified
         // @name avoids duplicate aliases across types, but it is also the S3
@@ -736,7 +736,7 @@ fn generate_trait_s3_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
         let target = ctx.namespace_target(ClassSystem::S3);
 
         // Static method roxygen: the intro line (the block's title), the
@@ -800,7 +800,7 @@ fn generate_trait_s4_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    no_preconditions: bool,
+    impl_preconditions: Option<bool>,
 ) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
@@ -840,7 +840,7 @@ fn generate_trait_s4_r_wrapper(
         let method_name = &method.ident;
         let generic_name = format!("s4_trait_{}_{}", trait_name, method.r_method_name());
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
 
         // Build full parameter list (x first, then others, then ...)
         let full_params = if ctx.params.is_empty() {
@@ -913,7 +913,7 @@ fn generate_trait_s4_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
         let fn_name = ctx.namespace_target(ClassSystem::S4);
 
         // Static method roxygen. A `@describeIn` block is listed in its
@@ -990,7 +990,7 @@ fn generate_trait_s7_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    no_preconditions: bool,
+    impl_preconditions: Option<bool>,
 ) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
@@ -1026,7 +1026,7 @@ fn generate_trait_s7_r_wrapper(
         let method_name = &method.ident;
         let generic_name = format!("s7_trait_{}_{}", trait_name, method.r_method_name());
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
 
         // Build full parameter list (x first, then others, then ...)
         let full_params = if ctx.params.is_empty() {
@@ -1197,7 +1197,7 @@ fn generate_trait_s7_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
@@ -1281,7 +1281,7 @@ fn generate_trait_r6_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-    no_preconditions: bool,
+    impl_preconditions: Option<bool>,
 ) -> String {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
@@ -1317,7 +1317,7 @@ fn generate_trait_r6_r_wrapper(
     // Generate instance methods in the Type$Trait$ namespace
     for method in &instance_methods {
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
         let target = ctx.namespace_target(ClassSystem::R6);
 
         // Build parameter list (x first, then others)
@@ -1364,7 +1364,7 @@ fn generate_trait_r6_r_wrapper(
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_no_preconditions(no_preconditions);
+            .with_impl_preconditions(impl_preconditions);
         let target = ctx.namespace_target(ClassSystem::R6);
 
         lines.push(format!(

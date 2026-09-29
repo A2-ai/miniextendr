@@ -309,6 +309,40 @@ string: `call_attribution = "wrapper"` or `"caller"`, set once. A
 `"caller"` default applies to `noexport` / `internal` free functions only;
 exported functions keep `wrapper`.
 
+### "the `Checked` parameter `n` keeps the R-side type checks but `no_preconditions(n)` drops them"
+
+A `Checked<T>` / `Unchecked<T>` marker and the parameter's keyword (the
+per-parameter `#[miniextendr(no_preconditions)]`, or a method's
+`no_preconditions(n)`) are two spellings of one decision about `n`'s R-side
+type checks. Keep one, or make them agree. Two keywords do not conflict: the
+last one written wins. The same family covers:
+
+- `at most one precondition marker per parameter` (`Checked<Unchecked<T>>`):
+  one decides.
+- ``put `Checked` outermost: `Checked<Option<T>>` `` (`Option<Checked<T>>`,
+  `Missing<..>`, `Vec<..>`, `&..`): the marker applies to the whole
+  parameter, and the conversion has no marker to unwrap inside a container.
+- `` `Checked<SEXP>` on parameter `x`: `SEXP` has no R-side type check to keep
+  or drop `` (also `Missing<T>`, `ExternalPtr<T>`, `&Dots`, a custom type):
+  drop the spelling.
+- ``a match_arg/choices parameter is validated by `match.arg()` ``:
+  `match.arg()` checks a choice parameter, not the type checks, so neither
+  spelling applies.
+- `` `Checked<T>` in a `#[miniextendr]` trait method ``: the trait's View
+  passes arguments on as R values; write `preconditions(k)` /
+  `no_preconditions(k)` on the impl's method.
+- `` `Checked<T>` on an `extern "C-unwind"` function ``: it takes R values as
+  they are; take the inner type.
+
+See [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#r-side-preconditions-markers-and-defaults).
+
+### "Cargo.toml: [package.metadata.miniextendr] `preconditions` must be `true` or `false`"
+
+The crate-wide default of the R-side type checks is a boolean, set once:
+`preconditions = false` drops them in every wrapper of the crate that says
+nothing itself, `preconditions = true` keeps them even under the
+`no-preconditions-default` feature.
+
 ### "`serde_error` is not a switch"
 
 Under the API crate's `serde` feature every `Result<T, E>` whose

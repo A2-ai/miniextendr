@@ -72,6 +72,9 @@ pub struct MiniextendrImplAttrs {
     pub strict: bool,
 }
 
+/// The class-system identifiers an impl-level `#[miniextendr(...)]` names.
+const CLASS_SYSTEMS: [&str; 6] = ["env", "r6", "s3", "s4", "s7", "vctrs"];
+
 /// Parse the #[miniextendr(...)] attribute to extract class system, label, and flags.
 pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
     let mut result = MiniextendrImplAttrs::default();
@@ -117,12 +120,14 @@ pub fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs
                 } else if !part.contains('=') || part.contains('(') {
                     // Class system identifier: env, r6, s3, s4, s7, vctrs.
                     // `vctrs` may appear as `vctrs(kind = "vctr", ...)` — keep
-                    // only the leading identifier before any `(`.
+                    // only the leading identifier before any `(`. Any other
+                    // bare flag (`no_preconditions`, `blanket`, `no_strict`,
+                    // ...) is not a class system.
                     let base = part
                         .find(|c: char| !c.is_alphanumeric() && c != '_')
                         .map(|i| &part[..i])
                         .unwrap_or(part);
-                    if !base.is_empty() {
+                    if CLASS_SYSTEMS.contains(&base) {
                         result.class_system = Some(base.to_string());
                     }
                 }

@@ -189,6 +189,11 @@ struct TraitMethod {
     /// so trait methods get the same `match.arg()` validation prelude — see
     /// `TraitMethodContext::match_arg_prelude`.
     per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
+    /// The method's own `preconditions` / `no_preconditions` (bare, #1017):
+    /// the type-derived R-side checks of the parameters that do not decide
+    /// for themselves (`preconditions(p)` / `no_preconditions(p)` land in
+    /// [`Self::per_param`]). `None` defers to the impl block.
+    preconditions: Option<bool>,
 }
 
 impl TraitMethod {
@@ -397,7 +402,15 @@ pub fn expand_miniextendr_impl_trait(
             no_rd,
             impl_attrs.internal,
             impl_attrs.noexport,
-            impl_attrs.no_preconditions,
+            // The trait's signatures carry no method or parameter spellings,
+            // so the impl block, the crate default and the feature decide;
+            // the `macro_rules!` contract carries the decision as a bool.
+            !crate::r_preconditions::resolve_item_type_checks(
+                None,
+                impl_attrs.preconditions,
+                crate::crate_config::preconditions_default(),
+                cfg!(feature = "no-preconditions-default"),
+            ),
         );
         output.extend(param_warnings);
         return output.into();
@@ -545,8 +558,10 @@ struct TpieInput {
     internal: bool,
     /// Whether the impl block has `#[miniextendr(noexport)]`, suppressing `@export`.
     noexport: bool,
-    /// Whether the impl block drops the R-side type checks
-    /// (`ImplAttrs::no_preconditions`).
+    /// Whether the impl block drops the R-side type checks: its
+    /// `ImplAttrs::preconditions`, the crate default and the
+    /// `no-preconditions-default` feature, resolved in the implementing crate
+    /// when the empty impl invoked the trait's `macro_rules!` helper.
     no_preconditions: bool,
     /// Method signatures and R-facing names from the trait definition.
     methods: Vec<TpieMethod>,
@@ -859,6 +874,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 r_on_exit: None,
                 no_shortcut: false,
                 per_param: Default::default(),
+                preconditions: None,
                 r_name: if tm.sig.ident == tm.r_name {
                     None // r_name matches ident → no override
                 } else {
@@ -885,7 +901,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             class_has_no_rd: tpie_input.no_rd,
             internal: tpie_input.internal,
             noexport: tpie_input.noexport,
-            no_preconditions: tpie_input.no_preconditions,
+            impl_preconditions: Some(!tpie_input.no_preconditions),
         },
     ) {
         Ok(s) => s,

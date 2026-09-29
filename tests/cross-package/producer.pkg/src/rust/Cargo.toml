@@ -24,6 +24,7 @@ noexport_postfix = "_impl"
 source_tags = true
 call_attribution = "caller"
 conversion_error_class = ["producer_error_argument", "producer_error"]
+preconditions = false
 
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)

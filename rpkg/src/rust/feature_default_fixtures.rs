@@ -84,6 +84,22 @@ pub fn fdefault_checks_restored_i32(x: i32) -> i32 {
     x
 }
 
+/// Same as `fdefault_bare_i32` with a `Checked` parameter: the parameter's
+/// own spelling keeps its checks even under `no-preconditions-default` (#1566).
+/// @param x Integer-like scalar.
+#[miniextendr]
+pub fn fdefault_checked_i32(x: miniextendr_api::Checked<i32>) -> i32 {
+    *x
+}
+
+/// Same as `fdefault_bare_i32` with an `Unchecked` parameter: its checks are
+/// dropped in every build.
+/// @param x Integer-like scalar.
+#[miniextendr]
+pub fn fdefault_unchecked_i32(x: miniextendr_api::Unchecked<i32>) -> i32 {
+    *x
+}
+
 // region: class-system probe
 
 /// Probe whose bare `#[miniextendr] impl` picks up the build's default class

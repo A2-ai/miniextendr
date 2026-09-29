@@ -99,6 +99,20 @@ test_that("no-preconditions-default drops preconditions for bare fns, preconditi
   }
 })
 
+test_that("a parameter's own Checked / Unchecked beats no-preconditions-default", {
+  # Rank 1 (the parameter) sits above rank 5 (the feature) in every build. The
+  # crate default (rank 4) sits between them; rpkg sets none, so its place is
+  # covered by the macro crate's resolver tests.
+  e <- tryCatch(fdefault_checked_i32("nope"), error = function(e) e)
+  expect_s3_class(e, "rust_error")
+  expect_identical(conditionMessage(e), "'x' must be integer")
+  expect_null(e$rust_type)
+  e2 <- tryCatch(fdefault_unchecked_i32("nope"), error = function(e) e)
+  expect_s3_class(e2, "rust_error")
+  expect_identical(conditionMessage(e2), "'x' must be a single integer: got character")
+  expect_identical(e2$rust_type, "i32")
+})
+
 test_that("class-system default selects Env/R6/S7 for the bare probe impl", {
   if (miniextendr_has_feature("r6-default")) {
     expect_true(inherits(FdefaultProbe, "R6ClassGenerator"))

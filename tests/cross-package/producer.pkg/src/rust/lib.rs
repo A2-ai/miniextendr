@@ -8,7 +8,9 @@
 // - S7-style: S7Point
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
-use miniextendr_api::{AsNumeric, AsNumericVec, ExternalPtr, SEXP, miniextendr, trait_abi::ccall};
+use miniextendr_api::{
+    AsNumeric, AsNumericVec, Checked, ExternalPtr, SEXP, miniextendr, trait_abi::ccall,
+};
 // Condition macros — use fully-qualified paths to avoid module/macro name collision
 // (pub mod error and pub mod condition at crate root shadow the macros if imported).
 
@@ -768,14 +770,16 @@ pub fn producer_int_twice(x: i32) -> i32 {
     x * 2
 }
 
-/// Scalar `AsNumeric` arguments: two values fail the R-side length check,
-/// which raises the crate classes like a failed conversion (#1591). The crate
-/// default `call = caller` names the delegate `producer_ratio_caller()`
-/// (`R/call-attribution.R`).
+/// Scalar `AsNumeric` arguments: two values for `num` fail its R-side length
+/// check, which raises the crate classes like a failed conversion (#1591).
+/// The crate default `preconditions = false` drops the R-side checks, so
+/// `num` keeps its own with `Checked` (#1566); `den` leaves them to the
+/// conversion. The crate default `call = caller` names the delegate
+/// `producer_ratio_caller()` (`R/call-attribution.R`).
 /// @param num,den A number, string or factor label of length 1.
 #[miniextendr(noexport)]
-pub fn producer_ratio(num: AsNumeric, den: AsNumeric) -> Option<f64> {
-    Some(num.0? / den.0?)
+pub fn producer_ratio(num: Checked<AsNumeric>, den: AsNumeric) -> Option<f64> {
+    Some(num.into_inner().0? / den.0?)
 }
 
 /// An `AsNumericVec` argument: `"BLQ"` passes the R-side type check and fails
@@ -801,12 +805,14 @@ pub fn producer_named_checks(
 }
 
 /// `no_na` / `inherits` with the author's messages: the message is the
-/// author's, the classes still the crate's.
+/// author's, the classes still the crate's. `x` keeps its type check under
+/// the crate's `preconditions = false`, so the class message covers it.
 /// @param x A classed double vector without NA.
 #[miniextendr(noexport, call = wrapper)]
 pub fn producer_named_checks_msg(
     #[miniextendr(no_na(message = "`x` must not contain NA"))]
     #[miniextendr(inherits(class = "producer_num", message = "`x` must be a `producer_num`"))]
+    #[miniextendr(preconditions)]
     x: Vec<f64>,
 ) -> f64 {
     x.iter().sum()

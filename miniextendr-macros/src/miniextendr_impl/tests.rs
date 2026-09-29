@@ -17,7 +17,9 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_abstract: false,
         r_data_accessors: false,
         strict: false,
-        no_preconditions: false,
+        // The impl keeps the checks, whatever the `no-preconditions-default`
+        // feature of this build says, so the snapshots are the same under both.
+        preconditions: Some(true),
         internal: false,
         noexport: false,
         blanket: false,
@@ -1009,7 +1011,7 @@ fn r6_active_binding_setter_follows_no_preconditions() {
         }
     };
     let mut attrs = default_impl_attrs(ClassSystem::R6);
-    attrs.no_preconditions = true;
+    attrs.preconditions = Some(false);
     let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
     let wrapper = generate_r6_r_wrapper(&parsed);
 
@@ -1023,6 +1025,229 @@ fn r6_active_binding_setter_follows_no_preconditions() {
         active_section.contains("    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius"),
         "{active_section}"
     );
+}
+// endregion
+
+// region: method-level and per-parameter preconditions (#1566 §2)
+
+/// A method's own `preconditions` / `no_preconditions` and each parameter's
+/// (`Checked<T>` / `Unchecked<T>`, the `preconditions(p)` /
+/// `no_preconditions(p)` lists) come before the impl block's, in every class
+/// system; the other parameters follow the impl.
+#[test]
+fn method_and_param_preconditions_override_the_impl() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Sampler {
+            pub fn new(start: i32) -> Self { unimplemented!() }
+            #[miniextendr(preconditions(n))]
+            pub fn draw(&self, n: i32, scale: f64) -> f64 { unimplemented!() }
+            pub fn reseed(&mut self, seed: Checked<i32>) { unimplemented!() }
+            #[miniextendr(preconditions)]
+            pub fn keep_all(&self, a: i32) { unimplemented!() }
+            pub fn plain(&self, b: f64) { unimplemented!() }
+        }
+    };
+    for (system, generate) in [
+        (
+            ClassSystem::Env,
+            generate_env_r_wrapper as fn(&ParsedImpl) -> String,
+        ),
+        (ClassSystem::R6, generate_r6_r_wrapper),
+        (ClassSystem::S3, generate_s3_r_wrapper),
+        (ClassSystem::S4, generate_s4_r_wrapper),
+        (ClassSystem::S7, generate_s7_r_wrapper),
+    ] {
+        let mut attrs = default_impl_attrs(system);
+        attrs.preconditions = Some(false);
+        let parsed = ParsedImpl::parse(attrs, item_impl.clone()).expect("parses");
+        let wrapper = generate(&parsed);
+        for kept in ["is.integer(n)", "is.integer(seed)", "is.integer(a)"] {
+            assert!(wrapper.contains(kept), "{system:?}: {kept}\n{wrapper}");
+        }
+        for dropped in ["is.double(scale)", "is.double(b)"] {
+            assert!(
+                !wrapper.contains(dropped),
+                "{system:?}: {dropped}\n{wrapper}"
+            );
+        }
+        // The constructor follows the impl.
+        assert!(
+            !wrapper.contains("is.integer(start)"),
+            "{system:?}\n{wrapper}"
+        );
+    }
+}
+
+/// Under an impl that keeps the checks, the method's `no_preconditions`, a
+/// `no_preconditions(p)` entry and an `Unchecked<T>` parameter drop them; the
+/// named checks (`no_na`) stay.
+#[test]
+fn method_and_param_no_preconditions_drop_the_checks() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Sampler {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(no_preconditions)]
+            pub fn skip_all(&self, a: i32, b: f64) { unimplemented!() }
+            #[miniextendr(no_preconditions(x), no_na(x))]
+            pub fn skip_one(&self, x: Vec<f64>, y: f64) { unimplemented!() }
+            pub fn unchecked(&self, u: Unchecked<i32>, v: i32) { unimplemented!() }
+            #[miniextendr(no_preconditions, preconditions(k))]
+            pub fn keep_one(&self, k: i32, j: i32) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    for dropped in [
+        "is.integer(a)",
+        "is.double(b)",
+        "is.double(x)",
+        "is.integer(u)",
+        "is.integer(j)",
+    ] {
+        assert!(!wrapper.contains(dropped), "{dropped}\n{wrapper}");
+    }
+    for kept in [
+        "is.double(y)",
+        "is.integer(v)",
+        "is.integer(k)",
+        "!anyNA(x)",
+    ] {
+        assert!(wrapper.contains(kept), "{kept}\n{wrapper}");
+    }
+}
+
+/// The pair follows the last-wins rule at method level and in the list form.
+#[test]
+fn method_preconditions_pair_is_last_wins() {
+    let method_attrs = |attrs: proc_macro2::TokenStream| {
+        let attr: syn::Attribute = syn::parse_quote!(#[miniextendr(#attrs)]);
+        ParsedMethod::parse_method_attrs(&[attr]).expect("parses")
+    };
+    assert_eq!(
+        method_attrs(quote::quote!(no_preconditions)).preconditions,
+        Some(false)
+    );
+    assert_eq!(
+        method_attrs(quote::quote!(no_preconditions, preconditions)).preconditions,
+        Some(true)
+    );
+    assert_eq!(method_attrs(quote::quote!(rng)).preconditions, None);
+    let listed = method_attrs(quote::quote!(preconditions(x, y), no_preconditions(x)));
+    assert_eq!(listed.per_param["x"].preconditions, Some(false));
+    assert_eq!(listed.per_param["y"].preconditions, Some(true));
+    assert_eq!(listed.preconditions, None, "a list is not the bare form");
+}
+
+/// The marker wraps the converted value back for the call, and the
+/// conversion names the inner type (`e$rust_type`).
+#[test]
+fn method_param_marker_converts_the_inner_type() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Sampler {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn reseed(&mut self, seed: Checked<i32>) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let method = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "reseed")
+        .expect("reseed");
+    assert_eq!(
+        crate::type_inspect::type_display(match &method.sig.inputs[0] {
+            syn::FnArg::Typed(pt) => pt.ty.as_ref(),
+            syn::FnArg::Receiver(_) => unreachable!("receiver stripped"),
+        }),
+        "i32"
+    );
+    let c_wrapper =
+        generate_method_c_wrapper(&parsed, method, &syn::parse_quote!(R_WRAPPERS_TEST)).to_string();
+    assert!(
+        c_wrapper.contains("let seed = :: miniextendr_api :: Checked :: from_inner (seed) ;"),
+        "{c_wrapper}"
+    );
+    assert!(c_wrapper.contains("let seed : i32 ="), "{c_wrapper}");
+    assert!(!c_wrapper.contains("Checked < i32 >"), "{c_wrapper}");
+}
+
+/// The rank-1 spellings on a method: a marker and a `no_preconditions(p)`
+/// entry that disagree, an entry naming no parameter, and a spelling with
+/// nothing to act on.
+#[test]
+fn method_precondition_spelling_errors() {
+    let parse_err = |item_impl: syn::ItemImpl| {
+        ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), item_impl)
+            .expect_err("rejected")
+            .to_string()
+    };
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(no_preconditions(seed))]
+            pub fn reseed(&mut self, seed: Checked<i32>) {}
+        }
+    });
+    assert!(
+        err.contains(
+            "the `Checked` parameter `seed` keeps the R-side type checks but \
+             `no_preconditions(seed)` drops them"
+        ),
+        "{err}"
+    );
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(preconditions(sed))]
+            pub fn reseed(&mut self, seed: i32) {}
+        }
+    });
+    assert!(
+        err.contains("(no_)preconditions references non-existent parameter `sed`"),
+        "{err}"
+    );
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(no_preconditions(raw))]
+            pub fn take(&self, raw: SEXP) {}
+        }
+    });
+    assert!(
+        err.contains("`no_preconditions(raw)` on parameter `raw`: `SEXP` has no R-side type check"),
+        "{err}"
+    );
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(match_arg(mode))]
+            pub fn pick(&self, mode: Unchecked<Mode>) {}
+        }
+    });
+    assert!(err.contains("validated by `match.arg()`"), "{err}");
+}
+
+/// An R6 active-binding setter's own `Unchecked` parameter drops the checks
+/// of the binding's setter branch, whatever the parameter is called there.
+#[test]
+fn r6_active_binding_setter_follows_its_param_marker() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Temperature {
+            pub fn new(celsius: f64) -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn celsius(&self) -> f64 { unimplemented!() }
+            #[miniextendr(r6(setter, prop = "celsius"))]
+            pub fn set_celsius(&mut self, degrees: Unchecked<f64>) { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    let active_section = wrapper
+        .split("$set(\"active\"")
+        .nth(1)
+        .expect("wrapper must contain an active binding $set call");
+    assert!(
+        !active_section.contains("is.double(value)"),
+        "{active_section}"
+    );
+    // The constructor keeps its checks.
+    assert!(wrapper.contains("is.double(celsius)"), "{wrapper}");
 }
 // endregion
 

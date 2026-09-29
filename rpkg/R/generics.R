@@ -112,6 +112,18 @@ NULL
 #' @name dots_pos_s3_collect
 NULL
 
+#' Draw with one parameter's R-side checks kept, via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name pm_s3_draw
+NULL
+
+#' Reseed with a `Checked` parameter, via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name pm_s3_reseed
+NULL
+
 #' Get current mode (S7)
 #' @param x An object.
 #' @param ... Additional arguments.

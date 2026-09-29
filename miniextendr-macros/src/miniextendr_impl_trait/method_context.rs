@@ -125,11 +125,11 @@ pub(super) struct TraitMethodContext<'a> {
     /// context existed, trait methods built call args via
     /// `collect_param_idents` instead, which skipped that forwarding entirely.
     pub(super) args: String,
-    /// Drop the R-side type-check guards from the generated wrapper.
-    /// Inherited from `ImplAttrs::no_preconditions` (the impl block's
-    /// `no_preconditions` / `preconditions`, else the
-    /// `no-preconditions-default` feature).
-    pub(super) no_preconditions: bool,
+    /// The impl block's `preconditions` / `no_preconditions`
+    /// (`ImplAttrs::preconditions`; for an empty-body impl, its decision with
+    /// the crate default and the feature folded in), below the method's own
+    /// and each parameter's.
+    pub(super) impl_preconditions: Option<bool>,
 }
 
 impl<'a> TraitMethodContext<'a> {
@@ -157,14 +157,14 @@ impl<'a> TraitMethodContext<'a> {
             c_ident,
             params,
             args,
-            no_preconditions: false,
+            impl_preconditions: None,
         }
     }
 
-    /// Set the `no_preconditions` flag inherited from the impl block; the
-    /// twin of `MethodContext::with_no_preconditions`.
-    pub(super) fn with_no_preconditions(mut self, no_preconditions: bool) -> Self {
-        self.no_preconditions = no_preconditions;
+    /// Set the `preconditions` decision inherited from the impl block; the
+    /// twin of `MethodContext::with_impl_preconditions`.
+    pub(super) fn with_impl_preconditions(mut self, impl_preconditions: Option<bool>) -> Self {
+        self.impl_preconditions = impl_preconditions;
         self
     }
 
@@ -277,14 +277,17 @@ impl<'a> TraitMethodContext<'a> {
 
     /// R-side precondition guards for this method's parameters.
     /// See `MethodContext::precondition_checks` for the inherent-impl twin.
-    /// `no_preconditions` drops the type-derived checks; the per-parameter
+    /// Each parameter keeps or drops its type-derived checks as its own
+    /// `preconditions(p)` / `no_preconditions(p)`, the method's, the impl
+    /// block's, the crate default and the feature decide; the per-parameter
     /// `inherits(...)` / `no_na(...)` checks stay.
     pub(super) fn precondition_checks(&self) -> Vec<String> {
         crate::r_class_formatter::build_method_precondition_checks(
             &self.method.sig.inputs,
             &self.method.per_param,
             self.method.coerce,
-            self.no_preconditions,
+            self.method.preconditions,
+            self.impl_preconditions,
         )
     }
 

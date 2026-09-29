@@ -100,6 +100,7 @@ fn make_test_method(name: &str, has_self: bool) -> TraitMethod {
         r_on_exit: None,
         no_shortcut: false,
         per_param: Default::default(),
+        preconditions: None,
     }
 }
 
@@ -115,7 +116,8 @@ fn opts(
         class_has_no_rd,
         internal,
         noexport,
-        no_preconditions: false,
+        // Checks kept under either build (see the inherent-impl test helper).
+        impl_preconditions: Some(true),
     }
 }
 
@@ -2421,6 +2423,70 @@ fn no_preconditions_default_trait_impl_follows_the_feature() {
     assert!(unchecked.contains(D_NO_NA_GUARD), "{unchecked}");
     let checked = scale_impl_expansion(quote::quote!(r6, preconditions));
     assert!(checked.contains(K_TYPE_GUARD), "{checked}");
+}
+
+/// A trait impl's methods under the impl options `attrs`, with the given
+/// method bodies; returns the expansion's token text.
+fn trait_impl_expansion(attrs: proc_macro2::TokenStream, impl_item: syn::ItemImpl) -> String {
+    let impl_attrs: ImplAttrs = syn::parse2(attrs).unwrap();
+    super::vtable::generate_vtable_static(
+        &impl_item,
+        &syn::parse_quote!(Scale),
+        &syn::parse_quote!(Meter),
+        &impl_attrs,
+    )
+    .to_string()
+}
+
+/// A trait method's bare `preconditions` / `no_preconditions` and its
+/// `preconditions(p)` / `no_preconditions(p)` lists come before the impl
+/// block's (#1017, #1566).
+#[test]
+fn trait_method_preconditions_override_the_impl() {
+    let methods: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(preconditions(k))]
+            fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
+            #[miniextendr(preconditions)]
+            fn kept(&self, a: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = trait_impl_expansion(quote::quote!(r6, no_preconditions), methods);
+    assert!(out.contains("is.double(k)"), "{out}");
+    assert!(!out.contains("is.double(d)"), "{out}");
+    assert!(out.contains("is.double(a)"), "{out}");
+
+    let methods: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(no_preconditions(k))]
+            fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
+            #[miniextendr(no_preconditions)]
+            fn dropped(&self, a: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let out = trait_impl_expansion(quote::quote!(s3, preconditions), methods);
+    assert!(!out.contains("is.double(k)"), "{out}");
+    assert!(out.contains("is.double(d)"), "{out}");
+    assert!(!out.contains("is.double(a)"), "{out}");
+}
+
+/// A `no_preconditions(p)` entry naming no parameter is the ordinary
+/// unknown-parameter error.
+#[test]
+fn trait_method_preconditions_list_names_a_parameter() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(no_preconditions(kk))]
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let err = super::vtable::extract_methods(&impl_item)
+        .expect_err("rejected")
+        .to_string();
+    assert!(
+        err.contains("(no_)preconditions references non-existent parameter `kk`"),
+        "{err}"
+    );
 }
 
 /// An empty-body (TPIE) impl hands its `no_preconditions` to the trait's

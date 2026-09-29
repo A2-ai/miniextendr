@@ -35,6 +35,11 @@ pub struct RustConversionBuilder {
     /// if any: their converted value is checked right after the conversion
     /// (see [`Self::with_no_na`]).
     no_na_params: Vec<(String, Option<String>)>,
+    /// Parameters (Rust name) declared with parameter markers
+    /// (`Checked<T>` / `Unchecked<T>`, #1566), outermost first: the inner
+    /// type converts, then the value is wrapped (see
+    /// [`Self::with_param_markers`]).
+    param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
     /// The crate's `conversion_error_class` (`[package.metadata.miniextendr]`),
     /// appended to every conversion condition's class vector.
     conversion_error_class: Vec<String>,
@@ -51,6 +56,7 @@ impl RustConversionBuilder {
             match_arg_several_ok_params: Vec::new(),
             layered_choice_params: Vec::new(),
             no_na_params: Vec::new(),
+            param_markers: Vec::new(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
         }
     }
@@ -129,6 +135,40 @@ impl RustConversionBuilder {
     pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
         self
+    }
+
+    /// Mark a parameter (`param_name` is its Rust name) whose declared type
+    /// wraps the one it converts as in parameter markers (`Checked<T>` /
+    /// `Unchecked<T>`, #1566), outermost first. The `pat_type` this builder
+    /// sees holds the inner type, so the conversion and its failure context
+    /// (`e$rust_type`) are the inner type's; after the parameter's last
+    /// statement (the borrow on the split worker path, else the conversion or
+    /// its `no_na` check) the value is rebound through each marker's
+    /// `from_inner`, innermost first, so the call receives the declared type.
+    pub fn with_param_markers(
+        mut self,
+        param_name: String,
+        markers: Vec<crate::type_inspect::ParamMarker>,
+    ) -> Self {
+        self.param_markers.push((param_name, markers));
+        self
+    }
+
+    /// The rebinding of a marked parameter's converted value (see
+    /// [`Self::with_param_markers`]), or `None` for an unmarked parameter.
+    fn marker_rebind(&self, pat_type: &syn::PatType) -> Option<TokenStream> {
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return None;
+        };
+        let ident = &pat_ident.ident;
+        let name = crate::naming::ident_name(ident);
+        let (_, markers) = self.param_markers.iter().find(|(n, _)| *n == name)?;
+        let span = pat_type.ty.span();
+        let rebinds = markers.iter().rev().map(|marker| {
+            let ctor = marker.ctor_path();
+            quote_spanned! {span=> let #ident = #ctor::from_inner(#ident); }
+        });
+        Some(quote! { #(#rebinds)* })
     }
 
     /// Check if a parameter should use coercion.
@@ -259,7 +299,11 @@ impl RustConversionBuilder {
         // detour only exists to satisfy `Send` when the value must cross the worker
         // boundary (`build_conversion_split`), which never applies here.
         let (owned, borrowed) = self.build_conversion_split_inner(pat_type, sexp_ident, true);
-        owned.into_iter().chain(borrowed).collect()
+        owned
+            .into_iter()
+            .chain(borrowed)
+            .chain(self.marker_rebind(pat_type))
+            .collect()
     }
 
     /// Generate conversion statements split into two phases for worker thread execution.
@@ -284,7 +328,19 @@ impl RustConversionBuilder {
     ) -> (Vec<TokenStream>, Vec<TokenStream>) {
         // Worker path: `&str` MUST be owned-then-borrowed because a borrowed view
         // over R's CHARSXP pool is `!Send` and cannot move into the worker closure.
-        self.build_conversion_split_inner(pat_type, sexp_ident, false)
+        let (mut owned, mut borrowed) =
+            self.build_conversion_split_inner(pat_type, sexp_ident, false);
+        // A marker wraps the parameter's final binding: the borrow inside the
+        // worker closure when there is one, else the owned value, which then
+        // moves into the closure as the declared type.
+        if let Some(rebind) = self.marker_rebind(pat_type) {
+            if borrowed.is_empty() {
+                owned.push(rebind);
+            } else {
+                borrowed.push(rebind);
+            }
+        }
+        (owned, borrowed)
     }
 
     /// Inner implementation of [`Self::build_conversion_split`].

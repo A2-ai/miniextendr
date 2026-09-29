@@ -1,0 +1,5 @@
+error: `Checked<T>` on an `extern "C-unwind"` function: it takes the R values as they are, with no generated conversion to unwrap the marker; take the inner type
+ --> tests/ui/extern_fn_precondition_marker.rs:9:38
+  |
+9 | extern "C-unwind" fn C_raw_marker(x: miniextendr_api::Checked<i32>) -> miniextendr_api::SEXP {
+  |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

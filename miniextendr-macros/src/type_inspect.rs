@@ -256,6 +256,162 @@ pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::Ca
 
 // endregion
 
+// region: parameter markers (#1566 §2)
+
+/// A by-value parameter marker the macro peels from a parameter type before
+/// any R-side analysis: the parameter converts as the inner type, and the C
+/// wrapper wraps the value (`<ctor>::from_inner(x)`) before the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ParamMarker {
+    /// `Checked<T>`: keep the parameter's type-derived R-side checks.
+    Checked,
+    /// `Unchecked<T>`: drop them.
+    Unchecked,
+}
+
+/// The decision family a [`ParamMarker`] belongs to: a parameter carries at
+/// most one marker per family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ParamMarkerFamily {
+    /// `Checked` / `Unchecked`: the type-derived R-side checks.
+    Preconditions,
+}
+
+impl ParamMarker {
+    /// The marker for a path segment's name, if it is one.
+    fn from_ident(ident: &syn::Ident) -> Option<Self> {
+        match ident.to_string().as_str() {
+            "Checked" => Some(Self::Checked),
+            "Unchecked" => Some(Self::Unchecked),
+            _ => None,
+        }
+    }
+
+    /// The type's name as written in source.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Checked => "Checked",
+            Self::Unchecked => "Unchecked",
+        }
+    }
+
+    /// Which decision the marker makes.
+    pub(crate) fn family(self) -> ParamMarkerFamily {
+        match self {
+            Self::Checked | Self::Unchecked => ParamMarkerFamily::Preconditions,
+        }
+    }
+
+    /// The runtime type, for the rebinding the C wrapper emits.
+    pub(crate) fn ctor_path(self) -> proc_macro2::TokenStream {
+        match self {
+            Self::Checked => quote::quote!(::miniextendr_api::Checked),
+            Self::Unchecked => quote::quote!(::miniextendr_api::Unchecked),
+        }
+    }
+
+    /// The precondition decision: `Some(true)` keeps the type-derived
+    /// checks, `Some(false)` drops them.
+    pub(crate) fn preconditions(self) -> Option<bool> {
+        match self {
+            Self::Checked => Some(true),
+            Self::Unchecked => Some(false),
+        }
+    }
+}
+
+/// The marker a type's outermost segment names, with its single type
+/// argument. Matched on the last path segment like [`peel_visibility_marker`];
+/// a bare `Checked` (no type argument) or one with two is not a marker (the
+/// fail-safe direction: the type then fails to convert).
+fn outer_param_marker(ty: &syn::Type) -> Option<(ParamMarker, &syn::Type)> {
+    let syn::Type::Path(p) = ty else {
+        return None;
+    };
+    let seg = p.path.segments.last()?;
+    let marker = ParamMarker::from_ident(&seg.ident)?;
+    let syn::PathArguments::AngleBracketed(ab) = &seg.arguments else {
+        return None;
+    };
+    let mut types = ab.args.iter().filter_map(|arg| match arg {
+        syn::GenericArgument::Type(t) => Some(t),
+        _ => None,
+    });
+    let inner = types.next()?;
+    if types.next().is_some() {
+        return None;
+    }
+    Some((marker, inner))
+}
+
+/// Peel the parameter markers off a parameter type, outermost first: returns
+/// the markers in the order written and the inner type the parameter
+/// converts as. `Checked<Strict<T>>`-style stacks of different families peel
+/// in one pass; two markers of one family (`Checked<Unchecked<T>>`) are an
+/// error, as is a marker nested inside `Option` / `Missing` / `Vec` / `&`
+/// (at any depth of those), where the conversion has no marker to unwrap.
+pub(crate) fn peel_param_markers(ty: &syn::Type) -> syn::Result<(Vec<ParamMarker>, &syn::Type)> {
+    let mut markers: Vec<ParamMarker> = Vec::new();
+    let mut inner = ty;
+    while let Some((marker, next)) = outer_param_marker(inner) {
+        if let Some(first) = markers.iter().find(|m| m.family() == marker.family()) {
+            return Err(syn::Error::new_spanned(
+                ty,
+                format!(
+                    "at most one precondition marker per parameter: `{}` already decides this \
+                     parameter's R-side type checks, so drop `{}`",
+                    first.name(),
+                    marker.name()
+                ),
+            ));
+        }
+        markers.push(marker);
+        inner = next;
+    }
+    if let Some(nested) = nested_param_marker(inner) {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "put `{0}` outermost: `{0}<Option<T>>`, not `Option<{0}<T>>`; the marker \
+                 applies to the whole parameter",
+                nested.name()
+            ),
+        ));
+    }
+    Ok((markers, inner))
+}
+
+/// A marker inside `Option<..>` / `Missing<..>` / `Vec<..>` / `&..`, at any
+/// depth of those wrappers.
+fn nested_param_marker(ty: &syn::Type) -> Option<ParamMarker> {
+    let arg = match ty {
+        syn::Type::Reference(r) => r.elem.as_ref(),
+        syn::Type::Paren(p) => p.elem.as_ref(),
+        syn::Type::Path(p) => {
+            let seg = p.path.segments.last()?;
+            if !matches!(seg.ident.to_string().as_str(), "Option" | "Missing" | "Vec") {
+                return None;
+            }
+            first_type_argument(seg)?
+        }
+        _ => return None,
+    };
+    match outer_param_marker(arg) {
+        Some((marker, _)) => Some(marker),
+        None => nested_param_marker(arg),
+    }
+}
+
+/// Whether any of `markers` is in `family`, and which.
+pub(crate) fn marker_in_family(
+    markers: &[ParamMarker],
+    family: ParamMarkerFamily,
+) -> Option<ParamMarker> {
+    markers.iter().copied().find(|m| m.family() == family)
+}
+
+// endregion
+
 // region: type rendering for messages
 
 /// Render a type the way it is written in Rust source, for user-facing
@@ -433,8 +589,9 @@ pub(crate) fn erase_lifetimes(ty: &syn::Type) -> syn::Type {
 #[cfg(test)]
 mod tests {
     use super::{
-        call_marker, choice_layer_name, choice_layers, erase_lifetimes, is_main_thread_bound_input,
-        is_main_thread_bound_return, match_arg_choices_ty, r_value_noun, type_display,
+        ParamMarker, call_marker, choice_layer_name, choice_layers, erase_lifetimes,
+        is_main_thread_bound_input, is_main_thread_bound_return, match_arg_choices_ty,
+        peel_param_markers, r_value_noun, type_display,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -492,6 +649,70 @@ mod tests {
         assert!(is_main_thread_bound_input(&ty(
             "miniextendr_api::CallerCall"
         )));
+    }
+
+    /// The inner type a parameter converts as, and the markers peeled off it.
+    fn peeled(s: &str) -> (Vec<ParamMarker>, String) {
+        let t = ty(s);
+        let (markers, inner) = peel_param_markers(&t).expect("peels");
+        (markers, type_display(inner))
+    }
+
+    fn peel_error(s: &str) -> String {
+        peel_param_markers(&ty(s))
+            .expect_err("rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn param_markers_peel_the_outermost_marker() {
+        assert_eq!(
+            peeled("Checked<i32>"),
+            (vec![ParamMarker::Checked], "i32".into())
+        );
+        assert_eq!(
+            peeled("miniextendr_api::Unchecked<Vec<f64>>"),
+            (vec![ParamMarker::Unchecked], "Vec<f64>".into())
+        );
+        assert_eq!(
+            peeled("::miniextendr_api::precondition_marker::Checked<Option<i32>>"),
+            (vec![ParamMarker::Checked], "Option<i32>".into())
+        );
+        assert_eq!(
+            peeled("Checked<&'a [f64]>"),
+            (vec![ParamMarker::Checked], "&'a [f64]".into())
+        );
+        // Not markers: no type argument, two of them, or another type.
+        assert_eq!(peeled("Checked"), (vec![], "Checked".into()));
+        assert_eq!(
+            peeled("Checked<i32, f64>"),
+            (vec![], "Checked<i32, f64>".into())
+        );
+        assert_eq!(peeled("Vec<i32>"), (vec![], "Vec<i32>".into()));
+        assert_eq!(peeled("Missing<i32>"), (vec![], "Missing<i32>".into()));
+    }
+
+    #[test]
+    fn param_markers_reject_stacks_and_nesting() {
+        for stacked in ["Checked<Unchecked<i32>>", "Checked<Checked<i32>>"] {
+            let err = peel_error(stacked);
+            assert!(
+                err.contains("at most one precondition marker per parameter"),
+                "{stacked}: {err}"
+            );
+        }
+        for nested in [
+            "Option<Checked<i32>>",
+            "Missing<Unchecked<i32>>",
+            "Vec<Checked<i32>>",
+            "&Checked<i32>",
+            "Option<Vec<Unchecked<i32>>>",
+            "Checked<Option<Unchecked<i32>>>",
+        ] {
+            let err = peel_error(nested);
+            assert!(err.contains("outermost"), "{nested}: {err}");
+        }
+        assert!(peel_error("Option<Checked<i32>>").contains("put `Checked` outermost"));
     }
 
     #[test]
