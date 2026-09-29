@@ -2073,6 +2073,12 @@ mod tests {
             ("fn f(x: Either<AsNumericVec, i32>)", "contain"),
             ("fn f(x: Either<i32, AsCharacterVec>)", "contain"),
             ("fn f(x: Either<AsNumeric, AsCharacter>)", "be"),
+            // An `Option` arm is read by its value.
+            ("fn f(x: Either<Option<AsNumeric>, DataFrame>)", "be"),
+            (
+                "fn f(x: Either<Option<AsNumericVec>, DataFrame>)",
+                "contain",
+            ),
             (
                 "fn f(x: Option<Either<i32, Either<String, Vec<f64>>>>)",
                 "contain",
@@ -2112,6 +2118,7 @@ mod tests {
         };
         for sig in [
             "fn f(x: Either<AsNumeric, DataFrame>)",
+            "fn f(x: Either<Option<AsNumeric>, DataFrame>)",
             "fn f(x: either::Either<Vec<f64>, List>)",
             "fn f(x: Missing<Either<AsNumeric, DataFrame>>)",
             "fn f(x: Option<Either<i32, String>>)",

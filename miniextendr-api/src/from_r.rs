@@ -756,6 +756,12 @@ pub trait TryFromSexp: Sized {
     /// marker reads as `NA` beyond it. `Either` asks the arm the value
     /// converted to, `Missing` asks its value, and `DataFrame` refuses
     /// nothing, so the NA cells of a data frame arm get through.
+    ///
+    /// An `Option` arm (`Either<Option<AsNumeric>, DataFrame>`) keeps the
+    /// default, which reads the input rather than the value: `NULL` holds no
+    /// `NA` and passes as `None`, while an `NA` the arm reads as `None`
+    /// (`Option<f64>`, `Option<String>`) is still refused. An override that
+    /// answered `false` for `None` would let that `NA` through.
     #[doc(hidden)]
     #[inline]
     fn __mx_input_has_na(&self, input: SEXP) -> bool {

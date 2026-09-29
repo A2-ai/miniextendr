@@ -383,6 +383,31 @@ test_that("no_na on a Missing<Either> passes an omitted argument", {
   expect_identical(caught_msg(f(NA)), "'x' must not be NA")
 })
 
+test_that("no_na on an Either with an Option arm passes NULL and refuses NA", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::value_or_table_nullable
+  # NULL (the default, or given) converts to None on the number arm and
+  # passes as not given; it never reaches the data frame arm.
+  expect_identical(f(), "nothing")
+  expect_identical(f(NULL), "nothing")
+  expect_identical(f(3), "value Some(3.0)")
+  expect_identical(f(data.frame(id = 1:2, v = c(1, NA))), "table")
+  # NA is refused as on the plain number arm: R's NA by the check on the
+  # input, the text "NA" by what the marker reads as missing.
+  for (x in list(NA, "NA")) {
+    refused <- tryCatch(f(x), error = identity)
+    plain <- tryCatch(miniextendr:::value_or_table(x), error = identity)
+    expect_identical(conditionMessage(refused), "'x' must not be NA")
+    expect_identical(conditionMessage(refused), conditionMessage(plain))
+    expect_identical(class(refused), class(plain))
+    expect_identical(refused$param, "x")
+    expect_identical(conditionCall(refused), quote(f(x)))
+  }
+  for (x in list(NA_real_, NaN, "")) {
+    expect_identical(caught_msg(f(x)), "'x' must not be NA")
+  }
+})
+
 test_that("no_na on an Either refuses what anyNA() sees, for the arm taken", {
   skip_if_not(miniextendr_has_feature("either"), "either feature off")
   f <- miniextendr:::either_no_na_vector_or_list

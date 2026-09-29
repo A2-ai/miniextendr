@@ -145,6 +145,23 @@ pub fn value_or_table_optional(
     }
 }
 
+/// `value_or_table()` with an optional number arm: `NULL` (the default)
+/// converts to `None` on the number arm and passes as not given, `NA` is
+/// still refused, and a data frame reaches the `DataFrame` arm with its `NA`
+/// cells.
+/// @param x `NULL`, a number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_table_nullable(
+    #[miniextendr(no_na, default = "NULL")] x: Either<Option<AsNumeric>, DataFrame>,
+) -> String {
+    match x {
+        Either::Left(None) => "nothing".to_string(),
+        Either::Left(Some(n)) => format!("value {:?}", n.0),
+        Either::Right(_) => "table".to_string(),
+    }
+}
+
 /// The right arm of `either_no_na_vector_or_list()`: an alias keeps the
 /// signature readable. The outer `Either` stays spelled out, since the macro
 /// sees an `Either` parameter by its type as written.

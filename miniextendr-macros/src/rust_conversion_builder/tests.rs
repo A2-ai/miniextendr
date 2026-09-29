@@ -812,6 +812,7 @@ fn no_na_check_on_an_either_reads_the_input() {
     let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
     for src in [
         "x: Either<AsNumeric, DataFrame>",
+        "x: Either<Option<AsNumeric>, DataFrame>",
         "x: either::Either<Vec<f64>, List>",
         "x: Missing<Either<AsNumeric, DataFrame>>",
     ] {

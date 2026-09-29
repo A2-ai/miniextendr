@@ -486,6 +486,14 @@ value_or_table(NA)                                    # Error: 'x' must not be N
 value_or_table(data.frame(id = 1:2, v = c(1, NA)))    # reaches the DataFrame arm
 ```
 
+An arm can be optional. For an optional number or a table, write
+`#[miniextendr(no_na, default = "NULL")] x: Either<Option<AsNumeric>, DataFrame>`.
+The left arm is tried first, so `NULL` (given or by default) converts to
+`Left(None)` and passes as not given; it never reaches the `DataFrame` arm.
+`NA` and `"NA"` are still refused, with the same condition as on
+`Either<AsNumeric, DataFrame>`: the check reads the input, so an `NA` that the
+arm converts to `None` (as `Option<f64>` does) is refused too.
+
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a
 `message`:
