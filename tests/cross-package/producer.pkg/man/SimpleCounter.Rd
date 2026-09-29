@@ -50,5 +50,6 @@ message!() — consumer verifies rust_message + e$kind round-trip.
 
 condition!() with a custom class — consumer verifies catchability + kind.
 
-Raise an error with structured data fields — tests ConditionData round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
+Raise an error with structured data fields — tests ConditionData
+round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
 }
