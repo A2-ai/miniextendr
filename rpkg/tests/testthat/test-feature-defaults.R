@@ -55,6 +55,23 @@ test_that("coerce-default converts bool params from R integers", {
 
 test_that("no-preconditions-default drops preconditions for bare fns, preconditions restores them", {
   unchecked <- miniextendr_has_feature("no-preconditions-default")
+  # coerce-default widens a bare `i32` to whole-number doubles (and logical /
+  # raw), so both the R-side check and the conversion name the wider input.
+  coerced <- miniextendr_has_feature("coerce-default")
+  check_message <- if (coerced) {
+    "'x' must be integer or whole-number numeric"
+  } else {
+    "'x' must be integer"
+  }
+  conversion_message <- if (coerced) {
+    "'x' must be a single whole number: got character"
+  } else {
+    "'x' must be a single integer: got character"
+  }
+  if (coerced) {
+    expect_identical(fdefault_bare_i32(2), 2L)
+    expect_identical(fdefault_checks_restored_i32(2), 2L)
+  }
   # Both paths raise the same argument-error condition (#1591); they differ
   # in which side words it.
   if (unchecked) {
@@ -62,22 +79,22 @@ test_that("no-preconditions-default drops preconditions for bare fns, preconditi
     # bad input, worded by the conversion.
     e <- tryCatch(fdefault_bare_i32("nope"), error = function(e) e)
     expect_s3_class(e, "rust_error")
-    expect_identical(conditionMessage(e), "'x' must be a single integer: got character")
+    expect_identical(conditionMessage(e), conversion_message)
     expect_identical(e$rust_type, "i32")
     # `preconditions` opts back out: the checks are restored, so the R-side check
     # words the error, and no Rust type is involved.
     e2 <- tryCatch(fdefault_checks_restored_i32("nope"), error = function(e) e)
     expect_s3_class(e2, "rust_error")
-    expect_identical(conditionMessage(e2), "'x' must be integer")
+    expect_identical(conditionMessage(e2), check_message)
     expect_null(e2$rust_type)
   } else {
-    # Every default build: preconditions are on, the bare fn's R-side check
-    # words the error.
+    # preconditions are on (every build without no-preconditions-default):
+    # the bare fn's R-side check words the error.
     e <- tryCatch(fdefault_bare_i32("nope"), error = function(e) e)
     expect_s3_class(e, "rust_error")
     expect_identical(e$kind, "conversion")
     expect_identical(e$param, "x")
-    expect_identical(conditionMessage(e), "'x' must be integer")
+    expect_identical(conditionMessage(e), check_message)
     expect_null(e$rust_type)
   }
 })
