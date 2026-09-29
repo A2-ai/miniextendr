@@ -37,4 +37,18 @@ SimpleCounter
 }
 \description{
 Get current value (inherent method)
+
+Panic with a plain message so the consumer can test rust_error class layering.
+
+Use error!() with a custom class so the consumer can test user-class layering.
+
+Bare error!() — no user class, so the consumer verifies plain rust_error.
+
+warning!() — consumer verifies rust_warning + e$kind round-trip.
+
+message!() — consumer verifies rust_message + e$kind round-trip.
+
+condition!() with a custom class — consumer verifies catchability + kind.
+
+Raise an error with structured data fields — tests ConditionData round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
 }

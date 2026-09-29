@@ -55,25 +55,25 @@ impl OptionsDemo for OptsTarget {
         self.v
     }
 
-    /// The r_entry injects R code at the top of the wrapper body.
+    // The r_entry injects R code at the top of the wrapper body.
     #[miniextendr(r_entry = ".__entry_ran__ <- TRUE")]
     fn with_entry(&self) -> i32 {
         self.v
     }
 
-    /// The r_on_exit registers cleanup via on.exit().
+    // The r_on_exit registers cleanup via on.exit().
     #[miniextendr(r_on_exit = ".__exit_ran__ <- TRUE")]
     fn with_exit(&self) -> i32 {
         self.v
     }
 
-    /// The r_post_checks injects validation before .Call().
+    // The r_post_checks injects validation before .Call().
     #[miniextendr(r_post_checks = "stopifnot(is.integer(n))")]
     fn with_checks(&self, n: i32) -> i32 {
         self.v + n
     }
 
-    /// Lifecycle marks the method as deprecated.
+    // Lifecycle marks the method as deprecated.
     #[miniextendr(lifecycle = "deprecated")]
     fn deprecated_method(&self) -> i32 {
         self.v

@@ -1160,6 +1160,317 @@ fn s7_trait_shortcut_documents_choice_params() {
         "got:\n{result}"
     );
 }
+
+/// The `\describe{}` item of the `level` choice parameter.
+const LEVEL_ITEM: &str = "#'   \\item{\\code{level}}{One of \"low\", \"high\", or NULL; omitting the argument means no choice.}";
+
+/// [`choice_trait_method`] with `doc_tags`.
+fn choice_trait_method_with(tags: &[&str]) -> TraitMethod {
+    let mut method = choice_trait_method();
+    method.doc_tags = tags.iter().map(|t| t.to_string()).collect();
+    method
+}
+
+/// A static [`choice_trait_method`]: `pick(level, n)`.
+fn static_choice_trait_method(tags: &[&str]) -> TraitMethod {
+    let mut method = choice_trait_method_with(tags);
+    method.has_self = false;
+    method.sig = syn::parse_quote!(
+        fn pick(level: Missing<Option<String>>, n: i32) -> String
+    );
+    method
+}
+
+/// An env trait method has no `\usage`, so it is documented like an env
+/// inherent method: its prose, then one `\describe{}` list with the author's
+/// `@param` items and the choice items, then the page lines. No `@param`
+/// line, no `(undocumented)` item.
+#[test]
+fn env_trait_method_documents_prose_params_and_choices() {
+    let method = choice_trait_method_with(&["@description Pick a level.", "@param n How many."]);
+    let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+    assert_eq!(
+        block_above(&r, "Foo$Bar$pick <- "),
+        [
+            "#' @description Pick a level.",
+            "#'",
+            "#' \\describe{",
+            "#'   \\item{\\code{n}}{How many.}",
+            LEVEL_ITEM,
+            "#' }",
+            "#' @name Foo$Bar$pick",
+            "#' @rdname Foo",
+        ],
+        "got:\n{r}"
+    );
+    assert!(!r.contains("#' @param"), "got:\n{r}");
+    assert!(!r.contains("(undocumented)"), "got:\n{r}");
+
+    // An author `@param` on the choice parameter replaces its choice item.
+    let method = choice_trait_method_with(&["@param level Mine."]);
+    let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+    assert_eq!(r.matches("\\item{\\code{level}}").count(), 1, "got:\n{r}");
+    assert!(r.contains("#'   \\item{\\code{level}}{Mine.}"), "got:\n{r}");
+    assert!(!r.contains("One of"), "got:\n{r}");
+}
+
+/// Without a doc comment, the labelled lead-in opens the list of the choice
+/// items; a plain parameter gets no item.
+#[test]
+fn env_trait_method_choice_lead_in() {
+    let r = page_tag_wrapper(ClassSystem::Env, &[choice_trait_method()]).unwrap();
+    assert_eq!(
+        block_above(&r, "Foo$Bar$pick <- "),
+        [
+            "#' @description Arguments of \\code{Foo$Bar$pick()}:",
+            "#'",
+            "#' \\describe{",
+            LEVEL_ITEM,
+            "#' }",
+            "#' @name Foo$Bar$pick",
+            "#' @rdname Foo",
+        ],
+        "got:\n{r}"
+    );
+}
+
+/// A method with no doc comment and no choice parameter keeps its page lines
+/// only.
+#[test]
+fn env_trait_method_without_docs_is_unchanged() {
+    let r = page_tag_wrapper(ClassSystem::Env, &[make_test_method("value", true)]).unwrap();
+    assert_eq!(
+        block_above(&r, "Foo$Bar$value <- "),
+        ["#' @name Foo$Bar$value", "#' @rdname Foo"],
+        "got:\n{r}"
+    );
+}
+
+/// On an author topic (`@rdname`, `@inheritParams`) the block keeps the
+/// author's items and gets no generated one; the page tags are forwarded
+/// once, and the lead-in opens the list (no forwarded tag precedes it).
+#[test]
+fn env_trait_method_on_author_topic_keeps_author_items_only() {
+    for page_tag in ["@rdname pick_family", "@inheritParams family"] {
+        let method = choice_trait_method_with(&[page_tag, "@param n How many."]);
+        let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+        let block = block_above(&r, "Foo$Bar$pick <- ");
+        assert_eq!(
+            block[..4],
+            [
+                "#' @description Arguments of \\code{Foo$Bar$pick()}:",
+                "#'",
+                "#' \\describe{",
+                "#'   \\item{\\code{n}}{How many.}",
+            ],
+            "`{page_tag}`: got:\n{r}"
+        );
+        assert!(
+            !r.contains("\\item{\\code{level}}"),
+            "`{page_tag}`: got:\n{r}"
+        );
+        assert_eq!(
+            r.matches(&format!("#' {page_tag}\n")).count(),
+            1,
+            "got:\n{r}"
+        );
+    }
+    let method = choice_trait_method_with(&["@rdname pick_family", "@param n How many."]);
+    let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+    assert_eq!(
+        r.matches("#' @title Foo$Bar$pick\n").count(),
+        1,
+        "got:\n{r}"
+    );
+}
+
+/// Every author tag but the page tags and `@title` reaches the body; a list
+/// after `@examples` opens a `@details` section.
+#[test]
+fn env_trait_method_forwards_other_tags_but_title() {
+    let method = choice_trait_method_with(&[
+        "@description D.",
+        "@return R.",
+        "@examples x <- 1",
+        "@title Mine",
+        "@param n N.",
+    ]);
+    let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+    for tag in [
+        "#' @description D.\n",
+        "#' @return R.\n",
+        "#' @examples x <- 1\n",
+    ] {
+        assert_eq!(r.matches(tag).count(), 1, "`{tag}`: got:\n{r}");
+    }
+    assert!(r.contains("#' @details\n#' \\describe{\n"), "got:\n{r}");
+    assert!(!r.contains("Mine"), "got:\n{r}");
+}
+
+/// `@noRd` and `noexport` strip the whole body (no list line is left behind
+/// as R code); `internal` puts `@keywords internal` first.
+#[test]
+fn env_trait_method_body_follows_suppression() {
+    let method = choice_trait_method_with(&["@description Pick a level.", "@param n How many."]);
+    for (class_has_no_rd, noexport) in [(true, false), (false, true)] {
+        let r = generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            std::slice::from_ref(&method),
+            &[],
+            opts(ClassSystem::Env, class_has_no_rd, false, noexport),
+        )
+        .unwrap();
+        for text in ["@description", "\\item", "\\describe", "}}{", "#'"] {
+            assert!(!r.contains(text), "`{text}`: got:\n{r}");
+        }
+    }
+    let r = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &[method],
+        &[],
+        opts(ClassSystem::Env, false, true, false),
+    )
+    .unwrap();
+    assert_eq!(
+        r.lines().find(|l| l.starts_with("#'")),
+        Some("#' @keywords internal"),
+        "got:\n{r}"
+    );
+}
+
+/// A static trait method of S3, vctrs and S7 is a `Type$Trait$method`
+/// namespace member without `\usage`: after its intro line (the block's
+/// title) it gets the lead-in and the choice item. An S4 static documents
+/// the plain function `Foo_Bar_pick`, so it gets `@param` lines instead: the
+/// author's, then a filler for each other formal. A static without formals
+/// or tags keeps today's block, and an S4 `@describeIn` static gets no intro
+/// line and no filler.
+#[test]
+fn static_trait_methods_document_their_arguments() {
+    let namespace_block = |intro: &str| {
+        vec![
+            intro.to_string(),
+            "#' @description Arguments of \\code{Foo$Bar$pick()}:".to_string(),
+            "#'".to_string(),
+            "#' \\describe{".to_string(),
+            LEVEL_ITEM.to_string(),
+            "#' }".to_string(),
+            "#' @name Foo$Bar$pick".to_string(),
+            "#' @rdname Foo".to_string(),
+        ]
+    };
+    for (class_system, def) in [
+        (ClassSystem::S3, "Foo$Bar$pick <- "),
+        (ClassSystem::Vctrs, "Foo$Bar$pick <- "),
+        (ClassSystem::S7, ".Foo__Bar$pick <- "),
+    ] {
+        let r = page_tag_wrapper(class_system, &[static_choice_trait_method(&[])]).unwrap();
+        assert_eq!(
+            block_above(&r, def),
+            namespace_block("#' Static trait method Bar::pick()"),
+            "{class_system:?}: got:\n{r}"
+        );
+        assert!(!r.contains("#' @param"), "{class_system:?}: got:\n{r}");
+    }
+
+    let r = page_tag_wrapper(ClassSystem::S4, &[static_choice_trait_method(&[])]).unwrap();
+    assert_eq!(
+        block_above(&r, "Foo_Bar_pick <- "),
+        [
+            "#' Static trait method Bar::pick() for Foo",
+            "#' @name Foo_Bar_pick",
+            "#' @rdname Foo",
+            LEVEL_DOC,
+            "#' @param n (undocumented)",
+            "#' @export",
+        ],
+        "got:\n{r}"
+    );
+    assert!(!r.contains("\\describe"), "got:\n{r}");
+    // roxygen2 reads the block after `@importFrom` as one with it (a blank
+    // line does not end a block): the import would swallow the static's
+    // intro line, so a static-only impl emits none.
+    assert!(!r.contains("@importFrom"), "got:\n{r}");
+    let with_instance = page_tag_wrapper(
+        ClassSystem::S4,
+        &[choice_trait_method(), static_choice_trait_method(&[])],
+    )
+    .unwrap();
+    assert!(
+        with_instance.contains("#' @importFrom methods setGeneric setMethod\n"),
+        "got:\n{with_instance}"
+    );
+    let r = page_tag_wrapper(
+        ClassSystem::S4,
+        &[static_choice_trait_method(&["@param level Mine."])],
+    )
+    .unwrap();
+    assert_eq!(r.matches("#' @param level").count(), 1, "got:\n{r}");
+    assert!(r.contains("#' @param level Mine.\n"), "got:\n{r}");
+
+    let bare = make_test_method("make", false);
+    for (class_system, def, expected) in [
+        (
+            ClassSystem::S3,
+            "Foo$Bar$make <- ",
+            &[
+                "#' Static trait method Bar::make()",
+                "#' @name Foo$Bar$make",
+                "#' @rdname Foo",
+            ][..],
+        ),
+        (
+            ClassSystem::Vctrs,
+            "Foo$Bar$make <- ",
+            &[
+                "#' Static trait method Bar::make()",
+                "#' @name Foo$Bar$make",
+                "#' @rdname Foo",
+            ][..],
+        ),
+        (
+            ClassSystem::S7,
+            ".Foo__Bar$make <- ",
+            &[
+                "#' Static trait method Bar::make()",
+                "#' @name Foo$Bar$make",
+                "#' @rdname Foo",
+            ][..],
+        ),
+        (
+            ClassSystem::S4,
+            "Foo_Bar_make <- ",
+            &[
+                "#' Static trait method Bar::make() for Foo",
+                "#' @name Foo_Bar_make",
+                "#' @rdname Foo",
+                "#' @export",
+            ][..],
+        ),
+    ] {
+        let r = page_tag_wrapper(class_system, std::slice::from_ref(&bare)).unwrap();
+        assert_eq!(
+            block_above(&r, def),
+            expected,
+            "{class_system:?}: got:\n{r}"
+        );
+    }
+
+    let r = page_tag_wrapper(
+        ClassSystem::S4,
+        &[static_choice_trait_method(&["@describeIn family A pick."])],
+    )
+    .unwrap();
+    let block = block_above(&r, "Foo_Bar_pick <- ");
+    assert!(
+        !block
+            .iter()
+            .any(|l| l.starts_with("#' Static trait method") || l.starts_with("#' @param")),
+        "got:\n{r}"
+    );
+}
 // endregion
 
 #[test]
@@ -1740,12 +2051,13 @@ fn test_trait_method_describe_in_rejected_without_listable_object() {
 /// method's own block: `@name` replaces the generated topic name, an author
 /// `@order` replaces `@order NaN`, and `@inheritParams` / `@inherit` /
 /// `@inheritDotParams` are forwarded verbatim (roxygen2 fills the arguments
-/// the page leaves undocumented). Prose is not forwarded.
+/// the page leaves undocumented). The prose reaches the blocks without
+/// `\usage` (the Env, S3 and S7 namespace statics) and no other block.
 #[test]
 fn test_trait_method_forwards_author_page_tags() {
     let mut method = make_test_method("make", false);
     method.doc_tags = vec![
-        "@description Dropped: trait wrappers forward no prose.".to_string(),
+        "@description Kept on namespace members.".to_string(),
         "@name foo_make".to_string(),
         "@rdname family".to_string(),
         "@order 2".to_string(),
@@ -1772,7 +2084,16 @@ fn test_trait_method_forwards_author_page_tags() {
             !r.contains(&format!("#' @name {generated_name}\n")),
             "got:\n{r}"
         );
-        assert!(!r.contains("Dropped"), "got:\n{r}");
+        let prose = usize::from(matches!(
+            class_system,
+            ClassSystem::Env | ClassSystem::S3 | ClassSystem::S7
+        ));
+        assert_eq!(
+            r.matches("#' @description Kept on namespace members.\n")
+                .count(),
+            prose,
+            "{class_system:?}: got:\n{r}"
+        );
         assert!(
             !r.contains(crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS),
             "{class_system:?}: the author's @order wins, got:\n{r}"
@@ -1833,6 +2154,15 @@ fn test_trait_method_wrapped_param_stays_in_roxygen() {
             "{class_system:?}: got:\n{r}"
         );
     }
+    // Env: the wrapped `@param` is a `\describe{}` item.
+    let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
+    assert_eq!(
+        r.matches("#'   \\item{\\code{n}}{Amount\n#' to add.}\n")
+            .count(),
+        1,
+        "got:\n{r}"
+    );
+    assert!(!r.lines().any(|l| l == "to add.}"), "got:\n{r}");
 }
 
 // endregion

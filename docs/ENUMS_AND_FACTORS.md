@@ -687,8 +687,10 @@ R6 trait methods. They live in `Type$Trait$method`, not among the R6
 generator's public methods, so roxygen2 has no method section to list their
 arguments in; a plain `@param` there lands in a top-level `\arguments` of the
 class page, detached from any usage. Env classes have no usage section for
-their methods, so there the text goes into a `\describe` list under the
-method's description instead of an `@param` line. Explicit `@param` lines you
+their methods, inherent or trait, and neither do the `Type$Trait$method`
+statics of S3, vctrs and S7 classes, so there the text goes into a
+`\describe` list under the method's description instead of an `@param`
+line. Explicit `@param` lines you
 write yourself are preserved verbatim; only missing entries are
 auto-generated. A
 block with `@describeIn`, `@inheritParams`, or an `@rdname` naming another

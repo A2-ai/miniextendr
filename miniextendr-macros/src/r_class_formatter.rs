@@ -672,13 +672,14 @@ fn push_param_filler(
 /// with no usage entry to match, roxygen2 would write an `\arguments` entry
 /// that `R CMD check` reports as "Documented arguments not in \usage".
 ///
-/// The list continues the section of the forwarded tag before it (after a
-/// blank line; after `@details` when that tag is `@examples` /
-/// `@examplesIf`, whose code block a blank line does not end; directly after
-/// `@title`). With no forwarded tag, `@description Arguments of
-/// \code{<label>()}:` and a blank line open it: an untagged list would be the
-/// block's intro paragraph, i.e. its title, which roxygen2 drops on the class
-/// page the block merges into.
+/// After a forwarded `@description` / `@details`, the list continues that
+/// section after a blank line; after `@examples` / `@examplesIf`, whose code
+/// block a blank line does not end, it opens a `@details`. Otherwise
+/// `@description Arguments of \code{<label>()}:` and a blank line open it:
+/// roxygen2 runs a tag's text up to the next tag, so after any other tag
+/// (`@return`, `@seealso`, `@title`, ...) the list would land in that tag's
+/// section, and an untagged list would be the block's intro paragraph, i.e.
+/// its title, which roxygen2 drops on the class page the block merges into.
 ///
 /// `doc_tags` is the full tag list, so a page tag that `forward` rejects
 /// still sends the arguments elsewhere. Emits nothing when there is neither a
@@ -716,19 +717,18 @@ pub(crate) fn describe_params_lines(
     if items.is_empty() {
         return lines;
     }
-    match other_tags.last() {
-        None => {
+    match other_tags
+        .last()
+        .and_then(|tag| crate::roxygen::roxygen_tag_name(tag))
+    {
+        Some("description" | "details") => lines.push("#'".to_string()),
+        Some("examples" | "examplesIf") => lines.push("#' @details".to_string()),
+        _ => {
             // `%` starts an Rd comment and `\` an escape, also inside `\code{}`.
             let label = label.replace('\\', "\\\\").replace('%', "\\%");
             lines.push(format!("#' @description Arguments of \\code{{{label}()}}:"));
             lines.push("#'".to_string());
         }
-        Some(tag) if tag.trim_start().starts_with("@examples") => {
-            lines.push("#' @details".to_string());
-        }
-        // A blank line after `@title` would make a multi-paragraph title.
-        Some(_) if lines.last().is_some_and(|line| line.contains("@title")) => {}
-        Some(_) => lines.push("#'".to_string()),
     }
     lines.push("#' \\describe{".to_string());
     // One `#' ` per line, so a wrapped `@param` stays inside the block.
@@ -1572,8 +1572,9 @@ mod tests {
     /// An env method (no `\usage`) lists the author's `@param` items and then
     /// the choice items in one `\describe{}`, with no `(undocumented)` item
     /// and no `@param` line (roxygen2 would report "Documented arguments not
-    /// in \usage"). Without a tag before the list, a labelled
-    /// `@description` lead-in and a blank line open it.
+    /// in \usage"). Unless a `@description` / `@details` tag directly
+    /// precedes the list, a labelled `@description` lead-in and a blank line
+    /// open it.
     #[test]
     fn env_params_share_one_describe_list() {
         let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
@@ -1607,22 +1608,61 @@ mod tests {
             "author item first: {with_author}"
         );
 
-        // A tag before the list keeps it in that tag's section.
+        // A prose tag before the list keeps it in that section; after any
+        // other tag the lead-in opens it, or the list would land in that
+        // tag's section (`\value`, `\seealso`, the title).
+        let lead_in = "#' @description Arguments of \\code{Example$new()}:\n#'\n#' \\describe{";
         for (last, sep) in [
             (
                 "@description Plan it.",
-                "#' @description Plan it.\n#'\n#' \\describe{",
+                "#' @description Plan it.\n#'\n#' \\describe{".to_string(),
             ),
-            ("@seealso other", "#' @seealso other\n#'\n#' \\describe{"),
+            (
+                "@details More.",
+                "#' @details More.\n#'\n#' \\describe{".to_string(),
+            ),
+            ("@seealso other", format!("#' @seealso other\n{lead_in}")),
             (
                 "@return A value.",
-                "#' @return A value.\n#'\n#' \\describe{",
+                format!("#' @return A value.\n{lead_in}"),
             ),
+            ("@title Mine", format!("#' @title Mine\n{lead_in}")),
         ] {
             let joined = env_docs(&[last], params, &docs).join("\n");
-            assert!(joined.starts_with(sep), "`{last}`: {joined}");
-            assert!(!joined.contains("Arguments of"), "`{last}`: {joined}");
+            assert!(joined.starts_with(&sep), "`{last}`: {joined}");
+            assert_eq!(
+                joined.matches("Arguments of").count(),
+                usize::from(sep.contains("Arguments of")),
+                "`{last}`: {joined}"
+            );
         }
+        // Prose and a trailing `@return`: the lead-in is a second
+        // `@description`, which roxygen2 merges into the first.
+        let joined = env_docs(
+            &["@description Plan it.", "@return A value."],
+            params,
+            &docs,
+        )
+        .join("\n");
+        assert!(
+            joined.starts_with(&format!(
+                "#' @description Plan it.\n#' @return A value.\n{lead_in}"
+            )),
+            "{joined}"
+        );
+
+        // An author `@param` on the choice parameter replaces its choice item.
+        let joined = env_docs(&["@param mode Mine."], params, &docs).join("\n");
+        assert_eq!(
+            joined.matches("\\item{\\code{mode}}").count(),
+            1,
+            "{joined}"
+        );
+        assert!(
+            joined.contains("#'   \\item{\\code{mode}}{Mine.}"),
+            "{joined}"
+        );
+        assert!(!joined.contains("One of"), "{joined}");
 
         // No item and no tag: nothing at all; a plain formal gets no item.
         let empty = std::collections::HashMap::new();
