@@ -84,20 +84,22 @@ hand-maintained.
 
 ```
 Makevars
-  → cargo rustc --crate-type cdylib
-  → dyn.load + miniextendr_write_wrappers       (cdylib walks linkme #[distributed_slice] tables)
-  → R/miniextendr-wrappers.R                    (generated, do not hand-edit)
-  → cargo rustc --crate-type staticlib
-  → final .so
+  → cargo build --lib                            (staticlib)
+  → R links $(SHLIB) = <pkg>.so                  (stub.o + staticlib)
+  → Rscript ../tools/write-wrappers.R $(SHLIB)   (only when $(SHLIB) was relinked)
+      → dyn.load + miniextendr_write_wrappers    (walks linkme #[distributed_slice] tables)
+      → R/miniextendr-wrappers.R + src/rust/wasm_registry.rs (rewritten only on content change)
 ```
 
 `stub.c` declares `extern const char miniextendr_force_link`, which references a
 symbol emitted by `miniextendr_init!()`. With `codegen-units = 1`, this pulls the
 entire user crate out of the staticlib archive, carrying all `#[distributed_slice]`
 entries — no `-force_load` / `--whole-archive` needed.
-The cdylib→staticlib double link is what makes wrapper generation possible:
-the cdylib boots far enough into R that we can call into Rust to emit the
-R wrappers, then we relink as staticlib for the final installed shared object.
+Wrapper generation loads the very shared object R just linked, so what R
+installs and what the wrappers describe are the same build. The writers keep an
+unchanged file (mtime included), so make tracks the pass with the stamp
+`rust-target/.miniextendr-wrappers`; an install where nothing under `src/rust`
+changed neither relinks nor regenerates.
 
 `miniextendr_init!(pkg)` (proc-macro) generates `R_init_<pkg>`; `package_init()`
 in `miniextendr-api/src/init.rs` consolidates the init steps.
@@ -116,12 +118,12 @@ in `miniextendr-api/src/init.rs` consolidates the init steps.
   host `R CMD INSTALL`) — like `inst/vendor.tar.xz`, it caused constant merge
   conflicts. It ships in the tarball **from disk** (`.Rbuildignore` does not
   exclude it); `just r-cmd-build` regenerates it first so the built tarball is
-  complete. wasm-from-tarball has NO regeneration fallback (the wasm cdylib is a
+  complete. wasm-from-tarball has NO regeneration fallback (the wasm module is a
   SIDE_MODULE host R cannot dyn.load), so a missing/stub copy silently breaks it.
 - `rpkg/R/miniextendr-wrappers.R` (~32K lines) — the R-callable layer, generated
-  by the same host cdylib pass. **Gitignored** for the same reason. Native
-  tarball installs can regenerate it via the Makevars `#1022` fallback, but
-  `just r-cmd-build` ships it anyway. Regenerate locally with `just rcmdinstall`.
+  by the same host pass. **Gitignored** for the same reason. Every native
+  install, tarball installs included, regenerates it from the `.so` it links;
+  `just r-cmd-build` ships it for wasm. Regenerate locally with `just rcmdinstall`.
 - `NAMESPACE` + `man/*.Rd` — derived (by roxygen2) from the regenerated
   wrappers.R + hand-written R. **Still tracked** (small, low-conflict). Run
   `just configure && just rcmdinstall && just force-document` after macro changes
@@ -190,30 +192,32 @@ Always `bash ./configure` (not bare `./configure` — `#!/bin/sh` causes spuriou
 1. Generates `Makevars` from `.in` templates.
 2. Auto-detects install mode (source vs tarball) from `[ -f inst/vendor.tar.xz ]`.
 3. Writes `.cargo/config.toml` per mode (source: `[patch."git+url"]` for monorepo siblings or empty; tarball: `[source]` replacement to `vendored-sources`).
-4. Does **not** create `inst/vendor.tar.xz` — that's an explicit tarball-producing workflow such as `just vendor`, `miniextendr_vendor()`, or `bootstrap.R` before `R CMD build`.
+4. Does **not** create `inst/vendor.tar.xz` — only the explicit vendor step does (`just vendor`, `miniextendr_vendor()`), which the release builds run (`just r-cmd-build`/`r-cmd-check`, `miniextendr_build_tarball()`/`miniextendr_check()`).
 
 ## The install-mode latch (`inst/vendor.tar.xz`)
 
 `rpkg/inst/vendor.tar.xz` is the **single signal** that flips `configure` into
 tarball mode (present → unpack + offline `[source]` replacement; absent → source
 mode with `[patch."git+url"]` to the workspace siblings). It is gitignored;
-`just vendor` regenerates it, and CI regenerates it per build. Only
-tarball-producing workflows create it: `just vendor` / `miniextendr_vendor()`,
-and `bootstrap.R` under a build frontend that honors
-`Config/build/bootstrap: TRUE`. `configure` never vendors, so an artifact built
-without the tarball stays a source-mode artifact and is not CRAN-ready. Recipes
+`just vendor` regenerates it, and CI regenerates it per build. Only the
+explicit vendor step creates it: `just vendor` / `miniextendr_vendor()`, run by
+`just r-cmd-build` / `r-cmd-check` and `miniextendr_build_tarball()` /
+`miniextendr_check()`. Neither `configure` nor `bootstrap.R` vendors
+(`bootstrap.R` only stages path dependencies outside the package), so any other
+artifact stays a source-mode artifact and is not CRAN-ready; only the release
+tarball has to pass `R CMD check --as-cran`. Recipes
 that **produce** it (`r-cmd-build`, `r-cmd-check`, `devtools-build`) trap-clean
 on exit; recipes that **consume** configure state (`rcmdinstall`,
 `devtools-test`, `devtools-load`, `devtools-install`) refuse to run while it is
 present (#441). Symptom of a leaked tarball: workspace-crate edits silently
 ignored, or `Cargo.lock` mismatch errors. Fix: `just clean-vendor-leak` (safe,
 idempotent); regression test `just test-bootstrap-vendor`;
-`minirextendr_doctor()` detects both the stale latch and a missing
+`miniextendr_doctor()` detects both the stale latch and a missing
 `.cargo/config.toml`. A manifest left frozen by `cargo revendor --freeze` is
 restored from the `src/rust/.Cargo.toml.prefreeze` snapshot cargo-revendor
 writes before rewriting it (#1509); both cleanup tools do this, the file is
 gitignored + Rbuildignored, and never edit it by hand. Mode table, the
-tarball-producing triggers, and the CRAN
+vendoring triggers, and the CRAN
 canary rationale: the `miniextendr-build` skill and
 `docs/CRAN_COMPATIBILITY.md`.
 
@@ -469,7 +473,7 @@ but don't `git add` the output. See `site/CLAUDE.md` for the full pipeline.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
-- **Leaked vendor tarball** (missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings): `just clean-vendor-leak`. See "The latch leak" above. `minirextendr_doctor()` detects both conditions.
+- **Leaked vendor tarball** (missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings): `just clean-vendor-leak`. See "The latch leak" above. `miniextendr_doctor()` detects both conditions.
 - **Release workflow on AlmaLinux 8 / macOS arm64**: see `docs/RELEASE_WORKFLOW.md`. Use `minirextendr::use_release_workflow()` to scaffold a known-good template (#448).
 - **R CMD check `compilation flags used` WARNING**: `-W*` flags in `PKG_CFLAGS` trigger a non-portable-flag WARNING under `R CMD check --as-cran`. Use scoped `#pragma clang diagnostic` in a shim header (`rpkg/src/r_shim.h`) for clang-specific suppressions, not `PKG_CFLAGS`. See #443.
 

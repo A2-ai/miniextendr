@@ -155,7 +155,7 @@ miniextendr_autoconf()
 # 2. Run configure to generate Makevars, Cargo.toml, etc.
 miniextendr_configure()
 
-# 3. Install the package (compiles Rust + auto-generates R wrappers via cdylib)
+# 3. Install the package (compiles Rust, then generates the R wrappers from the linked library)
 devtools::install()
 
 # 4. Run roxygen2 to update NAMESPACE and man pages
@@ -357,7 +357,7 @@ edit the template, not the generated file:
 ### Iteration Cycle
 
 1. Edit Rust code in `src/rust/lib.rs`
-2. Run `devtools::install()` to compile (R wrappers are auto-generated via cdylib)
+2. Run `devtools::install()` to compile (R wrappers are generated from the linked library)
 3. If you added new functions, run `devtools::document()` to update NAMESPACE
 4. Test in R
 

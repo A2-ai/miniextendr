@@ -1,6 +1,6 @@
 ---
 name: miniextendr-architecture
-description: Use when the user asks about the miniextendr codebase structure, crate graph, build pipeline, registration system, the cdylib-to-staticlib double-link, distributed_slice tables, the install-mode latch, or "how does X get from Rust to R". Also use when the user is navigating the repo for the first time and needs orientation.
+description: Use when the user asks about the miniextendr codebase structure, crate graph, build pipeline, registration system, the link-then-generate wrapper pass, distributed_slice tables, the install-mode latch, or "how does X get from Rust to R". Also use when the user is navigating the repo for the first time and needs orientation.
 ---
 
 # miniextendr Architecture
@@ -15,7 +15,7 @@ conversions, and the ALTREP support all interlock at specific seams.
 - "How does this codebase fit together?"
 - "What is the relationship between miniextendr-api and miniextendr-macros?"
 - "How does a Rust function end up callable from R?"
-- "What is the cdylib to staticlib double-link?"
+- "How are the R wrappers generated from the shared library?"
 - "What are distributed_slice / linkme tables and why does miniextendr use them?"
 - "What is the install-mode latch and why does it matter?"
 - "Where does registration happen?"
@@ -38,8 +38,8 @@ The repository root is a Cargo workspace. The primary crates are:
 - `miniextendr-engine/` — standalone R-embedding crate (not part of the
   `#[miniextendr]` codegen pipeline). The wrapper-writer entry point
   (`miniextendr_write_wrappers`) and the collector (`collect_r_wrappers`)
-  actually live in `miniextendr-api/src/registry.rs`, walked by the cdylib
-  phase of the build.
+  actually live in `miniextendr-api/src/registry.rs`, called by the wrapper
+  pass after the link.
 - `miniextendr-lint/` — build-time static analysis. Runs via `build.rs` during
   `cargo check`. Enforces MXL-coded rules (MXL300, MXL301, MXL112, etc.).
 - `miniextendr-bench/` — benchmarks (separate workspace member).
@@ -80,24 +80,20 @@ embed-R-in-Rust crate, not part of this pipeline.
 
 ### Build pipeline
 
-The double-link pipeline is the most unusual aspect of the build system and the
-key to understanding why wrapper generation works without a separate codegen
-tool:
+Wrapper generation needs no separate codegen tool: the build loads the shared
+object it just linked and asks it to describe itself.
 
 ```
 Makevars.in  ->  configure  ->  Makevars
                                    |
-                     cargo rustc --crate-type cdylib
+                     cargo build --lib   (staticlib)
                                    |
-                              dyn.load in R
+                     R links $(SHLIB) = <pkg>.so
                                    |
-                         miniextendr_write_wrappers()
-                         (reads distributed_slice tables,
-                          emits R/miniextendr-wrappers.R)
-                                   |
-                     cargo rustc --crate-type staticlib
-                                   |
-                               final .so
+                 Rscript ../tools/write-wrappers.R $(SHLIB)
+                   dyn.load, then miniextendr_write_wrappers()
+                   (reads distributed_slice tables,
+                    emits R/<pkg>-wrappers.R + src/rust/wasm_registry.rs)
 ```
 
 Step by step:
@@ -105,22 +101,25 @@ Step by step:
 1. `configure` runs from `rpkg/configure.ac`, generating `src/Makevars` from
    `src/Makevars.in` and writing `src/rust/.cargo/config.toml` inline (no
    `.in` template — configure emits the file directly per install mode).
-2. R's build system invokes `Makevars`. The first cargo invocation compiles the
-   Rust crate as a cdylib.
-3. `Makevars` then calls into R to `dyn.load` the cdylib and invoke
-   `miniextendr_write_wrappers()`. This function walks the `MX_R_WRAPPERS`
-   distributed_slice and writes `R/miniextendr-wrappers.R`.
-4. A second cargo invocation compiles the crate as a staticlib for the final
-   installed shared object.
+2. R's build system invokes `Makevars`. Cargo compiles the Rust crate as a
+   staticlib (`FORCE_CARGO` always invokes it; cargo decides what to rebuild).
+3. R links the package's shared object, `$(SHLIB)`, from `stub.o` and the
+   staticlib.
+4. When `$(SHLIB)` was relinked (or the wrappers file is missing),
+   `tools/write-wrappers.R` `dyn.load`s it with `MINIEXTENDR_WRAPPER_GEN=1` and
+   calls `miniextendr_write_wrappers()` and `miniextendr_write_wasm_registry()`.
+   They walk the `MX_R_WRAPPERS` distributed_slice (and friends) and rewrite
+   `R/<pkg>-wrappers.R` / `src/rust/wasm_registry.rs` only when the content
+   changed; the stamp `rust-target/.miniextendr-wrappers` records the pass.
 5. `stub.c` provides the minimal C translation unit R's build system requires.
    It declares `extern const char miniextendr_force_link`, which references a
    symbol emitted by `miniextendr_init!()`. With `codegen-units = 1`, this
    pulls the entire user crate out of the staticlib archive — no
    `-force_load` or `--whole-archive` needed.
 
-The cdylib-to-staticlib double-link is what makes wrapper generation possible:
-the cdylib boots far enough into R to call back into Rust to emit the R-side
-wrappers, then the staticlib relinks for the final installed object.
+The wrappers therefore always describe the exact library R installs. wasm32 is
+the one exception: its `$(SHLIB)` is a SIDE_MODULE host R cannot load, so a
+wasm build uses the files a host install generated.
 
 ### Registration via distributed_slice
 
@@ -131,7 +130,7 @@ static slices, declared in `miniextendr-api/src/registry.rs`:
 - `MX_CALL_DEFS` — `R_CallMethodDef` entries. These are the C-callable function
   pointers registered with R during `R_init_*`.
 - `MX_R_WRAPPERS` — R wrapper code fragments with priority ordering. Consumed
-  by `miniextendr_write_wrappers()` during the cdylib phase to produce
+  by `miniextendr_write_wrappers()` after the link to produce
   `R/miniextendr-wrappers.R`.
 - `MX_ALTREP_REGISTRATIONS` — ALTREP class registration functions, called once
   at package init.
@@ -212,7 +211,7 @@ Rust holds references.
   `miniextendr-macros/src/return_type_analysis.rs`.
 - Class system generators (one each for R6/S3/S4/S7/Env/Vctrs):
   `miniextendr-macros/src/r_class_formatter.rs` (shared `MethodContext`).
-- Distributed_slice declarations + cdylib entry:
+- Distributed_slice declarations + wrapper writers:
   `miniextendr-api/src/registry.rs`.
 - Init sequence:
   `miniextendr-api/src/init.rs`.
@@ -262,7 +261,7 @@ framework crates.
 ## Key files
 
 - `miniextendr-api/src/registry.rs` — distributed_slice declarations and the
-  cdylib entry point.
+  wrapper writers.
 - `miniextendr-api/src/init.rs` — `package_init()` that consolidates all
   `R_init_*` steps.
 - `miniextendr-api/src/mx_abi.rs` — Rust reimplementation of cross-package ABI.
@@ -278,9 +277,10 @@ framework crates.
   all six class-system generators.
 - `miniextendr-macros/src/return_type_analysis.rs` — return type analysis for
   strict mode.
-- `miniextendr-api/src/registry.rs` — `miniextendr_write_wrappers` cdylib
-  entry + `collect_r_wrappers` ordering logic.
-- `rpkg/src/Makevars.in` — build pipeline template (the double-link lives here).
+- `miniextendr-api/src/registry.rs` — `miniextendr_write_wrappers` routine
+  + `collect_r_wrappers` ordering logic.
+- `rpkg/src/Makevars.in` — build pipeline template (link, then generate).
+- `rpkg/tools/write-wrappers.R` — loads `$(SHLIB)` and runs the writers.
 - `rpkg/configure.ac` — autoconf source for the install-mode latch logic.
 - `rpkg/src/stub.c` — minimal C translation unit that pins all distributed_slice
   entries via `miniextendr_force_link`.

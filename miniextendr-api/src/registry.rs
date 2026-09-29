@@ -676,12 +676,9 @@ fn standalone_page(fragment: &StandaloneFragment<'_>) -> StandalonePage {
 ///
 /// Only the wrapper file is visible here: an R-file block that joins a
 /// file-stem page does not count as documenting its arguments. Reading the
-/// package's `R/*.R` blocks would need more than a parser: the writer gets
-/// only its destination path, which is a temporary file when
-/// `tools/wrapper-freshness.R` regenerates a tarball's wrappers to compare
-/// them with the shipped copy, and that script's provenance record
-/// (`tools/wrapper-inputs.rds`) fingerprints only the Rust and Cargo inputs,
-/// so wrappers reused on an unchanged record would not follow an R-file edit.
+/// package's `R/*.R` blocks would tie the generated wrappers to R sources the
+/// build does not track: they are regenerated only when the shared library is
+/// relinked, so they would not follow an R-file edit.
 #[cfg(not(target_arch = "wasm32"))]
 fn resolve_standalone_pages(fragments: &[StandaloneFragment<'_>]) -> Vec<String> {
     use std::collections::{HashMap, HashSet};

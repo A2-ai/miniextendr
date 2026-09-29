@@ -115,7 +115,7 @@ Package loads as `library(miniextendr)`, not `library(rpkg)`. Always check the *
 | **Source** | `inst/vendor.tar.xz` absent | No vendoring. In monorepo: writes `[patch."git+url"]` → workspace siblings. Otherwise: minimal config, cargo follows git URL. |
 | **Tarball** | `inst/vendor.tar.xz` present | Unpacks tarball, writes `[source]` replacement to `vendored-sources`, build is offline. |
 
-That's the entire decision. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`, no `BUILD_CONTEXT`. See `docs/CRAN_COMPATIBILITY.md`.
+That's the entire decision. No `NOT_CRAN`, no `FORCE_VENDOR`, no `PREPARE_CRAN`, no `BUILD_CONTEXT`. Neither configure nor `bootstrap.R` vendors (`bootstrap.R` only stages path dependencies outside the package); only `just vendor` / `miniextendr_vendor()` create the file, run by the release builds (`just r-cmd-build`/`r-cmd-check`, `miniextendr_build_tarball()`/`miniextendr_check()`). See `docs/CRAN_COMPATIBILITY.md`.
 
 ## Development Workflow
 
@@ -145,7 +145,7 @@ Enable once per clone: `git config core.hooksPath .githooks`.
 2. Module must be reachable via `mod` from `lib.rs` (`#[cfg(feature = "foo")]` on `mod` declaration is sufficient for feature-gated modules)
 3. `just configure && just rcmdinstall && just force-document`
 
-Build sequence: `Makevars` → `cargo rustc --crate-type cdylib` → `dyn.load` + `miniextendr_write_wrappers` → `R/miniextendr-wrappers.R` → `cargo rustc --crate-type staticlib` → final `.so`.
+Build sequence: `Makevars` → `cargo build --lib` (staticlib) → R links `$(SHLIB)` → `Rscript ../tools/write-wrappers.R $(SHLIB)` (only when `$(SHLIB)` was relinked) → `dyn.load` + `miniextendr_write_wrappers` → `R/miniextendr-wrappers.R` + `src/rust/wasm_registry.rs` (rewritten only on content change; the stamp `rust-target/.miniextendr-wrappers` records the pass).
 
 ### Stress-test GC discipline
 
@@ -185,12 +185,12 @@ Gitignored — generated in CI (every R CMD check runs `just vendor` first) and 
   host `R CMD INSTALL`) — like `inst/vendor.tar.xz`, it caused constant merge
   conflicts. It ships in the tarball **from disk** (`.Rbuildignore` does not
   exclude it); `just r-cmd-build` regenerates it first so the built tarball is
-  complete. wasm-from-tarball has NO regeneration fallback (the wasm cdylib is a
+  complete. wasm-from-tarball has NO regeneration fallback (the wasm module is a
   SIDE_MODULE host R cannot dyn.load), so a missing/stub copy silently breaks it.
 - `rpkg/R/miniextendr-wrappers.R` (~32K lines) — the R-callable layer, generated
-  by the same host cdylib pass. **Gitignored** for the same reason. Native
-  tarball installs can regenerate it via the Makevars `#1022` fallback, but
-  `just r-cmd-build` ships it anyway. Regenerate locally with `just rcmdinstall`.
+  by the same host pass. **Gitignored** for the same reason. Every native
+  install, tarball installs included, regenerates it from the `.so` it links;
+  `just r-cmd-build` ships it for wasm. Regenerate locally with `just rcmdinstall`.
 - `NAMESPACE` + `man/*.Rd` — derived (by roxygen2) from the regenerated
   wrappers.R + hand-written R. **Still tracked** (small, low-conflict). Run
   `just configure && just rcmdinstall && just force-document` after macro changes

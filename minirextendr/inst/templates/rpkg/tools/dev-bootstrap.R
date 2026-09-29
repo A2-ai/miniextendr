@@ -1,9 +1,9 @@
 # Path-dependency staging. Base R only; no minirextendr runtime dependency.
 # bootstrap runs in the checkout; cleanup activates only in R CMD build's copy.
-# Development builds stage via `cargo revendor --dev`; without that tool, and for
-# distribution builds without it, the base-R stager below produces the same shape.
-# configure checks that no path dependency outside the package went missing on
-# the way to the build directory (an installer that skipped bootstrap.R).
+# Only crates that src/rust/Cargo.toml reaches by `path` outside the package are
+# staged: registry and git dependencies resolve at install time. configure
+# checks that no path dependency outside the package went missing on the way to
+# the build directory (an installer that skipped bootstrap.R).
 dev_bootstrap_paths <- function(root = ".") {
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
   list(root = root, manifest = file.path(root, "src/rust/Cargo.toml"),
@@ -132,8 +132,7 @@ dependency_table <- function(section) {
 # their normal/build edges. `cargo package` re-resolves each sibling's
 # normalized manifest, so its versioned path edges (dev ones too) also need a
 # patch entry; unversioned dev edges are stripped by cargo and need nothing.
-# `all = TRUE` follows every edge, as `cargo revendor --dev` stages them.
-path_dependency_closure <- function(paths, all = FALSE) {
+path_dependency_closure <- function(paths) {
   root <- cargo_manifest(paths$manifest)
   nodes <- list()
   patches <- character()
@@ -146,7 +145,7 @@ path_dependency_closure <- function(paths, all = FALSE) {
     sibling <- !identical(info$dir, root$dir)
     for (i in seq_len(nrow(info$deps))) {
       dep <- info$deps[i, ]
-      dev <- identical(dep$kind, "dev") && !all
+      dev <- identical(dep$kind, "dev")
       if (sibling && !dev && !is.na(dep$source) && startsWith(dep$source, "git+")) {
         problems <- c(problems, sprintf("%s: `%s` is a git dependency, which `cargo package` cannot keep",
                                         info$manifest, dep$alias))
@@ -203,10 +202,9 @@ path_dependency_plan <- function(paths) {
       paste(plan$slots[crates %in% crates[duplicated(crates)]], collapse = ", ")))
   }
   if (length(problems)) {
-    stop(paste(c("Cannot stage path dependencies without cargo-revendor:", paste0("  - ", problems),
+    stop(paste(c("Cannot stage path dependencies:", paste0("  - ", problems),
       if (length(plan$dangling)) missing_path_hint,
-      "Fix the entries above, or install cargo-revendor:",
-      "  cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked"),
+      "Fix the entries above, then rerun bootstrap.R."),
       collapse = "\n"), call. = FALSE)
   }
   plan$portable <- portable$lines
@@ -316,7 +314,7 @@ stage_path_dependencies <- function(paths, plan) {
   }
   if (!file.rename(tree, paths$vendor)) stop("Unable to publish ", paths$vendor, call. = FALSE)
   writeLines(plan$portable, paths$portable)
-  message("Staged ", length(plan$slots), " path dependencies under src/rust/vendor without cargo-revendor: ",
+  message("Staged ", length(plan$slots), " path dependencies under src/rust/vendor: ",
           paste(plan$slots, collapse = ", "))
   invisible(TRUE)
 }
@@ -340,7 +338,7 @@ path_dependency_sources <- function(nodes, vendor) {
 
 # endregion
 
-prepare_dev_bootstrap <- function(root = ".", mode = "dev") {
+prepare_dev_bootstrap <- function(root = ".") {
   paths <- dev_bootstrap_paths(root)
   if (file.exists(file.path(paths$root, "inst/vendor.tar.xz"))) {
     stop("Development bootstrap requires a source tree without inst/vendor.tar.xz; ",
@@ -348,10 +346,9 @@ prepare_dev_bootstrap <- function(root = ".", mode = "dev") {
          call. = FALSE)
   }
   original <- unname(tools::md5sum(paths$manifest))
-  tool <- mode == "dev" && nzchar(Sys.which("cargo-revendor"))
-  plan <- if (!tool) path_dependency_plan(paths)
+  plan <- path_dependency_plan(paths)
   clear_dev_bootstrap(root)
-  if (!tool && is.null(plan)) return(invisible(FALSE))
+  if (is.null(plan)) return(invisible(FALSE))
   if (file.exists(paths$vendor)) {
     stop(paths$vendor, " exists but bootstrap did not create it (no .dev-bootstrap.rds beside Cargo.toml); ",
          "move it out of src/rust, then rerun bootstrap.R.", call. = FALSE)
@@ -359,20 +356,12 @@ prepare_dev_bootstrap <- function(root = ".", mode = "dev") {
   # Anything at the staging paths from here on is this run's output.
   done <- FALSE
   on.exit(if (!done) unlink(c(paths$vendor, paths$portable), recursive = TRUE), add = TRUE)
-  if (tool) {
-    status <- system2("cargo", c("revendor", "--dev", "--manifest-path",
-      shQuote(paths$manifest), "--output", shQuote(paths$vendor), "-v"))
-    if (status != 0L) stop("Development bootstrap failed (exit ", status, ").", call. = FALSE)
-    nodes <- path_dependency_closure(paths, all = TRUE)$nodes
-  } else {
-    stage_path_dependencies(paths, plan)
-    nodes <- plan$nodes
-  }
+  stage_path_dependencies(paths, plan)
   if (!identical(unname(tools::md5sum(paths$manifest)), original)) {
     stop("Development bootstrap changed the source Cargo.toml.", call. = FALSE)
   }
-  saveRDS(list(root = paths$root, manifest = original, mode = mode,
-               sources = path_dependency_sources(nodes, paths$vendor)), paths$state)
+  saveRDS(list(root = paths$root, manifest = original,
+               sources = path_dependency_sources(plan$nodes, paths$vendor)), paths$state)
   # R CMD build runs ./cleanup, which activates the staging, only when it is
   # executable. pak's git client checks every file out without mode bits.
   cleanup <- file.path(paths$root, "cleanup")
@@ -398,10 +387,6 @@ activate_dev_bootstrap <- function(root = ".") {
   if (!file.exists(paths$state)) return(invisible(FALSE))
   state <- readRDS(paths$state)
   if (identical(paths$root, state$root)) return(invisible(FALSE))
-  if (!identical(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), state$mode)) {
-    clear_dev_bootstrap(root)
-    return(invisible(FALSE))
-  }
   if (!identical(unname(tools::md5sum(paths$manifest)), state$manifest)) {
     stop("Source Cargo.toml changed after development bootstrap; rerun bootstrap.R.", call. = FALSE)
   }

@@ -74,16 +74,12 @@ dnl Fail loud instead. The guard fires only for a real source tree: the
 dnl SOURCE_IS_BUILT gate (no 'Packaged:'/'Built:' in DESCRIPTION) suppresses it
 dnl on a legitimate built-tarball install — e.g. 'R CMD check' extracts the
 dnl built tarball into <pkg>.Rcheck/<pkg>/, which is nested under the repo .git
-dnl (SOURCE_IS_GIT=true) yet ships the bundled tarball on purpose. bootstrap.R
-dnl also exports MINIEXTENDR_BOOTSTRAP=1 when it invokes configure (after
-dnl deliberately producing the tarball for the build, in a not-yet-built source
-dnl tree), so this guard stays silent on that legitimate produce-then-consume
-dnl path too. End-user tarball installs extract to a dir with no .git, so the
-dnl guard never fires for them either (SOURCE_IS_GIT=false).
+dnl (SOURCE_IS_GIT=true) yet ships the bundled tarball on purpose. End-user
+dnl tarball installs extract to a dir with no .git, so the guard never fires
+dnl for them either (SOURCE_IS_GIT=false).
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \
-   && test "$SOURCE_IS_BUILT" = "false" \
-   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+   && test "$SOURCE_IS_BUILT" = "false"; then
   AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
 
   inst/vendor.tar.xz is present AND this is a git working tree, so configure

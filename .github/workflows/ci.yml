@@ -181,7 +181,7 @@ jobs:
               - '.github/workflows/**'
               - 'justfile'
             r:
-              # The R packaging jobs exercise cargo-revendor through bootstrap
+              # The R packaging jobs exercise cargo-revendor through `just vendor`
               # and offline tarball installs, even when no R source changed.
               - 'cargo-revendor/**'
               - '.github/actions/setup-vendor/**'
@@ -313,8 +313,8 @@ jobs:
         run: just configure
 
       - name: Check R wrappers / NAMESPACE / man sync
-        # MUST run in dev mode (no inst/vendor.tar.xz yet) — tarball mode
-        # short-circuits wrapper generation and expects pre-shipped files.
+        # Runs before `just vendor`: the check installs rpkg, and the dev-consume
+        # recipes refuse to run while inst/vendor.tar.xz exists.
         run: just wrappers-sync-check
 
       - name: Vendor
@@ -1857,7 +1857,8 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
-  # Bootstrap vendor regression test (#441 latch)
+  # Bootstrap + vendor regression tests: bootstrap.R never vendors; `just
+  # vendor` resolves framework crates locally (#876, #883)
   # ===========================================================================
   bootstrap-vendor-test:
     name: Bootstrap Vendor Test
@@ -1908,7 +1909,7 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # bootstrap.R calls cargo-revendor, which runs `cargo metadata` and
+          # `just vendor` runs cargo-revendor, which runs `cargo metadata` and
           # `cargo package` on the rpkg workspace: registry downloads only. The
           # tarball install builds in a temporary unpack directory and the
           # Makevars deletes its rust-target, so cache the registry and git only.
@@ -1933,11 +1934,10 @@ jobs:
   # Standalone round-trip e2e (on-demand: nightly cron + label + dispatch)
   # ===========================================================================
   # Exercises the full standalone (non-monorepo) flow that the per-PR suite
-  # cannot afford: create_miniextendr_package() -> miniextendr_build() (auto-
-  # vendor flips to tarball mode mid-install) -> wrapper-gen -> install ->
-  # library() exposes the functions. This is the #757/#775 regression target:
-  # any change that makes a build entry point bypass MINIEXTENDR_FORCE_WRAPPER_GEN
-  # (or alters the tarball-mode skip) re-introduces the empty-namespace bug.
+  # cannot afford: create_miniextendr_package() -> miniextendr_build() ->
+  # wrapper-gen -> install -> library() exposes the functions. This is the
+  # #757/#775 regression target: a build entry point that installs before the
+  # wrappers exist re-introduces the empty-namespace bug.
   #
   # The assertions live in the gated testthat round-trip at
   # minirextendr/tests/testthat/test-templates.R:521 — CI runs the suite, it does
@@ -1947,7 +1947,7 @@ jobs:
   # On-demand only — NOT in ci-success.needs, so it never gates a PR and adds no
   # minutes to normal runs. Triggers: weekly cron (Sat 06:00 UTC), the `run-e2e`
   # PR label, or `gh workflow run ci.yml --ref <branch>`. Heavy: cold-compiles
-  # Rust + autoconf + network-fetches/vendors miniextendr `main`.
+  # Rust + autoconf + network-fetches miniextendr `main`.
   r-roundtrip-e2e:
     name: Standalone round-trip e2e
     runs-on: ubuntu-latest
@@ -2004,13 +2004,6 @@ jobs:
           cache-targets: false
           shared-key: roundtrip-e2e
           cache-on-failure: true
-
-      # cargo-revendor on PATH so the standalone build's bootstrap.R can seal
-      # inst/vendor.tar.xz before R CMD build (configure itself never vendors).
-      - name: Set up cargo-revendor (install only)
-        uses: ./.github/actions/setup-vendor
-        with:
-          configure-and-vendor: 'false'
 
       - name: Run standalone round-trip e2e
         run: just minirextendr-roundtrip

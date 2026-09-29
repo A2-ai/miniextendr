@@ -104,18 +104,15 @@ miniextendr_configure <- function(path = ".") {
 #' reinstall and a deferred install failure.
 #'
 #' The steps now run in dependency order. Step 3 compiles the crate in the
-#' source tree with [pkgbuild::compile_dll()] under
-#' `MINIEXTENDR_FORCE_WRAPPER_GEN=1`: a libs-only `R CMD INSTALL` into a
-#' throwaway library that links `src/<pkg>.so`, regenerates
-#' `R/<pkg>-wrappers.R`, `src/rust/wasm_registry.rs` and the wrapper
-#' provenance record in place, and never loads the namespace, so a stale
-#' `NAMESPACE` cannot fail it. Step 4's `document()` reads the current
-#' wrappers; its own `pkgload::load_all()` compile finds the crate built and
-#' the record current, and only warns when `NAMESPACE` still lists an export
-#' the regenerated wrappers no longer define. Step 5 installs the package
-#' once, with `NAMESPACE`, `man/` and the wrappers already in their final
-#' form. A brand-new package needs no special case: Step 3 writes its first
-#' wrappers file the same way.
+#' source tree with [pkgbuild::compile_dll()]: a libs-only `R CMD INSTALL` into
+#' a throwaway library that links `src/<pkg>.so`, regenerates
+#' `R/<pkg>-wrappers.R` and `src/rust/wasm_registry.rs` from it in place, and
+#' never loads the namespace, so a stale `NAMESPACE` cannot fail it. Step 4's
+#' `document()` reads the current wrappers; its own `pkgload::load_all()`
+#' compile finds the library linked and the wrappers generated from it. Step 5
+#' installs the package once, with `NAMESPACE`, `man/` and the wrappers
+#' already in their final form. A brand-new package needs no special case:
+#' Step 3 writes its first wrappers file the same way.
 #'
 #' `document()` loads the package from source through `pkgload::load_all()`
 #' and leaves that development namespace registered in the session. Its export
@@ -125,25 +122,14 @@ miniextendr_configure <- function(path = ".") {
 #' `library()` then loads the installed package (or, with `install = FALSE`,
 #' `load_all()` reads the current `NAMESPACE`).
 #'
-#' @section Development bootstrap:
-#' Installs select `MINIEXTENDR_BOOTSTRAP_MODE=dev` unless the caller supplied a
-#' mode or a distribution vendor archive already exists. Updated scaffolds
-#' package only path-dependency siblings, without xz or registry/Git vendoring.
-#' The portable manifest is activated in R CMD build's temporary copy, leaving
-#' the checkout's Cargo.toml unchanged. Ordinary bootstrap calls still default
-#' to distribution mode. Staging uses cargo-revendor when it is on PATH and the
-#' scaffold's base-R stager otherwise; both require updated templates.
-#'
-#' @section Source-tree restore:
-#' The install step's `R CMD build` runs `bootstrap.R` in the source tree. In
-#' distribution mode that seals `inst/vendor.tar.xz` there by design (the built
-#' tarball must carry it) and freezes `src/rust/Cargo.toml`; left in place, the
-#' latch would flip the next build into offline tarball mode (#1294).
-#' `miniextendr_build()` snapshots the manifest and lockfile on entry and
-#' restores them on exit, deleting a latch it created itself. A latch that
-#' existed *before* the build is never deleted; a warning is emitted up front
-#' instead, and `minirextendr_doctor()` / `miniextendr_clean_vendor_leak()`
-#' point at the fix.
+#' @section Vendoring:
+#' Nothing here vendors. The install's `R CMD build` runs `bootstrap.R`, which
+#' stages only path dependencies outside the package, in R CMD build's
+#' temporary copy; registry and Git dependencies resolve over the network. An
+#' offline, CRAN-ready tarball comes from [miniextendr_build_tarball()]. A
+#' pre-existing `inst/vendor.tar.xz` latch is never deleted, but every step
+#' then builds in offline tarball mode, so a warning is emitted up front and
+#' `miniextendr_doctor()` / `miniextendr_clean_vendor_leak()` point at the fix.
 #'
 #' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run the final `R CMD INSTALL`. If `FALSE`, the
@@ -159,65 +145,7 @@ miniextendr_build <- function(path = ".", install = TRUE) {
 
   pkg_path <- usethis::proj_get()
   has_devtools <- requireNamespace("devtools", quietly = TRUE)
-
-  # The install's `R CMD build` runs the package's bootstrap.R in the source
-  # tree, which vendors when no inst/vendor.tar.xz is present: that FREEZES
-  # src/rust/Cargo.toml (rewriting a `path = "../../../my-core"` sibling to
-  # `vendor/my-core`) and leaves inst/vendor.tar.xz behind -- flipping the tree
-  # into tarball mode and stranding the next source-mode build. The dev loop
-  # must leave a clean source tree, so snapshot the manifest/lock + tarball
-  # presence now and restore on exit (mirrors the `just cran-prep` trap,
-  # git-independent). The restore never touches vendor/ or .cargo/: configure
-  # owns .cargo/config.toml, and vendor/ may be user-provisioned (offline
-  # crates.io deps).
-  rust_manifest <- fs::path(pkg_path, "src", "rust", "Cargo.toml")
-  rust_lock <- fs::path(pkg_path, "src", "rust", "Cargo.lock")
-  rust_prefreeze <- fs::path(pkg_path, "src", "rust", ".Cargo.toml.prefreeze")
-  vendor_tarball <- fs::path(pkg_path, "inst", "vendor.tar.xz")
-  snap_manifest <- if (fs::file_exists(rust_manifest)) readLines(rust_manifest, warn = FALSE) else NULL
-  snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE) else NULL
-  tarball_preexisting <- fs::file_exists(vendor_tarball)
-  # The development loop needs portable path siblings, not a distribution
-  # vendor archive. Honor an explicit caller mode or pre-existing release latch.
-  if (!tarball_preexisting && !nzchar(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE"))) {
-    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"))
-  }
-  # A snapshot left by an earlier, never-restored freeze (#1509) means the
-  # manifest we just read is the FROZEN one; restoring it later would only
-  # re-freeze. Point at the fix and leave that snapshot alone.
-  prefreeze_preexisting <- fs::file_exists(rust_prefreeze)
-  if (prefreeze_preexisting) {
-    cli::cli_warn(c(
-      "Pre-existing {.path src/rust/.Cargo.toml.prefreeze}: an earlier {.code cargo revendor --freeze} was never restored.",
-      "i" = "Run {.code miniextendr_clean_vendor_leak()} first to restore {.path src/rust/Cargo.toml} from that snapshot."
-    ))
-  }
-  if (tarball_preexisting) {
-    # A pre-existing latch is never deleted (it may be a deliberate
-    # release-prep artifact) -- but with it in place every step runs in
-    # offline tarball mode against the sealed archive. Warn loudly up front.
-    cli::cli_warn(c(
-      "Pre-existing {.path inst/vendor.tar.xz} latch: this tree builds in tarball mode.",
-      "i" = "Cargo resolves dependencies from the sealed vendor archive, not from \\
-             the workspace, so edits to vendored crates are not compiled.",
-      "i" = "Delete {.path inst/vendor.tar.xz} (or run {.code minirextendr_doctor()}, \\
-             which detects the stale latch) to resume source-mode development."
-    ))
-  }
-  restore_dev_tree <- function() {
-    if (!is.null(snap_manifest)) {
-      writeLines(snap_manifest, rust_manifest)
-      # bootstrap.R's `cargo revendor --freeze` left a pre-freeze snapshot for
-      # out-of-process recovery (#1509); the in-memory snapshot just written
-      # back is authoritative, so a snapshot created during this build is now
-      # stale. One that pre-existed is somebody else's recovery aid: keep it.
-      if (!prefreeze_preexisting && fs::file_exists(rust_prefreeze)) fs::file_delete(rust_prefreeze)
-    }
-    if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
-    if (!tarball_preexisting && fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
-    invisible(TRUE)
-  }
-  on.exit(restore_dev_tree(), add = TRUE)
+  warn_release_leftovers(pkg_path)
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
@@ -266,46 +194,27 @@ unload_dev_namespace <- function(pkg_path) {
   invisible(pkg_name)
 }
 
-# Evaluate `expr` with MINIEXTENDR_FORCE_WRAPPER_GEN=1 in the session.
-#
-# The Makevars wrapper-gen rule reads the variable ([ -n "$$MINIEXTENDR_FORCE_
-# WRAPPER_GEN" ]) two subprocess hops down (R CMD build -> R CMD INSTALL ->
-# make); a session Sys.setenv() reaches it because pkgbuild's callr children
-# inherit the parent environment (#911, pinned by a test). It forces
-# regeneration even when the rule would otherwise reuse a wrapper file whose
-# provenance record is current, or a pre-shipped one in a latched
-# (tarball-mode) tree that would otherwise skip generation and leave
-# library() with stale or no functions (#757). The prior value is restored
-# afterwards so the override never leaks into the rest of the session, in
-# particular not into document(), whose roxygenise compile is meant to reuse
-# the wrappers Step 3 just wrote.
-with_forced_wrapper_gen <- function(expr) {
-  withr::local_envvar(c(MINIEXTENDR_FORCE_WRAPPER_GEN = "1"))
-  expr
-}
-
 # Step 3: compile the crate and regenerate the wrappers in the source tree.
 #
 # pkgbuild::compile_dll() runs a libs-only `R CMD INSTALL --no-test-load` into
 # a throwaway library: configure + make in `src/`, which links `src/<pkg>.so`
 # and runs the Makevars wrapper-gen rule against it, writing
-# R/<pkg>-wrappers.R, src/rust/wasm_registry.rs and tools/wrapper-inputs.rds
-# in place. force = TRUE skips pkgbuild's own source-vs-DLL mtime check; cargo
-# decides what to rebuild. Nothing here loads the package namespace, so a
+# R/<pkg>-wrappers.R and src/rust/wasm_registry.rs in place. force = TRUE skips
+# pkgbuild's own source-vs-DLL mtime check; cargo decides what to rebuild, and
+# make regenerates the wrappers whenever the library was relinked or the
+# wrappers file is missing. Nothing here loads the package namespace, so a
 # NAMESPACE that still exports a removed or renamed function cannot fail it
 # (#1288); document() reconciles NAMESPACE next. On a brand-new package this
 # is also what writes the first wrappers file (#822).
 compile_and_generate_wrappers <- function(pkg_path) {
-  with_forced_wrapper_gen(
-    tryCatch(
-      pkgbuild::compile_dll(pkg_path, force = TRUE, quiet = FALSE),
-      error = function(e) {
-        cli::cli_abort(c(
-          "Rust compile / wrapper generation failed",
-          "i" = conditionMessage(e)
-        ))
-      }
-    )
+  tryCatch(
+    pkgbuild::compile_dll(pkg_path, force = TRUE, quiet = FALSE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Rust compile / wrapper generation failed",
+        "i" = conditionMessage(e)
+      ))
+    }
   )
   if (!wrappers_file_exists(pkg_path)) {
     cli::cli_abort(c(
@@ -319,13 +228,13 @@ compile_and_generate_wrappers <- function(pkg_path) {
   invisible(TRUE)
 }
 
-# Step 5: install the package via devtools, forcing the wrapper-gen pass.
+# Step 5: install the package via devtools.
 #
 # build = TRUE (the default): `R CMD build` runs bootstrap.R and the install
 # proceeds from the tarball, the same path an end user's install takes. The
-# wrappers regenerated in that copy are identical to the ones Step 3 wrote
-# and Step 4 documented, so the namespace load-test sees a reconciled
-# NAMESPACE.
+# install relinks in R CMD build's copy and regenerates the wrappers there;
+# they are identical to the ones Step 3 wrote and Step 4 documented, so the
+# namespace load-test sees a reconciled NAMESPACE.
 #
 # reload = FALSE: do NOT reload the freshly-installed package into the building
 # session. The default (reload = TRUE) re-registers the package's namespace from
@@ -335,17 +244,37 @@ compile_and_generate_wrappers <- function(pkg_path) {
 # The build session never needs the package loaded, so skipping the reload is
 # both harmless and the fix.
 install_pkg <- function(pkg_path) {
-  with_forced_wrapper_gen(
-    tryCatch(
-      devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE, reload = FALSE),
-      error = function(e) {
-        cli::cli_abort(c(
-          "Package installation failed",
-          "i" = conditionMessage(e)
-        ))
-      }
-    )
+  tryCatch(
+    devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE, reload = FALSE),
+    error = function(e) {
+      cli::cli_abort(c(
+        "Package installation failed",
+        "i" = conditionMessage(e)
+      ))
+    }
   )
+}
+
+# Leftovers of an interrupted release build: a vendor archive flips every
+# build into offline tarball mode, and a pre-freeze snapshot means
+# src/rust/Cargo.toml is still the frozen copy. Neither is deleted here.
+warn_release_leftovers <- function(pkg_path) {
+  if (fs::file_exists(fs::path(pkg_path, "src", "rust", ".Cargo.toml.prefreeze"))) {
+    cli::cli_warn(c(
+      "Pre-existing {.path src/rust/.Cargo.toml.prefreeze}: an earlier {.code cargo revendor --freeze} was never restored.",
+      "i" = "Run {.code miniextendr_clean_vendor_leak()} first to restore {.path src/rust/Cargo.toml} from that snapshot."
+    ))
+  }
+  if (fs::file_exists(fs::path(pkg_path, "inst", "vendor.tar.xz"))) {
+    cli::cli_warn(c(
+      "Pre-existing {.path inst/vendor.tar.xz} latch: this tree builds in tarball mode.",
+      "i" = "Cargo resolves dependencies from the sealed vendor archive, not from \\
+             the workspace, so edits to vendored crates are not compiled.",
+      "i" = "Delete {.path inst/vendor.tar.xz} (or run {.code miniextendr_doctor()}, \\
+             which detects the stale latch) to resume source-mode development."
+    ))
+  }
+  invisible(TRUE)
 }
 
 #' Does the package's generated R wrapper file exist yet?
@@ -375,11 +304,12 @@ wrappers_file_exists <- function(pkg_path) {
 #' resolves against the working tree, not git@main) and stamps the canonical
 #' `git+url#<sha>` source into `Cargo.lock`; checksum lines are retained.
 #'
-#' Run this before `R CMD build` when preparing a CRAN submission.
-#' Day-to-day development (`R CMD INSTALL .`, `devtools::install/test/load`)
-#' does not need it: install mode is auto-detected from
-#' `inst/vendor.tar.xz` presence, and without the file cargo resolves deps
-#' over the network.
+#' [miniextendr_build_tarball()] runs this before `R CMD build` and restores
+#' the source tree afterwards; call it directly only to seal the archive by
+#' hand. Nothing else vendors: day-to-day development (`R CMD INSTALL .`,
+#' `devtools::install/test/load`, pak) and `bootstrap.R` leave
+#' `inst/vendor.tar.xz` absent, and without the file cargo resolves deps over
+#' the network.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns the path to the created tarball.
@@ -396,8 +326,6 @@ miniextendr_vendor <- function(path = ".") {
     ))
   }
 
-  # Step 1: cargo revendor + CRAN-trim (delegates to vendor_crates_io).
-  #
   # cargo-revendor resolves the dependency graph with the dev
   # [patch."git+url"] override active (it pins cargo's CWD to the manifest
   # dir, so a monorepo .cargo/config.toml is honoured), then stamps the
@@ -408,68 +336,16 @@ miniextendr_vendor <- function(path = ".") {
   # step that disabled the patch was exactly what broke cross-surface renames.
   # In a standalone package (no [patch] override) cargo resolves the framework
   # crates from their git URL directly and the natural git source is kept.
-  cli::cli_h2("Step 1: vendor all dependencies")
-  vendor_crates_io()
-
-  vendor_dir <- usethis::proj_path("vendor")
-  lockfile <- usethis::proj_path("src", "rust", "Cargo.lock")
+  cli::cli_h2("Step 1: vendor all dependencies into inst/vendor.tar.xz")
+  # cargo-revendor compresses the tree itself. Its --blank-md pass empties the
+  # vendored .md files (CRAN notes their non-portable content) except those a
+  # crate include_str!()s (#828), then recomputes .cargo-checksum.json: a .md
+  # file truncated after vendoring fails cargo's offline checksum check.
+  # Cargo.lock checksum lines are retained, as in the `just vendor` output.
   inst_dir <- usethis::proj_path("inst")
   tarball <- fs::path(inst_dir, "vendor.tar.xz")
-
-  # Step 3: compress into inst/vendor.tar.xz
-  # Note: Cargo.lock checksum lines are intentionally retained. cargo-revendor
-  # (post PR #408) writes valid .cargo-checksum.json entries with real SHA-256s,
-  # so stripping `checksum = "..."` from Cargo.lock is no longer needed and
-  # would diverge from the `just vendor` reference output.
-  cli::cli_h2("Step 2: compress vendor tarball")
   fs::dir_create(inst_dir)
-
-  # Create staging directory for clean compression
-  staging <- fs::path_temp("vendor-compress")
-  on.exit(unlink(staging, recursive = TRUE), add = TRUE)
-  if (fs::dir_exists(staging)) fs::dir_delete(staging)
-  fs::dir_create(staging)
-  fs::dir_copy(vendor_dir, fs::path(staging, "vendor"))
-
-  # Truncate .md files (avoids CRAN notes about non-portable content)
-  md_files <- fs::dir_ls(fs::path(staging, "vendor"), recurse = TRUE, glob = "*.md")
-  for (f in md_files) {
-    writeLines(character(), f)
-  }
-
-  # Create xz-compressed tarball.
-  # Suppress macOS xattr metadata (AppleDouble `._*` files + LIBARCHIVE.xattr.*
-  # PAX headers) that trigger GNU tar warnings on CRAN Linux machines.
-  # COPYFILE_DISABLE=1 stops `._*` files; --no-xattrs stops PAX headers.
-  old_copyfile <- Sys.getenv("COPYFILE_DISABLE", unset = NA)
-  Sys.setenv(COPYFILE_DISABLE = "1")
-  on.exit(
-    if (is.na(old_copyfile)) Sys.unsetenv("COPYFILE_DISABLE")
-    else Sys.setenv(COPYFILE_DISABLE = old_copyfile),
-    add = TRUE
-  )
-  tar_args <- c("-cJf", tarball, "-C", staging, "vendor")
-  has_no_xattrs <- identical(
-    suppressWarnings(tryCatch(
-      system2(
-        "tar",
-        c("--no-xattrs", "-cf", "/dev/null", "--files-from", "/dev/null"),
-        stdout = FALSE, stderr = FALSE
-      ),
-      error = function(e) 127L
-    )),
-    0L
-  )
-  if (has_no_xattrs) {
-    tar_args <- c("--no-xattrs", tar_args)
-  }
-  tar_output <- system2("tar", tar_args, stdout = TRUE, stderr = TRUE)
-  if (!is.null(attr(tar_output, "status"))) {
-    cli::cli_abort(c(
-      "Failed to create vendor tarball",
-      "i" = paste(tar_output, collapse = "\n")
-    ))
-  }
+  vendor_crates_io(tarball = tarball)
 
   size_mb <- round(as.numeric(fs::file_size(tarball)) / 1024 / 1024, 1)
   cli::cli_alert_success("Created {.path inst/vendor.tar.xz} ({size_mb} MB)")
@@ -478,7 +354,8 @@ miniextendr_vendor <- function(path = ".") {
     "{.path inst/vendor.tar.xz} flips {.code ./configure} into offline tarball mode."
   ))
   cli::cli_bullets(c(
-    "i" = "Run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
+    "i" = "{.code miniextendr_build_tarball()} runs this step, builds the tarball and restores the source tree in one call.",
+    "i" = "By hand: run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
     " " = "{.code unlink(\"inst/vendor.tar.xz\")}",
     "i" = "If your package has a local path-dependency sibling, vendoring also froze {.path src/rust/Cargo.toml} (and {.path Cargo.lock}) to resolve against {.path vendor/}. After the build, restore source shape:",
     " " = "{.code miniextendr_clean_vendor_leak()} (restores {.path Cargo.toml} from the {.path src/rust/.Cargo.toml.prefreeze} snapshot cargo-revendor left; cargo re-resolves {.path Cargo.lock} on the next build)",
@@ -488,11 +365,72 @@ miniextendr_vendor <- function(path = ".") {
   invisible(tarball)
 }
 
+#' Build a CRAN-ready package tarball
+#'
+#' The one workflow that vendors. It runs [miniextendr_build()] without the
+#' install, so `R/<pkg>-wrappers.R`, `NAMESPACE` and `man/` match the Rust
+#' sources, seals every crate dependency into `inst/vendor.tar.xz` with
+#' [miniextendr_vendor()], and builds the tarball with [pkgbuild::build()].
+#' That tarball installs offline and is the artifact `R CMD check` and CRAN
+#' should see; a tarball from any other build frontend resolves its crates
+#' over the network and is a development artifact.
+#'
+#' The source tree is restored on exit: the vendor archive is deleted, the
+#' `src/rust/Cargo.toml` and `Cargo.lock` that `cargo revendor --freeze`
+#' rewrote get their original content back, and a `vendor/` directory the
+#' vendoring created is removed.
+#'
+#' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param dest_path Directory to write the tarball to. `NULL` writes it next
+#'   to the package directory, as `R CMD build` does.
+#' @param args Character vector of extra arguments passed to `R CMD build`.
+#' @return The path to the built tarball, invisibly.
+#' @seealso [miniextendr_check()] to build and check it in one step.
+#' @export
+miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = character()) {
+  with_project(path)
+  pkg_path <- usethis::proj_get()
+  cli::cli_h1("miniextendr tarball workflow")
+
+  rust_manifest <- fs::path(pkg_path, "src", "rust", "Cargo.toml")
+  rust_lock <- fs::path(pkg_path, "src", "rust", "Cargo.lock")
+  rust_prefreeze <- fs::path(pkg_path, "src", "rust", ".Cargo.toml.prefreeze")
+  vendor_tarball <- fs::path(pkg_path, "inst", "vendor.tar.xz")
+  vendor_dir <- fs::path(pkg_path, "vendor")
+  if (fs::file_exists(vendor_tarball) || fs::file_exists(rust_prefreeze)) {
+    cli::cli_abort(c(
+      "The source tree still carries an earlier release build's vendoring.",
+      "i" = "Run {.code miniextendr_clean_vendor_leak()} first, then build again."
+    ))
+  }
+  snap_manifest <- readLines(rust_manifest, warn = FALSE)
+  snap_lock <- if (fs::file_exists(rust_lock)) readLines(rust_lock, warn = FALSE)
+  vendor_preexisting <- fs::dir_exists(vendor_dir)
+  on.exit({
+    writeLines(snap_manifest, rust_manifest)
+    if (!is.null(snap_lock)) writeLines(snap_lock, rust_lock)
+    if (fs::file_exists(rust_prefreeze)) fs::file_delete(rust_prefreeze)
+    if (fs::file_exists(vendor_tarball)) fs::file_delete(vendor_tarball)
+    if (!vendor_preexisting && fs::dir_exists(vendor_dir)) fs::dir_delete(vendor_dir)
+  }, add = TRUE)
+
+  cli::cli_h2("Step 1: wrappers, NAMESPACE and man/")
+  miniextendr_build(install = FALSE)
+
+  cli::cli_h2("Step 2: vendor")
+  miniextendr_vendor()
+
+  cli::cli_h2("Step 3: R CMD build")
+  tarball <- pkgbuild::build(pkg_path, dest_path = dest_path, args = args, quiet = FALSE)
+  cli::cli_alert_success("Built {.path {tarball}}")
+  invisible(tarball)
+}
+
 #' Run R CMD check on a miniextendr package
 #'
-#' Builds the package tarball and runs R CMD check. Ensures dependencies
-#' are vendored so the check works in the isolated temp directory where
-#' R CMD check unpacks the tarball.
+#' Builds the CRAN-ready tarball with [miniextendr_build_tarball()] and runs
+#' `R CMD check` on it. Only that tarball carries vendored dependencies, so it
+#' is the one whose check means what CRAN's does.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param args Character vector of extra arguments passed to `R CMD check`.
@@ -517,20 +455,14 @@ miniextendr_check <- function(path = ".",
   }
 
   cli::cli_h1("miniextendr check workflow")
-  pkg_path <- usethis::proj_get()
 
-  cli::cli_h2("Step 1: build (autoconf + configure + install + roxygen2)")
-  miniextendr_build(install = TRUE)
+  cli::cli_h2("Step 1: build the tarball")
+  tarball <- miniextendr_build_tarball(dest_path = withr::local_tempdir(), args = build_args)
 
   cli::cli_h2("Step 2: R CMD check")
   cli::cli_alert("Running rcmdcheck with args: {.val {args}}")
 
-  result <- rcmdcheck::rcmdcheck(
-    pkg_path,
-    args = args,
-    build_args = build_args,
-    error_on = error_on
-  )
+  result <- rcmdcheck::rcmdcheck(tarball, args = args, error_on = error_on)
 
   invisible(result)
 }

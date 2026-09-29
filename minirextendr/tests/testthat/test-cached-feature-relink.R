@@ -4,7 +4,7 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
   skip_on_cran()
   skip_on_os("windows")
   skip_if_no_local_repo()
-  for (command in c("autoconf", "bash", "cargo", "make", "git")) {
+  for (command in c("autoconf", "bash", "cargo", "make")) {
     skip_if_not(nzchar(Sys.which(command)), paste(command, "not available"))
   }
   repo <- find_miniextendr_repo()
@@ -18,9 +18,7 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
   withr::local_envvar(c(
     R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
     CARGO_TARGET_DIR = target, CARGO_PROFILE = "dev", CARGO_FEATURES = "",
-    CARGO_BUILD_TARGET = NA, CARGO_BUILD_STD_FLAG = NA, RUST_TOOLCHAIN = NA,
-    MINIEXTENDR_BOOTSTRAP = NA, MINIEXTENDR_FORCE_WRAPPER_GEN = NA,
-    ROXYGEN_PKG = NA
+    CARGO_BUILD_TARGET = NA, CARGO_BUILD_STD_FLAG = NA, RUST_TOOLCHAIN = NA
   ))
   sources <- c(
     standalone = system.file("templates/rpkg/Makevars.in", package = "minirextendr"),
@@ -44,9 +42,6 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
     pkg <- file.path(root, paste0("cache", layout))
     package <- basename(pkg)
     suppressMessages(create_miniextendr_package(pkg, open = FALSE, rstudio = FALSE))
-    # A real source checkout prevents bootstrap from creating a vendor tarball,
-    # whose intentional wrapper-generation skip would mask this regression.
-    run("git", c("init", "--quiet"), pkg, paste0(layout, "-git-init"))
     file.copy(sources[[layout]], file.path(pkg, "src/Makevars.in"), overwrite = TRUE)
     # Seed the registration directive that roxygen normally supplies before an
     # end-user build; exported R names are unnecessary for namespace probes.
@@ -120,9 +115,11 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
     verify(FALSE, paste0(layout, "-verify-noop"))
 
     # A body-only edit relinks the DLL without changing generated R code (#1530).
-    # The writer deliberately keeps identical content; make must still settle.
+    # The writer keeps the identical file, mtime included; the stamp settles make.
     wrappers <- file.path(pkg, "R", paste0(package, "-wrappers.R"))
+    stamp <- file.path(pkg, "rust-target", ".miniextendr-wrappers")
     original_wrappers <- readLines(wrappers, warn = FALSE)
+    wrappers_time <- file.info(wrappers)$mtime
     rust_source <- file.path(pkg, "src/rust/lib.rs")
     code <- readLines(rust_source, warn = FALSE)
     code <- sub('pub fn cache_enabled() -> bool { cfg!(feature = "alternate") }',
@@ -132,20 +129,49 @@ test_that("cached feature switches relink libraries and regenerate wrappers", {
     writeLines(code, rust_source)
     body_output <- install(FALSE, paste0(layout, "-body-edit"))
     expect_gt(as.numeric(file.info(dll)$mtime), as.numeric(linked_time))
-    expect_match(body_output, "Checking R wrappers", fixed = TRUE)
+    expect_match(body_output, "Generating R wrappers", fixed = TRUE)
     expect_false(grepl(paste0("NOTE: ", package, "-wrappers.R changed"),
                        body_output, fixed = TRUE))
     expect_identical(readLines(wrappers, warn = FALSE), original_wrappers)
-    expect_gte(as.numeric(file.info(wrappers)$mtime), as.numeric(file.info(dll)$mtime))
-    settled_time <- file.info(wrappers)$mtime
+    expect_equal(file.info(wrappers)$mtime, wrappers_time)
+    expect_gte(as.numeric(file.info(stamp)$mtime), as.numeric(file.info(dll)$mtime))
+    settled_time <- file.info(stamp)$mtime
     linked_time <- file.info(dll)$mtime
     for (attempt in 1:3) {
       output <- install(FALSE, paste0(layout, "-settled-", attempt))
-      expect_false(grepl("Checking R wrappers", output, fixed = TRUE), info = output)
-      expect_equal(file.info(wrappers)$mtime, settled_time)
+      expect_false(grepl("Generating R wrappers", output, fixed = TRUE), info = output)
+      expect_equal(file.info(stamp)$mtime, settled_time)
       expect_equal(file.info(dll)$mtime, linked_time)
     }
     verify(FALSE, paste0(layout, "-verify-body-edit"))
+
+    # Edits outside src/rust leave the Rust build alone: Cargo is invoked (make
+    # always asks it) but compiles nothing, so the archive, the DLL, the
+    # wrappers and the stamp keep their mtimes. Both entry points the dev loop
+    # uses: an in-place R CMD INSTALL, and pkgbuild::compile_dll() (load_all(),
+    # document()), which pkgbuild runs because Makevars and Cargo.toml are
+    # always newer than the DLL.
+    untouched <- function(output, label) {
+      expect_false(grepl(paste0("Compiling ", package, " "), output, fixed = TRUE),
+                   info = paste(label, output, sep = "\n"))
+      expect_false(grepl("Generating R wrappers", output, fixed = TRUE), info = label)
+      expect_equal(file.info(archive)$mtime, archive_time, info = label)
+      expect_equal(file.info(dll)$mtime, linked_time, info = label)
+      expect_equal(file.info(wrappers)$mtime, wrappers_time, info = label)
+      expect_equal(file.info(stamp)$mtime, settled_time, info = label)
+    }
+    archive_time <- file.info(archive)$mtime
+    writeLines("extra_value <- function() 42L", file.path(pkg, "R", "extra.R"))
+    description <- file.path(pkg, "DESCRIPTION")
+    writeLines(sub("^Description: ", "Description: Edited. ", readLines(description)), description)
+    writeLines("unrelated notes", file.path(pkg, "NOTES.md"))
+    untouched(install(FALSE, paste0(layout, "-r-only")), paste(layout, "R-only install"))
+    compile <- file.path(root, "compile.R")
+    writeLines(sprintf("pkgbuild::compile_dll(%s, quiet = FALSE)", deparse(pkg)), compile)
+    untouched(run(file.path(R.home("bin"), "Rscript"), shQuote(compile), root,
+                  paste0(layout, "-compile-dll")),
+              paste(layout, "pkgbuild::compile_dll"))
+    verify(FALSE, paste0(layout, "-verify-r-only"))
 
     if (layout == "standalone") {
       original_archive_time <- file.info(archive)$mtime

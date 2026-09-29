@@ -26,9 +26,9 @@ or \code{"note"}. Passed to \code{\link[rcmdcheck:rcmdcheck]{rcmdcheck::rcmdchec
 The \code{\link[rcmdcheck:rcmdcheck]{rcmdcheck::rcmdcheck()}} result object, invisibly.
 }
 \description{
-Builds the package tarball and runs R CMD check. Ensures dependencies
-are vendored so the check works in the isolated temp directory where
-R CMD check unpacks the tarball.
+Builds the CRAN-ready tarball with \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} and runs
+\verb{R CMD check} on it. Only that tarball carries vendored dependencies, so it
+is the one whose check means what CRAN's does.
 }
 \seealso{
 \code{\link[=miniextendr_check_static]{miniextendr_check_static()}} for a fast no-compile variant suitable

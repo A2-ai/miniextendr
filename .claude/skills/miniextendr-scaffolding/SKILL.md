@@ -233,13 +233,13 @@ the template.
   project-specific logic in `tools/*.R`, not in `configure.ac` or
   `Makevars.in` directly. Scaffold-managed files are always refreshed.
 
-- **`bootstrap.R` is the vendoring trigger.** When devtools or pkgbuild
-  invokes `R CMD build` on a source tree, `bootstrap.R` runs configure (with
-  `MINIEXTENDR_BOOTSTRAP=1`) and, if `cargo-revendor` is on PATH, vendors into
-  `inst/vendor.tar.xz` before the tarball is sealed. Without the tool it
-  stages only path dependencies outside the package under `src/rust/vendor/`
-  (`tools/dev-bootstrap.R`, #1580). Configure itself never vendors. This is
-  expected and correct behavior, not a bug.
+- **`bootstrap.R` never vendors.** When devtools, pkgbuild, pak or rv build a
+  tarball from a source tree, `bootstrap.R` only stages path dependencies
+  outside the package under `src/rust/vendor/` (`tools/dev-bootstrap.R`,
+  #1580); registry and git dependencies resolve over the network. Vendoring
+  into `inst/vendor.tar.xz` is the explicit release step
+  (`miniextendr_vendor()`, run by `miniextendr_build_tarball()` /
+  `miniextendr_check()`). Configure never vendors either.
 
 - **Regression tests in `minirextendr/tests/testthat/` grep function source.**
   These tests use `deparse(body())` to check that template strings appear
@@ -256,5 +256,5 @@ the template.
   callable Rust function.
 - `miniextendr-build` — configure.ac mechanics, install-mode latch, and
   Makevars pipeline in detail.
-- `miniextendr-architecture` — the install-mode latch and the cdylib-to-staticlib
-  double-link.
+- `miniextendr-architecture` — the install-mode latch and the
+  link-then-generate wrapper pass.

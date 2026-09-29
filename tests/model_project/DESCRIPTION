@@ -7,7 +7,6 @@ Description: What the package does (one paragraph).
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
-Config/build/bootstrap: TRUE
 Config/build/never-clean: true
 Config/build/extra-sources: src/rust/Cargo.lock
 Config/roxygen2/markdown: TRUE

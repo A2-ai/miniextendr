@@ -26,7 +26,7 @@ Templates are stored in `minirextendr/inst/templates/` and come in two flavors:
 Templates are not exact copies of the example package (`rpkg/`) - they have legitimate differences for standalone projects:
 
 - **Conditional monorepo detection** - Check if miniextendr-api exists before using path overrides
-- **Standalone tarball production** - Bootstrap can freeze path-dependency siblings into the release vendor tarball (with `cargo-revendor`), or stage just the out-of-package path dependencies under `src/rust/vendor/` without it
+- **Standalone tarball production** - Bootstrap stages the out-of-package path dependencies under `src/rust/vendor/`; the release vendor tarball comes from `miniextendr_build_tarball()`
 - **Extra flexibility** - Handle cases where rpkg assumptions don't hold
 
 The approved differences are tracked in `patches/templates.patch`.
@@ -131,9 +131,9 @@ just templates-approve
 **Scenario: Updated bootstrap.R**
 
 ```bash
-# Edit and test
+# Edit and test (pkgbuild runs bootstrap.R; plain R CMD INSTALL never does)
 vim rpkg/bootstrap.R
-R CMD INSTALL rpkg  # Tests bootstrap
+bash tests/bootstrap-never-vendors.sh
 
 # Copy to templates
 vim minirextendr/inst/templates/rpkg/bootstrap.R
@@ -227,9 +227,9 @@ Templates should be as close to rpkg as possible. Only add template-specific log
 When adding template-specific logic, add comments explaining why it differs from rpkg:
 
 ```r
-# bootstrap.R: this runs only while a build frontend is producing a tarball.
-# configure.ac never creates inst/vendor.tar.xz.
-system2("cargo", c("revendor", "--freeze", "--compress", "inst/vendor.tar.xz"))
+# bootstrap.R: stages path dependencies outside the package; it never vendors.
+# The release step (miniextendr_build_tarball()) seals inst/vendor.tar.xz.
+source("tools/dev-bootstrap.R", local = TRUE)
 ```
 
 ### Run templates-check Before Committing
@@ -344,9 +344,9 @@ just minirextendr-test  # Template tests include scaffolding
 # 1. Edit master
 vim rpkg/bootstrap.R
 
-# 2. Test by triggering bootstrap
-rm rpkg/src/Makevars  # Force bootstrap to run
-R CMD INSTALL rpkg
+# 2. Test it the way pkgbuild runs it
+(cd rpkg && Rscript bootstrap.R)
+bash tests/bootstrap-never-vendors.sh
 
 # 3. Copy to templates
 cp rpkg/bootstrap.R minirextendr/inst/templates/rpkg/bootstrap.R

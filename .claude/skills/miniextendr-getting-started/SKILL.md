@@ -150,13 +150,11 @@ minirextendr::miniextendr_build()
 ```
 
 This runs `autoconf` + `./configure`, compiles Rust, generates the R
-wrappers, installs the package, and regenerates `NAMESPACE`/`man/` via
-roxygen2 — and it sets `MINIEXTENDR_FORCE_WRAPPER_GEN` so wrapper generation
-happens even if the package has been flipped into offline tarball mode (see
-the pitfall below). **Do not** substitute a bare `R CMD INSTALL .` /
-`devtools::install()` / `devtools::document()` for this — those skip the
-`MINIEXTENDR_FORCE_WRAPPER_GEN` override and can silently install a package
-with an empty namespace.
+wrappers, regenerates `NAMESPACE`/`man/` via roxygen2, and installs the
+package. A bare `R CMD INSTALL .` / `devtools::install()` also regenerates the
+wrappers, but not `NAMESPACE`: a new export stays invisible until roxygen2 has
+run and the package is installed again, which is the order
+`miniextendr_build()` follows.
 
 If you are working inside the miniextendr monorepo instead, use the maintainer
 recipes:
@@ -293,8 +291,8 @@ For CRAN submission:
   the minimal `#[miniextendr] pub fn` pattern.
 - `rpkg/configure.ac` — the per-install entrypoint that detects source vs
   tarball mode and writes the cargo config.
-- `rpkg/src/Makevars.in` — the Makevars template that drives the cdylib to
-  staticlib double-link build.
+- `rpkg/src/Makevars.in` — the Makevars template that builds the staticlib,
+  links the package library, then generates the wrappers from it.
 - `docs/CRAN_COMPATIBILITY.md` — vendoring requirements, offline build
   verification, and CRAN submission checklist.
 
@@ -309,11 +307,11 @@ For CRAN submission:
   standard R mechanisms (`R CMD INSTALL`, `devtools::install()`). Never require
   `just` in scaffolded package instructions.
 
-- **Generated wrappers must be committed**: `R/miniextendr-wrappers.R` is
-  generated during `R CMD INSTALL`. If you add or remove `#[miniextendr]`
-  functions, regenerate and commit this file in the same PR. The pre-commit
-  hook in this repo blocks commits where `*-wrappers.R` is staged without a
-  matching updated `NAMESPACE`.
+- **Generated docs must be committed**: `R/miniextendr-wrappers.R` is
+  regenerated during every `R CMD INSTALL` and is gitignored, but the
+  `NAMESPACE` and `man/*.Rd` roxygen2 derives from it are tracked. If you add
+  or remove `#[miniextendr]` functions, run `just force-document` and commit
+  those in the same PR.
 
 - **Install-mode latch leak**: if `inst/vendor.tar.xz` is present during local
   development (left over from a previous `R CMD build` that did not clean up),
@@ -341,7 +339,7 @@ For CRAN submission:
 
 ## Related skills
 
-- `miniextendr-architecture` — how the cdylib to staticlib double-link works,
+- `miniextendr-architecture` — how wrapper generation loads the linked library,
   the distributed_slice registration system, and the install-mode latch in
   depth.
 - `miniextendr-build` — configure.ac, Makevars.in, vendor pipeline, and the

@@ -4,10 +4,17 @@
 \alias{vendor_crates_io}
 \title{Run cargo revendor and CRAN-trim the result}
 \usage{
-vendor_crates_io(path = ".")
+vendor_crates_io(path = ".", tarball = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{tarball}{Path of a \code{.tar.xz} archive for \code{cargo-revendor} to write
+from the vendored tree, or \code{NULL} to vendor only. With an archive,
+\code{cargo-revendor} blanks the vendored \code{.md} files that no Rust source
+includes and recomputes their \code{.cargo-checksum.json} entries before
+compressing, and it re-vendors even when its cache says \verb{vendor/} is
+current, because a cache hit skips compression.}
 }
 \value{
 Invisibly returns TRUE on success.
@@ -18,7 +25,7 @@ side of vendoring (deferring to \code{cargo-revendor}) and CRAN-trim of
 build artifacts / hidden files.
 }
 \details{
-Most users want \code{\link[=miniextendr_vendor]{miniextendr_vendor()}} which wraps this with lockfile
-shape correction and tarball compression.
+Most users want \code{\link[=miniextendr_vendor]{miniextendr_vendor()}}, which also compresses the result
+into \code{inst/vendor.tar.xz}.
 }
 \keyword{internal}

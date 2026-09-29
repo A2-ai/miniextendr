@@ -11,16 +11,18 @@
 #   package `miniextendr` depends on `miniextendr-api` with feature
 #   `mxl883-probe` but `miniextendr-api` does not have that feature.
 #
-# That forced an admin-merge (PR #710 was the last one). After #883, bootstrap.R
-# runs ./configure FIRST (writing the [patch] override) and cargo-revendor
-# resolves against the LOCAL workspace, then stamps the git+url#<sha> source
-# back into Cargo.lock. So this cross-surface rename now vendors with no
-# admin-merge, and the lock stays CRAN-installable (tarball-shape).
+# That forced an admin-merge (PR #710 was the last one). After #883, the vendor
+# step runs after ./configure (which writes the [patch] override), so
+# cargo-revendor resolves against the LOCAL workspace, then stamps the
+# git+url#<sha> source back into Cargo.lock. So this cross-surface rename now
+# vendors with no admin-merge, and the lock stays CRAN-installable
+# (tarball-shape). bootstrap.R never vendors; `just vendor` is the step a
+# release build (`just r-cmd-build`) runs.
 #
 # Requirements: cargo-revendor on PATH (SKIP if absent, like the sibling tests).
 #
 # Asserts:
-#   1. bootstrap.R (configure + cargo-revendor) exits 0 on the cross-rename.
+#   1. configure + `just vendor` (cargo-revendor) exit 0 on the cross-rename.
 #   2. src/rust/Cargo.lock is tarball-shape: every framework crate carries
 #      source = "git+https://github.com/A2-ai/miniextendr#<sha>".
 #   3. The vendored miniextendr-api carries the local-only feature — proving the
@@ -51,7 +53,6 @@ trap '
   git checkout -- "'"$API_TOML"'" "'"$RPKG_TOML"'" 2>/dev/null || true
   if [ -f "'"$LOCK_BACKUP"'" ]; then mv "'"$LOCK_BACKUP"'" "'"$LOCK"'"; fi
   rm -f rpkg/inst/vendor.tar.xz rpkg/src/Makevars rpkg/src/rust/.cargo/config.toml
-  rm -f rpkg/src/rust/.cargo/config.toml.tmp_bootstrap_vendor
   rm -rf rpkg/vendor
 ' EXIT
 
@@ -74,14 +75,15 @@ grep -q "^$PROBE_API_FEATURE = \[\]" "$API_TOML" \
 grep -q "miniextendr-api/$PROBE_API_FEATURE" "$RPKG_TOML" \
   || { echo "FAIL: could not inject probe feature into $RPKG_TOML" >&2; exit 1; }
 
-# Start from a clean latch so bootstrap.R actually runs the vendor branch.
+# Start from a clean latch so configure writes the [patch] override (tarball
+# mode would write a [source] replacement instead).
 rm -f rpkg/inst/vendor.tar.xz
 
-# Drive the exact Bootstrap Vendor path: configure (writes the [patch]
-# override) then cargo-revendor (resolves local, stamps git source).
-echo "Running bootstrap.R with cross-surface rename injected..."
-if ! ( cd rpkg && Rscript bootstrap.R ); then
-    echo "FAIL: bootstrap.R errored on a coordinated cross-crate feature rename." >&2
+# Drive the release vendor path: configure (writes the [patch] override) then
+# `just vendor` (cargo-revendor resolves local, stamps git source).
+echo "Running configure + just vendor with cross-surface rename injected..."
+if ! ( cd rpkg && bash ./configure ) || ! just vendor; then
+    echo "FAIL: vendoring errored on a coordinated cross-crate feature rename." >&2
     echo "      This is the #883 regression: the framework crate must resolve" >&2
     echo "      against the local workspace, not git@main." >&2
     exit 1

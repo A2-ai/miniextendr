@@ -32,11 +32,10 @@ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
-# wasm32 snapshot — generated alongside WRAPPERS_R from the same wrapper-gen pass.
-# Lives in the user crate's source tree (not target/) because miniextendr_init!
-# expects it at `<crate>/src/rust/wasm_registry.rs` for `mod __miniextendr_wasm_registry;`
-# to resolve when cross-compiling for `wasm32-*`.
-WASM_REGISTRY_RS = $(ABS_RPKG_SRCDIR)/rust/wasm_registry.rs
+# Last wrapper generation. The writers keep an unchanged wrappers file (and
+# src/rust/wasm_registry.rs) as it is, mtime included, so make tracks the pass
+# with this stamp instead of with the file.
+WRAPPERS_STAMP = $(ABS_TOP_SRCDIR)/rust-target/.miniextendr-wrappers
 ## ----------------------------------------------------------------------
 export CARGO_HOME
 
@@ -45,16 +44,9 @@ export CARGO_HOME
 .PHONY: all clean FORCE_CARGO
 
 # all must be defined FIRST to be the default target.
-# Depend on both $(SHLIB) and $(WRAPPERS_R) so that:
-#   1. $(SHLIB) (the installed shared object) is linked from the staticlib first.
-#   2. $(WRAPPERS_R) loads that same $(SHLIB) and calls back into it to emit the
-#      R wrappers — no separate cdylib build. The .so is already a loadable shared
-#      object and carries every linkme #[distributed_slice] entry (force-loaded via
-#      stub.c + codegen-units = 1), so it produces exactly what a throwaway cdylib did.
-#   On wasm32/tarball: the wrapper-gen recipe is a no-op, so the
-#   pre-generated wrappers (shipped in the source tree / tarball) are
-#   reused without loading anything.
-all: $(SHLIB) $(WRAPPERS_R)
+# $(SHLIB) (the installed shared object) is linked from the staticlib first;
+# $(WRAPPERS_STAMP) then loads that same $(SHLIB) to emit the R wrappers.
+all: $(SHLIB) $(WRAPPERS_STAMP)
 	@# Source install: touch Cargo.toml so pkgbuild always thinks sources changed
 	@# (dev iteration with devtools::load_all() / install() relies on this).
 	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
@@ -128,82 +120,33 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	fi; \
 	test -f "$(CARGO_AR)"
 
-# Automatic R wrapper + wasm32 snapshot generation.
-# Loads the freshly-linked $(SHLIB) — the installed shared object — in R and
-# calls (a) miniextendr_write_wrappers() which writes R/*-wrappers.R and
-# (b) miniextendr_write_wasm_registry() which writes src/rust/wasm_registry.rs.
-# Both walk the linkme #[distributed_slice] tables that stub.c force-loads into
-# $(SHLIB) (codegen-units = 1), so the installed .so produces exactly what a
-# throwaway cdylib used to — no separate cdylib build/link. Both writers diff
-# old vs new and only overwrite when content changes (the Rust wasm_registry.rs
-# is read by `miniextendr_init!()` macro expansion when cross-compiling for
-# wasm32 — host edits to `#[miniextendr]` items must be matched by a regenerated
-# wasm_registry.rs or the wasm32 build registers stale routines).
-# NAMESPACE is NOT generated here — use devtools::document() for that.
+# R wrapper + wasm32 snapshot generation, run whenever $(SHLIB) was relinked.
+# tools/write-wrappers.R loads $(SHLIB) and calls its registered writers, which
+# write R/@PACKAGE_NAME@-wrappers.R and src/rust/wasm_registry.rs from the
+# linkme #[distributed_slice] tables that stub.c force-loads into $(SHLIB)
+# (codegen-units = 1). Each writer replaces its file only when the content
+# changed. wasm_registry.rs is read by `miniextendr_init!()` when
+# cross-compiling for wasm32, so it must follow every host edit to a
+# `#[miniextendr]` item. NAMESPACE is NOT generated here; roxygen2 writes it.
 #
-# dyn.load($(SHLIB)) runs R_init_<pkg>; MINIEXTENDR_WRAPPER_GEN=1 makes it take a
-# minimal init path (register routines only — see init.rs::package_init). The two
-# writers are registered routines (registry.rs), so getNativeSymbolInfo finds
-# them on every platform — no cdylib-exports.def / win.def entry needed.
+# $(WRAPPERS_R) has a rule without a recipe: when the file is missing (a fresh
+# checkout, or a tarball built without it) make treats it as just made and
+# regenerates; when it exists, an edit newer than the stamp regenerates too.
 #
-# Three-way split on build mode, branched at the shell level (not with GNU make
-# ifeq/ifndef conditionals) so this Makevars stays portable POSIX make and the
-# package needs no "SystemRequirements: GNU make".
-#   wasm32  : $(SHLIB) is a .wasm SIDE_MODULE that host R cannot dyn.load;
-#             expects pre-generated files from the host devtools::document() pass.
-#   tarball : R/<pkg>-wrappers.R ships in the tarball from disk (the host
-#             install/build that produced the tarball regenerates it), so
-#             skip loading $(SHLIB) for wrapper-gen entirely (#1022).
-#             LOAD-BEARING GUARD: skip only when R/<pkg>-wrappers.R exists AND is
-#             verified against generation-time content fingerprints (#1512).
-#             Missing or mismatched fingerprints FALL BACK to full wrapper-gen.
-#             If regeneration changes an existing tarball wrapper, stop before
-#             loading it: the author must reconcile NAMESPACE and rebuild.
-#             Set MINIEXTENDR_FORCE_WRAPPER_GEN to force regeneration
-#             even when the shipped wrappers are valid (debugging only).
-#   roxygen : the compile was triggered by roxygen2::roxygenise() (devtools::
-#             document()) recompiling via pkgload::load_all. roxygen2 >= 7.3.0
-#             exports ROXYGEN_PKG (the documented package's name) for the whole
-#             roxygenise() call, including this child make — the documented dev
-#             loop regenerates wrappers via `R CMD INSTALL` FIRST (rcmdinstall
-#             && force-document), so re-deriving them mid-document is redundant
-#             work (Rscript + dyn.load of the full .so). Name-match against
-#             @PACKAGE_NAME@ so documenting some OTHER package never suppresses
-#             a legitimate wrapper-gen here. Require matching fingerprints too:
-#             after a deferred stale-tarball failure, document() must regenerate
-#             changed source wrappers before reconciling NAMESPACE (#1512).
-#   dev     : load $(SHLIB) + generate wrappers (normal dev/CI flow).
-# After a successful check, mark wrappers current even if the writer kept their
-# identical content; otherwise this rule stays out of date after a relink (#1530).
-$(WRAPPERS_R): $(SHLIB)
-	@set -e; \
-	if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
-	  echo "wasm32 install: skipping wrapper-gen (pre-generated R/@PACKAGE_NAME@-wrappers.R + src/rust/wasm_registry.rs expected)"; \
-	  touch '$(WRAPPERS_R)'; \
-	elif [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" check "$(ABS_TOP_SRCDIR)" "$(WRAPPERS_R)"; then \
-	  echo "tarball install: using pre-shipped R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen, #1022)"; \
-	  touch '$(WRAPPERS_R)'; \
-	elif [ "$(IS_TARBALL_INSTALL)" != "true" ] && [ "$$ROXYGEN_PKG" = "@PACKAGE_NAME@" ] && [ -z "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ] && "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" check "$(ABS_TOP_SRCDIR)" "$(WRAPPERS_R)"; then \
-	  echo "roxygenise pass (ROXYGEN_PKG=@PACKAGE_NAME@): reusing existing R/@PACKAGE_NAME@-wrappers.R (skipping wrapper-gen)"; \
-	  touch '$(WRAPPERS_R)'; \
+# wasm32 is the one exception: $(SHLIB) is a .wasm SIDE_MODULE that host R
+# cannot dyn.load, so the build uses the files a host install generated. The
+# test is a shell `if`, not a make conditional, so this Makevars stays portable
+# POSIX make (no "SystemRequirements: GNU make").
+$(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
+	@if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
+	  echo "wasm32 install: using the pre-generated R/@PACKAGE_NAME@-wrappers.R and src/rust/wasm_registry.rs"; \
 	else \
-	  if [ "$(IS_TARBALL_INSTALL)" = "true" ] && [ -n "$$MINIEXTENDR_FORCE_WRAPPER_GEN" ]; then \
-	    echo "MINIEXTENDR_FORCE_WRAPPER_GEN set: regenerating wrappers from $(SHLIB) (tarball mode override)..."; \
-	  elif [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
-	    echo "tarball install: pre-shipped R/@PACKAGE_NAME@-wrappers.R missing, changed, or unverified — falling back to full wrapper-gen (#1022 guard)..." >&2; \
-	  else \
-	    echo "Checking R wrappers + wasm_registry.rs..."; \
-	  fi; \
-	  _shlib='$(ABS_RPKG_SRCDIR)/$(SHLIB)'; \
-	  _wrappers='$(WRAPPERS_R)'; \
-	  _wasm_registry='$(WASM_REGISTRY_RS)'; \
-	  if command -v cygpath >/dev/null 2>&1; then \
-	    _shlib=$$(cygpath -m "$$_shlib"); \
-	    _wrappers=$$(cygpath -m "$$_wrappers"); \
-	    _wasm_registry=$$(cygpath -m "$$_wasm_registry"); \
-	  fi; \
-	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" "$(ABS_TOP_SRCDIR)/tools/wrapper-freshness.R" generate "$(ABS_TOP_SRCDIR)" "$$_wrappers" "$$_shlib" "$$_wasm_registry" "$(IS_TARBALL_INSTALL)"; \
-	  touch '$(WRAPPERS_R)'; \
+	  echo "Generating R wrappers from $(SHLIB)"; \
+	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" ../tools/write-wrappers.R "$(SHLIB)"; \
 	fi
+	@mkdir -p "$(ABS_TOP_SRCDIR)/rust-target"
+	@touch "$(WRAPPERS_STAMP)"
+
+$(WRAPPERS_R):
 
 clean:

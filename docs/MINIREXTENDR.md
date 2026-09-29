@@ -90,10 +90,10 @@ devtools::document("mypackage")   # Compiles Rust + generates R wrappers + runs 
 devtools::install("mypackage")    # Install the final package
 ```
 
-How it works: `devtools::document()` calls `pkgload::load_all()`, which detects
-`Config/build/bootstrap: TRUE` in DESCRIPTION and runs `bootstrap.R`. That
-triggers `./configure` → `make` → cargo build → package shared-library link →
-registered wrapper writers → roxygen2, all in a single invocation. No manual
+How it works: `devtools::document()` calls `pkgload::load_all()`, whose
+`pkgbuild::compile_dll()` runs `./configure` → `make` → cargo build → package
+shared-library link → `tools/write-wrappers.R`, and roxygen2 then reads the
+fresh wrappers, all in a single invocation. No manual
 `./configure` or two-pass install is needed for a scaffolded package.
 
 ### Manual: step-by-step functions
@@ -314,17 +314,17 @@ the path resolves. Anything that seals or copies the package directory alone
 leaves the sibling behind, which is what `bootstrap.R` is for. Build frontends
 that honor `Config/build/bootstrap: TRUE` (devtools, pkgbuild, pak with a
 repository ref and a subdirectory, rv 0.23.0 or later) run it while the
-repository is still around the package: with `cargo-revendor` on PATH it
-freezes the sibling into `inst/vendor.tar.xz`, and without it
-`tools/dev-bootstrap.R` stages the sibling under `src/rust/vendor/`. Either way
-the built tarball carries the crate.
+repository is still around the package, and `tools/dev-bootstrap.R` stages the
+sibling under `src/rust/vendor/`, so the built tarball carries the crate.
+`miniextendr_build_tarball()` vendors it into `inst/vendor.tar.xz` instead,
+together with every other dependency.
 
 An installer that copies the package directory alone (pak `local::`, older rv
 releases, a plain `R CMD build` of the package directory) cannot reach the
 sibling. The build stops with an error that names the missing path and the
 installs that work, from `bootstrap.R` when the installer runs it in its copy,
 and from configure, before cargo, when it does not. See
-[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#distribution-bootstrap-without-cargo-revendor)
+[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#bootstrap-staging-path-dependencies)
 for the installer matrix.
 
 An absolute `path` is no way around this: it resolves only on the machine that
@@ -498,7 +498,7 @@ Cache location: `rappdirs::user_cache_dir("minirextendr")`.
 | Category | Functions |
 |----------|-----------|
 | **Project creation** | `create_miniextendr_package`, `create_miniextendr_monorepo` |
-| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_sync` |
+| **Build workflow** | `miniextendr_autoconf`, `miniextendr_configure`, `miniextendr_build`, `miniextendr_build_tarball`, `miniextendr_sync` |
 | **Inline compilation** | `rust_source`, `rust_function`, `rust_source_clean` |
 | **Cargo wrappers** | `cargo_add`, `cargo_rm`, `cargo_build`, `cargo_check`, `cargo_test`, `cargo_clippy`, `cargo_fmt`, `cargo_doc`, `cargo_search`, `cargo_deps`, `cargo_update`, `cargo_init`, `cargo_new` |
 | **Feature scaffolding** | `use_miniextendr`, `use_rayon`, `use_serde`, `use_vctrs`, `use_r6`, `use_s3`, `use_s4`, `use_s7`, `use_feature_detection`, `update_feature_detection`, `use_configure_feature_detection`, `add_feature_rule`, `remove_feature_rule`, `list_feature_rules`, `use_vendor_lib` |

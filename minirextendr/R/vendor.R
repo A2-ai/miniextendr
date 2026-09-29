@@ -28,14 +28,20 @@
 #' side of vendoring (deferring to `cargo-revendor`) and CRAN-trim of
 #' build artifacts / hidden files.
 #'
-#' Most users want [miniextendr_vendor()] which wraps this with lockfile
-#' shape correction and tarball compression.
+#' Most users want [miniextendr_vendor()], which also compresses the result
+#' into `inst/vendor.tar.xz`.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param tarball Path of a `.tar.xz` archive for `cargo-revendor` to write
+#'   from the vendored tree, or `NULL` to vendor only. With an archive,
+#'   `cargo-revendor` blanks the vendored `.md` files that no Rust source
+#'   includes and recomputes their `.cargo-checksum.json` entries before
+#'   compressing, and it re-vendors even when its cache says `vendor/` is
+#'   current, because a cache hit skips compression.
 #' @return Invisibly returns TRUE on success.
 #' @keywords internal
 #' @export
-vendor_crates_io <- function(path = ".") {
+vendor_crates_io <- function(path = ".", tarball = NULL) {
   with_project(path)
   check_rust()
   check_cargo_revendor()
@@ -75,16 +81,12 @@ vendor_crates_io <- function(path = ".") {
     # Inert for a git-only package with no path sibling to rewrite.
     "--freeze"
   )
-  # --freeze rewrites src/rust/Cargo.{toml,lock}, which the wrapper
-  # provenance record fingerprints (#1512), without changing what the wrappers
-  # are generated from. Keep a record that was current beforehand current
-  # afterwards, as bootstrap.R does around the same call, so the release
-  # tarball installs with its pre-shipped wrappers (#1022).
-  preserve_package_wrapper_record(function() {
-    result <- run_with_logging("cargo", args = args, log_prefix = "cargo-revendor",
-                               wd = usethis::proj_get())
-    check_result(result, "cargo revendor")
-  })
+  if (!is.null(tarball)) {
+    args <- c(args, "--compress", tarball, "--blank-md", "--source-marker", "--force")
+  }
+  result <- run_with_logging("cargo", args = args, log_prefix = "cargo-revendor",
+                             wd = usethis::proj_get())
+  check_result(result, "cargo revendor")
 
   # cargo-revendor's --strip-toml-sections (above) handles all the
   # CRAN-relevant trims: stripping `[[test]]` / `[[bench]]` / `[[example]]`
@@ -102,32 +104,6 @@ vendor_crates_io <- function(path = ".") {
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
   invisible(TRUE)
-}
-
-#' Run a Cargo rewrite, keeping the package's wrapper record current
-#'
-#' Runs `rewrite` through `preserve_wrapper_record()` from the package's own
-#' `tools/wrapper-freshness.R`, the helper `bootstrap.R` and the Makevars
-#' wrapper pass use: a record that was current before `rewrite` is written
-#' again after it; a stale or missing record, or an error in `rewrite`,
-#' re-records nothing. A package scaffolded before the helper existed just
-#' runs `rewrite`.
-#'
-#' @param rewrite Function that rewrites `src/rust/Cargo.{toml,lock}` without
-#'   changing what the wrappers are generated from, and errors on failure.
-#' @return The value of `rewrite()`, invisibly.
-#' @noRd
-preserve_package_wrapper_record <- function(rewrite) {
-  root <- usethis::proj_get()
-  helper <- fs::path(root, "tools", "wrapper-freshness.R")
-  if (!fs::file_exists(helper)) {
-    return(invisible(rewrite()))
-  }
-  env <- new.env(parent = baseenv())
-  sys.source(helper, envir = env)
-  pkg <- read.dcf(fs::path(root, "DESCRIPTION"), fields = "Package")[[1L]]
-  wrappers <- fs::path(root, "R", paste0(pkg, "-wrappers.R"))
-  env$preserve_wrapper_record(root, wrappers, rewrite)
 }
 
 #' Verify `cargo revendor` is installed

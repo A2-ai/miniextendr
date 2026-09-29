@@ -172,7 +172,7 @@ install of that tarball. Don't switch to an absolute path, which resolves only
 on the machine that wrote it. See
 [MINIREXTENDR.md](MINIREXTENDR.md#wrapping-a-local-rust-crate-outside-the-package)
 and the installer matrix in
-[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#distribution-bootstrap-without-cargo-revendor).
+[R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#bootstrap-staging-path-dependencies).
 
 ### Editing generated files has no effect
 

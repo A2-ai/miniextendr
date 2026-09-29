@@ -75,8 +75,11 @@ test_that("tarball cleanup preserves caller caches and removes default build dir
     makevars <- file.path(pkg, "Makevars")
     writeLines(rendered, makevars)
     log <- file.path(root, paste0("cleanup-", owned, ".log"))
+    # -o marks the library and the wrapper stamp as current, so make runs only
+    # the `all` recipe (the cleanup under test), not the link or wrapper pass.
     status <- withr::with_dir(pkg, system2("make", c(
-      "-f", "Makevars", "-o", "probe.so", "-o", shQuote(file.path(pkg, "R/probe-wrappers.R")),
+      "-f", "Makevars", "-o", "probe.so",
+      "-o", shQuote(file.path(target, ".miniextendr-wrappers")),
       "SHLIB=probe.so", "all"), stdout = log, stderr = log))
     expect_identical(status, 0L, info = paste(readLines(log), collapse = "\n"))
     expect_identical(file.exists(file.path(target, "sentinel")), owned)
@@ -110,8 +113,7 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
     R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
     CARGO_PROFILE = "dev", CARGO_FEATURES = "", CARGO_BUILD_TARGET = NA,
     # Compile-count assertions parse text logs; CI otherwise forces ANSI colors.
-    CARGO_TERM_COLOR = "never", CARGO_TARGET_DIR = target, VENDOR_OUT = NA,
-    MINIEXTENDR_FORCE_WRAPPER_GEN = NA, ROXYGEN_PKG = NA
+    CARGO_TERM_COLOR = "never", CARGO_TARGET_DIR = target, VENDOR_OUT = NA
   ))
   suppressMessages(create_miniextendr_package(pkg, open = FALSE, rstudio = FALSE))
   writeLines(c('[package]', 'name = "cacheprobe"', 'version = "0.1.0"',
@@ -141,7 +143,10 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
     c("CMD", "INSTALL", "--no-multiarch", "--no-byte-compile", "-l",
       shQuote(library), shQuote(path)), label)
   install(pkg, "source-install")
+  # The explicit vendor step, then the build: bootstrap.R never vendors.
+  suppressMessages(miniextendr_vendor(pkg))
   tarball <- devtools::build(pkg, path = root, binary = FALSE, vignettes = FALSE, manual = FALSE)
+  expect_true("cacheprobe/inst/vendor.tar.xz" %in% utils::untar(tarball, list = TRUE))
   expect_true("cacheprobe/tools/vendor-cache.R" %in% utils::untar(tarball, list = TRUE))
   dir.create(cache)
   writeLines("keep me", file.path(cache, "caller-owned"))
@@ -164,7 +169,7 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
   expect_identical(length(compiled), 1L, info = second$output)
   expect_match(compiled, "Compiling cacheprobe ", fixed = TRUE)
   expect_false(grepl("warning:", second$output, fixed = TRUE), info = second$output)
-  expect_match(second$output, "using pre-shipped", fixed = TRUE)
+  expect_match(second$output, "Generating R wrappers", fixed = TRUE)
   expect_true(dir.exists(target))
   expect_identical(readLines(file.path(cache, "caller-owned")), "keep me")
   probe <- file.path(root, "probe.R")
@@ -176,7 +181,7 @@ test_that("two tarball installs share vendor and Cargo caches and rebuild only t
   # The same newly frozen tarball still installs without either cache opt-in.
   ordinary <- withr::with_envvar(c(VENDOR_OUT = NA, CARGO_TARGET_DIR = NA),
     install(tarball, "ordinary-tarball-install"))
-  expect_match(ordinary$output, "using pre-shipped", fixed = TRUE)
+  expect_match(ordinary$output, "Generating R wrappers", fixed = TRUE)
   expect_false(grepl("warning:", ordinary$output, fixed = TRUE), info = ordinary$output)
   run(file.path(R.home("bin"), "Rscript"), shQuote(probe), "verify-ordinary-runtime")
   expect_true(dir.exists(target))

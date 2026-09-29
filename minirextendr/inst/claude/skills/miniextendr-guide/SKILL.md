@@ -31,7 +31,7 @@ src/rust/wasm_registry.rs    # GENERATED wasm32 registration snapshot (gitignore
 src/Makevars.in              # build template → src/Makevars (via ./configure)
 src/stub.c                   # force-link anchor; R's build needs ≥1 C file
 configure.ac → configure     # install-mode detection; regen with autoconf
-bootstrap.R                  # tarball build hook: configure + vendor
+bootstrap.R                  # pkgbuild build hook: stages path deps outside the package
 tools/                       # configure-time helpers (never call minirextendr from configure)
 inst/vendor.tar.xz           # THE LATCH: presence flips builds to offline mode (gitignored)
 ```
@@ -48,9 +48,10 @@ bash ./configure
 make (via R CMD INSTALL)
   → cargo build --lib          (staticlib, codegen-units = 1)
   → link <pkg>.so              (staticlib + stub.o; stub.c anchors the whole crate)
-  → load <pkg>.so in R         (MINIEXTENDR_WRAPPER_GEN=1, minimal init)
+  → Rscript tools/write-wrappers.R <pkg>.so   (only when <pkg>.so was relinked)
       → writes R/<pkg>-wrappers.R        (the .Call wrappers + roxygen docs)
       → writes src/rust/wasm_registry.rs (wasm32 registration snapshot)
+      each file is rewritten only when its content changed
 devtools::document()
   → roxygen2 reads the wrappers → NAMESPACE + man/
 ```
@@ -65,7 +66,7 @@ Three install modes, decided by `./configure`:
 | Mode | Trigger | Behavior |
 |---|---|---|
 | **dev/source** | no `inst/vendor.tar.xz` | cargo resolves deps from the network (or git) |
-| **tarball** | `inst/vendor.tar.xz` present | offline build from vendored sources; wrapper-gen skipped (pre-shipped wrappers used) |
+| **tarball** | `inst/vendor.tar.xz` present | offline build from vendored sources |
 | **wasm32** | webR cross-compile | uses pre-generated wrappers + `wasm_registry.rs` from a prior native build; no wrapper-gen possible |
 
 ## The dev loop
@@ -80,13 +81,13 @@ source tree) → `devtools::document()` → one install. One call, everything
 consistent: a new export, a renamed one, or an edited doc comment all reach
 the installed package in the same pass.
 
-**Do not use a build-producing `devtools::install()` on a fresh package.** Its
-tarball build hook runs `bootstrap.R`, which vendors dependencies and flips the
-staged package into tarball mode — tarball mode *skips* wrapper generation, so
-`library(pkg)` exposes no functions. A direct `R CMD INSTALL .` remains in
-source mode because configure never vendors.
-`miniextendr_build()` detects and handles this (fresh-package bootstrap,
-`MINIEXTENDR_FORCE_WRAPPER_GEN`).
+Every install (`R CMD INSTALL .`, `devtools::install()`, pak, rv) regenerates
+the wrappers from the library it links, and none of them vendors. What a plain
+install skips is roxygen2: a new or renamed export reaches `NAMESPACE` only
+after `devtools::document()`, which is why `miniextendr_build()` is the loop.
+Installs that build a tarball first (`devtools::install()`, pak, rv) compile in
+a fresh copy of the package, so each run starts from an empty `rust-target/`
+unless `CARGO_TARGET_DIR` names a directory outside the package.
 
 Avoid `R CMD INSTALL --preclean` / `--clean` in the development loop: they
 invoke `cleanup` and normally erase `rust-target`, `src/rust/target`, and

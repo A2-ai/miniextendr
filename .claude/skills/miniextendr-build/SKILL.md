@@ -1,13 +1,13 @@
 ---
 name: miniextendr-build
-description: Use when debugging configure.ac failures, Makevars issues, Cargo.lock mismatches, vendor tarball problems, build mode confusion, or the cdylib-to-staticlib double-link pipeline. Also use when changing a Makevars value, diagnosing a latch-leak, understanding the bash-vs-sh configure requirement, or working with m4 quoting in configure.ac.
+description: Use when debugging configure.ac failures, Makevars issues, Cargo.lock mismatches, vendor tarball problems, build mode confusion, or the link-then-generate wrapper pipeline. Also use when changing a Makevars value, diagnosing a latch-leak, understanding the bash-vs-sh configure requirement, or working with m4 quoting in configure.ac.
 ---
 
 # miniextendr Build System
 
 miniextendr bridges R's package build system and Cargo via a configure script,
-Makevars template, and a double-link pipeline that generates R wrappers during
-the build itself. This skill covers the full build pipeline and the install-mode
+Makevars template, and a link-then-generate pipeline that writes the R wrappers
+from the shared library the build just linked. This skill covers the full build pipeline and the install-mode
 latch that switches between source and CRAN tarball builds.
 
 ## When to use this skill
@@ -16,7 +16,7 @@ latch that switches between source and CRAN tarball builds.
 - "My build picks the tarball vendor when it shouldn't."
 - "I'm getting a Cargo.lock mismatch error."
 - "I changed a Makevars value — what's the regen flow?"
-- "What are the cdylib and staticlib builds and why are there two?"
+- "When are the R wrappers regenerated, and why did (or didn't) this install rewrite them?"
 - "Where does `.cargo/config.toml` come from?"
 - "What is the install-mode latch and how does it leak?"
 - "How do I add a cargo feature flag to the build?"
@@ -26,33 +26,39 @@ latch that switches between source and CRAN tarball builds.
 
 ## Key concepts
 
-### The double-link pipeline
+### The link-then-generate pipeline
 
-The most unusual aspect of the build: two sequential cargo invocations produce
-two different artifacts, and R wrapper generation happens between them.
+One cargo invocation builds the staticlib; R links it into the package's
+shared object; wrapper generation then loads that same shared object.
 
 ```
 configure.ac  →  configure  →  src/Makevars
                                     |
-             cargo rustc --crate-type staticlib  (warm cache first)
+             cargo build --lib   (staticlib; FORCE_CARGO, cargo decides)
                                     |
-             cargo rustc --crate-type cdylib
+             R links $(SHLIB) = <pkg>.so   (stub.o + staticlib)
                                     |
-                   Makevars: dyn.load cdylib in R
+             Rscript ../tools/write-wrappers.R $(SHLIB)
+               (only when $(SHLIB) was relinked or the wrappers file is missing)
                                     |
              miniextendr_write_wrappers()    ← miniextendr-api/src/registry.rs
              miniextendr_write_wasm_registry()
                                     |
-                   R/miniextendr-wrappers.R  (generated, do not hand-edit)
+             R/<pkg>-wrappers.R + src/rust/wasm_registry.rs
+               (each rewritten only when its content changed)
                                     |
-                        final .so  (links staticlib)
+             touch rust-target/.miniextendr-wrappers   (the stamp make tracks)
 ```
 
-The cdylib phase boots enough of the Rust runtime inside R to walk the
-`MX_R_WRAPPERS` distributed_slice (declared in `miniextendr-api/src/registry.rs`)
-and emit the R-side `.Call()` wrappers. The staticlib phase then relinks the
-same code as the final installed shared object. `miniextendr_write_wrappers`
-lives in `miniextendr-api/src/registry.rs` — not in miniextendr-engine.
+`tools/write-wrappers.R` derives the package name from `$(SHLIB)`, `dyn.load`s
+it with `MINIEXTENDR_WRAPPER_GEN=1` (so `R_init_<pkg>` only registers
+routines), and calls the two registered writers, which walk the
+`MX_R_WRAPPERS` distributed_slice and friends. Because an unchanged wrappers
+file keeps its mtime, make tracks the pass with the stamp, not with the file.
+Every native install takes this path, tarball installs included; only wasm32
+(whose `$(SHLIB)` host R cannot load) uses the files a host install generated.
+`miniextendr_write_wrappers` lives in `miniextendr-api/src/registry.rs` — not
+in miniextendr-engine.
 
 `stub.c` provides the minimal C translation unit that R's build system requires.
 It declares `extern const char miniextendr_force_link`, which references a symbol
@@ -81,9 +87,8 @@ the `cargo-config` or `unpack-vendor-tarball` command blocks.
 
 1. Verifies `DESCRIPTION` and `NAMESPACE` exist (guards against running from
    the monorepo root instead of `rpkg/`).
-2. Never vendors. `inst/vendor.tar.xz` is created only by tarball-producing
-   workflows (`just vendor` / `miniextendr_vendor()`, or `bootstrap.R` before
-   `R CMD build`); configure only consumes it. A `.git` ancestor matters solely
+2. Never vendors. `inst/vendor.tar.xz` is created only by the explicit vendor
+   step (`just vendor` / `miniextendr_vendor()`); configure only consumes it. A `.git` ancestor matters solely
    for the leaked-tarball guard (#1029).
 3. Detects install mode from `[ -f inst/vendor.tar.xz ]`.
 4. Discovers `cargo`, `rustc`, `sed`. Enforces rustc 1.85+ (edition 2024).
@@ -92,8 +97,8 @@ the `cargo-config` or `unpack-vendor-tarball` command blocks.
    means the installer skipped `bootstrap.R`. A build directory of symlinks
    into the package (rv up to 0.12.0) is restaged from the package it mirrors;
    anything else stops before cargo, naming the path and the installs that
-   work (see `docs/R_BUILD_SYSTEM.md`, "Distribution bootstrap without
-   cargo-revendor").
+   work (see `docs/R_BUILD_SYSTEM.md`, "Bootstrap: staging path
+   dependencies").
 5. Detects webR/wasm32 via `CC=emcc`.
 6. Resolves monorepo siblings by walking parent directories for
    `miniextendr-api/Cargo.toml`.
@@ -156,13 +161,14 @@ The tarball has been gitignored since 2026-04-18. CI regenerates it per-build
 via `just vendor`. Locally, `just r-cmd-build` and `just r-cmd-check` produce
 the tarball transiently and trap-clean on exit.
 
-Two tarball-producing triggers create the latch:
-1. Maintainer's explicit `just vendor` / `miniextendr_vendor()`.
-2. `bootstrap.R` (invoked by pkgbuild during `devtools::build()`, `rcmdcheck`,
-   `r-lib/actions/check-r-package`) — vendors with `cargo-revendor` before
-   `R CMD build` seals the artifact.
+Only the explicit vendor step creates the latch: `just vendor` /
+`miniextendr_vendor()`, which the release builds run (`just r-cmd-build`,
+`r-cmd-check`, `devtools-build`; `miniextendr_build_tarball()` /
+`miniextendr_check()` in a scaffolded package).
 
-`configure` never vendors. A tarball shipped without `inst/vendor.tar.xz` is
+Neither `configure` nor `bootstrap.R` vendors. `bootstrap.R` (run by pkgbuild
+for `devtools::build()` / `install()`, `rcmdcheck`, pak, rv) only stages path
+dependencies outside the package under `src/rust/vendor/`. A tarball shipped without `inst/vendor.tar.xz` is
 installed in source mode, so on CRAN's offline build farm cargo cannot fetch
 Rust dependencies and the check fails loudly; this is the intended canary. There is no `NOT_CRAN`, `FORCE_VENDOR`, or `PREPARE_CRAN`
 escape — see `docs/CRAN_COMPATIBILITY.md`.
@@ -195,20 +201,20 @@ Regression test: `just test-bootstrap-vendor`.
 
 ## How it works
 
-### Makevars.in and the double-link
+### Makevars.in targets
 
-`rpkg/src/Makevars.in` defines `make` rules for both cargo invocations. The
-key targets are:
+`rpkg/src/Makevars.in` defines the `make` rules. The key targets are:
 
 - `$(SHLIB)` — depends on `$(CARGO_AR)` (the staticlib archive).
 - `$(CARGO_AR)` — invokes `cargo build --lib --profile $(CARGO_PROFILE)`.
   This is the staticlib. A `FORCE_CARGO` phony target ensures cargo is always
   invoked so that cargo's own incremental logic decides what to rebuild.
-- `$(WRAPPERS_R)` — depends on `$(CARGO_CDYLIB)` in source mode. In tarball
-  mode, the pre-shipped `R/*-wrappers.R` is used and the cdylib build is
-  skipped (the 10–30 s cdylib build is a no-op in tarball installs). Set
-  `MINIEXTENDR_FORCE_WRAPPER_GEN` to override for debugging.
-- `$(CARGO_CDYLIB)` — invokes `cargo rustc --crate-type cdylib`.
+- `$(CARGO_LINK_CONFIG)` — a copy of the configured Makevars, refreshed only
+  when its contents change, so a feature/profile switch relinks (#1498).
+- `$(WRAPPERS_STAMP)` (`rust-target/.miniextendr-wrappers`) — depends on
+  `$(SHLIB)` and `$(WRAPPERS_R)`; runs `tools/write-wrappers.R $(SHLIB)` and
+  touches the stamp. `$(WRAPPERS_R)` has a recipe-less rule, so a missing
+  wrappers file regenerates.
 
 In tarball mode, Makevars also scrubs `vendor/`, `rust-target/`, and
 `.cargo/` after a successful build to save installed-package size.
@@ -329,7 +335,8 @@ Almost always one of:
   config generation.
 - `rpkg/configure` — generated configure script (do not edit; regenerate with
   `autoconf` in `rpkg/`).
-- `rpkg/src/Makevars.in` — Makevars template driving the double-link pipeline.
+- `rpkg/src/Makevars.in` — Makevars template driving the link-then-generate pipeline.
+- `rpkg/tools/write-wrappers.R` — loads `$(SHLIB)` and runs the wrapper writers.
 - `rpkg/src/win.def.in` → `rpkg/src/miniextendr-win.def` — Windows symbol
   export definitions.
 - `rpkg/src/stub.c` — static C translation unit; declares `miniextendr_force_link`.
@@ -337,8 +344,9 @@ Almost always one of:
   variants per install mode. No `.in` template exists for this file.
 - `rpkg/tools/` — `Rscript`-invoked helpers for configure (lock-shape-check.R,
   detect-features.R, etc.).
-- `miniextendr-api/src/registry.rs` — `miniextendr_write_wrappers` cdylib
-  entry + `collect_r_wrappers` ordering logic.
+- `miniextendr-api/src/registry.rs` — `miniextendr_write_wrappers` /
+  `miniextendr_write_wasm_registry` routines + `collect_r_wrappers` ordering
+  logic.
 - `cargo-revendor/` — standalone vendoring tool (separate workspace).
 - `docs/CRAN_COMPATIBILITY.md` — vendoring requirements and offline build
   verification.
@@ -378,7 +386,7 @@ Almost always one of:
 ## Related skills
 
 - `miniextendr-architecture` — the install-mode latch, distributed_slice tables,
-  and the double-link pipeline at a higher level.
+  and the link-then-generate pipeline at a higher level.
 - `miniextendr-scaffolding` — minirextendr templates, doctor checks, and the
   `use_release_workflow()` helper for CI scaffolding.
 - `miniextendr-lint` — the MXL300 / MXL301 rules that `build.rs` enforces

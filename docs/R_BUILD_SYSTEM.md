@@ -44,59 +44,49 @@ extraction paths in global Rust flags.
 
 Tarball cleanup preserves caller-selected target and vendor caches, including
 ones under the usual package-local cleanup paths. Cache entries are retained
-until the caller removes them. The install-mode latch and wrapper-generation
-guards still apply. Without `VENDOR_OUT`, extraction stays in the package's
+until the caller removes them. The install-mode latch still applies. Without `VENDOR_OUT`, extraction stays in the package's
 `vendor/` directory and uses the ordinary build command. With neither variable
 set, package-local build directories are cleaned as before. This cache does
 not change the behavior of the separate `cleanup` script invoked by R's
 `--preclean` and `--clean` options.
-## Pre-shipped wrapper freshness
 
-A native tarball install can reuse `R/<package>-wrappers.R` without loading the
-shared library for generation (#1022). Its size alone cannot establish that it
-matches the Rust sources: adding an S3 method after generation previously
-allowed an install to succeed with a missing-method warning (#1512).
+## Wrapper generation
 
-`tools/wrapper-freshness.R` records content fingerprints after a successful
-native generation pass. The generated `tools/wrapper-inputs.rds` travels in the
-package tarball and is gitignored. It binds the wrapper bytes to the package's
-Rust source paths and contents, `Cargo.toml`, `Cargo.lock`, and the configured
-Cargo features and profile. It excludes generated `wasm_registry.rs` and build
-output directories. All recorded paths are relative to the package, so copying
-the package or resetting its timestamps does not invalidate the record.
+Every native install generates the R wrappers from the shared library it just
+linked. `src/Makevars` runs
 
-The native tarball fast path and the source-mode roxygen reuse optimization
-require a matching record. `miniextendr_build()` regenerates the source
-wrappers (and the record) under `MINIEXTENDR_FORCE_WRAPPER_GEN=1` before
-roxygen2 runs, so its `document()` step reuses them and its single install
-ships them (#1549). Missing, corrupt, or mismatched records trigger
-generation from the freshly linked library.
-`bootstrap.R` keeps a current record current across `cargo revendor --freeze`,
-which rewrites the fingerprinted Cargo files without changing what the wrappers
-are generated from; any other rewrite of those files invalidates the record,
-even when the resulting wrappers are identical. In this repository the
-maintainer recipes do the same for rpkg: `just rcmdinstall` around the
-committed-lock restore after its `[patch]`-drifted build, and `just vendor`
-around its lock stamp, so a `just r-cmd-build` or `just r-cmd-check` tarball
-installs with the pre-shipped wrappers. If the existing R wrapper
-changes, installation stops with its filename and recovery instructions before
-R's namespace load check. Generation compares a temporary copy, preserving the
-shipped wrapper on failure so a repeated install cannot bypass the check.
-`MINIEXTENDR_FORCE_WRAPPER_GEN=1` still forces generation and performs the same
-consistency check.
-
-For example, after adding a `summary.my_class` Rust method, regenerate wrappers
-and documentation in the original source package before producing the tarball:
-
-```r
-minirextendr::miniextendr_build("path/to/package")
-devtools::build("path/to/package")
+```sh
+Rscript ../tools/write-wrappers.R $(SHLIB)
 ```
 
-The fingerprint is separate from the R wrapper. The generator still leaves
-unchanged R code, timestamps, and source-position comments alone. This guard
-applies to the native tarball fast path; wasm uses its existing host-generated
-wrapper and registry snapshot workflow.
+from `src/` after the link. `$(SHLIB)` is the file name R's make gives the
+package's shared object (`<pkg>.so`, `<pkg>.dll`), so it also names the
+package. The script loads that library and calls its two registered writers,
+which walk the `#[distributed_slice]` tables and write `R/<pkg>-wrappers.R` and
+`src/rust/wasm_registry.rs`. The load runs with `MINIEXTENDR_WRAPPER_GEN=1`, so
+`R_init_<pkg>` only registers routines.
+
+Each writer replaces its file only when the content changed, so an unchanged
+file keeps its bytes and its mtime. Make therefore tracks the pass with a stamp,
+`rust-target/.miniextendr-wrappers`, not with the wrappers file: the stamp
+depends on `$(SHLIB)` and on the wrappers file, and a rule without a recipe
+makes a missing wrappers file (a fresh checkout, or a tarball built without
+one) count as changed. The result:
+
+- An install where nothing under `src/rust` changed runs Cargo (make always
+  asks it), which compiles nothing. The shared library is not relinked and the
+  wrappers are not regenerated.
+- A Rust edit that leaves the generated R code alone relinks the library and
+  regenerates, but the writer keeps the existing file.
+- A Rust edit that changes the generated R code rewrites the file and prints
+  `NOTE: <pkg>-wrappers.R changed`. Run roxygen2 afterwards: the install
+  regenerates the wrappers but not `NAMESPACE` or `man/`.
+
+Tarball installs take the same path. A shipped wrappers file is compared with
+the freshly generated one like any other, so a tarball whose Rust sources moved
+on from its wrappers installs the current wrappers instead of stale ones. wasm32
+is the exception: its `$(SHLIB)` is a SIDE_MODULE that host R cannot load, so a
+wasm build uses the files a host install generated.
 
 The wrapper file itself opens with two header lines: the `AUTO-GENERATED`
 marker, then the `miniextendr-api` version that generated it and an FNV-1a
@@ -246,10 +236,13 @@ $(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
       cp "$(ABS_RPKG_SRCDIR)/Makevars" "$(CARGO_LINK_CONFIG)"; \
     fi
 
-# Link first, then generate wrappers from that same shared library.
-all: $(SHLIB) $(WRAPPERS_R)
-$(WRAPPERS_R): $(SHLIB)
-    Rscript -e "dyn.load(...); .Call('miniextendr_write_wrappers', ...)"
+# Link first, then generate wrappers from that same shared library. The
+# writers keep unchanged files, so a stamp records the pass.
+all: $(SHLIB) $(WRAPPERS_STAMP)
+$(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
+    Rscript ../tools/write-wrappers.R "$(SHLIB)"
+    touch "$(WRAPPERS_STAMP)"
+$(WRAPPERS_R):
 ```
 
 Key design decisions:
@@ -260,8 +253,9 @@ Key design decisions:
 2. **FORCE_CARGO phony target**: ensures Cargo is always invoked, letting Cargo's
    own incremental build system decide what to rebuild.
 
-3. **`all: $(SHLIB) $(WRAPPERS_R)` ordering**: links the package library first,
-   then loads that same library to generate the R wrapper and wasm registry.
+3. **`all: $(SHLIB) $(WRAPPERS_STAMP)` ordering**: links the package library
+   first, then loads that same library to generate the R wrapper and wasm
+   registry.
    The final `all` recipe handles development touches and tarball cleanup.
 
 4. **`$(CARGO_LINK_CONFIG)` prerequisite**: Cargo keeps a cached archive's old
@@ -319,8 +313,9 @@ R CMD INSTALL:
      a. Compile stub.c → stub.o (R's CC)
      b. cargo build → librpkg.a (Rust staticlib, includes R_init_*)
      c. $(SHLIB_LINK) -o miniextendr.so stub.o librpkg.a (R's linker)
-     d. In development/fallback mode, load miniextendr.so and write
-        R/miniextendr-wrappers.R + src/rust/wasm_registry.rs
+     d. If miniextendr.so was relinked (or the wrappers file is missing),
+        tools/write-wrappers.R loads it and writes
+        R/miniextendr-wrappers.R + src/rust/wasm_registry.rs when they changed
   3. Install miniextendr.so to libs/
   4. Install R/ files, man/, etc.
 ```
@@ -373,42 +368,33 @@ The cleanup script requires that marker as well as the opt-in; simply running
 `./cleanup` or building a package still removes targets. Existing tarball-mode
 Makevars cleanup remains unchanged.
 
-## Development bootstrap
+## Bootstrap: staging path dependencies
 
-For local installs from a package with path-dependency siblings:
+`bootstrap.R` runs when a pkgbuild frontend builds the package
+(`Config/build/bootstrap: TRUE`): `devtools::build()`, `install()` and
+`check()`, rcmdcheck, pak, and rv 0.23.0 or later (with `directory`). Plain
+`R CMD build` and `R CMD INSTALL` never run it.
 
-```r
-withr::with_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"), {
-  devtools::install("path/to/rpkg", build = TRUE, upgrade = FALSE)
-})
-```
+It has one job. R CMD build seals only the package directory, and a `path`
+dependency is not source-replaceable, so a path dependency outside the package
+(e.g. `path = "../../../my-core"`) would be missing from the build copy.
+Bootstrap stages every such dependency, with its transitive path siblings, into
+uncompressed `src/rust/vendor/<name>-<version>/` directories, using the base-R
+stager in `tools/dev-bootstrap.R`. `cargo package` resolves workspace
+inheritance. The portable manifest points each path dependency at its staged
+directory and adds `exclude = ["vendor"]` to its `[workspace]` so staged crates
+never become workspace members. Registry and git dependencies resolve over the
+network at install time. A package whose path dependencies all live inside it
+has nothing to stage.
 
-`minirextendr::miniextendr_build()` selects this mode for its own installs unless
-you explicitly set a bootstrap mode or already have a distribution vendor
-archive. It uses `cargo revendor --dev` when that tool is on PATH and the base-R
-stager in `tools/dev-bootstrap.R` otherwise; both produce the same layout.
-
-Bootstrap packages only path dependencies, including their transitive path
-siblings, into uncompressed `src/rust/vendor/<name>-<version>/` directories.
-Cargo package resolves workspace inheritance. Registry and Git dependencies
-continue to resolve normally; this mode does not make an offline release
-artifact, generate source replacement, or compress `inst/vendor.tar.xz`. The
-portable manifest points each path dependency at its staged directory and adds
-`exclude = ["vendor"]` to its `[workspace]` so staged crates never become
-workspace members.
-
-## Distribution bootstrap without cargo-revendor
-
-A distribution build (`MINIEXTENDR_BOOTSTRAP_MODE` unset or `dist`) normally
-runs `cargo revendor --freeze` into `inst/vendor.tar.xz`. When `cargo-revendor`
-is not on PATH, bootstrap falls back to the same base-R stager whenever a path
-dependency lies **outside the package directory**, because R CMD build seals
-only that directory and a `path` dependency is not source-replaceable. The
-result builds with network access but is not CRAN-ready (#1580). A package whose
-path dependencies all live inside it has nothing to stage and builds from source.
-Either way bootstrap ends with a `warning()` that the tarball downloads crates.io
-and git dependencies at install time and is not CRAN-ready, naming the
-`cargo install` line and `minirextendr::miniextendr_vendor()` as the fixes.
+Bootstrap never vendors. It never runs `cargo-revendor`, never writes
+`inst/vendor.tar.xz` and never generates source replacement, so what it produces
+builds with network access and is not CRAN-ready. The offline tarball is a
+separate, explicit step ([CRAN Compatibility](CRAN_COMPATIBILITY.md)):
+`minirextendr::miniextendr_build_tarball()` (or `just r-cmd-build` in this
+repository) seals `inst/vendor.tar.xz` before the build. That archive carries
+every dependency, so bootstrap then clears any staging left behind instead of
+staging.
 
 R CMD build activates the staging by running `./cleanup` in its copy, and skips a
 `cleanup` that is not executable. pak's git client (`git::` and `gitlab::` refs)
@@ -440,7 +426,7 @@ rv before 0.23.0 never runs `bootstrap.R`, and a local source takes no
 Pointing any installer at the package directory itself (pak
 `local::<repo>/rpkg`, rv `path = "<repo>/rpkg"`, a plain `R CMD build` of
 `rpkg/`) takes only that directory, so the sibling is gone before anything can
-stage it, with or without `cargo-revendor`. Use rv 0.23.0 or later or pak with
+stage it. Use rv 0.23.0 or later or pak with
 one of the forms above, or build the tarball in the checkout
 (`devtools::build()`) and install that.
 
@@ -493,7 +479,8 @@ Two constraints follow from `cargo package`:
   then points it back at the staged copy. The R crate's own path dependencies
   need no version key: its manifest is rewritten in place, never packaged.
 - A sibling cannot carry a `git` dependency, which `cargo package` rejects or
-  turns into a crates.io one. Install `cargo-revendor` for such a graph.
+  turns into a crates.io one. Such a graph installs only from a fully vendored
+  tarball (`minirextendr::miniextendr_build_tarball()`).
 
 Bootstrap reports every blocking problem in one error before staging anything:
 each missing `version`, each sibling git dependency, each `path` that points at
@@ -506,12 +493,11 @@ absolute or `./`-prefixed paths, `[workspace.dependencies]` inheritance,
 `[target.*]` tables, multi-line inline tables); the minirextendr test suite
 exercises each form.
 
-The staged state records its mode and an md5 fingerprint of the source files
-behind every staged crate (plus an inherited workspace manifest). A staging
-left in the checkout is only reused by a later build of the same mode, and
-cleanup stops with `path dependency <name> changed since bootstrap; rerun
-bootstrap.R` when a source it can still see has changed. Sources that no
-longer exist are not compared.
+The staged state records an md5 fingerprint of the source files behind every
+staged crate (plus an inherited workspace manifest). Cleanup stops with
+`path dependency <name> changed since bootstrap; rerun bootstrap.R` when a
+source it can still see has changed. Sources that no longer exist are not
+compared.
 
 The source `Cargo.toml` stays byte-for-byte unchanged. Bootstrap prepares
 `.Cargo.toml.dev` and `.dev-bootstrap.rds` beside it. R CMD build runs cleanup
@@ -530,12 +516,7 @@ Cleanup consumes them before the artifact is sealed, keeping its activation
 backup under `src/rust/.dev-vendor-backup-*` inside the build copy, which is
 excluded from the artifact.
 
-Ordinary bootstrap calls still default to distribution mode. Unset the variable
-(or set it to `dist`) to produce `inst/vendor.tar.xz` with the existing full
-vendor/freeze workflow. Bootstrap removes prior dev staging before preparing
-that distribution artifact.
-
-Development bundles follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. In a Git checkout, untracked files that Git does not ignore are packaged too, and ignored ones are left out. Bootstrap never stages files in Git.
+Staged crates follow [Cargo’s package file-selection rules](https://doc.rust-lang.org/cargo/reference/manifest.html#the-exclude-and-include-fields). Check `cargo package --list` for an ancestor core crate: Git ignore rules require its manifest to be tracked. For an untracked source tree, use `package.include` or `package.exclude` to keep generated output out of the crate. In a Git checkout, untracked files that Git does not ignore are packaged too, and ignored ones are left out. Bootstrap never stages files in Git.
 
 ## See Also
 

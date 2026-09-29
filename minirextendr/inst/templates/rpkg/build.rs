@@ -1,12 +1,14 @@
 fn main() {
     miniextendr_lint::build_script();
 
-    println!("cargo:rerun-if-changed=wasm_registry.rs");
-
+    // Only the wasm32 build reads wasm_registry.rs. The host install rewrites it
+    // after linking whenever the wrappers change, so watching it on a native
+    // build would recompile the crate on the next install.
     let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
     if target_arch != "wasm32" {
         return;
     }
+    println!("cargo:rerun-if-changed=wasm_registry.rs");
 
     let path = std::path::Path::new("wasm_registry.rs");
     let content = std::fs::read_to_string(path).unwrap_or_else(|_| {

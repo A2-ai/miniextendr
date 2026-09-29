@@ -43,5 +43,3 @@ vendor/
 **/src/rust/.Cargo.toml.dev
 **/src/rust/.dev-bootstrap.rds
 **/src/rust/.dev-vendor-backup-*/
-# Generated wrapper provenance, shipped with the package tarball
-/tools/wrapper-inputs.rds

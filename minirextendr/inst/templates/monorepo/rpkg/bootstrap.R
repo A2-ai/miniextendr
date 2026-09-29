@@ -1,94 +1,22 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE).
-# Invoked by pkgbuild (devtools::build/install, remotes::install_git, pak,
-# rcmdcheck, r-lib/actions) in the source directory before R CMD build seals
-# the tarball. Two jobs:
-#   1. Run ./configure so Makevars and other generated files exist before
-#      R CMD build collects them.
-#   2. If no inst/vendor.tar.xz is present yet, vendor one with cargo-revendor
-#      so the sealed tarball ships self-contained for offline install. Without
-#      cargo-revendor, stage only the path dependencies (see below).
+# pkgbuild runs it in the source directory before `R CMD build` copies the
+# package: devtools::build/install/check, rcmdcheck, pak, and rv (with
+# `directory`). Plain `R CMD build` and `R CMD INSTALL` never run it.
 #
-# Install-mode detection is automatic: minirextendr_vendor() or bootstrap.R
-# creates inst/vendor.tar.xz while producing a package tarball; configure only
-# consumes it. Otherwise source/network mode is used.
-
-# MINIEXTENDR_BOOTSTRAP=1 tells configure's leaked-tarball guard (#1029) that
-# this ./configure was invoked by bootstrap, not directly, so a deliberate
-# tarball-in-a-git-tree (produced by the vendor step that precedes
-# devtools::build()/check()) is not mistaken for a leak.
-if (.Platform$OS.type == "windows") {
-  if (file.exists("configure.ucrt")) {
-    system2("sh", "configure.ucrt", env = "MINIEXTENDR_BOOTSTRAP=1")
-  } else if (file.exists("configure.win")) {
-    system2("sh", "configure.win", env = "MINIEXTENDR_BOOTSTRAP=1")
-  }
-} else {
-  system2("bash", "./configure", env = "MINIEXTENDR_BOOTSTRAP=1")
-}
-
-# Tarball-production vendoring. minirextendr::miniextendr_vendor() normally seals
-# inst/vendor.tar.xz before the build and this block short-circuits via the
-# file.exists guard. But git-based / staged installs (remotes::install_git,
-# devtools::install, pak, CRAN) never run it and copy the package
-# out of the workspace before building — which strands any local
-# path-dependency sibling (a core crate at `path = "../../../my-core"`), since
-# a path dep is NOT source-replaceable. We vendor here instead, while the
-# sibling is still reachable in the source/clone tree. --freeze rewrites the
-# sibling to vendor/ so the sealed tarball is self-contained; deps declared
-# `git =` stay git and resolve offline via source replacement. Inert for a
-# git-only package with no path sibling to rewrite.
-# Without cargo-revendor, tools/dev-bootstrap.R stages only the path
-# dependencies under src/rust/vendor via `cargo package`, and cleanup swaps in
-# a manifest pointing there; registry and git dependencies still resolve over
-# the network. A package whose path dependencies all live inside it has
-# nothing to stage.
-bootstrap_mode <- match.arg(Sys.getenv("MINIEXTENDR_BOOTSTRAP_MODE", "dist"), c("dist", "dev"))
+# Its one job: a path dependency outside the package (e.g. a core crate at
+# `path = "../../../my-core"`) does not travel with the package directory, so
+# tools/dev-bootstrap.R stages it under src/rust/vendor while the checkout is
+# still here, and cleanup swaps in a manifest pointing there. Registry and git
+# dependencies resolve over the network at install time. A package whose path
+# dependencies all live inside it has nothing to stage.
+#
+# bootstrap.R never vendors. An offline (CRAN) tarball is a separate, explicit
+# step that seals inst/vendor.tar.xz before the build
+# (minirextendr::miniextendr_build_tarball()). That archive carries every
+# dependency, so there is nothing left to stage.
 source("tools/dev-bootstrap.R", local = TRUE)
-if (bootstrap_mode == "dev") {
-  prepare_dev_bootstrap()
-} else {
+if (file.exists("inst/vendor.tar.xz")) {
   clear_dev_bootstrap()
-}
-
-if (bootstrap_mode == "dist" && !file.exists("inst/vendor.tar.xz")) {
-  if (!nzchar(Sys.which("cargo-revendor"))) {
-    staged <- prepare_dev_bootstrap(mode = "dist")
-    warning(
-      "bootstrap.R: cargo-revendor is not on PATH, so this tarball ",
-      if (staged) "carries its path dependencies under src/rust/vendor but ",
-      "downloads crates.io and git dependencies at install time and is not CRAN-ready. ",
-      "For a CRAN submission, install cargo-revendor ",
-      "(`cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked`) ",
-      "and rebuild, or run minirextendr::miniextendr_vendor() first.",
-      call. = FALSE
-    )
-  } else {
-    message("bootstrap.R: generating inst/vendor.tar.xz via cargo-revendor")
-    dir.create("inst", showWarnings = FALSE)
-    # --freeze rewrites Cargo.toml and normalises Cargo.lock, both fingerprinted
-    # by the wrapper provenance record (#1512), while the generated wrappers do
-    # not depend on where dependencies are resolved from. A record that is
-    # current before the freeze is therefore re-written afterwards, so the sealed
-    # tarball keeps the pre-shipped-wrapper fast path (#1022); a stale or absent
-    # record stays as it is.
-    source("tools/wrapper-freshness.R", local = TRUE)
-    wrappers <- file.path("R", paste0(read.dcf("DESCRIPTION", fields = "Package")[[1L]],
-                                      "-wrappers.R"))
-    preserve_wrapper_record(".", wrappers, function() {
-      status <- system2("cargo", c(
-        "revendor",
-        "--manifest-path", "src/rust/Cargo.toml",
-        "--output", "vendor",
-        "--freeze",
-        "--compress", "inst/vendor.tar.xz",
-        "--blank-md",
-        "--source-marker",
-        "--force",
-        "-v"
-      ))
-      if (status != 0) {
-        stop("bootstrap.R: cargo revendor failed (exit ", status, ")", call. = FALSE)
-      }
-    })
-  }
+} else {
+  prepare_dev_bootstrap()
 }

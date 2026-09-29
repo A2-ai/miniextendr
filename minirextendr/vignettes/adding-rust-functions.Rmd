@@ -274,7 +274,7 @@ After adding new functions, rebuild and regenerate R wrappers:
 ```{r}
 library(minirextendr)
 
-# 1. Install the package (compiles Rust + auto-generates R wrappers via cdylib)
+# 1. Install the package (compiles Rust, then generates the R wrappers from the linked library)
 devtools::install()
 
 # 2. Run roxygen2 to update NAMESPACE and man pages

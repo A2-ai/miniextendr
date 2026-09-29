@@ -636,16 +636,9 @@ configure-fast:
 # output is current. Cheap insurance against a stale committed tarball when
 # the workspace crates have edits that don't bump Cargo.lock.
 #
-# The lock stamp in step 1 rewrites a file the wrapper provenance record
-# fingerprints, so the vendor pass runs under `_preserve-wrapper-record`.
-#
 # Vendor rpkg's dependencies into rpkg/inst/vendor.tar.xz (CRAN release prep)
-vendor: (_preserve-wrapper-record "_vendor")
-
-# Body of `vendor`, run with the wrapper provenance record kept current.
-[private]
 [script("bash")]
-_vendor:
+vendor:
     set -euo pipefail
     # cargo-revendor auto-reads [patch."git+url"] from .cargo/config.toml
     # (written by `configure` in dev-monorepo mode) to resolve AND copy
@@ -702,26 +695,6 @@ _vendor:
     echo "Vendored framework crates from local workspace: miniextendr-{api,lint,macros}"
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
     echo "(run 'just clean-vendor-leak' or 'unlink(\"rpkg/inst/vendor.tar.xz\")' in R)"
-
-# Run RECIPE, which rewrites rpkg/src/rust/Cargo.lock without changing what the
-# R wrappers are generated from, and keep a wrapper provenance record that was
-# current beforehand current afterwards (#1512). The record fingerprints the
-# lock. Without this, restoring the committed lock after a source-mode install
-# (whose [patch] override drifted it) or stamping it in `vendor` leaves the
-# record stale, and a tarball built from the tree regenerates its wrappers at
-# install time instead of reusing the shipped copy (#1022). bootstrap.R wraps
-# its `cargo revendor --freeze` in the same preserve_wrapper_record() helper.
-# A stale record stays stale, and a failing RECIPE re-records nothing. Without
-# a record (a fresh checkout, or a Rust-only job with no R) RECIPE just runs.
-[private]
-[script("bash")]
-_preserve-wrapper-record recipe:
-    set -euo pipefail
-    if [ ! -f rpkg/tools/wrapper-inputs.rds ]; then
-      just {{recipe}}
-      exit 0
-    fi
-    Rscript -e 'source("rpkg/tools/wrapper-freshness.R"); preserve_wrapper_record("rpkg", "rpkg/R/miniextendr-wrappers.R", function() if (system2("just", "{{recipe}}") != 0L) stop("just {{recipe}} failed", call. = FALSE))'
 
 # Remove a leaked rpkg/inst/vendor.tar.xz.
 # inst/vendor.tar.xz is the single signal that flips configure into tarball mode.
@@ -783,11 +756,10 @@ vendor-verify:
       --compress rpkg/inst/vendor.tar.xz \
       -v
 
-# Regression test: bootstrap.R must produce inst/vendor.tar.xz from a clean
-# source tree. Catches the #439/#440 regression where a leftover tarball was
-# bundled instead of a freshly-bootstrapped one. Requires cargo-revendor on PATH
-# and pkgbuild installed in R; skips with a clear message if either is missing.
-# See tests/bootstrap-produces-vendor.sh and #441.
+# Regression test: bootstrap.R never vendors. Every pkgbuild frontend runs it,
+# so it may stage only path dependencies outside the package; rpkg has none, so
+# the source tree and the tarball R CMD build seals from it stay vendor-free.
+# See tests/bootstrap-never-vendors.sh.
 #
 # Also runs the #876 loud-fail regression: `just vendor` must exit non-zero when
 # a framework crate would be vendored from git instead of the local workspace.
@@ -798,7 +770,7 @@ vendor-verify:
 # the framework crate resolves against the local workspace, not git@main.
 # See tests/vendor-cross-surface-rename.sh.
 test-bootstrap-vendor:
-    bash tests/bootstrap-produces-vendor.sh
+    bash tests/bootstrap-never-vendors.sh
     bash tests/vendor-loud-fail.sh
     bash tests/vendor-cross-surface-rename.sh
 
@@ -880,9 +852,11 @@ devtools-load: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::load_all("rpkg")'
     @just cargo-lock-restore
 
-# Install rpkg with devtools::install
+# Install rpkg with devtools::install, in place. build = FALSE keeps configure in
+# rpkg/, where it finds the workspace siblings; a built tarball installs from a
+# temporary copy that resolves the framework crates from git instead.
 devtools-install: _assert-no-vendor-leak devtools-document
-    Rscript -e 'devtools::install("rpkg")'
+    Rscript -e 'devtools::install("rpkg", build = FALSE)'
     @just cargo-lock-restore
 
 # Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
@@ -929,7 +903,7 @@ minirextendr-install-deps:
 [script("bash")]
 devtools-build: configure vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
 # No _assert-no-vendor-leak dep — devtools::check internally calls
@@ -974,12 +948,12 @@ document-all: devtools-document minirextendr-document
 # This includes: rpkg and cross-package test packages (minirextendr has no configure step)
 configure-all: configure cross-configure
 
-# The install records its wrappers against the [patch]-drifted Cargo.lock it
-# built with; the lock restore keeps that record current for the committed lock.
+# The install resolves through the [patch] override, which drifts Cargo.lock;
+# restore the committed lock afterwards.
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args: _assert-no-vendor-leak configure
     R CMD INSTALL {{args}} rpkg
-    @just _preserve-wrapper-record cargo-lock-restore
+    @just cargo-lock-restore
 
 # Build R package tarball
 # Depends on `r-cmd-install` so the host wrapper-gen pass regenerates the UNTRACKED
@@ -1003,14 +977,13 @@ r-cmd-install *args: _assert-no-vendor-leak configure
 # which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 # The same goes for the `source = "git+<url>#<current commit>"` lines `vendor`
 # stamps into rpkg/src/rust/Cargo.lock: the built tarball needs them, the tree
-# gets the committed lock back, and `_preserve-wrapper-record` keeps the wrapper
-# record current across that restore. `--log` writes rpkg-00build.log to the
+# gets the committed lock back. `--log` writes rpkg-00build.log to the
 # repository root, which .gitignore covers.
 alias rcmdbuild := r-cmd-build
 [script("bash")]
 r-cmd-build *args: r-cmd-install vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
@@ -1025,7 +998,7 @@ alias rcmdcheck := r-cmd-check
 [script("bash")]
 r-cmd-check *args: r-cmd-install vendor
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just _preserve-wrapper-record cargo-lock-restore' EXIT
+    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
     ERROR_ON="warning"
     CHECK_DIR=""
     for arg in {{args}}; do
@@ -1213,7 +1186,7 @@ templates-sources:
     rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     rpkg/tools/vendor-cache.R	rpkg/tools/vendor-cache.R
     rpkg/tools/dev-bootstrap.R	rpkg/tools/dev-bootstrap.R
-    rpkg/tools/wrapper-freshness.R	rpkg/tools/wrapper-freshness.R
+    rpkg/tools/write-wrappers.R	rpkg/tools/write-wrappers.R
     rpkg/win.def.in	rpkg/src/win.def.in
     # === Monorepo Template (monorepo/) ===
     monorepo/gitattributes	rpkg/.gitattributes
@@ -1237,7 +1210,7 @@ templates-sources:
     monorepo/rpkg/tools/lock-shape-check.R	rpkg/tools/lock-shape-check.R
     monorepo/rpkg/tools/vendor-cache.R	rpkg/tools/vendor-cache.R
     monorepo/rpkg/tools/dev-bootstrap.R	rpkg/tools/dev-bootstrap.R
-    monorepo/rpkg/tools/wrapper-freshness.R	rpkg/tools/wrapper-freshness.R
+    monorepo/rpkg/tools/write-wrappers.R	rpkg/tools/write-wrappers.R
     monorepo/rpkg/win.def.in	rpkg/src/win.def.in
     EOF
 

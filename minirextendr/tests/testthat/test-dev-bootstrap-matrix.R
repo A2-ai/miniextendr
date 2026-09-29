@@ -267,11 +267,11 @@ for (case in Filter(function(case) is.null(case$error), stager_cases)) {
   test_that(sprintf("stager matrix %s: %s relocates and builds offline", case$id, case$name), {
     skip_without_stager_tools()
     helper <- stager_helper()
-    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA, CARGO_NET_OFFLINE = "true", CARGO_TARGET_DIR = NA))
+    withr::local_envvar(c(CARGO_NET_OFFLINE = "true", CARGO_TARGET_DIR = NA))
     fx <- stager_fixture(case)
     locks <- list.files(fx$repo, "^Cargo\\.(toml|lock)$", recursive = TRUE, full.names = TRUE)
     before <- tools::md5sum(locks)
-    expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg, mode = "dist")))
+    expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg)))
     expect_identical(tools::md5sum(locks), before)
     expect_identical(git_fixture(fx$repo, "status", "--porcelain", "--untracked-files=all"),
                      sort(sprintf("?? %s", setdiff(names(case$untracked), case$ignore))))
@@ -300,12 +300,11 @@ for (case in Filter(function(case) !is.null(case$error), stager_cases)) {
   test_that(sprintf("stager matrix %s: %s stops before staging", case$id, case$name), {
     skip_without_stager_tools()
     helper <- stager_helper()
-    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA, CARGO_NET_OFFLINE = "true"))
+    withr::local_envvar(c(CARGO_NET_OFFLINE = "true"))
     fx <- stager_fixture(case)
-    header <- if (is.null(case$header)) "Cannot stage path dependencies without cargo-revendor" else case$header
-    err <- expect_error(helper$prepare_dev_bootstrap(fx$pkg, mode = "dist"), header, fixed = TRUE)
+    header <- if (is.null(case$header)) "Cannot stage path dependencies:" else case$header
+    err <- expect_error(helper$prepare_dev_bootstrap(fx$pkg), header, fixed = TRUE)
     for (pattern in case$error) expect_match(conditionMessage(err), pattern, fixed = TRUE)
-    if (is.null(case$header)) expect_match(conditionMessage(err), "cargo install --git", fixed = TRUE)
     expect_false(file.exists(file.path(fx$pkg, "src/rust/vendor")))
     expect_false(file.exists(file.path(fx$pkg, "src/rust/.dev-bootstrap.rds")))
     expect_identical(git_fixture(fx$repo, "status", "--porcelain", "--untracked-files=all"), character())
@@ -315,10 +314,10 @@ for (case in Filter(function(case) !is.null(case$error), stager_cases)) {
 test_that("re-staging replaces the previous staging and leaves no backups", {
   skip_without_stager_tools()
   helper <- stager_helper()
-  withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA, CARGO_NET_OFFLINE = "true"))
+  withr::local_envvar(c(CARGO_NET_OFFLINE = "true"))
   fx <- stager_fixture(stager_cases[[which(vapply(stager_cases, `[[`, "", "id") == "b8")]])
   rust <- file.path(fx$pkg, "src/rust")
-  for (i in 1:3) expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg, mode = "dist")))
+  for (i in 1:3) expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg)))
   expect_setequal(list.files(file.path(rust, "vendor")), c("alpha-0.1.0", "beta-0.1.0", "gamma-0.1.0"))
   expect_length(list.files(rust, "^\\.dev-vendor-backup-", all.files = TRUE), 0L)
   expect_identical(git_fixture(fx$repo, "status", "--porcelain", "--untracked-files=all"), character())
@@ -329,7 +328,7 @@ test_that("re-staging replaces the previous staging and leaves no backups", {
   # A src/rust/vendor without bootstrap's state file is not ours: never touch it.
   dir.create(file.path(rust, "vendor/mine"), recursive = TRUE)
   writeLines("keep", file.path(rust, "vendor/mine/file.txt"))
-  expect_error(helper$prepare_dev_bootstrap(fx$pkg, mode = "dist"), "exists but bootstrap did not create it")
+  expect_error(helper$prepare_dev_bootstrap(fx$pkg), "exists but bootstrap did not create it")
   expect_identical(readLines(file.path(rust, "vendor/mine/file.txt")), "keep")
   expect_false(file.exists(file.path(rust, ".dev-bootstrap.rds")))
 })
@@ -337,9 +336,9 @@ test_that("re-staging replaces the previous staging and leaves no backups", {
 test_that("activation refuses a staging older than its path dependencies", {
   skip_without_stager_tools()
   helper <- stager_helper()
-  withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA, CARGO_NET_OFFLINE = "true"))
+  withr::local_envvar(c(CARGO_NET_OFFLINE = "true"))
   fx <- stager_fixture(stager_cases[[which(vapply(stager_cases, `[[`, "", "id") == "b6")]])
-  expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg, mode = "dist")))
+  expect_true(suppressMessages(helper$prepare_dev_bootstrap(fx$pkg)))
   sources <- readRDS(file.path(fx$pkg, "src/rust/.dev-bootstrap.rds"))$sources
   expect_setequal(names(sources), c("alpha-0.1.0", "inner-0.1.0"))
   # The inherited workspace manifest is part of each member's fingerprint.
@@ -365,25 +364,4 @@ test_that("activation refuses a staging older than its path dependencies", {
   # A source that no longer exists cannot be compared, so it is not a mismatch.
   unlink(file.path(fx$repo, c("alpha", "inner", "Cargo.toml")), recursive = TRUE)
   expect_true(helper$activate_dev_bootstrap(relocate()))
-})
-
-test_that("cargo revendor --dev output is replaced, not backed up, and fingerprinted", {
-  skip_without_stager_tools()
-  skip_if_not(nzchar(Sys.which("cargo-revendor")), "cargo-revendor not available")
-  helper <- stager_helper()
-  withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA, CARGO_NET_OFFLINE = "true"))
-  fx <- stager_fixture(stager_cases[[which(vapply(stager_cases, `[[`, "", "id") == "b4")]])
-  rust <- file.path(fx$pkg, "src/rust")
-  for (i in 1:3) expect_true(helper$prepare_dev_bootstrap(fx$pkg, mode = "dev"))
-  expect_setequal(list.files(file.path(rust, "vendor")), c("alpha-0.1.0", "inner-0.2.0"))
-  expect_length(list.files(rust, "^\\.dev-vendor-backup-", all.files = TRUE), 0L)
-  expect_identical(git_fixture(fx$repo, "status", "--porcelain", "--untracked-files=all"), character())
-  sources <- readRDS(file.path(rust, ".dev-bootstrap.rds"))$sources
-  expect_setequal(names(sources), c("alpha-0.1.0", "inner-0.2.0"))
-  withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = "dev"))
-  writeLines("pub fn value() -> i32 { 9 }", file.path(fx$repo, "inner/src/lib.rs"))
-  outer <- withr::local_tempdir()
-  expect_true(file.copy(fx$pkg, outer, recursive = TRUE))
-  expect_error(helper$activate_dev_bootstrap(file.path(outer, "pkg")),
-               "path dependency inner changed since bootstrap", fixed = TRUE)
 })
