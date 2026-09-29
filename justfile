@@ -1376,8 +1376,10 @@ issues-refresh output_dir="ISSUES":
 # root .gitattributes routes rpkg/src/rust/Cargo.lock to `merge=mx-regen`;
 # this recipe defines the driver in the repository config and, in the shared
 # info/attributes, also routes the paths that the tracked attributes mark
-# `-merge` (rpkg's NAMESPACE, man pages and configure, and
-# patches/templates.patch). The tracked `-merge`
+# `-merge` (rpkg's NAMESPACE, man pages and configure,
+# patches/templates.patch, and the NAMESPACE, R wrappers, man pages and
+# configure of the cross-package test packages). rpkg's R/*-wrappers.R is
+# gitignored, so it never merges and is not routed. The tracked `-merge`
 # stays for clones without the driver and for scaffolded packages, which
 # inherit rpkg/.gitattributes. Both the config and info/attributes are shared
 # by every worktree of this clone. Re-running replaces the managed block.
@@ -1398,6 +1400,12 @@ merge-drivers-install:
       echo "rpkg/man/*.Rd merge=mx-regen"
       echo "rpkg/configure merge=mx-regen"
       echo "patches/templates.patch merge=mx-regen"
+      for pkg in producer.pkg consumer.pkg; do
+        echo "tests/cross-package/$pkg/NAMESPACE merge=mx-regen"
+        echo "tests/cross-package/$pkg/R/*-wrappers.R merge=mx-regen"
+        echo "tests/cross-package/$pkg/man/*.Rd merge=mx-regen"
+        echo "tests/cross-package/$pkg/configure merge=mx-regen"
+      done
       echo "# mx-regen: end"
     } > "$attributes"
     echo "mx-regen merge driver installed (git config + $attributes)."
@@ -1416,12 +1424,14 @@ regenerate-merged:
       echo "regenerate-merged: nothing to regenerate ($list is empty or absent)"
       exit 0
     fi
-    rpkg_docs=0 configure=0 templates=0 lock=0 unknown=()
+    rpkg_docs=0 configure=0 templates=0 lock=0 cross_docs=0 cross_configure=() unknown=()
     while IFS= read -r path; do
       case "$path" in
         rpkg/NAMESPACE | rpkg/man/*) rpkg_docs=1 ;;
         rpkg/configure) configure=1 ;;
         patches/templates.patch) templates=1 ;;
+        tests/cross-package/*.pkg/NAMESPACE | tests/cross-package/*.pkg/R/*-wrappers.R | tests/cross-package/*.pkg/man/*.Rd) cross_docs=1 ;;
+        tests/cross-package/*.pkg/configure) cross_configure+=("${path%/configure}") ;;
         rpkg/src/rust/Cargo.lock) lock=1 ;;
         *) unknown+=("$path") ;;
       esac
@@ -1443,6 +1453,15 @@ regenerate-merged:
     if [ "$templates" = 1 ]; then
       just templates-approve
       just templates-check
+    fi
+    if [ "$cross_docs" = 1 ]; then
+      # Both recipes run autoconf in each package, which covers configure.
+      just cross-install
+      just cross-document
+    elif [ "${#cross_configure[@]}" -gt 0 ]; then
+      for dir in "${cross_configure[@]}"; do
+        (cd "$dir" && autoconf)
+      done
     fi
     if [ "$lock" = 1 ]; then
       just configure
