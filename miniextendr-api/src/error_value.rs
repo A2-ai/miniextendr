@@ -262,7 +262,8 @@ pub unsafe fn conversion_condition_value(
 /// Build the tagged value for an argument check that failed in Rust after
 /// the conversion: `#[miniextendr(no_na)]` on a value its type reads as
 /// missing where R's `anyNA()` saw none (the text `"NA"` or a blank string
-/// for `AsNumeric*`, a factor `NA` level for `AsCharacter*`, ...).
+/// for `AsNumeric*`, a factor `NA` level for `AsCharacter*`, ...), or on an
+/// `Either`, which has no R guard, an `NA` the arm taken refuses.
 ///
 /// The condition is the one `no_na`'s R guard raises
 /// (`.miniextendr_arg_error`): `kind = "conversion"`, `message` as given,

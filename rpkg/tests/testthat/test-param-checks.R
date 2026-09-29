@@ -343,14 +343,118 @@ test_that("no_na on an Either says contain when either arm holds several values"
   skip_if_not(miniextendr_has_feature("either"), "either feature off")
   expect_identical(miniextendr:::either_no_na_raw_or_number(as.raw(1:2)), "raw:2")
   expect_identical(miniextendr:::either_no_na_raw_or_number(3), "number:3")
+  # An Either has no R guard, so a value that neither arm reads gets the
+  # conversion's refusal, which names both arms, before any NA check.
   expect_identical(
     caught_msg(miniextendr:::either_no_na_raw_or_number(c(1, NA))),
-    "'x' must not contain NA"
+    "'x' must be raw or a single number: got length 2"
   )
   expect_identical(
     caught_msg(miniextendr:::either_no_na_raw_or_number(NA_real_)),
     "'x' must not contain NA"
   )
+})
+
+test_that("no_na on an Either is checked after the conversion, by the arm taken", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::value_or_table
+  expect_identical(f(3), "value Some(3.0)")
+  expect_identical(f(data.frame(id = 1:2, v = c(1, 2))), "table")
+  # The data frame arm keeps its NA cells: no anyNA() runs on the whole value.
+  expect_identical(f(data.frame(id = 1:2, v = c(1, NA))), "table")
+  # A missing number is refused with the same condition as the R guard's.
+  refused <- tryCatch(f(NA), error = identity)
+  guarded <- tryCatch(miniextendr:::param_no_na_scalar(NA_real_), error = identity)
+  expect_identical(conditionMessage(refused), "'x' must not be NA")
+  expect_identical(class(refused), class(guarded))
+  expect_identical(refused$param, "x")
+  expect_identical(conditionCall(refused), quote(f(NA)))
+  for (x in list(NA_real_, NaN, "NA")) {
+    expect_identical(caught_msg(f(x)), "'x' must not be NA")
+  }
+})
+
+test_that("no_na on an Either reads a newtype or Result arm by what it wraps", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  table <- data.frame(id = 1:2, v = c(1, NA))
+  for (f in list(miniextendr:::value_or_wrapped_table, miniextendr:::value_or_result_table)) {
+    expect_identical(f(3), "value Some(3.0)")
+    expect_identical(f(data.frame(id = 1:2, v = c(1, 2))), "table 2x2")
+    # The data frame behind the wrapper keeps its NA cells.
+    expect_identical(f(table), "table 2x2")
+    # The number arm still refuses what value_or_table() refuses, with the
+    # same condition.
+    for (x in list(NA, NA_real_, NaN, "NA")) {
+      refused <- tryCatch(f(x), error = identity)
+      plain <- tryCatch(miniextendr:::value_or_table(x), error = identity)
+      expect_identical(conditionMessage(refused), "'x' must not be NA")
+      expect_identical(class(refused), class(plain))
+      expect_identical(refused$param, "x")
+    }
+  }
+  # NULL is Err(()) on the Result arm: not given, and it holds no NA.
+  expect_identical(miniextendr:::value_or_result_table(NULL), "nothing")
+})
+
+test_that("no_na on a Missing<Either> passes an omitted argument", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::value_or_table_optional
+  expect_identical(f(), "nothing")
+  expect_identical(f(3), "value Some(3.0)")
+  expect_identical(f(data.frame(v = c(1, NA))), "table")
+  expect_identical(caught_msg(f(NA)), "'x' must not be NA")
+})
+
+test_that("no_na on an Either with an Option arm passes NULL and refuses NA", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::value_or_table_nullable
+  # NULL (the default, or given) converts to None on the number arm and
+  # passes as not given; it never reaches the data frame arm.
+  expect_identical(f(), "nothing")
+  expect_identical(f(NULL), "nothing")
+  expect_identical(f(3), "value Some(3.0)")
+  expect_identical(f(data.frame(id = 1:2, v = c(1, NA))), "table")
+  # NA is refused as on the plain number arm: R's NA by the check on the
+  # input, the text "NA" by what the marker reads as missing.
+  for (x in list(NA, "NA")) {
+    refused <- tryCatch(f(x), error = identity)
+    plain <- tryCatch(miniextendr:::value_or_table(x), error = identity)
+    expect_identical(conditionMessage(refused), "'x' must not be NA")
+    expect_identical(conditionMessage(refused), conditionMessage(plain))
+    expect_identical(class(refused), class(plain))
+    expect_identical(refused$param, "x")
+    expect_identical(conditionCall(refused), quote(f(x)))
+  }
+  for (x in list(NA_real_, NaN, "")) {
+    expect_identical(caught_msg(f(x)), "'x' must not be NA")
+  }
+})
+
+test_that("no_na on an Either refuses what anyNA() sees, for the arm taken", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::either_no_na_vector_or_list
+  expect_identical(f(1:2), "integer:2")
+  expect_identical(f(c(1, 2)), "double:2")
+  expect_identical(f(c("a", "b")), "character:2")
+  expect_identical(f(integer()), "integer:0")
+  expect_identical(f(list(a = 1, b = c(2, 3))), "list:2")
+  # These arms carry NA through their conversion (the character arm reads it
+  # as ""), so only the check on the input refuses it.
+  for (x in list(c(1L, NA), c(1, NA), c(1, NaN), c("a", NA))) {
+    expect_identical(caught_msg(f(x)), "'x' must not contain NA")
+  }
+  # A list is read as anyNA() reads it: a length-1 NA element counts, an NA
+  # inside a longer element does not, and a data frame counts by its cells.
+  expect_identical(caught_msg(f(list(a = NA_real_))), "'x' must not contain NA")
+  expect_identical(f(list(a = c(1, NA))), "list:1")
+  expect_identical(f(data.frame(v = c(1, 2))), "list:1")
+  expect_identical(caught_msg(f(data.frame(v = c(1, NA)))), "'x' must not contain NA")
+  # ALTREP input is read element by element: a compact sequence, and Rust
+  # ALTREP vectors holding NA or NaN.
+  expect_identical(f(1:10), "integer:10")
+  for (x in list(into_sexp_altrep(c(1L, NA)), into_sexp_altrep(c(1, NaN)))) {
+    expect_identical(caught_msg(f(x)), "'x' must not contain NA")
+  }
 })
 
 # endregion

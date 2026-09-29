@@ -1,6 +1,8 @@
 //! Either adapter tests
 use miniextendr_api::either_impl::Either;
-use miniextendr_api::{AsNumericVec, DataFrame, miniextendr};
+use std::collections::BTreeMap;
+
+use miniextendr_api::{AsNumeric, AsNumericVec, DataFrame, Missing, miniextendr};
 
 /// `num:<length>` for numbers, `frame:<rows>x<cols>` for a data frame.
 fn describe_numbers_or_frame(numbers: Either<usize, DataFrame>) -> String {
@@ -112,5 +114,108 @@ pub fn either_no_na_raw_or_number(
     match x {
         Either::Left(raw) => format!("raw:{}", raw.len()),
         Either::Right(n) => format!("number:{}", n.0.unwrap_or(f64::NAN)),
+    }
+}
+
+/// `no_na` on a value-or-data-frame `Either`: no R guard runs, so the
+/// check is the arm's own. A missing number is refused, and a data frame
+/// reaches the `DataFrame` arm even when some of its cells are `NA`.
+/// @param x A number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_table(#[miniextendr(no_na)] x: Either<AsNumeric, DataFrame>) -> String {
+    match x {
+        Either::Left(n) => format!("value {:?}", n.0),
+        Either::Right(_) => "table".to_string(),
+    }
+}
+
+/// `value_or_table()` behind a `Missing` layer: an omitted argument passes,
+/// and a given one is checked by the arm it converted to.
+/// @param x A number that is not missing, or a data frame; may be omitted.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_table_optional(
+    #[miniextendr(no_na)] x: Missing<Either<AsNumeric, DataFrame>>,
+) -> String {
+    match x {
+        Missing::Absent => "nothing".to_string(),
+        Missing::Present(Either::Left(n)) => format!("value {:?}", n.0),
+        Missing::Present(Either::Right(_)) => "table".to_string(),
+    }
+}
+
+/// `value_or_table()` with an optional number arm: `NULL` (the default)
+/// converts to `None` on the number arm and passes as not given, `NA` is
+/// still refused, and a data frame reaches the `DataFrame` arm with its `NA`
+/// cells.
+/// @param x `NULL`, a number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_table_nullable(
+    #[miniextendr(no_na, default = "NULL")] x: Either<Option<AsNumeric>, DataFrame>,
+) -> String {
+    match x {
+        Either::Left(None) => "nothing".to_string(),
+        Either::Left(Some(n)) => format!("value {:?}", n.0),
+        Either::Right(_) => "table".to_string(),
+    }
+}
+
+/// A data frame behind a `#[derive(TryFromSexp)]` newtype: as an `Either`
+/// arm it is checked as the data frame it wraps.
+#[derive(miniextendr_api::TryFromSexp)]
+pub struct Table(pub DataFrame);
+
+/// `value_or_table()` with the data frame behind a newtype arm: the newtype
+/// forwards the check to `DataFrame`, so the table keeps its `NA` cells, and
+/// a missing number is still refused.
+/// @param x A number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_wrapped_table(#[miniextendr(no_na)] x: Either<AsNumeric, Table>) -> String {
+    match x {
+        Either::Left(n) => format!("value {:?}", n.0),
+        Either::Right(t) => format!("table {}x{}", t.0.nrow(), t.0.ncol()),
+    }
+}
+
+/// `value_or_table()` with the data frame behind a `Result<_, ()>` arm, which
+/// forwards the check as the newtype does.
+/// @param x A number that is not missing, or a data frame.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn value_or_result_table(
+    #[miniextendr(no_na)] x: Either<AsNumeric, Result<DataFrame, ()>>,
+) -> String {
+    match x {
+        Either::Left(n) => format!("value {:?}", n.0),
+        Either::Right(Ok(t)) => format!("table {}x{}", t.nrow(), t.ncol()),
+        Either::Right(Err(())) => "nothing".to_string(),
+    }
+}
+
+/// The right arm of `either_no_na_vector_or_list()`: an alias keeps the
+/// signature readable. The outer `Either` stays spelled out, since the macro
+/// sees an `Either` parameter by its type as written.
+type StringsOrMap = Either<Vec<String>, BTreeMap<String, Vec<f64>>>;
+
+/// `no_na` on arms that carry `NA` through their conversion (an integer or
+/// double vector keeps it, a character vector reads it as `""`): the arm
+/// the value converted to refuses what `anyNA()` sees in the input. The
+/// named-list arm reads it as `anyNA()` does: a length-1 `NA` element, or an
+/// `NA` cell of a data frame.
+/// @param x An integer, double or character vector, or a named list of
+///   double vectors, without `NA`.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn either_no_na_vector_or_list(
+    #[miniextendr(no_na)] x: Either<Either<Vec<i32>, Vec<f64>>, StringsOrMap>,
+) -> String {
+    match x {
+        Either::Left(Either::Left(v)) => format!("integer:{}", v.len()),
+        Either::Left(Either::Right(v)) => format!("double:{}", v.len()),
+        Either::Right(Either::Left(v)) => format!("character:{}", v.len()),
+        Either::Right(Either::Right(v)) => format!("list:{}", v.len()),
     }
 }

@@ -278,7 +278,7 @@ pub struct CWrapperContext {
     /// `#[miniextendr(no_na)]` parameters (Rust name) with the author's
     /// `no_na(message = ..)`, if any. Their converted value is checked right
     /// after the conversion (`RustConversionBuilder::with_no_na`), after the R
-    /// guard `!anyNA(x)` already ran.
+    /// guard `!anyNA(x)` already ran (for an `Either`, in place of the guard).
     pub no_na_params: Vec<(String, Option<String>)>,
     /// When `true`, preserve original parameter names from `inputs` in the C wrapper
     /// signature instead of renaming to `arg_0`, `arg_1`, ... The fn path preserves
@@ -1658,7 +1658,9 @@ impl CWrapperContextBuilder {
     ///
     /// Passed through to `RustConversionBuilder::with_no_na`, which checks the
     /// converted value (`TryFromSexp::__mx_has_na`) right after its binding,
-    /// for what the type reads as `NA` beyond the R guard's `anyNA()`.
+    /// for what the type reads as `NA` beyond the R guard's `anyNA()`. An
+    /// `Either` has no R guard, and its value checks the input instead
+    /// (`TryFromSexp::__mx_input_has_na`).
     pub fn no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
         self

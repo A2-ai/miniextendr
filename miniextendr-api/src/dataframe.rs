@@ -818,6 +818,14 @@ unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
 impl TryFromSexp for DataFrame {
     type Error = SexpError;
 
+    // As an `Either` arm, a data frame refuses nothing under `no_na`: its
+    // cells may be missing, and reading them is the function's own business.
+    // (A `DataFrame` parameter keeps the R guard, which refuses any NA cell.)
+    #[inline]
+    fn __mx_input_has_na(&self, _input: SEXP) -> bool {
+        false
+    }
+
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Not a data frame at all (a non-list, or a list without the class) is
         // a class error, worded `got integer` / `got list` by the argument

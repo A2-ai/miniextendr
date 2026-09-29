@@ -179,7 +179,9 @@ impl PreconditionOptions {
 /// text `"NA"`, blank strings, a factor `NA` level as `NA`), so the C wrapper
 /// checks the converted value too (`TryFromSexp::__mx_has_na`, see
 /// `RustConversionBuilder::with_no_na`) and raises the same condition with
-/// the same message ([`no_na_message`]).
+/// the same message ([`no_na_message`]). An `Either` parameter has only the
+/// Rust half: the arm the value converted to checks the input
+/// ([`no_na_checked_after_conversion`]).
 ///
 /// Each check can carry the author's own condition message
 /// (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`;
@@ -197,7 +199,8 @@ pub struct ExplicitChecks {
     pub inherits_message: Option<String>,
     /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
     /// is refused too, as `is.na()` does), nor a value its type reads as `NA`
-    /// (checked in Rust after the conversion).
+    /// (checked in Rust after the conversion). For an `Either`, both checks
+    /// run in Rust, by the arm the value converted to.
     pub no_na: bool,
     /// `no_na(message = "...")`: the message of a failed NA check. Only set
     /// together with `no_na`.
@@ -267,13 +270,15 @@ impl ExplicitChecks {
 
     /// The NA check (`no_na`) for parameter `param` of type `ty`, which runs
     /// after the parameter's type checks, with its own message. Empty without
-    /// `no_na`.
+    /// `no_na`, and for an `Either` parameter that is not a choice parameter
+    /// (`choice`: `match_arg` / `choices`), whose NA check runs in Rust after
+    /// the conversion ([`no_na_checked_after_conversion`]).
     ///
     /// An `Option<T>` / `Missing<T>` parameter passes `NULL` / an omitted
     /// argument (see [`guarded`]).
-    fn value_assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
+    fn value_assertions(&self, param: &str, ty: &syn::Type, choice: bool) -> Vec<RAssertion> {
         let mut out = Vec::new();
-        if self.no_na {
+        if self.no_na && (choice || !no_na_checked_after_conversion(ty)) {
             out.push(
                 RAssertion::new(param, no_na_requirement(ty), format!("!anyNA({param})"))
                     .with_message(self.no_na_message.as_ref()),
@@ -311,6 +316,28 @@ fn guarded(param: &str, ty: &syn::Type, mut out: Vec<RAssertion>) -> Vec<RAssert
     out
 }
 
+/// Whether a `no_na` parameter of Rust type `ty` is checked for `NA` only
+/// in Rust, after the conversion, with no R guard: an `Either<L, R>`, also
+/// under `Missing`. The layers are peeled as for a choice parameter
+/// ([`crate::type_inspect::choice_layers`]), which also peels `Option`; that
+/// only reaches a choice `Option<Either<Mode, X>>`, which keeps the guard
+/// (see below), since a plain `Option<Either<..>>` has no `TryFromSexp` impl.
+/// The type is read as written: an alias, a newtype or a
+/// `Result<Either<..>, ()>` keeps the guard.
+///
+/// One `!anyNA(x)` on the whole argument is wrong for an arm with its own
+/// reading of `NA` (a data frame arm whose cells may be missing), and it
+/// scans the input a second time. So the C wrapper asks the arm the value
+/// converted to (`TryFromSexp::__mx_input_has_na`): by default the arm runs
+/// `anyNA()`'s check on the input in Rust, and a `DataFrame` arm refuses
+/// nothing. A choice parameter (`match_arg` / `choices`) keeps the R guard:
+/// its conversion does not go through `TryFromSexp`, so no Rust check follows.
+pub(crate) fn no_na_checked_after_conversion(ty: &syn::Type) -> bool {
+    crate::type_inspect::choice_layers(ty)
+        .either_right
+        .is_some()
+}
+
 /// What a `no_na` parameter of Rust type `ty` must satisfy, without the
 /// parameter name: `must not contain NA` for a value holding several values
 /// ([`no_na_holds_several`]), else `must not be NA`.
@@ -329,8 +356,8 @@ pub(crate) fn no_na_requirement(ty: &syn::Type) -> String {
 /// Whether a `no_na` value of Rust type `ty` holds several values, looking
 /// through the layers `no_na` checks through: `Missing`, `Option`,
 /// `Result<T, _>` (its `T`) and `Either<L, R>`, which holds several when
-/// either arm does. The text is fixed before the conversion picks an arm (the
-/// R guard runs first), and `contain` also reads right for one value.
+/// either arm does. The text is fixed at compile time, before the conversion
+/// picks an arm, and `contain` also reads right for one value.
 fn no_na_holds_several(ty: &syn::Type) -> bool {
     let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
     let ty = crate::type_inspect::option_inner_type(ty).unwrap_or(ty);
@@ -1111,7 +1138,11 @@ pub fn build_precondition_checks(
         }
 
         if let Some(checks) = explicit {
-            assertions.extend(checks.value_assertions(&r_name, pt.ty.as_ref()));
+            assertions.extend(checks.value_assertions(
+                &r_name,
+                pt.ty.as_ref(),
+                skip_params.contains(&r_name),
+            ));
         }
     }
 
@@ -2046,23 +2077,93 @@ mod tests {
             ("fn f(x: Either<AsNumericVec, i32>)", "contain"),
             ("fn f(x: Either<i32, AsCharacterVec>)", "contain"),
             ("fn f(x: Either<AsNumeric, AsCharacter>)", "be"),
+            // An `Option` arm is read by its value.
+            ("fn f(x: Either<Option<AsNumeric>, DataFrame>)", "be"),
+            (
+                "fn f(x: Either<Option<AsNumericVec>, DataFrame>)",
+                "contain",
+            ),
             (
                 "fn f(x: Option<Either<i32, Either<String, Vec<f64>>>>)",
                 "contain",
             ),
         ] {
-            assert_eq!(verb(sig), expected, "{sig}");
-            // The Rust check words it the same way.
             let ty = match syn::parse_str::<syn::Signature>(sig).unwrap().inputs[0].clone() {
                 syn::FnArg::Typed(pt) => *pt.ty,
                 syn::FnArg::Receiver(_) => unreachable!(),
             };
+            // An `Either` has only the Rust check; the others have the R guard
+            // too, and the Rust check words it the same way.
+            if !no_na_checked_after_conversion(&ty) {
+                assert_eq!(verb(sig), expected, "{sig}");
+            }
             assert_eq!(
                 no_na_requirement(&ty),
                 format!("must not {expected} NA"),
                 "{sig}"
             );
         }
+    }
+
+    /// `no_na` on an `Either` (also under `Missing`) emits no R guard: the C
+    /// wrapper checks the input by the arm the value converted to. A plain
+    /// parameter keeps the guard, and so does a choice `Either` (`match_arg`
+    /// / `choices`, also under `Option` / `Missing<Option<..>>`), whose
+    /// conversion has no Rust check.
+    #[test]
+    fn no_na_on_an_either_is_checked_after_the_conversion() {
+        let guards = |sig: &str, skip: &[&str]| {
+            let sig: syn::Signature = syn::parse_str(sig).unwrap();
+            let opts = PreconditionOptions {
+                explicit: [("x".to_string(), no_na())].into_iter().collect(),
+                ..Default::default()
+            };
+            let skip: HashSet<String> = skip.iter().map(|s| s.to_string()).collect();
+            build_precondition_checks(&sig.inputs, &skip, &opts).guards(None)
+        };
+        for sig in [
+            "fn f(x: Either<AsNumeric, DataFrame>)",
+            "fn f(x: Either<Option<AsNumeric>, DataFrame>)",
+            "fn f(x: either::Either<Vec<f64>, List>)",
+            "fn f(x: Missing<Either<AsNumeric, DataFrame>>)",
+        ] {
+            assert!(
+                guards(sig, &[]).iter().all(|g| !g.contains("anyNA")),
+                "{sig}: {:?}",
+                guards(sig, &[])
+            );
+        }
+        for (sig, skip) in [
+            ("fn f(x: AsNumeric)", &[][..]),
+            ("fn f(x: DataFrame)", &[]),
+            ("fn f(x: Either<Mode, DataFrame>)", &["x"]),
+        ] {
+            let guards = guards(sig, skip);
+            assert!(
+                guards
+                    .last()
+                    .is_some_and(|g| g.contains("!isTRUE(!anyNA(x))")),
+                "{sig}: {guards:?}"
+            );
+        }
+        // A choice `Either` under `Option` / `Missing<Option<..>>` keeps the
+        // guard too, after the layer's `is.null(x)` / `missing(x)` pass.
+        for (sig, layer) in [
+            ("fn f(x: Option<Either<Mode, DataFrame>>)", "is.null(x)"),
+            ("fn f(x: Missing<Option<Either<Mode, List>>>)", "missing(x)"),
+        ] {
+            let guards = guards(sig, &["x"]);
+            let expected = format!("!isTRUE({layer} || !anyNA(x))");
+            assert!(
+                guards.last().is_some_and(|g| g.contains(&expected)),
+                "{sig}: {guards:?}"
+            );
+        }
+        // `Result<Either<..>, ()>` is not a layer the predicate peels: it
+        // keeps the guard, and the plain Rust check.
+        assert!(!no_na_checked_after_conversion(
+            &syn::parse_str("Result<Either<f64, String>, ()>").unwrap()
+        ));
     }
 
     /// The message the Rust `no_na` check raises: generated from the
@@ -2252,7 +2353,7 @@ mod tests {
                 "if (!isTRUE(is.null(x) || inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")"
             ]
         );
-        let asserts = with_no_na_message("mine").value_assertions("x", &parse_type("f64"));
+        let asserts = with_no_na_message("mine").value_assertions("x", &parse_type("f64"), false);
         assert_eq!(asserts[0].message(), "mine");
     }
 

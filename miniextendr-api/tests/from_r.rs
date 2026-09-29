@@ -601,6 +601,159 @@ fn bitvec_msb0_option_from_logical() {
 }
 // endregion
 
+// region: either feature tests
+
+/// `no_na` on an `Either` whose left arm is an `Option` (an optional value or
+/// a table): the arm the value converted to reads the input
+/// (`__mx_input_has_na`). `NULL` converts to `Left(None)` and passes. An `NA`
+/// is refused, also where the arm itself reads it as `None` (`Option<f64>`,
+/// `Option<String>`). A data frame reaches the `DataFrame` arm with its `NA`
+/// cells.
+#[cfg(feature = "either")]
+#[test]
+fn either_option_arm_no_na_reads_the_input() {
+    use miniextendr_api::either_impl::Either;
+    use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::{AsNumeric, DataFrame, r_str};
+
+    /// `src` evaluated and converted; `Some(left)` for the left arm, `None`
+    /// for the data frame arm, and whether `no_na` refuses the value.
+    fn arm_of<L>(src: &str) -> (Option<L>, bool)
+    where
+        L: TryFromSexp,
+        L::Error: Into<SexpError>,
+    {
+        let input = unsafe { OwnedProtect::new(r_str!(src).expect("R source should evaluate")) };
+        let value = <Either<L, DataFrame>>::try_from_sexp(input.get()).expect("an arm converts it");
+        let refused = value.__mx_input_has_na(input.get());
+        (value.left(), refused)
+    }
+
+    const TABLE: &str = "data.frame(id = 1:2, v = c(1, NA))";
+
+    r_test_utils::with_r_thread(|| {
+        for (src, left, refused) in [
+            ("NULL", Some(None), false),
+            ("NA", Some(Some(None)), true),
+            ("NA_real_", Some(Some(None)), true),
+            ("'NA'", Some(Some(None)), true),
+            ("3", Some(Some(Some(3.0))), false),
+            (TABLE, None, false),
+        ] {
+            let (arm, has_na) = arm_of::<Option<AsNumeric>>(src);
+            let arm = arm.map(|n| n.map(|n| n.0));
+            assert_eq!((arm, has_na), (left, refused), "Option<AsNumeric>: {src}");
+        }
+        for (src, left, refused) in [
+            ("NULL", Some(None), false),
+            ("NA_real_", Some(None), true),
+            ("3", Some(Some(3.0)), false),
+            (TABLE, None, false),
+        ] {
+            assert_eq!(
+                arm_of::<Option<f64>>(src),
+                (left, refused),
+                "Option<f64>: {src}"
+            );
+        }
+        for (src, left, refused) in [
+            ("NULL", Some(None), false),
+            ("c(1, NA)", Some(Some(2)), true),
+            ("c(1, 2)", Some(Some(2)), false),
+            (TABLE, None, false),
+        ] {
+            let (arm, has_na) = arm_of::<Option<Vec<f64>>>(src);
+            let arm = arm.map(|v| v.map(|v| v.len()));
+            assert_eq!((arm, has_na), (left, refused), "Option<Vec<f64>>: {src}");
+        }
+        for (src, left, refused) in [
+            ("NULL", Some(None), false),
+            ("NA_character_", Some(None), true),
+            ("'a'", Some(Some("a".to_string())), false),
+            (TABLE, None, false),
+        ] {
+            assert_eq!(
+                arm_of::<Option<String>>(src),
+                (left, refused),
+                "Option<String>: {src}"
+            );
+        }
+    });
+}
+
+/// `no_na` on an `Either` whose arm is a `Result<T, ()>` or a
+/// `#[derive(TryFromSexp)]` newtype: the wrapper asks its value
+/// (`__mx_input_has_na`). A data frame behind it keeps its `NA` cells, a
+/// number behind it still refuses `NA` and `"NA"`, and `NULL` (`Err(())`)
+/// passes.
+#[cfg(feature = "either")]
+#[test]
+fn either_wrapped_arm_no_na_reads_its_value() {
+    use miniextendr_api::either_impl::Either;
+    use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::{AsNumeric, DataFrame, r_str};
+
+    #[derive(miniextendr_api::TryFromSexp)]
+    struct Table(DataFrame);
+
+    #[derive(miniextendr_api::TryFromSexp)]
+    struct Number(AsNumeric);
+
+    /// `src` evaluated and converted to `Either<L, R>`: whether the value
+    /// took the left arm, and whether `no_na` refuses it.
+    fn check<L, R>(src: &str) -> (bool, bool)
+    where
+        L: TryFromSexp,
+        L::Error: Into<SexpError>,
+        R: TryFromSexp,
+        R::Error: Into<SexpError>,
+    {
+        let input = unsafe { OwnedProtect::new(r_str!(src).expect("R source should evaluate")) };
+        let value = <Either<L, R>>::try_from_sexp(input.get()).expect("an arm converts it");
+        (value.is_left(), value.__mx_input_has_na(input.get()))
+    }
+
+    const TABLE: &str = "data.frame(id = 1:2, v = c(1, NA))";
+
+    r_test_utils::with_r_thread(|| {
+        for (src, left, refused) in [
+            ("3", true, false),
+            ("NA", true, true),
+            ("'NA'", true, true),
+            (TABLE, false, false),
+        ] {
+            // A data frame behind the right arm's wrapper keeps its NA cells.
+            assert_eq!(
+                check::<AsNumeric, Table>(src),
+                (left, refused),
+                "Either<AsNumeric, Table>: {src}"
+            );
+            assert_eq!(
+                check::<AsNumeric, Result<DataFrame, ()>>(src),
+                (left, refused),
+                "Either<AsNumeric, Result<DataFrame, ()>>: {src}"
+            );
+            // A number behind the left arm's wrapper still refuses NA.
+            assert_eq!(
+                check::<Number, DataFrame>(src),
+                (left, refused),
+                "Either<Number, DataFrame>: {src}"
+            );
+            assert_eq!(
+                check::<Result<AsNumeric, ()>, DataFrame>(src),
+                (left, refused),
+                "Either<Result<AsNumeric, ()>, DataFrame>: {src}"
+            );
+        }
+        // `NULL` is `Left(Err(()))`: not given, and it holds no NA.
+        assert_eq!(
+            check::<Result<AsNumeric, ()>, DataFrame>("NULL"),
+            (true, false)
+        );
+    });
+}
+// endregion
+
 // region: Test try_from_sexp_unchecked propagation
 
 #[cfg(feature = "aho-corasick")]

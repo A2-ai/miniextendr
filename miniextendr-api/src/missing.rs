@@ -265,6 +265,13 @@ where
         matches!(self, Missing::Present(v) if v.__mx_has_na())
     }
 
+    // A given argument is read by its value's type (an `Either` asks the arm
+    // it converted to).
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        matches!(self, Missing::Present(v) if v.__mx_input_has_na(input))
+    }
+
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if is_missing_arg(sexp) {
             Ok(Missing::Absent)

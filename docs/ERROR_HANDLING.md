@@ -637,8 +637,11 @@ wrapper's call as written (what `stopifnot()` reports), or under
 `no_na` on a reading marker (`AsNumeric*`, `AsCharacter*`) runs on both
 sides: the R guard refuses R's `NA`, and the C wrapper refuses what the
 marker reads as missing after the conversion (`"NA"`, a blank string, a
-factor `NA` level). A handler sees one condition either way, with the same
-classes, `e$param`, message and call:
+factor `NA` level). On an `Either`, only the C wrapper checks, for the arm
+the value converted to
+([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
+A handler sees one condition either way, with the same classes, `e$param`,
+message and call:
 
 ```r
 peak_no_na <- function(dv) ...   # #[miniextendr(no_na)] dv: AsNumericVec
