@@ -5,7 +5,9 @@
 //! constants. The top-level [`generate_trait_r_wrapper`] dispatches to the
 //! appropriate generator and applies post-processing for export/documentation control.
 
-use super::method_context::{TraitMethodContext, trait_namespace_env_var, trait_namespace_target};
+use super::method_context::{
+    TraitMethodContext, s7_trait_member_access, trait_namespace_env_var, trait_namespace_target,
+};
 use super::{TraitConst, TraitMethod};
 use crate::miniextendr_impl::ClassSystem;
 use crate::r_class_formatter::emit_s3_generic_guard;
@@ -981,7 +983,8 @@ fn generate_trait_s4_r_wrapper(
 /// - S7 method registration: `S7::method(s7_trait_Counter_value, .s7_class_SimpleCounter) <- ...`
 ///
 /// Generic names are prefixed with `s7_trait_{Trait}_` to avoid collisions.
-/// Static methods and constants use `Type$Trait$name` namespace (env-style).
+/// Static methods and constants live in an env attached to the class object,
+/// read as `attr(Type, "Trait")$name` ([`s7_trait_member_access`]).
 fn generate_trait_s7_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -993,7 +996,6 @@ fn generate_trait_s7_r_wrapper(
 
     let mut lines = Vec::new();
     let type_str = type_ident.to_string();
-    let trait_str = trait_name.to_string();
     let s7_class_var = format!(".s7_class_{}", type_str);
 
     // Header comment
@@ -1190,9 +1192,8 @@ fn generate_trait_s7_r_wrapper(
 
     // Generate static methods in trait namespace. The wrapper is *assigned*
     // into the local env (`trait_namespace_target(S7, ..)` = `.Type__Trait$m`),
-    // but its documented `@name` is the call-site form `Type$Trait$m` — S7's
-    // `$` on the class object falls through to the attached attribute, so users
-    // still spell it `Type$Trait$m`.
+    // but its documented `@name` is the call-site form `attr(Type, "Trait")$m`
+    // (`s7_trait_member_access`): S7's `$` stops on the class object.
     for method in &static_methods {
         let r_name = method.r_method_name();
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
@@ -1202,7 +1203,7 @@ fn generate_trait_s7_r_wrapper(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
-        let name = format!("{}${}${}", type_str, trait_str, r_name);
+        let name = s7_trait_member_access(type_ident, trait_name, &r_name);
         lines.extend(namespace_member_body_lines(&ctx, &type_str, &name));
         lines.extend(own_block_page_lines(method, &type_str, Some(&name), None));
 
@@ -1220,13 +1221,13 @@ fn generate_trait_s7_r_wrapper(
     }
 
     // Generate const wrappers in trait namespace (assigned into `.Type__Trait`,
-    // documented as `Type$Trait$const` — see the static-method note above).
+    // documented as `attr(Type, "Trait")$const`, see the static-method note above).
     for trait_const in consts {
         let const_name = &trait_const.ident;
         let const_str = const_name.to_string();
 
         let roxygen = RoxygenBuilder::new()
-            .name(format!("{}${}${}", type_str, trait_str, const_str))
+            .name(s7_trait_member_access(type_ident, trait_name, &const_str))
             .rdname(&type_str)
             .build();
         lines.extend(roxygen);
@@ -1244,7 +1245,8 @@ fn generate_trait_s7_r_wrapper(
     }
 
     // Attach the trait env to the S7 class via attr() to bypass S7's $<- interception.
-    // R's $ accessor on S7 objects falls through to attributes, so Type$Trait$method still works.
+    // S7's `$` stops on the class object too, so callers read it back the same way:
+    // attr(Type, "Trait")$method.
     if !static_methods.is_empty() || !consts.is_empty() {
         lines.push(format!(
             "attr({}, \"{}\") <- {}",

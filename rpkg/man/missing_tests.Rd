@@ -5,6 +5,7 @@
 \alias{missing_test_string}
 \alias{missing_test_present}
 \alias{missing_test_option}
+\alias{missing_test_list}
 \title{missing_test_f64}
 \usage{
 missing_test_f64(x)
@@ -14,9 +15,11 @@ missing_test_string(x)
 missing_test_present(x)
 
 missing_test_option(x)
+
+missing_test_list(x)
 }
 \arguments{
-\item{x}{An optional nullable numeric.}
+\item{x}{An optional list.}
 }
 \description{
 Test \verb{Missing<f64>} -- returns "absent" or the value as string.
@@ -26,4 +29,6 @@ Test \verb{Missing<String>} with the helper methods.
 Test \verb{Missing<i32>} with is_present / is_absent.
 
 Test \verb{Missing<Option<f64>>} -- distinguishes missing, NULL, and present.
+
+Test \verb{Missing<List>} -- a list argument that may be omitted.
 }

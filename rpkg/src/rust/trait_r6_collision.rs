@@ -20,7 +20,8 @@
 //! re-wrap it into a properly classed object, exactly as inherent constructors
 //! do. `DoublerEnv` additionally exercises the env-class re-wrap path
 //! (`class(.val) <- "DoublerEnv"`) at runtime, alongside the r6 path
-//! (`DoublerA$new(.ptr = .val)`).
+//! (`DoublerA$new(.ptr = .val)`). `CloneableR6` takes the same path through
+//! empty trait impls, whose wrappers the trait's metadata expands.
 
 use miniextendr_api::miniextendr;
 
@@ -139,4 +140,36 @@ impl Doubler for DoublerEnv {
         Self { value: v }
     }
 }
+// endregion
+
+// region: Empty r6 impls whose methods return `Self`
+
+/// A type whose `RClone` / `RDefault` impls are empty: the wrappers come from
+/// the trait's metadata, and `clone()` / `default()` still return a
+/// `CloneableR6` object.
+#[derive(Clone, Default, miniextendr_api::ExternalPtr)]
+pub struct CloneableR6 {
+    value: i32,
+}
+
+#[miniextendr(r6)]
+impl CloneableR6 {
+    /// Create a new CloneableR6.
+    /// @param v Initial value.
+    pub fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    /// Get the stored value.
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// RClone trait ABI registration for CloneableR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RClone for CloneableR6 {}
+
+/// RDefault trait ABI registration for CloneableR6.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RDefault for CloneableR6 {}
 // endregion

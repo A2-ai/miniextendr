@@ -44,3 +44,15 @@ pub fn missing_test_option(x: Missing<Option<f64>>) -> String {
         Missing::Present(Some(v)) => format!("{v}"),
     }
 }
+
+/// Test `Missing<List>` -- a list argument that may be omitted.
+///
+/// @param x An optional list.
+/// @export
+#[miniextendr]
+pub fn missing_test_list(x: Missing<miniextendr_api::List>) -> String {
+    match x {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(list) => format!("{} elements", list.len()),
+    }
+}

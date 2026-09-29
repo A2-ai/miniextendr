@@ -1359,27 +1359,31 @@ fn env_trait_method_body_follows_suppression() {
 /// line and no filler.
 #[test]
 fn static_trait_methods_document_their_arguments() {
-    let namespace_block = |intro: &str| {
+    let namespace_block = |intro: &str, name: &str| {
         vec![
             intro.to_string(),
-            "#' @description Arguments of \\code{Foo$Bar$pick()}:".to_string(),
+            format!("#' @description Arguments of \\code{{{name}()}}:"),
             "#'".to_string(),
             "#' \\describe{".to_string(),
             LEVEL_ITEM.to_string(),
             "#' }".to_string(),
-            "#' @name Foo$Bar$pick".to_string(),
+            format!("#' @name {name}"),
             "#' @rdname Foo".to_string(),
         ]
     };
-    for (class_system, def) in [
-        (ClassSystem::S3, "Foo$Bar$pick <- "),
-        (ClassSystem::Vctrs, "Foo$Bar$pick <- "),
-        (ClassSystem::S7, ".Foo__Bar$pick <- "),
+    for (class_system, def, name) in [
+        (ClassSystem::S3, "Foo$Bar$pick <- ", "Foo$Bar$pick"),
+        (ClassSystem::Vctrs, "Foo$Bar$pick <- ", "Foo$Bar$pick"),
+        (
+            ClassSystem::S7,
+            ".Foo__Bar$pick <- ",
+            "attr(Foo, \"Bar\")$pick",
+        ),
     ] {
         let r = page_tag_wrapper(class_system, &[static_choice_trait_method(&[])]).unwrap();
         assert_eq!(
             block_above(&r, def),
-            namespace_block("#' Static trait method Bar::pick()"),
+            namespace_block("#' Static trait method Bar::pick()", name),
             "{class_system:?}: got:\n{r}"
         );
         assert!(!r.contains("#' @param"), "{class_system:?}: got:\n{r}");
@@ -1445,7 +1449,7 @@ fn static_trait_methods_document_their_arguments() {
             ".Foo__Bar$make <- ",
             &[
                 "#' Static trait method Bar::make()",
-                "#' @name Foo$Bar$make",
+                "#' @name attr(Foo, \"Bar\")$make",
                 "#' @rdname Foo",
             ][..],
         ),
@@ -1653,7 +1657,103 @@ fn test_static_self_return_rewrapped() {
         "static -> Self should re-wrap via methods::new(), got:\n{s4}"
     );
 }
+
+/// An empty trait impl (expanded from the trait's metadata, TPIE) re-wraps
+/// its `-> Self` / `Option<Self>` returns like an impl with bodies does. The
+/// `Self` → concrete-type rewrite covers the parameters only: rewriting the
+/// return too hid the `Self` the re-wrap looks for, so R got the bare pointer.
+#[test]
+fn test_tpie_self_return_rewrapped() {
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Foo;
+        trait_path = my_crate::Bar;
+        class_system = env;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = false;
+        method { r_name = dup; fn dup(&self) -> Self; }
+        method { r_name = parse; fn parse(s: &str) -> Option<Self>; }
+        method { r_name = merge; fn merge(&self, other: Self) -> i32; }
+    };
+    let methods: Vec<TraitMethod> = input
+        .methods
+        .iter()
+        .map(|tm| {
+            let mut method = make_test_method(&tm.r_name, false);
+            method.sig = tm.sig.clone();
+            rewrite_self_in_params(&mut method.sig, &input.concrete_type);
+            method.has_self = matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_)));
+            method
+        })
+        .collect();
+
+    // The C wrapper hands both back as an `ExternalPtr`, as for bodies.
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&methods[0].sig.output),
+        crate::c_wrapper_builder::ReturnHandling::ExternalPtr
+    ));
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&methods[1].sig.output),
+        crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr
+    ));
+    // A by-value `Self` parameter still names the concrete type.
+    let syn::FnArg::Typed(other) = &methods[2].sig.inputs[1] else {
+        panic!("merge takes `other`");
+    };
+    assert_eq!(quote::quote!(#other).to_string(), "other : Foo");
+
+    let emit = |cs| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &methods,
+            &[],
+            opts(cs, false, false, false),
+        )
+        .unwrap()
+    };
+    let env = emit(ClassSystem::Env);
+    assert_eq!(
+        env.matches("class(.val) <- \"Foo\"").count(),
+        2,
+        "env: both Self returns stamp the class, got:\n{env}"
+    );
+    let r6 = emit(ClassSystem::R6);
+    assert_eq!(
+        r6.matches("Foo$new(.ptr = .val)").count(),
+        2,
+        "r6: both Self returns wrap via Foo$new(.ptr = ), got:\n{r6}"
+    );
+}
 // endregion
+
+/// S7 statics and consts live in an env attached to the class object with
+/// `attr()`. S7's `$` stops on the class object, so their topic names the
+/// access that works, `attr(Foo, "Bar")$member`, not `Foo$Bar$member`.
+#[test]
+fn test_s7_statics_documented_as_attr_access() {
+    let consts = [TraitConst {
+        ident: format_ident!("MAX"),
+        ty: syn::parse_quote!(i32),
+    }];
+    let s7 = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &[make_test_method("make", false)],
+        &consts,
+        opts(ClassSystem::S7, false, false, false),
+    )
+    .unwrap();
+    for name in ["make", "MAX"] {
+        assert!(
+            s7.contains(&format!("#' @name attr(Foo, \"Bar\")${name}\n")),
+            "got:\n{s7}"
+        );
+    }
+    assert!(!s7.contains("Foo$Bar$"), "got:\n{s7}");
+    assert!(s7.contains("attr(Foo, \"Bar\") <- .Foo__Bar"), "got:\n{s7}");
+}
 
 /// A method-level `/// @rdname other` on a trait-impl method moves that
 /// method's wrapper block onto the requested page on every class system, while
@@ -2080,7 +2180,7 @@ fn test_trait_method_forwards_author_page_tags() {
         (ClassSystem::R6, "Foo$Bar$make"),
         (ClassSystem::S3, "Foo$Bar$make"),
         (ClassSystem::S4, "Foo_Bar_make"),
-        (ClassSystem::S7, "Foo$Bar$make"),
+        (ClassSystem::S7, "attr(Foo, \"Bar\")$make"),
     ] {
         let r = page_tag_wrapper(class_system, std::slice::from_ref(&method)).unwrap();
         for tag in &method.doc_tags[1..] {

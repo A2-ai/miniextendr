@@ -613,8 +613,8 @@ listed as `generic(Type)`), S4 static methods (`Type_Trait_method()`), and
 S7 instance methods through their fast-path shortcut (`Type_method()`). The
 S4 and S7 generics stay on the type page, and on a joined page the S7
 shortcut keeps only the first line of its advisory text, as its title. On
-the `Type$Trait$method` namespace members (Env and R6 methods, and the
-static methods of S3, vctrs and S7) and on S7 methods with
+the trait namespace members (Env and R6 methods, and the static methods of
+S3, vctrs and S7) and on S7 methods with
 `s7(no_shortcut)`, `@describeIn` is a compile error that points at
 `@rdname`. `RangeMeasure for RangeBox` in
 `rpkg/src/rust/shared_param_docs.rs` is the fixture.

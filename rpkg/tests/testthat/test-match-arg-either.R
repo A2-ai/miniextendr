@@ -38,6 +38,16 @@ test_that("Either<T, DataFrame>: input that is neither fails in the R arm", {
   expect_error(match_arg_either_route(1:3), "route")
 })
 
+test_that("Either<T, List>: a choice goes Left, a list goes Right", {
+  expect_equal(eval(formals(match_arg_either_route_or_list)$route), routes)
+  expect_equal(match_arg_either_route_or_list(), "Oral")
+  expect_equal(match_arg_either_route_or_list("bol"), "Bolus")
+  expect_equal(match_arg_either_route_or_list(list(100, 50, 25)), "list:3")
+  expect_choice_error(match_arg_either_route_or_list("iv"), "route", routes)
+  # The list arm's own refusal reaches the argument error.
+  expect_error(match_arg_either_route_or_list(list(a = 1, a = 2)), "duplicate name 'a'")
+})
+
 test_that("Option<Either<T, R>>: NULL formal, NULL is None", {
   expect_null(formals(match_arg_either_route_optional)$maybe_route)
   expect_equal(match_arg_either_route_optional(), "none")

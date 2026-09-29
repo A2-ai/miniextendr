@@ -1,6 +1,6 @@
 # Regression tests for #1115 (two r6 impls of one trait must not collide) and
 # #1141 resp-4 (trait `-> Self` factory methods must re-wrap into a classed
-# object). Fixtures: rpkg/src/rust/trait_r6_collision.rs.
+# object, empty impls included). Fixtures: rpkg/src/rust/trait_r6_collision.rs.
 
 test_that("two r6 impls of one trait dispatch via class-scoped namespaces (#1115)", {
   a <- DoublerA$new(3L)
@@ -44,4 +44,20 @@ test_that("env trait -> Self factory methods return a classed object (#1141)", {
   e3 <- DoublerEnv$Doubler$spawn(5L)
   expect_true(inherits(e3, "DoublerEnv"))
   expect_equal(DoublerEnv$Doubler$doubled(e3), 10L)
+})
+
+test_that("empty r6 trait impls re-wrap -> Self like impls with bodies", {
+  a <- CloneableR6$new(6L)
+
+  # instance -> Self (RClone::clone)
+  a2 <- CloneableR6$RClone$clone(a)
+  expect_true(R6::is.R6(a2))
+  expect_s3_class(a2, "CloneableR6")
+  expect_equal(a2$value(), 6L)
+
+  # static -> Self (RDefault::default)
+  a3 <- CloneableR6$RDefault$default()
+  expect_true(R6::is.R6(a3))
+  expect_s3_class(a3, "CloneableR6")
+  expect_equal(a3$value(), 0L)
 })

@@ -205,4 +205,12 @@ mod tests {
         assert!(right.__mx_has_na());
         assert!(!Either::<AsNumericVec, i32>::Right(1).__mx_has_na());
     }
+
+    /// A `List` arm converts its error to `SexpError`, as both arms must.
+    #[test]
+    fn either_takes_a_list_arm() {
+        fn is_param<T: TryFromSexp>() {}
+        is_param::<Either<i32, crate::list::List>>();
+        is_param::<Either<crate::list::List, String>>();
+    }
 }

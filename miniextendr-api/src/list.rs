@@ -1243,6 +1243,17 @@ impl From<crate::from_r::SexpTypeError> for ListFromSexpError {
     }
 }
 
+/// So a `List` reads through the wrappers that convert their inner error to
+/// [`SexpError`], such as `Missing<List>`.
+impl From<ListFromSexpError> for SexpError {
+    fn from(e: ListFromSexpError) -> Self {
+        match e {
+            ListFromSexpError::Type(e) => SexpError::Type(e),
+            ListFromSexpError::DuplicateName(e) => SexpError::DuplicateName(e.name),
+        }
+    }
+}
+
 impl TryFromSexp for List {
     type Error = ListFromSexpError;
 

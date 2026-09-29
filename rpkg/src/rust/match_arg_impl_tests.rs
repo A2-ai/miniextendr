@@ -520,10 +520,11 @@ pub trait GradeDefaults {
     fn default_grade(grade: Missing<Option<String>>) -> String;
 }
 
-// S3 statics (the generator vctrs shares), S7 statics and env statics are
-// `Type$Trait$method` members without a usage section; the S4 static is the
-// plain function `OmitPickS4_GradeDefaults_default_grade`, whose `@param`
-// line is the choice text.
+// S3 statics (the generator vctrs shares) and env statics are
+// `Type$Trait$method` members and S7 statics `attr(Type, "Trait")$method`
+// members, all without a usage section; the S4 static is the plain function
+// `OmitPickS4_GradeDefaults_default_grade`, whose `@param` line is the choice
+// text.
 #[miniextendr(s3)]
 impl GradeDefaults for OmitPickS3 {
     /// Pick the default grade, or none.
