@@ -35,28 +35,86 @@ fn test_unit_type_default() {
 
 #[test]
 fn test_dots() {
-    let inputs = parse_inputs("x: i32, _dots: &Dots");
-    let builder = RArgumentBuilder::new(&inputs).with_dots(None);
-    assert_eq!(builder.build_formals(), "x, ...");
-    assert_eq!(builder.build_call_args(), "x, list(...)");
+    // In R, `...` takes no name or default: the Rust binding never shows.
+    for sig in [
+        "x: i32, _dots: &Dots",
+        "x: i32, dots: &Dots",
+        "x: i32, args: &::miniextendr_api::dots::Dots",
+    ] {
+        let inputs = parse_inputs(sig);
+        let builder = RArgumentBuilder::new(&inputs);
+        assert_eq!(builder.build_formals(), "x, ...", "{sig}");
+        assert_eq!(builder.build_call_args(), "x, list(...)", "{sig}");
+    }
 }
 
+/// The `&Dots` parameter is `...` / `list(...)` at its own position; the
+/// formals after it keep their defaults and `Missing<T>` forwarding.
 #[test]
-fn test_trailing_dots_auto_detected() {
-    let inputs = parse_inputs("x: i32, dots: &Dots");
+fn test_dots_at_any_position() {
+    let build = |sig: &str, defaults: &[(&str, &str)]| {
+        let inputs = parse_inputs(sig);
+        let defaults = defaults
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let builder = RArgumentBuilder::new(&inputs).with_defaults(defaults);
+        (builder.build_formals(), builder.build_call_args())
+    };
+    assert_eq!(
+        build(
+            "x: i32, rest: &Dots, overwrite: bool",
+            &[("overwrite", "FALSE")]
+        ),
+        (
+            "x, ..., overwrite = FALSE".to_string(),
+            "x, list(...), overwrite".to_string()
+        )
+    );
+    assert_eq!(
+        build("rest: &Dots, x: i32", &[]),
+        ("..., x".to_string(), "list(...), x".to_string())
+    );
+    assert_eq!(
+        build("x: i32, rest: &Dots, p: Missing<f64>", &[]),
+        (
+            "x, ..., p".to_string(),
+            "x, list(...), if (missing(p)) quote(expr=) else p".to_string()
+        )
+    );
+}
+
+/// The dots index counts the receiver, as both build loops do: an
+/// off-by-one would put `...` on the wrong formal.
+#[test]
+fn test_dots_position_after_receiver() {
+    let inputs = parse_inputs("&self, n: i32, rest: &Dots, flag: bool");
     let builder = RArgumentBuilder::new(&inputs);
-    assert_eq!(builder.build_formals(), "x, ...");
-    assert_eq!(builder.build_call_args(), "x, list(...)");
+    assert_eq!(builder.build_formals(), "n, ..., flag");
+    assert_eq!(builder.build_call_args(), "n, list(...), flag");
+    let builder = RArgumentBuilder::new(&inputs).skip_first();
+    assert_eq!(builder.build_formals(), "n, ..., flag");
+    assert_eq!(builder.build_call_args(), "n, list(...), flag");
+
+    let inputs = parse_inputs("x: i32, n: i32, rest: &Dots, flag: bool");
+    let builder = RArgumentBuilder::new(&inputs).skip_first();
+    assert_eq!(builder.build_formals(), "n, ..., flag");
+    assert_eq!(builder.build_call_args(), "n, list(...), flag");
 }
 
+/// `check_r_formals` skips the dots wherever they sit (their formal is
+/// `...`) and still checks the formals after them.
 #[test]
-fn test_named_dots() {
-    // Note: In R, `...` cannot have a name/default in formals.
-    // The named_dots is only used on Rust side. R always uses plain `...`
-    let inputs = parse_inputs("x: i32, _dots: &Dots");
-    let builder = RArgumentBuilder::new(&inputs).with_dots(Some("args".to_string()));
-    assert_eq!(builder.build_formals(), "x, ...");
-    assert_eq!(builder.build_call_args(), "x, list(...)");
+fn check_r_formals_skips_dots_at_any_position() {
+    check_r_formals(&parse_inputs("x: i32, r#in: &Dots, flag: bool"), &[]).expect("accepted");
+    check_r_formals(&parse_inputs("r#if: &Dots, x: i32"), &[]).expect("accepted");
+    let err = check_r_formals(&parse_inputs("x: i32, rest: &Dots, r#in: i32"), &[])
+        .expect_err("`in` after the dots is still refused")
+        .to_string();
+    assert!(
+        err.contains("becomes the R argument `in`, which is an R reserved word"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -368,7 +426,7 @@ fn snapshot_formals_and_call_args() {
     // With dots
     output.push_str("\n# With dots\n");
     let inputs = parse_inputs("x: i32, _dots: &Dots");
-    let builder = RArgumentBuilder::new(&inputs).with_dots(None);
+    let builder = RArgumentBuilder::new(&inputs);
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
@@ -447,7 +505,8 @@ fn call_attribution_formal_is_caller_only() {
 #[test]
 fn call_formal_is_appended_after_the_dots() {
     let formal = CallAttribution::Caller.formal();
-    // `RArgumentBuilder::new` reads a trailing `&Dots` parameter as `...`.
+    // `RArgumentBuilder::new` reads the `&Dots` parameter as `...`, wherever
+    // it sits; `.call` still goes last, after any formal that follows it.
     let formals = |sig: &str| RArgumentBuilder::new(&parse_inputs(sig)).build_formals();
     assert_eq!(
         with_call_formal(&formals("x: i32"), formal),
@@ -456,6 +515,10 @@ fn call_formal_is_appended_after_the_dots() {
     assert_eq!(
         with_call_formal(&formals("x: i32, _dots: &Dots"), formal),
         "x, ..., .call = NULL"
+    );
+    assert_eq!(
+        with_call_formal(&formals("x: i32, rest: &Dots, flag: bool"), formal),
+        "x, ..., flag, .call = NULL"
     );
     assert_eq!(with_call_formal(&formals(""), formal), ".call = NULL");
     assert_eq!(with_call_formal("x, y = 1L", None), "x, y = 1L");

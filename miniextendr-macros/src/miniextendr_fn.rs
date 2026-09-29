@@ -97,85 +97,119 @@ pub(crate) fn is_dots_type(ty: &syn::Type) -> bool {
     type_ends_with(ty, "Dots")
 }
 
-/// Result of normalizing Rust variadic syntax (`...`) into an explicit `&Dots`
-/// parameter.
-#[derive(Debug, Clone)]
-pub(crate) struct VariadicDots {
-    /// Whether the original signature used Rust variadic syntax.
-    pub has_dots: bool,
-    /// User-provided variadic identifier, e.g. `dots` in `dots: ...`.
-    pub named_dots: Option<syn::Ident>,
-}
-
-/// Replace Rust variadic syntax with a trailing `&miniextendr_api::dots::Dots`
-/// parameter so downstream codegen never emits a non-extern variadic Rust fn.
-pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<VariadicDots> {
+/// Replace Rust variadic syntax (`...` / `name: ...`) with a trailing
+/// `&miniextendr_api::dots::Dots` parameter, so downstream codegen never
+/// emits a non-extern variadic Rust fn. Named dots keep the user's
+/// identifier; unnamed `...` binds `__miniextendr_dots`.
+///
+/// syn parses the variadic only in last position, so a formal after the dots
+/// is spelled with an explicit `rest: &Dots` parameter instead. A signature
+/// with both is an error: a function takes at most one `...`.
+pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<()> {
     use syn::spanned::Spanned;
 
-    let has_dots = sig.variadic.is_some();
-    let named_dots = if has_dots {
-        let dots = sig.variadic.as_ref().unwrap();
-        if let Some(named_dots) = dots.pat.as_ref() {
-            if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
-                Some(named_dots_ident.ident.clone())
-            } else {
+    let Some(variadic) = sig.variadic.take() else {
+        return Ok(());
+    };
+    if let Some(syn::FnArg::Typed(existing)) = dots_index(&sig.inputs).map(|idx| &sig.inputs[idx]) {
+        let existing = match existing.pat.as_ref() {
+            syn::Pat::Ident(pat_ident) => format!("`{}: &Dots`", pat_ident.ident),
+            _ => "a `&Dots` parameter".to_string(),
+        };
+        return Err(syn::Error::new(
+            variadic.span(),
+            format!("this function already takes `...` as {existing}; remove one of them"),
+        ));
+    }
+    let ident = match variadic.pat {
+        Some((pat, _)) => {
+            let syn::Pat::Ident(pat_ident) = *pat else {
                 return Err(syn::Error::new(
-                    named_dots.0.span(),
+                    pat.span(),
                     "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
                 ));
-            }
-        } else {
-            None
+            };
+            pat_ident.ident
         }
-    } else {
-        None
-    };
-
-    if has_dots {
-        sig.variadic = None;
-        sig.inputs
-            .push(if let Some(named_dots) = named_dots.as_ref() {
-                syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
-            } else {
-                // Cannot use `_` as a variable name, so unnamed `...` needs a
-                // stable synthetic binding that does not collide with user args.
-                for arg in &sig.inputs {
-                    let syn::FnArg::Typed(pat_type) = arg else {
-                        continue;
-                    };
-                    if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
-                        && pat_ident.ident == "__miniextendr_dots"
-                    {
-                        return Err(syn::Error::new(
-                            pat_ident.ident.span(),
-                            "parameter named `__miniextendr_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
-                        ));
-                    }
+        None => {
+            // Cannot use `_` as a variable name, so unnamed `...` needs a
+            // stable synthetic binding that does not collide with user args.
+            for arg in &sig.inputs {
+                let syn::FnArg::Typed(pat_type) = arg else {
+                    continue;
+                };
+                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                    && pat_ident.ident == "__miniextendr_dots"
+                {
+                    return Err(syn::Error::new(
+                        pat_ident.ident.span(),
+                        "parameter named `__miniextendr_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
+                    ));
                 }
-                syn::parse_quote!(__miniextendr_dots: &::miniextendr_api::dots::Dots)
-            });
-    }
-
-    Ok(VariadicDots {
-        has_dots,
-        named_dots,
-    })
+            }
+            syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site())
+        }
+    };
+    sig.inputs
+        .push(syn::parse_quote!(#ident: &::miniextendr_api::dots::Dots));
+    Ok(())
 }
 
-/// Return the identifier for a trailing `Dots` / `&Dots` parameter, if present.
-pub(crate) fn trailing_dots_ident(
+/// Position of the first `&Dots` parameter in `inputs` (receiver included, as
+/// [`RArgumentBuilder`](crate::r_wrapper_builder::RArgumentBuilder) counts
+/// them), without validation: for code that runs after [`find_dots_param`]
+/// has accepted the signature.
+pub(crate) fn dots_index(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-) -> Option<syn::Ident> {
-    let syn::FnArg::Typed(pat_type) = inputs.last()? else {
-        return None;
-    };
-    if !is_dots_type(pat_type.ty.as_ref()) {
-        return None;
+) -> Option<usize> {
+    inputs
+        .iter()
+        .position(|arg| matches!(arg, syn::FnArg::Typed(pt) if is_dots_type(pt.ty.as_ref())))
+}
+
+/// Find the dots parameter of a signature by type, at any position, and
+/// return its Rust binding.
+///
+/// The parameter of type `&Dots` is R's `...` at its own position: the R
+/// formals and the `.Call()` arguments follow the Rust signature order, with
+/// `...` / `list(...)` where it sits, and every formal after it is matched by
+/// exact name only, as R does for any formal after `...`.
+///
+/// A function takes at most one `...`, so a second `&Dots` parameter is an
+/// error spanned on it. The parameter needs a plain name: the body reads the
+/// dots through it.
+pub(crate) fn find_dots_param(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+) -> syn::Result<Option<syn::Ident>> {
+    use syn::spanned::Spanned;
+
+    let mut found: Option<syn::Ident> = None;
+    for arg in inputs {
+        let syn::FnArg::Typed(pat_type) = arg else {
+            continue;
+        };
+        if !is_dots_type(pat_type.ty.as_ref()) {
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            return Err(syn::Error::new(
+                pat_type.pat.span(),
+                "the `...` parameter needs a plain name, for example `rest: &Dots`",
+            ));
+        };
+        let ident = &pat_ident.ident;
+        if let Some(first) = &found {
+            return Err(syn::Error::new(
+                ident.span(),
+                format!(
+                    "a function takes at most one `...`: `{first}` and `{ident}` both have type \
+                     `&Dots`; keep one"
+                ),
+            ));
+        }
+        found = Some(ident.clone());
     }
-    let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
-        return None;
-    };
-    Some(pat_ident.ident.clone())
+    Ok(found)
 }
 
 /// Check if a type is `Missing<T>`.
@@ -797,10 +831,10 @@ fn method_class_list(value: &syn::LitStr) -> syn::Result<Vec<String>> {
 pub(crate) struct MiniextendrFunctionParsed {
     /// The normalized function item (with dots transformed, wildcards renamed).
     item: syn::ItemFn,
-    /// Whether the original function had `...` (variadic).
-    has_dots: bool,
-    /// If dots were named (e.g., `my_dots: ...`), the identifier.
-    named_dots: Option<syn::Ident>,
+    /// Rust binding of the `&Dots` parameter (R's `...`), from Rust `...` or
+    /// an explicit `&Dots` parameter at any position (see
+    /// [`find_dots_param`]).
+    dots: Option<syn::Ident>,
     /// All per-parameter `#[miniextendr(...)]` options (coerce, match_arg,
     /// default, choices, several_ok), keyed by the (possibly synthesized) Rust
     /// parameter name. Replaces five parallel `HashSet` / `HashMap` fields.
@@ -1178,10 +1212,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 
         let mut item: syn::ItemFn = input.parse()?;
 
-        // dots support: parse variadic name (if any) and replace `...` with `&Dots`.
-        let dots_info = rewrite_variadic_dots(&mut item.sig)?;
-        let has_dots = dots_info.has_dots;
-        let named_dots = dots_info.named_dots;
+        // dots support: replace `...` with `&Dots` (the dots parameter itself
+        // is found by type once wildcard patterns have their names).
+        rewrite_variadic_dots(&mut item.sig)?;
 
         // Reject #[export_name] for regular functions (not extern "C-unwind").
         // For extern functions, #[export_name] can be used as an alternative to #[no_mangle].
@@ -1375,12 +1408,12 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             ));
         }
 
+        let dots = find_dots_param(&item.sig.inputs)?;
         crate::r_wrapper_builder::check_r_formals(&item.sig.inputs, &[])?;
 
         Ok(Self {
             item,
-            has_dots,
-            named_dots,
+            dots,
             per_param,
         })
     }
@@ -1399,29 +1432,21 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 impl MiniextendrFunctionParsed {
     // region: Accessors for parsed metadata
 
-    /// Whether the original function had `...` (variadic).
+    /// Whether the function takes `...`: Rust `...` or an explicit `&Dots`
+    /// parameter, at any position.
     pub(crate) fn has_dots(&self) -> bool {
-        self.has_dots
+        self.dots.is_some()
     }
 
-    /// If dots were named (e.g., `my_dots: ...`), returns the identifier.
-    pub(crate) fn named_dots(&self) -> Option<&syn::Ident> {
-        self.named_dots.as_ref()
+    /// The Rust binding of the dots: the user's name (`args: ...`,
+    /// `rest: &Dots`), or `__miniextendr_dots` for an unnamed `...`.
+    pub(crate) fn dots_ident(&self) -> Option<&syn::Ident> {
+        self.dots.as_ref()
     }
 
-    /// Check if a parameter is the dots (`...`) param.
-    /// After parsing, dots are rewritten to `&Dots` — this checks the original name.
+    /// Check if a parameter is the dots (`...`) param, whose R formal is `...`.
     pub(crate) fn is_dots_param(&self, ident: &syn::Ident) -> bool {
-        if !self.has_dots {
-            return false;
-        }
-        // Named dots: check if ident matches the original name (e.g., `dots`, `my_dots`)
-        if let Some(ref named) = self.named_dots {
-            return ident == named;
-        }
-        // Unnamed dots: `rewrite_variadic_dots` replaced the variadic with the
-        // synthetic `__miniextendr_dots` binding.
-        ident == "__miniextendr_dots"
+        self.dots_ident() == Some(ident)
     }
 
     /// Whether a parameter carried any per-parameter `#[miniextendr(...)]`

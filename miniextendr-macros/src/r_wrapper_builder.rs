@@ -67,7 +67,7 @@ pub fn normalize_r_arg_string(name: &str) -> String {
 /// Check the R formals a signature produces, before any wrapper is generated.
 ///
 /// Each parameter becomes the formal [`normalize_r_arg_string`] gives it; the
-/// trailing dots parameter becomes `...` and is skipped. A formal must be an R
+/// `&Dots` parameter becomes `...`, wherever it sits, and is skipped. A formal must be an R
 /// name (not a reserved word such as `if` or `in`, not starting with a digit),
 /// distinct from the others (`x` and `_x` both become `x`), and not one of the
 /// `reserved` names the generated wrapper binds itself (a method's receiver,
@@ -122,8 +122,9 @@ pub(crate) fn check_r_formals(
 }
 
 /// The R formal each parameter of a signature becomes, with the parameter's
-/// ident: [`normalize_r_arg_string`] of its name. The trailing dots parameter
-/// becomes `...` and is skipped, as are receivers and non-ident patterns.
+/// ident: [`normalize_r_arg_string`] of its name. The `&Dots` parameter
+/// becomes `...` wherever it sits and is skipped, as are receivers and
+/// non-ident patterns.
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
 /// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
@@ -131,13 +132,12 @@ pub(crate) fn check_r_formals(
 pub(crate) fn r_formal_names(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
 ) -> impl Iterator<Item = (String, &syn::Ident)> {
-    let has_dots = crate::miniextendr_fn::trailing_dots_ident(inputs).is_some();
-    let last_idx = inputs.len().saturating_sub(1);
+    let dots_index = crate::miniextendr_fn::dots_index(inputs);
     inputs.iter().enumerate().filter_map(move |(idx, input)| {
         let syn::FnArg::Typed(pat_type) = input else {
             return None;
         };
-        if has_dots && idx == last_idx {
+        if Some(idx) == dots_index {
             return None;
         }
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
@@ -168,19 +168,18 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 /// Builder for R function formal parameters and call arguments.
 ///
 /// Handles:
-/// - Underscore normalization (`_x` → `unused_x`)
+/// - Underscore normalization (`_x` → `x`)
 /// - Unit type defaults (`()` → `= NULL`)
-/// - Dots (`...`) with optional naming
+/// - Dots: the `&Dots` parameter is `...` in the formals and `list(...)` in
+///   the call arguments, at its own position in the signature
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
     /// The function's input parameters from the parsed Rust signature.
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    /// If true, last parameter is treated as dots (`...`).
-    has_dots: bool,
-    /// Optional named binding for dots (e.g., `args: ...` in Rust becomes a named dots param).
-    /// The name is normalized (leading underscores stripped) but only used on the Rust side;
-    /// R formals always emit plain `...`.
-    named_dots: Option<String>,
+    /// Position of the `&Dots` parameter in `inputs` (receiver included, the
+    /// way both build loops count). Its Rust name never reaches R: the formal
+    /// is always plain `...`.
+    dots_index: Option<usize>,
     /// If true, skip the first parameter (used for `self`/`&self` in method wrappers,
     /// since the self argument is handled separately by [`DotCallBuilder::with_self`]).
     skip_first: bool,
@@ -193,12 +192,9 @@ pub struct RArgumentBuilder<'a> {
 impl<'a> RArgumentBuilder<'a> {
     /// Create a new builder for the given function inputs.
     pub fn new(inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> Self {
-        let named_dots = crate::miniextendr_fn::trailing_dots_ident(inputs)
-            .map(|ident| normalize_r_arg_ident(&ident).to_string());
         Self {
             inputs,
-            has_dots: named_dots.is_some(),
-            named_dots,
+            dots_index: crate::miniextendr_fn::dots_index(inputs),
             skip_first: false,
             defaults: std::collections::HashMap::new(),
         }
@@ -210,17 +206,6 @@ impl<'a> RArgumentBuilder<'a> {
     /// values are R expression strings emitted verbatim into formals.
     pub fn with_defaults(mut self, defaults: std::collections::HashMap<String, String>) -> Self {
         self.defaults = defaults;
-        self
-    }
-
-    /// Mark the last parameter as dots (`...`).
-    ///
-    /// If `named_dots` is `Some("name")`, the dots have a Rust-side binding
-    /// (from `name: ...` syntax). The name is normalized but only affects the
-    /// Rust side -- R formals always emit plain `...`.
-    pub fn with_dots(mut self, named_dots: Option<String>) -> Self {
-        self.has_dots = true;
-        self.named_dots = named_dots.map(|s| normalize_r_arg_string(&s));
         self
     }
 
@@ -239,7 +224,6 @@ impl<'a> RArgumentBuilder<'a> {
     /// valid Rust syntax by outputting them directly as strings.
     pub fn build_formals(&self) -> String {
         let mut formals = Vec::new();
-        let last_idx = self.inputs.len().saturating_sub(1);
 
         for (idx, input) in self.inputs.iter().enumerate() {
             // Skip first if requested (for self in methods)
@@ -252,10 +236,9 @@ impl<'a> RArgumentBuilder<'a> {
                 syn::FnArg::Receiver(_) => continue, // Skip self receivers
             };
 
-            // Handle dots (must be last)
-            // Note: In R, `...` cannot have a name/default in formals - it must be just `...`
-            // The named_dots is only used on the Rust side. R formals always use plain `...`
-            if self.has_dots && idx == last_idx {
+            // The dots, at their own position. In R, `...` takes no name or
+            // default, so the Rust binding never shows: the formal is `...`.
+            if Some(idx) == self.dots_index {
                 formals.push("...".to_string());
                 continue;
             }
@@ -302,7 +285,6 @@ impl<'a> RArgumentBuilder<'a> {
     /// `"list(...)"` to capture variadic args as an R list for the `.Call()` interface.
     pub fn build_call_args_vec(&self) -> Vec<String> {
         let mut call_args = Vec::new();
-        let last_idx = self.inputs.len().saturating_sub(1);
 
         for (idx, input) in self.inputs.iter().enumerate() {
             // Skip first if requested (for self in methods)
@@ -314,9 +296,9 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             };
 
-            // Handle dots special case
-            // Always use list(...) since R formals always have plain `...`
-            if self.has_dots && idx == last_idx {
+            // The dots, at their own position: the formal is plain `...`, so
+            // the argument is always `list(...)`.
+            if Some(idx) == self.dots_index {
                 call_args.push("list(...)".to_string());
                 continue;
             }
@@ -619,10 +601,9 @@ impl CallAttribution {
 }
 
 /// Append a standalone wrapper's [`CallAttribution::formal`] to its joined
-/// `formals` (#1613). The formal goes last, after `...` when the wrapper has
-/// dots (a Rust `&Dots` parameter is always the last one), so positional
-/// extras land in the dots and `.call` is matched by name only; a wrapper
-/// without other formals takes it alone.
+/// `formals` (#1613). The formal goes last: after `...` and after any formal
+/// that follows the dots, so positional extras land in the dots and `.call`
+/// is matched by name only; a wrapper without other formals takes it alone.
 pub(crate) fn with_call_formal(formals: &str, call_formal: Option<&str>) -> String {
     match call_formal {
         Some(formal) if formals.is_empty() => formal.to_string(),

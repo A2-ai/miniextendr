@@ -1,0 +1,5 @@
+error: a function takes at most one `...`: `a` and `b` both have type `&Dots`; keep one
+  --> tests/ui/impl_method_dots_twice.rs:14:9
+   |
+14 |         b: &miniextendr_api::dots::Dots,
+   |         ^

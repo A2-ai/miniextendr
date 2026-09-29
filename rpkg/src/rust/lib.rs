@@ -33,6 +33,7 @@
 //! # R Interface
 //!
 //! - [`dots_tests`]: R dots (`...`) handling tests
+//! - [`dots_position_tests`]: a `&Dots` parameter at any position (formals after `...`)
 //! - [`default_tests`]: Default parameter value tests
 //! - [`externalptr_tests`]: ExternalPtr functionality tests
 //! - [`externalptr_identity_tests`]: ExternalPtr identity preservation tests
@@ -187,6 +188,7 @@ mod default_tests;
 mod deferred_condition_tests;
 mod display_fromstr_tests;
 mod doc_attr_tests;
+mod dots_position_tests;
 mod dots_tests;
 #[cfg(feature = "either")]
 mod either_adapter_tests;

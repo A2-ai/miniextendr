@@ -141,18 +141,22 @@ unsafe {
 
 ## Common Proc-Macro Errors
 
-### "dots must be the last parameter"
+### "a function takes at most one `...`"
 
-The `...` (dots) argument must appear last in the function signature:
+The parameter of type `&Dots` is R's `...`, at any position, and an R function has one `...`. Two `&Dots` parameters, or Rust `...` next to an explicit `&Dots`, are refused:
 
 ```rust
-// Wrong
+// Wrong: two dots parameters
 #[miniextendr]
-fn bad(dots: &Dots, x: i32) -> i32 { x }
+fn bad(x: i32, a: &Dots, b: &Dots) -> i32 { x }
 
-// Correct
+// Wrong: `...` and `rest: &Dots` are both the dots
 #[miniextendr]
-fn good(x: i32, dots: &Dots) -> i32 { x }
+fn also_bad(rest: &Dots, x: i32, more: ...) -> i32 { x }
+
+// Correct: one dots parameter; `flag` follows it and is matched by name in R
+#[miniextendr]
+fn good(x: i32, rest: &Dots, flag: bool) -> i32 { x }
 ```
 
 ### "expected `pub` function"

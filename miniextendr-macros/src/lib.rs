@@ -499,8 +499,14 @@ fn build_match_arg_helpers(
 ///
 /// ## Variadics (`...`)
 ///
-/// Use `...` as the last argument. The Rust parameter becomes `_dots: &Dots`.
-/// Use `name: ...` to give it a custom name (e.g., `args: ...` → `args: &Dots`).
+/// Use `...` as the last argument. It becomes a `&Dots` parameter bound to
+/// `__miniextendr_dots`, so name it (`args: ...` → `args: &Dots`) to read the
+/// dots in the body.
+///
+/// An explicit `rest: &Dots` parameter is R's `...` too, at any position:
+/// `fn f(x: i32, rest: &Dots, overwrite: bool)` becomes
+/// `f <- function(x, ..., overwrite)`, and R matches a formal after `...` by
+/// its exact name only. A function takes at most one `...`.
 ///
 /// ### Typed Dots Validation
 ///
@@ -892,7 +898,7 @@ pub fn miniextendr(
     let vis = parsed.vis();
     let generics = parsed.generics();
     let has_dots = parsed.has_dots();
-    let named_dots = parsed.named_dots().cloned();
+    let dots_ident = parsed.dots_ident().cloned();
 
     // Fail fast on invalid extern "C-unwind" signatures *before* any codegen,
     // so we never emit a wrapper that would be discarded by the surfaced error.
@@ -1017,7 +1023,7 @@ pub fn miniextendr(
     if dots_spec.is_some() && !has_dots {
         let err = syn::Error::new(
             dots_span.unwrap_or_else(proc_macro2::Span::call_site),
-            "#[miniextendr(dots = typed_list!(...))] requires a `...` parameter in the function signature",
+            "#[miniextendr(dots = typed_list!(...))] requires a `...` or `&Dots` parameter in the function signature",
         );
         return err.into_compile_error().into();
     }
@@ -1274,10 +1280,6 @@ pub fn miniextendr(
     // region: R wrappers generation in `fn`
     // Build R formal parameters and call arguments using shared builder
     let mut arg_builder = RArgumentBuilder::new(inputs);
-    if has_dots {
-        arg_builder =
-            arg_builder.with_dots(named_dots.clone().map(|id| crate::naming::ident_name(&id)));
-    }
     // Add user-specified parameter defaults (Missing<T> defaults handled via body prelude)
     let mut merged_defaults = parsed.param_defaults();
     // For match_arg params, always use the choices placeholder as the formal
@@ -1744,11 +1746,9 @@ pub fn miniextendr(
         .retain(|attr| !attr.path().is_ident("miniextendr"));
 
     // Inject dots_typed binding into function body if dots = typed_list!(...) was specified
-    if let Some(ref spec_tokens) = dots_spec {
-        let dots_param = named_dots.clone().unwrap_or_else(|| {
-            syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site())
-        });
-        let validation_stmt = build_dots_validation_stmt(&dots_param, spec_tokens);
+    // (the gate above guarantees the dots parameter exists).
+    if let (Some(spec_tokens), Some(dots_param)) = (&dots_spec, &dots_ident) {
+        let validation_stmt = build_dots_validation_stmt(dots_param, spec_tokens);
         original_item.block.stmts.insert(0, validation_stmt);
     }
 
@@ -2985,9 +2985,11 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// }
 /// ```
 ///
-/// This injects validation at the start of the function body:
+/// This injects validation at the start of the function body, reading the
+/// dots binding (`__miniextendr_dots` for an unnamed `...`, otherwise the
+/// name of the `name: ...` / `name: &Dots` parameter):
 /// ```ignore
-/// let dots_typed = _dots.typed(typed_list!(...))
+/// let dots_typed = __miniextendr_dots.typed(typed_list!(...))
 ///     .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
 /// ```
 ///

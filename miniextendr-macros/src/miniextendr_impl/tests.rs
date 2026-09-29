@@ -66,10 +66,6 @@ fn impl_method_rewrites_raw_variadic_in_reemitted_impl() {
     let method = &parsed.methods[0];
 
     assert!(method.has_dots);
-    assert_eq!(
-        method.method_attrs.named_dots.as_ref().unwrap().to_string(),
-        "dots"
-    );
     assert!(method.sig.variadic.is_none());
 
     let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[0] else {
@@ -300,9 +296,9 @@ fn impl_method_dots_sugar_injects_dots_typed_binding() {
 
 #[test]
 fn impl_method_dots_sugar_injects_binding_for_explicit_dots_param() {
-    // The sugar resolves its dots ident from `named_dots`, which covers both the
-    // rewritten `...` path and an explicit trailing `&Dots` parameter. Injection
-    // must land on the explicit-param method the same way.
+    // The sugar resolves its dots ident from `find_dots_param`, which covers
+    // both the rewritten `...` path and an explicit `&Dots` parameter at any
+    // position. Injection must land on the explicit-param method the same way.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl ExplicitSugarDots {
             #[miniextendr(dots = typed_list!(scale => numeric()))]
@@ -330,8 +326,8 @@ fn impl_method_dots_sugar_injects_binding_for_explicit_dots_param() {
 
 #[test]
 fn impl_method_dots_sugar_without_dots_param_errors() {
-    // The sugar requires the method to actually take a dots parameter (a
-    // trailing `...` or `&Dots`); using it on a method with no dots parameter
+    // The sugar requires the method to actually take a dots parameter (`...`
+    // or a `&Dots` parameter); using it on a method with no dots parameter
     // is a clear compile error rather than a silently-dropped attribute.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl NoDotsSugar {
@@ -350,6 +346,111 @@ fn impl_method_dots_sugar_without_dots_param_errors() {
             .contains("requires the method to take a dots parameter"),
         "unexpected error: {err}"
     );
+}
+
+/// A middle `&Dots` method parameter is the method's one `...`, at its own
+/// position, in every class system: no second dispatch `...`, and `flag`
+/// after it (matched by name only in R).
+#[test]
+fn mid_dots_method_param_is_the_one_dots_in_every_class_system() {
+    let instance: syn::ItemImpl = syn::parse_quote! {
+        impl MidDots {
+            pub fn new() -> Self {
+                unimplemented!()
+            }
+
+            #[miniextendr(defaults(flag = "FALSE"))]
+            pub fn collect(&self, n: i32, rest: &Dots, flag: bool) -> i32 {
+                unimplemented!()
+            }
+        }
+    };
+    for (system, generate) in [
+        (
+            ClassSystem::Env,
+            generate_env_r_wrapper as fn(&ParsedImpl) -> String,
+        ),
+        (ClassSystem::R6, generate_r6_r_wrapper),
+        (ClassSystem::S3, generate_s3_r_wrapper),
+        (ClassSystem::S4, generate_s4_r_wrapper),
+        (ClassSystem::S7, generate_s7_r_wrapper),
+    ] {
+        let parsed = parse_impl(system, instance.clone());
+        let wrapper = generate(&parsed);
+        assert!(
+            wrapper.contains("n, ..., flag = FALSE)"),
+            "{system:?}: formals\n{wrapper}"
+        );
+        assert!(
+            wrapper.contains("n, list(...), flag)"),
+            "{system:?}: .Call args\n{wrapper}"
+        );
+        assert!(
+            !wrapper.contains("..., ...") && !wrapper.contains("flag = FALSE, ..."),
+            "{system:?}: a second `...`\n{wrapper}"
+        );
+    }
+
+    // vctrs impls take no instance methods (MXL120): a static helper.
+    let vctrs: syn::ItemImpl = syn::parse_quote! {
+        impl VctrsMidDots {
+            pub fn new(x: f64) -> Vec<f64> {
+                unimplemented!()
+            }
+
+            #[miniextendr(defaults(flag = "FALSE"))]
+            pub fn combine(amounts: Vec<f64>, rest: &Dots, flag: bool) -> Vec<f64> {
+                unimplemented!()
+            }
+        }
+    };
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: None,
+    };
+    let wrapper = generate_vctrs_r_wrapper(&parse_impl_vctrs(vctrs_attrs, vctrs));
+    assert!(
+        wrapper.contains("vctrsmiddots_combine <- function(amounts, ..., flag = FALSE)"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("amounts, list(...), flag)"), "{wrapper}");
+}
+
+/// A method takes at most one `...` too.
+#[test]
+fn impl_method_refuses_a_second_dots_parameter() {
+    for (item_impl, expected) in [
+        (
+            syn::parse_quote! {
+                impl TwoDots {
+                    pub fn collect(&self, a: &Dots, b: &Dots) -> i32 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "a function takes at most one `...`: `a` and `b` both have type `&Dots`",
+        ),
+        (
+            syn::parse_quote! {
+                impl TwoDots {
+                    pub fn collect(&self, a: &Dots, ...) -> i32 {
+                        unimplemented!()
+                    }
+                }
+            },
+            "this function already takes `...` as `a: &Dots`",
+        ),
+    ] {
+        let err = ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), item_impl)
+            .expect_err("a second dots parameter must error");
+        assert!(
+            err.to_string().contains(expected),
+            "unexpected error: {err}"
+        );
+    }
 }
 
 // endregion

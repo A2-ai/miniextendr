@@ -1,6 +1,6 @@
 ---
 name: miniextendr-dots
-description: "Use when the user asks about handling R's ... (dots/variadic) arguments in Rust, the Dots type, the typed_list! macro, #[miniextendr(dots = typed_list!(...))] attribute sugar, custom dots binding names with name @ ..., optional vs required fields in typed lists, or TypedList accessors."
+description: "Use when the user asks about handling R's ... (dots/variadic) arguments in Rust, the Dots type, the typed_list! macro, #[miniextendr(dots = typed_list!(...))] attribute sugar, custom dots binding names with name: ..., formals after ... (a &Dots parameter at any position), optional vs required fields in typed lists, or TypedList accessors."
 ---
 
 # miniextendr Dots and `typed_list!`
@@ -12,7 +12,8 @@ R's `...` (dots) passes an untyped sequence of named or unnamed arguments throug
 - "How do I accept `...` in my Rust function?"
 - "What is the `Dots` type?"
 - "How do I use `typed_list!`?"
-- "What is `name @ ...` syntax?"
+- "What is `name: ...` syntax?"
+- "Can a parameter come after `...`?"
 - "How do I make a dots field optional?"
 - "What does `#[miniextendr(dots = typed_list!(...))]` do?"
 - "What error does a mismatched typed list produce?"
@@ -21,7 +22,7 @@ R's `...` (dots) passes an untyped sequence of named or unnamed arguments throug
 
 ### The `Dots` type
 
-When a `#[miniextendr]` function has `...` in its Rust signature, the macro transforms that position into a `_dots: &Dots` parameter. `_dots` is the default name; the underscore prefix suppresses unused-variable warnings if you do not use the dots in the function body.
+When a `#[miniextendr]` function has `...` in its Rust signature, the macro transforms that position into a trailing `&Dots` parameter. An unnamed `...` binds the synthetic `__miniextendr_dots`, which user code should not rely on; name the dots (`args: ...`) to read them in the body.
 
 `Dots` provides three accessors:
 
@@ -31,18 +32,32 @@ When a `#[miniextendr]` function has `...` in its Rust signature, the macro tran
 | `try_list()` | `Result<List, …>` | Validated conversion |
 | `typed(spec)` | `Result<TypedList, TypedListError>` | Validate against a `TypedListSpec` |
 
-### Custom binding name with `name @ ...`
+### Custom binding name with `name: ...`
 
-To give the dots parameter a descriptive name instead of `_dots`, use the `name @ ...` syntax:
+To give the dots parameter a name, use the `name: ...` syntax, or write the parameter as `name: &Dots` yourself:
 
 ```rust
 #[miniextendr]
-pub fn my_func(args @ ...) -> i32 {
+pub fn my_func(args: ...) -> i32 {
     args.as_list().len() as i32
 }
 ```
 
-The `@` annotation is parsed by the `#[miniextendr]` macro. The generated R wrapper still uses `...`; the Rust binding name is local only.
+The generated R wrapper still uses `...`; the Rust binding name is local only.
+
+### Formals after `...`
+
+The parameter of type `&Dots` is R's `...` at its own position, so a formal can follow it. Rust's `...` parses only last, so spell that with an explicit `&Dots` parameter:
+
+```rust
+#[miniextendr]
+pub fn write_all(x: i32, rest: &Dots, #[miniextendr(default = "FALSE")] overwrite: bool) -> String {
+    format!("{x} {} {overwrite}", rest.len())
+}
+// R: write_all <- function(x, ..., overwrite = FALSE)
+```
+
+R matches a formal after `...` by its exact name only (`write_all(1L, over = TRUE)` puts `over` in the dots). One `...` per function: a second `&Dots`, or `...` next to an explicit `&Dots`, is a compile error. Methods follow the same rule in every class system; on a `call = caller` wrapper `.call` stays last.
 
 ### `typed_list!` macro
 
@@ -97,9 +112,11 @@ pub fn compute(...) -> f64 {
 The macro expands this to:
 
 ```rust
-let dots_typed = _dots.typed(typed_list!(x => numeric(), y => numeric()))
-    .expect("dots validation failed");
+let dots_typed = __miniextendr_dots.typed(typed_list!(x => numeric(), y => numeric()))
+    .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
 ```
+
+(For named dots, or an explicit `&Dots` parameter at any position, the binding is that parameter's name.)
 
 ### `TypedList` accessors
 
@@ -146,13 +163,13 @@ Call `.typed()` directly in the function body instead of using the attribute sug
 use miniextendr_api::typed_list;
 
 #[miniextendr]
-pub fn configure_model(...) -> String {
+pub fn configure_model(dots: ...) -> String {
     let spec = typed_list!(
         learning_rate => numeric(),
         epochs => integer(),
         verbose? => logical()
     );
-    let args = match _dots.typed(spec) {
+    let args = match dots.typed(spec) {
         Ok(a) => a,
         Err(e) => panic!("{e}"),
     };
@@ -166,17 +183,18 @@ pub fn configure_model(...) -> String {
 ### Do I need positional dots or named/typed dots?
 
 - I just want to forward dots to another R function or count how many arguments were passed:
-  - Use `_dots.as_list()` (unchecked) or `_dots.try_list()` (validated).
+  - Name the dots (`dots: ...`) and use `dots.as_list()` (unchecked) or `dots.try_list()` (validated).
 - I know the exact structure: specific named fields each with known types:
   - Use `typed_list!` either as attribute sugar or manually.
 - I want optional fields mixed with required ones:
   - Mark optional fields with `?`: `field? => type_spec`.
   - Use `get_opt` in the function body.
 
-### Custom name or default `_dots`?
+### Unnamed `...` or a named binding?
 
-- Default `_dots` is fine for most functions. The underscore suppresses unused warnings.
-- Use `name @ ...` when the name has semantic meaning in the function body (e.g., `options @ ...`) or you are forwarding to a helper that expects a specific variable name.
+- Unnamed `...` is fine when the body ignores the dots.
+- Use `name: ...` (or `name: &Dots`) when the body reads them, e.g. `options: ...`.
+- Use an explicit `name: &Dots` parameter when a formal must follow the dots.
 
 ## Key files
 

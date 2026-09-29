@@ -63,35 +63,10 @@ The wrapper types (`FactorVec<T>`, `FactorOptionVec<T>`) are needed for vectors 
 
 ---
 
-### 1.2 Dots Must Be Last Parameter
+### ~~1.2 Dots Must Be Last Parameter~~ RESOLVED
 
-**Status:** By design (R semantics)
-**Impact:** Low - matches R convention
-**Location:** `miniextendr-macros/src/r_wrapper_builder.rs:133`
-
-Variadic arguments (`...`) can only appear as the final parameter.
-
-**Current behavior:**
-```rust
-// WORKS
-#[miniextendr]
-pub fn my_func(x: i32, ...) { }
-
-// DOES NOT WORK
-#[miniextendr]
-pub fn my_func(..., x: i32) { }
-```
-
-**Contract:** R's argument matching algorithm requires `...` to be final. When R encounters `...`, it captures all remaining unmatched arguments. Placing named parameters after `...` creates ambiguity in R's dispatch mechanism. miniextendr enforces this at compile time.
-
-The generated R wrapper:
-```r
-my_func <- function(x, ...) {
-    .Call(C_mypkg_my_func, .call = sys.call(), x, list(...))
-}
-```
-
-See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md) for the full dots guide, including `typed_list!` validation.
+**Status:** Works as expected
+**Resolution:** The parameter of type `&Dots` is R's `...` at its own position, so formals can follow it (`fn f(x: i32, rest: &Dots, overwrite: bool)` becomes `function(x, ..., overwrite)`), as in base R's `paste(..., sep = " ")`. R matches a formal after `...` by its exact name only. Rust's `...` syntax parses only in last position; a formal after the dots uses an explicit `&Dots` parameter. See [Formals after `...`](DOTS_TYPED_LIST.md#formals-after).
 
 ---
 
