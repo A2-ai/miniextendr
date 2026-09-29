@@ -1349,8 +1349,9 @@ fn env_trait_method_body_follows_suppression() {
     );
 }
 
-/// A static trait method of S3, vctrs and S7 is a `Type$Trait$method`
-/// namespace member without `\usage`: after its intro line (the block's
+/// A static trait method of S3, vctrs and S7 is a namespace member without
+/// `\usage` (`Type$Trait$method`; `attr(Type, "Trait")$method` on S7, whose
+/// class object is a closure): after its intro line (the block's
 /// title) it gets the lead-in and the choice item. An S4 static documents
 /// the plain function `Foo_Bar_pick`, so it gets `@param` lines instead: the
 /// author's, then a filler for each other formal. A static without formals

@@ -169,7 +169,8 @@ const PAGE_TAGS: &[&str] = &[
 ];
 
 /// Whether the body of a block without `\usage` (an env trait method, a
-/// `Type$Trait$method` static of S3, vctrs and S7) forwards the author tag
+/// `Type$Trait$method` static of S3 and vctrs, an `attr(Type, "Trait")$method`
+/// static of S7) forwards the author tag
 /// `tag`: every tag but the [`PAGE_TAGS`], which [`own_block_page_lines`]
 /// forwards, `@title`, which the structural split-page title owns, and a bare
 /// `@export`, which would export the member itself

@@ -1168,10 +1168,11 @@ methods, S4 constructors) and is a compile error elsewhere; see the same
 section. Trait-impl methods (`impl Trait for Type`) forward only their
 `@param` lines and these page tags: `@describeIn`, `@rdname`, `@name`,
 `@order`, `@inheritParams`, `@inherit` and `@inheritDotParams`. Env trait
-methods and the `Type$Trait$method` statics of S3, vctrs and S7 classes are
-documented like env methods: every tag but `@title` and a bare `@export` (which
-would export the member itself) flows through, and their
-`@param` lines and choice text go into a `\describe` list. S4 statics
+methods, the `Type$Trait$method` statics of S3 and vctrs classes and the
+`attr(Type, "Trait")$method` statics of S7 classes are documented like env
+methods: every tag but `@title` and a bare `@export` (which would export the
+member itself) flows through, and their `@param` lines and choice text go into
+a `\describe` list. S4 statics
 (`Type_Trait_method()`) get `@param` lines, generated ones included. R6
 constructor and instance methods are documented on the class page whatever
 their tags, so they keep the generated line. The one exception is class

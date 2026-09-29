@@ -602,8 +602,9 @@ Trait-impl methods (`impl Trait for Type`) take the same page tags on their
 own wrapper block: `@describeIn`, `@rdname`, `@name`, `@order`, and the
 inheritance tags `@inheritParams`, `@inherit` and `@inheritDotParams`. Their
 prose, `@examples` and other tags are not forwarded, except on env trait
-methods and the `Type$Trait$method` statics of S3, vctrs and S7 classes,
-which are documented like env methods (see
+methods, the `Type$Trait$method` statics of S3 and vctrs classes and the
+`attr(Type, "Trait")$method` statics of S7 classes, which are documented
+like env methods (see
 [Impl-block doc tags](CLASS_SYSTEMS.md#impl-block-doc-tags)). `@describeIn` works
 where that block documents an R function or method: S3 and vctrs instance
 methods (`generic.Type`), S4 instance methods (the block sits on the
