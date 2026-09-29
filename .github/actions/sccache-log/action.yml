@@ -1,0 +1,23 @@
+name: Print the sccache server log
+description: >-
+  Print the log the sccache server wrote to $SCCACHE_ERROR_LOG (set in the
+  workflow env), headed by the failed cache writes, so a job's "Cache write
+  errors" count comes with its causes; sccache logs those failures only at
+  debug level (#1651). Use as the last step, with `if: always()`, in every
+  job that sets RUSTC_WRAPPER=sccache.
+runs:
+  using: composite
+  steps:
+    - name: Print the sccache server log
+      shell: bash
+      run: |
+        log="${SCCACHE_ERROR_LOG:-}"
+        if [ -z "$log" ] || [ ! -s "$log" ]; then
+          echo "No sccache server log at '${log}'."
+          exit 0
+        fi
+        echo "Failed cache writes: $(grep -c 'Error executing cache write' "$log" || true)"
+        grep 'Error executing cache write' "$log" | head -n 20 || true
+        echo "::group::Full sccache server log ($log)"
+        cat "$log"
+        echo "::endgroup::"
