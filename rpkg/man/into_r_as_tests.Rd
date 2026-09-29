@@ -10,5 +10,6 @@ into_r_as_i64_to_i32(x)
 \item{x}{(no documentation available)}
 }
 \description{
-Convert a \verb{Vec<i64>} to R integer vector via \verb{IntoRAs<i32>}. Widens i32 → i64, then narrows back via IntoRAs.
+Convert a \verb{Vec<i64>} to R integer vector via \verb{IntoRAs<i32>}.
+Widens i32 → i64, then narrows back via IntoRAs.
 }

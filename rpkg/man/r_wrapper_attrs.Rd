@@ -47,5 +47,6 @@ Test on.exit cleanup with add = false (overwrite previous).
 
 Test on.exit cleanup with after = false (LIFO order).
 
-Custom C symbol name via \code{c_symbol = "..."}. The symbol itself is an implementation detail — the test is that codegen + R dispatch still work.
+Custom C symbol name via \code{c_symbol = "..."}. The symbol itself is an
+implementation detail — the test is that codegen + R dispatch still work.
 }

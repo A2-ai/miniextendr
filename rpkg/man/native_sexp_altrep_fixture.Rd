@@ -15,7 +15,14 @@ An ALTREP-backed integer vector.
 \description{
 Create a native-SEXP ALTREP integer vector backed by a plain \code{INTSXP}.
 
-Unlike the usual ExternalPtr-backed ALTREP, the backing data (\code{data1}) is a plain R integer vector stored directly in the ALTREP \code{data1} slot. \code{AltrepExtract} is implemented via a static singleton: the ZST \code{NativeSexpIntAltrep} has no state — all data lives in \code{data1} on the ALTREP SEXP itself.
+Unlike the usual ExternalPtr-backed ALTREP, the backing data (\code{data1}) is a
+plain R integer vector stored directly in the ALTREP \code{data1} slot.
+\code{AltrepExtract} is implemented via a static singleton: the ZST
+\code{NativeSexpIntAltrep} has no state — all data lives in \code{data1} on the
+ALTREP SEXP itself.
 
-This mirrors R's own \code{compact_intseq} pattern (see \code{src/main/altclasses.c} in the R source), where \code{data1} stores the sequence parameters and all element-access methods derive their results from \code{data1} directly.
+This mirrors R's own \code{compact_intseq} pattern (see
+\code{src/main/altclasses.c} in the R source), where \code{data1} stores the
+sequence parameters and all element-access methods derive their results
+from \code{data1} directly.
 }

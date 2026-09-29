@@ -53,19 +53,24 @@ An ALTREP integer vector.
 \description{
 Create an ALTREP integer that panics on element access (plain panic).
 
-Accessing any element will raise \code{rust_error} in R — catchable via \code{tryCatch(x[1L], rust_error = function(e) e)}.
+Accessing any element will raise \code{rust_error} in R — catchable via
+\code{tryCatch(x[1L], rust_error = function(e) e)}.
 
 Create an ALTREP integer that raises \verb{error!(class = ..., ...)} on element access.
 
-Accessing any element will raise a classed R error — catchable via \code{tryCatch(x[1L], altrep_specific = function(e) e)} or \code{tryCatch(x[1L], rust_error = function(e) e)}.
+Accessing any element will raise a classed R error — catchable via
+\code{tryCatch(x[1L], altrep_specific = function(e) e)} or
+\code{tryCatch(x[1L], rust_error = function(e) e)}.
 
 Create an ALTREP integer that panics on element \code{panic_at} (0-indexed).
 
-Used to stress-test ALTREP re-entry safety when \code{raise_rust_condition_via_stop} fires \code{Rf_eval(stop(...))} from within an ALTREP callback.
+Used to stress-test ALTREP re-entry safety when \code{raise_rust_condition_via_stop}
+fires \code{Rf_eval(stop(...))} from within an ALTREP callback.
 
 Create an ALTREP integer that calls \verb{warning!()} on element access.
 
-In ALTREP RUnwind context the warning cannot suspend — it is degraded to a \code{rust_error} with a fixed diagnostic message.
+In ALTREP RUnwind context the warning cannot suspend — it is degraded to
+a \code{rust_error} with a fixed diagnostic message.
 
 Create an ALTREP integer that calls \verb{message!()} on element access.
 
@@ -77,5 +82,7 @@ Same degradation as \code{altrep_warn_on_elt}.
 
 Create an ALTREP integer that raises \verb{error!(data = ...)} on element access.
 
-Regression fixture for issue #996 path 2: structured \verb{data =} fields must survive the ALTREP \code{RUnwind} degradation path (\code{raise_rust_condition_via_stop}), not just the message and class.
+Regression fixture for issue #996 path 2: structured \verb{data =} fields must
+survive the ALTREP \code{RUnwind} degradation path
+(\code{raise_rust_condition_via_stop}), not just the message and class.
 }

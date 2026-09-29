@@ -76,11 +76,16 @@ Test roundtripping a large buffer (1000 bytes).
 
 Test roundtripping all 256 byte values (0x00 through 0xFF).
 
-Read a raw vector through the \code{RBuf} trait: returns \verb{c(remaining, has_remaining, first get_u8, first get_i8-reinterpreted, drained count)}.
+Read a raw vector through the \code{RBuf} trait: returns
+\verb{c(remaining, has_remaining, first get_u8, first get_i8-reinterpreted, drained count)}.
 
-\code{chunk} / \code{advance} / \code{copy_to_vec} / default \code{to_vec} through the \code{RBuf} trait. For input bytes \code{b1..bN}: peeks the full chunk, skips one byte, copies two, then drains the rest.
+\code{chunk} / \code{advance} / \code{copy_to_vec} / default \code{to_vec} through the \code{RBuf}
+trait. For input bytes \code{b1..bN}: peeks the full chunk, skips one byte,
+copies two, then drains the rest.
 
-Build a raw vector through the \code{RBufMut} trait: writes \code{vals} byte-by-byte via \code{put_u8}, appends \code{extra} via \code{put_slice}, then two filler bytes via the default-method \code{put_bytes}.
+Build a raw vector through the \code{RBufMut} trait: writes \code{vals} byte-by-byte
+via \code{put_u8}, appends \code{extra} via \code{put_slice}, then two filler bytes via
+the default-method \code{put_bytes}.
 
 Exercise \code{RBufMut::len} / \code{is_empty} / \code{clear} through the trait.
 }

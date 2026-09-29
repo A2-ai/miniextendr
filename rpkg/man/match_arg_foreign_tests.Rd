@@ -20,7 +20,9 @@ foreign_enum_default()
 \description{
 Name the wrapped library's interpolation variant selected via \code{match.arg()}.
 
-Echo one or more interpolation methods; \code{methods} is left undocumented so the auto-injected \verb{@param} choices text is exercised on a hand-written \code{MatchArg} impl. Returns through the blanket \verb{Vec<T: MatchArg>} path.
+Echo one or more interpolation methods; \code{methods} is left undocumented so
+the auto-injected \verb{@param} choices text is exercised on a hand-written
+\code{MatchArg} impl. Returns through the blanket \verb{Vec<T: MatchArg>} path.
 
 The wrapped library's own default, returned as its choice string.
 }

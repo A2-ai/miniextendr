@@ -24,7 +24,9 @@ RangeBox
 \item{...}{Additional arguments passed to methods}
 }
 \description{
-A closed range as an S3 object. The constructor and \code{box_share()} are documented here; the other methods join the shared \code{range_summaries} page, whose R block documents \code{x} and \code{...} for them.
+A closed range as an S3 object. The constructor and \code{box_share()} are
+documented here; the other methods join the shared \code{range_summaries}
+page, whose R block documents \code{x} and \code{...} for them.
 
 Create a range box.
 

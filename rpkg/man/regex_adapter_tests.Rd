@@ -58,13 +58,17 @@ Test replacing all regex matches with a replacement string.
 
 Test splitting a string by a regex pattern.
 
-Extract all capture group matches from a regex. Returns all captured groups (including the full match at index 0) for the first match.
+Extract all capture group matches from a regex.
+Returns all captured groups (including the full match at index 0) for the first match.
 
 Count the number of non-overlapping matches.
 
-Drive a compiled \code{Regex} through the \code{RRegexOps} adapter trait (audit A7 — the free-function fixtures above call inherent \code{Regex} methods; the trait was unexercised). Calls are trait-qualified.
+Drive a compiled \code{Regex} through the \code{RRegexOps} adapter trait (audit A7 —
+the free-function fixtures above call inherent \code{Regex} methods; the trait
+was unexercised). Calls are trait-qualified.
 
-Capture the first match into a \code{CaptureGroups} value and return all groups (index 0 = whole match; \code{NA} for non-participating groups).
+Capture the first match into a \code{CaptureGroups} value and return all groups
+(index 0 = whole match; \code{NA} for non-participating groups).
 
 Look up capture groups by index and by name via \code{RCaptureGroups}.
 }

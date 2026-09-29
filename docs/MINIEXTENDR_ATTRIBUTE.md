@@ -51,7 +51,9 @@ Generates:
 The `///` comment is read line by line into the wrapper's `#'` block:
 
 - Text before the first `@tag` line is leading prose. It becomes
-  `@description` unless the comment has one.
+  `@description` unless the comment has one, with its lines, blank lines and
+  indentation, so a markdown list or a fenced block renders as one. Rustdoc
+  intra-doc links (`` [`Foo`] ``) lose their brackets, outside code.
 - A tag runs from its `@tag` line to the next one.
 - A multi-line tag (`@description`, `@details`, `@param`, `@return`,
   `@examples`, `@examplesIf`, `@section`, ...) keeps its blank lines, which

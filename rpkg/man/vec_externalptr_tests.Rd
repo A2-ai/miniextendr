@@ -26,11 +26,13 @@ veptr_make_bags_with_holes(n)
 \description{
 Build a \code{list()} of \code{Bag} handles with values \verb{1..=n}.
 
-Return side: \verb{Vec<ExternalPtr<Bag>>} becomes an R \code{list()} of external pointers.
+Return side: \verb{Vec<ExternalPtr<Bag>>} becomes an R \code{list()} of external
+pointers.
 
 Sum the payloads of a \code{list()} of \code{Bag} handles.
 
-Argument side: an R \code{list()} of external pointers becomes \verb{Vec<ExternalPtr<Bag>>}.
+Argument side: an R \code{list()} of external pointers becomes
+\verb{Vec<ExternalPtr<Bag>>}.
 
 Increment every \code{Bag} payload, returning a fresh \code{list()} of handles.
 

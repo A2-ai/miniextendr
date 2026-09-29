@@ -21,7 +21,8 @@ EnvPipeBuilder
 \item{name}{Method name for dispatch.}
 }
 \description{
-Env builder with a \verb{&mut self -> &mut Self} step and a terminal accessor. Chains as \code{b$add(1L)$add(2L)$total()}.
+Env builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.
+Chains as \code{b$add(1L)$add(2L)$total()}.
 
 Create a new builder starting at zero.
 

@@ -36,27 +36,44 @@ rawslice_roundtrip_i32(data)
 \description{
 Returns a 5-row data.frame with interleaved \code{WithPayload} and \code{Empty} rows.
 
-Row layout: row 1: WithPayload — data_byte = 0xFF row 2: Empty       — data_byte = as.raw(0) row 3: WithPayload — data_byte = 0x01 row 4: Empty       — data_byte = as.raw(0) row 5: WithPayload — data_byte = 0x7F
+Row layout:
+row 1: WithPayload — data_byte = 0xFF
+row 2: Empty       — data_byte = as.raw(0)
+row 3: WithPayload — data_byte = 0x01
+row 4: Empty       — data_byte = as.raw(0)
+row 5: WithPayload — data_byte = 0x7F
 
-R-side assertions: rows 1/3/5 have the expected byte values; rows 2/4 are \code{as.raw(0)}.
+R-side assertions: rows 1/3/5 have the expected byte values;
+rows 2/4 are \code{as.raw(0)}.
 
 All rows present — exercises the dense (no-scatter-zero) RAWSXP path.
 
-All rows absent — every cell in the \code{data_byte} column should be \code{as.raw(0)}.
+All rows absent — every cell in the \code{data_byte} column should be
+\code{as.raw(0)}.
 
 Returns a 5-row data.frame with interleaved \code{WithPayload} and \code{Empty} rows.
 
-Row layout: row 1: WithPayload — data_value = 1.0+2.0i row 2: Empty       — data_value = NA_complex_ row 3: WithPayload — data_value = -0.5+0.5i row 4: Empty       — data_value = NA_complex_ row 5: WithPayload — data_value = 0.0+0.0i  (both parts zero, not NA)
+Row layout:
+row 1: WithPayload — data_value = 1.0+2.0i
+row 2: Empty       — data_value = NA_complex_
+row 3: WithPayload — data_value = -0.5+0.5i
+row 4: Empty       — data_value = NA_complex_
+row 5: WithPayload — data_value = 0.0+0.0i  (both parts zero, not NA)
 
-R-side assertions: rows 1/3/5 have correct \code{Re}/\code{Im}; rows 2/4 are \code{NA_complex_}.
+R-side assertions: rows 1/3/5 have correct \code{Re}/\code{Im}; rows 2/4 are
+\code{NA_complex_}.
 
 All rows present — exercises the dense (no-scatter-NA) CPLXSXP path.
 
-All rows absent — every cell in the \code{data_value} column should be \code{NA_complex_}.
+All rows absent — every cell in the \code{data_value} column should be
+\code{NA_complex_}.
 
-Produce a \verb{RawSlice<f64>}: the three doubles land as 24 headerless native-layout bytes in an R raw vector, tagged with the \code{mx_raw_type} attribute (audit A7 — \code{RawSlice} had no exemplar coverage).
+Produce a \verb{RawSlice<f64>}: the three doubles land as 24 headerless
+native-layout bytes in an R raw vector, tagged with the \code{mx_raw_type}
+attribute (audit A7 — \code{RawSlice} had no exemplar coverage).
 
-Consume a \verb{RawSlice<f64>} from R (validating the type tag) and sum the elements, exercising \code{inner}, \code{len}, and \code{is_empty}.
+Consume a \verb{RawSlice<f64>} from R (validating the type tag) and sum the
+elements, exercising \code{inner}, \code{len}, and \code{is_empty}.
 
 Round-trip a \verb{RawSlice<i32>} through R unchanged.
 }

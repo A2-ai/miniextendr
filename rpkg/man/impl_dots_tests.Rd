@@ -12,5 +12,6 @@ gc_stress_impl_dots_sugar()
 \description{
 Exercise impl-block dots storage under gctorture without requiring arguments.
 
-Exercise the impl-block \verb{dots = typed_list!(...)} sugar under gctorture without requiring arguments (golife hiccup #2). Returns \code{(2 + 4) * 3 = 18}.
+Exercise the impl-block \verb{dots = typed_list!(...)} sugar under gctorture
+without requiring arguments (golife hiccup #2). Returns \code{(2 + 4) * 3 = 18}.
 }

@@ -23,7 +23,8 @@
 //! lines ([`doc_lines`]) with the same roles ([`classify`]):
 //!
 //! - Text before the first `@tag` line is leading prose. It becomes
-//!   `@description` (when the block has none) and stays in rustdoc.
+//!   `@description` (when the block has none) with its lines, blank lines and
+//!   indentation kept, and it stays in rustdoc.
 //! - A tag runs from its `@tag` line to the next one. A multi-line tag
 //!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
 //!   roxygen2 paragraph break; a blank line in an example) and the indentation
@@ -708,59 +709,90 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
     }
 }
 
-/// Collect the leading prose of a doc comment (all paragraphs before the first
-/// `@tag`) as roxygen `@description` text, with rustdoc intra-doc links neutralized.
+/// Collect the leading prose of a doc comment (the lines before the first
+/// `@tag`, [`LineRole::Prose`]) as roxygen `@description` text, with rustdoc
+/// intra-doc links neutralized ([`sanitize_prose_links`]).
 ///
-/// Each `///` line is one doc attribute; a blank line is an empty attribute and marks
-/// a paragraph boundary. Paragraphs are joined with `"\n\n"` so `push_roxygen_tags`
-/// renders blank `#'` lines between them — roxygen2 multi-paragraph description text.
+/// The lines ([`doc_lines`]) keep their line breaks, blank lines (roxygen2
+/// paragraph breaks, rendered as bare `#'` lines by `push_roxygen_tags`) and
+/// indentation, so a markdown list, a nested item or a fenced block reaches
+/// roxygen2 as written. Leading and trailing blank lines are dropped.
 ///
 /// Returns `None` when the block has no leading prose (empty, or starts with a `@tag`),
 /// so tag-led blocks never gain a spurious `@description`.
 fn leading_prose_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
-    let mut paragraphs: Vec<Vec<String>> = Vec::new();
-    let mut current: Vec<String> = Vec::new();
+    let lines = doc_lines(attrs);
+    let prose: Vec<&str> = lines
+        .iter()
+        .zip(classify(&lines))
+        .take_while(|(_, role)| *role == LineRole::Prose)
+        .map(|(line, _)| line.text.as_str())
+        .collect();
+    let first = prose.iter().position(|line| !line.is_empty())?;
+    let last = prose.iter().rposition(|line| !line.is_empty())?;
+    Some(sanitize_prose_links(&prose[first..=last]))
+}
 
-    for attr in attrs {
-        if !attr.path().is_ident("doc") {
-            continue;
+/// [`sanitize_roxygen_links`] over prose lines, one paragraph (the lines
+/// between blank lines) at a time, joined back with their line breaks.
+///
+/// A link whose text and target sit on two lines of one paragraph is still
+/// found. CommonMark code spans do not cross a blank line, so an unbalanced
+/// backtick cannot switch neutralizing off beyond its paragraph. A fenced
+/// block (```` ``` ```` or `~~~`, blank lines included) is code and passes
+/// through untouched, so `x[i]` there is never rewritten.
+fn sanitize_prose_links(lines: &[&str]) -> String {
+    fn flush(paragraph: &mut Vec<&str>, out: &mut Vec<String>) {
+        if !paragraph.is_empty() {
+            out.push(sanitize_roxygen_links(&paragraph.join("\n")));
+            paragraph.clear();
         }
-        let syn::Meta::NameValue(nv) = &attr.meta else {
-            continue;
-        };
-        let syn::Expr::Lit(expr_lit) = &nv.value else {
-            continue;
-        };
-        let syn::Lit::Str(lit) = &expr_lit.lit else {
-            continue;
-        };
+    }
 
-        let content = lit.value();
-        let trimmed = content.trim();
-
-        if trimmed.starts_with('@') {
-            // First tag ends the prose block.
-            break;
-        }
-        if trimmed.is_empty() {
-            // Blank line — paragraph boundary.
-            if !current.is_empty() {
-                paragraphs.push(std::mem::take(&mut current));
+    let mut out: Vec<String> = Vec::new();
+    let mut paragraph: Vec<&str> = Vec::new();
+    let mut open_fence: Option<&str> = None;
+    for &line in lines {
+        if let Some(open) = open_fence {
+            if fence_marker(line).is_some_and(|close| closes_fence(line, close, open)) {
+                open_fence = None;
             }
+            out.push(line.to_string());
+        } else if let Some(open) = fence_marker(line) {
+            flush(&mut paragraph, &mut out);
+            open_fence = Some(open);
+            out.push(line.to_string());
+        } else if line.is_empty() {
+            flush(&mut paragraph, &mut out);
+            out.push(String::new());
         } else {
-            current.push(sanitize_roxygen_links(trimmed));
+            paragraph.push(line);
         }
     }
-    if !current.is_empty() {
-        paragraphs.push(current);
-    }
+    flush(&mut paragraph, &mut out);
+    out.join("\n")
+}
 
-    if paragraphs.is_empty() {
-        None
-    } else {
-        let joined: Vec<String> = paragraphs.into_iter().map(|p| p.join(" ")).collect();
-        Some(joined.join("\n\n"))
+/// The fence run (3 or more `` ` `` or `~`) a CommonMark code-fence line
+/// starts with, after at most 3 spaces of indent.
+fn fence_marker(line: &str) -> Option<&str> {
+    let body = line.trim_start_matches(' ');
+    if line.len() - body.len() > 3 {
+        return None;
     }
+    let fence_char = body.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let run = body.len() - body.trim_start_matches(fence_char).len();
+    (run >= 3).then(|| &body[..run])
+}
+
+/// Whether `line`, whose fence run is `close`, ends the block `open` began: the
+/// same character, at least as long, and nothing after it.
+fn closes_fence(line: &str, close: &str, open: &str) -> bool {
+    close.starts_with(&open[..1])
+        && close.len() >= open.len()
+        && line.trim_start_matches(' ')[close.len()..]
+            .trim()
+            .is_empty()
 }
 
 /// Neutralize rustdoc intra-doc link syntax so prose is valid roxygen2 markdown.

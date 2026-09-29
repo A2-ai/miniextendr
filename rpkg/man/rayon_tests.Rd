@@ -101,15 +101,25 @@ Test with_r_matrix for parallel column-wise fill of an R matrix.
 
 Test RDataFrameBuilder: parallel column-fill into a heterogeneous data.frame.
 
-Builds a three-column data.frame (numeric \code{x}, integer \code{y}, character \code{label}) of \code{n} rows, with each column's buffer filled in parallel via rayon. The character column also exercises the \code{None -> NA_character_} path on every fifth row.
+Builds a three-column data.frame (numeric \code{x}, integer \code{y}, character
+\code{label}) of \code{n} rows, with each column's buffer filled in parallel via rayon.
+The character column also exercises the \code{None -> NA_character_} path on every
+fifth row.
 
 Test RDataFrameBuilder with a \strong{wide} shape (many short columns).
 
-Builds a data.frame of \code{ncol} numeric columns named \code{c0}, \code{c1}, … each of \code{nrow} rows. Column \code{j} holds \code{row * 1000 + j} so the test can verify every cell landed in the right column and row. This is the column-dominated end of the flattened scheduler.
+Builds a data.frame of \code{ncol} numeric columns named \code{c0}, \code{c1}, … each of
+\code{nrow} rows. Column \code{j} holds \code{row * 1000 + j} so the test can verify every
+cell landed in the right column and row. This is the column-dominated end of
+the flattened scheduler.
 
-Test RDataFrameBuilder with a \strong{skewed} shape (one long numeric column plus several tiny character columns).
+Test RDataFrameBuilder with a \strong{skewed} shape (one long numeric column plus
+several tiny character columns).
 
-The numeric column \code{big} has \code{nrow} rows (\code{big[i] = i}); two character columns \code{t0}, \code{t1} also have \code{nrow} rows but compute a trivial value with an \code{NA} on every third row. Under the flattened scheduler the long column's chunks should be stolen by threads that finish the small columns first.
+The numeric column \code{big} has \code{nrow} rows (\code{big[i] = i}); two character
+columns \code{t0}, \code{t1} also have \code{nrow} rows but compute a trivial value with an
+\code{NA} on every third row. Under the flattened scheduler the long column's
+chunks should be stolen by threads that finish the small columns first.
 
 Test parallel reduce computing sum, min, max, and mean of a numeric vector.
 
@@ -119,9 +129,13 @@ Get the number of rayon worker threads in the global thread pool.
 
 Check if the current thread is a rayon worker (should be FALSE when called from R).
 
-Aggregations through the \code{RParallelIterator} trait: returns \code{c(par_len, par_sum, par_mean, par_min_f64, par_max_f64)}.
+Aggregations through the \code{RParallelIterator} trait: returns
+\code{c(par_len, par_sum, par_mean, par_min_f64, par_max_f64)}.
 
-Extend a collection through the \code{RParallelExtend} trait (\code{par_extend}, \code{par_extend_from_slice}, \code{par_len}, \code{par_is_empty}, \code{par_clear}); returns the sorted combined contents.
+Extend a collection through the \code{RParallelExtend} trait (\code{par_extend},
+\code{par_extend_from_slice}, \code{par_len}, \code{par_is_empty}, \code{par_clear}); returns
+the sorted combined contents.
 
-\code{par_clear} / \code{par_is_empty} through the trait: fill, clear, report \code{c(len_before, len_after, is_empty_after)}.
+\code{par_clear} / \code{par_is_empty} through the trait: fill, clear, report
+\code{c(len_before, len_after, is_empty_after)}.
 }

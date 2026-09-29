@@ -44,7 +44,9 @@ vctrsomitscale_omit_pick(
 \item{style}{One of "short", "long"; omitting the argument means no choice.}
 }
 \description{
-Omittable choices on a vctrs static method: reports what reached Rust for each of \code{mode}, \code{modes} and \code{level}.
+Omittable choices on a vctrs static method: reports what reached Rust
+for each of \code{mode}, \code{modes} and \code{level}.
 
-\code{format()} protocol method with an omittable inline choice: \code{style} omitted formats each value as \verb{<value>}, otherwise as \verb{<style>:<value>}.
+\code{format()} protocol method with an omittable inline choice: \code{style}
+omitted formats each value as \verb{<value>}, otherwise as \verb{<style>:<value>}.
 }

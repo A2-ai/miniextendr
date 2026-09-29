@@ -52,13 +52,18 @@ flat_as_list_par()
 flat_nested_par()
 }
 \description{
-Multi-segment-path field: \code{geom::QualPoint} (fix for issue #514). Returns a 1-row data.frame with columns \code{id}, \code{pos_qx}, \code{pos_qy}.
+Multi-segment-path field: \code{geom::QualPoint} (fix for issue #514).
+Returns a 1-row data.frame with columns \code{id}, \code{pos_qx}, \code{pos_qy}.
 
-\code{from_rows_par} for the basic struct-flatten case (FlatLocated → 3 rows). Expected columns: \code{id}, \code{origin_x}, \code{origin_y}.
+\code{from_rows_par} for the basic struct-flatten case (FlatLocated → 3 rows).
+Expected columns: \code{id}, \code{origin_x}, \code{origin_y}.
 
-\code{from_rows_par} for the two-struct-fields case (FlatSegment). Expected columns: \code{id}, \code{a_x}, \code{a_y}, \code{b_x}, \code{b_y}.
+\code{from_rows_par} for the two-struct-fields case (FlatSegment).
+Expected columns: \code{id}, \code{a_x}, \code{a_y}, \code{b_x}, \code{b_y}.
 
-\code{from_rows_par} for the \code{as_list} opt-out case (FlatAsList). Expected columns: \code{id}, \code{origin} (list column).
+\code{from_rows_par} for the \code{as_list} opt-out case (FlatAsList).
+Expected columns: \code{id}, \code{origin} (list column).
 
-\code{from_rows_par} for the nested struct-in-struct case (FlatNested). Expected columns: \code{id}, \code{inner_a}, \code{inner_sub_depth}.
+\code{from_rows_par} for the nested struct-in-struct case (FlatNested).
+Expected columns: \code{id}, \code{inner_a}, \code{inner_sub_depth}.
 }

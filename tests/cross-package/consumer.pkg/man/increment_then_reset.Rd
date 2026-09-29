@@ -13,5 +13,6 @@ increment_then_reset(sexp)
 TRUE if the object is in default state after increment+reset
 }
 \description{
-Increment a Counter twice, then reset it via Resettable, return is_default Tests combined trait usage on the same object across packages.
+Increment a Counter twice, then reset it via Resettable, return is_default
+Tests combined trait usage on the same object across packages.
 }

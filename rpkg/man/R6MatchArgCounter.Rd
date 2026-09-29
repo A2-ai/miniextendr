@@ -5,7 +5,8 @@
 \alias{R6MatchArgCounter$describe_level}
 \title{R6MatchArgCounter R6 Class}
 \description{
-Static method with a choices() param — validates the \code{choices(...)} path independently of the derived-enum path used by match_arg.
+Static method with a choices() param — validates the \code{choices(...)} path
+independently of the derived-enum path used by match_arg.
 }
 \section{Methods}{
 \subsection{Public methods}{
@@ -71,7 +72,8 @@ Static method with a choices() param — validates the \code{choices(...)} path 
 \if{html}{\out{<a id="method-R6MatchArgCounter-peek"></a>}}
 \if{latex}{\out{\hypertarget{method-R6MatchArgCounter-peek}{}}}
 \subsection{\code{R6MatchArgCounter$peek()}}{
-  Omittable optional mode (#1551): the formal keeps the choice vector, an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
+  Omittable optional mode (#1551): the formal keeps the choice vector,
+an omitted argument reports the current mode, \code{NULL} reports \code{"null"}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6MatchArgCounter$peek(mode = c("Fast", "Safe", "Debug"))}

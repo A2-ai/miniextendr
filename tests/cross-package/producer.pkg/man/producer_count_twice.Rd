@@ -13,5 +13,6 @@ producer_count_twice(n)
 \item{n}{A positive integer count.}
 }
 \description{
-Classed conversion error plus the crate default: a bad \code{n} raises \code{c("producer_error_not_positive", "producer_error", "producer_error_argument", "rust_error", ...)}.
+Classed conversion error plus the crate default: a bad \code{n} raises
+\code{c("producer_error_not_positive", "producer_error", "producer_error_argument", "rust_error", ...)}.
 }

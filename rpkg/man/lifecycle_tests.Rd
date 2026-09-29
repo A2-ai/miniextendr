@@ -28,7 +28,8 @@ defunct_fn(x)
 \item{x}{Integer input value (unused, function is defunct).}
 }
 \description{
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A function marked with Rust's \verb{#[deprecated]} attribute. This should generate lifecycle::deprecate_warn in the R wrapper.
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A function marked with Rust's \verb{#[deprecated]} attribute.
+This should generate lifecycle::deprecate_warn in the R wrapper.
 
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#deprecated}{\figure{lifecycle-deprecated.svg}{options: alt='[Deprecated]'}}}{\strong{[Deprecated]}} A deprecated function without replacement info.
 

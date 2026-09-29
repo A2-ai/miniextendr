@@ -7,5 +7,8 @@
 marker_args_through_view()
 }
 \description{
-Calls the \code{MarkerArgs} methods through the trait's View, the path another package takes: each marker argument crosses as its inner value and is read back unchanged (\code{None}, \code{NaN}, the text \code{"NA"}, \code{NULL}, an omitted argument), and a returned marker crosses back the same way.
+Calls the \code{MarkerArgs} methods through the trait's View, the path another
+package takes: each marker argument crosses as its inner value and is read
+back unchanged (\code{None}, \code{NaN}, the text \code{"NA"}, \code{NULL}, an omitted
+argument), and a returned marker crosses back the same way.
 }

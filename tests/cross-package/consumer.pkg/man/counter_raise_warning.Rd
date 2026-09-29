@@ -14,5 +14,7 @@ counter_raise_warning(counter_sexp, msg)
 \description{
 Raise a warning!() through a Counter trait method via trait dispatch.
 
-Verifies that a producer-side \verb{warning!()} round-trips to \code{rust_warning} / \code{e$kind == "warning"} across the trait-ABI boundary, matching the in-process matrix's R6/S3/S4/S7 warning rows.
+Verifies that a producer-side \verb{warning!()} round-trips to \code{rust_warning} /
+\code{e$kind == "warning"} across the trait-ABI boundary, matching the in-process
+matrix's R6/S3/S4/S7 warning rows.
 }

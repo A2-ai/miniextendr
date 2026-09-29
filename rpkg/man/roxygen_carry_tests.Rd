@@ -14,7 +14,12 @@ The second paragraph of the return value, indented.
 \description{
 Roxygen carry demo.
 
-The leading prose becomes the description. This paragraph holds a list: - \code{first}: an item continued on an indented line - \code{second}: another item
+The leading prose becomes the description. This paragraph holds a list:
+\itemize{
+\item \code{first}: an item
+continued on an indented line
+\item \code{second}: another item
+}
 }
 \details{
 The first paragraph of the details.

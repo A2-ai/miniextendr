@@ -32,7 +32,8 @@ Sample n uniform values in [0, 1) from R's RNG via \code{RngExt::random}.
 
 Sample n values in [low, high) from R's RNG via \code{RngExt::random_range}.
 
-Draw one value from each \code{RDistributions} method, in order: c(standard_normal, standard_exp, uniform_index(100), uniform_f64).
+Draw one value from each \code{RDistributions} method, in order:
+c(standard_normal, standard_exp, uniform_index(100), uniform_f64).
 
 Sample n values from Normal(mean, sd) via \code{rand_distr} driven by R's RNG.
 }

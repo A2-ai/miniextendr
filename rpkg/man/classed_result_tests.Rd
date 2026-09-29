@@ -62,29 +62,38 @@ hyperparams_total_worker(hyper)
 \item{hyper}{A named numeric vector of non-negative values.}
 }
 \description{
-\verb{Result<i32, PkgError>}: empty \code{field} raises \code{pkg_error_missing_field} with \code{e$field == "id"}; otherwise returns the length.
+\verb{Result<i32, PkgError>}: empty \code{field} raises \code{pkg_error_missing_field}
+with \code{e$field == "id"}; otherwise returns the length.
 
-\verb{Result<f64, PkgError>}: values above 100 raise \code{pkg_error_out_of_range} with \code{e$value} and \code{e$max}.
+\verb{Result<f64, PkgError>}: values above 100 raise \code{pkg_error_out_of_range}
+with \code{e$value} and \code{e$max}.
 
 Unit-returning \verb{Result<(), PkgError>} (a different codegen arm).
 
-Always raises \code{pkg_error_no_value} whose data has an explicit NULL field: \code{"optional" \%in\% names(e)} is \code{TRUE}, \code{e$optional} is \code{NULL}, \code{e$present} is \code{1}. Guards the \code{keep.null = TRUE} in the shared raise helper.
+Always raises \code{pkg_error_no_value} whose data has an explicit NULL field:
+\code{"optional" \%in\% names(e)} is \code{TRUE}, \code{e$optional} is \code{NULL}, \code{e$present}
+is \code{1}. Guards the \code{keep.null = TRUE} in the shared raise helper.
 
 \verb{Result<i32, RError>} built from a \code{ParseIntError} via \code{From}, then classed.
 
-\code{RError} whose field name is computed at runtime and reserved: raises a plain \code{rust_error} about the reserved name instead of overwriting \code{e$kind}.
+\code{RError} whose field name is computed at runtime and reserved: raises a
+plain \code{rust_error} about the reserved name instead of overwriting \code{e$kind}.
 
 Classless \code{RError}: same rendering as a plain \verb{Result<_, String>} error.
 
 \verb{rust_error!(class = [member, family], ...)}.
 
-\verb{warning!} with a two-element class vector and data. Like every condition macro it unwinds, so nothing follows it.
+\verb{warning!} with a two-element class vector and data. Like every condition
+macro it unwinds, so nothing follows it.
 
 \verb{rust_condition!} with a class vector supplied as a \verb{Vec<String>}.
 
 Computed reserved field name: the runtime reserved-name check fires.
 
-Sum of the hyperparameters; a bad \code{hyper} raises a classed conversion error (\code{mx_fixture_bad_arg} / \code{mx_fixture_negative_hyperparam}, then \code{mx_fixture_error}).
+Sum of the hyperparameters; a bad \code{hyper} raises a classed conversion
+error (\code{mx_fixture_bad_arg} / \code{mx_fixture_negative_hyperparam}, then
+\code{mx_fixture_error}).
 
-\code{hyperparams_total()} on the worker thread: the argument converts on the main thread before dispatch, through the split conversion path.
+\code{hyperparams_total()} on the worker thread: the argument converts on
+the main thread before dispatch, through the split conversion path.
 }

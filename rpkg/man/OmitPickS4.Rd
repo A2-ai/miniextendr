@@ -10,7 +10,8 @@
 OmitPickS4()
 }
 \description{
-Omittable choices on an S4 method: reports what reached Rust for each of \code{mode}, \code{modes} and \code{level}.
+Omittable choices on an S4 method: reports what reached Rust for each
+of \code{mode}, \code{modes} and \code{level}.
 }
 \section{Slots}{
 

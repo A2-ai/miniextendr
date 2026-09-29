@@ -13,5 +13,6 @@ passthrough_ptr(ptr)
 The same ExternalPtr (pass-through)
 }
 \description{
-Pass an ExternalPtr through consumer without knowing its type. This tests that ExternalPtr can cross package boundaries as opaque SEXP.
+Pass an ExternalPtr through consumer without knowing its type.
+This tests that ExternalPtr can cross package boundaries as opaque SEXP.
 }

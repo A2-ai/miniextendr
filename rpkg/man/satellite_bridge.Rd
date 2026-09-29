@@ -22,13 +22,17 @@ satellite_echo_reading(x)
 \item{x}{(no documentation available)}
 }
 \description{
-Rust → R, columnar: \verb{Vec<Reading>} becomes a native data.frame, one atomic column per field. \verb{note: Option<String>} carries NA.
+Rust → R, columnar: \verb{Vec<Reading>} becomes a native data.frame, one atomic
+column per field. \verb{note: Option<String>} carries NA.
 
-Nested-struct flatten: \code{Station.site} flattens to \code{site_lat} / \code{site_lon}. Also probes i64 → numeric (\code{readings_taken}).
+Nested-struct flatten: \code{Station.site} flattens to \code{site_lat} / \code{site_lon}.
+Also probes i64 → numeric (\code{readings_taken}).
 
 Rust → R, row-oriented: same data as a list-of-lists via \code{AsSerialize}.
 
 Enum split: \verb{Vec<Event>} partitioned into one data.frame per variant.
 
-R → Rust → R round-trip: deserialize an R list into \code{satellite::Reading}, then serialize it straight back. Proves the satellite type is bidirectional through the bridge with no hand-written conversion.
+R → Rust → R round-trip: deserialize an R list into \code{satellite::Reading},
+then serialize it straight back. Proves the satellite type is bidirectional
+through the bridge with no hand-written conversion.
 }

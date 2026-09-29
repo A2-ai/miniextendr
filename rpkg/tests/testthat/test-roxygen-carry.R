@@ -34,6 +34,21 @@ test_that("a multi-line tag keeps its paragraph breaks", {
   )
 })
 
+test_that("a markdown list in the leading prose stays a list", {
+  rd <- roxygen_carry_rd()
+  is_tag <- function(x, tag) identical(attr(x, "Rd_tag"), tag)
+  description <- Filter(function(x) is_tag(x, "\\description"), rd)[[1L]]
+  lists <- Filter(function(x) is_tag(x, "\\itemize"), description)
+  expect_length(lists, 1L)
+  items <- Filter(function(x) is_tag(x, "\\item"), lists[[1L]])
+  expect_length(items, 2L)
+  expect_match(
+    paste(unlist(lists), collapse = ""),
+    "first: an item\ncontinued on an indented line",
+    fixed = TRUE
+  )
+})
+
 test_that("an example keeps its indentation and runs", {
   rd <- roxygen_carry_rd()
   examples <- roxygen_carry_section(rd, "\\examples")

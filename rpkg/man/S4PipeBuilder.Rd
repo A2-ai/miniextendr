@@ -12,7 +12,8 @@
 S4PipeBuilder()
 }
 \description{
-S4 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor. Chains under the native pipe as \code{b |> s4_add(1L) |> s4_add(2L) |> s4_total()}.
+S4 builder with a \verb{&mut self -> &mut Self} step and a terminal accessor.
+Chains under the native pipe as \code{b |> s4_add(1L) |> s4_add(2L) |> s4_total()}.
 
 Create a new builder starting at zero.
 

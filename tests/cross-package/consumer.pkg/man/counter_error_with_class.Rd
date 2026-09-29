@@ -14,5 +14,6 @@ counter_error_with_class(counter_sexp, class_name)
 \description{
 Call error_with_class() on any Counter object via trait dispatch.
 
-Used by spike tests to verify user-class layering across the trait-ABI boundary.
+Used by spike tests to verify user-class layering across the trait-ABI
+boundary.
 }

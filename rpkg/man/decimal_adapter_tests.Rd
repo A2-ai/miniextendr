@@ -51,7 +51,10 @@ Test extracting the scale (number of decimal digits) of a Decimal.
 
 Test whether a Decimal value parsed from string is zero.
 
-Drive \code{Decimal} through the \code{RDecimalOps} adapter trait (audit A7 — the conversion is tested above; the trait methods were not). Calls are trait-qualified so they cannot resolve to inherent \code{Decimal} methods.
+Drive \code{Decimal} through the \code{RDecimalOps} adapter trait (audit A7 — the
+conversion is tested above; the trait methods were not). Calls are
+trait-qualified so they cannot resolve to inherent \code{Decimal} methods.
 
-Numeric-view methods of \code{RDecimalOps} (\code{as_f64}, \code{as_i64}) plus the predicates, via the trait.
+Numeric-view methods of \code{RDecimalOps} (\code{as_f64}, \code{as_i64}) plus the
+predicates, via the trait.
 }

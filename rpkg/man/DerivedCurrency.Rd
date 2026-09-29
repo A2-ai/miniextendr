@@ -42,7 +42,8 @@ Vctrs currency class with a vector-payload constructor.
 
 Creates a new currency value.
 
-Returns \verb{Vec<f64>} (the amounts payload). The generated R wrapper wraps this via \code{vctrs::new_vctr(.data, class = "DerivedCurrency")}.
+Returns \verb{Vec<f64>} (the amounts payload). The generated R wrapper wraps this
+via \code{vctrs::new_vctr(.data, class = "DerivedCurrency")}.
 
 Format currency amounts with a given symbol prefix.
 }

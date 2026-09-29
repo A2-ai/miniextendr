@@ -7,5 +7,7 @@
 omit_grade_through_view()
 }
 \description{
-Calls the \code{OmitGrade} methods through the trait's View, the path another package takes: an omitted, a \code{NULL} and a supplied grade, then an omitted and a supplied list of grades.
+Calls the \code{OmitGrade} methods through the trait's View, the path another
+package takes: an omitted, a \code{NULL} and a supplied grade, then an omitted
+and a supplied list of grades.
 }

@@ -7,5 +7,6 @@
 backtrace_install_hook()
 }
 \description{
-Register the configurable panic hook. This replaces the default hook. With MINIEXTENDR_BACKTRACE unset, backtraces are suppressed.
+Register the configurable panic hook. This replaces the default hook.
+With MINIEXTENDR_BACKTRACE unset, backtraces are suppressed.
 }

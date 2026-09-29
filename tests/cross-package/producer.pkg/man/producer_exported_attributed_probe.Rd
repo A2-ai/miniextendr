@@ -13,5 +13,6 @@ producer_exported_attributed_probe(x)
 \item{x}{(no documentation available)}
 }
 \description{
-A crate default of \code{caller} never applies to an exported function: its caller is arbitrary user code, so it falls back to \code{wrapper}.
+A crate default of \code{caller} never applies to an exported function: its
+caller is arbitrary user code, so it falls back to \code{wrapper}.
 }

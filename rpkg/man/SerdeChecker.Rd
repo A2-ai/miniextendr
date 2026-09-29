@@ -35,5 +35,6 @@ Check \code{value} against the bound; raises \code{miniextendr_error_out_of_rang
 
 S3 generic for \code{parse_value}
 
-Parse \code{text} as a number; the parser error's \code{message} field is skipped (method-side \code{serde_error(skip(...))}).
+Parse \code{text} as a number; the parser error's \code{message} field is skipped
+(method-side \code{serde_error(skip(...))}).
 }

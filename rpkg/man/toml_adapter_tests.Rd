@@ -63,7 +63,8 @@ Test that invalid TOML input returns an error message.
 
 Test parsing TOML with mixed types (boolean, integer, string).
 
-Decode a TOML string and extract specific fields as a character vector. Returns title, version, author from a typical config TOML.
+Decode a TOML string and extract specific fields as a character vector.
+Returns title, version, author from a typical config TOML.
 
 Extract a string value from a TOML table by key.
 

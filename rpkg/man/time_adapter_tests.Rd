@@ -59,5 +59,7 @@ Test creating a date in the distant past (1900-01-01).
 
 Test formatting a Date as a YYYY-MM-DD string.
 
-Drive \code{time::Duration} through the \code{RDuration} adapter trait (audit A7 — the Date/OffsetDateTime conversions above never touch it). Calls are trait-qualified so they cannot resolve to inherent \code{Duration} methods.
+Drive \code{time::Duration} through the \code{RDuration} adapter trait (audit A7 —
+the Date/OffsetDateTime conversions above never touch it). Calls are
+trait-qualified so they cannot resolve to inherent \code{Duration} methods.
 }

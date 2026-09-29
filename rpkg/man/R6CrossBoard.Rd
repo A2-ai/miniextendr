@@ -67,7 +67,12 @@ R6 board target for cross-class builder returns.
 \subsection{\code{R6CrossBoard$replicate()}}{
   Produce \code{count} copies of this board with successive seeds.
 
-Exercises the \verb{Vec<Self>} cross-class return path (#1375): the syntactic detector can't see the enclosing impl's type name, so \code{ReturnStrategy::for_method} routes through \code{ParsedMethod::returns_self_list()} and \code{MethodReturnBuilder::with_return_class_from_method} substitutes the receiver class ("R6CrossBoard") at strategy-build time.
+Exercises the \verb{Vec<Self>} cross-class return path (#1375): the
+syntactic detector can't see the enclosing impl's type name, so
+\code{ReturnStrategy::for_method} routes through
+\code{ParsedMethod::returns_self_list()} and
+\code{MethodReturnBuilder::with_return_class_from_method} substitutes the
+receiver class ("R6CrossBoard") at strategy-build time.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{R6CrossBoard$replicate(count)}

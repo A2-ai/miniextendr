@@ -59,7 +59,8 @@ Unzip shapes to a named list of data.frames (2 variants, shared field).
 
 Unzip tuple-variant enum to a named list of data.frames.
 
-Unzip unit-variant enum — the unit partition is a 0-column data.frame with the correct row count.
+Unzip unit-variant enum — the unit partition is a 0-column data.frame
+with the correct row count.
 
 Create a data frame with expanded array columns.
 
@@ -67,5 +68,6 @@ Create a data frame with skip, rename, and Vec expansion.
 
 Create a data frame from enum with array expansion.
 
-Return a \verb{FactorOptionVec<Signal<0>>} to exercise the generic \code{IntoR} path. \verb{Signal<0>} is a concrete monomorphization of the generic unit-only enum.
+Return a \verb{FactorOptionVec<Signal<0>>} to exercise the generic \code{IntoR} path.
+\verb{Signal<0>} is a concrete monomorphization of the generic unit-only enum.
 }

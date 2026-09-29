@@ -830,7 +830,9 @@ Test \verb{Vec<&mut [i32]>} argument: increments all elements and returns total 
 
 Aliasing probe for the pre-conversion mutable-slice guard (#1104, #1252).
 
-Takes two mutable integer slices and increments each. Passing the same non-empty R vector to both parameters raises an error before conversion in both debug and release builds.
+Takes two mutable integer slices and increments each. Passing the same
+non-empty R vector to both parameters raises an error before conversion
+in both debug and release builds.
 
 Whether this build of the package compiled with \code{debug_assertions} enabled.
 
@@ -1096,7 +1098,15 @@ Return test: \verb{AsNamedList<[(String, f64); 2]>} -> R named list from fixed-s
 
 Return test: \code{AsNamedList} with heterogeneous typed values -> R named list.
 
-Previously this fixture used raw \code{SEXP} values (\verb{Vec<(String, SEXP)>}) and suppressed MXL302, because the deferred \code{AsNamedList::into_sexp} ran in a later frame than the value construction — a structural GC hazard with no fixable call site (#1030). It is migrated to typed values via the framework \code{RValue} tree: each value's \code{into_sexp()} runs \emph{inside} \code{AsNamedList::into_sexp}, immediately before being protected and placed into the list, so no sibling is ever unprotected across an allocation. The MXL302 suppression is gone because there is no longer an \code{into_sexp()} call inside the \verb{vec!} literal.
+Previously this fixture used raw \code{SEXP} values (\verb{Vec<(String, SEXP)>}) and
+suppressed MXL302, because the deferred \code{AsNamedList::into_sexp} ran in a
+later frame than the value construction — a structural GC hazard with no
+fixable call site (#1030). It is migrated to typed values via the framework
+\code{RValue} tree: each value's \code{into_sexp()} runs
+\emph{inside} \code{AsNamedList::into_sexp}, immediately before being protected and
+placed into the list, so no sibling is ever unprotected across an allocation.
+The MXL302 suppression is gone because there is no longer an \code{into_sexp()}
+call inside the \verb{vec!} literal.
 
 Return test: \verb{AsNamedList<Vec<(&str, i32)>>} -> R named list with \verb{&str} keys.
 

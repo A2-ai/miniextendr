@@ -10,7 +10,8 @@
 EitherRoutesS4()
 }
 \description{
-Route names or a data frame of doses, and omittable tier names or a number.
+Route names or a data frame of doses, and omittable tier names or a
+number.
 }
 \section{Slots}{
 

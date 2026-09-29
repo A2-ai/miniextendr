@@ -42,7 +42,8 @@ OmitPickS3
 \description{
 S3 generic for \code{omit_pick_s3}
 
-Omittable choices on an S3 method: reports what reached Rust for each of \code{mode}, \code{modes} and \code{level}.
+Omittable choices on an S3 method: reports what reached Rust for each
+of \code{mode}, \code{modes} and \code{level}.
 
 S3 generic for \code{omit_grade}
 

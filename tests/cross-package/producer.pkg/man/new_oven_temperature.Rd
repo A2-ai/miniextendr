@@ -18,5 +18,8 @@ A \code{producer_oven_temp} vctrs vector inheriting from \code{producer_temp}.
 \description{
 Create a \code{producer_oven_temp} vctrs vector that inherits from \code{producer_temp}.
 
-Exercises \code{extends} (#1039): the child inherits the parent's format/abbr S3 methods through the class vector, and coercion between the two resolves to the parent (the supertype). consumer.pkg imports this constructor to verify inheritance dispatches across the package boundary.
+Exercises \code{extends} (#1039): the child inherits the parent's format/abbr S3
+methods through the class vector, and coercion between the two resolves to
+the parent (the supertype). consumer.pkg imports this constructor to verify
+inheritance dispatches across the package boundary.
 }

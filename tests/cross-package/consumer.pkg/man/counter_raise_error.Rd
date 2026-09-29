@@ -14,5 +14,7 @@ counter_raise_error(counter_sexp, msg)
 \description{
 Raise a bare error!() through a Counter trait method via trait dispatch.
 
-Verifies that a producer-side \verb{error!()} round-trips to \code{rust_error} / \code{e$kind == "error"} across the trait-ABI boundary, matching the in-process matrix's free-fn / R6 error rows.
+Verifies that a producer-side \verb{error!()} round-trips to \code{rust_error} /
+\code{e$kind == "error"} across the trait-ABI boundary, matching the in-process
+matrix's free-fn / R6 error rows.
 }

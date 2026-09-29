@@ -523,6 +523,79 @@ fn leading_prose_none_for_tag_led_block() {
     assert_eq!(leading_prose_from_attrs(&attrs), None);
 }
 
+/// Leading prose as rustdoc writes it (`/// text`), up to a closing tag.
+fn prose_of(lines: &[&str]) -> Option<String> {
+    let attrs: Vec<syn::Attribute> = lines
+        .iter()
+        .chain(&["@export"])
+        .map(|line| {
+            let value = if line.is_empty() {
+                String::new()
+            } else {
+                format!(" {line}")
+            };
+            syn::parse_quote!(#[doc = #value])
+        })
+        .collect();
+    leading_prose_from_attrs(&attrs)
+}
+
+#[test]
+fn leading_prose_keeps_its_line_breaks() {
+    assert_eq!(
+        prose_of(&["", "One paragraph", "wrapped over two lines.", "", ""]).as_deref(),
+        Some("One paragraph\nwrapped over two lines.")
+    );
+}
+
+#[test]
+fn leading_prose_keeps_a_list_and_its_nested_indent() {
+    assert_eq!(
+        prose_of(&[
+            "Modes:",
+            "- a: first",
+            "  continued",
+            "  - nested",
+            "- b: second"
+        ])
+        .as_deref(),
+        Some("Modes:\n- a: first\n  continued\n  - nested\n- b: second")
+    );
+}
+
+#[test]
+fn leading_prose_neutralizes_a_link_across_two_lines() {
+    assert_eq!(
+        prose_of(&["see [the `Foo`", "type] here"]).as_deref(),
+        Some("see the `Foo`\ntype here")
+    );
+}
+
+#[test]
+fn leading_prose_leaves_fenced_code_untouched() {
+    assert_eq!(
+        prose_of(&[
+            "Example:",
+            "```r",
+            "a[i]",
+            "",
+            "b[j]",
+            "```",
+            "after [`Foo`]"
+        ])
+        .as_deref(),
+        Some("Example:\n```r\na[i]\n\nb[j]\n```\nafter `Foo`")
+    );
+}
+
+#[test]
+fn leading_prose_confines_a_stray_backtick_to_its_paragraph() {
+    assert_eq!(
+        prose_of(&["a stray ` backtick [kept]", "", "then [Foo]"]).as_deref(),
+        Some("a stray ` backtick [kept]\n\nthen Foo")
+    );
+}
+
 // endregion
 
 // region: Tag extraction tests
