@@ -65,6 +65,30 @@ where
         .map_err(|e| SexpError::InvalidValue(format!("{e}")))
 }
 
+/// [`coerce_value`] for a double, with R's NA kept apart from NaN.
+///
+/// An integer target refuses `NA_real_` as a NaN; R tells the two apart
+/// (`is.nan(NA_real_)` is `FALSE`), so the refusal says `NA is not allowed`,
+/// as it does for `NA_integer_` and a logical `NA`. A float target keeps
+/// `NA_real_` (as a NaN), so nothing changes for it.
+#[inline]
+pub(crate) fn coerce_real_value<T>(value: f64) -> Result<T, SexpError>
+where
+    f64: TryCoerce<T>,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Display,
+{
+    coerce_value(value).map_err(|e| {
+        if is_na_real(value) {
+            SexpNaError {
+                sexp_type: SEXPTYPE::REALSXP,
+            }
+            .into()
+        } else {
+            e
+        }
+    })
+}
+
 #[inline]
 pub(super) fn try_from_sexp_numeric_scalar<T>(sexp: SEXP) -> Result<T, SexpError>
 where
@@ -83,7 +107,7 @@ where
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-            coerce_value(value)
+            coerce_real_value(value)
         }
         SEXPTYPE::RAWSXP => {
             let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
@@ -118,7 +142,7 @@ where
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-            coerce_value(value)
+            coerce_real_value(value)
         }
         SEXPTYPE::RAWSXP => {
             let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };

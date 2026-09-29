@@ -1022,7 +1022,7 @@ impl TryFromSexp for Option<SEXP> {
 mod logical;
 
 mod coerced_scalars;
-pub(crate) use coerced_scalars::coerce_value;
+pub(crate) use coerced_scalars::{coerce_real_value, coerce_value};
 
 mod references;
 
@@ -1948,7 +1948,8 @@ pub(crate) unsafe fn map_vecsxp_with_unchecked<U>(
 ///
 /// An R `NA` is an error at its index, whichever storage carries it: `NA_integer_`
 /// and a logical `NA` are caught here (the `i32::MIN` sentinel would otherwise
-/// coerce to a finite number), `NA_real_` fails the `f64` coercion as NaN. Bind
+/// coerce to a finite number), and `NA_real_`, which an integer target refuses
+/// as a NaN, is reported as NA by [`coerce_real_value`]. Bind
 /// `Vec<Option<T>>` (see [`na_vectors`]) when the caller can pass NA. Per-element
 /// failures batch into one diagnostic, by reason and 1-based position.
 #[inline]
@@ -1975,18 +1976,7 @@ where
         },
         // `NA_real_` fails an integer target's coercion as NaN; say NA, as for
         // the other storages. (A float target keeps it, as NaN.)
-        |v: f64| {
-            coerce_value(v).map_err(|e| {
-                if is_na_real(v) {
-                    SexpNaError {
-                        sexp_type: SEXPTYPE::REALSXP,
-                    }
-                    .into()
-                } else {
-                    e
-                }
-            })
-        },
+        coerce_real_value,
         coerce_value,
         |v: RLogical| {
             if v.is_na() {

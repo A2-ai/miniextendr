@@ -629,6 +629,9 @@ impl TryCoerce<i8> for f64 {
 
 // region: Float to i32 (fallible)
 
+/// R's integer range is `(i32::MIN, i32::MAX]`: `i32::MIN` is the
+/// `NA_integer_` sentinel, so `-2147483648.0` is out of range rather than a
+/// value that would reach R as `NA` (`as.integer(-2^31)` is `NA` too).
 impl TryCoerce<i32> for f64 {
     type Error = CoerceError;
 
@@ -640,7 +643,7 @@ impl TryCoerce<i32> for f64 {
         if self.is_infinite() {
             return Err(CoerceError::Overflow);
         }
-        if self < i32::MIN as f64 || self > i32::MAX as f64 {
+        if self <= i32::MIN as f64 || self > i32::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
         if self.fract() != 0.0 {
