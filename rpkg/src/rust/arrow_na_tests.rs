@@ -384,7 +384,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
     // Arrow's view: null_count is still 0 (bitmap is stale)
     let null_count = arr.logical_null_count() as f64;
 
-    // But if we convert back to R via IntoR, pointer recovery returns the
+    // But if we convert back to R via IntoR, the registry hit returns the
     // original SEXP (which now has the NA sentinel in it)
     let result_sexp = arr.into_sexp();
 
@@ -403,7 +403,7 @@ pub fn arrow_na_f64_stale_bitmap_demo(n: i32) -> Vec<f64> {
 // region: Zero-copy identity with NA edge cases
 
 /// Returns TRUE if the zero-copy round-trip preserves identity even with NAs.
-/// This tests that R's NA sentinels in the data buffer don't break pointer recovery.
+/// This tests that R's NA sentinels in the data buffer don't break registry recovery.
 /// @param x SEXP
 #[miniextendr]
 pub fn arrow_na_f64_zero_copy_identity(x: SEXP) -> bool {

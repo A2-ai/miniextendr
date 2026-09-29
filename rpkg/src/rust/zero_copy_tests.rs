@@ -1,7 +1,8 @@
 //! Zero-copy verification tests.
 //!
-//! These fixtures verify that pointer recovery works: the SEXP returned by
-//! IntoR is the exact same SEXP that was passed to TryFromSexp.
+//! These fixtures verify that Arrow → R recovery works: for a buffer the
+//! registry knows is R memory, the SEXP returned by IntoR is the exact same
+//! SEXP that was passed to TryFromSexp.
 
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
@@ -162,13 +163,6 @@ mod arrow {
         result == x // should be FALSE
     }
 
-    /// Verifies r_memory::sexprec_data_offset is nonzero (init ran).
-    /// @export
-    #[miniextendr]
-    pub fn zero_copy_sexprec_offset() -> i32 {
-        miniextendr_api::r_memory::sexprec_data_offset() as i32
-    }
-
     /// Round-trip Float64Array through Arrow and return the result.
     /// The zero-copy path returns the original R SEXP — serialization is trivial.
     /// @export
@@ -224,7 +218,7 @@ mod arrow {
     }
 
     /// Allocate an R-backed Arrow buffer, fill it, return as Float64Array.
-    /// Tests the alloc_r_backed_buffer → pointer recovery round-trip.
+    /// Tests the alloc_r_backed_buffer → registry recovery round-trip.
     /// @export
     #[miniextendr]
     pub fn zero_copy_alloc_r_backed(n: i32) -> miniextendr_api::SEXP {

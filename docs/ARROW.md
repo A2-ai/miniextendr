@@ -95,8 +95,8 @@ pub fn passthrough_cow(x: Cow<'static, [i32]>) -> Cow<'static, [i32]> {
 
 When you want the round-trip back to R to *also* be zero-copy, use `RCow`
 instead of `Cow`. `RCow`'s borrowed arm remembers the source SEXP it was read
-from, so `IntoR` returns that exact R object — no copy, and no speculative
-pointer recovery (the reason `Cow<[T]>` can't do this safely; see #880):
+from, so `IntoR` returns that exact R object: no copy. A plain `Cow<[T]>`
+has nowhere to keep the source, so it always copies (#880):
 
 ```rust
 use miniextendr_api::RCow;
@@ -226,14 +226,16 @@ pub fn arrow_filter_positive(x: Int32Array) -> Int32Array {
 ### Arrow → R (automatic SEXP recovery)
 
 When an Arrow array's data buffer came from R (via `sexp_to_arrow_buffer`),
-`IntoR` automatically recovers the original SEXP using pointer arithmetic.
-No wrapper types needed.
+`IntoR` returns the original SEXP instead of copying. The buffer was recorded
+in a registry when it was made, so this is a lookup, not a guess (see
+[Buffer registry](#buffer-registry-zero-copy-recovery) below). No wrapper types
+needed.
 
 ```rust
 // This is zero-copy BOTH directions:
 #[miniextendr]
 pub fn identity(x: Float64Array) -> Float64Array {
-    x  // R→Arrow (zero-copy) → Arrow→R (pointer recovery, zero-copy)
+    x  // R→Arrow (zero-copy) → Arrow→R (registry hit, zero-copy)
 }
 
 // This copies on return (new data, not from R):
@@ -274,7 +276,7 @@ pub fn df_add_column(df: RecordBatch) -> RecordBatch {
 
 Allocate an Arrow buffer backed by R memory from the start. Write through
 the raw SEXP pointer, then wrap in Arrow types. When the array is later
-converted to R, pointer recovery finds the original SEXP.
+converted to R, the buffer registry finds the original SEXP.
 
 ```rust
 use miniextendr_api::optionals::arrow_impl::alloc_r_backed_buffer;
@@ -299,7 +301,7 @@ pub fn generate_sequence(n: i32) -> SEXP {
     let values = arrow_buffer::ScalarBuffer::<f64>::from(buffer);
     let array = Float64Array::new(values, None);
 
-    // IntoR → pointer recovery → returns the same REALSXP (zero-copy)
+    // IntoR → registry hit → returns the same REALSXP (zero-copy)
     array.into_sexp()
 }
 ```
@@ -307,7 +309,7 @@ pub fn generate_sequence(n: i32) -> SEXP {
 ### `RStringArray`: string round-trip tracking
 
 Arrow's StringArray and R's STRSXP have incompatible layouts (contiguous data+offsets
-vs per-element CHARSXPs). Automatic pointer recovery can't work for strings.
+vs per-element CHARSXPs). Automatic recovery can't work for strings.
 `RStringArray` explicitly tracks the source STRSXP.
 
 ```rust
@@ -347,34 +349,42 @@ pub fn lazy_strings(prefix: &str, n: i32) -> SEXP {
 
 ## How It Works
 
-### SEXP Pointer Recovery (`r_memory` module)
+### Buffer registry (zero-copy recovery)
 
-R stores vector data at a fixed offset from the SEXP header:
+`sexp_to_arrow_buffer` wraps an R vector's data in an Arrow buffer without
+copying. It preserves the vector (`R_PreserveObject`) for as long as the
+buffer lives, and, for a standard (non-ALTREP) vector, records the buffer in
+a registry: data address and byte length → the SEXP. The buffer's guard
+removes the entry when it drops.
 
-```text
-[VECTOR_SEXPREC header (48 bytes on 64-bit)] [data...]
- ^                                            ^
- SEXP                                         DATAPTR_RO(sexp)
-```
+`IntoR` for `Float64Array`, `Int32Array` and `UInt8Array` hands back the source
+vector only on an exact registry hit, pointer and byte length. Anything else is
+copied into a fresh R vector:
 
-All R vector types (REALSXP, INTSXP, RAWSXP, STRSXP, VECSXP) use the same
-`VECTOR_SEXPREC` header. Non-vector types use larger `SEXPREC` but don't have
-data pointers.
+- buffers Arrow or DataFusion allocated, such as the `vec![v; 1]` of a
+  one-row aggregate column;
+- a slice of an R-backed buffer, such as DataFusion's contiguous-run filter
+  output, which starts or ends elsewhere (#867);
+- a buffer over an ALTREP vector, such as `1:n`. An ALTREP vector's data can
+  be another object's memory (the vector R's wrapper class wraps, or the Rust
+  buffer behind an Arrow ALTREP vector), so two live vectors can share one
+  data address. A standard vector's data lies inside its own allocation, which
+  is what lets the registry key name exactly one SEXP;
+- an R-backed buffer under a null mask whose null slots do not already hold
+  R's NA (`0` for raw). Arrow kernels can keep the values buffer and swap only
+  the mask: arrow-select's `nullif` does, so a `NULLIF` result is still an
+  exact registry hit. Handing back the source vector would lose those nulls.
+  An array read from R builds its nulls from R's NAs, so it passes this check
+  and stays zero-copy.
 
-At package init, we measure the offset on a real R vector. Then in `IntoR`:
-
-```text
-candidate_sexp = data_ptr - offset
-verify: TYPEOF(candidate) == expected AND LENGTH(candidate) == expected AND DATAPTR_RO(candidate) == data_ptr
-```
-
-**Safety consideration**: For Rust-allocated buffers, `data_ptr - offset` points to
-arbitrary heap memory. The 4-byte type-tag read at that address is technically undefined
-behavior in Rust's abstract model (the pointer wasn't derived from an R allocation).
-In practice, this is safe. The address is in mapped heap memory and the read is
-immediately validated by the triple check (type + length + DATAPTR_RO round-trip),
-which makes false positives impossible. ALTREP vectors also fail safely (the
-DATAPTR_RO round-trip check catches them, since ALTREP data isn't at a fixed offset).
+Earlier versions guessed instead. They read the bytes in front of the data
+pointer as an R vector header and accepted them if the type, ALTREP bit and
+length matched, behind a check that the buffer was unsliced with capacity
+exactly its length. That check assumed buffers Arrow allocates itself are
+rounded up to 64 bytes, which a `Vec`-backed buffer is not. So a one-row
+aggregate's column went through the header read on every conversion, and
+heap bytes that happened to look like a header made the data.frame point into
+freed Rust memory. The registry reads no memory the buffer does not own.
 
 ### String conversion (`charsxp_to_str`)
 

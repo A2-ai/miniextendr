@@ -2441,9 +2441,9 @@ pub fn gc_stress_reader_enum_map() {
 /// `test_df_sql_query`) segfaulted on the strict
 /// glibc Linux runner because DataFusion's contiguous-run filter optimization
 /// returns a *slice* of the R-backed input column: `values().as_ptr()` then
-/// points into the middle of the R vector, and the speculative
-/// `try_recover_r_sexp` probe (which subtracts the SEXPREC header offset)
-/// read off into unrelated memory and false-positived as a "recovered SEXP".
+/// points into the middle of the R vector, and the speculative recovery probe
+/// of the time (which subtracted the SEXPREC header offset from the data
+/// pointer, since replaced by the buffer registry) read off into unrelated memory and false-positived as a "recovered SEXP".
 /// The crash was heap-layout-dependent — deterministic on the strict runner,
 /// silent elsewhere — so a no-arg fixture is the only portable guard.
 ///
@@ -2501,6 +2501,268 @@ pub fn gc_stress_arrow_sliced_recordbatch() {
     let ys: &[f64] = unsafe { y_col.as_slice() };
     assert_eq!(xs, [3, 4, 5]);
     assert_eq!(ys, [30.0, 40.0, 50.0]);
+}
+
+/// Materialize a one-row `RecordBatch` built the way DataFusion builds a
+/// global aggregate's columns: `PrimitiveArray::from_value(v, 1)`, which is a
+/// `vec![v; 1]` buffer with offset 0 and exactly `len * size_of::<T>()` bytes of
+/// capacity. That shape passed the old buffer-shape gate, so every conversion
+/// read the heap bytes in front of the `Vec` as an R vector header; when they
+/// looked like one, the data.frame got a bogus SEXP into memory freed with the
+/// batch (the "RDataFrame global aggregation" segfault). The column must come
+/// back as a fresh copy with the right value.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_from_value_recordbatch() {
+    use miniextendr_api::arrow_impl::{
+        ArrayRef, DataType, Field, Float64Array, Int32Array, RecordBatch, Schema,
+    };
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    for _ in 0..20 {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("avg_y", DataType::Float64, false),
+            Field::new("max_x", DataType::Int32, false),
+        ]));
+        let cols: Vec<ArrayRef> = vec![
+            Arc::new(Float64Array::from_value(30.0, 1)),
+            Arc::new(Int32Array::from_value(5, 1)),
+        ];
+        let batch = RecordBatch::try_new(schema, cols).expect("record batch");
+        let out = batch.into_sexp();
+        let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+        let avg: &[f64] = unsafe { out.vector_elt(0).as_slice() };
+        let max: &[i32] = unsafe { out.vector_elt(1).as_slice() };
+        assert_eq!(avg, [30.0]);
+        assert_eq!(max, [5]);
+    }
+}
+
+/// Run a real one-row DataFusion aggregate (SUM, AVG, MAX over R-backed
+/// input columns) and materialize the result under GC pressure. This is the
+/// end-to-end path of the "RDataFrame global aggregation" segfault: the
+/// aggregate's output columns are fresh Rust buffers and must be copied.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "datafusion")]
+#[miniextendr(noexport)]
+pub fn gc_stress_datafusion_global_aggregate() {
+    use miniextendr_api::arrow_impl::{
+        ArrayRef, Field, Float64Array, Int32Array, RecordBatch, Schema,
+    };
+    use miniextendr_api::datafusion_impl::RSessionContext;
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    let x = vec![1i32, 2, 3].into_sexp();
+    let _x_guard = unsafe { miniextendr_api::OwnedProtect::new(x) };
+    let y = vec![10.0f64, 20.0, 30.0].into_sexp();
+    let _y_guard = unsafe { miniextendr_api::OwnedProtect::new(y) };
+    let x: ArrayRef = Arc::new(Int32Array::try_from_sexp(x).expect("int32 from R"));
+    let y: ArrayRef = Arc::new(Float64Array::try_from_sexp(y).expect("float64 from R"));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("x", x.data_type().clone(), false),
+        Field::new("y", y.data_type().clone(), false),
+    ]));
+    let context = RSessionContext::new();
+    context
+        .register_record_batch(
+            "t",
+            RecordBatch::try_new(schema, vec![x, y]).expect("record batch"),
+        )
+        .expect("register table");
+    let out = context
+        .sql_to_record_batch("SELECT SUM(y) AS total, AVG(y) AS avg_y, MAX(x) AS max_x FROM t")
+        .expect("aggregate query")
+        .into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    assert_eq!(out.vector_elt(0).real_elt(0), 60.0);
+    assert_eq!(out.vector_elt(1).real_elt(0), 20.0);
+    assert_eq!(out.vector_elt(2).integer_elt(0), 3);
+}
+
+/// An R-backed values buffer under a new null mask comes back as a copy with
+/// R's NA in the null slots, not as the source vector.
+///
+/// Arrow kernels can keep a values buffer and swap only the null mask
+/// (arrow-select's `nullif` keeps the left array's buffers), so the buffer is
+/// still an exact registry hit while its nulls sit over ordinary values.
+/// Handing back the source vector there lost the nulls. A source whose NAs
+/// already sit under the nulls is still handed back.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_changed_nulls() {
+    use miniextendr_api::altrep_traits::{NA_INTEGER, NA_REAL};
+    use miniextendr_api::arrow_impl::{Float64Array, Int32Array, UInt8Array, arrow_buffer};
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+
+    let nulls = Some(arrow_buffer::NullBuffer::from(vec![true, false]));
+
+    let source = vec![1.0f64, 2.0].into_sexp();
+    let _source_guard = unsafe { miniextendr_api::OwnedProtect::new(source) };
+    let array = Float64Array::try_from_sexp(source).expect("float64 from R");
+    let out = Float64Array::new(array.values().clone(), nulls.clone()).into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    assert!(out != source, "Float64Array lost its new nulls");
+    assert_eq!(out.real_elt(0), 1.0);
+    assert_eq!(out.real_elt(1).to_bits(), NA_REAL.to_bits());
+    assert_eq!(source.real_elt(1), 2.0);
+
+    let source = vec![1i32, 2].into_sexp();
+    let _source_guard = unsafe { miniextendr_api::OwnedProtect::new(source) };
+    let array = Int32Array::try_from_sexp(source).expect("int32 from R");
+    let out = Int32Array::new(array.values().clone(), nulls.clone()).into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    assert!(out != source, "Int32Array lost its new nulls");
+    assert_eq!(out.integer_elt(0), 1);
+    assert_eq!(out.integer_elt(1), NA_INTEGER);
+    assert_eq!(source.integer_elt(1), 2);
+
+    let source = vec![1u8, 2].into_sexp();
+    let _source_guard = unsafe { miniextendr_api::OwnedProtect::new(source) };
+    let array = UInt8Array::try_from_sexp(source).expect("uint8 from R");
+    let out = UInt8Array::new(array.values().clone(), nulls.clone()).into_sexp();
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    assert!(out != source, "UInt8Array lost its new nulls");
+    let copied: &[u8] = unsafe { out.as_slice() };
+    assert_eq!(copied, [1, 0]);
+
+    // NA already under the null: the source says what the array says.
+    let source = vec![1i32, NA_INTEGER].into_sexp();
+    let _source_guard = unsafe { miniextendr_api::OwnedProtect::new(source) };
+    let array = Int32Array::try_from_sexp(source).expect("int32 from R");
+    let out = Int32Array::new(array.values().clone(), nulls).into_sexp();
+    assert!(
+        out == source,
+        "Int32Array with NA under its null was copied"
+    );
+}
+
+/// An Arrow buffer over Rust memory whose preceding bytes are an exact copy of
+/// a live R vector header is still copied, not "recovered".
+///
+/// This is the old failure made deterministic: the header of a real one-element
+/// INTSXP is copied in front of a four-byte value, and the buffer is given the
+/// exact capacity of an R-backed one. Reading the header in front of a data
+/// pointer can never tell these bytes from R memory; only knowing where the
+/// buffer came from can. The result must be a fresh vector, not the address
+/// inside the Rust allocation.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_header_shaped_rust_buffer() {
+    use miniextendr_api::arrow_impl::{Int32Array, arrow_buffer};
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+    use std::sync::Arc;
+
+    let real = vec![7i32].into_sexp();
+    let _real_guard = unsafe { miniextendr_api::OwnedProtect::new(real) };
+    let real_addr = real.0 as usize;
+    let header = unsafe { miniextendr_api::sys::DATAPTR_RO(real) } as usize - real_addr;
+
+    // [ copy of the INTSXP header | 4-byte value ], owned by Rust.
+    let mut bytes = vec![0u8; header + 4];
+    unsafe { std::ptr::copy_nonoverlapping(real_addr as *const u8, bytes.as_mut_ptr(), header) };
+    bytes[header..].copy_from_slice(&5i32.to_ne_bytes());
+    let bytes = Arc::new(bytes);
+    let data = unsafe { std::ptr::NonNull::new_unchecked(bytes.as_ptr().add(header).cast_mut()) };
+    let buffer =
+        unsafe { arrow_buffer::Buffer::from_custom_allocation(data, 4, Arc::clone(&bytes) as _) };
+    let array = Int32Array::new(arrow_buffer::ScalarBuffer::from(buffer), None);
+
+    // Check the address before R ever sees `out` (protecting a pointer into
+    // the Rust allocation would hand R garbage).
+    let out = array.into_sexp();
+    let start = bytes.as_ptr() as usize;
+    assert!(
+        !(start..start + bytes.len()).contains(&(out.0 as usize)),
+        "a Rust buffer came back as a SEXP inside its own allocation"
+    );
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    let values: &[i32] = unsafe { out.as_slice() };
+    assert_eq!(values, [5]);
+}
+
+/// Drive the R-backed buffer registry's hit and ALTREP paths.
+///
+/// A standard R vector converted to Arrow twice (two guards over one vector)
+/// must come back as the same SEXP after one of the two arrays has dropped.
+///
+/// Two ALTREP views over one Arrow buffer share a data address. When the
+/// registry kept the first view's entry and only counted the second guard,
+/// dropping the first view's array left an entry naming a vector nothing
+/// preserved any more, and the second view's array "recovered" it. Buffers
+/// over ALTREP vectors are never registered, so the second array must come
+/// back as a fresh copy.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[cfg(feature = "arrow")]
+#[miniextendr(noexport)]
+pub fn gc_stress_arrow_registry_roundtrip() {
+    use miniextendr_api::IntoRAltrep;
+    use miniextendr_api::arrow_impl::{Float64Array, Int32Array, UInt8Array};
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::prelude::SexpExt;
+
+    // Hit: each standard vector comes back as itself.
+    let f = vec![1.0f64, 2.0, 3.0].into_sexp();
+    let _f_guard = unsafe { miniextendr_api::OwnedProtect::new(f) };
+    let first = Float64Array::try_from_sexp(f).expect("float64 from R");
+    let second = Float64Array::try_from_sexp(f).expect("float64 from R");
+    drop(first);
+    assert!(
+        second.into_sexp() == f,
+        "Float64Array lost its source vector"
+    );
+
+    let i = vec![1i32, 2, 3].into_sexp();
+    let _i_guard = unsafe { miniextendr_api::OwnedProtect::new(i) };
+    let first = Int32Array::try_from_sexp(i).expect("int32 from R");
+    let second = Int32Array::try_from_sexp(i).expect("int32 from R");
+    drop(first);
+    assert!(second.into_sexp() == i, "Int32Array lost its source vector");
+
+    let u = vec![1u8, 2, 3].into_sexp();
+    let _u_guard = unsafe { miniextendr_api::OwnedProtect::new(u) };
+    let first = UInt8Array::try_from_sexp(u).expect("uint8 from R");
+    let second = UInt8Array::try_from_sexp(u).expect("uint8 from R");
+    drop(first);
+    assert!(second.into_sexp() == u, "UInt8Array lost its source vector");
+
+    // ALTREP: two views over one Arrow buffer, so one data address.
+    let values = Float64Array::from(vec![4.0, 5.0, 6.0]);
+    let view_a = values.clone().into_sexp_altrep();
+    let _a_guard = unsafe { miniextendr_api::OwnedProtect::new(view_a) };
+    let view_b = values.into_sexp_altrep();
+    let _b_guard = unsafe { miniextendr_api::OwnedProtect::new(view_b) };
+    let from_a = Float64Array::try_from_sexp(view_a).expect("float64 from ALTREP");
+    let from_b = Float64Array::try_from_sexp(view_b).expect("float64 from ALTREP");
+    drop(from_a);
+    let out = from_b.into_sexp();
+    assert!(
+        out != view_a,
+        "an array over one ALTREP view came back as another view"
+    );
+    assert!(
+        out != view_b,
+        "a buffer over an ALTREP vector was not copied"
+    );
+    let _out_guard = unsafe { miniextendr_api::OwnedProtect::new(out) };
+    let copied: &[f64] = unsafe { out.as_slice() };
+    assert_eq!(copied, [4.0, 5.0, 6.0]);
 }
 
 // endregion

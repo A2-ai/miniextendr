@@ -86,6 +86,12 @@ test_that("RDataFrame global aggregation (no group_by) works", {
   expect_equal(result$max_x, 5L)
 })
 
+test_that("a one-row SQL aggregate materializes fresh buffers", {
+  for (i in seq_len(20L)) {
+    expect_null(miniextendr:::gc_stress_datafusion_global_aggregate())
+  }
+})
+
 test_that("RDataFrame count works", {
   df <- make_test_df()
   result <- miniextendr:::test_df_count(df)
