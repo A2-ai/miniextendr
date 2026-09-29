@@ -2040,6 +2040,28 @@ mod tests {
         assert_eq!(unchecked, ["n".to_string()].into_iter().collect());
     }
 
+    /// An item-level `no_preconditions` leaves `no_na` alone: a plain
+    /// parameter keeps its R guard, and an `Either` (which has no type-derived
+    /// check, so no rank-1 spelling) still gets none, its NA check running in
+    /// Rust after the conversion.
+    #[test]
+    fn item_no_preconditions_keeps_no_na_and_either_stays_rust_side() {
+        let sig: syn::Signature =
+            syn::parse_str("fn f(x: Either<AsNumeric, DataFrame>, y: f64)").unwrap();
+        let opts = PreconditionOptions {
+            explicit: [("x".to_string(), no_na()), ("y".to_string(), no_na())]
+                .into_iter()
+                .collect(),
+            unchecked: unchecked_params(&sig.inputs, |_| None, Some(false), None, None),
+            ..Default::default()
+        };
+        let guards = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None);
+        assert_eq!(
+            guards,
+            vec!["if (!isTRUE(!anyNA(y))) .miniextendr_arg_error(\"y\", \"must not be NA\")"]
+        );
+    }
+
     #[test]
     fn has_type_check_is_false_for_unguarded_types() {
         for guarded in [
@@ -2060,6 +2082,7 @@ mod tests {
             "&Dots",
             "MyType",
             "Call",
+            "Either<AsNumeric, DataFrame>",
         ] {
             assert!(!has_type_check(&parse_type(bare)), "{bare}");
         }

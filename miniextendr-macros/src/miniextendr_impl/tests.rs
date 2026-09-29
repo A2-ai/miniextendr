@@ -1214,6 +1214,21 @@ fn method_precondition_spelling_errors() {
         err.contains("`no_preconditions(raw)` on parameter `raw`: `SEXP` has no R-side type check"),
         "{err}"
     );
+    // An `Either` has no type-derived check either: its `no_na` is checked in
+    // Rust, after the conversion, whatever the precondition spelling.
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(no_na(x), no_preconditions(x))]
+            pub fn take(&self, x: Either<AsNumeric, DataFrame>) {}
+        }
+    });
+    assert!(
+        err.contains(
+            "`no_preconditions(x)` on parameter `x`: `Either<AsNumeric, DataFrame>` has no \
+             R-side type check"
+        ),
+        "{err}"
+    );
     let err = parse_err(syn::parse_quote! {
         impl S {
             #[miniextendr(match_arg(mode))]

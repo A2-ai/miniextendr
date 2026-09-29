@@ -451,6 +451,30 @@ fn parsed_fn_precondition_spelling_errors() {
             quote::quote! { fn f(x: i32, #[miniextendr(preconditions)] rest: &Dots) {} },
             "`&Dots` has no R-side type check",
         ),
+        // An `Either` has no type-derived check (its `no_na` is checked in
+        // Rust, after the conversion), so no rank-1 spelling meets `no_na`.
+        (
+            quote::quote! { fn f(x: Checked<Either<AsNumeric, DataFrame>>) {} },
+            "`Checked<Either<AsNumeric, DataFrame>>` on parameter `x`: \
+             `Either<AsNumeric, DataFrame>` has no R-side type check to keep or drop",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(no_na, no_preconditions)] x: Either<AsNumeric, DataFrame>) {}
+            },
+            "`#[miniextendr(no_preconditions)]` on parameter `x`: \
+             `Either<AsNumeric, DataFrame>` has no R-side type check",
+        ),
+        // The `= bool` form is the function attribute's; alone or next to a
+        // parameter option, it is an error, not a silently dropped decision.
+        (
+            quote::quote! { fn f(#[miniextendr(preconditions = false)] x: f64) {} },
+            "`preconditions = ...` on a parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_na, no_preconditions = true)] x: f64) {} },
+            "`no_preconditions = ...` on a parameter",
+        ),
         (
             quote::quote! { fn f(#[miniextendr(match_arg)] mode: Checked<Mode>) {} },
             "`Checked<Mode>` on parameter `mode`: a match_arg/choices parameter is validated by \

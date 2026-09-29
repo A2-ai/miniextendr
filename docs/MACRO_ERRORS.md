@@ -333,6 +333,11 @@ last one written wins. The same family covers:
   `no_preconditions(k)` on the impl's method.
 - `` `Checked<T>` on an `extern "C-unwind"` function ``: it takes R values as
   they are; take the inner type.
+- `` `Checked<T>` marks a parameter only; it cannot be used as a return type ``:
+  return the inner `T`.
+- `` `preconditions = ...` on a parameter ``: the `= true | false` form is the
+  function attribute's; on a parameter write the bare `preconditions` /
+  `no_preconditions`, or the marker.
 
 See [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#r-side-preconditions-markers-and-defaults).
 

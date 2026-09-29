@@ -428,8 +428,10 @@ markers on a parameter, a marker not outermost (`Option<Checked<T>>`; write
 `Checked<Option<T>>`), a rank-1 spelling on a parameter with no type-derived
 check (`SEXP`, `Missing<T>`, `ExternalPtr<T>`, `&Dots`, a type the check table
 does not know) or on a `match_arg` / `choices` parameter, a marker in a
-`#[miniextendr]` trait's method signature (spell it on the impl) and a marker
-on an `extern "C-unwind"` function. `Checked<u16>` with `coerce` keeps the
+`#[miniextendr]` trait's method signature (spell it on the impl), a marker
+on an `extern "C-unwind"` function, a marker as a return type, and the
+function attribute's `preconditions = true | false` on a parameter (write it
+bare there). `Checked<u16>` with `coerce` keeps the
 widened guard; `Checked<&str>` and `Checked<&[f64]>` work on both thread
 paths. `Checked` means the R-side guard is kept: it is not an
 overflow-checked conversion, nor the thread-checked FFI variants.

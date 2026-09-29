@@ -489,7 +489,8 @@ impl PerParamMiniextendrAttr {
 /// Returns `Ok(None)` if `attr` is not a `#[miniextendr(...)]` attribute, if its
 /// content is not a list of options, or if it contains only function-level
 /// options (like `strict`) with no per-parameter options. A malformed
-/// `inherits(...)` / `no_na(...)` is an error.
+/// `inherits(...)` / `no_na(...)` is an error, as is `preconditions = bool` /
+/// `no_preconditions = bool`, a function-level form the parameter spells bare.
 ///
 /// # Arguments
 ///
@@ -561,6 +562,18 @@ pub(crate) fn parse_per_param_attr(
                         .get_or_insert_with(Vec::new)
                         .push(lit_str.value());
                     is_per_param = true;
+                } else if let Some(key) = ["preconditions", "no_preconditions"]
+                    .into_iter()
+                    .find(|key| nv.path.is_ident(key))
+                {
+                    return Err(syn::Error::new_spanned(
+                        nv,
+                        format!(
+                            "`{key} = ...` on a parameter: write the bare `preconditions` or \
+                             `no_preconditions` (or the `Checked<T>` / `Unchecked<T>` marker); \
+                             the `= true | false` form is the function attribute's"
+                        ),
+                    ));
                 }
                 // Other name-value pairs are function-level, ignore here
             }

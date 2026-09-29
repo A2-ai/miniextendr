@@ -128,9 +128,23 @@ pub(crate) fn resolve_visibility(
 }
 
 /// The error for a marker that cannot be honoured: a nested marker
-/// (`Invisible<Visible<T>>`) or a marker in argument position.
+/// (`Invisible<Visible<T>>`), a marker in argument position, or, the mirror
+/// case, a parameter marker (`Checked<T>` / `Unchecked<T>`) in return
+/// position (also inside a visibility marker).
 pub(crate) fn visibility_marker_error(ty: &syn::Type, what: &str) -> Option<syn::Error> {
     let (marker, inner) = peel_visibility_marker(ty);
+    if what == "return"
+        && let Some((param_marker, _)) = outer_param_marker(inner)
+    {
+        return Some(syn::Error::new_spanned(
+            ty,
+            format!(
+                "`{}<T>` marks a parameter only; it cannot be used as a return type (return the \
+                 inner `T`)",
+                param_marker.name()
+            ),
+        ));
+    }
     marker?;
     if what == "argument" {
         return Some(syn::Error::new_spanned(
@@ -591,7 +605,7 @@ mod tests {
     use super::{
         ParamMarker, call_marker, choice_layer_name, choice_layers, erase_lifetimes,
         is_main_thread_bound_input, is_main_thread_bound_return, match_arg_choices_ty,
-        peel_param_markers, r_value_noun, type_display,
+        peel_param_markers, r_value_noun, type_display, visibility_marker_error,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -713,6 +727,23 @@ mod tests {
             assert!(err.contains("outermost"), "{nested}: {err}");
         }
         assert!(peel_error("Option<Checked<i32>>").contains("put `Checked` outermost"));
+    }
+
+    /// A parameter marker in return position is an error, also inside a
+    /// visibility marker; in argument position it is the parameter's to peel.
+    #[test]
+    fn param_markers_are_rejected_in_return_position() {
+        for ret in [
+            "Checked<i32>",
+            "miniextendr_api::Unchecked<Vec<f64>>",
+            "Invisible<Checked<i32>>",
+        ] {
+            let err = visibility_marker_error(&ty(ret), "return")
+                .expect("rejected")
+                .to_string();
+            assert!(err.contains("marks a parameter only"), "{ret}: {err}");
+        }
+        assert!(visibility_marker_error(&ty("Checked<i32>"), "argument").is_none());
     }
 
     #[test]

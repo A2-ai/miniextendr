@@ -26,7 +26,8 @@
 //! ```ignore
 //! use miniextendr_api::{Checked, List, Unchecked, miniextendr};
 //!
-//! /// `n_iter` keeps its guards even when the crate default drops them.
+//! /// `n_iter` keeps its guards; the function's `no_preconditions` drops
+//! /// those of `data` and `tol`.
 //! #[miniextendr(no_preconditions)]
 //! pub fn fit(data: List, n_iter: Checked<i32>, tol: f64) -> f64 {
 //!     let n = *n_iter; // or n_iter.into_inner()
@@ -54,7 +55,8 @@
 //! cannot appear in a `#[miniextendr]` trait's method signature (spell it on
 //! the impl, `#[miniextendr(preconditions(x))]`) nor on an
 //! `extern "C-unwind"` function, which has no generated conversion to unwrap
-//! it.
+//! it. A marker is a parameter type only: as a return type it is a compile
+//! error.
 //!
 //! # Not a runtime type
 //!
