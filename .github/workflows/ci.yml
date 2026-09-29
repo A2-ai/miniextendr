@@ -48,9 +48,12 @@ jobs:
   # ===========================================================================
   # Generated file hygiene check
   # ===========================================================================
+  # Jobs that only run shell, git or a single action (no R, no Rust build) use
+  # ubuntu-slim: a 1-vCPU container with a 15-minute job cap. Anything that
+  # compiles stays on ubuntu-latest (4 vCPU, 16 GB).
   generated-files-check:
     name: Generated Files Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@v7
 
@@ -110,11 +113,9 @@ jobs:
   # ===========================================================================
   version-check:
     name: Version Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - uses: actions/checkout@v7
-      - name: Install just
-        uses: taiki-e/install-action@just
 
       - name: Check version consistency
         run: |
@@ -142,19 +143,30 @@ jobs:
   # ===========================================================================
   # Change detection (path-based gating)
   # ===========================================================================
+  # Only PRs and branch pushes are filtered. On a PR, paths-filter lists the
+  # changed files through the REST API (needs `pull-requests: read`, no
+  # checkout). On a branch push it diffs `before..HEAD` in git, fetching both
+  # commits at depth 1 itself, so a shallow checkout is enough. Scheduled,
+  # dispatched and tag runs carry no `before` commit, and paths-filter then
+  # looks at the last commit alone: a weekly sweep whose latest commit only
+  # touched R files skipped Rust lint and Rust tests. Those runs skip the
+  # filter instead, and every output falls back to 'true' (a skipped step's
+  # output is empty; a real 'false' is a non-empty string and wins).
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      r: ${{ steps.filter.outputs.r }}
-      docs: ${{ steps.filter.outputs.docs }}
+      rust: ${{ steps.filter.outputs.rust || 'true' }}
+      r: ${{ steps.filter.outputs.r || 'true' }}
+      docs: ${{ steps.filter.outputs.docs || 'true' }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
+        if: github.event_name == 'push' && github.ref_type == 'branch'
       - name: Determine changed paths
         id: filter
+        if: >-
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' && github.ref_type == 'branch')
         uses: dorny/paths-filter@v4
         with:
           filters: |
@@ -204,16 +216,17 @@ jobs:
               - 'docs/**'
               - 'site/**'
               - 'scripts/docs-to-site.sh'
+              - '.github/workflows/**'
 
   # ===========================================================================
   # Docs link check (Zola internal anchors + external URLs, see
   # plans/2026-07-13-audit-doc-link-anchors.md). Fast, no R/Rust build —
-  # gated on doc/site changes only so it also runs on docs-only PRs that
-  # skip the rust/r filters below.
+  # gated on doc/site (and workflow) changes only so it also runs on docs-only
+  # PRs that skip the rust/r filters below.
   # ===========================================================================
   docs-link-check:
     name: Docs Link Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     steps:
@@ -222,11 +235,14 @@ jobs:
       - name: Install just
         uses: taiki-e/install-action@just
 
+      # Into a user directory on PATH rather than `sudo mv` to /usr/local/bin:
+      # ubuntu-slim runs as an unprivileged container.
       - name: Install Zola
         run: |
           ZOLA_VERSION="0.22.1"
-          curl -sL "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz
-          sudo mv zola /usr/local/bin/
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSfL "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Check doc links (internal anchors + external URLs)
         run: just site-check
@@ -969,8 +985,7 @@ jobs:
   # R Package: R CMD check on Windows
   # ===========================================================================
   # DISABLED: Windows CI is currently disabled. Uncomment the block below to
-  # re-enable. Remember to also re-add `r-check-windows` to `ci-success.needs`
-  # and its results array.
+  # re-enable. Remember to also re-add `r-check-windows` to `ci-success.needs`.
   # r-check-windows:
   #   name: R CMD check / Windows
   #   runs-on: windows-latest
@@ -1953,8 +1968,12 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
-  # Summary job (for branch protection)
+  # Summary job: the single check for branch protection / a ruleset to require
   # ===========================================================================
+  # `needs` is the gating set and the only list to edit: a job left out
+  # (macOS, e2e, feature legs) never blocks a merge. success and skipped pass;
+  # failure and cancelled fail. `if: always()` matters: without it a failed
+  # dependency skips this job, and a skipped required check counts as passing.
   ci-success:
     name: CI Success
     needs:
@@ -1975,34 +1994,17 @@ jobs:
       - cran-check
       - bootstrap-vendor-test
       # - r-roundtrip-e2e # non-gating: on-demand only (cron / run-e2e label / dispatch), see #775
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     if: always()
     steps:
       - name: Check all jobs passed
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+          NEEDS: ${{ toJSON(needs) }}
         run: |
-          results=(
-            "${{ needs.generated-files-check.result }}"
-            "${{ needs.version-check.result }}"
-            "${{ needs.sync-checks.result }}"
-            "${{ needs.docs-link-check.result }}"
-            "${{ needs.rust-lint.result }}"
-            "${{ needs.rust-tests.result }}"
-            "${{ needs.changes.result }}"
-            "${{ needs.r-check-linux.result }}"
-            # needs.r-check-macos.result   — non-gating, see #95 (kept as a plain
-            # comment: Actions evaluates its expression syntax even inside a shell comment)
-            # needs.r-check-windows.result — DISABLED
-            "${{ needs.r-tests.result }}"
-            "${{ needs.r-stress-tests.result }}"
-            "${{ needs.cross-package-tests.result }}"
-            "${{ needs.minirextendr.result }}"
-            "${{ needs.cran-check.result }}"
-            "${{ needs.bootstrap-vendor-test.result }}"
-          )
-          for result in "${results[@]}"; do
-            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
-              echo "One or more jobs failed: $result"
-              exit 1
-            fi
-          done
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::One or more required jobs failed or were cancelled"
+            exit 1
+          fi
           echo "All CI jobs passed!"

@@ -83,7 +83,7 @@ jobs:
   # previously a comment-only invariant; this job enforces it.
   pin-lockstep:
     name: webR image pin lockstep
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
