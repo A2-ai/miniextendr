@@ -9,7 +9,7 @@
 \alias{OmitPickS7_omit_grade}
 \alias{s7_trait_OmitGrade_omit_grades}
 \alias{OmitPickS7_omit_grades}
-\alias{OmitPickS7$GradeDefaults$default_grade}
+\alias{attr(OmitPickS7, "GradeDefaults")$default_grade}
 \title{OmitPickS7 S7 Class}
 \usage{
 OmitPickS7(.ptr = NULL)
