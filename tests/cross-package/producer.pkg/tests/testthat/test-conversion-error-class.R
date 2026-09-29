@@ -118,6 +118,15 @@ test_that("a check with the author's message keeps the crate classes", {
   expect_identical(e$param, "x")
   expect_identical(conditionMessage(e), "`x` must be a `producer_num`")
   expect_equal(conditionCall(e), quote(producer.pkg:::producer_named_checks_msg_impl(c(1, 2))))
+
+  # The class message covers the type check too.
+  e <- tryCatch(
+    producer.pkg:::producer_named_checks_msg_impl(structure("a", class = "producer_num")),
+    error = function(e) e
+  )
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "`x` must be a `producer_num`")
 })
 
 test_that("no_na's check after the conversion carries the crate classes", {

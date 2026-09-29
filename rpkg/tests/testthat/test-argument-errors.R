@@ -212,9 +212,25 @@ test_that("a custom message is the only difference from the generated one", {
   # One message covers both classes, either of which passes.
   expect_identical(miniextendr:::param_model_custom(mx_model()), 1L)
   expect_identical(miniextendr:::param_model_custom(structure(list(), class = "mx_model2")), 0L)
-  # The type check before it keeps its generated message.
+  # The message covers every value that is not a list of the class: the class
+  # check runs first, and its message is the type check's too.
+  for (model in list(
+    1,
+    NULL,
+    data.frame(),
+    structure(list(), class = "other"),
+    structure(1, class = "mx_model")
+  )) {
+    e <- caught(miniextendr:::param_model_custom(model))
+    expect_identical(conditionMessage(e), conditionMessage(e2))
+    expect_identical(class(e), class(e2))
+    expect_identical(e$kind, e2$kind)
+    expect_identical(e$param, e2$param)
+    expect_null(e$rust_type)
+  }
+  # Without a message, the type check keeps its generated one.
   expect_identical(
-    conditionMessage(caught(miniextendr:::param_model_custom(1))),
+    conditionMessage(caught(miniextendr:::param_model_default(structure(1, class = "mx_model")))),
     "'model' must be a list"
   )
 })
@@ -257,6 +273,12 @@ test_that("under call = caller a custom message keeps the caller's call", {
   e1 <- caught(miniextendr:::param_checks_caller(list(), 1))
   e2 <- caught(miniextendr:::param_checks_caller_msg(list(), 1))
   expect_identical(conditionMessage(e2), "`x` must be an `mx_obj`")
+  # A value that is not a list gets the class message, with the caller's call.
+  e3 <- caught(miniextendr:::param_checks_caller_msg(1, 1))
+  expect_identical(conditionMessage(e3), "`x` must be an `mx_obj`")
+  expect_equal(conditionCall(e3), quote(miniextendr:::param_checks_caller_msg(1, 1)))
+  expect_identical(class(e3), class(e1))
+  expect_identical(e3$param, e1$param)
   expect_identical(class(e2), class(e1))
   expect_identical(e2$kind, e1$kind)
   expect_identical(e2$param, e1$param)
@@ -277,6 +299,10 @@ test_that("impl and trait methods take the method-level messages", {
   expect_identical(conditionMessage(e2), "`x` must be an `mx_obj` or an `mx_other`")
   expect_identical(class(e2), class(e1))
   expect_identical(e2$param, e1$param)
+  # The message covers the type check too.
+  for (x in list(1, structure(1, class = "mx_obj"))) {
+    expect_identical(conditionMessage(caught(h$add_checked(x, 1))), conditionMessage(e2))
+  }
   e <- caught(h$add_checked(structure(list(), class = "mx_obj"), NA_real_))
   expect_identical(conditionMessage(e), "`y` must be a number, not NA")
   expect_identical(class(e), layers)
