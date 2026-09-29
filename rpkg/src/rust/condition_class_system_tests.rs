@@ -303,12 +303,12 @@ impl EnvRaiser {
 //
 // Two emission shapes are exercised:
 //   1. Static helpers — emitted as plain wrapped fns
-//      (`vctrsraiser_vctrs_raise_error(values, msg)`); full `match.call()`
+//      (`vctrsraiser_vctrs_raise_error(values, msg)`); the `sys.call()`
 //      attribution like any `#[miniextendr]` free function.
 //   2. vctrs protocol override (`#[miniextendr(vctrs(format))]`) — emitted as
 //      the S3 method `format.VctrsRaiser(values, ...)`; dispatch goes through
 //      `UseMethod("format")` in base R, the method body carries
-//      `.call = match.call()` of the inner `.Call`. This is the closest analogue
+//      `.call = sys.call()` of the inner `.Call`. This is the closest analogue
 //      to the S3 raise_*.S3Raiser path.
 
 #[cfg(feature = "vctrs")]
@@ -382,7 +382,7 @@ mod vctrs_raiser {
         /// S3 dispatch via `UseMethod("format")`. Always panics so the test can
         /// inspect `conditionCall` for the dispatched generic name. Note that
         /// `format`-protocol dispatch is what's being exercised here, not
-        /// arbitrary `vctrs_*` S3 generics — `match.call()` inside
+        /// arbitrary `vctrs_*` S3 generics — `sys.call()` inside
         /// `format.VctrsRaiser` captures the dispatched-method call frame, not
         /// the user's `format(obj)` call.
         ///

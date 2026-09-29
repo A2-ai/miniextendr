@@ -170,7 +170,7 @@ fn missing_forwarding_calls_the_base_missing_and_quote() {
         .build();
     assert_eq!(
         qualify(&call, &["x", "missing", "quote"]),
-        ".Call(C_f, .call = match.call(), \
+        ".Call(C_f, .call = sys.call(), \
          if (base::missing(x)) base::quote(expr=) else x, \
          if (base::missing(missing)) base::quote(expr=) else missing, \
          if (base::missing(quote)) base::quote(expr=) else quote)"
@@ -196,7 +196,7 @@ fn dots_forwarding_calls_the_base_list() {
         .build();
     assert_eq!(
         qualify(&call, &["list"]),
-        ".Call(C_f, .call = match.call(), \
+        ".Call(C_f, .call = sys.call(), \
          if (missing(list)) quote(expr=) else list, base::list(...))"
     );
 }

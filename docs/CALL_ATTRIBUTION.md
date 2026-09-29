@@ -382,7 +382,7 @@ Every `.Call()` inside generated R wrappers puts the call slot first. Class and 
 It applies uniformly to:
 
 - Standalone `#[miniextendr]` functions
-- All six class systems (R6, S3, S4, S7, Env, Vctrs) — constructors, instance methods, static methods, active bindings, finalizers, `deep_clone`
+- All six class systems (R6, S3, S4, S7, Env, Vctrs) — constructors, instance methods, static methods, active bindings (the R6 finalizer and `deep_clone` pass `.call = NULL` instead, see below)
 - All trait implementations across all class systems
 - `match_arg` choices helper calls
 - Warnings and messages deferred from Rust, which carry the slot's call
@@ -395,7 +395,7 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `sys.call()`
 
-No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The `%||% sys.call()` fallback in `condition_check_lines` then surfaces the nearest meaningful frame.
+No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The raise helper's fallback, `if (is.null(.val$call)) .call_default else .val$call` with the wrapper's `sys.call()` as `.call_default` (`condition_check_lines`), then surfaces the nearest meaningful frame.
 
 The five sites are:
 
@@ -405,7 +405,7 @@ The five sites are:
 4. **S7 property getter** — `getter = function(self) .Call(C_mypkg_Type__get_prop, .call = NULL, self@.ptr)`
 5. **S7 property setter** — `setter = function(self, value) { .Call(C_mypkg_Type__set_prop, .call = NULL, self@.ptr, value); self }`
 
-This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it and the R-side `%||% sys.call()` recovers the user's frame.
+This is implemented via `DotCallBuilder::null_call_attribution()` in `miniextendr-macros/src/r_wrapper_builder.rs`. The C wrapper still receives `__miniextendr_call: SEXP` (it always does) and gets `R_NilValue`; `make_rust_condition_value` stores it, and the raise helper's `.call_default` fallback (the wrapper's `sys.call()`) recovers the user's frame.
 
 ## Reproducing the transcript
 

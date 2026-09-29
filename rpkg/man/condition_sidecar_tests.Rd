@@ -18,5 +18,5 @@ conversion through \verb{ExternalPtr<PanickingSidecar>}).}
 \description{
 Low-level constructor returning the raw \verb{ExternalPtr<PanickingSidecar>} (bypasses the R6 wrapper). The R6 \verb{$new()} constructor wraps this pointer inside an environment with active bindings; tests that need to pass the bare externalptr into a standalone consumer can use this helper.
 
-Standalone fn that accepts the sidecar object and panics. Exercises the standalone-fn path: the R wrapper carries \code{.call = match.call()} so \code{conditionCall(e)} is non-NULL and references the wrapper.
+Standalone fn that accepts the sidecar object and panics. Exercises the standalone-fn path: the R wrapper carries \code{.call = sys.call()} so \code{conditionCall(e)} is non-NULL and references the wrapper.
 }
