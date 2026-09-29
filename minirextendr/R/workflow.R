@@ -110,8 +110,9 @@ miniextendr_configure <- function(path = ".") {
 #' never loads the namespace, so a stale `NAMESPACE` cannot fail it. Step 4's
 #' `document()` reads the current wrappers; its own `pkgload::load_all()`
 #' compile finds the library linked and the wrappers generated from it. Step 5
-#' installs the package once, with `NAMESPACE`, `man/` and the wrappers
-#' already in their final form. A brand-new package needs no special case:
+#' installs the package once, in place (`build = FALSE`), with `NAMESPACE`,
+#' `man/` and the wrappers already in their final form; it reuses Step 3's
+#' Cargo build. A brand-new package needs no special case:
 #' Step 3 writes its first wrappers file the same way.
 #'
 #' `document()` loads the package from source through `pkgload::load_all()`
@@ -123,10 +124,10 @@ miniextendr_configure <- function(path = ".") {
 #' `load_all()` reads the current `NAMESPACE`).
 #'
 #' @section Vendoring:
-#' Nothing here vendors. The install's `R CMD build` runs `bootstrap.R`, which
-#' stages only path dependencies outside the package, in R CMD build's
-#' temporary copy; registry and Git dependencies resolve over the network. An
-#' offline, CRAN-ready tarball comes from [miniextendr_build_tarball()]. A
+#' Nothing here vendors. Every step works on the source tree in place, where
+#' path dependencies resolve as written; registry and Git dependencies resolve
+#' over the network. An offline, CRAN-ready tarball comes from
+#' [miniextendr_build_tarball()]. A
 #' pre-existing `inst/vendor.tar.xz` latch is never deleted, but every step
 #' then builds in offline tarball mode, so a warning is emitted up front and
 #' `miniextendr_doctor()` / `miniextendr_clean_vendor_leak()` point at the fix.
@@ -230,11 +231,13 @@ compile_and_generate_wrappers <- function(pkg_path) {
 
 # Step 5: install the package via devtools.
 #
-# build = TRUE (the default): `R CMD build` runs bootstrap.R and the install
-# proceeds from the tarball, the same path an end user's install takes. The
-# install relinks in R CMD build's copy and regenerates the wrappers there;
-# they are identical to the ones Step 3 wrote and Step 4 documented, so the
-# namespace load-test sees a reconciled NAMESPACE.
+# build = FALSE: install the source tree in place, as `R CMD INSTALL .` does.
+# The install reuses rust-target/ from Step 3, so Cargo compiles nothing, the
+# library is not relinked and the wrappers stay as Steps 3 and 4 left them.
+# A built tarball would install from a temporary copy instead: a cold Cargo
+# build on every call (unless CARGO_TARGET_DIR points outside the package),
+# and a monorepo's local framework crates, found by configure's walk up from
+# the package directory, would resolve from git there.
 #
 # reload = FALSE: do NOT reload the freshly-installed package into the building
 # session. The default (reload = TRUE) re-registers the package's namespace from
@@ -245,7 +248,8 @@ compile_and_generate_wrappers <- function(pkg_path) {
 # both harmless and the fix.
 install_pkg <- function(pkg_path) {
   tryCatch(
-    devtools::install(pkg_path, upgrade = FALSE, quiet = FALSE, reload = FALSE),
+    devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
+                      reload = FALSE),
     error = function(e) {
       cli::cli_abort(c(
         "Package installation failed",
