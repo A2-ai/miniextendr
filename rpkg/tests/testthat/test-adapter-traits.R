@@ -54,56 +54,53 @@ test_that("Point - ROrd works", {
   expect_equal(Point$ROrd$cmp(p1, p2), -1L)
 })
 
+# The empty (TPIE) impls return `Self` / `Option<Self>` as a Point, like an
+# impl with method bodies does.
 test_that("Point - RClone clone produces equal values", {
   p1 <- Point$new(5L, 10L)
-  p2_ptr <- p1$RClone$clone()
-  # Wrap the raw pointer as a Point
-  class(p2_ptr) <- "Point"
+  p2 <- p1$RClone$clone()
+  expect_s3_class(p2, "Point")
 
   # Clone should produce equal values
-  expect_equal(p1$x(), p2_ptr$x())
-  expect_equal(p1$y(), p2_ptr$y())
+  expect_equal(p1$x(), p2$x())
+  expect_equal(p1$y(), p2$y())
 })
 
 test_that("Point - RDefault default creates (0, 0)", {
-  p_ptr <- Point$RDefault$default()
-  # Wrap the raw pointer as a Point
-  class(p_ptr) <- "Point"
+  p <- Point$RDefault$default()
+  expect_s3_class(p, "Point")
 
   # Default Point should be (0, 0)
-  expect_equal(p_ptr$x(), 0L)
-  expect_equal(p_ptr$y(), 0L)
+  expect_equal(p$x(), 0L)
+  expect_equal(p$y(), 0L)
 })
 
 test_that("Point - RFromStr from_str parses string to Point", {
   # Valid string parses correctly - tests &str parameter on worker thread
-  p_ptr <- Point$RFromStr$from_str("(10, 20)")
-  expect_false(is.null(p_ptr))
-  # Wrap the raw pointer as a Point
-  class(p_ptr) <- "Point"
-  expect_equal(p_ptr$x(), 10L)
-  expect_equal(p_ptr$y(), 20L)
+  p <- Point$RFromStr$from_str("(10, 20)")
+  expect_s3_class(p, "Point")
+  expect_equal(p$x(), 10L)
+  expect_equal(p$y(), 20L)
 
   # Invalid string returns error (Option<T> with None becomes R error)
   expect_error(Point$RFromStr$from_str("invalid"), "returned no value")
 
   # Empty parens with valid numbers
-  p2_ptr <- Point$RFromStr$from_str("(-5, 15)")
-  expect_false(is.null(p2_ptr))
-  class(p2_ptr) <- "Point"
-  expect_equal(p2_ptr$x(), -5L)
-  expect_equal(p2_ptr$y(), 15L)
+  p2 <- Point$RFromStr$from_str("(-5, 15)")
+  expect_s3_class(p2, "Point")
+  expect_equal(p2$x(), -5L)
+  expect_equal(p2$y(), 15L)
 })
 
 test_that("Point - RCopy works", {
   p1 <- Point$new(7L, 8L)
 
   # copy() creates a bitwise copy
-  p2_ptr <- p1$RCopy$copy()
-  class(p2_ptr) <- "Point"
+  p2 <- p1$RCopy$copy()
+  expect_s3_class(p2, "Point")
 
-  expect_equal(p1$x(), p2_ptr$x())
-  expect_equal(p1$y(), p2_ptr$y())
+  expect_equal(p1$x(), p2$x())
+  expect_equal(p1$y(), p2$y())
 
   # is_copy() returns TRUE for Copy types
   expect_true(p1$RCopy$is_copy())

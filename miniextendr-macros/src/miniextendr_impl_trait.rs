@@ -709,11 +709,17 @@ impl syn::parse::Parse for TpieMethod {
     }
 }
 
-/// Rewrite `Self` → concrete type in a method signature.
+/// Rewrite `Self` → concrete type in a method signature's parameters.
 ///
 /// `&Self` params are left as-is because `generate_trait_method_c_wrapper`
 /// detects them via `is_self_ref_type` and generates `ExternalPtr<T>` extraction.
-fn rewrite_self_in_sig(sig: &mut syn::Signature, concrete_type: &syn::Type) {
+///
+/// The return type keeps `Self`, as in a trait impl with method bodies: the
+/// C wrapper hands a `Self` / `Option<Self>` / `Result<Self, E>` back as an
+/// `ExternalPtr` without naming the type, and the R wrapper re-wraps exactly
+/// those returns into an object of the class (`TraitMethod::returns_self` and
+/// its siblings look for `Self`).
+fn rewrite_self_in_params(sig: &mut syn::Signature, concrete_type: &syn::Type) {
     for input in &mut sig.inputs {
         if let syn::FnArg::Typed(pt) = input {
             // Don't rewrite &Self — C wrapper generator handles it specially
@@ -723,10 +729,6 @@ fn rewrite_self_in_sig(sig: &mut syn::Signature, concrete_type: &syn::Type) {
             let rewritten = rewrite_self_type(&pt.ty, concrete_type);
             *pt.ty = rewritten;
         }
-    }
-    if let syn::ReturnType::Type(_, ty) = &mut sig.output {
-        let rewritten = rewrite_self_type(ty, concrete_type);
-        **ty = rewritten;
     }
 }
 
@@ -815,7 +817,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .iter()
         .map(|tm| {
             let mut sig = tm.sig.clone();
-            rewrite_self_in_sig(&mut sig, &concrete_type);
+            rewrite_self_in_params(&mut sig, &concrete_type);
 
             let (has_self, is_mut) = sig.inputs.first().map_or((false, false), |arg| {
                 if let syn::FnArg::Receiver(r) = arg {

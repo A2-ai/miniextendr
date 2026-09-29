@@ -1653,6 +1653,75 @@ fn test_static_self_return_rewrapped() {
         "static -> Self should re-wrap via methods::new(), got:\n{s4}"
     );
 }
+
+/// An empty trait impl (expanded from the trait's metadata, TPIE) re-wraps
+/// its `-> Self` / `Option<Self>` returns like an impl with bodies does. The
+/// `Self` → concrete-type rewrite covers the parameters only: rewriting the
+/// return too hid the `Self` the re-wrap looks for, so R got the bare pointer.
+#[test]
+fn test_tpie_self_return_rewrapped() {
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Foo;
+        trait_path = my_crate::Bar;
+        class_system = env;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = false;
+        method { r_name = dup; fn dup(&self) -> Self; }
+        method { r_name = parse; fn parse(s: &str) -> Option<Self>; }
+        method { r_name = merge; fn merge(&self, other: Self) -> i32; }
+    };
+    let methods: Vec<TraitMethod> = input
+        .methods
+        .iter()
+        .map(|tm| {
+            let mut method = make_test_method(&tm.r_name, false);
+            method.sig = tm.sig.clone();
+            rewrite_self_in_params(&mut method.sig, &input.concrete_type);
+            method.has_self = matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(_)));
+            method
+        })
+        .collect();
+
+    // The C wrapper hands both back as an `ExternalPtr`, as for bodies.
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&methods[0].sig.output),
+        crate::c_wrapper_builder::ReturnHandling::ExternalPtr
+    ));
+    assert!(matches!(
+        crate::c_wrapper_builder::detect_return_handling(&methods[1].sig.output),
+        crate::c_wrapper_builder::ReturnHandling::OptionExternalPtr
+    ));
+    // A by-value `Self` parameter still names the concrete type.
+    let syn::FnArg::Typed(other) = &methods[2].sig.inputs[1] else {
+        panic!("merge takes `other`");
+    };
+    assert_eq!(quote::quote!(#other).to_string(), "other : Foo");
+
+    let emit = |cs| {
+        generate_trait_r_wrapper(
+            &format_ident!("Foo"),
+            &format_ident!("Bar"),
+            &methods,
+            &[],
+            opts(cs, false, false, false),
+        )
+        .unwrap()
+    };
+    let env = emit(ClassSystem::Env);
+    assert_eq!(
+        env.matches("class(.val) <- \"Foo\"").count(),
+        2,
+        "env: both Self returns stamp the class, got:\n{env}"
+    );
+    let r6 = emit(ClassSystem::R6);
+    assert_eq!(
+        r6.matches("Foo$new(.ptr = .val)").count(),
+        2,
+        "r6: both Self returns wrap via Foo$new(.ptr = ), got:\n{r6}"
+    );
+}
 // endregion
 
 /// A method-level `/// @rdname other` on a trait-impl method moves that

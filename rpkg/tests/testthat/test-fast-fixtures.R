@@ -120,8 +120,10 @@ test_that("the R6 active-binding setter follows the impl's no_preconditions", {
 test_that("an empty-body (TPIE) trait impl follows the impl's no_preconditions", {
   ns <- getNamespace("miniextendr")
   from_str <- ns$FastCounterNoPreconditions$RFromStr$from_str
-  # An empty-body impl hands back the bare pointer; wrap it as the R6 class.
-  c <- ns$FastCounterNoPreconditions$new(.ptr = from_str("12"))
+  # The `Option<Self>` return comes back as the R6 class.
+  c <- from_str("12")
+  expect_true(R6::is.R6(c))
+  expect_s3_class(c, "FastCounterNoPreconditions")
   expect_identical(c$value(), 12L)
 
   # The same TPIE trait keeps the R-side check without the flag.
