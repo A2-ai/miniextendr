@@ -12,8 +12,8 @@
 \alias{S7TraitCounter_increment}
 \alias{s7_trait_Counter_checked_add}
 \alias{S7TraitCounter_checked_add}
-\alias{S7TraitCounter$Counter$default_initial}
-\alias{S7TraitCounter$Counter$MAX_VALUE}
+\alias{attr(S7TraitCounter, "Counter")$default_initial}
+\alias{attr(S7TraitCounter, "Counter")$MAX_VALUE}
 \title{S7TraitCounter S7 Class}
 \usage{
 S7TraitCounter(.ptr = NULL)

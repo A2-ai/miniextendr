@@ -242,13 +242,38 @@ test_that("S7TraitCounter trait methods work via S7 dispatch", {
 })
 
 test_that("S7 trait static methods and associated constants work", {
-  # S7 static trait methods use Type$Trait$method() (Env style)
+  # S7 trait statics live in an env attached to the class object with attr(),
+  # and are called as attr(Type, "Trait")$method().
   # S7TraitCounter::default_initial() returns 30
-  # S7 trait statics are attached via attr() — access via attr()
   expect_equal(attr(S7TraitCounter, "Counter")$default_initial(), 30L)
 
   # S7TraitCounter::MAX_VALUE is 300
   expect_equal(attr(S7TraitCounter, "Counter")$MAX_VALUE(), 300L)
+
+  # `Type$Trait` does not reach the attribute: S7's `$` stops on the class
+  # (S7 0.2 says "Can't get S7 properties with `$`"; the wording is S7's own,
+  # so only the error is pinned).
+  expect_error(S7TraitCounter$Counter)
+})
+
+test_that("S7 trait statics are documented under the call that reaches them", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_source <- vapply(rd_db, function(rd) {
+    paste(utils::capture.output(print(rd)), collapse = "\n")
+  }, character(1))
+  for (topic in c(
+    'attr(S7TraitCounter, "Counter")$default_initial',
+    'attr(S7TraitCounter, "Counter")$MAX_VALUE'
+  )) {
+    expect_true(
+      any(grepl(paste0("\\alias{", topic, "}"), rd_source, fixed = TRUE)),
+      info = topic
+    )
+    # The topic is the R expression that reads the member.
+    expect_type(eval(parse(text = topic)), "closure")
+  }
+  expect_false(any(grepl("\\alias{S7TraitCounter$Counter$", rd_source, fixed = TRUE)))
 })
 
 # =============================================================================

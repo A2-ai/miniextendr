@@ -30,9 +30,9 @@ use crate::miniextendr_impl::ClassSystem;
 ///   component in the flat name keeps it collision-free.
 /// - **S7**: `env_var$member`, where `env_var` = [`trait_namespace_env_var`]
 ///   (`.Type__Trait`) is a local env attached to `Type` via `attr()` at the end
-///   of the generator. S7 objects also intercept `$<-`; routing through an
-///   attribute-attached env lets `Type$Trait$member` still resolve at the call
-///   site (R's `$` on an S7 object falls through to attributes).
+///   of the generator. S7 objects also intercept `$<-`, and `$` too, so users
+///   reach the member as [`s7_trait_member_access`]'s
+///   `attr(Type, "Trait")$member`.
 pub(super) fn trait_namespace_target(
     class_system: ClassSystem,
     type_ident: &syn::Ident,
@@ -85,6 +85,20 @@ pub(super) fn trait_namespace_symbol(
 /// lines can't drift apart.
 pub(super) fn trait_namespace_env_var(type_ident: &syn::Ident, trait_name: &syn::Ident) -> String {
     format!(".{type_ident}__{trait_name}")
+}
+
+/// How R code reaches an S7 trait static or const: `attr(Type, "Trait")$member`,
+/// also the topic alias of its documentation block. The trait namespace is an
+/// attribute of the class object, and `Type$Trait$member` does not reach it:
+/// an S7 class object is a function, and S7's `$` method stops on any S7
+/// object that is not a list or an environment ("Can't get S7 properties with
+/// `$`").
+pub(super) fn s7_trait_member_access(
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    member: &str,
+) -> String {
+    format!("attr({type_ident}, \"{trait_name}\")${member}")
 }
 
 /// Pre-computed context for a trait method, mirroring `MethodContext`

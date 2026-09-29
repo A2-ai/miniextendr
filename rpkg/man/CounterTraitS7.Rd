@@ -9,7 +9,7 @@
 \alias{CounterTraitS7_custom_get}
 \alias{s7_trait_MatrixCounter_custom_add}
 \alias{CounterTraitS7_custom_add}
-\alias{CounterTraitS7$MatrixCounter$default_value}
+\alias{attr(CounterTraitS7, "MatrixCounter")$default_value}
 \title{CounterTraitS7 S7 Class}
 \usage{
 CounterTraitS7(v, .ptr = NULL)

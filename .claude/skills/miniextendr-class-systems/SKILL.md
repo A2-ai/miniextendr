@@ -347,8 +347,9 @@ five generators previously hand-rolled independently, unified by #1141 / #1219:
   plus an optional per-method fast-path shortcut `Type_method(obj)` that bypasses
   `S7::S7_dispatch()` (opt out with `#[miniextendr(s7(no_shortcut))]`). Static
   methods and consts are assigned into a local env attached to the class via
-  `attr()`, so they stay reachable as `Type$Trait$name` (S7's `$` falls through to
-  attributes).
+  `attr()`, and are called as `attr(Type, "Trait")$name()`, which is also their
+  help alias. `Type$Trait$name` does not work: S7's `$` method errors on the
+  class object ("Can't get S7 properties with `$`").
 
 `-> Self` / `Result<Self, E>` / `Option<Self>` trait methods re-wrap their return
 into a classed object of the implementing type on every system (via the shared
