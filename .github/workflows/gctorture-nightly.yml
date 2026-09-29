@@ -51,6 +51,10 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
       MINIEXTENDR_GCTORTURE_SHARD: ${{ matrix.shard }}
+      # Run the opt-in gctorture blocks too: the sweep covers the whole suite.
+      # `just gctorture-full` sets this as well, so a local run matches.
+      # See rpkg/tests/testthat/helper-gc-stress.R.
+      MINIEXTENDR_STRESS: "true"
 
     steps:
       - uses: actions/checkout@v7

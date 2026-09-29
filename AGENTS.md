@@ -147,6 +147,12 @@ Enable once per clone: `git config core.hooksPath .githooks`.
 
 Build sequence: `Makevars` → `cargo rustc --crate-type cdylib` → `dyn.load` + `miniextendr_write_wrappers` → `R/miniextendr-wrappers.R` → `cargo rustc --crate-type staticlib` → final `.so`.
 
+### Stress-test GC discipline
+
+Any change that adds a path holding an SEXP across allocations (`Vec<SEXP>` / sidecars / generic-list buffers) needs a `gctorture(TRUE)` pass before commit: run `just devtools-test-stress` (or the per-function gctorture harness in `docs/GCTORTURE_TESTING.md`), and pair the feature with a no-arg `gc_stress_<feature>()` fixture in `rpkg/src/rust/gc_stress_fixtures.rs`.
+
+The gctorture-heavy testthat blocks (~32 of the suite's ~34 min) are **opt-in**: they run only when `MINIEXTENDR_STRESS` is true (`true`/`TRUE`/`T`, parsed by `as.logical()`, so `1` does **not** enable them; see `rpkg/tests/testthat/helper-gc-stress.R`). The plain suite, local `just devtools-test` included, skips them; `just devtools-test-stress [FILTER]` turns them on. In CI only the sharded `r-stress-tests` job and the nightly sweep set the variable; `r-stress-tests` is **opt-in on PRs via the `gc-stress` label** (unconditional on main-push / cron / dispatch). Label any PR that adds SEXP storage. The webR workflow is opt-in the same way via the `webr` label.
+
 ### Reproducing CI clippy before PR
 
 `just clippy` ≠ CI. Three CI clippy steps must all pass `-D warnings`:

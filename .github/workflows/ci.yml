@@ -693,10 +693,9 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
-      # The gctorture-heavy test files (~31 of the suite's ~34 min) run once
-      # per PR in the dedicated r-stress-tests job — not in every check leg.
-      # See rpkg/tests/testthat/helper-gc-stress.R.
-      MINIEXTENDR_SKIP_STRESS: "1"
+      # The gctorture-heavy test blocks (~31 of the suite's ~34 min) are
+      # opt-in (MINIEXTENDR_STRESS) and run in the dedicated r-stress-tests
+      # job, not in the check legs. See rpkg/tests/testthat/helper-gc-stress.R.
 
     steps:
       - uses: actions/checkout@v7
@@ -808,10 +807,10 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
-      # The gctorture-heavy test files run in r-stress-tests, as on the Linux
-      # check legs. Running them here too pushed `checking tests` past
-      # timeout-minutes. See rpkg/tests/testthat/helper-gc-stress.R.
-      MINIEXTENDR_SKIP_STRESS: "1"
+      # The gctorture-heavy test blocks are opt-in (MINIEXTENDR_STRESS) and
+      # run in r-stress-tests, as for the Linux check legs. Running them here
+      # too pushed `checking tests` past timeout-minutes.
+      # See rpkg/tests/testthat/helper-gc-stress.R.
 
     steps:
       - uses: actions/checkout@v7
@@ -1117,9 +1116,9 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
-      # Stress files run in r-stress-tests; this also keeps the 3x heap-check
-      # rounds below within the job budget (they re-run the whole suite).
-      MINIEXTENDR_SKIP_STRESS: "1"
+      # MINIEXTENDR_STRESS is unset, so the stress blocks skip here (they run
+      # in r-stress-tests). That also keeps the 3x heap-check rounds below
+      # within the job budget (they re-run the whole suite).
 
     steps:
       - uses: actions/checkout@v7
@@ -1167,11 +1166,12 @@ jobs:
         # malloc-discipline guard. Gate it on PRs behind the `heap-check` label
         # so routine PRs stay fast; still run it unconditionally on
         # push-to-main, the weekly schedule, and manual dispatch so merged code
-        # keeps its safety net. The rounds inherit MINIEXTENDR_SKIP_STRESS
-        # (~5 min each, not ~35): heap-check hunts malloc/free corruption
-        # across the whole suite, while the gctorture files have their own
-        # dedicated job — running torture under MALLOC_CHECK_ three extra
-        # times is what used to push this job past any timeout.
+        # keeps its safety net. The rounds skip the stress blocks too, as
+        # MINIEXTENDR_STRESS is unset (~5 min each, not ~35): heap-check hunts
+        # malloc/free corruption across the whole suite, while the gctorture
+        # blocks have their own dedicated job — running torture under
+        # MALLOC_CHECK_ three extra times is what used to push this job past
+        # any timeout.
         if: >-
           github.event_name != 'pull_request' ||
           contains(github.event.pull_request.labels.*.name, 'heap-check')
@@ -1211,13 +1211,15 @@ jobs:
   # ===========================================================================
   # R Package: GC-stress tests (gctorture) — sharded
   # ===========================================================================
-  # The single place the gctorture-heavy test files run per PR (every other
-  # suite-running job sets MINIEXTENDR_SKIP_STRESS=1 — they were all running
-  # the same ~31 min of torture, five times per push). The dominant cost is
-  # the dynamic no-arg fixture sweep in test-gc-stress-fixtures.R; it splits
-  # across the shards by fixture index (MINIEXTENDR_STRESS_SHARD=k/n, see
-  # helper-gc-stress.R), and the other stress files are distributed via the
-  # testthat filter so the shards stay balanced. Per-PR coverage is unchanged:
+  # The single place the gctorture-heavy test blocks run per PR. They are
+  # opt-in: they run only when MINIEXTENDR_STRESS is true, which this job and
+  # the nightly sweep set and every other suite-running job leaves unset (they
+  # used to all run the same ~31 min of torture, five times per push). The
+  # dominant cost is the dynamic no-arg fixture sweep in
+  # test-gc-stress-fixtures.R; it splits across the shards by fixture index
+  # (MINIEXTENDR_STRESS_SHARD=k/n, see helper-gc-stress.R), and the other
+  # stress files are distributed via the testthat filter so the shards stay
+  # balanced. Per-PR coverage is unchanged:
   # same fixtures, same iteration counts, run once instead of five times. The
   # nightly gctorture-nightly.yml step=100 full-suite sweep remains the deep net.
   # Opt-in on PRs. The three shards cost ~45 runner-minutes per run and the
@@ -1247,22 +1249,31 @@ jobs:
       # files ~4 / ~3 / ~2.5 min). Each shard = one sweep third (~8 min) +
       # the explicit blocks (~3 min, run per-shard — the sweep file is in
       # every filter) + one whole stress file, so ~14-15 min of tests each.
+      # Five more files carry a few small stress blocks (~1.5 min together,
+      # measured locally); they ride along, split across the shards, so every
+      # stress-gated block in the suite runs in some shard.
       matrix:
         include:
-          # Shard 1: sweep third 1 + the ExternalPtr self-root file.
+          # Shard 1: sweep third 1 + the ExternalPtr self-root file
+          # + alias-guard / expression.
           - shard: "1/3"
-            filter: "gc-stress-fixtures|externalptr-self-root"
-          # Shard 2: sweep third 2 + the iter-to-dataframe file.
+            filter: "gc-stress-fixtures|externalptr-self-root|alias-guard|expression"
+          # Shard 2: sweep third 2 + the iter-to-dataframe file
+          # + deferred-conditions.
           - shard: "2/3"
-            filter: "gc-stress-fixtures|iter-to-dataframe"
-          # Shard 3: sweep third 3 + the dataframe-deserialize file.
+            filter: "gc-stress-fixtures|iter-to-dataframe|deferred-conditions"
+          # Shard 3: sweep third 3 + the dataframe-deserialize file
+          # + dataframe-groups / ndarray.
           - shard: "3/3"
-            filter: "gc-stress-fixtures|dataframe-deserialize"
+            filter: "gc-stress-fixtures|dataframe-deserialize|dataframe-groups|ndarray"
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
+      # The stress blocks are opt-in; without this every one of them skips and
+      # the shards pass having tested nothing. See helper-gc-stress.R.
+      MINIEXTENDR_STRESS: "true"
       MINIEXTENDR_STRESS_SHARD: ${{ matrix.shard }}
 
     steps:
@@ -1375,8 +1386,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
-      # gctorture coverage lives in the sharded r-stress-tests job + nightly.
-      MINIEXTENDR_SKIP_STRESS: "1"
+      # MINIEXTENDR_STRESS stays unset: gctorture coverage lives in the
+      # sharded r-stress-tests job + nightly.
 
     steps:
       - uses: actions/checkout@v7
@@ -1630,12 +1641,11 @@ jobs:
       # inst/vendor.tar.xz (produced by `just vendor` below). No NOT_CRAN needed.
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
-      # Skip the gctorture files here for CRAN realism as much as speed: their
-      # helper also calls skip_on_cran(), because a half-hour test suite would
-      # be rejected by real CRAN. The explicit env var is still needed —
-      # r-lib's setup actions export NOT_CRAN=true into every job, so
-      # skip_on_cran() alone never fires in CI. See helper-gc-stress.R.
-      MINIEXTENDR_SKIP_STRESS: "1"
+      # MINIEXTENDR_STRESS stays unset, so the gctorture blocks skip here, for
+      # CRAN realism as much as speed: a half-hour test suite would be
+      # rejected by real CRAN. Their helper also calls skip_on_cran(), but
+      # r-lib's setup actions export NOT_CRAN=true into every job, so that
+      # alone never fires in CI. See helper-gc-stress.R.
 
     steps:
       - uses: actions/checkout@v7

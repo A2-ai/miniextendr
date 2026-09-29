@@ -302,10 +302,11 @@ async function informationalTestthat() {
     `[tier3][testthat] NODEFS-mounted ${testsDir} -> ${TESTS_MOUNT}; running test_dir (silent reporter)...`,
   );
 
-  // - MINIEXTENDR_SKIP_STRESS: the gctorture files are ~94% of the suite's
-  //   native runtime and have their own dedicated CI job; under the (much
-  //   slower) wasm interpreter they are prohibitive. Same convention as
-  //   every non-stress CI job (see rpkg/tests/testthat/helper-gc-stress.R).
+  // - MINIEXTENDR_STRESS stays unset: the gctorture blocks are ~94% of the
+  //   suite's native runtime and have their own dedicated CI job; under the
+  //   (much slower) wasm interpreter they are prohibitive. They are opt-in,
+  //   so they skip here as in every non-stress CI job (see
+  //   rpkg/tests/testthat/helper-gc-stress.R).
   // - NOT_CRAN=true: mirrors test_local()'s local_assume_not_on_cran();
   //   without it every skip_on_cran() guard (including the gc-stress
   //   helper's) skips for the wrong reason and deflates the counts.
@@ -318,7 +319,7 @@ async function informationalTestthat() {
   //   that we re-throw JS-side.
   const res = await webR.evalR(`
     tryCatch({
-      Sys.setenv(MINIEXTENDR_SKIP_STRESS = "1", NOT_CRAN = "true")
+      Sys.setenv(NOT_CRAN = "true")
       res <- testthat::test_dir(
         "${TESTS_MOUNT}/testthat",
         package = "miniextendr",
