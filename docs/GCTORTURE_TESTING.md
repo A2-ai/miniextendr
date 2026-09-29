@@ -97,6 +97,9 @@ library(miniextendr)
 library(testthat)
 setTimeLimit(Inf, Inf, transient = FALSE)
 options(timeout = Inf)
+# test_dir() does not assume "not on CRAN" the way test_local() does, and the
+# gctorture blocks are opt-in (see "How CI runs the gctorture tests" below).
+Sys.setenv(NOT_CRAN = "true", MINIEXTENDR_STRESS = "true")
 
 gctorture2(step = 100, wait = 0, inhibit_release = FALSE)
 res <- test_dir(
@@ -139,29 +142,47 @@ For a tighter feedback loop while bisecting:
 
 ## How CI runs the gctorture tests (opt-in per PR)
 
-The gctorture-heavy testthat files (`test-gc-stress-fixtures.R`,
-`test-externalptr-self-root.R`, `test-iter-to-dataframe.R`,
-`test-dataframe-deserialize.R`) are ~31 of the suite's ~34 minutes, so CI runs
-them only in the sharded `r-stress-tests` job, never inside the other jobs
-that execute the suite. That job runs unconditionally on push-to-main, the
-weekly cron and `workflow_dispatch`; on a pull request it runs **only when the
-PR carries the `gc-stress` label** (the same opt-in shape as `heap-check` for
-the MALLOC_CHECK_ rounds). Label a PR that adds or changes a path holding
+The gctorture blocks in the testthat suite (mostly in
+`test-gc-stress-fixtures.R`, `test-externalptr-self-root.R`,
+`test-iter-to-dataframe.R` and `test-dataframe-deserialize.R`) are ~31 of the
+suite's ~34 minutes, so they are **opt-in**: each block calls
+`skip_gc_stress_if_disabled()` from `rpkg/tests/testthat/helper-gc-stress.R`
+and runs only when `MINIEXTENDR_STRESS` is true. The cheap structure / value
+assertions in the same files always run. The plain suite (`just devtools-test`,
+the `R CMD check` legs, the CRAN-like check, the `r-tests` job and its
+heap-check rounds, the feature legs, the webR smoke) leaves the variable unset
+and skips the stress blocks.
+
+Run them yourself when a change adds a path holding SEXPs across allocations:
+
+```bash
+just devtools-test-stress                     # the whole suite, stress blocks included
+just devtools-test-stress gc-stress-fixtures  # FILTER is positional
+```
+
+or use the per-function harness above for a faster loop.
+
+In CI, only the sharded `r-stress-tests` job and the nightly sweep set
+`MINIEXTENDR_STRESS`. `r-stress-tests` runs unconditionally on push-to-main,
+the weekly cron and `workflow_dispatch`; on a pull request it runs **only when
+the PR carries the `gc-stress` label** (the same opt-in shape as `heap-check`
+for the MALLOC_CHECK_ rounds). Label a PR that adds or changes a path holding
 SEXPs across allocations — `Vec<SEXP>`, sidecar fields, generic-list buffers,
 a new `gc_stress_*` fixture — and re-label after a force-push if the label was
 removed. An unlabeled PR skips the job, and a skipped job passes `ci-success`;
 a labeled PR whose shards fail blocks the merge. Two env vars, both handled by
-`rpkg/tests/testthat/helper-gc-stress.R`, orchestrate the split:
+`helper-gc-stress.R`, orchestrate the split:
 
-- `MINIEXTENDR_SKIP_STRESS=1` — skips the torture blocks (cheap structure /
-  value assertions in the same files keep running). Set by the `R CMD check`
-  legs, the CRAN-like check, and the `r-tests` job (including its heap-check
-  rounds). The helper also calls `skip_on_cran()`: a half-hour suite is far
-  beyond real CRAN's check budget. Note `skip_on_cran()` alone can't gate CI —
-  r-lib's setup actions export `NOT_CRAN=true` into every job.
+- `MINIEXTENDR_STRESS` — turns the torture blocks on. It is parsed with
+  `as.logical()`, so it accepts `true` / `TRUE` / `True` / `T`; anything else,
+  **including `1`**, leaves them off. The helper also calls `skip_on_cran()`
+  first: a half-hour suite is far beyond real CRAN's check budget. Note
+  `skip_on_cran()` alone can't gate CI — r-lib's setup actions export
+  `NOT_CRAN=true` into every job.
 - `MINIEXTENDR_STRESS_SHARD=k/n` — splits the dynamic no-arg fixture sweep in
   `test-gc-stress-fixtures.R` across the parallel `r-stress-tests` shards by
-  fixture index. Unset locally, so `just devtools-test` always runs everything.
+  fixture index. Unset locally, so `just devtools-test-stress` runs the whole
+  sweep.
 
 Main-branch coverage is unchanged by this layout — same fixtures, same
 iteration counts, run once per merge instead of five times. PR coverage is
@@ -175,13 +196,17 @@ Linux R-release runner, catching this class of bug before it reaches a release. 
 **wired up** at `.github/workflows/gctorture-nightly.yml` (#1024):
 
 - Scheduled at 04:00 UTC daily, plus `workflow_dispatch` for on-demand runs. It is
-  deliberately **not** on the `pull_request` / `push` matrix — the sweep takes 30–90
-  minutes, too expensive for a PR gate.
-- `timeout-minutes: 120` — ~2× the `r-check-linux` job's 60-minute budget, since the
-  step=100 sweep is ~100× slower than a baseline test run. The harness also calls
-  `setTimeLimit(Inf)` / `options(timeout = Inf)` so R's own wall-clock limits never
-  abort the (deliberately slow) run.
+  deliberately **not** on the `pull_request` / `push` matrix — the full sweep needs
+  ~11 hours of runner time, far too expensive for a PR gate, so it fans out over a
+  six-shard matrix (`MINIEXTENDR_GCTORTURE_SHARD=k/n` partitions the test files).
+- `timeout-minutes: 300` per shard (~2 hours of sweeping each, plus the build and
+  uneven file weights). The harness also calls `setTimeLimit(Inf)` /
+  `options(timeout = Inf)` so R's own wall-clock limits never abort the
+  (deliberately slow) run.
 - The torture logic lives in `just gctorture-full` (→ `scripts/gctorture-full-sweep.R`),
   so it is testable locally: `just gctorture-full` runs the same sweep, and
-  `just gctorture-full step=10` is the faster bisect mode. On failure the workflow
-  surfaces the offending test file(s) in the GitHub job summary.
+  `just gctorture-full 10` is the faster bisect mode (`STEP` is positional). On failure
+  the workflow surfaces the offending test file(s) in the GitHub job summary.
+- The recipe sets `MINIEXTENDR_STRESS=true` (the workflow sets it too), so the sweep
+  includes the opt-in gctorture blocks, and `NOT_CRAN=true`, which `test_dir()` does not
+  assume, so a local run covers the same `skip_on_cran()` tests as CI.

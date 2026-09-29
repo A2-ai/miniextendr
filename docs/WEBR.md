@@ -150,8 +150,8 @@ prints how to enter and remove it.
    an **informational testthat pass** (#1255): the runner installs testthat
    from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
    against the wasm install (`load_package = "installed"`, with
-   `MINIEXTENDR_SKIP_STRESS=1` so the gctorture files — which have their own
-   CI job — don't run under the much slower interpreter). Suite counts are
+   `MINIEXTENDR_STRESS` unset so the opt-in gctorture blocks — which have
+   their own CI job — don't run under the much slower interpreter). Suite counts are
    reported but test failures never gate: many tests legitimately fail or
    skip under wasm (worker-thread / fork / subprocess assumptions). Only a
    harness error before the counts line turns the gate red, and a 20-minute

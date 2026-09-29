@@ -1,23 +1,26 @@
-# CI orchestration for the gctorture-heavy test blocks.
+# Opt-in switch for the gctorture-heavy test blocks.
 #
-# The gctorture blocks in test-gc-stress-fixtures.R, test-externalptr-self-root.R,
-# test-iter-to-dataframe.R and test-dataframe-deserialize.R account for ~94% of
-# the suite's runtime (~32 of ~34 min). CI runs them only in the dedicated
-# sharded `r-stress-tests` job (push-to-main / cron / dispatch, or a PR that
-# carries the `gc-stress` label); every other job that runs the suite
-# (R CMD check legs, CRAN-like check, r-tests, heap-check rounds) sets
-# MINIEXTENDR_SKIP_STRESS=1 so it only pays for the fast tests. Local
-# `just devtools-test` sets neither variable and runs everything, unsharded.
-# The nightly gctorture2(step=100) full-suite sweep also runs everything.
-# See docs/GCTORTURE_TESTING.md.
+# The gctorture blocks (mostly in test-gc-stress-fixtures.R,
+# test-externalptr-self-root.R, test-iter-to-dataframe.R and
+# test-dataframe-deserialize.R) account for ~94% of the suite's runtime
+# (~32 of ~34 min), so they run only on request: set MINIEXTENDR_STRESS to a
+# true value. `just devtools-test-stress [FILTER]` does that locally; plain
+# `just devtools-test` and every CI job that runs the suite (R CMD check legs,
+# CRAN-like check, r-tests and its heap-check rounds, feature legs, the webR
+# smoke) leave it unset and skip them. In CI only the sharded `r-stress-tests`
+# job (push-to-main / cron / dispatch, or a PR carrying the `gc-stress` label)
+# and the nightly gctorture2(step=100) full-suite sweep set it.
+# Run the stress blocks when a change adds a path holding SEXPs across
+# allocations. See docs/GCTORTURE_TESTING.md.
 
-# Skip the calling test when GC-stress work is delegated to another CI job.
-# Also skips on CRAN: a half-hour gctorture pass is far beyond CRAN's check
-# time budget, and the nightly sweep is the real deep net.
+# Skip the calling test unless MINIEXTENDR_STRESS is true. The value is parsed
+# with as.logical(), so "true", "TRUE", "True" and "T" enable the blocks;
+# anything else (unset, "false", and also "1") leaves them off. Also skips on
+# CRAN: a half-hour gctorture pass is far beyond CRAN's check time budget.
 skip_gc_stress_if_disabled <- function() {
   skip_on_cran()
-  if (nzchar(Sys.getenv("MINIEXTENDR_SKIP_STRESS"))) {
-    skip("GC-stress block skipped: MINIEXTENDR_SKIP_STRESS is set (runs in the r-stress-tests CI job)")
+  if (!isTRUE(as.logical(Sys.getenv("MINIEXTENDR_STRESS", "false")))) {
+    skip("GC-stress block is opt-in: set MINIEXTENDR_STRESS=true or run `just devtools-test-stress`")
   }
 }
 

@@ -154,9 +154,12 @@ not exist. Skip it.
 ```bash
 just configure
 just r-cmd-install        # compiles Rust code -- needs dangerouslyDisableSandbox in Claude Code
-just devtools-test FILTER=basic
-just devtools-test FILTER=conversions
+just devtools-test basic
+just devtools-test conversions
 ```
+
+`FILTER` is a positional argument: `just devtools-test FILTER=basic` would pass
+the literal string `FILTER=basic` as the filter and match no test file.
 
 **Pass criteria:**
 1. `configure` generates `src/Makevars`.
@@ -166,36 +169,39 @@ just devtools-test FILTER=conversions
 ### Phase A3: High-Risk Runtime Filters
 
 Run after A2 with the example package (`rpkg/`) installed. These target the most crash-prone subsystems.
+They use `just devtools-test-stress`, which also runs the opt-in gctorture blocks
+(`MINIEXTENDR_STRESS=true`, see `rpkg/tests/testthat/helper-gc-stress.R`); the
+plain `just devtools-test` skips them.
 
 ```bash
-just devtools-test FILTER=gc-stress
-just devtools-test FILTER=panic
-just devtools-test FILTER=thread
-just devtools-test FILTER=worker
-just devtools-test FILTER=trait-abi
-just devtools-test FILTER=externalptr
-just devtools-test FILTER=class-systems
-just devtools-test FILTER=altrep
-just devtools-test FILTER=serde_r
-just devtools-test FILTER=feature-adapters
-just devtools-test FILTER=rayon
+just devtools-test-stress gc-stress
+just devtools-test-stress panic
+just devtools-test-stress thread
+just devtools-test-stress worker
+just devtools-test-stress trait-abi
+just devtools-test-stress externalptr
+just devtools-test-stress class-systems
+just devtools-test-stress altrep
+just devtools-test-stress serde_r
+just devtools-test-stress feature-adapters
+just devtools-test-stress rayon
 ```
 
 **Test file mapping (verify with `ls rpkg/tests/testthat/`):**
 
 | Filter | Matches |
 |--------|---------|
-| `gc-stress` | `test-gc-stress.R` (also `test-gc-protect.R`) |
-| `panic` | `test-panic.R` |
+| `gc-stress` | `test-gc-stress.R`, `test-gc-stress-fixtures.R` |
+| `panic` | `test-panic.R`, `test-panic-location.R`, `test-panic-telemetry.R` |
 | `thread` | `test-thread.R`, `test-thread-broken.R` |
-| `worker` | `test-worker.R` |
+| `worker` | `test-worker.R`, `test-worker-longjmp.R` |
 | `trait-abi` | `test-trait-abi.R` |
-| `externalptr` | `test-externalptr.R`, `test-externalptr-main.R` |
-| `class-systems` | `test-class-systems.R`, `test-class-system-matrix.R` |
+| `externalptr` | `test-externalptr.R`, `test-externalptr-*.R`, `test-vec-externalptr.R` |
+| `class-systems` | `test-class-systems.R` |
 | `altrep` | `test-altrep.R`, `test-altrep-*.R` (multiple files) |
 | `serde_r` | `test-serde_r.R` |
 | `feature-adapters` | `test-feature-adapters.R` |
-| `rayon` | `test-rayon.R` |
+| `rayon` | `test-rayon.R`, `test-dataframe-rayon.R` |
 
 **Pass criteria:**
 1. No test failures.
@@ -397,9 +403,9 @@ The `FILTER` argument to [`just devtools-test`](https://github.com/A2-ai/miniext
 names (without the `test-` prefix or `.R` suffix). Some filters may match
 multiple files. For example:
 
-- `FILTER=altrep` matches `test-altrep.R`, `test-altrep-builtins.R`,
+- `altrep` matches `test-altrep.R`, `test-altrep-builtins.R`,
   `test-altrep-helpers.R`, `test-altrep-serialization.R`, etc.
-- `FILTER=thread` matches both `test-thread.R` and `test-thread-broken.R`.
+- `thread` matches both `test-thread.R` and `test-thread-broken.R`.
 
 To see the full list of available test files:
 
@@ -467,7 +473,8 @@ Each platform runs in two modes:
 | `just vendor-sync-check` | A1 | Verify vendored crates match workspace |
 | `just configure` | A2 | Generate build config (dev mode) |
 | `just r-cmd-install` | A2 | `R CMD INSTALL rpkg` |
-| `just devtools-test FILTER=X` | A2, A3 | Run R tests matching filter |
+| `just devtools-test X` | A2 | Run R tests matching filter `X` (stress blocks skip) |
+| `just devtools-test-stress X` | A3 | Same, with the opt-in gctorture stress blocks |
 | `just vendor` | A4 | Package deps into `inst/vendor.tar.xz` |
 | `just r-cmd-check` | A4 | `rcmdcheck` with `--as-cran` |
 | `just cross-clean` | A5 | Clean cross-package build artifacts |

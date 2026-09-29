@@ -169,9 +169,11 @@ phase_a3_high_risk_tests() {
     feature-adapters
     rayon
   )
+  # MINIEXTENDR_STRESS=true turns on the opt-in gctorture blocks these
+  # high-risk files carry (rpkg/tests/testthat/helper-gc-stress.R).
   for filter in "${filters[@]}"; do
     log_info "Running high-risk filter: $filter"
-    Rscript -e "testthat::set_max_fails(Inf); devtools::test('rpkg', filter = '${filter}')"
+    MINIEXTENDR_STRESS=true Rscript -e "testthat::set_max_fails(Inf); devtools::test('rpkg', filter = '${filter}')"
   done
 }
 

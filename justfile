@@ -17,7 +17,8 @@
 #     just configure          - Configure R package build (dev mode, no vendoring)
 #     just configure-fast     - Skip configure when Makevars/.cargo/config.toml are up to date
 #     just vendor             - Vendor deps for CRAN release prep
-#     just devtools-test      - Run R package tests
+#     just devtools-test      - Run R package tests (skips the gctorture stress blocks)
+#     just devtools-test-stress - Run R package tests with the gctorture stress blocks
 #     just devtools-document  - Run roxygen2 (NAMESPACE + man pages)
 #     just rcmdinstall        - Build and install R package
 #
@@ -833,6 +834,12 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
     # .libPaths() wholesale, and in CI overriding R_LIBS_USER hides the
     # runner's dependency library (setup-r-dependencies installs there),
     # breaking loadNamespace with "there is no package called 'R6'".
+    # MINIEXTENDR_STRESS=true: the sweep covers the whole suite, including the
+    # opt-in gctorture blocks (rpkg/tests/testthat/helper-gc-stress.R).
+    # NOT_CRAN=true: test_dir() does not assume "not on CRAN" the way
+    # test_local() does, so without it every skip_on_cran() test (the stress
+    # blocks among them) skips locally. CI's r-lib setup exports it already.
+    export MINIEXTENDR_STRESS=true NOT_CRAN=true
     MINIEXTENDR_GCTORTURE_LIB="$libdir" Rscript scripts/gctorture-full-sweep.R rpkg/tests/testthat {{STEP}}
 
 # Deliberate lock updates go through `just update` / `just vendor` (they re-stamp
@@ -845,6 +852,22 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
     trap 'just cargo-lock-restore' EXIT
+    if [ -z "{{FILTER}}" ]; then
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
+    else
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'
+    fi
+
+# The plain suite skips the gctorture-heavy blocks (~32 of ~34 min); they run
+# only when MINIEXTENDR_STRESS is true (rpkg/tests/testthat/helper-gc-stress.R).
+# Run this when a change adds a path holding SEXPs across allocations. FILTER
+# is positional: `just devtools-test-stress gc-stress-fixtures`.
+# Load and test rpkg with devtools, including the gctorture stress blocks
+[script("bash")]
+devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
+    set -euo pipefail
+    trap 'just cargo-lock-restore' EXIT
+    export MINIEXTENDR_STRESS=true
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
     else

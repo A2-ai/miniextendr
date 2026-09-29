@@ -10,7 +10,8 @@ Package loads as `library(miniextendr)`, not `library(rpkg)` (DESCRIPTION's `Pac
 just configure          # REQUIRED before any R CMD op in dev mode
 just rcmdinstall        # build + install; compiles Rust, generates R wrappers
 just devtools-document  # roxygen2 → NAMESPACE + man/
-just devtools-test      # testthat
+just devtools-test      # testthat (skips the opt-in gctorture blocks)
+just devtools-test-stress  # testthat + the gctorture blocks (MINIEXTENDR_STRESS=true)
 just r-cmd-build / r-cmd-check  # tarball + check
 ```
 After **anything** that affects R wrapper output (proc-macro roxygen, `r_wrappers.rs`, adding `#[miniextendr]` fns) run `just rcmdinstall && just force-document`, then commit `NAMESPACE` + `man/*.Rd` in the same PR. `R/miniextendr-wrappers.R` and `src/rust/wasm_registry.rs` are **gitignored** (regenerated on every install, like `inst/vendor.tar.xz`) — nothing to commit there. CI's `just wrappers-sync-check` regenerates wrappers.R and git-diffs NAMESPACE + man to catch drift.
@@ -41,7 +42,7 @@ The tarball is **gitignored** (since 2026-04-18) — CI regenerates per-build. L
 Any compiling command (`devtools-document`, `rcmdinstall`, `cargo build`, `R CMD INSTALL/check`) needs `dangerouslyDisableSandbox: true` when invoked via the Bash tool.
 
 ## Gctorture fixtures
-Any new path storing SEXPs across allocations (typical: `Vec<SEXP>` / sidecar fields / generic-list buffers / `from_raw_pairs`/`from_raw_values` inputs) needs a no-arg `gc_stress_<feature>()` exported wrapper in `src/rust/gc_stress_fixtures.rs`. The fast gctorture sweep only exercises no-arg exports. See `docs/GCTORTURE_TESTING.md` and #430.
+Any new path storing SEXPs across allocations (typical: `Vec<SEXP>` / sidecar fields / generic-list buffers / `from_raw_pairs`/`from_raw_values` inputs) needs a no-arg `gc_stress_<feature>()` exported wrapper in `src/rust/gc_stress_fixtures.rs`. The fast gctorture sweep only exercises no-arg exports. The gctorture blocks in `tests/testthat/` are opt-in (`skip_gc_stress_if_disabled()` in `tests/testthat/helper-gc-stress.R`): run `just devtools-test-stress` before committing such a change, since plain `just devtools-test` skips them. See `docs/GCTORTURE_TESTING.md` and #430.
 
 ## S3 generics from impl blocks need a hand-written Rd alias
 A method in a `#[miniextendr(s3)]` impl block (inherent or trait impl) makes the generated wrappers `export()` a bare S3 generic (`parse_value`) next to the `S3method()` registration. The class Rd page aliases only the method (`parse_value.SerdeChecker`), so `R CMD check` reports the generic under "Undocumented code objects". Convention: add a roxygen block with `@name <generic>`, `@param x`, `@param ...` and a one-line title to `R/generics.R` (see the `check_value` / `parse_value` blocks there), or `@aliases <generic>` on the shared page when the method joins one with `@rdname` / `@describeIn` (see `R/range_summaries.R`). Neither `rcmdinstall` nor `force-document` warns about the omission. Verify against the installed package with `Rscript -e 'tools::undoc(package = "miniextendr", lib.loc = "rv/library/4.6/arm64")'` from the repo root (empty output = clean), or with the built-tarball check. `tools::undoc(dir = "rpkg")` does not report these generics (it returned nothing for the `box_*` generics in #1606 while the installed-package check listed them).

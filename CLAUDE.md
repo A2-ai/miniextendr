@@ -273,20 +273,24 @@ handles `Box<[T]>` generically — no macro changes needed for a new element typ
 
 Any change that adds a path holding an SEXP across allocations (typical:
 storing SEXPs in `Vec<SEXP>` / sidecars / generic-list buffers) needs a
-`gctorture(TRUE)` pass before commit. CI's stricter glibc R 4.6 release runner
+`gctorture(TRUE)` pass before commit: run `just devtools-test-stress` (or the
+per-function gctorture harness). CI's stricter glibc R 4.6 release runner
 aborts with `malloc(): unsorted double linked list corrupted` on these bugs;
 other runners silently corrupt and "pass." See `docs/GCTORTURE_TESTING.md`
 for the harness pattern (load package first, *then* enable gctorture;
 per-function loop is fastest; full `test_dir` sweep is for nightly).
 
-In CI the gctorture-heavy testthat files run only in the sharded
-`r-stress-tests` job, which is **opt-in on PRs via the `gc-stress` label**
-(unconditional on main-push / cron / dispatch); every other suite-running job
-sets `MINIEXTENDR_SKIP_STRESS=1` (see `rpkg/tests/testthat/helper-gc-stress.R`
-and `docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label
-any PR that adds SEXP storage. The webR workflow is opt-in the same way via
-the `webr` label. Locally both env vars are unset and `just devtools-test`
-runs everything.
+The gctorture-heavy testthat blocks (~32 of the suite's ~34 min) are
+**opt-in**: they run only when `MINIEXTENDR_STRESS` is true (`true`/`TRUE`/`T`,
+parsed by `as.logical()`, so `1` does **not** enable them; see
+`rpkg/tests/testthat/helper-gc-stress.R`). The plain suite, local
+`just devtools-test` included, skips them. `just devtools-test-stress [FILTER]`
+turns them on. In CI only the sharded `r-stress-tests` job and the nightly
+sweep set the variable; `r-stress-tests` is **opt-in on PRs via the
+`gc-stress` label** (unconditional on main-push / cron / dispatch; see
+`docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label any PR
+that adds SEXP storage. The webR workflow is opt-in the same way via the
+`webr` label.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with
