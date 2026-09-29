@@ -415,11 +415,16 @@ the text `"NaN"` (as the R guard refuses a numeric `NaN`), with the same
 `'x' must not be NA` / `'x' must not contain NA` condition. On
 `Option<AsNumeric>`, `NULL` still passes as `None`.
 
-The markers are input-only; return the inner `Vec<Option<f64>>` /
-`Option<f64>`. For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
+A marker converts to R as its inner `Vec<Option<f64>>` / `Option<f64>`, which
+it reads back unchanged, so a `#[miniextendr]` trait method can take one as a
+parameter (the trait ABI converts each argument both ways). Returning `.0`
+stays the idiom for a function.
+
+For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
 `AsFromStrVec<T>`: character input only, `NA` refused, and each failing value
 quoted in the error with its 1-based position
-(`"n/a": invalid digit found in string (element 2)`).
+(`"n/a": invalid digit found in string (element 2)`). They convert to R as
+their `Display` text.
 
 ### Labels from any atomic vector (`AsCharacter`)
 
@@ -472,8 +477,9 @@ along with `NA`, since `anyNA()` counts it. `no_na` also refuses an `NA` that
 only the conversion produces, checked after it: a factor `NA` level
 (`factor(x, exclude = NULL)`, whose code is not `NA`) and a class's
 `as.character()` method returning `NA`. `Option<AsCharacter>` /
-`Option<AsCharacterVec>` also accept `NULL` as `None`, and the markers are
-input-only: return the inner `Vec<Option<String>>` / `Option<String>`.
+`Option<AsCharacterVec>` also accept `NULL` as `None`. Like `AsNumeric`, the
+markers convert to R as their inner `Vec<Option<String>>` / `Option<String>`
+(for trait-method parameters); returning `.0` stays the idiom.
 
 ---
 

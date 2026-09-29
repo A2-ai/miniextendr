@@ -1,12 +1,18 @@
 //! `AsNumeric` / `AsNumericVec` against a real R runtime: every accepted input
 //! type, `NA` of every type, factor labels (not codes), R's string parsing via
 //! `R_strtod`, and the batched `non-numeric value(s)` error. Also the
-//! `AsFromStr` / `AsFromStrVec` NA and quoting behaviour.
+//! `AsFromStr` / `AsFromStrVec` NA and quoting behaviour, and each marker's
+//! `IntoR` value read back by its `TryFromSexp`.
 
 mod r_test_utils;
 
+use std::net::IpAddr;
+
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
-use miniextendr_api::{AsFromStr, AsFromStrVec, AsNumeric, AsNumericVec, SEXP, r_str};
+use miniextendr_api::gc_protect::OwnedProtect;
+use miniextendr_api::{
+    AsFromStr, AsFromStrVec, AsNumeric, AsNumericVec, IntoR, SEXP, SEXPTYPE, SexpExt, r_str,
+};
 
 /// Evaluate `src` and convert the result right away (conversion allocates no
 /// R memory, so the unprotected result stays valid).
@@ -18,6 +24,14 @@ fn vec_of(src: &str) -> Result<Vec<Option<f64>>, SexpError> {
 fn scalar_of(src: &str) -> Result<Option<f64>, SexpError> {
     let sexp: SEXP = r_str!(src).expect("R source should evaluate");
     AsNumeric::try_from_sexp(sexp).map(|v| v.0)
+}
+
+/// `value` to R and back, the way a trait's View hands an argument to the
+/// implementing method: the R value's type, and the value read back from it.
+fn round_trip<T: IntoR + TryFromSexp<Error = SexpError>>(value: T) -> (SEXPTYPE, T) {
+    let sexp = unsafe { OwnedProtect::new(value.into_sexp()) };
+    let back = T::try_from_sexp(sexp.get()).expect("a marker reads its own R value back");
+    (sexp.get().type_of(), back)
 }
 
 fn invalid_message(err: SexpError) -> String {
@@ -38,6 +52,7 @@ fn as_numeric_suite() {
         other_types_are_refused();
         scalar_checks_length();
         from_str_reports_na_and_quotes_values();
+        markers_round_trip();
     });
 }
 
@@ -167,4 +182,45 @@ fn from_str_reports_na_and_quotes_values() {
         msg,
         r#""n/a": invalid digit found in string (element 2); NA is not allowed (element 3)"#
     );
+}
+
+fn markers_round_trip() {
+    // `Some(marker(None))` is `NA`, not `NULL`, so it comes back as itself.
+    assert_eq!(
+        round_trip(Some(AsNumeric(None))),
+        (SEXPTYPE::REALSXP, Some(AsNumeric(None)))
+    );
+    assert_eq!(round_trip(None::<AsNumeric>), (SEXPTYPE::NILSXP, None));
+    let v = AsNumericVec(vec![Some(1.5), None]);
+    assert_eq!(round_trip(Some(v.clone())), (SEXPTYPE::REALSXP, Some(v)));
+    assert_eq!(round_trip(None::<AsNumericVec>), (SEXPTYPE::NILSXP, None));
+
+    // `-0.0` keeps its sign, and a NaN made in Rust stays `Some(NaN)`.
+    let (_, back) = round_trip(AsNumeric(Some(-0.0)));
+    assert_eq!(back.0.map(f64::to_bits), Some((-0.0_f64).to_bits()));
+    let (_, back) = round_trip(AsNumeric(Some(f64::NAN)));
+    assert!(
+        back.0.is_some_and(f64::is_nan),
+        "a Rust NaN stays Some(NaN)"
+    );
+    // A NaN carrying R's NA payload (what a plain `f64` argument holds for
+    // `NA_real_`) is NA to R, so it reads back as `None`.
+    let na_payload = f64::from_bits(0x7FF0_0000_0000_07A2);
+    assert_eq!(
+        round_trip(AsNumeric(Some(na_payload))),
+        (SEXPTYPE::REALSXP, AsNumeric(None))
+    );
+    assert_eq!(
+        round_trip(AsNumericVec(vec![])),
+        (SEXPTYPE::REALSXP, AsNumericVec(vec![]))
+    );
+
+    // `AsFromStr` crosses as its `Display` text, not as `.0`.
+    let (ty, back) = round_trip(AsFromStr(2.5_f64));
+    assert_eq!((ty, back.0), (SEXPTYPE::STRSXP, 2.5));
+    let addr: IpAddr = "::1".parse().unwrap();
+    let (ty, back) = round_trip(AsFromStrVec(vec![addr]));
+    assert_eq!((ty, back.0), (SEXPTYPE::STRSXP, vec![addr]));
+    let (ty, back) = round_trip(AsFromStrVec::<IpAddr>(vec![]));
+    assert_eq!((ty, back.0), (SEXPTYPE::STRSXP, vec![]));
 }

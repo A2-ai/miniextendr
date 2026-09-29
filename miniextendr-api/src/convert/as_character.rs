@@ -6,6 +6,7 @@ use crate::expression::{RCall, RSymbol};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::impl_option_try_from_sexp;
+use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Marker types
@@ -82,9 +83,18 @@ pub struct AsCharacter(pub Option<String>);
 /// checked the same way.
 ///
 /// `Option<AsCharacterVec>` (and `Option<AsCharacter>`) also accept `NULL` as
-/// `None`. The markers are input-only: there is no `IntoR`. Return the inner
-/// `Vec<Option<String>>` / `Option<String>`, which already converts to a
-/// character vector with `NA`.
+/// `None`.
+///
+/// # `IntoR`
+///
+/// The markers convert to R as their inner `Vec<Option<String>>` /
+/// `Option<String>`: a character vector with `NA_character_` for `None`,
+/// which the marker reads back unchanged (`"NA"` and `""` stay strings), and
+/// `Option<marker>` gives `NULL` for `None`. That is what lets a
+/// `#[miniextendr]` trait method take a marker parameter: the trait's View
+/// converts each argument with `IntoR` and the implementing side reads it
+/// back with `TryFromSexp`. A `#[miniextendr]` function returning a marker
+/// gives the same R value as returning `.0`; returning `.0` stays the idiom.
 ///
 /// # Example
 ///
@@ -138,6 +148,56 @@ impl TryFromSexp for AsCharacter {
 
 impl_option_try_from_sexp!(AsCharacter);
 impl_option_try_from_sexp!(AsCharacterVec);
+// endregion
+
+// region: IntoR (the inner value)
+
+// A marker converts to R as its inner value, which the marker reads back
+// unchanged: `None` is `NA_character_`, and `"NA"` / `""` stay strings. A
+// trait's View passes a marker argument to the implementing method this way.
+
+impl IntoR for AsCharacter {
+    type Error = <Option<String> as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        self.0.try_into_sexp()
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        unsafe { self.0.try_into_sexp_unchecked() }
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.0.into_sexp()
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.0.into_sexp_unchecked() }
+    }
+}
+
+impl IntoR for AsCharacterVec {
+    type Error = <Vec<Option<String>> as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        self.0.try_into_sexp()
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        unsafe { self.0.try_into_sexp_unchecked() }
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.0.into_sexp()
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.0.into_sexp_unchecked() }
+    }
+}
+
+impl_option_into_r_null!(AsCharacter);
+impl_option_into_r_null!(AsCharacterVec);
 // endregion
 
 // region: SEXP dispatch

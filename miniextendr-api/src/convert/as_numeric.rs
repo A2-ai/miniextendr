@@ -8,6 +8,7 @@ use crate::from_r::{
     is_na_real, map_strsxp_with,
 };
 use crate::impl_option_try_from_sexp;
+use crate::into_r::IntoR;
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 
 // region: Marker types
@@ -88,9 +89,19 @@ pub struct AsNumeric(pub Option<f64>);
 /// `#[derive(TryFromSexp)]` newtype of the marker is checked the same way.
 ///
 /// `Option<AsNumericVec>` (and `Option<AsNumeric>`) also accept `NULL` as
-/// `None`. The markers are input-only: there is no `IntoR`. Return the inner
-/// `Vec<Option<f64>>` / `Option<f64>`, which already converts to a double
-/// vector with `NA`.
+/// `None`.
+///
+/// # `IntoR`
+///
+/// The markers convert to R as their inner `Vec<Option<f64>>` /
+/// `Option<f64>`: a double vector with `NA` for `None`, which the marker
+/// reads back unchanged (`NaN` stays `Some(NaN)`, though a NaN carrying R's
+/// NA payload reads back as `None`, as `R_IsNA` says), and `Option<marker>`
+/// gives `NULL` for `None`. That is what lets a `#[miniextendr]` trait method
+/// take a marker parameter: the trait's View converts each argument with
+/// `IntoR` and the implementing side reads it back with `TryFromSexp`. A
+/// `#[miniextendr]` function returning a marker gives the same R value as
+/// returning `.0`; returning `.0` stays the idiom.
 ///
 /// # Example
 ///
@@ -154,6 +165,58 @@ impl_option_try_from_sexp!(AsNumericVec);
 fn refused_by_no_na(value: Option<f64>) -> bool {
     value.is_none_or(f64::is_nan)
 }
+// endregion
+
+// region: IntoR (the inner value)
+
+// A marker converts to R as its inner value, which the marker reads back
+// unchanged: `None` is `NA_real_` and `Some(NaN)` stays `NaN` (a NaN carrying
+// R's NA payload, as from a plain `f64` argument given `NA_real_`, reads back
+// as `None`). A trait's View passes a marker argument to the implementing
+// method this way.
+
+impl IntoR for AsNumeric {
+    type Error = <Option<f64> as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        self.0.try_into_sexp()
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        unsafe { self.0.try_into_sexp_unchecked() }
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.0.into_sexp()
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.0.into_sexp_unchecked() }
+    }
+}
+
+impl IntoR for AsNumericVec {
+    type Error = <Vec<Option<f64>> as IntoR>::Error;
+    #[inline]
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        self.0.try_into_sexp()
+    }
+    #[inline]
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        unsafe { self.0.try_into_sexp_unchecked() }
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.0.into_sexp()
+    }
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.0.into_sexp_unchecked() }
+    }
+}
+
+impl_option_into_r_null!(AsNumeric);
+impl_option_into_r_null!(AsNumericVec);
 // endregion
 
 // region: SEXP dispatch

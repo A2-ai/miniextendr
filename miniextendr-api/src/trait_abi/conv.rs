@@ -124,7 +124,15 @@ where
 /// Convert a Rust value to an R SEXP.
 ///
 /// Calls [`IntoR::into_sexp`](crate::IntoR::into_sexp) to produce an R value.
-/// Used in trait ABI method shims.
+/// Used in trait ABI method shims for the result, and by a trait's View for
+/// each argument, which the shim reads back with [`extract_arg`]
+/// (`TryFromSexp`). So a trait-method parameter type needs both directions:
+/// the reading markers cross as their inner value
+/// ([`AsNumeric`](crate::convert::AsNumeric) as `Option<f64>`, and so on) and
+/// [`AsFromStr`](crate::convert::AsFromStr) as its text; `Missing<T>` goes
+/// through [`missing_to_sexp`] instead. Parameter checks such as `no_na` run
+/// in the implementing method's R-facing wrappers, so they check R arguments,
+/// not the typed values a View caller passes.
 ///
 /// # Type Parameters
 ///
@@ -165,7 +173,8 @@ where
 /// missing-argument sentinel, which the shim's `TryFromSexp for Missing<T>`
 /// reads back as `Absent` (the same sentinel an R wrapper forwards for an
 /// omitted argument), and `Present(value)` converts `value` with
-/// [`to_sexp`].
+/// [`to_sexp`], so `T` needs `IntoR` like any other argument type
+/// (`Missing<AsNumeric>` crosses as the sentinel or the number).
 ///
 /// `Missing<T>` has no `IntoR` impl on purpose: the sentinel is an argument
 /// marker, not a value to hand back to R. Only the View's argument array
