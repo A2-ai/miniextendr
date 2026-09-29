@@ -1,11 +1,13 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 4419
 expression: generate_s3_r_wrapper(&parsed)
 ---
 # Counter::new (1:1)
 #' @title Counter S3 Class
 #' @name Counter
 #' @rdname Counter
+#' @param value (undocumented)
 #' @export
 new_counter <- function(value) {
   if (!isTRUE(is.integer(value))) .miniextendr_arg_error("value", "must be integer")

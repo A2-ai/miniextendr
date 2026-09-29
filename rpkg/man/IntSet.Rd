@@ -24,4 +24,10 @@ IntSet
 }
 \description{
 IntSet inherent methods: membership test.
+
+Arguments of \code{IntSet$contains()}:
+
+\describe{
+\item{\code{value}}{Integer value to check for membership.}
+}
 }

@@ -1158,7 +1158,9 @@ Tags on **method** doc comments are not stripped: `@param`, `@return`,
 generated wrapper verbatim (undocumented parameters get an auto-generated
 `@param name (undocumented)` line, except when the method's own `@rdname`,
 `@describeIn` or `@inheritParams` sends it to a page that documents them; see
-[Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages)). A
+[Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages); env
+methods, which have no usage section, get no filler, and their choice
+parameters get a `\describe` item instead). A
 method that joins another topic also drops the generator's fixed `x` / `...`
 lines and sorts after that topic's own block. `@describeIn` works on the
 methods whose wrapper is a plain R function (S3 instance methods, static

@@ -21,5 +21,15 @@ EnvMatchArgCounter
 \item{name}{Method name for dispatch.}
 }
 \description{
-EnvMatchArgCounter Class
+Arguments of \code{EnvMatchArgCounter$new()}:
+
+\describe{
+\item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+}
+
+Arguments of \code{EnvMatchArgCounter$reset()}:
+
+\describe{
+\item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+}
 }

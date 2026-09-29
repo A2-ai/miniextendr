@@ -610,6 +610,136 @@ impl<'a> MethodContext<'a> {
     }
 }
 
+// region: generated parameter docs
+
+/// The formals of `r_params` that `doc_tags` leaves undocumented, each with
+/// its choice text from `choice_docs` (the write-time placeholder of a
+/// `match_arg` parameter, the literal line of a `choices(...)` one), or
+/// `None` for a formal that has none. Skips `self`, `.ptr` and `...`, and
+/// yields nothing when the tags take the arguments from another topic
+/// (`roxygen::params_documented_elsewhere` against `page`, #1590). The class
+/// page default a builder appends is not in `doc_tags`, and an author
+/// `@rdname` naming `page` is the same page, so neither suppresses them.
+///
+/// Splits on top-level commas only: a naive `split(", ")` shreds a
+/// `mode = c("fast", "slow")` default into a bogus `"slow")` formal.
+fn generated_params<'p, 'd>(
+    r_params: &'p str,
+    doc_tags: &[String],
+    page: &str,
+    choice_docs: Option<&'d std::collections::HashMap<String, String>>,
+) -> Vec<(&'p str, Option<&'d str>)> {
+    if crate::roxygen::params_documented_elsewhere(doc_tags, Some(page)) {
+        return Vec::new();
+    }
+    crate::roxygen::split_r_formals(r_params)
+        .into_iter()
+        .map(crate::roxygen::formal_name)
+        .filter(|name| !matches!(*name, ".ptr" | "..." | "self"))
+        .filter(|name| !crate::roxygen::param_documented(doc_tags, name))
+        .map(|name| {
+            let choice = choice_docs
+                .and_then(|docs| docs.get(name))
+                .map(String::as_str);
+            (name, choice)
+        })
+        .collect()
+}
+
+/// Push one `#' @param name text` line per [`generated_params`] entry: the
+/// choice text for a choice parameter, `(undocumented)` otherwise (so
+/// `R CMD check` codoc sees every formal in `\usage` documented).
+fn push_param_filler(
+    lines: &mut Vec<String>,
+    r_params: &str,
+    doc_tags: &[String],
+    page: &str,
+    choice_docs: Option<&std::collections::HashMap<String, String>>,
+) {
+    for (name, choice) in generated_params(r_params, doc_tags, page, choice_docs) {
+        lines.push(format!(
+            "#' @param {name} {}",
+            choice.unwrap_or("(undocumented)")
+        ));
+    }
+}
+
+/// The documentation body of a method block that has no `\usage` (env
+/// methods): the author tags `forward` accepts, verbatim, then one
+/// `\describe{}` list with the author's `@param` items followed by the
+/// choice items of [`generated_params`]. A formal without choice text gets no
+/// item (nothing in `\usage` asks for one), and no `@param` line is emitted:
+/// with no usage entry to match, roxygen2 would write an `\arguments` entry
+/// that `R CMD check` reports as "Documented arguments not in \usage".
+///
+/// The list continues the section of the forwarded tag before it (after a
+/// blank line; after `@details` when that tag is `@examples` /
+/// `@examplesIf`, whose code block a blank line does not end; directly after
+/// `@title`). With no forwarded tag, `@description Arguments of
+/// \code{<label>()}:` and a blank line open it: an untagged list would be the
+/// block's intro paragraph, i.e. its title, which roxygen2 drops on the class
+/// page the block merges into.
+///
+/// `doc_tags` is the full tag list, so a page tag that `forward` rejects
+/// still sends the arguments elsewhere. Emits nothing when there is neither a
+/// forwarded tag nor an item.
+pub(crate) fn describe_params_lines(
+    doc_tags: &[String],
+    forward: impl Fn(&str) -> bool,
+    r_params: &str,
+    page: &str,
+    choice_docs: Option<&std::collections::HashMap<String, String>>,
+    label: &str,
+) -> Vec<String> {
+    let (param_tags, other_tags): (Vec<&str>, Vec<&str>) = doc_tags
+        .iter()
+        .map(String::as_str)
+        .filter(|tag| forward(tag))
+        .partition(|tag| tag.trim_start().starts_with("@param "));
+    let item = |name: &str, desc: &str| format!("  \\item{{\\code{{{name}}}}}{{{desc}}}");
+    let mut items: Vec<String> = param_tags
+        .iter()
+        .filter_map(|tag| {
+            let rest = tag.trim_start().strip_prefix("@param ")?;
+            let (name, desc) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+            Some(item(name, desc))
+        })
+        .collect();
+    items.extend(
+        generated_params(r_params, doc_tags, page, choice_docs)
+            .into_iter()
+            .filter_map(|(name, choice)| Some(item(name, choice?))),
+    );
+
+    let mut lines = Vec::new();
+    crate::roxygen::push_roxygen_tags_str(&mut lines, &other_tags);
+    if items.is_empty() {
+        return lines;
+    }
+    match other_tags.last() {
+        None => {
+            // `%` starts an Rd comment and `\` an escape, also inside `\code{}`.
+            let label = label.replace('\\', "\\\\").replace('%', "\\%");
+            lines.push(format!("#' @description Arguments of \\code{{{label}()}}:"));
+            lines.push("#'".to_string());
+        }
+        Some(tag) if tag.trim_start().starts_with("@examples") => {
+            lines.push("#' @details".to_string());
+        }
+        // A blank line after `@title` would make a multi-paragraph title.
+        Some(_) if lines.last().is_some_and(|line| line.contains("@title")) => {}
+        Some(_) => lines.push("#'".to_string()),
+    }
+    lines.push("#' \\describe{".to_string());
+    // One `#' ` per line, so a wrapped `@param` stays inside the block.
+    let item_refs: Vec<&str> = items.iter().map(String::as_str).collect();
+    crate::roxygen::push_roxygen_tags_str(&mut lines, &item_refs);
+    lines.push("#' }".to_string());
+    lines
+}
+
+// endregion
+
 /// Builder for class-level roxygen documentation header.
 ///
 /// Generates the common roxygen tags that appear at the start of each class definition:
@@ -617,6 +747,9 @@ impl<'a> MethodContext<'a> {
 /// - `@name` (unless user provided)
 /// - `@rdname` (unless user provided)
 /// - User-provided doc tags
+/// - `@param` for the constructor formals the tags leave undocumented, when
+///   set (`with_ctor_params`; S3 and vctrs, whose class block is the
+///   constructor's block)
 /// - `@source Generated by miniextendr...`
 /// - Class-system-specific imports
 /// - `@export` (unless user provided, `@noRd`, or internal/noexport flags)
@@ -640,6 +773,10 @@ pub struct ClassDocBuilder<'a> {
     /// When `true`, suppresses `@export` but does not add `@keywords internal`.
     /// Set by `#[miniextendr(noexport)]`.
     attr_noexport: bool,
+    /// The constructor's R formals and its choice-parameter `@param` text
+    /// ([`choice_param_doc_map`]), for classes whose class block documents
+    /// the constructor (S3, vctrs). See [`ClassDocBuilder::with_ctor_params`].
+    ctor_params: Option<(&'a str, &'a std::collections::HashMap<String, String>)>,
 }
 
 impl<'a> ClassDocBuilder<'a> {
@@ -661,7 +798,24 @@ impl<'a> ClassDocBuilder<'a> {
             imports: None,
             attr_internal: false,
             attr_noexport: false,
+            ctor_params: None,
         }
+    }
+
+    /// Document the constructor's formals on the class block: each formal the
+    /// doc tags leave undocumented gets `@param name <choice text>` for a
+    /// choice parameter and `@param name (undocumented)` otherwise, right after
+    /// the doc tags. Nothing under `@noRd` / plain `noexport`, or when the tags
+    /// take the arguments from another topic (`@rdname other`,
+    /// `@inheritParams`). For generators whose class block is the
+    /// constructor's block (S3 `new_<class>()`, vctrs `new_<class>()`).
+    pub fn with_ctor_params(
+        mut self,
+        params: &'a str,
+        choice_docs: &'a std::collections::HashMap<String, String>,
+    ) -> Self {
+        self.ctor_params = Some((params, choice_docs));
+        self
     }
 
     /// Set R package imports (e.g., "@importFrom R6 R6Class").
@@ -723,6 +877,15 @@ impl<'a> ClassDocBuilder<'a> {
         }
         crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
         if !suppress_rd {
+            if let Some((params, choice_docs)) = self.ctor_params {
+                push_param_filler(
+                    &mut lines,
+                    params,
+                    self.doc_tags,
+                    self.class_name,
+                    Some(choice_docs),
+                );
+            }
             // An impl-level `@rdname topic` puts the class block on an author
             // topic, whose own block names and titles the page (#1590).
             crate::roxygen::push_order_after_topic_blocks(
@@ -778,7 +941,8 @@ pub struct MethodDocBuilder<'a> {
     /// `#' @noRd` and skips all other documentation tags.
     class_has_no_rd: bool,
     /// When `true`, convert `@param` tags into `\describe{}` blocks instead of
-    /// roxygen `@param` entries.
+    /// roxygen `@param` entries, with the choice text of undocumented choice
+    /// parameters as extra items ([`describe_params_lines`]).
     ///
     /// Used for env-class methods where roxygen cannot infer `\usage` from
     /// `Class$method <- function()`. Without this, `@param` tags create
@@ -786,7 +950,8 @@ pub struct MethodDocBuilder<'a> {
     /// warnings ("Documented arguments not in \\usage").
     params_as_details: bool,
     /// Optional comma-separated R parameter string for auto-generating `@param` tags.
-    /// When set, any parameter not already documented gets `@param name (undocumented)`.
+    /// When set, any parameter not already documented gets `@param name (undocumented)`
+    /// (in `params_as_details` mode only a choice parameter gets an item).
     r_params: Option<&'a str>,
     /// When `true`, filter out `@param` tags from the doc_tags before pushing.
     ///
@@ -871,7 +1036,11 @@ impl<'a> MethodDocBuilder<'a> {
     ///
     /// Used for env-class methods where roxygen can't infer `\usage` from `Class$method <- function()`.
     /// Without this, `@param` tags create `\arguments` entries with no matching `\usage`,
-    /// causing R CMD check warnings ("Documented arguments not in \\usage").
+    /// causing R CMD check warnings ("Documented arguments not in \\usage"). With
+    /// [`with_r_params`](Self::with_r_params) and
+    /// [`with_choice_param_docs`](Self::with_choice_param_docs), an undocumented
+    /// choice parameter gets a list item with its choice text; no parameter
+    /// gets an `(undocumented)` filler.
     pub fn with_params_as_details(mut self) -> Self {
         self.params_as_details = true;
         self
@@ -915,41 +1084,27 @@ impl<'a> MethodDocBuilder<'a> {
             return lines;
         }
 
-        if !self.doc_tags.is_empty() {
-            if self.params_as_details {
-                // For env-class: emit non-@param tags normally, convert @param to \describe
-                let (param_tags, other_tags): (Vec<_>, Vec<_>) = self
-                    .doc_tags
-                    .iter()
-                    .partition(|t| t.trim_start().starts_with("@param "));
-                let other_refs: Vec<&str> = other_tags.iter().map(|s| s.as_str()).collect();
-                crate::roxygen::push_roxygen_tags_str(&mut lines, &other_refs);
-                if !param_tags.is_empty() {
-                    // Only add blank separator if the previous line isn't @title
-                    // (roxygen2 treats blank lines after @title as multi-paragraph titles)
-                    let last_is_title = lines.last().is_some_and(|l| l.contains("@title"));
-                    let last_is_examples = other_refs
-                        .last()
-                        .is_some_and(|tag| tag.trim_start().starts_with("@examples"));
-                    if last_is_examples {
-                        // End the code block before appending prose parameters.
-                        // A blank line alone remains inside @examples/@examplesIf.
-                        lines.push("#' @details".to_string());
-                    } else if !last_is_title {
-                        lines.push("#'".to_string());
-                    }
-                    lines.push("#' \\describe{".to_string());
-                    for tag in &param_tags {
-                        if let Some(rest) = tag.trim_start().strip_prefix("@param ") {
-                            let mut parts = rest.splitn(2, char::is_whitespace);
-                            let name = parts.next().unwrap_or("");
-                            let desc = parts.next().unwrap_or("");
-                            lines.push(format!("#'   \\item{{\\code{{{name}}}}}{{{desc}}}"));
-                        }
-                    }
-                    lines.push("#' }".to_string());
-                }
-            } else if self.suppress_params {
+        let r_name = if let Some(ref r_name) = self.r_name_override {
+            r_name.clone()
+        } else if let Some(prefix) = self.name_prefix {
+            format!("{}{}{}", self.class_name, prefix, self.method_name)
+        } else {
+            self.method_name.to_string()
+        };
+
+        if self.params_as_details {
+            // Env methods: no `\usage`, so the author's `@param` tags and the
+            // choice text go into a `\describe{}` list (no `@param` filler).
+            lines.extend(describe_params_lines(
+                self.doc_tags,
+                |_| true,
+                self.r_params.unwrap_or(""),
+                self.class_name,
+                self.choice_param_docs,
+                &r_name,
+            ));
+        } else {
+            if self.suppress_params {
                 // Filter out @param tags — they would create "Documented arguments
                 // not in \usage" warnings for S4/S7 methods.
                 let filtered: Vec<&str> = self
@@ -966,46 +1121,22 @@ impl<'a> MethodDocBuilder<'a> {
             } else {
                 crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
             }
-        }
 
-        // Auto-generate @param for undocumented method parameters, unless the
-        // method's own tags send it to a topic that documents them (`@rdname`,
-        // `@describeIn`) or inherit them (`@inheritParams`, #1590). The class
-        // page default below is not in `doc_tags`, and an author `@rdname`
-        // naming the class page is the same page, so neither suppresses them.
-        // Split on top-level commas only — a naive `split(", ")` shreds a
-        // `mode = c("fast", "slow")` default into a bogus `"slow")` formal,
-        // which surfaces as a spurious @param and an R CMD check warning.
-        if let Some(params) = self.r_params
-            && !crate::roxygen::params_documented_elsewhere(self.doc_tags, Some(self.class_name))
-        {
-            for param in crate::roxygen::split_r_formals(params) {
-                let param_name = crate::roxygen::formal_name(param);
-                if param_name == ".ptr" || param_name == "..." || param_name == "self" {
-                    continue;
-                }
-                let already_documented =
-                    crate::roxygen::param_documented(self.doc_tags, param_name);
-                if !already_documented {
-                    // Choice params get their choice text (a match_arg
-                    // placeholder is rendered by the cdylib write pass, #210).
-                    let body = self
-                        .choice_param_docs
-                        .and_then(|m| m.get(param_name))
-                        .map(|s| s.as_str())
-                        .unwrap_or("(undocumented)");
-                    lines.push(format!("#' @param {} {}", param_name, body));
-                }
+            // Auto-generate @param for undocumented method parameters, unless
+            // the method's own tags send it to a topic that documents them
+            // (`@rdname`, `@describeIn`) or inherit them (`@inheritParams`,
+            // #1590). Choice params get their choice text (a match_arg
+            // placeholder is rendered by the cdylib write pass, #210).
+            if let Some(params) = self.r_params {
+                push_param_filler(
+                    &mut lines,
+                    params,
+                    self.doc_tags,
+                    self.class_name,
+                    self.choice_param_docs,
+                );
             }
         }
-
-        let r_name = if let Some(ref r_name) = self.r_name_override {
-            r_name.clone()
-        } else if let Some(prefix) = self.name_prefix {
-            format!("{}{}{}", self.class_name, prefix, self.method_name)
-        } else {
-            self.method_name.to_string()
-        };
 
         // A method-level `@describeIn topic ...` lists the method in `topic`'s
         // "Functions" section. roxygen2 rejects it next to `@name` or `@rdname`
@@ -1358,5 +1489,195 @@ mod tests {
             );
             assert!(lines.iter().any(|l| l == title), "{lines:?}");
         }
+    }
+
+    fn tags_of(tags: &[&str]) -> Vec<String> {
+        tags.iter().map(|t| t.to_string()).collect()
+    }
+
+    fn choice_docs(entries: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    /// An S3 / vctrs constructor gets one generated `@param` per formal its
+    /// tags leave undocumented, before `@export`: the choice text for a
+    /// choice parameter, `(undocumented)` otherwise. An author `@param` is
+    /// kept and not repeated; `@noRd`, `noexport` and `@inheritParams` get
+    /// none.
+    #[test]
+    fn class_ctor_params_fill_undocumented_formals() {
+        let type_ident: syn::Ident = syn::parse_quote!(Point);
+        let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
+        let params = "x, y = 1, mode = c(\"a\", \"b\"), ...";
+        let build = |tags: &[&str], internal: bool, noexport: bool| {
+            let tags = tags_of(tags);
+            ClassDocBuilder::new("Point", &type_ident, &tags, "S3")
+                .with_ctor_params(params, &docs)
+                .with_export_control(internal, noexport)
+                .build()
+        };
+
+        let lines = build(&["@param x The x coordinate."], false, false);
+        assert_eq!(
+            lines,
+            [
+                "#' @title Point S3 Class",
+                "#' @name Point",
+                "#' @rdname Point",
+                "#' @param x The x coordinate.",
+                "#' @param y (undocumented)",
+                "#' @param mode One of \"a\", \"b\".",
+                "#' @export",
+            ],
+            "{lines:#?}"
+        );
+
+        let internal = build(&[], true, false);
+        assert!(
+            internal.contains(&"#' @param x (undocumented)".to_string()),
+            "{internal:#?}"
+        );
+
+        for (tags, noexport) in [
+            (&["@noRd"][..], false),
+            (&[][..], true),
+            (&["@inheritParams point_ops"][..], false),
+        ] {
+            let lines = build(tags, false, noexport);
+            assert!(
+                !lines.iter().any(|l| l.starts_with("#' @param")),
+                "{tags:?} noexport={noexport}: {lines:#?}"
+            );
+        }
+    }
+
+    fn env_docs(
+        tags: &[&str],
+        params: &str,
+        docs: &std::collections::HashMap<String, String>,
+    ) -> Vec<String> {
+        let type_ident: syn::Ident = syn::parse_quote!(Example);
+        let tags = tags_of(tags);
+        super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
+            .with_name_prefix("$")
+            .with_params_as_details()
+            .with_r_params(params)
+            .with_choice_param_docs(docs)
+            .build()
+    }
+
+    /// An env method (no `\usage`) lists the author's `@param` items and then
+    /// the choice items in one `\describe{}`, with no `(undocumented)` item
+    /// and no `@param` line (roxygen2 would report "Documented arguments not
+    /// in \usage"). Without a tag before the list, a labelled
+    /// `@description` lead-in and a blank line open it.
+    #[test]
+    fn env_params_share_one_describe_list() {
+        let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
+        let params = "n, plain, mode = c(\"a\", \"b\")";
+
+        for tags in [&[][..], &["@param n Amount."][..]] {
+            let lines = env_docs(tags, params, &docs);
+            assert!(!lines.iter().any(|l| l.contains("@param")), "{lines:#?}");
+            assert!(
+                !lines.iter().any(|l| l.contains("undocumented")),
+                "{lines:#?}"
+            );
+            assert_eq!(lines.iter().filter(|l| *l == "#' \\describe{").count(), 1);
+            let joined = lines.join("\n");
+            assert!(
+                joined.starts_with(
+                    "#' @description Arguments of \\code{Example$new()}:\n#'\n#' \\describe{\n"
+                ),
+                "{joined}"
+            );
+            assert!(
+                joined.contains("#'   \\item{\\code{mode}}{One of \"a\", \"b\".}\n#' }"),
+                "{joined}"
+            );
+        }
+        let with_author = env_docs(&["@param n Amount."], params, &docs).join("\n");
+        assert!(
+            with_author.contains(
+                "#'   \\item{\\code{n}}{Amount.}\n#'   \\item{\\code{mode}}{One of \"a\", \"b\".}"
+            ),
+            "author item first: {with_author}"
+        );
+
+        // A tag before the list keeps it in that tag's section.
+        for (last, sep) in [
+            (
+                "@description Plan it.",
+                "#' @description Plan it.\n#'\n#' \\describe{",
+            ),
+            ("@seealso other", "#' @seealso other\n#'\n#' \\describe{"),
+            (
+                "@return A value.",
+                "#' @return A value.\n#'\n#' \\describe{",
+            ),
+        ] {
+            let joined = env_docs(&[last], params, &docs).join("\n");
+            assert!(joined.starts_with(sep), "`{last}`: {joined}");
+            assert!(!joined.contains("Arguments of"), "`{last}`: {joined}");
+        }
+
+        // No item and no tag: nothing at all; a plain formal gets no item.
+        let empty = std::collections::HashMap::new();
+        let nothing = env_docs(&[], "n, plain", &empty);
+        assert!(
+            nothing
+                .iter()
+                .all(|l| !l.contains("describe") && !l.contains("@description")),
+            "{nothing:#?}"
+        );
+    }
+
+    /// Tags the caller does not forward still send the arguments elsewhere
+    /// (`@inheritParams`), so no choice item is generated for them; the label
+    /// is used verbatim, with `%` and `\` escaped for Rd.
+    #[test]
+    fn describe_params_lines_forward_and_label() {
+        let docs = choice_docs(&[("mode", "One of \"a\", \"b\".")]);
+        let tags = tags_of(&["@inheritParams family"]);
+        let lines = super::describe_params_lines(
+            &tags,
+            |tag| !tag.starts_with("@inheritParams"),
+            "mode = c(\"a\", \"b\")",
+            "Example",
+            Some(&docs),
+            "Example$Trait$pick",
+        );
+        assert!(lines.is_empty(), "{lines:#?}");
+
+        let lines = super::describe_params_lines(
+            &[],
+            |_| true,
+            "mode = c(\"a\", \"b\")",
+            "Example",
+            Some(&docs),
+            "Example$%op%",
+        );
+        assert_eq!(
+            lines[0], "#' @description Arguments of \\code{Example$\\%op\\%()}:",
+            "{lines:#?}"
+        );
+    }
+
+    /// Every line of a wrapped author `@param` stays inside the roxygen
+    /// block: the continuation line keeps its `#' ` lead instead of landing
+    /// in wrappers.R as bare R code.
+    #[test]
+    fn env_wrapped_param_stays_in_roxygen_block() {
+        let empty = std::collections::HashMap::new();
+        let lines = env_docs(&["@param n Amount\nto add."], "n", &empty);
+        assert!(lines.iter().all(|l| l.starts_with("#'")), "{lines:#?}");
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("#'   \\item{\\code{n}}{Amount\n#' to add.}"),
+            "{joined}"
+        );
     }
 }

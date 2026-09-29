@@ -46,6 +46,8 @@ S3Point
 \arguments{
 \item{x}{An object.}
 
+\item{y}{Y coordinate.}
+
 \item{...}{Additional arguments.}
 
 \item{dx}{(undocumented)}

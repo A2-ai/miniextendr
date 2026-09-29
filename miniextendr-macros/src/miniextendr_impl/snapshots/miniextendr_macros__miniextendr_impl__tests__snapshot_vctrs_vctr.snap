@@ -1,12 +1,13 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 3957
+assertion_line: 4593
 expression: generate_vctrs_r_wrapper(&parsed)
 ---
 # Percent::new (1:1)
 #' @title Percent vctrs S3 Class
 #' @name Percent
 #' @rdname Percent
+#' @param x (undocumented)
 #' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
 #' @export
 new_percent <- function(x) {

@@ -21,6 +21,12 @@ Picker$new <- function() {
 }
 
 # Picker::pick (1:1)
+#' @description Arguments of \code{Picker$pick()}:
+#'
+#' \describe{
+#'   \item{\code{modes}}{.__MX_MATCH_ARG_PARAM_DOC_miniextendr_macros_Picker__pick_modes__}
+#'   \item{\code{tags}}{One or more of "a", "b", or a number; omitting the argument means no choice.}
+#' }
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_modes__, tags = c("a", "b")) {
