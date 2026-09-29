@@ -1628,7 +1628,8 @@ pub fn miniextendr(
     // (~1230 ns / 1-arg or ~3900 ns / 5-arg); the guards cost about half. The
     // per-parameter `inherits` / `no_na` checks stay: the Rust conversion does
     // not repeat them. (The C wrapper's post-conversion `no_na` check covers only
-    // what a type reads as `NA` beyond `anyNA()`, such as `"NA"` for `AsNumeric`.)
+    // what a type reads as `NA` beyond `anyNA()`, such as `"NA"` for `AsNumeric`,
+    // except on an `Either`, which has no R guard and is checked only in Rust.)
     let precondition_prelude = {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so its
         // precondition tightens to `is.integer` (issue #616). `coerce_params_list`

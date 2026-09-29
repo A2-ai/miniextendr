@@ -411,7 +411,7 @@ Written on a single parameter of a standalone function:
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
-| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too |
+| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either`, the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 
 ```rust
@@ -464,6 +464,27 @@ under `call = caller`). It stays under `no_preconditions`. On
 On a list or map, `no_na` checks the top-level elements only: R's `anyNA()`
 on the list, and for a map of reading markers (`HashMap<String, AsNumeric>`)
 each value as the marker reads it. `list(a = c(1, NA))` passes.
+
+On an `Either<L, R>` (also under `Missing`), `no_na` emits no R guard. The
+check runs in the C wrapper after the conversion, for the arm the value
+converted to. That arm makes `anyNA()`'s check on the input in Rust, then its
+marker check, so every arm refuses what the guard refused. The exception is a
+`DataFrame` arm, which refuses nothing: a data frame whose cells are `NA`
+reaches it. A plain `DataFrame` parameter keeps the R guard, which refuses
+any `NA` cell. With no guard in front, an input that neither arm converts gets
+the conversion's refusal (`'x' must be raw or a single number: got length 2`)
+before any NA check. A `match_arg` / `choices` parameter typed `Either` keeps
+the R guard, because its conversion has no Rust check.
+
+```rust
+#[miniextendr]
+pub fn value_or_table(#[miniextendr(no_na)] x: Either<AsNumeric, DataFrame>) -> String { /* ... */ }
+```
+
+```r
+value_or_table(NA)                                    # Error: 'x' must not be NA
+value_or_table(data.frame(id = 1:2, v = c(1, NA)))    # reaches the DataFrame arm
+```
 
 The generated message states the rule (`'model' must inherit from
 'pkg_model'`). To say where the object comes from instead, give the check a
@@ -813,7 +834,7 @@ impl Person {
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
-| `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too |
+| `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,

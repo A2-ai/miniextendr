@@ -70,6 +70,64 @@ pub(crate) fn is_na_real(value: f64) -> bool {
     value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == (NA_REAL.to_bits() & 0xFFFF_FFFF)
 }
 
+/// Whether R's `anyNA(sexp)` is `TRUE`: the check `no_na`'s R guard makes,
+/// done in Rust on an argument that the guard does not cover (see
+/// [`TryFromSexp::__mx_input_has_na`]).
+///
+/// It follows R's rules (`anyNA` / `is.na` in `src/main/coerce.c`). A double
+/// or complex value counts when it is `NaN` (`ISNAN`, so `NaN` counts as well
+/// as `NA`). A logical or integer counts when it is `NA_INTEGER`, and a string
+/// when it is `NA_STRING`. Raw vectors and `NULL` never count. A list counts
+/// when one of its elements is a length-1 atomic `NA` (`anyNA()` is not
+/// recursive by default), and a data frame when one of its columns counts
+/// (`anyNA.data.frame`). Any other type (an external pointer, an environment,
+/// ...) holds no `NA`. A classed value is read by its type. The one gap is a
+/// class with its own `is.na()` method, such as `POSIXlt`.
+///
+/// An ALTREP vector is read element by element (`*_ELT`), as R does: a data
+/// pointer would expand a compact sequence, and some classes have none.
+pub(crate) fn any_na(sexp: SEXP) -> bool {
+    if !sexp.is_vector() {
+        return false;
+    }
+    let n = sexp.xlength();
+    if sexp.is_data_frame() {
+        return (0..n).any(|i| any_na(sexp.vector_elt(i)));
+    }
+    let altrep = sexp.is_altrep();
+    // SAFETY: `sexp` is a live wrapper argument (or an element of one) for
+    // the whole check, and each slice is read at the SEXP's own type.
+    match sexp.type_of() {
+        SEXPTYPE::LGLSXP if altrep => {
+            (0..n).any(|i| RLogical::from_i32(sexp.logical_elt(i)).is_na())
+        }
+        SEXPTYPE::INTSXP if altrep => {
+            (0..n).any(|i| sexp.integer_elt(i) == crate::altrep_traits::NA_INTEGER)
+        }
+        SEXPTYPE::REALSXP if altrep => (0..n).any(|i| sexp.real_elt(i).is_nan()),
+        SEXPTYPE::CPLXSXP if altrep => (0..n).any(|i| {
+            let v = sexp.complex_elt(i);
+            v.r.is_nan() || v.i.is_nan()
+        }),
+        SEXPTYPE::LGLSXP => unsafe { sexp.as_slice::<RLogical>() }
+            .iter()
+            .any(|v| v.is_na()),
+        SEXPTYPE::INTSXP => {
+            unsafe { sexp.as_slice::<i32>() }.contains(&crate::altrep_traits::NA_INTEGER)
+        }
+        SEXPTYPE::REALSXP => unsafe { sexp.as_slice::<f64>() }.iter().any(|v| v.is_nan()),
+        SEXPTYPE::CPLXSXP => unsafe { sexp.as_slice::<crate::Rcomplex>() }
+            .iter()
+            .any(|v| v.r.is_nan() || v.i.is_nan()),
+        SEXPTYPE::STRSXP => (0..n).any(|i| sexp.string_elt(i).is_na_string()),
+        SEXPTYPE::VECSXP => (0..n).any(|i| {
+            let elt = sexp.vector_elt(i);
+            elt.is_vector_atomic() && elt.len() == 1 && any_na(elt)
+        }),
+        _ => false,
+    }
+}
+
 // region: CHARSXP to string conversion
 
 /// Convert CHARSXP to `&str` — zero-copy from R's string data.
@@ -677,13 +735,31 @@ pub trait TryFromSexp: Sized {
     /// (`AsNumeric*`, `AsCharacter*`) override it: they read more inputs as
     /// missing than `anyNA()` sees (the text `"NA"`, blank strings, a factor
     /// `NA` level, ...). The layers a marker can sit in (`Option`, `Missing`,
-    /// the named-list maps, `#[derive(TryFromSexp)]` newtypes) forward it, so
-    /// a type alias or a newtype of a marker is checked too. The generated C
-    /// wrapper calls it on the value of every `no_na` parameter.
+    /// the named-list maps, `Result<T, ()>`, `Either`, `#[derive(TryFromSexp)]`
+    /// newtypes) forward it, so a type alias or a newtype of a marker is
+    /// checked too. The generated C wrapper calls it on the value of every
+    /// `no_na` parameter that has the R guard.
     #[doc(hidden)]
     #[inline]
     fn __mx_has_na(&self) -> bool {
         false
+    }
+
+    /// Whether `#[miniextendr(no_na)]` refuses this converted argument, read
+    /// from `input` (the R value it converted from), when no R guard ran.
+    ///
+    /// An `Either` parameter gets no `!anyNA(x)` guard: one test on the whole
+    /// argument is wrong for an arm with its own reading of `NA`, such as a
+    /// data frame whose cells may be missing. Its C wrapper calls this instead
+    /// of [`__mx_has_na`](Self::__mx_has_na). The default makes the guard's
+    /// check in Rust (R's `anyNA(input)`), then asks `__mx_has_na` for what a
+    /// marker reads as `NA` beyond it. `Either` asks the arm the value
+    /// converted to, `Missing` asks its value, and `DataFrame` refuses
+    /// nothing, so the NA cells of a data frame arm get through.
+    #[doc(hidden)]
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        any_na(input) || self.__mx_has_na()
     }
 }
 

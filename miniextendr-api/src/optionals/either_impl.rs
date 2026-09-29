@@ -119,6 +119,16 @@ where
         }
     }
 
+    // An `Either` parameter has no R guard: the side the value converted to
+    // reads the input, so a data frame arm keeps its NA cells.
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        match self {
+            Either::Left(l) => L::__mx_input_has_na(l, input),
+            Either::Right(r) => R::__mx_input_has_na(r, input),
+        }
+    }
+
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Try L first

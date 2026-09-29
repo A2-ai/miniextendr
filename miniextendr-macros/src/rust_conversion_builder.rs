@@ -118,6 +118,13 @@ impl RustConversionBuilder {
     /// The reference arms (`&T`, `&[T]`, `&str`) emit no check and keep only
     /// the R guard: they convert through the reference type's own impl, and
     /// no reading marker converts by reference.
+    ///
+    /// An `Either` parameter (also under `Missing` / `Option`) has no R guard
+    /// (`r_preconditions::no_na_checked_after_conversion`). Its value is asked
+    /// `TryFromSexp::__mx_input_has_na` with the input SEXP instead: the arm
+    /// the value converted to makes the guard's `anyNA()` check on the input
+    /// in Rust, then its own `__mx_has_na`, and a `DataFrame` arm refuses
+    /// nothing.
     pub fn with_no_na(mut self, param_name: String, message: Option<String>) -> Self {
         self.no_na_params.push((param_name, message));
         self
@@ -634,8 +641,28 @@ impl RustConversionBuilder {
                                 ty,
                                 message.as_deref(),
                             );
+                            // An `Either` has no R guard: the arm it converted
+                            // to reads the input instead. The input is bound
+                            // first, since the conversion binding may shadow
+                            // it (a C wrapper can keep the parameter's name).
+                            if crate::r_preconditions::no_na_checked_after_conversion(ty) {
+                                let input = quote::format_ident!("__no_na_input_{}", plain);
+                                let bind = quote_spanned! {span=>
+                                    let #input = #sexp_ident;
+                                };
+                                let check = no_na_value_stmt(
+                                    ident,
+                                    Some(&input),
+                                    &r_name,
+                                    &message,
+                                    &self.conversion_error_class,
+                                    span,
+                                );
+                                return (vec![bind, stmt, check], vec![]);
+                            }
                             let check = no_na_value_stmt(
                                 ident,
+                                None,
                                 &r_name,
                                 &message,
                                 &self.conversion_error_class,
@@ -1069,19 +1096,33 @@ fn conversion_err_arm(
 /// value `no_na`'s R guard would raise, with `message` verbatim, the crate's
 /// `conversion_error_class` and `e$param` (`arg_check_condition_value`). The
 /// call is the wrapper's call slot, as for a conversion failure.
+///
+/// `input` is the argument's SEXP when no R guard ran (an `Either`, see
+/// `r_preconditions::no_na_checked_after_conversion`): the value is then
+/// asked `TryFromSexp::__mx_input_has_na`, which also makes the guard's
+/// `anyNA()` check on the input, by the arm the value converted to.
 fn no_na_value_stmt(
     ident: &syn::Ident,
+    input: Option<&syn::Ident>,
     r_name: &str,
     message: &str,
     crate_class: &[String],
     span: proc_macro2::Span,
 ) -> TokenStream {
+    let has_na = match input {
+        Some(sexp) => quote_spanned! {span=>
+            ::miniextendr_api::TryFromSexp::__mx_input_has_na(&#ident, #sexp)
+        },
+        None => quote_spanned! {span=>
+            ::miniextendr_api::TryFromSexp::__mx_has_na(&#ident)
+        },
+    };
     // SAFETY (of the emitted `unsafe`): the check runs right after the
     // argument's conversion, where the conversion `Err` arm runs: on the R
     // main thread, inside the wrapper's with_r_unwind_protect closure or
     // before the worker closure.
     quote_spanned! {span=>
-        if ::miniextendr_api::TryFromSexp::__mx_has_na(&#ident) {
+        if #has_na {
             return unsafe {
                 ::miniextendr_api::error_value::arg_check_condition_value(
                     #message,

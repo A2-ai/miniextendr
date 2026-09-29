@@ -1453,7 +1453,9 @@ pub fn conversion_err_parts(
 /// The parts of an argument check that failed in Rust after the conversion:
 /// `#[miniextendr(no_na)]` on a reading marker (`AsNumeric*`,
 /// `AsCharacter*`) whose converted value holds an `NA` that R's `anyNA()`
-/// did not see (the hidden `TryFromSexp::__mx_has_na` says so).
+/// did not see (the hidden `TryFromSexp::__mx_has_na` says so), or on an
+/// `Either`, which has no R guard, an `NA` the arm taken refuses
+/// (`TryFromSexp::__mx_input_has_na`).
 ///
 /// The shape is the R guard's (`.miniextendr_arg_error`): `message` as given
 /// (the macro writes `'<p>' must not be NA` or the author's own message),

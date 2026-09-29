@@ -758,6 +758,24 @@ fn no_na_check_is_in_the_owned_vector_of_the_split() {
     assert_eq!(owned.len(), 2);
     assert!(borrowed.is_empty());
     assert!(owned[1].to_string().contains(NO_NA_CHECK), "{}", owned[1]);
+
+    // An `Either`: the input binding, the conversion and the check, all owned.
+    let syn::FnArg::Typed(pat_type) = parse_param("x: Either<AsNumeric, DataFrame>") else {
+        unreachable!()
+    };
+    let (owned, borrowed) = builder.build_conversion_split(&pat_type, &sexp_ident);
+    assert_eq!(owned.len(), 3);
+    assert!(borrowed.is_empty());
+    assert!(
+        owned[0].to_string().contains("let __no_na_input_x = arg_0"),
+        "{}",
+        owned[0]
+    );
+    assert!(
+        owned[2].to_string().contains("__mx_input_has_na"),
+        "{}",
+        owned[2]
+    );
 }
 
 /// The special conversion arms never carry the check: a coerced type (one
@@ -781,6 +799,40 @@ fn no_na_check_skips_the_special_arms() {
         .with_strict()
         .with_no_na("x".to_string(), None);
     assert!(!conversion_text(&strict, "x: i64").contains("__mx_has_na"));
+}
+
+/// An `Either` (also under `Missing`) has no R guard, so its check reads the
+/// input SEXP by the arm the value converted to (`__mx_input_has_na`). The
+/// input is bound before the conversion, which may shadow it. Every other
+/// type keeps the plain value check.
+#[test]
+fn no_na_check_on_an_either_reads_the_input() {
+    const INPUT_CHECK: &str =
+        ":: miniextendr_api :: TryFromSexp :: __mx_input_has_na (& x , __no_na_input_x)";
+    let builder = RustConversionBuilder::new().with_no_na("x".to_string(), None);
+    for src in [
+        "x: Either<AsNumeric, DataFrame>",
+        "x: either::Either<Vec<f64>, List>",
+        "x: Missing<Either<AsNumeric, DataFrame>>",
+    ] {
+        let s = conversion_text(&builder, src);
+        let bind = s
+            .find("let __no_na_input_x = arg_0")
+            .expect("the input binding");
+        let conversion = s.find("let x").expect("the conversion binding");
+        assert!(bind < conversion, "{src}: {s}");
+        assert!(s.contains(INPUT_CHECK), "{src}: {s}");
+        assert!(!s.contains(NO_NA_CHECK), "{src}: {s}");
+    }
+    for src in [
+        "x: AsNumeric",
+        "x: DataFrame",
+        "x: Result<Either<f64, String>, ()>",
+    ] {
+        let s = conversion_text(&builder, src);
+        assert!(s.contains(NO_NA_CHECK), "{src}: {s}");
+        assert!(!s.contains("__mx_input_has_na"), "{src}: {s}");
+    }
 }
 
 // endregion
