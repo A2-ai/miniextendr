@@ -1284,12 +1284,16 @@ fn env_trait_method_on_author_topic_keeps_author_items_only() {
     );
 }
 
-/// Every author tag but the page tags and `@title` reaches the body; a list
-/// after `@examples` opens a `@details` section.
+/// Every author tag but the page tags, `@title` and a bare `@export` reaches
+/// the body; a list after `@examples` opens a `@details` section. A bare
+/// `@export` would make roxygen2 export `Foo$Bar$pick`, which R refuses to
+/// load; an `@export <symbol>` names its own target and is kept.
 #[test]
 fn env_trait_method_forwards_other_tags_but_title() {
     let method = choice_trait_method_with(&[
         "@description D.",
+        "@export",
+        "@export pick_helper",
         "@return R.",
         "@examples x <- 1",
         "@title Mine",
@@ -1298,11 +1302,16 @@ fn env_trait_method_forwards_other_tags_but_title() {
     let r = page_tag_wrapper(ClassSystem::Env, &[method]).unwrap();
     for tag in [
         "#' @description D.\n",
+        "#' @export pick_helper\n",
         "#' @return R.\n",
         "#' @examples x <- 1\n",
     ] {
         assert_eq!(r.matches(tag).count(), 1, "`{tag}`: got:\n{r}");
     }
+    assert!(
+        !r.lines().any(|l| l.trim_end() == "#' @export"),
+        "got:\n{r}"
+    );
     assert!(r.contains("#' @details\n#' \\describe{\n"), "got:\n{r}");
     assert!(!r.contains("Mine"), "got:\n{r}");
 }

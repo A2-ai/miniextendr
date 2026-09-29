@@ -1095,9 +1095,10 @@ impl<'a> MethodDocBuilder<'a> {
         if self.params_as_details {
             // Env methods: no `\usage`, so the author's `@param` tags and the
             // choice text go into a `\describe{}` list (no `@param` filler).
+            // A bare `@export` would export `Type$method` itself.
             lines.extend(describe_params_lines(
                 self.doc_tags,
-                |_| true,
+                crate::roxygen::forwarded_member_tag,
                 self.r_params.unwrap_or(""),
                 self.class_name,
                 self.choice_param_docs,
@@ -1285,6 +1286,42 @@ mod tests {
             assert!(
                 docs.contains("Example$new(1L)\n#' @details\n#' \\describe{"),
                 "{docs}"
+            );
+        }
+    }
+
+    /// An env method block drops the author's bare `@export`: roxygen2 would
+    /// write `export("Example$new")`, which R refuses to load. The other tags,
+    /// an `@export <symbol>` among them, are forwarded.
+    #[test]
+    fn env_method_drops_bare_export() {
+        let type_ident: syn::Ident = syn::parse_quote!(Example);
+        let tags: Vec<String> = [
+            "@description Make one.",
+            "@export",
+            "@export example_helper",
+            "@param value Integer input.",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        let docs = super::MethodDocBuilder::new("Example", "new", &type_ident, &tags)
+            .with_name_prefix("$")
+            .with_params_as_details()
+            .build()
+            .join("\n");
+        assert!(
+            !docs.lines().any(|l| l.trim_end() == "#' @export"),
+            "{docs}"
+        );
+        for line in [
+            "#' @description Make one.",
+            "#' @export example_helper",
+            "#' @name Example$new",
+        ] {
+            assert_eq!(
+                docs.lines().filter(|l| *l == line).count(),
+                1,
+                "`{line}`: {docs}"
             );
         }
     }

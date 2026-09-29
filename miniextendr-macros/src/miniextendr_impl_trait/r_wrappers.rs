@@ -155,8 +155,9 @@ pub(super) fn generate_trait_r_wrapper(
 /// route the block, `@name` names its topic, `@order` sorts it, and
 /// `@inheritParams` / `@inherit` / `@inheritDotParams` fill its arguments.
 /// Env trait methods and the namespace statics of S3, vctrs and S7 forward
-/// every other tag too ([`forwarded_body_tag`]); S4 statics get `@param`
-/// lines ([`param_doc_tags`]).
+/// every other tag but `@title` and a bare `@export` too
+/// ([`forwarded_body_tag`]); S4 statics get `@param` lines
+/// ([`param_doc_tags`]).
 const PAGE_TAGS: &[&str] = &[
     "describeIn",
     "rdname",
@@ -170,11 +171,14 @@ const PAGE_TAGS: &[&str] = &[
 /// Whether the body of a block without `\usage` (an env trait method, a
 /// `Type$Trait$method` static of S3, vctrs and S7) forwards the author tag
 /// `tag`: every tag but the [`PAGE_TAGS`], which [`own_block_page_lines`]
-/// forwards, and `@title`, which the structural split-page title owns. The
+/// forwards, `@title`, which the structural split-page title owns, and a bare
+/// `@export`, which would export the member itself
+/// ([`forwarded_member_tag`](crate::roxygen::forwarded_member_tag)). The
 /// `@param` lines become items of the block's `\describe{}` list.
 fn forwarded_body_tag(tag: &str) -> bool {
-    crate::roxygen::roxygen_tag_name(tag)
-        .is_none_or(|name| name != "title" && !PAGE_TAGS.contains(&name))
+    crate::roxygen::forwarded_member_tag(tag)
+        && crate::roxygen::roxygen_tag_name(tag)
+            .is_none_or(|name| name != "title" && !PAGE_TAGS.contains(&name))
 }
 
 /// The documentation body of a block without `\usage` (see
