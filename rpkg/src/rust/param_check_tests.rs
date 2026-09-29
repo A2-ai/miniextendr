@@ -6,11 +6,11 @@
 //! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
 //! generated precondition guards (`inherits` before the type checks, `no_na`
 //! after them) and survive `no_preconditions`. Either spelling takes an
-//! optional
-//! `message = "..."`, the condition message of a failure, used verbatim
-//! (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`,
-//! method level `inherits(x(class = "cls", message = "..."))`). An `inherits`
-//! message also covers the parameter's type checks.
+//! optional `message = "..."`, the condition message of a failure, used
+//! verbatim (`inherits(class = "cls", message = "...")`,
+//! `no_na(message = "...")`, method level
+//! `inherits(x(class = "cls", message = "..."))`). An `inherits` message also
+//! covers the parameter's type checks.
 //!
 //! On a reading marker (`AsNumeric*`, `AsCharacter*`, and aliases or derived
 //! newtypes of them) `no_na` also checks the converted value, for what the

@@ -143,6 +143,7 @@ test_that("no_preconditions keeps the class check; the Rust conversion judges th
     error = identity
   )
   expect_s3_class(e, "rust_error")
+  expect_identical(e$rust_type, "List")
   expect_false(grepl(model_msg, conditionMessage(e), fixed = TRUE))
 })
 
@@ -156,6 +157,7 @@ test_that("on a Missing<NamedList> the class check is the only R guard", {
     error = identity
   )
   expect_s3_class(e, "rust_error")
+  expect_identical(e$rust_type, "Missing<NamedList>")
   expect_false(grepl(model_msg, conditionMessage(e), fixed = TRUE))
 })
 

@@ -214,7 +214,13 @@ test_that("a custom message is the only difference from the generated one", {
   expect_identical(miniextendr:::param_model_custom(structure(list(), class = "mx_model2")), 0L)
   # The message covers every value that is not a list of the class: the class
   # check runs first, and its message is the type check's too.
-  for (model in list(1, NULL, structure(1, class = "mx_model"))) {
+  for (model in list(
+    1,
+    NULL,
+    data.frame(),
+    structure(list(), class = "other"),
+    structure(1, class = "mx_model")
+  )) {
     e <- caught(miniextendr:::param_model_custom(model))
     expect_identical(conditionMessage(e), conditionMessage(e2))
     expect_identical(class(e), class(e2))
@@ -270,7 +276,9 @@ test_that("under call = caller a custom message keeps the caller's call", {
   # A value that is not a list gets the class message, with the caller's call.
   e3 <- caught(miniextendr:::param_checks_caller_msg(1, 1))
   expect_identical(conditionMessage(e3), "`x` must be an `mx_obj`")
-  expect_equal(conditionCall(e3)[[1]], quote(miniextendr:::param_checks_caller_msg))
+  expect_equal(conditionCall(e3), quote(miniextendr:::param_checks_caller_msg(1, 1)))
+  expect_identical(class(e3), class(e1))
+  expect_identical(e3$param, e1$param)
   expect_identical(class(e2), class(e1))
   expect_identical(e2$kind, e1$kind)
   expect_identical(e2$param, e1$param)
