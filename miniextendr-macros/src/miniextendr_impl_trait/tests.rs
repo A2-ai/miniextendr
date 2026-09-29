@@ -115,6 +115,7 @@ fn opts(
         class_has_no_rd,
         internal,
         noexport,
+        no_preconditions: false,
     }
 }
 
@@ -1922,6 +1923,97 @@ fn trait_method_formals_reject_the_receiver() {
     )
     .expect("no shortcut, no `self` receiver");
     wrapper(ClassSystem::S3, shortcut).expect("`self` is free outside S7");
+}
+
+// endregion
+
+// region: impl-level `no_preconditions` / `preconditions` on trait impls
+
+/// A trait impl with one type-guarded parameter (`k`) and one `no_na`
+/// parameter (`d`), expanded under the impl options `attrs`; returns the
+/// expansion's token text, which carries the R wrapper.
+fn scale_impl_expansion(attrs: proc_macro2::TokenStream) -> String {
+    let impl_attrs: ImplAttrs = syn::parse2(attrs).unwrap();
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            #[miniextendr(no_na(d))]
+            fn scaled(&self, k: f64, d: f64) -> f64 { unimplemented!() }
+        }
+    };
+    super::vtable::generate_vtable_static(
+        &impl_item,
+        &syn::parse_quote!(Scale),
+        &syn::parse_quote!(Meter),
+        &impl_attrs,
+    )
+    .to_string()
+}
+
+const K_TYPE_GUARD: &str = "if (!isTRUE(is.double(k)))";
+const D_NO_NA_GUARD: &str = "if (!isTRUE(!anyNA(d)))";
+
+/// `no_preconditions` on a trait impl drops the type guards in every class
+/// system, as on an inherent impl, and keeps the `no_na` check. The bare
+/// `preconditions` keeps both.
+#[test]
+fn trait_impl_no_preconditions_drops_type_guards() {
+    for cs in ["env", "s3", "s4", "s7", "r6", "vctrs"] {
+        let cs = format_ident!("{cs}");
+        let unchecked = scale_impl_expansion(quote::quote!(#cs, no_preconditions));
+        assert!(!unchecked.contains(K_TYPE_GUARD), "{cs}: {unchecked}");
+        assert!(unchecked.contains(D_NO_NA_GUARD), "{cs}: {unchecked}");
+        let checked = scale_impl_expansion(quote::quote!(#cs, preconditions));
+        assert!(checked.contains(K_TYPE_GUARD), "{cs}: {checked}");
+        assert!(checked.contains(D_NO_NA_GUARD), "{cs}: {checked}");
+    }
+}
+
+/// Under the `no-preconditions-default` feature a bare trait impl drops the
+/// type guards and the bare `preconditions` restores them, as on an
+/// inherent impl.
+///
+/// Run with: `cargo test -p miniextendr-macros --features no-preconditions-default`
+#[cfg(feature = "no-preconditions-default")]
+#[test]
+fn no_preconditions_default_trait_impl_follows_the_feature() {
+    let unchecked = scale_impl_expansion(quote::quote!(r6));
+    assert!(!unchecked.contains(K_TYPE_GUARD), "{unchecked}");
+    assert!(unchecked.contains(D_NO_NA_GUARD), "{unchecked}");
+    let checked = scale_impl_expansion(quote::quote!(r6, preconditions));
+    assert!(checked.contains(K_TYPE_GUARD), "{checked}");
+}
+
+/// An empty-body (TPIE) impl hands its `no_preconditions` to the trait's
+/// `macro_rules!` helper as the last token, and the expansion input parses
+/// it back. The trait side's forwarding is in `miniextendr_trait/tests.rs`.
+#[test]
+fn tpie_carries_no_preconditions() {
+    let invocation = generate_tpie_invocation(
+        &syn::parse_quote!(miniextendr_api::adapter_traits::RFromStr),
+        &syn::parse_quote!(Meter),
+        ClassSystem::R6,
+        false,
+        false,
+        false,
+        true,
+    )
+    .to_string();
+    assert!(
+        invocation.contains("r6 , false , false , false , true)"),
+        "{invocation}"
+    );
+
+    let input: TpieInput = syn::parse_quote! {
+        concrete_type = Meter;
+        trait_path = miniextendr_api::adapter_traits::RFromStr;
+        class_system = r6;
+        no_rd = false;
+        internal = false;
+        noexport = false;
+        no_preconditions = true;
+        method { r_name = from_str; fn from_str(s: &str) -> Option<Self>; }
+    };
+    assert!(input.no_preconditions);
 }
 
 // endregion

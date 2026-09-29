@@ -839,7 +839,9 @@ pub struct ImplAttrs {
     // endregion
     // region: Preconditions
     /// When true, drop the R-side type-check guards from all generated method
-    /// wrappers. TryFromSexp still raises on bad input, with the same
+    /// wrappers: those of an inherent impl, including the setter branch of an
+    /// R6 active binding, and those of a trait impl, including the empty-body
+    /// (TPIE) form. TryFromSexp still raises on bad input, with the same
     /// argument-error condition; the message comes from the conversion. Set by
     /// the bare `#[miniextendr(no_preconditions)]`, cleared by the bare
     /// `preconditions` (the last one written wins); unset, it follows the

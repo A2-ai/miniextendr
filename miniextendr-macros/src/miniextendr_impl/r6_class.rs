@@ -66,7 +66,10 @@ use crate::r_class_formatter::class_ref_or_verbatim;
 /// `.with_args(&["value"])` call site) is renamed to `value` before the
 /// checks are built. Any additional parameters are ignored: the binding never
 /// passes them, and checks referencing their names would error at runtime.
-fn active_setter_precondition_checks(setter: &ParsedMethod) -> Vec<String> {
+///
+/// `no_preconditions` is the impl block's flag, so the binding drops the type
+/// checks exactly when the `set_*` method does.
+fn active_setter_precondition_checks(setter: &ParsedMethod, no_preconditions: bool) -> Vec<String> {
     let Some(mut value_arg) = setter.sig.inputs.iter().find_map(|arg| match arg {
         syn::FnArg::Typed(pat_type) => Some(pat_type.clone()),
         syn::FnArg::Receiver(_) => None,
@@ -93,7 +96,7 @@ fn active_setter_precondition_checks(setter: &ParsedMethod) -> Vec<String> {
         &inputs,
         &per_param,
         setter.method_attrs.coerce,
-        false,
+        no_preconditions,
     )
 }
 
@@ -607,7 +610,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Same precondition guards the standalone `set_*`
             // method gets (audit 2026-07-06 finding 4): without it,
             // `obj$prop <- <bad value>` skipped the R-level type check.
-            for check in active_setter_precondition_checks(setter_method) {
+            for check in
+                active_setter_precondition_checks(setter_method, parsed_impl.no_preconditions)
+            {
                 lines.push(format!("    {}", check));
             }
 

@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{FastCounter}
 \alias{FastCounter}
+\alias{FastCounter$FastScale$scaled}
 \title{FastCounter R6 Class}
 \description{
 Default-mode counter (R6 wrapper with the full R-side type checks).

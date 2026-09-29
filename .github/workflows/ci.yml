@@ -1323,9 +1323,9 @@ jobs:
   # filtered to targeted fixture tests (including coercion regressions): they
   # flip conversion semantics / preconditions for every parameter suite-wide,
   # so the pre-existing suite fails by design under them.
-  # The no-preconditions-default leg additionally runs the two
-  # no_preconditions_default unit tests in miniextendr-macros/src/tests.rs,
-  # which no other job compiles+runs.
+  # The no-preconditions-default leg additionally runs the
+  # no_preconditions_default unit tests in miniextendr-macros (src/tests.rs
+  # and the trait-impl one), which no other job compiles+runs.
   #
   # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
   # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
@@ -1404,10 +1404,10 @@ jobs:
           shared-key: feature-leg-${{ matrix.leg }}
           cache-on-failure: true
 
-      # The no-preconditions-default leg is also the only place the two
-      # no_preconditions_default unit tests in miniextendr-macros/src/tests.rs
-      # run: clippy_all compiles them (full-codegen includes
-      # no-preconditions-default) but never executes them.
+      # The no-preconditions-default leg is also the only place the
+      # no_preconditions_default unit tests in miniextendr-macros (src/tests.rs
+      # and the trait-impl one) run: clippy_all compiles them (full-codegen
+      # includes no-preconditions-default) but never executes them.
       - name: Run no_preconditions_default unit tests (miniextendr-macros)
         if: matrix.leg == 'no-preconditions-default'
         run: cargo test -p miniextendr-macros --features no-preconditions-default no_preconditions_default

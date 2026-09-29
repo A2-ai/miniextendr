@@ -993,6 +993,37 @@ fn r6_active_binding_setter_emits_preconditions_and_condition_guard() {
         wrapper
     );
 }
+
+/// Under the impl's `no_preconditions` the setter branch of an active binding
+/// drops its type guards, as the standalone `set_*` method does; the
+/// condition re-raise guard stays.
+#[test]
+fn r6_active_binding_setter_follows_no_preconditions() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Temperature {
+            pub fn new(celsius: f64) -> Self { unimplemented!() }
+            #[miniextendr(r6(active))]
+            pub fn celsius(&self) -> f64 { unimplemented!() }
+            #[miniextendr(r6(setter, prop = "celsius"))]
+            pub fn set_celsius(&mut self, value: f64) { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.no_preconditions = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    let active_section = wrapper
+        .split("$set(\"active\"")
+        .nth(1)
+        .expect("wrapper must contain an active binding $set call");
+    assert!(!active_section.contains("is.double("), "{active_section}");
+    assert!(!wrapper.contains("is.double("), "{wrapper}");
+    assert!(
+        active_section.contains("    .val <- .Call(C_miniextendr_macros_Temperature__set_celsius"),
+        "{active_section}"
+    );
+}
 // endregion
 
 // region: S3 class system tests

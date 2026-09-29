@@ -105,6 +105,63 @@ impl FastCounterNoPreconditions {
         self.value += n;
         self.value
     }
+
+    /// Current value, as the `count` active binding.
+    #[miniextendr(r6(active))]
+    pub fn count(&self) -> i32 {
+        self.value
+    }
+
+    /// Set the value through the `count` active binding.
+    /// @param value New value.
+    #[miniextendr(r6(setter, prop = "count"))]
+    pub fn set_count(&mut self, value: i32) {
+        self.value = value;
+    }
 }
+
+// endregion
+
+// region: trait-impl fixtures
+//
+// The impl block's `no_preconditions` reaches trait-impl wrappers too: an impl
+// with method bodies, and an empty-body impl expanded from the trait's
+// metadata (TPIE).
+
+/// Scales a counter's value, for the trait-impl `no_preconditions` fixtures.
+#[miniextendr]
+pub trait FastScale {
+    /// The counter's value times `k`.
+    fn scaled(&self, k: f64) -> f64;
+}
+
+/// Default-mode trait impl: keeps the R-side type checks.
+#[miniextendr(r6)]
+impl FastScale for FastCounter {
+    fn scaled(&self, k: f64) -> f64 {
+        f64::from(self.value) * k
+    }
+}
+
+/// `no_preconditions` trait impl: drops the R-side type checks.
+#[miniextendr(r6, no_preconditions)]
+impl FastScale for FastCounterNoPreconditions {
+    fn scaled(&self, k: f64) -> f64 {
+        f64::from(self.value) * k
+    }
+}
+
+impl std::str::FromStr for FastCounterNoPreconditions {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self { value: s.parse()? })
+    }
+}
+
+/// Empty-body `no_preconditions` trait impl: `from_str(s)` drops the R-side
+/// check on `s`.
+#[miniextendr(r6, no_preconditions)]
+impl miniextendr_api::adapter_traits::RFromStr for FastCounterNoPreconditions {}
 
 // endregion

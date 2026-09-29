@@ -2,17 +2,27 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{FastCounterNoPreconditions}
 \alias{FastCounterNoPreconditions}
+\alias{FastCounterNoPreconditions$FastScale$scaled}
+\alias{FastCounterNoPreconditions$RFromStr$from_str}
 \title{FastCounterNoPreconditions R6 Class}
 \description{
 \code{no_preconditions} counter: every method wrapper drops its R-side type checks.
 }
 \keyword{internal}
+\section{Active bindings}{
+  \if{html}{\out{<div class="r6-active-bindings">}}
+  \describe{
+    \item{\code{count}}{Current value, as the \code{count} active binding.}
+  }
+  \if{html}{\out{</div>}}
+}
 \section{Methods}{
 \subsection{Public methods}{
   \itemize{
     \item \href{#method-FastCounterNoPreconditions-initialize}{\code{FastCounterNoPreconditions$new()}}
     \item \href{#method-FastCounterNoPreconditions-value}{\code{FastCounterNoPreconditions$value()}}
     \item \href{#method-FastCounterNoPreconditions-add}{\code{FastCounterNoPreconditions$add()}}
+    \item \href{#method-FastCounterNoPreconditions-set_count}{\code{FastCounterNoPreconditions$set_count()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -61,6 +71,25 @@
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{n}}{Amount to add.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-FastCounterNoPreconditions-set_count"></a>}}
+\if{latex}{\out{\hypertarget{method-FastCounterNoPreconditions-set_count}{}}}
+\subsection{\code{FastCounterNoPreconditions$set_count()}}{
+  Set the value through the \code{count} active binding.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{FastCounterNoPreconditions$set_count(value)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{value}}{New value.}
     }
     \if{html}{\out{</div>}}
   }

@@ -397,21 +397,14 @@ pub fn expand_miniextendr_impl_trait(
             no_rd,
             impl_attrs.internal,
             impl_attrs.noexport,
+            impl_attrs.no_preconditions,
         );
         output.extend(param_warnings);
         return output.into();
     }
 
     // Generate the vtable static and R wrappers
-    let expanded = generate_vtable_static(
-        &impl_item,
-        &trait_path,
-        &concrete_type,
-        impl_attrs.class_system,
-        impl_attrs.blanket,
-        impl_attrs.internal,
-        impl_attrs.noexport,
-    );
+    let expanded = generate_vtable_static(&impl_item, &trait_path, &concrete_type, &impl_attrs);
 
     expanded.into()
 }
@@ -532,6 +525,10 @@ fn type_to_uppercase_name(ty: &syn::Type) -> String {
 /// concrete_type = Point;
 /// trait_path = miniextendr_api::adapter_traits::RDebug;
 /// class_system = env;
+/// no_rd = false;
+/// internal = false;
+/// noexport = false;
+/// no_preconditions = false;
 /// method { r_name = debug_str; fn debug_str(&self) -> String; }
 /// method { r_name = debug_str_pretty; fn debug_str_pretty(&self) -> String; }
 /// ```
@@ -548,6 +545,9 @@ struct TpieInput {
     internal: bool,
     /// Whether the impl block has `#[miniextendr(noexport)]`, suppressing `@export`.
     noexport: bool,
+    /// Whether the impl block drops the R-side type checks
+    /// (`ImplAttrs::no_preconditions`).
+    no_preconditions: bool,
     /// Method signatures and R-facing names from the trait definition.
     methods: Vec<TpieMethod>,
 }
@@ -643,6 +643,19 @@ impl syn::parse::Parse for TpieInput {
         input.parse::<syn::Token![;]>()?;
         let noexport = noexport_lit.value;
 
+        // no_preconditions = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "no_preconditions" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'no_preconditions', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let no_preconditions_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let no_preconditions = no_preconditions_lit.value;
+
         // method { ... } repeated
         let mut methods = Vec::new();
         while !input.is_empty() {
@@ -665,6 +678,7 @@ impl syn::parse::Parse for TpieInput {
             no_rd,
             internal,
             noexport,
+            no_preconditions,
             methods,
         })
     }
@@ -869,6 +883,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             class_has_no_rd: tpie_input.no_rd,
             internal: tpie_input.internal,
             noexport: tpie_input.noexport,
+            no_preconditions: tpie_input.no_preconditions,
         },
     ) {
         Ok(s) => s,
@@ -975,6 +990,7 @@ fn generate_tpie_invocation(
     class_has_no_rd: bool,
     internal: bool,
     noexport: bool,
+    no_preconditions: bool,
 ) -> TokenStream {
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
         return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
@@ -1032,6 +1048,11 @@ fn generate_tpie_invocation(
     } else {
         format_ident!("false")
     };
+    let no_preconditions_ident = if no_preconditions {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
 
     let source_loc_doc = crate::source_location_doc(trait_name.span());
 
@@ -1042,7 +1063,7 @@ fn generate_tpie_invocation(
         pub static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
 
-        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident);
+        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident, #no_preconditions_ident);
     }
 }
 

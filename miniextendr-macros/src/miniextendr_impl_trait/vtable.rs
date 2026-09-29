@@ -10,7 +10,7 @@ use syn::ItemImpl;
 
 use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
 use super::{TraitConst, TraitMethod, type_to_uppercase_name};
-use crate::miniextendr_impl::ClassSystem;
+use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
 /// Generate the vtable static, C wrappers, R wrappers, and call defs for a trait implementation.
 ///
@@ -28,18 +28,16 @@ use crate::miniextendr_impl::ClassSystem;
 /// - `impl_item`: The parsed `impl Trait for Type` block
 /// - `trait_path`: Full path to the trait (e.g., `crate::Counter`)
 /// - `concrete_type`: The implementing type (e.g., `MyCounter`)
-/// - `class_system`: Which R class system (env, r6, s3, s4, s7) to generate wrappers for
-/// - `blanket`: If true, skip emitting the impl block (a blanket impl already provides it)
-/// - `internal`: If true, add `@keywords internal` to R documentation
-/// - `noexport`: If true, suppress `@export` in R documentation
+/// - `impl_attrs`: The impl block's options. The class system picks the R
+///   wrapper generator; `blanket` skips emitting the impl block (a blanket impl
+///   already provides it); `internal` / `noexport` control the roxygen export
+///   tags; `no_preconditions` drops the R-side type checks, as on an inherent
+///   impl.
 pub(super) fn generate_vtable_static(
     impl_item: &ItemImpl,
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
-    class_system: ClassSystem,
-    blanket: bool,
-    internal: bool,
-    noexport: bool,
+    impl_attrs: &ImplAttrs,
 ) -> TokenStream {
     // Extract trait name for naming
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
@@ -161,10 +159,11 @@ pub(super) fn generate_vtable_static(
         &methods_owned,
         &consts,
         TraitWrapperOpts {
-            class_system,
+            class_system: impl_attrs.class_system,
             class_has_no_rd,
-            internal,
-            noexport,
+            internal: impl_attrs.internal,
+            noexport: impl_attrs.noexport,
+            no_preconditions: impl_attrs.no_preconditions,
         },
     ) {
         Ok(s) => s,
@@ -212,7 +211,7 @@ pub(super) fn generate_vtable_static(
     // - `blanket` flag is set — a blanket impl exists, methods are only for
     //   C wrapper signature extraction, not for actual trait implementation
     let has_items = !all_methods.is_empty() || !consts.is_empty();
-    let clean_impl_tokens = if has_items && !blanket {
+    let clean_impl_tokens = if has_items && !impl_attrs.blanket {
         let mut clean_impl = impl_item.clone();
         for item in &mut clean_impl.items {
             if let syn::ImplItem::Fn(method) = item {
