@@ -34,7 +34,7 @@
 //! internal `RSerdeError` is bridged via `From<RSerdeError>`; the parallel R→Rust reader
 //! reports through `DataFrameError` rather than a bare `String`.
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpClassError, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
@@ -819,14 +819,19 @@ impl TryFromSexp for DataFrame {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // A non-list is a type error, worded in R terms by the argument error
-        // (`got integer`); any other failure is the data frame's own message.
-        DataFrame::from_sexp(sexp).map_err(|e| match e {
-            DataFrameError::NotList(actual) => SexpTypeError {
-                expected: SEXPTYPE::VECSXP,
+        // Not a data frame at all (a non-list, or a list without the class) is
+        // a class error, worded `got integer` / `got list` by the argument
+        // error; a data frame that fails later keeps its own message.
+        let not_a_data_frame = |actual| {
+            SexpClassError {
+                expected: "a data frame",
                 actual,
             }
-            .into(),
+            .into()
+        };
+        DataFrame::from_sexp(sexp).map_err(|e| match e {
+            DataFrameError::NotList(actual) => not_a_data_frame(actual),
+            DataFrameError::NotDataFrame => not_a_data_frame(SEXPTYPE::VECSXP),
             other => SexpError::InvalidValue(other.to_string()),
         })
     }

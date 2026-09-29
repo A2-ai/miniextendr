@@ -32,6 +32,43 @@ pub fn match_arg_either_route(#[miniextendr(match_arg)] route: Either<Route, Dat
     describe_route(route)
 }
 
+/// A route name or a number, without `match_arg`: `TryFromSexp for Either`
+/// tries `Route` first, then `f64`. A value that is neither a string nor a
+/// number is refused by both, and the argument error names both.
+/// @param x A route name or a number.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn either_route_or_number(x: Either<Route, f64>) -> String {
+    match x {
+        Either::Left(route) => format!("{route:?}"),
+        Either::Right(n) => format!("number:{n}"),
+    }
+}
+
+/// `TRUE or FALSE`, or a route name or a number: a nested `Either` whose
+/// arms both refuse a value counts as one arm that refused it.
+/// @param x A logical, a route name or a number.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn either_flag_or_route_or_number(x: Either<bool, Either<Route, f64>>) -> String {
+    match x {
+        Either::Left(flag) => format!("flag:{flag}"),
+        Either::Right(inner) => either_route_or_number(inner),
+    }
+}
+
+/// A route name or a mode name, each through its own `TryFromSexp`: two
+/// choice lists read as one.
+/// @param x A route name or a mode name.
+/// @noRd
+#[miniextendr(noexport)]
+pub fn either_route_or_mode(x: Either<Route, crate::match_arg_tests::Mode>) -> String {
+    match x {
+        Either::Left(route) => format!("{route:?}"),
+        Either::Right(mode) => format!("mode:{mode:?}"),
+    }
+}
+
 /// An optional route name or data frame: `NULL` is no choice.
 ///
 /// @export

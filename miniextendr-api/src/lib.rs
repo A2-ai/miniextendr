@@ -692,7 +692,9 @@ pub mod rng;
 pub use rng::{RngGuard, with_rng};
 
 // Re-export from_r
-pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+pub use from_r::{
+    SexpClassError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+};
 
 // Encoding / locale probing (mainly for debugging). The module is always
 // compiled; the symbols that reference non-API locale state from R's `Defn.h`

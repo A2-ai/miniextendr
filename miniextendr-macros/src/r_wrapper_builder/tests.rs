@@ -730,9 +730,13 @@ fn either_choice_layers_record_the_other_arm() {
         crate::miniextendr_fn::classify_choice_param(&mut attrs, "level", &ty, false).unwrap();
         attrs.layered_leaf()
     };
+    // The leaf carries the list, which the argument error names.
     assert_eq!(
         literal("Either<String, f64>"),
-        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal)
+        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal {
+            choices: vec!["a".into(), "b".into()],
+            several: false,
+        })
     );
     assert_eq!(literal("Missing<Option<String>>"), None);
 
@@ -757,12 +761,58 @@ fn either_choice_layers_record_the_other_arm() {
         .unwrap();
     assert_eq!(
         literal_several.layered_leaf(),
-        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal)
+        Some(crate::rust_conversion_builder::ChoiceLeaf::Literal {
+            choices: vec!["a".into(), "b".into()],
+            several: true,
+        })
     );
     assert_eq!(
         literal_several.literal_choices_doc().as_deref(),
         Some("One or more of \"a\", \"b\", or a number.")
     );
+}
+
+/// The other accepted values of a choice parameter are worded by one
+/// function for the `@param` line and for the argument error of an `Either`
+/// choice, which differ only in how they name `NULL`.
+#[test]
+fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
+    use crate::miniextendr_fn::choice_alternatives_suffix;
+    let noun = Some("a data frame");
+    assert_eq!(choice_alternatives_suffix(None, false, "NULL"), "");
+    assert_eq!(
+        choice_alternatives_suffix(noun, false, "NULL"),
+        ", or a data frame"
+    );
+    assert_eq!(
+        choice_alternatives_suffix(None, true, "NULL for no choice"),
+        ", or NULL for no choice"
+    );
+    assert_eq!(
+        choice_alternatives_suffix(noun, true, "NULL"),
+        ", a data frame, or NULL"
+    );
+    // The `@param` line adds the omission note after them.
+    for (ty, want) in [
+        ("Mode", ""),
+        ("Option<Mode>", ", or NULL for no choice"),
+        ("Missing<Mode>", "; omitting the argument means no choice"),
+        (
+            "Missing<Option<Mode>>",
+            ", or NULL; omitting the argument means no choice",
+        ),
+        ("Either<Mode, DataFrame>", ", or a data frame"),
+        (
+            "Option<Either<Mode, DataFrame>>",
+            ", a data frame, or NULL for no choice",
+        ),
+        (
+            "Missing<Option<Either<Mode, DataFrame>>>",
+            ", a data frame, or NULL; omitting the argument means no choice",
+        ),
+    ] {
+        assert_eq!(choice_attrs(ty, false).choice_doc_suffix(), want, "{ty}");
+    }
 }
 
 /// `several_ok` under `Either` and `Missing` with `call = caller` (#1612): the

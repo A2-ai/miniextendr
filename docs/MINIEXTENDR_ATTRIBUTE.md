@@ -407,7 +407,8 @@ NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
 The `no_na` message says `'x' must not contain NA` for an argument that holds
 several values (`Vec<T>`, slices, arrays, maps and lists, and the vector
 markers such as `AsNumericVec` or `AsFromStrVec<T>`) and `'x' must not be NA`
-for a scalar.
+for a scalar. It looks through `Option<T>`, `Missing<T>` and `Result<T, _>` to
+`T`, and an `Either<L, R>` holds several values when either arm does.
 
 The reading markers read some inputs as missing that `anyNA()` passes, so on
 them `no_na` also checks the converted value, in the C wrapper right after the

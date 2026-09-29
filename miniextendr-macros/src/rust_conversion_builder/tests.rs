@@ -276,6 +276,11 @@ fn test_layered_choice_decoders() {
             .replace(' ', "")
     };
     let api = "::miniextendr_api::";
+    // The list does not enter the decoder (the R prelude matched it).
+    let literal = ChoiceLeaf::Literal {
+        choices: vec!["low".into()],
+        several: false,
+    };
     let cases = [
         (
             "Option<Mode>",
@@ -320,7 +325,7 @@ fn test_layered_choice_decoders() {
         ),
         (
             "Either<String, f64>",
-            ChoiceLeaf::Literal,
+            literal.clone(),
             format!(
                 "{api}match_arg_either_or::<_,f64,_>(s,<Stringas::miniextendr_api::TryFromSexp>::try_from_sexp)"
             ),
@@ -356,7 +361,7 @@ fn test_layered_choice_decoders() {
         ),
         (
             "Either<Vec<String>, f64>",
-            ChoiceLeaf::Literal,
+            literal.clone(),
             format!(
                 "{api}match_arg_either_or::<_,f64,_>(s,<Vec<String>as::miniextendr_api::TryFromSexp>::try_from_sexp)"
             ),
@@ -369,10 +374,11 @@ fn test_layered_choice_decoders() {
 
 /// A layered choice parameter's `Err` arm is the argument error of #1591:
 /// the full Rust type as `e$rust_type` and the crate class, on every layer
-/// shape the decoder composes. A choice type has no static R-facing
-/// expectation, so the prefix is built on the failure path from the error
-/// (`'mode' must be one of ...` for a `match_arg` choice error, `NULL or`
-/// under `Option`, #1594); a `choices` `Either<String, R>` names both sides.
+/// shape the decoder composes. Without an `Either` layer a choice type has no
+/// static R-facing expectation, so the prefix is built on the failure path
+/// from the error (`'mode' must be one of ...` for a `match_arg` choice error,
+/// `NULL or` under `Option`, #1594). With one, see
+/// `test_either_choice_err_arm_names_the_whole_parameter`.
 #[test]
 fn test_layered_choice_err_arm_is_the_argument_error() {
     for (src, leaf, rust_type, nullable) in [
@@ -386,18 +392,6 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             "mode: Missing<Vec<Mode>>",
             ChoiceLeaf::MatchArgSeveral,
             "Missing<Vec<Mode>>",
-            false,
-        ),
-        (
-            "mode: Either<Route, DataFrame>",
-            ChoiceLeaf::MatchArg,
-            "Either<Route, DataFrame>",
-            false,
-        ),
-        (
-            "mode: Either<Vec<Route>, DataFrame>",
-            ChoiceLeaf::MatchArgSeveral,
-            "Either<Vec<Route>, DataFrame>",
             false,
         ),
     ] {
@@ -427,31 +421,95 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             "{src}: {s}"
         );
     }
+}
 
-    let builder = RustConversionBuilder::new()
-        .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
-        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
-    let s = conversion_text(&builder, "mode: Option<Either<String, f64>>");
-    assert!(s.contains("match_arg_"), "{s}");
-    assert!(
-        s.contains(
-            "\"'mode' must be NULL or a single string or a single double\" , \"mode\" , :: core :: option :: Option :: Some (\"Option<Either<String, f64>>\") , & [\"pkg_error_argument\"]"
+/// A choice parameter with an `Either<.., R>` layer is refused against the
+/// whole parameter, in the words of its `@param` line: the choices
+/// (`MatchArg::CHOICES` of a `match_arg` type, the literal list of
+/// `choices(...)`, `one or more of` for `several_ok`), then the `R` arm's
+/// noun and `NULL` under `Option`. The error supplies only the reason.
+#[test]
+fn test_either_choice_err_arm_names_the_whole_parameter() {
+    let literal = |several| ChoiceLeaf::Literal {
+        choices: vec!["low".into(), "mid".into()],
+        several,
+    };
+    let routes = "< Route as :: miniextendr_api :: MatchArg > :: CHOICES";
+    for (src, leaf, choices, several, suffix) in [
+        (
+            "mode: Either<Route, DataFrame>",
+            ChoiceLeaf::MatchArg,
+            routes,
+            false,
+            ", or a data frame",
         ),
-        "{s}"
-    );
-    assert!(s.contains("__mx_conversion_err_parts ! (e , true)"), "{s}");
-
-    // A `choices(...)` `several_ok` string list with another kind of value
-    // (#1612) names both sides too.
-    let builder = RustConversionBuilder::new()
-        .with_layered_choice("mode".to_string(), ChoiceLeaf::Literal)
-        .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
-    let s = conversion_text(&builder, "mode: Either<Vec<String>, f64>");
-    assert!(s.contains("match_arg_either_or"), "{s}");
-    assert!(
-        s.contains("\"'mode' must be character or a single double\" , \"mode\""),
-        "{s}"
-    );
+        (
+            "mode: Either<Vec<Route>, DataFrame>",
+            ChoiceLeaf::MatchArgSeveral,
+            routes,
+            true,
+            ", or a data frame",
+        ),
+        (
+            "mode: Option<Either<Route, DataFrame>>",
+            ChoiceLeaf::MatchArg,
+            routes,
+            false,
+            ", a data frame, or NULL",
+        ),
+        (
+            "mode: Missing<Option<Either<Vec<Route>, DataFrame>>>",
+            ChoiceLeaf::MatchArgSeveral,
+            routes,
+            true,
+            ", a data frame, or NULL",
+        ),
+        (
+            "mode: Either<String, f64>",
+            literal(false),
+            "& [\"low\" , \"mid\"]",
+            false,
+            ", or a number",
+        ),
+        (
+            "mode: Option<Either<String, f64>>",
+            literal(false),
+            "& [\"low\" , \"mid\"]",
+            false,
+            ", a number, or NULL",
+        ),
+        (
+            "mode: Missing<Either<Vec<String>, f64>>",
+            literal(true),
+            "& [\"low\" , \"mid\"]",
+            true,
+            ", or a number",
+        ),
+    ] {
+        let builder = RustConversionBuilder::new()
+            .with_layered_choice("mode".to_string(), leaf)
+            .with_conversion_error_class(vec!["pkg_error_argument".to_string()]);
+        let s = conversion_text(&builder, src);
+        assert!(s.contains("match_arg_either_or"), "{src}: {s}");
+        assert!(
+            s.contains(&format!(
+                "format ! (\"'{{}}' must be {{}}\" , \"mode\" , :: miniextendr_api :: match_arg :: choice_expectation ({choices} , {several} , \"{suffix}\"))"
+            )),
+            "{src}: {s}"
+        );
+        assert!(
+            s.contains("__mx_conversion_err_parts ! (e , true)"),
+            "{src}: {s}"
+        );
+        assert!(!s.contains("__mx_conversion_expectation"), "{src}: {s}");
+        let rust_type = src.trim_start_matches("mode: ");
+        assert!(
+            s.contains(&format!(
+                "\"mode\" , :: core :: option :: Option :: Some (\"{rust_type}\") , & [\"pkg_error_argument\"]"
+            )),
+            "{src}: {s}"
+        );
+    }
 }
 
 #[test]

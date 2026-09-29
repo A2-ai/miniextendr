@@ -282,20 +282,38 @@ impl ExplicitChecks {
 
 /// What a `no_na` parameter of Rust type `ty` must satisfy, without the
 /// parameter name: `must not contain NA` for a value holding several values
-/// ([`is_vector_valued`], after peeling `Missing` and `Option`), else
-/// `must not be NA`.
+/// ([`no_na_holds_several`]), else `must not be NA`.
 ///
 /// Shared by the R guard and the Rust check that the C wrapper runs after the
 /// conversion (see [`no_na_message`]), so both word a failure alike.
 pub(crate) fn no_na_requirement(ty: &syn::Type) -> String {
-    let value_ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
-    let value_ty = crate::type_inspect::option_inner_type(value_ty).unwrap_or(value_ty);
-    let verb = if is_vector_valued(value_ty) {
+    let verb = if no_na_holds_several(ty) {
         "contain"
     } else {
         "be"
     };
     format!("must not {verb} NA")
+}
+
+/// Whether a `no_na` value of Rust type `ty` holds several values, looking
+/// through the layers `no_na` checks through: `Missing`, `Option`,
+/// `Result<T, _>` (its `T`) and `Either<L, R>`, which holds several when
+/// either arm does. The text is fixed before the conversion picks an arm (the
+/// R guard runs first), and `contain` also reads right for one value.
+fn no_na_holds_several(ty: &syn::Type) -> bool {
+    let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
+    let ty = crate::type_inspect::option_inner_type(ty).unwrap_or(ty);
+    if let Some((left, right)) = crate::type_inspect::either_arms(ty) {
+        return no_na_holds_several(left) || no_na_holds_several(right);
+    }
+    if let syn::Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+        && seg.ident == "Result"
+        && let Some(ok) = crate::type_inspect::first_type_argument(seg)
+    {
+        return no_na_holds_several(ok);
+    }
+    is_vector_valued(ty)
 }
 
 /// The condition message of a failed `no_na` check on parameter `param` of
@@ -1873,6 +1891,18 @@ mod tests {
             ("fn f(x: AsFromStr<std::net::IpAddr>)", "be"),
             ("fn f(x: String)", "be"),
             ("fn f(x: MyCustomType)", "be"),
+            // Through `Result<T, _>` and `Either`, the layers `no_na` checks
+            // through: an `Either` holds several when either arm does.
+            ("fn f(x: Result<AsNumericVec, ()>)", "contain"),
+            ("fn f(x: Result<AsNumeric, ()>)", "be"),
+            ("fn f(x: Either<AsNumericVec, Vec<u8>>)", "contain"),
+            ("fn f(x: Either<AsNumericVec, i32>)", "contain"),
+            ("fn f(x: Either<i32, AsCharacterVec>)", "contain"),
+            ("fn f(x: Either<AsNumeric, AsCharacter>)", "be"),
+            (
+                "fn f(x: Option<Either<i32, Either<String, Vec<f64>>>>)",
+                "contain",
+            ),
         ] {
             assert_eq!(verb(sig), expected, "{sig}");
             // The Rust check words it the same way.
