@@ -1176,6 +1176,10 @@ where per-method `@param` would document arguments roxygen2 cannot see in
 `\usage`; those generators drop method `@param` tags to keep `R CMD check`
 quiet.
 
+A tag that flows through keeps its blank lines and indentation, as on a
+function; see
+[Doc comments to roxygen](MINIEXTENDR_ATTRIBUTE.md#doc-comments-to-roxygen).
+
 S4's structural tags (`@exportClass`, `@exportMethod`, `@exportPattern`) pass
 through unchanged. Tag-name matching is exact on the first
 whitespace-delimited token.

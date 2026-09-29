@@ -6449,3 +6449,103 @@ fn method_formals_reject_receiver_and_class_bindings() {
 }
 
 // endregion
+
+// region: author doc text keeps its lines in the class generators
+
+/// A wrapped constructor `@param` on an S7 class stays inside the roxygen
+/// block: every line starts `#'`, none lands in wrappers.R as bare R code.
+#[test]
+fn s7_wrapped_constructor_param_stays_in_roxygen_block() {
+    let parsed = parse_impl(
+        ClassSystem::S7,
+        syn::parse_quote! {
+            impl Gauge {
+                /// @param level The starting level,
+                ///   in percent.
+                ///
+                ///   Clamped to 0..100.
+                pub fn new(level: f64) -> Self { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    let block: Vec<&str> = wrapper
+        .lines()
+        .skip_while(|line| !line.contains("@param level"))
+        .take(4)
+        .collect();
+    assert_eq!(
+        block,
+        [
+            "#' @param level The starting level,",
+            "#'   in percent.",
+            "#'",
+            "#'   Clamped to 0..100.",
+        ],
+        "{wrapper}"
+    );
+}
+
+/// A two-paragraph `@return` on an R6 method renders a bare `#'` between the
+/// paragraphs (a roxygen2 paragraph break, no trailing whitespace).
+#[test]
+fn r6_method_return_keeps_its_paragraph_break() {
+    let parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Tally {
+                pub fn new() -> Self { unimplemented!() }
+                /// @return The count.
+                ///
+                /// Zero before the first call.
+                pub fn count(&self) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("#' @return The count.\n#'\n#' Zero before the first call.\n"),
+        "{wrapper}"
+    );
+    assert!(
+        !wrapper.lines().any(|line| line.ends_with("#' ")),
+        "no roxygen line ends in a trailing space:\n{wrapper}"
+    );
+}
+
+/// A two-paragraph `@param` on an env method becomes one `\describe` item
+/// spanning several `#'` lines, the blank line between its paragraphs a bare
+/// `#'`, with no line of the block missing the prefix.
+#[test]
+fn env_method_param_paragraphs_stay_inside_the_describe_item() {
+    let parsed = parse_impl(
+        ClassSystem::Env,
+        syn::parse_quote! {
+            impl Stock {
+                pub fn new() -> Self { unimplemented!() }
+                /// @param n The amount to add.
+                ///
+                /// Negative amounts remove stock.
+                pub fn add(&mut self, n: i32) -> i32 { unimplemented!() }
+            }
+        },
+    );
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains(
+            "#'   \\item{\\code{n}}{The amount to add.\n#'\n#' Negative amounts remove stock.}\n#' }"
+        ),
+        "{wrapper}"
+    );
+    let block: Vec<&str> = wrapper
+        .lines()
+        .skip_while(|line| !line.contains("\\describe{"))
+        .take_while(|line| *line != "#' }")
+        .collect();
+    assert!(
+        !block.is_empty() && block.iter().all(|line| line.starts_with("#'")),
+        "{wrapper}"
+    );
+}
+
+// endregion

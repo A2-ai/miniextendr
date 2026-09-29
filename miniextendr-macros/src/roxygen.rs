@@ -16,6 +16,28 @@
 //! pub fn square(x: f64) -> f64 { x * x }
 //! ```
 //!
+//! # How doc lines carry over
+//!
+//! Every reader here ([`explicit_roxygen_tags_from_attrs`],
+//! [`leading_prose_from_attrs`], [`strip_roxygen_from_attrs`]) walks the same
+//! lines ([`doc_lines`]) with the same roles ([`classify`]):
+//!
+//! - Text before the first `@tag` line is leading prose. It becomes
+//!   `@description` (when the block has none) and stays in rustdoc.
+//! - A tag runs from its `@tag` line to the next one. A multi-line tag
+//!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
+//!   roxygen2 paragraph break; a blank line in an example) and the indentation
+//!   of its continuation lines, less the one space rustdoc's `/// ` puts there.
+//!   Trailing blank lines are dropped. roxygen2 markdown reads a continuation
+//!   indented 4 or more spaces after a blank line as a code block, as rustdoc
+//!   does.
+//! - A joined tag (`@title`, `@keywords`, `@concept`, `@aliases`) folds its
+//!   wrapped lines onto one line.
+//! - A single-line tag (`@export`, `@noRd`, `@rdname topic`, ...) ends at its
+//!   line. Lines after it, up to the next tag, are rustdoc only.
+//! - Rustdoc keeps the leading prose and the rustdoc-only lines, and drops
+//!   every tag with its text.
+//!
 //! # R Package Configuration
 //!
 //! For roxygen2 to process multiline tags correctly, add this to your `DESCRIPTION` file:
@@ -51,13 +73,23 @@ const MULTILINE_TAGS: &[&str] = &[
     "inherit",
     "inheritParams",
     "inheritSection",
+    // roxygen2's other tags whose text runs over several lines (code, raw Rd,
+    // NAMESPACE directives, free text).
+    "examplesIf",
+    "usage",
+    "rawRd",
+    "rawNamespace",
+    "evalRd",
+    "evalNamespace",
+    "source",
+    "author",
 ];
 
 /// Tags whose wrapped continuation lines are joined back onto one line with a
-/// space instead of a newline: roxygen2 wants these on a single line, but a
-/// long title, keyword list, or concept in a Rust doc comment can be wrapped
-/// by the author.
-const JOINED_TAGS: &[&str] = &["title", "keywords", "concept"];
+/// space instead of a newline: roxygen2 wants these on a single line (or reads
+/// them as one whitespace-separated list), but a long title, keyword list,
+/// concept, or alias list in a Rust doc comment can be wrapped by the author.
+const JOINED_TAGS: &[&str] = &["title", "keywords", "concept", "aliases"];
 
 /// A bare `@name` / `@rdname` (topic written on the next `///` line, which
 /// roxygen2 accepts) takes exactly one continuation line as its topic. Once
@@ -88,13 +120,181 @@ fn is_joined_tag(tag: &str) -> bool {
     JOINED_TAGS.contains(&tag_name)
 }
 
+// region: doc lines
+
+/// One line of a string-literal doc attribute.
+#[derive(Debug, PartialEq, Eq)]
+struct DocLine {
+    /// Index of the doc attribute in the attribute slice it was read from.
+    attr: usize,
+    /// The line with its rustdoc lead removed (see [`doc_lines`]); empty for
+    /// a blank line.
+    text: String,
+}
+
+/// The lines of every string-literal doc attribute in `attrs`, in order.
+///
+/// Non-doc attributes are skipped, so an interleaved `#[cfg(...)]` never
+/// interrupts a tag (#613). A `#[doc = include_str!(..)]` is not a literal and
+/// stays unread. Per attribute:
+///
+/// - a single-line literal (each `///` line, a `#[doc = "..."]` from
+///   `macro_rules!`) loses at most the one leading space rustdoc's `/// `
+///   puts there;
+/// - a multi-line literal (`/** ... */`, `#[doc = "a\nb"]`) loses the common
+///   leading whitespace of its non-blank lines, so a relative indent survives;
+/// - a whitespace-only line becomes an empty one.
+fn doc_lines(attrs: &[syn::Attribute]) -> Vec<DocLine> {
+    let mut out = Vec::new();
+    for (attr, a) in attrs.iter().enumerate() {
+        if !a.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &a.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &nv.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit) = &expr_lit.lit else {
+            continue;
+        };
+        let value = lit.value();
+        // `"".lines()` yields nothing, but an empty `///` is one blank line.
+        let lines: Vec<&str> = if value.is_empty() {
+            vec![""]
+        } else {
+            value.lines().collect()
+        };
+        let lead = if value.contains('\n') {
+            common_indent(&lines)
+        } else {
+            " "
+        };
+        for line in lines {
+            let text = if line.trim().is_empty() {
+                ""
+            } else {
+                line.strip_prefix(lead).unwrap_or(line)
+            };
+            out.push(DocLine {
+                attr,
+                text: text.to_string(),
+            });
+        }
+    }
+    out
+}
+
+/// The leading whitespace every non-blank line of `lines` starts with.
+fn common_indent<'a>(lines: &[&'a str]) -> &'a str {
+    lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| &line[..line.len() - line.trim_start().len()])
+        .reduce(|common, lead| {
+            let shared = common
+                .char_indices()
+                .zip(lead.chars())
+                .take_while(|((_, a), b)| a == b)
+                .last()
+                .map_or(0, |((i, c), _)| i + c.len_utf8());
+            &common[..shared]
+        })
+        .unwrap_or("")
+}
+
+/// What a doc line is to roxygen extraction and rustdoc stripping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LineRole {
+    /// Before the first tag: leading prose (promoted to `@description`, kept
+    /// in rustdoc).
+    Prose,
+    /// A line starting with `@` (after leading whitespace): a new tag.
+    TagStart,
+    /// Part of the open tag's text, or a blank line that ends a tag (trailing,
+    /// or before the next tag).
+    TagBody,
+    /// After a single-line tag: rustdoc only, never R. A blank line is
+    /// rustdoc when a rustdoc-only line follows it.
+    Rustdoc,
+}
+
+/// How the tag that is open takes the lines that follow it.
+#[derive(Clone, Copy)]
+enum OpenTag {
+    /// [`MULTILINE_TAGS`]: every line up to the next tag, blank lines included.
+    Multi,
+    /// [`JOINED_TAGS`], or a bare `@name` / `@rdname` still waiting for its
+    /// topic ([`is_bare_topic_tag`]): the non-blank lines, folded onto one
+    /// line. A bare topic tag takes one line, then it is `Single`.
+    Joined { bare_topic: bool },
+    /// Any other tag: its own line only.
+    Single,
+}
+
+impl OpenTag {
+    fn of(tag_line: &str) -> Self {
+        if is_multiline_tag(tag_line) {
+            Self::Multi
+        } else if is_joined_tag(tag_line) {
+            Self::Joined { bare_topic: false }
+        } else if is_bare_topic_tag(tag_line) {
+            Self::Joined { bare_topic: true }
+        } else {
+            Self::Single
+        }
+    }
+}
+
+/// The role of each of `lines` ([`doc_lines`]): the one rule the tag
+/// extractor, the leading-prose reader and the rustdoc strip share.
+fn classify(lines: &[DocLine]) -> Vec<LineRole> {
+    let mut roles = Vec::with_capacity(lines.len());
+    let mut open: Option<OpenTag> = None;
+    for line in lines {
+        let text = line.text.trim_start();
+        let role = if text.starts_with('@') {
+            open = Some(OpenTag::of(text));
+            LineRole::TagStart
+        } else {
+            match open {
+                None => LineRole::Prose,
+                Some(OpenTag::Multi | OpenTag::Joined { bare_topic: false }) => LineRole::TagBody,
+                Some(OpenTag::Joined { bare_topic: true }) => {
+                    if !text.is_empty() {
+                        open = Some(OpenTag::Single);
+                    }
+                    LineRole::TagBody
+                }
+                Some(OpenTag::Single) => LineRole::Rustdoc,
+            }
+        };
+        roles.push(role);
+    }
+    // A blank line after a single-line tag goes with the paragraph after it:
+    // rustdoc before a rustdoc-only line, the tag's end otherwise.
+    let mut next_is_rustdoc = false;
+    for (line, role) in lines.iter().zip(roles.iter_mut()).rev() {
+        if !line.text.is_empty() {
+            next_is_rustdoc = *role == LineRole::Rustdoc;
+        } else if *role == LineRole::Rustdoc && !next_is_rustdoc {
+            *role = LineRole::TagBody;
+        }
+    }
+    roles
+}
+
+// endregion
+
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
 ///
 /// Most tags capture only a single line. Multi-line tags like `@examples`,
-/// `@description`, `@param`, and `@return` append continuation lines.
+/// `@description`, `@param`, and `@return` append their continuation lines,
+/// blank lines and indentation included (see the module docs).
 ///
-/// For R6 methods, if no explicit tags are found, the first doc comment paragraph
-/// is auto-converted to `@description`.
+/// Leading prose (the paragraphs before the first tag) is promoted to
+/// `@description` when the block has none.
 pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs)
 }
@@ -110,14 +310,14 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 
 /// Core implementation of roxygen tag extraction from `#[doc = "..."]` attributes.
 ///
-/// Walks through doc attributes line by line. Lines starting with `@` begin a new tag.
-/// Continuation lines are appended only if the current tag is multiline-capable.
+/// Walks the doc lines ([`doc_lines`]) with their roles ([`classify`]). Lines
+/// starting with `@` begin a new tag; continuation lines are appended only if
+/// the current tag is multiline-capable (or joined, see [`JOINED_TAGS`]).
 ///
-/// Before processing, the attribute slice is partitioned into doc and non-doc groups
-/// (stable order within each group). All doc attributes are processed first, so that
-/// interleaved `#[cfg(...)]` or other non-doc attributes never break multiline-tag
-/// continuation. This is a pure parse-side transform — the emitted `TokenStream` is
-/// unaffected; only the roxygen text assembly sees the normalised order.
+/// Only doc attributes are read, in order, so interleaved `#[cfg(...)]` or
+/// other non-doc attributes never break multiline-tag continuation (#613).
+/// This is a pure parse-side transform: the emitted `TokenStream` is
+/// unaffected.
 ///
 /// Leading prose (paragraphs before the first `@tag`) is promoted to a
 /// `@description` tag — never `@title`. The `@title` is left to the caller
@@ -153,91 +353,96 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
 /// Parse only the author-written `@tag` lines from doc attributes — no
 /// leading-prose promotion.
 ///
+/// A tag line is left-trimmed, so `///   @param` still starts a tag. A
+/// multi-line tag keeps its continuation lines as written (less the rustdoc
+/// lead, [`doc_lines`]) and its interior blank lines, and drops its trailing
+/// ones; a joined or bare-topic tag folds its lines onto one with a space.
+///
 /// [`roxygen_tags_from_attrs_impl`] layers the leading-prose → `@description`
 /// promotion on top of this. [`doc_conflict_warnings`] must use this raw parse
 /// instead: comparing the *synthesized* description (all leading prose) against
 /// the implicit one (second paragraph) warned on every multi-paragraph doc
 /// comment that had no explicit `@description` at all (#1172).
 fn explicit_roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
-    let mut tags = Vec::new();
+    let lines = doc_lines(attrs);
+    let roles = classify(&lines);
+    let mut tags: Vec<String> = Vec::new();
+    // Blank lines seen inside a multi-line tag, written out only when more of
+    // its text follows: a tag's trailing blank lines are dropped.
+    let mut pending_blanks = 0;
 
-    // Partition: doc attrs first (stable), non-doc attrs after.
-    // This means interleaved #[cfg(...)] and similar never interrupt doc processing.
-    let doc_attrs: Vec<&syn::Attribute> =
-        attrs.iter().filter(|a| a.path().is_ident("doc")).collect();
-
-    for attr in doc_attrs {
-        let syn::Meta::NameValue(nv) = &attr.meta else {
-            continue;
-        };
-        let syn::Expr::Lit(expr_lit) = &nv.value else {
-            continue;
-        };
-        let syn::Lit::Str(lit) = &expr_lit.lit else {
-            continue;
-        };
-        for line in lit.value().lines() {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with('@') {
-                tags.push(trimmed.to_string());
-            } else if !trimmed.is_empty()
-                && let Some(last) = tags.last_mut()
-            {
+    for (line, role) in lines.iter().zip(roles) {
+        match role {
+            LineRole::TagStart => {
+                pending_blanks = 0;
+                tags.push(line.text.trim_start().to_string());
+            }
+            LineRole::TagBody => {
+                let Some(last) = tags.last_mut() else {
+                    continue;
+                };
                 if is_multiline_tag(last) {
-                    // Continuation line for the current multi-line tag.
-                    last.push('\n');
-                    last.push_str(trimmed);
-                } else if is_joined_tag(last) || is_bare_topic_tag(last) {
-                    // Wrapped single-line tag: fold back onto one line.
+                    if line.text.is_empty() {
+                        pending_blanks += 1;
+                    } else {
+                        for _ in 0..std::mem::take(&mut pending_blanks) {
+                            last.push('\n');
+                        }
+                        last.push('\n');
+                        last.push_str(&line.text);
+                    }
+                } else if !line.text.is_empty() {
+                    // Wrapped joined tag or bare topic: fold onto one line.
                     last.push(' ');
-                    last.push_str(trimmed);
+                    last.push_str(line.text.trim());
                 }
             }
-            // Leading prose (before any @tag) is captured separately by
-            // `leading_prose_from_attrs` and promoted to @description in
-            // `roxygen_tags_from_attrs_impl`.
+            // Leading prose is read by `leading_prose_from_attrs` and promoted
+            // to @description in `roxygen_tags_from_attrs_impl`; rustdoc-only
+            // lines never reach R.
+            LineRole::Prose | LineRole::Rustdoc => {}
         }
     }
 
     tags
 }
 
+/// One roxygen comment line: `#' text`, or a bare `#'` for a blank `text`
+/// (no trailing whitespace in the generated R). Render author tag text
+/// through this (or the `push_roxygen_tags*` helpers), never
+/// `format!("#' {}", ..)`.
+pub(crate) fn roxygen_line(text: &str) -> String {
+    if text.trim().is_empty() {
+        "#'".to_string()
+    } else {
+        format!("#' {text}")
+    }
+}
+
 /// Render roxygen tag lines as "#' ..." comment lines.
 ///
-/// Multiline tags (containing '\n') are split into separate `#'` lines.
+/// Multiline tags (containing '\n') are split into separate `#'` lines
+/// ([`roxygen_line`]).
 pub(crate) fn format_roxygen_tags(tags: &[String]) -> String {
-    if tags.is_empty() {
-        return String::new();
-    }
     let mut out = String::new();
-    for tag in tags {
-        for line in tag.lines() {
-            out.push_str("#' ");
-            out.push_str(line);
-            out.push('\n');
-        }
+    for line in tags.iter().flat_map(|tag| tag.lines()) {
+        out.push_str(&roxygen_line(line));
+        out.push('\n');
     }
     out
 }
 
 /// Push roxygen tag lines into a vector of R wrapper lines.
 ///
-/// Multiline tags (containing '\n') are split into separate `#'` lines.
+/// Multiline tags (containing '\n') are split into separate `#'` lines
+/// ([`roxygen_line`]).
 pub(crate) fn push_roxygen_tags(lines: &mut Vec<String>, tags: &[String]) {
-    for tag in tags {
-        for line in tag.lines() {
-            lines.push(format!("#' {}", line));
-        }
-    }
+    lines.extend(tags.iter().flat_map(|tag| tag.lines()).map(roxygen_line));
 }
 
 /// Like [`push_roxygen_tags`] but takes `&[&str]` for filtered tag slices.
 pub(crate) fn push_roxygen_tags_str(lines: &mut Vec<String>, tags: &[&str]) {
-    for tag in tags {
-        for line in tag.lines() {
-            lines.push(format!("#' {}", line));
-        }
-    }
+    lines.extend(tags.iter().flat_map(|tag| tag.lines()).map(roxygen_line));
 }
 
 /// Return true if the tag list contains a specific roxygen tag.
@@ -1153,70 +1358,47 @@ pub(crate) fn strip_method_tags_r6(
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
 /// Returns a new vector of attributes with roxygen lines removed from doc comments.
-/// Non-doc attributes are passed through unchanged.
+/// Non-doc attributes, and doc attributes that are not string literals
+/// (`#[doc = include_str!(..)]`), are passed through unchanged.
 ///
 /// # Algorithm
 ///
-/// Roxygen tags typically appear at the end of documentation blocks. We use a simple
-/// but effective approach:
-/// 1. Keep all content before the first `@tag` line
-/// 2. Strip everything from the first `@tag` to the end of the roxygen region
+/// The lines are classified by the same rule the tag extractor reads
+/// ([`classify`]), so text that reaches R help leaves rustdoc and text that
+/// does not stays:
 ///
-/// A roxygen region ends when we see a non-empty line that doesn't start with `@`
-/// and follows an empty line (paragraph break). This handles multi-paragraph tags.
+/// - leading prose (before the first `@tag`) is kept;
+/// - a tag and every line it takes are dropped: the paragraphs of a
+///   multi-line tag (`@return X` / blank / more text), the wrapped lines of a
+///   joined tag (`@title`), a bare `@rdname`'s topic line;
+/// - a line after a single-line tag (`@export`, `@noRd`, `@rdname topic`) is
+///   rustdoc only and kept, with the blank line before it.
+///
+/// A doc attribute is dropped when its first non-blank line is a tag or tag
+/// text, or when it is blank and inside or at the end of a tag.
 pub(crate) fn strip_roxygen_from_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
-    // Collect doc attribute indices and their trimmed content
-    let mut doc_info: Vec<(usize, String)> = Vec::new();
-    for (i, attr) in attrs.iter().enumerate() {
-        if !attr.path().is_ident("doc") {
-            continue;
+    let lines = doc_lines(attrs);
+    let roles = classify(&lines);
+
+    // Each attribute's lines are contiguous; its first non-blank line decides
+    // (its first line when all are blank).
+    let mut roxygen_attrs = HashSet::new();
+    let mut offset = 0;
+    for group in lines.chunk_by(|a, b| a.attr == b.attr) {
+        let deciding = group.iter().position(|l| !l.text.is_empty()).unwrap_or(0);
+        if matches!(
+            roles[offset + deciding],
+            LineRole::TagStart | LineRole::TagBody
+        ) {
+            roxygen_attrs.insert(group[0].attr);
         }
-        let syn::Meta::NameValue(nv) = &attr.meta else {
-            continue;
-        };
-        let syn::Expr::Lit(expr_lit) = &nv.value else {
-            continue;
-        };
-        let syn::Lit::Str(lit) = &expr_lit.lit else {
-            continue;
-        };
-        // Trim the leading space that comes from `/// `
-        doc_info.push((i, lit.value().trim_start().to_string()));
+        offset += group.len();
     }
 
-    // Find roxygen line indices
-    let mut roxygen_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    let mut in_roxygen = false;
-    let mut prev_was_empty = false;
-
-    for (i, trimmed) in &doc_info {
-        if trimmed.starts_with('@') {
-            // Start or continue roxygen region
-            in_roxygen = true;
-            roxygen_indices.insert(*i);
-            prev_was_empty = false;
-        } else if in_roxygen {
-            if trimmed.is_empty() {
-                // Empty line in roxygen - might end the block or be part of multi-paragraph tag
-                roxygen_indices.insert(*i);
-                prev_was_empty = true;
-            } else if prev_was_empty {
-                // Non-empty line after empty line - end roxygen region
-                // This is likely regular documentation
-                in_roxygen = false;
-                prev_was_empty = false;
-            } else {
-                // Continuation line (no paragraph break)
-                roxygen_indices.insert(*i);
-            }
-        }
-    }
-
-    // Build result excluding roxygen lines
     attrs
         .iter()
         .enumerate()
-        .filter(|(i, _)| !roxygen_indices.contains(i))
+        .filter(|(i, _)| !roxygen_attrs.contains(i))
         .map(|(_, attr)| attr.clone())
         .collect()
 }

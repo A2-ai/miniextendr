@@ -163,6 +163,12 @@ generators.
 For multi-line tag support (`@examples`, `@description`, `@return`, `@param`,
 `@prop`), the `DESCRIPTION` file must include `Roxygen: list(markdown = TRUE)`.
 
+`doc_lines` + `classify` in `roxygen.rs` are the single doc-line rule: the tag
+extractor, the leading-prose reader and the rustdoc strip all walk the same
+lines with the same roles, so a multi-line tag keeps its blank lines and
+indentation in R and leaves rustdoc with them. Emit author tag text through
+`roxygen_line` / `push_roxygen_tags*` (bare `#'` for a blank line).
+
 **Free functions default to `@rdname <source-file-stem>`.** During wrapper
 collection (`collect_r_wrappers` in `miniextendr-api/src/registry.rs`), any
 `RWrapperPriority::Function` entry without an explicit `@rdname` or `@noRd`

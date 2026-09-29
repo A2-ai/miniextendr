@@ -559,17 +559,18 @@ fn test_push_multiline_tag() {
 #[test]
 fn test_describein_keeps_continuation_lines() {
     // `@describeIn topic description` may wrap; the wrapped part is the rest
-    // of the description and must not be dropped (#1476).
+    // of the description and must not be dropped (#1476). The continuation
+    // keeps its indent, less the one rustdoc space.
     let attrs: Vec<syn::Attribute> = vec![
-        syn::parse_quote!(#[doc = "@describeIn new_bag Number of values in the bag,"]),
-        syn::parse_quote!(#[doc = "  as an integer scalar."]),
-        syn::parse_quote!(#[doc = "@export"]),
+        syn::parse_quote!(#[doc = " @describeIn new_bag Number of values in the bag,"]),
+        syn::parse_quote!(#[doc = "   as an integer scalar."]),
+        syn::parse_quote!(#[doc = " @export"]),
     ];
     let tags = roxygen_tags_from_attrs(&attrs);
     assert_eq!(
         tags,
         vec![
-            "@describeIn new_bag Number of values in the bag,\nas an integer scalar.",
+            "@describeIn new_bag Number of values in the bag,\n  as an integer scalar.",
             "@export"
         ]
     );
@@ -581,10 +582,10 @@ fn test_wrapped_single_word_tags_keep_continuation() {
         let first = format!("{tag} alpha");
         let attrs: Vec<syn::Attribute> = vec![
             syn::parse_quote!(#[doc = #first]),
-            syn::parse_quote!(#[doc = "  beta"]),
+            syn::parse_quote!(#[doc = "   beta"]),
         ];
         let tags = roxygen_tags_from_attrs(&attrs);
-        assert_eq!(tags, vec![format!("{tag} alpha\nbeta")], "tag {tag}");
+        assert_eq!(tags, vec![format!("{tag} alpha\n  beta")], "tag {tag}");
     }
 }
 
@@ -1388,6 +1389,290 @@ fn order_after_topic_blocks_only_on_an_author_topic() {
     ] {
         assert!(pushed(tags).is_empty(), "{tags:?}");
     }
+}
+
+// endregion
+
+// region: multi-line tags keep blank lines and indentation
+
+/// Doc attributes as rustdoc writes `/// text` (one leading space), with an
+/// empty `///` for `""`.
+fn rustdoc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
+    lines
+        .iter()
+        .map(|line| {
+            let value = if line.is_empty() {
+                String::new()
+            } else {
+                format!(" {line}")
+            };
+            syn::parse_quote!(#[doc = #value])
+        })
+        .collect()
+}
+
+fn explicit_tags(lines: &[&str]) -> Vec<String> {
+    explicit_roxygen_tags_from_attrs(&rustdoc_attrs(lines))
+}
+
+#[test]
+fn multiline_tags_keep_paragraphs_and_example_indent() {
+    let tags = explicit_tags(&[
+        "@title Demo",
+        "@description First paragraph.",
+        "",
+        "Second paragraph.",
+        "@return A data frame.",
+        "",
+        "  Its columns are `a` and `b`.",
+        "@examples",
+        "x <- c(1, 2) |>",
+        "  sum()",
+    ]);
+    assert_eq!(
+        tags,
+        [
+            "@title Demo",
+            "@description First paragraph.\n\nSecond paragraph.",
+            "@return A data frame.\n\n  Its columns are `a` and `b`.",
+            "@examples\nx <- c(1, 2) |>\n  sum()",
+        ]
+    );
+    let mut lines = Vec::new();
+    push_roxygen_tags(&mut lines, &tags);
+    assert_eq!(
+        lines,
+        [
+            "#' @title Demo",
+            "#' @description First paragraph.",
+            "#'",
+            "#' Second paragraph.",
+            "#' @return A data frame.",
+            "#'",
+            "#'   Its columns are `a` and `b`.",
+            "#' @examples",
+            "#' x <- c(1, 2) |>",
+            "#'   sum()",
+        ]
+    );
+}
+
+#[test]
+fn examples_if_keeps_its_code_lines() {
+    let tags = explicit_tags(&["@examplesIf interactive()", "f(1) |>", "  g()", "@export"]);
+    assert_eq!(
+        tags,
+        ["@examplesIf interactive()\nf(1) |>\n  g()", "@export"]
+    );
+}
+
+#[test]
+fn wrapped_aliases_join_onto_one_line() {
+    let tags = explicit_tags(&["@aliases alpha beta", "  gamma", "", "delta"]);
+    assert_eq!(tags, ["@aliases alpha beta gamma delta"]);
+}
+
+#[test]
+fn trailing_blank_lines_of_a_tag_are_dropped() {
+    let tags = explicit_tags(&["@return X.", "", "", "@examples", "f()", "", ""]);
+    assert_eq!(tags, ["@return X.", "@examples\nf()"]);
+}
+
+#[test]
+fn interior_blank_lines_are_kept_inside_examples() {
+    let tags = explicit_tags(&["@examples", "a()", "", "", "b()"]);
+    assert_eq!(tags, ["@examples\na()\n\n\nb()"]);
+}
+
+#[test]
+fn param_continuations_keep_their_indent() {
+    let tags = explicit_tags(&[
+        "@param x First",
+        "  second.",
+        "@param y One.",
+        "",
+        "    code(2)",
+    ]);
+    assert_eq!(
+        tags,
+        ["@param x First\n  second.", "@param y One.\n\n    code(2)"]
+    );
+}
+
+#[test]
+fn prose_after_a_single_line_tag_is_not_roxygen() {
+    let tags = explicit_tags(&["@export", "Rust-only note.", "", "More Rust notes."]);
+    assert_eq!(tags, ["@export"]);
+}
+
+#[test]
+fn title_still_joins_prose_after_a_blank_line() {
+    let tags = explicit_tags(&["@title Demo", "", "More."]);
+    assert_eq!(tags, ["@title Demo More."]);
+}
+
+#[test]
+fn bare_rdname_takes_its_topic_then_ends() {
+    let tags = explicit_tags(&["@rdname", "", "  shared_topic", "Rust-only prose."]);
+    assert_eq!(tags, ["@rdname shared_topic"]);
+}
+
+#[test]
+fn a_literal_without_the_rustdoc_space_still_starts_a_tag() {
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = "@title X"]),
+        syn::parse_quote!(#[doc = "@examples"]),
+        syn::parse_quote!(#[doc = "f()"]),
+        syn::parse_quote!(#[doc = "  g()"]),
+    ];
+    assert_eq!(
+        explicit_roxygen_tags_from_attrs(&attrs),
+        ["@title X", "@examples\nf()\n g()"]
+    );
+}
+
+#[test]
+fn a_multiline_literal_loses_only_its_common_indent() {
+    let attrs: Vec<syn::Attribute> = vec![syn::parse_quote!(
+        #[doc = "\n    @examples\n    f() |>\n      g()\n"]
+    )];
+    assert_eq!(
+        explicit_roxygen_tags_from_attrs(&attrs),
+        ["@examples\nf() |>\n  g()"]
+    );
+}
+
+#[test]
+fn cfg_between_a_blank_and_the_next_return_line_still_continues_it() {
+    // #613: only doc attributes are read, in order.
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = " @return The value."]),
+        syn::parse_quote!(#[doc = ""]),
+        syn::parse_quote!(#[cfg(feature = "x")]),
+        syn::parse_quote!(#[doc = " More about it."]),
+    ];
+    assert_eq!(
+        explicit_roxygen_tags_from_attrs(&attrs),
+        ["@return The value.\n\nMore about it."]
+    );
+}
+
+#[test]
+fn doc_lines_strip_the_rustdoc_lead_per_attribute() {
+    let attrs: Vec<syn::Attribute> = vec![
+        syn::parse_quote!(#[doc = " one"]),
+        syn::parse_quote!(#[doc = "   two"]),
+        syn::parse_quote!(#[doc = ""]),
+        syn::parse_quote!(#[doc = "   "]),
+        syn::parse_quote!(#[cfg(feature = "x")]),
+        syn::parse_quote!(#[doc = "\n    a\n      b\n\n    c"]),
+        syn::parse_quote!(#[doc(hidden)]),
+    ];
+    let lines = doc_lines(&attrs);
+    let got: Vec<(usize, &str)> = lines.iter().map(|l| (l.attr, l.text.as_str())).collect();
+    assert_eq!(
+        got,
+        [
+            (0, "one"),
+            (1, "  two"),
+            (2, ""),
+            (3, ""),
+            (5, ""),
+            (5, "a"),
+            (5, "  b"),
+            (5, ""),
+            (5, "c"),
+        ]
+    );
+}
+
+#[test]
+fn classify_gives_each_line_one_role() {
+    use LineRole::*;
+    let attrs = rustdoc_attrs(&[
+        "Summary.",    // Prose
+        "",            // Prose
+        "@param x A.", // TagStart
+        "",            // TagBody
+        "Note: more.", // TagBody
+        "@title T",    // TagStart
+        "  wrapped",   // TagBody
+        "@export",     // TagStart
+        "",            // Rustdoc (a rustdoc line follows)
+        "Rust only.",  // Rustdoc
+        "",            // TagBody (the next tag follows)
+        "@rdname",     // TagStart
+        "topic",       // TagBody
+        "Rust again.", // Rustdoc
+        "",            // TagBody (end)
+    ]);
+    assert_eq!(
+        classify(&doc_lines(&attrs)),
+        [
+            Prose, Prose, TagStart, TagBody, TagBody, TagStart, TagBody, TagStart, Rustdoc,
+            Rustdoc, TagBody, TagStart, TagBody, Rustdoc, TagBody,
+        ]
+    );
+}
+
+/// The text of the doc attributes `strip_roxygen_from_attrs` keeps.
+fn kept_docs(attrs: &[syn::Attribute]) -> Vec<String> {
+    strip_roxygen_from_attrs(attrs)
+        .iter()
+        .map(|attr| match &attr.meta {
+            syn::Meta::NameValue(nv) => match &nv.value {
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(lit),
+                    ..
+                }) => lit.value(),
+                _ => "<non-literal>".to_string(),
+            },
+            _ => "<non-doc>".to_string(),
+        })
+        .collect()
+}
+
+#[test]
+fn strip_keeps_leading_prose_and_rustdoc_only_lines() {
+    let attrs = rustdoc_attrs(&[
+        "Summary.",
+        "",
+        "@return A value.",
+        "",
+        "Second paragraph of the return value.",
+        "@export",
+        "",
+        "Rust-only note.",
+    ]);
+    assert_eq!(kept_docs(&attrs), [" Summary.", "", "", " Rust-only note."]);
+}
+
+#[test]
+fn strip_drops_a_paragraph_joined_onto_the_title() {
+    let attrs = rustdoc_attrs(&["@title Demo", "", "More.", "@param x A."]);
+    assert!(kept_docs(&attrs).is_empty(), "{:?}", kept_docs(&attrs));
+}
+
+#[test]
+fn strip_passes_non_doc_attributes_through() {
+    let mut attrs = rustdoc_attrs(&["Summary.", "@export"]);
+    attrs.insert(1, syn::parse_quote!(#[allow(dead_code)]));
+    assert_eq!(kept_docs(&attrs), [" Summary.", "<non-doc>"]);
+}
+
+#[test]
+fn blank_roxygen_lines_have_no_trailing_space() {
+    assert_eq!(roxygen_line(""), "#'");
+    assert_eq!(roxygen_line("  "), "#'");
+    assert_eq!(roxygen_line("  sum()"), "#'   sum()");
+    let tags = vec!["@description A\n\nB".to_string()];
+    assert_eq!(format_roxygen_tags(&tags), "#' @description A\n#'\n#' B\n");
+    let mut lines = Vec::new();
+    push_roxygen_tags(&mut lines, &tags);
+    assert_eq!(lines, ["#' @description A", "#'", "#' B"]);
+    let mut lines = Vec::new();
+    push_roxygen_tags_str(&mut lines, &["@return X\n\nY"]);
+    assert_eq!(lines, ["#' @return X", "#'", "#' Y"]);
 }
 
 // endregion
