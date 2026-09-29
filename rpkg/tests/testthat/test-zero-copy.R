@@ -1,4 +1,4 @@
-# Tests for zero-copy conversions (Cow, Arrow pointer recovery, ProtectedStrVec)
+# Tests for zero-copy conversions (Cow, Arrow buffer recovery, ProtectedStrVec)
 
 # region: Cow<[T]> round-trip (always copies — #880)
 
@@ -80,7 +80,7 @@ test_that("Vec<Cow<str>> elements are all zero-copy (Borrowed)", {
 
 # endregion
 
-# region: Arrow array identity (pointer recovery)
+# region: Arrow array identity (registry recovery)
 
 test_that("Float64Array round-trip returns same R object (zero-copy)", {
   x <- c(1.0, 2.0, 3.0)
@@ -113,8 +113,9 @@ test_that("Int32Array round-trip returns the values unchanged", {
 })
 
 test_that("ALTREP compact integer (1:n) correctly falls through to copy", {
-  # 1:5 creates an ALTREP compact sequence — data isn't at fixed offset
-  # from SEXP header. Arrow recovery must fail gracefully, returning a copy.
+  # 1:5 creates an ALTREP compact sequence. An ALTREP vector's data can be
+  # another object's memory, so the buffer registry leaves it out and the
+  # conversion back returns a copy.
   x <- 1:5
   expect_false(zero_copy_arrow_i32_identity(x))
   # But values are preserved correctly

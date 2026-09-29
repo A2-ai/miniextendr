@@ -342,4 +342,8 @@ test_that("registered vectors round-trip, ALTREP views over one buffer copy", {
   expect_null(miniextendr:::gc_stress_arrow_registry_roundtrip())
 })
 
+test_that("an R-backed buffer under a new null mask keeps its nulls", {
+  expect_null(miniextendr:::gc_stress_arrow_changed_nulls())
+})
+
 # endregion

@@ -369,7 +369,13 @@ copied into a fresh R vector:
   be another object's memory (the vector R's wrapper class wraps, or the Rust
   buffer behind an Arrow ALTREP vector), so two live vectors can share one
   data address. A standard vector's data lies inside its own allocation, which
-  is what lets the registry key name exactly one SEXP.
+  is what lets the registry key name exactly one SEXP;
+- an R-backed buffer under a null mask whose null slots do not already hold
+  R's NA (`0` for raw). Arrow kernels can keep the values buffer and swap only
+  the mask: arrow-select's `nullif` does, so a `NULLIF` result is still an
+  exact registry hit. Handing back the source vector would lose those nulls.
+  An array read from R builds its nulls from R's NAs, so it passes this check
+  and stays zero-copy.
 
 Earlier versions guessed instead. They read the bytes in front of the data
 pointer as an R vector header and accepted them if the type, ALTREP bit and

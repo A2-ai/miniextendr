@@ -265,20 +265,28 @@ impl std::fmt::Debug for RStringArray {
 // endregion
 
 // Note: RRecordBatch removed — the individual array IntoR impls recover an
-// R-backed column's source vector themselves (see `R_BACKED_BUFFERS`).
+// R-backed column's source vector themselves (see `r_backed_buffers`).
 // RecordBatch.into_sexp() → arrow_array_to_sexp() → Float64Array.into_sexp().
 
 // endregion
+
+mod r_backed_buffers;
+use r_backed_buffers::{
+    BufferKey, forget_r_backed_buffer, r_backed_buffer_sexp, remember_r_backed_buffer,
+};
 
 // region: RPreservedSexp — GC guard for Arrow Allocation trait
 
 /// GC guard that keeps an R SEXP alive for as long as an Arrow Buffer exists.
 ///
-/// Uses `R_PreserveObject`/`R_ReleaseObject` (mutex-protected in R 4.0+)
-/// rather than a Rust-side protect pool, because Arrow buffers may be
-/// dropped on non-main threads (Arrow is `Send + Sync`).
+/// Uses `R_PreserveObject`/`R_ReleaseObject` rather than a Rust-side protect
+/// pool, so the root outlives any `.Call` frame. Arrow buffers are
+/// `Send + Sync` and may be dropped on a thread other than R's main thread.
+/// `R_ReleaseObject` takes no lock (`R_PreciousList` edits in R's
+/// `memory.c`), so such a drop races R's GC. Routing the release back to the
+/// main thread is a separate change.
 ///
-/// `key` is the buffer's [`R_BACKED_BUFFERS`] entry (data address, byte
+/// `key` is the buffer's `r_backed_buffers` entry (data address, byte
 /// length), which the guard gives up again when it drops. It is `None` for an
 /// ALTREP vector, which is never registered.
 struct RPreservedSexp {
@@ -286,8 +294,9 @@ struct RPreservedSexp {
     key: Option<BufferKey>,
 }
 
-// SAFETY: R_PreserveObject/R_ReleaseObject are mutex-protected in R 4.0+.
-// The SEXP data is immutable once preserved (we only read via DATAPTR_RO).
+// SAFETY: the SEXP data is immutable once preserved (we only read via
+// DATAPTR_RO). The registry update in Drop is behind a lock; the release
+// itself is not thread-safe (see the type docs).
 unsafe impl Send for RPreservedSexp {}
 unsafe impl Sync for RPreservedSexp {}
 impl std::panic::RefUnwindSafe for RPreservedSexp {}
@@ -300,123 +309,45 @@ impl Drop for RPreservedSexp {
         if let Some(key) = self.key {
             forget_r_backed_buffer(key);
         }
-        // SAFETY: R_ReleaseObject is thread-safe (mutex-protected in R 4.0+).
-        // We use _unchecked because this Drop may fire off the R main thread.
+        // _unchecked because this Drop may fire off the R main thread. R takes
+        // no lock here, so an off-thread drop races the GC (see the type docs).
         unsafe { sys::R_ReleaseObject_unchecked(self.sexp) }
     }
 }
 
 // endregion
 
-// region: R-backed buffer registry (provenance for zero-copy recovery)
-
-/// (data address, byte length) of a buffer.
-type BufferKey = (usize, usize);
-
-/// Which Arrow buffers are R memory: (data address, byte length) of every
-/// buffer [`sexp_to_arrow_buffer`] made → (SEXP address, live guard count).
-///
-/// An Arrow → R conversion hands back the source vector instead of copying
-/// only on an exact hit, so the answer never depends on reading memory the
-/// buffer does not own. An earlier version guessed instead: it read the bytes
-/// in front of the data pointer as an R vector header and accepted them when
-/// the type, ALTREP bit and length looked right, behind a gate on the buffer's
-/// shape (unsliced, capacity exactly the data length). The gate assumed that
-/// buffers Arrow allocates itself have capacity rounded up to 64 bytes, but a
-/// `Vec`-backed buffer has its exact length as capacity. DataFusion builds a
-/// one-row aggregate column as `PrimitiveArray::from_value(v, 1)`, a
-/// `vec![v; 1]`, so every such conversion read heap bytes in front of the
-/// `Vec`, and when they looked like a header the data.frame got a SEXP
-/// pointing into Rust memory freed with the batch.
-///
-/// Only standard (non-ALTREP) vectors are registered. A standard vector's
-/// data lies inside its own allocation, so while it is preserved no other
-/// live vector has that data address, and a key names exactly one SEXP. An
-/// ALTREP vector's data pointer can be another object's memory: the vector R's
-/// wrapper class wraps, the expansion a compact sequence materializes, or the
-/// Rust buffer behind one of this crate's Arrow ALTREP classes. Two such
-/// vectors can then share a key, and an entry kept for the first would outlive
-/// its guard while the second's guard is still counted. A buffer over an
-/// ALTREP vector is therefore always copied on the way back, as it was when
-/// recovery read the header.
-///
-/// Addresses are stored as `usize` so the map is `Send`; an entry is turned
-/// back into a SEXP only on R's main thread, while the buffer being converted
-/// points into the registered vector's data and so keeps it alive. The count
-/// covers several guards over one vector (the same SEXP converted to Arrow
-/// twice). Guards drop wherever Arrow drops the buffer, possibly off R's main
-/// thread, hence the lock.
-static R_BACKED_BUFFERS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashMap<BufferKey, (usize, usize)>>,
-> = std::sync::LazyLock::new(Default::default);
-
-fn r_backed_buffers()
--> std::sync::MutexGuard<'static, std::collections::HashMap<BufferKey, (usize, usize)>> {
-    // Every update is a single insert, decrement or remove, so a lock poisoned
-    // by a panic elsewhere still guards a consistent map.
-    R_BACKED_BUFFERS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Record a new guard over the standard vector `sexp`, whose data the buffer
-/// `key` covers.
-fn remember_r_backed_buffer(key: BufferKey, sexp: SEXP) {
-    let sexp = sexp.0 as usize;
-    r_backed_buffers()
-        .entry(key)
-        .and_modify(|entry| {
-            debug_assert_eq!(entry.0, sexp, "two live vectors share a data address");
-            entry.1 += 1;
-        })
-        .or_insert((sexp, 1));
-}
-
-/// Give up one guard's entry for `key`.
-fn forget_r_backed_buffer(key: BufferKey) {
-    let mut map = r_backed_buffers();
-    if let Some(entry) = map.get_mut(&key) {
-        entry.1 -= 1;
-        if entry.1 == 0 {
-            map.remove(&key);
-        }
-    }
-}
-
-/// The R vector whose data the buffer `key` covers, if it is one.
-fn r_backed_buffer_sexp(key: BufferKey) -> Option<SEXP> {
-    r_backed_buffers()
-        .get(&key)
-        .map(|&(sexp, _)| SEXP(sexp as *mut crate::SEXPREC))
-}
-
-// endregion
-
 // region: R-backed buffer recovery (zero-copy Arrow → R)
 
-/// Zero-copy recovery of the source R vector behind an Arrow primitive value
-/// buffer. Returns `None` (→ caller copies) unless the buffer is one
-/// [`sexp_to_arrow_buffer`] made over a whole R vector: its data address and
-/// the byte length of `len` elements of `T` must be an exact
-/// [`R_BACKED_BUFFERS`] entry. A slice of such a buffer (DataFusion's
-/// contiguous-run filter output, #867) starts or ends elsewhere and misses,
-/// and a buffer over an ALTREP vector was never registered.
+/// Zero-copy recovery of the source R vector behind an Arrow primitive array.
+/// Returns `None` (→ caller copies) unless both hold:
 ///
-/// The hit is a live, preserved vector, so checking its type is a plain read.
+/// - The values buffer is one [`sexp_to_arrow_buffer`] made over a whole
+///   standard R vector of the same type: its data address and the byte length
+///   of the array's elements must be an exact `r_backed_buffers` entry. A
+///   slice of such a buffer (DataFusion's contiguous-run filter output, #867)
+///   starts or ends elsewhere and misses, and a buffer over an ALTREP vector
+///   was never registered.
+/// - Every null slot already holds R's missing value (`is_na`), so the source
+///   vector says what the array says. A kernel can keep an R-backed values
+///   buffer and swap only the null mask: arrow-select's `nullif` does exactly
+///   that. Handing back the source then would lose those nulls. The scan
+///   runs only for a registered array that has nulls; one read from R with
+///   NAs builds its nulls from those NAs, so it stays zero-copy.
 ///
-/// # Safety
-///
-/// Must be called on R's main thread.
-unsafe fn try_recover_r_backed_buffer<T: RNativeType>(
-    buffer: &arrow_buffer::Buffer,
-    len: usize,
-) -> Option<SEXP> {
-    let byte_len = len.checked_mul(size_of::<T>())?;
-    if byte_len == 0 {
-        return None;
-    }
-    let sexp = r_backed_buffer_sexp((buffer.as_ptr() as usize, byte_len))?;
-    (sexp.type_of() == T::SEXP_TYPE).then_some(sexp)
+/// Reads no R memory. Main thread only, since the result goes to R.
+fn try_recover_r_backed_array<A>(
+    array: &arrow_array::PrimitiveArray<A>,
+    is_na: impl Fn(A::Native) -> bool,
+) -> Option<SEXP>
+where
+    A: ArrowPrimitiveType,
+    A::Native: RNativeType,
+{
+    let sexp = r_backed_buffer_sexp::<A::Native>(array.values().inner(), array.len())?;
+    let nulls_hold_na = array.null_count() == 0
+        || (0..array.len()).all(|i| array.is_valid(i) || is_na(array.value(i)));
+    nulls_hold_na.then_some(sexp)
 }
 
 // region: Zero-copy buffer helpers
@@ -436,6 +367,11 @@ unsafe fn try_recover_r_backed_buffer<T: RNativeType>(
 /// - `sexp` must be a valid R vector with contiguous data of type `T`
 /// - Must be called on R's main thread (for `R_PreserveObject`)
 unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffer::Buffer> {
+    // Root the source until the guard preserves it: `alloc_r_backed_buffer`
+    // passes a fresh, unprotected vector, and both `DATAPTR_RO` (ALTREP
+    // materialization) and the first `R_PreserveObject` under R_HASH_PRECIOUS
+    // (which allocates its hash table before rooting the object) can run the GC.
+    let _source = unsafe { crate::OwnedProtect::new(sexp) };
     let len = sexp.len();
     if len == 0 {
         return Some(arrow_buffer::Buffer::from(Vec::<u8>::new()));
@@ -453,7 +389,7 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 
     // Preserve the R object so it won't be GC'd while Arrow holds a reference,
     // and record a standard vector's buffer as R memory for the way back (see
-    // R_BACKED_BUFFERS for why ALTREP vectors are left out).
+    // `r_backed_buffers` for why ALTREP vectors are left out).
     unsafe { sys::R_PreserveObject(sexp) };
     let key = (!sexp.is_altrep()).then_some((ptr as usize, byte_len));
     if let Some(key) = key {
@@ -476,7 +412,7 @@ unsafe fn sexp_to_arrow_buffer<T: RNativeType>(sexp: SEXP) -> Option<arrow_buffe
 /// The returned buffer points into a freshly allocated R vector (REALSXP,
 /// INTSXP, or RAWSXP depending on `T`). When this buffer is later used in
 /// an Arrow array and that array is converted back to R via `IntoR`, the
-/// buffer registry (`R_BACKED_BUFFERS`) finds the original R vector —
+/// buffer registry (`r_backed_buffers`) finds the original R vector —
 /// zero-copy round-trip for the Rust→Arrow→R direction.
 ///
 /// Returns `(buffer, sexp)` so callers can also work with the SEXP directly.
@@ -1244,10 +1180,8 @@ impl IntoR for Float64Array {
 
     fn into_sexp(self) -> SEXP {
         // Zero-copy: hand back the source R vector when the buffer is one
-        // registered over a whole R vector (see R_BACKED_BUFFERS).
-        if let Some(sexp) =
-            unsafe { try_recover_r_backed_buffer::<f64>(self.values().inner(), self.len()) }
-        {
+        // registered over a whole R vector and its nulls are already NA.
+        if let Some(sexp) = try_recover_r_backed_array(&self, is_na_real) {
             return sexp;
         }
 
@@ -1278,10 +1212,8 @@ impl IntoR for Int32Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        // Zero-copy for a registered R-backed buffer (see R_BACKED_BUFFERS).
-        if let Some(sexp) =
-            unsafe { try_recover_r_backed_buffer::<i32>(self.values().inner(), self.len()) }
-        {
+        // Zero-copy for a registered R-backed buffer whose nulls are already NA.
+        if let Some(sexp) = try_recover_r_backed_array(&self, |v| v == NA_INTEGER) {
             return sexp;
         }
 
@@ -1311,10 +1243,9 @@ impl IntoR for UInt8Array {
     }
 
     fn into_sexp(self) -> SEXP {
-        // Zero-copy for a registered R-backed buffer (see R_BACKED_BUFFERS).
-        if let Some(sexp) =
-            unsafe { try_recover_r_backed_buffer::<u8>(self.values().inner(), self.len()) }
-        {
+        // Zero-copy for a registered R-backed buffer whose nulls already hold
+        // 0, what the copy below writes (raw vectors have no NA).
+        if let Some(sexp) = try_recover_r_backed_array(&self, |v| v == 0) {
             return sexp;
         }
 
