@@ -808,6 +808,10 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
+      # The gctorture-heavy test files run in r-stress-tests, as on the Linux
+      # check legs. Running them here too pushed `checking tests` past
+      # timeout-minutes. See rpkg/tests/testthat/helper-gc-stress.R.
+      MINIEXTENDR_SKIP_STRESS: "1"
 
     steps:
       - uses: actions/checkout@v7
