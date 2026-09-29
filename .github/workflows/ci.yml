@@ -985,21 +985,18 @@ jobs:
   # ===========================================================================
   # R Package: R CMD check on Windows
   # ===========================================================================
-  # On demand: the `windows` PR label (apply it to a PR that touches Windows
-  # support: Makevars.win / configure.win, rtools linking, Windows-specific
-  # code paths), the weekly cron, and workflow_dispatch. Non-gating, so not
-  # in ci-success.needs: a labeled failure shows red on the PR without
-  # blocking it, same as the macOS job. The job hung past its timeout in
-  # April 2026 (#94) and was switched off until this opt-in; worker panics
-  # under pipe-redirected stdout can still abort (#104).
+  # Windows support is deferred (#1654), so this job runs only on PRs carrying
+  # the `windows` label: not on pushes, the weekly cron or workflow_dispatch.
+  # Apply the label to a PR that touches Windows support (Makevars.win /
+  # configure.win, rtools linking, Windows-specific code paths). Non-gating,
+  # so not in ci-success.needs: a labeled failure shows red on the PR without
+  # blocking it. It hung past its timeout in April 2026 (#94), and worker
+  # panics under pipe-redirected stdout can abort (#104).
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
     timeout-minutes: 90
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
-      contains(github.event.pull_request.labels.*.name, 'windows')
+    if: contains(github.event.pull_request.labels.*.name, 'windows')
     # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
     # This matches R's own build system (SHELL = sh from Rtools).
     # See docs/windows-build-environment.md for details.
@@ -1998,7 +1995,7 @@ jobs:
       - changes
       - r-check-linux
       # - r-check-macos   # non-gating: runs only on workflow_dispatch + weekly cron, see #95
-      # - r-check-windows # non-gating: `windows` label / weekly cron / dispatch, see #94
+      # - r-check-windows # non-gating: `windows` label only, Windows support deferred (#1654)
       - r-tests
       - r-stress-tests
       - cross-package-tests
