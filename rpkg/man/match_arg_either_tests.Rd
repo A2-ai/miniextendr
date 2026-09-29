@@ -2,6 +2,7 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{match_arg_either_route}
 \alias{match_arg_either_route}
+\alias{match_arg_either_route_or_list}
 \alias{match_arg_either_route_optional}
 \alias{match_arg_either_route_omitted}
 \alias{match_arg_either_route_omitted_optional}
@@ -15,6 +16,8 @@
 \title{match_arg_either_route}
 \usage{
 match_arg_either_route(route = c("oral", "bolus", "infusion"))
+
+match_arg_either_route_or_list(route = c("oral", "bolus", "infusion"))
 
 match_arg_either_route_optional(maybe_route = NULL)
 
@@ -59,6 +62,8 @@ choices_either_tiers(tiers = c("low", "mid", "high"))
 }
 \description{
 A route name or a data frame of doses.
+
+A route name or a list of doses: a \code{List} as the other arm.
 
 An optional route name or data frame: \code{NULL} is no choice.
 

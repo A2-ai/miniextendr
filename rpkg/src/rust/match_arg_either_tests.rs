@@ -32,6 +32,19 @@ pub fn match_arg_either_route(#[miniextendr(match_arg)] route: Either<Route, Dat
     describe_route(route)
 }
 
+/// A route name or a list of doses: a `List` as the other arm.
+///
+/// @export
+#[miniextendr]
+pub fn match_arg_either_route_or_list(
+    #[miniextendr(match_arg)] route: Either<Route, miniextendr_api::List>,
+) -> String {
+    match route {
+        Either::Left(route) => format!("{route:?}"),
+        Either::Right(list) => format!("list:{}", list.len()),
+    }
+}
+
 /// A route name or a number, without `match_arg`: `TryFromSexp for Either`
 /// tries `Route` first, then `f64`. A value that is neither a string nor a
 /// number is refused by both, and the argument error names both.

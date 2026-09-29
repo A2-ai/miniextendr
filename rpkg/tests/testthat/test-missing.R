@@ -16,6 +16,13 @@ test_that("Missing<i32> is_present reflects argument presence", {
   expect_true(missing_test_present(1L))
 })
 
+test_that("Missing<List> reads an omitted, a present and a refused list", {
+  expect_equal(missing_test_list(), "absent")
+  expect_equal(missing_test_list(list(1, "a")), "2 elements")
+  expect_error(missing_test_list("a"), "'x'.*got character")
+  expect_error(missing_test_list(list(a = 1, a = 2)), "duplicate name 'a'")
+})
+
 test_that("Missing<Option<f64>> distinguishes missing, NULL, and present", {
   expect_equal(missing_test_option(), "missing")
   expect_equal(missing_test_option(NULL), "null")

@@ -12,8 +12,8 @@
 use miniextendr_api::either_impl::Either;
 use miniextendr_api::from_r::SexpError;
 use miniextendr_api::{
-    AsCharacter, AsCharacterVec, DataFrame, ExternalPtr, MatchArg, RFactor, SEXP, TryFromSexp,
-    miniextendr,
+    AsCharacter, AsCharacterVec, DataFrame, ExternalPtr, List, MatchArg, RFactor, SEXP,
+    TryFromSexp, miniextendr,
 };
 
 #[derive(Copy, Clone, Debug, MatchArg)]
@@ -69,6 +69,11 @@ pub fn mode_or_text(#[miniextendr(match_arg)] mode: Either<Mode, AsCharacter>) -
 
 #[miniextendr]
 pub fn mode_or_frame(#[miniextendr(match_arg)] mode: Either<Mode, DataFrame>) -> bool {
+    mode.is_left()
+}
+
+#[miniextendr]
+pub fn mode_or_list(#[miniextendr(match_arg)] mode: Either<Mode, List>) -> bool {
     mode.is_left()
 }
 
