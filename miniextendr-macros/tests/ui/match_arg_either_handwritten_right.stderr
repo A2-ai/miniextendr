@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `Either` choice parameter `route`: the other arm `Username` reads only character or factor input, and the choice check sends every character or factor argument to the choice arm, so at most NULL can reach `Username`. Give that arm a type that reads other input (a data frame, a number, a list); for a NULL alternative, declare the parameter as `Option<Either<..>>`.
+  --> tests/ui/match_arg_either_handwritten_right.rs:27:69
+   |
+27 | pub fn route_or_user(#[miniextendr(match_arg)] route: Either<Route, Username>) -> bool {
+   |                                                                     ^^^^^^^^ evaluation of `C_$CRATE_route_or_user::{closure#0}::_` failed here

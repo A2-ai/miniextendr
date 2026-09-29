@@ -406,7 +406,7 @@ Written on a single parameter of a standalone function:
 |-----------|--------|
 | `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
 | `default = "..."` | R formal default (an R expression) |
-| `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)) |
+| `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)) |
 | `choices("a", "b")` | Validate a string against a literal choice list |
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |

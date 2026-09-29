@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `Either` choice parameter `level`: the other arm `Label` reads only character or factor input, and the choice check sends every character or factor argument to the choice arm, so at most NULL can reach `Label`. Give that arm a type that reads other input (a data frame, a number, a list); for a NULL alternative, declare the parameter as `Option<Either<..>>`.
+  --> tests/ui/choices_either_alias_right.rs:13:66
+   |
+13 |     #[miniextendr(choices("low", "high"))] level: Either<String, Label>,
+   |                                                                  ^^^^^ evaluation of `C_$CRATE_level_or_label::{closure#0}::_` failed here

@@ -223,6 +223,7 @@ impl Deref for Factor<'_> {
 
 impl<'a> TryFromSexp for Factor<'a> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         Self::try_new(sexp)
@@ -526,6 +527,7 @@ impl<T: RFactor> IntoR for FactorVec<T> {
 
 impl<T: RFactor> TryFromSexp for FactorVec<T> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         factor_vec_from_sexp(sexp).map(FactorVec)
     }
@@ -579,6 +581,7 @@ impl<T: RFactor + crate::match_arg::MatchArg> UnitEnumFactor for T {
 
 impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         factor_option_vec_from_sexp(sexp).map(FactorOptionVec)
     }

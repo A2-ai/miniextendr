@@ -46,6 +46,7 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 /// In practice, this is safe within a single .Call invocation.
 impl TryFromSexp for &'static str {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -82,6 +83,7 @@ impl TryFromSexp for &'static str {
 
 impl TryFromSexp for Option<&'static str> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -124,6 +126,7 @@ impl TryFromSexp for Option<&'static str> {
 /// Returns an error if the string is empty, NA, or has more than one character.
 impl TryFromSexp for char {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -170,6 +173,7 @@ impl TryFromSexp for char {
 /// ```
 impl TryFromSexp for String {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -206,6 +210,7 @@ impl TryFromSexp for String {
 /// ```
 impl TryFromSexp for Option<String> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {

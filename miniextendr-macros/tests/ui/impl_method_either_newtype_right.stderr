@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `Either` choice parameter `route`: the other arm `Tag` reads only character or factor input, and the choice check sends every character or factor argument to the choice arm, so at most NULL can reach `Tag`. Give that arm a type that reads other input (a data frame, a number, a list); for a NULL alternative, declare the parameter as `Option<Either<..>>`.
+  --> tests/ui/impl_method_either_newtype_right.rs:27:45
+   |
+27 |     pub fn give(&self, route: Either<Route, Tag>) -> bool {
+   |                                             ^^^ evaluation of `C_$CRATE_Dosing__give::{closure#0}::_` failed here

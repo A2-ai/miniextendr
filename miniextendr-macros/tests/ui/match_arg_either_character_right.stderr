@@ -1,0 +1,5 @@
+error[E0080]: evaluation panicked: `Either` choice parameter `route`: the other arm `String` reads only character or factor input, and the choice check sends every character or factor argument to the choice arm, so at most NULL can reach `String`. Give that arm a type that reads other input (a data frame, a number, a list); for a NULL alternative, declare the parameter as `Option<Either<..>>`.
+  --> tests/ui/match_arg_either_character_right.rs:16:69
+   |
+16 | pub fn route_or_text(#[miniextendr(match_arg)] route: Either<Route, String>) -> bool {
+   |                                                                     ^^^^^^ evaluation of `C_$CRATE_route_or_text::{closure#0}::_` failed here

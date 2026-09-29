@@ -59,6 +59,8 @@ impl MatchArg for InterpChoice {
 
 impl TryFromSexp for InterpChoice {
     type Error = SexpError;
+    // Reads only character or factor input, like a derived `MatchArg` enum.
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)

@@ -646,6 +646,7 @@ impl TryFromSexp for BooleanArray {
 
 impl TryFromSexp for StringArray {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -708,6 +709,7 @@ fn is_posixct(sexp: SEXP) -> bool {
 /// NA in factor (NA_integer_) → null in the dictionary keys.
 impl TryFromSexp for StringDictionaryArray {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         if !is_factor(sexp) {
@@ -1379,6 +1381,7 @@ impl TryFromSexp for RPrimitive<UInt8Type> {
 
 impl TryFromSexp for RStringArray {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let array = StringArray::try_from_sexp(sexp)?;

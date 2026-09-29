@@ -114,6 +114,7 @@ pub fn globset_matches(set: &GlobSet, path: &str) -> Vec<i32> {
 /// contains `NA`, or any pattern is an invalid glob.
 impl TryFromSexp for GlobSet {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let patterns: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;

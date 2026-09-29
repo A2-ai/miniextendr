@@ -395,6 +395,19 @@ R has no name for is shown in code format). A layer inside the left arm
 (`Either<Option<T>, R>`) is a compile error: the choice type has to be the left
 arm.
 
+The other arm has to read something other than character or factor input,
+since every such argument goes to the choice. An arm that reads only strings or
+factors could receive at most `NULL`, so it is a compile error that names the
+parameter and the arm: `String`, `&str`, `Vec<String>`, `PathBuf`, a type alias
+or `#[derive(TryFromSexp)]` newtype of one, your own `MatchArg` or `RFactor`
+enum, and any type whose `TryFromSexp::CHARACTER_ONLY` is `true` (see
+[Extending miniextendr](EXTENDING_MINIEXTENDR.md#option-2-direct-tryfromsexp-intor-implementation)).
+The check reads the arm's conversion, not its name. An `Option<String>` arm is
+refused too, since only `NULL` could reach it: for a `NULL` alternative,
+declare the parameter as `Option<Either<T, R>>`. `AsCharacter` and
+`AsCharacterVec` are allowed, because they also read numbers the way
+`as.character()` does (`101L` reaches the arm as `"101"`).
+
 #### Several Choices or Another Value
 
 `several_ok` takes the same split with a list on the left: `Either<Vec<T>, R>`
@@ -434,7 +447,9 @@ refuses reads `'routes' must be one or more of "oral", "bolus", "infusion", or
 a data frame: got integer`. An explicit `NULL`
 goes to `R` too: that is the one difference from `several_ok` on `Vec<T>`,
 where `NULL` selects every choice. Only the owned containers decode under
-`Either`: `Either<[T; N], R>` and `Either<&[T], R>` are compile errors.
+`Either`: `Either<[T; N], R>` and `Either<&[T], R>` are compile errors, and so
+is an `R` that reads only character input (`Either<Vec<T>, Vec<String>>`), as
+for a scalar choice.
 
 The layers stack as for a scalar `Either`: `Missing<Either<Vec<T>, R>>` keeps
 the choice vector and reports an omitted argument as `Absent` (an explicit
@@ -520,6 +535,7 @@ impl MatchArg for InterpChoice {
 
 impl TryFromSexp for InterpChoice {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
     fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
         miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
     }
@@ -546,6 +562,10 @@ factor input, `several_ok` (`Vec<InterpChoice>`), the `Vec<T>` return path
 attributes, and the auto-injected `@param` choices text. `to_choice` is an
 exhaustive `match`, so adding a variant to the wrapped enum without updating
 the newtype is a compile error rather than silent drift.
+`CHARACTER_ONLY = true` says the conversion reads only character or factor
+input, as a derived enum's does, so `Either<InterpChoice, String>` is refused
+like `Either<Route, String>` (see [Choice or Another
+Value](#choice-or-another-value-either-t-r)).
 `rpkg/src/rust/match_arg_foreign_tests.rs` is the reference fixture.
 
 ### Inline String Choices

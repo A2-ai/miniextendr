@@ -256,6 +256,7 @@ where
     <T as TryFromSexp>::Error: Into<SexpError>,
 {
     const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> = T::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = T::CHARACTER_ONLY;
 
     type Error = SexpError;
     // An omitted argument passes `no_na`.

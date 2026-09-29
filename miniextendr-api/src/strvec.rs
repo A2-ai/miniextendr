@@ -498,6 +498,7 @@ impl IntoR for StrVec<'_> {
 
 impl<'a> TryFromSexp for StrVec<'a> {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -740,6 +741,7 @@ impl IntoR for ProtectedStrVec {
 
 impl TryFromSexp for ProtectedStrVec {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();

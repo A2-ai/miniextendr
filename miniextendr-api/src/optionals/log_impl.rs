@@ -318,6 +318,7 @@ impl crate::MatchArg for log::LevelFilter {
 /// SEXP type.
 impl crate::TryFromSexp for log::LevelFilter {
     type Error = crate::SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(
         sexp: crate::SEXP,

@@ -59,6 +59,7 @@ use crate::{
 /// - Building the automaton fails (e.g., invalid patterns)
 impl TryFromSexp for AhoCorasick {
     type Error = SexpError;
+    const CHARACTER_ONLY: bool = true;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();

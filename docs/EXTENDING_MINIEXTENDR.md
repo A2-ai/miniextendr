@@ -106,6 +106,8 @@ pub struct Username(String);
 
 impl TryFromSexp for Username {
     type Error = SexpError;
+    // Reads what `String` reads: only character input.
+    const CHARACTER_ONLY: bool = <String as TryFromSexp>::CHARACTER_ONLY;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: String = TryFromSexp::try_from_sexp(sexp)?;
@@ -114,7 +116,6 @@ impl TryFromSexp for Username {
         }
         Ok(Username(s))
     }
-
 }
 
 impl IntoR for Username {
@@ -130,10 +131,22 @@ impl IntoR for Username {
 the panicking and unchecked convenience methods have defaults. Likewise, omit
 `try_from_sexp_unchecked` unless your type has a real checked-wrapper bypass.
 
+`TryFromSexp::CHARACTER_ONLY` says that the conversion accepts only character
+input: every value it converts, other than `NULL`, is a character vector or a
+factor. `#[miniextendr]` reads it for a `match_arg` / `choices` parameter typed
+`Either<T, R>`, whose choice check takes every character or factor argument, so
+an `R` with `CHARACTER_ONLY = true` is a compile error there (see [Choice or
+Another Value](ENUMS_AND_FACTORS.md#choice-or-another-value-either-t-r)). Set
+it to `true` when your impl reads only strings or factors, forward it (as
+`Username` does) when it delegates to another conversion, and leave the
+default `false` otherwise. `false` is always safe: the check is skipped. Never
+set `true` on a type that also converts numbers, logicals or lists; that would
+reject valid parameters.
+
 For string-parsed scalar families, the exported
 `try_from_sexp_via_str_parse!` macro generates `T`, `Option<T>`, `Vec<T>`, and
-`Vec<Option<T>>` implementations and batches every vector parse failure into
-one diagnostic:
+`Vec<Option<T>>` implementations (each with `CHARACTER_ONLY = true`) and
+batches every vector parse failure into one diagnostic:
 
 ```rust
 pub struct Slug(String);
@@ -288,6 +301,7 @@ impl From<Probability> for f64 {
    - [ ] `WidensToI32`/`WidensToF64` for coercion
    - [ ] `Ord` for `BinaryHeap` support
    - [ ] `Hash` for `HashSet`/`HashMap` key support
+   - [ ] `CHARACTER_ONLY` if the conversion reads only character or factor input
 
 4. **Test your type**:
    - [ ] Scalar round-trip: Rust → R → Rust

@@ -1,0 +1,29 @@
+error[E0277]: the trait bound `NotConvertible: TryFromSexp` is not satisfied
+  --> tests/ui/match_arg_either_right_no_conversion.rs:17:71
+   |
+17 | pub fn route_or_opaque(#[miniextendr(match_arg)] route: Either<Route, NotConvertible>) -> bool {
+   |                                                                       ^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `TryFromSexp` is not implemented for `NotConvertible`
+  --> tests/ui/match_arg_either_right_no_conversion.rs:14:1
+   |
+14 | pub struct NotConvertible;
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `TryFromSexp`:
+             &'a RLogical
+             &'a Rcomplex
+             &'a f64
+             &'a i32
+             &'a mut RLogical
+             &'a mut Rcomplex
+             &'a mut f64
+             &'a mut i32
+           and $N others
+note: required by a bound in `match_arg_either_or`
+  --> $WORKSPACE/miniextendr-api/src/match_arg.rs
+   |
+   | pub fn match_arg_either_or<L, R, E>(
+   |        ------------------- required by a bound in this function
+...
+   |     R: TryFromSexp,
+   |        ^^^^^^^^^^^ required by this bound in `match_arg_either_or`

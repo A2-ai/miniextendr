@@ -512,6 +512,110 @@ fn test_either_choice_err_arm_names_the_whole_parameter() {
     }
 }
 
+/// One guard per leaf of an `Either` choice parameter's `R` arm, each read
+/// through `EitherArmProbe` with the fallback trait in scope, naming the
+/// parameter and the leaf as written; lifetimes erased in the probe, braces
+/// escaped in the message. No `Either` layer, no guard.
+#[test]
+fn test_either_arm_guards() {
+    let guards = |ty: &str| {
+        let ty: syn::Type = syn::parse_str(ty).unwrap();
+        either_arm_guards("route", &ty)
+            .iter()
+            .map(|t| t.to_string())
+            .collect::<Vec<_>>()
+    };
+
+    let one = guards("Either<Route, DataFrame>");
+    assert_eq!(one.len(), 1, "{one:?}");
+    let g = &one[0];
+    assert!(
+        g.contains("use :: miniextendr_api :: match_arg :: EitherArmProbeFallback as _ ;"),
+        "{g}"
+    );
+    assert!(
+        g.contains(
+            "! :: miniextendr_api :: match_arg :: EitherArmProbe :: < DataFrame > :: CHARACTER_ONLY"
+        ),
+        "{g}"
+    );
+    assert!(g.contains("const _ : () = :: core :: assert !"), "{g}");
+    assert!(
+        g.contains("`Either` choice parameter `route`: the other arm `DataFrame` reads only"),
+        "{g}"
+    );
+
+    // Under `Missing` / `Option`: the `R` arm of the `Either` layer.
+    let layered = guards("Missing<Option<Either<Route, String>>>");
+    assert_eq!(layered.len(), 1, "{layered:?}");
+    assert!(
+        layered[0].contains("EitherArmProbe :: < String >"),
+        "{layered:?}"
+    );
+    assert!(
+        layered[0].contains("so at most NULL can reach `String`"),
+        "{layered:?}"
+    );
+
+    // A nested `Either` on the `R` side: one guard per leaf, each named inside it.
+    let nested = guards("Either<Route, Either<f64, String>>");
+    assert_eq!(nested.len(), 2, "{nested:?}");
+    assert!(
+        nested[0].contains("EitherArmProbe :: < f64 >"),
+        "{nested:?}"
+    );
+    assert!(
+        nested[1].contains("EitherArmProbe :: < String >"),
+        "{nested:?}"
+    );
+    assert!(
+        nested[1].contains("the other arm's `String` (in `Either<f64, String>`)"),
+        "{nested:?}"
+    );
+
+    // Lifetimes erased in the probe; the message keeps the type as written.
+    let borrowed = guards("Either<Route, &'a str>");
+    assert!(
+        borrowed[0].contains("EitherArmProbe :: < & '_ str >"),
+        "{borrowed:?}"
+    );
+    assert!(borrowed[0].contains("`&'a str`"), "{borrowed:?}");
+
+    // `assert!` reads its message as a format string: braces are doubled.
+    let braced = guards("Either<Route, Fixed<{ 2 + 1 }>>");
+    assert!(braced[0].contains("`Fixed<{{2 + 1}}>`"), "{braced:?}");
+
+    assert!(guards("Option<Mode>").is_empty());
+    assert!(guards("Vec<Mode>").is_empty());
+}
+
+/// The layered branch emits the guards before the conversion binding, so an
+/// `Either` choice parameter's statements are the guard blocks and then the
+/// `let`.
+#[test]
+fn test_either_choice_guards_precede_the_conversion() {
+    let syn::FnArg::Typed(pat_type) = parse_param("route: Either<Route, Either<f64, DataFrame>>")
+    else {
+        unreachable!()
+    };
+    let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+    let builder =
+        RustConversionBuilder::new().with_layered_choice("route".to_string(), ChoiceLeaf::MatchArg);
+    let stmts: Vec<String> = builder
+        .build_conversion(&pat_type, &sexp_ident)
+        .iter()
+        .map(|t| t.to_string())
+        .collect();
+    assert_eq!(stmts.len(), 3, "{stmts:?}");
+    assert!(stmts[0].contains("EitherArmProbe :: < f64 >"), "{stmts:?}");
+    assert!(
+        stmts[1].contains("EitherArmProbe :: < DataFrame >"),
+        "{stmts:?}"
+    );
+    assert!(stmts[2].starts_with("let route"), "{stmts:?}");
+    assert!(stmts[2].contains("match_arg_either_or"), "{stmts:?}");
+}
+
 #[test]
 fn native_metadata_matches_selected_conversion_paths() {
     let arg = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
