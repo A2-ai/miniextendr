@@ -154,6 +154,10 @@ pub(super) fn generate_trait_r_wrapper(
 /// page and where its arguments are documented. `@describeIn` / `@rdname`
 /// route the block, `@name` names its topic, `@order` sorts it, and
 /// `@inheritParams` / `@inherit` / `@inheritDotParams` fill its arguments.
+/// Env trait methods and the namespace statics of S3, vctrs and S7 forward
+/// every other tag but `@title` and a bare `@export` too
+/// ([`forwarded_body_tag`]); S4 statics get `@param` lines
+/// ([`param_doc_tags`]).
 const PAGE_TAGS: &[&str] = &[
     "describeIn",
     "rdname",
@@ -163,6 +167,70 @@ const PAGE_TAGS: &[&str] = &[
     "inherit",
     "inheritDotParams",
 ];
+
+/// Whether the body of a block without `\usage` (an env trait method, a
+/// `Type$Trait$method` static of S3 and vctrs, an `attr(Type, "Trait")$method`
+/// static of S7) forwards the author tag
+/// `tag`: every tag but the [`PAGE_TAGS`], which [`own_block_page_lines`]
+/// forwards, `@title`, which the structural split-page title owns, and a bare
+/// `@export`, which would export the member itself
+/// ([`forwarded_member_tag`](crate::roxygen::forwarded_member_tag)). The
+/// `@param` lines become items of the block's `\describe{}` list.
+fn forwarded_body_tag(tag: &str) -> bool {
+    crate::roxygen::forwarded_member_tag(tag)
+        && crate::roxygen::roxygen_tag_name(tag)
+            .is_none_or(|name| name != "title" && !PAGE_TAGS.contains(&name))
+}
+
+/// The documentation body of a block without `\usage` (see
+/// [`forwarded_body_tag`]), documented like an env inherent method: the
+/// forwarded author tags, then one `\describe{}` list with the author's
+/// `@param` items and the choice text of the parameters they leave
+/// undocumented ([`describe_params_lines`](crate::r_class_formatter::describe_params_lines)).
+/// `label` is the block's topic name, used in the list's lead-in. Empty for a
+/// method with no doc comment and no choice parameter.
+fn namespace_member_body_lines(
+    ctx: &TraitMethodContext<'_>,
+    type_str: &str,
+    label: &str,
+) -> Vec<String> {
+    let choice_docs = ctx.choice_param_docs();
+    crate::r_class_formatter::describe_params_lines(
+        &ctx.method.doc_tags,
+        forwarded_body_tag,
+        &ctx.params,
+        type_str,
+        Some(&choice_docs),
+        label,
+    )
+}
+
+/// The `@param` tags of a block that documents the method's arguments in a
+/// `\usage` (an S3 / vctrs instance method, an S4 static): the author's
+/// `@param` lines, then one per formal of `ctx.params` they leave
+/// undocumented, with its choice text for a choice parameter and
+/// `(undocumented)` otherwise. A method whose arguments another block
+/// documents (an author topic, `@inheritParams`) gets no generated tag
+/// (#1590).
+fn param_doc_tags(ctx: &TraitMethodContext<'_>, type_str: &str) -> Vec<String> {
+    let method = ctx.method;
+    let mut tags: Vec<String> = param_tags(method).cloned().collect();
+    if params_documented_elsewhere(method, type_str) {
+        return tags;
+    }
+    let choice_docs = ctx.choice_param_docs();
+    for formal in crate::roxygen::split_r_formals(&ctx.params) {
+        let pname = crate::roxygen::formal_name(formal);
+        if pname == "..." || crate::roxygen::param_documented(&method.doc_tags, pname) {
+            continue;
+        }
+        let body = choice_docs
+            .get(pname)
+            .map_or("(undocumented)", String::as_str);
+        tags.push(format!("@param {pname} {body}"));
+    }
+    tags
+}
 
 /// The `@param` lines of the method's doc comment.
 fn param_tags(method: &TraitMethod) -> impl Iterator<Item = &String> {
@@ -384,7 +452,9 @@ fn reject_unsupported_describe_in(
 /// Void instance methods return the receiver `x` for pipe-friendly chaining
 /// (invisibly only when marked `Invisible<..>`, #1213).
 ///
-/// Static methods and constants also live under `Type$Trait$name`.
+/// Static methods and constants also live under `Type$Trait$name`. A method
+/// has no `\usage`, so its block is documented like an env inherent method's
+/// ([`namespace_member_body_lines`]).
 fn generate_trait_env_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
@@ -425,7 +495,10 @@ fn generate_trait_env_r_wrapper(
         let target = ctx.namespace_target(ClassSystem::Env);
         let symbol = ctx.namespace_symbol(ClassSystem::Env);
 
-        // Build roxygen tags
+        // Roxygen: the body (prose, the `\describe{}` argument list), then
+        // the page lines, the order `MethodDocBuilder` gives an env inherent
+        // method.
+        lines.extend(namespace_member_body_lines(&ctx, &type_str, &target));
         lines.extend(own_block_page_lines(
             method,
             &type_str,
@@ -613,21 +686,8 @@ fn generate_trait_s3_r_wrapper(
         let mut method_roxygen = RoxygenBuilder::new()
             .export()
             .method(&generic_name, &type_str);
-        for tag in param_tags(method) {
-            method_roxygen = method_roxygen.custom(tag.clone());
-        }
-        if !params_documented_elsewhere(method, &type_str) {
-            let choice_docs = ctx.choice_param_docs();
-            for formal in crate::roxygen::split_r_formals(&ctx.params) {
-                let pname = crate::roxygen::formal_name(formal);
-                if pname == "..." || crate::roxygen::param_documented(&method.doc_tags, pname) {
-                    continue;
-                }
-                let body = choice_docs
-                    .get(pname)
-                    .map_or("(undocumented)", String::as_str);
-                method_roxygen = method_roxygen.custom(format!("@param {pname} {body}"));
-            }
+        for tag in param_doc_tags(&ctx, &type_str) {
+            method_roxygen = method_roxygen.custom(tag);
         }
         lines.extend(method_roxygen.build());
 
@@ -677,11 +737,13 @@ fn generate_trait_s3_r_wrapper(
             .with_no_preconditions(no_preconditions);
         let target = ctx.namespace_target(ClassSystem::S3);
 
-        // Static method roxygen
+        // Static method roxygen: the intro line (the block's title), the
+        // body of a block without `\usage`, the page lines.
         lines.push(format!(
             "#' Static trait method {}::{}()",
             trait_name, r_name
         ));
+        lines.extend(namespace_member_body_lines(&ctx, &type_str, &target));
         lines.extend(own_block_page_lines(method, &type_str, Some(&target), None));
 
         let call = ctx.static_call();
@@ -754,15 +816,22 @@ fn generate_trait_s4_r_wrapper(
     ));
     lines.push(String::new());
 
-    // NOTE: We do NOT call setOldClass here. The inherent impl's class registration
-    // (setClass for S4, or setOldClass for S3/env) takes care of that. Calling
-    // setOldClass here would clobber a proper S4 setClass with slots.
-    lines.push("#' @importFrom methods setGeneric setMethod".to_string());
-    lines.push(String::new());
-
     // Separate instance methods from static methods
     let instance_methods: Vec<_> = methods.iter().filter(|m| m.has_self).collect();
     let static_methods: Vec<_> = methods.iter().filter(|m| !m.has_self).collect();
+
+    // NOTE: We do NOT call setOldClass here. The inherent impl's class registration
+    // (setClass for S4, or setOldClass for S3/env) takes care of that. Calling
+    // setOldClass here would clobber a proper S4 setClass with slots.
+    //
+    // The import joins the next roxygen block (a blank line does not end
+    // one), the first generic's, which opens with a tag. Only the instance
+    // methods need it: before a static's untagged intro line it would read
+    // that line as a continuation of `@importFrom`.
+    if !instance_methods.is_empty() {
+        lines.push("#' @importFrom methods setGeneric setMethod".to_string());
+        lines.push(String::new());
+    }
 
     // Generate S4 generics + methods for instance methods
     for method in &instance_methods {
@@ -860,6 +929,10 @@ fn generate_trait_s4_r_wrapper(
             Some(&fn_name),
             None,
         ));
+        // The block documents the plain function `Type_Trait_method`, whose
+        // `\usage` lists every formal: `R CMD check` codoc needs each one
+        // documented.
+        crate::roxygen::push_roxygen_tags(&mut lines, &param_doc_tags(&ctx, &type_str));
         lines.push("#' @export".to_string());
 
         let call = ctx.static_call();
@@ -1130,6 +1203,7 @@ fn generate_trait_s7_r_wrapper(
             trait_name, r_name
         ));
         let name = format!("{}${}${}", type_str, trait_str, r_name);
+        lines.extend(namespace_member_body_lines(&ctx, &type_str, &name));
         lines.extend(own_block_page_lines(method, &type_str, Some(&name), None));
 
         let call = ctx.static_call();
@@ -1252,7 +1326,8 @@ fn generate_trait_r6_r_wrapper(
         };
 
         // Namespace-member roxygen — a `$<-` assignment target, so roxygen emits
-        // no `\usage` and needs no per-formal `@param` docs (matches Env; #1141).
+        // no `\usage` and needs no per-formal `@param` docs (#1141; Env puts
+        // them in a `\describe{}` list of the page's description instead).
         // No `@param` lines on purpose, generated or the method's own: roxygen2
         // renders a per-method Arguments list on an R6 page only for a member of
         // the generator's `public_methods` (`r6_extract_methods`; an explicit

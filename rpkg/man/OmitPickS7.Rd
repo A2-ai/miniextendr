@@ -9,6 +9,7 @@
 \alias{OmitPickS7_omit_grade}
 \alias{s7_trait_OmitGrade_omit_grades}
 \alias{OmitPickS7_omit_grades}
+\alias{OmitPickS7$GradeDefaults$default_grade}
 \title{OmitPickS7 S7 Class}
 \usage{
 OmitPickS7(.ptr = NULL)
@@ -67,4 +68,10 @@ Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Pick the default grade, or none.
+
+\describe{
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+}
 }

@@ -6,6 +6,7 @@
 \alias{omit_pick_s3.OmitPickS3}
 \alias{omit_grade.OmitPickS3}
 \alias{omit_grades.OmitPickS3}
+\alias{OmitPickS3$GradeDefaults$default_grade}
 \title{OmitPickS3 S3 Class}
 \usage{
 new_omitpicks3()
@@ -48,4 +49,10 @@ of \code{mode}, \code{modes} and \code{level}.
 S3 generic for \code{omit_grade}
 
 S3 generic for \code{omit_grades}
+
+Pick the default grade, or none.
+
+\describe{
+\item{\code{grade}}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
+}
 }

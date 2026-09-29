@@ -970,6 +970,19 @@ pub(crate) fn roxygen_tag_name(tag: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
+/// Whether a method block without `\usage` (an env method `Type$method`, a
+/// trait method `Type$Trait$method`) forwards the author tag `tag`: every tag
+/// but a bare `@export`. On such a block roxygen2's namespace roclet turns a
+/// bare `@export` into `export("Type$method")`, and R refuses to load the
+/// namespace ("undefined exports"). The member is reachable through its
+/// exported class, so exporting it is never valid. An `@export <symbol>`
+/// names its own target and is forwarded.
+pub(crate) fn forwarded_member_tag(tag: &str) -> bool {
+    !tag.trim_start()
+        .strip_prefix("@export")
+        .is_some_and(|rest| rest.trim().is_empty())
+}
+
 /// Filter out method-specific roxygen tags from impl-block-level docs and emit
 /// compile warnings for each stripped tag.
 ///

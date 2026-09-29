@@ -562,7 +562,9 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
             )?;
 
             // The author's tags; the R wrapper generators pick the `@param`
-            // lines and the page tags from them.
+            // lines and the page tags from them (every tag but `@title` and a
+            // bare `@export` on blocks without `\usage`,
+            // `r_wrappers::forwarded_body_tag`).
             let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
 
             // Validate and peel a return-visibility marker (#1213): the

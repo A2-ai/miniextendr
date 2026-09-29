@@ -34,4 +34,16 @@ Arguments of \code{SeededNormal$new()}:
 \item{\code{sd}}{Standard deviation (must be finite).}
 \item{\code{seed}}{Integer seed (absolute value is used).}
 }
+
+Arguments of \code{SeededNormal$RDistributionOps$sample_n()}:
+
+\describe{
+\item{\code{n}}{Integer number of samples to draw.}
+}
+
+Arguments of \code{SeededNormal$RDistributionOps$sample_vec()}:
+
+\describe{
+\item{\code{n}}{Integer number of samples to draw.}
+}
 }

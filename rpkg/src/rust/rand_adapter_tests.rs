@@ -101,7 +101,7 @@ impl miniextendr_api::rand_impl::RRngOps for SeededRng {
         self.0.borrow_mut().random_range(low..high)
     }
 
-    /// @param p Probability of TRUE, in [0, 1].
+    /// @param p Probability of TRUE, in \[0, 1\].
     fn gen_bool(&self, p: f64) -> bool {
         self.0.borrow_mut().random_bool(p)
     }
@@ -127,7 +127,7 @@ impl miniextendr_api::rand_impl::RRngOps for SeededRng {
     }
 
     /// @param n Integer number of values to generate.
-    /// @param p Probability of TRUE, in [0, 1].
+    /// @param p Probability of TRUE, in \[0, 1\].
     fn gen_bool_vec(&self, n: i32, p: f64) -> Vec<bool> {
         (0..n).map(|_| self.gen_bool(p)).collect()
     }

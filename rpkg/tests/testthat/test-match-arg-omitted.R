@@ -248,6 +248,35 @@ test_that("S7 trait methods and their shortcuts with omittable inline choices", 
   )
 })
 
+test_that("env trait methods with omittable inline choices", {
+  h <- OmitPickEnv$new()
+  expect_omitted_grade_formals(
+    OmitPickEnv$OmitGrade$omit_grade,
+    OmitPickEnv$OmitGrade$omit_grades
+  )
+  expect_omitted_grades(
+    function(...) h$omit_grade(...),
+    function(...) h$omit_grades(...)
+  )
+})
+
+test_that("static trait methods with an omittable choice on every class system", {
+  # S7 keeps the trait namespace in an attribute of the class object.
+  statics <- list(
+    OmitPickS3$GradeDefaults$default_grade,
+    attr(OmitPickS7, "GradeDefaults")$default_grade,
+    OmitPickEnv$GradeDefaults$default_grade,
+    OmitPickS4_GradeDefaults_default_grade
+  )
+  for (f in statics) {
+    expect_equal(eval(formals(f)$grade), levels)
+    expect_equal(f(), "absent")
+    expect_equal(f(NULL), "null")
+    expect_equal(f("mi"), "mid")
+    expect_choice_error(f("max"), "grade", levels)
+  }
+})
+
 test_that("an omitted trait-method argument crosses the trait ABI as Absent", {
   # Through the trait's View (the cross-package dispatch path), not the impl's
   # own R wrapper: `Missing::Absent` travels as R's missing-argument sentinel.
@@ -297,6 +326,24 @@ test_that("method choice params get the choice text as their @param line", {
       "One or more of \"low\", \"mid\", \"high\"; omitting the argument means no choice.",
       fixed = TRUE
     )
+  }
+  # Env trait methods and the S3 / S7 / env statics have no usage entry: their
+  # prose, the author's @param and the choice text go into a \describe list.
+  # The S4 static is a plain function: its choice text is its @param line.
+  grade_text <- "One of \"low\", \"mid\", \"high\", or NULL; omitting the argument means no choice."
+  env_page <- rd_text("OmitPickEnv")
+  for (text in c(
+    "Pick one grade, or none.",
+    grade_text,
+    "The grades to pick; all of them for NULL.",
+    "Arguments of",
+    "Pick the default grade, or none."
+  )) {
+    expect_match(env_page, text, fixed = TRUE)
+  }
+  expect_match(rd_text("OmitPickS4"), paste0("\\item{grade}{", grade_text, "}"), fixed = TRUE)
+  for (topic in c("OmitPickS3", "OmitPickS7")) {
+    expect_match(rd_text(topic), "Pick the default grade, or none.", fixed = TRUE)
   }
 })
 

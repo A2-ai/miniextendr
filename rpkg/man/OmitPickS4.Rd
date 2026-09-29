@@ -5,9 +5,15 @@
 \alias{OmitPickS4}
 \alias{OmitPickS4-s4_omit_pick}
 \alias{s4_omit_pick,OmitPickS4-method}
+\alias{OmitPickS4_GradeDefaults_default_grade}
 \title{OmitPickS4 S4 Class}
 \usage{
 OmitPickS4()
+
+OmitPickS4_GradeDefaults_default_grade(grade = c("low", "mid", "high"))
+}
+\arguments{
+\item{grade}{One of "low", "mid", "high", or NULL; omitting the argument means no choice.}
 }
 \description{
 Omittable choices on an S4 method: reports what reached Rust for each

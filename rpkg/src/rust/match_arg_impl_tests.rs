@@ -352,6 +352,21 @@ impl OmitPickS7 {
     }
 }
 
+/// Env class whose `OmitGrade` trait methods document their arguments.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct OmitPickEnv;
+
+/// OmitPickEnv inherent methods: constructor.
+// env pinned: the env-style trait impls below attach `OmitPickEnv$OmitGrade`
+// and `OmitPickEnv$GradeDefaults`, which need the environment this impl
+// creates.
+#[miniextendr(env)]
+impl OmitPickEnv {
+    pub fn new() -> Self {
+        OmitPickEnv
+    }
+}
+
 /// vctrs fixture whose constructor, static method and `format` protocol
 /// method take omittable choices. The payload tells an omitted constructor
 /// argument (`0`) from `NULL` (`-1`) and from each mode.
@@ -477,6 +492,70 @@ impl OmitGrade for OmitPickS7 {
     #[miniextendr(choices_several_ok(grades = "low, mid, high"))]
     fn omit_grades(&self, grades: Missing<Vec<String>>) -> String {
         omitted_grades(grades)
+    }
+}
+
+// Env trait methods have no usage section: the prose, the author's `@param`
+// and the choice text go into a `\describe` list on the class page.
+#[miniextendr(env)]
+impl OmitGrade for OmitPickEnv {
+    /// Pick one grade, or none.
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn omit_grade(&self, grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+
+    /// @param grades The grades to pick; all of them for NULL.
+    #[miniextendr(choices_several_ok(grades = "low, mid, high"))]
+    fn omit_grades(&self, grades: Missing<Vec<String>>) -> String {
+        omitted_grades(grades)
+    }
+}
+
+/// A static trait method with an omittable choice parameter, on every class
+/// system whose statics document their arguments.
+#[miniextendr]
+pub trait GradeDefaults {
+    /// `"absent"`, `"null"` or the matched grade.
+    fn default_grade(grade: Missing<Option<String>>) -> String;
+}
+
+// S3 statics (the generator vctrs shares), S7 statics and env statics are
+// `Type$Trait$method` members without a usage section; the S4 static is the
+// plain function `OmitPickS4_GradeDefaults_default_grade`, whose `@param`
+// line is the choice text.
+#[miniextendr(s3)]
+impl GradeDefaults for OmitPickS3 {
+    /// Pick the default grade, or none.
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn default_grade(grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+}
+
+#[miniextendr(s4)]
+impl GradeDefaults for OmitPickS4 {
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn default_grade(grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+}
+
+#[miniextendr(s7)]
+impl GradeDefaults for OmitPickS7 {
+    /// Pick the default grade, or none.
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn default_grade(grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
+    }
+}
+
+#[miniextendr(env)]
+impl GradeDefaults for OmitPickEnv {
+    /// Pick the default grade, or none.
+    #[miniextendr(choices(grade = "low, mid, high"))]
+    fn default_grade(grade: Missing<Option<String>>) -> String {
+        omitted_grade(grade)
     }
 }
 
