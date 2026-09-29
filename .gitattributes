@@ -18,7 +18,8 @@ patches/templates.patch -merge
 # (`just merge-drivers-install`), a conflict that is only pin-line churn keeps
 # the current side's pins and queues the lock for `just regenerate-merged`;
 # any other lock conflict stops as usual. Without the driver, git falls back to
-# its default text merge, as before. The `-merge` paths (above and in
-# rpkg/.gitattributes) are routed to the driver by the install recipe instead,
-# through .git/info/attributes. See CLAUDE.md "Rebase conflicts".
+# its default text merge, as before. The `-merge` paths (above, in
+# rpkg/.gitattributes and in tests/cross-package/*.pkg/.gitattributes) are
+# routed to the driver by the install recipe instead, through
+# .git/info/attributes. See CLAUDE.md "Rebase conflicts".
 rpkg/src/rust/Cargo.lock merge=mx-regen

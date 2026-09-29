@@ -5,20 +5,25 @@
 #
 # Covered:
 #   - with the driver: a rebase over both-sides changes to a pin-only
-#     Cargo.lock conflict and rpkg/NAMESPACE (-merge, routed by the install
-#     recipe) continues, keeps the current side (our pins, plus the other
-#     side's non-conflicting lock edit), and lists each path in
-#     $(git rev-parse --git-dir)/mx-regenerate;
+#     Cargo.lock conflict, rpkg/NAMESPACE and a cross-package wrappers.R
+#     (both -merge, routed by the install recipe) continues, keeps the current
+#     side (our pins, plus the other side's non-conflicting lock edit), and
+#     lists each path in $(git rev-parse --git-dir)/mx-regenerate;
+#   - the install recipe routes every cross-package generated path
+#     (NAMESPACE, R/*-wrappers.R, man/*.Rd and configure of both packages);
 #   - a Cargo.lock conflict beyond the pins still stops the rebase, with
 #     conflict markers, and is not listed;
 #   - without the driver, the Cargo.lock pin conflict gets git's default text
 #     merge (markers, rebase stops);
+#   - without the driver, rpkg/NAMESPACE and the cross-package wrappers.R
+#     keep their tracked -merge behaviour (unmerged, no markers);
 #   - without the recipe's info/attributes block, rpkg/NAMESPACE keeps its
 #     tracked -merge behaviour (rebase stops, no markers) while Cargo.lock,
 #     routed by the tracked .gitattributes, still goes through the driver;
 #   - in a linked worktree the -merge routing applies and the list lands in
 #     that worktree's git dir, and the install recipe is idempotent;
-#   - regenerate-merged is a no-op without a list and refuses unknown paths.
+#   - regenerate-merged is a no-op without a list and refuses unknown paths,
+#     including an unrouted path inside a cross-package package.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,6 +42,7 @@ check() {
 sha_base=1111111111111111111111111111111111111111
 sha_main=2222222222222222222222222222222222222222
 sha_feature=3333333333333333333333333333333333333333
+cross_wrappers=tests/cross-package/producer.pkg/R/producer.pkg-wrappers.R
 
 write_lock() { # <file> <pin> <libc version>
   cat > "$1" <<EOF
@@ -65,33 +71,39 @@ EOF
 }
 
 # Repository with a base commit, then `main` and `feature` commits that both
-# change the pins in Cargo.lock and rpkg/NAMESPACE.
+# change the pins in Cargo.lock, rpkg/NAMESPACE and the producer.pkg wrappers.
 # <feature libc> lets a scenario add a lock edit beyond the pins on feature.
 make_repo() { # <dir> <feature libc version>
-  local repo=$1
+  local repo=$1 pkg
   git init -q -b main "$repo"
   cd "$repo"
   git config user.email test@example.invalid
   git config user.name test
   git config commit.gpgsign false
-  mkdir -p scripts rpkg/src/rust
+  mkdir -p scripts rpkg/src/rust "$(dirname "$cross_wrappers")" tests/cross-package/consumer.pkg
   cp "$root/.gitattributes" .gitattributes
   cp "$root/rpkg/.gitattributes" rpkg/.gitattributes
+  for pkg in producer.pkg consumer.pkg; do
+    cp "$root/tests/cross-package/$pkg/.gitattributes" "tests/cross-package/$pkg/.gitattributes"
+  done
   cp "$root/scripts/merge-driver-regen.sh" scripts/
   write_lock rpkg/src/rust/Cargo.lock "$sha_base" 0.2.170
   printf 'export(a)\n' > rpkg/NAMESPACE
+  printf 'a <- function() NULL\n' > "$cross_wrappers"
   printf 'source\n' > src.txt
   git add -A && git commit -qm base
 
   git checkout -qb feature
   write_lock rpkg/src/rust/Cargo.lock "$sha_feature" "$2"
   printf 'export(a)\nexport(feature)\n' > rpkg/NAMESPACE
+  printf 'a <- function() NULL\nfeature <- function() NULL\n' > "$cross_wrappers"
   printf 'source\nfeature change\n' > src.txt
   git commit -qam feature
 
   git checkout -q main
   write_lock rpkg/src/rust/Cargo.lock "$sha_main" 0.2.170
   printf 'export(a)\nexport(main)\n' > rpkg/NAMESPACE
+  printf 'a <- function() NULL\nmain <- function() NULL\n' > "$cross_wrappers"
   git commit -qam main
   git checkout -q feature
 }
@@ -115,18 +127,27 @@ make_repo "$tmp/installed" 0.2.171
 install_driver
 check "check-attr routes the -merge paths to the driver after install" \
   test "$(git check-attr merge -- rpkg/NAMESPACE)" = "rpkg/NAMESPACE: merge: mx-regen"
+for pkg in producer.pkg consumer.pkg; do
+  for path in NAMESPACE "R/$pkg-wrappers.R" man/some_topic.Rd configure; do
+    path="tests/cross-package/$pkg/$path"
+    check "check-attr routes $path to the driver after install" \
+      test "$(git check-attr merge -- "$path")" = "$path: merge: mx-regen"
+  done
+done
 check "rebase continues over generated-file conflicts" rebase_ok
 check "NAMESPACE keeps the current side" same_as_main rpkg/NAMESPACE
+check "cross-package wrappers keep the current side" same_as_main "$cross_wrappers"
+check "cross-package wrappers have no conflict markers" no_markers "$cross_wrappers"
 check "Cargo.lock keeps the current side's pin" \
   grep -qF "miniextendr#$sha_main\"" rpkg/src/rust/Cargo.lock
 check "Cargo.lock keeps the other side's non-conflicting edit" \
   grep -qxF 'version = "0.2.171"' rpkg/src/rust/Cargo.lock
 check "Cargo.lock has no conflict markers" no_markers rpkg/src/rust/Cargo.lock
 check "the replayed source change survives" grep -qxF 'feature change' src.txt
-for path in rpkg/NAMESPACE rpkg/src/rust/Cargo.lock; do
+for path in rpkg/NAMESPACE rpkg/src/rust/Cargo.lock "$cross_wrappers"; do
   check "$path is listed for regeneration" listed "$path"
 done
-check "each path is listed once" test "$(regen_list | wc -l | tr -d ' ')" = 2
+check "each path is listed once" test "$(regen_list | wc -l | tr -d ' ')" = 3
 
 # Idempotent install, and a linked worktree gets its own list.
 install_driver
@@ -147,7 +168,7 @@ check "worktree list lives in the worktree git dir" \
   test -s "$(git rev-parse --git-common-dir)/worktrees/installed-wt/mx-regenerate"
 cd "$tmp/installed"
 check "main worktree list is untouched by the worktree rebase" \
-  test "$(regen_list | wc -l | tr -d ' ')" = 2
+  test "$(regen_list | wc -l | tr -d ' ')" = 3
 cd "$root"
 # endregion
 
@@ -175,6 +196,8 @@ check "without the driver the rebase stops" rebase_stops
 check "Cargo.lock pin conflict gets default text-merge markers" has_markers rpkg/src/rust/Cargo.lock
 check "NAMESPACE keeps its -merge behaviour (no markers)" no_markers rpkg/NAMESPACE
 check "NAMESPACE is unmerged" unmerged rpkg/NAMESPACE
+check "cross-package wrappers keep their -merge behaviour (no markers)" no_markers "$cross_wrappers"
+check "cross-package wrappers are unmerged" unmerged "$cross_wrappers"
 check "nothing is listed" test -z "$(regen_list)"
 git rebase --abort
 cd "$root"
@@ -187,6 +210,8 @@ attributes="$(git rev-parse --git-path info/attributes)"
 sed -i.bak '/^# mx-regen: begin/,/^# mx-regen: end/d' "$attributes"
 check "check-attr is back to -merge for NAMESPACE" \
   test "$(git check-attr merge -- rpkg/NAMESPACE)" = "rpkg/NAMESPACE: merge: unset"
+check "check-attr is back to -merge for the cross-package wrappers" \
+  test "$(git check-attr merge -- "$cross_wrappers")" = "$cross_wrappers: merge: unset"
 check "rebase stops on the -merge NAMESPACE" rebase_stops
 check "NAMESPACE is unmerged without markers" unmerged rpkg/NAMESPACE
 check "NAMESPACE has no markers" no_markers rpkg/NAMESPACE
@@ -205,6 +230,8 @@ check "regenerate-merged with no list is a no-op" regenerate
 printf 'unknown/generated.txt\n' > "$(git rev-parse --git-dir)/mx-regenerate"
 check "regenerate-merged refuses a path it has no step for" eval '! regenerate'
 check "the list is kept after a refusal" listed unknown/generated.txt
+printf 'tests/cross-package/producer.pkg/src/generated.c\n' > "$(git rev-parse --git-dir)/mx-regenerate"
+check "regenerate-merged refuses an unrouted cross-package path" eval '! regenerate'
 cd "$root"
 # endregion
 
