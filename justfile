@@ -108,7 +108,7 @@ cargo-clean *cargo_flags:
     cargo clean -p miniextendr-engine {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clean --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clean --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Check feature combinations compile (F2: feature interaction testing)
 # Tests important feature combos that might interact but are only tested independently.
@@ -218,7 +218,7 @@ check *cargo_flags:
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo check --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo check --benches --tests --examples --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
 
@@ -228,7 +228,7 @@ build *cargo_flags:
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo build --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     @just cargo-lock-restore
 
 # Run clippy on all crates
@@ -250,7 +250,7 @@ clippy-rpkg *cargo_flags:
     root="{{justfile_directory()}}"
     trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
     cd "$root/rpkg/src/rust"
-    CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --all-targets --workspace \
+    CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo clippy --all-targets --workspace \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
@@ -268,7 +268,7 @@ test-rpkg *cargo_flags:
     root="{{justfile_directory()}}"
     trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
     cd "$root/rpkg/src/rust"
-    CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --workspace --no-fail-fast \
+    CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo test --workspace --no-fail-fast \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
@@ -306,7 +306,7 @@ doc-check *cargo_flags: configure-all
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --no-deps --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
 
@@ -316,18 +316,18 @@ doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
     @just cargo-lock-restore
     if command -v open >/dev/null 2>&1; then \
-      open rpkg/src/rust/target/doc/rpkg/index.html >/dev/null 2>&1 || \
+      open rpkg/rust-target/doc/rpkg/index.html >/dev/null 2>&1 || \
         echo "doc: unable to open generated docs (skipping)"; \
     else \
-      echo "doc: open not found; docs at rpkg/src/rust/target/doc/rpkg/index.html"; \
+      echo "doc: open not found; docs at rpkg/rust-target/doc/rpkg/index.html"; \
     fi
 
 # Single-page HTML reference manual of rpkg from man/*.Rd (base R, seconds; run force-document first if man/ is stale)
-doc-r out="rpkg/src/rust/target/doc/r":
+doc-r out="rpkg/rust-target/doc/r":
     Rscript rpkg/tools/build-html-reference.R "{{out}}"
 
 # One documentation tree for the site: nightly rustdoc for the workspace crates and the rpkg bridge crate with a crate index page, then the R manual registered on that index (needs `rustup toolchain install nightly`, rsync, R >= 4.4)
@@ -1594,7 +1594,8 @@ wrappers-sync-check: _assert-no-vendor-leak configure
     # noise (e.g. proc-macro-error2) can't flake this gate.
     # Cold-build gate: the nudge is a rustc deprecation warning emitted only when
     # the rpkg crate recompiles — a warm cargo cache skips rustc, but introducing a
-    # tag IS a source change forcing recompile, and CI Sync Checks always starts cold.
+    # tag IS a source change forcing recompile, and CI's rust-cache never restores the
+    # rpkg crate itself (it prunes workspace members before saving).
     if grep -n 'miniextendr: @' "$install_log" >&2; then
       echo "" >&2
       echo "ERROR: impl-method roxygen-tag deprecation nudge fired during R CMD INSTALL (above)." >&2

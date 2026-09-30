@@ -290,8 +290,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: sync-checks
+          # configure's default CARGO_TARGET_DIR is rpkg/rust-target (never
+          # under src/). rust-cache prunes the rpkg crate itself before saving,
+          # so only its dependencies come back warm.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          shared-key: rpkg-source
           cache-on-failure: true
 
       - name: Set up cargo-revendor (install only)
@@ -613,11 +616,11 @@ jobs:
         with:
           shared-key: rust-tests
           cache-on-failure: true
-          # rpkg/src/rust is its own workspace with its own target dir
-          # (`test-rpkg` sets CARGO_TARGET_DIR there).
+          # rpkg/src/rust is its own workspace; `test-rpkg` builds it in
+          # rpkg/rust-target, the same directory configure uses.
           workspaces: |
             . -> target
-            rpkg/src/rust -> target
+            rpkg/src/rust -> ../../rust-target
 
       - name: Put libR on LD_LIBRARY_PATH
         run: |
@@ -773,7 +776,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
+          # Tarball installs build in a temporary unpack directory, and the
+          # vendored crates' source IDs carry that path, so a cached target dir
+          # can never be reused. Cache only the cargo registry and git checkouts.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: r-linux-${{ matrix.r }}
           cache-on-failure: true
 
@@ -936,7 +943,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
+          # Tarball installs build in a temporary unpack directory, and the
+          # vendored crates' source IDs carry that path, so a cached target dir
+          # can never be reused. Cache only the cargo registry and git checkouts.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: r-macos-${{ matrix.arch }}
           cache-on-failure: true
 
@@ -1037,6 +1048,12 @@ jobs:
         with:
           targets: x86_64-pc-windows-gnu
 
+      # The workflow-level /tmp path is not a directory on a Windows runner,
+      # and sccache 0.18.0 refuses to start its server when it cannot open
+      # SCCACHE_ERROR_LOG. RUNNER_TEMP exists on every runner.
+      - name: Point the sccache server log at RUNNER_TEMP
+        run: echo "SCCACHE_ERROR_LOG=$(cygpath -m "$RUNNER_TEMP")/sccache-server.log" >> "$GITHUB_ENV"
+
       - name: Setup sccache
         id: sccache
         uses: mozilla-actions/sccache-action@v0.0.10
@@ -1049,7 +1066,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
+          # Tarball installs build in a temporary unpack directory, and the
+          # Makevars deletes its rust-target afterwards, so no target dir is
+          # left to cache. Cache only the cargo registry and git checkouts.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: r-windows
           cache-on-failure: true
 
@@ -1148,6 +1169,10 @@ jobs:
             rpkg/config.log
           retention-days: 7
 
+      - name: Print the sccache server log
+        if: always()
+        uses: ./.github/actions/sccache-log
+
   # ===========================================================================
   # R Package: Test suite (Linux only)
   # ===========================================================================
@@ -1198,8 +1223,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: r-tests
+          # configure's default CARGO_TARGET_DIR is rpkg/rust-target (never
+          # under src/). rust-cache prunes the rpkg crate itself before saving,
+          # so only its dependencies come back warm.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          shared-key: rpkg-source
           cache-on-failure: true
 
       - name: Install package (source mode)
@@ -1362,10 +1390,10 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          # Same source-mode build as r-tests — share its cache rather than
+          workspaces: rpkg/src/rust -> ../../rust-target
+          # Same source-mode build as r-tests: share its cache rather than
           # keeping per-shard copies of an identical target dir.
-          shared-key: r-tests
+          shared-key: rpkg-source
           cache-on-failure: true
 
       - name: Install package (source mode)
@@ -1479,8 +1507,12 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: feature-leg-${{ matrix.leg }}
+          workspaces: rpkg/src/rust -> ../../rust-target
+          # Start from r-tests' dependencies; the leg's extra features compile
+          # on top. Seven legs saving ~1 GB each would evict the shared entries,
+          # so the legs only restore.
+          shared-key: rpkg-source
+          save-if: false
           cache-on-failure: true
 
       # The no-preconditions-default leg is also the only place the
@@ -1591,8 +1623,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            tests/cross-package/producer.pkg/src/rust -> target
-            tests/cross-package/consumer.pkg/src/rust -> target
+            tests/cross-package/producer.pkg/src/rust -> ../../rust-target
+            tests/cross-package/consumer.pkg/src/rust -> ../../rust-target
           shared-key: cross-package
           cache-on-failure: true
 
@@ -1754,7 +1786,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
+          # Tarball installs build in a temporary unpack directory, and the
+          # vendored crates' source IDs carry that path, so a cached target dir
+          # can never be reused. Cache only the cargo registry and git checkouts.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: cran-check
           cache-on-failure: true
 
@@ -1872,9 +1908,12 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          # bootstrap.R calls cargo-revendor which calls `cargo metadata` on the
-          # rpkg workspace — cache that workspace's target dir.
-          workspaces: rpkg/src/rust -> target
+          # bootstrap.R calls cargo-revendor, which runs `cargo metadata` and
+          # `cargo package` on the rpkg workspace: registry downloads only. The
+          # tarball install builds in a temporary unpack directory, so a cached
+          # target dir could never be reused. Cache the registry and git only.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: bootstrap-vendor-test
           cache-on-failure: true
 
@@ -1958,7 +1997,11 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
+          # Tarball installs build in a temporary unpack directory, and the
+          # vendored crates' source IDs carry that path, so a cached target dir
+          # can never be reused. Cache only the cargo registry and git checkouts.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
           shared-key: roundtrip-e2e
           cache-on-failure: true
 
