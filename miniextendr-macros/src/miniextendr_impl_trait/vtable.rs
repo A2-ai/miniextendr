@@ -163,7 +163,7 @@ pub(super) fn generate_vtable_static(
             class_has_no_rd,
             internal: impl_attrs.internal,
             noexport: impl_attrs.noexport,
-            no_preconditions: impl_attrs.no_preconditions,
+            impl_preconditions: impl_attrs.preconditions,
         },
     ) {
         Ok(s) => s,
@@ -548,6 +548,7 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
             crate::miniextendr_fn::finalize_method_param_attrs(
                 &mut attrs.per_param,
                 &method.sig.inputs,
+                &[],
                 &attrs.defaults,
                 attrs
                     .per_param_span
@@ -620,6 +621,7 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
                 r_on_exit: attrs.r_on_exit,
                 no_shortcut: attrs.no_shortcut,
                 per_param: attrs.per_param,
+                preconditions: attrs.preconditions,
             });
         }
     }
@@ -700,6 +702,9 @@ struct TraitMethodAttrs {
     r_on_exit: Option<crate::miniextendr_fn::ROnExit>,
     /// Opt out of the S7 fast-dispatch shortcut (`#[miniextendr(s7(no_shortcut))]`).
     no_shortcut: bool,
+    /// The method's bare `preconditions` / `no_preconditions` (#1017); the
+    /// last one written wins. See `TraitMethod::preconditions`.
+    preconditions: Option<bool>,
     /// Per-parameter `match_arg`/`choices`/`several_ok` attributes, keyed by
     /// Rust parameter name. See `TraitMethod::per_param`.
     per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
@@ -738,6 +743,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     let mut r_post_checks: Option<String> = None;
     let mut r_on_exit: Option<crate::miniextendr_fn::ROnExit> = None;
     let mut no_shortcut = false;
+    let mut preconditions: Option<bool> = None;
     let mut per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs> =
         std::collections::HashMap::new();
     let mut per_param_span: Option<proc_macro2::Span> = None;
@@ -947,6 +953,18 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     entry.several_ok = true;
                     Ok(())
                 })?;
+            } else if meta.path.is_ident("preconditions") || meta.path.is_ident("no_preconditions")
+            {
+                // Bare: the whole method keeps / drops its type-derived R-side
+                // checks. `preconditions(p)` / `no_preconditions(p)`: those
+                // parameters. The last one written wins.
+                let keep = meta.path.is_ident("preconditions");
+                if meta.input.peek(syn::token::Paren) {
+                    per_param_span.get_or_insert(meta.path.span());
+                    crate::miniextendr_fn::parse_method_preconditions(&meta, &mut per_param, keep)?;
+                } else {
+                    preconditions = Some(keep);
+                }
             } else if meta.path.is_ident("no_na") {
                 per_param_span.get_or_insert(meta.path.span());
                 // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
@@ -962,7 +980,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
-                     `choices`, `choices_several_ok`, `inherits`, `no_na`",
+                     `choices`, `choices_several_ok`, `inherits`, `no_na`, `preconditions`, \
+                     `no_preconditions`",
                 ));
             }
             Ok(())
@@ -994,6 +1013,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
         r_post_checks,
         r_on_exit,
         no_shortcut,
+        preconditions,
         per_param,
         per_param_span,
         defaults_span,

@@ -769,6 +769,9 @@ pub use visibility::{Invisible, Visible};
 /// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.
 pub mod call_marker;
 pub use call_marker::{Call, CallerCall};
+/// Precondition markers (`Checked<T>` / `Unchecked<T>`) for `#[miniextendr]` parameters.
+pub mod precondition_marker;
+pub use precondition_marker::{Checked, Unchecked};
 
 /// Explicit R class-system return markers.
 pub mod wrap_as;

@@ -1,0 +1,5 @@
+error: `Checked<T>` marks a parameter only; it cannot be used as a return type (return the inner `T`)
+ --> tests/ui/fn_precondition_marker_return.rs:7:25
+  |
+7 | pub fn scale(n: i32) -> miniextendr_api::Checked<i32> {
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

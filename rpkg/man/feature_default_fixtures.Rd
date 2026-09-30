@@ -9,6 +9,8 @@
 \alias{fdefault_no_coerce_flag}
 \alias{fdefault_bare_i32}
 \alias{fdefault_checks_restored_i32}
+\alias{fdefault_checked_i32}
+\alias{fdefault_unchecked_i32}
 \title{fdefault_worker_thread_name}
 \usage{
 fdefault_worker_thread_name()
@@ -26,6 +28,10 @@ fdefault_no_coerce_flag(x)
 fdefault_bare_i32(x)
 
 fdefault_checks_restored_i32(x)
+
+fdefault_checked_i32(x)
+
+fdefault_unchecked_i32(x)
 }
 \arguments{
 \item{x}{Integer-like scalar.}
@@ -56,4 +62,10 @@ R-side type check is dropped, so bad input surfaces from \code{TryFromSexp} inst
 
 Same as \code{fdefault_bare_i32} with \code{preconditions}: the checks are kept
 even under \code{no-preconditions-default}.
+
+Same as \code{fdefault_bare_i32} with a \code{Checked} parameter: the parameter's
+own spelling keeps its checks even under \code{no-preconditions-default} (#1566).
+
+Same as \code{fdefault_bare_i32} with an \code{Unchecked} parameter: its checks are
+dropped in every build.
 }

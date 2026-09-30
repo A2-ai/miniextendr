@@ -1,0 +1,5 @@
+error: put `Checked` outermost: `Checked<Option<T>>`, not `Option<Checked<T>>`; the marker applies to the whole parameter
+ --> tests/ui/fn_precondition_marker_not_outermost.rs:7:17
+  |
+7 | pub fn scale(n: Option<miniextendr_api::Checked<i32>>) -> i32 {
+  |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

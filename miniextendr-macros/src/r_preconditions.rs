@@ -148,9 +148,10 @@ pub struct PreconditionOptions {
     /// Checks the author named per parameter (`inherits`, `no_na`), keyed by
     /// R-normalized parameter name.
     pub explicit: HashMap<String, ExplicitChecks>,
-    /// `no_preconditions`: drop the checks derived from parameter
-    /// types. The [`explicit`](Self::explicit) checks are still emitted.
-    pub no_type_checks: bool,
+    /// R-normalized names of the parameters whose type-derived checks are
+    /// dropped (each one resolved by [`resolve_type_checks`]). Their
+    /// [`explicit`](Self::explicit) checks are still emitted.
+    pub unchecked: HashSet<String>,
 }
 
 impl PreconditionOptions {
@@ -160,6 +161,93 @@ impl PreconditionOptions {
         self.coerce_all || self.coerce_params.contains(r_name)
     }
 }
+
+// region: which parameters keep their type-derived checks (#1566 §2)
+
+/// Whether one parameter keeps its type-derived R-side checks, from every
+/// spelling that can decide it, most specific first; the first that speaks
+/// wins:
+///
+/// 1. `param`: a `Checked<T>` / `Unchecked<T>` marker, the per-parameter
+///    `preconditions` / `no_preconditions`, or a method's
+///    `preconditions(x)` / `no_preconditions(x)` list (merged at parse time,
+///    where a marker and a keyword that disagree are an error);
+/// 2. `item`: the function's or method's own `preconditions` /
+///    `no_preconditions`;
+/// 3. `impl_level`: the impl block's (`None` for a free function);
+/// 4. `crate_default`: `[package.metadata.miniextendr] preconditions`;
+/// 5. `no_preconditions_default`: the `no-preconditions-default` feature;
+/// 6. otherwise the checks are kept.
+///
+/// `Some(true)` everywhere means "keep".
+pub(crate) fn resolve_type_checks(
+    param: Option<bool>,
+    item: Option<bool>,
+    impl_level: Option<bool>,
+    crate_default: Option<bool>,
+    no_preconditions_default: bool,
+) -> bool {
+    param.unwrap_or_else(|| {
+        resolve_item_type_checks(item, impl_level, crate_default, no_preconditions_default)
+    })
+}
+
+/// [`resolve_type_checks`] without a per-parameter spelling: whether an item
+/// (function or method) keeps its type-derived checks by default, ranks 2 to
+/// 6. The condition-raise codegen keys on this item-level decision.
+pub(crate) fn resolve_item_type_checks(
+    item: Option<bool>,
+    impl_level: Option<bool>,
+    crate_default: Option<bool>,
+    no_preconditions_default: bool,
+) -> bool {
+    item.or(impl_level)
+        .or(crate_default)
+        .unwrap_or(!no_preconditions_default)
+}
+
+/// The R-normalized names of the parameters of `inputs` whose type-derived
+/// checks are dropped, given each one's rank-1 decision (`param`, keyed by
+/// Rust name) and the item, impl and crate defaults ([`resolve_type_checks`];
+/// the feature is this macro crate's `no-preconditions-default`).
+pub(crate) fn unchecked_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    param: impl Fn(&str) -> Option<bool>,
+    item: Option<bool>,
+    impl_level: Option<bool>,
+    crate_default: Option<bool>,
+) -> HashSet<String> {
+    inputs
+        .iter()
+        .filter_map(|arg| {
+            let syn::FnArg::Typed(pt) = arg else {
+                return None;
+            };
+            let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+                return None;
+            };
+            let name = crate::naming::ident_name(&pat_ident.ident);
+            let keep = resolve_type_checks(
+                param(&name),
+                item,
+                impl_level,
+                crate_default,
+                cfg!(feature = "no-preconditions-default"),
+            );
+            (!keep).then(|| crate::r_wrapper_builder::normalize_r_arg_string(&name))
+        })
+        .collect()
+}
+
+/// Whether a parameter type has type-derived R-side checks at all, i.e.
+/// whether `Checked` / `Unchecked` and the per-parameter keywords have
+/// anything to keep or drop (`SEXP`, `Missing<T>`, `ExternalPtr<T>`,
+/// `&Dots` and unknown types have none).
+pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
+    r_check_for_type(ty).is_some()
+}
+
+// endregion
 
 /// R-side checks the author asked for by name on one parameter, rather than
 /// ones derived from its Rust type.
@@ -1079,7 +1167,7 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// - `self`/`&self`/`&mut self` (receiver args)
 /// - Parameters in `skip_params` (e.g., match_arg params already validated)
 /// - Skip types (SEXP, Dots, ExternalPtr, etc.)
-/// - Every type-derived check under `opts.no_type_checks`
+/// - The type-derived checks of the parameters in `opts.unchecked`
 ///
 /// A parameter's [`ExplicitChecks`] are never skipped: its class check comes
 /// before its type checks, which take the class check's message when it has
@@ -1114,8 +1202,8 @@ pub fn build_precondition_checks(
         }
 
         // Type-derived checks: skipped for match_arg params (already validated
-        // by match.arg()) and under `no_preconditions`.
-        if !opts.no_type_checks && !skip_params.contains(&r_name) {
+        // by match.arg()) and for the parameters that drop them.
+        if !opts.unchecked.contains(&r_name) && !skip_params.contains(&r_name) {
             // Preserve the ordinary input domain and include any coercion extensions.
             if let Some(mut check) = r_check_for_type(pt.ty.as_ref()) {
                 if opts.is_coerced(&r_name) {
@@ -1831,21 +1919,173 @@ mod tests {
     }
 
     /// Build checks for `sig` with the given explicit checks keyed by R name.
+    /// The checks of `sig` with the named `explicit` checks; `no_type_checks`
+    /// drops every parameter's type-derived checks.
     fn explicit_output(
         sig: &str,
         explicit: &[(&str, ExplicitChecks)],
         no_type_checks: bool,
     ) -> PreconditionOutput {
         let sig: syn::Signature = syn::parse_str(sig).unwrap();
+        let unchecked = if no_type_checks {
+            unchecked_params(&sig.inputs, |_| Some(false), None, None, None)
+        } else {
+            HashSet::new()
+        };
         let opts = PreconditionOptions {
             explicit: explicit
                 .iter()
                 .map(|(name, checks)| (name.to_string(), checks.clone()))
                 .collect(),
-            no_type_checks,
+            unchecked,
             ..Default::default()
         };
         build_precondition_checks(&sig.inputs, &HashSet::new(), &opts)
+    }
+
+    /// The precedence table of `resolve_type_checks`: the first spelling that
+    /// speaks wins, from the parameter down to the feature; the framework
+    /// default keeps the checks. `(param, item, impl, crate, feature) → keep`.
+    #[test]
+    fn resolve_type_checks_follows_the_precedence_table() {
+        /// `(param, item, impl, crate, feature, keep)`.
+        type Case = (
+            Option<bool>,
+            Option<bool>,
+            Option<bool>,
+            Option<bool>,
+            bool,
+            bool,
+        );
+        let cases: &[Case] = &[
+            // Rank 6: nothing speaks.
+            (None, None, None, None, false, true),
+            // Rank 5: the feature drops them.
+            (None, None, None, None, true, false),
+            // Rank 4 over rank 5: the crate default beats the feature.
+            (None, None, None, Some(true), true, true),
+            (None, None, None, Some(false), false, false),
+            // Rank 3 over 4 and 5: the impl block.
+            (None, None, Some(true), Some(false), true, true),
+            (None, None, Some(false), Some(true), false, false),
+            // Rank 2 over 3: the fn / method keyword.
+            (None, Some(true), Some(false), Some(false), true, true),
+            (None, Some(false), Some(true), Some(true), false, false),
+            // Rank 1 over everything: marker, per-param keyword, method list.
+            (
+                Some(true),
+                Some(false),
+                Some(false),
+                Some(false),
+                true,
+                true,
+            ),
+            (
+                Some(false),
+                Some(true),
+                Some(true),
+                Some(true),
+                false,
+                false,
+            ),
+        ];
+        for &(param, item, impl_level, crate_default, feature, keep) in cases {
+            assert_eq!(
+                resolve_type_checks(param, item, impl_level, crate_default, feature),
+                keep,
+                "{param:?} {item:?} {impl_level:?} {crate_default:?} {feature}"
+            );
+        }
+        // The item-level decision is ranks 2 to 6.
+        assert!(!resolve_item_type_checks(None, None, Some(false), false));
+        assert!(resolve_item_type_checks(
+            Some(true),
+            Some(false),
+            None,
+            true
+        ));
+        assert!(!resolve_item_type_checks(None, None, None, true));
+    }
+
+    /// `unchecked` drops one parameter's type-derived checks and keeps the
+    /// others', and keeps that parameter's named checks.
+    #[test]
+    fn unchecked_drops_one_parameter_and_keeps_its_named_checks() {
+        let sig: syn::Signature = syn::parse_str("fn f(n: i32, xs: Vec<f64>)").unwrap();
+        let unchecked = unchecked_params(
+            &sig.inputs,
+            |name| (name == "xs").then_some(false),
+            None,
+            None,
+            Some(true),
+        );
+        assert_eq!(unchecked, ["xs".to_string()].into_iter().collect());
+        let opts = PreconditionOptions {
+            explicit: [("xs".to_string(), no_na())].into_iter().collect(),
+            unchecked,
+            ..Default::default()
+        };
+        let guards = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None);
+        assert_eq!(
+            guards,
+            vec![
+                "if (!isTRUE(is.integer(n))) .miniextendr_arg_error(\"n\", \"must be integer\")",
+                "if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error(\"n\", \"must have length 1\")",
+                "if (!isTRUE(!anyNA(xs))) .miniextendr_arg_error(\"xs\", \"must not contain NA\")",
+            ]
+        );
+        // The set holds R names: `_n` is the R formal `n`.
+        let sig: syn::Signature = syn::parse_str("fn f(_n: i32)").unwrap();
+        let unchecked = unchecked_params(&sig.inputs, |_| None, Some(false), None, None);
+        assert_eq!(unchecked, ["n".to_string()].into_iter().collect());
+    }
+
+    /// An item-level `no_preconditions` leaves `no_na` alone: a plain
+    /// parameter keeps its R guard, and an `Either` (which has no type-derived
+    /// check, so no rank-1 spelling) still gets none, its NA check running in
+    /// Rust after the conversion.
+    #[test]
+    fn item_no_preconditions_keeps_no_na_and_either_stays_rust_side() {
+        let sig: syn::Signature =
+            syn::parse_str("fn f(x: Either<AsNumeric, DataFrame>, y: f64)").unwrap();
+        let opts = PreconditionOptions {
+            explicit: [("x".to_string(), no_na()), ("y".to_string(), no_na())]
+                .into_iter()
+                .collect(),
+            unchecked: unchecked_params(&sig.inputs, |_| None, Some(false), None, None),
+            ..Default::default()
+        };
+        let guards = build_precondition_checks(&sig.inputs, &HashSet::new(), &opts).guards(None);
+        assert_eq!(
+            guards,
+            vec!["if (!isTRUE(!anyNA(y))) .miniextendr_arg_error(\"y\", \"must not be NA\")"]
+        );
+    }
+
+    #[test]
+    fn has_type_check_is_false_for_unguarded_types() {
+        for guarded in [
+            "i32",
+            "Option<f64>",
+            "&str",
+            "&[f64]",
+            "Vec<String>",
+            "u16",
+            "List",
+        ] {
+            assert!(has_type_check(&parse_type(guarded)), "{guarded}");
+        }
+        for bare in [
+            "SEXP",
+            "Missing<i32>",
+            "ExternalPtr<T>",
+            "&Dots",
+            "MyType",
+            "Call",
+            "Either<AsNumeric, DataFrame>",
+        ] {
+            assert!(!has_type_check(&parse_type(bare)), "{bare}");
+        }
     }
 
     fn inherits(classes: &[&str]) -> ExplicitChecks {

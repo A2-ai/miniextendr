@@ -1,0 +1,5 @@
+error: `preconditions = ...` on a parameter: write the bare `preconditions` or `no_preconditions` (or the `Checked<T>` / `Unchecked<T>` marker); the `= true | false` form is the function attribute's
+ --> tests/ui/fn_param_preconditions_bool_form.rs:7:35
+  |
+7 | pub fn scale(#[miniextendr(no_na, preconditions = false)] x: f64) -> f64 {
+  |                                   ^^^^^^^^^^^^^^^^^^^^^

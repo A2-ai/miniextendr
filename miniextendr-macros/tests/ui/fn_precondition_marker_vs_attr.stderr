@@ -1,0 +1,5 @@
+error: the `Checked` parameter `n` keeps the R-side type checks but `#[miniextendr(no_preconditions)]` drops them; keep one of them (or make them agree)
+ --> tests/ui/fn_precondition_marker_vs_attr.rs:8:50
+  |
+8 | pub fn scale(#[miniextendr(no_preconditions)] n: miniextendr_api::Checked<i32>) -> i32 {
+  |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

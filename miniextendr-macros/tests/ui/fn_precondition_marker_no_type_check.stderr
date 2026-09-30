@@ -1,0 +1,5 @@
+error: `Checked<miniextendr_api::SEXP>` on parameter `x`: `miniextendr_api::SEXP` has no R-side type check to keep or drop
+ --> tests/ui/fn_precondition_marker_no_type_check.rs:7:40
+  |
+7 | pub fn raw(x: miniextendr_api::Checked<miniextendr_api::SEXP>) -> miniextendr_api::SEXP {
+  |                                        ^^^^^^^^^^^^^^^^^^^^^

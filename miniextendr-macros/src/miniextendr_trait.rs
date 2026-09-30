@@ -1280,6 +1280,30 @@ fn extract_method_info(method: &syn::TraitItemFn) -> syn::Result<MethodInfo> {
                     "class return markers are return-position only",
                 ));
             }
+            // `Checked<T>` / `Unchecked<T>` (#1566) steer an R wrapper's type
+            // checks, and a trait's View passes arguments on as R values: the
+            // wrappers belong to each impl, which says it there.
+            let (markers, _) = crate::type_inspect::peel_param_markers(&pat_type.ty)?;
+            if let Some(marker) = markers.first() {
+                let name = match pat_type.pat.as_ref() {
+                    syn::Pat::Ident(pat_ident) => crate::naming::ident_name(&pat_ident.ident),
+                    _ => "x".to_string(),
+                };
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    format!(
+                        "`{}<T>` in a `#[miniextendr]` trait method: the trait's View passes \
+                         arguments on as R values, and each impl's wrapper checks them; spell it \
+                         on the impl, `#[miniextendr({}({name}))]`",
+                        marker.name(),
+                        if marker.preconditions() == Some(true) {
+                            "preconditions"
+                        } else {
+                            "no_preconditions"
+                        },
+                    ),
+                ));
+            }
             param_types.push((*pat_type.ty).clone());
             if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                 param_names.push(pat_ident.ident.clone());

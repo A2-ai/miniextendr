@@ -251,26 +251,38 @@ pub(crate) fn match_arg_skip_set(
 }
 
 /// Build the R-side precondition guard lines for a parameter list, given
-/// its per-param map (match_arg/choices skips, `inherits` / `no_na` checks),
-/// whether `coerce` is active for the whole method, and whether the
-/// type-derived checks are dropped (`no_preconditions`; the named checks stay).
+/// its per-param map (match_arg/choices skips, `inherits` / `no_na` checks,
+/// each parameter's own `preconditions` decision), whether `coerce` is active
+/// for the whole method, and the method's and impl block's `preconditions` /
+/// `no_preconditions` (`method_level`, `impl_level`). Each parameter keeps
+/// its type-derived checks as `crate::r_preconditions::resolve_type_checks`
+/// decides, under the crate default and the `no-preconditions-default`
+/// feature; the named checks stay either way.
 ///
 /// Neither impl methods nor trait methods carry a per-param `coerce` flag
 /// (only function-wide `coerce`, see `ParsedMethod::per_param` docs), so
 /// `coerce_params` is always empty here. Shared by
-/// `MethodContext::precondition_checks` and
-/// `TraitMethodContext::precondition_checks`.
+/// `MethodContext::precondition_checks`,
+/// `TraitMethodContext::precondition_checks` and the R6 active-binding
+/// setter.
 pub(crate) fn build_method_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     coerce_all: bool,
-    no_type_checks: bool,
+    method_level: Option<bool>,
+    impl_level: Option<bool>,
 ) -> Vec<String> {
     let opts = crate::r_preconditions::PreconditionOptions {
         coerce_all,
         coerce_params: std::collections::HashSet::new(),
         explicit: crate::miniextendr_fn::explicit_checks_by_r_name(per_param),
-        no_type_checks,
+        unchecked: crate::r_preconditions::unchecked_params(
+            inputs,
+            |name| per_param.get(name).and_then(|a| a.preconditions),
+            method_level,
+            impl_level,
+            crate::crate_config::preconditions_default(),
+        ),
     };
     crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
         .guards(None)
@@ -344,10 +356,11 @@ pub struct MethodContext<'a> {
     /// R call arguments string without defaults (e.g., `"value, step"`), used
     /// inside `.Call()` expressions.
     pub args: String,
-    /// Drop the R-side type-check guards from the generated wrapper.
-    /// Inherited from `ImplAttrs::no_preconditions` (set by
-    /// `#[miniextendr(no_preconditions)]` on the impl block).
-    pub no_preconditions: bool,
+    /// The impl block's `preconditions` / `no_preconditions`
+    /// (`ImplAttrs::preconditions`): below the method's own and each
+    /// parameter's, above the crate default (see
+    /// `build_method_precondition_checks`).
+    pub impl_preconditions: Option<bool>,
 }
 
 impl<'a> MethodContext<'a> {
@@ -356,8 +369,9 @@ impl<'a> MethodContext<'a> {
     /// Computes the C wrapper identifier from the method name, type name, and optional
     /// label (for multi-impl-block disambiguation), then formats the R formals and
     /// call arguments from the method's signature and default values. The
-    /// R-side checks default on; use [`MethodContext::with_no_preconditions`]
-    /// to inherit the impl block's `no_preconditions`.
+    /// impl block says nothing about the R-side checks; use
+    /// [`MethodContext::with_impl_preconditions`] to inherit its
+    /// `preconditions` / `no_preconditions`.
     pub fn new(method: &'a ParsedMethod, type_ident: &syn::Ident, label: Option<&str>) -> Self {
         let c_ident = method.c_wrapper_ident(type_ident, label).to_string();
         let effective_defaults = effective_r_defaults(
@@ -374,15 +388,15 @@ impl<'a> MethodContext<'a> {
             c_ident,
             params,
             args,
-            no_preconditions: false,
+            impl_preconditions: None,
         }
     }
 
-    /// Set the `no_preconditions` flag inherited from the surrounding
+    /// Set the `preconditions` decision inherited from the surrounding
     /// `ImplAttrs`. Returns `self` so callers can chain on top of
     /// `MethodContext::new`.
-    pub fn with_no_preconditions(mut self, no_preconditions: bool) -> Self {
-        self.no_preconditions = no_preconditions;
+    pub fn with_impl_preconditions(mut self, impl_preconditions: Option<bool>) -> Self {
+        self.impl_preconditions = impl_preconditions;
         self
     }
 
@@ -548,8 +562,10 @@ impl<'a> MethodContext<'a> {
     /// any parameter validated by `base::match.arg()` (via `match_arg` / `choices`) —
     /// those already have a stronger runtime guarantee than an `is.character()` check.
     ///
-    /// `no_preconditions` drops the type-derived checks; the per-parameter
-    /// `inherits(...)` / `no_na(...)` checks stay.
+    /// Each parameter keeps or drops its type-derived checks as its own
+    /// spelling, the method's, the impl block's, the crate default and the
+    /// feature decide ([`build_method_precondition_checks`]); the
+    /// per-parameter `inherits(...)` / `no_na(...)` checks stay.
     pub fn precondition_checks(&self) -> Vec<String> {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
         // its precondition tightens to `is.integer` (#616). Impl methods carry
@@ -560,7 +576,8 @@ impl<'a> MethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.method_attrs.per_param,
             self.method.method_attrs.coerce,
-            self.no_preconditions,
+            self.method.method_attrs.preconditions,
+            self.impl_preconditions,
         )
     }
 
@@ -1219,50 +1236,55 @@ pub trait ParsedImplExt {
 
 impl ParsedImplExt for ParsedImpl {
     fn constructor_context(&self) -> Option<MethodContext<'_>> {
-        let no_prec = self.no_preconditions;
+        let impl_prec = self.preconditions;
         self.constructor().map(|m| {
-            MethodContext::new(m, &self.type_ident, self.label()).with_no_preconditions(no_prec)
+            MethodContext::new(m, &self.type_ident, self.label()).with_impl_preconditions(impl_prec)
         })
     }
 
     fn instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        let no_prec = self.no_preconditions;
-        self.instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
+        let impl_prec = self.preconditions;
+        self.instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
+        })
     }
 
     fn static_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        let no_prec = self.no_preconditions;
-        self.static_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
+        let impl_prec = self.preconditions;
+        self.static_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
+        })
     }
 
     fn public_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        let no_prec = self.no_preconditions;
-        self.public_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
+        let impl_prec = self.preconditions;
+        self.public_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
+        })
     }
 
     fn private_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        let no_prec = self.no_preconditions;
-        self.private_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
+        let impl_prec = self.preconditions;
+        self.private_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
+        })
     }
 
     fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
         let type_ident = &self.type_ident;
         let label = self.label();
-        let no_prec = self.no_preconditions;
-        self.active_instance_methods()
-            .map(move |m| MethodContext::new(m, type_ident, label).with_no_preconditions(no_prec))
+        let impl_prec = self.preconditions;
+        self.active_instance_methods().map(move |m| {
+            MethodContext::new(m, type_ident, label).with_impl_preconditions(impl_prec)
+        })
     }
 }
 

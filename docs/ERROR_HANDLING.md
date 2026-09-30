@@ -575,8 +575,9 @@ get, `no_na`, `inherits`, and the `match_arg` / `choices` validation), or by
 the Rust conversion (`TryFromSexp`) for what only Rust can judge, such as a
 non-numeric string given to `AsNumeric`. The arguments without an R-side type
 check convert in Rust directly: every custom `TryFromSexp` type,
-`Either<L, R>`, the `AsFromStr` family, and every argument of a function built
-with `no_preconditions` or `no-preconditions-default`.
+`Either<L, R>`, the `AsFromStr` family, and every argument whose type checks
+are dropped (`Unchecked<T>`, `no_preconditions`, the crate's `preconditions =
+false`, or `no-preconditions-default`).
 
 Both places raise the same error condition (#1591):
 
@@ -712,8 +713,9 @@ value out of range (elements 2, 4)`. The first 10 failing elements are
 listed, the rest counted (`; and 5 more`). The Rust type is in
 `e$rust_type`, not in the message.
 
-The examples below are for functions without the R-side checks
-(`no_preconditions` / `no-preconditions-default`), where these values reach Rust.
+The examples below are for arguments without the R-side checks
+(`Unchecked<T>`, `no_preconditions`, the crate's `preconditions = false`,
+`no-preconditions-default`), where these values reach Rust.
 
 ### Type mismatch
 

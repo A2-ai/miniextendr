@@ -262,6 +262,7 @@ mod panic_telemetry_tests;
 mod panic_tests;
 mod param_check_tests;
 mod pipe_builder_tests;
+mod precondition_marker_tests;
 mod protect_pool_tests;
 mod r6_default_tests;
 mod r6_noexport_field_tests;

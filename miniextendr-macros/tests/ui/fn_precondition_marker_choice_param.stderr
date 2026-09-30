@@ -1,0 +1,5 @@
+error: `Unchecked<String>` on parameter `mode`: a match_arg/choices parameter is validated by `match.arg()`, not by type checks; `Checked` / `Unchecked` and `preconditions` / `no_preconditions` do not apply to it
+ --> tests/ui/fn_precondition_marker_choice_param.rs:7:86
+  |
+7 | pub fn pick(#[miniextendr(choices("fast", "slow"))] mode: miniextendr_api::Unchecked<String>) -> String {
+  |                                                                                      ^^^^^^

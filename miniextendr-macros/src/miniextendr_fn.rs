@@ -453,13 +453,21 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// optional `message = "..."`: R-side checks named by the author (see
     /// [`crate::r_preconditions::ExplicitChecks`]).
     pub checks: crate::r_preconditions::ExplicitChecks,
+    /// `preconditions` / `no_preconditions` on the parameter (#1566):
+    /// `Some(true)` keeps its type-derived R-side checks, `Some(false)` drops
+    /// them. The last one written wins.
+    pub preconditions: Option<bool>,
 }
 
 impl PerParamMiniextendrAttr {
     /// Merge the options of another attribute on the same parameter: flags
-    /// add up, the first `default` / `choices(...)` wins, and the checks
-    /// merge (one `message` per check; the error says which).
+    /// add up, the first `default` / `choices(...)` wins, the last
+    /// `preconditions` / `no_preconditions` wins, and the checks merge (one
+    /// `message` per check; the error says which).
     pub(crate) fn merge(&mut self, other: PerParamMiniextendrAttr) -> Result<(), String> {
+        if other.preconditions.is_some() {
+            self.preconditions = other.preconditions;
+        }
         self.has_coerce |= other.has_coerce;
         self.has_match_arg |= other.has_match_arg;
         self.has_several_ok |= other.has_several_ok;
@@ -481,7 +489,8 @@ impl PerParamMiniextendrAttr {
 /// Returns `Ok(None)` if `attr` is not a `#[miniextendr(...)]` attribute, if its
 /// content is not a list of options, or if it contains only function-level
 /// options (like `strict`) with no per-parameter options. A malformed
-/// `inherits(...)` / `no_na(...)` is an error.
+/// `inherits(...)` / `no_na(...)` is an error, as is `preconditions = bool` /
+/// `no_preconditions = bool`, a function-level form the parameter spells bare.
 ///
 /// # Arguments
 ///
@@ -523,6 +532,12 @@ pub(crate) fn parse_per_param_attr(
                 } else if path.is_ident("no_na") {
                     result.checks.no_na = true;
                     is_per_param = true;
+                } else if path.is_ident("preconditions") {
+                    result.preconditions = Some(true);
+                    is_per_param = true;
+                } else if path.is_ident("no_preconditions") {
+                    result.preconditions = Some(false);
+                    is_per_param = true;
                 }
                 // Other paths (like `strict`) are function-level, ignore here
             }
@@ -547,6 +562,18 @@ pub(crate) fn parse_per_param_attr(
                         .get_or_insert_with(Vec::new)
                         .push(lit_str.value());
                     is_per_param = true;
+                } else if let Some(key) = ["preconditions", "no_preconditions"]
+                    .into_iter()
+                    .find(|key| nv.path.is_ident(key))
+                {
+                    return Err(syn::Error::new_spanned(
+                        nv,
+                        format!(
+                            "`{key} = ...` on a parameter: write the bare `preconditions` or \
+                             `no_preconditions` (or the `Checked<T>` / `Unchecked<T>` marker); \
+                             the `= true | false` form is the function attribute's"
+                        ),
+                    ));
                 }
                 // Other name-value pairs are function-level, ignore here
             }
@@ -819,6 +846,180 @@ fn method_class_list(value: &syn::LitStr) -> syn::Result<Vec<String>> {
 }
 // endregion
 
+// region: per-parameter preconditions (#1566 §2)
+
+/// Method-level `preconditions(p, q)` / `no_preconditions(p)` on an impl or
+/// trait method, whose parameters cannot carry attributes: each entry names a
+/// parameter that keeps (`keep`) or drops its type-derived R-side checks.
+/// Naming one parameter twice follows the pair rule: the last one written
+/// wins. Shared by the inherent-impl and trait-impl method parsers; the bare
+/// `preconditions` / `no_preconditions` (the whole method) is theirs to read.
+pub(crate) fn parse_method_preconditions(
+    meta: &syn::meta::ParseNestedMeta,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+    keep: bool,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|entry| {
+        let name = method_check_param(&entry)?;
+        per_param.entry(name).or_default().preconditions = Some(keep);
+        Ok(())
+    })
+}
+
+/// The keyword spelling of a rank-1 precondition decision, for messages:
+/// the per-parameter attribute on a function parameter, the method-level
+/// list on a method.
+fn preconditions_keyword(keep: bool, param: &str, method_list: bool) -> String {
+    let key = if keep {
+        "preconditions"
+    } else {
+        "no_preconditions"
+    };
+    if method_list {
+        format!("`{key}({param})`")
+    } else {
+        format!("`#[miniextendr({key})]`")
+    }
+}
+
+/// Combine a parameter's `Checked<T>` / `Unchecked<T>` marker with its
+/// keyword decision (`keyword`: the per-parameter `preconditions` /
+/// `no_preconditions`, or the method's `preconditions(p)` /
+/// `no_preconditions(p)`). A marker is a type, not one more flag of the pair,
+/// so a marker and a keyword that disagree are an error, as a `Call` marker
+/// and `call = ...` are; agreeing ones are one decision. The error points at
+/// `ty`, the parameter's type as written.
+pub(crate) fn merge_param_policy(
+    markers: &[crate::type_inspect::ParamMarker],
+    keyword: Option<bool>,
+    param: &str,
+    method_list: bool,
+    ty: &syn::Type,
+) -> syn::Result<Option<bool>> {
+    let marker = crate::type_inspect::marker_in_family(
+        markers,
+        crate::type_inspect::ParamMarkerFamily::Preconditions,
+    );
+    let Some(marker) = marker else {
+        return Ok(keyword);
+    };
+    let from_marker = marker.preconditions();
+    if let Some(keep) = keyword
+        && Some(keep) != from_marker
+    {
+        let (marker_does, keyword_does) = if keep {
+            ("drops", "keeps")
+        } else {
+            ("keeps", "drops")
+        };
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "the `{}` parameter `{param}` {marker_does} the R-side type checks but {} \
+                 {keyword_does} them; keep one of them (or make them agree)",
+                marker.name(),
+                preconditions_keyword(keep, param, method_list),
+            ),
+        ));
+    }
+    Ok(from_marker)
+}
+
+/// Reject a parameter's rank-1 precondition decision where it has nothing to
+/// act on: a `match_arg` / `choices` parameter (validated by `match.arg()`,
+/// never by type checks) and a type without type-derived checks (`SEXP`,
+/// `Missing<T>`, `ExternalPtr<T>`, `&Dots`, a type the check table does not
+/// know). `ty` is the parameter's type with the markers peeled, which the
+/// errors point at; `markers` are the ones it carried. A no-op when the
+/// parameter decides nothing itself.
+pub(crate) fn check_param_preconditions(
+    attrs: &ParamAttrs,
+    markers: &[crate::type_inspect::ParamMarker],
+    param: &str,
+    ty: &syn::Type,
+    method_list: bool,
+) -> syn::Result<()> {
+    let Some(keep) = attrs.preconditions else {
+        return Ok(());
+    };
+    let marker = crate::type_inspect::marker_in_family(
+        markers,
+        crate::type_inspect::ParamMarkerFamily::Preconditions,
+    );
+    let spelling = match marker {
+        Some(m) => format!("`{}<{}>`", m.name(), crate::type_inspect::type_display(ty)),
+        None => preconditions_keyword(keep, param, method_list),
+    };
+    if attrs.is_choice() {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "{spelling} on parameter `{param}`: a match_arg/choices parameter is validated by \
+                 `match.arg()`, not by type checks; `Checked` / `Unchecked` and \
+                 `preconditions` / `no_preconditions` do not apply to it"
+            ),
+        ));
+    }
+    if !crate::r_preconditions::has_type_check(ty) {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "{spelling} on parameter `{param}`: `{}` has no R-side type check to keep or drop",
+                crate::type_inspect::type_display(ty)
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// `inputs` with each marked parameter's type replaced by the type under its
+/// markers (`markers`, keyed by Rust name): what every R-side consumer and
+/// the conversion see. The item re-emitted for the user keeps the markers.
+pub(crate) fn peeled_inputs(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    markers: &[(String, Vec<crate::type_inspect::ParamMarker>)],
+) -> syn::Result<syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>> {
+    let mut peeled = inputs.clone();
+    for arg in peeled.iter_mut() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let name = crate::naming::ident_name(&pat_ident.ident);
+        if markers.iter().any(|(n, _)| *n == name) {
+            let (_, inner) = crate::type_inspect::peel_param_markers(pt.ty.as_ref())?;
+            *pt.ty = inner.clone();
+        }
+    }
+    Ok(peeled)
+}
+
+/// The markers of every parameter of `inputs` that carries one, keyed by
+/// Rust name, in signature order. Nested or stacked markers are an error
+/// (see [`crate::type_inspect::peel_param_markers`]).
+pub(crate) fn collect_param_markers(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> syn::Result<Vec<(String, Vec<crate::type_inspect::ParamMarker>)>> {
+    let mut out = Vec::new();
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let (markers, _) = crate::type_inspect::peel_param_markers(pt.ty.as_ref())?;
+        if markers.is_empty() {
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        out.push((crate::naming::ident_name(&pat_ident.ident), markers));
+    }
+    Ok(out)
+}
+// endregion
+
 // region: Function parsing
 
 /// Parsed + normalized Rust function item for `#[miniextendr]`.
@@ -830,7 +1031,15 @@ fn method_class_list(value: &syn::LitStr) -> syn::Result<Vec<String>> {
 /// - consumes `#[miniextendr(coerce)]` parameter attributes and records which params had it
 pub(crate) struct MiniextendrFunctionParsed {
     /// The normalized function item (with dots transformed, wildcards renamed).
+    /// Re-emitted for the user, so it keeps the parameter markers.
     item: syn::ItemFn,
+    /// `item`'s parameters with the parameter markers (`Checked<T>` /
+    /// `Unchecked<T>`, #1566) peeled: what the R wrapper, the preconditions
+    /// and the C wrapper's conversions see.
+    inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    /// The markers peeled off each marked parameter (Rust name), in
+    /// signature order: the C wrapper wraps the converted value in them.
+    param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
     /// Rust binding of the `&Dots` parameter (R's `...`), from Rust `...` or
     /// an explicit `&Dots` parameter at any position (see
     /// [`find_dots_param`]).
@@ -877,6 +1086,13 @@ pub(crate) struct ParamAttrs {
     pub either_noun: Option<String>,
     /// R-side checks named by the author: `inherits` / `no_na`.
     pub checks: crate::r_preconditions::ExplicitChecks,
+    /// This parameter's own decision on its type-derived R-side checks
+    /// (#1566), rank 1 of [`crate::r_preconditions::resolve_type_checks`]:
+    /// a `Checked<T>` / `Unchecked<T>` marker, the per-parameter
+    /// `preconditions` / `no_preconditions`, or a method's
+    /// `preconditions(x)` / `no_preconditions(x)`. `Some(true)` keeps them;
+    /// `None` defers to the function, impl and crate defaults.
+    pub preconditions: Option<bool>,
 }
 
 impl ParamAttrs {
@@ -1134,17 +1350,22 @@ pub(crate) fn explicit_checks_by_r_name(
 
 /// Check an impl or trait method's per-parameter attributes against its
 /// signature, now that it is known. Every parameter a method-level
-/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `no_na(...)` names
-/// must exist (a typo would otherwise drop the check without a word); then
-/// the choice parameters are classified (see [`classify_choice_param`]). The
-/// standalone-fn path does the same while parsing; this is the twin for
-/// method-level attributes, whose parameter names arrive before the types.
-/// The inherent-impl and trait-impl parsers both call it, so they reject an
-/// unknown name the same way. `span` is where that error points: the first
-/// such attribute, else the method name.
+/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `no_na(...)` /
+/// `preconditions(...)` / `no_preconditions(...)` names must exist (a typo
+/// would otherwise drop the check without a word); then the choice
+/// parameters are classified (see [`classify_choice_param`]) and each
+/// parameter's own precondition decision is checked
+/// ([`check_param_preconditions`]). The standalone-fn path does the same
+/// while parsing; this is the twin for method-level attributes, whose
+/// parameter names arrive before the types. The inherent-impl and trait-impl
+/// parsers both call it, so they reject an unknown name the same way.
+/// `inputs` has the parameter markers peeled; `markers` are the ones peeled
+/// (empty on a trait impl, whose signature is the trait's). `span` is where
+/// the errors point: the first such attribute, else the method name.
 pub(crate) fn finalize_method_param_attrs(
     per_param: &mut std::collections::HashMap<String, ParamAttrs>,
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    markers: &[(String, Vec<crate::type_inspect::ParamMarker>)],
     defaults: &std::collections::HashMap<String, String>,
     span: proc_macro2::Span,
 ) -> syn::Result<()> {
@@ -1161,7 +1382,10 @@ pub(crate) fn finalize_method_param_attrs(
     let mut unknown: Vec<&String> = per_param
         .iter()
         .filter(|(name, a)| {
-            (a.match_arg || a.choices.is_some() || !a.checks.is_empty())
+            (a.match_arg
+                || a.choices.is_some()
+                || !a.checks.is_empty()
+                || a.preconditions.is_some())
                 && !sig_names.contains(name.as_str())
         })
         .map(|(name, _)| name)
@@ -1170,7 +1394,10 @@ pub(crate) fn finalize_method_param_attrs(
     if let Some(first) = unknown.first() {
         return Err(syn::Error::new(
             span,
-            format!("match_arg/choices/inherits/no_na references non-existent parameter `{first}`"),
+            format!(
+                "match_arg/choices/inherits/no_na/(no_)preconditions references non-existent \
+                 parameter `{first}`"
+            ),
         ));
     }
     for arg in inputs {
@@ -1186,6 +1413,11 @@ pub(crate) fn finalize_method_param_attrs(
         };
         let has_default = attrs.default.is_some() || defaults.contains_key(&name);
         classify_choice_param(attrs, &name, pt.ty.as_ref(), has_default)?;
+        let param_markers = markers
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map_or(&[][..], |(_, m)| m.as_slice());
+        check_param_preconditions(attrs, param_markers, &name, pt.ty.as_ref(), true)?;
     }
     Ok(())
 }
@@ -1253,6 +1485,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             std::collections::HashMap::new();
         let mut unused_counter = 0usize;
         let mut pattern_destructures: Vec<(Box<syn::Pat>, syn::Ident)> = Vec::new();
+        let mut param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)> = Vec::new();
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
                 // Self parameters are not allowed in standalone functions.
@@ -1282,10 +1515,30 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 choices: had_choices,
                 has_several_ok: had_several_ok,
                 checks: had_checks,
+                preconditions: had_preconditions,
             } = param_attr;
 
+            // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566): the
+            // parameter converts as the inner type, which every check below
+            // and every R-side consumer sees; the item keeps the marker, and
+            // the C wrapper wraps the converted value before the call.
+            let (markers, inner_ty) =
+                crate::type_inspect::peel_param_markers(pat_type.ty.as_ref())?;
+            let inner_ty = inner_ty.clone();
+            if is_extern && let Some(marker) = markers.first() {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    format!(
+                        "`{}<T>` on an `extern \"C-unwind\"` function: it takes the R values \
+                         as they are, with no generated conversion to unwrap the marker; take \
+                         the inner type",
+                        marker.name()
+                    ),
+                ));
+            }
+
             // Validate type-based constraints (Missing nesting, Missing<Dots>)
-            validate_param_type(pat_type.ty.as_ref(), pat_type.ty.span())?;
+            validate_param_type(&inner_ty, pat_type.ty.span())?;
 
             // Resolve the Rust parameter name — either the user's identifier,
             // or a synthesized one for wildcard / destructuring patterns.
@@ -1326,6 +1579,15 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     ));
                 }
             };
+            // The marker and the per-parameter keyword are one decision.
+            let preconditions = merge_param_policy(
+                &markers,
+                had_preconditions,
+                &param_name,
+                false,
+                &pat_type.ty,
+            )?;
+
             // Validate per-parameter attribute conflicts (coerce+match_arg, coerce+choices, etc.)
             let per_param_combined = PerParamMiniextendrAttr {
                 has_coerce: had_coerce_attr,
@@ -1334,12 +1596,13 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 choices: had_choices.clone(),
                 has_several_ok: had_several_ok,
                 checks: had_checks.clone(),
+                preconditions,
             };
             validate_per_param_attr_conflicts(
                 &per_param_combined,
                 &param_name,
-                is_dots_type(pat_type.ty.as_ref()),
-                Some(pat_type.ty.as_ref()),
+                is_dots_type(&inner_ty),
+                Some(&inner_ty),
                 pat_type.ty.span(),
             )?;
 
@@ -1350,6 +1613,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 || had_choices.is_some()
                 || default_with_span.is_some()
                 || !had_checks.is_empty()
+                || preconditions.is_some()
             {
                 let entry = per_param.entry(param_name.clone()).or_default();
                 entry.checks = had_checks;
@@ -1357,13 +1621,18 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 entry.match_arg = had_match_arg_attr;
                 entry.several_ok = had_several_ok;
                 entry.choices = had_choices;
+                entry.preconditions = preconditions;
                 if let Some((default, span)) = default_with_span {
                     entry.default = Some(default);
                     per_param_default_spans.insert(param_name.clone(), span);
                 }
                 // The `Option` / `Missing` layers of a choice parameter (#1473, #1551).
                 let has_default = entry.default.is_some();
-                classify_choice_param(entry, &param_name, pat_type.ty.as_ref(), has_default)?;
+                classify_choice_param(entry, &param_name, &inner_ty, has_default)?;
+                check_param_preconditions(entry, &markers, &param_name, &inner_ty, false)?;
+            }
+            if !markers.is_empty() {
+                param_markers.push((param_name, markers));
             }
         }
 
@@ -1422,9 +1691,12 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
 
         let dots = find_dots_param(&item.sig.inputs)?;
         crate::r_wrapper_builder::check_r_formals(&item.sig.inputs, &[])?;
+        let inputs = peeled_inputs(&item.sig.inputs, &param_markers)?;
 
         Ok(Self {
             item,
+            inputs,
+            param_markers,
             dots,
             per_param,
         })
@@ -1557,9 +1829,16 @@ impl MiniextendrFunctionParsed {
         &self.item.sig.generics
     }
 
-    /// Function inputs after normalization (dots rewritten, wildcards renamed).
+    /// Function inputs after normalization (dots rewritten, wildcards
+    /// renamed), with the parameter markers peeled (see [`Self::param_markers`]).
     pub(crate) fn inputs(&self) -> &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> {
-        &self.item.sig.inputs
+        &self.inputs
+    }
+
+    /// The `Checked<T>` / `Unchecked<T>` markers peeled off the parameters
+    /// (Rust name → markers, outermost first), in signature order.
+    pub(crate) fn param_markers(&self) -> &[(String, Vec<crate::type_inspect::ParamMarker>)] {
+        &self.param_markers
     }
 
     /// Function return type.
@@ -1735,8 +2014,12 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   keep the R-side type checks. Without them `TryFromSexp` still raises on
 ///   bad input, with the same argument-error condition (#1591); the message
 ///   comes from the conversion. Saves one `isTRUE()` guard per check.
-///   Hot-path opt-in; `preconditions` keeps the checks when the
-///   `no-preconditions-default` feature drops them crate-wide. The last one written wins.
+///   Hot-path opt-in. The last one written wins. A parameter decides for
+///   itself first (`Checked<T>` / `Unchecked<T>`, or the per-parameter
+///   `#[miniextendr(preconditions)]` / `#[miniextendr(no_preconditions)]`);
+///   below the function come the crate's `[package.metadata.miniextendr]
+///   preconditions = true | false` and then the `no-preconditions-default`
+///   feature (`crate::r_preconditions::resolve_type_checks`).
 /// - `call = wrapper | caller`: which call the wrapper attributes conditions
 ///   to (#1566), always as written. `wrapper` (the framework default) passes
 ///   `.call = sys.call()`; `caller` binds the caller's call first and passes
@@ -1769,7 +2052,8 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Build the `Err` arm's condition from the error's serde output
     /// (`#[miniextendr(serde_error)]`, optionally `serde_error(tag = .., prefix = ..)`).
     pub(crate) serde_error: Option<SerdeErrorSpec>,
-    /// Skip emission of the R-side type-check guards.
+    /// Keep (`Some(true)`) or drop (`Some(false)`) the R-side type-check
+    /// guards of the parameters that do not decide for themselves.
     ///
     /// `TryFromSexp` already raises the same argument-error condition on
     /// mismatched input (#1591), so the information isn't lost: it is
@@ -1777,10 +2061,13 @@ pub(crate) struct MiniextendrFnAttrs {
     /// paths where the per-call precondition cost (one `isTRUE()` guard per
     /// check) dominates over actual work.
     ///
-    /// Set by `#[miniextendr(no_preconditions)]` (or `no_preconditions =
-    /// true`), cleared by `preconditions` (or `preconditions = true`); unset,
-    /// it follows the `no-preconditions-default` feature.
-    pub(crate) no_preconditions: bool,
+    /// `Some(true)` from `#[miniextendr(preconditions)]` (or
+    /// `preconditions = true`, `no_preconditions = false`), `Some(false)` from
+    /// `no_preconditions` (or `no_preconditions = true`, `preconditions =
+    /// false`); the last one written wins. `None`: the crate default, then the
+    /// `no-preconditions-default` feature decide, at codegen
+    /// (`crate::r_preconditions::resolve_type_checks`).
+    pub(crate) preconditions: Option<bool>,
     /// The attribution the attribute asked for, if any (#1566):
     /// `call = wrapper | caller`. `None` here means the attribute said
     /// nothing; the codegen then falls back to a `Call` / `CallerCall`
@@ -2226,7 +2513,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut serialize = false;
         let mut wrap = None;
         let mut serde_error: Option<SerdeErrorSpec> = None;
-        let mut no_preconditions: Option<bool> = None;
+        let mut preconditions: Option<bool> = None;
         let mut return_pref = ReturnPref::Auto;
         let mut return_pref_span: Option<proc_macro2::Span> = None;
         let mut s3_generic = None;
@@ -2288,9 +2575,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else if ident == "no_strict" {
                             strict = Some(false);
                         } else if ident == "preconditions" {
-                            no_preconditions = Some(false);
+                            preconditions = Some(true);
                         } else if ident == "no_preconditions" {
-                            no_preconditions = Some(true);
+                            preconditions = Some(false);
                         } else if ident == "internal" {
                             internal = true;
                         } else if ident == "noexport" {
@@ -2351,9 +2638,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else if ident == "no_strict" {
                                 strict = Some(!val);
                             } else if ident == "preconditions" {
-                                no_preconditions = Some(!val);
+                                preconditions = Some(val);
                             } else if ident == "no_preconditions" {
-                                no_preconditions = Some(val);
+                                preconditions = Some(!val);
                             } else if ident == "internal" {
                                 internal = val;
                             } else if ident == "noexport" {
@@ -2687,8 +2974,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             serialize,
             wrap,
             serde_error,
-            no_preconditions: no_preconditions
-                .unwrap_or(cfg!(feature = "no-preconditions-default")),
+            preconditions,
             call_attribution: call_attr,
             return_pref,
             return_pref_span,

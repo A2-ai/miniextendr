@@ -1,0 +1,5 @@
+error: the `Checked` parameter `seed` keeps the R-side type checks but `no_preconditions(seed)` drops them; keep one of them (or make them agree)
+  --> tests/ui/impl_method_precondition_marker_vs_list.rs:16:36
+   |
+16 |     pub fn reseed(&mut self, seed: miniextendr_api::Checked<i32>) {
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

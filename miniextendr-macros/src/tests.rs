@@ -328,6 +328,220 @@ fn parsed_fn_rejects_unparsable_r_formals() {
     }
 }
 
+// region: per-parameter preconditions (#1566 §2)
+
+fn parsed_fn(tokens: proc_macro2::TokenStream) -> MiniextendrFunctionParsed {
+    syn::parse2::<MiniextendrFunctionParsed>(tokens).expect("should parse")
+}
+
+fn arg_types(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> Vec<String> {
+    inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Typed(pt) => Some(crate::type_inspect::type_display(&pt.ty)),
+            syn::FnArg::Receiver(_) => None,
+        })
+        .collect()
+}
+
+/// `Checked<T>` / `Unchecked<T>` are peeled once, at parse: `inputs()` (what
+/// the R wrapper, the checks and the conversion see) has the inner type, the
+/// re-emitted item keeps the marker, and the marker is the parameter's
+/// precondition decision.
+#[test]
+fn parsed_fn_peels_param_markers() {
+    use crate::type_inspect::ParamMarker;
+    let parsed = parsed_fn(quote::quote! {
+        fn f(n: Checked<i32>, xs: miniextendr_api::Unchecked<Vec<f64>>, tol: f64, s: Checked<&str>) {}
+    });
+    assert_eq!(
+        arg_types(parsed.inputs()),
+        ["i32", "Vec<f64>", "f64", "&str"]
+    );
+    assert_eq!(
+        arg_types(&parsed.item().sig.inputs),
+        [
+            "Checked<i32>",
+            "miniextendr_api::Unchecked<Vec<f64>>",
+            "f64",
+            "Checked<&str>"
+        ]
+    );
+    assert_eq!(
+        parsed.param_markers(),
+        [
+            ("n".to_string(), vec![ParamMarker::Checked]),
+            ("xs".to_string(), vec![ParamMarker::Unchecked]),
+            ("s".to_string(), vec![ParamMarker::Checked]),
+        ]
+    );
+    let prec = |p: &str| parsed.param_attrs(p).and_then(|a| a.preconditions);
+    assert_eq!(prec("n"), Some(true));
+    assert_eq!(prec("xs"), Some(false));
+    assert_eq!(prec("tol"), None);
+    assert_eq!(prec("s"), Some(true));
+}
+
+/// The per-parameter `preconditions` / `no_preconditions`: bare, last one
+/// wins across one attribute and across several, next to the other options,
+/// and one decision with an agreeing marker.
+#[test]
+fn parsed_fn_per_param_preconditions_last_wins() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            #[miniextendr(preconditions)] a: i32,
+            #[miniextendr(no_preconditions)] b: f64,
+            #[miniextendr(preconditions, no_preconditions)] c: i32,
+            #[miniextendr(no_preconditions)]
+            #[miniextendr(preconditions)]
+            d: i32,
+            #[miniextendr(preconditions)] e: Checked<i32>,
+            #[miniextendr(no_na, no_preconditions)] g: Vec<f64>,
+            #[miniextendr(coerce, preconditions)] h: Checked<u16>,
+        ) {}
+    });
+    let prec = |p: &str| parsed.param_attrs(p).and_then(|a| a.preconditions);
+    assert_eq!(prec("a"), Some(true));
+    assert_eq!(prec("b"), Some(false));
+    assert_eq!(prec("c"), Some(false));
+    assert_eq!(prec("d"), Some(true));
+    assert_eq!(prec("e"), Some(true));
+    assert_eq!(prec("g"), Some(false));
+    assert!(parsed.param_attrs("g").unwrap().checks.no_na);
+    assert_eq!(prec("h"), Some(true));
+    assert!(parsed.has_coerce_attr("h"));
+    // The keyword leaves no attribute on the re-emitted parameter.
+    assert!(
+        parsed
+            .item()
+            .sig
+            .inputs
+            .iter()
+            .all(|arg| matches!(arg, syn::FnArg::Typed(pt) if pt.attrs.is_empty()))
+    );
+}
+
+/// Every rank-1 spelling that cannot be honoured, with the error that says why.
+#[test]
+fn parsed_fn_precondition_spelling_errors() {
+    for (tokens, expected) in [
+        (
+            quote::quote! { fn f(#[miniextendr(no_preconditions)] n: Checked<i32>) {} },
+            "the `Checked` parameter `n` keeps the R-side type checks but \
+             `#[miniextendr(no_preconditions)]` drops them; keep one of them",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(preconditions)] n: Unchecked<i32>) {} },
+            "the `Unchecked` parameter `n` drops the R-side type checks but \
+             `#[miniextendr(preconditions)]` keeps them",
+        ),
+        (
+            quote::quote! { fn f(x: Checked<SEXP>) {} },
+            "`Checked<SEXP>` on parameter `x`: `SEXP` has no R-side type check to keep or drop",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_preconditions)] x: Missing<i32>) {} },
+            "`#[miniextendr(no_preconditions)]` on parameter `x`: `Missing<i32>` has no R-side type check",
+        ),
+        (
+            quote::quote! { fn f(x: Unchecked<ExternalPtr<Foo>>) {} },
+            "`ExternalPtr<Foo>` has no R-side type check",
+        ),
+        (
+            quote::quote! { fn f(x: i32, #[miniextendr(preconditions)] rest: &Dots) {} },
+            "`&Dots` has no R-side type check",
+        ),
+        // An `Either` has no type-derived check (its `no_na` is checked in
+        // Rust, after the conversion), so no rank-1 spelling meets `no_na`.
+        (
+            quote::quote! { fn f(x: Checked<Either<AsNumeric, DataFrame>>) {} },
+            "`Checked<Either<AsNumeric, DataFrame>>` on parameter `x`: \
+             `Either<AsNumeric, DataFrame>` has no R-side type check to keep or drop",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(no_na, no_preconditions)] x: Either<AsNumeric, DataFrame>) {}
+            },
+            "`#[miniextendr(no_preconditions)]` on parameter `x`: \
+             `Either<AsNumeric, DataFrame>` has no R-side type check",
+        ),
+        // The `= bool` form is the function attribute's; alone or next to a
+        // parameter option, it is an error, not a silently dropped decision.
+        (
+            quote::quote! { fn f(#[miniextendr(preconditions = false)] x: f64) {} },
+            "`preconditions = ...` on a parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(no_na, no_preconditions = true)] x: f64) {} },
+            "`no_preconditions = ...` on a parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(match_arg)] mode: Checked<Mode>) {} },
+            "`Checked<Mode>` on parameter `mode`: a match_arg/choices parameter is validated by \
+             `match.arg()`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(choices("a", "b"), no_preconditions)] mode: String) {}
+            },
+            "`#[miniextendr(no_preconditions)]` on parameter `mode`: a match_arg/choices parameter",
+        ),
+        (
+            quote::quote! { fn f(x: Option<Checked<i32>>) {} },
+            "put `Checked` outermost: `Checked<Option<T>>`",
+        ),
+        (
+            quote::quote! { fn f(x: Checked<Unchecked<i32>>) {} },
+            "at most one precondition marker per parameter",
+        ),
+        (
+            quote::quote! { extern "C-unwind" fn f(x: Checked<i32>) -> SEXP { x } },
+            "`Checked<T>` on an `extern \"C-unwind\"` function",
+        ),
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+}
+
+/// A marker's rebinding follows the parameter's last statement: the
+/// conversion (and its `no_na` check) on the main thread, the borrow inside
+/// the worker closure for a split `&str`.
+#[test]
+fn param_marker_rebind_follows_the_last_statement() {
+    use crate::type_inspect::ParamMarker;
+    let builder = crate::RustConversionBuilder::new()
+        .with_param_markers("s".into(), vec![ParamMarker::Checked])
+        .with_param_markers("n".into(), vec![ParamMarker::Unchecked])
+        .with_no_na("n".into(), None);
+    let pat = |tokens: proc_macro2::TokenStream| -> syn::PatType { syn::parse2(tokens).unwrap() };
+    let sexp: syn::Ident = syn::parse_quote!(arg_0);
+    let rebind_s = "let s = :: miniextendr_api :: Checked :: from_inner (s) ;";
+    let rebind_n = "let n = :: miniextendr_api :: Unchecked :: from_inner (n) ;";
+
+    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(s: &str)), &sexp);
+    assert!(owned.iter().all(|t| !t.to_string().contains("from_inner")));
+    assert_eq!(borrowed.last().unwrap().to_string(), rebind_s);
+    let main = builder.build_conversion(&pat(quote::quote!(s: &str)), &sexp);
+    assert_eq!(main.last().unwrap().to_string(), rebind_s);
+
+    let (owned, borrowed) = builder.build_conversion_split(&pat(quote::quote!(n: f64)), &sexp);
+    assert!(borrowed.is_empty());
+    assert_eq!(owned.len(), 3, "conversion, no_na check, rebind");
+    assert!(owned[1].to_string().contains("__mx_has_na"));
+    assert_eq!(owned[2].to_string(), rebind_n);
+    // The conversion names the inner type in `e$rust_type`.
+    assert!(owned[0].to_string().contains("\"f64\""), "{}", owned[0]);
+
+    let unmarked = builder.build_conversion(&pat(quote::quote!(x: i32)), &sexp);
+    assert!(
+        unmarked
+            .iter()
+            .all(|t| !t.to_string().contains("from_inner"))
+    );
+}
+// endregion
+
 // region: per-parameter `inherits` / `no_na` and their messages
 
 /// The `inherits` / `no_na` spellings of one parameter, keyed by R name.
@@ -801,7 +1015,7 @@ fn miniextendr_attr_call_parses_and_validates() {
         syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport, no_preconditions, call = caller))
             .expect("no_preconditions + call = caller parses");
     assert_eq!(attrs.call_attribution, Some(CallAttribution::Caller));
-    assert!(attrs.no_preconditions);
+    assert_eq!(attrs.preconditions, Some(false));
 
     let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = caller))
         .err()
@@ -1889,17 +2103,40 @@ fn test_altrep_try_from_sexp_expected_tag_uses_family_base() {
 
 // region: preconditions / no_preconditions and the no-preconditions-default feature
 
+/// Whether an item keeps its type-derived checks when nothing below it (no
+/// parameter spelling) speaks: the fn / impl attribute, then the crate default
+/// (`crate_default`), then this build's `no-preconditions-default` feature.
+fn item_keeps_checks(
+    item: Option<bool>,
+    impl_level: Option<bool>,
+    crate_default: Option<bool>,
+) -> bool {
+    crate::r_preconditions::resolve_item_type_checks(
+        item,
+        impl_level,
+        crate_default,
+        cfg!(feature = "no-preconditions-default"),
+    )
+}
+
 /// Under the `no-preconditions-default` feature a bare `#[miniextendr]` drops the R-side
-/// type checks. The call attribution is independent: it resolves to `wrapper`.
+/// type checks, and a crate `preconditions = true` keeps them: the crate
+/// default sits above the feature (#1566). The call attribution is
+/// independent: it resolves to `wrapper`.
 ///
 /// Run with: `cargo test -p miniextendr-macros --features no-preconditions-default`
 #[cfg(feature = "no-preconditions-default")]
 #[test]
 fn no_preconditions_default_fn_attrs_drop_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
+    assert_eq!(attrs.preconditions, None, "the attribute says nothing");
     assert!(
-        attrs.no_preconditions,
+        !item_keeps_checks(attrs.preconditions, None, None),
         "the feature drops the checks by default"
+    );
+    assert!(
+        item_keeps_checks(attrs.preconditions, None, Some(true)),
+        "the crate default beats the feature"
     );
     assert_eq!(attrs.call_attribution, None);
     assert_eq!(
@@ -1912,7 +2149,18 @@ fn no_preconditions_default_fn_attrs_drop_preconditions() {
         crate::r_wrapper_builder::CallAttribution::Wrapper,
     );
     let impl_attrs: crate::miniextendr_impl::ImplAttrs = syn::parse2(quote::quote! {}).unwrap();
-    assert!(impl_attrs.no_preconditions);
+    assert_eq!(impl_attrs.preconditions, None);
+    assert!(!item_keeps_checks(None, impl_attrs.preconditions, None));
+    // A parameter's own spelling beats the feature too.
+    let sig: syn::Signature = syn::parse_str("fn f(n: i32, x: f64)").unwrap();
+    let unchecked = crate::r_preconditions::unchecked_params(
+        &sig.inputs,
+        |name| (name == "n").then_some(true),
+        None,
+        None,
+        None,
+    );
+    assert_eq!(unchecked, ["x".to_string()].into_iter().collect());
 }
 
 /// `preconditions` restores the checks one item at a time under the feature.
@@ -1925,18 +2173,29 @@ fn no_preconditions_default_preconditions_restores_checks() {
         quote::quote! { no_preconditions = false },
     ] {
         let attrs: MiniextendrFnAttrs = syn::parse2(input.clone()).unwrap();
-        assert!(!attrs.no_preconditions, "{input} keeps the checks");
+        assert!(
+            item_keeps_checks(attrs.preconditions, None, None),
+            "{input} keeps the checks"
+        );
     }
     let impl_attrs: crate::miniextendr_impl::ImplAttrs =
         syn::parse2(quote::quote! { preconditions }).unwrap();
-    assert!(!impl_attrs.no_preconditions);
+    assert!(item_keeps_checks(None, impl_attrs.preconditions, None));
 }
 
 #[cfg(not(feature = "no-preconditions-default"))]
 #[test]
 fn default_fn_attrs_keep_preconditions() {
     let attrs: MiniextendrFnAttrs = syn::parse2(quote::quote! {}).unwrap();
-    assert!(!attrs.no_preconditions, "the checks are on by default");
+    assert_eq!(attrs.preconditions, None);
+    assert!(
+        item_keeps_checks(attrs.preconditions, None, None),
+        "the checks are on by default"
+    );
+    assert!(
+        !item_keeps_checks(attrs.preconditions, None, Some(false)),
+        "a crate `preconditions = false` drops them"
+    );
     assert_eq!(
         attrs.call_attribution, None,
         "without an explicit spelling the attribute says nothing about the call"
@@ -1947,33 +2206,51 @@ fn default_fn_attrs_keep_preconditions() {
 /// last one written wins, like `worker` / `no_worker`.
 #[test]
 fn preconditions_pair_parses_on_fns_last_wins() {
-    let no_prec = |input: proc_macro2::TokenStream| {
+    let prec = |input: proc_macro2::TokenStream| {
         syn::parse2::<MiniextendrFnAttrs>(input)
             .unwrap()
-            .no_preconditions
+            .preconditions
     };
-    assert!(no_prec(quote::quote! { no_preconditions }));
-    assert!(no_prec(quote::quote! { no_preconditions = true }));
-    assert!(!no_prec(quote::quote! { no_preconditions = false }));
-    assert!(!no_prec(quote::quote! { preconditions }));
-    assert!(!no_prec(quote::quote! { preconditions = true }));
-    assert!(no_prec(quote::quote! { preconditions = false }));
-    assert!(no_prec(quote::quote! { preconditions, no_preconditions }));
-    assert!(!no_prec(quote::quote! { no_preconditions, preconditions }));
+    assert_eq!(prec(quote::quote! { no_preconditions }), Some(false));
+    assert_eq!(prec(quote::quote! { no_preconditions = true }), Some(false));
+    assert_eq!(prec(quote::quote! { no_preconditions = false }), Some(true));
+    assert_eq!(prec(quote::quote! { preconditions }), Some(true));
+    assert_eq!(prec(quote::quote! { preconditions = true }), Some(true));
+    assert_eq!(prec(quote::quote! { preconditions = false }), Some(false));
+    assert_eq!(
+        prec(quote::quote! { preconditions, no_preconditions }),
+        Some(false)
+    );
+    assert_eq!(
+        prec(quote::quote! { no_preconditions, preconditions }),
+        Some(true)
+    );
+    assert_eq!(
+        prec(quote::quote! { no_preconditions, no_preconditions = false }),
+        Some(true)
+    );
+    assert_eq!(prec(quote::quote! { noexport }), None);
 }
 
 /// On an impl block the pair is bare, like every impl flag, and last-wins.
 #[test]
 fn preconditions_pair_parses_on_impls_last_wins() {
-    let no_prec = |input: proc_macro2::TokenStream| {
+    let prec = |input: proc_macro2::TokenStream| {
         syn::parse2::<crate::miniextendr_impl::ImplAttrs>(input)
             .unwrap()
-            .no_preconditions
+            .preconditions
     };
-    assert!(no_prec(quote::quote! { r6, no_preconditions }));
-    assert!(!no_prec(quote::quote! { preconditions }));
-    assert!(no_prec(quote::quote! { preconditions, no_preconditions }));
-    assert!(!no_prec(quote::quote! { no_preconditions, preconditions }));
+    assert_eq!(prec(quote::quote! { r6, no_preconditions }), Some(false));
+    assert_eq!(prec(quote::quote! { preconditions }), Some(true));
+    assert_eq!(
+        prec(quote::quote! { preconditions, no_preconditions }),
+        Some(false)
+    );
+    assert_eq!(
+        prec(quote::quote! { no_preconditions, preconditions }),
+        Some(true)
+    );
+    assert_eq!(prec(quote::quote! { r6 }), None);
 }
 
 /// A spelling the parser does not know gets the ordinary unknown-option error.

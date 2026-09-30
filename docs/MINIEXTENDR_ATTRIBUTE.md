@@ -354,6 +354,88 @@ attribution is independent of `no_preconditions`, which on an impl block
 applies to trait impls too. Details and the fixtures:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
+#### R-side preconditions: markers and defaults
+
+A generated wrapper checks each argument's R type before the `.Call()`, one
+guard per check (`if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n",
+"must be integer")`), so a wrong argument fails in R with a message naming it.
+These are the *type-derived* checks. Without them the Rust conversion still
+refuses the argument with the same condition (`kind = "conversion"`,
+`e$param`, plus `e$rust_type`); only the message is the conversion's (`'n'
+must be a single integer: got character`). Each parameter keeps or drops them
+as the most specific spelling says (#1566):
+
+| Rank | Keeps | Drops | Where |
+|------|-------|-------|-------|
+| 1 | `n: Checked<T>` | `n: Unchecked<T>` | a parameter of a function or inherent-impl method |
+| 1 | `#[miniextendr(preconditions)] n: T` | `#[miniextendr(no_preconditions)] n: T` | a function parameter |
+| 1 | `preconditions(n, m)` | `no_preconditions(n)` | a method attribute (inherent and trait impls) |
+| 2 | `preconditions` (or `= true`) | `no_preconditions` (or `= true`) | the function attribute; bare on a method |
+| 3 | `preconditions` | `no_preconditions` | the impl-block attribute (trait impls too) |
+| 4 | `preconditions = true` | `preconditions = false` | `[package.metadata.miniextendr]` in `Cargo.toml` |
+| 5 | | the `no-preconditions-default` cargo feature | the build ([FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md#no-preconditions-default)) |
+| 6 | the framework default | | |
+
+```toml
+[package.metadata.miniextendr]
+preconditions = false        # every wrapper of the crate drops its type checks
+```
+
+```rust
+use miniextendr_api::{Checked, List, Unchecked, miniextendr};
+
+#[miniextendr(noexport)]
+pub fn fit_impl(data: List, n_iter: Checked<i32>, tol: f64) -> f64 {
+    let n = *n_iter;                            // or n_iter.into_inner()
+    /* ... */
+}
+
+#[miniextendr]
+pub fn scale_by(#[miniextendr(no_na)] factor: f64, xs: Unchecked<Vec<f64>>) -> Vec<f64> {
+    xs.into_inner().into_iter().map(|x| x * factor).collect()
+}
+```
+
+Under that crate default `fit_impl` keeps `n_iter`'s two guards and none for
+`data` or `tol`; `scale_by` (in any crate) drops `is.double(xs)` and keeps
+`factor`'s guards and its `no_na`. The per-parameter spelling
+`#[miniextendr(no_preconditions)] xs: Vec<f64>` generates the same R. On a
+class, the method-level forms do the same:
+
+```rust
+#[miniextendr(r6, no_preconditions)]
+impl Sampler {
+    #[miniextendr(preconditions(n))]         // n keeps its guards, scale does not
+    pub fn draw(&self, n: i32, scale: f64) -> Vec<f64> { /* ... */ }
+    pub fn reseed(&mut self, seed: Checked<i32>) { /* ... */ }
+}
+```
+
+The switch covers the type-derived checks only: `inherits`, `no_na`, the
+`match_arg` / `choices` validation, the `.call` validation and the Rust
+conversion stay whatever the spelling. The markers
+(`miniextendr_api::{Checked, Unchecked}`, `repr(transparent)`, `Deref` to
+`T`) are peeled before any R-side analysis: the formals, `@param` lines and
+the conversion see `T` (`e$rust_type` says `i32`), and the C wrapper wraps the
+converted value before the call. They implement neither `TryFromSexp` nor
+`IntoR`, so a type alias of a marker does not compile (the guards are R text
+written from the syntax, so an alias could only silently follow the default).
+
+Two keywords follow the pair rule, the last one written wins (`preconditions,
+no_preconditions` at one level, a list naming one parameter twice). A marker
+and a keyword on one parameter that disagree are a compile error, as are two
+markers on a parameter, a marker not outermost (`Option<Checked<T>>`; write
+`Checked<Option<T>>`), a rank-1 spelling on a parameter with no type-derived
+check (`SEXP`, `Missing<T>`, `ExternalPtr<T>`, `&Dots`, a type the check table
+does not know) or on a `match_arg` / `choices` parameter, a marker in a
+`#[miniextendr]` trait's method signature (spell it on the impl), a marker
+on an `extern "C-unwind"` function, a marker as a return type, and the
+function attribute's `preconditions = true | false` on a parameter (write it
+bare there). `Checked<u16>` with `coerce` keeps the
+widened guard; `Checked<&str>` and `Checked<&[f64]>` work on both thread
+paths. `Checked` means the R-side guard is kept: it is not an
+overflow-checked conversion, nor the thread-checked FFI variants.
+
 #### Threading
 
 | Attribute | Effect |
@@ -413,6 +495,7 @@ Written on a single parameter of a standalone function:
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
+| `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 
 ```rust
 #[miniextendr]
@@ -438,7 +521,8 @@ with the message `'x' must inherit from 'pkg_obj'`
 (`'mode' should be one of "fast", "slow"`). An `Option<T>` parameter passes
 `NULL` and a `Missing<T>`
 parameter an omitted argument. Unlike the type checks, they stay under
-`no_preconditions`: the Rust conversion does not repeat them. A
+`Unchecked` / `no_preconditions` / the crate's `preconditions = false`: the
+Rust conversion does not repeat them. A
 plain `f64` accepts `NA_real_` (it is a valid double; `Option<f64>` is the
 NA-carrying form), so `no_na` is the way to refuse it before Rust sees it.
 The `no_na` message says `'x' must not contain NA` for an argument that holds
@@ -748,6 +832,7 @@ impl Counter {
 | `strict` / `no_strict` | All systems | Strict type conversion for all methods |
 | `internal` | All systems | `@keywords internal` on class |
 | `noexport` | All systems | Suppress `@export` on class |
+| `preconditions` / `no_preconditions` | All systems, trait impls too | Keep or drop the type-derived R checks of every method whose parameters and own attribute say nothing (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 | `blanket` | Trait impls | Skip trait ABI (for blanket impls) |
 
 ```rust
@@ -853,6 +938,8 @@ impl Person {
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
+| `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
+| `preconditions(p, q)` / `no_preconditions(p)` | The same for the named parameters only, over the method's own |
 
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,

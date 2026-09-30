@@ -100,6 +100,26 @@ test_that("no_na, inherits and choices failures carry the crate classes", {
   expect_equal(conditionCall(e), quote(producer.pkg:::producer_named_checks_impl(x, "medium")))
 })
 
+test_that("the crate's preconditions = false leaves an unmarked parameter to the conversion", {
+  # producer.pkg's Cargo.toml sets `preconditions = false` (#1566): `x` has no
+  # R-side type check, so a character vector of the right class reaches the
+  # Rust conversion, which words the same argument error. Its `inherits` and
+  # `no_na` checks stay.
+  e <- tryCatch(
+    producer.pkg:::producer_named_checks_impl(structure("a", class = "producer_num"), "fast"),
+    error = function(e) e
+  )
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "'x' must be double: got character")
+  expect_identical(e$rust_type, "Vec<f64>")
+  # `den` follows the crate default; `num` keeps its checks with `Checked`.
+  body_text <- paste(deparse(body(producer.pkg:::producer_ratio_impl)), collapse = "\n")
+  expect_match(body_text, "length(num) == 1L", fixed = TRUE)
+  expect_false(grepl("length(den)", body_text, fixed = TRUE))
+})
+
 test_that("a check with the author's message keeps the crate classes", {
   x <- structure(c(1, 2), class = "producer_num")
   expect_identical(producer.pkg:::producer_named_checks_msg_impl(x), 3)

@@ -437,8 +437,15 @@ pub struct ParsedMethod {
     /// How this method receives `self`: `&self`, `&mut self`, by value, or not at all (static).
     pub env: ReceiverKind,
     /// Method signature with the `self` receiver stripped. Used for C wrapper generation
-    /// where `self` is handled separately as a SEXP parameter.
+    /// where `self` is handled separately as a SEXP parameter. The parameter
+    /// markers (`Checked<T>` / `Unchecked<T>`, #1566) are peeled from it, as
+    /// the visibility marker is from the output: every R-side consumer and
+    /// the conversion see the inner type.
     pub sig: syn::Signature,
+    /// The parameter markers peeled from [`Self::sig`] (Rust name →
+    /// markers, outermost first): the C wrapper wraps the converted value in
+    /// them before the call.
+    pub param_markers: Vec<(String, Vec<crate::type_inspect::ParamMarker>)>,
     /// Rust visibility of the method. Non-`pub` methods become private in R6;
     /// only `pub` methods get `@export` in R wrappers.
     pub vis: syn::Visibility,
@@ -607,6 +614,14 @@ pub struct MethodAttrs {
     pub check_interrupt: bool,
     /// Enable coercion for this method's parameters
     pub coerce: bool,
+    /// The method's own `preconditions` / `no_preconditions` (bare; #1017,
+    /// #1566): `Some(true)` keeps the type-derived R-side checks of the
+    /// parameters that do not decide for themselves, `Some(false)` drops
+    /// them; the last one written wins. `None` defers to the impl block,
+    /// the crate default and the feature. The list forms
+    /// `preconditions(p)` / `no_preconditions(p)` land in
+    /// [`Self::per_param`].
+    pub preconditions: Option<bool>,
     /// Enable RNG state management (GetRNGstate/PutRNGstate)
     pub rng: bool,
     /// `typed_list!(...)` spec from `#[miniextendr(dots = typed_list!(...))]` on
@@ -760,9 +775,9 @@ pub struct ParsedImpl {
     pub r_data_accessors: bool,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
-    /// Drop the R-side type-check guards from method wrappers.
-    /// Inherited from [`ImplAttrs::no_preconditions`].
-    pub no_preconditions: bool,
+    /// The impl block's `preconditions` / `no_preconditions`, inherited by
+    /// every method wrapper. See [`ImplAttrs::preconditions`].
+    pub preconditions: Option<bool>,
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -838,15 +853,18 @@ pub struct ImplAttrs {
     pub strict: bool,
     // endregion
     // region: Preconditions
-    /// When true, drop the R-side type-check guards from all generated method
-    /// wrappers: those of an inherent impl, including the setter branch of an
-    /// R6 active binding, and those of a trait impl, including the empty-body
-    /// (TPIE) form. TryFromSexp still raises on bad input, with the same
-    /// argument-error condition; the message comes from the conversion. Set by
-    /// the bare `#[miniextendr(no_preconditions)]`, cleared by the bare
-    /// `preconditions` (the last one written wins); unset, it follows the
-    /// `no-preconditions-default` feature.
-    pub no_preconditions: bool,
+    /// `Some(false)` drops the R-side type-check guards from the generated
+    /// method wrappers, `Some(true)` keeps them: those of an inherent impl,
+    /// including the setter branch of an R6 active binding, and those of a
+    /// trait impl, including the empty-body (TPIE) form. TryFromSexp still
+    /// raises on bad input, with the same argument-error condition; the
+    /// message comes from the conversion. Set by the bare
+    /// `#[miniextendr(no_preconditions)]` / `preconditions` (the last one
+    /// written wins). A method's own `preconditions` / `no_preconditions` and
+    /// each parameter's spelling come first; `None` defers to the crate
+    /// default, then the `no-preconditions-default` feature
+    /// (`crate::r_preconditions::resolve_type_checks`).
+    pub preconditions: Option<bool>,
     // endregion
     /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
     pub internal: bool,
@@ -887,7 +905,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
         let mut strict: Option<bool> = None;
-        let mut no_preconditions: Option<bool> = None;
+        let mut preconditions: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
         let mut blanket = false;
@@ -1147,9 +1165,9 @@ impl syn::parse::Parse for ImplAttrs {
             } else if ident_str == "no_strict" {
                 strict = Some(false);
             } else if ident_str == "preconditions" {
-                no_preconditions = Some(false);
+                preconditions = Some(true);
             } else if ident_str == "no_preconditions" {
-                no_preconditions = Some(true);
+                preconditions = Some(false);
             } else if ident_str == "internal" {
                 internal = true;
             } else if ident_str == "noexport" {
@@ -1208,8 +1226,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_abstract,
             r_data_accessors,
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
-            no_preconditions: no_preconditions
-                .unwrap_or(cfg!(feature = "no-preconditions-default")),
+            preconditions,
             internal,
             noexport,
             blanket,
@@ -1535,6 +1552,23 @@ impl ParsedMethod {
                         method_attrs.defaults.insert(param_name, value.value());
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("preconditions")
+                    || meta.path.is_ident("no_preconditions")
+                {
+                    // Bare: the whole method keeps / drops its type-derived
+                    // R-side checks. `preconditions(p, q)` /
+                    // `no_preconditions(p)`: those parameters. Last one wins.
+                    let keep = meta.path.is_ident("preconditions");
+                    if meta.input.peek(syn::token::Paren) {
+                        method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                        crate::miniextendr_fn::parse_method_preconditions(
+                            &meta,
+                            &mut method_attrs.per_param,
+                            keep,
+                        )?;
+                    } else {
+                        method_attrs.preconditions = Some(keep);
+                    }
                 } else if meta.path.is_ident("no_na") {
                     // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
@@ -1839,7 +1873,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -1952,6 +1986,34 @@ impl ParsedMethod {
         let dots_ident = crate::miniextendr_fn::find_dots_param(&item.sig.inputs)?;
         let has_dots = dots_ident.is_some();
 
+        // Parameter markers (`Checked<T>` / `Unchecked<T>`, #1566): peeled
+        // from the signature the codegen sees (the re-emitted impl keeps
+        // them), and merged with the method's `preconditions(p)` /
+        // `no_preconditions(p)`, which a marker must not contradict.
+        let param_markers = crate::miniextendr_fn::collect_param_markers(&item.sig.inputs)?;
+        for arg in &item.sig.inputs {
+            let syn::FnArg::Typed(pt) = arg else {
+                continue;
+            };
+            let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+                continue;
+            };
+            let name = crate::naming::ident_name(&pat_ident.ident);
+            let Some((_, markers)) = param_markers.iter().find(|(n, _)| *n == name) else {
+                continue;
+            };
+            let entry = method_attrs.per_param.entry(name.clone()).or_default();
+            entry.preconditions = crate::miniextendr_fn::merge_param_policy(
+                markers,
+                entry.preconditions,
+                &name,
+                true,
+                &pt.ty,
+            )?;
+        }
+        let mut peeled_sig = item.sig.clone();
+        peeled_sig.inputs = crate::miniextendr_fn::peeled_inputs(&item.sig.inputs, &param_markers)?;
+
         // `dots = typed_list!(...)` sugar: inject the `dots_typed` binding at the
         // top of the method body, reusing the shared helper that the standalone-fn
         // path uses. This mutates `item.block`, which is the same node re-emitted
@@ -2016,7 +2078,7 @@ impl ParsedMethod {
         }
 
         // Validate type-based constraints on each parameter
-        for input in &item.sig.inputs {
+        for input in &peeled_sig.inputs {
             let syn::FnArg::Typed(pat_type) = input else {
                 continue;
             };
@@ -2073,7 +2135,8 @@ impl ParsedMethod {
         // `Missing<T>` ones and defaults on `Option<T>` are rejected.
         crate::miniextendr_fn::finalize_method_param_attrs(
             &mut method_attrs.per_param,
-            &item.sig.inputs,
+            &peeled_sig.inputs,
+            &param_markers,
             &param_defaults,
             method_attrs
                 .match_arg_span
@@ -2081,7 +2144,7 @@ impl ParsedMethod {
         )?;
 
         // Validate: Missing<T> parameters must not have defaults
-        for arg in item.sig.inputs.iter() {
+        for arg in peeled_sig.inputs.iter() {
             if let syn::FnArg::Typed(pt) = arg
                 && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
             {
@@ -2136,8 +2199,8 @@ impl ParsedMethod {
         }
 
         // Return-visibility marker (#1213): validate, record, and strip it from
-        // the signature the codegen sees.
-        let mut sig = Self::sig_without_env(&item.sig);
+        // the signature the codegen sees (whose parameters are already peeled).
+        let mut sig = Self::sig_without_env(&peeled_sig);
         let visibility_marker = match &item.sig.output {
             syn::ReturnType::Type(_, ty) => {
                 if let Some(err) = crate::type_inspect::visibility_marker_error(ty, "return") {
@@ -2174,6 +2237,7 @@ impl ParsedMethod {
             ident: item.sig.ident.clone(),
             env,
             sig,
+            param_markers,
             vis: item.vis.clone(),
             doc_tags,
             method_attrs,
@@ -2914,7 +2978,7 @@ impl ParsedImpl {
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
             strict: attrs.strict,
-            no_preconditions: attrs.no_preconditions,
+            preconditions: attrs.preconditions,
             internal: attrs.internal,
             noexport: attrs.noexport,
             param_warnings,
@@ -3452,6 +3516,11 @@ pub fn generate_method_c_wrapper(
             builder = builder.no_na(rust_name.clone(), attrs.checks.no_na_message.clone());
         }
     }
+    // `Checked<T>` / `Unchecked<T>` parameters (#1566) convert as `T` and are
+    // wrapped back before the call.
+    for (rust_name, markers) in &method.param_markers {
+        builder = builder.param_markers(rust_name.clone(), markers.clone());
+    }
 
     let c_wrapper_and_def = builder.build().generate();
 
@@ -3748,7 +3817,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
 
         // Build method context for .Call generation
         let ctx = MethodContext::new(method, type_ident, parsed_impl.label())
-            .with_no_preconditions(parsed_impl.no_preconditions);
+            .with_impl_preconditions(parsed_impl.preconditions);
 
         // Normalize coercion target for R generic name.
         // `as.numeric()` is a thin base-R wrapper that dispatches via the internal

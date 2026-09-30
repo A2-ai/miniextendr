@@ -457,3 +457,30 @@ fn tpie_macro_forwards_no_preconditions() {
 }
 
 // endregion
+
+/// A `Checked<T>` / `Unchecked<T>` parameter in a trait method is refused:
+/// the View passes R values on, and each impl's wrapper owns the checks.
+#[test]
+fn trait_method_rejects_precondition_markers() {
+    for (method, expected) in [
+        (
+            syn::parse_quote!(
+                fn scaled(&self, k: Checked<f64>) -> f64;
+            ),
+            "spell it on the impl, `#[miniextendr(preconditions(k))]`",
+        ),
+        (
+            syn::parse_quote!(
+                fn scaled(&self, k: miniextendr_api::Unchecked<f64>) -> f64;
+            ),
+            "spell it on the impl, `#[miniextendr(no_preconditions(k))]`",
+        ),
+    ] {
+        let method: syn::TraitItemFn = method;
+        let err = extract_method_info(&method)
+            .expect_err("rejected")
+            .to_string();
+        assert!(err.contains("in a `#[miniextendr]` trait method"), "{err}");
+        assert!(err.contains(expected), "{err}");
+    }
+}

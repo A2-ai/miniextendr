@@ -1,0 +1,5 @@
+error: `Checked<T>` in a `#[miniextendr]` trait method: the trait's View passes arguments on as R values, and each impl's wrapper checks them; spell it on the impl, `#[miniextendr(preconditions(k))]`
+ --> tests/ui/trait_precondition_marker.rs:9:25
+  |
+9 |     fn scaled(&self, k: miniextendr_api::Checked<f64>) -> f64;
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
