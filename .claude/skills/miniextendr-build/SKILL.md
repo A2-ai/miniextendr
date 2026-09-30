@@ -155,7 +155,7 @@ tarball (CRAN offline) mode.
 |------|----------------|---------------------------------------------|
 | Source (monorepo) | tarball absent, `.git` ancestor found, monorepo siblings detected | `[patch."git+url"]` → local workspace crates |
 | Source (standalone) | tarball absent, no monorepo siblings | `[build] target-dir = ...` only; cargo follows git URL |
-| Tarball | tarball present | `[source.crates-io] replace-with = "vendored-sources"` + git-source replacements + `[source.vendored-sources] directory = ...` |
+| Tarball | tarball present | The archive's `vendor/.cargo-config.toml` verbatim (`[source.crates-io]` plus every `[source."git+<url>?rev=..."]` entry cargo vendor emitted, transitive ones included), with only its `directory =` line relocated to the unpacked vendor dir; configure exits 1 if the archive lacks the file (#1555) |
 
 The tarball has been gitignored since 2026-04-18. CI regenerates it per-build
 via `just vendor`. Locally, `just r-cmd-build` and `just r-cmd-check` produce
