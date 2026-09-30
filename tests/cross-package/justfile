@@ -39,15 +39,15 @@ document-producer: _r-lib configure-producer
     set -euo pipefail
     FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' producer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
     cargo rustc --lib --manifest-path producer.pkg/src/rust/Cargo.toml \
-      --target-dir producer.pkg/src/rust/target $FEATURES_FLAG \
+      --target-dir producer.pkg/rust-target $FEATURES_FLAG \
       --crate-type cdylib
     CRATE_NAME=$(grep '^name' producer.pkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      CDYLIB="producer.pkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
+      CDYLIB="producer.pkg/rust-target/debug/lib${CRATE_NAME}.dylib"
     elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-      CDYLIB="producer.pkg/src/rust/target/debug/${CRATE_NAME}.dll"
+      CDYLIB="producer.pkg/rust-target/debug/${CRATE_NAME}.dll"
     else
-      CDYLIB="producer.pkg/src/rust/target/debug/lib${CRATE_NAME}.so"
+      CDYLIB="producer.pkg/rust-target/debug/lib${CRATE_NAME}.so"
     fi
     Rscript -e "
       lib <- dyn.load('${CDYLIB}')
@@ -68,15 +68,15 @@ document-consumer: _r-lib document-producer configure-consumer
     set -euo pipefail
     FEATURES_FLAG=$(grep '^CARGO_FEATURES_FLAG' consumer.pkg/src/Makevars | sed 's/^CARGO_FEATURES_FLAG *= *//')
     cargo rustc --lib --manifest-path consumer.pkg/src/rust/Cargo.toml \
-      --target-dir consumer.pkg/src/rust/target $FEATURES_FLAG \
+      --target-dir consumer.pkg/rust-target $FEATURES_FLAG \
       --crate-type cdylib
     CRATE_NAME=$(grep '^name' consumer.pkg/src/rust/Cargo.toml | head -1 | sed 's/.*= *"//;s/".*//' | tr '-' '_')
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      CDYLIB="consumer.pkg/src/rust/target/debug/lib${CRATE_NAME}.dylib"
+      CDYLIB="consumer.pkg/rust-target/debug/lib${CRATE_NAME}.dylib"
     elif [[ "$OSTYPE" == "msys"* ]] || [[ "$OSTYPE" == "win32"* ]]; then
-      CDYLIB="consumer.pkg/src/rust/target/debug/${CRATE_NAME}.dll"
+      CDYLIB="consumer.pkg/rust-target/debug/${CRATE_NAME}.dll"
     else
-      CDYLIB="consumer.pkg/src/rust/target/debug/lib${CRATE_NAME}.so"
+      CDYLIB="consumer.pkg/rust-target/debug/lib${CRATE_NAME}.so"
     fi
     Rscript -e "
       lib <- dyn.load('${CDYLIB}')
