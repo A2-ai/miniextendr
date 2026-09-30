@@ -460,11 +460,20 @@ bootstrap.R did not run for this build. It stages the crates that the package's
 src/rust/Cargo.toml reaches outside the package directory, but the installer took
 the package directory out of its repository without running it.
 Install the package in one of these ways, which run bootstrap.R while the repository is present:
-  - rv >= 0.23.0 with a git source plus `directory` naming the package's subdirectory
+  - rv >= 0.23.0 with a git source, or a local path to the repository root, plus `directory`
+    naming the package's subdirectory
   - pak with a repository ref and a subdirectory, e.g. pak::pak("<owner>/<repo>/<subdirectory>")
   - build the tarball in the checkout with devtools::build() and install that tarball
 configure: error: a path dependency outside the package is missing; see the message above
 ```
+
+A plain `R CMD build` in the checkout after an earlier bootstrap ends the same
+way when the staging went stale. `cleanup` activates a staging only while
+`src/rust/Cargo.toml` and every staged crate still match what bootstrap copied.
+After an edit it refuses, but `R CMD build` discards cleanup's output and exit
+status, so the tarball keeps the original manifest. The error then says that an
+earlier staging was not activated, and rerunning `bootstrap.R` (or building with
+`devtools::build()`, which runs it) fixes it.
 
 A missing `[workspace.dependencies]` path counts even when no dependency
 inherits it, since the base-R stager rejects such an entry too. An unused

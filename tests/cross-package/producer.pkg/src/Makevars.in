@@ -28,7 +28,10 @@ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
 # Last wrapper generation. The writer keeps an unchanged wrappers file as it
-# is, mtime included, so make tracks the pass with this stamp instead.
+# is, mtime included. A `$(WRAPPERS_R): $(SHLIB)` rule would therefore stay out
+# of date after every relink that leaves the R code as it was (a Rust body
+# edit), and each later install would regenerate again. The stamp records that
+# the pass ran.
 WRAPPERS_STAMP = $(ABS_TOP_SRCDIR)/rust-target/.miniextendr-wrappers
 ## ----------------------------------------------------------------------
 

@@ -464,7 +464,8 @@ stage_linked_tree <- function(paths, origin) {
 
 installs_with_bootstrap <- c(
   "Install the package in one of these ways, which run bootstrap.R while the repository is present:",
-  "  - rv >= 0.23.0 with a git source plus `directory` naming the package's subdirectory",
+  "  - rv >= 0.23.0 with a git source, or a local path to the repository root, plus `directory`",
+  "    naming the package's subdirectory",
   "  - pak with a repository ref and a subdirectory, e.g. pak::pak(\"<owner>/<repo>/<subdirectory>\")",
   "  - build the tarball in the checkout with devtools::build() and install that tarball"
 )
@@ -478,9 +479,18 @@ configure_path_dependencies <- function(root = ".") {
   missing <- missing_path_dependencies(paths)
   if (!nrow(missing)) return(invisible(FALSE))
   origin <- linked_origin(paths)
-  intro <- c("bootstrap.R did not run for this build. It stages the crates that the package's",
-             "src/rust/Cargo.toml reaches outside the package directory, but the installer took",
-             "the package directory out of its repository without running it.")
+  intro <- if (file.exists(paths$state)) {
+    # R CMD build's cleanup activates a staging only while it matches its
+    # sources, and R CMD build discards cleanup's error and exit status.
+    c("An earlier bootstrap.R run staged these crates, but the staging was not activated for this",
+      "build: R CMD build's cleanup refuses it once src/rust/Cargo.toml or a staged crate has",
+      "changed since bootstrap.R ran, and R CMD build hides that error. Rerun bootstrap.R in the",
+      "checkout before R CMD build, or use one of the installs below.")
+  } else {
+    c("bootstrap.R did not run for this build. It stages the crates that the package's",
+      "src/rust/Cargo.toml reaches outside the package directory, but the installer took",
+      "the package directory out of its repository without running it.")
+  }
   if (!is.null(origin) && all(file.exists(file.path(
     vapply(missing$hit, path_literal_dir, "", base = dirname(origin$manifest), USE.NAMES = FALSE), "Cargo.toml")))) {
     message(paste(c(intro, sprintf("This build directory links to %s; staging its path dependencies from there.",

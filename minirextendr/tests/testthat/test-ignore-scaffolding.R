@@ -92,7 +92,7 @@ test_that("scaffolded .gitignore actually ignores the generated build paths", {
   # template *text*, so a mis-anchored pattern (`.cargo/config.toml` instead of
   # `src/rust/.cargo/config.toml`) passed them while never matching the real
   # nested path. This drives `git check-ignore` against the paths configure /
-  # the host cdylib pass actually generate.
+  # wrapper generation actually write.
   skip_if_not(nzchar(Sys.which("git")), "git not available")
 
   tmp <- withr::local_tempdir()
@@ -110,6 +110,7 @@ test_that("scaffolded .gitignore actually ignores the generated build paths", {
   generated <- c(
     "src/rust/.cargo/config.toml", # the #1226 fix
     "src/Makevars",
+    "src/ignpkg-win.def",
     "R/ignpkg-wrappers.R",
     "src/rust/wasm_registry.rs"
   )
