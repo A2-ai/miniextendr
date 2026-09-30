@@ -163,10 +163,12 @@ impl TemplateData {
 
     pub fn with_crate(mut self, crate_name: &str, crate_path: &str, example: bool) -> Self {
         self.pairs.push(("crate_path", crate_path.to_string()));
-        self.pairs.push((
-            "core_example_prefix",
-            if example { "" } else { "// " }.to_string(),
-        ));
+        let prefix = if example { "" } else { "// " };
+        self.pairs.push(("core_example_prefix", prefix.to_string()));
+        // The example's closing line, prefix included (see `template_data` in
+        // minirextendr/R/create.R: whisker cannot render `{{{prefix}}}}`).
+        self.pairs
+            .push(("core_example_close", format!("{prefix}}}")));
         self.pairs.push(("crate_name", crate_name.to_string()));
         self.pairs.push(("crate_name_rs", to_rust_name(crate_name)));
         self.crate_name = Some(crate_name.to_string());

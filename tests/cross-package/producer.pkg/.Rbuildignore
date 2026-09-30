@@ -19,6 +19,7 @@
 ^src/.*-wrappers\.R$
 
 # Development files
+^bootstrap\.R$
 ^\.gitignore$
 ^\.DS_Store$
 
