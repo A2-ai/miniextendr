@@ -87,7 +87,33 @@ fn from_r_suite() {
         test_error_cases();
         test_na_logical_bare_scalar_rejected();
         test_computed_na_real();
+        test_na_real_is_na_on_integer_targets();
     });
+}
+
+/// An integer target refuses `NA_real_` as NA, not as a NaN: R tells them
+/// apart (`is.nan(NA_real_)` is `FALSE`). A float target keeps it, and a real
+/// NaN is still `NaN cannot be converted`.
+fn test_na_real_is_na_on_integer_targets() {
+    let mut guard = ProtectCount::default();
+    unsafe {
+        let na = guard.protect(SEXP::scalar_real(NA_REAL));
+        let nan = guard.protect(SEXP::scalar_real(f64::NAN));
+        for result in [
+            <i64 as TryFromSexp>::try_from_sexp(na).map(|_| ()),
+            <i64 as TryFromSexp>::try_from_sexp_unchecked(na).map(|_| ()),
+            <u16 as TryFromSexp>::try_from_sexp(na).map(|_| ()),
+            <usize as TryFromSexp>::try_from_sexp(na).map(|_| ()),
+        ] {
+            assert!(matches!(result, Err(SexpError::Na(_))), "{result:?}");
+        }
+        match <i64 as TryFromSexp>::try_from_sexp(nan) {
+            Err(SexpError::InvalidValue(msg)) => assert_eq!(msg, "NaN cannot be converted"),
+            other => panic!("expected NaN refusal, got {other:?}"),
+        }
+        let f: f32 = TryFromSexp::try_from_sexp(na).unwrap();
+        assert!(f.is_nan());
+    }
 }
 
 /// `NA_real_ * 1` as R computes it: arithmetic quiets the NaN, so the high word

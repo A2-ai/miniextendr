@@ -57,6 +57,29 @@ fn test_f64_to_i32() {
     );
 }
 
+/// `i32::MIN` is R's `NA_integer_`, so the range is `(i32::MIN, i32::MAX]`:
+/// `-2^31` must not coerce to a value R reads as `NA`.
+#[test]
+fn test_f64_to_i32_excludes_the_na_sentinel() {
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(-2147483648.0f64),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(-2147483647.0f64),
+        Ok(-2147483647)
+    );
+    assert_eq!(TryCoerce::<i32>::try_coerce(2147483647.0f64), Ok(i32::MAX));
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(2147483648.0f64),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(-2147483648.0f32),
+        Err(CoerceError::Overflow)
+    );
+}
+
 #[test]
 fn test_i64_to_f64() {
     assert_eq!(TryCoerce::<f64>::try_coerce(1000i64), Ok(1000.0));
