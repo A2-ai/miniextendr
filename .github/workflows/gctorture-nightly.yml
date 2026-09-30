@@ -100,8 +100,10 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: gctorture-nightly-r-release
+          # `just gctorture-full` installs in source mode, which builds in
+          # rpkg/rust-target: the same dependencies CI's r-tests caches.
+          workspaces: rpkg/src/rust -> ../../rust-target
+          shared-key: rpkg-source
           cache-on-failure: true
 
       - name: Configure Linux

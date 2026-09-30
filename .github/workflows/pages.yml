@@ -102,6 +102,9 @@ jobs:
       - name: Build rustdoc (rpkg)
         continue-on-error: true
         env:
+          # rpkg/src/rust is its own workspace; left alone, cargo would put its
+          # target dir under src/. Use configure's rpkg/rust-target instead.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rpkg/rust-target
           RUSTFLAGS: --cfg=docsrs
           RUSTDOCFLAGS: >-
             --cfg=docsrs
@@ -119,10 +122,10 @@ jobs:
       - name: Merge rpkg rustdoc into main docs
         continue-on-error: true
         run: |
-          if [ -d rpkg/src/rust/target/doc ]; then
+          if [ -d rpkg/rust-target/doc ]; then
             # Copy rpkg crate directories but preserve workspace index.html,
             # crates.js, and search-index.js.
-            for item in rpkg/src/rust/target/doc/*; do
+            for item in rpkg/rust-target/doc/*; do
               name=$(basename "$item")
               case "$name" in
                 index.html|crates.js|search-index.js|help.html|settings.html|static.files|SourceFiles.html) ;;

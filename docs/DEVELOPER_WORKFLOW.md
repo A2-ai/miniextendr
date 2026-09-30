@@ -53,7 +53,7 @@ just devtools-test      # 3. Run R tests
 ### Browsing the R reference manual
 
 ```bash
-just doc-r              # → rpkg/src/rust/target/doc/r/miniextendr.html
+just doc-r              # → rpkg/rust-target/doc/r/miniextendr.html
 just doc-all            # nightly: rustdoc + crate index + the R manual → site/public/rustdoc/
 ```
 
