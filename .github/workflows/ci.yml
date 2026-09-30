@@ -258,8 +258,8 @@ jobs:
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.r == 'true'
     env:
       # wrappers-sync-check does a full source-mode `R CMD INSTALL` (Rust
-      # compile) — without sccache it was the job's dominant cost (~13 min
-      # cold vs ~5 min warm in the identically-shaped r-tests job).
+      # compile), the job's dominant cost; sccache and the rpkg-source
+      # rust-cache entry below keep the dependencies warm.
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
     steps:
@@ -777,8 +777,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Tarball installs build in a temporary unpack directory, and the
-          # vendored crates' source IDs carry that path, so a cached target dir
-          # can never be reused. Cache only the cargo registry and git checkouts.
+          # Makevars deletes its rust-target afterwards, so no target dir is
+          # left to cache. Cache only the cargo registry and git checkouts.
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: r-linux-${{ matrix.r }}
@@ -944,8 +944,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Tarball installs build in a temporary unpack directory, and the
-          # vendored crates' source IDs carry that path, so a cached target dir
-          # can never be reused. Cache only the cargo registry and git checkouts.
+          # Makevars deletes its rust-target afterwards, so no target dir is
+          # left to cache. Cache only the cargo registry and git checkouts.
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: r-macos-${{ matrix.arch }}
@@ -1787,8 +1787,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Tarball installs build in a temporary unpack directory, and the
-          # vendored crates' source IDs carry that path, so a cached target dir
-          # can never be reused. Cache only the cargo registry and git checkouts.
+          # Makevars deletes its rust-target afterwards, so no target dir is
+          # left to cache. Cache only the cargo registry and git checkouts.
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: cran-check
@@ -1910,8 +1910,8 @@ jobs:
         with:
           # bootstrap.R calls cargo-revendor, which runs `cargo metadata` and
           # `cargo package` on the rpkg workspace: registry downloads only. The
-          # tarball install builds in a temporary unpack directory, so a cached
-          # target dir could never be reused. Cache the registry and git only.
+          # tarball install builds in a temporary unpack directory and the
+          # Makevars deletes its rust-target, so cache the registry and git only.
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: bootstrap-vendor-test
@@ -1998,8 +1998,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Tarball installs build in a temporary unpack directory, and the
-          # vendored crates' source IDs carry that path, so a cached target dir
-          # can never be reused. Cache only the cargo registry and git checkouts.
+          # Makevars deletes its rust-target afterwards, so no target dir is
+          # left to cache. Cache only the cargo registry and git checkouts.
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
           shared-key: roundtrip-e2e
