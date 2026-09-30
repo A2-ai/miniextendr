@@ -30,6 +30,16 @@ on:
 permissions:
   contents: read
 
+env:
+  # sccache (#1651): keep one server for the whole job, so the end-of-job
+  # stats cover it (the default 600 s idle timeout stopped the server before
+  # the long R jobs finished, and their stats then read 0), and log the
+  # server's cache-write failures, which sccache reports only at debug level,
+  # to a file that .github/actions/sccache-log prints as each job's last step.
+  SCCACHE_IDLE_TIMEOUT: "0"
+  SCCACHE_ERROR_LOG: /tmp/sccache-server.log
+  SCCACHE_LOG: warn,sccache::server=debug
+
 jobs:
   gctorture-full:
     name: gctorture2 full-suite sweep / shard ${{ matrix.shard }}
@@ -167,3 +177,7 @@ jobs:
           path: ${{ runner.temp }}/gctorture.log
           retention-days: 14
           if-no-files-found: ignore
+
+      - name: Print the sccache server log
+        if: always()
+        uses: ./.github/actions/sccache-log
