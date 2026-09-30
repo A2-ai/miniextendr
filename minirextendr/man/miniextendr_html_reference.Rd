@@ -10,7 +10,7 @@ miniextendr_html_reference(path = ".", out = NULL, strict = TRUE)
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 
 \item{out}{Output directory. \code{NULL} uses the script's default,
-\code{src/rust/target/doc/r} inside the package.}
+\code{rust-target/doc/r} inside the package.}
 
 \item{strict}{If \code{FALSE}, \code{checkRd()} findings are printed and the page is
 still rendered (sets \code{MINIEXTENDR_HTML_STRICT=0} for the script). The

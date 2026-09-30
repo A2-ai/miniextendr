@@ -50,7 +50,7 @@ test_that("build-html-reference.R renders a package's Rd sources to one page", {
   # Default output directory, next to where rustdoc would land.
   res <- run()
   expect_identical(res$status, 0L, info = res$output)
-  out <- file.path(pkg, "src", "rust", "target", "doc", "r")
+  out <- file.path(pkg, "rust-target", "doc", "r")
   page <- file.path(out, "refpkg.html")
   expect_true(all(file.exists(page, file.path(out, "R-nav.css"), file.path(out, "Rlogo.svg"))))
   html <- paste(readLines(page, warn = FALSE), collapse = "\n")
@@ -116,7 +116,7 @@ test_that("miniextendr_html_reference() runs the package's script from R", {
   expect_error(suppressWarnings(miniextendr_html_reference(pkg)), "exit status")
   page <- suppressWarnings(miniextendr_html_reference(pkg, strict = FALSE))
   expect_identical(normalizePath(dirname(page)),
-                   normalizePath(file.path(pkg, "src", "rust", "target", "doc", "r")))
+                   normalizePath(file.path(pkg, "rust-target", "doc", "r")))
   expect_identical(Sys.getenv("MINIEXTENDR_HTML_STRICT", unset = "unset"), "unset")
 
   # No script: point at the helper that adds it.
