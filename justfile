@@ -691,6 +691,15 @@ vendor:
       echo "See CLAUDE.md \"The latch leak\" and #876." >&2
       exit 1
     fi
+    # A tarball install maps every vendored source through the archive's
+    # vendor/.cargo-config.toml and configure stops without it (#1555). Extract
+    # that one member: a `tar -t | grep -q` pipeline can SIGPIPE into a false
+    # failure under pipefail (#551).
+    if ! tar -xJOf rpkg/inst/vendor.tar.xz vendor/.cargo-config.toml >/dev/null 2>&1; then
+      echo "ERROR: rpkg/inst/vendor.tar.xz has no vendor/.cargo-config.toml, so an" >&2
+      echo "install from the built tarball would stop in configure (#1555)." >&2
+      exit 1
+    fi
     echo ""
     echo "Vendored framework crates from local workspace: miniextendr-{api,lint,macros}"
     echo "Created rpkg/inst/vendor.tar.xz — DELETE THIS BEFORE RESUMING DEV ITERATION"
@@ -769,10 +778,16 @@ vendor-verify:
 # references it from rpkg in the same commit must vendor without admin-merge —
 # the framework crate resolves against the local workspace, not git@main.
 # See tests/vendor-cross-surface-rename.sh.
+#
+# And the #1555 tarball-configure fixture: an archive from `cargo revendor
+# --freeze --compress` carries vendor/.cargo-config.toml, and configure reuses
+# it so Git dependencies pinned by rev, branch or tag resolve offline.
+# See rpkg/dev/tarball-cargo-config.sh.
 test-bootstrap-vendor:
     bash tests/bootstrap-never-vendors.sh
     bash tests/vendor-loud-fail.sh
     bash tests/vendor-cross-surface-rename.sh
+    bash rpkg/dev/tarball-cargo-config.sh
 
 # Full-suite gctorture2 sweep over rpkg's testthat suite (slow — nightly CI).
 #

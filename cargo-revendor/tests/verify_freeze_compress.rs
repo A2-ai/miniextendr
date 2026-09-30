@@ -480,9 +480,14 @@ fn compression_levels_preserve_offline_git_freeze() {
         });
         assert!(diffs.is_empty(), "level {level:?}: {diffs:?}");
         std::fs::create_dir(extracted.path().join(".cargo")).unwrap();
+        // Read the source replacements from the archive, not from vendor/: an
+        // R package's tarball install only has the archive, and its configure
+        // stops when vendor/.cargo-config.toml is missing from it (#1555).
         let mut config: toml_edit::DocumentMut =
-            std::fs::read_to_string(vendor.join(".cargo-config.toml"))
-                .unwrap()
+            std::fs::read_to_string(extracted.path().join("vendor/.cargo-config.toml"))
+                .unwrap_or_else(|e| {
+                    panic!("level {level:?}: archive has no vendor/.cargo-config.toml: {e}")
+                })
                 .parse()
                 .unwrap();
         let extracted_vendor = extracted
