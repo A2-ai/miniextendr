@@ -87,7 +87,7 @@ tarball around its own install, so the *supported* dev loop never leaks.
 ## Preview the reference manual before tagging
 
 ```sh
-Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg>.html
+Rscript tools/build-html-reference.R            # → rust-target/doc/r/<pkg>.html
 ```
 
 Base R only (`tools::pkg2HTML()`, R >= 4.4), seconds, nothing installed. It

@@ -6,9 +6,10 @@
 #
 # Usage (from any working directory; base R only, no extra packages):
 #   Rscript tools/build-html-reference.R [OUT_DIR]
-# OUT_DIR defaults to src/rust/target/doc/r, next to the rustdoc output of a
-# per-package cargo target directory, so one tree documents both halves of the
-# package. Writes <package>.html, R-nav.css and Rlogo.svg there, plus
+# OUT_DIR defaults to rust-target/doc/r, next to the rustdoc output in the
+# package's cargo target directory (configure's default CARGO_TARGET_DIR), so
+# one tree documents both halves of the package. Writes <package>.html,
+# R-nav.css and Rlogo.svg there, plus
 # vignettes/*.html when inst/doc holds built vignettes. When a rustdoc crate
 # index (rustdoc --enable-index-page) sits one level above OUT_DIR as
 # index.html, the manual and the vignettes are added to its crate list.
@@ -28,7 +29,7 @@ script_path <- function() {
 pkg_dir <- normalizePath(file.path(dirname(script_path()), ".."), mustWork = TRUE)
 pkg <- unname(read.dcf(file.path(pkg_dir, "DESCRIPTION"), fields = "Package")[1L, "Package"])
 args <- commandArgs(TRUE)
-out_dir <- if (length(args) >= 1L) args[[1L]] else file.path(pkg_dir, "src", "rust", "target", "doc", "r")
+out_dir <- if (length(args) >= 1L) args[[1L]] else file.path(pkg_dir, "rust-target", "doc", "r")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 out_dir <- normalizePath(out_dir, mustWork = TRUE)
 

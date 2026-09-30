@@ -124,7 +124,7 @@ script (R >= 4.4) that renders `man/*.Rd` into one HTML page with
 `tools::pkg2HTML()`, after `tools::checkRd()` has passed over the sources:
 
 ```sh
-Rscript tools/build-html-reference.R            # → src/rust/target/doc/r/<pkg>.html
+Rscript tools/build-html-reference.R            # → rust-target/doc/r/<pkg>.html
 Rscript tools/build-html-reference.R docs/r     # any output directory
 ```
 

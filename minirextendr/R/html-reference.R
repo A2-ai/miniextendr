@@ -9,7 +9,7 @@
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param out Output directory. `NULL` uses the script's default,
-#'   `src/rust/target/doc/r` inside the package.
+#'   `rust-target/doc/r` inside the package.
 #' @param strict If `FALSE`, `checkRd()` findings are printed and the page is
 #'   still rendered (sets `MINIEXTENDR_HTML_STRICT=0` for the script). The
 #'   default refuses to build on any finding.
@@ -38,6 +38,6 @@ miniextendr_html_reference <- function(path = ".", out = NULL, strict = TRUE) {
     cli::cli_abort("{.path tools/build-html-reference.R} failed with exit status {status}")
   }
   pkg <- unname(read.dcf(file.path(pkg_dir, "DESCRIPTION"), fields = "Package")[1L, "Package"])
-  out_dir <- if (is.null(out)) file.path(pkg_dir, "src", "rust", "target", "doc", "r") else out
+  out_dir <- if (is.null(out)) file.path(pkg_dir, "rust-target", "doc", "r") else out
   invisible(normalizePath(file.path(out_dir, paste0(pkg, ".html")), mustWork = TRUE))
 }
