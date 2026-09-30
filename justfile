@@ -960,7 +960,7 @@ r-cmd-install *args: _assert-no-vendor-leak configure
 # generated files (R/miniextendr-wrappers.R + src/rust/wasm_registry.rs) on disk
 # before `R CMD build` packs them into the tarball. These are gitignored, so the
 # only way they reach the tarball is from disk — and a stale/absent wasm_registry.rs
-# silently breaks wasm-from-tarball installs (the wasm cdylib is a SIDE_MODULE host
+# silently breaks wasm-from-tarball installs (the wasm .so is a SIDE_MODULE host
 # R cannot dyn.load, so there is NO wasm-side regeneration fallback). r-cmd-install
 # runs in source mode (its _assert-no-vendor-leak dep refuses if a tarball exists),
 # so it must complete before `vendor` seals inst/vendor.tar.xz.

@@ -5,42 +5,9 @@
 
 # region: Shared helpers
 
-# Build a cdylib, generate R wrappers, and roxygenise.
-# Returns invisible(TRUE) on success, stops on failure.
-generate_r_wrappers <- function(pkg_path) {
-  rust_dir <- file.path(pkg_path, "src", "rust")
-  features_flag <- grep("^CARGO_FEATURES_FLAG", readLines(file.path(pkg_path, "src", "Makevars")),
-                        value = TRUE)
-  features_flag <- sub("^CARGO_FEATURES_FLAG *= *", "", features_flag)
-  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
-  crate_name <- minirextendr:::to_rust_name(pkg_name)
-
-  cdylib_result <- system2(
-    "cargo",
-    c("rustc", "--lib", "--manifest-path", file.path(rust_dir, "Cargo.toml"),
-      "--target-dir", file.path(rust_dir, "target"),
-      if (nzchar(features_flag)) features_flag,
-      "--crate-type", "cdylib"),
-    stdout = TRUE, stderr = TRUE
-  )
-  cdylib_status <- attr(cdylib_result, "status")
-  if (!is.null(cdylib_status) && cdylib_status != 0) {
-    stop("cdylib build failed: ", paste(cdylib_result, collapse = "\n"))
-  }
-
-  cdylib_ext <- if (.Platform$OS.type == "windows") "dll"
-                else if (Sys.info()[["sysname"]] == "Darwin") "dylib"
-                else "so"
-  cdylib_path <- file.path(rust_dir, "target", "debug",
-    paste0("lib", crate_name, ".", cdylib_ext))
-
-  pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
-  wrapper_path <- file.path(pkg_path, "R", paste0(pkg_name, "-wrappers.R"))
-
-  lib <- dyn.load(cdylib_path)
-  on.exit(dyn.unload(cdylib_path), add = TRUE)
-  .Call(getNativeSymbolInfo("miniextendr_write_wrappers", lib), wrapper_path)
-
+# Roxygenise after an install: R CMD INSTALL wrote R/<pkg>-wrappers.R from the
+# shared object it linked, and roxygen2 turns it into NAMESPACE exports.
+document_wrappers <- function(pkg_path) {
   suppressMessages(roxygen2::roxygenise(pkg_path))
   invisible(TRUE)
 }
@@ -323,7 +290,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 
   pkg_name <- read.dcf(file.path(pkg_path, "DESCRIPTION"))[1, "Package"]
   lib_path <- install_to_templib(pkg_path, tmp)
-  generate_r_wrappers(pkg_path)
+  document_wrappers(pkg_path)
   lib_path <- install_to_templib(pkg_path, tmp)
 
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -402,7 +369,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   })
 
   lib_path <- install_to_templib(pkg_path, tmp)
-  generate_r_wrappers(pkg_path)
+  document_wrappers(pkg_path)
   lib_path <- install_to_templib(pkg_path, tmp)
 
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -506,7 +473,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 
   pkg_name <- read.dcf(file.path(rpkg_path, "DESCRIPTION"))[1, "Package"]
   lib_path <- install_to_templib(rpkg_path, tmp)
-  generate_r_wrappers(rpkg_path)
+  document_wrappers(rpkg_path)
   lib_path <- install_to_templib(rpkg_path, tmp)
 
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -617,7 +584,7 @@ test_that("standalone scaffolding builds and exposes functions", {
 # Uses the local-repo monorepo scaffold (offline; configure stays in source mode
 # while no vendor tarball exists), then drives
 # the real miniextendr_build() once — exercising the actual single-pass logic
-# rather than the manual generate_r_wrappers() + install_to_templib() helpers.
+# rather than the manual install_to_templib() + document_wrappers() helpers.
 test_that("miniextendr_build() exports a newly added function in a single pass (#898)", {
   skip_e2e()
   miniextendr_path <- find_miniextendr_repo()

@@ -695,7 +695,7 @@ fn r6_wrapper_inherit() {
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     let wrapper = generate_r6_r_wrapper(&parsed);
 
-    // inherit = uses a placeholder; resolver replaces at cdylib write time
+    // inherit = uses a placeholder; resolver replaces at wrapper write time
     assert!(
         wrapper
             .contains("Child <- R6::R6Class(\"Child\", inherit = .__MX_CLASS_REF_ParentClass__,")
@@ -3866,7 +3866,7 @@ fn s7_type_mapping_unknown() {
     use super::rust_type_to_s7_class;
 
     // Bare PascalCase types emit the quiet-fallback CLASS_REF placeholder
-    // (#203). The cdylib resolver substitutes it with the registered R class
+    // (#203). The wrapper writer's resolver substitutes it with the registered R class
     // name for S7 types, or `S7::class_any` for unregistered / non-S7 ones.
     let ty: syn::Type = syn::parse_quote!(MyCustomType);
     assert_eq!(
@@ -4243,7 +4243,7 @@ fn s7_convert_from() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should generate S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D))
-    // from_type is a cross-reference → placeholder; resolver replaces at cdylib write time.
+    // from_type is a cross-reference → placeholder; resolver replaces at wrapper write time.
     assert!(
         wrapper.contains("S7::method(convert, list(.__MX_CLASS_REF_Point2D__, Point3D))"),
         "Expected placeholder for cross-ref in convert method, got:\n{}",
@@ -4273,7 +4273,7 @@ fn s7_convert_to() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should generate S7::method(convert, list(Point3D, .__MX_CLASS_REF_Point2D__))
-    // to_type is a cross-reference → placeholder; resolver replaces at cdylib write time.
+    // to_type is a cross-reference → placeholder; resolver replaces at wrapper write time.
     assert!(
         wrapper.contains("S7::method(convert, list(Point3D, .__MX_CLASS_REF_Point2D__))"),
         "Expected placeholder for cross-ref in convert method, got:\n{}",
@@ -4304,7 +4304,7 @@ fn s7_convert_bidirectional() {
     let parsed = parse_impl(ClassSystem::S7, impl_code);
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // Both cross-references use placeholders; resolver replaces at cdylib write time.
+    // Both cross-references use placeholders; resolver replaces at wrapper write time.
     assert!(
         wrapper.contains("S7::method(convert, list(.__MX_CLASS_REF_Fahrenheit__, Celsius))"),
         "Expected placeholder for Fahrenheit in convert_from, got:\n{}",
@@ -4356,7 +4356,7 @@ fn s7_wrapper_parent() {
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     let wrapper = generate_s7_r_wrapper(&parsed);
 
-    // parent = uses a placeholder; resolver replaces at cdylib write time
+    // parent = uses a placeholder; resolver replaces at wrapper write time
     assert!(
         wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = .__MX_CLASS_REF_Shape__,")
     );

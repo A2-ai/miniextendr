@@ -668,7 +668,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     continue;
                 } else if let Some(doc) = mx_doc.get(param_name) {
                     // Choice param: the literal `choices(...)` line, or a
-                    // match_arg placeholder rewritten at cdylib write time to
+                    // match_arg placeholder rewritten at wrapper write time to
                     // the rendered choice description (#210).
                     lines.push(format!("#' @param {} {}", param_name, doc));
                 } else {
@@ -743,7 +743,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // S7::new_class — optionally include parent and abstract
     if let Some(ref parent) = parsed_impl.s7_parent {
         // Use a placeholder so the resolver can look up the actual R class name
-        // at cdylib write time (handles `class = "Override"` on the parent).
+        // at wrapper write time (handles `class = "Override"` on the parent).
         let parent_ref = class_ref_or_verbatim(parent);
         lines.push(format!(
             "{} <- S7::new_class(\"{}\", parent = {},",

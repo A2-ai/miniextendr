@@ -284,7 +284,7 @@ preflight() {
 }
 
 # ── Phase 1: Native install (regenerates wasm_registry.rs) ──────────────────
-# R CMD INSTALL with the host R triggers the cdylib build path which writes
+# R CMD INSTALL with the host R links the package .so and loads it, which writes
 # wasm_registry.rs with the live slice contents. Without this, the wasm build
 # compiles but registers zero R routines.
 
@@ -314,9 +314,9 @@ phase_native_install() {
     content_hash="$(docker_run "grep 'content-hash:' /work/rpkg/src/rust/wasm_registry.rs | awk '{print \$NF}'")"
 
     if [[ "$content_hash" == "0000000000000000" ]]; then
-        fail "Phase 1 did not regenerate wasm_registry.rs — cdylib build path may be broken."
+        fail "Phase 1 did not regenerate wasm_registry.rs — host wrapper generation may be broken."
         fail "content-hash is still the stub value (0000000000000000)."
-        fail "Check that native R CMD INSTALL ran the cdylib pass (IS_WASM_INSTALL must be false)."
+        fail "Check that native R CMD INSTALL ran tools/write-wrappers.R (IS_WASM_INSTALL must be false)."
         exit 1
     fi
 

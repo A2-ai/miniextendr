@@ -148,7 +148,7 @@ are:
 If a GitHub Actions runner builds Rust artefacts against a different SDK or
 without a deployment-target pin, two things break under CRAN's R:
 
-- The Rust `cdylib` / `staticlib` emits load commands referencing newer SDK
+- The Rust `staticlib` emits load commands referencing newer SDK
   symbols. R's package linker (built against CRAN's SDK) can't resolve them,
   so `R CMD INSTALL` fails or the resulting `.so` segfaults on load.
 - `dyld` mismatch warnings ("was built for newer macOS version (X) than being

@@ -2,9 +2,9 @@
 //!
 //! Tradeoff signpost: this module is the **wiring** between the
 //! `#[derive(MatchArg)]` proc macro (see `match_arg_derive`) and the
-//! cdylib's write-time substitution pass. The `match.arg` codegen path
+//! wrapper writer's substitution pass. The `match.arg` codegen path
 //! deliberately splits responsibilities — the proc macro emits placeholders
-//! into the R wrapper, and the cdylib resolves them to a concrete `c("a",
+//! into the R wrapper, and the wrapper writer resolves them to a concrete `c("a",
 //! "b", ...)` literal at write time using `MX_MATCH_ARG_CHOICES`. That
 //! split lets the variant list change without re-running `cargo expand` on
 //! every consumer. Compared to hand-rolling `match.arg` in a wrapper body,
@@ -13,7 +13,7 @@
 //!
 //! All four shapes (`choices_placeholder`, `param_doc_placeholder`,
 //! `choices_helper_c_name`, `choices_helper_def_ident`) share the same
-//! `{c_ident_without_prefix}_{r_param}` stem so the cdylib's write-time pass
+//! `{c_ident_without_prefix}_{r_param}` stem so the wrapper writer's pass
 //! can correlate them. Keep them together so the shape can't drift.
 //!
 //! The `c_ident_without_prefix` input has `C_` already stripped (or is a stem
@@ -32,7 +32,7 @@ fn c_stem(c_ident: &str) -> &str {
 /// what the placeholder becomes.
 pub(crate) const CHOICES_PLACEHOLDER_PREFIX: &str = ".__MX_MATCH_ARG_CHOICES_";
 
-/// R-side placeholder that the cdylib resolves to a `c("a", "b", ...)` literal
+/// R-side placeholder that the wrapper writer resolves to a `c("a", "b", ...)` literal
 /// at write time. Substituted by `MX_MATCH_ARG_CHOICES` entries.
 pub(crate) fn choices_placeholder(c_ident: &str, r_param: &str) -> String {
     format!(
@@ -74,7 +74,7 @@ pub(crate) fn choices_helper_def_ident(c_ident: &str, r_param: &str) -> syn::Ide
 /// quote chars). Strip the outer quotes if present; otherwise pass the raw
 /// value through unchanged. The write-time pass validates the result against
 /// the enum's `CHOICES` and panics on miss, so a malformed literal (e.g.
-/// `default = "1L"`) still surfaces as a clear runtime error at cdylib load.
+/// `default = "1L"`) still surfaces as a clear error at wrapper generation.
 pub(crate) fn extract_match_arg_default(raw: &str) -> String {
     raw.strip_prefix('"')
         .and_then(|s| s.strip_suffix('"'))
