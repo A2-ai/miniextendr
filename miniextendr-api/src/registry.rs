@@ -520,12 +520,15 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     });
 
     // 3. Register routines
-    // Leak the Vec — init runs once at package load, so this is fine.
+    // R copies every entry into the DLL's own table (`R_addCallRoutine`
+    // strdups the name and stores the function pointer), so `call_defs` is
+    // freed on return. Leaking it showed up as ~114 KB "definitely lost" per
+    // load under Valgrind.
     unsafe {
         crate::sys::R_registerRoutines_unchecked(
             dll,
             std::ptr::null(),
-            call_defs.leak().as_ptr(),
+            call_defs.as_ptr(),
             std::ptr::null(),
             std::ptr::null(),
         );

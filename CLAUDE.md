@@ -290,7 +290,8 @@ sweep set the variable; `r-stress-tests` is **opt-in on PRs via the
 `gc-stress` label** (unconditional on main-push / cron / dispatch; see
 `docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label any PR
 that adds SEXP storage. The webR workflow is opt-in the same way via the
-`webr` label.
+`webr` label, and the Windows R CMD check via the `windows` label (non-gating;
+label-only while Windows support is deferred, #1654).
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with
