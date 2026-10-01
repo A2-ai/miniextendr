@@ -56,7 +56,7 @@ Every native install generates the R wrappers from the shared library it just
 linked. `src/Makevars` runs
 
 ```sh
-Rscript ../tools/write-wrappers.R $(SHLIB)
+Rscript ../tools/write-wrappers.R $(SHLIB) $(IS_TARBALL_INSTALL) $(CARGO_FEATURES_FLAG)
 ```
 
 from `src/` after the link. `$(SHLIB)` is the file name R's make gives the
@@ -82,11 +82,23 @@ one) count as changed. The result:
   `NOTE: <pkg>-wrappers.R changed`. Run roxygen2 afterwards: the install
   regenerates the wrappers but not `NAMESPACE` or `man/`.
 
-Tarball installs take the same path. A shipped wrappers file is compared with
-the freshly generated one like any other, so a tarball whose Rust sources moved
-on from its wrappers installs the current wrappers instead of stale ones. wasm32
-is the exception: its `$(SHLIB)` is a SIDE_MODULE that host R cannot load, so a
-wasm build uses the files a host install generated.
+A tarball built without vendoring takes the same path: pkgbuild's temporary
+tarball for `devtools::install()`, or a plain `R CMD build`. A shipped wrappers
+file is compared with the freshly generated one like any other, so a tarball
+whose Rust sources moved on from its wrappers installs the current wrappers.
+
+A release tarball, one carrying `inst/vendor.tar.xz`, is checked instead. It
+ships the wrappers its `NAMESPACE` and `man/` were documented from, so
+`write-wrappers.R` generates into a copy and stops the install when the result
+differs. A difference means the install compiles other `#[miniextendr]` items
+than the build that made the tarball. The cause is another Cargo feature set
+(`CARGO_FEATURES`, or `tools/detect-features.R` deciding otherwise on this
+machine) or another target. Without the check, R's load test would fail on a
+missing export but only warn about a missing S3 method, so the package would
+install with broken dispatch.
+
+wasm32 is the exception to both: its `$(SHLIB)` is a SIDE_MODULE that host R
+cannot load, so a wasm build uses the files a host install generated.
 
 The wrapper file itself opens with two header lines: the `AUTO-GENERATED`
 marker, then the `miniextendr-api` version that generated it and an FNV-1a
@@ -240,7 +252,7 @@ $(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
 # writers keep unchanged files, so a stamp records the pass.
 all: $(SHLIB) $(WRAPPERS_STAMP)
 $(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
-    Rscript ../tools/write-wrappers.R "$(SHLIB)"
+    Rscript ../tools/write-wrappers.R "$(SHLIB)" "$(IS_TARBALL_INSTALL)" "$(CARGO_FEATURES_FLAG)"
     touch "$(WRAPPERS_STAMP)"
 $(WRAPPERS_R):
 ```
@@ -316,6 +328,8 @@ R CMD INSTALL:
      d. If miniextendr.so was relinked (or the wrappers file is missing),
         tools/write-wrappers.R loads it and writes
         R/miniextendr-wrappers.R + src/rust/wasm_registry.rs when they changed
+        (a release tarball stops instead when the wrappers differ from the
+        shipped ones)
   3. Install miniextendr.so to libs/
   4. Install R/ files, man/, etc.
 ```
