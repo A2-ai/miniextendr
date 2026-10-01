@@ -126,3 +126,68 @@ impl FdefaultProbe {
 }
 
 // endregion
+
+// region: trait impl methods
+
+/// Trait whose impl methods pick up the build's `coerce-default` /
+/// `strict-default`, as inherent methods and bare fns do, while
+/// `no_coerce` / `no_strict` on an impl method opt back out.
+#[miniextendr]
+pub trait FdefaultTraitDefaults {
+    /// Logical identity; under `coerce-default` it also accepts integer `0L`/`1L`.
+    fn coerce_flag(&self, flag: bool) -> bool;
+
+    /// Same as `coerce_flag`, with `no_coerce` in the impl.
+    fn no_coerce_flag(&self, flag: bool) -> bool;
+
+    /// i64 identity; under `strict-default` it rejects logical and raw input.
+    fn strict_i64(&self, n: i64) -> i64;
+
+    /// Same as `strict_i64`, with `no_strict` in the impl.
+    fn no_strict_i64(&self, n: i64) -> i64;
+}
+
+/// Receiver for the `FdefaultTraitDefaults` probe.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct FdefaultTraitTarget {
+    tag: i32,
+}
+
+// env pinned: the env-style trait impl below attaches its methods to the
+// class environment, so this must not flip under r6-default/s7-default. Its
+// parameters avoid `x`, the receiver of the generated Env-class trait methods.
+#[miniextendr(env)]
+impl FdefaultTraitTarget {
+    /// Creates the probe.
+    pub fn new() -> Self {
+        Self { tag: 0 }
+    }
+
+    /// Returns the probe's tag (always 0).
+    pub fn tag(&self) -> i32 {
+        self.tag
+    }
+}
+
+#[miniextendr(env)]
+impl FdefaultTraitDefaults for FdefaultTraitTarget {
+    fn coerce_flag(&self, flag: bool) -> bool {
+        flag
+    }
+
+    #[miniextendr(no_coerce)]
+    fn no_coerce_flag(&self, flag: bool) -> bool {
+        flag
+    }
+
+    fn strict_i64(&self, n: i64) -> i64 {
+        n
+    }
+
+    #[miniextendr(no_strict)]
+    fn no_strict_i64(&self, n: i64) -> i64 {
+        n
+    }
+}
+
+// endregion
