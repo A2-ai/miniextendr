@@ -673,7 +673,8 @@ struct TraitMethodAttrs {
     worker: bool,
     /// Force execution on R's main thread (overrides explicit or feature-selected worker dispatch).
     unsafe_main_thread: bool,
-    /// Enable `Rf_coerceVector` for all parameters.
+    /// Enable `Rf_coerceVector` for all parameters. Set by `coerce` /
+    /// `no_coerce`, else the `coerce-default` feature.
     coerce: bool,
     /// Call `R_CheckUserInterrupt` before the method body.
     check_interrupt: bool,
@@ -691,6 +692,7 @@ struct TraitMethodAttrs {
     /// Override the R-facing method name.
     r_name: Option<String>,
     /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
+    /// Set by `strict` / `no_strict`, else the `strict-default` feature.
     strict: bool,
     /// Lifecycle specification for deprecation/experimental status.
     lifecycle: Option<crate::lifecycle::LifecycleSpec>,
@@ -724,18 +726,20 @@ struct TraitMethodAttrs {
 ///
 /// Both styles can coexist. The `worker` flag controls whether static methods
 /// dispatch to the worker thread (defaults to `cfg!(feature = "worker-default")`).
+/// `coerce` and `strict` default to the `coerce-default` / `strict-default`
+/// features, as on inherent methods, and `no_coerce` / `no_strict` opt out.
 fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethodAttrs> {
     use syn::spanned::Spanned;
     let mut worker = false;
     let mut unsafe_main_thread = false;
-    let mut coerce = false;
+    let mut coerce: Option<bool> = None;
     let mut check_interrupt = false;
     let mut rng = false;
     let mut unwrap_in_r = false;
     let mut serialize = false;
     let mut wrap = None;
     let mut skip = false;
-    let mut strict = false;
+    let mut strict: Option<bool> = None;
     let mut defaults = std::collections::HashMap::new();
     let mut r_name: Option<String> = None;
     let mut lifecycle: Option<crate::lifecycle::LifecycleSpec> = None;
@@ -768,7 +772,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     } else if inner.path.is_ident("main_thread") {
                         unsafe_main_thread = true;
                     } else if inner.path.is_ident("coerce") {
-                        coerce = true;
+                        coerce = Some(true);
+                    } else if inner.path.is_ident("no_coerce") {
+                        coerce = Some(false);
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
@@ -783,7 +789,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     } else {
                         return Err(inner.error(
                             "unknown nested option; expected `worker`, `main_thread`, `coerce`, \
-                             `check_interrupt`, `unwrap_in_r`, `serialize`, or `no_shortcut`",
+                             `no_coerce`, `check_interrupt`, `unwrap_in_r`, `serialize`, or \
+                             `no_shortcut`",
                         ));
                     }
                     Ok(())
@@ -793,7 +800,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
             } else if meta.path.is_ident("main_thread") {
                 unsafe_main_thread = true;
             } else if meta.path.is_ident("coerce") {
-                coerce = true;
+                coerce = Some(true);
+            } else if meta.path.is_ident("no_coerce") {
+                coerce = Some(false);
             } else if meta.path.is_ident("check_interrupt") {
                 check_interrupt = true;
             } else if meta.path.is_ident("rng") {
@@ -813,7 +822,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 let value: syn::LitStr = meta.value()?.parse()?;
                 r_name = Some(value.value());
             } else if meta.path.is_ident("strict") {
-                strict = true;
+                strict = Some(true);
+            } else if meta.path.is_ident("no_strict") {
+                strict = Some(false);
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
                 defaults_span.get_or_insert(meta.path.span());
@@ -977,9 +988,9 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
-                     `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, \
+                     `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
-                     `defaults`, `strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
+                     `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
                      `choices`, `choices_several_ok`, `inherits`, `no_na`, `preconditions`, \
                      `no_preconditions`",
                 ));
@@ -998,14 +1009,14 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
     Ok(TraitMethodAttrs {
         worker: worker || cfg!(feature = "worker-default"),
         unsafe_main_thread,
-        coerce,
+        coerce: coerce.unwrap_or(cfg!(feature = "coerce-default")),
         check_interrupt,
         rng,
         unwrap_in_r,
         serialize,
         wrap,
         skip,
-        strict,
+        strict: strict.unwrap_or(cfg!(feature = "strict-default")),
         defaults,
         r_name,
         lifecycle,

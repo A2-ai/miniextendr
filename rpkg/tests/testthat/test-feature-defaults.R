@@ -53,6 +53,29 @@ test_that("coerce-default converts bool params from R integers", {
   }
 })
 
+test_that("trait impl methods take coerce-default / strict-default, and the opt-outs work", {
+  obj <- FdefaultTraitTarget$new()
+  methods <- FdefaultTraitTarget$FdefaultTraitDefaults
+  expect_true(methods$coerce_flag(obj, TRUE))
+  expect_true(methods$no_coerce_flag(obj, TRUE))
+  # no_coerce requires a logical even under coerce-default.
+  expect_error(methods$no_coerce_flag(obj, 1L))
+  if (miniextendr_has_feature("coerce-default")) {
+    expect_true(methods$coerce_flag(obj, 1L))
+    expect_false(methods$coerce_flag(obj, 0L))
+  } else {
+    expect_error(methods$coerce_flag(obj, 1L))
+  }
+  expect_equal(as.numeric(methods$strict_i64(obj, 1L)), 1)
+  # no_strict keeps multi-source conversion even under strict-default.
+  expect_equal(as.numeric(methods$no_strict_i64(obj, TRUE)), 1)
+  if (miniextendr_has_feature("strict-default")) {
+    expect_error(methods$strict_i64(obj, TRUE))
+  } else {
+    expect_equal(as.numeric(methods$strict_i64(obj, TRUE)), 1)
+  }
+})
+
 test_that("no-preconditions-default drops preconditions for bare fns, preconditions restores them", {
   unchecked <- miniextendr_has_feature("no-preconditions-default")
   # coerce-default widens a bare `i32` to whole-number doubles (and logical /
@@ -102,14 +125,22 @@ test_that("no-preconditions-default drops preconditions for bare fns, preconditi
 test_that("a parameter's own Checked / Unchecked beats no-preconditions-default", {
   # Rank 1 (the parameter) sits above rank 5 (the feature) in every build. The
   # crate default (rank 4) sits between them; rpkg sets none, so its place is
-  # covered by the macro crate's resolver tests.
+  # covered by the macro crate's resolver tests. coerce-default widens the
+  # wording of both sides, as in the test above.
+  coerced <- miniextendr_has_feature("coerce-default")
   e <- tryCatch(fdefault_checked_i32("nope"), error = function(e) e)
   expect_s3_class(e, "rust_error")
-  expect_identical(conditionMessage(e), "'x' must be integer")
+  expect_identical(
+    conditionMessage(e),
+    if (coerced) "'x' must be integer or whole-number numeric" else "'x' must be integer"
+  )
   expect_null(e$rust_type)
   e2 <- tryCatch(fdefault_unchecked_i32("nope"), error = function(e) e)
   expect_s3_class(e2, "rust_error")
-  expect_identical(conditionMessage(e2), "'x' must be a single integer: got character")
+  expect_identical(
+    conditionMessage(e2),
+    if (coerced) "'x' must be a single whole number: got character" else "'x' must be a single integer: got character"
+  )
   expect_identical(e2$rust_type, "i32")
 })
 
