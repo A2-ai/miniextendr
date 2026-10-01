@@ -55,6 +55,11 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
       payload <- file.path(root, "payload")
       dir.create(file.path(payload, "vendor"), recursive = TRUE)
       writeLines("vendor payload", file.path(payload, "vendor", "README"))
+      # cargo-revendor records the source replacements next to the crates;
+      # tarball-mode configure maps the vendored sources through it (#1555).
+      writeLines(c("[source.crates-io]", 'replace-with = "vendored-sources"', "",
+                   "[source.vendored-sources]", 'directory = "/build/vendor"'),
+                 file.path(payload, "vendor", ".cargo-config.toml"))
       withr::with_dir(payload, {
         utils::tar(archive, files = "vendor", compression = "xz", tar = "internal")
       })
@@ -84,6 +89,9 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
       expect_true(file.exists(file.path(pkg, "src", "Makevars")))
       if (tarball) {
         expect_identical(readLines(file.path(pkg, "vendor", "README")), "vendor payload")
+        config <- readLines(file.path(pkg, "src", "rust", ".cargo", "config.toml"))
+        expect_true('replace-with = "vendored-sources"' %in% config)
+        expect_false(any(grepl("/build/vendor", config, fixed = TRUE)))
       }
     }
     expect_identical(tools::md5sum(sources), before)
