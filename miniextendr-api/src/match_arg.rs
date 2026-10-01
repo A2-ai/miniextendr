@@ -550,7 +550,7 @@ impl<T: MatchArg> crate::newtype::IntoRVecElement for T {
 /// helper maps `NULL` the same way and rejects any element that matches no
 /// choice before the value reaches this function, so the per-element check
 /// here is the second line of defence, not the only one (#1472). Under an
-/// `Either<Vec<T>, R>` parameter (#1612), [`match_arg_either_or`] calls it
+/// `Either<Vec<T>, R>` parameter (#1612), `match_arg_either_or` calls it
 /// only for character or factor input, so `NULL` never reaches it there.
 ///
 /// Note: factors (INTSXP) are not handled here — the R wrapper coerces factors

@@ -866,7 +866,7 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 ///
 /// Without an impl, the `Err` arm falls back in two steps. Under the `serde`
 /// feature an `E: serde::Serialize + Display` is classed from its serde shape
-/// (see [`serde_err_parts`]: variant → member class, fields → data, `Display`
+/// (see `serde_err_parts`: variant → member class, fields → data, `Display`
 /// → message). Anything else is a bare `rust_error` whose message is
 /// `format!("{e:?}")`.
 ///
