@@ -1,6 +1,8 @@
 #!/bin/bash
 # miniextendr pre-commit hook
-# Asserts rpkg/src/rust/Cargo.lock stays in tarball-shape.
+# Blocks staged build artifacts and files over 5 MiB
+# (scripts/committed-artifacts-check.sh), and asserts rpkg/src/rust/Cargo.lock
+# stays in tarball-shape.
 #
 # Install (once per clone):
 #   git config core.hooksPath .githooks
@@ -16,6 +18,18 @@ set -euo pipefail
 STAGED=$(git diff --cached --name-only --diff-filter=ACM)
 if [ -z "$STAGED" ]; then
     exit 0
+fi
+
+# ── Build artifacts / oversized files ────────────────────────────────────────
+# Same rules as CI's Generated Files Check (vendor tarballs, vendored crates,
+# cargo and R CMD output, rpkg's generated files, files over 5 MiB), applied
+# to what this commit stages. The script lists each hit and the fix; a hit
+# exits non-zero, which set -e turns into a blocked commit. core.hooksPath can
+# be an absolute path into another checkout, so a worktree on a branch from
+# before the script existed runs this hook without it: skip there.
+artifacts_check="$(git rev-parse --show-toplevel)/scripts/committed-artifacts-check.sh"
+if [ -f "$artifacts_check" ]; then
+    bash "$artifacts_check" --staged
 fi
 
 # ── Cargo.lock tarball-shape assertion ───────────────────────────────────────

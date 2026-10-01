@@ -69,6 +69,7 @@
 #     just vendor-sync-diff   - Show diff between workspace and vendor
 #     just lock-shape-check   - Verify Cargo.lock is in tarball-shape (git sources, no checksums)
 #     just clean-vendor-leak  - Remove a leaked inst/vendor.tar.xz that would flip configure into tarball mode
+#     just committed-artifacts-check [range] - Fail on committed vendor tarballs, build output or files over 5 MiB
 #
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set windows-shell := ["bash", "-euo", "pipefail", "-c"]
@@ -1377,6 +1378,13 @@ templates-check:
 # Check the CLAUDE.md <-> AGENTS.md sibling invariant (exits nonzero on violation)
 agents-md-check:
     bash scripts/agents-md-check.sh
+
+# Build artifacts: vendor tarballs, vendor/, target/, R CMD output and rpkg's
+# generated files. Checks HEAD and, given a range such as origin/main..HEAD,
+# every commit in it. CI's Generated Files Check runs this on each PR and push.
+# Fail on committed build artifacts or files over 5 MiB (exits nonzero on a hit)
+committed-artifacts-check range="":
+    bash scripts/committed-artifacts-check.sh {{range}}
 
 # Refresh the local, untracked GitHub issue cache. Pass an alternate output
 # directory when refreshing the main checkout from an agent worktree.

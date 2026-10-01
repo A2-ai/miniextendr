@@ -136,7 +136,8 @@ with the Rust changes that produced it. `rpkg/R/miniextendr-wrappers.R` and
 `rpkg/src/rust/wasm_registry.rs` are gitignored and regenerated during install;
 they must be present on disk when building the tarball, not committed.
 
-The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock.
+The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock
+and runs `scripts/committed-artifacts-check.sh --staged` on the staged files.
 Enable once per clone: `git config core.hooksPath .githooks`.
 
 ### Adding a `#[miniextendr]` function
@@ -170,6 +171,8 @@ CI uses sccache with `CARGO_INCREMENTAL=0`. Setting `[profile.dev] incremental =
 ### `inst/vendor.tar.xz` is not tracked
 
 Gitignored — generated in CI (every R CMD check runs `just vendor` first) and at release time. Tracked tarballs caused binary merge conflicts, 22 MB/commit bloat, and stale-after-rebase drift. Regenerate locally with `just vendor` — cheap and deterministic from `Cargo.lock` + workspace sources.
+
+Never commit it or any other build artifact: CI's Generated Files Check (`just committed-artifacts-check`, `scripts/committed-artifacts-check.sh`) fails when the tree or any commit in a PR or push adds a `vendor.tar.xz`, a `vendor/` or `target/` path, R CMD output, or a file over 5 MiB. Deleting the file in a later commit doesn't pass it, because rebase-merge would still land the adding commit. The CRAN-like check uploads the vendored source package as the `miniextendr-source-package` workflow artifact on non-PR runs that reach it (docs-only pushes skip that job). It is for native installs only: the job does not regenerate `wasm_registry.rs`, so it is not a webR input.
 
 ## Generated artifacts (do not hand-edit, do not count toward LoC)
 
@@ -295,7 +298,6 @@ Some agent sandboxes block compilation. For any compiling command (`just force-d
 - Don't delete a worktree until its branch is pushed or merged.
 - **Clean up after push**: `git worktree remove -f -f <agent-worktree-path>` + `git worktree prune`. Each worktree holds a full `target/` (2–3 GB/agent).
 - **Rebase conflicts**: plain `git rebase origin/main`. NEVER `-X theirs` blanket — drops main's changes to shared files (justfile, lockfiles, etc.). Resolve everything by hand **except regenerated artifacts** — never hand-merge their hunks; take either side (`git checkout --theirs` / `git add`) then regenerate:
-  - `rpkg/inst/vendor.tar.xz` (binary tarball) → `just vendor`, amended into the vendor-refresh commit.
   - `patches/templates.patch` (rpkg→templates delta, a generated diff) → `just templates-approve`, then verify with `just templates-check`.
   - `rpkg/NAMESPACE`, `rpkg/man/*.Rd`, `rpkg/configure` (marked `-merge` in `rpkg/.gitattributes` since #1497: on a both-sides change git keeps the current side with no conflict markers and leaves the file unmerged in the index) → `just configure && just rcmdinstall && just force-document` (or `autoconf` in `rpkg/` for `configure`), then `git add`.
   - `tests/cross-package/{producer,consumer}.pkg/` `NAMESPACE`, `R/*-wrappers.R`, `man/*.Rd`, `configure` (tracked there, marked `-merge` in each package's `.gitattributes` the same way) → `just cross-install && just cross-document` (or `autoconf` in that package's directory for `configure`), then `git add`.
