@@ -29,21 +29,25 @@ Check in order:
 
 ## `library(pkg)` exposes nothing (empty namespace)
 
-Almost always the **vendor latch**: `inst/vendor.tar.xz` is present, so
-`./configure` selected offline *tarball* mode, which skips wrapper generation
-and expects pre-shipped `R/<pkg>-wrappers.R`. On a package that has none, you
-get an empty namespace.
+Usually the namespace was never documented: every install regenerates
+`R/<pkg>-wrappers.R`, but only roxygen2 writes the `export()` lines into
+`NAMESPACE`. Run `minirextendr::miniextendr_build()`, which documents and then
+installs, and restart R.
 
-- This can happen when a build-producing frontend runs `bootstrap.R` on a fresh
-  package before wrappers exist. A direct `R CMD INSTALL .` remains in source
-  mode because configure never vendors.
-- Fix: `minirextendr::miniextendr_clean_vendor_leak()` (removes the stale
-  tarball), then `minirextendr::miniextendr_build()`.
-- `MINIEXTENDR_FORCE_WRAPPER_GEN=1` forces wrapper generation even in tarball
-  mode (debugging escape hatch).
+Check the install log too. `Generating R wrappers from <pkg>.so` means the
+wrappers were written; its absence on a Rust change means the shared library
+was not relinked.
 
-Related symptom of the same latch: **your Rust edits are silently ignored**
-(the build compiles vendored copies, not your tree). Same fix.
+## Rust edits silently ignored
+
+Almost always the **vendor latch**: `inst/vendor.tar.xz` is present in the
+source tree, so `./configure` selected offline *tarball* mode and the build
+compiles the vendored copies, not your tree. Only `miniextendr_vendor()`
+creates the file (`miniextendr_build_tarball()` removes it again when it
+finishes), so a leftover comes from a standalone vendor step or an interrupted
+release build. Fix:
+`minirextendr::miniextendr_clean_vendor_leak()`, then
+`minirextendr::miniextendr_build()`.
 
 ## configure problems
 

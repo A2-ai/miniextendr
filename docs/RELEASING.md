@@ -67,17 +67,15 @@ crates (`miniextendr-api`, `-lint`, `-macros`) travel along as sibling
 directories — and builds via `pkgbuild`. Because DESCRIPTION sets
 `Config/build/bootstrap: TRUE`, `pkgbuild` runs `rpkg/bootstrap.R` first.
 
-On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`. With
-`cargo-revendor` on PATH it vendors the whole graph into `inst/vendor.tar.xz`.
-Without it, only a path dependency **outside the package** (`path = "../…"`,
-which a staged/git install would strand) needs work: `tools/dev-bootstrap.R`
-stages those crates under `src/rust/vendor/` with `cargo package` (#1580), and
-registry and git dependencies resolve over the network. A package whose path
+On the default `build = TRUE` path, `pkgbuild` runs `bootstrap.R`, which never
+vendors. Only a path dependency **outside the package** (`path = "../…"`, which
+a staged/git install would strand) needs work: `tools/dev-bootstrap.R` stages
+those crates under `src/rust/vendor/` with `cargo package` (#1580), and registry
+and git dependencies resolve over the network. A package whose path
 dependencies all live inside it (the exemplar's `satellite`) or that has none
 (the typical scaffold) falls through to a plain source build (configure's
-`[patch]` for the framework siblings, or cargo fetching the git URL), so
-`cargo-revendor` is **not** required. Either way bootstrap warns that the build
-is not CRAN-ready; that is expected for this mode.
+`[patch]` for the framework siblings, or cargo fetching the git URL).
+`cargo-revendor` is never involved.
 
 How the framework crates resolve (read from `configure.ac`):
 
@@ -94,34 +92,27 @@ How the framework crates resolve (read from `configure.ac`):
   is regenerated — see "Known gap".
 
 **Prerequisites:** Rust toolchain (`SystemRequirements: Cargo, rustc >= 1.85`)
-and network access. `cargo-revendor` is optional here (see above).
+and network access. `cargo-revendor` is not needed.
 `autoconf` is **not** needed — `configure` is committed.
 
 ### Mode B — released vendored tarball (reproducible, offline, CRAN-shaped)
 
-This is the recommended release artifact. **The build produces the vendored
-tarball for you** — you do not run `just vendor` by hand:
+This is the recommended release artifact. Vendoring is an explicit step that
+only the release build runs; `devtools::build()` alone produces a Mode A
+(source-mode) tarball.
 
-```r
-devtools::build("rpkg")        # → miniextendr_0.2.0.tar.gz, vendored
+```bash
+just r-cmd-build               # → miniextendr_0.2.0.tar.gz, vendored
 ```
 
-Any **pkgbuild-backed** build honors `Config/build/bootstrap: TRUE` and runs
-`bootstrap.R`, which produces `inst/vendor.tar.xz` and seals it into the tarball:
-`devtools::build()`, `rcmdcheck`, and `r-lib/actions/check-r-package` all qualify.
-(Bare `R CMD build` from a stock R does **not** — `Config/build/bootstrap` is a
-pkgbuild extension.) The `just r-cmd-build` / `just r-cmd-check` recipes call
-`just vendor` explicitly as well, which adds a defense-in-depth assertion that the
+`just r-cmd-build` (and `just r-cmd-check`) run `just vendor` first, which
+writes `inst/vendor.tar.xz` with `cargo-revendor` and asserts that the
 framework crates were vendored from the local workspace rather than git@main
-(#876) — but the tarball would be vendored either way.
-
-This needs `cargo-revendor` on PATH. Without it the build still produces a
-tarball, but bootstrap ends with a warning that it "downloads crates.io and git
-dependencies at install time and is not CRAN-ready". That tarball is not a
-release artifact: install `cargo-revendor` (or run
-`minirextendr::miniextendr_vendor()` first) and rebuild. Before attaching a
-tarball, confirm it contains `inst/vendor.tar.xz` (`tar -tzf … | grep
-inst/vendor.tar.xz`).
+(#876). The recipe removes the archive and restores the committed `Cargo.lock`
+when it exits. A scaffolded package does the same with
+`minirextendr::miniextendr_build_tarball()`. This needs `cargo-revendor` on
+PATH. Before attaching a tarball, confirm it contains `inst/vendor.tar.xz`
+(`tar -tzf … | grep inst/vendor.tar.xz`).
 
 Attach the resulting `miniextendr_0.2.0.tar.gz` to a GitHub Release. Users install
 it offline and reproducibly:
@@ -141,7 +132,7 @@ vendored sources are sealed inside, so the user needs no network and no
 the monorepo, `configure` writes a `[patch."git+url"]` override and
 `cargo-revendor` vendors the framework crates from the local checkout). Mode A
 is a from-source build that still depends, at the user's machine, on a Rust
-toolchain, `cargo-revendor`, network access, and the committed lock sha.
+toolchain, network access, and the committed lock sha.
 
 > **Building release artifacts on CI** (esp. macOS): the Rust toolchain ABI must
 > match CRAN's R, or the `.so` fails to load / trips `--as-cran`. configure bakes

@@ -40,11 +40,13 @@ For every `#[miniextendr] pub fn foo(x: i32) -> String`, the macro generates:
    and name string, registered with R at package load via `R_init_*`.
 3. A `#[distributed_slice(MX_R_WRAPPERS)]` entry containing an R wrapper function
    string that calls `.Call(C_<crate>_foo, .call = sys.call(), x)`. This string is
-   written to `R/miniextendr-wrappers.R` during the cdylib build phase by
-   `miniextendr_write_wrappers` in `miniextendr-api/src/registry.rs`.
+   written to `R/miniextendr-wrappers.R` after the link, when the build loads
+   the package library and calls `miniextendr_write_wrappers` in
+   `miniextendr-api/src/registry.rs`.
 
 The macro never writes files. It emits Rust code at compile time; the file-writing
-happens at runtime during the cdylib phase (see the miniextendr-architecture skill).
+happens at runtime, in the wrapper pass that loads the linked library (see the
+miniextendr-architecture skill).
 
 ### Two C-wrapper codegen paths
 
@@ -130,7 +132,8 @@ Always invoke these via the fully-qualified path `miniextendr_api::error!(...)`.
 ### R wrapper generation
 
 `miniextendr_write_wrappers` in `miniextendr-api/src/registry.rs` (around L1104)
-is the cdylib entry point called during the build. It calls
+is the registered routine `tools/write-wrappers.R` calls on the freshly linked
+package library during the build. It calls
 `write_r_wrappers_to_file`, which:
 
 1. Emits the `.miniextendr_raise_condition` helper (hard-coded preamble).
@@ -222,8 +225,8 @@ miniextendr-externalptr and miniextendr-ffi skills.
    name `"C_foo"` with `numArgs = 1`.
 5. A `#[distributed_slice(MX_R_WRAPPERS)]` entry registers the R wrapper string
    at `RWrapperPriority::Function`.
-6. At build time, `miniextendr_write_wrappers` (cdylib phase) writes the R wrapper
-   to `R/miniextendr-wrappers.R`.
+6. At build time, `miniextendr_write_wrappers` (called from the linked library)
+   writes the R wrapper to `R/miniextendr-wrappers.R`.
 
 ### Attribute options for standalone functions
 
@@ -417,8 +420,8 @@ are violated, the macro falls back silently to main-thread execution. See the
 
 ## Related skills
 
-- `miniextendr-architecture` — how the cdylib-to-staticlib double-link enables
-  wrapper generation, and the distributed_slice registration system.
+- `miniextendr-architecture` — how loading the linked library enables wrapper
+  generation, and the distributed_slice registration system.
 - `miniextendr-class-systems` — R6/S3/S4/S7/Env/Vctrs codegen, method dispatch
   mechanics, constructor error-checking, and the six class generators.
 - `miniextendr-ffi` — `#[r_ffi_checked]`, `_unchecked` variants, MXL300/MXL301.

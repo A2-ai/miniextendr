@@ -3541,8 +3541,8 @@ pub fn generate_method_c_wrapper(
 ///
 /// Mirrors the standalone-fn emission in `lib.rs` so both surfaces resolve through the
 /// same runtime paths — `C_*__match_arg_choices__*` is called from R's prelude, and
-/// `MX_MATCH_ARG_CHOICES` drives write-time placeholder substitution when the cdylib
-/// emits the final R wrapper file.
+/// `MX_MATCH_ARG_CHOICES` drives write-time placeholder substitution when the wrapper
+/// writer emits the final R wrapper file.
 fn generate_method_match_arg_helpers(
     parsed_impl: &ParsedImpl,
     method: &ParsedMethod,

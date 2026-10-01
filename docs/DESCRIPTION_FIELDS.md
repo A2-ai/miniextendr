@@ -96,19 +96,19 @@ When `pkgbuild`-style workflows see:
 Config/build/bootstrap: TRUE
 ```
 
-they run `bootstrap.R` in the package root before the later build steps.
+they run `bootstrap.R` in the package root before `R CMD build` copies it
+(`devtools::build()` / `install()` / `check()`, rcmdcheck, pak, rv 0.23.0 or
+later). Plain `R CMD build` and `R CMD INSTALL` never run it.
 
-For this repository, that is what makes the one-step dev workflow possible. `bootstrap.R` is responsible for kicking off the package's configure logic so that files such as:
+miniextendr's `bootstrap.R` has one job: stage the Rust crates that
+`src/rust/Cargo.toml` reaches by `path` outside the package, under
+`src/rust/vendor/`, while the repository is still around the package. R CMD
+build seals only the package directory, so without that step those crates
+would be missing from the build copy. It never runs configure and never
+vendors; see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#bootstrap-staging-path-dependencies).
 
-- `configure`
-- `src/Makevars`
-- `src/rust/cargo-config.toml`
-
-are in the right shape before the package build proceeds.
-
-In practice, this is what lets commands like `devtools::document()` or related package-tooling flows trigger the Rust/configure pipeline instead of assuming the package is a plain R-only package.
-
-If this field is missing, the rest of the miniextendr build chain becomes much less automatic.
+A package with no path dependency outside it has nothing to stage, and builds
+the same without the field.
 
 ## `Config/build/never-clean: true`
 

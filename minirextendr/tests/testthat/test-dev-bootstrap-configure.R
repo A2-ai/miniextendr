@@ -129,11 +129,29 @@ test_that("a copy stops before cargo, naming the path and the installs that work
   expect_match(msg, "`path = \"../../../devsib\"` under [dev-dependencies]", fixed = TRUE)
   expect_false(grepl("satellite", msg, fixed = TRUE))
   expect_match(msg, "bootstrap.R did not run for this build.", fixed = TRUE)
-  expect_match(msg, "rv >= 0.23.0 with a git source plus `directory`", fixed = TRUE)
+  expect_match(msg, "rv >= 0.23.0 with a git source, or a local path to the repository root, plus `directory`",
+               fixed = TRUE)
   expect_match(msg, 'pak::pak("<owner>/<repo>/<subdirectory>")', fixed = TRUE)
   expect_match(msg, "build the tarball in the checkout with devtools::build() and install that tarball",
                fixed = TRUE)
   expect_false(dir.exists(file.path(copy, "src/rust/vendor")))
+})
+
+test_that("a copy carrying an unactivated staging says the staging went stale", {
+  # R CMD build discards cleanup's refusal to activate a stale staging, so its
+  # tarball carries the state file next to the original manifest.
+  helper <- configure_helper()
+  repo <- local_outside_repo()
+  copy <- local_build_tree(file.path(repo, "pkg"), "copy")
+  saveRDS(list(), file.path(copy, "src/rust/.dev-bootstrap.rds"))
+  err <- expect_error(helper$configure_path_dependencies(copy), "outside the package directory are missing")
+  msg <- conditionMessage(err)
+  expect_match(msg, "An earlier bootstrap.R run staged these crates, but the staging was not activated",
+               fixed = TRUE)
+  expect_match(msg, "Rerun bootstrap.R in the\ncheckout before R CMD build")
+  expect_false(grepl("bootstrap.R did not run", msg, fixed = TRUE))
+  expect_match(msg, "build the tarball in the checkout with devtools::build() and install that tarball",
+               fixed = TRUE)
 })
 
 test_that("a vendored tarball, in-package paths and a bootstrap staging pass untouched", {
@@ -208,14 +226,13 @@ test_that("a staging bootstrap left behind, or activated in a build copy, passes
   helper <- configure_helper()
   repo <- local_outside_repo()
   pkg <- file.path(repo, "pkg")
-  expect_true(suppressMessages(helper$prepare_dev_bootstrap(pkg, mode = "dist")))
+  expect_true(suppressMessages(helper$prepare_dev_bootstrap(pkg)))
   staged <- tools::md5sum(list.files(file.path(pkg, "src/rust"), recursive = TRUE, all.files = TRUE,
                                      full.names = TRUE))
   expect_false(helper$configure_path_dependencies(pkg))
   expect_identical(tools::md5sum(names(staged)), staged)
   # What R CMD build's cleanup leaves in its copy: the manifest points at vendor/.
   copy <- local_build_tree(pkg, "copy")
-  withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP_MODE = NA))
   expect_true(helper$activate_dev_bootstrap(copy))
   expect_false(helper$configure_path_dependencies(copy))
 })
@@ -234,8 +251,7 @@ test_that("R CMD INSTALL of a monorepo package fails in configure from a copy an
   withr::local_envvar(c(
     R_LIBS = paste(c(lib, .libPaths()), collapse = .Platform$path.sep),
     CARGO_PROFILE = "dev", CARGO_FEATURES = "", CARGO_BUILD_TARGET = NA,
-    CARGO_TERM_COLOR = "never", CARGO_TARGET_DIR = NA, VENDOR_OUT = NA,
-    MINIEXTENDR_FORCE_WRAPPER_GEN = NA, ROXYGEN_PKG = NA, MINIEXTENDR_BOOTSTRAP_MODE = NA
+    CARGO_TERM_COLOR = "never", CARGO_TARGET_DIR = NA, VENDOR_OUT = NA
   ))
   suppressMessages(create_miniextendr_monorepo(mono, package = "outsideprobe", crate_name = "core",
                                                rpkg_name = "rpkg", open = FALSE))

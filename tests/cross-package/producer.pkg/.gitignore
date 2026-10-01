@@ -5,6 +5,7 @@ config.status
 .cargo/config.toml
 src/Makevars
 src/Makevars.win
+src/*-win.def
 src/*-wrappers.R
 
 # Built artifacts

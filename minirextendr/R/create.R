@@ -116,6 +116,9 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
     crate_name_rs = to_rust_name(crate_name),
     crate_path = paste0("../../../", crate_name),
     core_example_prefix = "",
+    # The example's closing line, prefix included: whisker reads the `}` in
+    # `{{{core_example_prefix}}}}` as part of the tag and drops it.
+    core_example_close = "}",
     rpkg_name = rpkg_name,
     features_var = "CARGO_FEATURES",
     year = format(Sys.Date(), "%Y")
@@ -417,6 +420,7 @@ use_miniextendr <- function(path = ".",
     # Existing libraries have arbitrary APIs; only the newly created core
     # template is known to provide hello().
     data$core_example_prefix <- "// "
+    data$core_example_close <- "// }"
     create_rpkg_subdirectory(data, rpkg_name = rpkg_name)
     # Cargo packages an ancestor root crate too. Keep nested R build output
     # and development bundles out of that crate, preserving existing rules.
@@ -530,7 +534,7 @@ use_miniextendr <- function(path = ".",
     ))
   }
   cli::cli_alert_info(
-    "Note: plain {.code R CMD INSTALL .} / {.code devtools::install()} / {.code devtools::document()} can flip the package into offline tarball mode on a fresh build and skip wrapper generation; use {.code miniextendr_build()} so {.code library(...)} sees your functions."
+    "Note: every install regenerates the R wrappers, but only roxygen2 writes {.path NAMESPACE}. After adding or removing a Rust function, run {.code miniextendr_build()} (compile, document, install) so {.code library(...)} exports it."
   )
 
   invisible(TRUE)

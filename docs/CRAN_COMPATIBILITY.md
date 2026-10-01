@@ -20,35 +20,27 @@ file-existence test. `configure` is a consumer of that signal: it never runs
 
 ## Vendoring belongs to tarball production
 
-Only workflows that are deliberately producing a package tarball may create
-`inst/vendor.tar.xz`:
+Only an explicit release step creates `inst/vendor.tar.xz`:
 
-- `just vendor` and `minirextendr_vendor()` create it explicitly before a
-  maintainer builds a release artifact.
-- `bootstrap.R` creates it before `R CMD build` when a build frontend such as
-  `pkgbuild` honors `Config/build/bootstrap: TRUE` and `cargo-revendor` is on
-  PATH. Without the tool, bootstrap only stages path dependencies that lie
-  outside the package (see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md)), so that
-  artifact stays in source mode.
+- `just vendor` and `minirextendr_vendor()` create it with
+  `cargo revendor --freeze`.
+- `just r-cmd-build` / `just r-cmd-check` (this repository) and
+  `minirextendr::miniextendr_build_tarball()` / `miniextendr_check()` (a
+  scaffolded package) run that step, build the tarball, then remove the archive
+  and restore the frozen manifest and lock.
 
-Everything else stays in source mode when the file is absent. This includes
-`bash ./configure`, `R CMD INSTALL .`, and a fresh scaffold outside a Git
-checkout. Git ancestry is not an install-mode signal.
+Everything else stays in source mode. This includes `bash ./configure`,
+`R CMD INSTALL .`, `devtools::install()` and `build()`, pak, rv, and a fresh
+scaffold outside a Git checkout. Git ancestry is not an install-mode signal.
+`bootstrap.R` never vendors: it only stages path dependencies that lie outside
+the package (see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md)), and registry and git
+dependencies resolve over the network at install time.
 
 A package tarball built without `inst/vendor.tar.xz` is not repaired during
-installation. It remains in source mode and cargo may need network access; that
-artifact is therefore not CRAN-ready. The failure on CRAN's offline farm is the
+installation. It remains in source mode and cargo needs network access; that
+artifact is therefore not CRAN-ready. Only a tarball from the release step is
+meant to pass `R CMD check --as-cran`. The failure on CRAN's offline farm is the
 intended canary for a maintainer who shipped an incomplete release artifact.
-
-The build warns first. A distribution `bootstrap.R` run without `cargo-revendor`
-on PATH ends with an R `warning()` ("this tarball downloads crates.io and git
-dependencies at install time and is not CRAN-ready"), whether or not it staged
-path dependencies. `devtools::build()` and other non-quiet pkgbuild builds print
-it; pak and rv (0.23.0 or later; older rv never runs bootstrap) run bootstrap
-quietly and show it only in failure logs. Treat a
-tarball whose build printed that warning as a development artifact, never a
-release artifact. The warning is unconditional: no environment variable silences
-it, and there is no `NOT_CRAN` switch (see "Why" below).
 
 ## Where each install path lands
 
@@ -57,8 +49,9 @@ it, and there is no `NOT_CRAN` switch (see "Why" below).
 | `R CMD INSTALL .` (source dir) | Source | No | n/a; configure does not vendor |
 | `devtools::install(build = FALSE)` / `load_all` | Source | No | n/a; no package tarball is produced |
 | `R CMD build rpkg` directly | Source unless pre-vendored | Only if already present | run `just vendor` / `miniextendr_vendor()` first for a release artifact |
-| `devtools::build("rpkg")` / `pkgbuild::build()` | Tarball when `cargo-revendor` is available, source (with a not-CRAN-ready warning) otherwise | Yes with `cargo-revendor`; without it only path dependencies outside the package are staged under `src/rust/vendor/` | `bootstrap.R` vendors (or stages, #1580) before `R CMD build` |
+| `devtools::build()` / `install()`, `pkgbuild::build()`, pak, rv | Source | No; path dependencies outside the package are staged under `src/rust/vendor/` | n/a; `bootstrap.R` stages path dependencies only (#1580) |
 | `just r-cmd-build` / `just r-cmd-check` | Tarball | Yes | explicit `just vendor` (recipe dependency) before R CMD build |
+| `miniextendr_build_tarball()` / `miniextendr_check()` | Tarball | Yes | `miniextendr_vendor()` before `pkgbuild::build()`, cleaned up afterwards |
 | CRAN's autobuilder on a submitted tarball | Tarball | Yes | maintainer's `just vendor` baked it into the tarball |
 
 The mode always maps directly to the file-existence test. Production and
@@ -179,8 +172,8 @@ regenerates it at version bump time. Don't try to commit it.
 ## Stale tarball warning
 
 `inst/vendor.tar.xz` must not linger in the source tree after `just r-cmd-build`
-or `just r-cmd-check` finish. Both recipes set `trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT`,
-but the trap does not fire on `SIGKILL`. If the file is left behind:
+or `just r-cmd-check` finish. Both recipes remove it and restore the committed
+`Cargo.lock` in an `EXIT` trap, but the trap does not fire on `SIGKILL`. If the file is left behind:
 
 1. `just configure` sees it and sets `IS_TARBALL_INSTALL=true`.
 2. The next `just rcmdinstall` (or `R CMD INSTALL rpkg`) runs `make` with
@@ -340,5 +333,10 @@ Removed entirely from this codebase:
 - The "auto-vendor on first install" + git-clone-bootstrap fallback in
   `configure.ac`
 - The unpack-vendor-from-Makevars step in `Makevars.in`
+- Vendoring from `bootstrap.R`, with `MINIEXTENDR_BOOTSTRAP_MODE`,
+  `MINIEXTENDR_BOOTSTRAP` and `cargo revendor --dev`
+- The pre-shipped wrapper fast path: `tools/wrapper-freshness.R`,
+  `tools/wrapper-inputs.rds`, `MINIEXTENDR_FORCE_WRAPPER_GEN` and the
+  `ROXYGEN_PKG` skip
 
 If you find a stray reference, it's vestigial — delete it.

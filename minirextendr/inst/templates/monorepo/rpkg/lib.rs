@@ -29,4 +29,4 @@ pub fn hello(name: &str) -> String {
 {{{core_example_prefix}}}#[miniextendr]
 {{{core_example_prefix}}}pub fn core_greeting() -> String {
 {{{core_example_prefix}}}    core_library::hello().to_string()
-{{{core_example_prefix}}} }
+{{{core_example_close}}}

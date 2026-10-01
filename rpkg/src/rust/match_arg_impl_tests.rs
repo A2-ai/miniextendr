@@ -11,7 +11,7 @@
 //! 2. The C wrapper wires `match_arg_several_ok_params` into the
 //!    `match_arg_vec_from_sexp` path for Vec-typed several_ok params.
 //! 3. The formal default is populated — either the
-//!    `.__MX_MATCH_ARG_CHOICES_*__` placeholder (resolved at cdylib write
+//!    `.__MX_MATCH_ARG_CHOICES_*__` placeholder (resolved at wrapper write
 //!    time from the enum's `MatchArg::CHOICES`) or an explicit
 //!    `c("a", "b", "c")` vector for `choices(...)` params.
 

@@ -46,8 +46,8 @@ RUST_SRC_DIR="$abs_rpkg_src/rust"
 
 dnl ---- source-tree classification ----
 dnl Configure never creates inst/vendor.tar.xz. It only consumes that explicit
-dnl install-mode signal. Vendoring belongs to tarball-producing workflows
-dnl (`just vendor`, miniextendr_vendor(), and bootstrap.R before R CMD build).
+dnl install-mode signal. Vendoring belongs to the explicit tarball workflow
+dnl (`just vendor`, miniextendr_vendor(), miniextendr_build_tarball()).
 dnl SOURCE_IS_GIT/SOURCE_IS_BUILT exist solely for the leaked-tarball guard.
 SOURCE_IS_GIT=false
 _walk_dir="$abs_top_srcdir"
@@ -77,7 +77,7 @@ dnl LEAK: a previous 'just r-cmd-build' / 'r-cmd-check' / 'devtools-build'
 dnl produced inst/vendor.tar.xz and the trap-clean was bypassed (SIGKILL, a
 dnl crashed shell, a manual 'cargo revendor' left behind, etc.). The 'just'
 dnl consume-recipes (rcmdinstall, devtools-test/-load/-install) catch this via
-dnl '_assert-no-vendor-leak', and minirextendr_doctor() reports it — but a bare
+dnl '_assert-no-vendor-leak', and miniextendr_doctor() reports it — but a bare
 dnl 'R CMD INSTALL rpkg/' (or 'bash ./configure') straight from the shell has no
 dnl such guard. configure would silently flip to tarball mode, build against the
 dnl frozen vendored sources, and ignore every local workspace edit. Fail loud
@@ -103,17 +103,9 @@ dnl     (intentional tarball mode). Before the SOURCE_IS_BUILT gate this misfire
 dnl     and aborted every CI R CMD check. The 'Packaged:' field suppresses it:
 dnl     this is a legitimate built-tarball install, not a source-tree leak. Same
 dnl     for CRAN's 'R CMD check' and any end-user tarball install.
-dnl   * Recipes that go through pkgbuild (devtools-build / devtools-check) run
-dnl     bootstrap.R, which runs ./configure in the ORIGINAL source dir (with .git
-dnl     present, DESCRIPTION not yet built so no 'Packaged:') AFTER 'just vendor'
-dnl     has produced the tarball. That path is a genuine source tree with a
-dnl     deliberately-present tarball, so SOURCE_IS_BUILT can't suppress it;
-dnl     bootstrap.R exports MINIEXTENDR_BOOTSTRAP=1 around that invocation so this
-dnl     guard stays silent — the tarball there is intentional, not a leak.
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \
-   && test "$SOURCE_IS_BUILT" = "false" \
-   && test -z "${MINIEXTENDR_BOOTSTRAP+x}"; then
+   && test "$SOURCE_IS_BUILT" = "false"; then
   AC_MSG_ERROR([leaked vendor tarball detected in a git-tracked source tree.
 
   inst/vendor.tar.xz is present AND this is a git working tree, so configure
@@ -132,8 +124,8 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
 fi
 
 dnl ---- install-mode detection ----
-dnl Single signal: presence of inst/vendor.tar.xz, produced only by an explicit
-dnl tarball workflow (`just vendor`, miniextendr_vendor(), or bootstrap.R).
+dnl Single signal: presence of inst/vendor.tar.xz, produced only by the explicit
+dnl tarball workflow (`just vendor`, miniextendr_vendor()).
 dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is in the
 dnl     artifact. configure unpacks it, writes a vendored cargo source
 dnl     replacement, and builds offline.

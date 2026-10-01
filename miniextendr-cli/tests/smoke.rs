@@ -137,7 +137,7 @@ fn init_package_scaffolds_canonical_build_system() {
         "tools/lock-shape-check.R",
         "tools/vendor-cache.R",
         "tools/dev-bootstrap.R",
-        "tools/wrapper-freshness.R",
+        "tools/write-wrappers.R",
         ".Rbuildignore",
         ".gitignore",
         "R/smoke.pkg-package.R",

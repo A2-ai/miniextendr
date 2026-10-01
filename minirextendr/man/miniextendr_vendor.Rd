@@ -22,9 +22,10 @@ resolves against the working tree, not git@main) and stamps the canonical
 \code{git+url#<sha>} source into \code{Cargo.lock}; checksum lines are retained.
 }
 \details{
-Run this before \verb{R CMD build} when preparing a CRAN submission.
-Day-to-day development (\verb{R CMD INSTALL .}, \code{devtools::install/test/load})
-does not need it: install mode is auto-detected from
-\code{inst/vendor.tar.xz} presence, and without the file cargo resolves deps
-over the network.
+\code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} runs this before \verb{R CMD build} and restores
+the source tree afterwards; call it directly only to seal the archive by
+hand. Nothing else vendors: day-to-day development (\verb{R CMD INSTALL .},
+\code{devtools::install/test/load}, pak) and \code{bootstrap.R} leave
+\code{inst/vendor.tar.xz} absent, and without the file cargo resolves deps over
+the network.
 }

@@ -1,5 +1,5 @@
-# Tests for miniextendr_build()'s step order and guards (#860, #1288, #1294,
-# #1549).
+# Tests for miniextendr_build()'s and miniextendr_build_tarball()'s step order
+# and guards (#860, #1288, #1294, #1549).
 #
 # The wrappers file is written by the Makevars wrapper-gen rule, roxygen2
 # reads it to write NAMESPACE and man/, and the install ships all three. So
@@ -35,9 +35,8 @@ make_build_pkg_root <- function(wrappers = TRUE) {
   tmp
 }
 
-# Mock the three external steps, recording the order they run in and the
-# MINIEXTENDR_FORCE_WRAPPER_GEN value each one sees. `calls` and `force_seen`
-# are environments so the mocks can append from inside testthat's binding.
+# Mock the three external steps, recording the order they run in. `state` is
+# an environment so the mocks can append from inside testthat's binding.
 mock_build_steps <- function(state,
                              compile = function() invisible(NULL),
                              document = function() invisible(NULL),
@@ -47,7 +46,6 @@ mock_build_steps <- function(state,
     force(body)
     function(...) {
       state$calls <- c(state$calls, step)
-      state$force_seen[[step]] <- Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = "")
       body()
     }
   }
@@ -86,7 +84,6 @@ mock_build_steps <- function(state,
 new_state <- function(dev_loaded = TRUE) {
   state <- new.env(parent = emptyenv())
   state$calls <- character()
-  state$force_seen <- list()
   state$dev_loaded <- dev_loaded
   state$unloaded <- NULL
   state
@@ -130,26 +127,6 @@ test_that("miniextendr_build(install = FALSE): compiles and documents, installs 
   expect_equal(state$calls, c("compile_dll", "document", "unload"))
 })
 
-test_that("miniextendr_build(): MINIEXTENDR_FORCE_WRAPPER_GEN=1 covers the compile and the install, not document(), and is restored afterwards", {
-  # The Makevars wrapper-gen rule regenerates unconditionally under the
-  # override (#757 / #911). document()'s own roxygenise compile must run
-  # WITHOUT it so the rule reuses the wrappers Step 3 just wrote instead of
-  # loading the shared object a second time.
-  skip_if_not_installed("pkgbuild")
-  skip_if_not_installed("devtools")
-  tmp <- make_build_pkg_root()
-  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
-  withr::local_envvar(c(MINIEXTENDR_FORCE_WRAPPER_GEN = NA))
-  state <- mock_build_steps(new_state())
-
-  miniextendr_build(tmp, install = TRUE)
-
-  expect_equal(state$force_seen$compile_dll, "1")
-  expect_equal(state$force_seen$document, "")
-  expect_equal(state$force_seen$install, "1")
-  expect_equal(Sys.getenv("MINIEXTENDR_FORCE_WRAPPER_GEN", unset = ""), "")
-})
-
 test_that("miniextendr_build(): a compile failure aborts before document() and the install", {
   skip_if_not_installed("pkgbuild")
   skip_if_not_installed("devtools")
@@ -185,40 +162,103 @@ test_that("miniextendr_build(): an install failure errors loudly and is not retr
   expect_equal(state$calls, c("compile_dll", "document", "unload", "install"))
 })
 
-test_that("miniextendr_build(): the source tree is restored on exit (#1294)", {
-  # The install's `R CMD build` runs bootstrap.R in the source tree, which
-  # seals inst/vendor.tar.xz and freezes src/rust/Cargo.toml by design. The
-  # install is the last step, so an on.exit restore is enough: the latch the
-  # build created is deleted and the manifest is back to its entry snapshot.
+# miniextendr_build_tarball(): the build without the install, then the vendor
+# step, then R CMD build with the vendor archive in place. `vendor` models
+# cargo-revendor's side effects: the archive, a frozen manifest and vendor/.
+mock_tarball_steps <- function(state, pkg, env = parent.frame()) {
+  manifest <- file.path(pkg, "src", "rust", "Cargo.toml")
+  latch <- file.path(pkg, "inst", "vendor.tar.xz")
+  testthat::local_mocked_bindings(
+    miniextendr_vendor = function(...) {
+      state$calls <- c(state$calls, "vendor")
+      dir.create(dirname(latch), showWarnings = FALSE)
+      writeLines("fake tarball", latch)
+      writeLines(c("[package]", 'name = "testpkg"', 'path = "vendor/my-core"'), manifest)
+      writeLines("snapshot", file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze"))
+      dir.create(file.path(pkg, "vendor", "my-core"), recursive = TRUE)
+      invisible(latch)
+    },
+    .package = "minirextendr",
+    .env = env
+  )
+  testthat::local_mocked_bindings(
+    build = function(path, dest_path = NULL, args = NULL, ...) {
+      state$calls <- c(state$calls, "build")
+      state$latch_at_build <- file.exists(latch)
+      state$build_args <- args
+      file.path(dest_path, "testpkg_0.1.0.tar.gz")
+    },
+    .package = "pkgbuild",
+    .env = env
+  )
+  invisible(state)
+}
+
+make_tarball_pkg_root <- function() {
+  tmp <- make_build_pkg_root()
+  dir.create(file.path(tmp, "src", "rust"), recursive = TRUE)
+  writeLines(c("[package]", 'name = "testpkg"', 'path = "../../../my-core"'),
+             file.path(tmp, "src", "rust", "Cargo.toml"))
+  writeLines("# lock", file.path(tmp, "src", "rust", "Cargo.lock"))
+  tmp
+}
+
+test_that("miniextendr_build_tarball(): documents, vendors, builds, and restores the source tree", {
   skip_if_not_installed("pkgbuild")
   skip_if_not_installed("devtools")
-  tmp <- make_build_pkg_root()
+  tmp <- make_tarball_pkg_root()
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  manifest <- file.path(tmp, "src", "rust", "Cargo.toml")
+  entry <- readLines(manifest)
+  state <- mock_build_steps(new_state())
+  mock_tarball_steps(state, tmp)
 
-  manifest_path <- file.path(tmp, "src", "rust", "Cargo.toml")
-  dir.create(dirname(manifest_path), recursive = TRUE)
-  manifest_entry <- c("[package]", 'name = "testpkg"', 'path = "../../../my-core"')
-  writeLines(manifest_entry, manifest_path)
-  latch_path <- file.path(tmp, "inst", "vendor.tar.xz")
+  tarball <- miniextendr_build_tarball(tmp, dest_path = tmp, args = "--no-build-vignettes")
+  expect_equal(tarball, file.path(tmp, "testpkg_0.1.0.tar.gz"))
+  # No install: the tarball is the artifact.
+  expect_equal(state$calls, c("compile_dll", "document", "unload", "vendor", "build"))
+  expect_true(state$latch_at_build)
+  expect_equal(state$build_args, "--no-build-vignettes")
+  expect_false(file.exists(file.path(tmp, "inst", "vendor.tar.xz")))
+  expect_false(file.exists(file.path(tmp, "src", "rust", ".Cargo.toml.prefreeze")))
+  expect_false(dir.exists(file.path(tmp, "vendor")))
+  expect_equal(readLines(manifest), entry)
+})
 
-  state <- mock_build_steps(new_state(), install = function() {
-    # Simulate bootstrap.R's documented side effect.
-    dir.create(dirname(latch_path), showWarnings = FALSE)
-    writeLines("fake tarball", latch_path)
-    writeLines(c("[package]", 'name = "testpkg"', 'path = "vendor/my-core"'), manifest_path)
-    invisible(NULL)
-  })
+test_that("miniextendr_build_tarball(): the source tree is restored when the build fails", {
+  skip_if_not_installed("pkgbuild")
+  skip_if_not_installed("devtools")
+  tmp <- make_tarball_pkg_root()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  manifest <- file.path(tmp, "src", "rust", "Cargo.toml")
+  entry <- readLines(manifest)
+  dir.create(file.path(tmp, "vendor", "offline-crate"), recursive = TRUE)
+  state <- mock_build_steps(new_state())
+  mock_tarball_steps(state, tmp)
+  testthat::local_mocked_bindings(build = function(...) stop("R CMD build failed"), .package = "pkgbuild")
 
-  expect_true(miniextendr_build(tmp, install = TRUE))
-  expect_equal(state$calls, c("compile_dll", "document", "unload", "install"))
-  expect_false(file.exists(latch_path))
-  expect_equal(readLines(manifest_path, warn = FALSE), manifest_entry)
+  expect_error(miniextendr_build_tarball(tmp), "R CMD build failed")
+  expect_false(file.exists(file.path(tmp, "inst", "vendor.tar.xz")))
+  expect_equal(readLines(manifest), entry)
+  # A vendor/ that existed before the build is the author's, not ours.
+  expect_true(dir.exists(file.path(tmp, "vendor", "offline-crate")))
+})
+
+test_that("miniextendr_build_tarball(): refuses a tree that still carries release vendoring", {
+  tmp <- make_tarball_pkg_root()
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  latch <- file.path(tmp, "inst", "vendor.tar.xz")
+  dir.create(dirname(latch))
+  writeLines("stale", latch)
+
+  expect_error(miniextendr_build_tarball(tmp), "earlier release build")
+  expect_true(file.exists(latch))
 })
 
 test_that("miniextendr_build(): a pre-existing latch is warned about and never deleted (#1294)", {
   # A latch that existed BEFORE the build may be a deliberate release-prep
-  # artifact: it must survive the on.exit restore, and the up-front warning
-  # must fire (the tree builds in offline tarball mode throughout).
+  # artifact: it must survive, and the up-front warning must fire (the tree
+  # builds in offline tarball mode throughout).
   skip_if_not_installed("pkgbuild")
   skip_if_not_installed("devtools")
   tmp <- make_build_pkg_root()

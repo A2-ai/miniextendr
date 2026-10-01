@@ -71,14 +71,14 @@ encoding symbols are exported. See [Encoding](ENCODING.md).
 |----------|---------|---------|
 | `MINIEXTENDR_LOCAL_PATH` | Path to local miniextendr monorepo for tests/scaffolding | Auto-detected |
 
-## Bootstrap (Internal)
+## Wrapper generation (Internal)
 
-These are set automatically by `bootstrap.R` during `R CMD INSTALL` and shouldn't be set manually:
+Set by `src/Makevars` for the `Rscript tools/write-wrappers.R $(SHLIB)` step
+only; never set it yourself:
 
 | Variable | Purpose |
 |----------|---------|
-| `CC`, `CFLAGS`, `CXX`, `CXXFLAGS`, `CPPFLAGS`, `LDFLAGS` | C/C++ toolchain from `R CMD config` |
-| `_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_` | Symbol table generation (set to `false`) |
+| `MINIEXTENDR_WRAPPER_GEN` | Presence makes `R_init_<pkg>` take its minimal path (routine registration only: no panic hook, locale check, ALTREP classes or mx_abi), because the library is unloaded right after the writers run. A package loaded with it set works in a degraded state. |
 
 ## Cargo-Internal (Set Automatically)
 

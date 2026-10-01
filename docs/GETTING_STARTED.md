@@ -115,13 +115,11 @@ This runs `autoconf` + `./configure`, compiles the Rust code, generates the
 R wrappers (`R/mypackage-wrappers.R`) via linkme, updates `NAMESPACE` +
 `man/` with roxygen2, and installs the package -- all in one step.
 
-Prefer `miniextendr_build()` over a build-producing `devtools::install()` on a
-fresh package. The latter runs the pkgbuild `bootstrap.R` hook, which vendors
-dependencies while producing a package tarball and selects wrapper-skipping
-tarball mode before the first wrappers exist. A direct `R CMD INSTALL .` does
-not vendor—configure leaves it in source mode—but it also does not perform the
-complete wrappers → roxygen2 → install cycle. `devtools::document()` alone
-does not install the wrapper-generating build either.
+Every install (`R CMD INSTALL .`, `devtools::install()`, pak) regenerates the
+R wrappers from the library it just linked, but only roxygen2 updates
+`NAMESPACE` and `man/`. `miniextendr_build()` runs the whole wrappers →
+roxygen2 → install cycle, so prefer it after adding or renaming a
+`#[miniextendr]` item; `devtools::document()` alone does not install.
 
 ### Step 4: Use from R
 

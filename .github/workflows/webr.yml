@@ -165,9 +165,9 @@ jobs:
   # `cargo check --target wasm32-unknown-emscripten` its rpkg crate — no emcc
   # link, no wasm R CMD INSTALL, no webR container. A single native R CMD
   # INSTALL pass is still required first: wasm32 build.rs hard-requires
-  # src/rust/wasm_registry.rs, which only a host cdylib pass produces (#482);
-  # that pass uses the ordinary system cc, not emcc, so this job stays cheap
-  # relative to the tier-2/3 leg. The full monorepo wasm leg (native →
+  # src/rust/wasm_registry.rs, which only a host wrapper-generation pass
+  # produces (#482); that pass uses the ordinary system cc, not emcc, so this
+  # job stays cheap relative to the tier-2/3 leg. The full monorepo wasm leg (native →
   # roxygenise → native → CC=emcc → tier-3 load) is gated to main-push /
   # workflow_dispatch inside the webr-install job below instead (#1271 sketch).
   monorepo-wasm-check:
@@ -268,7 +268,7 @@ jobs:
   # Closes #491 (tier 2) and #492 (tier 3 — Node + webR runtime smoke).
   # Runs as a single job because all phases share the same container,
   # filesystem state, and `/tmp/wasm-lib/*` artifacts:
-  #   - Phase 1: native install → regenerates wasm_registry.rs via cdylib pass.
+  #   - Phase 1: native install → regenerates wasm_registry.rs from the .so.
   #   - Phase 2: CC=emcc wasm install via webr-vars.mk → /tmp/wasm-lib/miniextendr.
   #   - Scaffold leg (#1259): the same native→wasm two-step on a package
   #     freshly scaffolded from minirextendr's templates → /tmp/wasm-lib/mxsmoke.
@@ -405,7 +405,7 @@ jobs:
           set -euo pipefail
           ch=$(grep 'content-hash:' rpkg/src/rust/wasm_registry.rs | awk '{print $NF}')
           echo "content-hash=$ch"
-          # A stub snapshot would be all-zero; the cdylib pass must rewrite it.
+          # A stub snapshot would be all-zero; the native install must rewrite it.
           test "$ch" != "0000000000000000"
 
       - name: Phase 2 — wasm32 R CMD INSTALL (validates side-module RUSTFLAGS)

@@ -136,7 +136,7 @@ pub(crate) fn is_bare_identifier(s: &str) -> bool {
 }
 
 /// Return a `.__MX_CLASS_REF_<name>__` placeholder (for bare identifiers) so the
-/// resolver can look up the actual R class name at cdylib write time, or `name`
+/// resolver can look up the actual R class name at wrapper write time, or `name`
 /// verbatim (for namespaced / non-identifier strings).
 pub(crate) fn class_ref_or_verbatim(name: &str) -> String {
     if is_bare_identifier(name) {
@@ -153,7 +153,7 @@ pub(crate) use crate::match_arg_keys::{
 
 /// Build the R-param-name → auto-generated `@param` text map for a method's
 /// choice params: the write-time placeholder for a `match_arg` param (the
-/// cdylib pass renders it from the enum's `MatchArg::CHOICES`, #210), the
+/// wrapper writer renders it from the enum's `MatchArg::CHOICES`, #210), the
 /// literal `One of "a", "b".` line for a `choices(...)` param
 /// ([`ParamAttrs::literal_choices_doc`](crate::miniextendr_fn::ParamAttrs::literal_choices_doc),
 /// the same text a standalone function gets). Pass to
@@ -292,7 +292,7 @@ pub(crate) fn build_method_precondition_checks(
 ///
 /// Layers defaults in priority order:
 /// 1. `#[miniextendr(match_arg)]` → ALWAYS a write-time placeholder that the
-///    cdylib resolves to `c("a", "b", ...)` at package-load time. Any user-
+///    wrapper writer resolves to `c("a", "b", ...)`. Any user-
 ///    supplied `default = "X"` is consumed elsewhere (rotates X to the front
 ///    of the choice list at write time) rather than overriding the formal.
 /// 2. `#[miniextendr(choices("a", "b", ...))]` → `c("a", "b", ...)` formal default.
@@ -980,8 +980,8 @@ pub struct MethodDocBuilder<'a> {
     /// parameters ([`choice_param_doc_map`]).
     ///
     /// When the auto-generated `@param` line would otherwise say `(undocumented)`,
-    /// a `match_arg` param emits its placeholder instead, which the cdylib's
-    /// write-time pass replaces with a rendered choice description (#210), and
+    /// a `match_arg` param emits its placeholder instead, which the wrapper
+    /// writer replaces with a rendered choice description (#210), and
     /// a `choices(...)` param its literal `One of ...` line.
     choice_param_docs: Option<&'a std::collections::HashMap<String, String>>,
 }
@@ -1017,7 +1017,7 @@ impl<'a> MethodDocBuilder<'a> {
     /// Supply the R-param-name → `@param` text map of the method's choice
     /// params ([`choice_param_doc_map`]). When the auto-generated `@param`
     /// line would otherwise say `(undocumented)`, that text is emitted instead
-    /// (a `match_arg` placeholder is rewritten by the cdylib write pass, #210).
+    /// (a `match_arg` placeholder is rewritten by the wrapper writer, #210).
     pub fn with_choice_param_docs(
         mut self,
         docs: &'a std::collections::HashMap<String, String>,
@@ -1144,7 +1144,7 @@ impl<'a> MethodDocBuilder<'a> {
             // the method's own tags send it to a topic that documents them
             // (`@rdname`, `@describeIn`) or inherit them (`@inheritParams`,
             // #1590). Choice params get their choice text (a match_arg
-            // placeholder is rendered by the cdylib write pass, #210).
+            // placeholder is rendered by the wrapper writer, #210).
             if let Some(params) = self.r_params {
                 push_param_filler(
                     &mut lines,

@@ -75,7 +75,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/rpkg/tools/lock-shape-check.R"),
     tpl!("templates/rpkg/tools/vendor-cache.R"),
     tpl!("templates/rpkg/tools/dev-bootstrap.R"),
-    tpl!("templates/rpkg/tools/wrapper-freshness.R"),
+    tpl!("templates/rpkg/tools/write-wrappers.R"),
     tpl!("templates/rpkg/win.def.in"),
     // Monorepo template: workspace root + core crate.
     tpl!("templates/monorepo/Cargo.toml.tmpl"),
@@ -109,7 +109,7 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/monorepo/rpkg/tools/lock-shape-check.R"),
     tpl!("templates/monorepo/rpkg/tools/vendor-cache.R"),
     tpl!("templates/monorepo/rpkg/tools/dev-bootstrap.R"),
-    tpl!("templates/monorepo/rpkg/tools/wrapper-freshness.R"),
+    tpl!("templates/monorepo/rpkg/tools/write-wrappers.R"),
     tpl!("templates/monorepo/rpkg/win.def.in"),
 ];
 
@@ -163,10 +163,12 @@ impl TemplateData {
 
     pub fn with_crate(mut self, crate_name: &str, crate_path: &str, example: bool) -> Self {
         self.pairs.push(("crate_path", crate_path.to_string()));
-        self.pairs.push((
-            "core_example_prefix",
-            if example { "" } else { "// " }.to_string(),
-        ));
+        let prefix = if example { "" } else { "// " };
+        self.pairs.push(("core_example_prefix", prefix.to_string()));
+        // The example's closing line, prefix included (see `template_data` in
+        // minirextendr/R/create.R: whisker cannot render `{{{prefix}}}}`).
+        self.pairs
+            .push(("core_example_close", format!("{prefix}}}")));
         self.pairs.push(("crate_name", crate_name.to_string()));
         self.pairs.push(("crate_name_rs", to_rust_name(crate_name)));
         self.crate_name = Some(crate_name.to_string());
@@ -497,8 +499,8 @@ pub const RPKG_PLAN: &[PlanEntry] = &[
         exec: false,
     },
     PlanEntry {
-        template: "tools/wrapper-freshness.R",
-        dest: Dest::Path("tools/wrapper-freshness.R"),
+        template: "tools/write-wrappers.R",
+        dest: Dest::Path("tools/write-wrappers.R"),
         render: Render::Verbatim,
         exec: false,
     },

@@ -47,7 +47,7 @@ jobs:
     # Each shard sweeps ~23 of 137 test files. Measured pace from run
     # 32053834466 (~24 files in 110 minutes of sweeping after a ~10-minute
     # build): ~2 hours per shard. 300 minutes leaves headroom for the
-    # cdylib->staticlib double-link build plus uneven file weights (the
+    # build plus uneven file weights (the
     # heaviest single file measured 932s).
     timeout-minutes: 300
     strategy:

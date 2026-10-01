@@ -20,27 +20,28 @@ release story revolves around one file:
 generated at build time and **must stay gitignored** (the scaffold's
 `.gitignore` already covers it).
 
-Two tarball-producing mechanisms create it:
+Only the explicit release step creates it:
 
-1. **`bootstrap.R`** (in your package root, run by build frontends such as
-   `devtools::build()` / `pkgbuild::build()` / `rcmdcheck` via
-   `Config/build/bootstrap: TRUE`) — runs configure, then invokes
-   `cargo-revendor` before the frontend calls `R CMD build`. Base
-   `R CMD build` does not run this pkgbuild extension.
-2. **Explicit**: `minirextendr::miniextendr_vendor()`.
+1. **`minirextendr::miniextendr_build_tarball()`** — regenerates the wrappers
+   and documentation, runs `miniextendr_vendor()` (`cargo-revendor`), builds
+   the tarball with `pkgbuild::build()`, then removes the archive and restores
+   the frozen `Cargo.toml` / `Cargo.lock`. `miniextendr_check()` builds this
+   way and runs `rcmdcheck` on the result.
+2. **Explicit**: `minirextendr::miniextendr_vendor()` on its own, before a
+   manual build. Remove it afterwards with `miniextendr_clean_vendor_leak()`.
 
-`./configure` never creates the vendor tarball. A package tarball that lacks it
-remains in source mode and is not suitable for CRAN's offline build farm.
+`./configure` and `bootstrap.R` never create the vendor tarball.
+`bootstrap.R` (run by `devtools::build()` / `install()`, pak and rv through
+`Config/build/bootstrap: TRUE`) only stages path dependencies that live
+outside the package. A tarball from `devtools::build()` therefore stays in
+source mode: fine for git installs, **not** CRAN-ready, and CRAN's offline farm
+fails it loudly, which is the intended canary.
 
 Prerequisite once per machine:
 
 ```sh
 cargo install --git https://github.com/A2-ai/miniextendr cargo-revendor --locked
 ```
-
-Without it, `bootstrap.R` warns and builds a source-mode tarball (fine for
-git installs; **not** CRAN-ready — CRAN's offline farm has no cargo-revendor
-and will fail loudly, which is the intended canary).
 
 ## The release checklist
 
@@ -49,8 +50,8 @@ and will fail loudly, which is the intended canary).
 minirextendr::miniextendr_doctor()          # no leaks, toolchain ok
 devtools::test()
 
-# 2. build the tarball (bootstrap.R vendors automatically)
-devtools::build()                            # → ../mypkg_X.Y.Z.tar.gz
+# 2. build the vendored tarball
+minirextendr::miniextendr_build_tarball()    # → ../mypkg_X.Y.Z.tar.gz
 ```
 
 ```sh
@@ -80,9 +81,10 @@ minirextendr::miniextendr_clean_vendor_leak()   # remove the stale latch
 minirextendr::miniextendr_build()               # normal dev build again
 ```
 
-`miniextendr_doctor()` detects this state. Note that
-`minirextendr::miniextendr_build()` snapshots and restores the manifest +
-tarball around its own install, so the *supported* dev loop never leaks.
+`miniextendr_doctor()` detects this state, and `miniextendr_build()` warns
+about it. The dev loop never creates the latch, and
+`miniextendr_build_tarball()` removes it (and restores the frozen manifest)
+when it finishes, even after an error.
 
 ## Preview the reference manual before tagging
 
@@ -148,7 +150,7 @@ of compiled packages that break under webR.
 - **Tracking `inst/vendor.tar.xz` in git** — 20+ MB binary churn per commit
   and stale-after-merge drift. It's build output; regenerate per release.
 - **Hand-editing the tarball's contents** — regenerate via a clean
-  `devtools::build()` instead; the vendor tree, lockfile, and manifest must
+  `miniextendr_build_tarball()` instead; the vendor tree, lockfile, and manifest must
   agree.
 - **Assuming `--as-cran` covers the offline story** — it doesn't fully; do
   the temp-library install (step 4) at least once per release.

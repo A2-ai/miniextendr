@@ -119,8 +119,8 @@ test_that("existing monorepos build twice and restore their path dependencies (#
       writeLines(c("[workspace]", 'members = ["crates/*"]', 'resolver = "3"'),
                  file.path(root, "Cargo.toml"))
     }
-    # A source checkout uses the workspace dependency; bootstrap.R still
-    # stages it when building the development artifact during miniextendr_build().
+    # A source checkout uses the workspace dependency: miniextendr_build()
+    # installs in place, where the path resolves as written, and stages nothing.
     expect_identical(system2("git", c("-C", shQuote(root), "init", "--quiet")), 0L)
     # Cargo applies Git ignores only once the package manifest is tracked.
     # Model an existing Rust project, rather than an entirely untracked tree.

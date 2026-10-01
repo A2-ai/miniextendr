@@ -69,7 +69,7 @@ RUN cargo install cargo-limit --locked --version "0.0.13"
 
 # miniextendr's hard R `Imports` (rpkg/DESCRIPTION) must be present in the
 # native R so Phase 1 of the webR smoke (`tests/webr-smoke.sh`: native
-# `R CMD INSTALL` running the cdylib wrapper-gen pass) and CI tier 2 (#491)
+# `R CMD INSTALL` running the wrapper-gen pass) and CI tier 2 (#491)
 # can resolve them. The base webR image ships cli / lifecycle / R6 / vctrs but
 # not S7; install the full hard set so the smoke doesn't depend on the base
 # image's exact package roster. `methods` is part of base R. The posit PM

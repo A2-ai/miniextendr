@@ -107,7 +107,7 @@ pub(crate) fn formal_names<'a>(
 /// as is a name after `::`, `:::`, `$` or `@`. A replacement call
 /// (`class(x) <- v`) is qualified too: R resolves `base::class(x) <- v`
 /// through `base::"class<-"`. The match_arg choices placeholder, which the
-/// cdylib replaces with `c(<choices>)` when it writes the wrappers file, counts
+/// wrapper writer replaces with `c(<choices>)`, counts
 /// as a call to `c`.
 ///
 /// Returns `text` borrowed when nothing is qualified.

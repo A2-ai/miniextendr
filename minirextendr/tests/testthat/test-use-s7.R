@@ -198,7 +198,7 @@ test_that("a scaffolded S7 package's operator method works in a fresh session", 
     R_LIBS = paste(c(lib, .libPaths()), collapse = .Platform$path.sep),
     CARGO_TARGET_DIR = NA, CARGO_PROFILE = "dev", CARGO_FEATURES = "",
     CARGO_BUILD_TARGET = NA, CARGO_TERM_COLOR = "never", VENDOR_OUT = NA,
-    MINIEXTENDR_FORCE_WRAPPER_GEN = NA, ROXYGEN_PKG = NA, R_INSTALL_PKG = NA
+    R_INSTALL_PKG = NA
   ))
   suppressMessages({
     create_miniextendr_package(pkg, open = FALSE, rstudio = FALSE)

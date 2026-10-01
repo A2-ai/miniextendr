@@ -10,8 +10,7 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
   scripts <- system.file("scripts", package = "minirextendr", mustWork = TRUE)
 
   check_case <- function(name, git = "directory", tarball = TRUE,
-                         stamp = character(), bootstrap = NA_character_,
-                         reject = FALSE) {
+                         stamp = character(), reject = FALSE) {
     root <- withr::local_tempdir()
     workspace <- file.path(root, "workspace with spaces")
     pkg <- file.path(workspace, "packages", "guardpkg")
@@ -47,7 +46,7 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
     writeLines("pub fn value() -> i32 { 1 }", file.path(pkg, "src", "rust", "lib.rs"))
     sources <- file.path(pkg, "src", "rust", c("Cargo.toml", "Cargo.lock", "lib.rs"))
     before <- tools::md5sum(sources)
-    withr::local_envvar(c(MINIEXTENDR_BOOTSTRAP = bootstrap, R_HOME = R.home(),
+    withr::local_envvar(c(R_HOME = R.home(),
                          CARGO_FEATURES = "", CARGO_PROFILE = "release",
                          CARGO_TARGET_DIR = NA, CARGO_BUILD_TARGET = NA,
                          RUST_TOOLCHAIN = NA, CC = NA, COPYFILE_DISABLE = "1"))
@@ -96,7 +95,5 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
   check_case("worktree leaked tarball", git = "file", reject = TRUE)
   check_case("built tarball under repository", stamp = "Packaged: 2026-09-08")
   check_case("installed package under repository", stamp = "Built: R 4.6.1")
-  check_case("bootstrap", bootstrap = "1")
-  check_case("set but empty bootstrap", bootstrap = "")
   check_case("tarball outside repository", git = "none")
 })

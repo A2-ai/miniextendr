@@ -106,7 +106,7 @@ jobs:
         run: gh auth setup-git
 
       # Gotcha 5: pin macOS SDK + deployment target to CRAN's binary targets so
-      # Rust artefacts (staticlib / cdylib) link cleanly into R's package build
+      # the Rust staticlib links cleanly into R's package build
       # pipeline. Inlined (not `uses:`-referenced) from
       # r-devel/actions/setup-macos-tools@ec72e88 (action.yml lines 17-28) to
       # stay hermetic if that repo is later archived or restructured. Pin values

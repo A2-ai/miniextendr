@@ -1265,7 +1265,7 @@ pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 /// preference:
 ///
 /// 1. `choices(...)`: the quoted list, "One of ..." / "One or more of ...";
-/// 2. `match_arg`: a placeholder the cdylib resolves at write time (#210);
+/// 2. `match_arg`: a placeholder the wrapper writer resolves (#210);
 /// 3. anything else: `(no documentation available)`.
 ///
 /// `call_param_doc` is the text for a `call = caller` wrapper's trailing

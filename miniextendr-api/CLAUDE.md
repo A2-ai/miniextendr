@@ -9,7 +9,7 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
   `miniextendr-engine` only embeds R for standalone Rust binaries/tests.
 
 ## Architecture pointers
-- `registry.rs` — linkme `#[distributed_slice]` declarations (`MX_CALL_DEFS`, `MX_MATCH_ARG_CHOICES`, `MX_R_WRAPPERS`, `MX_CLASS_NAMES`, …) + cdylib entry.
+- `registry.rs` — linkme `#[distributed_slice]` declarations (`MX_CALL_DEFS`, `MX_MATCH_ARG_CHOICES`, `MX_R_WRAPPERS`, `MX_CLASS_NAMES`, …) + the `miniextendr_write_wrappers` / `miniextendr_write_wasm_registry` entry points.
 - `init.rs::package_init()` — consolidates `R_init_<pkg>` steps; `miniextendr_init!` proc-macro thin-wraps it.
 - `mx_abi.rs` — Rust reimpl of `mx_wrap`/`mx_get`/`mx_query`/`mx_abi_register` (replaced the old `mx_abi.c` / `entrypoint.c`).
 - `worker.rs` — worker thread + `Sendable<T>`. Without `worker-thread` feature, `run_on_worker(f) → Ok(f())` inline. On wasm the feature stays *enabled* but every spawn path is gated `not(target_family = "wasm")` so it also runs inline (see wasm gotcha below).

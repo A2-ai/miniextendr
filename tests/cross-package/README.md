@@ -84,7 +84,6 @@ producer.pkg/
 ├── NAMESPACE
 ├── configure.ac
 ├── configure
-├── bootstrap.R
 ├── cleanup*
 ├── R/
 ├── src/

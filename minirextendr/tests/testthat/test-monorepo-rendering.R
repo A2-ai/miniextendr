@@ -1,4 +1,4 @@
-test_that("monorepo examples render parseable Rust with either prefix", {
+test_that("monorepo examples render rustfmt-clean Rust with either prefix", {
   skip_if_not(nzchar(Sys.which("rustfmt")), "rustfmt not available")
   root <- withr::local_tempdir()
   usethis::local_project(root, force = TRUE, setwd = FALSE)
@@ -9,14 +9,17 @@ test_that("monorepo examples render parseable Rust with either prefix", {
   for (prefix in c("", "// ")) {
     suppressMessages(minirextendr:::use_template(
       "lib.rs", save_as = "lib.rs", subdir = "rpkg",
-      data = list(crate_name = "example-core", core_example_prefix = prefix)
+      data = list(crate_name = "example-core", core_example_prefix = prefix,
+                  core_example_close = paste0(prefix, "}"))
     ))
     source <- file.path(root, "lib.rs")
     lines <- readLines(source)
     expect_true(any(startsWith(lines, paste0(prefix, "pub fn core_greeting()"))))
+    # --check, as the scaffold's pre-commit hook runs it: the first commit of a
+    # fresh monorepo must not need a reformat.
     log <- file.path(root, "rustfmt.log")
-    status <- system2("rustfmt", c("--edition", "2024", "--emit", "stdout",
-                                   shQuote(source)), stdout = log, stderr = log)
+    status <- system2("rustfmt", c("--edition", "2024", "--check", shQuote(source)),
+                      stdout = log, stderr = log)
     expect_identical(status, 0L, info = paste(readLines(log), collapse = "\n"))
   }
 })

@@ -40,18 +40,15 @@ an edited doc comment reached the source \verb{man/} but not the installed help
 reinstall and a deferred install failure.
 
 The steps now run in dependency order. Step 3 compiles the crate in the
-source tree with \code{\link[pkgbuild:compile_dll]{pkgbuild::compile_dll()}} under
-\code{MINIEXTENDR_FORCE_WRAPPER_GEN=1}: a libs-only \verb{R CMD INSTALL} into a
-throwaway library that links \verb{src/<pkg>.so}, regenerates
-\verb{R/<pkg>-wrappers.R}, \code{src/rust/wasm_registry.rs} and the wrapper
-provenance record in place, and never loads the namespace, so a stale
-\code{NAMESPACE} cannot fail it. Step 4's \code{document()} reads the current
-wrappers; its own \code{pkgload::load_all()} compile finds the crate built and
-the record current, and only warns when \code{NAMESPACE} still lists an export
-the regenerated wrappers no longer define. Step 5 installs the package
-once, with \code{NAMESPACE}, \verb{man/} and the wrappers already in their final
-form. A brand-new package needs no special case: Step 3 writes its first
-wrappers file the same way.
+source tree with \code{\link[pkgbuild:compile_dll]{pkgbuild::compile_dll()}}: a libs-only \verb{R CMD INSTALL} into
+a throwaway library that links \verb{src/<pkg>.so}, regenerates
+\verb{R/<pkg>-wrappers.R} and \code{src/rust/wasm_registry.rs} from it in place, and
+never loads the namespace, so a stale \code{NAMESPACE} cannot fail it. Step 4's
+\code{document()} reads the current wrappers; its own \code{pkgload::load_all()}
+compile finds the library linked and the wrappers generated from it. Step 5
+installs the package once, with \code{NAMESPACE}, \verb{man/} and the wrappers
+already in their final form. A brand-new package needs no special case:
+Step 3 writes its first wrappers file the same way.
 
 \code{document()} loads the package from source through \code{pkgload::load_all()}
 and leaves that development namespace registered in the session. Its export
@@ -62,27 +59,14 @@ export the build just added. The workflow unloads it after \code{document()};
 \code{load_all()} reads the current \code{NAMESPACE}).
 }
 
-\section{Development bootstrap}{
+\section{Vendoring}{
 
-Installs select \code{MINIEXTENDR_BOOTSTRAP_MODE=dev} unless the caller supplied a
-mode or a distribution vendor archive already exists. Updated scaffolds
-package only path-dependency siblings, without xz or registry/Git vendoring.
-The portable manifest is activated in R CMD build's temporary copy, leaving
-the checkout's Cargo.toml unchanged. Ordinary bootstrap calls still default
-to distribution mode. Staging uses cargo-revendor when it is on PATH and the
-scaffold's base-R stager otherwise; both require updated templates.
-}
-
-\section{Source-tree restore}{
-
-The install step's \verb{R CMD build} runs \code{bootstrap.R} in the source tree. In
-distribution mode that seals \code{inst/vendor.tar.xz} there by design (the built
-tarball must carry it) and freezes \code{src/rust/Cargo.toml}; left in place, the
-latch would flip the next build into offline tarball mode (#1294).
-\code{miniextendr_build()} snapshots the manifest and lockfile on entry and
-restores them on exit, deleting a latch it created itself. A latch that
-existed \emph{before} the build is never deleted; a warning is emitted up front
-instead, and \code{minirextendr_doctor()} / \code{miniextendr_clean_vendor_leak()}
-point at the fix.
+Nothing here vendors. The install's \verb{R CMD build} runs \code{bootstrap.R}, which
+stages only path dependencies outside the package, in R CMD build's
+temporary copy; registry and Git dependencies resolve over the network. An
+offline, CRAN-ready tarball comes from \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}}. A
+pre-existing \code{inst/vendor.tar.xz} latch is never deleted, but every step
+then builds in offline tarball mode, so a warning is emitted up front and
+\code{miniextendr_doctor()} / \code{miniextendr_clean_vendor_leak()} point at the fix.
 }
 

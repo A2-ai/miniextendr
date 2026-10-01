@@ -243,7 +243,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // R6Class definition — optionally include inherit.
     // Use a placeholder so the resolver can look up the actual R class name
-    // at cdylib write time (handles `class = "Override"` on the parent).
+    // at wrapper write time (handles `class = "Override"` on the parent).
     if let Some(ref parent) = parsed_impl.r6_inherit {
         let parent_ref = class_ref_or_verbatim(parent);
         lines.push(format!(
@@ -313,7 +313,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
                 // Choice params get their choice text: the literal
                 // `choices(...)` line, or the write-time placeholder the
-                // cdylib pass renders to `One of "A", "B".` (#210).
+                // wrapper writer renders to `One of "A", "B".` (#210).
                 let body = ctor_mx_doc
                     .get(param_name)
                     .map(String::as_str)

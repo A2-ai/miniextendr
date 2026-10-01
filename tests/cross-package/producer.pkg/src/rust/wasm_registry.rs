@@ -9,7 +9,7 @@
 // the wasm32-gated `mod __miniextendr_wasm_registry;` that `miniextendr_init!()`
 // emits (see miniextendr-macros/src/lib.rs). The three slices are intentionally
 // empty — a real snapshot is only produced for deployable crates by
-// `miniextendr_write_wasm_registry` during the host cdylib pass.
+// `miniextendr_write_wasm_registry` during a host install.
 //
 // See #493. Cross-crate trait dispatch under wasm_registry (#495) is the
 // follow-up that would make these slices non-empty.

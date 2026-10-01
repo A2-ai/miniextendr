@@ -710,6 +710,7 @@ is_absolute_path <- function(path) {
 MX_GENERATED_GITIGNORED_PATHSPECS <- c(
   "src/rust/.cargo/config.toml",
   "src/Makevars",
+  "src/*-win.def",
   "src/*-wrappers.R",
   "R/*-wrappers.R",
   "src/rust/wasm_registry.rs"

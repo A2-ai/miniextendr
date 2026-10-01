@@ -35,7 +35,7 @@ test_that("real preclean and clean installs reuse the opted-in Cargo cache", {
   repo <- find_miniextendr_repo()
   withr::local_envvar(c(CARGO_TARGET_DIR = NA_character_, RUSTC_WRAPPER = "",
     CARGO_PROFILE = "dev", CARGO_TERM_COLOR = "never", R_INSTALL_PKG = NA_character_,
-    MINIEXTENDR_KEEP_TARGET = NA_character_, MINIEXTENDR_FORCE_WRAPPER_GEN = NA_character_))
+    MINIEXTENDR_KEEP_TARGET = NA_character_))
   root <- withr::local_tempdir()
   pkg <- file.path(root, "cacheprobe")
   suppressMessages(create_miniextendr_package(pkg, open = FALSE))

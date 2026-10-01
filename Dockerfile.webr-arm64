@@ -139,7 +139,7 @@ RUN curl -fsSL https://rig.r-pkg.org/deb/rig.gpg -o /etc/apt/trusted.gpg.d/rig.g
     && rig default 4.6.0
 
 # miniextendr's hard R `Imports` (rpkg/DESCRIPTION) in the native arm64 R, plus
-# rwasm. Phase 1 of the smoke (native cdylib wrapper-gen pass) resolves these.
+# rwasm. Phase 1 of the smoke (native wrapper-gen pass) resolves these.
 # The emsdk base is Ubuntu Noble, so the posit PM `__linux__/noble` repo serves
 # matching arm64 CRAN binaries — fast layer.
 RUN Rscript -e 'install.packages(c("cli","lifecycle","R6","S7","vctrs","pak"), repos="https://packagemanager.posit.co/cran/__linux__/noble/latest")' \
