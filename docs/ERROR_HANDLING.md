@@ -687,9 +687,10 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `AsNumericVec` | `numeric` |
 | `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |
-| `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), when both have one; at run time, when both arms refuse the kind of value, even with an opaque or `match_arg` arm (`one of "fast", "slow", or numeric`) |
+| `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), the same whichever arm got further. An arm with no entry here is named by what its type declares (a `#[derive(TryFromSexp)]` newtype), else by its own error at run time (`numeric` for a type error, the choices of a `match_arg` enum: `one of "fast", "slow", or a single double`), else by its `@param` noun (``a `DocId` ``) when the other arm is named. An `Option<T>` or `Result<T, ()>` arm reads `NULL or <expected of T>` |
 | `(A, B, ...)` | `a list of length N` |
 | `DataFrame` | `a data frame` |
+| a `#[derive(TryFromSexp)]` newtype | the inner type's (`struct Dose(AsNumeric)`: `a single number`), declared by the derive; none for an inner type that has none |
 | a `match_arg` enum | `one of "fast", "slow"` (`NULL or one of ...` for `Option<T>`), from the choice error at run time, with or without `#[miniextendr(match_arg)]` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |

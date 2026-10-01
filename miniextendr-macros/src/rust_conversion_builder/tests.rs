@@ -117,6 +117,146 @@ fn test_conversion_err_arm_fallback_prefix_and_rust_type() {
     assert!(!s.contains("failed to convert"), "{s}");
 }
 
+/// A type the macro has no wording for, converted with `TryFromSexp`, is
+/// asked what it declares before the error is: a `#[derive(TryFromSexp)]`
+/// newtype says what its inner type does. Lifetimes are erased in the
+/// lookup, and the `NULL or` of an `Option<_>` / `Missing<Option<_>>`
+/// parameter stays the prefix's.
+#[test]
+fn test_opaque_type_failure_asks_the_type_first() {
+    for (src, value, nullable) in [
+        ("x: Hyperparams<i32>", "Hyperparams < i32 >", false),
+        ("x: Option<DocId>", "DocId", true),
+        ("x: Missing<Option<Borrowed<'a>>>", "Borrowed < '_ >", true),
+    ] {
+        let s = conversion_text(&RustConversionBuilder::new(), src);
+        assert!(
+            s.contains(&format!(
+                "(< {value} as :: miniextendr_api :: TryFromSexp > :: __MX_EXPECTATION \
+                 . map (:: std :: string :: ToString :: to_string)) \
+                 . or_else (|| :: miniextendr_api :: __mx_conversion_expectation ! (e))"
+            )),
+            "{src}: {s}"
+        );
+        assert!(
+            s.contains(&format!(
+                "conversion_prefix (\"x\" , {nullable} , __mx_expected . as_deref () ,)"
+            )),
+            "{src}: {s}"
+        );
+    }
+}
+
+/// An `Either` the macro cannot word as a whole is worded side by side at
+/// run time (`from_r::either_expectation`): a side it knows by its text, an
+/// opaque side by its type's `__MX_EXPECTATION` and its `@param` noun, an
+/// `Option` / `Result<_, ()>` side as `NULL or` its value, a nested
+/// `Either` side by side. So one opaque side no longer leaves the parameter
+/// without an expectation.
+#[test]
+fn test_either_with_an_opaque_side_is_worded_side_by_side() {
+    let arm = ":: miniextendr_api :: from_r :: ExpectedArm";
+    let opaque = |ty: &str, noun: &str| {
+        format!(
+            "{arm} :: Opaque {{ declared : < {ty} as :: miniextendr_api :: TryFromSexp > \
+             :: __MX_EXPECTATION , noun : \"{noun}\" , }}"
+        )
+    };
+    for (src, arms) in [
+        (
+            "x: Either<OpaqueNumbers, DataFrame>",
+            format!(
+                "& {arm} :: Either (& {} , & {arm} :: Known (\"a data frame\"))",
+                opaque("OpaqueNumbers", "a `OpaqueNumbers`")
+            ),
+        ),
+        (
+            "x: Missing<Either<AsNumeric, Table>>",
+            format!(
+                "& {arm} :: Either (& {arm} :: Known (\"a single number\") , & {})",
+                opaque("Table", "a `Table`")
+            ),
+        ),
+        (
+            "x: Either<AsNumeric, Result<DataFrame, ()>>",
+            format!(
+                "& {arm} :: Either (& {arm} :: Known (\"a single number\") , \
+                 & {arm} :: Nullable (& {arm} :: Known (\"a data frame\")))"
+            ),
+        ),
+        (
+            "x: Either<bool, Either<Route, f64>>",
+            format!(
+                "& {arm} :: Either (& {arm} :: Known (\"TRUE or FALSE\") , \
+                 & {arm} :: Either (& {} , & {arm} :: Known (\"a single double\")))",
+                opaque("Route", "a `Route`")
+            ),
+        ),
+        (
+            "x: Either<Option<Dose<'a>>, DataFrame>",
+            format!(
+                "& {arm} :: Either (& {arm} :: Nullable (& {}) , & {arm} :: Known (\"a data frame\"))",
+                opaque("Dose < '_ >", "a `Dose<'a>`")
+            ),
+        ),
+    ] {
+        let s = conversion_text(&RustConversionBuilder::new(), src);
+        assert!(
+            s.contains(&format!(
+                "(:: miniextendr_api :: from_r :: either_expectation (& e , {arms})) \
+                 . or_else (|| :: miniextendr_api :: __mx_conversion_expectation ! (e))"
+            )),
+            "{src}: {s}"
+        );
+    }
+    // An `Either` the macro words as a whole keeps its literal prefix.
+    let s = conversion_text(
+        &RustConversionBuilder::new(),
+        "x: Either<AsNumeric, DataFrame>",
+    );
+    assert!(
+        s.contains("\"'x' must be a single number or a data frame\""),
+        "{s}"
+    );
+    assert!(!s.contains("either_expectation"), "{s}");
+}
+
+/// An `impl Trait` parameter gets no lookup: its binding is already the
+/// compile error, and the lookup would add a second one (`impl Trait` is not
+/// allowed in paths).
+#[test]
+fn test_impl_trait_parameter_does_not_ask_the_type() {
+    for src in ["x: impl AsRef<str>", "x: Vec<impl Display>"] {
+        let s = conversion_text(&RustConversionBuilder::new(), src);
+        assert!(!s.contains("__MX_EXPECTATION"), "{src}: {s}");
+        assert!(
+            s.contains("__mx_conversion_expectation ! (e)"),
+            "{src}: {s}"
+        );
+    }
+}
+
+/// Only a binding that converts with `TryFromSexp` asks the type: a
+/// `several_ok` `Vec<Mode>` (`match_arg_vec_from_sexp`), a layered choice
+/// and a choice `Either` name a type that need not implement it.
+#[test]
+fn test_other_conversion_paths_do_not_ask_the_type() {
+    let several = RustConversionBuilder::new().with_match_arg_several_ok("modes".to_string());
+    let layered = RustConversionBuilder::new()
+        .with_layered_choice("modes".to_string(), ChoiceLeaf::MatchArgSeveral);
+    let choice_either =
+        RustConversionBuilder::new().with_layered_choice("modes".to_string(), ChoiceLeaf::MatchArg);
+    for (builder, src) in [
+        (&several, "modes: Vec<Mode>"),
+        (&layered, "modes: Missing<Vec<Mode>>"),
+        (&choice_either, "modes: Either<Mode, DataFrame>"),
+    ] {
+        let s = conversion_text(builder, src);
+        assert!(!s.contains("__MX_EXPECTATION"), "{src}: {s}");
+        assert!(!s.contains("either_expectation"), "{src}: {s}");
+    }
+}
+
 /// A type with an R-facing expectation: `'<p>' must be <expected>`, the same
 /// classification as the R-side check, and the probe told the expectation is
 /// stated.

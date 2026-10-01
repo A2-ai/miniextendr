@@ -2639,6 +2639,125 @@ mod condition_macro_tests {
         );
     }
 
+    /// An `Either` parameter is worded side by side from what the wrapper
+    /// knows (`from_r::either_expectation`): a known side by its text,
+    /// whatever its error, so the text is the same for every failure; an
+    /// opaque side by what its type declares, else by what its own error
+    /// expected (a kind, the choices of a `match_arg` enum), else by its noun.
+    /// `None` only when no side is named by more than its noun.
+    #[cfg(feature = "either")]
+    #[test]
+    fn either_expectation_words_each_side() {
+        use crate::SEXPTYPE::{REALSXP, STRSXP, VECSXP};
+        use crate::from_r::{
+            ExpectedArm, SexpClassError, SexpError, SexpLengthError, SexpTypeError,
+            either_expectation,
+        };
+        use crate::match_arg::MatchArgError;
+
+        let either = |l: SexpError, r: SexpError| SexpError::EitherConversion {
+            left_error: Box::new(l),
+            right_error: Box::new(r),
+        };
+        let ty = |expected, actual| SexpError::Type(SexpTypeError { expected, actual });
+        let frame = || {
+            SexpError::Class(SexpClassError {
+                expected: "a data frame",
+                actual: REALSXP,
+            })
+        };
+        let length = || {
+            SexpError::Length(SexpLengthError {
+                expected: 1,
+                actual: 2,
+            })
+        };
+        let bad_value = || SexpError::InvalidValue("invalid UUID".into());
+        const ROUTES: &[&str] = &["oral", "bolus"];
+        let no_match = || {
+            SexpError::MatchArg(MatchArgError::NoMatch {
+                input: "zzz".into(),
+                choices: ROUTES,
+            })
+        };
+
+        let number = ExpectedArm::Known("a single number");
+        let table = ExpectedArm::Known("a data frame");
+        let dose = ExpectedArm::Opaque {
+            declared: Some("a single number"),
+            noun: "a `Dose`",
+        };
+        let route = ExpectedArm::Opaque {
+            declared: None,
+            noun: "a `Route`",
+        };
+        let doc_id = ExpectedArm::Opaque {
+            declared: None,
+            noun: "a `DocId`",
+        };
+        let pattern = ExpectedArm::Opaque {
+            declared: None,
+            noun: "a `Pattern`",
+        };
+        let words = |arms: &ExpectedArm<'_>, e: SexpError| either_expectation(&e, arms);
+
+        // Known sides: the same text whichever side got further.
+        let plain = ExpectedArm::Either(&number, &table);
+        for e in [
+            either(length(), frame()),
+            either(ty(REALSXP, VECSXP), frame()),
+        ] {
+            assert_eq!(
+                words(&plain, e).as_deref(),
+                Some("a single number or a data frame")
+            );
+        }
+        // A newtype side declares its inner type's text.
+        let newtype = ExpectedArm::Either(&dose, &table);
+        assert_eq!(
+            words(&newtype, either(length(), frame())).as_deref(),
+            Some("a single number or a data frame")
+        );
+        // An opaque side named by its error: a type error's kind, a
+        // `match_arg` enum's choices whether or not the value was a string.
+        let by_kind = ExpectedArm::Either(&doc_id, &number);
+        assert_eq!(
+            words(&by_kind, either(ty(STRSXP, VECSXP), length())).as_deref(),
+            Some("character or a single number")
+        );
+        let choices = ExpectedArm::Either(&route, &number);
+        for e in [either(no_match(), frame()), either(no_match(), length())] {
+            assert_eq!(
+                words(&choices, e).as_deref(),
+                Some(r#"one of "oral", "bolus", or a single number"#)
+            );
+        }
+        // An opaque side whose error names nothing: its noun, beside a side
+        // that is known.
+        assert_eq!(
+            words(&by_kind, either(bad_value(), ty(REALSXP, STRSXP))).as_deref(),
+            Some("a `DocId` or a single number")
+        );
+        // `NULL or` an optional side, and a nested `Either` side by side.
+        let optional = ExpectedArm::Nullable(&table);
+        let nullable = ExpectedArm::Either(&number, &optional);
+        assert_eq!(
+            words(&nullable, either(length(), frame())).as_deref(),
+            Some("a single number or NULL or a data frame")
+        );
+        let inner = ExpectedArm::Either(&route, &table);
+        let nested = ExpectedArm::Either(&number, &inner);
+        assert_eq!(
+            words(&nested, either(length(), either(no_match(), frame()))).as_deref(),
+            Some(r#"a single number or one of "oral", "bolus", or a data frame"#)
+        );
+        // No side named by more than its noun: no expectation.
+        let opaque = ExpectedArm::Either(&doc_id, &pattern);
+        assert_eq!(words(&opaque, either(bad_value(), length())), None);
+        // An error that is not an `Either` one does not fit the sides.
+        assert_eq!(words(&plain, length()), None);
+    }
+
     /// The conversion probe's preferred arm: an `RConditionError` error type
     /// contributes its class vector, message and data.
     #[test]

@@ -123,8 +123,9 @@ pub fn arg_error_pair(pair: (i32, String)) -> String {
     format!("{}:{}", pair.0, pair.1)
 }
 
-/// A data frame behind a newtype the macro knows nothing about: the class
-/// error says what it should have been.
+/// A data frame behind a newtype the macro does not see into at the
+/// parameter: the derive declares what its inner type accepts (`a data
+/// frame`), so a frame that fails later is refused in the same words.
 #[derive(miniextendr_api::TryFromSexp)]
 pub struct FrameArg(pub DataFrame);
 

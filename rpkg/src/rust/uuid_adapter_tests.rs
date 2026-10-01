@@ -1,4 +1,6 @@
 //! UUID adapter tests
+#[cfg(feature = "either")]
+use miniextendr_api::either_impl::Either;
 use miniextendr_api::uuid_impl::Uuid;
 use miniextendr_api::{IntoR, TryFromSexp, miniextendr};
 
@@ -10,6 +12,20 @@ use miniextendr_api::{IntoR, TryFromSexp, miniextendr};
 /// (R → Rust) and `Vec<Option<DocId>>` automatically — see issue #844.
 #[derive(TryFromSexp, IntoR)]
 pub struct DocId(Uuid);
+
+/// A `DocId` or a count: the `DocId` arm declares nothing (its inner `Uuid`
+/// has no R-facing wording), so a string that is not a UUID is refused with
+/// the arm's `@param` noun beside the count's expectation.
+/// @param x A UUID string, or a whole number.
+/// @noRd
+#[cfg(feature = "either")]
+#[miniextendr(noexport)]
+pub fn docid_or_count(x: Either<DocId, i32>) -> String {
+    match x {
+        Either::Left(id) => format!("id:{}", id.0),
+        Either::Right(n) => format!("count:{n}"),
+    }
+}
 
 /// Round-trip a `DocId` newtype through R. Exercises the derived scalar
 /// `TryFromSexp` (argument) and `IntoR` (return value).
