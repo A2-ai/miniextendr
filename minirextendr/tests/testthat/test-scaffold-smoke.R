@@ -45,6 +45,8 @@ test_that("standalone scaffold can vendor for CRAN prep", {
   # Verify vendor tarball was created
   expect_true(file.exists(tarball), info = "vendor.tar.xz should exist")
   expect_true(file.size(tarball) > 0, info = "vendor.tar.xz should be non-empty")
+  expect_true("vendor/.cargo-config.toml" %in% utils::untar(tarball, list = TRUE),
+              info = "tarball-mode configure needs vendor/.cargo-config.toml (#1555)")
 
   # Configure in tarball mode (inst/vendor.tar.xz present — configure auto-detects)
   suppressMessages({
@@ -98,4 +100,6 @@ test_that("monorepo scaffold can vendor for CRAN prep", {
   tarball <- file.path(rpkg_path, "inst", "vendor.tar.xz")
   expect_true(file.exists(tarball), info = "vendor.tar.xz should exist")
   expect_true(file.size(tarball) > 0, info = "vendor.tar.xz should be non-empty")
+  expect_true("vendor/.cargo-config.toml" %in% utils::untar(tarball, list = TRUE),
+              info = "tarball-mode configure needs vendor/.cargo-config.toml (#1555)")
 })

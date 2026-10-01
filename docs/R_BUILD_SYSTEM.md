@@ -346,7 +346,7 @@ The configure script resolves one of two install modes from a single signal:
 | Mode | When | Behavior |
 |---|---|---|
 | Source | `inst/vendor.tar.xz` absent | Cargo resolves through `[patch."git+url"]` to monorepo siblings if present, otherwise fetches the git URL declared in `Cargo.toml`. |
-| Tarball | `inst/vendor.tar.xz` present | Configure unpacks the tarball into `vendor/`, writes `[source]` replacement to `vendored-sources`, build runs `--offline`. |
+| Tarball | `inst/vendor.tar.xz` present | Configure unpacks the tarball into `vendor/` and writes the archive's `vendor/.cargo-config.toml` (the `[source.*]` replacements cargo-revendor recorded, Git `rev` / `branch` / `tag` pins included) with its `directory =` line relocated to the unpacked `vendor/`; build runs `--offline`. A missing file stops configure. |
 
 There is no env var for install mode (`NOT_CRAN`, `PREPARE_CRAN`,
 `FORCE_VENDOR` are all gone). See [CRAN Compatibility](CRAN_COMPATIBILITY.md)

@@ -11,7 +11,7 @@ signal and configures cargo accordingly:
 | Mode | Triggered when | Cargo behavior |
 |---|---|---|
 | **Source install** | `inst/vendor.tar.xz` is **absent** in the package being installed | Cargo resolves dependencies normally. In monorepo dev, configure writes a `[patch."git+url"]` block in `.cargo/config.toml` that points the three workspace crates at sibling paths. Otherwise cargo fetches the git URL declared in `Cargo.toml`. |
-| **Tarball install** | `inst/vendor.tar.xz` is **present** | Configure unpacks the tarball into `vendor/`, writes a `.cargo/config.toml` with `[source.crates-io]` and `[source."git+..."]` redirected to `vendored-sources`, and cargo builds offline. |
+| **Tarball install** | `inst/vendor.tar.xz` is **present** | Configure unpacks the tarball into `vendor/` and copies the archive's `vendor/.cargo-config.toml` into `.cargo/config.toml`, changing only its `directory =` line to the unpacked `vendor/`. That file holds the `[source.*]` replacements `cargo vendor` reported when cargo-revendor built the archive: `crates-io` plus one entry per Git source, including `?rev=` / `?branch=` / `?tag=` pins and Git dependencies reached only transitively. Cargo builds offline. An archive without the file stops configure with instructions to rebuild it with cargo-revendor. |
 
 That's the entire decision tree. There is no `NOT_CRAN` env var, no
 `PREPARE_CRAN`, no `FORCE_VENDOR`, no auto-detected "build context"; just the

@@ -59,6 +59,11 @@ release build. Fix:
   `apt-get install autoconf automake`.
 - `src/Makevars` or `src/rust/.cargo/config.toml` missing → run
   `bash ./configure` again; they are generated per install mode.
+- `configure: error: inst/vendor.tar.xz has no vendor/.cargo-config.toml` →
+  the vendor archive was not made by cargo-revendor (for example a plain
+  `cargo vendor` packed by hand), so configure cannot map the vendored sources.
+  Rebuild it with `minirextendr::miniextendr_vendor()`, then rebuild the
+  package tarball.
 
 ## Cargo build / link failures
 
