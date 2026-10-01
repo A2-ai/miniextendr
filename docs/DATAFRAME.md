@@ -56,7 +56,12 @@ fn round_trip(df: DataFrame) -> BuiltDataFrame {
 
 `DataFrame` implements `TryFromSexp`, so it is the inbound view type.
 `BuiltDataFrame` implements `IntoR`, so a Rust-created frame is handed back to
-R without exposing an unrooted intermediate.
+R without exposing an unrooted intermediate. For an optional frame, take
+`Option<DataFrame>`: `NULL` is `None`, and a data frame is `Some` of the same
+view (its class, attributes, row names and `NA` cells untouched), refused in
+the same words as a `DataFrame` parameter (`'df' must be NULL or a data frame:
+got numeric`). `Option<Either<L, DataFrame>>` (feature `either`) works the same
+way around an `Either`.
 
 ## The `DataFrame` view and `BuiltDataFrame` handle
 

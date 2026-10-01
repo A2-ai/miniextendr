@@ -876,16 +876,19 @@ pub trait TryFromSexp: Sized {
     /// marker reads as `NA` beyond it. `Either` asks the arm the value
     /// converted to, `Missing` asks its value, and `DataFrame` refuses
     /// nothing, so the NA cells of a data frame arm get through. The wrappers
-    /// `Result<T, ()>` and `#[derive(TryFromSexp)]` newtypes ask their value
-    /// too, so a `Result<DataFrame, ()>` arm or a newtype of a `DataFrame`
-    /// keeps its NA cells as well. `Result`'s `Err(())` comes only from
-    /// `NULL`, which holds no `NA`, so it passes.
+    /// `Result<T, ()>`, `Option<DataFrame>`, `Option<Either<L, R>>` and
+    /// `#[derive(TryFromSexp)]` newtypes ask their value too, so a
+    /// `Result<DataFrame, ()>` or `Option<DataFrame>` arm, a newtype of a
+    /// `DataFrame`, or the data frame arm of an `Option<Either<..>>` keeps its
+    /// NA cells as well. Their `Err(())` / `None` comes only from `NULL`,
+    /// which holds no `NA`, so it passes.
     ///
-    /// An `Option` arm (`Either<Option<AsNumeric>, DataFrame>`) keeps the
-    /// default, which reads the input rather than the value: `NULL` holds no
-    /// `NA` and passes as `None`, while an `NA` the arm reads as `None`
-    /// (`Option<f64>`, `Option<String>`) is still refused. An override that
-    /// answered `false` for `None` would let that `NA` through.
+    /// An `Option` arm over a scalar (`Either<Option<AsNumeric>, DataFrame>`)
+    /// keeps the default, which reads the input rather than the value: `NULL`
+    /// holds no `NA` and passes as `None`, while an `NA` the arm reads as
+    /// `None` (`Option<f64>`, `Option<String>`) is still refused. An override
+    /// that answered `false` for `None` would let that `NA` through; the
+    /// overrides above can, since their `None` is never an `NA`.
     #[doc(hidden)]
     #[inline]
     fn __mx_input_has_na(&self, input: SEXP) -> bool {

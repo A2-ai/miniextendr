@@ -387,7 +387,9 @@ the same way on `Either<String, R>`. Impl methods take all of these through
 (`choices(p = "...")` on `Either<String, R>` or `Missing<Either<String, R>>`).
 The parameter types of a `#[miniextendr]` trait also cross its trait ABI,
 which converts each one with `TryFromSexp` / `IntoR`; `Option<Either<..>>`
-has neither, so the `Option` layer is not available on a trait method.
+has a `TryFromSexp` impl (`NULL` → `None`, otherwise the left-first `Either`
+conversion, not the choice decoding) but no `IntoR`, so the `Option` layer is
+not available on a trait method.
 The other arm's name in
 the `@param` line comes from its Rust type (`DataFrame` is "a data frame",
 `List` "a list", `f64` "a number", `Vec<String>` "a character vector"; a type

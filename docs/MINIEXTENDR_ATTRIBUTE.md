@@ -549,7 +549,7 @@ On a list or map, `no_na` checks the top-level elements only: R's `anyNA()`
 on the list, and for a map of reading markers (`HashMap<String, AsNumeric>`)
 each value as the marker reads it. `list(a = c(1, NA))` passes.
 
-On an `Either<L, R>` (also under `Missing`), `no_na` emits no R guard. The
+On an `Either<L, R>` (also under `Missing` or `Option`), `no_na` emits no R guard. The
 check runs in the C wrapper after the conversion, for the arm the value
 converted to. That arm makes `anyNA()`'s check on the input in Rust, then its
 marker check, so every arm refuses what the guard refused. The exception is a
@@ -577,6 +577,13 @@ The left arm is tried first, so `NULL` (given or by default) converts to
 `NA` and `"NA"` are still refused, with the same condition as on
 `Either<AsNumeric, DataFrame>`: the check reads the input, so an `NA` that the
 arm converts to `None` (as `Option<f64>` does) is refused too.
+
+The whole `Either` can be optional instead: `Option<Either<AsNumericVec,
+DataFrame>>` reads `NULL` as `None` before either arm is tried, and `None`
+passes. A given value is checked by the arm it converted to, as above, so a
+data frame with `NA` cells still reaches the `DataFrame` arm. An
+`Option<DataFrame>` parameter is not an `Either`: it keeps the R guard
+(`is.null(x) || !anyNA(x)`), which refuses any `NA` cell.
 
 The macro finds an `Either` by the type as written. An `Either` behind a type
 alias (`type NumberOrTable = Either<AsNumeric, DataFrame>`), a newtype or

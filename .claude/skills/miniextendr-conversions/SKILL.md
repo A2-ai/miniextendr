@@ -83,10 +83,12 @@ R NA values are type-specific sentinel values:
   `f64` receives it as the NA_real_ NaN; `Option<f64>` maps it to `None`.
 - `NA_logical` is a third state for logicals — neither true nor false.
   Use `RLogical` (not `bool`) to represent it. `bool` treats NA as an error.
-- `NA_character_` causes an error for `String` / `&str`. Use
-  `Option<String>` / `Option<&str>` to accept it as `None`.
+- `NA_character_` becomes `""` for `String` / `&str` (lossy). Use
+  `Option<String>` / `Option<&str>` to receive it as `None`.
 
-`Option<T>` maps both NA and NULL to `None` for all wrapped types.
+`Option<T>` maps both NA and NULL to `None` for scalar types. Around a type
+with no NA of its own (`Vec<T>`, maps, sets, `DataFrame`, `Either<L, R>`) only
+NULL is `None`; any other value converts as the inner type, with its error.
 
 On output, `Option<T>` produces NA (not NULL) for `None` when T is a scalar
 type. `Option<Vec<T>>` produces NULL.

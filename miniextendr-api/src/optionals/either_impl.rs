@@ -23,6 +23,11 @@
 //!
 //! This "try left first" strategy means the order of type parameters matters!
 //!
+//! `Option<Either<L, R>>` reads `NULL` as `None` before either arm is tried;
+//! any other value converts as `Either<L, R>` (same arm order, same error)
+//! and becomes `Some`. A `no_na` parameter of that type is checked by the arm
+//! the value converted to, like a bare `Either`, and `None` passes.
+//!
 //! A `match_arg` / `choices` parameter typed `Either<T, R>` (or, with
 //! `several_ok`, `Either<Vec<T>, R>` / `Either<Box<[T]>, R>`) does not use
 //! this impl: its C wrapper decodes with
@@ -101,9 +106,9 @@
 
 pub use either::{Either, Left, Right};
 
-use crate::SEXP;
 use crate::from_r::{SexpError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 /// Implements `TryFromSexp` for `Either<L, R>`.
 ///
@@ -171,6 +176,64 @@ where
                 left_error: Box::new(left_err),
                 right_error: Box::new(right_err.into()),
             }),
+        }
+    }
+}
+
+/// Implements `TryFromSexp` for `Option<Either<L, R>>`.
+///
+/// `NULL` → `None`, before either arm is tried; any other value converts as
+/// an [`Either<L, R>`] (left first, the same error when both arms fail) and
+/// becomes `Some`. So an arm that would itself accept `NULL` never sees it.
+///
+/// Concrete rather than left to the newtype blanket `Option<T>` impl
+/// (`newtype.rs`), which `Either` does not match: without this impl,
+/// `Option<Either<L, R>>: TryFromSexp` fails with E0275 (overflow) instead
+/// of converting.
+impl<L, R> TryFromSexp for Option<Either<L, R>>
+where
+    Either<L, R>: TryFromSexp,
+{
+    type Error = <Either<L, R> as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <Either<L, R> as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <Either<L, R> as TryFromSexp>::CHARACTER_ONLY;
+    // `__MX_EXPECTATION` keeps its `None`: the inner text without `NULL or`
+    // would be wrong, and `#[miniextendr]` words an `Option<_>` parameter or
+    // arm itself (`NULL or <T>`).
+
+    // `NULL` (`None`) is "not given" and passes `no_na`.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.as_ref()
+            .is_some_and(<Either<L, R> as TryFromSexp>::__mx_has_na)
+    }
+
+    // A given value is read by the arm it converted to (a data frame arm
+    // keeps its `NA` cells); `NULL` holds no `NA`.
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        match self {
+            Some(either) => <Either<L, R> as TryFromSexp>::__mx_input_has_na(either, input),
+            None => false,
+        }
+    }
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            <Either<L, R> as TryFromSexp>::try_from_sexp(sexp).map(Some)
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            unsafe { <Either<L, R> as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map(Some)
         }
     }
 }
