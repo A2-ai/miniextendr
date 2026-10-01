@@ -112,7 +112,12 @@ test_that("scaffolded .gitignore actually ignores the generated build paths", {
     "src/Makevars",
     "src/ignpkg-win.def",
     "R/ignpkg-wrappers.R",
-    "src/rust/wasm_registry.rs"
+    "src/rust/wasm_registry.rs",
+    # Vendoring and cargo output: multi-MiB, and every committed copy stays
+    # in the history that each clone downloads
+    "inst/vendor.tar.xz",
+    "vendor/somecrate/Cargo.toml",
+    "rust-target/release/libignpkg.a"
   )
   for (rel in generated) {
     dir.create(file.path(tmp, dirname(rel)), recursive = TRUE, showWarnings = FALSE)
@@ -121,6 +126,24 @@ test_that("scaffolded .gitignore actually ignores the generated build paths", {
                       stdout = FALSE, stderr = FALSE)
     # check-ignore exits 0 when the path is ignored, 1 when it is not.
     expect_identical(status, 0L, info = rel)
+  }
+})
+
+test_that("no Rbuildignore template drops inst/vendor.tar.xz from the built tarball", {
+  # The tarball is gitignored but must ship in the R CMD build output: its
+  # presence is what switches configure into offline tarball mode. Match the
+  # way tools:::inRbuildignore() does (Perl regex, case-insensitive).
+  for (template in c("rpkg", "monorepo/rpkg")) {
+    patterns <- readLines(
+      system.file("templates", template, "Rbuildignore", package = "minirextendr", mustWork = TRUE)
+    )
+    patterns <- patterns[nzchar(patterns) & !grepl("^#", patterns)]
+    excluding <- patterns[vapply(
+      patterns,
+      function(p) grepl(p, "inst/vendor.tar.xz", perl = TRUE, ignore.case = TRUE),
+      logical(1)
+    )]
+    expect_identical(excluding, character(0), info = template)
   }
 })
 

@@ -43,6 +43,12 @@
 #' new session; [use_s7()] adds it. The check parses `R/` without running it,
 #' so a call reached through a helper function is not seen.
 #'
+#' In a git work tree the doctor also fails on a tracked `vendor.tar.xz`
+#' (`inst/vendor.tar.xz`, or one elsewhere in the package) and prints the
+#' `git rm --cached <path>` fix. That goes beyond the on-disk check: a tracked
+#' tarball is in every clone, and every committed version stays in the
+#' repository history.
+#'
 #' For more targeted checks, see [miniextendr_status()] (file presence)
 #' and [miniextendr_validate()] (configuration correctness).
 #'
@@ -493,6 +499,8 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
   cli::cli_h2("Vendor tarball")
 
   is_dev_source_tree <- !is.null(find_root_with_file(".git", usethis::proj_get()))
+  # NULL when git is missing or this is not a git work tree: skip silently.
+  tracked_tarballs <- tracked_vendor_tarballs(usethis::proj_get())
 
   if (!is.null(vendor_tarball_path) && fs::file_exists(vendor_tarball_path)) {
     if (is_dev_source_tree) {
@@ -505,7 +513,14 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
           "breaking the monorepo [patch] override on the next ",
           "{.code miniextendr_build()}."
         ),
-        "i" = "Run {.code miniextendr_clean_vendor_leak()} to remove it."
+        "i" = if ("inst/vendor.tar.xz" %in% tracked_tarballs) {
+          paste0(
+            "It is tracked in git (see below): untrack it first, then run ",
+            "{.code miniextendr_clean_vendor_leak()} to remove it."
+          )
+        } else {
+          "Run {.code miniextendr_clean_vendor_leak()} to remove it."
+        }
       ))
       results$fail <- c(results$fail, "stale inst/vendor.tar.xz in source tree")
     } else {
@@ -529,6 +544,41 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
   } else {
     cli::cli_alert_success("No {.path inst/vendor.tar.xz} leak detected")
     results$pass <- c(results$pass, "No vendor tarball leak")
+  }
+
+  # A tracked tarball is in every clone, where configure's leaked-tarball guard
+  # then stops the build, and each committed refresh adds the whole tarball to
+  # the repository history. The scaffold .gitignore can't untrack it.
+  if (!is.null(tracked_tarballs)) {
+    if (length(tracked_tarballs) == 0L) {
+      cli::cli_alert_success("No vendor tarball tracked in git")
+      results$pass <- c(results$pass, "no vendor tarball tracked in git")
+    } else {
+      cli::cli_alert_danger(
+        "{length(tracked_tarballs)} vendor tarball{?s} {?is/are} tracked in git:"
+      )
+      for (tarball in tracked_tarballs) {
+        cli::cli_bullets(c(
+          "x" = "{.path {tarball}} \u2014 fix: {.code git rm --cached {tarball}}"
+        ))
+      }
+      cli::cli_bullets(c(
+        "i" = paste0(
+          "It is a build artifact: {.code miniextendr_build_tarball()} vendors ",
+          "it into the release tarball and removes it again. ",
+          "{.code git rm --cached} keeps the file on disk and the scaffold ",
+          "{.path .gitignore} keeps it out afterwards."
+        ),
+        "i" = paste0(
+          "Earlier commits still hold every version you committed; only a ",
+          "history rewrite removes those."
+        )
+      ))
+      results$fail <- c(
+        results$fail,
+        paste0("vendor tarball tracked in git: ", tracked_tarballs)
+      )
+    }
   }
 
   # -- Cargo.lock shape --
@@ -716,14 +766,15 @@ MX_GENERATED_GITIGNORED_PATHSPECS <- c(
   "src/rust/wasm_registry.rs"
 )
 
-#' Generated files that are tracked in git
+#' Files matching git pathspecs that are tracked in git
 #'
 #' A `.gitignore` only affects untracked files: packages scaffolded before the
 #' #1226 pattern fix (the old `.cargo/config.toml` pattern was mis-anchored
 #' and never matched the nested path) may have `git add`ed generated files
 #' before the corrected pattern arrived, and `upgrade_gitignore()` cannot
-#' un-track them. Runs a single batched `git ls-files` over every pathspec in
-#' `MX_GENERATED_GITIGNORED_PATHSPECS` so all offenders are collected in one
+#' un-track them. Runs a single batched `git ls-files` over every pathspec
+#' (`MX_GENERATED_GITIGNORED_PATHSPECS` for generated files, vendor tarball
+#' paths for tracked_vendor_tarballs()) so all offenders are collected in one
 #' pass rather than bailing at the first.
 #'
 #' `git ls-files` reads the index, so a file counts as tracked from the moment
@@ -735,13 +786,14 @@ MX_GENERATED_GITIGNORED_PATHSPECS <- c(
 #'   rationale as `check_scaffolding_clean()`), so the relative pathspecs
 #'   resolve against the package root and the reported paths come back
 #'   relative to it, ready to paste into `git rm --cached`.
-#' @return Character vector of tracked generated paths relative to `proj_dir`;
+#' @param pathspecs Git pathspecs, relative to `proj_dir`.
+#' @return Character vector of tracked paths relative to `proj_dir`;
 #'   `character(0)` when the check ran and found none. `NULL` when the check
 #'   cannot run at all: git missing from PATH, or `proj_dir` not inside a git
 #'   work tree (CRAN's offline farm, an extracted source tarball, or a test
 #'   fixture's bare `.git` stub directory).
 #' @noRd
-tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
+tracked_files <- function(proj_dir, pathspecs) {
   if (!nzchar(Sys.which("git"))) {
     return(NULL)
   }
@@ -758,13 +810,30 @@ tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
   # matched, so one invocation batches the whole sweep.
   tracked <- run_command(
     "git",
-    c("ls-files", "--", MX_GENERATED_GITIGNORED_PATHSPECS),
+    c("ls-files", "--", pathspecs),
     wd = proj_dir
   )
   if (!is.null(attr(tracked, "status"))) {
     return(NULL)
   }
   tracked[nzchar(tracked)]
+}
+
+#' Generated files that are tracked in git (see tracked_files())
+#' @noRd
+tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
+  tracked_files(proj_dir, MX_GENERATED_GITIGNORED_PATHSPECS)
+}
+
+#' Vendor tarballs that are tracked in git
+#'
+#' `inst/vendor.tar.xz`, or any `vendor.tar.xz` below the package, such as the
+#' `src/rust/vendor.tar.xz` of older scaffolds. A plain pathspec `*` also
+#' matches `/`, so `*/vendor.tar.xz` covers every depth. Same `NULL` /
+#' `character(0)` contract as tracked_files().
+#' @noRd
+tracked_vendor_tarballs <- function(proj_dir = usethis::proj_get()) {
+  tracked_files(proj_dir, c("vendor.tar.xz", "*/vendor.tar.xz"))
 }
 
 #' S7 use and load-hook state of a package
