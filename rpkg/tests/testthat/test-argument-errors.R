@@ -482,11 +482,15 @@ test_that("Either, AsFromStr and tuple arguments say what they accept", {
   e <- caught(df_option_scalar_none_count(list()))
   expect_identical(e$param, "df")
   expect_identical(conditionMessage(e), "'df' must be a data frame: got list")
-  # Behind a newtype the macro knows nothing about, the class error says what
-  # the value should have been.
+  # Behind a newtype, the derive declares what the data frame it wraps
+  # accepts: the same words for a frame that fails later.
   e <- caught(miniextendr:::frame_arg(1))
   expect_identical(e$param, "x")
   expect_identical(conditionMessage(e), "'x' must be a data frame: got numeric")
+  expect_identical(
+    conditionMessage(caught(miniextendr:::frame_arg(structure(list(1), class = "data.frame")))),
+    "'x' must be a data frame: data.frame has no column names"
+  )
 
   e <- caught(miniextendr:::test_fromstr_ip(1))
   expect_identical(e$param, "addr")
@@ -528,7 +532,8 @@ test_that("an Either whose arms both refuse the kind of value names both", {
     refusal(miniextendr:::either_num_or_df(NULL)),
     "'x' must be double or a data frame: got NULL"
   )
-  # An opaque arm: the expectation comes from the two arms' errors.
+  # A newtype arm says what its inner type does (`numeric`), so the text is
+  # the same whichever arm got further.
   expect_identical(miniextendr:::either_opaque_or_df(c("1", "2")), "num:2")
   expect_identical(
     refusal(miniextendr:::either_opaque_or_df(list(4, 8, 12))),
@@ -538,35 +543,38 @@ test_that("an Either whose arms both refuse the kind of value names both", {
     refusal(miniextendr:::either_opaque_or_df(NULL)),
     "'x' must be numeric or a data frame: got NULL"
   )
+  expect_identical(
+    refusal(miniextendr:::either_opaque_or_df(structure(list(1), class = "data.frame"))),
+    "'x' must be numeric or a data frame: data.frame has no column names"
+  )
   # A `match_arg` enum decoded by its own `TryFromSexp` (no `match_arg`
-  # attribute) refuses a value that is not a string by its kind too.
+  # attribute) is named by its error's choices, beside the number arm's own
+  # words, whichever arm got further.
   expect_identical(miniextendr:::either_route_or_number("oral"), "Oral")
   expect_identical(miniextendr:::either_route_or_number(2.5), "number:2.5")
   e <- caught(miniextendr:::either_route_or_number(TRUE))
   expect_identical(class(e), layers)
   expect_identical(e$param, "x")
   expect_identical(e$rust_type, "Either<Route, f64>")
-  expect_identical(
-    conditionMessage(e),
-    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got logical"
-  )
+  route_or_number <- "'x' must be one of \"oral\", \"bolus\", \"infusion\", or a single double"
+  expect_identical(conditionMessage(e), paste0(route_or_number, ": got logical"))
   expect_identical(
     refusal(miniextendr:::either_route_or_number(1L)),
-    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got integer"
+    paste0(route_or_number, ": got integer")
   )
   expect_identical(
     refusal(miniextendr:::either_route_or_number(list(1))),
-    "'x' must be one of \"oral\", \"bolus\", \"infusion\", or numeric: got list"
+    paste0(route_or_number, ": got list")
   )
   # A string that matches no choice got further: the choice's reason.
   expect_identical(
     refusal(miniextendr:::either_route_or_number("zzz")),
-    "invalid 'x' argument: expected one of \"oral\", \"bolus\", \"infusion\", got \"zzz\""
+    paste0(route_or_number, ": got \"zzz\"")
   )
-  # Only the number arm got as far as the length.
+  # Only the number arm got as far as the length: its reason.
   expect_identical(
     refusal(miniextendr:::either_route_or_number(c(1, 2))),
-    "invalid 'x' argument: expected length 1, got length 2"
+    paste0(route_or_number, ": got length 2")
   )
   # A data frame that fails later keeps its own reason.
   expect_identical(
@@ -578,13 +586,71 @@ test_that("an Either whose arms both refuse the kind of value names both", {
   expect_identical(miniextendr:::either_flag_or_route_or_number("bolus"), "Bolus")
   expect_identical(
     refusal(miniextendr:::either_flag_or_route_or_number(list())),
-    "'x' must be logical or one of \"oral\", \"bolus\", \"infusion\", or numeric: got list"
+    "'x' must be TRUE or FALSE or one of \"oral\", \"bolus\", \"infusion\", or a single double: got list"
   )
   # Two choice lists read as one.
   expect_identical(miniextendr:::either_route_or_mode("Safe"), "mode:Safe")
   expect_identical(
     refusal(miniextendr:::either_route_or_mode(1)),
     "'x' must be one of \"oral\", \"bolus\", \"infusion\", \"Fast\", \"Safe\", \"Debug\": got numeric"
+  )
+})
+
+test_that("an Either with a newtype arm is refused in the words of the type it wraps", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature not compiled in")
+  bad_frame <- structure(list(1), class = "data.frame")
+  # `Either<AsNumeric, Table>`, `Table` a `#[derive(TryFromSexp)]` newtype of
+  # a data frame, reads as `Either<AsNumeric, DataFrame>`, whichever arm got
+  # further: the number arm (length) or the data frame arm (no names).
+  for (x in list(c(1, 2), bad_frame, list(1, 2), NULL)) {
+    wrapped <- caught(miniextendr:::value_or_wrapped_table(x))
+    plain <- caught(miniextendr:::value_or_table(x))
+    expect_identical(conditionMessage(wrapped), conditionMessage(plain))
+    expect_identical(class(wrapped), class(plain))
+    expect_identical(wrapped$param, "x")
+  }
+  expect_identical(
+    conditionMessage(caught(miniextendr:::value_or_wrapped_table(c(1, 2)))),
+    "'x' must be a single number or a data frame: got length 2"
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::value_or_wrapped_table(bad_frame))),
+    "'x' must be a single number or a data frame: data.frame has no column names"
+  )
+  # A `Result<DataFrame, ()>` arm reads `NULL` too.
+  expect_identical(
+    conditionMessage(caught(miniextendr:::value_or_result_table(c(1, 2)))),
+    "'x' must be a single number or NULL or a data frame: got length 2"
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::value_or_result_table(bad_frame))),
+    "'x' must be a single number or NULL or a data frame: data.frame has no column names"
+  )
+})
+
+test_that("an Either arm that declares nothing is named by its noun beside the other arm", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature not compiled in")
+  skip_if_not(miniextendr_has_feature("uuid"), "uuid feature not compiled in")
+  id <- "550e8400-e29b-41d4-a716-446655440000"
+  expect_identical(miniextendr:::docid_or_count(id), paste0("id:", id))
+  expect_identical(miniextendr:::docid_or_count(3L), "count:3")
+  # Not a UUID: the `DocId` arm (a newtype of `Uuid`, which has no R-facing
+  # wording) got further, and its error names no expectation.
+  e <- caught(miniextendr:::docid_or_count("not-a-uuid"))
+  expect_identical(e$param, "x")
+  expect_identical(e$rust_type, "Either<DocId, i32>")
+  expect_identical(
+    conditionMessage(e),
+    "'x' must be a `DocId` or a single integer: invalid UUID: invalid character: found `n` at 1"
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::docid_or_count(c("a", "b")))),
+    "'x' must be a `DocId` or a single integer: got length 2"
+  )
+  # Neither kind: the arm's own error names it (`character`).
+  expect_identical(
+    conditionMessage(caught(miniextendr:::docid_or_count(list()))),
+    "'x' must be character or a single integer: got list"
   )
 })
 

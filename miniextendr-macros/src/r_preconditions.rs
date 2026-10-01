@@ -809,8 +809,11 @@ impl RTypeCheck {
 /// wrappers, so the two paths describe an argument the same way. A few types
 /// without an R-side check still have an R-facing expectation
 /// ([`unchecked_expectation`]): `Either<L, R>`, the `AsFromStr` markers and
-/// tuples. `None` only for an opaque type (a custom `TryFromSexp` type): the
-/// conversion then reports `invalid '<p>' argument: <reason>`.
+/// tuples. `None` only for an opaque type (a custom `TryFromSexp` type, or an
+/// `Either` with such an arm): the wrapper then asks the type at run time
+/// (`rust_conversion_builder::declared_expectation`: a derived newtype's
+/// declared expectation, an `Either` side by side), else reports
+/// `invalid '<p>' argument: <reason>`.
 pub(crate) fn conversion_expectation(ty: &syn::Type, coerced: bool) -> Option<String> {
     let ty = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
     let Some(check) = r_check_for_type(ty) else {
@@ -1612,7 +1615,8 @@ mod tests {
         // Choice parameters, including the `Missing` / `Option` / `Either`
         // layers of #1551, have no static expectation: their conversion error
         // supplies it at run time (`one of "a", "b"`). An opaque side leaves
-        // the whole `Either` without one.
+        // the whole `Either` without a static one; the wrapper words it side
+        // by side at run time.
         for unknown in [
             "Hyperparams",
             "Either<i32, Hyperparams>",

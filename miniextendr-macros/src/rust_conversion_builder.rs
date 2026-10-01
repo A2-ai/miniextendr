@@ -683,7 +683,10 @@ impl RustConversionBuilder {
                         let try_expr = quote_spanned! {span=>
                             ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                         };
-                        let stmt = self.conversion_stmt(try_expr, &ctx, ident, ty, span);
+                        // `ty: TryFromSexp` here, so a failure can ask the
+                        // type what it declares.
+                        let stmt =
+                            self.conversion_stmt(try_expr, &ctx.with_declared(ty), ident, ty, span);
                         // `ty: TryFromSexp` is proven here, so a `no_na`
                         // parameter's value can be asked after the binding.
                         // Owned vector: it runs on the main thread, before a
@@ -1018,6 +1021,12 @@ struct ArgContext {
     /// `match_arg` type under an `Either<.., R>` layer come from
     /// `MatchArg::CHOICES`. Takes the place of `prefix`.
     expected_at_run_time: Option<TokenStream>,
+    /// An expression yielding what the argument's type declares (an
+    /// `Option<String>`) on the failure path, when the macro has no wording
+    /// for it: set by [`ArgContext::with_declared`] where the binding
+    /// converts with `TryFromSexp`, and tried before the error's own
+    /// expectation ([`declared_expectation`]).
+    declared: Option<TokenStream>,
     /// The R formal's name, `e$param`.
     r_name: String,
     /// The Rust type as written in the signature, `e$rust_type`: kept for the
@@ -1061,10 +1070,26 @@ impl ArgContext {
             prefix,
             expected_known: expected.is_some(),
             expected_at_run_time: None,
+            declared: None,
             r_name: r_name.to_string(),
             rust_type: crate::type_inspect::type_display(ty),
             nullable: crate::type_inspect::is_option_type(value_ty),
         }
+    }
+
+    /// This context for a binding that converts `ty` with `TryFromSexp`: when
+    /// the macro has no wording for the type, the failure path asks the type
+    /// what it declares ([`declared_expectation`]). Only there is
+    /// `ty: TryFromSexp` known; the other conversion paths (a `several_ok`
+    /// `Vec<Mode>`, a coercion helper) may name a type that has no impl. An
+    /// `impl Trait` type gets no lookup: it cannot name a path, and its
+    /// binding is already the compile error.
+    fn with_declared(&self, ty: &syn::Type) -> Self {
+        let mut ctx = self.clone();
+        if !ctx.expected_known && ctx.expected_at_run_time.is_none() && !names_impl_trait(ty) {
+            ctx.declared = Some(declared_expectation(ty));
+        }
+        ctx
     }
 
     /// The context of a choice parameter of type `ty` decoded as `leaf`, when
@@ -1119,6 +1144,7 @@ fn conversion_err_arm(
         prefix,
         expected_known,
         expected_at_run_time,
+        declared,
         r_name,
         rust_type,
         nullable,
@@ -1126,7 +1152,7 @@ fn conversion_err_arm(
     let expected = match expected_at_run_time {
         Some(expr) => Expected::RunTime(expr),
         None if *expected_known => Expected::Literal(prefix),
-        None => Expected::FromError,
+        None => Expected::FromError(declared.as_ref()),
     };
     let value = conversion_value_tokens(
         &ConversionSubject {
@@ -1200,9 +1226,11 @@ pub(crate) enum Expected<'a> {
     /// An expression the macro wrote yields it on the failure path (the
     /// choices of a `match_arg` type): the prefix is `'<p>' must be <it>`.
     RunTime(&'a TokenStream),
-    /// The error may know it (`__mx_conversion_expectation!`), else the
-    /// prefix is `invalid '<p>' argument`.
-    FromError,
+    /// What the type declares, when an expression for it is given
+    /// ([`declared_expectation`]), else what the error may know
+    /// (`__mx_conversion_expectation!`), else the prefix is
+    /// `invalid '<p>' argument`.
+    FromError(Option<&'a TokenStream>),
 }
 
 /// What a conversion failure is about: the value it names and how.
@@ -1226,11 +1254,12 @@ pub(crate) struct ConversionSubject<'a> {
 /// With [`Expected::Literal`] (the macro knows the R-facing expectation,
 /// `'<p>' must be <expected>`) the prefix is that literal; with
 /// [`Expected::RunTime`] it is `'<p>' must be ` and the expression's value.
-/// With [`Expected::FromError`] the error may know what the value should
-/// have been (a `match_arg` choice error: `one of "fast", "slow"`, #1594), so
-/// the prefix is built on the failure path from
-/// `__mx_conversion_expectation!(e)` by `condition::conversion_prefix`
-/// (`NULL or ...` when `nullable`), falling back to `invalid '<p>' argument`.
+/// With [`Expected::FromError`] the prefix is built on the failure path by
+/// `condition::conversion_prefix` (`NULL or ...` when `nullable`) from what
+/// the type declares (a `#[derive(TryFromSexp)]` newtype, the sides of an
+/// `Either`), else what the error may know (a `match_arg` choice error: `one
+/// of "fast", "slow"`, #1594, from `__mx_conversion_expectation!(e)`),
+/// falling back to `invalid '<p>' argument`.
 /// Shared by the argument conversions and the sidecar setters.
 pub(crate) fn conversion_value_tokens(
     subject: &ConversionSubject,
@@ -1267,21 +1296,116 @@ pub(crate) fn conversion_value_tokens(
                 #call,
             )
         },
-        Expected::FromError => quote_spanned! {span=> {
-            let __mx_expected = ::miniextendr_api::__mx_conversion_expectation!(e);
-            ::miniextendr_api::error_value::conversion_condition_value(
-                &::miniextendr_api::condition::conversion_prefix(
-                    #quoted,
-                    #nullable,
-                    __mx_expected.as_deref(),
-                ),
-                #param,
-                #rust_type,
-                &[#(#crate_class),*],
-                ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
-                #call,
-            )
-        } },
+        Expected::FromError(declared) => {
+            let from_error = quote! { ::miniextendr_api::__mx_conversion_expectation!(e) };
+            let expected = match declared {
+                Some(declared) => quote! { (#declared).or_else(|| #from_error) },
+                None => from_error,
+            };
+            quote_spanned! {span=> {
+                let __mx_expected: ::core::option::Option<::std::string::String> = #expected;
+                ::miniextendr_api::error_value::conversion_condition_value(
+                    &::miniextendr_api::condition::conversion_prefix(
+                        #quoted,
+                        #nullable,
+                        __mx_expected.as_deref(),
+                    ),
+                    #param,
+                    #rust_type,
+                    &[#(#crate_class),*],
+                    ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
+                    #call,
+                )
+            } }
+        }
+    }
+}
+
+/// The expression, on a conversion failure's path, for what a parameter of
+/// type `ty` declares when the macro has no wording for it: an
+/// `Option<String>`, with the error bound as `e`. Only for a type the binding
+/// converts with `TryFromSexp`, whose `__MX_EXPECTATION` it reads.
+///
+/// An `Either` (also under `Missing`) is worded side by side
+/// (`from_r::either_expectation`, [`expected_arm`]), so one side the macro
+/// does not know no longer leaves the whole parameter without an
+/// expectation; any other type is asked for its `__MX_EXPECTATION` (a
+/// `#[derive(TryFromSexp)]` newtype says what its inner type does). The
+/// `NULL or` of an `Option<_>` parameter is the prefix's (`nullable`).
+pub(crate) fn declared_expectation(ty: &syn::Type) -> TokenStream {
+    let value = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
+    let value = crate::type_inspect::option_inner_type(value).unwrap_or(value);
+    if crate::type_inspect::either_arms(value).is_some() {
+        let arms = expected_arm(value);
+        quote! { ::miniextendr_api::from_r::either_expectation(&e, &#arms) }
+    } else {
+        let value = crate::type_inspect::erase_lifetimes(value);
+        quote! {
+            <#value as ::miniextendr_api::TryFromSexp>::__MX_EXPECTATION
+                .map(::std::string::ToString::to_string)
+        }
+    }
+}
+
+/// The `from_r::ExpectedArm` of one side of an `Either`, of type `ty`: the
+/// macro's wording when it has one
+/// ([`crate::r_preconditions::conversion_expectation`]), a nested `Either`
+/// side by side, `NULL or <T>` for an `Option<T>` or `Result<T, ()>` side,
+/// else the type's `__MX_EXPECTATION`, with its `@param` noun
+/// ([`crate::type_inspect::r_value_noun`]) for when neither the type nor its
+/// error names it. Every side is a `TryFromSexp` type, as `Either`'s own
+/// impl requires (and the `Option` / `Result` impls of their `T`).
+fn expected_arm(ty: &syn::Type) -> TokenStream {
+    let arm = quote! { ::miniextendr_api::from_r::ExpectedArm };
+    if let Some(text) = crate::r_preconditions::conversion_expectation(ty, false) {
+        return quote! { #arm::Known(#text) };
+    }
+    if let Some((left, right)) = crate::type_inspect::either_arms(ty) {
+        let (left, right) = (expected_arm(left), expected_arm(right));
+        return quote! { #arm::Either(&#left, &#right) };
+    }
+    if let Some(inner) =
+        crate::type_inspect::option_inner_type(ty).or_else(|| unit_result_ok_type(ty))
+    {
+        let inner = expected_arm(inner);
+        return quote! { #arm::Nullable(&#inner) };
+    }
+    let noun = crate::type_inspect::r_value_noun(ty);
+    let ty = crate::type_inspect::erase_lifetimes(ty);
+    quote! {
+        #arm::Opaque {
+            declared: <#ty as ::miniextendr_api::TryFromSexp>::__MX_EXPECTATION,
+            noun: #noun,
+        }
+    }
+}
+
+/// Whether `ty` spells an `impl Trait` anywhere (`impl AsRef<str>`,
+/// `Vec<impl Display>`).
+fn names_impl_trait(ty: &syn::Type) -> bool {
+    fn scan(tokens: TokenStream) -> bool {
+        tokens.into_iter().any(|tt| match tt {
+            proc_macro2::TokenTree::Ident(ident) => ident == "impl",
+            proc_macro2::TokenTree::Group(group) => scan(group.stream()),
+            _ => false,
+        })
+    }
+    scan(quote! { #ty })
+}
+
+/// `T` for a `Result<T, ()>` type, which reads `NULL` as `Err(())`.
+fn unit_result_ok_type(ty: &syn::Type) -> Option<&syn::Type> {
+    let syn::Type::Path(tp) = ty else {
+        return None;
+    };
+    let seg = tp.path.segments.last()?;
+    if seg.ident != "Result" {
+        return None;
+    }
+    let ok = crate::type_inspect::first_type_argument(seg)?;
+    match crate::type_inspect::second_type_argument(seg)? {
+        syn::Type::Tuple(unit) if unit.elems.is_empty() => Some(ok),
+        _ => None,
     }
 }
 

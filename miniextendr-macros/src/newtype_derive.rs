@@ -119,6 +119,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
     // (`struct Dose(AsNumeric)`) refuses what the marker reads as `NA`. So
     // does `__mx_input_has_na`, so a newtype arm of an `Either` is checked as
     // its inner type: `struct Table(DataFrame)` keeps its `NA` cells.
+    let expectation = expectation_const(inner);
     Ok(quote! {
         #[automatically_derived]
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #from_where {
@@ -126,6 +127,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
             const NATIVE_BORROW: ::core::option::Option<::miniextendr_api::from_r::NativeBorrow> =
                 <#inner as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW;
             const CHARACTER_ONLY: bool = <#inner as ::miniextendr_api::TryFromSexp>::CHARACTER_ONLY;
+            const __MX_EXPECTATION: ::core::option::Option<&'static str> = #expectation;
             #[inline]
             fn __mx_has_na(&self) -> bool {
                 <#inner as ::miniextendr_api::TryFromSexp>::__mx_has_na(&#field)
@@ -153,6 +155,19 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
     })
+}
+
+/// The newtype's `TryFromSexp::__MX_EXPECTATION`: what an argument of the
+/// inner type must be, in R terms, so a newtype parameter or `Either` arm
+/// reads as its inner type does (`struct Dose(AsNumeric)`: `a single
+/// number`). The macro's own wording when it knows the inner type
+/// ([`crate::r_preconditions::conversion_expectation`]), else the inner
+/// type's constant, which a newtype of a newtype carries through.
+fn expectation_const(inner: &Type) -> TokenStream {
+    match crate::r_preconditions::conversion_expectation(inner, false) {
+        Some(expected) => quote! { ::core::option::Option::Some(#expected) },
+        None => quote! { <#inner as ::miniextendr_api::TryFromSexp>::__MX_EXPECTATION },
+    }
 }
 
 /// `#[derive(IntoR)]`: scalar forwarding `IntoR` + `IntoRNewtype` marker (for
@@ -249,6 +264,52 @@ mod tests {
             assert!(
                 out.contains(&forward(&format!("__mx_input_has_na (& {field} , input)"))),
                 "{out}"
+            );
+        }
+    }
+
+    /// `#[derive(TryFromSexp)]` declares the inner type's R-facing
+    /// expectation: the macro's wording for an inner type it knows, else the
+    /// inner type's own constant (a newtype of a newtype, a generic newtype).
+    #[test]
+    fn try_from_sexp_derive_declares_the_inner_expectation() {
+        let expectation = |input: syn::DeriveInput| {
+            let out = super::derive_try_from_sexp(input).unwrap().to_string();
+            let start = out
+                .find("const __MX_EXPECTATION")
+                .unwrap_or_else(|| panic!("no expectation constant: {out}"));
+            let end = start + out[start..].find(';').unwrap();
+            out[start..end].trim_end().to_string()
+        };
+        let declares = |text: &str| {
+            format!(
+                "const __MX_EXPECTATION : :: core :: option :: Option < & 'static str > = \
+                 :: core :: option :: Option :: Some ({text:?})"
+            )
+        };
+        assert_eq!(
+            expectation(syn::parse_quote! { struct Dose(AsNumeric); }),
+            declares("a single number")
+        );
+        assert_eq!(
+            expectation(syn::parse_quote! { struct Numbers { values: AsNumericVec } }),
+            declares("numeric")
+        );
+        assert_eq!(
+            expectation(syn::parse_quote! { struct Table(DataFrame); }),
+            declares("a data frame")
+        );
+        for (input, inner) in [
+            (syn::parse_quote! { struct Wrapped(Table); }, "Table"),
+            (syn::parse_quote! { struct Id(Uuid); }, "Uuid"),
+            (syn::parse_quote! { struct Any<T>(T); }, "T"),
+        ] {
+            assert_eq!(
+                expectation(input),
+                format!(
+                    "const __MX_EXPECTATION : :: core :: option :: Option < & 'static str > = \
+                     < {inner} as :: miniextendr_api :: TryFromSexp > :: __MX_EXPECTATION"
+                )
             );
         }
     }

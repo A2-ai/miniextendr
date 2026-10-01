@@ -690,14 +690,16 @@ fn generate_setter_body(
         }
         SlotKind::Conversion => {
             let ty = &slot.ty;
-            // The field type's expectation, else the one the error knows at
-            // run time (a `match_arg` enum field), as for an argument.
+            // The field type's expectation, else the one the type declares or
+            // the error knows at run time (a newtype, a `match_arg` enum
+            // field), as for an argument.
             let prefix = crate::r_preconditions::conversion_expectation(ty, false)
                 .map(|expected| format!("'{field_r_name}' must be {expected}"));
+            let declared = crate::rust_conversion_builder::declared_expectation(ty);
             let err_value = crate::rust_conversion_builder::conversion_value_tokens(
                 &crate::rust_conversion_builder::ConversionSubject {
                     expected: prefix.as_deref().map_or(
-                        crate::rust_conversion_builder::Expected::FromError,
+                        crate::rust_conversion_builder::Expected::FromError(Some(&declared)),
                         crate::rust_conversion_builder::Expected::Literal,
                     ),
                     quoted: &field_r_name,

@@ -438,6 +438,100 @@ impl KindExpected {
             }
         }
     }
+
+    /// This expectation on its own: the noun, or `one of "a", "b"`.
+    fn text(&self) -> String {
+        match self {
+            KindExpected::Noun(noun) => noun.clone(),
+            KindExpected::Choices(choices) => {
+                crate::match_arg::choice_expectation(choices, false, "")
+            }
+        }
+    }
+}
+
+/// What one side of an `Either` parameter accepts, as the generated wrapper
+/// knows it, for [`either_expectation`]. Not public API.
+#[cfg(feature = "either")]
+#[doc(hidden)]
+pub enum ExpectedArm<'a> {
+    /// The macro's text for a type it knows (`a single number`).
+    Known(&'a str),
+    /// A type the macro does not know: what its
+    /// [`TryFromSexp::__MX_EXPECTATION`] declares, else what the arm's own
+    /// error says it expected, else `noun`, the arm's `@param` noun (the
+    /// type's name in code format for a type without an R name).
+    Opaque {
+        /// `<T as TryFromSexp>::__MX_EXPECTATION`.
+        declared: Option<&'a str>,
+        /// The fallback name of the arm.
+        noun: &'a str,
+    },
+    /// An `Option<T>` or `Result<T, ()>` arm: `NULL or <T>`.
+    Nullable(&'a ExpectedArm<'a>),
+    /// A nested `Either`, matched with the two sides of its error.
+    Either(&'a ExpectedArm<'a>, &'a ExpectedArm<'a>),
+}
+
+#[cfg(feature = "either")]
+impl ExpectedArm<'_> {
+    /// This side's expectation against the error it gave, and whether
+    /// anything but a fallback noun named it.
+    fn resolve(&self, error: &SexpError) -> Option<(KindExpected, bool)> {
+        match self {
+            ExpectedArm::Known(text)
+            | ExpectedArm::Opaque {
+                declared: Some(text),
+                ..
+            } => Some((KindExpected::Noun((*text).to_string()), true)),
+            ExpectedArm::Opaque {
+                declared: None,
+                noun,
+            } => Some(match error.arm_expectation() {
+                Some(expected) => (expected, true),
+                None => (KindExpected::Noun((*noun).to_string()), false),
+            }),
+            ExpectedArm::Nullable(inner) => inner.resolve(error).map(|(expected, known)| {
+                (
+                    KindExpected::Noun(format!("NULL or {}", expected.text())),
+                    known,
+                )
+            }),
+            ExpectedArm::Either(left, right) => {
+                let SexpError::EitherConversion {
+                    left_error,
+                    right_error,
+                } = error
+                else {
+                    return None;
+                };
+                let (l, l_known) = left.resolve(left_error)?;
+                let (r, r_known) = right.resolve(right_error)?;
+                Some((KindExpected::Noun(l.join(&r)), l_known || r_known))
+            }
+        }
+    }
+}
+
+/// Internal: the expectation of an `Either` parameter whose conversion failed
+/// with `error`, from what the wrapper knows of each side (`arms`), for
+/// `'<p>' must be <expected>: <reason>`. Not public API.
+///
+/// Each side says what its type accepts whatever the input, so the text stays
+/// the same for every failure of the parameter: `a single number or a data
+/// frame` for `Either<Dose, DataFrame>`, where `Dose` is a
+/// `#[derive(TryFromSexp)]` newtype of `AsNumeric`. A side whose type says
+/// nothing is named by its own error when that knows (`numeric` for a type
+/// error, the choices of a `match_arg` enum), else by its fallback noun. `None`
+/// when no side is named by more than that noun: the wrapper then reports
+/// `invalid '<p>' argument`.
+#[cfg(feature = "either")]
+#[doc(hidden)]
+pub fn either_expectation(error: &SexpError, arms: &ExpectedArm<'_>) -> Option<String> {
+    match arms.resolve(error)? {
+        (expected, true) => Some(expected.text()),
+        (_, false) => None,
+    }
 }
 
 impl SexpError {
@@ -487,6 +581,19 @@ impl SexpError {
             } => both_kind_mismatches(left_error, right_error)
                 .map(|(expected, actual)| (KindExpected::Noun(expected), actual)),
             _ => None,
+        }
+    }
+
+    /// What this error says one `Either` side expected, whether or not the
+    /// value was of that side's kind: the kind it refused ([`Self::kind_mismatch`]),
+    /// or the choices of a `match_arg` refusal that got further (a string
+    /// that matched no choice). `None` for an error that names no
+    /// expectation (length, NA, an invalid value).
+    #[cfg(feature = "either")]
+    fn arm_expectation(&self) -> Option<KindExpected> {
+        match self {
+            SexpError::MatchArg(e) => Some(KindExpected::Choices(e.choices())),
+            _ => self.kind_mismatch().map(|(expected, _)| expected),
         }
     }
 
@@ -706,6 +813,19 @@ pub trait TryFromSexp: Sized {
     /// }
     /// ```
     const CHARACTER_ONLY: bool = false;
+
+    /// What an argument of this type must be, in R terms, when
+    /// `#[miniextendr]` cannot tell from the type as written: the
+    /// `<expected>` of a failed conversion's `'<p>' must be <expected>: ...`.
+    ///
+    /// `#[derive(TryFromSexp)]` sets it from the newtype's inner type
+    /// (`struct Dose(AsNumeric)` says `a single number`, as `AsNumeric`
+    /// does) or forwards the inner type's. The generated wrapper reads it on
+    /// the failure path of a parameter whose type the macro does not know,
+    /// alone or as an arm of an `Either`. `None` (the default) leaves the
+    /// expectation to the conversion error, else `invalid '<p>' argument`.
+    #[doc(hidden)]
+    const __MX_EXPECTATION: Option<&'static str> = None;
 
     /// The error type returned when conversion fails.
     type Error;

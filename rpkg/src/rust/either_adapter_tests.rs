@@ -21,14 +21,15 @@ pub fn either_num_or_df(x: Either<Vec<f64>, DataFrame>) -> String {
     describe_numbers_or_frame(x.map_left(|v| v.len()))
 }
 
-/// Numbers read like `as.numeric()`, behind a newtype the macro knows
-/// nothing about: its argument errors say what it accepts only through the
-/// conversion error.
+/// Numbers read like `as.numeric()`, behind a newtype the macro does not
+/// see into at the parameter: the derive declares what its inner type
+/// accepts (`numeric`).
 #[derive(miniextendr_api::TryFromSexp)]
 pub struct OpaqueNumbers(pub AsNumericVec);
 
-/// Opaque numbers or a data frame: the expectation comes from the two arms'
-/// errors at run time.
+/// Opaque numbers or a data frame: the newtype arm says what its inner type
+/// does, so every refusal names both arms, as `Either<AsNumericVec,
+/// DataFrame>` would.
 /// @param x Numbers, strings or factor labels, or a data frame.
 /// @noRd
 #[miniextendr(noexport)]
