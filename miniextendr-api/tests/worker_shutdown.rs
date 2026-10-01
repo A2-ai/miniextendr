@@ -164,7 +164,11 @@ fn shutdown_waits_for_in_flight_job_then_is_idempotent() {
         // The job completes normally even though shutdown was racing it:
         // shutdown's rendezvous `send` only lands once we return here and
         // the worker loops back to `recv()`.
-        assert_eq!(r, Ok(99), "in-flight job result lost across shutdown race");
+        assert_eq!(
+            r.expect("in-flight worker job should succeed"),
+            99,
+            "in-flight job result lost across shutdown race"
+        );
     });
 
     observer.join().expect("observer thread panicked");
