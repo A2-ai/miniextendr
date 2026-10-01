@@ -303,6 +303,56 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   })
 })
 
+# A release tarball ships the wrappers its NAMESPACE was documented from, so
+# write-wrappers.R refuses to replace them with different ones there: a build
+# with other features would otherwise install a missing S3 method with only a
+# warning. The shared object the install left in src/ stands in for the
+# tarball's build, and an edited wrappers file for one that no longer matches.
+test_that("write-wrappers.R keeps a release tarball's differing wrappers and stops", {
+  skip_e2e()
+  miniextendr_path <- find_miniextendr_repo()
+
+  tmp <- tempfile("rpkg-wrappers-check-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+  pkg_path <- file.path(tmp, "wrapcheck")
+
+  suppressWarnings(suppressMessages({
+    usethis::create_package(pkg_path, open = FALSE)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
+  }))
+  install_to_templib(pkg_path, tmp)
+
+  wrappers <- file.path(pkg_path, "R", "wrapcheck-wrappers.R")
+  write_wrappers <- function(release_tarball) {
+    withr::with_dir(file.path(pkg_path, "src"), system2(
+      file.path(R.home("bin"), "Rscript"),
+      c("../tools/write-wrappers.R", paste0("wrapcheck", .Platform$dynlib.ext),
+        release_tarball, "--features=extra"),
+      env = "MINIEXTENDR_WRAPPER_GEN=1", stdout = TRUE, stderr = TRUE
+    ))
+  }
+
+  generated <- readLines(wrappers)
+  out <- write_wrappers("true")
+  expect_null(attr(out, "status"))
+  expect_identical(readLines(wrappers), generated)
+
+  shipped <- c(generated, "stale_export <- function() NULL")
+  writeLines(shipped, wrappers)
+  out <- suppressWarnings(write_wrappers("true"))
+  expect_false(is.null(attr(out, "status")))
+  expect_true(any(grepl("different R wrappers than the wrapcheck tarball ships", out, fixed = TRUE)))
+  expect_true(any(grepl("Cargo features of this build: --features=extra", out, fixed = TRUE)))
+  expect_identical(readLines(wrappers), shipped)
+
+  out <- write_wrappers("false")
+  expect_null(attr(out, "status"))
+  expect_identical(readLines(wrappers), generated)
+})
+
 test_that("rpkg scaffolding with external cargo dependency works", {
   skip_e2e()
   miniextendr_path <- find_miniextendr_repo()

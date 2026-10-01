@@ -73,7 +73,7 @@ encoding symbols are exported. See [Encoding](ENCODING.md).
 
 ## Wrapper generation (Internal)
 
-Set by `src/Makevars` for the `Rscript tools/write-wrappers.R $(SHLIB)` step
+Set by `src/Makevars` for the `Rscript tools/write-wrappers.R` step
 only; never set it yourself:
 
 | Variable | Purpose |

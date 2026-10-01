@@ -130,6 +130,9 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # changed. wasm_registry.rs is read by `miniextendr_init!()` when
 # cross-compiling for wasm32, so it must follow every host edit to a
 # `#[miniextendr]` item. NAMESPACE is NOT generated here; roxygen2 writes it.
+# A release tarball (IS_TARBALL_INSTALL) ships the wrappers its NAMESPACE and
+# man/ were documented from, so there the script stops when the build generates
+# different ones (other features or target than the tarball was built with).
 #
 # $(WRAPPERS_R) has a rule without a recipe: when the file is missing (a fresh
 # checkout, or a tarball built without it) make treats it as just made and
@@ -144,7 +147,7 @@ $(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
 	  echo "wasm32 install: using the pre-generated R/@PACKAGE_NAME@-wrappers.R and src/rust/wasm_registry.rs"; \
 	else \
 	  echo "Generating R wrappers from $(SHLIB)"; \
-	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" ../tools/write-wrappers.R "$(SHLIB)"; \
+	  MINIEXTENDR_WRAPPER_GEN=1 "$(R_HOME)/bin$(R_ARCH)/Rscript" ../tools/write-wrappers.R "$(SHLIB)" "$(IS_TARBALL_INSTALL)" "$(CARGO_FEATURES_FLAG)"; \
 	fi
 	@mkdir -p "$(ABS_TOP_SRCDIR)/rust-target"
 	@touch "$(WRAPPERS_STAMP)"
