@@ -54,25 +54,34 @@
 //! ## Potentially problematic patterns
 //!
 //! ```ignore
-//! // f64 vs i32 - R integers can coerce to doubles!
-//! // If you pass an integer, it converts to Left(f64) not Right(i32)
-//! Either<f64, i32>  // Consider: Either<i32, f64> instead
+//! // AsNumeric vs i32 - AsNumeric reads R integers too!
+//! // If you pass an integer, it converts to Left(AsNumeric) not Right(i32)
+//! Either<AsNumeric, i32>  // Consider: Either<i32, AsNumeric> instead
 //!
-//! // Vec<f64> vs Vec<i32> - same issue with coercion
-//! Either<Vec<f64>, Vec<i32>>  // Consider: Either<Vec<i32>, Vec<f64>>
+//! // i64 vs bool - i64 reads R logicals too
+//! Either<i64, bool>  // Consider: Either<bool, i64>
 //! ```
 //!
 //! **Rule of thumb**: If `L` can successfully parse values intended for `R`,
 //! swap the order so the more restrictive type is tried first.
 //!
+//! Bare `f64`, `i32` and `bool` (and their `Vec`s) are strict: each reads one
+//! R type (`f64` only doubles, `i32` only integers), so they never overlap.
+//! Only a widening arm does: [`AsNumeric`](crate::AsNumeric) /
+//! [`AsNumericVec`](crate::AsNumericVec), or a scalar `i64`, `u32`, `f32` and
+//! the like, which read integer, double, logical and raw input.
+//! `#[miniextendr(coerce)]` / `coerce-default` do not widen an `Either`'s arms.
+//!
 //! ## Ambiguous Pairs Quick Reference
 //!
 //! | Ambiguous (avoid) | Safe Alternative | Why |
 //! |-------------------|------------------|-----|
-//! | `Either<f64, i32>` | `Either<i32, f64>` | R integers coerce to doubles |
-//! | `Either<Vec<f64>, Vec<i32>>` | `Either<Vec<i32>, Vec<f64>>` | Same coercion issue |
-//! | `Either<f64, bool>` | `Either<bool, f64>` | Booleans coerce to numeric |
-//! | `Either<i32, bool>` | `Either<bool, i32>` | Booleans coerce to integer |
+//! | `Either<f64, i32>` | OK as-is | Disjoint R types: a bare `f64` reads only doubles |
+//! | `Either<Vec<f64>, Vec<i32>>` | OK as-is | Disjoint R types |
+//! | `Either<f64, bool>` | OK as-is | Disjoint R types: a bare `f64` refuses logicals |
+//! | `Either<i32, bool>` | OK as-is | Disjoint R types: a bare `i32` refuses logicals |
+//! | `Either<AsNumeric, i32>` | `Either<i32, AsNumeric>` | `AsNumeric` reads integers too |
+//! | `Either<i64, bool>` | `Either<bool, i64>` | `i64` reads logicals too |
 //! | `Either<String, i32>` | OK as-is | Disjoint R types |
 //! | `Either<Vec<T>, T>` | `Either<T, Vec<T>>` | Scalar matches length-1 vector |
 //!

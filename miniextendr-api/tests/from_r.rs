@@ -778,6 +778,45 @@ fn either_wrapped_arm_no_na_reads_its_value() {
         );
     });
 }
+
+/// Bare `f64`, `i32` and `bool` arms read one R type each, so an R integer or
+/// logical passes over an `f64` / `i32` left arm, while a widening left arm
+/// (`AsNumeric`, `i64`) takes it: the module docs' quick reference.
+#[cfg(feature = "either")]
+#[test]
+fn either_bare_arms_are_strict() {
+    use miniextendr_api::either_impl::Either;
+    use miniextendr_api::gc_protect::OwnedProtect;
+    use miniextendr_api::{AsNumeric, r_str};
+
+    /// Whether `src`, evaluated, converts to the left arm of `Either<L, R>`.
+    fn takes_left<L, R>(src: &str) -> bool
+    where
+        L: TryFromSexp,
+        L::Error: Into<SexpError>,
+        R: TryFromSexp,
+        R::Error: Into<SexpError>,
+    {
+        let input = unsafe { OwnedProtect::new(r_str!(src).expect("R source should evaluate")) };
+        <Either<L, R>>::try_from_sexp(input.get())
+            .unwrap_or_else(|e| panic!("an arm should convert {src}: {e}"))
+            .is_left()
+    }
+
+    r_test_utils::with_r_thread(|| {
+        assert!(takes_left::<f64, i32>("1"));
+        assert!(!takes_left::<f64, i32>("1L"));
+        assert!(takes_left::<Vec<f64>, Vec<i32>>("c(1, 2)"));
+        assert!(!takes_left::<Vec<f64>, Vec<i32>>("1:3"));
+        assert!(!takes_left::<f64, bool>("TRUE"));
+        assert!(!takes_left::<i32, bool>("TRUE"));
+        // A scalar is a length-1 vector.
+        assert!(takes_left::<Vec<f64>, f64>("1"));
+        // A widening left arm takes what the right arm was meant for.
+        assert!(takes_left::<AsNumeric, i32>("1L"));
+        assert!(takes_left::<i64, bool>("TRUE"));
+    });
+}
 // endregion
 
 // region: Test try_from_sexp_unchecked propagation
