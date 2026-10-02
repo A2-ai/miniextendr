@@ -1,0 +1,5 @@
+error: unknown `call` value `wrapper`; the only one is `none` (`#[condition(call = none)]`: no call, like R's `call. = FALSE`)
+ --> tests/ui/derive_condition_call_unknown_value.rs:9:24
+  |
+9 |     #[condition(call = wrapper, message = "row {row} overrides an earlier one")]
+  |                        ^^^^^^^

@@ -169,6 +169,50 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 
 // endregion
 
+// region: ConditionCall — whether a condition reports a call
+
+/// Whether a condition reports a call (`conditionCall()`): the per-condition
+/// equivalent of R's `warning(..., call. = FALSE)` / `stop(..., call. = FALSE)`.
+///
+/// Every condition a `#[miniextendr]` function raises carries the call its
+/// transport captured: the wrapper's call as written (or the caller's, under
+/// `call = caller`), `NULL` in ALTREP and connection callbacks. A condition
+/// about the data rather than the call opts out with [`ConditionCall::None`];
+/// its siblings from the same function keep their call.
+///
+/// Spellings: `call = none` first in [`crate::warning!`], [`crate::error!`],
+/// [`crate::condition!`] and the `defer_*!` macros;
+/// [`RError::without_call`]; `#[condition(call = none)]` on a
+/// `#[derive(RConditionError)]` type or variant; or an
+/// [`RConditionError::call`] impl.
+///
+/// On the tagged condition value the choice is the `call` slot itself:
+/// `FALSE` for [`ConditionCall::None`], read back by the R helper (and by the
+/// trait-ABI re-panic, [`RCondition::from_tagged_sexp`]) as "no call".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConditionCall {
+    /// The call the transport captured (the default).
+    #[default]
+    Inherit,
+    /// No call: `conditionCall()` is `NULL` and the printed condition has no
+    /// `In f(...) :` prefix.
+    None,
+}
+
+impl ConditionCall {
+    /// `call` when the condition keeps its call, `None` otherwise: the call to
+    /// hand a transport that takes the R call object directly.
+    #[inline]
+    pub fn apply(self, call: Option<crate::SEXP>) -> Option<crate::SEXP> {
+        match self {
+            ConditionCall::Inherit => call,
+            ConditionCall::None => Option::None,
+        }
+    }
+}
+
+// endregion
+
 // region: RCondition enum — internal panic payload
 
 /// Internal panic payload for structured R conditions.
@@ -182,68 +226,133 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 ///
 /// This type is `#[doc(hidden)]` because users interact with the macros,
 /// not the enum directly.
+///
+/// Every variant carries the same four parts: the message, the user classes
+/// (prepended to the `rust_*` layering, empty for none), the optional `data`
+/// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
+/// the payload can be queued from a worker thread.
 #[doc(hidden)]
 #[derive(Debug)]
 pub enum RCondition {
     /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
     /// `Result<T, E>` Err arm once reconstructed across a package boundary.
-    /// `class` is the user-supplied class vector (empty = none), prepended
-    /// to the `rust_error` layering on the R side.
     Error {
         message: String,
         class: Vec<String>,
         data: Option<ConditionData>,
+        call: ConditionCall,
     },
     /// Raised by `warning!(...)` / `warning!(class = "...", ...)`.
     Warning {
         message: String,
         class: Vec<String>,
         data: Option<ConditionData>,
+        call: ConditionCall,
     },
     /// Raised by `message!(...)`, and queued by [`crate::defer_message()`]. Only
     /// the typed-payload path fills `class` (the macro has no `class =` form);
     /// the R helper layers it in front of `rust_message` like the other kinds.
+    /// A message never reports a call, whatever `call` says.
     Message {
         message: String,
         class: Vec<String>,
         data: Option<ConditionData>,
+        call: ConditionCall,
     },
     /// Raised by `condition!(...)` / `condition!(class = "...", ...)`.
     Condition {
         message: String,
         class: Vec<String>,
         data: Option<ConditionData>,
+        call: ConditionCall,
     },
 }
 
 impl RCondition {
-    /// Split into `(kind, message, class, data)`: the arguments of
-    /// [`crate::error_value::make_rust_condition_value_with_data`].
+    /// Split into the kind (one of [`crate::error_value::kind`]) and the
+    /// [`ErrParts`] (message, class, data, call choice) that
+    /// [`crate::error_value::condition_parts_value`] builds the tagged value
+    /// from.
     #[doc(hidden)]
-    pub fn into_parts(self) -> (&'static str, String, Vec<String>, Option<ConditionData>) {
+    pub fn into_parts(self) -> (&'static str, ErrParts) {
         use crate::error_value::kind;
-        match self {
+        let (kind, message, class, data, call) = match self {
             RCondition::Error {
                 message,
                 class,
                 data,
-            } => (kind::ERROR, message, class, data),
+                call,
+            } => (kind::ERROR, message, class, data, call),
             RCondition::Warning {
                 message,
                 class,
                 data,
-            } => (kind::WARNING, message, class, data),
+                call,
+            } => (kind::WARNING, message, class, data, call),
             RCondition::Message {
                 message,
                 class,
                 data,
-            } => (kind::MESSAGE, message, class, data),
+                call,
+            } => (kind::MESSAGE, message, class, data, call),
             RCondition::Condition {
                 message,
                 class,
                 data,
-            } => (kind::CONDITION, message, class, data),
+                call,
+            } => (kind::CONDITION, message, class, data, call),
+        };
+        (
+            kind,
+            ErrParts {
+                message,
+                class,
+                data,
+                call,
+            },
+        )
+    }
+
+    /// The condition message.
+    #[doc(hidden)]
+    pub fn message(&self) -> &str {
+        match self {
+            RCondition::Error { message, .. }
+            | RCondition::Warning { message, .. }
+            | RCondition::Message { message, .. }
+            | RCondition::Condition { message, .. } => message,
         }
+    }
+
+    /// Whether the condition reports a call.
+    #[doc(hidden)]
+    pub fn call(&self) -> ConditionCall {
+        match self {
+            RCondition::Error { call, .. }
+            | RCondition::Warning { call, .. }
+            | RCondition::Message { call, .. }
+            | RCondition::Condition { call, .. } => *call,
+        }
+    }
+}
+
+/// Run `f`, returning a condition raised inside it (`error!()`, `warning!()`,
+/// `message!()`, `condition!()`) as `Err`; any other panic resumes unwinding.
+///
+/// Generated `#[miniextendr(worker)]` wrappers run the body through it on the
+/// worker thread. The payload is `Send`, so it crosses back to the main thread
+/// as a value and is raised there like on the main-thread path (class, data
+/// and call choice kept), rather than reaching `run_on_worker`'s panic
+/// handling, which keeps only a message. Generic panics are resumed untouched,
+/// so the worker's handling still folds in their source location.
+#[doc(hidden)]
+pub fn catch_condition<T>(f: impl FnOnce() -> T) -> Result<T, RCondition> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(value) => Ok(value),
+        Err(payload) => match payload.downcast::<RCondition>() {
+            Ok(condition) => Err(*condition),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
     }
 }
 
@@ -344,43 +453,115 @@ macro_rules! __mx_condition_data {
 }
 
 /// Internal: parse the shared option grid of `error!` / `warning!` /
-/// `condition!` into `(class, data, message)`. Not part of the public API.
+/// `condition!` and the `defer_*!` macros into `(call, class, data, message)`.
+/// Not part of the public API.
 ///
 /// Accepted orders (every part optional except the message):
-/// `class = ..`, then `data = ..`, then the `format!` arguments. `class` takes
-/// anything implementing [`crate::condition::ConditionClass`] (one string or
-/// several).
+/// `call = none`, then `class = ..`, then `data = ..`, then the `format!`
+/// arguments. `class` takes anything implementing
+/// [`crate::condition::ConditionClass`] (one string or several). A `call`
+/// other than `none`, or one after `class` / `data`, is a compile error: a
+/// `format!` string must start with a literal, so `call` as the first token is
+/// never a message.
+///
+/// ```compile_fail
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::warning!(call = wrapper, "no such call option");
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::warning!(class = "pkg_warning", call = none, "`call` goes first");
+/// # }
+/// ```
+///
+/// ```
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::warning!(call = none, class = "pkg_warning", data = { n = 1 }, "plain");
+/// # }
+/// ```
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __mx_condition_parts {
-    (class = $class:expr, data = $data:tt, $($arg:tt)*) => {
+    // The option grid after the `call` choice: `(class, data, message)`.
+    (@options class = $class:expr, call $($rest:tt)*) => {
+        $crate::__mx_condition_parts!(@misplaced_call)
+    };
+    (@options class = $class:expr, data = $data:tt, call $($rest:tt)*) => {
+        $crate::__mx_condition_parts!(@misplaced_call)
+    };
+    (@options data = $data:tt, call $($rest:tt)*) => {
+        $crate::__mx_condition_parts!(@misplaced_call)
+    };
+    (@options class = $class:expr, data = $data:tt, $($arg:tt)*) => {
         (
             $crate::condition::ConditionClass::into_condition_class($class),
             $crate::__mx_condition_data!($data),
             ::std::format!($($arg)*),
         )
     };
-    (data = $data:tt, $($arg:tt)*) => {
+    (@options data = $data:tt, $($arg:tt)*) => {
         (
             ::std::vec::Vec::<::std::string::String>::new(),
             $crate::__mx_condition_data!($data),
             ::std::format!($($arg)*),
         )
     };
-    (class = $class:expr, $($arg:tt)*) => {
+    (@options class = $class:expr, $($arg:tt)*) => {
         (
             $crate::condition::ConditionClass::into_condition_class($class),
             ::std::option::Option::<$crate::condition::ConditionData>::None,
             ::std::format!($($arg)*),
         )
     };
-    ($($arg:tt)*) => {
+    (@options $($arg:tt)*) => {
         (
             ::std::vec::Vec::<::std::string::String>::new(),
             ::std::option::Option::<$crate::condition::ConditionData>::None,
             ::std::format!($($arg)*),
         )
     };
+    (@options call $($rest:tt)*) => {
+        ::core::compile_error!("condition macros: `call = none` is given twice")
+    };
+    (@misplaced_call) => {
+        ::core::compile_error!(
+            "condition macros: `call = none` comes first, before `class = ...` and `data = ...`: \
+             `warning!(call = none, class = \"...\", \"...\")`"
+        )
+    };
+    // Entry: the optional `call = none`, then the option grid.
+    (call = none, $($rest:tt)+) => {{
+        let (__mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!(@options $($rest)+);
+        (
+            $crate::condition::ConditionCall::None,
+            __mx_class,
+            __mx_data,
+            __mx_message,
+        )
+    }};
+    (call $($rest:tt)*) => {
+        ::core::compile_error!(
+            "condition macros: the only call option is `call = none` (no call, like R's \
+             `call. = FALSE`), and it comes first, followed by a comma: \
+             `warning!(call = none, \"...\")`"
+        )
+    };
+    ($($rest:tt)*) => {{
+        let (__mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!(@options $($rest)*);
+        (
+            $crate::condition::ConditionCall::Inherit,
+            __mx_class,
+            __mx_data,
+            __mx_message,
+        )
+    }};
 }
 
 /// Raise an R error from Rust with `rust_error` class layering.
@@ -423,8 +604,8 @@ macro_rules! __mx_condition_parts {
 /// # [1] 150   0 100
 /// ```
 ///
-/// Argument order is fixed: `class = ...` (optional), then `data = ...`
-/// (optional), then the format message.
+/// Argument order is fixed: `call = none` (optional), then `class = ...`
+/// (optional), then `data = ...` (optional), then the format message.
 ///
 /// Field names `message`, `call` and `kind` are the condition's own slots and
 /// are rejected (at compile time for literal / bare-identifier names, at
@@ -441,6 +622,22 @@ macro_rules! __mx_condition_parts {
 /// along; the R objects are materialised on the main thread at the unwind
 /// boundary. For nested lists or complex/raw values build an
 /// [`RValue`](crate::RValue) directly.
+///
+/// # Conditions without a call
+///
+/// A leading `call = none` raises the condition with no call, like R's
+/// `stop(..., call. = FALSE)`: `conditionCall(e)` is `NULL` and the error
+/// prints as `Error: <message>` instead of `Error in f(...) : <message>`. Use
+/// it for a condition about the data rather than about the call. Classes and
+/// `data` are unchanged:
+///
+/// ```ignore
+/// mx::error!(call = none, class = "pkg_bad_row", data = { row = row }, "row {row} is malformed");
+/// ```
+///
+/// The same marker exists as [`RError::without_call`] for `Result` errors and
+/// as `#[condition(call = none)]` on a `#[derive(RConditionError)]` type or
+/// variant; see [`ConditionCall`].
 ///
 /// # See also
 ///
@@ -489,19 +686,21 @@ macro_rules! __mx_condition_parts {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         ::std::panic::panic_any($crate::condition::RCondition::Error {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         })
     }};
 }
 
 /// Collision-free alias for [`crate::error!`].
 ///
-/// Identical expansion and grammar (`class = …`, `data = …`, and the plain
-/// `format!` forms) — it exists so that `use miniextendr_api::*;` or
+/// Identical expansion and grammar (`call = none`, `class = …`, `data = …`,
+/// and the plain `format!` forms) — it exists so that `use miniextendr_api::*;` or
 /// `use miniextendr_api::rust_error;` gives you a usable macro name. The bare
 /// `error!` name is shadowed at the crate root by `pub mod error` (see the
 /// name-collision note on [`crate::error!`]), so a glob or direct import
@@ -535,6 +734,16 @@ macro_rules! rust_error {
 ///
 /// ```ignore
 /// warning!(class = "truncation", data = ("dropped", n), "dropped {n} rows");
+/// ```
+///
+/// A leading `call = none` raises the warning without a call, like R's
+/// `warning(..., call. = FALSE)`: `conditionCall(w)` is `NULL` and the
+/// printed warning has no `In f(...) :` prefix. Use it for a warning about the
+/// data rather than about the call (see
+/// [conditions without a call](crate::error!#conditions-without-a-call)):
+///
+/// ```ignore
+/// warning!(call = none, class = "pkg_override", data = { row = row }, "row {row} overrides an earlier row");
 /// ```
 ///
 /// # See also
@@ -576,11 +785,13 @@ macro_rules! rust_error {
 #[macro_export]
 macro_rules! warning {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         ::std::panic::panic_any($crate::condition::RCondition::Warning {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         })
     }};
 }
@@ -594,7 +805,8 @@ macro_rules! warning {
 /// An optional `data = ...` form (before the message) attaches named fields
 /// readable as `m$<name>` in `withCallingHandlers` — same grammar and
 /// supported value types as [`crate::error!`] (see there for details). There
-/// is no `class =` form for `message!`.
+/// is no `class =` form for `message!`, and no `call =` form: an R message
+/// carries no call (`conditionCall(m)` is `NULL`), so there is nothing to drop.
 ///
 /// # See also
 ///
@@ -625,11 +837,17 @@ macro_rules! warning {
 /// ```
 #[macro_export]
 macro_rules! message {
+    (call $($rest:tt)*) => {
+        ::core::compile_error!(
+            "message!: there is no `call` option, an R message carries no call"
+        )
+    };
     (data = $data:tt, $($arg:tt)*) => {
         ::std::panic::panic_any($crate::condition::RCondition::Message {
             message: ::std::format!($($arg)*),
             class: ::std::vec::Vec::new(),
             data: $crate::__mx_condition_data!($data),
+            call: $crate::condition::ConditionCall::Inherit,
         })
     };
     ($($arg:tt)*) => {
@@ -637,6 +855,7 @@ macro_rules! message {
             message: ::std::format!($($arg)*),
             class: ::std::vec::Vec::new(),
             data: ::std::option::Option::None,
+            call: $crate::condition::ConditionCall::Inherit,
         })
     };
 }
@@ -650,7 +869,9 @@ macro_rules! message {
 /// An optional `class = "name"` form prepends a custom class. An optional
 /// `data = ...` form (after `class`, before the message) attaches named fields
 /// readable as `c$<name>` in handlers — same grammar and supported value types
-/// as [`crate::error!`] (see there for details).
+/// as [`crate::error!`] (see there for details). A leading `call = none`
+/// signals the condition without a call (`conditionCall(c)` is `NULL`), like
+/// [`crate::error!`]'s.
 ///
 /// # See also
 ///
@@ -688,19 +909,21 @@ macro_rules! message {
 #[macro_export]
 macro_rules! condition {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         ::std::panic::panic_any($crate::condition::RCondition::Condition {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         })
     }};
 }
 
 /// Collision-free alias for [`crate::condition!`].
 ///
-/// Identical expansion and grammar (`class = …`, `data = …`, and the plain
-/// `format!` forms) — it exists so that `use miniextendr_api::*;` or
+/// Identical expansion and grammar (`call = none`, `class = …`, `data = …`,
+/// and the plain `format!` forms) — it exists so that `use miniextendr_api::*;` or
 /// `use miniextendr_api::rust_condition;` gives you a usable macro name. The
 /// bare `condition!` name is shadowed at the crate root by `pub mod condition`
 /// (see the name-collision note on [`crate::condition!`]), so a glob or direct
@@ -925,6 +1148,10 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// `data()` field names must not be `message`, `call` or `kind` (see
 /// [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
 /// `rust_error` explaining the clash, so rename such a field at the source.
+///
+/// [`call()`](RConditionError::call) returning [`ConditionCall::None`] drops
+/// the call (`conditionCall(e)` is `NULL`), for errors and warnings about the
+/// data rather than the call.
 pub trait RConditionError {
     /// The condition message (`conditionMessage(e)`).
     fn message(&self) -> String;
@@ -935,6 +1162,16 @@ pub trait RConditionError {
     /// Structured fields spliced into the condition object (`e$<name>`).
     fn data(&self) -> Option<ConditionData> {
         None
+    }
+    /// Whether the condition reports a call. [`ConditionCall::None`] makes
+    /// `conditionCall()` `NULL`, like R's `call. = FALSE`, for a condition
+    /// about the data rather than the call; the default keeps the call the
+    /// transport captured. Honoured by `defer_*` and by `Result` returns;
+    /// an argument-conversion error always keeps the call (see
+    /// [`conversion_err_parts`]). `#[condition(call = none)]` on a derived
+    /// type or variant overrides this.
+    fn call(&self) -> ConditionCall {
+        ConditionCall::Inherit
     }
 }
 
@@ -948,11 +1185,12 @@ pub use miniextendr_macros::RConditionError;
 
 /// A ready-made classed error value for `Result<T, RError>` returns.
 ///
-/// Carries a message, an optional class vector, structured fields and an
-/// optional field-name prefix, and implements [`RConditionError`]. Any
+/// Carries a message, an optional class vector, structured fields and the
+/// call choice, and implements [`RConditionError`]. Any
 /// `std::error::Error` converts into it with `?` / [`From`] (the message keeps
 /// the `caused by:` chain, like [`AsRError`]), after which the builder methods
-/// add the R-facing parts:
+/// add the R-facing parts ([`RError::class`], [`RError::data`],
+/// [`RError::without_call`]):
 ///
 /// ```ignore
 /// use miniextendr_api::condition::RError;
@@ -980,6 +1218,7 @@ pub struct RError {
     message: String,
     class: Vec<String>,
     data: ConditionData,
+    call: ConditionCall,
 }
 
 impl RError {
@@ -989,7 +1228,18 @@ impl RError {
             message: message.into(),
             class: Vec::new(),
             data: Vec::new(),
+            call: ConditionCall::Inherit,
         }
+    }
+
+    /// Raise the condition without a call: `conditionCall(e)` is `NULL` and
+    /// the printed condition has no `In f(...) :` prefix, like R's
+    /// `stop(..., call. = FALSE)`. For an error or warning about the data, not
+    /// the call. Applies to `Result` returns and the `defer_*` functions; see
+    /// [`ConditionCall`].
+    pub fn without_call(mut self) -> Self {
+        self.call = ConditionCall::None;
+        self
     }
 
     /// Append user classes (most specific first). Accepts one string or a
@@ -1054,15 +1304,23 @@ impl RConditionError for RError {
     fn data(&self) -> Option<ConditionData> {
         (!self.data.is_empty()).then(|| self.data.clone())
     }
+    fn call(&self) -> ConditionCall {
+        self.call
+    }
 }
 
-/// The three parts the generated `Err` arm hands to
-/// [`crate::error_value::result_err_condition_value`].
+/// The parts of a condition the generated `Err` arms hand to
+/// [`crate::error_value::result_err_condition_value`] /
+/// [`crate::error_value::conversion_condition_value`], and that
+/// [`RCondition::into_parts`] splits a payload into: message, user classes,
+/// `data` fields and the [`ConditionCall`] choice.
 #[doc(hidden)]
+#[derive(Debug)]
 pub struct ErrParts {
     pub message: String,
     pub class: Vec<String>,
     pub data: Option<ConditionData>,
+    pub call: ConditionCall,
 }
 
 /// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionError`.
@@ -1090,6 +1348,7 @@ impl<E: RConditionError> ErrPartsClassed for E {
             message: self.message(),
             class: self.class(),
             data: check_condition_data(self.data()),
+            call: self.call(),
         })
     }
 }
@@ -1139,6 +1398,7 @@ impl<E: std::fmt::Debug> ErrPartsDebug for &E {
             message: format!("{self:?}"),
             class: Vec::new(),
             data: None,
+            call: ConditionCall::Inherit,
         }
     }
 }
@@ -1196,6 +1456,7 @@ impl<E: RConditionError> ConversionErrClassed for E {
             message: self.message(),
             class: self.class(),
             data: check_condition_data(self.data()),
+            call: self.call(),
         }
     }
 }
@@ -1233,6 +1494,7 @@ fn builtin_reason_parts(message: String) -> ErrParts {
         message,
         class: Vec::new(),
         data: None,
+        call: ConditionCall::Inherit,
     }
 }
 
@@ -1286,6 +1548,7 @@ impl<E: std::fmt::Display> ConversionErrDisplay for &E {
             message: self.to_string(),
             class: Vec::new(),
             data: None,
+            call: ConditionCall::Inherit,
         }
     }
 }
@@ -1409,6 +1672,10 @@ const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
 ///   own data already has a field of that name: the type author's value is
 ///   kept, since the framework never overwrites a field the type author
 ///   chose, and R's `e$name` reads only the first of two same-named fields.
+/// - The call is always the wrapper's ([`ConditionCall::Inherit`]), whatever
+///   the error type's [`RConditionError::call`] says: the R-side checks
+///   (`.miniextendr_arg_error`) raise the same condition with the call
+///   (#1591), and an argument error must not differ by which side caught it.
 #[doc(hidden)]
 pub fn conversion_err_parts(
     prefix: &str,
@@ -1421,6 +1688,7 @@ pub fn conversion_err_parts(
         message,
         mut class,
         data,
+        call: _,
     } = parts;
     for extra in crate_class {
         if !class.iter().any(|c| c == extra) {
@@ -1447,6 +1715,7 @@ pub fn conversion_err_parts(
         message: format!("{prefix}: {message}"),
         class,
         data: Some(fields),
+        call: ConditionCall::Inherit,
     }
 }
 
@@ -1468,6 +1737,7 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
         message: message.to_string(),
         class: crate_class.iter().map(|c| (*c).to_string()).collect(),
         data: Some(vec![(CONVERSION_PARAM_FIELD.to_string(), param.into())]),
+        call: ConditionCall::Inherit,
     }
 }
 
@@ -1558,6 +1828,7 @@ pub fn serde_err_parts<E: ?Sized + ::serde::Serialize + std::fmt::Display>(
         message,
         class,
         data: check_condition_data((!fields.is_empty()).then_some(fields)),
+        call: ConditionCall::Inherit,
     }
 }
 
@@ -1609,8 +1880,8 @@ impl RCondition {
     ///
     /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
     /// `"result_err"`/`"none_err"`/`"conversion"`/`"other_rust_error"` →
-    /// [`RCondition::Error`] (class, message and data kept; the kind itself is
-    /// not carried by the variant);
+    /// [`RCondition::Error`] (class, message, data and a [`ConditionCall::None`]
+    /// choice kept; the kind itself is not carried by the variant);
     /// `"warning"` → [`RCondition::Warning`]; `"message"` → [`RCondition::Message`];
     /// `"condition"` → [`RCondition::Condition`]. Unknown kinds degrade to
     /// [`RCondition::Error`] with the kind string prefixed to the message.
@@ -1735,6 +2006,16 @@ impl RCondition {
             None
         };
 
+        // Slot [3] is the call. Only the "no call" marker (`FALSE`, see
+        // `make_rust_condition_value_with_data`) survives the re-panic: a call
+        // object captured by the producer names the vtable shim's frame, and the
+        // consumer's outer guard attributes the condition to its own call.
+        let call = if len >= 4 && is_no_call_marker(sexp.vector_elt(3)) {
+            ConditionCall::None
+        } else {
+            ConditionCall::Inherit
+        };
+
         let cond = match kind {
             kind_const::ERROR
             | kind_const::PANIC
@@ -1745,21 +2026,25 @@ impl RCondition {
                 message: msg,
                 class,
                 data,
+                call,
             },
             kind_const::WARNING => RCondition::Warning {
                 message: msg,
                 class,
                 data,
+                call,
             },
             kind_const::MESSAGE => RCondition::Message {
                 message: msg,
                 class,
                 data,
+                call,
             },
             kind_const::CONDITION => RCondition::Condition {
                 message: msg,
                 class,
                 data,
+                call,
             },
             other => {
                 // Unknown kind — degrade to error
@@ -1767,11 +2052,20 @@ impl RCondition {
                     message: format!("[{other}] {msg}"),
                     class,
                     data,
+                    call,
                 }
             }
         };
         Some(cond)
     }
+}
+
+/// `true` for the tagged value's "no call" marker in the `call` slot: a
+/// length-1 logical `FALSE` ([`ConditionCall::None`]). A call object or `NULL`
+/// is not the marker.
+fn is_no_call_marker(call: crate::SEXP) -> bool {
+    use crate::SexpExt;
+    call.is_logical() && call.len() == 1 && call.logical_elt(0) == 0
 }
 
 /// Inspect a SEXP returned by a trait-ABI vtable shim and, if it is a tagged
@@ -1928,6 +2222,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "layered");
                 assert_eq!(class, vec!["member", "family"]);
@@ -2051,8 +2346,7 @@ mod condition_macro_tests {
             let err = std::panic::AssertUnwindSafe(Clash::Bad { kind: "x".into() });
             let payload =
                 std::panic::catch_unwind(move || serde_err_parts(&err.0, "type", "p", &[], &[]))
-                    .err()
-                    .expect("must panic");
+                    .expect_err("must panic");
             let msg = payload
                 .downcast_ref::<String>()
                 .cloned()
@@ -2298,8 +2592,7 @@ mod condition_macro_tests {
         use super::RError;
         let err = std::panic::AssertUnwindSafe(RError::new("m").data("kind", 2));
         let payload = std::panic::catch_unwind(move || crate::__mx_result_err_parts!(err.0, "p"))
-            .err()
-            .expect("must panic");
+            .expect_err("must panic");
         let msg = payload
             .downcast_ref::<String>()
             .cloned()
@@ -2779,8 +3072,7 @@ mod condition_macro_tests {
         use super::RError;
         let err = std::panic::AssertUnwindSafe(RError::new("m").data("kind", 2));
         let payload = std::panic::catch_unwind(move || crate::__mx_conversion_err_parts!(err.0))
-            .err()
-            .expect("must panic");
+            .expect_err("must panic");
         let msg = payload
             .downcast_ref::<String>()
             .cloned()
@@ -2824,6 +3116,7 @@ mod condition_macro_tests {
                 message: "non-numeric value(s): \"BLQ\" (element 2)".into(),
                 class: Vec::new(),
                 data: None,
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(
@@ -2844,6 +3137,7 @@ mod condition_macro_tests {
                 message: "must be positive".into(),
                 class: vec!["pkg_bad_arg".into(), "pkg_error".into()],
                 data: Some(vec![("value".into(), RValue::from(-1))]),
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(classed.message, "invalid 'x' argument: must be positive");
@@ -2860,10 +3154,32 @@ mod condition_macro_tests {
                 message: "got \"abc\"".into(),
                 class: Vec::new(),
                 data: None,
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(untyped.message, "'value' must be a number: got \"abc\"");
         assert_eq!(field_names(&untyped), ["param"]);
+    }
+
+    /// An argument error keeps the call whatever the error type's `call()`
+    /// says: the R-side checks raise the same condition with the call.
+    #[test]
+    fn conversion_err_parts_keeps_the_call() {
+        use super::{ConditionCall, ErrParts, conversion_err_parts};
+
+        let parts = conversion_err_parts(
+            "invalid 'x' argument",
+            "x",
+            None,
+            &[],
+            ErrParts {
+                message: "bad".into(),
+                class: Vec::new(),
+                data: None,
+                call: ConditionCall::None,
+            },
+        );
+        assert_eq!(parts.call, ConditionCall::Inherit);
     }
 
     /// The crate's `conversion_error_class` follows the error's own classes,
@@ -2882,6 +3198,7 @@ mod condition_macro_tests {
                 message: "got character".into(),
                 class: Vec::new(),
                 data: None,
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(plain.class, ["pkg_error_argument", "pkg_error"]);
@@ -2895,6 +3212,7 @@ mod condition_macro_tests {
                 message: "must be positive".into(),
                 class: vec!["pkg_error_negative".into(), "pkg_error".into()],
                 data: None,
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(
@@ -2942,6 +3260,7 @@ mod condition_macro_tests {
                     ("value".into(), RValue::from(-2.0)),
                     ("param".into(), RValue::from("beta")),
                 ]),
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(field_names(&parts), ["rust_type", "value", "param"]);
@@ -2956,6 +3275,7 @@ mod condition_macro_tests {
                 message: "bad".into(),
                 class: Vec::new(),
                 data: Some(vec![("rust_type".into(), RValue::from("Inner"))]),
+                call: super::ConditionCall::Inherit,
             },
         );
         assert_eq!(field_names(&parts), ["param", "rust_type"]);
@@ -2985,6 +3305,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "plain 42");
                 assert!(class.is_empty());
@@ -3002,6 +3323,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "missing field: x");
                 assert_eq!(class, vec!["my_error"]);
@@ -3020,6 +3342,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "v = 41");
                 assert!(class.is_empty());
@@ -3052,6 +3375,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "out of range");
                 assert_eq!(class, vec!["validation_error"]);
@@ -3081,6 +3405,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "dropped");
                 assert_eq!(class, vec!["trunc"]);
@@ -3111,6 +3436,7 @@ mod condition_macro_tests {
                 message,
                 class,
                 data,
+                call: super::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "processed 10");
                 assert_eq!(class, vec!["progress"]);
@@ -3118,6 +3444,85 @@ mod condition_macro_tests {
             }
             other => panic!("wrong variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn call_none_on_every_condition_macro() {
+        use super::ConditionCall;
+
+        match catch(|| crate::error!(call = none, "plain {}", 1)) {
+            RCondition::Error {
+                message,
+                class,
+                data,
+                call,
+            } => {
+                assert_eq!(message, "plain 1");
+                assert!(class.is_empty());
+                assert!(data.is_none());
+                assert_eq!(call, ConditionCall::None);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        match catch(|| crate::rust_error!(call = none, class = ["member", "family"], "e")) {
+            RCondition::Error { class, call, .. } => {
+                assert_eq!(class, vec!["member", "family"]);
+                assert_eq!(call, ConditionCall::None);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        match catch(|| {
+            crate::warning!(
+                call = none,
+                class = "pkg_override",
+                data = { profile = 3 },
+                "overrides an earlier row"
+            )
+        }) {
+            RCondition::Warning {
+                message,
+                class,
+                data,
+                call,
+            } => {
+                assert_eq!(message, "overrides an earlier row");
+                assert_eq!(class, vec!["pkg_override"]);
+                assert_data(&data, &[("profile", RValue::Integer(vec![Some(3)]))]);
+                assert_eq!(call, ConditionCall::None);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        match catch(|| crate::condition!(call = none, data = ("n", 1), "tick")) {
+            RCondition::Condition { data, call, .. } => {
+                assert_data(&data, &[("n", RValue::Integer(vec![Some(1)]))]);
+                assert_eq!(call, ConditionCall::None);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+        match catch(|| crate::rust_condition!(call = none, "tick")) {
+            RCondition::Condition { call, .. } => assert_eq!(call, ConditionCall::None),
+            other => panic!("wrong variant: {other:?}"),
+        }
+        // Without `call = none` the call is inherited.
+        match catch(|| crate::warning!("sibling")) {
+            RCondition::Warning { call, .. } => assert_eq!(call, ConditionCall::Inherit),
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rerror_without_call_reaches_the_err_parts() {
+        use super::{ConditionCall, RConditionError, RError};
+
+        let plain = RError::new("m").class("c");
+        assert_eq!(RConditionError::call(&plain), ConditionCall::Inherit);
+        let callless = plain.clone().without_call();
+        assert_eq!(RConditionError::call(&callless), ConditionCall::None);
+        let parts = crate::__mx_result_err_parts!(callless, "pkg_error");
+        assert_eq!(parts.call, ConditionCall::None);
+        assert_eq!(parts.class, vec!["c"]);
+        let parts = crate::__mx_result_err_parts!(plain, "pkg_error");
+        assert_eq!(parts.call, ConditionCall::Inherit);
     }
 
     #[test]

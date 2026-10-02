@@ -78,7 +78,7 @@ fn l2_panic_to_condition(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn l3_rcondition_error(bencher: divan::Bencher) {
-    use miniextendr_api::condition::RCondition;
+    use miniextendr_api::condition::{ConditionCall, RCondition};
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     bencher.bench_local(|| {
@@ -88,6 +88,7 @@ fn l3_rcondition_error(bencher: divan::Bencher) {
                     message: "oops".to_string(),
                     class: vec![],
                     data: None,
+                    call: ConditionCall::Inherit,
                 });
             },
             None,
@@ -104,7 +105,7 @@ fn l3_rcondition_error(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn l3b_rcondition_error_classed(bencher: divan::Bencher) {
-    use miniextendr_api::condition::RCondition;
+    use miniextendr_api::condition::{ConditionCall, RCondition};
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     bencher.bench_local(|| {
@@ -114,6 +115,7 @@ fn l3b_rcondition_error_classed(bencher: divan::Bencher) {
                     message: "oops".to_string(),
                     class: vec!["my_class".to_string()],
                     data: None,
+                    call: ConditionCall::Inherit,
                 });
             },
             None,

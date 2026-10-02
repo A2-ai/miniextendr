@@ -45,6 +45,11 @@ pub trait Counter {
     /// `e$kind == "warning"` across the trait-ABI boundary.
     fn raise_warning(&self, msg: String);
 
+    /// Raise a `warning!(call = none, ...)` — verifies that the "no call"
+    /// marker survives the trait-ABI re-panic, so the consumer's warning has
+    /// `conditionCall() = NULL` (#1725).
+    fn raise_warning_without_call(&self, msg: String);
+
     /// Raise a `message!()` — verifies `rust_message` layering and
     /// `e$kind == "message"` across the trait-ABI boundary.
     fn raise_message(&self, msg: String);

@@ -16,33 +16,19 @@
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::miniextendr;
 
-type RCondition = miniextendr_api::condition::RCondition;
-
 // region: shared helpers
 
-/// Variable-class `error!` — the `error!` macro requires a literal class string.
+/// `error!` with a runtime class.
 fn raise_error_with_class(class: &str, msg: &str) -> ! {
-    std::panic::panic_any(RCondition::Error {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::error!(class = class, "{msg}")
 }
 
 fn raise_warning_with_class(class: &str, msg: &str) -> ! {
-    std::panic::panic_any(RCondition::Warning {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::warning!(class = class, "{msg}")
 }
 
 fn raise_condition_with_class(class: &str, msg: &str) -> ! {
-    std::panic::panic_any(RCondition::Condition {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::condition!(class = class, "{msg}")
 }
 
 // endregion

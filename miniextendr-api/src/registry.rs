@@ -1690,7 +1690,10 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr
 /// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
 pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_default) {
   .msg <- .val$error
-  .call <- (if (is.null(.val$call)) .call_default else .val$call)
+  # `.val$call` is the call the Rust side captured, NULL to use the wrapper's
+  # call, or FALSE for a condition raised without one (`call = none`, R's
+  # `call. = FALSE`), which is signalled with `call = NULL`.
+  .call <- if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call
   .class <- .val$class
   # `.val$data` is an optional named list of structured fields (from the
   # macros' `data = ...` form). When present, splice its named elements into

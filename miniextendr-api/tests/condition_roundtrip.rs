@@ -39,6 +39,7 @@ fn condition_data_roundtrip_scalars_and_vecs() {
             &["my_test_class".to_string()],
             None,
             Some(fields),
+            miniextendr_api::condition::ConditionCall::Inherit,
         );
 
         let cond = RCondition::from_tagged_sexp(sexp)
@@ -49,6 +50,7 @@ fn condition_data_roundtrip_scalars_and_vecs() {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "test message");
                 assert_eq!(class, vec!["my_test_class"]);
@@ -101,6 +103,7 @@ fn condition_data_roundtrip_no_data() {
             &[],
             None,
             None, // no data
+            miniextendr_api::condition::ConditionCall::Inherit,
         );
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
@@ -109,6 +112,7 @@ fn condition_data_roundtrip_no_data() {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "plain error");
                 assert!(class.is_empty());
@@ -142,6 +146,7 @@ fn condition_data_roundtrip_na_field_survives() {
             &[],
             None,
             Some(fields),
+            miniextendr_api::condition::ConditionCall::Inherit,
         );
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
@@ -184,6 +189,7 @@ fn condition_data_roundtrip_warning_carries_data() {
             &["truncation_warning".to_string()],
             None,
             Some(fields),
+            miniextendr_api::condition::ConditionCall::Inherit,
         );
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
@@ -192,6 +198,7 @@ fn condition_data_roundtrip_warning_carries_data() {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "truncated 3 rows");
                 assert_eq!(class, vec!["truncation_warning"]);
@@ -225,12 +232,14 @@ fn condition_class_vector_roundtrip() {
             &classes,
             None,
             None,
+            miniextendr_api::condition::ConditionCall::Inherit,
         );
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
             RCondition::Error {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "layered");
                 assert_eq!(class, classes);
@@ -261,6 +270,7 @@ fn result_err_parts_roundtrip() {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "too large");
                 assert_eq!(class, vec!["pkg_too_large", "pkg_error"]);
@@ -317,6 +327,7 @@ fn conversion_parts_roundtrip() {
                 message,
                 class,
                 data,
+                call: miniextendr_api::condition::ConditionCall::Inherit,
             } => {
                 assert_eq!(message, "invalid 'n' argument: must be positive");
                 assert_eq!(
@@ -336,5 +347,94 @@ fn conversion_parts_roundtrip() {
             }
             other => panic!("wrong variant: {other:?}"),
         }
+    });
+}
+
+/// The "no call" marker (#1725): `FALSE` in the call slot. It survives the
+/// trait-ABI re-panic (`from_tagged_sexp`), which keeps the rest of the
+/// condition as is; a captured call or `NULL` reads back as `Inherit`.
+#[test]
+fn no_call_marker_roundtrip() {
+    r_test_utils::with_r_thread(|| unsafe {
+        use miniextendr_api::condition::{ConditionCall, RCondition, RError};
+        use miniextendr_api::error_value::{
+            make_rust_condition_value_with_data, result_err_condition_value, rust_condition_value,
+        };
+        use miniextendr_api::{SEXPTYPE, SexpExt};
+
+        let sexp = make_rust_condition_value_with_data(
+            "plain",
+            miniextendr_api::error_value::kind::WARNING,
+            &["pkg_override".to_string()],
+            None,
+            None,
+            ConditionCall::None,
+        );
+        let call_slot = sexp.vector_elt(3);
+        assert_eq!(call_slot.type_of(), SEXPTYPE::LGLSXP);
+        assert_eq!(call_slot.len(), 1);
+        assert_eq!(call_slot.logical_elt(0), 0);
+        match RCondition::from_tagged_sexp(sexp).expect("tagged") {
+            RCondition::Warning {
+                message,
+                class,
+                data,
+                call,
+            } => {
+                assert_eq!(message, "plain");
+                assert_eq!(class, vec!["pkg_override"]);
+                assert!(data.is_none());
+                assert_eq!(call, ConditionCall::None);
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+
+        // The marker wins over a captured call; without it the slot keeps the
+        // call (and reads back as `Inherit`).
+        let call = miniextendr_api::OwnedProtect::new(miniextendr_api::sys::Rf_lang1(
+            miniextendr_api::sys::Rf_install(c"f".as_ptr()),
+        ));
+        let callless = rust_condition_value(
+            RCondition::Error {
+                message: "e".into(),
+                class: Vec::new(),
+                data: None,
+                call: ConditionCall::None,
+            },
+            Some(call.get()),
+        );
+        assert!(callless.vector_elt(3).is_logical());
+        assert_eq!(
+            RCondition::from_tagged_sexp(callless)
+                .expect("tagged")
+                .call(),
+            ConditionCall::None
+        );
+        let with_call = rust_condition_value(
+            RCondition::Error {
+                message: "e".into(),
+                class: Vec::new(),
+                data: None,
+                call: ConditionCall::Inherit,
+            },
+            Some(call.get()),
+        );
+        assert_eq!(with_call.vector_elt(3), call.get());
+        assert_eq!(
+            RCondition::from_tagged_sexp(with_call)
+                .expect("tagged")
+                .call(),
+            ConditionCall::Inherit
+        );
+
+        // A `Result` error built with `without_call()` carries the marker.
+        let err = RError::new("data problem").without_call();
+        let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error");
+        let sexp = result_err_condition_value(parts, Some(call.get()));
+        assert!(sexp.vector_elt(3).is_logical());
+        assert_eq!(
+            RCondition::from_tagged_sexp(sexp).expect("tagged").call(),
+            ConditionCall::None
+        );
     });
 }

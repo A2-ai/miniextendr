@@ -17,7 +17,9 @@ warning, message or condition *and* still returns the call's value.
 All four support an optional `class = ...` argument to prepend custom classes
 for programmatic catching (one string or a vector, most specific first), and an
 optional `data = ...` argument to attach structured named fields readable as
-`e$<name>` in handlers.
+`e$<name>` in handlers. `error!`, `warning!` and `condition!` also take a
+leading `call = none`, which raises the condition without a call, like R's
+`call. = FALSE` (see [Conditions without a call](#conditions-without-a-call)).
 `Result<T, E>` returns get the same treatment through the
 [`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait
 (hand-written or [derived](#deriving-rconditionerror)), or, for error enums
@@ -143,8 +145,9 @@ tryCatch(
 
 Rust-side, the macros accept `data = ("name", value)` for a single field or
 `data = [("a", v1), ("b", v2)]` for several (rlang `abort(data = list(...))`
-style). Argument order is fixed: `class = ...` (optional), then `data = ...`
-(optional), then the format message:
+style). Argument order is fixed: `call = none` (optional, see
+[Conditions without a call](#conditions-without-a-call)), then `class = ...`
+(optional), then `data = ...` (optional), then the format message:
 
 ```rust
 // Single field:
@@ -364,7 +367,8 @@ withCallingHandlers(trim(5L), warning = function(w) invokeRestart("muffleWarning
 What R sees is what `warning()` called from an R function would produce,
 because that is what runs: the same R helper that re-raises the panicking
 macros' conditions signals each queued one. Class layering, `w$<name>` data
-fields and `conditionCall()` (the wrapper's call) are identical to the
+fields and `conditionCall()` (the wrapper's call, or `NULL` for a condition
+queued [without a call](#conditions-without-a-call)) are identical to the
 immediate forms. `tryCatch(warning = )` exits before the value is returned;
 calling handlers that muffle keep it.
 
@@ -376,8 +380,8 @@ calling handlers that muffle keep it.
 
 The functions take any `RConditionError` payload: a
 [derived](#deriving-rconditionerror) or hand-written type, or an `RError`
-built on the spot. The macros take the `warning!` grammar (`class = …`, then
-`data = …`, then the format message). `defer_message` honours the payload's
+built on the spot. The macros take the `warning!` grammar (`call = none`,
+then `class = …`, then `data = …`, then the format message). `defer_message` honours the payload's
 classes, layered in front of `rust_message`, which the `message!` macro has
 no syntax for.
 
@@ -416,7 +420,8 @@ the worker, the signal on R's main thread once the result is back), `rng`
 wrappers and trait-ABI vtable shims. ALTREP `RUnwind` and `RustUnwind` callbacks,
 `with_r_unwind_protect_or_raise`, and connection I/O callbacks flush their own
 conditions before returning. ALTREP and connection conditions have
-`conditionCall() = NULL`; the raising guard uses its explicit `call` argument.
+`conditionCall() = NULL`; the raising guard uses its explicit `call` argument
+(none for a condition raised with `call = none`).
 For example, an ALTREP `elt()` implementation can queue `defer_warning!`
 and return the element: `suppressWarnings(x[1L])` keeps that element, while
 `tryCatch(x[1L], warning = identity)` exits with the warning. The constructor's
@@ -539,9 +544,10 @@ pub fn parse_port(s: &str) -> Result<i32, RError> {
 }
 ```
 
-`RError` implements `Display` (the message) but not `std::error::Error`, which
-keeps the blanket `From<E: Error>` coherent; it works with
-`#[miniextendr(unwrap_in_r)]` too.
+The `.without_call()` builder raises the error with no call
+([Conditions without a call](#conditions-without-a-call)). `RError` implements
+`Display` (the message) but not `std::error::Error`, which keeps the blanket
+`From<E: Error>` coherent; it works with `#[miniextendr(unwrap_in_r)]` too.
 
 ### Deriving `RConditionError`
 
@@ -577,6 +583,10 @@ pub enum PkgError {
   (`RValue::debug`) for a type without an R mapping. Tuple fields need
   `rename` or `skip`. The reserved slots `message`, `call` and `kind` are
   compile errors, as are generic types.
+- **Call.** `#[condition(call = none)]` on the type (every variant) or on a
+  variant raises the condition without a call
+  ([Conditions without a call](#conditions-without-a-call)); the others keep
+  the wrapper's call.
 
 The same derive serves
 [deferred conditions](#deferred-conditions-a-warning-and-a-value) and
@@ -691,6 +701,96 @@ must be skipped or renamed.
 - Choose `RConditionError` when the message or class vector needs to differ
   from the serde shape (it takes precedence); the serde path is the
   zero-boilerplate default for enums that are already serde-tagged.
+
+## Conditions without a call
+
+R's `warning(..., call. = FALSE)` and `stop(..., call. = FALSE)` raise a
+condition that names no call. That suits a condition about the data rather
+than about the call: a warning that row 5 overrides an earlier row says nothing
+about `read_overrides(path)`, and repeating the call on every such warning is
+noise. The same opt-out exists per condition:
+
+| Form | Spelling |
+|---|---|
+| Macros | `error!(call = none, …)` / `rust_error!`, `warning!`, `condition!` / `rust_condition!`, `defer_warning!`, `defer_condition!` |
+| `RError` | `RError::new("…").without_call()` |
+| Derive | `#[condition(call = none)]` on a `#[derive(RConditionError)]` type (every variant) or on one variant |
+| Hand-written `RConditionError` | `fn call(&self) -> ConditionCall { ConditionCall::None }` |
+
+In the macros `call = none` comes first, before `class = …` and `data = …`.
+`none` is the only value: the default (the wrapper's call) needs no spelling,
+and any other value is a compile error, in the macros and in the derive.
+
+```rust
+use miniextendr_api::condition::RConditionError;
+use miniextendr_api::{defer_warning, miniextendr};
+
+#[derive(Debug, RConditionError)]
+#[condition(class = "pkg_override")]
+pub enum OverrideWarning {
+    #[condition(call = none, message = "row {row} overrides an earlier row for profile {profile}")]
+    Overridden { row: i32, profile: i32 },
+    #[condition(message = "{n} rows settled")]
+    Settled { n: i32 },
+}
+
+#[miniextendr]
+pub fn read_overrides(n: i32) -> i32 {
+    defer_warning(OverrideWarning::Overridden { row: 5, profile: 3 });
+    defer_warning(OverrideWarning::Settled { n });
+    n
+}
+```
+
+```r
+read_overrides(3L)
+# [1] 3
+# Warning messages:
+# 1: row 5 overrides an earlier row for profile 3
+# 2: In read_overrides(3L) : 3 rows settled
+
+w <- tryCatch(read_overrides(3L), pkg_override_overridden = function(w) w)
+conditionCall(w)
+# NULL
+w$row
+# [1] 5
+w
+# <pkg_override_overridden: row 5 overrides an earlier row for profile 3>
+```
+
+Only the call changes. Classes, `data` fields, `kind` and handler matching
+(`tryCatch(pkg_override = )`, `rust_warning = `, `withCallingHandlers` with
+`muffleWarning`) are the same as with the call; an error prints as
+`Error: <message>` instead of `Error in f(...) : <message>`.
+
+**How it travels.** The marker is `FALSE` in the `call` slot of the tagged
+condition value (no new slot, no new kind). The R helper reads it as "no call":
+
+```r
+.call <- if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call
+```
+
+Every transport carries it:
+
+- immediate macros and `Result` errors, through the generated wrapper;
+- deferred conditions, signalled from Rust with the same helper;
+- `#[miniextendr(worker)]` bodies: the worker wrapper catches the condition on
+  the worker and builds its tagged value on the main thread, so an immediate
+  `warning!` / `error!` there keeps its kind, classes, data and call choice;
+- trait-ABI vtable shims: the marker survives the re-panic into the consumer,
+  so a producer's call-less warning is call-less in the consumer's wrapper too;
+- `with_r_unwind_protect_or_raise` and ALTREP `RUnwind` guards, where a
+  call-less error drops the guard's `call` argument.
+
+**Messages.** A message from miniextendr carries no call (`conditionCall(m)`
+is `NULL`), so `message!` has no `call =` form (it is a compile error), and
+`defer_message!(call = none, …)` is accepted for the shared grammar and changes
+nothing.
+
+**Argument-conversion errors** always keep the call. They are about an argument
+of the call, and the R-side argument checks they mirror name the call too, so
+`#[condition(call = none)]` on a type used as a `TryFromSexp::Error` has no
+effect on a failed conversion.
 
 ## Trait-ABI and ALTREP error class layering
 
