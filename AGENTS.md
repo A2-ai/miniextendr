@@ -86,7 +86,7 @@ just devtools-check      # Check, preserving output in rpkg-check-output/
 just vendor              # regen Cargo.lock in tarball-shape, vendor deps, compress to inst/vendor.tar.xz
 
 # Cross-package
-just cross-install / cross-test / cross-check
+just cross-install / cross-test   # not cross-check: it fails at install until #1716
 
 # minirextendr
 just minirextendr-install / minirextendr-test / minirextendr-check
