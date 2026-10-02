@@ -477,6 +477,21 @@ impl DataFrame {
 
     /// Remove a column by name. No-op if the column doesn't exist.
     ///
+    /// # Frame attributes
+    ///
+    /// The new frame keeps every attribute of the input except `names`: its
+    /// `class`, `row.names`, and anything else on the frame (a `units` map, a
+    /// package's metadata), as `dplyr::select()` and tibble's `[` do. This
+    /// holds for every column producer ([`select`](Self::select),
+    /// [`prepend_column`](Self::prepend_column),
+    /// [`with_column`](Self::with_column)).
+    ///
+    /// A dplyr `grouped_df` / `rowwise_df` keeps its grouping while every
+    /// grouping column is still there, unchanged. Removing or replacing one
+    /// returns the ungrouped frame instead (no `groups` attribute, no
+    /// `grouped_df` / `rowwise_df` class), where dplyr's `[` would regroup by
+    /// the grouping columns that remain.
+    ///
     /// # Rooting
     ///
     /// Returns an owned, GC-rooted [`BuiltDataFrame`] (#1247): the result frame
@@ -516,7 +531,7 @@ impl DataFrame {
             }
 
             new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
+            copy_frame_attrs(self.sexp, *new_list, true);
 
             // Root the new frame before the OwnedProtect guards drop:
             // `adopt_sexp` preserves first (protecting `new_list` across its own
@@ -526,6 +541,10 @@ impl DataFrame {
     }
 
     /// Keep only the named columns, in the order given. Unknown names are skipped.
+    ///
+    /// Keeps the frame's attributes and, while every grouping column is
+    /// selected, its dplyr grouping; see [`drop`](Self::drop)'s frame-attribute
+    /// note.
     ///
     /// # Rooting
     ///
@@ -556,7 +575,7 @@ impl DataFrame {
             }
 
             new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
+            copy_frame_attrs(self.sexp, *new_list, true);
 
             // Root before the guards drop (see `drop` for the ordering argument).
             BuiltDataFrame::adopt_sexp(*new_list)
@@ -585,6 +604,31 @@ impl DataFrame {
     /// `vctrs::vec_slice()` rule), so a `POSIXct` column keeps its `tzone`, a
     /// `difftime` its `units` and an `I()` column its `AsIs` class.
     ///
+    /// # Frame attributes
+    ///
+    /// The new frame keeps every attribute of the input frame except `names`
+    /// (the columns' names, as before) and `row.names` (fresh, `1:length(idx)`):
+    /// its `class`, and anything else on the frame, such as a `units` map
+    /// describing some columns or a package's metadata. This is what
+    /// `dplyr::slice()` (`dplyr_row_slice()` / `dplyr_reconstruct()`),
+    /// `vctrs::vec_slice()`, tibble's `[` and base `[.data.frame` keep on a row
+    /// subset. A packed data.frame column keeps its own the same way.
+    ///
+    /// dplyr's grouping does not survive. A `grouped_df` or `rowwise_df` caches
+    /// each group's row indices in its `groups` attribute, which no longer
+    /// matches the selected rows, so the result has no `groups` attribute and
+    /// no `grouped_df` / `rowwise_df` class: it is the ungrouped frame (a
+    /// tibble, for a dplyr input). `dplyr::slice()` recomputes the groups
+    /// instead. To keep the grouping, read it from the input with
+    /// [`group_declaration`](Self::group_declaration) and regroup the result,
+    /// in Rust with [`group_by_multi`](Self::group_by_multi) over its
+    /// [`vars`](crate::dataframe::GroupDeclaration::vars), or in R with
+    /// `dplyr::grouped_df(out, dplyr::group_vars(df))`.
+    ///
+    /// Any other attribute indexed by row is copied as it is. A package that
+    /// keeps one must rebuild it after a row subset, as dplyr's extension guide
+    /// (`?dplyr_row_slice`) asks of `dplyr_row_slice()` methods.
+    ///
     /// # PROTECT discipline
     ///
     /// Allocates new column vectors (and `dim` / `dimnames` for matrix columns)
@@ -605,6 +649,10 @@ impl DataFrame {
     }
 
     /// Insert a column at index 0 (leftmost), removing any same-named column first.
+    ///
+    /// Keeps the frame's attributes and its dplyr grouping, unless `name`
+    /// replaces a grouping column; see [`drop`](Self::drop)'s frame-attribute
+    /// note.
     ///
     /// # Rooting
     ///
@@ -640,7 +688,7 @@ impl DataFrame {
             }
 
             new_list.set_names(*new_names);
-            copy_df_attrs(cleaned.as_sexp(), *new_list);
+            copy_frame_attrs(cleaned.as_sexp(), *new_list, true);
 
             // Root before the guards (and `cleaned`) drop — see `drop` for the
             // ordering argument.
@@ -649,6 +697,11 @@ impl DataFrame {
     }
 
     /// Upsert a column: replace the column named `name` if it exists, else append.
+    ///
+    /// The append path builds a new frame that keeps the input's attributes
+    /// and dplyr grouping (see [`drop`](Self::drop)'s frame-attribute note).
+    /// The replace path stores `column` into the input frame itself and
+    /// returns that frame, attributes untouched.
     ///
     /// # Rooting
     ///
@@ -687,7 +740,7 @@ impl DataFrame {
             new_names.set_string_elt(ncol, SEXP::charsxp(name));
 
             new_list.set_names(*new_names);
-            copy_df_attrs(self.sexp, *new_list);
+            copy_frame_attrs(self.sexp, *new_list, true);
 
             // Root before the guards drop (see `drop` for the ordering argument).
             BuiltDataFrame::adopt_sexp(*new_list)
@@ -718,7 +771,7 @@ impl DataFrame {
 }
 // endregion
 
-// region: column-order name helper + attr copy (absorbed from columnar)
+// region: column-name helper + frame-attribute copy
 
 /// Read the i-th column name from a STRSXP names vector.
 ///
@@ -771,6 +824,11 @@ unsafe fn select_frame_rows(frame: SEXP, idx: &[usize]) -> crate::OwnedProtect {
             }
         }
 
+        // Every frame attribute of the source (`class` included), with dplyr's
+        // row-indexed `groups` removed. This copies the source's `row.names`
+        // too, so it runs before the fresh ones are set below.
+        copy_frame_attrs(frame, *new_list, false);
+
         // Set compact integer row.names (c(NA_integer_, -new_nrow)).
         let (row_names, rn) = crate::into_r::alloc_r_vector::<i32>(2);
         {
@@ -779,8 +837,6 @@ unsafe fn select_frame_rows(frame: SEXP, idx: &[usize]) -> crate::OwnedProtect {
             rn[1] = -new_nrow;
             new_list.set_row_names(row_names);
         }
-        // Copy the data.frame class attribute.
-        new_list.set_class(frame.get_class());
 
         new_list
     }
@@ -868,13 +924,105 @@ unsafe fn select_column_rows(col: SEXP, idx: &[usize]) -> crate::OwnedProtect {
     }
 }
 
-/// Copy class and row.names attributes from one data.frame SEXP to another.
+/// Copy the frame attributes of `from` onto the new frame `to`.
+///
+/// Every attribute except `names` is copied (`Rf_copyMostAttrib`), the rule
+/// `vctrs::vec_slice()`, tibble's `[` and `dplyr_reconstruct()` follow:
+/// `class`, `row.names` (verbatim; a producer that changes the rows sets its
+/// own afterwards) and anything else a package keeps on the frame, such as a
+/// `units` map or its metadata.
+///
+/// dplyr's grouping is the exception. A `grouped_df` / `rowwise_df` caches
+/// its groups in a `groups` attribute that names the key columns and holds
+/// each group's row indices, so it is copied only while it still describes
+/// `to`: `same_rows`, and every grouping variable is the very column it was
+/// in `from` (moved, not rebuilt or replaced). Otherwise `to` loses `groups`
+/// and the `grouped_df` / `rowwise_df` class and is the ungrouped frame (a
+/// tibble, for a dplyr input), never a grouped frame whose groups are stale.
 ///
 /// # Safety
-/// Both SEXPs must be valid VECSXPs.
-unsafe fn copy_df_attrs(from: SEXP, to: SEXP) {
-    to.set_class(from.get_class());
-    to.set_row_names(from.get_row_names());
+///
+/// R main thread; `from` is a data.frame list and `to` a list whose `names`
+/// are set, protected by the caller.
+unsafe fn copy_frame_attrs(from: SEXP, to: SEXP, same_rows: bool) {
+    unsafe {
+        crate::sys::Rf_copyMostAttrib(from, to);
+        let grouped = from.inherits_class(c"grouped_df") || from.inherits_class(c"rowwise_df");
+        if grouped && !(same_rows && grouping_columns_kept(from, to)) {
+            ungroup_frame(to);
+        }
+    }
+}
+
+/// Whether every grouping variable of the grouped frame `from` (the columns
+/// its `groups` attribute names, `.rows` aside) is a column of `to` that is
+/// the same SEXP as in `from`. `false` when `groups` is not a data frame.
+///
+/// # Safety
+///
+/// R main thread; `from` and `to` are data.frame lists.
+unsafe fn grouping_columns_kept(from: SEXP, to: SEXP) -> bool {
+    unsafe {
+        let groups = from.get_attr(crate::sys::Rf_install(c"groups".as_ptr()));
+        if groups.type_of() != SEXPTYPE::VECSXP || !groups.is_data_frame() {
+            return false;
+        }
+        let vars = groups.get_names();
+        if vars == SEXP::nil() {
+            return false;
+        }
+        (0..vars.xlength())
+            .map(|i| col_name(vars, i))
+            .filter(|&var| var != ".rows")
+            .all(|var| match (column_named(from, var), column_named(to, var)) {
+                (Some(before), Some(after)) => before == after,
+                _ => false,
+            })
+    }
+}
+
+/// The first column of the data.frame list `frame` named `name`.
+///
+/// # Safety
+///
+/// R main thread; `frame` is a list.
+unsafe fn column_named(frame: SEXP, name: &str) -> Option<SEXP> {
+    unsafe {
+        let names = frame.get_names();
+        if names == SEXP::nil() {
+            return None;
+        }
+        (0..names.xlength())
+            .find(|&i| col_name(names, i) == name)
+            .map(|i| frame.vector_elt(i))
+    }
+}
+
+/// Remove dplyr's grouping from the frame `to`: its `groups` attribute and
+/// the `grouped_df` / `rowwise_df` entries of its class.
+///
+/// # Safety
+///
+/// R main thread; `to` is a data.frame list protected by the caller.
+unsafe fn ungroup_frame(to: SEXP) {
+    unsafe {
+        to.set_attr(crate::sys::Rf_install(c"groups".as_ptr()), SEXP::nil());
+        // Still attached to (and so rooted by) `to` until `set_class` below.
+        let class = to.get_class();
+        let kept: Vec<isize> = (0..class.xlength())
+            .filter(|&i| !matches!(col_name(class, i), "grouped_df" | "rowwise_df"))
+            .collect();
+        let new_class = crate::OwnedProtect::new(SEXP::alloc_strsxp(
+            isize::try_from(kept.len()).expect("class length fits isize"),
+        ));
+        for (j, &i) in kept.iter().enumerate() {
+            new_class.set_string_elt(
+                isize::try_from(j).expect("class length fits isize"),
+                class.string_elt(i),
+            );
+        }
+        to.set_class(*new_class);
+    }
 }
 // endregion
 
