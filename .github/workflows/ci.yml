@@ -4,9 +4,14 @@ on:
   pull_request:
     # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
     # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
-    # rounds in r-tests), `gc-stress` (r-stress-tests) and `windows`
-    # (r-check-windows). The default activity types
-    # (opened/synchronize/reopened) cover everything else.
+    # rounds in r-tests), `gc-stress` (r-stress-tests), `windows`
+    # (r-check-windows) and `full-ci`, which turns on every gate in this file:
+    # those four labels, the path filter, the main / cron / dispatch-only jobs
+    # and matrix legs, and the nightly gctorture and Miri workflows (called as
+    # jobs below). Any label change starts a new run, which cancels the
+    # in-progress one (see `concurrency`); removing `full-ci` is how to stop a
+    # full run. The default activity types (opened/synchronize/reopened) cover
+    # everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -155,7 +160,9 @@ jobs:
   # looks at the last commit alone: a weekly sweep whose latest commit only
   # touched R files skipped Rust lint and Rust tests. Those runs skip the
   # filter instead, and every output falls back to 'true' (a skipped step's
-  # output is empty; a real 'false' is a non-empty string and wins).
+  # output is empty; a real 'false' is a non-empty string and wins). A PR
+  # carrying the `full-ci` label skips it too, so it runs every job the way
+  # the weekly sweep does.
   changes:
     name: Detect changes
     runs-on: ubuntu-slim
@@ -169,7 +176,8 @@ jobs:
       - name: Determine changed paths
         id: filter
         if: >-
-          github.event_name == 'pull_request' ||
+          (github.event_name == 'pull_request' &&
+           !contains(github.event.pull_request.labels.*.name, 'full-ci')) ||
           (github.event_name == 'push' && github.ref_type == 'branch')
         uses: dorny/paths-filter@v4
         with:
@@ -682,17 +690,20 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
-  # Feature-combination compile check (scheduled only)
+  # Feature-combination compile check (scheduled, or the `full-ci` label)
   # ===========================================================================
   # Runs `just check-features` so the recipe can't silently rot when a feature
   # is added/removed (it once carried a deleted feature for months — audit A3).
-  # Weekly-only: the final combo pulls full-integrations (arrow + datafusion),
-  # which is too heavy for a per-PR gate.
+  # Weekly cron or a PR's `full-ci` label: the final combo pulls
+  # full-integrations (arrow + datafusion), which is too heavy for a per-PR
+  # gate. Not in ci-success.needs, so a failure shows red without blocking.
   check-features:
     name: Feature combos
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.event_name == 'schedule'
+    if: >-
+      github.event_name == 'schedule' ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     env:
       SCCACHE_GHA_ENABLED: "true"
       RUSTC_WRAPPER: "sccache"
@@ -739,9 +750,11 @@ jobs:
     strategy:
       fail-fast: false
       # Check the fixed minimum and current release on every PR. Additional
-      # R versions also run on main, the weekly schedule, and manual runs.
+      # R versions also run on main, the weekly schedule, manual runs and
+      # PRs carrying the `full-ci` label.
       matrix:
         include: ${{ github.event_name == 'pull_request'
+          && !contains(github.event.pull_request.labels.*.name, 'full-ci')
           && fromJSON('[{"r":"4.4"},{"r":"release"}]')
           || fromJSON('[{"r":"4.4"},{"r":"release"},{"r":"devel","allow_failure":true},{"r":"oldrel-1"}]') }}
 
@@ -850,13 +863,17 @@ jobs:
   # ===========================================================================
   # R Package: R CMD check on macOS
   # ===========================================================================
-  # On-demand: this job runs only on workflow_dispatch + weekly cron (Sat 06:00 UTC).
-  # Non-gating — intentionally not in ci-success.needs. Tracks #95 (macOS x86_64
-  # SIGABRT regression probe). To force a run: gh workflow run ci.yml --ref main
+  # On-demand: this job runs only on workflow_dispatch, the weekly cron (Sat
+  # 06:00 UTC) and PRs carrying the `full-ci` label. Non-gating — intentionally
+  # not in ci-success.needs. Tracks #95 (macOS x86_64 SIGABRT regression
+  # probe). To force a run: gh workflow run ci.yml --ref main
   r-check-macos:
     name: R CMD check / macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     timeout-minutes: 90
     needs: changes
     strategy:
@@ -1010,17 +1027,19 @@ jobs:
   # R Package: R CMD check on Windows
   # ===========================================================================
   # Windows support is deferred (#1654), so this job runs only on PRs carrying
-  # the `windows` label: not on pushes, the weekly cron or workflow_dispatch.
-  # Apply the label to a PR that touches Windows support (Makevars.win /
-  # configure.win, rtools linking, Windows-specific code paths). Non-gating,
-  # so not in ci-success.needs: a labeled failure shows red on the PR without
-  # blocking it. It hung past its timeout in April 2026 (#94), and worker
-  # panics under pipe-redirected stdout can abort (#104).
+  # the `windows` or `full-ci` label: not on pushes, the weekly cron or
+  # workflow_dispatch. Apply `windows` to a PR that touches Windows support
+  # (Makevars.win / configure.win, rtools linking, Windows-specific code
+  # paths). Non-gating, so not in ci-success.needs: a labeled failure shows
+  # red on the PR without blocking it. It hung past its timeout in April 2026
+  # (#94), and worker panics under pipe-redirected stdout can abort (#104).
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
     timeout-minutes: 90
-    if: contains(github.event.pull_request.labels.*.name, 'windows')
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'windows') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
     # This matches R's own build system (SHELL = sh from Rtools).
     # See docs/windows-build-environment.md for details.
@@ -1193,9 +1212,9 @@ jobs:
     name: R tests / Linux
     runs-on: ubuntu-latest
     # Fast source-mode leg: full suite minus the gctorture-heavy files (those
-    # run in r-stress-tests below: main/cron/dispatch, or the `gc-stress` label
-    # on a PR), plus the heap-check rounds (main/label) and the Valgrind
-    # ALTREP pass. Before the stress split this
+    # run in r-stress-tests below: main/cron/dispatch, or the `gc-stress` /
+    # `full-ci` label on a PR), plus the heap-check rounds (main/label) and
+    # the Valgrind ALTREP pass. Before the stress split this
     # job bundled everything and had outgrown even a 90-min cap on main pushes
     # (suite 34 min + 3 heap-check rounds = ~140 min -> guaranteed timeout).
     timeout-minutes: 60
@@ -1256,8 +1275,8 @@ jobs:
 
       - name: Run tests with heap checking (3 rounds, randomized order)
         # Heap checking (glibc MALLOC_CHECK_, 3 randomized rounds) is the
-        # malloc-discipline guard. Gate it on PRs behind the `heap-check` label
-        # so routine PRs stay fast; still run it unconditionally on
+        # malloc-discipline guard. Gate it on PRs behind the `heap-check` (or
+        # `full-ci`) label so routine PRs stay fast; still run it unconditionally on
         # push-to-main, the weekly schedule, and manual dispatch so merged code
         # keeps its safety net. The rounds skip the stress blocks too, as
         # MINIEXTENDR_STRESS is unset (~5 min each, not ~35): heap-check hunts
@@ -1267,7 +1286,8 @@ jobs:
         # any timeout.
         if: >-
           github.event_name != 'pull_request' ||
-          contains(github.event.pull_request.labels.*.name, 'heap-check')
+          contains(github.event.pull_request.labels.*.name, 'heap-check') ||
+          contains(github.event.pull_request.labels.*.name, 'full-ci')
         working-directory: rpkg
         shell: bash
         env:
@@ -1329,8 +1349,9 @@ jobs:
   # the `gc-stress` label to a PR that adds or changes SEXP-storage paths
   # (`Vec<SEXP>` / sidecars / list buffers / new gc_stress_* fixtures, see
   # CLAUDE.md "Stress-test GC discipline") and the job runs on that PR like
-  # heap-check does. Push-to-main, the weekly cron and workflow_dispatch still
-  # run it unconditionally, and gctorture-nightly.yml does the deep sweep.
+  # heap-check does (`full-ci` turns it on too). Push-to-main, the weekly cron
+  # and workflow_dispatch still run it unconditionally, and
+  # gctorture-nightly.yml does the deep sweep.
   # Stays in ci-success.needs: a skipped job passes the gate, a labeled-and-
   # failing one blocks it.
   r-stress-tests:
@@ -1341,7 +1362,8 @@ jobs:
     if: >-
       needs.changes.outputs.r == 'true' &&
       (github.event_name != 'pull_request' ||
-       contains(github.event.pull_request.labels.*.name, 'gc-stress'))
+       contains(github.event.pull_request.labels.*.name, 'gc-stress') ||
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
     strategy:
       fail-fast: false
       # Three shards, balanced from measured timings (run 29073963629: the
@@ -1424,7 +1446,7 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
-  # Feature runtime legs (scheduled only)
+  # Feature runtime legs (scheduled, dispatched, or the `full-ci` label)
   # ===========================================================================
   # rpkg's tools/detect-features.R denylists the codegen selectors
   # (worker-default, strict-default, coerce-default, no-preconditions-default,
@@ -1447,14 +1469,18 @@ jobs:
   # no_preconditions_default unit tests in miniextendr-macros (src/tests.rs
   # and the trait-impl one), which no other job compiles+runs.
   #
-  # Weekly-only + workflow_dispatch: seven extra full rpkg builds are too heavy
-  # for a per-PR gate. Intentionally NOT in ci-success.needs; failures surface
-  # via the job summary (same pattern as gctorture-nightly.yml).
+  # Weekly cron, workflow_dispatch and the `full-ci` PR label only: seven
+  # extra full rpkg builds are too heavy for a per-PR gate. Intentionally NOT
+  # in ci-success.needs; failures surface via the job summary (same pattern
+  # as gctorture-nightly.yml).
   feature-legs:
     name: Feature runtime leg / ${{ matrix.leg }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     strategy:
       fail-fast: false
       matrix:
@@ -1835,8 +1861,10 @@ jobs:
 
       # The checked source package, with inst/vendor.tar.xz inside, is the
       # offline-installable build. Publishing it here means nobody needs to
-      # commit a vendor tarball to hand one out. Skipped on PRs: every push
-      # would store another multi-MiB copy. Native installs only: this job
+      # commit a vendor tarball to hand one out. Skipped on PRs, `full-ci`
+      # ones included: it publishes a build rather than checking one (the
+      # check above already used the tarball), and every push would store
+      # another multi-MiB copy. Native installs only: this job
       # doesn't regenerate wasm_registry.rs, so it is not a webR build input.
       - name: Upload source package
         if: github.event_name != 'pull_request'
@@ -1960,7 +1988,7 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
-  # Standalone round-trip e2e (on-demand: nightly cron + label + dispatch)
+  # Standalone round-trip e2e (on-demand: weekly cron + label + dispatch)
   # ===========================================================================
   # Exercises the full standalone (non-monorepo) flow that the per-PR suite
   # cannot afford: create_miniextendr_package() -> miniextendr_build() ->
@@ -1975,8 +2003,8 @@ jobs:
   #
   # On-demand only — NOT in ci-success.needs, so it never gates a PR and adds no
   # minutes to normal runs. Triggers: weekly cron (Sat 06:00 UTC), the `run-e2e`
-  # PR label, or `gh workflow run ci.yml --ref <branch>`. Heavy: cold-compiles
-  # Rust + autoconf + network-fetches miniextendr `main`.
+  # or `full-ci` PR label, or `gh workflow run ci.yml --ref <branch>`. Heavy:
+  # cold-compiles Rust + autoconf + network-fetches miniextendr `main`.
   r-roundtrip-e2e:
     name: Standalone round-trip e2e
     runs-on: ubuntu-latest
@@ -1984,7 +2012,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
-      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+      contains(github.event.pull_request.labels.*.name, 'run-e2e') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
@@ -2042,10 +2071,32 @@ jobs:
         uses: ./.github/actions/sccache-log
 
   # ===========================================================================
+  # Nightly workflows on a `full-ci` PR
+  # ===========================================================================
+  # gctorture-nightly.yml and miri-nightly.yml have no PR trigger of their
+  # own. A PR carrying `full-ci` runs them here as called workflows, so they
+  # share this run's concurrency group: a new push or label change cancels an
+  # in-progress sweep instead of stacking another one. The gctorture sweep is
+  # six shards of ~2 hours each (300-minute cap), ~11 runner-hours in total,
+  # so the label is for risky changes, not routine PRs. Neither is
+  # in ci-success.needs: a failure shows red on the PR without blocking it,
+  # as it does for the scheduled runs.
+  gctorture-nightly:
+    name: gctorture nightly
+    if: contains(github.event.pull_request.labels.*.name, 'full-ci')
+    uses: ./.github/workflows/gctorture-nightly.yml
+
+  miri-nightly:
+    name: miri nightly
+    if: contains(github.event.pull_request.labels.*.name, 'full-ci')
+    uses: ./.github/workflows/miri-nightly.yml
+
+  # ===========================================================================
   # Summary job: the single check for branch protection / a ruleset to require
   # ===========================================================================
   # `needs` is the gating set and the only list to edit: a job left out
-  # (macOS, Windows, e2e, feature legs) never blocks a merge. success and skipped pass;
+  # (macOS, Windows, e2e, feature legs, feature combos, the nightly
+  # workflows) never blocks a merge, `full-ci` or not. success and skipped pass;
   # failure and cancelled fail. `if: always()` matters: without it a failed
   # dependency skips this job, and a skipped required check counts as passing.
   ci-success:
@@ -2059,15 +2110,15 @@ jobs:
       - rust-tests
       - changes
       - r-check-linux
-      # - r-check-macos   # non-gating: runs only on workflow_dispatch + weekly cron, see #95
-      # - r-check-windows # non-gating: `windows` label only, Windows support deferred (#1654)
+      # - r-check-macos   # non-gating: workflow_dispatch / weekly cron / `full-ci` label, see #95
+      # - r-check-windows # non-gating: `windows` / `full-ci` label only, Windows support deferred (#1654)
       - r-tests
       - r-stress-tests
       - cross-package-tests
       - minirextendr
       - cran-check
       - bootstrap-vendor-test
-      # - r-roundtrip-e2e # non-gating: on-demand only (cron / run-e2e label / dispatch), see #775
+      # - r-roundtrip-e2e # non-gating: on-demand only (cron / run-e2e or full-ci label / dispatch), see #775
     runs-on: ubuntu-slim
     if: always()
     steps:

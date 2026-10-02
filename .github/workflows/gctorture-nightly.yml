@@ -15,7 +15,9 @@ name: gctorture nightly
 # for a PR gate — and too long for any single hosted job, so the sweep fans
 # out over a shard matrix (MINIEXTENDR_GCTORTURE_SHARD=k/n partitions test
 # files round-robin in scripts/gctorture-full-sweep.R). Scheduled nightly
-# plus a manual workflow_dispatch trigger for on-demand verification.
+# plus a manual workflow_dispatch trigger for on-demand verification. A PR
+# carrying the `full-ci` label runs it too, as a job of ci.yml
+# (workflow_call), never as a merge gate.
 
 on:
   # 04:00 UTC daily — a low-traffic hour, and offset from the weekly CI cron
@@ -26,6 +28,10 @@ on:
   # this workflow, or after landing SEXP-storage changes) without waiting for
   # the nightly cron.
   workflow_dispatch:
+  # ci.yml's `gctorture-nightly` job calls this on a `full-ci` PR. The call
+  # runs under ci.yml's concurrency group, so a new push to the PR cancels
+  # the in-progress sweep.
+  workflow_call:
 
 permissions:
   contents: read
