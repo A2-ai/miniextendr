@@ -133,11 +133,12 @@ struct Cli {
     /// `[[bin]]`, `[dev-dependencies]`) without deleting `tests/`,
     /// `benches/`, or `examples/` directories.
     ///
-    /// Some published crates reference files inside those directories
-    /// from regular library source via `include_str!()` (zerocopy is
-    /// one); deleting them breaks `cargo check --offline` post-vendor.
-    /// Use this flag instead of `--strip-all` when CRAN trim is the
-    /// goal but the dep graph contains such crates.
+    /// The other strip flags already keep a directory that library source
+    /// names in `include_str!()` / `include_bytes!()` / `include!()` or a
+    /// `#[path]` attribute (zerocopy, winnow). Use this flag instead of
+    /// `--strip-all` when a dependency reaches into one of those
+    /// directories some other way, such as a build script reading a
+    /// fixture.
     ///
     /// Always-safe base directories (`.github`, `.circleci`, `ci`,
     /// `target`) are still removed.

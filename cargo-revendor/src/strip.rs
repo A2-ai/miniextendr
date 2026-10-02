@@ -12,11 +12,11 @@ pub struct StripConfig {
     pub examples: bool,
     pub bins: bool,
     /// Strip TOML sections only — leave source-related directories
-    /// (`tests/`, `benches/`, `examples/`) on disk. Crates such as
-    /// `zerocopy` reference files in those directories from regular
-    /// library source via `include_str!()`; deleting them breaks
-    /// `cargo check --offline` post-vendor. Always-safe base dirs
-    /// (`.github`, `.circleci`, `ci`, `target`) are still removed.
+    /// (`tests/`, `benches/`, `examples/`) on disk, for a crate that reaches
+    /// into one in a way `scan_referenced_top_dirs` does not detect (the
+    /// directory pass already keeps those named by include macros or
+    /// `#[path]`). Always-safe base dirs (`.github`, `.circleci`, `ci`,
+    /// `target`) are still removed.
     pub toml_only: bool,
 }
 
@@ -112,11 +112,12 @@ fn strip_crate_dir(crate_dir: &Path, config: &StripConfig, v: Verbosity) -> Resu
     let mut stripped = Vec::new();
 
     // Some crates reference files in `tests/`/`benches/`/`examples/` from
-    // regular library source via `include_str!()`/`include_bytes!()`/`include!()`.
-    // Stripping those dirs breaks `cargo build --offline` post-vendor (winnow
-    // ships `include_str!("../examples/css/parser.rs")` in `src/lib.rs`).
-    // Scan the crate up front and skip stripping any top-level dir that's
-    // referenced this way.
+    // regular library source via `include_str!()`/`include_bytes!()`/`include!()`
+    // or a `#[path = "..."]` module attribute. Stripping those dirs breaks
+    // `cargo build --offline` post-vendor (winnow ships
+    // `include_str!("../examples/css/parser.rs")` in `src/lib.rs`). Scan the
+    // crate up front and skip stripping any top-level dir that's referenced
+    // this way.
     let referenced_top_dirs = scan_referenced_top_dirs(crate_dir);
 
     // Remove configured directories
@@ -124,7 +125,7 @@ fn strip_crate_dir(crate_dir: &Path, config: &StripConfig, v: Verbosity) -> Resu
         if referenced_top_dirs.iter().any(|d| d == dir_name) {
             if v.debug() {
                 eprintln!(
-                    "  Preserving {}/{} — referenced by include_str!/include_bytes!/include!",
+                    "  Preserving {}/{} — referenced by include_str!/include_bytes!/include!/#[path]",
                     crate_name, dir_name
                 );
             }
@@ -327,15 +328,19 @@ fn strip_toml_sections(cargo_toml: &Path, sections_to_strip: &[&str]) -> Result<
 const STRIPABLE_TOP_DIRS: &[&str] = &["tests", "benches", "examples", "bin"];
 
 /// Walk every `.rs` file under `crate_dir` and collect the top-level directory
-/// names referenced by `include_str!`/`include_bytes!`/`include!` macros.
+/// names referenced by `include_str!`/`include_bytes!`/`include!` macros and
+/// by `#[path = "..."]` module attributes.
 ///
 /// Two layers of detection:
 ///
-/// 1. literal-path macros — resolve relative to the source file (matching
-///    rustc) and read the first component under the crate root.
+/// 1. literal paths — resolve relative to the source file (matching rustc
+///    for the include macros, and for `#[path]` outside inline modules) and
+///    read the first component under the crate root.
 /// 2. composed-path macros — scan all string literals in the macro's
 ///    argument span (handles `concat!(...)`) for `<...>tests/`, `benches/`,
-///    `examples/`, `bin/` substrings and preserve those dirs.
+///    `examples/`, `bin/` substrings and preserve those dirs. The same
+///    substring sniff covers a `#[path]` inside an inline `mod { }`, whose
+///    base directory differs from the file's.
 ///
 /// Paths escaping the crate root or referencing files outside it are ignored.
 fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {
@@ -365,7 +370,10 @@ fn scan_referenced_top_dirs(crate_dir: &Path) -> Vec<String> {
             Some(p) => p,
             None => continue,
         };
-        for literal in extract_include_arg_literals(&content) {
+        let literals = extract_include_arg_literals(&content)
+            .into_iter()
+            .chain(extract_path_attr_literals(&content));
+        for literal in literals {
             // (1) Literal-path resolution: works for `include_str!("...")`.
             let resolved = parent.join(&literal);
             if let Ok(canon) = resolved.canonicalize()
@@ -480,6 +488,42 @@ fn extract_include_arg_literals(content: &str) -> Vec<String> {
             extract_string_literals(&content[arg_start..arg_end], &mut out);
             search = arg_end + 1;
         }
+    }
+    out
+}
+
+/// Pull the string literal out of every `#[path = "..."]` attribute, the
+/// module-file override rustc honours on `mod name;` declarations. A crate
+/// can point one at a file under `tests/` / `benches/` / `examples/` from
+/// regular library source, which stripping that directory would break.
+fn extract_path_attr_literals(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = content.as_bytes();
+    let needle = b"#[path";
+    let skip_ws = |mut i: usize| {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        i
+    };
+    let mut search = 0usize;
+    while let Some(idx) = find_subslice(&bytes[search..], needle) {
+        let start = search + idx + needle.len();
+        search = start;
+        // `#[path = "..."]`, not `#[path_like]` or `#[path(...)]`.
+        let i = skip_ws(start);
+        if i >= bytes.len() || bytes[i] != b'=' {
+            continue;
+        }
+        let i = skip_ws(i + 1);
+        if i >= bytes.len() || bytes[i] != b'"' {
+            continue;
+        }
+        let Some(len) = bytes[i + 1..].iter().position(|&b| b == b'"') else {
+            break;
+        };
+        out.push(content[i + 1..i + 1 + len].to_string());
+        search = i + 1 + len;
     }
     out
 }
@@ -1132,6 +1176,61 @@ default = []
             "benches/ must survive — referenced via concat!() in include_str!"
         );
         // examples/ has no reference → still stripped
+        assert!(!crate_dir.join("examples").exists());
+    }
+
+    #[test]
+    fn extract_path_attr_literals_basic() {
+        let src = r#"
+            #[path = "../tests/common/shared.rs"]
+            mod shared;
+            #[path="imp/unix.rs"] mod imp;
+            #[path_like = "../examples/not_a_path_attr.rs"]
+            #[cfg(test)]
+            mod t;
+        "#;
+        let paths = extract_path_attr_literals(src);
+        assert_eq!(
+            paths,
+            vec![
+                "../tests/common/shared.rs".to_string(),
+                "imp/unix.rs".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn strip_all_preserves_dirs_referenced_by_path_attr() {
+        // A library module whose file lives under benches/ via #[path]: the
+        // module is compiled into the lib, so benches/ has to survive.
+        let dir = TempDir::new().unwrap();
+        let crate_dir = dir.path().join("path_attr_like");
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("benches")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("tests")).unwrap();
+        std::fs::create_dir_all(crate_dir.join("examples")).unwrap();
+        std::fs::write(crate_dir.join("benches/shared.rs"), "pub fn f() {}").unwrap();
+        std::fs::write(crate_dir.join("tests/test.rs"), "// test").unwrap();
+        std::fs::write(crate_dir.join("examples/ex.rs"), "// example").unwrap();
+        std::fs::write(
+            crate_dir.join("src/lib.rs"),
+            "#[path = \"../benches/shared.rs\"]\npub mod shared;\n",
+        )
+        .unwrap();
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            "[package]\nname = \"path_attr_like\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(crate_dir.join(".cargo-checksum.json"), "{\"files\":{}}").unwrap();
+
+        strip_crate_dir(&crate_dir, &StripConfig::all(), Verbosity(0)).unwrap();
+
+        assert!(
+            crate_dir.join("benches/shared.rs").exists(),
+            "benches/ must survive — a lib module lives there via #[path]"
+        );
+        assert!(!crate_dir.join("tests").exists());
         assert!(!crate_dir.join("examples").exists());
     }
 
