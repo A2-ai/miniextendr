@@ -26,3 +26,4 @@ merged pull request, and say in **Closes when** which release we wait for.
 | [`sccache-2313-server-keeps-inherited-fds.md`](sccache-2313-server-keeps-inherited-fds.md) | mozilla/sccache | #2313 | open (2026-09-23) |
 | [`S7-721-external-generic-s3-registration.md`](S7-721-external-generic-s3-registration.md) | RConsortium/S7 | #721 | fixed on main, unreleased (2026-09-24) |
 | [`S7-490-unary-ops.md`](S7-490-unary-ops.md) | RConsortium/S7 | #490 | PR open; works on main, unreleased (2026-09-24) |
+| [`r-src-1-r-home-from-env.md`](r-src-1-r-home-from-env.md) | blas-lapack-rs/r-src | PR #1 | PR open, unmerged since 2025-02 (2026-10-02) |

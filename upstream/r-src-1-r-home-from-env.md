@@ -1,0 +1,8 @@
+# r-src: build script finds R only through `PATH`, ignoring `R_HOME`
+
+- **Upstream**: <https://github.com/blas-lapack-rs/r-src/pull/1> ("Robustify R setting detection", by the maintainer). It has been open and mergeable since 2025-02-19. It makes `build.rs` read `R_HOME` first, then fall back to `R RHOME`. We commented with a repro and asked for a merge and release on 2026-10-02: <https://github.com/blas-lapack-rs/r-src/pull/1#issuecomment-5946088395>.
+- **Our issue**: #1694 (sys-like bindings for the native libraries R links).
+- **Impact**: `r-src` is the `r` feature of `blas-src` / `lapack-src`, the existing crates that link R's BLAS / LAPACK (`R CMD config`'s `BLAS_LIBS`, `LAPACK_LIBS`, `FLIBS`). The released 0.2.1 runs `R RHOME` from `PATH`. `R CMD INSTALL` sets `R_HOME` but doesn't put R on `PATH` (checked on R 4.6.1), so the build script either panics or picks up another installed R. It also has no `links` key, so a `[target.<triple>.<links>]` override can't replace it. For a package's staticlib this doesn't matter, since link directives are ignored there and Makevars has to add the three variables itself. It matters for cargo-only binaries and tests that link R's BLAS / LAPACK.
+- **Workaround**: Makevars puts `$(R_HOME)/bin` first on `PATH` for cargo, and packages link through `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` in `PKG_LIBS`.
+- **Closes when**: the PR is merged and a release after 0.2.1 is on crates.io, and #1694's BLAS / LAPACK work no longer needs the `PATH` workaround.
+- **Last checked**: 2026-10-02. The PR was open with no other comments. It still has no `cargo:rerun-if-env-changed=R_HOME` and no `links` key, so we listed both as non-blocking follow-ups.
