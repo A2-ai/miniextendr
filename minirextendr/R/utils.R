@@ -263,21 +263,17 @@ mx_ignore_patterns <- function(template, subdir = NULL) {
 #' @param dest_dir Absolute path to the (already-created) destination directory.
 #' @param display_prefix Path prefix used in the "Copied" / "Kept" messages, or
 #'   `NULL` to suppress them (used by the quiet inline path).
+#' @param tools_subdir Template subdirectory holding the `tools/` scripts,
+#'   resolved against the active template type: `"tools"`, or `"rpkg/tools"`
+#'   for the R package subdirectory of a monorepo.
 #' @return Invisibly returns TRUE.
 #' @noRd
-copy_config_scripts <- function(dest_dir, display_prefix = dest_dir) {
-  fs::file_copy(
-    system.file("templates/rpkg/tools/vendor-cache.R", package = "minirextendr"),
-    file.path(dest_dir, "vendor-cache.R"), overwrite = TRUE
-  )
-  fs::file_copy(
-    system.file("templates/rpkg/tools/dev-bootstrap.R", package = "minirextendr"),
-    file.path(dest_dir, "dev-bootstrap.R"), overwrite = TRUE
-  )
-  fs::file_copy(
-    system.file("templates/rpkg/tools/write-wrappers.R", package = "minirextendr"),
-    file.path(dest_dir, "write-wrappers.R"), overwrite = TRUE
-  )
+copy_config_scripts <- function(dest_dir, display_prefix = dest_dir,
+                                tools_subdir = "tools") {
+  for (script in c("vendor-cache.R", "dev-bootstrap.R", "write-wrappers.R")) {
+    fs::file_copy(template_path(script, subdir = tools_subdir),
+                  file.path(dest_dir, script), overwrite = TRUE)
+  }
   for (script in c("config.guess", "config.sub")) {
     src <- script_path(script)
     dest <- file.path(dest_dir, script)

@@ -152,6 +152,7 @@ test_that("a monorepo upgrade renders the monorepo templates; a later standalone
 
     expect_true("monorepo/rpkg/configure.ac" %in% seen$paths, info = from)
     expect_true("monorepo/rpkg/tools/lock-shape-check.R" %in% seen$paths, info = from)
+    expect_true("monorepo/rpkg/tools/write-wrappers.R" %in% seen$paths, info = from)
     # The workspace-root gitignore template is the one read outside
     # monorepo/rpkg/; it goes to the root .gitignore (#1670).
     expect_true("monorepo/gitignore" %in% seen$paths, info = from)
@@ -176,6 +177,7 @@ test_that("a monorepo upgrade renders the monorepo templates; a later standalone
   run_upgrade(standalone)
 
   expect_true("rpkg/configure.ac" %in% seen$paths)
+  expect_true("rpkg/tools/write-wrappers.R" %in% seen$paths)
   expect_true(all(startsWith(seen$paths, "rpkg/")),
               info = paste(seen$paths, collapse = "\n"))
   expect_identical(minirextendr:::get_template_type(), "monorepo")
