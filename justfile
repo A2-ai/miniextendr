@@ -1406,6 +1406,13 @@ templates-check:
 agents-md-check:
     bash scripts/agents-md-check.sh
 
+# Scans the R scripts and R Markdown files git tracks with attachment (from
+# rv's library, so it runs from the repo root). Add a reported package with
+# `rv add <pkg>`.
+# Fail when a tracked R file uses a package rv.lock lacks (exits nonzero on a miss)
+r-deps-check:
+    Rscript scripts/r-deps-check.R
+
 # Build artifacts: vendor tarballs, vendor/, target/, R CMD output and rpkg's
 # generated files. Checks HEAD and, given a range such as origin/main..HEAD,
 # every commit in it. CI's Generated Files Check runs this on each PR and push.

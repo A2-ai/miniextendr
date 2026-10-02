@@ -153,6 +153,11 @@ creating temporary library: …/__rv_R_mismatch
 Error in loadNamespace(x) : there is no package called 'testthat'
 ```
 
+Add an R dependency with `rv add <pkg>`, which updates `rproject.toml` and
+`rv.lock` and syncs the library. `just r-deps-check` scans every R script and
+R Markdown file git tracks (attachment) and fails when one uses a package
+`rv.lock` doesn't have.
+
 Read the current pin from `rproject.toml:[project].r_version` at the start of
 every fresh shell; that file is the source of truth. Switch the default with
 **rig** to that exact version before running `just devtools-test` /
