@@ -59,6 +59,12 @@ generics) when the package is built, and only that call registers them in a
 new session; \code{\link[=use_s7]{use_s7()}} adds it. The check parses \verb{R/} without running it,
 so a call reached through a helper function is not seen.
 
+In a git work tree the doctor also fails on a tracked \code{vendor.tar.xz}
+(\code{inst/vendor.tar.xz}, or one elsewhere in the package) and prints the
+\verb{git rm --cached <path>} fix. That goes beyond the on-disk check: a tracked
+tarball is in every clone, and every committed version stays in the
+repository history.
+
 For more targeted checks, see \code{\link[=miniextendr_status]{miniextendr_status()}} (file presence)
 and \code{\link[=miniextendr_validate]{miniextendr_validate()}} (configuration correctness).
 }

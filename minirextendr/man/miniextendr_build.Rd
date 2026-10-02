@@ -46,8 +46,9 @@ a throwaway library that links \verb{src/<pkg>.so}, regenerates
 never loads the namespace, so a stale \code{NAMESPACE} cannot fail it. Step 4's
 \code{document()} reads the current wrappers; its own \code{pkgload::load_all()}
 compile finds the library linked and the wrappers generated from it. Step 5
-installs the package once, with \code{NAMESPACE}, \verb{man/} and the wrappers
-already in their final form. A brand-new package needs no special case:
+installs the package once, in place (\code{build = FALSE}), with \code{NAMESPACE},
+\verb{man/} and the wrappers already in their final form; it reuses Step 3's
+Cargo build. A brand-new package needs no special case:
 Step 3 writes its first wrappers file the same way.
 
 \code{document()} loads the package from source through \code{pkgload::load_all()}
@@ -61,10 +62,10 @@ export the build just added. The workflow unloads it after \code{document()};
 
 \section{Vendoring}{
 
-Nothing here vendors. The install's \verb{R CMD build} runs \code{bootstrap.R}, which
-stages only path dependencies outside the package, in R CMD build's
-temporary copy; registry and Git dependencies resolve over the network. An
-offline, CRAN-ready tarball comes from \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}}. A
+Nothing here vendors. Every step works on the source tree in place, where
+path dependencies resolve as written; registry and Git dependencies resolve
+over the network. An offline, CRAN-ready tarball comes from
+\code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}}. A
 pre-existing \code{inst/vendor.tar.xz} latch is never deleted, but every step
 then builds in offline tarball mode, so a warning is emitted up front and
 \code{miniextendr_doctor()} / \code{miniextendr_clean_vendor_leak()} point at the fix.

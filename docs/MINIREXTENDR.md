@@ -427,7 +427,7 @@ Installs idempotent `pre-commit` and `post-merge` hooks into `.git/hooks/`:
 
 | Hook | Checks |
 |------|--------|
-| `pre-commit` | `cargo fmt --check`; blocks if `configure.ac` is staged without an up-to-date `configure`; warns on a likely-stale `inst/vendor.tar.xz` |
+| `pre-commit` | `cargo fmt --check`; blocks if `configure.ac` is staged without an up-to-date `configure`; blocks a staged `vendor.tar.xz` (a build artifact that `miniextendr_build_tarball()` vendors into the release tarball; never commit it) |
 | `post-merge` | Reminds you to reconfigure + rebuild when build-relevant files changed (`configure.ac`, `Makevars.in`, `Cargo.toml`, `*.rs`) |
 
 The hooks auto-detect standalone vs monorepo layouts (searches for

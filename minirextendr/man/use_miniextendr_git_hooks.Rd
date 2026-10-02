@@ -33,8 +33,9 @@ package in a healthy state:
 \item \strong{pre-commit}: Checks \verb{cargo fmt}, blocks on stale \code{configure} script
 or stale NAMESPACE (when \verb{*-wrappers.R} changed without \code{devtools::document()}),
 blocks on source-shape \code{src/rust/Cargo.lock} (recommends
-\code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), notes when \code{inst/vendor.tar.xz} may need
-updating
+\code{\link[=miniextendr_repair_lock]{miniextendr_repair_lock()}}), blocks on a staged \code{vendor.tar.xz}
+(a build artifact that \code{\link[=miniextendr_build_tarball]{miniextendr_build_tarball()}} vendors into the
+release tarball; never commit it)
 \item \strong{post-merge}: Reminds you to reconfigure after pulling changes to
 build files (configure.ac, Makevars.in, Cargo.toml, Rust sources)
 }

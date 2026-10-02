@@ -14,5 +14,6 @@ rust-target/
 ra-target/
 src/rust/ra_target/
 src/rust/target/
+inst/vendor.tar.xz
 inst/.vendor.tar.xz.cksum
 vendor/
