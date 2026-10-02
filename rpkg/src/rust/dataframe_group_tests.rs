@@ -256,7 +256,8 @@ pub fn group_rows_summary() -> SEXP {
 // region: row-subset fixture (the primitive behind the group sub-frames)
 
 /// `DataFrame::select_rows` at the 1-based row indices `idx`: every column
-/// keeps its attributes (`tzone`, `units`, labels, element names).
+/// keeps its attributes (`tzone`, `units`, labels, element names), and the
+/// frame keeps its own except `names`, `row.names` and dplyr's `groups`.
 /// @param df A data.frame.
 /// @param idx 1-based row indices, in output order.
 #[miniextendr(noexport)]
@@ -266,5 +267,44 @@ pub fn dataframe_select_rows(df: DataFrame, idx: Vec<i32>) -> BuiltDataFrame {
         .map(|i| usize::try_from(i - 1).expect("row indices are 1-based and positive"))
         .collect();
     df.select_rows(&idx)
+}
+// endregion
+
+// region: column-producer fixtures (frame attributes and dplyr grouping)
+
+/// `DataFrame::drop`: the frame without column `col`.
+/// @param df A data.frame.
+/// @param col Name of the column to remove.
+#[miniextendr(noexport)]
+pub fn dataframe_drop_column(df: DataFrame, col: &str) -> BuiltDataFrame {
+    df.drop(col)
+}
+
+/// `DataFrame::select`: the frame with only the columns `cols`, in that order.
+/// @param df A data.frame.
+/// @param cols Names of the columns to keep.
+#[miniextendr(noexport)]
+pub fn dataframe_select_columns(df: DataFrame, cols: Vec<String>) -> BuiltDataFrame {
+    let refs: Vec<&str> = cols.iter().map(String::as_str).collect();
+    df.select(&refs)
+}
+
+/// `DataFrame::prepend_column`: `column` as the first column, named `name`.
+/// @param df A data.frame.
+/// @param name Name of the new first column.
+/// @param column The column vector, one element per row.
+#[miniextendr(noexport)]
+pub fn dataframe_prepend_column(df: DataFrame, name: &str, column: SEXP) -> BuiltDataFrame {
+    df.prepend_column(name, column)
+}
+
+/// `DataFrame::with_column`: replace the column `name`, or append it.
+/// Replacing stores `column` into `df` itself, so the tests only append.
+/// @param df A data.frame.
+/// @param name Name of the column to replace or append.
+/// @param column The column vector, one element per row.
+#[miniextendr(noexport)]
+pub fn dataframe_with_column(df: DataFrame, name: &str, column: SEXP) -> BuiltDataFrame {
+    df.with_column(name, column)
 }
 // endregion
