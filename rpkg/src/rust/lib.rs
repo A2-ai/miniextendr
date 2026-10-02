@@ -41,6 +41,7 @@
 //! - [`identical_tests`]: R identical() comparison tests
 //! - [`factor_tests`]: R factor handling tests
 //! - [`rng_tests`]: R random number generator tests
+//! - [`rmath_tests`]: `Rmath.h` distribution routines (`sys::Rf_pnorm5`, ...) through `.Call`
 //!
 //! # Trait ABI
 //!
@@ -287,6 +288,7 @@ mod receiver_tests;
 mod refcount_protect_tests;
 #[cfg(feature = "regex")]
 mod regex_adapter_tests;
+mod rmath_tests;
 mod rng_tests;
 mod roxygen_carry_tests;
 mod s3_nonsyntactic_tests;

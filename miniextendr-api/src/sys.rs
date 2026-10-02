@@ -1634,6 +1634,125 @@ unsafe extern "C-unwind" {
 
 // endregion
 
+// region: Rmath distribution functions (Rmath.h)
+//
+// Unless `MATHLIB_STANDALONE` is defined, `Rmath.h` remaps the short names
+// (`dnorm` -> `dnorm4` -> `Rf_dnorm4`, `pnorm` -> `pnorm5` -> `Rf_pnorm5`,
+// `qnorm` -> `qnorm5` -> `Rf_qnorm5`, `qchisq` -> `Rf_qchisq`); these are the
+// symbols libR exports, with these prototypes, from the R 4.4 floor on.
+// `tools:::funAPI()` lists all four as `api` (R 4.6 and R-devel 4.7) and none
+// is in `tools:::nonAPI` (R 4.4 to 4.7), so they need no feature gate.
+//
+// These are the scalar C routines, not the vectorised `stats::` functions:
+// arguments are passed through unchanged (the `lower_tail` / `log_p` flags
+// select R's own tail and log-scale code paths), and NA, NaN and infinite
+// inputs come back as R's C code computes them.
+
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
+    /// Normal density: `dnorm(x, mean = mu, sd = sigma, log = give_log)`.
+    ///
+    /// `Rf_dnorm4` from `Rmath.h` (the `dnorm` and `dnorm4` macros resolve
+    /// to it). A non-zero `give_log` returns the log density.
+    ///
+    /// # R conditions
+    ///
+    /// An invalid `sigma` (negative) returns `NaN` without a warning: nmath
+    /// does not report domain errors, and the "NaNs produced" warning that
+    /// `stats::dnorm` gives comes from R's vectorised wrapper. nmath reports
+    /// other problems (precision loss, non-convergence) through R's
+    /// `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_dnorm4(x: f64, mu: f64, sigma: f64, give_log: ::std::os::raw::c_int) -> f64;
+
+    /// Normal distribution function:
+    /// `pnorm(x, mean = mu, sd = sigma, lower.tail = lower_tail, log.p = log_p)`.
+    ///
+    /// `Rf_pnorm5` from `Rmath.h` (the `pnorm` and `pnorm5` macros resolve
+    /// to it). `lower_tail = 0` computes the upper tail `P[X > x]` directly
+    /// (accurate far into the tail, unlike `1 - P[X <= x]`); a non-zero
+    /// `log_p` returns the log probability.
+    ///
+    /// # R conditions
+    ///
+    /// An invalid `sigma` (negative) returns `NaN` without a warning (nmath
+    /// does not report domain errors). nmath reports other problems through
+    /// R's `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_pnorm5(
+        x: f64,
+        mu: f64,
+        sigma: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+
+    /// Normal quantile function:
+    /// `qnorm(p, mean = mu, sd = sigma, lower.tail = lower_tail, log.p = log_p)`.
+    ///
+    /// `Rf_qnorm5` from `Rmath.h` (the `qnorm` and `qnorm5` macros resolve
+    /// to it). With a non-zero `log_p`, `p` is a log probability; with
+    /// `lower_tail = 0`, `p` is an upper-tail probability. `p = 0` and
+    /// `p = 1` (or `-Inf` / `0` on the log scale) return `-Inf` / `Inf` as
+    /// the tail requires.
+    ///
+    /// # R conditions
+    ///
+    /// A `p` outside `[0, 1]` (outside `[-Inf, 0]` on the log scale) or a
+    /// negative `sigma` returns `NaN` without a warning (nmath does not
+    /// report domain errors). nmath reports other problems through R's
+    /// `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_qnorm5(
+        p: f64,
+        mu: f64,
+        sigma: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+
+    /// Chi-squared quantile function:
+    /// `qchisq(p, df, lower.tail = lower_tail, log.p = log_p)` (central only;
+    /// `stats::qchisq` with `ncp` calls a different routine).
+    ///
+    /// `Rf_qchisq` from `Rmath.h` (the `qchisq` macro resolves to it). It is
+    /// R's gamma quantile with shape `df / 2` and scale `2`. The flags have
+    /// the same meaning as for [`Rf_qnorm5`].
+    ///
+    /// # R conditions
+    ///
+    /// A `p` outside the probability range or a negative `df` returns `NaN`
+    /// without a warning (nmath does not report domain errors). The gamma
+    /// quantile iterates, and nmath reports non-convergence or precision
+    /// loss in it (and in the gamma distribution function it calls) through
+    /// R's `warning()`; under `options(warn = 2)` that warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_qchisq(
+        p: f64,
+        df: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+}
+
+// endregion
+
 // region: Memory allocation (R_ext/Memory.h)
 
 #[r_ffi_checked]
