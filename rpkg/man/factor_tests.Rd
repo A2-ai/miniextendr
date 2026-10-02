@@ -11,6 +11,10 @@
 \alias{factor_priority_levels}
 \alias{factor_count_colors}
 \alias{factor_colors_with_na}
+\alias{factor_outcome_round_trip}
+\alias{factor_outcome_levels}
+\alias{factor_outcome_stage_round_trip}
+\alias{factor_outcome_stage_levels}
 \title{factor_describe_color}
 \usage{
 factor_describe_color(color)
@@ -32,6 +36,14 @@ factor_priority_levels()
 factor_count_colors(colors)
 
 factor_colors_with_na(colors)
+
+factor_outcome_round_trip(outcome)
+
+factor_outcome_levels()
+
+factor_outcome_stage_round_trip(stage)
+
+factor_outcome_stage_levels()
 }
 \arguments{
 \item{color}{A Color factor value.}
@@ -43,6 +55,10 @@ factor_colors_with_na(colors)
 \item{priority}{A Priority factor value.}
 
 \item{colors}{A factor vector of Color values that may contain NA.}
+
+\item{outcome}{An Outcome factor value.}
+
+\item{stage}{An OutcomeStage factor value.}
 }
 \description{
 Test describing a Color factor variant as a human-readable string.
@@ -64,4 +80,12 @@ Test retrieving the Priority factor level names via CHOICES.
 Test counting occurrences of each Color in a FactorVec.
 
 Test handling NA values in a FactorOptionVec of Colors.
+
+Test round-tripping an Outcome factor through R.
+
+Test retrieving the Outcome factor level names via CHOICES.
+
+Test round-tripping an OutcomeStage interaction factor through R.
+
+Test retrieving the OutcomeStage interaction levels via CHOICES.
 }

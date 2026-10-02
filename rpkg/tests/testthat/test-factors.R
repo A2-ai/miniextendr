@@ -44,3 +44,29 @@ test_that("generic unit enum Signal<T> emits a valid factor column", {
   expect_equal(levels(result), c("Red", "Yellow", "Green"))
   expect_equal(as.character(result), c("Red", NA, "Green", "Yellow"))
 })
+
+test_that("factor enum with variants named like associated items round-trips (#1730)", {
+  levels <- factor_outcome_levels()
+  expect_equal(levels, c("error", "value", "output"))
+  for (lvl in levels) {
+    result <- factor_outcome_round_trip(factor(lvl, levels = levels))
+    expect_s3_class(result, "factor")
+    expect_equal(levels(result), levels)
+    expect_equal(as.character(result), lvl)
+  }
+
+  stage_levels <- factor_outcome_stage_levels()
+  expect_equal(
+    stage_levels,
+    c(
+      "Error.error", "Error.value", "Error.output",
+      "Value.error", "Value.value", "Value.output"
+    )
+  )
+  for (lvl in c("Error.error", "Value.output")) {
+    result <- factor_outcome_stage_round_trip(factor(lvl, levels = stage_levels))
+    expect_s3_class(result, "factor")
+    expect_equal(levels(result), stage_levels)
+    expect_equal(as.character(result), lvl)
+  }
+})

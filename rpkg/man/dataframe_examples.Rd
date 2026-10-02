@@ -14,6 +14,9 @@
 \alias{create_scored_items_df}
 \alias{create_sensor_readings_df}
 \alias{make_signal_factor}
+\alias{check_status_error}
+\alias{check_events_df}
+\alias{check_events_split}
 \title{create_points_df}
 \usage{
 create_points_df()
@@ -41,6 +44,12 @@ create_scored_items_df()
 create_sensor_readings_df()
 
 make_signal_factor()
+
+check_status_error()
+
+check_events_df()
+
+check_events_split()
 }
 \description{
 Create a data frame using derive macro.
@@ -70,4 +79,10 @@ Create a data frame from enum with array expansion.
 
 Return a \verb{FactorOptionVec<Signal<0>>} to exercise the generic \code{IntoR} path.
 \verb{Signal<0>} is a concrete monomorphization of the generic unit-only enum.
+
+Return \code{CheckStatus::Error} as a one-element factor.
+
+Build an aligned data frame from \code{CheckEvent} rows.
+
+Split \code{CheckEvent} rows into one data frame per variant.
 }

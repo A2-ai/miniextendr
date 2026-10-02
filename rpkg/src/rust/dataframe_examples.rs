@@ -390,3 +390,59 @@ pub fn make_signal_factor() -> miniextendr_api::FactorOptionVec<Signal<0>> {
     ])
 }
 // endregion
+
+// region: Variants named like associated items (#1730)
+
+/// Unit-only enum whose variant names match associated items of the traits the
+/// derive implements (`IntoR::Error`), so the generated impls must not write
+/// `Self::Error` (#1730).
+#[derive(Clone, Copy, Debug, DataFrameRow)]
+pub enum CheckStatus {
+    Error,
+    Value,
+    Output,
+}
+
+/// Payload enum with variants named `Error`, `Value` and `Output`.
+#[derive(Clone, Debug, DataFrameRow)]
+#[dataframe(align, tag = "_type")]
+pub enum CheckEvent {
+    Error { code: i32 },
+    Value { value: f64 },
+    Output { text: String },
+}
+
+fn check_events() -> Vec<CheckEvent> {
+    vec![
+        CheckEvent::Error { code: 1 },
+        CheckEvent::Value { value: 2.5 },
+        CheckEvent::Output {
+            text: "done".to_string(),
+        },
+    ]
+}
+
+/// Return `CheckStatus::Error` as a one-element factor.
+///
+/// @export
+#[miniextendr]
+pub fn check_status_error() -> CheckStatus {
+    CheckStatus::Error
+}
+
+/// Build an aligned data frame from `CheckEvent` rows.
+///
+/// @export
+#[miniextendr]
+pub fn check_events_df() -> BuiltDataFrame {
+    check_events().into_dataframe().unwrap()
+}
+
+/// Split `CheckEvent` rows into one data frame per variant.
+///
+/// @export
+#[miniextendr]
+pub fn check_events_split() -> List {
+    check_events().into_dataframe_split()
+}
+// endregion

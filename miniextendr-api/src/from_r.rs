@@ -2967,7 +2967,7 @@ macro_rules! try_from_sexp_via_str_parse {
             type Error = $crate::from_r::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
                 let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 let s = opt.ok_or($crate::from_r::SexpError::Na($crate::from_r::SexpNaError {
                     sexp_type: $crate::SEXPTYPE::STRSXP,
@@ -2986,7 +2986,7 @@ macro_rules! try_from_sexp_via_str_parse {
             type Error = $crate::from_r::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
                 let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 match opt {
                     None => Ok(None),
@@ -3007,7 +3007,7 @@ macro_rules! try_from_sexp_via_str_parse {
             type Error = $crate::from_r::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 let mut result = Vec::with_capacity(values.len());
                 let mut errors = $crate::from_r::BatchedErrors::default();
@@ -3036,7 +3036,7 @@ macro_rules! try_from_sexp_via_str_parse {
             type Error = $crate::from_r::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
                 let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
                 let mut result = Vec::with_capacity(values.len());
                 let mut errors = $crate::from_r::BatchedErrors::default();
@@ -3145,5 +3145,30 @@ mod tests {
             errors.element_message(),
             "NA is not allowed (elements 1, 2, 3, 4, 5, 6, 7, 8, 9, 10); and 3 more"
         );
+    }
+
+    /// `try_from_sexp_via_str_parse!` names `SexpError` rather than
+    /// `Self::Error`, which is ambiguous for an enum with an `Error` variant
+    /// (#1730). Compiling this module is the test.
+    mod str_parse_enum_with_error_variant {
+        #[derive(Debug)]
+        pub(super) enum Level {
+            Error,
+            Value,
+        }
+
+        impl std::str::FromStr for Level {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, String> {
+                match s {
+                    "error" => Ok(Level::Error),
+                    "value" => Ok(Level::Value),
+                    other => Err(format!("unknown level {other:?}")),
+                }
+            }
+        }
+
+        crate::try_from_sexp_via_str_parse!(Level, "level", |s| s.parse::<Level>());
     }
 }

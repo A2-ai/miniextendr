@@ -1812,7 +1812,7 @@ pub(super) fn derive_enum_dataframe(
                     // Used when a unit-only enum value is returned directly from a #[miniextendr] fn.
                     impl ::miniextendr_api::IntoR for #row_name {
                         type Error = ::std::convert::Infallible;
-                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, Self::Error> {
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, ::std::convert::Infallible> {
                             use ::std::sync::OnceLock;
                             const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
                             static LEVELS_CACHE: OnceLock<::miniextendr_api::SEXP> =
@@ -1868,7 +1868,7 @@ pub(super) fn derive_enum_dataframe(
                         for #row_name #ty_generics #where_clause
                     {
                         type Error = ::std::convert::Infallible;
-                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, Self::Error> {
+                        fn try_into_sexp(self) -> ::std::result::Result<::miniextendr_api::SEXP, ::std::convert::Infallible> {
                             const LEVELS: &[&str] = &[#(#variant_strs_lit),*];
                             let idx: i32 = match self {
                                 #(#row_name::#variant_idents => #indices,)*

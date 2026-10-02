@@ -330,7 +330,7 @@ pub fn expand_typed_dataframe(input: TypedDataframeInput) -> TokenStream {
 
             fn try_from_sexp(
                 sexp: ::miniextendr_api::SEXP,
-            ) -> ::std::result::Result<Self, Self::Error> {
+            ) -> ::std::result::Result<Self, ::miniextendr_api::from_r::SexpError> {
                 use ::miniextendr_api::SexpExt as _;
 
                 // 1. Must be a data.frame.
