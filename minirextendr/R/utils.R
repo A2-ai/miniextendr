@@ -255,33 +255,63 @@ mx_ignore_patterns <- function(template, subdir = NULL) {
 #' (`create_rpkg_subdirectory()`), and the inline path
 #' (`scaffold_inline_package()`).
 #'
+#' A destination `config.guess` / `config.sub` whose `timestamp=` is newer
+#' than the bundled copy's is kept (a package may have refreshed it from GNU
+#' config), so an upgrade never downgrades it (#1711). An older destination,
+#' or one with no parseable timestamp, is replaced.
+#'
 #' @param dest_dir Absolute path to the (already-created) destination directory.
-#' @param display_prefix Path prefix used in the "Copied" bullet message, or
-#'   `NULL` to suppress the bullet (used by the quiet inline path).
+#' @param display_prefix Path prefix used in the "Copied" / "Kept" messages, or
+#'   `NULL` to suppress them (used by the quiet inline path).
+#' @param tools_subdir Template subdirectory holding the `tools/` scripts,
+#'   resolved against the active template type: `"tools"`, or `"rpkg/tools"`
+#'   for the R package subdirectory of a monorepo.
 #' @return Invisibly returns TRUE.
 #' @noRd
-copy_config_scripts <- function(dest_dir, display_prefix = dest_dir) {
-  fs::file_copy(
-    system.file("templates/rpkg/tools/vendor-cache.R", package = "minirextendr"),
-    file.path(dest_dir, "vendor-cache.R"), overwrite = TRUE
-  )
-  fs::file_copy(
-    system.file("templates/rpkg/tools/dev-bootstrap.R", package = "minirextendr"),
-    file.path(dest_dir, "dev-bootstrap.R"), overwrite = TRUE
-  )
-  fs::file_copy(
-    system.file("templates/rpkg/tools/write-wrappers.R", package = "minirextendr"),
-    file.path(dest_dir, "write-wrappers.R"), overwrite = TRUE
-  )
+copy_config_scripts <- function(dest_dir, display_prefix = dest_dir,
+                                tools_subdir = "tools") {
+  for (script in c("vendor-cache.R", "dev-bootstrap.R", "write-wrappers.R")) {
+    fs::file_copy(template_path(script, subdir = tools_subdir),
+                  file.path(dest_dir, script), overwrite = TRUE)
+  }
   for (script in c("config.guess", "config.sub")) {
+    src <- script_path(script)
     dest <- file.path(dest_dir, script)
-    fs::file_copy(script_path(script), dest, overwrite = TRUE)
+    bundled_ts <- config_script_timestamp(src)
+    dest_ts <- config_script_timestamp(dest)
+    # YYYY-MM-DD sorts correctly as a string.
+    if (!is.na(dest_ts) && !is.na(bundled_ts) && dest_ts > bundled_ts) {
+      if (!is.null(display_prefix)) {
+        cli::cli_alert_info(
+          "Kept {.path {file.path(display_prefix, script)}} ({dest_ts}), newer than the bundled {bundled_ts}"
+        )
+      }
+      next
+    }
+    fs::file_copy(src, dest, overwrite = TRUE)
     fs::file_chmod(dest, "755")
     if (!is.null(display_prefix)) {
       bullet_created(file.path(display_prefix, script), "Copied")
     }
   }
   invisible(TRUE)
+}
+
+#' Read the `timestamp='YYYY-MM-DD'` line of a config.guess / config.sub
+#'
+#' GNU config stamps each release of both scripts with a line such as
+#' `timestamp='2024-07-27'` near the top of the file.
+#'
+#' @param path Path to the script.
+#' @return The date string, or `NA` when the file is missing or has no
+#'   parseable timestamp line.
+#' @noRd
+config_script_timestamp <- function(path) {
+  if (!file.exists(path)) return(NA_character_)
+  lines <- readLines(path, n = 50L, warn = FALSE)
+  hit <- regmatches(lines, regexpr("^timestamp='[0-9]{4}-[0-9]{2}-[0-9]{2}'", lines))
+  if (length(hit) == 0L) return(NA_character_)
+  substr(hit[[1L]], 12L, 21L)
 }
 
 # endregion -------------------------------------------------------------------

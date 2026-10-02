@@ -59,5 +59,15 @@ In a monorepo layout (workspace root containing an rpkg subdirectory),
 \code{upgrade_miniextendr_package()} automatically detects the rpkg subdir and
 operates on it rather than the workspace root. The rpkg subdir is the first
 immediate child directory that contains a miniextendr \code{configure.ac}. Pass
-\code{rpkg_subdir} explicitly if auto-detection is ambiguous.
+\code{rpkg_subdir} explicitly if auto-detection is ambiguous. \code{path} may also
+point at the rpkg subdir itself, when its parent directory holds the
+workspace \code{Cargo.toml}. Either way the upgrade renders the monorepo
+templates and also adds the monorepo template's entries to the workspace
+root \code{.gitignore}, keeping the lines already there.
+
+A \code{tools/config.guess} or \code{tools/config.sub} whose \verb{timestamp=} line is
+newer than the bundled copy's is kept. The closing summary lists files the
+package no longer uses (\code{tools/wrapper-freshness.R},
+\code{tools/wrapper-inputs.rds}) and a git-tracked \verb{src/<pkg>-win.def}, which
+configure generates; the upgrade does not delete or untrack them.
 }

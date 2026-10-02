@@ -110,12 +110,13 @@ use_miniextendr_config_scripts <- function(path = ".", subdir = NULL) {
   # config.guess/config.sub are bundled scripts (not templates), shared with
   # the monorepo and inline scaffold paths via copy_config_scripts().
   ensure_dir(usethis::proj_path("tools"))
-  copy_config_scripts(usethis::proj_path("tools"), display_prefix = "tools")
+  tools_subdir <- if (is.null(subdir)) "tools" else file.path(subdir, "tools")
+  copy_config_scripts(usethis::proj_path("tools"), display_prefix = "tools",
+                      tools_subdir = tools_subdir)
 
   # tools/lock-shape-check.R is referenced by configure.ac's
   # AC_CONFIG_COMMANDS([lock-shape-check]) block; without it, configure
   # fails in tarball mode with "cannot open file 'tools/lock-shape-check.R'".
-  tools_subdir <- if (is.null(subdir)) "tools" else file.path(subdir, "tools")
   lock_check_src <- template_path("lock-shape-check.R", subdir = tools_subdir)
   lock_check_dest <- usethis::proj_path("tools", "lock-shape-check.R")
   fs::file_copy(lock_check_src, lock_check_dest, overwrite = TRUE)
