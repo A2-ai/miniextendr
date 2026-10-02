@@ -108,6 +108,12 @@ artifact for CRAN.
    the working tree, not git@main (#883). That leaves them as local (no-source)
    lock entries, so cargo-revendor then STAMPS
    `source = "git+https://github.com/A2-ai/miniextendr#<commit>"` back on.
+   `--strip-all` CRAN-trims each vendored crate. It removes the `[[test]]` /
+   `[[bench]]` / `[[example]]` / `[[bin]]` / `[dev-dependencies]` sections,
+   prunes the `[features]` entries that pointed at a removed dev-dependency,
+   and deletes `tests/` / `benches/` / `examples/`. A directory survives when
+   the crate's library source `include_str!()`s or `#[path]`s into it.
+   `minirextendr::miniextendr_vendor()` trims the same way.
    It also recomputes `.cargo-checksum.json` after CRAN-trim: the original
    `package` hash (matching the lockfile's `checksum = ...` line) is preserved
    and the `files` map is refreshed to reflect the trimmed files, so the

@@ -8,7 +8,8 @@ miniextendr_check(
   path = ".",
   args = c("--as-cran", "--no-manual"),
   error_on = "warning",
-  build_args = character()
+  build_args = character(),
+  revendor_args = character()
 )
 }
 \arguments{
@@ -21,6 +22,10 @@ Defaults to \code{c("--as-cran", "--no-manual")}.}
 or \code{"note"}. Passed to \code{\link[rcmdcheck:rcmdcheck]{rcmdcheck::rcmdcheck()}}.}
 
 \item{build_args}{Character vector of extra arguments passed to \verb{R CMD build}.}
+
+\item{revendor_args}{Character vector of extra arguments passed to
+\verb{cargo revendor}. The vendored tree is trimmed with \code{--strip-all} unless
+these include a \verb{--strip-*} flag of their own; see \code{\link[=vendor_crates_io]{vendor_crates_io()}}.}
 }
 \value{
 The \code{\link[rcmdcheck:rcmdcheck]{rcmdcheck::rcmdcheck()}} result object, invisibly.

@@ -4,7 +4,12 @@
 \alias{miniextendr_build_tarball}
 \title{Build a CRAN-ready package tarball}
 \usage{
-miniextendr_build_tarball(path = ".", dest_path = NULL, args = character())
+miniextendr_build_tarball(
+  path = ".",
+  dest_path = NULL,
+  args = character(),
+  revendor_args = character()
+)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
@@ -13,6 +18,10 @@ miniextendr_build_tarball(path = ".", dest_path = NULL, args = character())
 to the package directory, as \verb{R CMD build} does.}
 
 \item{args}{Character vector of extra arguments passed to \verb{R CMD build}.}
+
+\item{revendor_args}{Character vector of extra arguments passed to
+\verb{cargo revendor}. The vendored tree is trimmed with \code{--strip-all} unless
+these include a \verb{--strip-*} flag of their own; see \code{\link[=vendor_crates_io]{vendor_crates_io()}}.}
 }
 \value{
 The path to the built tarball, invisibly.

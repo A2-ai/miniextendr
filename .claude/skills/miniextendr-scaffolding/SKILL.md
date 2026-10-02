@@ -143,15 +143,18 @@ Users can also override `CARGO_FEATURES` directly in their environment.
 
 ### Vendoring helpers
 
-`minirextendr/R/vendor.R` (and `minirextendr/R/vendor-lib.R`):
+`minirextendr/R/workflow.R`, `minirextendr/R/vendor.R` (and `minirextendr/R/vendor-lib.R`):
 
 - `miniextendr_vendor()` — R-side entry point equivalent to `just vendor`.
   Runs `cargo-revendor` to produce `inst/vendor.tar.xz`.
-- `strip_toml_sections()` — strips `[[bench]]`, `[[test]]`, and
-  `[dev-dependencies]` sections from vendored `Cargo.toml` files when the
-  corresponding directories are absent in scaffolded packages. Without
-  stripping, cargo fails to resolve the vendored tree because the referenced
-  bench/test directories do not exist.
+- `vendor_crates_io()` — builds the `cargo revendor` call. It trims with
+  `--strip-all`: it removes the `[[test]]` / `[[bench]]` / `[[example]]` / `[[bin]]`
+  / `[dev-dependencies]` sections and their dangling `[features]` references,
+  and deletes `tests/` / `benches/` / `examples/` unless the crate's source
+  reaches into one through `include_str!()` or `#[path]`.
+  `revendor_args` (also accepted by `miniextendr_vendor()`,
+  `miniextendr_build_tarball()` and `miniextendr_check()`) are appended to that
+  call, and a `--strip-*` flag among them replaces the default.
 
 ### use_release_workflow()
 
@@ -214,8 +217,9 @@ the template.
 - `minirextendr/R/upgrade.R` — `upgrade_miniextendr_package()`.
 - `minirextendr/R/doctor.R` — `minirextendr_doctor()` health checks.
 - `minirextendr/R/render.R` — `use_template()` (delete-then-write wrapper).
-- `minirextendr/R/vendor.R` — `miniextendr_vendor()` and related helpers.
-- `minirextendr/R/vendor-lib.R` — `strip_toml_sections()`.
+- `minirextendr/R/vendor.R` — `vendor_crates_io()` (the `cargo revendor` call).
+- `minirextendr/R/workflow.R` — `miniextendr_vendor()`, `miniextendr_build_tarball()`.
+- `minirextendr/R/vendor-lib.R` — `use_vendor_lib()`.
 - `minirextendr/R/feature-detect-configure.R` — `add_feature_rule()`,
   `use_configure_feature_detection()`.
 - `minirextendr/R/use-release-workflow.R` — `use_release_workflow()`.
