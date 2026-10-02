@@ -180,7 +180,9 @@ This:
 1. Regenerates `Cargo.lock` in tarball-shape (git-URL sources for the
    `miniextendr-{api,lint,macros}` workspace crates)
 2. Vendors all crates.io dependencies (proc-macro2, quote, syn, etc.) into `rpkg/vendor/`
-3. Compresses the result to `rpkg/inst/vendor.tar.xz`
+3. Trims each vendored crate with `--strip-all`, which drops test/bench/example/bin
+   targets and dev-dependencies, the same trim `minirextendr::miniextendr_vendor()` applies
+4. Compresses the result to `rpkg/inst/vendor.tar.xz`
 
 `just configure` does **no** vendoring in dev mode — it only generates
 `Makevars` and `.cargo/config.toml`, and auto-detects tarball mode from the

@@ -213,12 +213,19 @@ test fixtures sometimes carry extra licenses.
 
 | Flag | Description |
 |---|---|
-| `--strip-tests` | Remove `tests/` directories and `[[test]]` sections from `Cargo.toml`. |
+| `--strip-tests` | Remove `tests/` directories, `[[test]]` sections and `[dev-dependencies]` from `Cargo.toml`, pruning the `[features]` entries that pointed at a removed dev-dependency. |
 | `--strip-benches` | Remove `benches/` and `[[bench]]`. |
 | `--strip-examples` | Remove `examples/` and `[[example]]`. |
 | `--strip-bins` | Remove `[[bin]]` targets that are not needed when building a library. |
-| `--strip-all` | Convenience: all four of the above plus `[dev-dependencies]`. |
-| `--strip-toml-sections` | TOML-only variant. Strips `[[test]]`, `[[bench]]`, `[[example]]`, `[[bin]]`, `[dev-dependencies]` but **leaves the source directories on disk**. Use when a dep references files in `tests/` or `examples/` from regular library source via `include_str!()` (zerocopy is the canonical example). Mutually exclusive with the other strip flags. |
+| `--strip-all` | Convenience: all four of the above. `minirextendr::miniextendr_vendor()` uses it. |
+| `--strip-toml-sections` | TOML-only variant. Strips `[[test]]`, `[[bench]]`, `[[example]]`, `[[bin]]`, `[dev-dependencies]` but **leaves the source directories on disk**. Mutually exclusive with the other strip flags. |
+
+Directory removal skips any `tests/`, `benches/` or `examples/` directory that
+the crate's own source reaches into, through an `include_str!()` /
+`include_bytes!()` / `include!()` path (a literal or a `concat!()`, as in
+zerocopy and winnow) or a `#[path = "..."]` module attribute. A reference the
+scanner cannot see, such as a build script that reads a file there, needs
+`--strip-toml-sections`.
 
 ### Freeze
 
@@ -334,11 +341,9 @@ uses its built-in `xz:compression-level` option; GNU tar invokes `xz -N`.
 See the [BSD tar options](https://github.com/libarchive/libarchive/blob/master/tar/bsdtar.1)
 and [GNU tar compression interface](https://www.gnu.org/software/tar/manual/html_section/Compression.html).
 
-`--strip-all` is a separate opt-in: it removes test/bench/example/bin targets
-and development dependencies. It preserves directories referenced by source
-`include!`/`include_str!`/`include_bytes!` macros. `miniextendr_vendor()` keeps its current
-contents and compression defaults; selecting faster compression does not
-silently trim shipped files.
+Trimming is separate from compression: `--compression-level` never changes
+which files ship. `miniextendr_vendor()` trims with `--strip-all` and keeps
+the system tar compression default unless its `revendor_args` say otherwise.
 
 At `-v`, Git dependencies retained by freeze are reported as using vendored
 source replacement. This expected mode is informational. Cargo's emitted source mappings retain
@@ -404,9 +409,11 @@ issue tracker:
   diverges. In miniextendr projects, use `just clean-vendor-leak` or
   `miniextendr_clean_vendor_leak()` to restore the original manifest from
   `.Cargo.toml.prefreeze` before rebuilding. Never edit that snapshot by hand.
-- **Crates that `include_str!()` from `tests/` or `examples/`.** Use
-  `--strip-toml-sections` rather than `--strip-all` so the directories
-  stay on disk and `cargo check --offline` keeps working.
+- **Crates that read from `tests/` / `benches/` / `examples/`.** The strip
+  flags keep a directory that library source names in an include macro or a
+  `#[path]` attribute. A crate that reaches one some other way (a build script
+  reading a fixture) needs `--strip-toml-sections`, which leaves every such
+  directory on disk.
 
 ## Module-by-module reference
 

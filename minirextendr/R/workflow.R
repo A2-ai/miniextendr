@@ -316,9 +316,12 @@ wrappers_file_exists <- function(pkg_path) {
 #' the network.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param revendor_args Character vector of extra arguments passed to
+#'   `cargo revendor`. The vendored tree is trimmed with `--strip-all` unless
+#'   these include a `--strip-*` flag of their own; see [vendor_crates_io()].
 #' @return Invisibly returns the path to the created tarball.
 #' @export
-miniextendr_vendor <- function(path = ".") {
+miniextendr_vendor <- function(path = ".", revendor_args = character()) {
   with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
@@ -349,7 +352,7 @@ miniextendr_vendor <- function(path = ".") {
   inst_dir <- usethis::proj_path("inst")
   tarball <- fs::path(inst_dir, "vendor.tar.xz")
   fs::dir_create(inst_dir)
-  vendor_crates_io(tarball = tarball)
+  vendor_crates_io(tarball = tarball, revendor_args = revendor_args)
 
   size_mb <- round(as.numeric(fs::file_size(tarball)) / 1024 / 1024, 1)
   cli::cli_alert_success("Created {.path inst/vendor.tar.xz} ({size_mb} MB)")
@@ -388,10 +391,12 @@ miniextendr_vendor <- function(path = ".") {
 #' @param dest_path Directory to write the tarball to. `NULL` writes it next
 #'   to the package directory, as `R CMD build` does.
 #' @param args Character vector of extra arguments passed to `R CMD build`.
+#' @inheritParams miniextendr_vendor
 #' @return The path to the built tarball, invisibly.
 #' @seealso [miniextendr_check()] to build and check it in one step.
 #' @export
-miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = character()) {
+miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = character(),
+                                      revendor_args = character()) {
   with_project(path)
   pkg_path <- usethis::proj_get()
   cli::cli_h1("miniextendr tarball workflow")
@@ -422,7 +427,7 @@ miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = chara
   miniextendr_build(install = FALSE)
 
   cli::cli_h2("Step 2: vendor")
-  miniextendr_vendor()
+  miniextendr_vendor(revendor_args = revendor_args)
 
   cli::cli_h2("Step 3: R CMD build")
   tarball <- pkgbuild::build(pkg_path, dest_path = dest_path, args = args, quiet = FALSE)
@@ -442,6 +447,7 @@ miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = chara
 #' @param error_on Severity level to error on. One of `"error"`, `"warning"`,
 #'   or `"note"`. Passed to [rcmdcheck::rcmdcheck()].
 #' @param build_args Character vector of extra arguments passed to `R CMD build`.
+#' @inheritParams miniextendr_vendor
 #' @return The [rcmdcheck::rcmdcheck()] result object, invisibly.
 #' @seealso [miniextendr_check_static()] for a fast no-compile variant suitable
 #'   for un-vendored packages.
@@ -449,7 +455,8 @@ miniextendr_build_tarball <- function(path = ".", dest_path = NULL, args = chara
 miniextendr_check <- function(path = ".",
                                args = c("--as-cran", "--no-manual"),
                                error_on = "warning",
-                               build_args = character()) {
+                               build_args = character(),
+                               revendor_args = character()) {
   with_project(path)
   if (!requireNamespace("rcmdcheck", quietly = TRUE)) {
     cli::cli_abort(c(
@@ -461,7 +468,8 @@ miniextendr_check <- function(path = ".",
   cli::cli_h1("miniextendr check workflow")
 
   cli::cli_h2("Step 1: build the tarball")
-  tarball <- miniextendr_build_tarball(dest_path = withr::local_tempdir(), args = build_args)
+  tarball <- miniextendr_build_tarball(dest_path = withr::local_tempdir(), args = build_args,
+                                       revendor_args = revendor_args)
 
   cli::cli_h2("Step 2: R CMD check")
   cli::cli_alert("Running rcmdcheck with args: {.val {args}}")

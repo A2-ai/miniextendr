@@ -4,10 +4,14 @@
 \alias{miniextendr_vendor}
 \title{Prepare vendor tarball for CRAN submission}
 \usage{
-miniextendr_vendor(path = ".")
+miniextendr_vendor(path = ".", revendor_args = character())
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{revendor_args}{Character vector of extra arguments passed to
+\verb{cargo revendor}. The vendored tree is trimmed with \code{--strip-all} unless
+these include a \verb{--strip-*} flag of their own; see \code{\link[=vendor_crates_io]{vendor_crates_io()}}.}
 }
 \value{
 Invisibly returns the path to the created tarball.

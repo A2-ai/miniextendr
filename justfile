@@ -657,6 +657,11 @@ vendor:
     # `vendor-sync-check` passes and the offline tarball ships the PR's code.
     # `--source-root` is no longer needed here (kept as CLI flag for back-compat).
     #
+    # `--strip-all` matches minirextendr's vendor_crates_io() (#1714): it drops
+    # test/bench/example/bin targets and dev-dependencies from each vendored
+    # crate, keeping any tests/ / benches/ / examples/ that library source
+    # include_str!()s or #[path]s into.
+    #
     # `--json` writes a machine-readable summary (incl. `local_crates`) to
     # STDOUT, which we capture; `-v` progress still streams to STDERR (the
     # terminal). They coexist. We grep `local_crates` rather than shell out to
@@ -665,6 +670,7 @@ vendor:
       --manifest-path rpkg/src/rust/Cargo.toml \
       --output rpkg/vendor \
       --compress rpkg/inst/vendor.tar.xz \
+      --strip-all \
       --blank-md \
       --source-marker \
       --force \

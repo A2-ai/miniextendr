@@ -14,13 +14,11 @@
 # to {"files":{}} and do NOT strip checksum lines from Cargo.lock — both
 # defeat cargo's verification and diverge from `just vendor` output.
 #
-# Trim policy (post PR for #631): all CRAN-relevant trimming lives in
-# `cargo-revendor --strip-toml-sections`. No additional R-side deletion
-# of vendor/<crate>/ contents — any post-cargo-revendor deletion would
-# invalidate the files map in `.cargo-checksum.json` (cargo recomputes
-# files map *inside* its own strip pass, then we can't re-touch). The
-# vendor.tar.xz is opaque to R CMD check, so the few MB of `examples/`
-# / `docs/` saved by extra trimming aren't worth the verification bug.
+# Trim policy (#1714): all CRAN-relevant trimming lives in
+# `cargo-revendor --strip-all`. No additional R-side deletion of
+# vendor/<crate>/ contents: any post-cargo-revendor deletion would
+# invalidate the files map in `.cargo-checksum.json`, which cargo-revendor
+# recomputes after its own strip pass (#631).
 
 #' Run cargo revendor and CRAN-trim the result
 #'
@@ -38,10 +36,18 @@
 #'   includes and recomputes their `.cargo-checksum.json` entries before
 #'   compressing, and it re-vendors even when its cache says `vendor/` is
 #'   current, because a cache hit skips compression.
+#' @param revendor_args Character vector of extra arguments appended to the
+#'   `cargo revendor` call, for example `c("--compression-level", "9")`.
+#'   The default trim is `--strip-all`; any `--strip-*` flag here replaces it,
+#'   so `"--strip-toml-sections"` keeps the vendored `tests/`, `benches/` and
+#'   `examples/` directories on disk.
 #' @return Invisibly returns TRUE on success.
 #' @keywords internal
 #' @export
-vendor_crates_io <- function(path = ".", tarball = NULL) {
+vendor_crates_io <- function(path = ".", tarball = NULL, revendor_args = character()) {
+  if (!is.character(revendor_args)) {
+    cli::cli_abort("{.arg revendor_args} must be a character vector.")
+  }
   with_project(path)
   check_rust()
   check_cargo_revendor()
@@ -58,16 +64,20 @@ vendor_crates_io <- function(path = ".", tarball = NULL) {
 
   cli::cli_alert("Running cargo revendor...")
 
+  # --strip-all strips [[test]] / [[bench]] / [[example]] / [[bin]] /
+  # [dev-dependencies] from each vendored Cargo.toml, prunes the [features]
+  # entries that pointed at a removed dev-dependency (#322), and deletes
+  # tests/, benches/ and examples/, except a directory the crate's own
+  # source reaches through include_str!() / include_bytes!() / include!()
+  # (zerocopy, #330) or #[path]. A caller's own --strip-* flag replaces it:
+  # cargo-revendor rejects --strip-toml-sections next to the other strip
+  # flags.
+  strip <- if (any(startsWith(revendor_args, "--strip-"))) character() else "--strip-all"
   args <- c(
     "revendor",
     "--manifest-path", cargo_toml,
     "--output", vendor_dir,
-    # --strip-toml-sections strips [[test]] / [[bench]] / [[example]] /
-    # [[bin]] / [dev-dependencies] from each vendored Cargo.toml and
-    # prunes dangling [features] refs (see #330, #322), but leaves
-    # tests/, benches/, examples/ on disk so crates that
-    # include_str!() into those dirs (e.g. zerocopy) keep building.
-    "--strip-toml-sections",
+    strip,
     # --freeze rewrites any local path-dependency sibling (a core crate at
     # `path = "../../../my-core"`) to point at vendor/, so the sealed tarball
     # is self-contained — a path dep is NOT source-replaceable, so without
@@ -84,23 +94,15 @@ vendor_crates_io <- function(path = ".", tarball = NULL) {
   if (!is.null(tarball)) {
     args <- c(args, "--compress", tarball, "--blank-md", "--source-marker", "--force")
   }
+  args <- c(args, revendor_args)
   result <- run_with_logging("cargo", args = args, log_prefix = "cargo-revendor",
                              wd = usethis::proj_get())
   check_result(result, "cargo revendor")
 
-  # cargo-revendor's --strip-toml-sections (above) handles all the
-  # CRAN-relevant trims: stripping `[[test]]` / `[[bench]]` / `[[example]]`
-  # / `[[bin]]` / `[dev-dependencies]` from each vendored Cargo.toml,
-  # pruning dangling `[features]` refs, removing always-safe base dirs
-  # (`.github/`, `.circleci/`, `ci/`, `target/`), and — crucially —
-  # recomputing each crate's `.cargo-checksum.json` so cargo's offline
+  # Besides the trim above, cargo-revendor removes the always-safe base dirs
+  # (`.github/`, `.circleci/`, `ci/`, `target/`) and hidden files, then
+  # recomputes each crate's `.cargo-checksum.json`, so cargo's offline
   # source-replacement verification still succeeds.
-  #
-  # The vendor.tar.xz is opaque to R CMD check (it doesn't recurse into
-  # nested tarballs), so any additional R-side stripping of `examples/`,
-  # `docs/`, or hidden dotfiles after cargo-revendor would only shave a
-  # couple of MB at the cost of invalidating the checksum files map —
-  # see #631 for the failure mode this used to produce.
 
   cli::cli_alert_success("Vendored to {.path {vendor_dir}}")
   invisible(TRUE)

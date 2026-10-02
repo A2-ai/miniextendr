@@ -4,7 +4,7 @@
 \alias{vendor_crates_io}
 \title{Run cargo revendor and CRAN-trim the result}
 \usage{
-vendor_crates_io(path = ".", tarball = NULL)
+vendor_crates_io(path = ".", tarball = NULL, revendor_args = character())
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
@@ -15,6 +15,12 @@ from the vendored tree, or \code{NULL} to vendor only. With an archive,
 includes and recomputes their \code{.cargo-checksum.json} entries before
 compressing, and it re-vendors even when its cache says \verb{vendor/} is
 current, because a cache hit skips compression.}
+
+\item{revendor_args}{Character vector of extra arguments appended to the
+\verb{cargo revendor} call, for example \code{c("--compression-level", "9")}.
+The default trim is \code{--strip-all}; any \verb{--strip-*} flag here replaces it,
+so \code{"--strip-toml-sections"} keeps the vendored \verb{tests/}, \verb{benches/} and
+\verb{examples/} directories on disk.}
 }
 \value{
 Invisibly returns TRUE on success.

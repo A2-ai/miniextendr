@@ -22,7 +22,7 @@ just minirextendr-check
 Templates may have extra standalone-project logic (e.g., checking for miniextendr-api before applying path overrides, running `cargo vendor` for transitive deps). That delta is what `patches/templates.patch` records.
 
 ## Key R modules
-- `R/vendor.R` — `vendor_miniextendr()`, `strip_toml_sections()` (must strip `[[bench]]`, `[[test]]`, `[dev-dependencies]` when those dirs are absent in scaffolded packages).
+- `R/vendor.R` — `vendor_crates_io()`: the `cargo revendor` call behind `miniextendr_vendor()`. It trims with `--strip-all` (TOML sections, dev-dependencies, dangling `[features]`, and every `tests/` / `benches/` / `examples/` directory that the crate's source doesn't `include_str!()` or `#[path]`). A caller's `revendor_args` are appended, and any `--strip-*` flag among them replaces the default.
 - `R/use_*.R` — scaffolding (`use_miniextendr_package`, `use_release_workflow`, `use_template`).
 - `R/upgrade.R` — `upgrade_miniextendr_package()`.
 - `R/doctor.R` — `miniextendr_doctor()`: detects stale `inst/vendor.tar.xz` leak + missing `.cargo/config.toml` + git-tracked generated files (`git rm --cached` advice, #1250) + a git-tracked `vendor.tar.xz` (same advice) + an S7 package whose `.onLoad()` lacks `S7::methods_register()` (`use_s7()` writes one to `R/zzz.R`); `webr = TRUE` adds the webR import lint.
