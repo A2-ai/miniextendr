@@ -10,7 +10,7 @@ Only `default` features are enabled automatically.
 | **Default** | | |
 | `doc-lint` | Build-time lint checking `#[miniextendr]` source-level attributes | (forwarded to miniextendr-macros) |
 | **Core / R Integration** | | |
-| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
+| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`, `ATTRIB` / `SET_ATTRIB`) | (none) |
 | `rayon` | Parallel iterators via Rayon | rayon |
 | `worker-thread` | Infrastructure for opt-in worker dispatch | (none) |
 | `connections` | Experimental custom R connection framework | (none) |
@@ -97,6 +97,11 @@ symbols may change between R versions and will cause `R CMD check` warnings.
 
 **What it unlocks:**
 - `DATAPTR` -- mutable data pointer (prefer `DATAPTR_RO` when possible)
+- `ATTRIB`, `SET_ATTRIB` -- the raw attribute pairlist (prefer
+  `SexpExt::has_attributes()`, `get_attr()` / `set_attr()` and
+  `is_identical()`; lint MXL304 flags direct use)
+- `OBJECT`, `SET_OBJECT`, `LEVELS`, `SETLEVELS` -- SEXP header bits (prefer
+  `SexpExt::is_object()`)
 - `R_curErrorBuf` -- current R error message buffer
 - `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- process-global stack-check controls
 - `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` --

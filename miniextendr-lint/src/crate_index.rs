@@ -207,6 +207,9 @@ pub struct FileData {
     /// `into_sexp` allocates and can GC an earlier, still-unprotected element of the same
     /// literal. (MXL302)
     pub vec_into_sexp_calls: Vec<(String, usize)>,
+    /// Calls to, or declarations of, R's non-API `ATTRIB` / `SET_ATTRIB` (or their
+    /// `_unchecked` forms): (function_name, line_number). (MXL304)
+    pub nonapi_attrib_calls: Vec<(String, usize)>,
 
     // R reserved-word parameter names
     /// Maps fn/method name → list of (param_name, line) for params that are R reserved words.
@@ -456,6 +459,7 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     scan_rf_error_calls(&lines, &mut data);
     scan_ffi_unchecked_calls(&lines, &mut data);
     scan_vec_into_sexp_calls(&lines, &mut data);
+    scan_nonapi_attrib_calls(&lines, &mut data);
 
     // MXL303 escape hatch: resolve the `// mxl::allow(MXL303)` look-behind for each
     // attributed trait impl now, while the raw source split is in scope. The impl's
@@ -912,6 +916,59 @@ fn scan_rf_error_calls(lines: &[&str], data: &mut FileData) {
         }
     }
 }
+
+// region: MXL304 — non-API `ATTRIB` / `SET_ATTRIB`
+
+/// R's non-API attribute-pairlist accessors. `R CMD check` (R >= 4.6) reports them.
+const NONAPI_ATTRIB_FNS: &[&str] = &["ATTRIB", "SET_ATTRIB"];
+
+/// Scan raw source text for calls to, or declarations of, `ATTRIB` / `SET_ATTRIB` and
+/// their `_unchecked` forms.
+///
+/// Only a whole identifier followed by `(` counts, so the API entry points that share
+/// the suffix (`ANY_ATTRIB`, `CLEAR_ATTRIB`, `DUPLICATE_ATTRIB`,
+/// `SHALLOW_DUPLICATE_ATTRIB`) are not flagged. A declaration in an `extern` block
+/// (`fn ATTRIB(x: SEXP) -> SEXP;`) is flagged too, because that is how the symbol
+/// reaches the package's shared object.
+fn scan_nonapi_attrib_calls(lines: &[&str], data: &mut FileData) {
+    let is_ident_char = |c: char| c.is_alphanumeric() || c == '_';
+    for (line_idx, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        // Strip inline comments to avoid false positives
+        let code_part = match trimmed.find("//") {
+            Some(pos) => &trimmed[..pos],
+            None => trimmed,
+        };
+        let mut chars = code_part.char_indices().peekable();
+        while let Some((start, c)) = chars.next() {
+            if !is_ident_char(c) {
+                continue;
+            }
+            let mut end = start + c.len_utf8();
+            while let Some(&(idx, next)) = chars.peek() {
+                if !is_ident_char(next) {
+                    break;
+                }
+                end = idx + next.len_utf8();
+                chars.next();
+            }
+            let ident = &code_part[start..end];
+            let base = ident.strip_suffix("_unchecked").unwrap_or(ident);
+            if NONAPI_ATTRIB_FNS.contains(&base)
+                && code_part[end..].trim_start().starts_with('(')
+                && !is_suppressed(lines, line_idx, "MXL304")
+            {
+                data.nonapi_attrib_calls
+                    .push((ident.to_string(), line_idx + 1));
+            }
+        }
+    }
+}
+
+// endregion
 
 // region: MXL302 — `into_sexp()` inside a `vec!`/array literal (use-after-free idiom)
 

@@ -618,38 +618,65 @@ unsafe extern "C-unwind" {
     /// ALTREP-aware: will call ALTREP Length method if needed.
     pub fn XLENGTH(x: SEXP) -> R_xlen_t;
 
-    /// Get the true length (allocated capacity) of a vector.
+    /// Non-zero if `x` has any attributes (`ATTRIB(x) != R_NilValue`).
     ///
-    /// May be larger than LENGTH for vectors with reserved space.
-    /// ALTREP-aware.
-    pub fn TRUELENGTH(x: SEXP) -> R_xlen_t;
+    /// The API replacement for testing `ATTRIB`. Calling this entry point
+    /// requires R >= 4.5.0: R 4.4's libR does not export it, so a package
+    /// that references it fails to load there. `SexpExt::has_attributes`
+    /// works on R 4.4 as well. Unlike `attributes()`, it ignores the tag
+    /// names of a pairlist.
+    #[doc(alias = "NO_ATTRIB")]
+    pub fn ANY_ATTRIB(x: SEXP) -> ::std::os::raw::c_int;
 
-    /// Get the attributes pairlist of a SEXP.
+    // Non-API attribute / header-bit accessors. `R CMD check` (R >= 4.6)
+    // reports each as a non-API entry point, so they need the `nonapi`
+    // feature. The API routes are `SexpExt::has_attributes`,
+    // `SexpExt::get_attr` / `SexpExt::set_attr`, `SexpExt::is_object`,
+    // `SexpExt::is_identical` and `DUPLICATE_ATTRIB` / `SHALLOW_DUPLICATE_ATTRIB`.
+
+    /// Get the attributes pairlist of a SEXP. Non-API (`nonapi` feature).
     ///
-    /// Returns R_NilValue if no attributes.
+    /// Returns R_NilValue if no attributes. To ask whether there are any
+    /// attributes, use `SexpExt::has_attributes`; to read one, use
+    /// `SexpExt::get_attr`.
+    #[cfg(feature = "nonapi")]
     pub fn ATTRIB(x: SEXP) -> SEXP;
 
-    /// Set the attributes pairlist of a SEXP.
+    /// Set the attributes pairlist of a SEXP. Non-API (`nonapi` feature).
+    ///
+    /// Prefer `SexpExt::set_attr` (one attribute) or `DUPLICATE_ATTRIB` /
+    /// `SHALLOW_DUPLICATE_ATTRIB` (copy all of them), which keep the object
+    /// bit consistent with the `class` attribute.
     ///
     /// # Safety
     ///
     /// `v` must be a pairlist or R_NilValue
+    #[cfg(feature = "nonapi")]
     pub fn SET_ATTRIB(x: SEXP, v: SEXP);
 
-    /// Check if SEXP has the "object" bit set (has a class).
+    /// Check if SEXP has the "object" bit set (has a class). Non-API
+    /// (`nonapi` feature); use `SexpExt::is_object` (`Rf_isObject`).
     ///
     /// Returns non-zero if object has a class attribute.
+    #[cfg(feature = "nonapi")]
     pub fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
 
-    /// Set the "object" bit.
+    /// Set the "object" bit. Non-API (`nonapi` feature); setting a `class`
+    /// attribute with `SexpExt::set_class` sets it.
+    #[cfg(feature = "nonapi")]
     pub fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
 
-    /// Get the LEVELS field (for factors).
+    /// Get the `gp` header bits. Non-API (`nonapi` feature).
+    ///
+    /// Not a factor's levels: those are the `levels` attribute
+    /// (`SexpExt::get_levels`).
+    #[cfg(feature = "nonapi")]
     pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
 
-    /// Set the LEVELS field (for factors).
+    /// Set the `gp` header bits. Non-API (`nonapi` feature).
     ///
     /// Returns the value that was set.
+    #[cfg(feature = "nonapi")]
     pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 
     // endregion

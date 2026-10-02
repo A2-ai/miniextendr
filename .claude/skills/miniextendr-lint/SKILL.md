@@ -147,6 +147,17 @@ Fix: build the container first, protecting each SEXP as it is created
 (`OwnedProtect` / `ProtectScope`), instead of collecting raw `into_sexp()`
 results in one literal.
 
+**MXL304** — Non-API `ATTRIB` / `SET_ATTRIB`.
+A call to, or `extern` declaration of, `ATTRIB` / `SET_ATTRIB` (or their
+`_unchecked` forms). Neither is part of R's API; `R CMD check` on R >= 4.6
+reports packages that reference them. miniextendr-api declares them only
+behind the `nonapi` feature, so the rule mostly catches a crate declaring the
+symbol itself. `ANY_ATTRIB`, `CLEAR_ATTRIB`, `DUPLICATE_ATTRIB` and
+`SHALLOW_DUPLICATE_ATTRIB` are API and are not flagged.
+Fix: `SexpExt::has_attributes()` to test for attributes,
+`SexpExt::is_identical()` for R's `identical()`, `get_attr()` / `set_attr()`
+for one attribute, `DUPLICATE_ATTRIB` to copy all of them.
+
 ## How it works
 
 ### Adding a new rule
@@ -188,6 +199,7 @@ exploration escape hatch only; committed code must be clean.
 - `miniextendr-lint/src/rules/export_attrs.rs` — MXL203
 - `miniextendr-lint/src/rules/vec_into_sexp.rs` — MXL302
 - `miniextendr-lint/src/rules/trait_tag_collision.rs` — MXL303
+- `miniextendr-lint/src/rules/nonapi_attrib.rs` — MXL304
 - `miniextendr-lint/src/lint_code.rs` — MXL code registry
 - `miniextendr-lint/src/helpers.rs` — shared AST predicates
 - `miniextendr-lint/CLAUDE.md` — authoritative rule catalogue
