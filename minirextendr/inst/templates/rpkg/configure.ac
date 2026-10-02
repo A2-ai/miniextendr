@@ -161,6 +161,21 @@ else
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
 
+dnl ---- R's BLAS/LAPACK (the package's `blas-lapack` feature) ----
+dnl miniextendr-api's `blas-lapack` feature declares R's own dgemm_/dgesv_.
+dnl A staticlib carries no link directives, so the package links R's
+dnl libraries itself, as Writing R Extensions prescribes for BLAS/LAPACK
+dnl callers. The value is literal make syntax: make expands the three
+dnl variables from R's Makeconf (or an R_MAKEVARS_USER override, such as the
+dnl webR build's) when it links. Keyed on the package's own feature name in
+dnl CARGO_FEATURES: enabling miniextendr-api/blas-lapack only on the
+dnl dependency line bypasses this, so packages forward a feature of their own.
+case ",$CARGO_FEATURES," in
+  *,blas-lapack,*) BLAS_LAPACK_PKG_LIBS='$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)' ;;
+  *)               BLAS_LAPACK_PKG_LIBS="" ;;
+esac
+AC_SUBST([BLAS_LAPACK_PKG_LIBS])
+
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
@@ -365,6 +380,8 @@ AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AS_IF([test -n "$CARGO_FEATURES"],
       [AC_MSG_NOTICE([CARGO_FEATURES  = $CARGO_FEATURES])])
+AS_IF([test -n "$BLAS_LAPACK_PKG_LIBS"],
+      [AC_MSG_NOTICE([BLAS_LAPACK_PKG_LIBS  = $BLAS_LAPACK_PKG_LIBS])])
 AS_IF([test "$IS_WASM_INSTALL" = "true"],  [AC_MSG_NOTICE([IS_WASM_INSTALL      = true (CC=emcc detected)])])
 AS_IF([test -n "$CARGO_BUILD_STD_FLAG"],   [AC_MSG_NOTICE([CARGO_BUILD_STD_FLAG = $CARGO_BUILD_STD_FLAG])])
 
