@@ -188,3 +188,82 @@ test_that("the monorepo and standalone configure.ac templates match", {
 })
 
 # endregion -------------------------------------------------------------------
+
+# region: #1669 — leftovers of a pre-#1656 scaffold --------------------------
+
+# git with no user hooks, attributes or signing in play.
+fidelity_git <- function(path, ...) {
+  args <- c("-C", path,
+            "-c", "user.name=Scaffold Test",
+            "-c", "user.email=scaffold@example.invalid",
+            "-c", "commit.gpgsign=false",
+            "-c", paste0("core.hooksPath=", file.path(path, ".empty-hooks")),
+            "-c", paste0("core.attributesFile=", file.path(path, ".empty-attributes")),
+            ...)
+  out <- system2("git", shQuote(args), stdout = TRUE, stderr = TRUE)
+  expect_null(attr(out, "status"), info = paste(out, collapse = "\n"))
+  unname(as.character(out))
+}
+
+test_that("upgrade_gitignore() drops the retired wrapper-provenance entry", {
+  tmp <- withr::local_tempdir()
+  usethis::local_project(tmp, force = TRUE, setwd = FALSE, quiet = TRUE)
+  gitignore <- file.path(tmp, ".gitignore")
+  writeLines(c(
+    "my-notes/",
+    "# Generated wrapper provenance, shipped with the package tarball",
+    "/tools/wrapper-inputs.rds",
+    "tools/wrapper-inputs.rds"
+  ), gitignore)
+  local_mocked_bindings(use_miniextendr_gitignore = function(...) invisible(),
+                        .package = "minirextendr")
+
+  suppressMessages(minirextendr:::upgrade_gitignore())
+
+  # Only the exact retired lines go; a user's own variant stays.
+  expect_identical(readLines(gitignore), c("my-notes/", "tools/wrapper-inputs.rds"))
+})
+
+test_that("the upgrade summary lists leftover files and leaves them in place", {
+  skip_if_not(nzchar(Sys.which("git")), "git not available")
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  pkg <- make_upgrade_pkg(withr::local_tempdir())
+  fidelity_git(pkg, "init", "-q")
+  dir.create(file.path(pkg, "tools"))
+  leftovers <- file.path("tools", c("wrapper-freshness.R", "wrapper-inputs.rds"))
+  writeLines("# old wrapper fast path", file.path(pkg, leftovers[[1L]]))
+  saveRDS(list(), file.path(pkg, leftovers[[2L]]))
+  win_def <- file.path("src", "fidpkg-win.def")
+  writeLines("EXPORTS", file.path(pkg, win_def))
+  # -f: once the upgrade's ignore rule exists a plain add would refuse it, and
+  # a pre-#1656 package committed it before that rule.
+  fidelity_git(pkg, "add", "-f", win_def)
+
+  msgs <- capture_messages(upgrade_miniextendr_package(
+    path = pkg, configure_ac = TRUE, autoconf = FALSE, allow_dirty = TRUE
+  ))
+  text <- paste(msgs, collapse = "")
+
+  expect_match(text, "No longer used by the package")
+  expect_match(text, "tools/wrapper-freshness.R", fixed = TRUE)
+  expect_match(text, "tools/wrapper-inputs.rds", fixed = TRUE)
+  expect_match(text, "git rm --cached src/fidpkg-win.def", fixed = TRUE)
+  expect_true(all(file.exists(file.path(pkg, leftovers))))
+  expect_identical(fidelity_git(pkg, "ls-files", "--", win_def), win_def)
+})
+
+test_that("the upgrade summary stays quiet without leftovers or a git repository", {
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  pkg <- make_upgrade_pkg(withr::local_tempdir())
+  writeLines("EXPORTS", file.path(pkg, "src", "fidpkg-win.def"))
+
+  msgs <- capture_messages(upgrade_miniextendr_package(
+    path = pkg, configure_ac = TRUE, autoconf = FALSE, allow_dirty = TRUE
+  ))
+  text <- paste(msgs, collapse = "")
+
+  expect_no_match(text, "No longer used by the package")
+  expect_no_match(text, "git rm --cached")
+})
+
+# endregion -------------------------------------------------------------------
