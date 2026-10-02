@@ -431,6 +431,9 @@ impl DataFrame {
     /// new-frame producers ([`drop`](Self::drop) and friends), which return a
     /// rooted [`BuiltDataFrame`]. On a `BuiltDataFrame` receiver the inherent
     /// forward ([`BuiltDataFrame::rename`]) keeps the handle instead.
+    ///
+    /// Other attributes are untouched, so renaming a grouping column of a
+    /// dplyr `grouped_df` leaves its `groups` naming the old column (#1702).
     pub fn rename(self, from: &str, to: &str) -> Self {
         unsafe {
             // Root `self.sexp` so its `names` attribute survives the
@@ -701,7 +704,8 @@ impl DataFrame {
     /// The append path builds a new frame that keeps the input's attributes
     /// and dplyr grouping (see [`drop`](Self::drop)'s frame-attribute note).
     /// The replace path stores `column` into the input frame itself and
-    /// returns that frame, attributes untouched.
+    /// returns that frame, attributes untouched, so replacing a grouping
+    /// column leaves dplyr's `groups` stale (#1702).
     ///
     /// # Rooting
     ///
@@ -974,10 +978,12 @@ unsafe fn grouping_columns_kept(from: SEXP, to: SEXP) -> bool {
         (0..vars.xlength())
             .map(|i| col_name(vars, i))
             .filter(|&var| var != ".rows")
-            .all(|var| match (column_named(from, var), column_named(to, var)) {
-                (Some(before), Some(after)) => before == after,
-                _ => false,
-            })
+            .all(
+                |var| match (column_named(from, var), column_named(to, var)) {
+                    (Some(before), Some(after)) => before == after,
+                    _ => false,
+                },
+            )
     }
 }
 

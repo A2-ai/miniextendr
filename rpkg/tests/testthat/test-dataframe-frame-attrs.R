@@ -93,6 +93,7 @@ test_that("select_rows keeps frame and column attributes together", {
 })
 
 test_that("select_rows gives a frame with character row names fresh compact ones", {
+  # Base `[` and vctrs::vec_slice() subset character row names instead (#1703).
   df <- frame_with_attrs()
   rownames(df) <- c("r1", "r2", "r3", "r4")
   out <- miniextendr:::dataframe_select_rows(df, c(3L, 1L, 2L))

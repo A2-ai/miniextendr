@@ -107,6 +107,44 @@ let df = df
 
 Use `DataFrame::from_sexp(sexp)` to validate an arbitrary SEXP, and `as_sexp()` / `as_list()` to drop down to the raw representation when you need it.
 
+### Frame attributes
+
+Every new-frame producer keeps the attributes of the frame itself, not only
+those of its columns. That is everything except `names` and `row.names`: the
+`class`, a `units` map that describes some columns, a package's metadata. This
+is the rule of `dplyr_reconstruct()`, `vctrs::vec_slice()` and tibble's `[`.
+`select_rows` gives the result fresh compact `row.names` (`1:length(idx)`),
+where base `[` and `vctrs::vec_slice()` subset character row names (#1703). The
+column producers (`drop`, `select`, `prepend_column`, `with_column`) keep the
+row names they were given.
+
+dplyr's grouping is the exception. A `grouped_df` or `rowwise_df` caches its
+groups in a `groups` attribute. That attribute holds each group's row indices
+and names the key columns, so it is only copied while it still fits the new
+frame:
+
+| Producer | dplyr `grouped_df` / `rowwise_df` input |
+|---|---|
+| `select_rows` | always returned ungrouped: the selected rows no longer match the cached row indices |
+| `drop`, `select`, `prepend_column` | grouping kept while every grouping column stays unchanged; ungrouped when one is removed or replaced |
+| `with_column`, appending | grouping kept (a new column is never a grouping column) |
+
+"Ungrouped" means the `groups` attribute and the `grouped_df` / `rowwise_df`
+class are gone. A dplyr input comes back as a tibble that keeps its other
+attributes, never as a grouped frame whose groups are stale. dplyr itself
+recomputes the groups in `dplyr::slice()`, and its `[` regroups by the
+grouping columns that remain (#1701). To keep a row subset grouped, read
+`group_declaration()` from the input and regroup the result by its `vars`:
+with `group_by_multi` in Rust, or with
+`dplyr::grouped_df(out, dplyr::group_vars(df))` in R.
+
+Any other attribute indexed by row is copied as it is. A package that keeps
+one has to rebuild it after a row subset, as `?dplyr_row_slice` asks of its
+methods. The in-place edits (`rename`, `strip_prefix`, the replace path of
+`with_column`) change the frame they are given and leave its attributes
+alone, `groups` included, even when they rename or overwrite a grouping
+column (#1702).
+
 ## `#[derive(DataFrameRow)]` in depth
 
 ### Heterogeneous types
