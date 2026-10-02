@@ -8,12 +8,16 @@ values. When enabled, out-of-range values panic instead of being coerced.
 Strict mode applies to **lossy integer types** only: types where R's native
 integer range (`i32`, excluding `NA_integer_`) cannot represent all values:
 
-| Type | Scalar | Vec | Option | Vec\<Option\> |
-|------|--------|-----|--------|---------------|
-| `i64` | Yes | Yes | Yes | Yes |
-| `u64` | Yes | Yes | Yes | Yes |
-| `isize` | Yes | Yes | Yes | Yes |
-| `usize` | Yes | Yes | Yes | Yes |
+| Type | Scalar | Vec | Option | Vec\<Option\> | Option\<Vec\> | Vec\<Vec\> | Vec\<Option\<Vec\>\> |
+|------|--------|-----|--------|---------------|----------------|------------|----------------------|
+| `i64` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `u64` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `isize` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| `usize` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+
+The last three columns are return types only. `Box<[T]>`, `&[T]`, and the
+list shapes `Vec<&[T]>`, `Vec<Option<&[T]>>`, `Vec<Box<[T]>>` and
+`Vec<[T; N]>` have no strict path yet and widen as in normal mode (#1684).
 
 Types like `i32`, `f64`, `String`, `bool` are **not affected**. They have
 lossless R representations.
@@ -134,6 +138,15 @@ strict conversion failed: i64 value 1099511627776 is outside R integer range
 strict conversion failed for Vec<i64>: i64 value 1099511627776 is outside R integer
 range (-2147483647..=2147483647) (element 2); use a non-strict function to allow lossy
 f64 widening
+```
+
+A list of vectors (`Vec<Vec<usize>>`) checks every row before it fails, and
+names each failing value's row (`element`) and its place in the row:
+
+```text
+strict conversion failed for Vec<Vec<usize>>: usize value 3000000000 exceeds R
+integer max (2147483647) at inner position 1 (element 2); use a non-strict function
+to allow lossy f64 widening
 ```
 
 ## When to Use Strict Mode

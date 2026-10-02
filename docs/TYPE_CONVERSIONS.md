@@ -32,13 +32,17 @@ miniextendr supports converting nested collections to R lists:
 
 | Rust Type | R Type | Notes |
 |-----------|--------|-------|
-| `Vec<Vec<T>>` | list of vectors | For `T: RNativeType` or `T = String` |
-| `Vec<Box<[T]>>` | list of vectors | Boxed slices → vectors |
-| `Vec<[T; N]>` | list of vectors | Fixed arrays → vectors |
+| `Vec<Vec<T>>` | list of vectors | Any `T` with `Vec<T>: IntoR`; each element is what `Vec<T>` gives |
+| `Vec<Option<Vec<T>>>` / `Vec<Option<Box<[T]>>>` | list of vectors | As `Vec<Vec<T>>`; `None` → `NULL` |
+| `Vec<&[T]>` / `Vec<Option<&[T]>>` | list of vectors | Any `T` with `&[T]: IntoR`; slices are copied |
+| `Vec<Box<[T]>>` | list of vectors | Boxed slices → vectors (any `T` with `Vec<T>: IntoR`) |
+| `Vec<[T; N]>` | list of vectors | Fixed arrays → vectors (any `T` with `Vec<T>: IntoR`) |
 | `Vec<HashSet<T>>` | list of vectors | Sets → unordered vectors |
 | `Vec<BTreeSet<T>>` | list of vectors | Sets → sorted vectors |
 
 These are particularly useful with `#[derive(DataFrameRow)]` where row fields can contain collections.
+For the wide integers (`usize`, `u64`, `i64`, `isize`, `u32`) each element decides on its own:
+integer when all its values fit, double otherwise.
 
 ### Option Types (NA-Safe Scalars)
 

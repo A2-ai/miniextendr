@@ -967,9 +967,10 @@ fn resolve_struct_field(
             //
             // - Non-String bare-reader-scalar key + bare-reader-scalar value + 2 type args:
             //   expand to two parallel list-columns `<base>_keys` / `<base>_values` (#919).
-            //   `Vec<Vec<K>>: IntoR` and `Vec<Vec<V>>: IntoR` work via the `T: RNativeType`
-            //   blanket. Float keys (`f32`/`f64`) are also bare-reader-scalar but lack
-            //   `Eq + Hash` / `Ord`, so reject them with a clear error.
+            //   `Vec<Vec<K>>: IntoR` and `Vec<Vec<V>>: IntoR` work via the generic
+            //   `Vec<Vec<T>>` impl (any `T` with `Vec<T>: IntoR`). Float keys (`f32`/`f64`)
+            //   are also bare-reader-scalar but lack `Eq + Hash` / `Ord`, so reject them
+            //   with a clear error.
             //
             // - Custom hasher (3+ type args): fall through to `Single` with no reader
             //   (keeps existing behaviour for `HashMap<K, V, S>`).
@@ -1199,6 +1200,10 @@ fn derive_struct_dataframe(
     attrs: &DataFrameAttrs,
 ) -> syn::Result<TokenStream> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    // The companion and its row iterator take the row struct's visibility: their
+    // `IntoIterator` / `Iterator` impls name the row type as `Item`, so a `pub`
+    // companion over a private row is E0446 ("private type in public interface").
+    let vis = &input.vis;
 
     let is_tuple_struct = matches!(&data.fields, Fields::Unnamed(_));
     let is_unit_struct = matches!(&data.fields, Fields::Unit);
@@ -1429,7 +1434,7 @@ fn derive_struct_dataframe(
 
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
-        pub struct #df_name #impl_generics #where_clause {
+        #vis struct #df_name #impl_generics #where_clause {
             #tag_field_decl
             #len_field_decl
             #(#df_fields_tokens),*
@@ -2236,7 +2241,7 @@ fn derive_struct_dataframe(
             .collect();
 
         quote! {
-            pub struct #iterator_name #impl_generics #where_clause {
+            #vis struct #iterator_name #impl_generics #where_clause {
                 #(#iter_field_decls),*
             }
 

@@ -219,6 +219,28 @@ struct ComplexRow {
 
 In **struct** `DataFrameRow`s the columns land as `Vec<C>` and convert to a VECSXP list-column. In **enum** `DataFrameRow`s they land as `Vec<Option<C>>` with `None` for variants that don't carry the field — these convert to a VECSXP list-column with `NULL` for absent rows. See [`CONVERSION_MATRIX.md`](CONVERSION_MATRIX.md#vecoptionc-for-collection-element-types) for the full set of supported `C`.
 
+Each list-column cell is the R vector the field's own value converts to: a
+`Vec<T>` / `Box<[T]>` / `[T; N]` field works for every element type with a
+`Vec<T>: IntoR` conversion, and a borrowed `&[T]` field for every `T` with
+`&[T]: IntoR`. The wide integers (`usize`, `u64`, `i64`, `isize`, `u32`) choose
+per row, as a returned `Vec<usize>` does: a cell is an integer vector when every
+value fits in R's integer range and a double vector otherwise, so one column can
+hold both, and an empty row is `integer(0)`:
+
+```rust
+#[derive(Clone, IntoList, DataFrameRow)]
+struct Row {
+    #[dataframe(as_list)]
+    starts: Vec<usize>,
+}
+// rows [1, 5], [], [3_000_000_000]
+// R: df$starts is list(c(1L, 5L), integer(0), 3e9)
+```
+
+List columns have no strict mode. When an out-of-range value must be an error,
+return the rows from a `#[miniextendr(strict)]` function as `Vec<Vec<usize>>`
+(see [STRICT_MODE.md](STRICT_MODE.md)).
+
 `HashMap<K, V>` / `BTreeMap<K, V>` variant fields expand to two parallel list-columns (see [Map fields](#map-fields-parallel-list-column-expansion) below). Struct-typed and nested-enum variant fields are covered in [Nested enum fields](#nested-enum-fields-flatten-and-opt-outs) below.
 
 ### Map fields: parallel list-column expansion
@@ -758,7 +780,8 @@ The redundant public types below were **removed** (#781) — there is no backwar
 
 The companion type that `#[derive(DataFrameRow)]` generates (`{Name}DataFrame`,
 with `to_dataframe` / `from_rows` / `from_rows_par` / `from_dataframe` and
-`IntoIterator`) still exists as the engine the façade verbs delegate to. The
+`IntoIterator`) still exists as the engine the façade verbs delegate to. It takes
+the row type's visibility, so a private row struct gets a private companion. The
 serde columnar path (`serde::vec_to_dataframe` and friends) produces the same
 `BuiltDataFrame` handle — there is no separate `ColumnarDataFrame` type; the
 naming convergence was completed in #783.
