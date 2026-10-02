@@ -119,6 +119,8 @@ GENERATED_PATH_SUFFIXES=(
     '.cargo/config.toml'
     'src/rust/wasm_registry.rs'
     'Cargo.lock'
+    # Member of the `cargo revendor --freeze --compress` archive (#1555).
+    'vendor/.cargo-config.toml'
 )
 
 # External reference trees (gitignored background/) — cited but not in-repo.
