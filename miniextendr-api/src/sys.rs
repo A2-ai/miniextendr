@@ -1825,7 +1825,7 @@ unsafe extern "C-unwind" {
     /// - `pgtol`: projected-gradient tolerance (with `optim`'s default `0`
     ///   only an exactly zero projected gradient stops on it).
     /// - `fncount`, `grcount`: receive the evaluation counts (R stores the
-    ///   same count in both).
+    ///   same count in both, except with `n = 0`: see `n` above).
     /// - `maxit`: iteration limit.
     /// - `msg`: caller-owned buffer of at least 60 bytes (C `char msg[60]`);
     ///   receives a NUL-terminated status such as
