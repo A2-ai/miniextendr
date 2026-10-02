@@ -115,7 +115,7 @@ upgrade_miniextendr_package <- function(path = ".",
     cli::cli_h2("Replacing configure.ac")
     use_miniextendr_configure(subdir = tpl_subdir)
   } else {
-    check_configure_ac_drift()
+    check_configure_ac_drift(monorepo)
   }
 
   # --- Autoconf ---
@@ -379,22 +379,19 @@ upgrade_gitignore <- function(subdir = NULL) {
 #' package. Custom edits also produce a warning; leave the file untouched so
 #' users can review and retain those edits when updating the build system.
 #'
+#' @param monorepo Whether the package is the R package of a monorepo, which
+#'   selects `templates/monorepo/rpkg/configure.ac` over
+#'   `templates/rpkg/configure.ac`. Defaults to what `upgrade_layout()` says
+#'   about the active project, so the drift check and the upgrade agree on the
+#'   template set (#1720). The template type a previous scaffolding call left
+#'   active in this R session plays no part.
 #' @noRd
-check_configure_ac_drift <- function() {
+check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis::proj_get())$root)) {
   configure_ac <- usethis::proj_path("configure.ac")
   if (!fs::file_exists(configure_ac)) return(invisible())
 
   content <- readLines(configure_ac, warn = FALSE)
-  # Select by the target layout; a previous scaffolding call may have left
-  # get_template_type() set to a different layout in this R session.
-  layout <- if (identical(detect_project_type(), "monorepo")) {
-    file.path("monorepo", "rpkg")
-  } else {
-    "rpkg"
-  }
-  template_file <- system.file("templates", layout, "configure.ac",
-                               package = "minirextendr", mustWork = TRUE)
-  template <- readLines(template_file, warn = FALSE)
+  template <- readLines(configure_ac_template(monorepo), warn = FALSE)
   # configure.ac has one template variable: the package name in AC_INIT.
   template <- gsub("{{package}}", get_package_name(), template, fixed = TRUE)
 
@@ -408,4 +405,15 @@ check_configure_ac_drift <- function() {
   }
 
   invisible()
+}
+
+#' Path of the configure.ac template for a layout
+#'
+#' @param monorepo `TRUE` for the R package of a monorepo, `FALSE` for a
+#'   standalone package.
+#' @noRd
+configure_ac_template <- function(monorepo) {
+  layout <- if (monorepo) file.path("monorepo", "rpkg") else "rpkg"
+  system.file("templates", layout, "configure.ac",
+              package = "minirextendr", mustWork = TRUE)
 }

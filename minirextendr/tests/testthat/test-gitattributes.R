@@ -94,7 +94,10 @@ test_that("upgrade adds missing merge rules and preserves existing rules on reru
     writeLines("# Previous scaffold", file.path(pkg, "src", "Makevars.in"))
     if (monorepo) writeLines("[workspace]", file.path(tmp, "Cargo.toml"))
     writeLines(c("Package: attrpkg", "Version: 0.0.1"), file.path(pkg, "DESCRIPTION"))
-    writeLines(c("CARGO_FEATURES", "CARGO_STATICLIB_NAME", "AC_CONFIG_AUX_DIR", "CARGO_TARGET_DIR"),
+    # The current template, so the upgrade's configure.ac drift check (#1406)
+    # has nothing to report; this test is about .gitattributes.
+    configure <- readLines(minirextendr:::configure_ac_template(monorepo))
+    writeLines(gsub("{{package}}", "attrpkg", configure, fixed = TRUE),
                file.path(pkg, "configure.ac"))
     custom <- c("# Keep custom rules", "*.R text eol=lf")
     if (monorepo) writeLines(custom, file.path(pkg, ".gitattributes"))
