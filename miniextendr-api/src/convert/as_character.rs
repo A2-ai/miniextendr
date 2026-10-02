@@ -233,8 +233,9 @@ fn check_length_one(actual: usize) -> Result<(), SexpError> {
 }
 
 /// Read any atomic vector into `Vec<Option<String>>` through R's own
-/// conversion to character.
-fn read_character(sexp: SEXP) -> Result<Vec<Option<String>>, SexpError> {
+/// conversion to character. Also labels double group keys
+/// (`dataframe::group`).
+pub(crate) fn read_character(sexp: SEXP) -> Result<Vec<Option<String>>, SexpError> {
     check_type(sexp.type_of())?;
     let strings = if sexp.is_object() {
         dispatch_as_character(sexp)?

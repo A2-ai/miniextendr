@@ -105,10 +105,97 @@ test_that("empty frames and single groups are handled", {
   expect_identical(frames$x$v, 1:3)
 })
 
-test_that("double key columns and missing columns are errors", {
-  df <- data.frame(g = c(1.5, 2.5), v = 1:2)
-  expect_error(group_by_keys(df, "g"), "cannot group by column")
+test_that("list, integer64 and missing key columns are errors", {
+  df <- data.frame(v = 1:2)
+  df$l <- list(1, 2)
+  expect_error(group_by_keys(df, "l"), "cannot group by column \"l\" \\(VECSXP\\)")
+  # bit64's integer64 keeps int64 bits in a double vector; grouping it as
+  # doubles would mis-order it and merge its NA (the bits of -0) with 0.
+  i64 <- data.frame(v = 1:2)
+  i64$g <- structure(c(0, 1), class = "integer64")
+  expect_error(group_by_keys(i64, "g"), "cannot group by column \"g\" \\(integer64\\)")
   expect_error(group_by_keys(df, "nope"), "no such column")
+})
+
+# --- double keys (plain, Date, POSIXct) ---------------------------------------
+
+test_that("double keys sort numerically, NaN after every number, NA last", {
+  df <- data.frame(k = c(NaN, NA, 1, -0, 0, -Inf, Inf, 2.5, NA, NaN), v = 1:10)
+  expect_identical(
+    group_by_keys(df, "k"),
+    c("-Inf", "0", "1", "2.5", "Inf", "NaN", "NA")
+  )
+  expect_identical(group_by_sizes(df, "k"), c(1L, 2L, 1L, 1L, 1L, 2L, 2L))
+  frames <- group_by_frames(df, "k")
+  expect_identical(frames[["0"]]$v, 4:5) # -0 and 0 are one key
+  expect_identical(frames[["NaN"]]$v, c(1L, 10L)) # NaN is not NA ...
+  expect_identical(frames[["NA"]]$v, c(2L, 9L)) # ... and NA trails
+  # A computed NA (NA_real_ * 1 changes the NaN's high bits) is still NA.
+  computed <- data.frame(k = c(NA_real_ * 1, NA, 1))
+  expect_identical(group_by_keys(computed, "k"), c("1", "NA"))
+  expect_identical(group_by_sizes(computed, "k"), c(1L, 2L))
+})
+
+test_that("double keys match dplyr's grouping (order, NaN vs NA, -0 == 0)", {
+  skip_if_not_installed("dplyr")
+  df <- data.frame(k = c(NaN, NA, 1, -0, 0, -Inf, Inf, 2.5, NA, NaN), v = 1:10)
+  gd <- dplyr::group_data(dplyr::group_by(df, k))
+  frames <- group_by_frames(df, "k")
+  expect_identical(
+    unname(lapply(frames, function(f) f$v)),
+    lapply(gd$.rows, as.integer)
+  )
+})
+
+test_that("double key labels are R's as.character() of the key", {
+  set.seed(1)
+  x <- c(
+    0.1, 1 / 3, 1e5, 123456, 1e15, 1e-5, 100, 0.1 + 0.2, 1e22, -2.5,
+    1234567890123456, 99999.99999999999, .Machine$double.xmin, 5e-324,
+    runif(40) * 10^sample(-30:30, 40, replace = TRUE),
+    -runif(10) * 10^sample(-10:10, 10, replace = TRUE)
+  )
+  df <- data.frame(k = x)
+  expect_identical(group_by_keys(df, "k"), as.character(sort(unique(x))))
+})
+
+test_that("Date and POSIXct keys label as R prints them", {
+  d <- as.Date(c("2024-01-02", "2023-12-31", NA, "2024-01-02"))
+  ddf <- data.frame(d = d, v = 1:4)
+  expect_identical(group_by_keys(ddf, "d"), c("2023-12-31", "2024-01-02", "NA"))
+  expect_identical(group_by_sizes(ddf, "d"), c(1L, 2L, 1L))
+  expect_identical(group_by_frames(ddf, "d")[["2024-01-02"]]$v, c(1L, 4L))
+
+  p <- as.POSIXct(
+    c("2024-01-01 10:00:00", "2024-01-01 00:00:00", "2024-01-01 10:00:00"),
+    tz = "UTC"
+  )
+  pdf <- data.frame(p = p, v = 1:3)
+  # as.character() drops the time at midnight.
+  expect_identical(group_by_keys(pdf, "p"), c("2024-01-01", "2024-01-01 10:00:00"))
+  expect_identical(group_by_sizes(pdf, "p"), c(1L, 2L))
+
+  # The label follows the column's time zone, as as.character() does.
+  ny <- as.POSIXct("2024-01-01 10:00:00", tz = "America/New_York")
+  expect_identical(group_by_keys(data.frame(p = ny), "p"), as.character(ny))
+})
+
+test_that("group_by_multi accepts double keys (interaction() order)", {
+  df <- data.frame(g = c("a", "b", "a", "b"), x = c(2.5, 2.5, 1, NaN))
+  expect_identical(
+    group_by_multi_keys(df, c("g", "x")),
+    levels(interaction(df$g, df$x, drop = TRUE))
+  )
+  expect_identical(group_by_multi_sizes(df, c("g", "x")), c(1L, 1L, 1L, 1L))
+  dates <- data.frame(
+    d = as.Date("2024-01-01") + c(1, 0, 1, 0),
+    k = c(1L, 1L, 1L, 2L)
+  )
+  expect_identical(
+    group_by_multi_keys(dates, c("d", "k")),
+    c("2024-01-01.1", "2024-01-02.1", "2024-01-01.2")
+  )
+  expect_identical(group_by_multi_sizes(dates, c("d", "k")), c(1L, 2L, 1L))
 })
 
 test_that("group_by_extract_sums partitions one typed extraction by group", {
@@ -244,10 +331,38 @@ test_that("single-column slice delegates to the scalar group_by path (no 1-tuple
 })
 
 test_that("group_by_multi validates its column slice and unsupported types", {
-  df <- data.frame(a = c("x", "y"), b = 1:2, d = c(1.5, 2.5))
+  df <- data.frame(a = c("x", "y"), b = 1:2)
+  df$l <- list(1.5, 2.5)
   expect_error(group_by_multi_keys(df, character(0)), "at least one column")
   expect_error(group_by_multi_keys(df, c("a", "nope")), "no such column")
-  expect_error(group_by_multi_keys(df, c("a", "d")), "cannot group by column")
+  expect_error(group_by_multi_keys(df, c("a", "l")), "cannot group by column \"l\"")
+})
+
+test_that("gc_stress_group_by_double smoke-runs and partitions every row", {
+  out <- miniextendr:::gc_stress_group_by_double()
+  # 42 rows, each partition covering every row once: x, d, (p, x), metadata.
+  for (prefix in c("x=", "d=", "px=", "meta=")) {
+    parts <- out[startsWith(names(out), prefix)]
+    expect_identical(sum(vapply(parts, nrow, integer(1))), 42L, info = prefix)
+  }
+  expect_identical(
+    names(out)[startsWith(names(out), "x=")],
+    paste0("x=", c("-Inf", "0", "2.5", "1e+05", "NaN", "NA"))
+  )
+  expect_identical(
+    names(out)[startsWith(names(out), "meta=")],
+    paste0("meta=", c("2024-01-01", "2024-01-02", "2024-01-03", "NA"))
+  )
+})
+
+test_that("double-key grouping survives gctorture", {
+  skip_gc_stress_if_disabled()
+  ref <- miniextendr:::gc_stress_group_by_double()
+  old <- gctorture(TRUE)
+  on.exit(gctorture(old), add = TRUE)
+  out <- miniextendr:::gc_stress_group_by_double()
+  gctorture(old)
+  expect_identical(out, ref)
 })
 
 test_that("gc_stress_group_by_multi smoke-runs and preserves all rows", {

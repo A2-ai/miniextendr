@@ -562,9 +562,21 @@ let by_group: Vec<(GroupKey, Vec<Measurement>)> = grouped.extract()?;
 
 Supported key columns: **factor** (fast path — levels are the keys, level
 order kept, empty levels included, like `split()`), **character** (byte-order
-sort), **integer** (numeric sort), **logical** (`FALSE`, `TRUE`). **Double
-columns error** — grouping on floating point is a footgun; `cut()` or
-`factor()` the column in R first.
+sort), **integer** (numeric sort), **logical** (`FALSE`, `TRUE`), and
+**double**, `Date` and `POSIXct` included (numeric sort, `NaN` after every
+number). List columns and bit64 `integer64` columns (int64 bits stored in a
+double vector) are an error.
+
+**Double keys use dplyr's equality** (vctrs'): `-0` and `0` are one key, every
+`NaN` is one key, and `NaN` and `NA` form separate groups — the same groups, in
+the same order, as `dplyr::group_by()`. A double key is a
+`GroupKey::Real(RealKey)`: `value()` is the (normalised) number — days since
+1970-01-01 for a `Date`, seconds since the epoch for a `POSIXct` — and the label
+is R's `as.character()` of the key, called with the column's attributes. That is
+the text `factor()` / `split()` use for level names: `"0.1"`, `"1e+05"` and
+`"NaN"` for plain doubles, `"2024-01-02"` for a `Date`, and for a `POSIXct` the
+time in the column's time zone (`"2024-01-02 10:30:00"`, or just the date at
+midnight). Equality ignores the label.
 
 **NA keys form one group, ordered last.** This deliberately deviates from R's
 `split()`, which silently drops NA-keyed rows.
@@ -618,23 +630,60 @@ columns are the group-key columns (one row per group, in dplyr's order) and
 whose trailing `.rows` list-column holds each group's **1-based** row indices.
 `group_by_metadata` ingests that verbatim into the same `GroupedDataFrame` the
 compute verbs return — single key column → scalar `GroupKey`, multiple → a
-`.`-joined `GroupKey::Tuple` (same supported key types as `group_by`). It
-preserves the `groups`-frame order exactly (no re-sorting, no NA reordering),
-converts every `.rows` index from 1-based to 0-based, and **keeps** `.drop =
-FALSE` empty groups as groups with empty index vectors (mirroring `group_by`'s
-retention of empty factor levels).
+`.`-joined `GroupKey::Tuple` (same supported key types as `group_by`, double,
+`Date` and `POSIXct` included). It preserves the `groups`-frame order exactly
+(no re-sorting, no NA reordering), converts every `.rows` index from 1-based to
+0-based, and **keeps** `.drop = FALSE` empty groups as groups with empty index
+vectors (mirroring `group_by`'s retention of empty factor levels).
 
-Unlike `group_by`, this does **no** recomputation: a plain (non-grouped) frame
-is a `NotGroupedDataFrame` error — callers who want the framework to compute
-grouping use `group_by` / `group_by_multi`. Other errors: `MissingGroupRows`
-(the `groups` frame lacks a `.rows` column), `BadGroupRows` (a `.rows` element
-is not an integer/integerish vector), and `GroupIndexOutOfRange` (a `.rows`
-index is `< 1` or `> nrow`).
+Unlike `group_by`, this does **no** recomputation: a frame that is not grouped
+(dplyr's test: class `grouped_df` or `rowwise_df` plus a `groups` data-frame
+attribute) is a `NotGroupedDataFrame` error — callers who want the framework to
+compute grouping use `group_by` / `group_by_multi`. Other errors:
+`MissingGroupRows` (the `groups` frame lacks a `.rows` column), `BadGroupRows`
+(a `.rows` element is not an integer/integerish vector), and
+`UnsupportedGroupColumn` (a key column of an unsupported type).
+
+**It trusts the cached rows.** `.rows` is dplyr's cache of the grouping, and
+`group_by_metadata` uses it as it is, after checking that it still fits the
+frame: every index in `1..=nrow` (`GroupIndexOutOfRange`) and every row in
+exactly one group (`GroupRowUncovered`, `GroupRowDuplicated`). These errors say
+the metadata is stale and how to fix it. The usual cause is subsetting a
+grouped frame without dplyr loaded — base `[` keeps the old `groups` attribute
+(with dplyr loaded, `[.grouped_df` regroups). The rows' key values are **not**
+compared with their group's key, so a pure reorder done that way
+(`df[c(3, 4, 1, 2), ]`) still fits and yields the old row positions (#1687).
 
 Degenerate edge: a `groups` frame with **zero** key columns (e.g. a dplyr
 `rowwise_df`, whose `groups` frame is just `.rows`) yields empty-`Tuple` keys
 with empty labels — that shape is outside the documented `grouped_df` scope, so
 don't pass rowwise frames here.
+
+### Reading only the declaration: `DataFrame::group_declaration`
+
+A function that groups the frame's current rows itself only needs the
+declaration — the grouping variables and the `.drop` policy.
+`group_declaration()` returns exactly what dplyr's `group_vars()` and
+`group_by_drop_default()` report, or `None` when the frame is not grouped. It
+reads no `.rows` and partitions nothing, so the key-column types and stale
+metadata never matter:
+
+```rust
+// df arrived as dplyr::group_by(data, site, day, .drop = FALSE)
+if let Some(decl) = df.group_declaration() {
+    // decl.vars == ["site", "day"]; decl.drop == false
+    let vars: Vec<&str> = decl.vars.iter().map(String::as_str).collect();
+    let grouped = df.group_by_multi(&vars)?; // recomputed from the current rows
+}
+```
+
+`drop` follows `group_by_drop_default()`: `true` unless the `groups` frame's
+`.drop` attribute is exactly `FALSE` (`identical(attr(groups, ".drop"),
+FALSE)` — a length-1 logical `FALSE` with no attributes). `group_by_multi` is
+not a dplyr reimplementation: it orders groups like `split(interaction())` and
+applies its own empty-group rule (a single factor key keeps its empty levels,
+composite keys keep only observed tuples) whatever `drop` says. For dplyr's
+exact groups, regroup in R and read them with `group_by_metadata`.
 
 ## Parallel fast paths (`feature = "rayon"`)
 
@@ -757,11 +806,13 @@ A single error type covers every failure mode of both verbs:
 | `UnnamedColumns` | A row could not be turned into named columns. |
 | `NoSuchColumn(name)` | `group_by` referenced a column name that does not exist. |
 | `EmptyGroupColumns` | `group_by_multi` was called with an empty column slice. |
-| `UnsupportedGroupColumn { column, type_of }` | A key column has no grouping semantics (double, list-column, …). |
-| `NotGroupedDataFrame` | `group_by_metadata` on a frame with no dplyr `groups` metadata. |
+| `UnsupportedGroupColumn { column, type_of }` | A key column has no grouping semantics (list-column, `integer64`, …). |
+| `NotGroupedDataFrame` | `group_by_metadata` on a frame that is not dplyr-grouped (no `grouped_df` / `rowwise_df` class, or no `groups` attribute). |
 | `MissingGroupRows` | The `groups` frame has no `.rows` list-column. |
 | `BadGroupRows { group, type_of }` | A `.rows` element is not an integer/integerish index vector. |
-| `GroupIndexOutOfRange { group, value, nrow }` | A `.rows` index is `< 1` or `> nrow`. |
+| `GroupIndexOutOfRange { group, value, nrow }` | A `.rows` index is `< 1` or `> nrow`: the grouping metadata is stale. |
+| `GroupRowUncovered { row, nrow }` | No group's `.rows` holds a row of the frame: the grouping metadata is stale. |
+| `GroupRowDuplicated { row, first_group, second_group }` | Two `.rows` entries hold the same row: the grouping metadata is stale. |
 | `Conversion(msg)` | A serde or other conversion failure, carried as a message (also covers "this shape has no reader"). |
 
 It implements `std::error::Error` and `From<RSerdeError>`, so `?` works in functions that mix serde and data-frame conversions.

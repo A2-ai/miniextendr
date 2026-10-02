@@ -29,12 +29,16 @@
 //! - **Group order**: factor keys follow level order (empty levels kept, like
 //!   `split()`); character keys sort in byte order (R sorts in locale collation
 //!   order — identical for ASCII); integer keys sort numerically; logical keys
-//!   order `FALSE`, `TRUE`.
+//!   order `FALSE`, `TRUE`; double keys (`Date` and `POSIXct` included) sort
+//!   numerically, with `NaN` after every number.
 //! - **`NA` keys form one group, ordered last** — a deliberate deviation from
 //!   `split()`, which silently drops NA-keyed rows. A literal NA *level*
 //!   (`addNA(f)`) also surfaces as [`GroupKey::Na`].
-//! - **Double key columns are an error**: grouping on floating point is a
-//!   footgun — `cut()` or `factor()` the column first.
+//! - **Double keys group by value with dplyr's (vctrs') equality**: `-0` and
+//!   `0` are one key, every `NaN` is one key, and `NaN` and `NA` are separate
+//!   groups. Labels are R's `as.character()` of the key — see [`RealKey`]. A
+//!   bit64 `integer64` column (int64 bits stored in a double vector) is an
+//!   error.
 //!
 //! # Composite keys (`group_by_multi`)
 //!
@@ -52,6 +56,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{DataFrame, DataFrameError, FromDataFrame};
+use crate::from_r::is_na_real;
+use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: group_rows — typed-rows grouping helper (rung 1)
@@ -84,26 +90,31 @@ pub enum GroupKey {
     Str(String),
     /// An integer key.
     Int(i32),
+    /// A double key: a plain number, a `Date`, a `POSIXct`, or another classed
+    /// double. See [`RealKey`] for its equality and label.
+    Real(RealKey),
     /// A logical key.
     Bool(bool),
     /// The NA-keyed group (always ordered last).
     Na,
     /// A composite key from [`DataFrame::group_by_multi`] — one scalar element
     /// per grouping column, in column order. Elements are always scalar
-    /// ([`Str`](Self::Str)/[`Int`](Self::Int)/[`Bool`](Self::Bool)/[`Na`](Self::Na));
+    /// ([`Str`](Self::Str)/[`Int`](Self::Int)/[`Real`](Self::Real)/[`Bool`](Self::Bool)/[`Na`](Self::Na));
     /// tuples never nest (enforced by a `debug_assert!` in [`label`](Self::label)).
     Tuple(Vec<GroupKey>),
 }
 
 impl GroupKey {
     /// R-facing label for this key — suitable as a name in a result list
-    /// (matches how R prints the value: `TRUE`/`FALSE`, `NA`, digits). Composite
+    /// (matches how R prints the value: `TRUE`/`FALSE`, `NA`, digits, and R's
+    /// `as.character()` text for a [`Real`](Self::Real) key). Composite
     /// [`Tuple`](Self::Tuple) keys join their element labels with `"."`, matching
     /// R `interaction()`'s default separator.
     pub fn label(&self) -> String {
         match self {
             GroupKey::Str(s) => s.clone(),
             GroupKey::Int(i) => i.to_string(),
+            GroupKey::Real(r) => r.label.clone(),
             GroupKey::Bool(true) => "TRUE".to_string(),
             GroupKey::Bool(false) => "FALSE".to_string(),
             GroupKey::Na => "NA".to_string(),
@@ -126,6 +137,7 @@ impl std::fmt::Display for GroupKey {
         match self {
             GroupKey::Str(s) => f.write_str(s),
             GroupKey::Int(i) => write!(f, "{}", i),
+            GroupKey::Real(r) => f.write_str(&r.label),
             GroupKey::Bool(true) => f.write_str("TRUE"),
             GroupKey::Bool(false) => f.write_str("FALSE"),
             GroupKey::Na => f.write_str("NA"),
@@ -140,6 +152,103 @@ impl std::fmt::Display for GroupKey {
             }
         }
     }
+}
+
+/// The key of one double-valued group ([`GroupKey::Real`]): the value plus
+/// the text R prints for it.
+///
+/// # Equality
+///
+/// Keys compare and hash by value alone, with the rules vctrs uses and
+/// therefore dplyr's `group_by()`: `-0.0` equals `0.0`, and every `NaN` is the
+/// same key. `NA_real_` is never a `RealKey`: an `NA` cell keys as
+/// [`GroupKey::Na`], so `NA` and `NaN` rows form separate groups, as in dplyr.
+/// The label takes no part in equality.
+///
+/// # Label
+///
+/// The grouping verbs label a key with R's `as.character()` of its value,
+/// called with the key column's attributes (class, `tzone`, …): the same text
+/// `factor()` and `split()` use for level names. So a plain double prints
+/// with up to 15 significant digits (`"0.1"`, `"1e+05"`, `"NaN"`), a `Date`
+/// prints as `"2024-01-02"`, and a `POSIXct` prints in the column's time zone
+/// (`"2024-01-02 10:30:00"`, or just the date at midnight).
+#[derive(Debug, Clone)]
+pub struct RealKey {
+    value: f64,
+    label: String,
+}
+
+impl RealKey {
+    /// A key for `value`, printed as `label`. `-0.0` is stored as `0.0` and
+    /// every `NaN` as one canonical `NaN`, so equal keys hold identical bits.
+    pub fn new(value: f64, label: impl Into<String>) -> Self {
+        RealKey {
+            value: normalize_real(value),
+            label: label.into(),
+        }
+    }
+
+    /// The key's value: never `-0.0`, and `NaN` is the canonical positive
+    /// quiet `NaN`. For a `Date` key this is days since 1970-01-01; for a
+    /// `POSIXct` key, seconds since the epoch.
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+
+    /// The text R prints for the key (see the [type docs](Self)).
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+
+impl PartialEq for RealKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.value.to_bits() == other.value.to_bits()
+    }
+}
+
+impl Eq for RealKey {}
+
+impl std::hash::Hash for RealKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.value.to_bits().hash(state);
+    }
+}
+
+/// Bits of the one `NaN` every `NaN` key is stored as: positive and quiet, so
+/// [`f64::total_cmp`] orders it after `+Inf` on every platform (x86's `0/0` has
+/// the sign bit set), and its low word is not R's NA payload (1954).
+const CANONICAL_NAN_BITS: u64 = 0x7FF8_0000_0000_0000;
+
+/// Map a non-NA double to its key representative: `-0.0` → `0.0`, any `NaN`
+/// → the canonical `NaN`. Equal keys (by vctrs' rules) then share their bits.
+fn normalize_real(x: f64) -> f64 {
+    if x == 0.0 {
+        0.0
+    } else if x.is_nan() {
+        f64::from_bits(CANONICAL_NAN_BITS)
+    } else {
+        x
+    }
+}
+// endregion
+
+// region: GroupDeclaration
+
+/// How a dplyr-grouped frame declares its grouping, returned by
+/// [`DataFrame::group_declaration`]: the grouping variables and the `.drop`
+/// policy, without the cached group rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupDeclaration {
+    /// The grouping variable names, in declaration order — dplyr's
+    /// `group_vars()`. Empty for a `rowwise_df` without id columns.
+    pub vars: Vec<String>,
+    /// Whether grouping drops empty groups — dplyr's
+    /// `group_by_drop_default()`: `true` unless the `groups` frame's `.drop`
+    /// attribute is exactly `FALSE` (`identical(attr(groups, ".drop"), FALSE)`:
+    /// a length-1 logical `FALSE` with no attributes).
+    pub drop: bool,
 }
 // endregion
 
@@ -256,8 +365,10 @@ impl DataFrame {
     ///
     /// Computes group indices in a single pass on the main thread. Supported
     /// key columns: factor (fast path — levels are the keys, level order kept,
-    /// empty levels included), character, integer, and logical. Double columns
-    /// error — `cut()` or `factor()` the column in R first.
+    /// empty levels included), character, integer, logical, and double
+    /// (`Date` and `POSIXct` included; keyed as [`GroupKey::Real`], labelled by
+    /// R's `as.character()`). List columns and bit64 `integer64` columns are an
+    /// error.
     ///
     /// NA keys form one group, ordered last (unlike R `split()`, which drops
     /// NA-keyed rows). See the [module docs](self) for the full key semantics.
@@ -265,21 +376,7 @@ impl DataFrame {
         let column = self
             .column_raw(col)
             .ok_or_else(|| DataFrameError::NoSuchColumn(col.to_string()))?;
-        let groups = if column.is_factor() {
-            factor_groups(column)
-        } else {
-            match column.type_of() {
-                SEXPTYPE::STRSXP => character_groups(column),
-                SEXPTYPE::INTSXP => integer_groups(column),
-                SEXPTYPE::LGLSXP => logical_groups(column),
-                other => {
-                    return Err(DataFrameError::UnsupportedGroupColumn {
-                        column: col.to_string(),
-                        type_of: format!("{:?}", other),
-                    });
-                }
-            }
-        };
+        let groups = column_groups(column, col)?;
         // Root the source for the GroupedDataFrame's lifetime (see its GC
         // rooting docs).
         Ok(GroupedDataFrame::new(*self, groups))
@@ -289,7 +386,7 @@ impl DataFrame {
     /// the multi-column analogue of [`group_by`](Self::group_by).
     ///
     /// Each supported column contributes one scalar key per row (factor level,
-    /// character, integer, or logical — same rules and errors as
+    /// character, integer, logical, or double — same rules and errors as
     /// [`group_by`](Self::group_by)); the per-row keys are zipped into a
     /// [`GroupKey::Tuple`] in column order.
     ///
@@ -299,7 +396,8 @@ impl DataFrame {
     /// the **first** column varies fastest (R `interaction()`'s default,
     /// `lex.order = FALSE`), each column ordered as [`group_by`](Self::group_by)
     /// would order it alone (factor level order, byte-sorted characters, numeric
-    /// integers, `FALSE` then `TRUE`). For character keys the match is exact for
+    /// integers and doubles — `NaN` after every number — and `FALSE` then
+    /// `TRUE`). For character keys the match is exact for
     /// keys whose byte order coincides with the session's collation — always
     /// true in the C locale; single-case ASCII in practice (e.g. `en_US.UTF-8`
     /// collates `a A b B` where byte order gives `A B a b`). This is inherited
@@ -328,18 +426,23 @@ impl DataFrame {
             return self.group_by(col);
         }
 
-        // One pass per column: per-row keys (build the tuples) plus the
-        // column's group order (assign each non-NA key an ordinal for sorting).
+        // One grouping pass per column gives both the per-row keys (to build
+        // the tuples) and the column's group order (an ordinal per non-NA key,
+        // for sorting). NA is excluded from the ordinals: NA-containing tuples
+        // are ordered separately below.
         let mut per_row: Vec<Vec<GroupKey>> = Vec::with_capacity(cols.len());
         let mut ordinals: Vec<HashMap<GroupKey, usize>> = Vec::with_capacity(cols.len());
         for &col in cols {
             let column = self
                 .column_raw(col)
                 .ok_or_else(|| DataFrameError::NoSuchColumn(col.to_string()))?;
-            per_row.push(column_keys(column, col)?);
+            let groups = column_groups(column, col)?;
+            per_row.push(row_keys(&groups, column.len()));
             ordinals.push(
-                column_level_order(column)
+                groups
                     .into_iter()
+                    .map(|(key, _)| key)
+                    .filter(|key| !matches!(key, GroupKey::Na))
                     .enumerate()
                     .map(|(ord, key)| (key, ord))
                     .collect(),
@@ -388,6 +491,53 @@ impl DataFrame {
         Ok(GroupedDataFrame::new(*self, non_na))
     }
 
+    /// Read a dplyr-grouped frame's grouping **declaration** — its grouping
+    /// variables and `.drop` policy — without its cached group rows.
+    ///
+    /// Returns what dplyr's `group_vars()` and `group_by_drop_default()` report,
+    /// or `None` when the frame is not grouped (see below). Nothing is
+    /// partitioned, so the key-column types and the state of the cached `.rows`
+    /// never matter. A function that groups the frame's **current** rows itself
+    /// (e.g. with [`group_by_multi`](Self::group_by_multi) over
+    /// [`GroupDeclaration::vars`]) reads this instead of
+    /// [`group_by_metadata`](Self::group_by_metadata), which trusts the cached
+    /// rows.
+    ///
+    /// # Grouped frames
+    ///
+    /// A frame is grouped when it inherits from `grouped_df` (or `rowwise_df`)
+    /// and carries a `groups` attribute that is a data frame: dplyr's own test.
+    /// A plain `data.frame` with a stray `groups` attribute is not grouped.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // df arrived as dplyr::group_by(data, site, .drop = FALSE)
+    /// let decl = df.group_declaration().expect("a grouped_df");
+    /// assert_eq!(decl.vars, ["site"]);
+    /// assert!(!decl.drop);
+    /// ```
+    pub fn group_declaration(&self) -> Option<GroupDeclaration> {
+        let groups = self.groups_frame()?;
+        // `identical(attr(groups, ".drop"), FALSE)` with identical()'s default
+        // flags; `Rf_ScalarLogical(0)` returns R's shared FALSE without
+        // allocating.
+        let drop_attr = groups
+            .as_sexp()
+            .get_attr(unsafe { crate::sys::Rf_install(c".drop".as_ptr()) });
+        let keeps_empty = unsafe {
+            crate::sys::R_compute_identical(
+                drop_attr,
+                crate::sys::Rf_ScalarLogical(0),
+                crate::sys::IDENT_USE_CLOENV,
+            ) != crate::sexp_types::Rboolean::FALSE
+        };
+        Some(GroupDeclaration {
+            vars: group_var_names(&groups),
+            drop: !keeps_empty,
+        })
+    }
+
     /// Ingest a dplyr `grouped_df`'s existing grouping from its `groups`
     /// attribute — **honoring the caller's grouping without recomputing it**.
     ///
@@ -401,9 +551,10 @@ impl DataFrame {
     /// respect the caller's grouping, including multi-column groupings.
     ///
     /// Unlike [`group_by`](Self::group_by), this does **no** recomputation: a
-    /// plain (non-grouped) `data.frame` is an error ([`NotGroupedDataFrame`]).
-    /// Callers who want the framework to compute grouping should use
-    /// [`group_by`](Self::group_by) / [`group_by_multi`](Self::group_by_multi).
+    /// frame that is not grouped (see [`group_declaration`](Self::group_declaration)
+    /// for the test) is an error ([`NotGroupedDataFrame`]). Callers who want the
+    /// framework to compute grouping should use [`group_by`](Self::group_by) /
+    /// [`group_by_multi`](Self::group_by_multi).
     ///
     /// # Keys
     ///
@@ -411,7 +562,8 @@ impl DataFrame {
     /// yield [`GroupKey::Tuple`]s (labels `.`-joined), consistent with
     /// [`group_by_multi`](Self::group_by_multi). Supported key-column types are
     /// the same as [`group_by`](Self::group_by) (factor, character, integer,
-    /// logical); a double / list key column is an error.
+    /// logical, double — `Date` and `POSIXct` included); a list / `integer64`
+    /// key column is an error.
     ///
     /// # Order & empty groups
     ///
@@ -421,18 +573,35 @@ impl DataFrame {
     /// index vectors, mirroring the empty-factor-level convention of
     /// [`group_by`](Self::group_by).
     ///
+    /// # Trusts the cached rows
+    ///
+    /// The `.rows` are dplyr's cache of the grouping, and this method uses them
+    /// as they are. It checks that they still fit the frame — every index in
+    /// `1..=nrow`, every row in exactly one group — and reports stale metadata
+    /// otherwise ([`GroupIndexOutOfRange`], [`GroupRowUncovered`],
+    /// [`GroupRowDuplicated`]). The usual cause is subsetting a grouped frame
+    /// without dplyr loaded: `[` then keeps the old `groups` attribute. It does
+    /// **not** compare the rows' key values with their group's key, so a pure
+    /// reorder done the same way (`df[c(3, 4, 1, 2), ]`) still fits and yields
+    /// the old row positions (#1687). To group the current rows instead, read
+    /// the declaration with [`group_declaration`](Self::group_declaration) and
+    /// group by its variables.
+    ///
     /// # Errors
     ///
-    /// [`NotGroupedDataFrame`] (no `groups` attribute / not a `data.frame`),
-    /// [`MissingGroupRows`] (no `.rows` column), [`BadGroupRows`] (a `.rows`
-    /// element is not an integer/integerish vector), or [`GroupIndexOutOfRange`]
-    /// (a `.rows` index is `< 1` or `> nrow`). Every `.rows` index is converted
-    /// from R's 1-based to 0-based.
+    /// [`NotGroupedDataFrame`] (not grouped), [`MissingGroupRows`] (no `.rows`
+    /// column), [`BadGroupRows`] (a `.rows` element is not an integer/integerish
+    /// vector), [`UnsupportedGroupColumn`] (a key column of an unsupported
+    /// type), or one of the stale-metadata errors above. Every `.rows` index is
+    /// converted from R's 1-based to 0-based.
     ///
     /// [`NotGroupedDataFrame`]: DataFrameError::NotGroupedDataFrame
     /// [`MissingGroupRows`]: DataFrameError::MissingGroupRows
     /// [`BadGroupRows`]: DataFrameError::BadGroupRows
+    /// [`UnsupportedGroupColumn`]: DataFrameError::UnsupportedGroupColumn
     /// [`GroupIndexOutOfRange`]: DataFrameError::GroupIndexOutOfRange
+    /// [`GroupRowUncovered`]: DataFrameError::GroupRowUncovered
+    /// [`GroupRowDuplicated`]: DataFrameError::GroupRowDuplicated
     ///
     /// # GC
     ///
@@ -442,24 +611,16 @@ impl DataFrame {
     /// it needs no separate root. Only the returned [`GroupedDataFrame`] roots
     /// the **source** frame for its own lifetime (see its GC-rooting docs).
     pub fn group_by_metadata(&self) -> Result<GroupedDataFrame, DataFrameError> {
-        // Read attr(self, "groups") — dplyr's grouping metadata frame.
-        let groups_sym = unsafe { crate::sys::Rf_install(c"groups".as_ptr()) };
-        let groups_attr = self.as_sexp().get_attr(groups_sym);
-        if groups_attr.is_nil() || !groups_attr.is_data_frame() {
-            return Err(DataFrameError::NotGroupedDataFrame);
-        }
-        let groups_frame = DataFrame::from_sexp(groups_attr)?;
+        let groups_frame = self
+            .groups_frame()
+            .ok_or(DataFrameError::NotGroupedDataFrame)?;
 
         // Locate the `.rows` list-column; the remaining columns (in order) are
         // the group-key columns.
         let rows_col = groups_frame
             .column_raw(".rows")
             .ok_or(DataFrameError::MissingGroupRows)?;
-        let key_names: Vec<String> = groups_frame
-            .names()
-            .into_iter()
-            .filter(|n| n != ".rows")
-            .collect();
+        let key_names = group_var_names(&groups_frame);
 
         // Per-key-column keys: one Vec<GroupKey> of length n_groups per key
         // column (column_keys yields one scalar key per row of the groups frame).
@@ -489,9 +650,36 @@ impl DataFrame {
             let indices = group_rows_indices(elt, g, nrow)?;
             groups.push((key, indices));
         }
+        // Every index is in range; now the rows must partition the frame.
+        check_rows_partition(&groups, nrow)?;
 
         Ok(GroupedDataFrame::new(*self, groups))
     }
+
+    /// The `groups` frame of a dplyr-grouped frame, or `None` when the frame
+    /// is not grouped: it must inherit from `grouped_df` / `rowwise_df` and
+    /// carry a `groups` attribute that is a valid data frame.
+    fn groups_frame(&self) -> Option<DataFrame> {
+        if !(self.sexp.inherits_class(c"grouped_df") || self.sexp.inherits_class(c"rowwise_df")) {
+            return None;
+        }
+        let groups_sym = unsafe { crate::sys::Rf_install(c"groups".as_ptr()) };
+        let groups_attr = self.sexp.get_attr(groups_sym);
+        if groups_attr.is_nil() || !groups_attr.is_data_frame() {
+            return None;
+        }
+        DataFrame::from_sexp(groups_attr).ok()
+    }
+}
+
+/// A `groups` frame's grouping variables: its column names except `.rows`,
+/// in order (dplyr's `group_vars()`).
+fn group_var_names(groups_frame: &DataFrame) -> Vec<String> {
+    groups_frame
+        .names()
+        .into_iter()
+        .filter(|n| n != ".rows")
+        .collect()
 }
 
 /// Validate and convert one `.rows` list element — an integer / integerish
@@ -535,92 +723,78 @@ fn group_rows_indices(elt: SEXP, group: usize, nrow: usize) -> Result<Vec<usize>
     }
 }
 
-/// Per-row group key for one supported key column, in row order. NA cells — and
-/// factor NA codes / `addNA()` levels — become [`GroupKey::Na`]. Dispatches on
-/// SEXPTYPE exactly as [`DataFrame::group_by`], surfacing the same
-/// unsupported-type error.
-fn column_keys(column: SEXP, col: &str) -> Result<Vec<GroupKey>, DataFrameError> {
-    if column.is_factor() {
-        // SAFETY: factor columns are INTSXP; as_slice handles empty vectors.
-        let codes: &[i32] = unsafe { column.as_slice() };
-        let levels = column.get_levels();
-        return Ok(codes
-            .iter()
-            .map(|&code| {
-                if code == i32::MIN {
-                    GroupKey::Na
-                } else {
-                    match levels.string_elt_str((code - 1) as isize) {
-                        Some(label) => GroupKey::Str(label.to_string()),
-                        None => GroupKey::Na, // addNA() level
-                    }
-                }
-            })
-            .collect());
+/// Check that in-range `.rows` cover each of the frame's `nrow` rows exactly
+/// once — the shape dplyr always maintains. The first row claimed twice, or
+/// else the first row no group claims, is reported.
+fn check_rows_partition(
+    groups: &[(GroupKey, Vec<usize>)],
+    nrow: usize,
+) -> Result<(), DataFrameError> {
+    let mut owner: Vec<Option<usize>> = vec![None; nrow];
+    for (group, (_, rows)) in groups.iter().enumerate() {
+        for &row in rows {
+            if let Some(first_group) = owner[row] {
+                return Err(DataFrameError::GroupRowDuplicated {
+                    row,
+                    first_group,
+                    second_group: group,
+                });
+            }
+            owner[row] = Some(group);
+        }
     }
-    match column.type_of() {
-        SEXPTYPE::STRSXP => {
-            let n = column.len() as isize;
-            Ok((0..n)
-                .map(|i| match column.string_elt_str(i) {
-                    Some(s) => GroupKey::Str(s.to_string()),
-                    None => GroupKey::Na,
-                })
-                .collect())
-        }
-        SEXPTYPE::INTSXP => {
-            // SAFETY: INTSXP column; as_slice handles empty vectors.
-            let values: &[i32] = unsafe { column.as_slice() };
-            Ok(values
-                .iter()
-                .map(|&v| {
-                    if v == i32::MIN {
-                        GroupKey::Na
-                    } else {
-                        GroupKey::Int(v)
-                    }
-                })
-                .collect())
-        }
-        SEXPTYPE::LGLSXP => {
-            let n = column.len() as isize;
-            Ok((0..n)
-                .map(|i| match column.logical_elt(i) {
-                    0 => GroupKey::Bool(false),
-                    v if v == i32::MIN => GroupKey::Na,
-                    _ => GroupKey::Bool(true),
-                })
-                .collect())
-        }
-        other => Err(DataFrameError::UnsupportedGroupColumn {
-            column: col.to_string(),
-            type_of: format!("{:?}", other),
-        }),
+    match owner.iter().position(Option::is_none) {
+        Some(row) => Err(DataFrameError::GroupRowUncovered { row, nrow }),
+        None => Ok(()),
     }
 }
 
-/// Distinct non-NA keys of one column in single-column group order (factor level
-/// order incl. empty levels; byte-sorted characters; numeric integers; `FALSE`
-/// then `TRUE`). NA is excluded — `interaction()` drops NA rows and NA-containing
-/// tuples are ordered separately. Reuses the single-column bucketers so the
-/// per-column order stays byte-identical to [`DataFrame::group_by`]. Only reached
-/// for supported columns ([`column_keys`] rejects the rest first).
-fn column_level_order(column: SEXP) -> Vec<GroupKey> {
-    let groups = if column.is_factor() {
-        factor_groups(column)
-    } else {
-        match column.type_of() {
-            SEXPTYPE::STRSXP => character_groups(column),
-            SEXPTYPE::INTSXP => integer_groups(column),
-            SEXPTYPE::LGLSXP => logical_groups(column),
-            _ => Vec::new(),
-        }
+/// One supported key column's groups, in single-column group order (NA last)
+/// — the per-type dispatch behind [`DataFrame::group_by`], and through
+/// [`column_keys`] / [`row_keys`] behind `group_by_multi` and
+/// `group_by_metadata`.
+fn column_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, DataFrameError> {
+    if column.is_factor() {
+        return Ok(factor_groups(column));
+    }
+    let unsupported = |type_of: String| DataFrameError::UnsupportedGroupColumn {
+        column: col.to_string(),
+        type_of,
     };
-    groups
-        .into_iter()
-        .map(|(k, _)| k)
-        .filter(|k| !matches!(k, GroupKey::Na))
+    match column.type_of() {
+        SEXPTYPE::STRSXP => Ok(character_groups(column)),
+        SEXPTYPE::INTSXP => Ok(integer_groups(column)),
+        SEXPTYPE::LGLSXP => Ok(logical_groups(column)),
+        // bit64 stores int64 bits in a double vector: read as doubles, its
+        // values would order wrongly, and its NA (the bits of -0.0) would
+        // join the 0 group.
+        SEXPTYPE::REALSXP if column.inherits_class(c"integer64") => {
+            Err(unsupported("integer64".to_string()))
+        }
+        SEXPTYPE::REALSXP => real_groups(column, col),
+        other => Err(unsupported(format!("{:?}", other))),
+    }
+}
+
+/// Invert groups into one key per row (`nrow` rows, row order). Each row of a
+/// key column lands in exactly one group, so every slot is filled.
+fn row_keys(groups: &[(GroupKey, Vec<usize>)], nrow: usize) -> Vec<GroupKey> {
+    let mut keys: Vec<Option<GroupKey>> = vec![None; nrow];
+    for (key, rows) in groups {
+        for &row in rows {
+            keys[row] = Some(key.clone());
+        }
+    }
+    keys.into_iter()
+        .map(|key| key.expect("each row of a key column is in exactly one group"))
         .collect()
+}
+
+/// Per-row group key for one supported key column, in row order. NA cells — and
+/// factor NA codes / `addNA()` levels — become [`GroupKey::Na`]. Same type
+/// dispatch and errors as [`DataFrame::group_by`].
+fn column_keys(column: SEXP, col: &str) -> Result<Vec<GroupKey>, DataFrameError> {
+    Ok(row_keys(&column_groups(column, col)?, column.len()))
 }
 
 /// Factor fast path: levels are the keys (level order, empty levels kept).
@@ -725,6 +899,78 @@ fn logical_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     }
     groups
 }
+
+/// Double keys (plain, `Date`, `POSIXct`, other classed doubles): numeric
+/// sort with `NaN` after every number, `NA_real_` last. Equality follows
+/// [`RealKey`] (`-0 == 0`, one `NaN` key); labels come from one
+/// `as.character()` call over the distinct keys ([`real_labels`]).
+fn real_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, DataFrameError> {
+    // SAFETY: REALSXP column; as_slice handles empty vectors.
+    let values: &[f64] = unsafe { column.as_slice() };
+    let mut buckets: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut na_bucket: Vec<usize> = Vec::new();
+    for (row, &v) in values.iter().enumerate() {
+        if is_na_real(v) {
+            na_bucket.push(row);
+        } else {
+            buckets
+                .entry(normalize_real(v).to_bits())
+                .or_default()
+                .push(row);
+        }
+    }
+    // Normalised values hold no -0.0 and one positive NaN, so `total_cmp`
+    // gives -Inf < … < Inf < NaN, dplyr's order (NA trails separately).
+    let mut distinct: Vec<(f64, Vec<usize>)> = buckets
+        .into_iter()
+        .map(|(bits, rows)| (f64::from_bits(bits), rows))
+        .collect();
+    distinct.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+    let key_values: Vec<f64> = distinct.iter().map(|(value, _)| *value).collect();
+    let labels = real_labels(column, &key_values, col)?;
+    let mut groups: Vec<(GroupKey, Vec<usize>)> = distinct
+        .into_iter()
+        .zip(labels)
+        .map(|((value, rows), label)| (GroupKey::Real(RealKey { value, label }), rows))
+        .collect();
+    if !na_bucket.is_empty() {
+        groups.push((GroupKey::Na, na_bucket));
+    }
+    Ok(groups)
+}
+
+/// R's `as.character()` of `values` carrying `column`'s attributes (class,
+/// `tzone`, `units`, …): the text R prints for each key, with S3 dispatch for
+/// a classed column (`Date`, `POSIXct`, …) and C-level coercion otherwise.
+///
+/// The temporary key vector is protected while `as.character()` allocates; a
+/// failing method surfaces as [`DataFrameError::Conversion`] (it is evaluated
+/// with `R_tryEvalSilent`, so it never unwinds through Rust frames).
+fn real_labels(column: SEXP, values: &[f64], col: &str) -> Result<Vec<String>, DataFrameError> {
+    let label_error = |detail: String| {
+        DataFrameError::Conversion(format!("cannot label the keys of column {col:?}: {detail}"))
+    };
+    // SAFETY: the grouping verbs run on R's main thread. `keys` is a fresh
+    // REALSXP rooted by `OwnedProtect` until the labels are copied out.
+    let labels = unsafe {
+        let keys = crate::OwnedProtect::new(values.into_sexp());
+        crate::sys::Rf_copyMostAttrib(column, keys.get());
+        crate::convert::read_character(keys.get())
+    }
+    .map_err(|e| label_error(e.to_string()))?;
+    if labels.len() != values.len() {
+        return Err(label_error(format!(
+            "as.character() returned {} values for {} keys",
+            labels.len(),
+            values.len()
+        )));
+    }
+    Ok(labels
+        .into_iter()
+        .map(|label| label.unwrap_or_else(|| "NA".to_string()))
+        .collect())
+}
 // endregion
 
 #[cfg(test)]
@@ -763,10 +1009,58 @@ mod tests {
         let key = GroupKey::Tuple(vec![
             GroupKey::Str("a".into()),
             GroupKey::Int(2),
+            GroupKey::Real(RealKey::new(2.5, "2.5")),
             GroupKey::Bool(true),
             GroupKey::Na,
         ]);
-        assert_eq!(key.label(), "a.2.TRUE.NA");
-        assert_eq!(key.to_string(), "a.2.TRUE.NA");
+        assert_eq!(key.label(), "a.2.2.5.TRUE.NA");
+        assert_eq!(key.to_string(), "a.2.2.5.TRUE.NA");
+    }
+
+    fn hash_of(key: &RealKey) -> u64 {
+        use std::hash::{BuildHasher, BuildHasherDefault};
+        BuildHasherDefault::<std::collections::hash_map::DefaultHasher>::default().hash_one(key)
+    }
+
+    #[test]
+    fn real_key_equality_follows_vctrs() {
+        // -0 and 0 are one key (and hash alike).
+        let neg_zero = RealKey::new(-0.0, "0");
+        let zero = RealKey::new(0.0, "0");
+        assert_eq!(neg_zero, zero);
+        assert_eq!(hash_of(&neg_zero), hash_of(&zero));
+        assert!(neg_zero.value().is_sign_positive());
+
+        // Every NaN is one key, stored as the canonical positive NaN —
+        // including x86's negative `0/0` NaN.
+        let nan = RealKey::new(f64::NAN, "NaN");
+        let neg_nan = RealKey::new(f64::from_bits(0xFFF8_0000_0000_0000), "NaN");
+        assert_eq!(nan, neg_nan);
+        assert_eq!(hash_of(&nan), hash_of(&neg_nan));
+        assert_eq!(neg_nan.value().to_bits(), CANONICAL_NAN_BITS);
+        assert!(!is_na_real(nan.value()));
+
+        // The label plays no part in equality; distinct values differ.
+        assert_eq!(RealKey::new(1.5, "x"), RealKey::new(1.5, "y"));
+        assert_ne!(RealKey::new(1.5, "1.5"), RealKey::new(2.5, "2.5"));
+    }
+
+    #[test]
+    fn real_key_label_and_order() {
+        let key = GroupKey::Real(RealKey::new(19724.0, "2024-01-02"));
+        assert_eq!(key.label(), "2024-01-02");
+        assert_eq!(key.to_string(), "2024-01-02");
+
+        // Normalised values sort -Inf < numbers < Inf < NaN under total_cmp.
+        let mut values: Vec<f64> = [f64::NAN, 1.0, f64::INFINITY, -0.0, f64::NEG_INFINITY]
+            .into_iter()
+            .map(normalize_real)
+            .collect();
+        values.sort_by(f64::total_cmp);
+        assert_eq!(values[0], f64::NEG_INFINITY);
+        assert_eq!(values[1].to_bits(), 0.0f64.to_bits());
+        assert_eq!(values[2], 1.0);
+        assert_eq!(values[3], f64::INFINITY);
+        assert!(values[4].is_nan());
     }
 }
