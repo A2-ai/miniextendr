@@ -6,8 +6,11 @@ Trait-ABI integration tests. Two R packages — `producer.pkg` exports trait imp
 ```bash
 just cross-install   # build + install both packages
 just cross-test      # run testthat across the pair
-just cross-check     # R CMD check both
 ```
+
+`just cross-check` (R CMD check both) is left out of this loop until #1716 is
+fixed: `devtools::check()` installs from a tarball, and from there the packages'
+relative path dependencies on the workspace crates don't resolve.
 
 The recipes install into, load from and test against `tests/cross-package/.r-lib/`
 (gitignored, one per checkout): `tests/cross-package/justfile` exports `R_LIBS`
