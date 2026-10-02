@@ -19,6 +19,7 @@
 //! call_attribution = "caller"
 //! conversion_error_class = ["pkg_error_argument", "pkg_error"]
 //! preconditions = false
+//! roxygen_prose_links = "keep"
 //! ```
 //!
 //! The reader is a deliberately small line-based scanner rather than a TOML
@@ -31,6 +32,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use crate::r_wrapper_builder::CallAttribution;
+use crate::roxygen::ProseLinks;
 
 /// Dotted path of the `noexport_postfix` key.
 const NOEXPORT_POSTFIX_KEY: &str = "package.metadata.miniextendr.noexport_postfix";
@@ -42,6 +44,8 @@ const CALL_ATTRIBUTION_KEY: &str = "package.metadata.miniextendr.call_attributio
 const CONVERSION_ERROR_CLASS_KEY: &str = "package.metadata.miniextendr.conversion_error_class";
 /// Dotted path of the `preconditions` key.
 const PRECONDITIONS_KEY: &str = "package.metadata.miniextendr.preconditions";
+/// Dotted path of the `roxygen_prose_links` key.
+const ROXYGEN_PROSE_LINKS_KEY: &str = "package.metadata.miniextendr.roxygen_prose_links";
 /// The classes the R raise helper appends to every Rust error. A crate-level
 /// class naming one of them would duplicate a layer of the vector.
 const FRAMEWORK_ERROR_CLASSES: [&str; 4] = ["rust_error", "simpleError", "error", "condition"];
@@ -79,6 +83,10 @@ pub(crate) struct CrateConfig {
     /// `crate::r_preconditions::resolve_type_checks`). Unset means the feature
     /// decides, and without it the checks are kept.
     pub(crate) preconditions: Option<bool>,
+    /// `roxygen_prose_links = "strip" | "keep"`: whether the leading prose of
+    /// a doc comment keeps its `[...]` links on its way to `@description`
+    /// (see [`ProseLinks`]). Unset means the framework default, `strip`.
+    pub(crate) roxygen_prose_links: Option<ProseLinks>,
 }
 
 /// A malformed `[package.metadata.miniextendr]` entry, reported as a compile
@@ -145,6 +153,20 @@ pub(crate) fn conversion_error_class() -> Vec<String> {
 /// which goes through [`crate_config`].
 pub(crate) fn preconditions_default() -> Option<bool> {
     crate_config().ok().and_then(|c| c.preconditions)
+}
+
+/// What leading doc-comment prose does with its `[...]` links
+/// (`roxygen_prose_links`), [`ProseLinks::Strip`] when unset.
+///
+/// Read by the roxygen extraction every generator shares, which has no single
+/// item to hang a manifest error on; a malformed table reads as the default
+/// here and is reported as a compile error by the first `#[miniextendr]`
+/// function, which goes through [`crate_config`].
+pub(crate) fn roxygen_prose_links() -> ProseLinks {
+    crate_config()
+        .ok()
+        .and_then(|c| c.roxygen_prose_links)
+        .unwrap_or_default()
 }
 
 /// [`crate_config`] for an explicit manifest directory (the cached entry point).
@@ -249,6 +271,23 @@ pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
             validate_conversion_error_class(&classes)?;
             config.conversion_error_class = classes;
             conversion_error_class_seen = true;
+            continue;
+        }
+        if full == ROXYGEN_PROSE_LINKS_KEY {
+            if config.roxygen_prose_links.is_some() {
+                return Err("`roxygen_prose_links` is set more than once".to_string());
+            }
+            let value = value.trim();
+            let links = parse_string_value(value)
+                .as_deref()
+                .and_then(ProseLinks::parse_name)
+                .ok_or_else(|| {
+                    format!(
+                        "`roxygen_prose_links` must be one of \"strip\", \"keep\", found \
+                         `{value}`"
+                    )
+                })?;
+            config.roxygen_prose_links = Some(links);
             continue;
         }
         if full == PRECONDITIONS_KEY {
@@ -542,6 +581,51 @@ noexport_postfix = "also not ours"
         let all = "[package.metadata.miniextendr]\nsource_tags = true\npreconditions = false\ncall_attribution = \"caller\"\n";
         let config = parse_crate_config(all).unwrap();
         assert_eq!(config.preconditions, Some(false));
+        assert!(config.source_tags);
+    }
+
+    #[test]
+    fn roxygen_prose_links_is_read_and_validated() {
+        let links = |text: &str| parse_crate_config(text).map(|c| c.roxygen_prose_links);
+        assert_eq!(links(""), Ok(None));
+        assert_eq!(
+            links(
+                "[package.metadata.miniextendr]\nroxygen_prose_links = \"keep\" # R-first docs\n"
+            ),
+            Ok(Some(ProseLinks::Keep))
+        );
+        assert_eq!(
+            links("[package.metadata]\nminiextendr.roxygen_prose_links = 'strip'\n"),
+            Ok(Some(ProseLinks::Strip))
+        );
+        assert_eq!(
+            links("[package]\nmetadata.miniextendr.roxygen_prose_links = \"keep\"\n"),
+            Ok(Some(ProseLinks::Keep))
+        );
+        for value in ["\"preserve\"", "true", "keep"] {
+            let bad = links(&format!(
+                "[package.metadata.miniextendr]\nroxygen_prose_links = {value}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                bad.contains("`roxygen_prose_links` must be one of \"strip\", \"keep\"")
+                    && bad.contains(&format!("found `{value}`")),
+                "{bad}"
+            );
+        }
+        let twice = links(
+            "[package.metadata.miniextendr]\nroxygen_prose_links = \"keep\"\nroxygen_prose_links = \"strip\"\n",
+        )
+        .unwrap_err();
+        assert!(
+            twice.contains("`roxygen_prose_links` is set more than once"),
+            "{twice}"
+        );
+        // Alongside the other keys.
+        let all = "[package.metadata.miniextendr]\nnoexport_postfix = \"_impl\"\nroxygen_prose_links = \"keep\"\nsource_tags = true\n";
+        let config = parse_crate_config(all).unwrap();
+        assert_eq!(config.noexport_postfix.as_deref(), Some("_impl"));
+        assert_eq!(config.roxygen_prose_links, Some(ProseLinks::Keep));
         assert!(config.source_tags);
     }
 

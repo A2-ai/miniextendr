@@ -19,12 +19,16 @@ crate-type = ["staticlib"]
 # consumer.pkg stays on the default so both shapes are exercised.
 # `conversion_error_class` puts every argument-conversion error of the crate in
 # the `producer_error` family (tests/testthat/test-conversion-error-class.R).
+# `roxygen_prose_links = "keep"` lets leading doc-comment prose keep its
+# roxygen2 links (`producer_prose_links_probe`, `\link{}` in
+# man/producer_prose_links_probe.Rd); consumer.pkg strips them, the default.
 [package.metadata.miniextendr]
 noexport_postfix = "_impl"
 source_tags = true
 call_attribution = "caller"
 conversion_error_class = ["producer_error_argument", "producer_error"]
 preconditions = false
+roxygen_prose_links = "keep"
 
 [features]
 # vctrs is on by default so the cross-package vctrs type (`producer_temp`)

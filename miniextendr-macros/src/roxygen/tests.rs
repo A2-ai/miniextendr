@@ -501,7 +501,7 @@ fn leading_prose_promotes_and_sanitizes() {
         "",
         "Second paragraph references [`S7PropOuter`].",
     ]);
-    let desc = leading_prose_from_attrs(&attrs).expect("expected leading prose");
+    let desc = leading_prose_from_attrs(&attrs, ProseLinks::Strip).expect("expected leading prose");
     assert!(
         desc.contains("`REMapB`") && !desc.contains("[`REMapB`]"),
         "links must be neutralized: {desc:?}"
@@ -520,7 +520,7 @@ fn leading_prose_promotes_and_sanitizes() {
 #[test]
 fn leading_prose_none_for_tag_led_block() {
     let attrs = make_doc_attrs_plain(&["@param x A value"]);
-    assert_eq!(leading_prose_from_attrs(&attrs), None);
+    assert_eq!(leading_prose_from_attrs(&attrs, ProseLinks::Strip), None);
 }
 
 /// Leading prose as rustdoc writes it (`/// text`), up to a closing tag.
@@ -537,7 +537,7 @@ fn prose_of(lines: &[&str]) -> Option<String> {
             syn::parse_quote!(#[doc = #value])
         })
         .collect();
-    leading_prose_from_attrs(&attrs)
+    leading_prose_from_attrs(&attrs, ProseLinks::Strip)
 }
 
 #[test]
@@ -594,6 +594,110 @@ fn leading_prose_confines_a_stray_backtick_to_its_paragraph() {
         prose_of(&["a stray ` backtick [kept]", "", "then [Foo]"]).as_deref(),
         Some("a stray ` backtick [kept]\n\nthen Foo")
     );
+}
+
+// endregion
+
+// region: roxygen_prose_links = "keep" — leading prose written for roxygen2
+//
+// rustdoc reads `[set_threshold()]` as an intra-doc link to a Rust fn, roxygen2
+// as `\link{}` to an R topic; the text cannot say which. The crate key picks
+// the reader, and the default stays `strip`.
+
+/// The downstream report's block, as `///` lines: a roxygen2 link in the
+/// leading prose and in an explicit tag.
+fn r_first_block() -> Vec<syn::Attribute> {
+    make_doc_attrs_plain(&[
+        "`summary()`: ... 50 unless [set_threshold()] set another.",
+        "See [stats::median()] and [`Thing`][thing_class].",
+        "@param x An object, see [set_threshold()].",
+    ])
+}
+
+#[test]
+fn strip_drops_roxygen_links_from_prose_but_not_from_tags() {
+    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Strip);
+    assert_eq!(
+        tags,
+        vec![
+            "@description `summary()`: ... 50 unless set_threshold() set another.\n\
+             See stats::median() and `Thing`."
+                .to_string(),
+            "@param x An object, see [set_threshold()].".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn keep_passes_prose_through_like_an_explicit_tag() {
+    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Keep);
+    assert_eq!(
+        tags,
+        vec![
+            "@description `summary()`: ... 50 unless [set_threshold()] set another.\n\
+             See [stats::median()] and [`Thing`][thing_class]."
+                .to_string(),
+            "@param x An object, see [set_threshold()].".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn keep_preserves_layout_and_drops_only_outer_blank_lines() {
+    // As rustdoc writes `/// text`: one leading space, which `doc_lines` drops.
+    let attrs = make_doc_attrs_plain(&[
+        "",
+        " Paragraph one with [other_fn()]",
+        "   and an indented continuation.",
+        "",
+        " ```r",
+        " x[i]",
+        " ```",
+        "",
+        " @export",
+    ]);
+    assert_eq!(
+        leading_prose_from_attrs(&attrs, ProseLinks::Keep).as_deref(),
+        Some("Paragraph one with [other_fn()]\n  and an indented continuation.\n\n```r\nx[i]\n```")
+    );
+    // Without links, both settings agree.
+    let plain = make_doc_attrs_plain(&["One line.", "", "Two `x[i]`."]);
+    assert_eq!(
+        leading_prose_from_attrs(&plain, ProseLinks::Keep),
+        leading_prose_from_attrs(&plain, ProseLinks::Strip)
+    );
+}
+
+#[test]
+fn keep_still_yields_no_description_for_a_tag_led_block() {
+    let attrs = make_doc_attrs_plain(&["@param x A value, see [other_fn()]"]);
+    assert_eq!(leading_prose_from_attrs(&attrs, ProseLinks::Keep), None);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec!["@param x A value, see [other_fn()]".to_string()]
+    );
+}
+
+#[test]
+fn explicit_description_wins_under_either_setting() {
+    let attrs = make_doc_attrs_plain(&[
+        "Rustdoc summary with [`RustType`].",
+        "@description See [other_fn()].",
+    ]);
+    for links in [ProseLinks::Strip, ProseLinks::Keep] {
+        assert_eq!(
+            roxygen_tags_with(&attrs, links),
+            vec!["@description See [other_fn()].".to_string()]
+        );
+    }
+}
+
+#[test]
+fn prose_links_default_is_strip() {
+    assert_eq!(ProseLinks::default(), ProseLinks::Strip);
+    assert_eq!(ProseLinks::parse_name("keep"), Some(ProseLinks::Keep));
+    assert_eq!(ProseLinks::parse_name("strip"), Some(ProseLinks::Strip));
+    assert_eq!(ProseLinks::parse_name("Keep"), None);
 }
 
 // endregion

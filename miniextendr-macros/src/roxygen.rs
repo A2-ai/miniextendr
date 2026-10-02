@@ -24,7 +24,9 @@
 //!
 //! - Text before the first `@tag` line is leading prose. It becomes
 //!   `@description` (when the block has none) with its lines, blank lines and
-//!   indentation kept, and it stays in rustdoc.
+//!   indentation kept, and it stays in rustdoc. Its `[...]` links lose their
+//!   brackets unless the crate sets `roxygen_prose_links = "keep"`
+//!   ([`ProseLinks`]); tag text is never rewritten.
 //! - A tag runs from its `@tag` line to the next one. A multi-line tag
 //!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
 //!   roxygen2 paragraph break; a blank line in an example) and the indentation
@@ -324,6 +326,12 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// `@description` tag — never `@title`. The `@title` is left to the caller
 /// (structural name); see [`leading_prose_from_attrs`] for why.
 fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
+    roxygen_tags_with(attrs, crate::crate_config::roxygen_prose_links())
+}
+
+/// [`roxygen_tags_from_attrs_impl`] with the crate's [`ProseLinks`] setting
+/// passed in (testable without a manifest).
+fn roxygen_tags_with(attrs: &[syn::Attribute], links: ProseLinks) -> Vec<String> {
     let mut tags = explicit_roxygen_tags_from_attrs(attrs);
 
     // Check which tags are present
@@ -344,7 +352,7 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
     //
     // `leading_prose_from_attrs` returns `None` for tag-led blocks (no leading prose),
     // so `@inherit`/`@rdname`-only docs never gain a spurious description.
-    if !has_description && let Some(desc) = leading_prose_from_attrs(attrs) {
+    if !has_description && let Some(desc) = leading_prose_from_attrs(attrs, links) {
         tags.insert(0, format!("@description {}", desc));
     }
 
@@ -709,18 +717,53 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
     }
 }
 
+/// What leading prose does with `[...]` link syntax on its way to
+/// `@description`: the crate's `roxygen_prose_links` setting in
+/// `[package.metadata.miniextendr]`.
+///
+/// rustdoc and roxygen2 read the same `[name()]` / `[pkg::name()]` / `[Topic]`
+/// syntax as a link to a Rust item and to an R help topic respectively, so the
+/// two cannot be told apart from the text: rustdoc resolves `[name()]` to an
+/// in-scope Rust fn and warns `broken_intra_doc_links` on any it cannot find.
+/// The crate says which reader its doc comments are written for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ProseLinks {
+    /// `"strip"`, the default: doc comments are written for rustdoc, so a link
+    /// loses its brackets ([`sanitize_prose_links`]) and roxygen2 never tries
+    /// to resolve a Rust item as an R topic.
+    #[default]
+    Strip,
+    /// `"keep"`: doc comments are written for roxygen2, so leading prose
+    /// passes through unchanged, as the text of an explicit tag does.
+    Keep,
+}
+
+impl ProseLinks {
+    /// Parse the manifest spelling (`"strip"` / `"keep"`).
+    pub(crate) fn parse_name(name: &str) -> Option<Self> {
+        match name {
+            "strip" => Some(Self::Strip),
+            "keep" => Some(Self::Keep),
+            _ => None,
+        }
+    }
+}
+
 /// Collect the leading prose of a doc comment (the lines before the first
-/// `@tag`, [`LineRole::Prose`]) as roxygen `@description` text, with rustdoc
-/// intra-doc links neutralized ([`sanitize_prose_links`]).
+/// `@tag`, [`LineRole::Prose`]) as roxygen `@description` text, its links
+/// treated per the crate's [`ProseLinks`] setting (passed in, so the unit tests
+/// need no manifest).
 ///
 /// The lines ([`doc_lines`]) keep their line breaks, blank lines (roxygen2
 /// paragraph breaks, rendered as bare `#'` lines by `push_roxygen_tags`) and
 /// indentation, so a markdown list, a nested item or a fenced block reaches
-/// roxygen2 as written. Leading and trailing blank lines are dropped.
+/// roxygen2 as written. Leading and trailing blank lines are dropped. With
+/// [`ProseLinks::Strip`] the links are neutralized ([`sanitize_prose_links`]);
+/// with [`ProseLinks::Keep`] the text is left as written.
 ///
 /// Returns `None` when the block has no leading prose (empty, or starts with a `@tag`),
 /// so tag-led blocks never gain a spurious `@description`.
-fn leading_prose_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+fn leading_prose_from_attrs(attrs: &[syn::Attribute], links: ProseLinks) -> Option<String> {
     let lines = doc_lines(attrs);
     let prose: Vec<&str> = lines
         .iter()
@@ -730,7 +773,11 @@ fn leading_prose_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
         .collect();
     let first = prose.iter().position(|line| !line.is_empty())?;
     let last = prose.iter().rposition(|line| !line.is_empty())?;
-    Some(sanitize_prose_links(&prose[first..=last]))
+    let prose = &prose[first..=last];
+    Some(match links {
+        ProseLinks::Strip => sanitize_prose_links(prose),
+        ProseLinks::Keep => prose.join("\n"),
+    })
 }
 
 /// [`sanitize_roxygen_links`] over prose lines, one paragraph (the lines
@@ -802,7 +849,9 @@ fn closes_fence(line: &str, close: &str, open: &str) -> bool {
 /// `[...]` as an R `\link{}` to a *help topic*, which can't resolve. We strip the
 /// link brackets down to the visible text (keeping any `` `code` `` span), while
 /// leaving genuine markdown links `[text](url)` — recognized by the `]( ` that
-/// follows — untouched.
+/// follows — untouched. A roxygen2 link (`[other_fn()]`) is stripped too: the
+/// syntax is rustdoc's as well, so a crate writing for roxygen2 opts out with
+/// [`ProseLinks::Keep`].
 fn sanitize_roxygen_links(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());

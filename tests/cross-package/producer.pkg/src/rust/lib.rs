@@ -247,7 +247,6 @@ pub struct S7Point {
 /// @title S7Point (S7-style)
 /// @name S7Point
 /// @description A 2D point using S7-style class system.
-/// @aliases S7Point s7point_x s7point_y s7point_distance
 #[miniextendr(s7)]
 impl S7Point {
     /// Create a new point
@@ -824,6 +823,20 @@ pub fn producer_named_checks_msg(
 #[miniextendr(noexport, call = wrapper)]
 pub fn producer_no_na_dv(#[miniextendr(no_na)] dv: AsNumericVec) -> f64 {
     dv.0.into_iter().flatten().sum()
+}
+
+// endregion
+
+// region: crate-level roxygen prose links
+
+/// Leading prose written for roxygen2: `Cargo.toml` sets
+/// `roxygen_prose_links = "keep"`, so [producer_int_twice()] and
+/// [producer_count_twice()] stay links on the generated page, as in the
+/// `@param` below. Under the default they would lose their brackets.
+/// @param x An integer scalar, doubled by [producer_int_twice()].
+#[miniextendr]
+pub fn producer_prose_links_probe(x: i32) -> i32 {
+    producer_int_twice(x) + 1
 }
 
 // endregion

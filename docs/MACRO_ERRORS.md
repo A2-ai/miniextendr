@@ -263,11 +263,15 @@ The sibling key `source_tags` must be a bare `true` / `false`, set once
 set once, with non-empty, distinct entries that do not name `rust_error`,
 `simpleError`, `error` or `condition` ("`conversion_error_class` must be a
 string or a single-line array of strings, found …", "must not name
-`rust_error`", "names `a` more than once"). Any of these errors is reported
+`rust_error`", "names `a` more than once"). The key `roxygen_prose_links`
+must be `"strip"` or `"keep"`, set once ("`roxygen_prose_links` must be one of
+`"strip"`, `"keep"`, found …"). Any of these errors is reported
 on the first `#[miniextendr]` free function in the crate. See
 [VISIBILITY.md](VISIBILITY.md#crate-level-default-from-the-manifest) and, for
 `conversion_error_class`,
-[ERROR_HANDLING.md](ERROR_HANDLING.md#a-crate-level-class-for-every-conversion-error).
+[ERROR_HANDLING.md](ERROR_HANDLING.md#a-crate-level-class-for-every-conversion-error),
+for `roxygen_prose_links`,
+[MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#links-in-leading-prose).
 
 ### "`postfix` cannot be used with `s3(generic = ..., class = ...)`"
 
