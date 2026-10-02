@@ -42,7 +42,11 @@ abs_rpkg_src="$abs_top_srcdir/src"
 AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
-dnl Recognize source checkouts, including a monorepo ancestor or worktree .git file.
+dnl ---- source-tree classification ----
+dnl Configure never creates inst/vendor.tar.xz. It only consumes that explicit
+dnl install-mode signal. Vendoring belongs to the explicit tarball workflow
+dnl (miniextendr_vendor(), miniextendr_build_tarball()).
+dnl SOURCE_IS_GIT/SOURCE_IS_BUILT exist solely for the leaked-tarball guard.
 SOURCE_IS_GIT=false
 _walk_dir="$abs_top_srcdir"
 while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
@@ -94,16 +98,16 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
   to diagnose.])
 fi
 
-
 dnl ---- install-mode detection ----
-dnl Single signal: presence of inst/vendor.tar.xz.
-dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is shipped inside
-dnl     the build artifact by minirextendr::miniextendr_vendor().
-dnl     configure unpacks it, writes a vendored cargo source replacement, and
-dnl     builds offline.
+dnl Single signal: presence of inst/vendor.tar.xz, produced only by the explicit
+dnl tarball workflow (miniextendr_vendor()).
+dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is in the
+dnl     artifact. configure unpacks it, writes a vendored cargo source
+dnl     replacement, and builds offline.
 dnl   Source install (R CMD INSTALL ., devtools::install, install_github, etc.):
-dnl     no tarball. configure leaves vendoring alone and lets cargo resolve
-dnl     deps over the network (or via monorepo path overrides — see below).
+dnl     no tarball. configure leaves vendoring alone and lets cargo resolve deps
+dnl     over the network
+dnl     (or via monorepo path overrides — see below).
 dnl
 dnl See docs/CRAN_COMPATIBILITY.md for the full decision table.
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then

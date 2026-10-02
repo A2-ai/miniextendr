@@ -4,10 +4,15 @@
 \alias{use_miniextendr_gitignore}
 \title{Add .gitignore patterns for miniextendr}
 \usage{
-use_miniextendr_gitignore(path = ".")
+use_miniextendr_gitignore(path = ".", subdir = NULL)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{subdir}{Optional template subdirectory (passed through to
+\code{template_path()}) — set to \code{"rpkg"} when upgrading the R package
+subdirectory of a monorepo. Without it, the "monorepo" template type
+resolves the workspace-root \code{gitignore} template instead.}
 }
 \value{
 Invisibly returns TRUE

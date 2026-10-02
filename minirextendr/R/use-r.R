@@ -145,15 +145,19 @@ use_miniextendr_description <- function(path = ".") {
 #' or creates the file if it doesn't exist.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `template_path()`) — set to `"rpkg"` when upgrading the R package
+#'   subdirectory of a monorepo.
 #' @return Invisibly returns TRUE
 #' @keywords internal
-use_miniextendr_rbuildignore <- function(path = ".") {
+use_miniextendr_rbuildignore <- function(path = ".", subdir = NULL) {
   with_project(path)
   # Shared "read template, filter comments" prep with the monorepo path
   # (create_rpkg_subdirectory()) — see mx_ignore_patterns() (#1151).
   # usethis handles deduplication and file creation automatically;
   # escape = FALSE because our template already contains regex patterns.
-  usethis::use_build_ignore(mx_ignore_patterns("Rbuildignore"), escape = FALSE)
+  usethis::use_build_ignore(mx_ignore_patterns("Rbuildignore", subdir = subdir),
+                            escape = FALSE)
 
   invisible(TRUE)
 }
@@ -164,14 +168,19 @@ use_miniextendr_rbuildignore <- function(path = ".") {
 #' or creates the file if it doesn't exist.
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
+#' @param subdir Optional template subdirectory (passed through to
+#'   `template_path()`) — set to `"rpkg"` when upgrading the R package
+#'   subdirectory of a monorepo. Without it, the "monorepo" template type
+#'   resolves the workspace-root `gitignore` template instead.
 #' @return Invisibly returns TRUE
 #' @keywords internal
-use_miniextendr_gitignore <- function(path = ".") {
+use_miniextendr_gitignore <- function(path = ".", subdir = NULL) {
   with_project(path)
   # Shared "read template, filter comments" prep with the monorepo path
   # (create_rpkg_subdirectory()) — see mx_ignore_patterns() (#1151).
   # usethis handles deduplication and file creation automatically.
-  usethis::use_git_ignore(mx_ignore_patterns("gitignore"), directory = ".")
+  usethis::use_git_ignore(mx_ignore_patterns("gitignore", subdir = subdir),
+                          directory = ".")
 
   invisible(TRUE)
 }

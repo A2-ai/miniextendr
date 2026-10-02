@@ -17,7 +17,17 @@
 #' `upgrade_miniextendr_package()` automatically detects the rpkg subdir and
 #' operates on it rather than the workspace root. The rpkg subdir is the first
 #' immediate child directory that contains a miniextendr `configure.ac`. Pass
-#' `rpkg_subdir` explicitly if auto-detection is ambiguous.
+#' `rpkg_subdir` explicitly if auto-detection is ambiguous. `path` may also
+#' point at the rpkg subdir itself, when its parent directory holds the
+#' workspace `Cargo.toml`. Either way the upgrade renders the monorepo
+#' templates and also adds the monorepo template's entries to the workspace
+#' root `.gitignore`, keeping the lines already there.
+#'
+#' A `tools/config.guess` or `tools/config.sub` whose `timestamp=` line is
+#' newer than the bundled copy's is kept. The closing summary lists files the
+#' package no longer uses (`tools/wrapper-freshness.R`,
+#' `tools/wrapper-inputs.rds`) and a git-tracked `src/<pkg>-win.def`, which
+#' configure generates; the upgrade does not delete or untrack them.
 #'
 #' @param path Path to the R package root (standalone) or the monorepo workspace
 #'   root. Defaults to `"."`. For a monorepo, this is the directory containing
@@ -45,28 +55,24 @@ upgrade_miniextendr_package <- function(path = ".",
                                          configure_ac = FALSE,
                                          autoconf = TRUE,
                                          allow_dirty = FALSE) {
-  # Resolve path to an absolute path so we can probe it before setting as project.
-  resolved_path <- normalizePath(path, mustWork = FALSE)
-
-  # Detect monorepo: if path has a Cargo.toml but no configure.ac (or no
-  # DESCRIPTION), it's likely a workspace root rather than an rpkg root.
-  project_type <- detect_project_type(resolved_path)
-  if (identical(project_type, "monorepo") &&
-      !file.exists(file.path(resolved_path, "configure.ac"))) {
-    # Path is the workspace root -- need to resolve to the rpkg subdir.
-    subdir <- rpkg_subdir %||% find_rpkg_subdir(resolved_path)
-    if (is.null(subdir)) {
-      cli::cli_abort(c(
-        "Could not find an rpkg subdirectory in {.path {resolved_path}}.",
-        "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly.",
-        "i" = "Expected a subdirectory with a miniextendr {.path configure.ac}."
-      ))
-    }
-    resolved_path <- file.path(resolved_path, subdir)
-    cli::cli_alert_info("Monorepo layout detected -- upgrading rpkg subdir {.path {subdir}}")
+  layout <- upgrade_layout(path, rpkg_subdir)
+  resolved_path <- layout$pkg
+  monorepo <- !is.null(layout$root)
+  if (monorepo) {
+    cli::cli_alert_info("Monorepo layout detected -- upgrading rpkg subdir {.path {layout$subdir}}")
   }
 
   with_project(resolved_path)
+
+  # Render the template set of this layout, whatever type an earlier
+  # scaffolding call in the session left active, and restore that type on
+  # exit. The monorepo's package templates live under
+  # templates/monorepo/rpkg/, so every use_*() call below takes
+  # subdir = "rpkg" there, as create_rpkg_subdirectory() does (#1712).
+  old_template_type <- get_template_type()
+  set_template_type(if (monorepo) "monorepo" else "rpkg")
+  on.exit(set_template_type(old_template_type), add = TRUE)
+  tpl_subdir <- if (monorepo) "rpkg" else NULL
 
   if (!is_miniextendr_package()) {
     cli::cli_abort(c(
@@ -85,27 +91,27 @@ upgrade_miniextendr_package <- function(path = ".",
 
   # --- Build system templates ---
   cli::cli_h2("Updating build system templates")
-  use_miniextendr_stub()
-  use_miniextendr_makevars()
-  use_miniextendr_mx_abi()
-  use_miniextendr_build_rs()
-  use_miniextendr_bootstrap()
-  use_miniextendr_cleanup()
-  use_miniextendr_configure_win()
-  use_miniextendr_config_scripts()
-  use_miniextendr_html_reference()
+  use_miniextendr_stub(subdir = tpl_subdir)
+  use_miniextendr_makevars(subdir = tpl_subdir)
+  use_miniextendr_mx_abi(subdir = tpl_subdir)
+  use_miniextendr_build_rs(subdir = tpl_subdir)
+  use_miniextendr_bootstrap(subdir = tpl_subdir)
+  use_miniextendr_cleanup(subdir = tpl_subdir)
+  use_miniextendr_configure_win(subdir = tpl_subdir)
+  use_miniextendr_config_scripts(subdir = tpl_subdir)
+  use_miniextendr_html_reference(subdir = tpl_subdir)
 
   # --- Package metadata ---
   cli::cli_h2("Updating package metadata")
   use_miniextendr_description()
-  use_miniextendr_rbuildignore()
-  upgrade_gitignore()
-  use_miniextendr_gitattributes()
+  use_miniextendr_rbuildignore(subdir = tpl_subdir)
+  upgrade_gitignore(subdir = tpl_subdir)
+  use_miniextendr_gitattributes(subdir = tpl_subdir)
 
   # --- configure.ac ---
   if (configure_ac) {
     cli::cli_h2("Replacing configure.ac")
-    use_miniextendr_configure()
+    use_miniextendr_configure(subdir = tpl_subdir)
   } else {
     check_configure_ac_drift()
   }
@@ -163,6 +169,47 @@ find_rpkg_subdir <- function(path) {
   }
   if (length(matches) == 0L) return(NULL)
   matches
+}
+
+#' Locate the R package an upgrade operates on, and its monorepo workspace
+#'
+#' `path` may be a standalone package, a monorepo workspace root (the R
+#' package is then `rpkg_subdir` or what `find_rpkg_subdir()` finds), or the R
+#' package subdirectory of a monorepo itself. That last case counts as a
+#' monorepo only when the package's immediate parent holds the workspace
+#' `Cargo.toml`, the same immediate-child layout `find_rpkg_subdir()` scans:
+#' a package that merely sits somewhere inside a Rust repository stays
+#' standalone, so the upgrade never writes to an unrelated ancestor's files.
+#'
+#' @param path Path passed to `upgrade_miniextendr_package()`.
+#' @param rpkg_subdir Explicit R package subdirectory, or `NULL`.
+#' @return A list with `pkg` (absolute path to the R package), `root` (the
+#'   monorepo workspace root, `NULL` for a standalone package) and `subdir`
+#'   (the package directory relative to `root`, `NULL` for a standalone
+#'   package).
+#' @noRd
+upgrade_layout <- function(path, rpkg_subdir = NULL) {
+  path <- normalizePath(path, mustWork = FALSE)
+  standalone <- list(pkg = path, root = NULL, subdir = NULL)
+  if (!identical(detect_project_type(path), "monorepo")) return(standalone)
+
+  if (file.exists(file.path(path, "configure.ac"))) {
+    # `path` is the R package itself.
+    root <- dirname(path)
+    if (!file.exists(file.path(root, "Cargo.toml"))) return(standalone)
+    return(list(pkg = path, root = root, subdir = basename(path)))
+  }
+
+  # `path` is the workspace root -- resolve the R package subdirectory.
+  subdir <- rpkg_subdir %||% find_rpkg_subdir(path)
+  if (is.null(subdir)) {
+    cli::cli_abort(c(
+      "Could not find an rpkg subdirectory in {.path {path}}.",
+      "i" = "Pass {.code rpkg_subdir = '<name>'} explicitly.",
+      "i" = "Expected a subdirectory with a miniextendr {.path configure.ac}."
+    ))
+  }
+  list(pkg = file.path(path, subdir), root = path, subdir = subdir)
 }
 
 #' Check that scaffolding files are clean in git
@@ -228,10 +275,12 @@ check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
 #' Adds current miniextendr patterns (usethis deduplicates) and removes
 #' known-obsolete entries that are no longer needed (files now tracked in git).
 #'
+#' @param subdir Optional template subdirectory, passed to
+#'   `use_miniextendr_gitignore()` (`"rpkg"` in a monorepo).
 #' @noRd
-upgrade_gitignore <- function() {
+upgrade_gitignore <- function(subdir = NULL) {
   # Add current patterns (usethis handles deduplication)
-  use_miniextendr_gitignore()
+  use_miniextendr_gitignore(subdir = subdir)
 
   # Remove obsolete entries that are now tracked in git
   gitignore_path <- usethis::proj_path(".gitignore")
