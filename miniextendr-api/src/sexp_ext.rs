@@ -5,6 +5,7 @@
 //! [`crate::prelude`].
 
 use crate::SEXP;
+use crate::gc_protect::ProtectScope;
 use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
 // Pull in everything raw from sys. Type re-exports (SEXP, SEXPTYPE, etc.)
 // that `sys` itself promotes are identical items, so glob import is safe;
@@ -12,14 +13,15 @@ use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
 // naturally.
 use crate::sys::{
     ALTREP, CAR, CAR_unchecked, CDR, CDR_unchecked, COMPLEX_ELT, DATAPTR_RO, DATAPTR_RO_unchecked,
-    INTEGER_ELT, LOGICAL_ELT, PRINTNAME, R_CHAR, R_CHAR_unchecked, R_ClassSymbol, R_DimNamesSymbol,
-    R_DimSymbol, R_LevelsSymbol, R_NaString, R_NamesSymbol, R_NilValue, R_RowNamesSymbol, RAW_ELT,
-    REAL_ELT, Rf_asChar, Rf_asInteger, Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector,
-    Rf_cons, Rf_cons_unchecked, Rf_dimgets, Rf_dimnamesgets, Rf_duplicate, Rf_getAttrib,
-    Rf_getAttrib_unchecked, Rf_inherits, Rf_isArray, Rf_isFactor, Rf_isFunction, Rf_isList,
-    Rf_isMatrix, Rf_isObject, Rf_isS4, Rf_lcons, Rf_namesgets, Rf_setAttrib,
-    Rf_setAttrib_unchecked, Rf_shallow_duplicate, Rf_xlength, Rf_xlength_unchecked, Rf_xlengthgets,
-    SET_COMPLEX_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT,
+    IDENT_USE_CLOENV, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, R_BaseEnv, R_CHAR, R_CHAR_unchecked,
+    R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NaString, R_NamesSymbol,
+    R_NilValue, R_RowNamesSymbol, R_compute_identical, RAW_ELT, REAL_ELT, Rf_asChar, Rf_asInteger,
+    Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector, Rf_cons, Rf_cons_unchecked, Rf_dimgets,
+    Rf_dimnamesgets, Rf_duplicate, Rf_eval, Rf_getAttrib, Rf_getAttrib_unchecked, Rf_inherits,
+    Rf_install, Rf_isArray, Rf_isFactor, Rf_isFunction, Rf_isList, Rf_isMatrix, Rf_isObject,
+    Rf_isS4, Rf_lang2, Rf_lcons, Rf_namesgets, Rf_setAttrib, Rf_setAttrib_unchecked,
+    Rf_shallow_duplicate, Rf_xlength, Rf_xlength_unchecked, Rf_xlengthgets, SET_COMPLEX_ELT,
+    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_RAW_ELT, SET_REAL_ELT, SET_STRING_ELT,
     SET_STRING_ELT_unchecked, SET_TAG, SET_TAG_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked,
     SETCAR, SETCAR_unchecked, SETCDR, SETCDR_unchecked, STRING_ELT, STRING_ELT_unchecked, TAG,
     TYPEOF, VECTOR_ELT, VECTOR_ELT_unchecked,
@@ -346,6 +348,33 @@ pub trait SexpExt {
     #[must_use]
     fn inherits_class(&self, class: &std::ffi::CStr) -> bool;
 
+    /// Check whether this SEXP carries any attributes.
+    ///
+    /// Same answer as `!is.null(attributes(x))` in R. For a pairlist
+    /// (`LISTSXP`), tag names count, because `attributes()` reports them as a
+    /// `names` attribute: `pairlist(a = 1)` has attributes, `pairlist(1)`
+    /// does not. A `CHARSXP` (an element of a character vector) has none:
+    /// R uses its attribute slot for the global string cache, and
+    /// `identical()` skips it too.
+    ///
+    /// The check evaluates `attributes(quote(x))` in the base environment, so
+    /// it allocates a call and, when attributes exist, the list
+    /// `attributes()` returns. R's constant-time test `ANY_ATTRIB` only
+    /// exists from R 4.5.0 and miniextendr supports R 4.4. `ATTRIB` is not
+    /// part of R's API, and `R CMD check` (R >= 4.6) reports packages that
+    /// call it.
+    ///
+    /// To reproduce R's `identical(x, y)`, which compares attributes as well
+    /// as values, use [`is_identical`](Self::is_identical).
+    ///
+    /// ```ignore
+    /// // attributes(c(a = 1)) is list(names = "a")
+    /// assert!(named_vector.has_attributes());
+    /// assert!(!SEXP::scalar_logical(false).has_attributes());
+    /// ```
+    #[must_use]
+    fn has_attributes(&self) -> bool;
+
     // endregion
 
     // region: String element access
@@ -471,6 +500,29 @@ pub trait SexpExt {
     /// Shallow-copy this SEXP. Equivalent to R's `Rf_shallow_duplicate(x)`.
     #[must_use]
     fn shallow_duplicate(&self) -> SEXP;
+
+    // endregion
+
+    // region: Comparison
+
+    /// Check whether this SEXP is identical to `other` under the defaults of
+    /// R's `identical(x, y)`.
+    ///
+    /// Calls `R_compute_identical(x, y, IDENT_USE_CLOENV)`. Flag 16 is what
+    /// `identical()` passes with its default arguments: `num.eq`,
+    /// `single.NA`, `attrib.as.set`, `ignore.bytecode` and `ignore.srcref`
+    /// are `TRUE`, and `ignore.environment` and `extptr.as.ref` are `FALSE`.
+    /// Attributes take part in the comparison, so `structure(FALSE, foo = 1)`
+    /// is not identical to `FALSE`.
+    ///
+    /// The `==` operator on `SEXP` compares pointers, not values.
+    ///
+    /// ```ignore
+    /// // R's identical(x, FALSE)
+    /// let is_false = x.is_identical(SEXP::scalar_logical(false));
+    /// ```
+    #[must_use]
+    fn is_identical(&self, other: SEXP) -> bool;
 
     // endregion
 
@@ -871,6 +923,23 @@ impl SexpExt for SEXP {
         unsafe { Rf_inherits(*self, class.as_ptr()) != Rboolean::FALSE }
     }
 
+    fn has_attributes(&self) -> bool {
+        // A CHARSXP's ATTRIB slot links the string-cache hash chain;
+        // `attributes()` would walk those CHARSXPs as if they were pairlist
+        // nodes.
+        if self.type_of() == SEXPTYPE::CHARSXP {
+            return false;
+        }
+        // `attributes` is a builtin, so its argument is evaluated: wrap the
+        // value in `quote()` so a symbol, call or promise is passed as is.
+        unsafe {
+            let scope = ProtectScope::new();
+            let quoted = scope.protect_raw(Rf_lang2(Rf_install(c"quote".as_ptr()), *self));
+            let call = scope.protect_raw(Rf_lang2(Rf_install(c"attributes".as_ptr()), quoted));
+            !Rf_eval(call, R_BaseEnv).is_nil()
+        }
+    }
+
     // endregion
 
     // region: String element access
@@ -1011,6 +1080,15 @@ impl SexpExt for SEXP {
     #[inline]
     fn shallow_duplicate(&self) -> SEXP {
         unsafe { Rf_shallow_duplicate(*self) }
+    }
+
+    // endregion
+
+    // region: Comparison
+
+    #[inline]
+    fn is_identical(&self, other: SEXP) -> bool {
+        unsafe { R_compute_identical(*self, other, IDENT_USE_CLOENV) != Rboolean::FALSE }
     }
 
     // endregion

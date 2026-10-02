@@ -1296,3 +1296,114 @@ fn mxl302_scanner_survives_multibyte_source() {
 }
 
 // endregion
+
+// region: MXL304 — non-API ATTRIB / SET_ATTRIB
+
+/// Lint `src` as a one-file crate and return the 1-based lines MXL304 flags.
+fn mxl304_lines(src: &str) -> Vec<usize> {
+    let dir = tempfile::tempdir().unwrap();
+    let src_dir = dir.path().join("src");
+    fs::create_dir(&src_dir).unwrap();
+    fs::write(src_dir.join("lib.rs"), src).unwrap();
+
+    let report = run(dir.path()).expect("lint should succeed");
+    report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL304")
+        .map(|d| d.line)
+        .collect()
+}
+
+#[test]
+fn mxl304_attrib_call_fires() {
+    let lines = mxl304_lines(
+        r#"
+pub fn has_any(x: SEXP) -> bool {
+    unsafe { miniextendr_api::sys::ATTRIB(x) != R_NilValue }
+}
+"#,
+    );
+    assert_eq!(lines, vec![3], "expected MXL304 on the ATTRIB() call");
+}
+
+#[test]
+fn mxl304_set_attrib_and_unchecked_forms_fire() {
+    let lines = mxl304_lines(
+        r#"
+pub fn strip(x: SEXP) {
+    unsafe { SET_ATTRIB(x, R_NilValue) };
+    unsafe { SET_ATTRIB_unchecked(x, R_NilValue) };
+    let _ = unsafe { ATTRIB_unchecked (x) };
+}
+"#,
+    );
+    assert_eq!(lines, vec![3, 4, 5]);
+}
+
+#[test]
+fn mxl304_extern_declaration_fires() {
+    let lines = mxl304_lines(
+        r#"
+unsafe extern "C" {
+    fn ATTRIB(x: SEXP) -> SEXP;
+}
+"#,
+    );
+    assert_eq!(
+        lines,
+        vec![3],
+        "a hand-written ATTRIB declaration must be flagged"
+    );
+}
+
+#[test]
+fn mxl304_api_attribute_functions_do_not_fire() {
+    let lines = mxl304_lines(
+        r#"
+pub fn ok(x: SEXP, y: SEXP) -> bool {
+    unsafe { DUPLICATE_ATTRIB(y, x) };
+    unsafe { SHALLOW_DUPLICATE_ATTRIB(y, x) };
+    unsafe { CLEAR_ATTRIB(y) };
+    let any = unsafe { ANY_ATTRIB(x) } != 0;
+    // ATTRIB(x) in a comment is fine
+    let note = "ATTRIB";
+    any && x.has_attributes() && !note.is_empty()
+}
+"#,
+    );
+    assert!(
+        lines.is_empty(),
+        "API functions must not trip MXL304, got lines {lines:?}"
+    );
+}
+
+#[test]
+fn mxl304_suppressed_by_allow_comment() {
+    let lines = mxl304_lines(
+        r#"
+pub fn has_any(x: SEXP) -> bool {
+    // mxl::allow(MXL304)
+    unsafe { ATTRIB(x) != R_NilValue }
+}
+"#,
+    );
+    assert!(
+        lines.is_empty(),
+        "MXL304 must honour `// mxl::allow(MXL304)`, got {lines:?}"
+    );
+}
+
+#[test]
+fn mxl304_scanner_survives_multibyte_source() {
+    let lines = mxl304_lines(
+        r#"
+pub fn has_any(x: SEXP) -> bool {
+    let label = "α-日本語"; unsafe { ATTRIB(x) != R_NilValue }
+}
+"#,
+    );
+    assert_eq!(lines, vec![3]);
+}
+
+// endregion

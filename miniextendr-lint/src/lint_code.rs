@@ -49,6 +49,8 @@ pub enum LintCode {
     /// within one crate, so the rule compares the crate-invariant suffix)
     /// after the macro's case-folding.
     MXL303,
+    /// Call to, or declaration of, R's non-API `ATTRIB` / `SET_ATTRIB`.
+    MXL304,
     // endregion
 }
 
@@ -84,7 +86,8 @@ impl LintCode {
             | Self::MXL203
             | Self::MXL300
             | Self::MXL301
-            | Self::MXL302 => Severity::Warning,
+            | Self::MXL302
+            | Self::MXL304 => Severity::Warning,
         }
     }
 }

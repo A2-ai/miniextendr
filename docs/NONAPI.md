@@ -17,11 +17,15 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 
 | Function | Location | Feature Gate | Notes |
 |----------|----------|--------------|-------|
-| `DATAPTR` | `miniextendr-api/src/ffi.rs` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
-| `R_curErrorBuf` | `miniextendr-api/src/ffi.rs` | `nonapi` | Current error message buffer - used for better error messages from worker thread |
-| `R_CStackStart` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack top; package code must not rewrite it for secondary-thread R calls |
-| `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack limit; disabling it does not make R's API thread-safe |
-| `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Process-global stack growth direction (-1 = down, 1 = up) |
+| `DATAPTR` | `miniextendr-api/src/sys.rs` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
+| `ATTRIB` | `miniextendr-api/src/sys.rs` | `nonapi` | Attribute pairlist. Test for attributes with `SexpExt::has_attributes()`, read one with `SexpExt::get_attr()`, compare objects with `SexpExt::is_identical()`. Lint MXL304 flags uses and hand-written declarations |
+| `SET_ATTRIB` | `miniextendr-api/src/sys.rs` | `nonapi` | Replace the attribute pairlist. Use `SexpExt::set_attr()` for one attribute, `DUPLICATE_ATTRIB` / `SHALLOW_DUPLICATE_ATTRIB` to copy all of them. MXL304 |
+| `OBJECT`, `SET_OBJECT` | `miniextendr-api/src/sys.rs` | `nonapi` | Object bit. Use `SexpExt::is_object()` (`Rf_isObject`); setting a `class` attribute sets the bit |
+| `LEVELS`, `SETLEVELS` | `miniextendr-api/src/sys.rs` | `nonapi` | The `gp` header field, not factor levels (those are the `levels` attribute, `SexpExt::get_levels()`) |
+| `R_curErrorBuf` | `miniextendr-api/src/sys.rs` | `nonapi` | Current error message buffer - used for better error messages from worker thread |
+| `R_CStackStart` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack top; package code must not rewrite it for secondary-thread R calls |
+| `R_CStackLimit` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack limit; disabling it does not make R's API thread-safe |
+| `R_CStackDir` | `miniextendr-api/src/sys.rs` (`nonapi_stack`) | `nonapi` | Process-global stack growth direction (-1 = down, 1 = up) |
 | `ptr_R_WriteConsoleEx` | `miniextendr-api/src/progress.rs` | `indicatif` (implies `nonapi`) | R console hook used by indicatif TermLike backend |
 
 Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
@@ -61,6 +65,35 @@ These functions are NOT in the non-API list and are safe:
 | `R_CHAR` | API (safe) |
 | `TYPEOF` | API (safe) |
 | `R_getVarEx` | API (safe, R >= 4.5.0) — single-frame/inherited variable lookup with an `ifnotfound` default; replaces the now-removed `Rf_findVarInFrame` |
+| `ANY_ATTRIB` | API (safe, R >= 4.5.0) — whether `ATTRIB(x)` is non-empty. R 4.4's libR does not export it, so `SexpExt::has_attributes()` evaluates `attributes(quote(x))` instead, which works on every supported R |
+| `R_compute_identical` | API (safe) — R's `identical()`; `SexpExt::is_identical()` passes `identical()`'s default flags (16) |
+| `DUPLICATE_ATTRIB` / `SHALLOW_DUPLICATE_ATTRIB` | API (safe) — copy every attribute (and the object bit) from one object to another |
+
+`TRUELENGTH` is not declared at all: R 4.5's `R CMD check` reports it as
+non-API, and R 4.6's libR no longer exports it, so a package referencing it
+cannot load there.
+
+### Choosing between `ANY_ATTRIB` and `attributes()`
+
+Writing R Extensions recommends `ANY_ATTRIB` (added in R 4.5.0) in place of
+`ATTRIB` for testing whether an object has attributes. miniextendr supports
+R 4.4, whose libR does not export `ANY_ATTRIB`, and R loads a package's shared
+object with every symbol resolved up front. A safe wrapper that called
+`ANY_ATTRIB` would make every package built with it fail to load on R 4.4,
+whether or not the wrapper ever ran. So `SexpExt::has_attributes()` evaluates
+`attributes(quote(x))` on every R version. That allocates a call and, when
+attributes exist, the list `attributes()` returns.
+
+The two answers differ in two cases. `attributes()` reports the tag names of
+a pairlist as a `names` attribute, while `ANY_ATTRIB` ignores them;
+`has_attributes()` follows `attributes()`, so `pairlist(a = 1)` has
+attributes. A `CHARSXP` keeps R's string-cache chain in its attribute slot, so
+`ANY_ATTRIB` can be non-zero for one; `has_attributes()` returns `false`, as
+`identical()` skips that slot too.
+
+To reproduce `identical(x, FALSE)`, call
+`x.is_identical(SEXP::scalar_logical(false))` rather than combining a value
+check with an attribute check.
 
 ## Full Non-API List (R 4.5.x trunk)
 
