@@ -73,6 +73,15 @@ fn link_to_r() {
     if target_os != "windows" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", r_libdir);
     }
+
+    // That rpath reaches this crate's own targets only (`rustc-link-arg` does
+    // not propagate). Export the locations as `links = "R"` metadata so a
+    // crate that depends on miniextendr-engine directly can read
+    // `DEP_R_LIBDIR` / `DEP_R_HOME` in its build script and add the same
+    // rpath to its own binaries and tests (libR, and R's own libRblas /
+    // libRlapack, live in that directory).
+    println!("cargo::metadata=home={}", r_home);
+    println!("cargo::metadata=libdir={}", r_libdir);
 }
 
 /// Determines the directory containing R's shared library.
