@@ -53,14 +53,14 @@ pub fn result_null_on_err(x: i32) -> Result<i32, ()> {
 }
 
 // Test explicit invisible attribute (force i32 return to be invisible)
-/// Test that #[miniextendr(invisible)] forces an i32 return to be invisible in R.
+/// Test that `#[miniextendr(invisible)]` forces an i32 return to be invisible in R.
 #[miniextendr(invisible)]
 pub fn force_invisible_i32() -> i32 {
     42
 }
 
 // Test explicit visible attribute (force () return to be visible)
-/// Test that #[miniextendr(visible)] forces a unit return to be visible in R.
+/// Test that `#[miniextendr(visible)]` forces a unit return to be visible in R.
 #[miniextendr(visible)]
 pub fn force_visible_unit() {}
 

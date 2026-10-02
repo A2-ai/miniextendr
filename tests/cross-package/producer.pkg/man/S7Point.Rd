@@ -2,9 +2,6 @@
 % Please edit documentation in R/producer.pkg-wrappers.R
 \name{S7Point}
 \alias{S7Point}
-\alias{s7point_x}
-\alias{s7point_y}
-\alias{s7point_distance}
 \alias{S7Point-s7point_x}
 \alias{S7Point$s7point_x}
 \alias{S7Point_s7point_x}

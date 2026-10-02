@@ -53,7 +53,9 @@ The `///` comment is read line by line into the wrapper's `#'` block:
 - Text before the first `@tag` line is leading prose. It becomes
   `@description` unless the comment has one, with its lines, blank lines and
   indentation, so a markdown list or a fenced block renders as one. Rustdoc
-  intra-doc links (`` [`Foo`] ``) lose their brackets, outside code.
+  intra-doc links (`` [`Foo`] ``) lose their brackets, outside code, and so
+  does a roxygen2 link such as `[other_fn()]`, unless the crate sets
+  `roxygen_prose_links = "keep"` ([below](#links-in-leading-prose)).
 - A tag runs from its `@tag` line to the next one.
 - A multi-line tag (`@description`, `@details`, `@param`, `@return`,
   `@examples`, `@examplesIf`, `@section`, ...) keeps its blank lines, which
@@ -80,6 +82,46 @@ The `///` comment is read line by line into the wrapper's `#'` block:
 
 gives `#' @description First paragraph.`, `#'`, `#' Second paragraph.`,
 `#' @examples`, `#' x <- c(1, 2) |>`, `#'   sum()`.
+
+#### Links in leading prose
+
+rustdoc and roxygen2 (markdown on) share the `[...]` link syntax:
+`[other_fn()]`, `[pkg::fn()]` and `[Topic]` are intra-doc links to Rust items
+for `cargo doc` and `\link{}`s to R help topics for roxygen2. rustdoc resolves
+`[other_fn()]` to an in-scope Rust fn and warns
+`rustdoc::broken_intra_doc_links` when there is none, so the text cannot tell
+which reader it was written for. By default leading prose is taken as written
+for rustdoc: its links lose their brackets (`[other_fn()]` becomes
+`other_fn()`, `` [`Foo`][crate::Foo] `` becomes `` `Foo` ``), so roxygen2 never
+tries to resolve a Rust item as an R topic. Markdown links `[text](url)`, code
+spans and fenced blocks are left alone, and so is the text of every explicit
+tag (`@description`, `@details`, `@param`, ...).
+
+A crate whose doc comments are written for R first sets the default once:
+
+```toml
+[package.metadata.miniextendr]
+roxygen_prose_links = "keep"    # or "strip", the default
+```
+
+Leading prose then passes through unchanged, like an explicit `@description`:
+
+```rust
+/// `summary()`: 50 unless [set_threshold()] set another; see [stats::median()].
+/// @param x An object.
+#[miniextendr(s3(generic = "summary", class = "thing"))]
+fn summary_thing(x: List) -> List { /* ... */ }
+```
+
+renders `\code{\link[=set_threshold]{set_threshold()}}` and
+`\code{\link[stats:median]{stats::median()}}` in the Rd. Every link in the
+crate's leading prose is then roxygen2's to resolve, so a rustdoc-only link
+(`` [`RustType`] ``) there is a roxygen2 "could not resolve link" warning;
+keep those in `//` comments or in rustdoc-only lines (after a single-line tag
+such as `@export`). To keep the links of one block without the crate setting,
+write its prose under an explicit `@description`. The key must be `"strip"` or
+`"keep"`, set once; anything else is a compile error (see
+[MACRO_ERRORS.md](MACRO_ERRORS.md)).
 
 ### Function Attributes
 

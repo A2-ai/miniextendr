@@ -61,9 +61,9 @@ Test that returning Ok(()) from Result<(), ()> is invisible in R.
 
 Test that Result Err(()) returns NULL in R, Ok returns doubled value.
 
-Test that #miniextendr(invisible) forces an i32 return to be invisible in R.
+Test that \verb{#[miniextendr(invisible)]} forces an i32 return to be invisible in R.
 
-Test that #miniextendr(visible) forces a unit return to be visible in R.
+Test that \verb{#[miniextendr(visible)]} forces a unit return to be visible in R.
 
 Test that \verb{#[miniextendr(check_interrupt)]} checks for user interrupts before execution.
 

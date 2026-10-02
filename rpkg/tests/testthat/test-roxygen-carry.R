@@ -1,14 +1,14 @@
 # Doc comments carry their blank lines and indentation into R help
 # (rpkg/src/rust/roxygen_carry_tests.rs). load_all() has the generated man
 # pages but no installed help database, so read whichever exists.
-roxygen_carry_rd <- function() {
+roxygen_carry_rd <- function(page = "roxygen_carry_tests.Rd") {
   pkg_path <- getNamespaceInfo("miniextendr", "path")
   db <- if (dir.exists(file.path(pkg_path, "man"))) {
     tools::Rd_db(dir = pkg_path)
   } else {
     tools::Rd_db("miniextendr")
   }
-  db[["roxygen_carry_tests.Rd"]]
+  db[[page]]
 }
 
 # The text of one section of a parsed Rd page, as written.
@@ -56,4 +56,25 @@ test_that("an example keeps its indentation and runs", {
   env <- new.env(parent = asNamespace("miniextendr"))
   eval(parse(text = examples), envir = env)
   expect_equal(env$x, 3)
+})
+
+# rpkg keeps `roxygen_prose_links` at its default, "strip"
+# (rpkg/src/rust/roxygen_prose_links_tests.rs): leading prose loses its link
+# brackets, an explicit tag keeps its \link{}.
+test_that("leading prose drops its links and an explicit tag keeps them", {
+  rd <- roxygen_carry_rd("roxygen_prose_links_tests.Rd")
+  expect_false(is.null(rd))
+  # Every Rd macro used inside a node, nested ones included.
+  rd_tags <- function(x) {
+    c(attr(x, "Rd_tag"), if (is.list(x)) unlist(lapply(x, rd_tags)))
+  }
+  section <- function(tag) {
+    Filter(function(x) identical(attr(x, "Rd_tag"), tag), rd)[[1L]]
+  }
+  description <- roxygen_carry_section(rd, "\\description")
+  expect_match(description, "roxygen_prose_links_demo()", fixed = TRUE)
+  expect_no_match(description, "[", fixed = TRUE)
+  expect_false("\\link" %in% rd_tags(section("\\description")))
+  expect_true("\\link" %in% rd_tags(section("\\details")))
+  expect_match(roxygen_carry_section(rd, "\\details"), "roxygen_carry_demo()", fixed = TRUE)
 })
