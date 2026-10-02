@@ -43,6 +43,7 @@
 //! - [`rng_tests`]: R random number generator tests
 //! - [`rmath_tests`]: `Rmath.h` distribution routines (`sys::Rf_pnorm5`, ...) through `.Call`
 //! - [`lbfgsb_tests`]: R's L-BFGS-B optimiser (`sys::lbfgsb`) with Rust callbacks through `.Call`
+//! - [`blas_lapack_tests`]: R's BLAS/LAPACK (`sys::dgemm_`, `sys::dgesv_`, `linalg`) through `.Call`
 //!
 //! # Trait ABI
 //!
@@ -147,6 +148,8 @@ mod bitflags_adapter_tests;
 mod bitvec_adapter_tests;
 #[cfg(feature = "blake3")]
 mod blake3_adapter_tests;
+#[cfg(feature = "blas-lapack")]
+mod blas_lapack_tests;
 #[cfg(feature = "borsh")]
 mod borsh_adapter_tests;
 mod box_slice_tests;
@@ -2248,6 +2251,9 @@ pub fn miniextendr_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "blake3") {
         features.push("blake3");
+    }
+    if cfg!(feature = "blas-lapack") {
+        features.push("blas-lapack");
     }
     if cfg!(feature = "md5") {
         features.push("md5");

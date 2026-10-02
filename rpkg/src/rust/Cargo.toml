@@ -18,6 +18,9 @@ crate-type = ["staticlib"]
 default = []
 nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
+# R's own BLAS/LAPACK (sys::dgemm_/dgesv_, linalg). configure adds
+# $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS) to PKG_LIBS when this is on.
+blas-lapack = ["miniextendr-api/blas-lapack"]
 # Optional features (pass-through to miniextendr-api)
 rayon = ["miniextendr-api/rayon"]
 rand = ["miniextendr-api/rand"]
@@ -78,7 +81,7 @@ full = [
     "borsh", "ordered-float", "num-bigint", "rust_decimal", "regex",
     "num-traits", "tabled", "rayon", "sha2", "rand", "rand_distr",
     "either", "log", "worker-thread", "macro-coverage",
-    "growth-debug", "blake3", "md5", "globset", "zstd",
+    "growth-debug", "blake3", "md5", "globset", "zstd", "blas-lapack",
 ]
 
 [dependencies]

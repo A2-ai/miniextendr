@@ -179,7 +179,7 @@ if test -z "${CARGO_FEATURES+x}"; then
     dnl (macro-coverage, growth-debug), the #[miniextendr] option defaults
     dnl (strict-default, coerce-default), the class-system selectors
     dnl (r6-default, s7-default), worker-default, and indicatif.
-    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections,blake3,md5,globset,zstd"
+    CARGO_FEATURES="worker-thread,rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,jiff,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs,borsh,arrow,datafusion,log,connections,blake3,md5,globset,zstd,blas-lapack"
   fi
 fi
 
@@ -189,6 +189,21 @@ else
   CARGO_FEATURES_FLAG=""
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
+
+dnl ---- R's BLAS/LAPACK (the package's `blas-lapack` feature) ----
+dnl miniextendr-api's `blas-lapack` feature declares R's own dgemm_/dgesv_.
+dnl A staticlib carries no link directives, so the package links R's
+dnl libraries itself, as Writing R Extensions prescribes for BLAS/LAPACK
+dnl callers. The value is literal make syntax: make expands the three
+dnl variables from R's Makeconf (or an R_MAKEVARS_USER override, such as the
+dnl webR build's) when it links. Keyed on the package's own feature name in
+dnl CARGO_FEATURES: enabling miniextendr-api/blas-lapack only on the
+dnl dependency line bypasses this, so packages forward a feature of their own.
+case ",$CARGO_FEATURES," in
+  *,blas-lapack,*) BLAS_LAPACK_PKG_LIBS='$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)' ;;
+  *)               BLAS_LAPACK_PKG_LIBS="" ;;
+esac
+AC_SUBST([BLAS_LAPACK_PKG_LIBS])
 
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
@@ -379,6 +394,7 @@ AC_MSG_NOTICE([CARGO_LIBDIR         = $CARGO_LIBDIR])
 AS_IF([test -n "$RUST_TOOLCHAIN"],     [AC_MSG_NOTICE([RUST_TOOLCHAIN       = $RUST_TOOLCHAIN])])
 AS_IF([test -n "$CARGO_BUILD_TARGET"], [AC_MSG_NOTICE([CARGO_BUILD_TARGET   = $CARGO_BUILD_TARGET])])
 AS_IF([test -n "$CARGO_FEATURES"],     [AC_MSG_NOTICE([CARGO_FEATURES       = $CARGO_FEATURES])])
+AS_IF([test -n "$BLAS_LAPACK_PKG_LIBS"], [AC_MSG_NOTICE([BLAS_LAPACK_PKG_LIBS = $BLAS_LAPACK_PKG_LIBS])])
 AS_IF([test "$IS_WASM_INSTALL" = "true"],  [AC_MSG_NOTICE([IS_WASM_INSTALL      = true (CC=emcc detected)])])
 AS_IF([test -n "$CARGO_BUILD_STD_FLAG"],   [AC_MSG_NOTICE([CARGO_BUILD_STD_FLAG = $CARGO_BUILD_STD_FLAG])])
 

@@ -21,13 +21,17 @@ TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
 IS_WASM_INSTALL       = @IS_WASM_INSTALL@
 CARGO_BUILD_STD_FLAG  = @CARGO_BUILD_STD_FLAG@
+BLAS_LAPACK_PKG_LIBS  = @BLAS_LAPACK_PKG_LIBS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 CARGO_LINK_CONFIG = $(ABS_TOP_SRCDIR)/rust-target/.miniextendr-link-config
 # codegen-units = 1 in Cargo.toml forces the user crate into a single .o (NATIVE path).
 # On wasm32-*, registration goes via wasm_registry.rs (ordinary symbol refs), not linkme,
 # so the setting is inert there.
-PKG_LIBS = $(CARGO_AR)
+# BLAS_LAPACK_PKG_LIBS is `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` when the
+# `blas-lapack` feature is on (R's own BLAS/LAPACK, after the archive that
+# references them), empty otherwise.
+PKG_LIBS = $(CARGO_AR) $(BLAS_LAPACK_PKG_LIBS)
 PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
