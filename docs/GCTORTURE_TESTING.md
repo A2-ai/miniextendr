@@ -102,8 +102,12 @@ options(timeout = Inf)
 Sys.setenv(NOT_CRAN = "true", MINIEXTENDR_STRESS = "true")
 
 gctorture2(step = 100, wait = 0, inhibit_release = FALSE)
+# `package` + `load_package = "installed"` run the tests in a child of the
+# namespace, so tests that call unexported functions find them.
 res <- test_dir(
   "rpkg/tests/testthat",
+  package = "miniextendr",
+  load_package = "installed",
   reporter = ProgressReporter,
   stop_on_failure = FALSE
 )

@@ -15,7 +15,8 @@
 #      mid-run (each .onLoad is a gctorture-amplified hazard — journal
 #      2026-05-08-gctorture-uaf-audit.md).
 #   3. gctorture2(step = 100, wait = 0, inhibit_release = FALSE).
-#   4. testthat::test_dir(...) over rpkg/tests/testthat.
+#   4. testthat::test_dir(...) over rpkg/tests/testthat, in the package
+#      namespace.
 #
 # Intended to run on a scheduled CI job (.github/workflows/gctorture-nightly.yml)
 # and locally for bisects. The FULL suite at step=100 needs ~11 hours (measured
@@ -106,9 +107,15 @@ cat(sprintf(
 gctorture2(step = step, wait = 0L, inhibit_release = FALSE)
 
 # --- 4. Run the (possibly sharded) suite; never stop on first failure. ---------
+# `package` + `load_package = "installed"` run the tests in a child of the
+# package namespace, as tests/testthat.R does under R CMD check, so the tests
+# that call unexported functions find them. The package is already attached
+# (step 1), so test_dir() loads nothing under torture.
 res <- tryCatch(
   testthat::test_dir(
     tests_dir,
+    package = "miniextendr",
+    load_package = "installed",
     filter = sweep_filter,
     reporter = testthat::ProgressReporter,
     stop_on_failure = FALSE
