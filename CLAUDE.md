@@ -327,6 +327,16 @@ release; a label named after an R version alias (`oldrel`, `devel`, `next`,
 spelled as rig and `setup-r` spell them) adds that Linux R CMD check leg, so
 it tracks R's yearly releases. Label a PR that touches R-version cfgs
 (`r_4_5`, `r_4_6`) `oldrel`. The leg still needs an R-path change to run.
+The other opt-in PR labels are `heap-check` (the `MALLOC_CHECK_` rounds in
+`r-tests`) and `run-e2e` (the standalone round-trip e2e). **`full-ci` turns
+on everything at once**: those labels, the path filters, the jobs and
+matrix legs that otherwise run only on main-push / cron / dispatch (the extra
+R versions, macOS, the feature legs and feature combos, webR's main-only
+legs), and the nightly gctorture and Miri workflows (called from `ci.yml`).
+Only the Pages deploy, the webR image mirror and the source-package artifact
+upload stay off. It costs many runner-hours (the gctorture sweep alone is
+~11), so keep it for risky changes before merge; removing the label cancels
+the run.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with

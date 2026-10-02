@@ -6,33 +6,23 @@ name: webR / wasm32
 # it when a PR touches wasm-specific code (`wasm_registry.rs` generation,
 # `build.rs` wasm branches, `Dockerfile.webr*`, `tests/webr-*`, configure /
 # Makevars wasm wiring, minirextendr's webR templates) or when a reviewer asks
-# for the check. `labeled` in the activity types re-runs the workflow when the
-# label is applied after the fact. Push-to-main and workflow_dispatch run every
-# job unconditionally so merged code keeps its safety net. Only the cheap
-# pin-lockstep grep stays unconditional on PRs.
+# for the check. `labeled` / `unlabeled` in the activity types re-run the
+# workflow when a label is added or removed after the fact. Push-to-main and
+# workflow_dispatch run every job unconditionally so merged code keeps its
+# safety net. On PRs only the cheap pin-lockstep grep runs without a label,
+# and only when the PR touches the paths below.
+#
+# The `full-ci` label runs everything a main push runs: every job and the
+# main-only legs inside webr-install, whatever paths the PR touches. That is
+# why the PR path filter lives in the `changes` job rather than under
+# `pull_request.paths`: a trigger-level filter keeps the workflow from
+# starting at all, and no label can override it.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
-    paths:
-      - 'miniextendr-api/**'
-      - 'miniextendr-macros/**'
-      - 'miniextendr-engine/**'
-      - 'miniextendr-lint/**'
-      - 'rpkg/**'
-      # The scaffold leg (#1259) builds a freshly scaffolded end-user package
-      # from minirextendr's templates, so template/scaffolder changes must
-      # trigger this workflow too.
-      - 'minirextendr/**'
-      - 'tests/cross-package/**'
-      - 'tests/webr-node-smoke/**'
-      - 'tests/webr-smoke.sh'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Dockerfile.webr'
-      - 'Dockerfile.webr-arm64'
-      - '.github/workflows/webr.yml'
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
+    # Keep in step with the `changes` job's `webr` filter below.
     paths:
       - 'miniextendr-api/**'
       - 'miniextendr-macros/**'
@@ -58,6 +48,8 @@ permissions:
   # is flipped public via the org UI, both this permission line and the
   # `credentials:` block below can be dropped (tracked as follow-up).
   packages: read
+  # The `changes` job lists a PR's changed files through the REST API.
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -75,6 +67,44 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # PR path filter. Only a PR without the `full-ci` label is filtered; for
+  # every other run the step is skipped and the output falls back to 'true'
+  # (pushes are already filtered by `push.paths`, and workflow_dispatch runs
+  # everything). paths-filter needs no checkout on a PR.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-slim
+    outputs:
+      webr: ${{ steps.filter.outputs.webr || 'true' }}
+    steps:
+      - name: Determine changed paths
+        id: filter
+        if: >-
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'full-ci')
+        uses: dorny/paths-filter@v4
+        with:
+          # Keep in step with `on.push.paths` above.
+          filters: |
+            webr:
+              - 'miniextendr-api/**'
+              - 'miniextendr-macros/**'
+              - 'miniextendr-engine/**'
+              - 'miniextendr-lint/**'
+              - 'rpkg/**'
+              # The scaffold leg (#1259) builds a freshly scaffolded end-user
+              # package from minirextendr's templates, so template/scaffolder
+              # changes must trigger this workflow too.
+              - 'minirextendr/**'
+              - 'tests/cross-package/**'
+              - 'tests/webr-node-smoke/**'
+              - 'tests/webr-smoke.sh'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'Dockerfile.webr'
+              - 'Dockerfile.webr-arm64'
+              - '.github/workflows/webr.yml'
+
   # The webR base-image digest is pinned in three places that must stay
   # identical: Dockerfile.webr's WEBR_BASE (the source of truth —
   # mirror-webr.yml reads that pin to mirror upstream), Dockerfile.webr-arm64's
@@ -85,6 +115,8 @@ jobs:
     name: webR image pin lockstep
     runs-on: ubuntu-slim
     timeout-minutes: 5
+    needs: changes
+    if: needs.changes.outputs.webr == 'true'
     steps:
       - uses: actions/checkout@v7
 
@@ -108,9 +140,12 @@ jobs:
     name: wasm32 check
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'webr')
+      needs.changes.outputs.webr == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'webr') ||
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
     steps:
       - uses: actions/checkout@v7
 
@@ -161,7 +196,7 @@ jobs:
   # build.rs copies whose wasm branches were previously never built by any CI
   # job — lockstep with the standalone tree held only by review + `just
   # templates-check` against patches/templates.patch. This is the issue's
-  # "cheaper interim": scaffold a fresh monorepo package on every PR and
+  # "cheaper interim": scaffold a fresh monorepo package on every labeled PR and
   # `cargo check --target wasm32-unknown-emscripten` its rpkg crate — no emcc
   # link, no wasm R CMD INSTALL, no webR container. A single native R CMD
   # INSTALL pass is still required first: wasm32 build.rs hard-requires
@@ -169,14 +204,18 @@ jobs:
   # produces (#482); that pass uses the ordinary system cc, not emcc, so this
   # job stays cheap relative to the tier-2/3 leg. The full monorepo wasm leg (native →
   # roxygenise → native → CC=emcc → tier-3 load) is gated to main-push /
-  # workflow_dispatch inside the webr-install job below instead (#1271 sketch).
+  # workflow_dispatch / `full-ci` PRs inside the webr-install job below
+  # instead (#1271 sketch).
   monorepo-wasm-check:
     name: monorepo-template wasm32 check
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'webr')
+      needs.changes.outputs.webr == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'webr') ||
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
     steps:
       - uses: actions/checkout@v7
 
@@ -272,14 +311,14 @@ jobs:
   #   - Phase 2: CC=emcc wasm install via webr-vars.mk → /tmp/wasm-lib/miniextendr.
   #   - Scaffold leg (#1259): the same native→wasm two-step on a package
   #     freshly scaffolded from minirextendr's templates → /tmp/wasm-lib/mxsmoke.
-  #   - Monorepo scaffold leg (#1271, main-push/workflow_dispatch only): the
+  #   - Monorepo scaffold leg (#1271, main-push/workflow_dispatch/full-ci only): the
   #     same native→wasm two-step on a package scaffolded from the MONOREPO
   #     template → /tmp/wasm-lib/mxmono. The cheap per-PR variant (a plain
   #     wasm32 cargo check of a scaffolded monorepo crate, no emcc) runs in
-  #     the separate monorepo-wasm-check job above on every PR instead.
+  #     the separate monorepo-wasm-check job above on every labeled PR instead.
   #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
   #              Imports from repo.r-wasm.org, drives library(miniextendr),
-  #              library(mxsmoke), and (main-push/dispatch) library(mxmono).
+  #              library(mxsmoke), and (RUN_MAIN_LEGS) library(mxmono).
   # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners run the image
   # natively with plenty of disk; on Apple Silicon the amd64 image runs under
   # Rosetta (slow, and node can trap, see docs/WEBR.md), which
@@ -297,14 +336,18 @@ jobs:
   webr-install:
     name: wasm32 R CMD INSTALL (tier 2)
     runs-on: ubuntu-latest
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      contains(github.event.pull_request.labels.*.name, 'webr')
-    # Main-push/dispatch runs get extra headroom for the informational
+      needs.changes.outputs.webr == 'true' &&
+      (github.event_name != 'pull_request' ||
+       contains(github.event.pull_request.labels.*.name, 'webr') ||
+       contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    # Main-push/dispatch/full-ci runs get extra headroom for the informational
     # testthat pass in tier 3 (#1255, up to 40 min at the step cap) plus the
     # monorepo scaffold leg (#1271, two extra compiles of a minimal crate —
-    # one native, one wasm+build-std); per-PR runs keep the historical 90.
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 90 || 150 }}
+    # one native, one wasm+build-std); other PR runs keep the historical 90.
+    # Same condition as RUN_MAIN_LEGS below (timeout-minutes can't read env).
+    timeout-minutes: ${{ (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && 150 || 90 }}
     container:
       # Pulled from the mirror at ghcr.io/a2-ai/webr-mirror (closes #496),
       # which `.github/workflows/mirror-webr.yml` keeps digest-aligned with
@@ -333,6 +376,12 @@ jobs:
       # sub-R can't find transitive Imports (lifecycle → rlang) installed by
       # the setup step. Both Rs honour R_LIBS_USER ahead of their site lib.
       R_LIBS_USER: /tmp/r-shared-lib
+      # 'true' on push-to-main, workflow_dispatch and PRs carrying `full-ci`:
+      # turns on the main-only legs below together (the monorepo scaffold
+      # steps, mxmono in SMOKE_SCAFFOLD_PKG, the SMOKE_TESTTHAT pass). They
+      # must flip as one: tier 3 fails when it lists mxmono but the monorepo
+      # steps were skipped.
+      RUN_MAIN_LEGS: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -615,14 +664,15 @@ jobs:
       # subdir, then repeat the SAME native → roxygenise → native → CC=emcc
       # sequence as the standalone mxsmoke leg above, and load the result in
       # tier 3 alongside miniextendr and mxsmoke. Gated to main-push /
-      # workflow_dispatch — it roughly doubles the scaffold leg's wall time
+      # workflow_dispatch / `full-ci` PRs (RUN_MAIN_LEGS) — it roughly doubles
+      # the scaffold leg's wall time
       # (two extra compiles of a minimal crate) and PR latency isn't worth
       # that for a leg the cheap wasm32-check job already covers structurally.
       # Reuses the minirextendr + roxygen tooling already installed into
       # R_LIBS_USER by the mxsmoke "install minirextendr + roxygen tooling"
       # step above — no need to reinstall.
       - name: Monorepo scaffold leg — create a fresh end-user monorepo
-        if: github.event_name != 'pull_request'
+        if: env.RUN_MAIN_LEGS == 'true'
         run: |
           set -euo pipefail
           rm -rf /tmp/scaffold-mono && mkdir -p /tmp/scaffold-mono
@@ -649,7 +699,7 @@ jobs:
           test -d /tmp/scaffold-mono/monorepo/.git
 
       - name: Monorepo scaffold leg — native install + roxygen pass (wrappers, wasm_registry.rs, NAMESPACE)
-        if: github.event_name != 'pull_request'
+        if: env.RUN_MAIN_LEGS == 'true'
         run: |
           set -euo pipefail
           export LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -682,7 +732,7 @@ jobs:
           '
 
       - name: Monorepo scaffold leg — wasm32 R CMD INSTALL (monorepo template wasm branches)
-        if: github.event_name != 'pull_request'
+        if: env.RUN_MAIN_LEGS == 'true'
         run: |
           set -euo pipefail
           rm -f /tmp/scaffold-mono/monorepo/mxmono/src/*.o /tmp/scaffold-mono/monorepo/mxmono/src/*.so
@@ -696,7 +746,7 @@ jobs:
               /tmp/scaffold-mono/monorepo/mxmono
 
       - name: Monorepo scaffold leg — verify wasm side-module landed
-        if: github.event_name != 'pull_request'
+        if: env.RUN_MAIN_LEGS == 'true'
         run: |
           set -euo pipefail
           libdir=/tmp/wasm-lib/mxmono
@@ -757,19 +807,21 @@ jobs:
           # package(s) installed into /tmp/wasm-lib above and drive their
           # stock template functions. Comma-separated list (#1271) — smoke.mjs
           # splits and loads each in turn. mxsmoke (standalone template) runs
-          # on every PR; mxmono (monorepo template) is added only on main-push
-          # / workflow_dispatch, matching the "Monorepo scaffold leg" steps
-          # above which only run there. Unset (e.g. in tests/webr-smoke.sh
+          # on every PR; mxmono (monorepo template) is added only when
+          # RUN_MAIN_LEGS is on (main-push / workflow_dispatch / full-ci),
+          # matching the "Monorepo scaffold leg" steps above which only run
+          # then. Unset (e.g. in tests/webr-smoke.sh
           # without --scaffold) the runner behaves exactly as before.
-          SMOKE_SCAFFOLD_PKG: ${{ github.event_name != 'pull_request' && 'mxsmoke,mxmono' || 'mxsmoke' }}
-          # Informational testthat pass (#1255): on main-push and
-          # workflow_dispatch only, run rpkg's testthat suite inside the webR
-          # session and report counts. Per-PR runs stay load-only — wall time
+          SMOKE_SCAFFOLD_PKG: ${{ env.RUN_MAIN_LEGS == 'true' && 'mxsmoke,mxmono' || 'mxsmoke' }}
+          # Informational testthat pass (#1255): on main-push,
+          # workflow_dispatch and full-ci PRs only (RUN_MAIN_LEGS), run rpkg's
+          # testthat suite inside the webR session and report counts. Other
+          # PR runs stay load-only — wall time
           # gates PRs; the counts are informational and main-push visibility
           # is enough to catch a wasm-runtime-behavior regression. Test
           # failures never gate (many legitimately fail under wasm); only a
           # harness error before the counts line turns the step red.
-          SMOKE_TESTTHAT: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          SMOKE_TESTTHAT: ${{ env.RUN_MAIN_LEGS == 'true' && '1' || '' }}
         run: |
           set -euo pipefail
           # Hard wall-clock cap: webR init + Imports install + library load

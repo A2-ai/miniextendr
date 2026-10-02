@@ -53,8 +53,8 @@ All six `*-default` features above are denylisted from rpkg's auto-detected
 default build (`rpkg/tools/detect-features.R`) — enabling any of them flips
 codegen semantics crate-wide, so no PR-gating job ever builds or runs the R
 wrappers they generate. Their only runtime coverage is the scheduled
-`feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`),
-which rebuilds rpkg with one feature bundle on top of the detected base set and
+`feature-legs` job in `.github/workflows/ci.yml` (weekly + `workflow_dispatch`,
+or a PR carrying the `full-ci` label), which rebuilds rpkg with one feature bundle on top of the detected base set and
 re-runs `tests/testthat/test-feature-defaults.R` against it. The `coerce-default`
 leg also runs the coercion regression suites.
 
