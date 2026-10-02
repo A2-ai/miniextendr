@@ -98,6 +98,15 @@ just site-build / site-serve   # http://127.0.0.1:1111
 just llm-docs / llm-docs-check
 ```
 
+**R recipes start R in the repo root.** The root `.Rprofile` activates rv only
+for an R started there; an R started in `rpkg/` or `tests/cross-package/` gets
+the personal library and its roxygen2. So the cross-package R recipes carry
+`[working-directory("../..")]` and take package paths as arguments, and
+`just configure` runs `bash ./configure` from a root R, whose `R_LIBS_USER` /
+`R_LIBS_SITE` (set by rv's `activate.R`) configure's own Rscript calls inherit.
+rv's `activate.R` replaces `.libPaths()` and drops `R_LIBS`, so prepend an extra
+library inside the session: `.libPaths(c(lib, .libPaths()))`.
+
 ### Configure is mandatory
 
 Always `bash ./configure` (not bare `./configure` — `#!/bin/sh` causes spurious errors in `AC_CONFIG_COMMANDS` passthrough). Configure:
@@ -258,7 +267,7 @@ Build-time static analysis (runs via `build.rs` during `cargo build`/`check`). D
 
 - **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
-- **Permission errors installing**: `R_LIBS=/tmp/codex/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/codex/` is writable in Codex sandboxes.
+- **Permission errors installing**: `R CMD INSTALL --library=/tmp/codex/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/codex/` is writable in Codex sandboxes.
 - **Stale `.snap.new`**: diff vs `.snap`; if expected, `mv` over the old snapshot. Re-run `just test`.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
 

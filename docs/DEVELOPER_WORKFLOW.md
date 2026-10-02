@@ -105,7 +105,8 @@ just cross-test         # Run cross-package trait ABI tests
 
 Both packages install into `tests/cross-package/.r-lib/`, a gitignored library
 inside the checkout that the cross-package recipes put first on `.libPaths()`
-(via `R_LIBS`). Each checkout and worktree has its own copy, so parallel
+(inside each R session, which they start in the repo root so that rv supplies
+the dependencies). Each checkout and worktree has its own copy, so parallel
 checkouts never overwrite each other's installs in the user library.
 
 ### CRAN release prep

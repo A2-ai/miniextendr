@@ -2,16 +2,21 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+# Recipes that start R run in the repo root ([working-directory("../..")]),
+# where the root .Rprofile activates rv, so the dependencies (devtools,
+# roxygen2, testthat, vctrs, ...) come from rv's library as in the root
+# recipes; they get the package path as an argument. configure-* start no R
+# that loads packages, so they stay in the package directories.
+#
 # producer.pkg and consumer.pkg install into, load from and are tested against
 # a library inside this checkout (gitignored), so parallel checkouts and
-# worktrees never overwrite each other's installs in the shared user library.
-# R_LIBS puts it first on .libPaths() in every R process started below (and
-# their subprocesses), ahead of the library that provides the dependencies
-# (rv does not activate in this directory). R drops R_LIBS entries that do
-# not exist yet, so every recipe that starts R depends on `_r-lib`.
+# worktrees never overwrite each other's installs. rv's activate.R replaces
+# .libPaths() and drops R_LIBS, so each R session puts it first itself
+# (`use_r_lib`). .libPaths() drops directories that do not exist yet, so every
+# recipe that starts R depends on `_r-lib`.
 r_lib := justfile_directory() / ".r-lib"
-r_libs_sep := if os_family() == "windows" { ";" } else { ":" }
-export R_LIBS := if env("R_LIBS", "") == "" { r_lib } else { r_lib + r_libs_sep + env("R_LIBS") }
+# (forward slashes: an R string reads a Windows backslash as an escape)
+use_r_lib := '.libPaths(c("' + replace(r_lib, '\', '/') + '", .libPaths()))'
 
 default:
     @just --list
@@ -21,8 +26,8 @@ _r-lib:
     @mkdir -p "{{r_lib}}"
 
 # Print the library the recipes install into and load from
-r-lib: _r-lib
-    Rscript -e 'cat(.libPaths()[1], "\n")'
+r-lib:
+    @echo "{{r_lib}}"
 
 # Build and install both packages in sequence
 build-all: configure-producer build-producer configure-consumer build-consumer
@@ -33,30 +38,22 @@ install-all: build-all
 # Document both packages (regenerate R wrappers)
 document-all: document-producer document-consumer
 
+# The install (build-producer) regenerates R/producer.pkg-wrappers.R from the
+# linked .so and lets roxygen2 use load_installed (needed for R6 source refs).
+# vctrs is attached so roxygen2 recognises vec_cast/vec_ptype2/... as S3
+# generics and emits S3method() (not bare export()) for the vctrs methods;
+# otherwise the producer's vctrs type would not dispatch from a consumer package.
 # Document producer.pkg
-document-producer: _r-lib configure-producer
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # The in-place install (quick = TRUE implies build = FALSE) regenerates
-    # R/producer.pkg-wrappers.R from the linked .so; installing first also lets
-    # roxygen2 use load_installed (needed for R6 source refs).
-    cd producer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
-    # Already in producer.pkg from previous line (bash shebang runs in one shell).
-    # Attach vctrs so roxygen2 recognises vec_cast/vec_ptype2/... as S3 generics
-    # and emits S3method() (not bare export()) for the vctrs methods — otherwise
-    # the producer's vctrs type would not dispatch from a consumer package.
-    Rscript -e 'suppressMessages(require(vctrs, quietly = TRUE)); roxygen2::roxygenise(load_code = roxygen2::load_installed)'
+[group("r")]
+[working-directory("../..")]
+document-producer: build-producer
+    Rscript -e '{{use_r_lib}}; suppressMessages(require(vctrs, quietly = TRUE)); roxygen2::roxygenise("tests/cross-package/producer.pkg", load_code = roxygen2::load_installed)'
 
-# Document consumer.pkg
-document-consumer: _r-lib document-producer configure-consumer
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # The in-place install (quick = TRUE implies build = FALSE) regenerates
-    # R/consumer.pkg-wrappers.R from the linked .so; installing first also lets
-    # roxygen2 use load_installed (needed for R6 source refs).
-    cd consumer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
-    # Already in consumer.pkg from previous line (bash shebang runs in one shell)
-    Rscript -e 'roxygen2::roxygenise(load_code = roxygen2::load_installed)'
+# Document consumer.pkg (build-consumer regenerates its wrappers)
+[group("r")]
+[working-directory("../..")]
+document-consumer: document-producer build-consumer
+    Rscript -e '{{use_r_lib}}; roxygen2::roxygenise("tests/cross-package/consumer.pkg", load_code = roxygen2::load_installed)'
 
 # Configure both packages
 configure-all: configure-producer configure-consumer
@@ -68,8 +65,10 @@ configure-producer:
     bash ./configure
 
 # Build and install producer.pkg
+[group("r")]
+[working-directory("../..")]
 build-producer: _r-lib configure-producer
-    cd producer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
+    Rscript -e '{{use_r_lib}}; devtools::install("tests/cross-package/producer.pkg", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Configure consumer.pkg
 configure-consumer:
@@ -78,16 +77,22 @@ configure-consumer:
     bash ./configure
 
 # Build and install consumer.pkg (must be built after producer)
+[group("r")]
+[working-directory("../..")]
 build-consumer: _r-lib build-producer configure-consumer
-    cd consumer.pkg && Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
+    Rscript -e '{{use_r_lib}}; devtools::install("tests/cross-package/consumer.pkg", upgrade=FALSE, quick=TRUE, keep_source=TRUE)'
 
 # Test producer.pkg (uses installed package, not load_all)
+[group("r")]
+[working-directory("../..")]
 test-producer: _r-lib configure-producer
-    cd producer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
+    Rscript -e '{{use_r_lib}}; testthat::test_local("tests/cross-package/producer.pkg", load_package = "installed")'
 
 # Test consumer.pkg (includes cross-package tests, uses installed package)
+[group("r")]
+[working-directory("../..")]
 test-consumer: _r-lib configure-consumer
-    cd consumer.pkg && Rscript -e 'testthat::test_local(".", load_package = "installed")'
+    Rscript -e '{{use_r_lib}}; testthat::test_local("tests/cross-package/consumer.pkg", load_package = "installed")'
 
 # Run all tests
 test-all: test-producer test-consumer
@@ -115,16 +120,22 @@ rebuild: build-producer build-consumer
 rebuild-all: rebuild
 
 # Run R CMD check on producer.pkg
+[group("r")]
+[working-directory("../..")]
 check-producer: _r-lib configure-producer
-    cd producer.pkg && Rscript -e 'devtools::check()'
+    Rscript -e '{{use_r_lib}}; devtools::check("tests/cross-package/producer.pkg")'
 
 # Run R CMD check on consumer.pkg
+[group("r")]
+[working-directory("../..")]
 check-consumer: _r-lib configure-consumer
-    cd consumer.pkg && Rscript -e 'devtools::check()'
+    Rscript -e '{{use_r_lib}}; devtools::check("tests/cross-package/consumer.pkg")'
 
 # Run R CMD check on both packages
 check-all: check-producer check-consumer
 
 # Run the cross-package interop benchmarks against the installed packages
+[group("r")]
+[working-directory("../..")]
 bench-interop: _r-lib
-    Rscript bench-interop.R
+    Rscript -e '{{use_r_lib}}; source("tests/cross-package/bench-interop.R")'

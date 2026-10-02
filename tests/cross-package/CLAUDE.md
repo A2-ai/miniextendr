@@ -12,13 +12,16 @@ just cross-test      # run testthat across the pair
 fixed: `devtools::check()` installs from a tarball, and from there the packages'
 relative path dependencies on the workspace crates don't resolve.
 
-The recipes install into, load from and test against `tests/cross-package/.r-lib/`
-(gitignored, one per checkout): `tests/cross-package/justfile` exports `R_LIBS`
-with it first, so worktrees never share `producer.pkg` / `consumer.pkg` installs
-through the user library. `just r-lib` (in this directory) prints the path. Run
-R by hand against it with `R_LIBS="$(just --evaluate R_LIBS)" Rscript ...` from
-this directory; from the repo root, rv's `.Rprofile` replaces `.libPaths()` and
-hides it.
+The R recipes run in the repo root (`[working-directory("../..")]`), where the
+root `.Rprofile` activates rv, so devtools / roxygen2 / testthat come from rv's
+library; they take the package path as an argument. They install into, load from
+and test against `tests/cross-package/.r-lib/` (gitignored, one per checkout), so
+worktrees never share `producer.pkg` / `consumer.pkg` installs. rv replaces
+`.libPaths()` and drops `R_LIBS`, so each session prepends `.r-lib` itself
+(`use_r_lib` in the justfile). `just r-lib` (in this directory) prints the path.
+Run R by hand the same way, from the repo root:
+`Rscript -e "$(just -f tests/cross-package/justfile --evaluate use_r_lib); library(consumer.pkg)"`.
+Not from this directory: an R started here gets the personal library.
 
 ## Layout
 - `producer/` + `producer.pkg/` — split source vs scaffolded tarball.
