@@ -1634,6 +1634,255 @@ unsafe extern "C-unwind" {
 
 // endregion
 
+// region: Rmath distribution functions (Rmath.h)
+//
+// Unless `MATHLIB_STANDALONE` is defined, `Rmath.h` remaps the short names
+// (`dnorm` -> `dnorm4` -> `Rf_dnorm4`, `pnorm` -> `pnorm5` -> `Rf_pnorm5`,
+// `qnorm` -> `qnorm5` -> `Rf_qnorm5`, `qchisq` -> `Rf_qchisq`); these are the
+// symbols libR exports, with these prototypes, from the R 4.4 floor on.
+// `tools:::funAPI()` lists all four as `api` (R 4.6 and R-devel 4.7) and none
+// is in `tools:::nonAPI` (R 4.4 to 4.7), so they need no feature gate.
+//
+// These are the scalar C routines, not the vectorised `stats::` functions:
+// arguments are passed through unchanged (the `lower_tail` / `log_p` flags
+// select R's own tail and log-scale code paths), and NA, NaN and infinite
+// inputs come back as R's C code computes them.
+
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
+    /// Normal density: `dnorm(x, mean = mu, sd = sigma, log = give_log)`.
+    ///
+    /// `Rf_dnorm4` from `Rmath.h` (the `dnorm` and `dnorm4` macros resolve
+    /// to it). A non-zero `give_log` returns the log density.
+    ///
+    /// # R conditions
+    ///
+    /// An invalid `sigma` (negative) returns `NaN` without a warning: nmath
+    /// does not report domain errors, and the "NaNs produced" warning that
+    /// `stats::dnorm` gives comes from R's vectorised wrapper. nmath reports
+    /// other problems (precision loss, non-convergence) through R's
+    /// `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_dnorm4(x: f64, mu: f64, sigma: f64, give_log: ::std::os::raw::c_int) -> f64;
+
+    /// Normal distribution function:
+    /// `pnorm(x, mean = mu, sd = sigma, lower.tail = lower_tail, log.p = log_p)`.
+    ///
+    /// `Rf_pnorm5` from `Rmath.h` (the `pnorm` and `pnorm5` macros resolve
+    /// to it). `lower_tail = 0` computes the upper tail `P[X > x]` directly
+    /// (accurate far into the tail, unlike `1 - P[X <= x]`); a non-zero
+    /// `log_p` returns the log probability.
+    ///
+    /// # R conditions
+    ///
+    /// An invalid `sigma` (negative) returns `NaN` without a warning (nmath
+    /// does not report domain errors). nmath reports other problems through
+    /// R's `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_pnorm5(
+        x: f64,
+        mu: f64,
+        sigma: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+
+    /// Normal quantile function:
+    /// `qnorm(p, mean = mu, sd = sigma, lower.tail = lower_tail, log.p = log_p)`.
+    ///
+    /// `Rf_qnorm5` from `Rmath.h` (the `qnorm` and `qnorm5` macros resolve
+    /// to it). With a non-zero `log_p`, `p` is a log probability; with
+    /// `lower_tail = 0`, `p` is an upper-tail probability. `p = 0` and
+    /// `p = 1` (or `-Inf` / `0` on the log scale) return `-Inf` / `Inf` as
+    /// the tail requires.
+    ///
+    /// # R conditions
+    ///
+    /// A `p` outside `[0, 1]` (outside `[-Inf, 0]` on the log scale) or a
+    /// negative `sigma` returns `NaN` without a warning (nmath does not
+    /// report domain errors). nmath reports other problems through R's
+    /// `warning()`, and under `options(warn = 2)` a warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_qnorm5(
+        p: f64,
+        mu: f64,
+        sigma: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+
+    /// Chi-squared quantile function:
+    /// `qchisq(p, df, lower.tail = lower_tail, log.p = log_p)` (central only;
+    /// `stats::qchisq` with `ncp` calls a different routine).
+    ///
+    /// `Rf_qchisq` from `Rmath.h` (the `qchisq` macro resolves to it). It is
+    /// R's gamma quantile with shape `df / 2` and scale `2`. The flags have
+    /// the same meaning as for [`Rf_qnorm5`].
+    ///
+    /// # R conditions
+    ///
+    /// A `p` outside the probability range or a negative `df` returns `NaN`
+    /// without a warning (nmath does not report domain errors). The gamma
+    /// quantile iterates, and nmath reports non-convergence or precision
+    /// loss in it (and in the gamma distribution function it calls) through
+    /// R's `warning()`; under `options(warn = 2)` that warning becomes an R
+    /// error, which longjmps. Call this where such a longjmp is caught: a
+    /// `#[miniextendr]` function body, or
+    /// [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    /// `#[r_ffi_checked]` gives thread routing and checking only, not an
+    /// unwind guard.
+    pub fn Rf_qchisq(
+        p: f64,
+        df: f64,
+        lower_tail: ::std::os::raw::c_int,
+        log_p: ::std::os::raw::c_int,
+    ) -> f64;
+}
+
+// endregion
+
+// region: Optimisation (R_ext/Applic.h)
+//
+// `R_ext/Applic.h` lists `lbfgsb` under "Entry points in the R API" (no `Rf_`
+// prefix), libR exports it with this prototype from the R 4.4 floor on,
+// `tools:::funAPI()` lists it as `api` (R 4.6 and R-devel 4.7), and it is not
+// in `tools:::nonAPI` (R 4.4 to 4.7), so it needs no feature gate. Only the
+// raw ABI is declared here; there is no safe adapter.
+
+/// Objective callback type for R's optimisers: `optimfn` in `R_ext/Applic.h`,
+/// `typedef double optimfn(int n, double *par, void *ex)`.
+///
+/// Called with the parameter count, a pointer to `n` parameter values, and
+/// the `ex` pointer given to the optimiser; returns the objective value.
+/// [`lbfgsb`] requires a finite value: it raises an R error otherwise.
+///
+/// A Rust panic must not unwind out of the callback through R's C frames:
+/// catch it inside the callback (`std::panic::catch_unwind`), store the
+/// payload in the `ex` state, return a finite value, and resume the panic
+/// after the optimiser returns.
+#[allow(non_camel_case_types)]
+pub type optimfn = unsafe extern "C-unwind" fn(
+    n: ::std::os::raw::c_int,
+    par: *mut f64,
+    ex: *mut ::std::os::raw::c_void,
+) -> f64;
+
+/// Gradient callback type for R's optimisers: `optimgr` in `R_ext/Applic.h`,
+/// `typedef void optimgr(int n, double *par, double *gr, void *ex)`.
+///
+/// Called with the parameter count, a pointer to `n` parameter values, a
+/// pointer to `n` gradient slots to fill, and the `ex` pointer given to the
+/// optimiser. The panic rule of [`optimfn`] applies: catch it inside, store
+/// the payload in `ex`, fill the slots (zeros will do), resume afterwards.
+#[allow(non_camel_case_types)]
+pub type optimgr = unsafe extern "C-unwind" fn(
+    n: ::std::os::raw::c_int,
+    par: *mut f64,
+    gr: *mut f64,
+    ex: *mut ::std::os::raw::c_void,
+);
+
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
+    /// Bound-constrained limited-memory BFGS minimiser: `lbfgsb` in
+    /// `R_ext/Applic.h`, the routine behind `optim(method = "L-BFGS-B")`.
+    ///
+    /// # Arguments
+    ///
+    /// - `n`: number of parameters. With `n = 0` it calls `fn_(0, u, ex)`
+    ///   once and returns `fail = 0`, `fncount = 1`, `grcount = 0` and the
+    ///   message `"NOTHING TO DO"`.
+    /// - `m`: number of correction pairs kept (`optim`'s `lmm`, default 5).
+    /// - `x`: `n` starting values; overwritten with the solution.
+    /// - `l`, `u`: `n` lower and upper bounds, read where `nbd` says so.
+    /// - `nbd`: `n` bound codes: `0` unbounded, `1` lower bound only, `2`
+    ///   both bounds, `3` upper bound only. Code `2` with `l[i] == u[i]`
+    ///   fixes parameter `i`.
+    /// - `fmin`: receives the last objective value computed, the one at the
+    ///   returned `x` on convergence. It is not meaningful when the input
+    ///   checks fail (`fail = 52` before any evaluation).
+    /// - `fn_`, `gr`: objective and gradient callbacks. Both are required
+    ///   (R calls them unconditionally).
+    /// - `fail`: receives `0` (converged), `1` (`maxit` reached; the message
+    ///   is then `"NEW_X"`), `51` (a `"WARNING: ..."` from the line search)
+    ///   or `52` (an `"ERROR: ..."`, such as an invalid `nbd` code or
+    ///   `l[i] > u[i]` under code `2`).
+    /// - `ex`: passed unchanged to both callbacks.
+    /// - `factr`: relative-reduction tolerance in units of machine epsilon
+    ///   (`optim`'s default `1e7`).
+    /// - `pgtol`: projected-gradient tolerance (with `optim`'s default `0`
+    ///   only an exactly zero projected gradient stops on it).
+    /// - `fncount`, `grcount`: receive the evaluation counts (R stores the
+    ///   same count in both, except with `n = 0`: see `n` above).
+    /// - `maxit`: iteration limit.
+    /// - `msg`: caller-owned buffer of at least 60 bytes (C `char msg[60]`);
+    ///   receives a NUL-terminated status such as
+    ///   `"CONVERGENCE: REL_REDUCTION_OF_F <= FACTR*EPSMCH"`.
+    /// - `trace`: `0` is silent; `1` to `6` print progress through `Rprintf`.
+    /// - `nreport`: progress interval in iterations. It must be at least `1`
+    ///   even when `trace = 0`.
+    ///
+    /// The routine keeps a limited-memory approximation of the inverse
+    /// Hessian internally and does not return it. That approximation is a
+    /// search device, not an inferential covariance: compute the Hessian at
+    /// the optimum (as `stats::optimHess` does) for standard errors.
+    ///
+    /// # Safety
+    ///
+    /// - `x`, `l`, `u` and `nbd` must be valid for `n` elements, `msg` must
+    ///   be writable for 60 bytes, and the other out-pointers must be valid.
+    ///   `ex` must stay valid for the whole call: the callbacks receive it
+    ///   on every evaluation.
+    /// - `lbfgsb` raises R errors itself (an R longjmp): when
+    ///   `nreport <= 0`, and when the objective returns a non-finite value
+    ///   ("L-BFGS-B needs finite values of 'fn'"). Call it where such a
+    ///   longjmp is caught: a `#[miniextendr]` function body, or
+    ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   unwind guard.
+    /// - The callbacks must not let a Rust panic unwind through `lbfgsb`'s
+    ///   frames (see [`optimfn`]).
+    /// - The workspace comes from `R_alloc` / `S_alloc`, R's transient
+    ///   allocation stack. R reclaims it when the enclosing `.Call` returns;
+    ///   outside `.Call`, bracket the call with [`vmaxget`] / [`vmaxset`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn lbfgsb(
+        n: ::std::os::raw::c_int,
+        m: ::std::os::raw::c_int,
+        x: *mut f64,
+        l: *mut f64,
+        u: *mut f64,
+        nbd: *mut ::std::os::raw::c_int,
+        fmin: *mut f64,
+        fn_: optimfn,
+        gr: optimgr,
+        fail: *mut ::std::os::raw::c_int,
+        ex: *mut ::std::os::raw::c_void,
+        factr: f64,
+        pgtol: f64,
+        fncount: *mut ::std::os::raw::c_int,
+        grcount: *mut ::std::os::raw::c_int,
+        maxit: ::std::os::raw::c_int,
+        msg: *mut ::std::os::raw::c_char,
+        trace: ::std::os::raw::c_int,
+        nreport: ::std::os::raw::c_int,
+    );
+}
+
+// endregion
+
 // region: Memory allocation (R_ext/Memory.h)
 
 #[r_ffi_checked]
