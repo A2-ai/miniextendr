@@ -83,7 +83,8 @@ pub use crate::{
 //
 // The row/group-level data-frame surface: the owned type, its error, the
 // conversion trait pair, and the `#[derive(DataFrameRow)]` macro. Group-level
-// items (`GroupedDataFrame`, `GroupKey`, `group_rows`) stay at the crate root
+// items (`GroupedDataFrame`, `GroupKey`, `RealKey`, `GroupDeclaration`,
+// `group_rows`) stay at the crate root
 // — `df.group_by(..)` returns them without the caller naming the types.
 pub use crate::{
     BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameRow, FromDataFrame,

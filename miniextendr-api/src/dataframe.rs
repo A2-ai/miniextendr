@@ -42,7 +42,7 @@ use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::ffi::CStr;
 
 pub mod group;
-pub use group::{GroupKey, GroupedDataFrame, group_rows};
+pub use group::{GroupDeclaration, GroupKey, GroupedDataFrame, RealKey, group_rows};
 
 // region: Error type
 
@@ -76,17 +76,17 @@ pub enum DataFrameError {
     NoSuchColumn(String),
     /// [`DataFrame::group_by_multi`] was called with an empty column slice.
     EmptyGroupColumns,
-    /// [`DataFrame::group_by`] on a column type with no sane grouping
-    /// semantics (doubles, list-columns, …).
+    /// [`DataFrame::group_by`] on a column type with no grouping semantics
+    /// (list-columns, complex, raw, bit64 `integer64`, …).
     UnsupportedGroupColumn {
         /// The offending column name.
         column: String,
-        /// Its SEXPTYPE, rendered for the message.
+        /// Its SEXPTYPE (or `"integer64"`), rendered for the message.
         type_of: String,
     },
-    /// [`DataFrame::group_by_metadata`] was called on a frame carrying no
-    /// dplyr `groups` metadata (missing attribute, or its value is not a
-    /// `data.frame`) — i.e. not a `grouped_df`.
+    /// [`DataFrame::group_by_metadata`] was called on a frame that is not
+    /// dplyr-grouped: not a `grouped_df` / `rowwise_df`, or no `groups`
+    /// attribute holding a `data.frame`.
     NotGroupedDataFrame,
     /// The dplyr `groups` frame has no `.rows` list-column.
     MissingGroupRows,
@@ -99,7 +99,9 @@ pub enum DataFrameError {
         /// rendered for the message.
         type_of: String,
     },
-    /// A `.rows` index was `< 1` or `> nrow` of the source frame.
+    /// A `.rows` index was `< 1` or `> nrow` of the source frame: the
+    /// grouping metadata is stale. The message names the usual cause (the
+    /// frame was subset without dplyr loaded) and the fix.
     GroupIndexOutOfRange {
         /// The 0-based group whose `.rows` carried the bad index; the message
         /// numbers it from 1, as R does.
@@ -108,6 +110,26 @@ pub enum DataFrameError {
         value: i64,
         /// The source frame's row count (valid indices are `1..=nrow`).
         nrow: usize,
+    },
+    /// No group's `.rows` holds this row of the source frame: the grouping
+    /// metadata is stale (the message names the cause and the fix).
+    GroupRowUncovered {
+        /// The first uncovered 0-based row; the message numbers it from 1.
+        row: usize,
+        /// The source frame's row count.
+        nrow: usize,
+    },
+    /// Two `.rows` entries hold the same row of the source frame (in two
+    /// groups, or twice in one): the grouping metadata is stale (the message
+    /// names the cause and the fix).
+    GroupRowDuplicated {
+        /// The 0-based row; the message numbers it from 1.
+        row: usize,
+        /// The 0-based group that held the row first.
+        first_group: usize,
+        /// The 0-based group that held it again (equal to `first_group` for a
+        /// row listed twice in one group).
+        second_group: usize,
     },
     /// A serde-driven schema/serialize/deserialize failure (the bridged
     /// `RSerdeError` text) or another conversion failure carried as a message.
@@ -148,13 +170,13 @@ impl std::fmt::Display for DataFrameError {
             DataFrameError::UnsupportedGroupColumn { column, type_of } => write!(
                 f,
                 "cannot group by column {:?} ({}): supported key types are factor, \
-                 character, integer, and logical — cut() or factor() the column first",
+                 character, integer, logical, and double (including Date and POSIXct)",
                 column, type_of
             ),
             DataFrameError::NotGroupedDataFrame => write!(
                 f,
-                "not a grouped_df: no `groups` metadata attribute (use group_by/group_by_multi \
-                 to compute grouping instead)"
+                "not a grouped_df: no dplyr grouping (a grouped_df class with a `groups` \
+                 attribute); use group_by/group_by_multi to compute grouping instead"
             ),
             DataFrameError::MissingGroupRows => {
                 write!(f, "grouped_df `groups` frame has no `.rows` list-column")
@@ -167,12 +189,46 @@ impl std::fmt::Display for DataFrameError {
             ),
             DataFrameError::GroupIndexOutOfRange { group, value, nrow } => write!(
                 f,
-                "grouped_df `.rows` index {} for group {} is out of range (source frame has \
-                 {} rows; valid indices are 1..={})",
+                "grouped_df `.rows` index {} for group {} is out of range (the frame has \
+                 {} rows; valid indices are 1..={}). {}",
                 value,
                 group + 1,
                 nrow,
-                nrow
+                nrow,
+                STALE_GROUPS_HINT
+            ),
+            DataFrameError::GroupRowUncovered { row, nrow } => write!(
+                f,
+                "grouped_df `.rows` do not cover row {} (the frame has {} rows; each row \
+                 belongs to exactly one group). {}",
+                row + 1,
+                nrow,
+                STALE_GROUPS_HINT
+            ),
+            DataFrameError::GroupRowDuplicated {
+                row,
+                first_group,
+                second_group,
+            } if first_group == second_group => write!(
+                f,
+                "grouped_df `.rows` list row {} twice in group {} (each row belongs to \
+                 exactly one group). {}",
+                row + 1,
+                first_group + 1,
+                STALE_GROUPS_HINT
+            ),
+            DataFrameError::GroupRowDuplicated {
+                row,
+                first_group,
+                second_group,
+            } => write!(
+                f,
+                "grouped_df `.rows` put row {} in both group {} and group {} (each row \
+                 belongs to exactly one group). {}",
+                row + 1,
+                first_group + 1,
+                second_group + 1,
+                STALE_GROUPS_HINT
             ),
             DataFrameError::Conversion(msg) => write!(f, "{}", msg),
         }
@@ -180,6 +236,15 @@ impl std::fmt::Display for DataFrameError {
 }
 
 impl std::error::Error for DataFrameError {}
+
+/// The cause and the fix that the stale-`.rows` errors
+/// ([`DataFrameError::GroupIndexOutOfRange`],
+/// [`DataFrameError::GroupRowUncovered`],
+/// [`DataFrameError::GroupRowDuplicated`]) append to their message.
+const STALE_GROUPS_HINT: &str = "The `groups` metadata is stale: the grouped frame was \
+     likely subset or reordered without dplyr loaded, which keeps the old `groups` attribute. \
+     Regroup it with dplyr::group_by() (with dplyr loaded, `[` regroups by itself), or read just \
+     the grouping declaration (DataFrame::group_declaration) and group the current rows.";
 
 #[cfg(feature = "serde")]
 impl From<crate::serde::RSerdeError> for DataFrameError {

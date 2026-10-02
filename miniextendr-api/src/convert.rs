@@ -115,6 +115,7 @@ macro_rules! impl_option_into_r_null {
 
 mod as_character;
 mod as_numeric;
+pub(crate) use as_character::read_character;
 pub use as_character::{AsCharacter, AsCharacterVec};
 pub use as_numeric::{AsNumeric, AsNumericVec};
 

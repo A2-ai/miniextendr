@@ -28,6 +28,13 @@ pub struct GroupSumRow {
     pub sum: f64,
     pub n: i32,
 }
+
+/// R-side shape of a `GroupDeclaration`: `list(vars = <chr>, drop = <lgl>)`.
+#[derive(Clone, Debug, IntoList)]
+pub struct GroupDeclarationOut {
+    pub vars: Vec<String>,
+    pub drop: bool,
+}
 // endregion
 
 // region: index-level fixtures (group order, sizes)
@@ -158,6 +165,24 @@ pub fn group_metadata_frames(df: DataFrame) -> SEXP {
         out = out.push(key.label(), *sub);
     }
     out.build().into_sexp()
+}
+
+/// The grouping declaration of a dplyr-grouped frame — `list(vars, drop)`, as
+/// dplyr's `group_vars()` and `group_by_drop_default()` report them — or
+/// `NULL` when the frame is not grouped. Reads no `.rows`, so stale metadata
+/// and any key-column type are fine.
+/// @param df A data.frame, possibly a dplyr `grouped_df`.
+#[miniextendr]
+pub fn group_declaration_of(df: DataFrame) -> SEXP {
+    match df.group_declaration() {
+        Some(decl) => GroupDeclarationOut {
+            vars: decl.vars,
+            drop: decl.drop,
+        }
+        .into_list()
+        .into_sexp(),
+        None => SEXP::nil(),
+    }
 }
 // endregion
 

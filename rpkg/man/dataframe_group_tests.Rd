@@ -10,6 +10,7 @@
 \alias{group_metadata_keys}
 \alias{group_metadata_sizes}
 \alias{group_metadata_frames}
+\alias{group_declaration_of}
 \alias{group_by_extract_sums}
 \alias{group_rows_summary}
 \title{group_by_keys}
@@ -31,6 +32,8 @@ group_metadata_keys(df)
 group_metadata_sizes(df)
 
 group_metadata_frames(df)
+
+group_declaration_of(df)
 
 group_by_extract_sums(df)
 
@@ -69,6 +72,11 @@ attribute. Empty (\code{.drop = FALSE}) groups appear as \code{0}.
 Named list of per-group sub-frames materialised from a \code{grouped_df}'s
 \code{groups} metadata — exercises the 1-based→0-based \code{.rows} conversion by row
 content (each sub-frame holds exactly the caller's grouped rows).
+
+The grouping declaration of a dplyr-grouped frame — \code{list(vars, drop)}, as
+dplyr's \code{group_vars()} and \code{group_by_drop_default()} report them — or
+\code{NULL} when the frame is not grouped. Reads no \code{.rows}, so stale metadata
+and any key-column type are fine.
 
 One typed extraction + move-partition: per-group sum and count of \code{v},
 grouped by \code{g}. Input schema: \code{g} (character, no NAs), \code{v} (double).

@@ -669,6 +669,70 @@ pub fn gc_stress_group_by_multi() -> SEXP {
     out.build().into_sexp()
 }
 
+/// Exercise double group keys (plain, `Date`, `POSIXct`) through
+/// `DataFrame::group_by`, `group_by_multi`, `group_by_metadata` and
+/// `GroupedDataFrame::frames` under GC pressure.
+///
+/// Labelling a double key holds a temporary key vector (the column's
+/// attributes copied on) across an `as.character()` call — S3 dispatch for
+/// the `Date` / `POSIXct` columns — on top of the source-frame and sub-frame
+/// roots [`gc_stress_group_by`] covers. The inputs (a plain frame and a
+/// hand-built `grouped_df` keyed by a `Date`) are synthesized internally.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_group_by_double() -> SEXP {
+    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+    use miniextendr_api::r_eval_str;
+
+    const INPUT: &str = r#"local({
+        x <- rep(c(2.5, -0, 0, NaN, NA, -Inf, 1e5), length.out = 42)
+        d <- as.Date("2024-01-01") + rep(c(2, 0, 1, NA), length.out = 42)
+        p <- as.POSIXct("2024-01-01 10:30:00", tz = "UTC") + rep(c(0, 3600, 0.5), length.out = 42)
+        df <- data.frame(x = x, d = d, p = p, v = seq_len(42))
+        keys <- sort(unique(d), na.last = TRUE)
+        groups <- data.frame(d = keys)
+        groups[[".rows"]] <- lapply(seq_along(keys), function(i) which(d %in% keys[i]))
+        attr(groups, ".drop") <- TRUE
+        gdf <- df
+        attr(gdf, "groups") <- groups
+        class(gdf) <- c("grouped_df", "tbl_df", "tbl", "data.frame")
+        list(df = df, gdf = gdf)
+    })"#;
+
+    // SAFETY: main thread (#[miniextendr] body); the input list is rooted for
+    // the whole fixture, keeping both frames reachable.
+    let input = unsafe {
+        OwnedProtect::new(
+            r_eval_str(INPUT, miniextendr_api::sys::R_BaseEnv)
+                .expect("gc_stress_group_by_double: input synthesis failed"),
+        )
+    };
+    let df = DataFrame::from_sexp(input.get().vector_elt(0)).expect("df is a data.frame");
+    let gdf = DataFrame::from_sexp(input.get().vector_elt(1)).expect("gdf is a data.frame");
+
+    let mut out = NamedDataFrameListBuilder::with_capacity(32);
+    let plain = df.group_by("x").expect("group_by(x) failed");
+    for (key, sub) in plain.frames() {
+        out = out.push(format!("x={}", key.label()), *sub);
+    }
+    let dates = df.group_by("d").expect("group_by(d) failed");
+    for (key, sub) in dates.frames() {
+        out = out.push(format!("d={}", key.label()), *sub);
+    }
+    let multi = df
+        .group_by_multi(&["p", "x"])
+        .expect("group_by_multi(p, x) failed");
+    for (key, sub) in multi.frames() {
+        out = out.push(format!("px={}", key.label()), *sub);
+    }
+    let meta = gdf.group_by_metadata().expect("group_by_metadata failed");
+    for (key, sub) in meta.frames() {
+        out = out.push(format!("meta={}", key.label()), *sub);
+    }
+    out.build().into_sexp()
+}
+
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
 /// Dispatches on `type_of()`: INTSXP, REALSXP, STRSXP.
 /// @param x An integer, numeric, or character vector to convert.
