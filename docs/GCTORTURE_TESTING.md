@@ -170,7 +170,8 @@ In CI, only the sharded `r-stress-tests` job and the nightly sweep set
 `MINIEXTENDR_STRESS`. `r-stress-tests` runs unconditionally on push-to-main,
 the weekly cron and `workflow_dispatch`; on a pull request it runs **only when
 the PR carries the `gc-stress` label** (the same opt-in shape as `heap-check`
-for the MALLOC_CHECK_ rounds). Label a PR that adds or changes a path holding
+for the MALLOC_CHECK_ rounds) or the `full-ci` label, which turns on every CI
+gate at once. Label a PR that adds or changes a path holding
 SEXPs across allocations — `Vec<SEXP>`, sidecar fields, generic-list buffers,
 a new `gc_stress_*` fixture — and re-label after a force-push if the label was
 removed. An unlabeled PR skips the job, and a skipped job passes `ci-success`;
@@ -203,6 +204,10 @@ Linux R-release runner, catching this class of bug before it reaches a release. 
   deliberately **not** on the `pull_request` / `push` matrix — the full sweep needs
   ~11 hours of runner time, far too expensive for a PR gate, so it fans out over a
   six-shard matrix (`MINIEXTENDR_GCTORTURE_SHARD=k/n` partitions the test files).
+- A PR carrying the `full-ci` label runs the sweep too: `ci.yml`'s
+  `gctorture-nightly` job calls the workflow (`workflow_call`), so it shares the
+  PR's CI run and a new push cancels the in-progress sweep. It is not in
+  `ci-success.needs`, so a failure shows red without blocking the merge.
 - `timeout-minutes: 300` per shard (~2 hours of sweeping each, plus the build and
   uneven file weights). The harness also calls `setTimeLimit(Inf)` /
   `options(timeout = Inf)` so R's own wall-clock limits never abort the

@@ -314,6 +314,16 @@ sweep set the variable; `r-stress-tests` is **opt-in on PRs via the
 that adds SEXP storage. The webR workflow is opt-in the same way via the
 `webr` label, and the Windows R CMD check via the `windows` label (non-gating;
 label-only while Windows support is deferred, #1654).
+The other opt-in PR labels are `heap-check` (the `MALLOC_CHECK_` rounds in
+`r-tests`) and `run-e2e` (the standalone round-trip e2e). **`full-ci` turns
+on everything at once**: those five labels, the path filters, the jobs and
+matrix legs that otherwise run only on main-push / cron / dispatch (the extra
+R versions, macOS, the feature legs and feature combos, webR's main-only
+legs), and the nightly gctorture and Miri workflows (called from `ci.yml`).
+Only the Pages deploy, the webR image mirror and the source-package artifact
+upload stay off. It costs many runner-hours (the gctorture sweep alone is
+~11), so keep it for risky changes before merge; removing the label cancels
+the run.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with
