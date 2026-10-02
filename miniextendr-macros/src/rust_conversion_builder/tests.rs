@@ -941,10 +941,11 @@ fn no_na_check_skips_the_special_arms() {
     assert!(!conversion_text(&strict, "x: i64").contains("__mx_has_na"));
 }
 
-/// An `Either` (also under `Missing`) has no R guard, so its check reads the
-/// input SEXP by the arm the value converted to (`__mx_input_has_na`). The
-/// input is bound before the conversion, which may shadow it. Every other
-/// type keeps the plain value check.
+/// An `Either` (also under `Missing` or `Option`) has no R guard, so its
+/// check reads the input SEXP by the arm the value converted to
+/// (`__mx_input_has_na`). The input is bound before the conversion, which may
+/// shadow it. Every other type, `Option<DataFrame>` included, keeps the plain
+/// value check.
 #[test]
 fn no_na_check_on_an_either_reads_the_input() {
     const INPUT_CHECK: &str =
@@ -955,6 +956,8 @@ fn no_na_check_on_an_either_reads_the_input() {
         "x: Either<Option<AsNumeric>, DataFrame>",
         "x: either::Either<Vec<f64>, List>",
         "x: Missing<Either<AsNumeric, DataFrame>>",
+        "x: Option<Either<AsNumericVec, DataFrame>>",
+        "x: Missing<Option<Either<f64, String>>>",
     ] {
         let s = conversion_text(&builder, src);
         let bind = s
@@ -968,6 +971,7 @@ fn no_na_check_on_an_either_reads_the_input() {
     for src in [
         "x: AsNumeric",
         "x: DataFrame",
+        "x: Option<DataFrame>",
         "x: Result<Either<f64, String>, ()>",
     ] {
         let s = conversion_text(&builder, src);

@@ -84,6 +84,7 @@
 //! - `nalgebra_adapter_tests`: Linear algebra adapter (feature: `nalgebra`)
 //! - `either_adapter_tests`: Either type adapter (feature: `either`)
 //! - `match_arg_either_tests`: `match_arg` / `choices` on `Either<T, R>` and, with `several_ok`, `Either<Vec<T>, R>` (feature: `either`)
+//! - `optional_input_tests`: `Option<DataFrame>` / `Option<Either<L, R>>` parameters, `NULL` as `None` (feature: `either`)
 //! - `serde_json_adapter_tests`: JSON serialization adapter (feature: `serde_json`)
 //!
 //! # Miscellaneous
@@ -255,6 +256,8 @@ mod num_complex_adapter_tests;
 #[cfg(feature = "num-traits")]
 mod num_traits_adapter_tests;
 mod option_self_tests;
+#[cfg(feature = "either")]
+mod optional_input_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
 #[cfg(feature = "worker-thread")]

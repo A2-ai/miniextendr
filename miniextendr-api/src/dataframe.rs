@@ -845,6 +845,58 @@ impl TryFromSexp for DataFrame {
     }
 }
 
+/// `NULL` → `None`; any other value converts as a [`DataFrame`] (same view,
+/// attributes and `NA` cells, same error) and becomes `Some`.
+///
+/// Concrete rather than left to the newtype blanket `Option<T>` impl
+/// (`newtype.rs`), which `DataFrame` does not match: without this impl,
+/// `Option<DataFrame>: TryFromSexp` fails with E0275 (overflow) instead of
+/// converting.
+impl TryFromSexp for Option<DataFrame> {
+    type Error = <DataFrame as TryFromSexp>::Error;
+    const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+        <DataFrame as TryFromSexp>::NATIVE_BORROW;
+    const CHARACTER_ONLY: bool = <DataFrame as TryFromSexp>::CHARACTER_ONLY;
+    // `__MX_EXPECTATION` keeps its `None`: the inner text without `NULL or`
+    // would be wrong, and `#[miniextendr]` words an `Option<_>` parameter or
+    // arm itself (`NULL or <T>`).
+
+    // `NULL` (`None`) is "not given" and passes `no_na`.
+    #[inline]
+    fn __mx_has_na(&self) -> bool {
+        self.as_ref()
+            .is_some_and(<DataFrame as TryFromSexp>::__mx_has_na)
+    }
+
+    // As an `Either` arm, a given frame is read by `DataFrame` (it keeps its
+    // `NA` cells); `NULL` holds no `NA`.
+    #[inline]
+    fn __mx_input_has_na(&self, input: SEXP) -> bool {
+        match self {
+            Some(df) => <DataFrame as TryFromSexp>::__mx_input_has_na(df, input),
+            None => false,
+        }
+    }
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            <DataFrame as TryFromSexp>::try_from_sexp(sexp).map(Some)
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            unsafe { <DataFrame as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map(Some)
+        }
+    }
+}
+
 impl IntoR for DataFrame {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {

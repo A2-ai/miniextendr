@@ -39,8 +39,8 @@ These types require an exact R type match. Length must be 1.
 | `bool` | LGLSXP | Error (NA is not true/false) | Error |
 | `Rboolean` | LGLSXP | Error (NA not representable) | Error |
 | `RLogical` | LGLSXP | Returns `RLogical::Na` | Error |
-| `String` | STRSXP | Error (NA_character_) | Error |
-| `&str` | STRSXP | Error (NA_character_) | Error |
+| `String` | STRSXP | `""` (lossy): use `Option<String>` for NA | Error |
+| `&str` | STRSXP | `""` (lossy): use `Option<&str>` for NA | Error |
 
 ### Option Wrappers (Normal Mode)
 
@@ -55,6 +55,28 @@ These types require an exact R type match. Length must be 1.
 | `Option<bool>` | LGLSXP | `None` | `None` |
 | `Option<Rboolean>` | LGLSXP | `None` | `None` |
 | `Option<String>` | STRSXP | `None` | `None` |
+
+### Optional Containers, Data Frames and `Either` (NULL Only)
+
+`Option` around a value with no NA of its own reads only `NULL` as `None`.
+Any other value converts as the inner type and becomes `Some`, with the inner
+conversion's error (the R-side message prefixes the expectation with `NULL or`):
+
+| Rust Type | On NULL | Otherwise | On failure |
+|-----------|---------|-----------|------------|
+| `Option<Vec<T>>`, `Option<HashMap<String, V>>`, `Option<BTreeMap<String, V>>`, `Option<HashSet<T>>`, `Option<BTreeSet<T>>` | `None` | `Some(..)` of the inner conversion | The inner error |
+| `Option<DataFrame>` | `None` | `Some(DataFrame)`: a view of the same object, so class, attributes, row names and `NA` cells are untouched | `DataFrame`'s error: `'x' must be NULL or a data frame: got numeric` |
+| `Option<Either<L, R>>` (feature `either`) | `None`, before either arm is tried | `Some(Either)`: `L` first, then `R`, exactly as `Either<L, R>` | `Either`'s error, both arms' reasons: `'x' must be NULL or a single double or a single string: got integer` |
+
+Neither `DataFrame` nor `Either` has an R-side type check, so neither optional
+form has one. Under `#[miniextendr(no_na)]`, `Option<DataFrame>` keeps the R
+guard `is.null(x) || !anyNA(x)` and refuses a frame with an `NA` cell, as a
+`DataFrame` parameter does. `Option<Either<L, R>>` has no R guard: as for
+`Either<L, R>`, the C wrapper asks the arm the value converted to, so `NULL`
+passes, a number arm refuses `NA` (and what a reading marker reads as `NA`),
+and a data frame arm keeps its `NA` cells. A `match_arg` / `choices`
+`Option<Either<T, R>>` decodes through the choice path instead
+([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)).
 
 ### Coerced Scalar Types (Multi-Source)
 
