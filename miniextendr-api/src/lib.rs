@@ -158,6 +158,7 @@
 //! |---------|-------|-------------|
 //! | `ndarray` | `Array1`–`Array6`, `ArrayD`, views | R vectors/matrices ↔ ndarray |
 //! | `nalgebra` | `DVector`, `DMatrix` | R vectors/matrices ↔ nalgebra |
+//! | `blas-lapack` | `linalg::{matrix_product, solve}`, `sys::{dgemm_, dgesv_}` | R's own BLAS/LAPACK (links `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)`) |
 //!
 //! ### Serialization
 //!
@@ -811,6 +812,10 @@ pub use typed_list::{
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
 pub mod externalptr;
+
+// Matrix product / linear solve through R's own BLAS and LAPACK
+#[cfg(feature = "blas-lapack")]
+pub mod linalg;
 
 // Connection framework (unstable R API - use with caution)
 #[cfg(feature = "connections")]

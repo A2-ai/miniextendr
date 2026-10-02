@@ -417,6 +417,13 @@ test *args:
     leg_ndarray() {
         cargo test -p miniextendr-api --features ndarray --no-fail-fast --test ndarray_generic --test ndarray_all_types --test ndarray_string $cargo_flags -- --no-capture $test_args
     }
+    # Feature-gated like the ndarray suites. The miniextendr-bench binary is a
+    # dependent of miniextendr-api: it checks that the build script's
+    # BLAS/LAPACK link directives reach other crates' targets.
+    leg_blas_lapack() {
+        cargo test -p miniextendr-api --features blas-lapack --no-fail-fast --test blas_lapack $cargo_flags -- --no-capture $test_args &&
+        cargo test -p miniextendr-bench --features blas-lapack --no-fail-fast --test blas_lapack_link $cargo_flags
+    }
     leg_cross() {
         local pkg="$1" tmp
         tmp="$(mktemp -d)"
@@ -432,6 +439,7 @@ test *args:
 
     leg "root workspace" leg_root
     leg "ndarray" leg_ndarray
+    leg "blas-lapack" leg_blas_lapack
     leg "consumer.pkg" leg_cross consumer.pkg
     leg "producer.pkg" leg_cross producer.pkg
     leg "rpkg/src/rust" leg_rpkg

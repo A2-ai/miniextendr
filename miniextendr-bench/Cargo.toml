@@ -21,9 +21,18 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 rayon = ["miniextendr-api/rayon"]
 serde = ["dep:serde", "miniextendr-api/serde"]
 connections = ["miniextendr-api/connections"]
+blas-lapack = ["miniextendr-api/blas-lapack"]
 
 [dev-dependencies]
 divan = "0.1.21"
+
+# A dependent of miniextendr-api calling R's BLAS/LAPACK from a plain cargo
+# binary: miniextendr-api's link directives must reach it. `harness = false`
+# so R starts on the process's main thread, as in a CLI.
+[[test]]
+name = "blas_lapack_link"
+harness = false
+required-features = ["blas-lapack"]
 
 [[bench]]
 name = "translate"

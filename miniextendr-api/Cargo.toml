@@ -22,6 +22,13 @@ rayon = ["dep:rayon"]
 ## Enable custom R connection framework. WARNING: R's connection API is explicitly
 ## marked as unstable and may change between R versions without notice.
 connections = []
+## Declare R's own BLAS/LAPACK routines (`sys::dgemm_`, `sys::dgesv_`) and the
+## safe `linalg` adapters. The routines live in libraries a crate must link
+## itself: an R package adds `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` to
+## PKG_LIBS (the scaffolded configure does this when the package's own
+## `blas-lapack` feature is on), and for cargo-built tests/binaries build.rs
+## emits link directives from `R CMD config BLAS_LIBS` / `LAPACK_LIBS`.
+blas-lapack = []
 doc-lint = ["miniextendr-macros/doc-lint"]
 ## Enable rand crate integration. Provides RRng which wraps R's RNG with rand traits.
 rand = ["dep:rand"]
@@ -166,12 +173,12 @@ full-integrations = [
 ## Every codegen selector / runtime-surface feature that CI wants linted:
 ## the `*-default` forwarding selectors (one mutex side — `r6-default`, NOT
 ## `s7-default`), plus `nonapi`, `connections`, `worker-thread` (via
-## `worker-default`), and `indicatif`. This whole set compiles together — it
-## is the unit CI's `clippy_all` derives.
+## `worker-default`), `indicatif` and `blas-lapack`. This whole set compiles
+## together — it is the unit CI's `clippy_all` derives.
 full-codegen = [
     "strict-default", "coerce-default", "no-preconditions-default", "r6-default",
     "worker-default",
-    "nonapi", "connections", "indicatif",
+    "nonapi", "connections", "indicatif", "blas-lapack",
 ]
 
 ## `full-codegen` with the r6/s7 mutex flipped: `s7-default` instead of
@@ -182,7 +189,7 @@ full-codegen = [
 full-codegen-s7 = [
     "strict-default", "coerce-default", "no-preconditions-default", "s7-default",
     "worker-default",
-    "nonapi", "connections", "indicatif",
+    "nonapi", "connections", "indicatif", "blas-lapack",
 ]
 
 ## Back-compat kitchen sink: integrations + codegen selectors + debug/audit

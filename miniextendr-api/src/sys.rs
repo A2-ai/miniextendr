@@ -1883,6 +1883,192 @@ unsafe extern "C-unwind" {
 
 // endregion
 
+// region: BLAS and LAPACK (R_ext/BLAS.h, R_ext/Lapack.h), `blas-lapack` feature
+//
+// The BLAS and LAPACK that R itself was built with (`libRblas` / `libRlapack`
+// or an external library chosen at R's configure time). `tools:::funAPI()`
+// lists `dgemm_` (`R_ext/BLAS.h`) and `dgesv_` (`R_ext/Lapack.h`) as `api` in
+// R 4.6.1 and R-devel 4.7.0, neither is in `tools:::nonAPI` (R 4.4 to 4.7),
+// and R's BLAS/LAPACK export both from the R 4.4 floor on. The `blas-lapack`
+// feature gates them only because they live in libraries a package must link
+// itself: `PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)`.
+//
+// The ABI is Fortran's, as `R_ext/RS.h` and `R_ext/BLAS.h` spell it:
+//
+// - Symbol: `F77_NAME(dgemm)` is `dgemm_`. `Rconfig.h` defines
+//   `HAVE_F77_UNDERSCORE` on every current R platform (macOS, Linux, Windows
+//   and webR).
+// - Every declared argument is a pointer, scalars included.
+// - Each CHARACTER argument adds a hidden length, passed by value after all
+//   the declared arguments, in the order of the character arguments (`FCLEN`
+//   in the prototypes, `FCONE` = `(FC_LEN_T)1` at call sites). See
+//   [`FC_LEN_T`].
+// - INTEGER is `BLAS_INT` / `La_INT`, which the headers define as `int`
+//   unless `ILP64` is defined. R never defines it, and R's configure requires
+//   a 32-bit Fortran INTEGER equal to C `int`. There is no ILP64 variant
+//   here: the assertion below refuses a target where `c_int` is not 32-bit.
+//
+// R replaces the BLAS/LAPACK invalid-argument handler `xerbla` with one that
+// raises an R error ("BLAS/LAPACK routine 'DGEMM ' gave error code ...", in
+// `src/main/print.c`), so an invalid argument longjmps out of the routine
+// instead of returning. The safe adapters in [`crate::linalg`] validate every
+// argument before calling.
+
+/// Type of the hidden CHARACTER-length arguments of R's Fortran BLAS/LAPACK:
+/// `FC_LEN_T` in R's `Rconfig.h`.
+///
+/// gfortran (since version 8) and LLVM flang pass the length of each
+/// CHARACTER argument as an extra by-value argument after the declared
+/// ones. R's configure probes the Fortran compiler and defines `FC_LEN_T` as
+/// `size_t`, and since R 4.3.0 `R_ext/BLAS.h` and `R_ext/Lapack.h` declare
+/// one `FC_LEN_T` per character argument by default (`USE_FC_LEN_T`).
+/// `usize` is `size_t` on every target R runs on: the macOS, Linux and
+/// Windows `Rconfig.h` define
+/// `FC_LEN_T size_t`, and so does webR's, where `size_t` is 32 bits (its
+/// `libRblas.so` exports `dgemm_` with 15 `i32` parameters: 13 declared
+/// arguments and two lengths).
+///
+/// Omitting the lengths, as the `blas-sys` / `lapack-sys` crates do, is
+/// undefined behaviour with these compilers and a link-time signature
+/// mismatch on webR. Pass `1` for each single-character flag, as `FCONE`
+/// does.
+#[allow(non_camel_case_types)]
+#[cfg(feature = "blas-lapack")]
+pub type FC_LEN_T = usize;
+
+// R's BLAS/LAPACK INTEGER is C `int` (32-bit); see the region comment.
+#[cfg(feature = "blas-lapack")]
+const _: () = assert!(
+    ::std::mem::size_of::<::std::os::raw::c_int>() == 4,
+    "R's BLAS/LAPACK use a 32-bit INTEGER (C int); ILP64 is not supported"
+);
+
+#[cfg(feature = "blas-lapack")]
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
+    /// General matrix product: `C := alpha * op(A) * op(B) + beta * C`,
+    /// `F77_NAME(dgemm)` from `R_ext/BLAS.h` (the routine behind R's `%*%`).
+    ///
+    /// All matrices are column-major. `op(X)` is `X` when its flag is
+    /// `b'N'` (or `b'n'`) and `X'` when it is `b'T'` / `b'C'`.
+    ///
+    /// # Arguments
+    ///
+    /// - `transa`, `transb`: pointers to one ASCII flag character each.
+    /// - `m`, `n`, `k`: `op(A)` is `m x k`, `op(B)` is `k x n`, `C` is
+    ///   `m x n`.
+    /// - `alpha`, `beta`: scalars. With `*beta == 0.0`, `C` need not be
+    ///   initialised (NaNs in it are not propagated).
+    /// - `a`, `lda`: `A` is `lda x ka` with `ka = k` for `'N'` and `ka = m`
+    ///   for `'T'`; `lda >= max(1, rows of A)` (`m` for `'N'`, `k` for
+    ///   `'T'`).
+    /// - `b`, `ldb`: `B` is `ldb x kb` with `kb = n` for `'N'` and `kb = k`
+    ///   for `'T'`; `ldb >= max(1, rows of B)` (`k` for `'N'`, `n` for
+    ///   `'T'`).
+    /// - `c`, `ldc`: `C` is `ldc x n`, `ldc >= max(1, m)`; overwritten with
+    ///   the result.
+    /// - `transa_len`, `transb_len`: the hidden lengths of `transa` and
+    ///   `transb` ([`FC_LEN_T`]); pass `1` each.
+    ///
+    /// Non-finite inputs are not guaranteed to propagate: a BLAS may skip a
+    /// term whose multiplier is zero, so `0 * Inf` or `0 * NaN` can vanish.
+    /// R's `%*%` checks for NA/NaN first and uses its own loop in that case
+    /// (`options(matprod = "default")`).
+    ///
+    /// # Safety
+    ///
+    /// - Every pointer must be valid for the reads (and, for `c`, writes)
+    ///   the dimensions imply, `c` must not overlap `a` or `b`, and nothing
+    ///   may mutate `a` or `b` during the call.
+    /// - An invalid argument (a flag other than N/T/C, a negative dimension,
+    ///   a leading dimension that is too small) makes R's `xerbla` raise an
+    ///   R error, which longjmps over the Rust frames. Validate the
+    ///   arguments first, as [`crate::linalg::matrix_product`] does, or call
+    ///   it where such a longjmp is caught: a `#[miniextendr]` function
+    ///   body, or
+    ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   unwind guard.
+    /// - Call it from R's main thread (the checked variant routes there from
+    ///   a worker) in a process where R is initialised: `xerbla` is R's.
+    ///   A standalone binary must start R first (`miniextendr-engine`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn dgemm_(
+        transa: *const ::std::os::raw::c_char,
+        transb: *const ::std::os::raw::c_char,
+        m: *const ::std::os::raw::c_int,
+        n: *const ::std::os::raw::c_int,
+        k: *const ::std::os::raw::c_int,
+        alpha: *const f64,
+        a: *const f64,
+        lda: *const ::std::os::raw::c_int,
+        b: *const f64,
+        ldb: *const ::std::os::raw::c_int,
+        beta: *const f64,
+        c: *mut f64,
+        ldc: *const ::std::os::raw::c_int,
+        transa_len: FC_LEN_T,
+        transb_len: FC_LEN_T,
+    );
+
+    /// Solve `A X = B` for a general square `A` by LU factorisation with
+    /// partial pivoting: `F77_NAME(dgesv)` from `R_ext/Lapack.h` (the
+    /// routine behind `base::solve()`).
+    ///
+    /// All matrices are column-major. DGESV has no character arguments, so
+    /// no hidden lengths.
+    ///
+    /// # Arguments
+    ///
+    /// - `n`: order of `A` (rows of `B`).
+    /// - `nrhs`: number of right-hand sides (columns of `B`).
+    /// - `a`, `lda`: `A`, `lda x n` with `lda >= max(1, n)`. Overwritten with
+    ///   the factors `L` (unit diagonal not stored) and `U` of `A = P L U`.
+    /// - `ipiv`: `n` pivot indices (1-based): row `i` was interchanged with
+    ///   row `ipiv[i - 1]`.
+    /// - `b`, `ldb`: `B`, `ldb x nrhs` with `ldb >= max(1, n)`. Overwritten
+    ///   with the solution `X` when `*info == 0`.
+    /// - `info`: receives `0` on success, or `i > 0` when `U(i, i)` is
+    ///   exactly zero: `A` is singular, the factorisation is complete but `X`
+    ///   was not computed. A negative value would report an invalid
+    ///   argument, but under R `xerbla` raises an R error instead (see
+    ///   Safety).
+    ///
+    /// Only an exactly zero pivot is reported: a nearly singular `A` returns
+    /// `info = 0` and an inaccurate `X`. `base::solve()` additionally
+    /// estimates the reciprocal condition number (`dgecon`) and errors below
+    /// `tol`; DGESV does not.
+    ///
+    /// # Safety
+    ///
+    /// - `a` must be valid for `lda * n` reads and writes, `b` for
+    ///   `ldb * nrhs`, `ipiv` for `n` writes, and none of them may overlap.
+    /// - An invalid argument (a negative `n` or `nrhs`, `lda` or `ldb` below
+    ///   `max(1, n)`) makes R's `xerbla` raise an R error, which longjmps
+    ///   over the Rust frames. Validate the arguments first, as
+    ///   [`crate::linalg::solve`] does, or call it where such a longjmp is
+    ///   caught: a `#[miniextendr]` function body, or
+    ///   [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect).
+    ///   `#[r_ffi_checked]` gives thread routing and checking only, not an
+    ///   unwind guard.
+    /// - Call it from R's main thread (the checked variant routes there from
+    ///   a worker) in a process where R is initialised: `xerbla` is R's.
+    ///   A standalone binary must start R first (`miniextendr-engine`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn dgesv_(
+        n: *const ::std::os::raw::c_int,
+        nrhs: *const ::std::os::raw::c_int,
+        a: *mut f64,
+        lda: *const ::std::os::raw::c_int,
+        ipiv: *mut ::std::os::raw::c_int,
+        b: *mut f64,
+        ldb: *const ::std::os::raw::c_int,
+        info: *mut ::std::os::raw::c_int,
+    );
+}
+
+// endregion
+
 // region: Memory allocation (R_ext/Memory.h)
 
 #[r_ffi_checked]

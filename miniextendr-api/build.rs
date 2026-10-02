@@ -115,6 +115,117 @@ fn link_to_r() {
     if target_os != "windows" {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}", r_libdir);
     }
+
+    if env::var_os("CARGO_FEATURE_BLAS_LAPACK").is_some() {
+        link_blas_lapack(&r_home, &target_os, &r_libdir);
+    }
+}
+
+/// Links R's own LAPACK and BLAS for cargo-built targets (`blas-lapack`).
+///
+/// An R package gets these libraries from `PKG_LIBS = $(LAPACK_LIBS)
+/// $(BLAS_LIBS) $(FLIBS)` in its Makevars: R does the final link, and a
+/// staticlib drops the dylib directives emitted here, which makes them inert
+/// for the package build. They matter for cargo-built test binaries, CLIs
+/// and other dependents' targets that call `sys::dgemm_` / `sys::dgesv_`:
+/// `rustc-link-search` / `rustc-link-lib` propagate to every target that
+/// links this crate.
+///
+/// The flags come from `R CMD config LAPACK_LIBS` and `BLAS_LIBS`, in R's
+/// order. `FLIBS` is not linked: R's BLAS/LAPACK are shared libraries that
+/// record their own Fortran runtime dependency (on CRAN macOS by absolute
+/// path to R's bundled `libgfortran.5.dylib`), and nothing here is Fortran.
+/// `FLIBS` would add `-L/opt/gfortran/...` and `-lgfortran`, which fail to
+/// resolve on machines without the Fortran toolchain.
+fn link_blas_lapack(r_home: &str, target_os: &str, r_libdir: &str) {
+    // R's front end. CI's lint job points R_HOME at an empty directory
+    // (clippy never links), so without the front end there is nothing to
+    // query, exactly as the -lR above then names a missing library.
+    let r_bin = if cfg!(windows) { "bin/R.exe" } else { "bin/R" };
+    let r = std::path::Path::new(r_home).join(r_bin);
+    if !r.is_file() {
+        return;
+    }
+    // libR's directory already has a search path and an rpath; R's own
+    // libRblas / libRlapack usually live there too.
+    let mut seen_dirs = vec![r_libdir.to_string()];
+    for var in ["LAPACK_LIBS", "BLAS_LIBS"] {
+        let output = Command::new(&r)
+            .args(["CMD", "config", var])
+            .output()
+            .unwrap_or_else(|e| panic!("failed to run `R CMD config {var}`: {e}"));
+        if !output.status.success() {
+            panic!(
+                "`R CMD config {var}` failed ({:?}): {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let flags = String::from_utf8(output.stdout)
+            .unwrap_or_else(|_| panic!("`R CMD config {var}` output is not UTF-8"));
+        emit_link_flags(&flags, target_os, &mut seen_dirs);
+    }
+}
+
+/// Turns linker flags from `R CMD config` into cargo directives.
+///
+/// `-L<dir>` (skipped when the directory is missing) and `-l<name>` become
+/// `rustc-link-search` / `rustc-link-lib`, and `-framework <name>` a
+/// framework link; these propagate to dependents. Anything else is passed
+/// as `rustc-link-arg`, which reaches this crate's own targets only. Each
+/// new library directory also gets an rpath for this crate's own binaries.
+fn emit_link_flags(flags: &str, target_os: &str, seen_dirs: &mut Vec<String>) {
+    let mut tokens = split_flags(flags).into_iter();
+    while let Some(token) = tokens.next() {
+        if let Some(dir) = token.strip_prefix("-L") {
+            if std::path::Path::new(dir).is_dir() && !seen_dirs.iter().any(|d| d == dir) {
+                seen_dirs.push(dir.to_string());
+                println!("cargo:rustc-link-search=native={dir}");
+                if target_os != "windows" {
+                    println!("cargo:rustc-link-arg=-Wl,-rpath,{dir}");
+                }
+            }
+        } else if let Some(lib) = token.strip_prefix("-l") {
+            println!("cargo:rustc-link-lib={lib}");
+        } else if token == "-framework" {
+            if let Some(framework) = tokens.next() {
+                println!("cargo:rustc-link-lib=framework={framework}");
+            }
+        } else {
+            println!("cargo:rustc-link-arg={token}");
+        }
+    }
+}
+
+/// Splits a flag string on whitespace, honouring double quotes (Windows R
+/// reports `-L"C:/Program Files/R/R-4.6.1/bin/x64"`).
+fn split_flags(flags: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut in_token = false;
+    for ch in flags.chars() {
+        match ch {
+            '"' => {
+                quoted = !quoted;
+                in_token = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if in_token {
+                    tokens.push(std::mem::take(&mut current));
+                    in_token = false;
+                }
+            }
+            c => {
+                current.push(c);
+                in_token = true;
+            }
+        }
+    }
+    if in_token {
+        tokens.push(current);
+    }
+    tokens
 }
 
 /// Determines the directory containing R's shared library.

@@ -651,6 +651,16 @@ jobs:
       - name: Tests (miniextendr-api, ndarray feature)
         run: cargo test -p miniextendr-api --locked --no-fail-fast --features ndarray --test ndarray_generic --test ndarray_all_types --test ndarray_string
 
+      # The blas-lapack suites are feature-gated the same way. The second
+      # binary lives in miniextendr-bench, a dependent of miniextendr-api: it
+      # checks that the build script's BLAS/LAPACK link directives reach other
+      # crates' targets, and it runs without LD_LIBRARY_PATH so the rpath from
+      # miniextendr-engine's `DEP_R_LIBDIR` metadata is what finds libR.
+      - name: Tests (blas-lapack feature)
+        run: |
+          cargo test -p miniextendr-api --locked --no-fail-fast --features blas-lapack --test blas_lapack
+          env -u LD_LIBRARY_PATH cargo test -p miniextendr-bench --locked --no-fail-fast --features blas-lapack --test blas_lapack_link
+
       # cargo-revendor is a standalone workspace excluded from the root
       # workspace, so the `--workspace` step above never reaches it (#778).
       - name: Tests (cargo-revendor)

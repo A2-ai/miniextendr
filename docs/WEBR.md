@@ -395,6 +395,18 @@ rig-installed arm64 `R` on `PATH` (see "arm64-native dev image" below).
   too until #745: PR #749 proved the link succeeds without it and tier-3
   confirmed the runtime load is unaffected — wasm32-unknown-emscripten is
   position-independent by default, so the flag was a no-op.)
+- **`blas-lapack` needs webR's wasm BLAS/LAPACK in `PKG_LIBS`.** The
+  package's `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` line resolves from the
+  install's `R_MAKEVARS_USER`. webR's `packages/webr-vars.mk` overrides
+  `FLIBS` (flang's `libFortranRuntime.a`) but leaves `BLAS_LIBS` /
+  `LAPACK_LIBS` at the host R's native libraries, which `wasm-ld` rejects as
+  "unknown file type". `rwasm`'s `webr-vars.mk` points them at
+  `/opt/webr/wasm/R-<ver>/lib/R/lib/libR{blas,lapack}.so`; Phase 2 of the
+  webR workflow (and `tests/webr-smoke.sh`) does the same with a wrapper
+  makefile that includes webr-vars.mk and adds two `override` lines. The
+  wasm `dgemm_` / `dgesv_` signatures (15 / 8 `i32` parameters) match
+  `sys::dgemm_` / `sys::dgesv_`, the hidden CHARACTER lengths included. See
+  [LINKING.md](LINKING.md#blas-and-lapack-blas-lapack).
 
 ## Running a webR session in Node (the two-bundle gotcha)
 

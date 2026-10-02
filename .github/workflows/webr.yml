@@ -423,9 +423,22 @@ jobs:
           # the "empty library otherwise R might try to load wasm packages"
           # comment). --no-byte-compile mirrors rwasm's flag set too.
           mkdir -p /tmp/wasm-lib
+          # rpkg enables `blas-lapack`, so PKG_LIBS carries
+          # $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS). webR's webr-vars.mk sets
+          # FLIBS to flang's wasm runtime but leaves the other two at the
+          # host R's native libRblas/libRlapack, which wasm-ld rejects
+          # ("unknown file type"). Point them at webR's wasm builds, as
+          # rwasm's webr-vars.mk does.
+          wasm_rlib=$(echo /opt/webr/wasm/R-*/lib/R/lib)
+          test -f "$wasm_rlib/libRblas.so" && test -f "$wasm_rlib/libRlapack.so"
+          {
+            echo "include /opt/webr/packages/webr-vars.mk"
+            echo "override BLAS_LIBS = -L$wasm_rlib -lRblas"
+            echo "override LAPACK_LIBS = -L$wasm_rlib -lRlapack"
+          } > /tmp/webr-vars-blas.mk
           WASM_TOOLS=/opt/webr/tools \
           R_SOURCE=/opt/webr/R/build/R-4.6.0 \
-          R_MAKEVARS_USER=/opt/webr/packages/webr-vars.mk \
+          R_MAKEVARS_USER=/tmp/webr-vars-blas.mk \
           /opt/webr/host/R-4.6.0/bin/R CMD INSTALL \
               --library=/tmp/wasm-lib \
               --no-docs --no-test-load --no-staged-install --no-byte-compile \

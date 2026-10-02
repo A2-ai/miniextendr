@@ -365,9 +365,18 @@ RSCRIPT
         # load wasm packages' comment), then copies into the final tree.
         # --no-byte-compile mirrors rwasm's flag set.
         rm -rf /tmp/wasm-lib && mkdir -p /tmp/wasm-lib
+        # rpkg enables blas-lapack: point BLAS_LIBS / LAPACK_LIBS at webR's
+        # wasm libRblas / libRlapack (webr-vars.mk leaves them at the host
+        # R's native ones, which wasm-ld rejects), as CI tier 2 and rwasm do.
+        wasm_rlib=\$(echo ${WEBR_ROOT}/wasm/R-*/lib/R/lib)
+        {
+            echo 'include ${WEBR_VARS_MK}'
+            echo \"override BLAS_LIBS = -L\$wasm_rlib -lRblas\"
+            echo \"override LAPACK_LIBS = -L\$wasm_rlib -lRlapack\"
+        } > /tmp/webr-vars-blas.mk
         WASM_TOOLS=${WASM_TOOLS} \
         R_SOURCE=${R_SOURCE} \
-        R_MAKEVARS_USER=${WEBR_VARS_MK} \
+        R_MAKEVARS_USER=/tmp/webr-vars-blas.mk \
         ${R_HOST_EXE} CMD INSTALL \
             --library=/tmp/wasm-lib \
             --no-docs --no-test-load --no-staged-install --no-byte-compile \
