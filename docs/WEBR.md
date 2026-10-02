@@ -10,7 +10,8 @@ webR container — emcc side-module link), and tier 3 (a webR Node session
 that drives `library(miniextendr)` against the wasm install). All three run
 on every push to `main` and on `workflow_dispatch`; on a pull request they
 run **only when the PR carries the `webr` label** (apply it when the PR
-touches wasm-specific code, or when a reviewer asks). A local
+touches wasm-specific code, or when a reviewer asks) or the `full-ci` label,
+which also turns on the main-only legs and ignores the path filter. A local
 `just docker-webr-smoke` recipe drives the same path inside the pinned
 webR Docker image.
 
@@ -510,13 +511,17 @@ not installed locally. No `loadNamespace()`, no network.
 standalone, #1271 monorepo) and a monorepo-template wasm check
 (`monorepo-wasm-check`, see below). Every job except the cheap
 `pin-lockstep` digest grep is gated on PRs behind the `webr` label
-(push-to-main and `workflow_dispatch` run them unconditionally). **Tier 1**
-is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
-the two cross-package stub crates (#493), on labeled PRs matching the paths filter
+(push-to-main and `workflow_dispatch` run them unconditionally). On a PR,
+every job also needs a change under the paths filter
 (`miniextendr-api/**`, `miniextendr-macros/**`, `miniextendr-engine/**`,
 `miniextendr-lint/**`, `rpkg/**`, `minirextendr/**`, `tests/cross-package/**`,
 `tests/webr-node-smoke/**`, `tests/webr-smoke.sh`, `Cargo.{toml,lock}`,
-`Dockerfile.webr`, `Dockerfile.webr-arm64`, `.github/workflows/webr.yml`).
+`Dockerfile.webr`, `Dockerfile.webr-arm64`, `.github/workflows/webr.yml`),
+which the workflow's `changes` job checks. The `full-ci` label skips that
+filter and runs everything a main push runs, the main-only legs of
+`webr-install` included. **Tier 1**
+is `cargo check --target wasm32-unknown-emscripten` for `miniextendr-api` plus
+the two cross-package stub crates (#493).
 It catches cfg-gating regressions and macro-emission bugs that fail to
 compile on wasm32; it does **not** catch link errors or runtime issues —
 those are tier 2/3 work.
@@ -539,8 +544,8 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
 installs the package's Imports from `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
-is what proves it *loads* in a real webR runtime. On main-push and
-`workflow_dispatch` runs (not per-PR — wall time gates PRs) tier 3 also
+is what proves it *loads* in a real webR runtime. On main-push,
+`workflow_dispatch` and `full-ci` runs (not per-PR — wall time gates PRs) tier 3 also
 runs the informational testthat pass (#1255, `SMOKE_TESTTHAT=1`, never
 gating on test failures — see "Building locally" above).
 
@@ -574,8 +579,8 @@ monorepo with `create_miniextendr_monorepo()`, runs one native
 `R CMD INSTALL` (to regenerate `wasm_registry.rs` — the wasm build hard-fails
 on a missing/stub copy), then `cargo check --target wasm32-unknown-emscripten`
 on the scaffolded rpkg crate: no emcc link, no webR container, but it covers
-the template `build.rs`/cfg-gating drift class. On main-push and
-`workflow_dispatch`, the `webr-install` job additionally runs the full
+the template `build.rs`/cfg-gating drift class. On main-push,
+`workflow_dispatch` and `full-ci` PRs, the `webr-install` job additionally runs the full
 **monorepo scaffold leg**: the same native → roxygenise → native → `CC=emcc`
 sequence on the monorepo scaffold (`mxmono` — its stock `add()`/`hello()` are
 kept as-is, extending the intentional #1273 collision to a third package with
