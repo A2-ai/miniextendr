@@ -39,6 +39,14 @@ running `R RHOME`) and emits:
 This is the exact `cargo:` directive needed so dependents get `-lR`
 automatically (the benchmark requested `println!(\"cargo:rustc-link-lib=R\");`).
 
+It also exports `R_HOME` and R's library directory as `links = "R"` metadata
+(`DEP_R_HOME` / `DEP_R_LIBDIR` in a direct dependent's build script), because
+the engine's own rpath does not reach dependents' binaries. See
+[LINKING.md](LINKING.md#rpath-behavior) for the dependent `build.rs` snippet.
+A binary that uses miniextendr-api's `blas-lapack` feature must initialise R
+through the engine before calling R's BLAS/LAPACK: their error handler
+`xerbla` raises an R error ([LINKING.md](LINKING.md#blas-and-lapack-blas-lapack)).
+
 ### 2) Initialization uses `Rf_initialize_R()` + a single `setup_Rmainloop()`
 
 Instead of calling `Rf_initEmbeddedR()` (which performs `setup_Rmainloop()`

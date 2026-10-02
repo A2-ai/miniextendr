@@ -23,6 +23,7 @@ Only `default` features are enabled automatically.
 | **Matrix / Array** | | |
 | `ndarray` | N-dimensional array conversions (`Array1`..`Array6`, views) | ndarray |
 | `nalgebra` | Linear algebra types (`DVector`, `DMatrix`, `SVector`, `SMatrix`) | nalgebra |
+| `blas-lapack` | R's own BLAS/LAPACK: raw `sys::dgemm_` / `sys::dgesv_`, safe `linalg::matrix_product` / `linalg::solve` | (none; links R's `libRblas` / `libRlapack`) |
 | **Numeric Types** | | |
 | `num-bigint` | Arbitrary-precision integers (`BigInt`, `BigUint`) | num-bigint, num-integer |
 | `rust_decimal` | Fixed-point decimals (`Decimal`) | rust_decimal |
@@ -257,6 +258,28 @@ Linear algebra type conversions between R vectors/matrices and `nalgebra`.
 - Static: `SVector<T, N>`, `SMatrix<T, R, C>`
 
 **Adapter traits:** `RVectorOps`, `RMatrixOps`
+
+### `blas-lapack`
+
+Calls the BLAS and LAPACK that R itself uses (reference `libRblas` /
+`libRlapack`, or the external BLAS R was configured with), so results match
+R's own `%*%` and `solve()`.
+
+- `sys::dgemm_` (C = alpha * op(A) * op(B) + beta * C) and `sys::dgesv_`
+  (LU solve of A X = B): raw declarations through `#[r_ffi_checked]`, with
+  each CHARACTER argument's hidden length passed explicitly as
+  `sys::FC_LEN_T` (`usize`).
+- `linalg::matrix_product(m, n, k, a, b)` and `linalg::solve(n, nrhs, a, b)`:
+  safe adapters over column-major `&[f64]` that copy their inputs, check
+  every length and dimension (no overflow), never pass a zero-size problem to
+  Fortran, and report a singular matrix as `LinalgError::Singular { index }`.
+
+Linking is not automatic for R packages: declare a package feature that
+forwards to `miniextendr-api/blas-lapack`, which `configure` turns into
+`$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` in `PKG_LIBS`. Cargo-built tests and
+binaries get the libraries from the build script, and must start R (via
+`miniextendr-engine`) before calling them. See
+[LINKING.md](LINKING.md#blas-and-lapack-blas-lapack).
 
 ---
 
