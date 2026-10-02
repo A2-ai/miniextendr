@@ -39,31 +39,33 @@ Common helpers from `tests/cross-package/justfile`:
 - `just clean` - remove build artifacts and the package library
 - `just bench-interop` - run `bench-interop.R` against the installed packages
 
-The recipes install both packages into `.r-lib/` in this directory (gitignored)
-and put it first on `.libPaths()` through `R_LIBS`, so each checkout keeps its
-own installs.
+The recipes that start R run it in the repo root, where the root `.Rprofile`
+activates rv, so the dependencies come from rv's library. They install both
+packages into `.r-lib/` in this directory (gitignored) and put it first on
+`.libPaths()` inside each R session (rv replaces `.libPaths()` and drops
+`R_LIBS`), so each checkout keeps its own installs.
 
 ### Manual build
 
 If you are not using `just`, the equivalent manual flow is:
 
 ```bash
-# R ignores an R_LIBS entry that does not exist yet
+# .libPaths() ignores a directory that does not exist yet
 mkdir -p .r-lib
 
-# Build producer.pkg
+# Configure producer.pkg and consumer.pkg
 cd producer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
 bash ./configure
-R_LIBS=../.r-lib Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
-cd ..
-
-# Build consumer.pkg
-cd consumer.pkg
+cd ../consumer.pkg
 if command -v autoconf >/dev/null 2>&1; then autoconf; fi
 bash ./configure
-R_LIBS=../.r-lib Rscript -e 'devtools::install(".", upgrade=FALSE, quick=TRUE)'
-cd ..
+
+# Install both from the repo root, where rv activates
+cd ../../..
+Rscript -e '.libPaths(c("tests/cross-package/.r-lib", .libPaths()))' \
+  -e 'devtools::install("tests/cross-package/producer.pkg", upgrade=FALSE, quick=TRUE)' \
+  -e 'devtools::install("tests/cross-package/consumer.pkg", upgrade=FALSE, quick=TRUE)'
 ```
 
 If you change exported Rust functions or methods, regenerate wrappers and

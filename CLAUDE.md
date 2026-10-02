@@ -176,6 +176,15 @@ the change in this section. Don't try to work around a mismatch by
 installing into the temporary `__rv_R_mismatch` library — packages
 won't persist and tests still won't find `testthat`.
 
+**R recipes start R in the repo root.** The root `.Rprofile` activates rv only
+for an R started there; an R started in `rpkg/` or `tests/cross-package/` gets
+the personal library and its roxygen2. So the cross-package R recipes carry
+`[working-directory("../..")]` and take package paths as arguments, and
+`just configure` runs `bash ./configure` from a root R, whose `R_LIBS_USER` /
+`R_LIBS_SITE` (set by rv's `activate.R`) configure's own Rscript calls inherit.
+rv's `activate.R` replaces `.libPaths()` and drops `R_LIBS`, so prepend an extra
+library inside the session: `.libPaths(c(lib, .libPaths()))`.
+
 For deeper context (rv vs renv, dependency layout, sync flow) see the
 [`rv` skill](.claude/skills/miniextendr-rv/SKILL.md).
 
@@ -480,7 +489,7 @@ but don't `git add` the output. See `site/CLAUDE.md` for the full pipeline.
 
 - **"could not find function"**: check `#[miniextendr]` + `pub`, module reachable from `lib.rs`, then `just configure && just rcmdinstall && just force-document`.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
-- **Permission errors installing**: `R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg` or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
+- **Permission errors installing**: `R CMD INSTALL --library=/tmp/claude/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
 - **Leaked vendor tarball** (missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings): `just clean-vendor-leak`. See "The latch leak" above. `miniextendr_doctor()` detects both conditions.
 - **Release workflow on AlmaLinux 8 / macOS arm64**: see `docs/RELEASE_WORKFLOW.md`. Use `minirextendr::use_release_workflow()` to scaffold a known-good template (#448).

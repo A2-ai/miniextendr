@@ -48,7 +48,7 @@ dependencies = [
     {name = "miniextendr",  dependencies_only = true, path = "rpkg"},
     "testthat",
     "devtools",
-    {name = "roxygen2", url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz"},
+    {name = "roxygen2", repository = "CRAN"},
     # …
 ]
 ```
@@ -57,10 +57,18 @@ dependencies = [
 deps but not the local package itself (we install that via
 `just rcmdinstall` / `just minirextendr-install`).
 
-The pinned `roxygen2_8.0.0.tar.gz` URL is intentional — current code targets
-roxygen2 8.0.0; the CRAN release moved on and would re-render man pages
-differently. The pin is the source of truth in `rproject.toml`, mirrored by
-`Config/roxygen2/version: 8.0.0` in `rpkg/DESCRIPTION`.
+roxygen2 comes from CRAN (latest), not the dated snapshot, on purpose: CI's
+Sync Checks job regenerates NAMESPACE / man with RSPM's latest roxygen2, so the
+committed files must come from the same release (see the comment in
+`rproject.toml`; `Config/roxygen2/version` in each `DESCRIPTION` records it).
+
+## R started outside the repo root
+
+The root `.Rprofile` activates rv only for an R started in the repo root (it
+sources `rv/scripts/*.R` by relative path, and `rv info` reads `rproject.toml`
+from the current directory); an R started in `rpkg/` or `tests/cross-package/`
+gets the personal library and its roxygen2. How the recipes handle it: root
+`CLAUDE.md` § "R version (rv + rig)".
 
 ## The R-version contract (the only thing that goes wrong here)
 
@@ -159,10 +167,10 @@ deps just edit `rproject.toml` and run `rv sync`.
    step will recreate it.
 
 If the new package needs a non-CRAN source (pinned URL, git ref, local path),
-the toml supports the same syntax as the existing `roxygen2`:
+the toml supports these forms:
 
 ```toml
-{name = "roxygen2", url = "https://cran.r-project.org/src/contrib/roxygen2_8.0.0.tar.gz"},
+{name = "somepkg", url = "https://cran.r-project.org/src/contrib/somepkg_1.0.0.tar.gz"},
 {name = "minirextendr", dependencies_only = true, path = "minirextendr"},
 {name = "somelib", git = "https://github.com/org/somelib.git", tag = "v1.2.3"},
 ```
@@ -209,7 +217,6 @@ If any of these fail, you're in safe mode — see the fix recipes above.
 
 - Root `CLAUDE.md` § "R version (rv + rig)" — the abbreviated version of this
   doc, intended for first-touch contributors.
-- `rproject.toml` (the `roxygen2` dependency entry) and
-  `rpkg/DESCRIPTION` (`Config/roxygen2/version`) — the source of truth for the
-  pinned `roxygen2_8.0.0.tar.gz` URL.
+- `rproject.toml` (the `roxygen2` dependency entry) and `rv.lock` (its exact
+  version), recorded as `Config/roxygen2/version` in each `DESCRIPTION`.
 - `[[miniextendr-build]]` skill — what to do *after* you've sorted R/rv.

@@ -582,11 +582,17 @@ expand *cargo_flags:
 #     (i.e. inside R CMD INSTALL <built-tarball>). Configure unpacks the
 #     tarball and writes a vendored source-replacement config.
 #
+# configure's own Rscript calls (tools/detect-features.R, the cli include path)
+# run in rpkg/, where the root .Rprofile does not activate rv. So an R started
+# here, in the repo root, runs configure: rv's activate.R exports R_LIBS_USER /
+# R_LIBS_SITE = rv's library, and configure inherits them, as under
+# `R CMD INSTALL rpkg`.
+#
 # See docs/CRAN_COMPATIBILITY.md for the full table.
 configure:
     cd rpkg && \
-    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    bash ./configure
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi
+    Rscript -e 'setwd("rpkg"); quit(status = system2("bash", "./configure"))'
 
 # Skip configure when build outputs are already up to date.
 #
@@ -1137,25 +1143,32 @@ minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
 # Cross-package trait dispatch testing (tests/cross-package)
 # ============================================================================
 
+[group("cross-package")]
 cross-document:
     cd tests/cross-package && just document-all
 
+[group("cross-package")]
 cross-configure:
     cd tests/cross-package && just configure-all
 
 alias cross-build := cross-install
+[group("cross-package")]
 cross-install:
     cd tests/cross-package && just install-all
 
+[group("cross-package")]
 cross-test:
     cd tests/cross-package && just test-all
 
+[group("cross-package")]
 cross-check:
     cd tests/cross-package && just check-all
 
+[group("cross-package")]
 cross-clean:
     cd tests/cross-package && just clean
 
+[group("cross-package")]
 cross-dev:
     cd tests/cross-package && just dev
 
