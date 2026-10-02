@@ -106,6 +106,7 @@ upgrade_miniextendr_package <- function(path = ".",
   use_miniextendr_description()
   use_miniextendr_rbuildignore(subdir = tpl_subdir)
   upgrade_gitignore(subdir = tpl_subdir)
+  if (monorepo) upgrade_root_gitignore(layout$root, layout$subdir)
   use_miniextendr_gitattributes(subdir = tpl_subdir)
 
   # --- configure.ac ---
@@ -211,6 +212,27 @@ upgrade_layout <- function(path, rpkg_subdir = NULL) {
     ))
   }
   list(pkg = file.path(path, subdir), root = path, subdir = subdir)
+}
+
+#' Add the monorepo root template's entries to the workspace `.gitignore`
+#'
+#' The package-level `upgrade_gitignore()` never reaches the workspace root
+#' (#1670). This adds the patterns of `templates/monorepo/gitignore`, with
+#' `{{rpkg_name}}` rendered as the package subdirectory, the way
+#' `use_miniextendr_gitignore()` does: entries are only added, and existing
+#' lines, user lines included, stay. No root entry has been retired yet, so
+#' there is no obsolete list here. Call it with the "monorepo" template type
+#' active, as `upgrade_miniextendr_package()` does.
+#'
+#' @param root Absolute path to the monorepo workspace root.
+#' @param rpkg_name The R package subdirectory, relative to `root`.
+#' @noRd
+upgrade_root_gitignore <- function(root, rpkg_name) {
+  patterns <- gsub("{{rpkg_name}}", rpkg_name, mx_ignore_patterns("gitignore"),
+                   fixed = TRUE)
+  with_project(root)
+  usethis::use_git_ignore(patterns, directory = ".")
+  invisible()
 }
 
 #' Point out files an older scaffold leaves behind

@@ -484,6 +484,21 @@ upgrade_miniextendr_package(path = "mypackage")
 
 Updates templates, vendored crates, and configure.ac to match the latest minirextendr version.
 
+- **Monorepos.** Pass the workspace root or the R package subdirectory. The
+  upgrade renders the monorepo templates and adds the root template's entries
+  to the workspace root `.gitignore`. It only adds lines; your own lines stay.
+- **`tools/config.guess` / `tools/config.sub`.** A copy whose `timestamp=`
+  line is newer than the bundled one is kept, so a script you refreshed from
+  GNU config is not downgraded.
+- **Leftover files.** The upgrade never deletes files. Its closing summary
+  lists the ones an older scaffold leaves behind:
+  - `tools/wrapper-freshness.R` and `tools/wrapper-inputs.rds`, from the old
+    pre-shipped wrapper path. `tools/write-wrappers.R` replaced it, and you
+    can delete both files.
+  - A git-tracked `src/<pkg>-win.def`. configure generates this file and the
+    scaffold now gitignores it, but an ignore rule does not untrack a file
+    you committed earlier. Run `git rm --cached src/<pkg>-win.def`.
+
 ## Caching
 
 ```r

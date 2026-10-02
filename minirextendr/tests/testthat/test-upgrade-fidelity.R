@@ -152,7 +152,10 @@ test_that("a monorepo upgrade renders the monorepo templates; a later standalone
 
     expect_true("monorepo/rpkg/configure.ac" %in% seen$paths, info = from)
     expect_true("monorepo/rpkg/tools/lock-shape-check.R" %in% seen$paths, info = from)
-    expect_true(all(startsWith(seen$paths, "monorepo/rpkg/")),
+    # The workspace-root gitignore template is the one read outside
+    # monorepo/rpkg/; it goes to the root .gitignore (#1670).
+    expect_true("monorepo/gitignore" %in% seen$paths, info = from)
+    expect_true(all(startsWith(setdiff(seen$paths, "monorepo/gitignore"), "monorepo/rpkg/")),
                 info = paste(c(from, seen$paths), collapse = "\n"))
     expect_identical(minirextendr:::get_template_type(), "rpkg")
 
@@ -264,6 +267,37 @@ test_that("the upgrade summary stays quiet without leftovers or a git repository
 
   expect_no_match(text, "No longer used by the package")
   expect_no_match(text, "git rm --cached")
+})
+
+# endregion -------------------------------------------------------------------
+
+# region: #1670 — monorepo root .gitignore -----------------------------------
+
+test_that("a monorepo upgrade adds the root template's entries and keeps user lines", {
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  for (from in c("root", "pkg")) {
+    tmp <- withr::local_tempdir()
+    dirs <- make_upgrade_monorepo(tmp, "r bindings")
+    root_ignore <- file.path(dirs$root, ".gitignore")
+    # A pre-#1656 root file: no `<pkg>/src/*-win.def`, plus user lines.
+    user <- c("# Team notes", "notes/", "/target/", "r bindings/src/Makevars")
+    writeLines(user, root_ignore)
+
+    run_upgrade(dirs[[from]])
+
+    after <- readLines(root_ignore)
+    expect_identical(after[seq_along(user)], user, info = from)
+    expect_true("r bindings/src/*-win.def" %in% after, info = from)
+    expect_true("r bindings/R/*-wrappers.R" %in% after, info = from)
+    expect_false(any(grepl("{{rpkg_name}}", after, fixed = TRUE)), info = from)
+    # Entries already present are not repeated; template comments are not copied.
+    expect_identical(sum(after == "/target/"), 1L, info = from)
+    expect_false("# Rust build artifacts" %in% after, info = from)
+
+    # A rerun adds nothing.
+    run_upgrade(dirs[[from]])
+    expect_identical(readLines(root_ignore), after, info = from)
+  }
 })
 
 # endregion -------------------------------------------------------------------
