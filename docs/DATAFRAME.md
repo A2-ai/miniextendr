@@ -674,13 +674,15 @@ compute verbs return — single key column → scalar `GroupKey`, multiple → a
 0-based, and **keeps** `.drop = FALSE` empty groups as groups with empty index
 vectors (mirroring `group_by`'s retention of empty factor levels).
 
-Unlike `group_by`, this does **no** recomputation: a frame that is not grouped
-(dplyr's test: class `grouped_df` or `rowwise_df` plus a `groups` data-frame
-attribute) is a `NotGroupedDataFrame` error — callers who want the framework to
-compute grouping use `group_by` / `group_by_multi`. Other errors:
-`MissingGroupRows` (the `groups` frame lacks a `.rows` column), `BadGroupRows`
-(a `.rows` element is not an integer/integerish vector), and
-`UnsupportedGroupColumn` (a key column of an unsupported type).
+Unlike `group_by`, this does **no** recomputation: a frame that does not
+inherit from `grouped_df` or `rowwise_df` is a `NotGroupedDataFrame` error —
+callers who want the framework to compute grouping use `group_by` /
+`group_by_multi`. A frame that does inherit from one of them but whose `groups`
+attribute is corrupt is reported as corrupt, with the same structural checks
+as `group_declaration` below (`GroupsNotDataFrame`, `MissingGroupRows`,
+`BadGroupRows`; a `.rows` list of doubles is rejected, as in dplyr). Other
+errors: `UnequalLengths` (a key column's length differs from that of `.rows`)
+and `UnsupportedGroupColumn` (a key column of an unsupported type).
 
 **It trusts the cached rows.** `.rows` is dplyr's cache of the grouping, and
 `group_by_metadata` uses it as it is, after checking that it still fits the
@@ -702,22 +704,43 @@ don't pass rowwise frames here.
 A function that groups the frame's current rows itself only needs the
 declaration — the grouping variables and the `.drop` policy.
 `group_declaration()` returns exactly what dplyr's `group_vars()` and
-`group_by_drop_default()` report, or `None` when the frame is not grouped. It
-reads no `.rows` and partitions nothing, so the key-column types and stale
+`group_by_drop_default()` report: `Ok(None)` when the frame is not grouped,
+and an error when its grouping is corrupt, where `group_vars()` errors too. It
+reads no row index and partitions nothing, so the key-column types and stale
 metadata never matter:
 
 ```rust
 // df arrived as dplyr::group_by(data, site, day, .drop = FALSE)
-if let Some(decl) = df.group_declaration() {
+if let Some(decl) = df.group_declaration()? {
     // decl.vars == ["site", "day"]; decl.drop == false
     let vars: Vec<&str> = decl.vars.iter().map(String::as_str).collect();
     let grouped = df.group_by_multi(&vars)?; // recomputed from the current rows
 }
 ```
 
-`drop` follows `group_by_drop_default()`: `true` unless the `groups` frame's
-`.drop` attribute is exactly `FALSE` (`identical(attr(groups, ".drop"),
-FALSE)` — a length-1 logical `FALSE` with no attributes). `group_by_multi` is
+A frame is grouped when it inherits from `grouped_df` or `rowwise_df`, whatever
+its attributes (`dplyr::is_grouped_df()` is `inherits(x, "grouped_df")`); a
+plain `data.frame` with a stray `groups` attribute is not. A grouped frame's
+`groups` attribute must pass the structural checks of dplyr's
+`validate_grouped_df()`, which `group_vars()` runs on a `grouped_df`:
+
+| `groups` attribute | `group_declaration()` |
+|---|---|
+| missing, not a data frame, or no columns | `GroupsNotDataFrame` |
+| last column not called `.rows` | `MissingGroupRows` |
+| `.rows` not a list of integer vectors (a list of doubles is not one) | `BadGroupRows` |
+| `.rows` indices out of bounds for the frame | read as usual: row bounds are not checked |
+
+A `rowwise_df` gets the same checks. There dplyr is looser: `group_vars()`
+reads a `rowwise_df`'s `groups` attribute without validating it, and
+`validate_rowwise_df()` adds row-shape checks (one `.rows` element per row)
+that `group_declaration` skips, as it skips row bounds.
+
+`drop` follows `group_by_drop_default()`: for a `grouped_df`, `true` unless the
+`groups` frame's `.drop` attribute is exactly `FALSE`
+(`identical(attr(groups, ".drop"), FALSE)` — a length-1 logical `FALSE` with
+no attributes); always `true` for a `rowwise_df`, which has no
+`group_by_drop_default()` method of its own. `group_by_multi` is
 not a dplyr reimplementation: it orders groups like `split(interaction())` and
 applies its own empty-group rule (a single factor key keeps its empty levels,
 composite keys keep only observed tuples) whatever `drop` says. For dplyr's
@@ -845,9 +868,10 @@ A single error type covers every failure mode of both verbs:
 | `NoSuchColumn(name)` | `group_by` referenced a column name that does not exist. |
 | `EmptyGroupColumns` | `group_by_multi` was called with an empty column slice. |
 | `UnsupportedGroupColumn { column, type_of }` | A key column has no grouping semantics (list-column, `integer64`, …). |
-| `NotGroupedDataFrame` | `group_by_metadata` on a frame that is not dplyr-grouped (no `grouped_df` / `rowwise_df` class, or no `groups` attribute). |
-| `MissingGroupRows` | The `groups` frame has no `.rows` list-column. |
-| `BadGroupRows { group, type_of }` | A `.rows` element is not an integer/integerish index vector. |
+| `NotGroupedDataFrame` | `group_by_metadata` on a frame that does not inherit from `grouped_df` or `rowwise_df`. |
+| `GroupsNotDataFrame` | A `grouped_df` / `rowwise_df` whose `groups` attribute is missing or is not a data frame with at least one column. |
+| `MissingGroupRows` | The last column of the `groups` frame is not called `.rows`. |
+| `BadGroupRows { group, type_of }` | The `.rows` column is not a list (`group: None`), or one of its elements is not an integer vector (`group: Some(g)`; doubles are rejected, as in dplyr). |
 | `GroupIndexOutOfRange { group, value, nrow }` | A `.rows` index is `< 1` or `> nrow`: the grouping metadata is stale. |
 | `GroupRowUncovered { row, nrow }` | No group's `.rows` holds a row of the frame: the grouping metadata is stale. |
 | `GroupRowDuplicated { row, first_group, second_group }` | Two `.rows` entries hold the same row: the grouping metadata is stale. |

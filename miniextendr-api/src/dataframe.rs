@@ -84,19 +84,28 @@ pub enum DataFrameError {
         /// Its SEXPTYPE (or `"integer64"`), rendered for the message.
         type_of: String,
     },
-    /// [`DataFrame::group_by_metadata`] was called on a frame that is not
-    /// dplyr-grouped: not a `grouped_df` / `rowwise_df`, or no `groups`
-    /// attribute holding a `data.frame`.
+    /// [`DataFrame::group_by_metadata`] was called on a frame that does not
+    /// inherit from `grouped_df` or `rowwise_df`.
     NotGroupedDataFrame,
-    /// The dplyr `groups` frame has no `.rows` list-column.
+    /// A frame inherits from `grouped_df` or `rowwise_df`, but its `groups`
+    /// attribute is missing or is not a data frame with at least one column.
+    /// dplyr treats such a frame as corrupt, not as ungrouped ("The `groups`
+    /// attribute must be a data frame.").
+    GroupsNotDataFrame,
+    /// The last column of a grouped frame's `groups` attribute is not called
+    /// `.rows` (dplyr: "The last column of the `groups` attribute must be
+    /// called `.rows`.").
     MissingGroupRows,
-    /// A `.rows` list element was not an integer / integerish index vector.
+    /// The `.rows` column of a grouped frame's `groups` attribute is not a
+    /// list of integer vectors (dplyr: "The `.rows` column must be list of
+    /// one-based integer vectors."). Doubles are rejected, as in dplyr.
     BadGroupRows {
-        /// The 0-based group (row of the `groups` frame) that carried it; the
-        /// message numbers it from 1, as R does.
-        group: usize,
-        /// The offending element's SEXPTYPE (or `"non-integer double"`),
-        /// rendered for the message.
+        /// The 0-based group (row of the `groups` frame) whose element is not
+        /// an integer vector, or `None` when the `.rows` column itself is not
+        /// a list. The message numbers groups from 1, as R does.
+        group: Option<usize>,
+        /// R's `typeof()` of the offending element (or of the `.rows`
+        /// column), rendered for the message.
         type_of: String,
     },
     /// A `.rows` index was `< 1` or `> nrow` of the source frame: the
@@ -175,17 +184,40 @@ impl std::fmt::Display for DataFrameError {
             ),
             DataFrameError::NotGroupedDataFrame => write!(
                 f,
-                "not a grouped_df: no dplyr grouping (a grouped_df class with a `groups` \
-                 attribute); use group_by/group_by_multi to compute grouping instead"
+                "not a grouped_df: the frame does not inherit from grouped_df or rowwise_df; \
+                 use group_by/group_by_multi to compute grouping instead"
             ),
-            DataFrameError::MissingGroupRows => {
-                write!(f, "grouped_df `groups` frame has no `.rows` list-column")
-            }
-            DataFrameError::BadGroupRows { group, type_of } => write!(
+            DataFrameError::GroupsNotDataFrame => write!(
                 f,
-                "grouped_df `.rows` element for group {} is not an integer index vector ({})",
+                "not a valid grouped_df or rowwise_df: the `groups` attribute must be a data \
+                 frame. {}",
+                CORRUPT_GROUPS_HINT
+            ),
+            DataFrameError::MissingGroupRows => write!(
+                f,
+                "not a valid grouped_df or rowwise_df: the last column of the `groups` \
+                 attribute must be called `.rows`. {}",
+                CORRUPT_GROUPS_HINT
+            ),
+            DataFrameError::BadGroupRows {
+                group: None,
+                type_of,
+            } => write!(
+                f,
+                "not a valid grouped_df or rowwise_df: the `.rows` column must be a list of \
+                 one-based integer vectors, not {}. {}",
+                type_of, CORRUPT_GROUPS_HINT
+            ),
+            DataFrameError::BadGroupRows {
+                group: Some(group),
+                type_of,
+            } => write!(
+                f,
+                "not a valid grouped_df or rowwise_df: the `.rows` column must be a list of \
+                 one-based integer vectors, but the element for group {} is {}. {}",
                 group + 1,
-                type_of
+                type_of,
+                CORRUPT_GROUPS_HINT
             ),
             DataFrameError::GroupIndexOutOfRange { group, value, nrow } => write!(
                 f,
@@ -245,6 +277,12 @@ const STALE_GROUPS_HINT: &str = "The `groups` metadata is stale: the grouped fra
      likely subset or reordered without dplyr loaded, which keeps the old `groups` attribute. \
      Regroup it with dplyr::group_by() (with dplyr loaded, `[` regroups by itself), or read just \
      the grouping declaration (DataFrame::group_declaration) and group the current rows.";
+
+/// The fix that the corrupt-`groups` errors ([`DataFrameError::GroupsNotDataFrame`],
+/// [`DataFrameError::MissingGroupRows`], [`DataFrameError::BadGroupRows`])
+/// append to their message.
+const CORRUPT_GROUPS_HINT: &str = "dplyr's validators reject such a frame too. Strip the \
+     grouping with dplyr::ungroup(), then regroup it with dplyr::group_by().";
 
 #[cfg(feature = "serde")]
 impl From<crate::serde::RSerdeError> for DataFrameError {
