@@ -175,6 +175,7 @@ mod dataframe_derive_alignment_tests;
 mod dataframe_enum_payload_matrix;
 mod dataframe_examples;
 mod dataframe_group_tests;
+mod dataframe_list_column_tests;
 mod dataframe_option_scalar_tests;
 #[cfg(feature = "rayon")]
 mod dataframe_rayon_tests;

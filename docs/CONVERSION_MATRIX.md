@@ -201,6 +201,14 @@ With `#[miniextendr(strict)]`, large integer types **panic** instead of falling 
 | `u64` | `val > i32::MAX` | **Panic** (R error) |
 | `Vec<i64>` | All elements fit | INTSXP vector |
 | `Vec<i64>` | Any element outside range | **Panic** (R error) |
+| `Vec<Vec<i64>>` / `Vec<Option<Vec<i64>>>` | Every element of every row fits | List of INTSXP vectors (`None` rows → NULL) |
+| `Vec<Vec<i64>>` / `Vec<Option<Vec<i64>>>` | Any element outside range | **Panic** (R error) naming each failing row (`element N`) and its `inner position` |
+| `Option<Vec<i64>>` | `Some`: every element fits / `None` | INTSXP vector / NULL; an out-of-range element panics like `Vec<i64>` |
+
+The same rules apply to `u64`, `isize` and `usize`. The other list-of-vectors
+shapes (`Vec<&[i64]>`, `Vec<Box<[i64]>>`, `Vec<[i64; N]>`,
+`Vec<Option<&[i64]>>`) and `Box<[i64]>` have no strict path yet and widen as
+in normal mode (#1684).
 
 ### The Absence Contract: What `None` Becomes in R
 
@@ -220,7 +228,7 @@ the moment it sees `NULL` instead.
 | `Option<PathBuf>` / `Option<OsString>` | `NA_character_` | `is.na(x)` | Lossy-string family; follows the same convention as owned scalars |
 | `Option<&str>` | `NA_character_` | `is.na(x)` | **Exception** to the `Option<&T>` row below: `str` is unsized, so it cannot use the generic `Copy`-bounded blanket impl. It has a hand-written impl instead that deliberately mirrors `Option<String>`. |
 | `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
-| `Option<Vec<T>>` / `Option<Vec<String>>` / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
+| `Option<Vec<T>>` / `Option<Box<[T]>>` (any `T` with `Vec<T>: IntoR`) / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
 | `Option<AsNumeric>` / `Option<AsNumericVec>` / `Option<AsCharacter>` / `Option<AsCharacterVec>` | `NULL` | `is.null(x)` | `NA` is already `Some(marker(None))`; `NULL` is what the marker's `Option` reads as `None`. So switching a return from `Option<f64>` to `Option<AsNumeric>` changes `NA` to `NULL` |
 | `Option<SEXP>` | `NULL` (`R_NilValue`) | `is.null(x)` | Handled directly by the `#[miniextendr]` macro (`return_type_analysis.rs`), not by an `IntoR` impl |
 | `Option<()>` | **Not a value at all** — `None` raises a tagged `rust_*` R condition | `tryCatch(f(), error = \(e) ...)` | The macro special-cases `Option<()>` as an error boundary rather than an absence value — see [Result and Error Types](#result-and-error-types) below for the analogous `Result` behavior |
@@ -249,7 +257,12 @@ vector rather than a `list(NULL, NULL, ...)`.
 
 ### Smart Vector Conversion (Vec of large integers)
 
-`Vec<i64>`, `Vec<u64>`, `Vec<u32>`, `Vec<isize>`, `Vec<usize>` check whether **all** elements fit in i32. If yes, the entire vector is INTSXP; otherwise, the entire vector is REALSXP.
+`Vec<i64>`, `Vec<u64>`, `Vec<u32>`, `Vec<isize>`, `Vec<usize>` (and the matching
+slices `&[i64]` … `&[usize]`) check whether **all** elements fit in i32. If yes, the
+entire vector is INTSXP; otherwise, the entire vector is REALSXP. A list of such
+vectors (`Vec<Vec<usize>>`, a `DataFrameRow` list column) makes the choice **per
+row**: one row with a value past `i32::MAX` is a double vector while the other rows
+stay integer, and an empty row is `integer(0)`.
 
 | Rust Type | All Fit in i32? | R Output Type |
 |-----------|-----------------|--------------|
@@ -269,8 +282,9 @@ vector rather than a `list(NULL, NULL, ...)`.
 | `HashSet<T>` / `BTreeSet<T>` | Vector (order may vary for HashSet) |
 | `VecDeque<T>` | Vector (converted to Vec first) |
 | `BinaryHeap<T>` | Vector (arbitrary order) |
-| `Vec<Vec<T>>` | List of vectors (VECSXP) |
-| `Vec<&[T]>` / `Vec<&[String]>` | List of vectors (VECSXP), borrowed slices |
+| `Vec<Vec<T>>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP); each row is exactly what `Vec<T>` produces |
+| `Vec<Box<[T]>>` / `Vec<[T; N]>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP), as `Vec<Vec<T>>` |
+| `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
 | `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
 
 #### `Vec<Option<C>>` for collection element types
@@ -279,17 +293,15 @@ vector rather than a `list(NULL, NULL, ...)`.
 
 | Rust Type | R Output Type | None Behavior |
 |-----------|--------------|----------------|
-| `Vec<Option<Vec<T>>>` (T: RNativeType) | VECSXP of typed vectors | NULL |
-| `Vec<Option<Vec<String>>>` | VECSXP of character vectors | NULL |
+| `Vec<Option<Vec<T>>>` / `Vec<Option<Box<[T]>>>` (any `T` with `Vec<T>: IntoR`) | VECSXP of the vectors `Vec<T>` produces | NULL |
 | `Vec<Option<HashSet<T>>>` (T: RNativeType + Eq + Hash) | VECSXP of typed vectors | NULL |
 | `Vec<Option<HashSet<String>>>` | VECSXP of character vectors | NULL |
 | `Vec<Option<BTreeSet<T>>>` (T: RNativeType + Ord) | VECSXP of sorted typed vectors | NULL |
 | `Vec<Option<BTreeSet<String>>>` | VECSXP of sorted character vectors | NULL |
 | `Vec<Option<HashMap<String, V>>>` (V: IntoR) | VECSXP of named lists | NULL |
 | `Vec<Option<BTreeMap<String, V>>>` (V: IntoR) | VECSXP of named lists | NULL |
-| `Vec<Option<&[T]>>` (T: RNativeType) | VECSXP of typed vectors | NULL |
-| `Vec<Option<&[String]>>` | VECSXP of character vectors | NULL |
-| `Vec<Option<Vec<K>>>` (K: RNativeType, keys column) | VECSXP of typed vectors | NULL |
+| `Vec<Option<&[T]>>` (any `T` with `&[T]: IntoR`) | VECSXP of the vectors `&[T]` produces | NULL |
+| `Vec<Option<Vec<K>>>` (keys column) | VECSXP of typed vectors | NULL |
 | `Vec<Option<Vec<V>>>` (V: IntoR, values column) | VECSXP | NULL |
 | `PathBuf` | STRSXP (lossy UTF-8 conversion) |
 | `OsString` | STRSXP (lossy UTF-8 conversion) |

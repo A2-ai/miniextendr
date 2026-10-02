@@ -186,7 +186,7 @@ All common nested collection types are supported:
 
 | Type | Status |
 |------|--------|
-| `Vec<Vec<T>>` | Works |
+| `Vec<Vec<T>>` | Works (any `T` with `Vec<T>: IntoR`) |
 | `Vec<Option<T>>` | Works (all scalar types) |
 | `Vec<HashMap<String, V>>` | Works (converts to/from R list of named lists) |
 | `Vec<BTreeMap<String, V>>` | Works (converts to/from R list of named lists) |

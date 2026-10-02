@@ -306,9 +306,20 @@ fn analyze_result_type(
 /// In strict mode, these types use checked conversions that panic on overflow.
 pub(crate) const LOSSY_SCALARS: &[&str] = &["i64", "u64", "isize", "usize"];
 
+/// The lossy scalar `T` when `ty` is `Vec<T>` with `T` in [`LOSSY_SCALARS`].
+fn lossy_vec_element(ty: &syn::Type) -> Option<String> {
+    if last_segment_ident(ty)? != "Vec" {
+        return None;
+    }
+    let elem = last_segment_ident(first_type_arg_from_type(ty)?)?.to_string();
+    LOSSY_SCALARS.contains(&elem.as_str()).then_some(elem)
+}
+
 /// Try to generate a strict conversion expression for a lossy return type.
 ///
-/// Returns `Some(TokenStream)` if the type is a lossy scalar or `Vec<lossy>`,
+/// Returns `Some(TokenStream)` if the type is a lossy scalar, `Option<lossy>`,
+/// `Vec<lossy>`, `Vec<Option<lossy>>`, or one of the list-of-vectors shapes
+/// `Option<Vec<lossy>>`, `Vec<Vec<lossy>>`, `Vec<Option<Vec<lossy>>>`;
 /// otherwise `None` (falls through to standard `IntoR::into_sexp`).
 pub(crate) fn strict_conversion_for_type(
     ty: &syn::Type,
@@ -325,10 +336,23 @@ pub(crate) fn strict_conversion_for_type(
         });
     }
 
-    // Check for Option<lossy>
+    // Check for Option<lossy> or Option<Vec<lossy>>
     if name == "Option"
         && let Some(inner) = first_type_arg_from_type(ty)
     {
+        // Option<Vec<lossy>>: `Some` is the checked vector, `None` is NULL
+        // (what the lax `Option<Vec<T>>` impl gives `None`).
+        if let Some(elem) = lossy_vec_element(inner) {
+            let helper = quote::format_ident!("checked_vec_{}_into_sexp", elem);
+            return Some(quote::quote! {
+                match #result_ident {
+                    ::core::option::Option::Some(__mx_strict_vec) => {
+                        ::miniextendr_api::strict::#helper(__mx_strict_vec)
+                    }
+                    ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
+                }
+            });
+        }
         let inner_name = last_segment_ident(inner)?.to_string();
         if LOSSY_SCALARS.contains(&inner_name.as_str()) {
             let helper = quote::format_ident!("checked_option_{}_into_sexp", inner_name);
@@ -338,10 +362,16 @@ pub(crate) fn strict_conversion_for_type(
         }
     }
 
-    // Check for Vec<lossy> or Vec<Option<lossy>>
+    // Check for Vec<lossy>, Vec<Option<lossy>>, Vec<Vec<lossy>>, Vec<Option<Vec<lossy>>>
     if name == "Vec"
         && let Some(inner) = first_type_arg_from_type(ty)
     {
+        if let Some(elem) = lossy_vec_element(inner) {
+            let helper = quote::format_ident!("checked_vec_vec_{}_into_sexp", elem);
+            return Some(quote::quote! {
+                ::miniextendr_api::strict::#helper(#result_ident)
+            });
+        }
         let inner_name = last_segment_ident(inner)?.to_string();
         if LOSSY_SCALARS.contains(&inner_name.as_str()) {
             let helper = quote::format_ident!("checked_vec_{}_into_sexp", inner_name);
@@ -349,10 +379,16 @@ pub(crate) fn strict_conversion_for_type(
                 ::miniextendr_api::strict::#helper(#result_ident)
             });
         }
-        // Check for Vec<Option<lossy>>
+        // Check for Vec<Option<lossy>> and Vec<Option<Vec<lossy>>>
         if inner_name == "Option"
             && let Some(option_inner) = first_type_arg_from_type(inner)
         {
+            if let Some(elem) = lossy_vec_element(option_inner) {
+                let helper = quote::format_ident!("checked_vec_option_vec_{}_into_sexp", elem);
+                return Some(quote::quote! {
+                    ::miniextendr_api::strict::#helper(#result_ident)
+                });
+            }
             let option_inner_name = last_segment_ident(option_inner)?.to_string();
             if LOSSY_SCALARS.contains(&option_inner_name.as_str()) {
                 let helper =
@@ -439,5 +475,66 @@ pub(crate) fn first_type_arg_from_type(ty: &syn::Type) -> Option<&syn::Type> {
         crate::first_type_argument(p.path.segments.last()?)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strict_conversion_for_type;
+
+    /// The strict conversion emitted for return type `ty`, as a token string.
+    fn strict_expr(ty: &str) -> Option<String> {
+        let ty: syn::Type = syn::parse_str(ty).expect("valid type");
+        let result = syn::Ident::new("result", proc_macro2::Span::call_site());
+        strict_conversion_for_type(&ty, &result).map(|ts| ts.to_string())
+    }
+
+    fn calls(ty: &str, helper: &str) -> bool {
+        strict_expr(ty).is_some_and(|expr| expr.contains(helper))
+    }
+
+    #[test]
+    fn list_of_vectors_shapes_use_checked_row_helpers() {
+        assert!(calls("Vec<Vec<usize>>", "checked_vec_vec_usize_into_sexp"));
+        assert!(calls("Vec<Vec<i64>>", "checked_vec_vec_i64_into_sexp"));
+        assert!(calls(
+            "Vec<Option<Vec<u64>>>",
+            "checked_vec_option_vec_u64_into_sexp"
+        ));
+        assert!(calls(
+            "std::vec::Vec<std::vec::Vec<isize>>",
+            "checked_vec_vec_isize_into_sexp"
+        ));
+    }
+
+    #[test]
+    fn option_vec_lossy_checks_some_and_returns_null_for_none() {
+        let expr = strict_expr("Option<Vec<usize>>").expect("strict arm");
+        assert!(expr.contains("checked_vec_usize_into_sexp"), "{expr}");
+        assert!(expr.contains("SEXP :: nil ()"), "{expr}");
+    }
+
+    #[test]
+    fn flat_lossy_shapes_keep_their_helpers() {
+        assert!(calls("usize", "checked_into_sexp_usize"));
+        assert!(calls("Option<i64>", "checked_option_i64_into_sexp"));
+        assert!(calls("Vec<u64>", "checked_vec_u64_into_sexp"));
+        assert!(calls(
+            "Vec<Option<isize>>",
+            "checked_vec_option_isize_into_sexp"
+        ));
+    }
+
+    #[test]
+    fn lossless_shapes_fall_through_to_into_r() {
+        for ty in [
+            "Vec<Vec<i32>>",
+            "Vec<Vec<f64>>",
+            "Option<Vec<String>>",
+            "Vec<Option<Vec<bool>>>",
+            "Vec<Vec<Vec<usize>>>",
+        ] {
+            assert_eq!(strict_expr(ty), None, "{ty}");
+        }
     }
 }
