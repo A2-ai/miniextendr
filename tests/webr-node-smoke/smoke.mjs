@@ -186,6 +186,39 @@ async function main() {
   const version = unwrapScalar(await versionResult.toJs());
   console.log(`[tier3] miniextendr version: ${version}`);
 
+  // R's BLAS/LAPACK (`blas-lapack` feature): the side module's dgemm_ /
+  // dgesv_ imports must resolve to webR's own wasm libRblas / libRlapack
+  // (Phase 2 points BLAS_LIBS / LAPACK_LIBS at them) and compute what R's
+  // own %*% and solve() compute. Gating: a link that resolved to the wrong
+  // signature traps here, not at library().
+  const blasResult = await webR.evalR(`
+    tryCatch({
+      if (!exists("blas_solve", envir = asNamespace("miniextendr"))) {
+        "SKIP: miniextendr built without the blas-lapack feature"
+      } else {
+        a <- matrix(c(2, 1, 1, 3, 0, 1, 4, 2, 5), 3)
+        b <- matrix(c(1, 2, 3, 4, 5, 6), 3)
+        p <- miniextendr::blas_matrix_product(3L, 2L, 3L, as.vector(a), as.vector(b))
+        x <- miniextendr::blas_solve(3L, 2L, as.vector(a), as.vector(b))
+        if (identical(p, as.vector(a %*% b)) &&
+            isTRUE(all.equal(x, as.vector(solve(a, b)), tolerance = 1e-13))) "OK"
+        else paste("MISMATCH:", toString(p), "|", toString(x))
+      }
+    }, error = function(e) paste0("ERROR: ", conditionMessage(e)))
+  `);
+  const blasMsg = unwrapScalar(await blasResult.toJs());
+  if (typeof blasMsg === "string" && blasMsg.startsWith("SKIP")) {
+    console.log(`[tier3] ${blasMsg}`);
+  } else if (blasMsg !== "OK") {
+    console.error("[tier3] FAIL: BLAS/LAPACK smoke returned:", blasMsg);
+    process.exitCode = 1;
+    return;
+  } else {
+    console.log(
+      "[tier3] OK: blas_matrix_product / blas_solve match %*% / solve() through webR's wasm libRblas / libRlapack.",
+    );
+  }
+
   // Scaffold leg (#1259, #1271): load each scaffolded end-user package and
   // call the template's stock functions — proof the templates' wasm branches
   // produce a side-module that not only links but dispatches into Rust in a
