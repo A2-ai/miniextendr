@@ -82,6 +82,9 @@ just r-cmd-build         # Build tarball
 just r-cmd-check         # Check built tarball (save to log — see Capturing Output)
 just devtools-check      # Check, preserving output in rpkg-check-output/
 
+# R dependencies (rv): add with `rv add <pkg>`
+just r-deps-check        # fails when a tracked R file uses a package rv.lock lacks
+
 # CRAN release prep (only step needed; configure auto-detects tarball mode)
 just vendor              # regen Cargo.lock in tarball-shape, vendor deps, compress to inst/vendor.tar.xz
 
