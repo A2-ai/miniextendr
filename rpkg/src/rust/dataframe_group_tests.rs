@@ -132,7 +132,7 @@ pub fn group_by_frames(df: DataFrame, col: &str) -> SEXP {
 
 /// Group-key labels in dplyr's group order, read from a `grouped_df`'s
 /// `groups` attribute (no recomputation). Multi-column keys are `.`-joined.
-/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+/// @param df A dplyr `grouped_df`.
 #[miniextendr]
 pub fn group_metadata_keys(df: DataFrame) -> Vec<String> {
     let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
@@ -141,7 +141,7 @@ pub fn group_metadata_keys(df: DataFrame) -> Vec<String> {
 
 /// Per-group sizes in dplyr's group order, read from a `grouped_df`'s `groups`
 /// attribute. Empty (`.drop = FALSE`) groups appear as `0`.
-/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+/// @param df A dplyr `grouped_df`.
 #[miniextendr]
 pub fn group_metadata_sizes(df: DataFrame) -> Vec<i32> {
     let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
@@ -154,7 +154,7 @@ pub fn group_metadata_sizes(df: DataFrame) -> Vec<i32> {
 /// Named list of per-group sub-frames materialised from a `grouped_df`'s
 /// `groups` metadata — exercises the 1-based→0-based `.rows` conversion by row
 /// content (each sub-frame holds exactly the caller's grouped rows).
-/// @param df A dplyr `grouped_df` (or any frame carrying a `groups` attribute).
+/// @param df A dplyr `grouped_df`.
 #[miniextendr]
 pub fn group_metadata_frames(df: DataFrame) -> SEXP {
     let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
@@ -169,12 +169,14 @@ pub fn group_metadata_frames(df: DataFrame) -> SEXP {
 
 /// The grouping declaration of a dplyr-grouped frame — `list(vars, drop)`, as
 /// dplyr's `group_vars()` and `group_by_drop_default()` report them — or
-/// `NULL` when the frame is not grouped. Reads no `.rows`, so stale metadata
-/// and any key-column type are fine.
+/// `NULL` when the frame is not grouped. Reads no row index, so stale
+/// metadata and any key-column type are fine; a corrupt `groups` attribute
+/// (not a data frame, no trailing `.rows`, `.rows` not a list of integer
+/// vectors) is an error, as in dplyr.
 /// @param df A data.frame, possibly a dplyr `grouped_df`.
 #[miniextendr]
 pub fn group_declaration_of(df: DataFrame) -> SEXP {
-    match df.group_declaration() {
+    match df.group_declaration().unwrap_or_else(|e| panic!("{}", e)) {
         Some(decl) => GroupDeclarationOut {
             vars: decl.vars,
             drop: decl.drop,

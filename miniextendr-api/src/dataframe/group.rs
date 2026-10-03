@@ -242,13 +242,48 @@ fn normalize_real(x: f64) -> f64 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GroupDeclaration {
     /// The grouping variable names, in declaration order — dplyr's
-    /// `group_vars()`. Empty for a `rowwise_df` without id columns.
+    /// `group_vars()`, `setdiff(names(groups), ".rows")`: the `groups`
+    /// frame's column names other than `.rows`, each once. Empty for a
+    /// `rowwise_df` without id columns.
     pub vars: Vec<String>,
     /// Whether grouping drops empty groups — dplyr's
-    /// `group_by_drop_default()`: `true` unless the `groups` frame's `.drop`
-    /// attribute is exactly `FALSE` (`identical(attr(groups, ".drop"), FALSE)`:
-    /// a length-1 logical `FALSE` with no attributes).
+    /// `group_by_drop_default()`. For a `grouped_df`, `true` unless the
+    /// `groups` frame's `.drop` attribute is exactly `FALSE`
+    /// (`identical(attr(groups, ".drop"), FALSE)`: a length-1 logical `FALSE`
+    /// with no attributes). Always `true` for a frame that is a `rowwise_df`
+    /// but not a `grouped_df`, whose `group_by_drop_default()` is the default
+    /// method's `TRUE`.
     pub drop: bool,
+}
+
+/// A grouped frame's `groups` attribute after the structural checks of
+/// [`DataFrame::groups_attr`].
+struct GroupsAttr {
+    /// The `groups` data frame: a list inheriting from `data.frame`, with at
+    /// least one column.
+    frame: SEXP,
+    /// Its last column, `.rows`: a list of integer vectors, one per group.
+    rows: SEXP,
+}
+
+impl GroupsAttr {
+    /// The grouping-variable columns, by position, with their names: every
+    /// column not named `.rows`, keeping only the first column of a repeated
+    /// name. Their names are dplyr's `group_vars()`,
+    /// `setdiff(names(groups), ".rows")`. An `NA` name reads as `""`, as in
+    /// [`DataFrame::names`].
+    fn key_columns(&self) -> Vec<(String, SEXP)> {
+        let names = self.frame.get_names();
+        let mut columns: Vec<(String, SEXP)> = Vec::new();
+        for i in 0..self.frame.len() as isize {
+            let name = names.string_elt_str(i).unwrap_or("");
+            if name == ".rows" || columns.iter().any(|(seen, _)| seen == name) {
+                continue;
+            }
+            columns.push((name.to_string(), self.frame.vector_elt(i)));
+        }
+        columns
+    }
 }
 // endregion
 
@@ -494,48 +529,82 @@ impl DataFrame {
     /// Read a dplyr-grouped frame's grouping **declaration** — its grouping
     /// variables and `.drop` policy — without its cached group rows.
     ///
-    /// Returns what dplyr's `group_vars()` and `group_by_drop_default()` report,
-    /// or `None` when the frame is not grouped (see below). Nothing is
-    /// partitioned, so the key-column types and the state of the cached `.rows`
-    /// never matter. A function that groups the frame's **current** rows itself
-    /// (e.g. with [`group_by_multi`](Self::group_by_multi) over
+    /// Returns what dplyr's `group_vars()` and `group_by_drop_default()`
+    /// report: `Ok(None)` when the frame is not grouped, and an error when it
+    /// is grouped but its `groups` attribute is corrupt, where `group_vars()`
+    /// errors too (see below). Nothing is partitioned and no row index is
+    /// read, so the key-column types and whether the cached `.rows` still fit
+    /// the frame never matter. A function that groups the frame's **current**
+    /// rows itself (e.g. with [`group_by_multi`](Self::group_by_multi) over
     /// [`GroupDeclaration::vars`]) reads this instead of
     /// [`group_by_metadata`](Self::group_by_metadata), which trusts the cached
     /// rows.
     ///
     /// # Grouped frames
     ///
-    /// A frame is grouped when it inherits from `grouped_df` (or `rowwise_df`)
-    /// and carries a `groups` attribute that is a data frame: dplyr's own test.
-    /// A plain `data.frame` with a stray `groups` attribute is not grouped.
+    /// A frame is grouped when it inherits from `grouped_df` or `rowwise_df`,
+    /// whatever its attributes: `dplyr::is_grouped_df()` is
+    /// `inherits(x, "grouped_df")`. A plain `data.frame` with a stray `groups`
+    /// attribute is not grouped (`Ok(None)`).
+    ///
+    /// # Errors
+    ///
+    /// A grouped frame's `groups` attribute must pass the structural checks
+    /// of dplyr's `validate_grouped_df()`, which `group_vars()` runs on a
+    /// `grouped_df`: it is a data frame ([`GroupsNotDataFrame`]), its last
+    /// column is called `.rows` ([`MissingGroupRows`]), and that column is a
+    /// list of integer vectors ([`BadGroupRows`]; a list of doubles is
+    /// rejected, as in dplyr). The row indices themselves are not checked,
+    /// as `group_vars()` does not check them either, so stale `.rows` after a
+    /// subset still yield the declaration.
+    ///
+    /// A `rowwise_df` gets the same checks. dplyr is looser here:
+    /// `group_vars()` reads a `rowwise_df`'s `groups` attribute without
+    /// validating it. `validate_rowwise_df()` applies the same checks, plus
+    /// row-shape checks that this method skips (one `.rows` element per row,
+    /// each holding its own row number).
+    ///
+    /// [`GroupsNotDataFrame`]: DataFrameError::GroupsNotDataFrame
+    /// [`MissingGroupRows`]: DataFrameError::MissingGroupRows
+    /// [`BadGroupRows`]: DataFrameError::BadGroupRows
     ///
     /// # Example
     ///
     /// ```ignore
     /// // df arrived as dplyr::group_by(data, site, .drop = FALSE)
-    /// let decl = df.group_declaration().expect("a grouped_df");
+    /// let decl = df.group_declaration()?.expect("a grouped_df");
     /// assert_eq!(decl.vars, ["site"]);
     /// assert!(!decl.drop);
     /// ```
-    pub fn group_declaration(&self) -> Option<GroupDeclaration> {
-        let groups = self.groups_frame()?;
-        // `identical(attr(groups, ".drop"), FALSE)` with identical()'s default
-        // flags; `Rf_ScalarLogical(0)` returns R's shared FALSE without
-        // allocating.
-        let drop_attr = groups
-            .as_sexp()
-            .get_attr(unsafe { crate::sys::Rf_install(c".drop".as_ptr()) });
-        let keeps_empty = unsafe {
-            crate::sys::R_compute_identical(
-                drop_attr,
-                crate::sys::Rf_ScalarLogical(0),
-                crate::sys::IDENT_USE_CLOENV,
-            ) != crate::sexp_types::Rboolean::FALSE
+    pub fn group_declaration(&self) -> Result<Option<GroupDeclaration>, DataFrameError> {
+        let Some(groups) = self.groups_attr()? else {
+            return Ok(None);
         };
-        Some(GroupDeclaration {
-            vars: group_var_names(&groups),
-            drop: !keeps_empty,
-        })
+        // group_by_drop_default(): only its grouped_df method reads `.drop`,
+        // as `!identical(attr(groups, ".drop"), FALSE)` with identical()'s
+        // default flags. A frame that is only a rowwise_df gets the default
+        // method's TRUE. `Rf_ScalarLogical(0)` returns R's shared FALSE
+        // without allocating.
+        let drop = !self.sexp.inherits_class(c"grouped_df") || {
+            let drop_attr = groups
+                .frame
+                .get_attr(unsafe { crate::sys::Rf_install(c".drop".as_ptr()) });
+            unsafe {
+                crate::sys::R_compute_identical(
+                    drop_attr,
+                    crate::sys::Rf_ScalarLogical(0),
+                    crate::sys::IDENT_USE_CLOENV,
+                ) == crate::sexp_types::Rboolean::FALSE
+            }
+        };
+        Ok(Some(GroupDeclaration {
+            vars: groups
+                .key_columns()
+                .into_iter()
+                .map(|(name, _)| name)
+                .collect(),
+            drop,
+        }))
     }
 
     /// Ingest a dplyr `grouped_df`'s existing grouping from its `groups`
@@ -589,15 +658,21 @@ impl DataFrame {
     ///
     /// # Errors
     ///
-    /// [`NotGroupedDataFrame`] (not grouped), [`MissingGroupRows`] (no `.rows`
-    /// column), [`BadGroupRows`] (a `.rows` element is not an integer/integerish
-    /// vector), [`UnsupportedGroupColumn`] (a key column of an unsupported
-    /// type), or one of the stale-metadata errors above. Every `.rows` index is
+    /// [`NotGroupedDataFrame`] (not grouped); for a corrupt `groups`
+    /// attribute, the errors [`group_declaration`](Self::group_declaration)
+    /// reports ([`GroupsNotDataFrame`], [`MissingGroupRows`],
+    /// [`BadGroupRows`]: `.rows` must be a list of integer vectors, so a
+    /// list of doubles is rejected, as in dplyr); [`UnequalLengths`] (a key
+    /// column's length differs from that of `.rows`);
+    /// [`UnsupportedGroupColumn`] (a key column of an unsupported type); or
+    /// one of the stale-metadata errors above. Every `.rows` index is
     /// converted from R's 1-based to 0-based.
     ///
     /// [`NotGroupedDataFrame`]: DataFrameError::NotGroupedDataFrame
+    /// [`GroupsNotDataFrame`]: DataFrameError::GroupsNotDataFrame
     /// [`MissingGroupRows`]: DataFrameError::MissingGroupRows
     /// [`BadGroupRows`]: DataFrameError::BadGroupRows
+    /// [`UnequalLengths`]: DataFrameError::UnequalLengths
     /// [`UnsupportedGroupColumn`]: DataFrameError::UnsupportedGroupColumn
     /// [`GroupIndexOutOfRange`]: DataFrameError::GroupIndexOutOfRange
     /// [`GroupRowUncovered`]: DataFrameError::GroupRowUncovered
@@ -611,30 +686,29 @@ impl DataFrame {
     /// it needs no separate root. Only the returned [`GroupedDataFrame`] roots
     /// the **source** frame for its own lifetime (see its GC-rooting docs).
     pub fn group_by_metadata(&self) -> Result<GroupedDataFrame, DataFrameError> {
-        let groups_frame = self
-            .groups_frame()
+        let attr = self
+            .groups_attr()?
             .ok_or(DataFrameError::NotGroupedDataFrame)?;
-
-        // Locate the `.rows` list-column; the remaining columns (in order) are
-        // the group-key columns.
-        let rows_col = groups_frame
-            .column_raw(".rows")
-            .ok_or(DataFrameError::MissingGroupRows)?;
-        let key_names = group_var_names(&groups_frame);
+        let n_groups = attr.rows.len();
+        let key_columns = attr.key_columns();
 
         // Per-key-column keys: one Vec<GroupKey> of length n_groups per key
         // column (column_keys yields one scalar key per row of the groups frame).
-        let mut per_col_keys: Vec<Vec<GroupKey>> = Vec::with_capacity(key_names.len());
-        for name in &key_names {
-            let column = groups_frame
-                .column_raw(name)
-                .expect("name came from groups_frame.names()");
-            per_col_keys.push(column_keys(column, name)?);
+        let mut per_col_keys: Vec<Vec<GroupKey>> = Vec::with_capacity(key_columns.len());
+        for (name, column) in &key_columns {
+            let keys = column_keys(*column, name)?;
+            if keys.len() != n_groups {
+                return Err(DataFrameError::UnequalLengths {
+                    expected: n_groups,
+                    column: name.clone(),
+                    actual: keys.len(),
+                });
+            }
+            per_col_keys.push(keys);
         }
 
-        let n_groups = rows_col.len();
         let nrow = self.nrow();
-        let single_key = key_names.len() == 1;
+        let single_key = key_columns.len() == 1;
 
         let mut groups: Vec<(GroupKey, Vec<usize>)> = Vec::with_capacity(n_groups);
         for g in 0..n_groups {
@@ -646,7 +720,7 @@ impl DataFrame {
                 GroupKey::Tuple(per_col_keys.iter().map(|col| col[g].clone()).collect())
             };
             // Convert `.rows[[g]]` (1-based indices) to a validated 0-based Vec.
-            let elt = rows_col.vector_elt(g as isize);
+            let elt = attr.rows.vector_elt(g as isize);
             let indices = group_rows_indices(elt, g, nrow)?;
             groups.push((key, indices));
         }
@@ -656,71 +730,83 @@ impl DataFrame {
         Ok(GroupedDataFrame::new(*self, groups))
     }
 
-    /// The `groups` frame of a dplyr-grouped frame, or `None` when the frame
-    /// is not grouped: it must inherit from `grouped_df` / `rowwise_df` and
-    /// carry a `groups` attribute that is a valid data frame.
-    fn groups_frame(&self) -> Option<DataFrame> {
+    /// The `groups` attribute of a dplyr-grouped frame, checked the way
+    /// dplyr's `validate_grouped_df()` checks it (with its default
+    /// `check_bounds = FALSE`).
+    ///
+    /// `Ok(None)` when the frame inherits from neither `grouped_df` nor
+    /// `rowwise_df`. Otherwise the attribute must be a data frame with at
+    /// least one column ([`DataFrameError::GroupsNotDataFrame`]), whose last
+    /// column is called `.rows` ([`DataFrameError::MissingGroupRows`]) and is
+    /// a list of integer vectors ([`DataFrameError::BadGroupRows`]). These are
+    /// dplyr's tests: `inherits(groups, "data.frame")` with at least one
+    /// column, the last name, `typeof(.rows) == "list"`, and every element's
+    /// `typeof() == "integer"`. `.rows` and the key columns are read by
+    /// position, so a column named `.rows` elsewhere in the frame is not
+    /// mistaken for it.
+    fn groups_attr(&self) -> Result<Option<GroupsAttr>, DataFrameError> {
         if !(self.sexp.inherits_class(c"grouped_df") || self.sexp.inherits_class(c"rowwise_df")) {
-            return None;
+            return Ok(None);
         }
         let groups_sym = unsafe { crate::sys::Rf_install(c"groups".as_ptr()) };
-        let groups_attr = self.sexp.get_attr(groups_sym);
-        if groups_attr.is_nil() || !groups_attr.is_data_frame() {
-            return None;
+        let frame = self.sexp.get_attr(groups_sym);
+        // dplyr reads the columns with VECTOR_ELT, so the frame must be a list.
+        if frame.type_of() != SEXPTYPE::VECSXP || !frame.is_data_frame() || frame.len() == 0 {
+            return Err(DataFrameError::GroupsNotDataFrame);
         }
-        DataFrame::from_sexp(groups_attr).ok()
+        let names = frame.get_names();
+        let last_is_rows = names.type_of() == SEXPTYPE::STRSXP
+            && names.len() == frame.len()
+            && names.string_elt_str(names.len() as isize - 1) == Some(".rows");
+        if !last_is_rows {
+            return Err(DataFrameError::MissingGroupRows);
+        }
+        let rows = frame.vector_elt(frame.len() as isize - 1);
+        if rows.type_of() != SEXPTYPE::VECSXP {
+            return Err(DataFrameError::BadGroupRows {
+                group: None,
+                type_of: r_typeof(rows),
+            });
+        }
+        for group in 0..rows.len() {
+            let elt = rows.vector_elt(group as isize);
+            if elt.type_of() != SEXPTYPE::INTSXP {
+                return Err(DataFrameError::BadGroupRows {
+                    group: Some(group),
+                    type_of: r_typeof(elt),
+                });
+            }
+        }
+        Ok(Some(GroupsAttr { frame, rows }))
     }
 }
 
-/// A `groups` frame's grouping variables: its column names except `.rows`,
-/// in order (dplyr's `group_vars()`).
-fn group_var_names(groups_frame: &DataFrame) -> Vec<String> {
-    groups_frame
-        .names()
-        .into_iter()
-        .filter(|n| n != ".rows")
-        .collect()
+/// R's `typeof()` of `x`: `"double"`, `"NULL"`, `"list"`, ….
+fn r_typeof(x: SEXP) -> String {
+    // SAFETY: Rf_type2char returns a static C string for every SEXPTYPE.
+    unsafe { std::ffi::CStr::from_ptr(crate::sys::Rf_type2char(x.type_of())) }
+        .to_string_lossy()
+        .into_owned()
 }
 
-/// Validate and convert one `.rows` list element — an integer / integerish
-/// vector of 1-based row indices — into a 0-based `Vec<usize>`. Rejects
-/// non-integer element types and any index outside `1..=nrow`.
+/// Convert one `.rows` list element — an integer vector of 1-based row
+/// indices ([`DataFrame::groups_attr`] checked its type) — into 0-based
+/// indices, rejecting any index outside `1..=nrow` (`NA` included).
 fn group_rows_indices(elt: SEXP, group: usize, nrow: usize) -> Result<Vec<usize>, DataFrameError> {
-    let nrow_i = nrow as i64;
-    let check = |value: i64| -> Result<usize, DataFrameError> {
-        if value < 1 || value > nrow_i {
-            Err(DataFrameError::GroupIndexOutOfRange { group, value, nrow })
-        } else {
-            Ok((value - 1) as usize)
-        }
-    };
-    match elt.type_of() {
-        SEXPTYPE::INTSXP => {
-            // SAFETY: element is INTSXP; as_slice handles empty vectors.
-            let values: &[i32] = unsafe { elt.as_slice() };
-            values.iter().map(|&v| check(v as i64)).collect()
-        }
-        SEXPTYPE::REALSXP => {
-            // SAFETY: element is REALSXP; as_slice handles empty vectors.
-            let values: &[f64] = unsafe { elt.as_slice() };
-            values
-                .iter()
-                .map(|&v| {
-                    if !v.is_finite() || v.fract() != 0.0 {
-                        return Err(DataFrameError::BadGroupRows {
-                            group,
-                            type_of: "non-integer double".to_string(),
-                        });
-                    }
-                    check(v as i64)
-                })
-                .collect()
-        }
-        other => Err(DataFrameError::BadGroupRows {
-            group,
-            type_of: format!("{:?}", other),
-        }),
-    }
+    // SAFETY: element is INTSXP (checked by groups_attr); as_slice handles
+    // empty vectors.
+    let values: &[i32] = unsafe { elt.as_slice() };
+    values
+        .iter()
+        .map(|&value| match usize::try_from(value) {
+            Ok(row) if (1..=nrow).contains(&row) => Ok(row - 1),
+            _ => Err(DataFrameError::GroupIndexOutOfRange {
+                group,
+                value: i64::from(value),
+                nrow,
+            }),
+        })
+        .collect()
 }
 
 /// Check that in-range `.rows` cover each of the frame's `nrow` rows exactly

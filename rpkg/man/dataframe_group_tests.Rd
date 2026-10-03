@@ -75,8 +75,10 @@ content (each sub-frame holds exactly the caller's grouped rows).
 
 The grouping declaration of a dplyr-grouped frame — \code{list(vars, drop)}, as
 dplyr's \code{group_vars()} and \code{group_by_drop_default()} report them — or
-\code{NULL} when the frame is not grouped. Reads no \code{.rows}, so stale metadata
-and any key-column type are fine.
+\code{NULL} when the frame is not grouped. Reads no row index, so stale
+metadata and any key-column type are fine; a corrupt \code{groups} attribute
+(not a data frame, no trailing \code{.rows}, \code{.rows} not a list of integer
+vectors) is an error, as in dplyr.
 
 One typed extraction + move-partition: per-group sum and count of \code{v},
 grouped by \code{g}. Input schema: \code{g} (character, no NAs), \code{v} (double).
