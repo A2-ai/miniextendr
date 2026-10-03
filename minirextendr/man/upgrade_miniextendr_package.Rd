@@ -29,9 +29,17 @@ subdirectories for a miniextendr \code{configure.ac}.}
 
 \item{configure_ac}{Logical. If \code{TRUE}, overwrites configure.ac with the
 current template. Defaults to \code{FALSE} because users often customise
-configure.ac with feature flags. When \code{FALSE}, compares the existing file
-with the current template and warns about differences, including custom
-edits. Review those differences or use \code{TRUE} to replace the file.}
+configure.ac with feature flags. When \code{FALSE}, the upgrade first checks
+that the existing configure.ac substitutes every \verb{@VAR@} placeholder in
+the new \code{src/Makevars.in} and \code{src/win.def.in}. If any is missing, it
+aborts before writing a file, names the missing variables and the
+template configure.ac that sets them, and leaves the package unchanged:
+merge those blocks into configure.ac, or use \code{TRUE}. The check asks
+autoconf for the exact list and falls back to an approximate scan of
+\code{AC_SUBST()} / \code{AC_ARG_VAR()} when autoconf is unavailable. Later, the
+upgrade also compares the existing file with the current template and
+warns about differences, including custom edits. Review those differences
+or use \code{TRUE} to replace the file.}
 
 \item{autoconf}{Logical. If \code{TRUE} (default) and \code{autoconf} is available,
 regenerates the configure script after upgrading.}

@@ -39,9 +39,17 @@
 #' @param local_path Optional path to local miniextendr repository for vendoring.
 #' @param configure_ac Logical. If `TRUE`, overwrites configure.ac with the
 #'   current template. Defaults to `FALSE` because users often customise
-#'   configure.ac with feature flags. When `FALSE`, compares the existing file
-#'   with the current template and warns about differences, including custom
-#'   edits. Review those differences or use `TRUE` to replace the file.
+#'   configure.ac with feature flags. When `FALSE`, the upgrade first checks
+#'   that the existing configure.ac substitutes every `@VAR@` placeholder in
+#'   the new `src/Makevars.in` and `src/win.def.in`. If any is missing, it
+#'   aborts before writing a file, names the missing variables and the
+#'   template configure.ac that sets them, and leaves the package unchanged:
+#'   merge those blocks into configure.ac, or use `TRUE`. The check asks
+#'   autoconf for the exact list and falls back to an approximate scan of
+#'   `AC_SUBST()` / `AC_ARG_VAR()` when autoconf is unavailable. Later, the
+#'   upgrade also compares the existing file with the current template and
+#'   warns about differences, including custom edits. Review those differences
+#'   or use `TRUE` to replace the file.
 #' @param autoconf Logical. If `TRUE` (default) and `autoconf` is available,
 #'   regenerates the configure script after upgrading.
 #' @param allow_dirty Logical. If `FALSE` (default), aborts when scaffolding
@@ -88,6 +96,13 @@ upgrade_miniextendr_package <- function(path = ".",
   # --- Dirty check ---
   if (!allow_dirty) {
     check_scaffolding_clean(resolved_path)
+  }
+
+  # --- configure.ac substitutions ---
+  # A retained configure.ac must substitute every @VAR@ of the Makevars.in and
+  # win.def.in written below; check before the first write (#1733).
+  if (!configure_ac) {
+    check_configure_ac_substitutions(monorepo)
   }
 
   # --- Build system templates ---
