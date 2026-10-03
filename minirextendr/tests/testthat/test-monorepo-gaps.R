@@ -154,6 +154,7 @@ test_that("B2: upgrade_miniextendr_package() resolves rpkg subdir in monorepo", 
   local_mocked_bindings(
     is_miniextendr_package = function() TRUE,
     check_scaffolding_clean = function() invisible(),
+    check_configure_ac_substitutions = function(...) invisible(),
     use_miniextendr_stub = function(...) invisible(),
     use_miniextendr_makevars = function(...) invisible(),
     use_miniextendr_mx_abi = function(...) invisible(),
@@ -201,6 +202,7 @@ test_that("B2: upgrade_miniextendr_package() respects explicit rpkg_subdir=", {
   local_mocked_bindings(
     is_miniextendr_package = function() TRUE,
     check_scaffolding_clean = function() invisible(),
+    check_configure_ac_substitutions = function(...) invisible(),
     use_miniextendr_stub = function(...) invisible(),
     use_miniextendr_makevars = function(...) invisible(),
     use_miniextendr_mx_abi = function(...) invisible(),
