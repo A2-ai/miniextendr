@@ -682,9 +682,10 @@ impl DotCallBuilder {
     /// lambda frames, which R6 / S7 dispatch calls (R6 finalizer / `deep_clone`, S7
     /// property getter / setter / validator), where `sys.call()` names an
     /// internal dispatch frame instead of the user's call. Not reachable from
-    /// any attribute. With `NULL`, the
-    /// `if (is.null(.val$call)) .call_default else .val$call` fallback in
-    /// `condition_check_lines` surfaces the nearest meaningful frame instead.
+    /// any attribute. With `NULL`, the raise helper's fallback (a `NULL`
+    /// `.val$call` takes `.call_default`, the `sys.call()` in
+    /// `condition_check_lines`; only a call-less condition's `FALSE` marker
+    /// gives `NULL`) surfaces the nearest meaningful frame instead.
     pub fn null_call_attribution(mut self) -> Self {
         self.call_expr = Some("NULL".to_string());
         self

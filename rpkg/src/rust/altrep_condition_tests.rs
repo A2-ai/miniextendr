@@ -79,13 +79,7 @@ impl AltrepLen for ClassedErrorAltrepData {
 
 impl AltIntegerData for ClassedErrorAltrepData {
     fn elt(&self, _i: usize) -> i32 {
-        // Can't use error!(class = ...) with a runtime variable directly.
-        // Use the enum directly to set the class at runtime.
-        std::panic::panic_any(miniextendr_api::condition::RCondition::Error {
-            message: self.message.clone(),
-            class: vec![self.error_class.clone()],
-            data: None,
-        });
+        miniextendr_api::error!(class = &self.error_class, "{}", self.message);
     }
 }
 

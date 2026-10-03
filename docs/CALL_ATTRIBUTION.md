@@ -395,7 +395,7 @@ It applies uniformly to:
 
 ## Where `.call = NULL` is used instead of `sys.call()`
 
-No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The raise helper's fallback, `if (is.null(.val$call)) .call_default else .val$call` with the wrapper's `sys.call()` as `.call_default` (`condition_check_lines`), then surfaces the nearest meaningful frame.
+No attribute selects it. Five lambda dispatch sites cannot use `sys.call()` because the lambda is invoked by R6/S7 dispatch machinery, not by user code. `sys.call()` inside those lambdas would name the dispatch frame (e.g., `R6$finalize()`, `S7::prop_get()`), not the user's `obj$field` access. The generated `.Call()` instead passes `.call = NULL`. The raise helper's fallback, `if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call` with the wrapper's `sys.call()` as `.call_default` (`condition_check_lines`), then surfaces the nearest meaningful frame. (`FALSE` is the marker of a condition raised with `call = none`, which keeps no call at all; see [Conditions without a call](CONDITIONS.md#conditions-without-a-call).)
 
 The five sites are:
 

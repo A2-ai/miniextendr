@@ -74,7 +74,10 @@
 //! - `error`: error message (character scalar)
 //! - `kind`: condition kind string — one of the constants in [`kind`]
 //! - `class`: optional user-supplied custom class (character scalar or `NULL`)
-//! - `call`: the R call SEXP (or `NULL` if not available)
+//! - `call`: the R call SEXP, `NULL` if not available (the R helper then uses
+//!   the wrapper's call), or `FALSE` for a condition raised without a call
+//!   ([`ConditionCall::None`]: the helper signals it with `call = NULL`, like
+//!   R's `call. = FALSE`)
 //! - `data`: optional named-list condition-data payload (from the macros'
 //!   `data = ...` form), or `NULL`. The R helper splices these named fields
 //!   into the condition object so handlers can read `e$<name>`.
@@ -87,6 +90,7 @@
 //! across subsequent allocations (`SET_VECTOR_ELT` / `SETATTRIB` both
 //! trigger old-to-new GC barriers): the list itself, the message scalar
 //! STRSXP, the kind scalar STRSXP, the optional class scalar STRSXP, the
+//! `FALSE` no-call marker LGLSXP when the condition has no call, the
 //! `TRUE` marker LGLSXP, and — when a `data` payload is present — the data
 //! VECSXP, its names STRSXP, and each materialised field value. Each is
 //! added to a single [`ProtectScope`](crate::ProtectScope) before the next
@@ -107,6 +111,7 @@
 use crate::cached_class::{
     condition_names_sexp, rust_condition_attr_symbol, rust_condition_class_sexp,
 };
+use crate::condition::{ConditionCall, ErrParts, RCondition};
 use crate::sexp_types::CE_UTF8;
 use crate::sys::{self};
 use crate::{IntoR, SEXP, SEXPTYPE, SexpExt};
@@ -185,34 +190,70 @@ pub unsafe fn make_rust_condition_value(
 ) -> SEXP {
     let class: Vec<String> = class.map(|c| vec![c.to_string()]).unwrap_or_default();
     // SAFETY: caller upholds the main-thread + valid-allocation-context contract.
-    unsafe { make_rust_condition_value_with_data(message, kind, &class, call, None) }
+    unsafe {
+        make_rust_condition_value_with_data(
+            message,
+            kind,
+            &class,
+            call,
+            None,
+            ConditionCall::Inherit,
+        )
+    }
+}
+
+/// Build the tagged value for an [`RCondition`] payload (`error!()`,
+/// `warning!()`, `message!()`, `condition!()`, a queued `defer_*` entry, or a
+/// payload reconstructed across a package boundary): its kind, message,
+/// classes and data, and `call` unless the payload says
+/// [`ConditionCall::None`].
+///
+/// # Safety
+///
+/// Same contract as [`make_rust_condition_value_with_data`]: R main thread,
+/// valid allocation context.
+#[doc(hidden)]
+pub unsafe fn rust_condition_value(condition: RCondition, call: Option<SEXP>) -> SEXP {
+    let (kind, parts) = condition.into_parts();
+    // SAFETY: forwarded from the caller.
+    unsafe { condition_parts_value(kind, parts, call) }
+}
+
+/// [`make_rust_condition_value_with_data`] over the [`ErrParts`] of a
+/// condition.
+///
+/// # Safety
+///
+/// Same contract as [`make_rust_condition_value_with_data`].
+unsafe fn condition_parts_value(kind: &str, parts: ErrParts, call: Option<SEXP>) -> SEXP {
+    // SAFETY: forwarded from the caller.
+    unsafe {
+        make_rust_condition_value_with_data(
+            &parts.message,
+            kind,
+            &parts.class,
+            call,
+            parts.data,
+            parts.call,
+        )
+    }
 }
 
 /// Build the tagged value for a `Result<T, E>::Err` from the parts the
 /// generated wrapper probed off `e` (see
 /// [`crate::__mx_result_err_parts!`]): `kind = "result_err"`, the error's
-/// class vector (empty for the plain `Debug` fallback) and its structured
-/// fields.
+/// class vector (empty for the plain `Debug` fallback), its structured
+/// fields, and no call when its [`RConditionError::call`](crate::condition::RConditionError::call)
+/// is [`ConditionCall::None`] (an [`RError::without_call`](crate::condition::RError::without_call)).
 ///
 /// # Safety
 ///
 /// Same contract as [`make_rust_condition_value_with_data`]: R main thread,
 /// valid allocation context. Every generated `Err` arm runs inside the
 /// wrapper's `with_r_unwind_protect` closure, which satisfies it.
-pub unsafe fn result_err_condition_value(
-    parts: crate::condition::ErrParts,
-    call: Option<SEXP>,
-) -> SEXP {
+pub unsafe fn result_err_condition_value(parts: ErrParts, call: Option<SEXP>) -> SEXP {
     // SAFETY: forwarded from the caller.
-    unsafe {
-        make_rust_condition_value_with_data(
-            &parts.message,
-            kind::RESULT_ERR,
-            &parts.class,
-            call,
-            parts.data,
-        )
-    }
+    unsafe { condition_parts_value(kind::RESULT_ERR, parts, call) }
 }
 
 /// Build the tagged value for an argument that failed its Rust-side
@@ -242,21 +283,13 @@ pub unsafe fn conversion_condition_value(
     param: &str,
     rust_type: Option<&str>,
     crate_class: &[&str],
-    parts: crate::condition::ErrParts,
+    parts: ErrParts,
     call: Option<SEXP>,
 ) -> SEXP {
     let parts =
         crate::condition::conversion_err_parts(prefix, param, rust_type, crate_class, parts);
     // SAFETY: forwarded from the caller.
-    unsafe {
-        make_rust_condition_value_with_data(
-            &parts.message,
-            kind::CONVERSION,
-            &parts.class,
-            call,
-            parts.data,
-        )
-    }
+    unsafe { condition_parts_value(kind::CONVERSION, parts, call) }
 }
 
 /// Build the tagged value for an argument check that failed in Rust after
@@ -284,15 +317,7 @@ pub unsafe fn arg_check_condition_value(
 ) -> SEXP {
     let parts = crate::condition::arg_check_parts(message, param, crate_class);
     // SAFETY: forwarded from the caller.
-    unsafe {
-        make_rust_condition_value_with_data(
-            &parts.message,
-            kind::CONVERSION,
-            &parts.class,
-            call,
-            parts.data,
-        )
-    }
+    unsafe { condition_parts_value(kind::CONVERSION, parts, call) }
 }
 
 /// Build a tagged condition-value SEXP for transport across the Rust→R boundary.
@@ -314,8 +339,9 @@ pub unsafe fn arg_check_condition_value(
 ///
 /// # PROTECT discipline
 ///
-/// Every fresh allocation (msg, kind, optional class, true-marker, and — when
-/// present — the `data` VECSXP, its names, and each field value) is added to a
+/// Every fresh allocation (msg, kind, optional class, the no-call marker,
+/// true-marker, and — when present — the `data` VECSXP, its names, and each
+/// field value) is added to a
 /// single [`ProtectScope`](crate::ProtectScope) before the next allocation
 /// that might trigger a GC barrier. The scope releases them all together
 /// (`UNPROTECT`) when it drops at function exit, on every branch — the RAII
@@ -334,12 +360,18 @@ pub unsafe fn arg_check_condition_value(
 ///   ...` form). When `Some`, each `(name, value)` becomes a named element of a
 ///   list stored in slot `[4]`; the R helper splices these into the condition
 ///   object so handlers can read `e$<name>`. When `None`, slot `[4]` is `NULL`.
+/// * `call_choice` - [`ConditionCall::None`] writes the "no call" marker,
+///   `FALSE`, into slot `[3]` instead of `call`: the R helper then signals the
+///   condition with `call = NULL` rather than falling back to the wrapper's
+///   call, and [`RCondition::from_tagged_sexp`] reads the choice back across
+///   a package boundary.
 pub unsafe fn make_rust_condition_value_with_data(
     message: &str,
     kind: &str,
     class: &[String],
     call: Option<SEXP>,
     data: Option<crate::condition::ConditionData>,
+    call_choice: ConditionCall,
 ) -> SEXP {
     unsafe {
         // PROTECT discipline: every fresh allocation that's live across another
@@ -385,8 +417,14 @@ pub unsafe fn make_rust_condition_value_with_data(
         };
         list.set_vector_elt(2, class_sexp);
 
-        // Element 3: caller-owned SEXP — already protected (or R_NilValue)
-        list.set_vector_elt(3, call.unwrap_or(SEXP::nil()));
+        // Element 3: the call. A caller-owned SEXP (already protected) or
+        // R_NilValue; for a call-less condition the "no call" marker, a fresh
+        // FALSE LGLSXP, protected until the list roots it.
+        let call_sexp = match call_choice {
+            ConditionCall::Inherit => call.unwrap_or(SEXP::nil()),
+            ConditionCall::None => scope.protect_raw(SEXP::scalar_logical(false)),
+        };
+        list.set_vector_elt(3, call_sexp);
 
         // Element 4: optional named-list condition data (NULL when absent).
         //

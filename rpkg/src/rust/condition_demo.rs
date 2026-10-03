@@ -6,10 +6,6 @@
 
 use miniextendr_api::miniextendr;
 
-// Type alias avoids ambiguous-associated-type errors when using enum variants
-// (RCondition impls TryFrom/IntoR which have `Error`/`Condition` assoc types).
-type RCondition = miniextendr_api::condition::RCondition;
-
 // region: error! fixtures
 
 /// Raise a rust_error with the standard class layering.
@@ -25,13 +21,7 @@ pub fn demo_error(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_error_custom_class(class: &str, msg: &str) {
-    // Can't use a runtime string as the `class =` argument in the macro because
-    // the macro takes a literal. Use the enum directly for the variable-class case.
-    std::panic::panic_any(RCondition::Error {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::error!(class = class, "{msg}");
 }
 
 // endregion
@@ -51,11 +41,7 @@ pub fn demo_warning(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_warning_custom_class(class: &str, msg: &str) {
-    std::panic::panic_any(RCondition::Warning {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::warning!(class = class, "{msg}");
 }
 
 // endregion
@@ -87,11 +73,7 @@ pub fn demo_condition(msg: &str) {
 /// @export
 #[miniextendr]
 pub fn demo_condition_custom_class(class: &str, msg: &str) {
-    std::panic::panic_any(RCondition::Condition {
-        message: msg.to_string(),
-        class: vec![class.to_string()],
-        data: None,
-    });
+    miniextendr_api::condition!(class = class, "{msg}");
 }
 
 // endregion

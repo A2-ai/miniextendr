@@ -12,6 +12,7 @@
 \alias{SimpleCounter$Counter$error_with_class}
 \alias{SimpleCounter$Counter$raise_error}
 \alias{SimpleCounter$Counter$raise_warning}
+\alias{SimpleCounter$Counter$raise_warning_without_call}
 \alias{SimpleCounter$Counter$raise_message}
 \alias{SimpleCounter$Counter$raise_condition_classed}
 \alias{SimpleCounter$Counter$raise_error_with_data}

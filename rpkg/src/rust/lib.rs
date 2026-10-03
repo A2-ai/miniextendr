@@ -156,6 +156,7 @@ mod box_slice_tests;
 #[cfg(feature = "bytes")]
 mod bytes_adapter_tests;
 mod call_attribution_demo;
+mod callless_condition_tests;
 mod class_system_matrix;
 mod classed_result_tests;
 mod coerce_input_tests;

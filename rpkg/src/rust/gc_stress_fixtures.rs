@@ -3210,13 +3210,15 @@ pub fn gc_stress_serde_ser() {
 /// the eight base types (scalar + vector × i32/f64/bool/String) plus the #995
 /// richer forms (NA-aware `Option`/`Vec<Option>`, the wide-integer ladder, a
 /// `Debug`-stringified value, and a nested named list). It reads every field
-/// back to verify integrity.
+/// back to verify integrity. Odd rounds build a call-less condition, whose
+/// `call` slot is a fresh `FALSE` marker allocated between the class vector
+/// and the data list (#1725).
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
 pub fn gc_stress_condition_data() {
     use miniextendr_api::RValue;
-    use miniextendr_api::condition::ConditionData;
+    use miniextendr_api::condition::{ConditionCall, ConditionData};
     use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
     for round in 0..4 {
@@ -3252,6 +3254,11 @@ pub fn gc_stress_condition_data() {
             ),
         ];
 
+        let call_choice = if round % 2 == 1 {
+            ConditionCall::None
+        } else {
+            ConditionCall::Inherit
+        };
         // SAFETY: gc_stress fixtures run on the R main thread under gctorture.
         let tagged = unsafe {
             make_rust_condition_value_with_data(
@@ -3260,6 +3267,7 @@ pub fn gc_stress_condition_data() {
                 &["gc_stress_class".to_string()],
                 None,
                 Some(data),
+                call_choice,
             )
         };
         // The returned SEXP is unprotected — root it before the readback
@@ -3267,6 +3275,14 @@ pub fn gc_stress_condition_data() {
         let _guard = unsafe { miniextendr_api::gc_protect::OwnedProtect::new(tagged) };
 
         assert_eq!(tagged.len(), 5, "tagged condition value must have 5 slots");
+        let call_slot = tagged.vector_elt(3);
+        match call_choice {
+            ConditionCall::None => {
+                assert!(call_slot.is_logical(), "no-call marker must be a logical");
+                assert_eq!(call_slot.logical_elt(0), 0, "no-call marker must be FALSE");
+            }
+            ConditionCall::Inherit => assert!(call_slot.is_nil(), "no call given: NULL"),
+        }
         let data_list = tagged.vector_elt(4);
         assert_eq!(data_list.len(), 13, "data list must carry all 13 fields");
 

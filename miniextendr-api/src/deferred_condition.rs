@@ -44,8 +44,8 @@
 //! the generated wrappers use for the panicking macros re-raises each queued
 //! condition. Class layering (`c(<classes…>, "rust_warning", "simpleWarning",
 //! "warning", "condition")`), `data` fields as `w$<name>` and
-//! `conditionCall()` (the wrapper's call) are identical to the immediate
-//! forms. `tryCatch(warning = )` exits the call before the value is returned;
+//! `conditionCall()` (the wrapper's call, or `NULL` for a condition queued
+//! with `call = none`) are identical to the immediate forms. `tryCatch(warning = )` exits the call before the value is returned;
 //! `withCallingHandlers` + `invokeRestart("muffleWarning")` keeps it;
 //! `suppressWarnings()` / `suppressMessages()` work as usual.
 //!
@@ -149,6 +149,7 @@ pub fn defer_warning(payload: impl RConditionError) {
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
+        call: payload.call(),
     });
 }
 
@@ -162,6 +163,7 @@ pub fn defer_message(payload: impl RConditionError) {
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
+        call: payload.call(),
     });
 }
 
@@ -172,6 +174,7 @@ pub fn defer_condition(payload: impl RConditionError) {
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
+        call: payload.call(),
     });
 }
 
@@ -300,14 +303,13 @@ pub(crate) unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
     let helper = raise_condition_helper();
     let call_sexp = call.unwrap_or(SEXP::nil());
     for condition in queued {
-        let (kind, message, class, data) = condition.into_parts();
         // SAFETY: main thread inside R_UnwindProtect (caller contract). The
-        // tagged value and the call object are rooted across `Rf_eval`.
+        // tagged value and the call object are rooted across `Rf_eval`. A
+        // call-less condition carries the "no call" marker, which the helper
+        // maps to `call = NULL` instead of falling back to `call_sexp`.
         unsafe {
             let tagged =
-                crate::OwnedProtect::new(crate::error_value::make_rust_condition_value_with_data(
-                    &message, kind, &class, call, data,
-                ));
+                crate::OwnedProtect::new(crate::error_value::rust_condition_value(condition, call));
             let expr =
                 crate::OwnedProtect::new(crate::sys::Rf_lang3(helper, tagged.get(), call_sexp));
             crate::sys::Rf_eval(expr.get(), crate::sys::R_BaseEnv);
@@ -348,11 +350,13 @@ fn raise_condition_helper() -> SEXP {
 /// the surrounding guarded call or callback signals it after its value is
 /// computed.
 ///
-/// Same grammar as [`crate::warning!`]: optional `class = …` (one class or a
+/// Same grammar as [`crate::warning!`]: optional `call = none` (no call, like
+/// R's `warning(..., call. = FALSE)`), optional `class = …` (one class or a
 /// vector, most specific first), optional `data = …` (a pair, a bracketed
 /// list of pairs, or `{ name = value }` sugar), then the `format!` message.
 /// For a typed payload use [`crate::defer_warning()`] with a
-/// `#[derive(RConditionError)]` type.
+/// `#[derive(RConditionError)]` type (`#[condition(call = none)]` on the type
+/// or a variant drops the call there).
 ///
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,
 /// queue after the last fallible step; see [warning placement](crate::deferred_condition#warning-placement).
@@ -372,11 +376,13 @@ fn raise_condition_helper() -> SEXP {
 #[macro_export]
 macro_rules! defer_warning {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         $crate::deferred_condition::defer($crate::condition::RCondition::Warning {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         });
     }};
 }
@@ -387,14 +393,18 @@ macro_rules! defer_warning {
 ///
 /// Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 /// `class = …` part is accepted and layered in front of `rust_message`.
+/// `call = none` is accepted for the shared grammar and changes nothing: an R
+/// message carries no call, so `conditionCall(m)` is `NULL` either way.
 #[macro_export]
 macro_rules! defer_message {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         $crate::deferred_condition::defer($crate::condition::RCondition::Message {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         });
     }};
 }
@@ -408,11 +418,13 @@ macro_rules! defer_message {
 #[macro_export]
 macro_rules! defer_condition {
     ($($t:tt)*) => {{
-        let (__mx_class, __mx_data, __mx_message) = $crate::__mx_condition_parts!($($t)*);
+        let (__mx_call, __mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!($($t)*);
         $crate::deferred_condition::defer($crate::condition::RCondition::Condition {
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
+            call: __mx_call,
         });
     }};
 }
@@ -424,7 +436,7 @@ macro_rules! defer_condition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::condition::{ConditionData, RError};
+    use crate::condition::{ConditionCall, ConditionData, RError};
     use crate::error_value::kind;
 
     /// `(name, i32)` view of a data payload (`RValue` has no `PartialEq`).
@@ -461,14 +473,19 @@ mod tests {
                 .collect();
             assert_eq!(parts.len(), 3);
             assert_eq!(parts[0].0, kind::WARNING);
-            assert_eq!(parts[0].1, "w");
-            assert_eq!(parts[0].2, vec!["a", "b"]);
-            assert_eq!(ints(&parts[0].3), vec![("n", Some(1))]);
+            assert_eq!(parts[0].1.message, "w");
+            assert_eq!(parts[0].1.class, vec!["a", "b"]);
+            assert_eq!(ints(&parts[0].1.data), vec![("n", Some(1))]);
             assert_eq!(parts[1].0, kind::MESSAGE);
-            assert_eq!(parts[1].2, vec!["c"]);
-            assert!(parts[1].3.is_none());
+            assert_eq!(parts[1].1.class, vec!["c"]);
+            assert!(parts[1].1.data.is_none());
             assert_eq!(parts[2].0, kind::CONDITION);
-            assert!(parts[2].2.is_empty());
+            assert!(parts[2].1.class.is_empty());
+            assert!(
+                parts
+                    .iter()
+                    .all(|(_, parts)| parts.call == ConditionCall::Inherit)
+            );
             assert!(take_pending(m).is_empty());
         });
     }
@@ -482,16 +499,13 @@ mod tests {
             crate::defer_warning!(class = "t", data = ("n", 2), "inner {}", 2);
             let inner_taken = take_pending(inner);
             assert_eq!(inner_taken.len(), 1);
-            let (kind, message, class, data) = inner_taken.into_iter().next().unwrap().into_parts();
-            assert_eq!((kind, message.as_str()), (kind::WARNING, "inner 2"));
-            assert_eq!(class, vec!["t"]);
-            assert_eq!(ints(&data), vec![("n", Some(2))]);
+            let (kind, parts) = inner_taken.into_iter().next().unwrap().into_parts();
+            assert_eq!((kind, parts.message.as_str()), (kind::WARNING, "inner 2"));
+            assert_eq!(parts.class, vec!["t"]);
+            assert_eq!(ints(&parts.data), vec![("n", Some(2))]);
             let outer_taken = take_pending(outer);
             assert_eq!(outer_taken.len(), 1);
-            assert_eq!(
-                outer_taken.into_iter().next().unwrap().into_parts().1,
-                "outer"
-            );
+            assert_eq!(outer_taken.into_iter().next().unwrap().message(), "outer");
         });
     }
 
@@ -506,9 +520,42 @@ mod tests {
                 .map(RCondition::into_parts)
                 .collect();
             assert_eq!(parts[0].0, kind::MESSAGE);
-            assert_eq!(parts[0].1, "step 1");
+            assert_eq!(parts[0].1.message, "step 1");
             assert_eq!(parts[1].0, kind::CONDITION);
-            assert_eq!(parts[1].2, vec!["member", "family"]);
+            assert_eq!(parts[1].1.class, vec!["member", "family"]);
+        });
+    }
+
+    #[test]
+    fn call_none_is_queued_with_the_payload() {
+        with_empty_queue(|| {
+            let m = mark();
+            crate::defer_warning!(call = none, class = "t", data = { n = 3 }, "plain {}", 1);
+            crate::defer_condition!(call = none, "plain condition");
+            crate::defer_message!(call = none, "accepted, a message has no call anyway");
+            crate::defer_warning!("sibling keeps its call");
+            defer_warning(RError::new("typed").without_call());
+            let parts: Vec<_> = take_pending(m)
+                .into_iter()
+                .map(RCondition::into_parts)
+                .collect();
+            let calls: Vec<_> = parts.iter().map(|(_, parts)| parts.call).collect();
+            assert_eq!(
+                calls,
+                [
+                    ConditionCall::None,
+                    ConditionCall::None,
+                    ConditionCall::None,
+                    ConditionCall::Inherit,
+                    ConditionCall::None,
+                ]
+            );
+            assert_eq!(parts[0].0, kind::WARNING);
+            assert_eq!(parts[0].1.message, "plain 1");
+            assert_eq!(parts[0].1.class, vec!["t"]);
+            assert_eq!(ints(&parts[0].1.data), vec![("n", Some(3))]);
+            assert_eq!(parts[1].0, kind::CONDITION);
+            assert_eq!(parts[2].0, kind::MESSAGE);
         });
     }
 
@@ -528,7 +575,7 @@ mod tests {
             crate::defer_message!("after");
             let messages: Vec<_> = take_pending(0)
                 .into_iter()
-                .map(|condition| condition.into_parts().1)
+                .map(|condition| condition.message().to_string())
                 .collect();
             assert_eq!(messages, ["outer", "after"]);
         });
@@ -549,10 +596,7 @@ mod tests {
             }
             let remaining = take_pending(0);
             assert_eq!(remaining.len(), 1);
-            assert_eq!(
-                remaining.into_iter().next().unwrap().into_parts().1,
-                "worker"
-            );
+            assert_eq!(remaining.into_iter().next().unwrap().message(), "worker");
         });
     }
 
@@ -565,10 +609,7 @@ mod tests {
             discard(inner);
             let remaining = take_pending(0);
             assert_eq!(remaining.len(), 1);
-            assert_eq!(
-                remaining.into_iter().next().unwrap().into_parts().1,
-                "outer"
-            );
+            assert_eq!(remaining.into_iter().next().unwrap().message(), "outer");
         });
     }
 

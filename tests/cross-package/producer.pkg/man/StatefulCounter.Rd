@@ -13,6 +13,7 @@
 \alias{StatefulCounter$Counter$error_with_class}
 \alias{StatefulCounter$Counter$raise_error}
 \alias{StatefulCounter$Counter$raise_warning}
+\alias{StatefulCounter$Counter$raise_warning_without_call}
 \alias{StatefulCounter$Counter$raise_message}
 \alias{StatefulCounter$Counter$raise_condition_classed}
 \alias{StatefulCounter$Counter$raise_error_with_data}

@@ -657,7 +657,10 @@ impl CWrapperContext {
     /// 2. `catch_unwind` around the entire body
     /// 3. Pre-closure conversions on the main thread (produces owned values)
     /// 4. `run_on_worker` (returns `Result<T, String>`) with a
-    ///    `move` closure containing in-closure conversions and the call expression
+    ///    `move` closure containing in-closure conversions and the call expression,
+    ///    run through `condition::catch_condition` so an `error!()` /
+    ///    `warning!()` / ... payload comes back as a value and is raised on the
+    ///    main thread with its class, data and call choice
     /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
     /// 6. `PutRNGstate()` (if `rng` enabled)
     /// 7. Panic handling: either tagged error value or `Rf_errorcall`
@@ -757,13 +760,25 @@ impl CWrapperContext {
                     #(#pre_call)*
                     #(#pre_closure_stmts)*
 
+                    // `catch_condition` returns an `error!()` / `warning!()` / ...
+                    // raised on the worker as a value (its payload is `Send`), so
+                    // it is raised here with its class, data and call choice;
+                    // only generic panics come back as the message `Err`.
                     match ::miniextendr_api::worker::run_on_worker(move || {
-                        #(#in_closure_stmts)*
-                        #worker_body
+                        ::miniextendr_api::condition::catch_condition(move || {
+                            #(#in_closure_stmts)*
+                            #worker_body
+                        })
                     }) {
-                        Ok(__miniextendr_result) => {
+                        Ok(Ok(__miniextendr_result)) => {
                             #return_conversion
                         }
+                        Ok(Err(__miniextendr_condition)) => unsafe {
+                            ::miniextendr_api::error_value::rust_condition_value(
+                                __miniextendr_condition,
+                                Some(__miniextendr_call),
+                            )
+                        },
                         Err(__panic_msg) => {
                             unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                                 &__panic_msg, ::miniextendr_api::error_value::kind::PANIC, ::core::option::Option::None, Some(__miniextendr_call),

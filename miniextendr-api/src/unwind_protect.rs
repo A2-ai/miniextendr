@@ -253,11 +253,12 @@ pub(crate) struct PreLocatedPanic(pub(crate) String);
 
 /// Extract a message from a panic payload.
 ///
-/// Handles `&str`, `String`, `&String`, and `PreLocatedPanic` payloads
-/// consistently. The borrowed variants are returned as `Cow::Borrowed`, so the
-/// common `panic!("literal")` case avoids the heap allocation that a `String`
-/// return would force. Unrecognised payload types fall back to a
-/// `Cow::Borrowed` static string.
+/// Handles `&str`, `String`, `&String`, `PreLocatedPanic` and
+/// [`RCondition`](crate::condition::RCondition) payloads (the condition's
+/// message) consistently. The borrowed variants are returned as
+/// `Cow::Borrowed`, so the common `panic!("literal")` case avoids the heap
+/// allocation that a `String` return would force. Unrecognised payload types
+/// fall back to a `Cow::Borrowed` static string.
 ///
 /// Call `.into_owned()` (or `.to_string()`) at sites that need an owned
 /// `String`.
@@ -270,6 +271,8 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
         Cow::Borrowed(s.as_str())
     } else if let Some(pre) = payload.downcast_ref::<PreLocatedPanic>() {
         Cow::Borrowed(pre.0.as_str())
+    } else if let Some(condition) = payload.downcast_ref::<crate::condition::RCondition>() {
+        Cow::Borrowed(condition.message())
     } else {
         Cow::Borrowed("unknown panic")
     }
@@ -530,11 +533,14 @@ where
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
+                // A call-less condition (`call = none`) drops the guard's call.
+                let call = cond.call().apply(call);
                 match cond {
                     crate::condition::RCondition::Error {
                         message,
                         class,
                         data,
+                        call: _,
                     } => {
                         // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
                         // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
@@ -612,16 +618,13 @@ where
             if payload.is::<crate::condition::RCondition>() {
                 // Take ownership of the payload so the `data` Vec can be moved
                 // into `make_rust_condition_value` (consumed when materialised).
+                // A call-less payload writes the "no call" marker, which
+                // `from_tagged_sexp` reads back on the consumer's side.
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
-                let (kind, message, class, data) = cond.into_parts();
                 // SAFETY: on the R main thread inside R_UnwindProtect.
-                unsafe {
-                    crate::error_value::make_rust_condition_value_with_data(
-                        &message, kind, &class, None, data,
-                    )
-                }
+                unsafe { crate::error_value::rust_condition_value(cond, None) }
             } else {
                 // Generic panic path — fold the hook-captured `(at file:line)` into
                 // the message (this shim runs on the panicking thread).
@@ -678,14 +681,9 @@ where
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
-                let (kind, message, class, data) = cond.into_parts();
                 // No panic telemetry for user-raised conditions — they are intentional.
                 // SAFETY: on the R main thread inside R_UnwindProtect.
-                return unsafe {
-                    crate::error_value::make_rust_condition_value_with_data(
-                        &message, kind, &class, call, data,
-                    )
-                };
+                return unsafe { crate::error_value::rust_condition_value(cond, call) };
             }
             // endregion
 

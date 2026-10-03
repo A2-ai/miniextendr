@@ -19,6 +19,10 @@
 //!   conversion. Tuple fields need `rename` or `skip`; the condition's own
 //!   slots (`message`, `call`, `kind`) are rejected; a unit shape gives
 //!   `None`.
+//! - `call()`: `#[condition(call = none)]` on the type (every variant) or on
+//!   one variant raises that condition without a call (`conditionCall()` is
+//!   `NULL`, R's `call. = FALSE`). Without it the method keeps the trait's
+//!   default, the call the transport captured.
 //!
 //! The payload feeds `defer_warning` & co. (a condition accompanying a value)
 //! and `Result<T, E>` returns (a classed error): both go through the trait.
@@ -42,6 +46,8 @@ const RESERVED_FIELDS: [&str; 3] = ["message", "call", "kind"];
 struct ContainerAttrs {
     class: Option<syn::LitStr>,
     message: Option<syn::LitStr>,
+    /// `call = none`: the condition carries no call.
+    call_none: bool,
 }
 
 fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<ContainerAttrs> {
@@ -61,9 +67,31 @@ fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<Cont
                     return Err(meta.error("`message` is given twice"));
                 }
                 out.message = Some(meta.value()?.parse()?);
+            } else if meta.path.is_ident("call") {
+                if out.call_none {
+                    return Err(meta.error("`call` is given twice"));
+                }
+                let value: syn::Ident = meta.value()?.parse().map_err(|err| {
+                    syn::Error::new(
+                        err.span(),
+                        "`call` takes `none`: `#[condition(call = none)]` raises the condition \
+                         without a call, like R's `call. = FALSE`",
+                    )
+                })?;
+                if value != "none" {
+                    return Err(syn::Error::new(
+                        value.span(),
+                        format!(
+                            "unknown `call` value `{value}`; the only one is `none` \
+                             (`#[condition(call = none)]`: no call, like R's `call. = FALSE`)"
+                        ),
+                    ));
+                }
+                out.call_none = true;
             } else {
                 return Err(meta.error(format!(
-                    "unknown `condition` option on {on}; expected `class = \"…\"` or `message = \"…\"`"
+                    "unknown `condition` option on {on}; expected `class = \"…\"`, \
+                     `message = \"…\"` or `call = none`"
                 )));
             }
             Ok(())
@@ -295,8 +323,11 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
         .map_or_else(|| to_snake_case(&ident_name(name)), syn::LitStr::value);
 
     let display = quote! { ::std::string::ToString::to_string(self) };
+    let call_none = quote! { ::miniextendr_api::condition::ConditionCall::None };
 
-    let (message_body, class_body, data_body) = match &input.data {
+    // `call_body` is `None` when no part of the type asks for `call = none`:
+    // the impl then keeps the trait's default `call()`.
+    let (message_body, class_body, data_body, call_body) = match &input.data {
         Data::Struct(data) => {
             let shape = Shape::from_fields(&data.fields, &format!("`{name}`"))?;
             let self_path = quote! { Self };
@@ -318,7 +349,8 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                 let #pattern = self;
                 #data_expr
             };
-            (message, class, data)
+            let call = container.call_none.then(|| call_none.clone());
+            (message, class, data, call)
         }
         Data::Enum(data) => {
             if let Some(message) = &container.message {
@@ -333,9 +365,11 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                     "`#[derive(RConditionError)]` needs at least one variant",
                 ));
             }
+            let variant_count = data.variants.len();
             let mut message_arms = Vec::new();
             let mut class_arms = Vec::new();
             let mut data_arms = Vec::new();
+            let mut call_none_arms = Vec::new();
             let mut needs_display = false;
             for variant in &data.variants {
                 let variant_ident = &variant.ident;
@@ -369,6 +403,9 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                 let pattern = shape.pattern_data(&path);
                 let data_expr = shape.data_expr();
                 data_arms.push(quote! { #pattern => #data_expr, });
+                if attrs.call_none {
+                    call_none_arms.push(wild);
+                }
             }
             let message = if message_arms.is_empty() {
                 display
@@ -379,7 +416,19 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
             };
             let class = quote! { match self { #(#class_arms)* } };
             let data = quote! { match self { #(#data_arms)* } };
-            (message, class, data)
+            let call = if container.call_none || call_none_arms.len() == variant_count {
+                Some(call_none.clone())
+            } else if call_none_arms.is_empty() {
+                None
+            } else {
+                Some(quote! {
+                    match self {
+                        #(#call_none_arms)|* => #call_none,
+                        _ => ::miniextendr_api::condition::ConditionCall::Inherit,
+                    }
+                })
+            };
+            (message, class, data, call)
         }
         Data::Union(_) => {
             return Err(syn::Error::new(
@@ -388,6 +437,14 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
             ));
         }
     };
+
+    let call_method = call_body.map(|body| {
+        quote! {
+            fn call(&self) -> ::miniextendr_api::condition::ConditionCall {
+                #body
+            }
+        }
+    });
 
     Ok(quote! {
         #[automatically_derived]
@@ -405,6 +462,8 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
             ) -> ::core::option::Option<::miniextendr_api::condition::ConditionData> {
                 #data_body
             }
+
+            #call_method
         }
     })
 }
@@ -503,6 +562,86 @@ mod tests {
         });
         assert!(unit.contains("Option :: None"));
         assert!(unit.contains("\"nothing\""));
+    }
+
+    #[test]
+    fn call_none_on_the_type_or_a_variant() {
+        // On a variant: only that variant is call-less.
+        let code = derive(syn::parse_quote! {
+            #[condition(class = "pkg_warning")]
+            enum PkgWarning {
+                #[condition(call = none, message = "row {row} overrides an earlier one")]
+                Overridden { row: i32 },
+                Truncated { dropped: i32 },
+            }
+        });
+        assert!(code.contains("fn call (& self)"));
+        assert!(code.contains(
+            "Self :: Overridden { .. } => :: miniextendr_api :: condition :: ConditionCall :: None"
+        ));
+        assert!(code.contains("_ => :: miniextendr_api :: condition :: ConditionCall :: Inherit"));
+
+        // On the type, or on every variant: no match at all.
+        for code in [
+            derive(syn::parse_quote! {
+                #[condition(call = none)]
+                enum E { A, B { n: i32 } }
+            }),
+            derive(syn::parse_quote! {
+                enum E {
+                    #[condition(call = none)]
+                    A,
+                    #[condition(call = none)]
+                    B { n: i32 },
+                }
+            }),
+            derive(syn::parse_quote! {
+                #[condition(call = none, message = "plain")]
+                struct Notice;
+            }),
+        ] {
+            assert!(code.contains("fn call (& self) -> :: miniextendr_api :: condition :: ConditionCall { :: miniextendr_api :: condition :: ConditionCall :: None }"), "{code}");
+        }
+
+        // Without `call = none` the trait default stays.
+        let code = derive(syn::parse_quote! {
+            enum E { A, B }
+        });
+        assert!(!code.contains("fn call"));
+    }
+
+    #[test]
+    fn rejects_bad_call_values() {
+        let err = derive_err(syn::parse_quote! {
+            #[condition(call = wrapper)]
+            struct S;
+        });
+        assert!(err.contains("unknown `call` value `wrapper`"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(call = "none")]
+            struct S;
+        });
+        assert!(err.contains("`call` takes `none`"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            enum E {
+                #[condition(call = none, call = none)]
+                A,
+            }
+        });
+        assert!(err.contains("`call` is given twice"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            struct S {
+                #[condition(call = none)]
+                a: i32,
+            }
+        });
+        assert!(
+            err.contains("unknown `condition` option on a field"),
+            "{err}"
+        );
     }
 
     #[test]
