@@ -137,11 +137,11 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
                 <#inner as ::miniextendr_api::TryFromSexp>::__mx_input_has_na(&#field, input)
             }
             #[inline]
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, <#inner as ::miniextendr_api::TryFromSexp>::Error> {
                 <#inner as ::miniextendr_api::TryFromSexp>::try_from_sexp(sexp).map(|val| #wrap_val)
             }
             #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+            unsafe fn try_from_sexp_unchecked(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, <#inner as ::miniextendr_api::TryFromSexp>::Error> {
                 unsafe { <#inner as ::miniextendr_api::TryFromSexp>::try_from_sexp_unchecked(sexp) }.map(|val| #wrap_val)
             }
         }
@@ -194,11 +194,11 @@ pub fn derive_into_r(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #into_where {
             type Error = <#inner as ::miniextendr_api::IntoR>::Error;
             #[inline]
-            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, <#inner as ::miniextendr_api::IntoR>::Error> {
                 <#inner as ::miniextendr_api::IntoR>::try_into_sexp(#unwrap_self)
             }
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, <#inner as ::miniextendr_api::IntoR>::Error> {
                 unsafe { <#inner as ::miniextendr_api::IntoR>::try_into_sexp_unchecked(#unwrap_self) }
             }
             #[inline]

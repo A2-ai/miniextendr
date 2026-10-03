@@ -333,3 +333,45 @@ pub fn match_arg_log_level(#[miniextendr(match_arg)] level: log::LevelFilter) ->
     format!("{level:?}").to_lowercase()
 }
 // endregion
+
+// region: Variants named like associated items (#1730)
+
+/// What to do on failure. The variant names match associated items of the
+/// traits the derive implements (`TryFromSexp::Error`, `IntoR::Error`), so the
+/// generated impls must not write `Self::Error` (#1730).
+#[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum OnFailure {
+    Error,
+    Value,
+    Output,
+}
+
+/// Round-trip an `OnFailure` choice through R.
+///
+/// @param on_failure An OnFailure choice.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_on_failure(#[miniextendr(match_arg)] on_failure: OnFailure) -> OnFailure {
+    on_failure
+}
+
+/// Round-trip several `OnFailure` choices through R.
+///
+/// @param on_failure One or more OnFailure choices.
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_on_failures(
+    #[miniextendr(match_arg, several_ok)] on_failure: Vec<OnFailure>,
+) -> Vec<OnFailure> {
+    on_failure
+}
+
+/// Return the choices for OnFailure.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_on_failure_choices() -> Vec<&'static str> {
+    OnFailure::CHOICES.to_vec()
+}
+// endregion

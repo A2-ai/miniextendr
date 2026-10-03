@@ -218,19 +218,19 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = ::miniextendr_api::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, ::miniextendr_api::SexpError> {
                 ::miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
             }
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
-            type Error = std::convert::Infallible;
+            type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 

@@ -27,6 +27,9 @@
 \alias{choices_optional_color}
 \alias{match_arg_optional_mixed}
 \alias{match_arg_log_level}
+\alias{match_arg_on_failure}
+\alias{match_arg_on_failures}
+\alias{match_arg_on_failure_choices}
 \title{match_arg_set_mode}
 \usage{
 match_arg_set_mode(mode = c("Fast", "Safe", "Debug"))
@@ -82,6 +85,12 @@ match_arg_optional_mixed(n, mode = NULL)
 match_arg_log_level(
   level = c("off", "error", "warn", "info", "debug", "trace")
 )
+
+match_arg_on_failure(on_failure = c("error", "value", "output"))
+
+match_arg_on_failures(on_failure = c("error", "value", "output"))
+
+match_arg_on_failure_choices()
 }
 \arguments{
 \item{mode}{A Mode enum value, or NULL.}
@@ -112,6 +121,8 @@ match_arg_log_level(
 
 \item{level}{Log level filter. One of \code{"off"}, \code{"error"}, \code{"warn"},
 \code{"info"}, \code{"debug"}, \code{"trace"} (case-insensitive, partial matching).}
+
+\item{on_failure}{One or more OnFailure choices.}
 }
 \description{
 Set mode using match_arg.
@@ -163,5 +174,11 @@ Optional mode next to a regular parameter; \code{mode} is auto-documented.
 Smoke test: a \verb{#[miniextendr]} fn taking a \code{log::LevelFilter} via match_arg.
 The generated R wrapper should bake in the same lowercase choices that
 \verb{<log::LevelFilter as MatchArg>::CHOICES} advertises.
+
+Round-trip an \code{OnFailure} choice through R.
+
+Round-trip several \code{OnFailure} choices through R.
+
+Return the choices for OnFailure.
 }
 \keyword{internal}

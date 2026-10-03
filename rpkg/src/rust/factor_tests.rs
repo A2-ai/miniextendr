@@ -136,3 +136,51 @@ pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) ->
 
 // Module export for
 // endregion
+
+// region: Variants named like associated items (#1730)
+
+/// Outcome factor whose variant names match associated items of the traits the
+/// derive implements (`TryFromSexp::Error`, `IntoR::Error`), so the generated
+/// impls must not write `Self::Error` (#1730).
+#[derive(Copy, Clone, Debug, PartialEq, RFactor)]
+#[r_factor(rename_all = "snake_case")]
+pub enum Outcome {
+    Error,
+    Value,
+    Output,
+}
+
+/// Interaction factor with an outer variant named `Error`.
+#[derive(Copy, Clone, Debug, PartialEq, RFactor)]
+#[r_factor(interaction = ["error", "value", "output"])]
+pub enum OutcomeStage {
+    Error(Outcome),
+    Value(Outcome),
+}
+
+/// Test round-tripping an Outcome factor through R.
+/// @param outcome An Outcome factor value.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_round_trip(outcome: Outcome) -> Outcome {
+    outcome
+}
+
+/// Test retrieving the Outcome factor level names via CHOICES.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_levels() -> Vec<&'static str> {
+    Outcome::CHOICES.to_vec()
+}
+
+/// Test round-tripping an OutcomeStage interaction factor through R.
+/// @param stage An OutcomeStage factor value.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_stage_round_trip(stage: OutcomeStage) -> OutcomeStage {
+    stage
+}
+
+/// Test retrieving the OutcomeStage interaction levels via CHOICES.
+#[miniextendr_api::miniextendr]
+pub fn factor_outcome_stage_levels() -> Vec<&'static str> {
+    OutcomeStage::CHOICES.to_vec()
+}
+// endregion

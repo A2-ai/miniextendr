@@ -1152,15 +1152,15 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         #base
 
         impl #impl_generics ::miniextendr_api::into_r::IntoR for #df_name #ty_generics #where_clause {
-            type Error = std::convert::Infallible;
+            type Error = ::core::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 

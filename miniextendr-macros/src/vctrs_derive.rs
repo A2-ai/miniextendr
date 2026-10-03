@@ -1061,17 +1061,24 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let data_field = fields.iter().find(|f| f.attrs.is_data);
 
     // Class slice passed to new_vctr/new_rcrd/new_list_of. Without `extends` this
-    // is the unchanged `&[Self::CLASS_NAME]`; with `extends` it concatenates the
+    // is the unchanged `&[CLASS_NAME]`; with `extends` it concatenates the
     // parent classes (CLASS_NAME first, then each parent) so the constructed
     // class vector matches the R-side `r_class_vector` ordering.
     let (class_slice_binding, class_slice_expr) = if extends.is_empty() {
-        (TokenStream::new(), quote! { &[Self::CLASS_NAME] })
+        (
+            TokenStream::new(),
+            quote! { &[<Self as ::miniextendr_api::vctrs::VctrsClass>::CLASS_NAME] },
+        )
     } else {
         (
             quote! {
                 let __class: ::std::vec::Vec<&'static str> =
-                    ::std::iter::once(Self::CLASS_NAME)
-                        .chain(Self::additional_classes().iter().copied())
+                    ::std::iter::once(<Self as ::miniextendr_api::vctrs::VctrsClass>::CLASS_NAME)
+                        .chain(
+                            <Self as ::miniextendr_api::vctrs::VctrsClass>::additional_classes()
+                                .iter()
+                                .copied(),
+                        )
                         .collect();
             },
             quote! { &__class },
@@ -1168,7 +1175,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                                 data,
                                 #class_slice_expr,
                                 &attrs,
-                                Some(Self::INHERIT_BASE_TYPE),
+                                Some(<Self as ::miniextendr_api::vctrs::VctrsClass>::INHERIT_BASE_TYPE),
                             )
                         }
                     }
@@ -1497,9 +1504,8 @@ mod tests {
         let result = derive_vctrs(input).unwrap();
         let code = result.to_string();
 
-        // Should generate R_WRAPPERS_VCTRS_PERCENT const
-        assert!(code.contains("R_WRAPPERS_VCTRS_PERCENT"));
-        assert!(code.contains("pub const"));
+        // Should generate the R_WRAPPERS_VCTRS_PERCENT distributed-slice entry
+        assert!(code.contains("static R_WRAPPERS_VCTRS_PERCENT"));
     }
 
     #[test]
@@ -1856,8 +1862,8 @@ mod tests {
         let code = result.to_string();
 
         // Without extends, no additional_classes override and the slice stays
-        // the unchanged &[Self::CLASS_NAME].
+        // the unchanged &[CLASS_NAME].
         assert!(!code.contains("additional_classes"));
-        assert!(code.contains("Self :: CLASS_NAME"));
+        assert!(code.contains("VctrsClass > :: CLASS_NAME"));
     }
 }

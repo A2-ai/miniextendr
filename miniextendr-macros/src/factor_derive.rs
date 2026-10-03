@@ -257,13 +257,13 @@ fn derive_simple_factor(
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
-            type Error = std::convert::Infallible;
+            type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 
@@ -283,7 +283,7 @@ fn derive_simple_factor(
             type Error = ::miniextendr_api::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, ::miniextendr_api::SexpError> {
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }
@@ -457,12 +457,12 @@ fn derive_interaction_factor(
             const CHOICES: &'static [&'static str] = &[#(#combined_level_strs),*];
 
             fn from_choice(choice: &str) -> Option<Self> {
-                let idx_1 = Self::CHOICES.iter().position(|&l| l == choice).map(|i| i as i32 + 1)?;
+                let idx_1 = <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES.iter().position(|&l| l == choice).map(|i| i as i32 + 1)?;
                 <Self as ::miniextendr_api::RFactor>::from_level_index(idx_1)
             }
 
             fn to_choice(self) -> &'static str {
-                Self::CHOICES[(<Self as ::miniextendr_api::RFactor>::to_level_index(self) - 1) as usize]
+                <Self as ::miniextendr_api::match_arg::MatchArg>::CHOICES[(<Self as ::miniextendr_api::RFactor>::to_level_index(self) - 1) as usize]
             }
         }
 
@@ -482,13 +482,13 @@ fn derive_interaction_factor(
         }
 
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
-            type Error = std::convert::Infallible;
+            type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 
@@ -508,7 +508,7 @@ fn derive_interaction_factor(
             type Error = ::miniextendr_api::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, ::miniextendr_api::SexpError> {
                 ::miniextendr_api::factor_from_sexp(sexp)
             }
         }

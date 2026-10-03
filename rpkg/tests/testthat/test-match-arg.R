@@ -357,3 +357,14 @@ test_that("match_arg_auto_doc_modes several_ok accepts subsets", {
   expect_equal(match_arg_auto_doc_modes(), "Fast, Safe, Debug")
   expect_error(match_arg_auto_doc_modes("nope"), "should be one of")
 })
+
+test_that("match_arg enum with variants named like associated items round-trips (#1730)", {
+  expect_equal(match_arg_on_failure_choices(), c("error", "value", "output"))
+  expect_equal(match_arg_on_failure("error"), "error")
+  expect_equal(match_arg_on_failure("value"), "value")
+  expect_equal(match_arg_on_failure("output"), "output")
+  expect_equal(match_arg_on_failure(), "error") # NULL default -> first choice
+  expect_equal(match_arg_on_failure("err"), "error") # partial match
+  expect_equal(match_arg_on_failures(c("output", "error")), c("output", "error"))
+  expect_error(match_arg_on_failure("warn"), "should be one of")
+})

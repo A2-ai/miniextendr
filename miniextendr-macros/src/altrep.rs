@@ -144,11 +144,11 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::IntoR for #ident #ty_generics #where_clause {
             type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
+            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, Self::Error> {
+            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 Ok(unsafe { self.into_sexp_unchecked() })
             }
 
@@ -196,7 +196,7 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::TryFromSexp for #ref_ident {
             type Error = ::miniextendr_api::SexpTypeError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, ::miniextendr_api::SexpTypeError> {
                 use ::miniextendr_api::SEXPTYPE;
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
@@ -230,7 +230,7 @@ pub(crate) fn generate_direct_altrep_registration(
         impl ::miniextendr_api::TryFromSexp for #mut_ident {
             type Error = ::miniextendr_api::SexpTypeError;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, Self::Error> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, ::miniextendr_api::SexpTypeError> {
                 use ::miniextendr_api::SEXPTYPE;
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {

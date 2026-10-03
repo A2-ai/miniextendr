@@ -266,3 +266,23 @@ test_that("into_dataframe_split unit variant → 0-column data.frame with row co
   expect_equal(names(result$pending), "id")
   expect_equal(result$pending$id, 7L)
 })
+
+test_that("DataFrameRow enums with variants named like associated items convert (#1730)", {
+  status <- check_status_error()
+  expect_s3_class(status, "factor")
+  expect_equal(levels(status), c("Error", "Value", "Output"))
+  expect_equal(as.character(status), "Error")
+
+  df <- check_events_df()
+  expect_s3_class(df, "data.frame")
+  expect_equal(as.character(df[["_type"]]), c("Error", "Value", "Output"))
+  expect_equal(df$code, c(1L, NA, NA))
+  expect_equal(df$value, c(NA, 2.5, NA))
+  expect_equal(df$text, c(NA, NA, "done"))
+
+  parts <- check_events_split()
+  expect_setequal(names(parts), c("error", "value", "output"))
+  expect_equal(parts$error$code, 1L)
+  expect_equal(parts$value$value, 2.5)
+  expect_equal(parts$output$text, "done")
+})
