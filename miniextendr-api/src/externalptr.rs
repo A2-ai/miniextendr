@@ -2063,10 +2063,7 @@ pub fn drop_catching_panic<F: FnOnce()>(f: F) {
 /// the concrete type's drop function. No generic parameter needed — one
 /// finalizer function handles all `ExternalPtr<T>` types.
 extern "C-unwind" fn release_any(sexp: SEXP) {
-    if sexp.is_null() {
-        return;
-    }
-    if sexp.is_nil() {
+    if sexp.is_null_or_nil() {
         return;
     }
 

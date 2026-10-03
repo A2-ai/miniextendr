@@ -633,7 +633,7 @@ unsafe fn get_r_error_message() -> String {
         let mut err: std::os::raw::c_int = 0;
         let msg_sexp = R_tryEvalSilent(call.get(), R_BaseEnv, &mut err);
 
-        if err != 0 || msg_sexp.is_null() {
+        if err != 0 || msg_sexp.is_null_ptr() {
             return "R error occurred (could not retrieve message)".to_string();
         }
 

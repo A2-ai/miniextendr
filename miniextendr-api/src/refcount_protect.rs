@@ -110,7 +110,7 @@ impl ArenaState {
     const fn uninit() -> Self {
         Self {
             map: MaybeUninit::uninit(),
-            backing: SEXP(std::ptr::null_mut()),
+            backing: SEXP::null(),
             capacity: 0,
             len: 0,
             free_list: Vec::new(),
@@ -151,7 +151,7 @@ impl ArenaState {
         let capacity = capacity.max(1);
         let mut state = Self {
             map: MaybeUninit::new(BTreeMap::new()),
-            backing: SEXP(std::ptr::null_mut()),
+            backing: SEXP::null(),
             capacity: 0,
             len: 0,
             next_slot: 0,
@@ -386,9 +386,9 @@ impl ArenaState {
     }
 
     unsafe fn release_backing(&mut self) {
-        if !self.backing.0.is_null() {
+        if !self.backing.is_null_ptr() {
             unsafe { R_ReleaseObject(self.backing) };
-            self.backing = SEXP(std::ptr::null_mut());
+            self.backing = SEXP::null();
         }
     }
 }

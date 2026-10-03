@@ -4,6 +4,7 @@
 \alias{greet}
 \alias{add_with_defaults}
 \alias{with_flag}
+\alias{sexp_arg_is_nil}
 \title{greet}
 \usage{
 greet(name = "World")
@@ -11,6 +12,8 @@ greet(name = "World")
 add_with_defaults(x, y = 0L, z = 1L)
 
 with_flag(flag = FALSE)
+
+sexp_arg_is_nil(value = NULL)
 }
 \arguments{
 \item{name}{Character name to greet (defaults to "World").}
@@ -22,6 +25,8 @@ with_flag(flag = FALSE)
 \item{z}{Integer third operand (defaults to 1L).}
 
 \item{flag}{Logical flag (defaults to FALSE).}
+
+\item{value}{Any R value (defaults to NULL).}
 }
 \description{
 Test greeting with a default name parameter.
@@ -29,4 +34,11 @@ Test greeting with a default name parameter.
 Test addition with multiple default parameters.
 
 Test boolean parameter with a default value.
+
+Test an optional \code{SEXP} parameter that defaults to \code{NULL}.
+
+Returns \code{TRUE} when \code{value} is \code{NULL}. Omitting \code{value} and passing \code{NULL}
+both reach Rust as R's \code{NULL}, which \code{SEXP::is_nil()} recognises. R never
+passes a C null pointer, so a null-pointer test would be \code{FALSE} for every
+call.
 }

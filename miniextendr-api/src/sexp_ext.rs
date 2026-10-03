@@ -15,7 +15,7 @@ use crate::sys::{
     ALTREP, CAR, CAR_unchecked, CDR, CDR_unchecked, COMPLEX_ELT, DATAPTR_RO, DATAPTR_RO_unchecked,
     IDENT_USE_CLOENV, INTEGER_ELT, LOGICAL_ELT, PRINTNAME, R_BaseEnv, R_CHAR, R_CHAR_unchecked,
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NaString, R_NamesSymbol,
-    R_NilValue, R_RowNamesSymbol, R_compute_identical, RAW_ELT, REAL_ELT, Rf_asChar, Rf_asInteger,
+    R_RowNamesSymbol, R_compute_identical, RAW_ELT, REAL_ELT, Rf_asChar, Rf_asInteger,
     Rf_asLogical, Rf_asReal, Rf_classgets, Rf_coerceVector, Rf_cons, Rf_cons_unchecked, Rf_dimgets,
     Rf_dimnamesgets, Rf_duplicate, Rf_eval, Rf_getAttrib, Rf_getAttrib_unchecked, Rf_inherits,
     Rf_install, Rf_isArray, Rf_isFactor, Rf_isFunction, Rf_isList, Rf_isMatrix, Rf_isObject,
@@ -41,10 +41,6 @@ pub trait SexpExt {
     /// The SEXP must be valid (not null and not freed).
     #[must_use]
     fn type_of(&self) -> SEXPTYPE;
-
-    /// Check if this SEXP is null or R_NilValue.
-    #[must_use]
-    fn is_null_or_nil(&self) -> bool;
 
     /// Get the length of this SEXP as `usize`.
     ///
@@ -168,10 +164,6 @@ pub trait SexpExt {
     /// Check if this `SEXP` contains any elements.
     #[must_use]
     fn is_empty(&self) -> bool;
-
-    /// Check if this SEXP is R's `NULL` (NILSXP).
-    #[must_use]
-    fn is_nil(&self) -> bool;
 
     /// Check if this SEXP is a factor.
     ///
@@ -579,11 +571,6 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
-    fn is_null_or_nil(&self) -> bool {
-        self.is_null() || std::ptr::addr_eq(self.0, unsafe { R_NilValue.0 })
-    }
-
-    #[inline]
     fn len(&self) -> usize {
         unsafe { Rf_xlength(*self) as usize }
     }
@@ -701,14 +688,6 @@ impl SexpExt for SEXP {
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    #[inline]
-    fn is_nil(&self) -> bool {
-        // Pointer comparison, not type dereference — safe on dangling pointers.
-        // R_NilValue is the singleton NILSXP; checking type_of() would crash
-        // on freed SEXPs during cleanup.
-        unsafe { std::ptr::addr_eq(self.0, R_NilValue.0) }
     }
 
     #[inline]

@@ -218,7 +218,7 @@ macro_rules! __impl_altvec_dataptr {
                 // Check data2 cache first (materialized by a prior call).
                 unsafe {
                     let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    if !data2.is_null()
+                    if !data2.is_null_ptr()
                         && $crate::SexpExt::type_of(&data2)
                             == <$elem as $crate::RNativeType>::SEXP_TYPE
                     {
@@ -271,7 +271,7 @@ macro_rules! __impl_altvec_dataptr {
                 // Check data2 cache first (may have been materialized by a prior dataptr call)
                 unsafe {
                     let data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    if !data2.is_null()
+                    if !data2.is_null_ptr()
                         && $crate::SexpExt::type_of(&data2)
                             == <$elem as $crate::RNativeType>::SEXP_TYPE
                     {
@@ -311,7 +311,7 @@ macro_rules! __impl_altvec_string_dataptr {
 
                     // Get or allocate the data2 cache STRSXP
                     let mut data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    let fresh_alloc = data2.is_null()
+                    let fresh_alloc = data2.is_null_ptr()
                         || $crate::SexpExt::type_of(&data2) != $crate::SEXPTYPE::STRSXP;
                     if fresh_alloc {
                         // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
@@ -1101,7 +1101,7 @@ macro_rules! __impl_altstring_methods {
 
                     // Get or allocate the data2 cache STRSXP
                     let mut data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    if data2.is_null()
+                    if data2.is_null_ptr()
                         || $crate::SexpExt::type_of(&data2) != $crate::SEXPTYPE::STRSXP
                     {
                         let n = <$ty as $crate::altrep_traits::Altrep>::length(x);

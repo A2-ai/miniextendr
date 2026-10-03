@@ -112,8 +112,8 @@
 
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
+use crate::SEXP;
 use crate::condition::{RCondition, RConditionError};
-use crate::{SEXP, SexpExt};
 
 // region: Queue
 
