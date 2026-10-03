@@ -76,7 +76,7 @@ fn guarded_altrep_sexp_call<T: Altrep>(f: impl FnOnce() -> SEXP) -> SEXP {
         let result = f();
         // A C NULL result requests R's fallback in e.g. Duplicate/Extract_subset.
         // SAFETY: every other result is a valid SEXP, on R's main thread.
-        let root = (!result.is_null()).then(|| unsafe { crate::OwnedProtect::new(result) });
+        let root = (!result.is_null_ptr()).then(|| unsafe { crate::OwnedProtect::new(result) });
         (result, root)
     });
     result

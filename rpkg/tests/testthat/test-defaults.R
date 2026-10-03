@@ -21,3 +21,11 @@ test_that("underscore_it_all() accepts discarded parameters", {
 test_that("do_nothing() returns raw SEXP integer directly", {
   expect_identical(do_nothing(), 42L)
 })
+
+test_that("sexp_arg_is_nil() sees R NULL when value is omitted or NULL (#1734)", {
+  expect_identical(as.list(formals(sexp_arg_is_nil)), list(value = NULL))
+  expect_true(sexp_arg_is_nil())
+  expect_true(sexp_arg_is_nil(NULL))
+  expect_false(sexp_arg_is_nil(1L))
+  expect_false(sexp_arg_is_nil(list()))
+})

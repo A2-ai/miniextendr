@@ -238,7 +238,7 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     // byte arena used as a `*mut u8` allocation, not a typed vector — there is no
     // `T: RNativeType` element to derive the tag from.
     let sexp = unsafe { crate::sys::Rf_allocVector_unchecked(SEXPTYPE::RAWSXP, total_isize) };
-    if sexp.is_null() {
+    if sexp.is_null_ptr() {
         return sendable_data_ptr_null();
     }
 

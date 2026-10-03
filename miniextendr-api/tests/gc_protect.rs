@@ -116,7 +116,7 @@ fn reprotect_slot_count_stays_one() {
             assert_eq!(scope.count(), 1, "count should stay at 1 after set()");
         }
 
-        assert!(!slot.get().is_null());
+        assert!(!slot.get().is_null_ptr());
     });
 }
 
@@ -179,7 +179,7 @@ fn tls_with_protect_scope_basic() {
         });
 
         assert!(!tls::has_active_scope());
-        assert!(!result.is_null());
+        assert!(!result.is_null_ptr());
     });
 }
 
@@ -228,7 +228,7 @@ fn owned_protect_basic() {
     r_test_utils::with_r_thread(|| unsafe {
         {
             let guard = OwnedProtect::new(SEXP::scalar_integer(123));
-            assert!(!guard.get().is_null());
+            assert!(!guard.get().is_null_ptr());
             // guard drops, UNPROTECT(1) called
         }
     });
@@ -241,7 +241,7 @@ fn owned_protect_deref() {
 
         // Deref to get &SEXP
         let sexp: &miniextendr_api::SEXP = &guard;
-        assert!(!sexp.is_null());
+        assert!(!sexp.is_null_ptr());
     });
 }
 // endregion
@@ -255,8 +255,8 @@ fn protect2_convenience() {
 
         let (a, b) = scope.protect2(SEXP::scalar_integer(1), SEXP::scalar_real(2.0));
 
-        assert!(!a.get().is_null());
-        assert!(!b.get().is_null());
+        assert!(!a.get().is_null_ptr());
+        assert!(!b.get().is_null_ptr());
         assert_eq!(scope.count(), 2);
     });
 }
@@ -272,9 +272,9 @@ fn protect3_convenience() {
             SEXP::scalar_integer(3),
         );
 
-        assert!(!a.get().is_null());
-        assert!(!b.get().is_null());
-        assert!(!c.get().is_null());
+        assert!(!a.get().is_null_ptr());
+        assert!(!b.get().is_null_ptr());
+        assert!(!c.get().is_null_ptr());
         assert_eq!(scope.count(), 3);
     });
 }
@@ -286,7 +286,7 @@ fn protect_raw_convenience() {
 
         let sexp = scope.protect_raw(SEXP::scalar_integer(42));
 
-        assert!(!sexp.is_null());
+        assert!(!sexp.is_null_ptr());
         assert_eq!(scope.count(), 1);
     });
 }

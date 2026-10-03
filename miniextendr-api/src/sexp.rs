@@ -84,7 +84,7 @@ impl SEXP {
     /// (R checks `!= NULL`, not `!= R_NilValue`), or comparison against
     /// uninitialized pointers.
     ///
-    /// See also: [`SEXP::nil()`], [`SEXP::is_null()`], [`crate::SexpExt::is_nil()`]
+    /// See also: [`SEXP::nil()`], [`SEXP::is_null_ptr()`], [`SEXP::is_nil()`]
     #[inline]
     pub const fn null() -> Self {
         Self(std::ptr::null_mut())
@@ -96,21 +96,94 @@ impl SEXP {
     /// on the heap. Use this for `.Call()` return values, SEXP arguments to
     /// R API functions, and any slot in R data structures.
     ///
-    /// See also: [`SEXP::null()`], [`crate::SexpExt::is_nil()`], [`SEXP::is_null()`]
+    /// See also: [`SEXP::null()`], [`SEXP::is_nil()`], [`SEXP::is_null_ptr()`]
     #[inline]
     pub fn nil() -> Self {
         unsafe { R_NilValue }
     }
 
-    /// Check if this SEXP is a C null pointer (0x0).
+    /// Is this SEXP a C null pointer (address `0x0`)?
     ///
-    /// To check if an SEXP is R's `NULL` (`R_NilValue`), use
-    /// [`crate::SexpExt::is_nil()`] instead.
+    /// This answers a pointer question, not an R question. An SEXP that R
+    /// hands you (a `.Call()` argument, a list element, an attribute) is never
+    /// a C null pointer: R's `NULL` is the `R_NilValue` singleton, a real
+    /// object at a non-zero address. A C null pointer only shows up where C
+    /// code uses address zero for "nothing here": an uninitialised static or
+    /// field ([`SEXP::null()`]), an ALTREP `data1`/`data2` slot that was never
+    /// set, or an FFI function that returns `NULL` on failure.
     ///
-    /// See also: [`crate::SexpExt::is_nil()`], [`crate::SexpExt::is_null_or_nil()`]
+    /// To ask "is this R's `NULL`?", use [`SEXP::is_nil()`].
+    ///
+    /// ```
+    /// use miniextendr_api::SEXP;
+    ///
+    /// let unset = SEXP::null();
+    /// assert!(unset.is_null_ptr());
+    /// ```
+    ///
+    /// There is no `SEXP::is_null()`: the name read like a test for R's
+    /// `NULL`, so it is gone on purpose.
+    ///
+    /// ```compile_fail
+    /// use miniextendr_api::SEXP;
+    ///
+    /// let unset = SEXP::null();
+    /// assert!(unset.is_null());
+    /// ```
+    ///
+    /// See also: [`SEXP::is_nil()`], [`SEXP::is_null_or_nil()`], [`SEXP::null()`]
     #[inline]
-    pub const fn is_null(self) -> bool {
+    #[must_use]
+    pub const fn is_null_ptr(self) -> bool {
         self.0.is_null()
+    }
+
+    /// Is this SEXP R's `NULL` (`R_NilValue`)?
+    ///
+    /// This is the check for an R value: an optional argument that defaults
+    /// to `NULL`, an absent attribute, an empty list slot. It compares the
+    /// address against the `R_NilValue` singleton and never dereferences
+    /// `self`, so it is safe on a stale SEXP. A C null pointer is not R's
+    /// `NULL`; for that, use [`SEXP::is_null_ptr()`].
+    ///
+    /// ```
+    /// use miniextendr_api::SEXP;
+    ///
+    /// // `x` is an argument whose R default is `NULL`: `f()` and `f(NULL)`
+    /// // both arrive as `R_NilValue`.
+    /// fn given(x: SEXP) -> bool {
+    ///     !x.is_nil()
+    /// }
+    /// # let _ = given;
+    /// ```
+    ///
+    /// See also: [`SEXP::nil()`], [`SEXP::is_null_ptr()`], [`SEXP::is_null_or_nil()`]
+    #[inline]
+    #[must_use]
+    pub fn is_nil(self) -> bool {
+        // Pointer comparison, not a type check: reading TYPEOF would crash on
+        // a freed SEXP during cleanup.
+        std::ptr::addr_eq(self.0, unsafe { R_NilValue.0 })
+    }
+
+    /// Is this SEXP either a C null pointer or R's `NULL`?
+    ///
+    /// For a slot that can hold either kind of "nothing": unset (address
+    /// zero) or set to `R_NilValue`, such as an external pointer's protected
+    /// value. For an R value alone, [`SEXP::is_nil()`] is the right check.
+    ///
+    /// ```
+    /// use miniextendr_api::SEXP;
+    ///
+    /// // A slot that was never set counts as empty.
+    /// assert!(SEXP::null().is_null_or_nil());
+    /// ```
+    ///
+    /// See also: [`SEXP::is_nil()`], [`SEXP::is_null_ptr()`]
+    #[inline]
+    #[must_use]
+    pub fn is_null_or_nil(self) -> bool {
+        self.is_null_ptr() || self.is_nil()
     }
 
     /// Get the raw pointer.

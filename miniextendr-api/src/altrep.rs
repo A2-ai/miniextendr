@@ -136,7 +136,7 @@ pub fn validate_altrep_class(
     class_name: &CStr,
     base: RBase,
 ) -> R_altrep_class_t {
-    if cls.ptr.is_null() {
+    if cls.ptr.is_null_ptr() {
         panic!(
             "ALTREP class registration failed: R_make_alt{base:?}_class() returned NULL \
              for class {:?}",

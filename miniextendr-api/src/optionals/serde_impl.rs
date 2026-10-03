@@ -449,7 +449,7 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
         SEXPTYPE::VECSXP => {
             // Check for names
             let names = sexp.get_names();
-            let has_names = !names.is_null() && names.type_of() == SEXPTYPE::STRSXP;
+            let has_names = !names.is_nil() && names.type_of() == SEXPTYPE::STRSXP;
 
             if has_names {
                 // Convert to object

@@ -1,6 +1,6 @@
 //! Tests for parameter default values via `#[miniextendr(default = "...")]`.
 
-use miniextendr_api::miniextendr;
+use miniextendr_api::{SEXP, miniextendr};
 
 /// Test greeting with a default name parameter.
 /// @param name Character name to greet (defaults to "World").
@@ -34,4 +34,16 @@ pub fn add_with_defaults(
 #[miniextendr]
 pub fn with_flag(#[miniextendr(default = "FALSE")] flag: bool) -> bool {
     flag
+}
+
+/// Test an optional `SEXP` parameter that defaults to `NULL`.
+///
+/// Returns `TRUE` when `value` is `NULL`. Omitting `value` and passing `NULL`
+/// both reach Rust as R's `NULL`, which `SEXP::is_nil()` recognises. R never
+/// passes a C null pointer, so a null-pointer test would be `FALSE` for every
+/// call.
+/// @param value Any R value (defaults to NULL).
+#[miniextendr]
+pub fn sexp_arg_is_nil(#[miniextendr(default = "NULL")] value: SEXP) -> bool {
+    value.is_nil()
 }
