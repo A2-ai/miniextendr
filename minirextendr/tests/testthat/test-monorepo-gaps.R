@@ -166,7 +166,7 @@ test_that("B2: upgrade_miniextendr_package() resolves rpkg subdir in monorepo", 
     use_miniextendr_description = function(...) invisible(),
     use_miniextendr_rbuildignore = function(...) invisible(),
     upgrade_gitignore = function(...) invisible(),
-    check_configure_ac_drift = function() invisible(),
+    check_configure_ac_drift = function(...) invisible(),
     .package = "minirextendr"
   )
 
@@ -213,7 +213,7 @@ test_that("B2: upgrade_miniextendr_package() respects explicit rpkg_subdir=", {
     use_miniextendr_description = function(...) invisible(),
     use_miniextendr_rbuildignore = function(...) invisible(),
     upgrade_gitignore = function(...) invisible(),
-    check_configure_ac_drift = function() invisible(),
+    check_configure_ac_drift = function(...) invisible(),
     .package = "minirextendr"
   )
 

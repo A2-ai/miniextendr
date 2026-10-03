@@ -39,8 +39,9 @@
 #' @param local_path Optional path to local miniextendr repository for vendoring.
 #' @param configure_ac Logical. If `TRUE`, overwrites configure.ac with the
 #'   current template. Defaults to `FALSE` because users often customise
-#'   configure.ac with feature flags. When `FALSE`, a heuristic check warns
-#'   if the existing configure.ac appears outdated.
+#'   configure.ac with feature flags. When `FALSE`, compares the existing file
+#'   with the current template and warns about differences, including custom
+#'   edits. Review those differences or use `TRUE` to replace the file.
 #' @param autoconf Logical. If `TRUE` (default) and `autoconf` is available,
 #'   regenerates the configure script after upgrading.
 #' @param allow_dirty Logical. If `FALSE` (default), aborts when scaffolding
@@ -114,7 +115,7 @@ upgrade_miniextendr_package <- function(path = ".",
     cli::cli_h2("Replacing configure.ac")
     use_miniextendr_configure(subdir = tpl_subdir)
   } else {
-    check_configure_ac_drift()
+    check_configure_ac_drift(monorepo)
   }
 
   # --- Autoconf ---
@@ -374,35 +375,45 @@ upgrade_gitignore <- function(subdir = NULL) {
 
 #' Check configure.ac for drift
 #'
-#' Heuristic check for key structural elements that indicate the configure.ac
-#' is up to date. Warns if missing.
+#' Compare the complete file with the current template, rendered for this
+#' package. Custom edits also produce a warning; leave the file untouched so
+#' users can review and retain those edits when updating the build system.
 #'
+#' @param monorepo Whether the package is the R package of a monorepo, which
+#'   selects `templates/monorepo/rpkg/configure.ac` over
+#'   `templates/rpkg/configure.ac`. Defaults to what `upgrade_layout()` says
+#'   about the active project, so the drift check and the upgrade agree on the
+#'   template set (#1720). The template type a previous scaffolding call left
+#'   active in this R session plays no part.
 #' @noRd
-check_configure_ac_drift <- function() {
+check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis::proj_get())$root)) {
   configure_ac <- usethis::proj_path("configure.ac")
   if (!fs::file_exists(configure_ac)) return(invisible())
 
   content <- readLines(configure_ac, warn = FALSE)
-  text <- paste(content, collapse = "\n")
+  template <- readLines(configure_ac_template(monorepo), warn = FALSE)
+  # configure.ac has one template variable: the package name in AC_INIT.
+  template <- gsub("{{package}}", get_package_name(), template, fixed = TRUE)
 
-  missing <- character()
-  if (!grepl("CARGO_STATICLIB_NAME", text, fixed = TRUE)) {
-    missing <- c(missing, "CARGO_STATICLIB_NAME substitution")
-  }
-  if (!grepl("AC_CONFIG_AUX_DIR", text, fixed = TRUE)) {
-    missing <- c(missing, "AC_CONFIG_AUX_DIR([tools])")
-  }
-  if (!grepl("CARGO_TARGET_DIR", text, fixed = TRUE)) {
-    missing <- c(missing, "CARGO_TARGET_DIR setup")
-  }
-
-  if (length(missing) > 0) {
+  if (!identical(content, template)) {
     cli::cli_warn(c(
-      "configure.ac may be outdated (missing: {paste(missing, collapse = ', ')})",
+      "configure.ac differs from the current template and was left unchanged.",
+      "i" = "Differences may be custom edits or outdated build-system logic; review them before rebuilding.",
       "i" = "Re-run with {.code configure_ac = TRUE} to replace it with the current template.",
       "!" = "This will overwrite any custom feature flags in configure.ac."
     ))
   }
 
   invisible()
+}
+
+#' Path of the configure.ac template for a layout
+#'
+#' @param monorepo `TRUE` for the R package of a monorepo, `FALSE` for a
+#'   standalone package.
+#' @noRd
+configure_ac_template <- function(monorepo) {
+  layout <- if (monorepo) file.path("monorepo", "rpkg") else "rpkg"
+  system.file("templates", layout, "configure.ac",
+              package = "minirextendr", mustWork = TRUE)
 }
