@@ -23,6 +23,8 @@
  *
  * 2. In R_init_<yourpkg>(), load C-callables:
  *
+ *      #include <R_ext/Rdynload.h>  // R_GetCCallable(), DllInfo
+ *
  *      typedef SEXP (*mx_wrap_fn)(mx_erased*);
  *      static mx_wrap_fn p_mx_wrap = NULL;
  *
