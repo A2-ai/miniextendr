@@ -23,9 +23,17 @@
 #' templates and also adds the monorepo template's entries to the workspace
 #' root `.gitignore`, keeping the lines already there.
 #'
+#' The template is the source of truth for the build-system files it owns
+#' (`src/stub.c`, `src/Makevars.in`, `inst/include/mx_abi.h`, the `tools/`
+#' scripts, ...): the upgrade rewrites them in full, so a local edit to one,
+#' committed or not, is replaced; the `allow_dirty` check only stops the
+#' upgrade over uncommitted edits. To make the replacements visible, the closing
+#' summary lists every file whose content the upgrade changed or added; review
+#' them with `git diff` (and `git status` for added files) before committing.
+#'
 #' A `tools/config.guess` or `tools/config.sub` whose `timestamp=` line is
-#' newer than the bundled copy's is kept. The closing summary lists files the
-#' package no longer uses (`tools/wrapper-freshness.R`,
+#' newer than the bundled copy's is kept. The closing summary also lists files
+#' the package no longer uses (`tools/wrapper-freshness.R`,
 #' `tools/wrapper-inputs.rds`) and a git-tracked `src/<pkg>-win.def`, which
 #' configure generates; the upgrade does not delete or untrack them.
 #'
@@ -55,7 +63,12 @@
 #' @param allow_dirty Logical. If `FALSE` (default), aborts when scaffolding
 #'   files have uncommitted changes in git, to prevent accidental data loss.
 #'   Set to `TRUE` to force the upgrade even with dirty files.
-#' @return Invisibly returns TRUE on success.
+#' @return Invisibly, a list of three character vectors naming the files the
+#'   upgrade touched: `changed` (existed before, content differs), `added`
+#'   (did not exist before) and `removed` (existed before, gone after). Paths
+#'   are relative to the package directory for a standalone package and to the
+#'   workspace root for a monorepo, as `git diff` prints them there. All three
+#'   are empty when the package already matched the templates.
 #' @export
 upgrade_miniextendr_package <- function(path = ".",
                                          rpkg_subdir = NULL,
@@ -105,6 +118,11 @@ upgrade_miniextendr_package <- function(path = ".",
     check_configure_ac_substitutions(monorepo)
   }
 
+  # Fingerprint every file the upgrade may write, after the checks that abort
+  # and before the first write, so the summary can name what changed (#1713).
+  owned <- upgrade_owned_files(layout)
+  before <- hash_files(owned)
+
   # --- Build system templates ---
   cli::cli_h2("Updating build system templates")
   use_miniextendr_stub(subdir = tpl_subdir)
@@ -145,15 +163,136 @@ upgrade_miniextendr_package <- function(path = ".",
   }
 
   # --- Summary ---
+  changes <- upgrade_changes(before, hash_files(owned))
   cli::cli_h1("Upgrade complete!")
+  report_upgrade_changes(changes)
   report_upgrade_leftovers(resolved_path)
   cli::cli_alert_info("Next steps:")
   cli::cli_bullets(c(
-    " " = "Review changes with {.code git diff}",
     " " = "Run {.code minirextendr::miniextendr_build()} to rebuild"
   ))
 
-  invisible(TRUE)
+  invisible(changes)
+}
+
+#' Files an upgrade may write
+#'
+#' Every file `upgrade_miniextendr_package()` writes, whether it rewrites the
+#' file from a template (`src/stub.c`, `inst/include/mx_abi.h`, the `tools/`
+#' scripts, `configure.ac` with `configure_ac = TRUE`, ...), regenerates it
+#' (`configure`, by autoconf), merges entries into it (`DESCRIPTION`, the
+#' ignore files, `.gitattributes`) or creates it when missing (`LICENSE`).
+#' In a monorepo the
+#' workspace-root `.gitignore` is included too. Files a particular run leaves
+#' alone, such as `configure.ac` with `configure_ac = FALSE`, are listed
+#' anyway: their content does not change, so the summary skips them. A file
+#' the upgrade starts writing has to be added here, or the summary will not
+#' report it.
+#'
+#' @param layout The list `upgrade_layout()` returns.
+#' @return A character vector of absolute paths, named by the path shown to the
+#'   user: relative to the package directory for a standalone package, and to
+#'   the workspace root for a monorepo.
+#' @keywords internal
+upgrade_owned_files <- function(layout) {
+  pkg_files <- c(
+    "src/stub.c",
+    "src/r_shim.h",
+    "src/Makevars.in",
+    "src/win.def.in",
+    "src/rust/build.rs",
+    "inst/include/mx_abi.h",
+    "bootstrap.R",
+    "cleanup",
+    "cleanup.win",
+    "cleanup.ucrt",
+    "configure.ac",
+    "configure",
+    "configure.win",
+    "configure.ucrt",
+    "tools/config.guess",
+    "tools/config.sub",
+    "tools/vendor-cache.R",
+    "tools/dev-bootstrap.R",
+    "tools/write-wrappers.R",
+    "tools/lock-shape-check.R",
+    "tools/build-html-reference.R",
+    "DESCRIPTION",
+    "LICENSE",
+    ".Rbuildignore",
+    ".gitignore",
+    ".gitattributes"
+  )
+  if (is.null(layout$root)) {
+    return(stats::setNames(file.path(layout$pkg, pkg_files), pkg_files))
+  }
+  c(stats::setNames(file.path(layout$pkg, pkg_files),
+                    file.path(layout$subdir, pkg_files)),
+    ".gitignore" = file.path(layout$root, ".gitignore"))
+}
+
+#' MD5 fingerprints of files
+#'
+#' @param files Named character vector of file paths, as
+#'   `upgrade_owned_files()` returns.
+#' @return A character vector of MD5 hashes with the names of `files`; `NA`
+#'   for a file that does not exist.
+#' @keywords internal
+hash_files <- function(files) {
+  stats::setNames(unname(tools::md5sum(files)), names(files))
+}
+
+#' Classify the files an upgrade touched
+#'
+#' @param before,after Fingerprints of the same files from `hash_files()`,
+#'   taken before the upgrade's first write and after its last one.
+#' @return A list of character vectors of file names (the names of `before`):
+#'   `changed` (existed before and after, content differs), `added` (absent
+#'   before, present after) and `removed` (present before, absent after).
+#' @keywords internal
+upgrade_changes <- function(before, after) {
+  existed <- !is.na(before)
+  exists <- !is.na(after)
+  list(
+    changed = names(before)[existed & exists & before != after],
+    added = names(before)[!existed & exists],
+    removed = names(before)[existed & !exists]
+  )
+}
+
+#' Report the files an upgrade changed
+#'
+#' Prints the changed, added and removed files, one per line, then points at
+#' `git diff`: the template replaced any local edit to a file it owns, and a
+#' committed edit gets past the uncommitted-changes check (#1713). Prints one
+#' line when nothing changed.
+#'
+#' @param changes The list `upgrade_changes()` returns.
+#' @return Called for its messages; returns `NULL` invisibly.
+#' @keywords internal
+report_upgrade_changes <- function(changes) {
+  if (sum(lengths(changes)) == 0L) {
+    cli::cli_alert_success("No scaffold files changed; the package already matched the templates.")
+    return(invisible())
+  }
+  groups <- c(changed = "Changed", added = "Added", removed = "Removed")
+  for (group in names(groups)) {
+    files <- changes[[group]]
+    if (length(files) == 0L) next
+    label <- groups[[group]]
+    cli::cli_alert_info("{label} {length(files)} file{?s}:")
+    for (file in files) cli::cli_bullets(c("*" = "{.path {file}}"))
+  }
+  status <- if (length(changes$added) > 0L) {
+    " (and {.code git status} for the added files)"
+  } else {
+    ""
+  }
+  cli::cli_alert_warning(paste0(
+    "Review them with {.code git diff}", status, " before committing: ",
+    "the template replaced any local edits to the files it owns, committed ones included."
+  ))
+  invisible()
 }
 
 #' Find the rpkg subdirectory in a monorepo workspace root

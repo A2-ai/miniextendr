@@ -49,7 +49,12 @@ files have uncommitted changes in git, to prevent accidental data loss.
 Set to \code{TRUE} to force the upgrade even with dirty files.}
 }
 \value{
-Invisibly returns TRUE on success.
+Invisibly, a list of three character vectors naming the files the
+upgrade touched: \code{changed} (existed before, content differs), \code{added}
+(did not exist before) and \code{removed} (existed before, gone after). Paths
+are relative to the package directory for a standalone package and to the
+workspace root for a monorepo, as \verb{git diff} prints them there. All three
+are empty when the package already matched the templates.
 }
 \description{
 Comprehensively upgrades an existing miniextendr package to the latest
@@ -74,9 +79,17 @@ workspace \code{Cargo.toml}. Either way the upgrade renders the monorepo
 templates and also adds the monorepo template's entries to the workspace
 root \code{.gitignore}, keeping the lines already there.
 
+The template is the source of truth for the build-system files it owns
+(\code{src/stub.c}, \code{src/Makevars.in}, \code{inst/include/mx_abi.h}, the \verb{tools/}
+scripts, ...): the upgrade rewrites them in full, so a local edit to one,
+committed or not, is replaced; the \code{allow_dirty} check only stops the
+upgrade over uncommitted edits. To make the replacements visible, the closing
+summary lists every file whose content the upgrade changed or added; review
+them with \verb{git diff} (and \verb{git status} for added files) before committing.
+
 A \code{tools/config.guess} or \code{tools/config.sub} whose \verb{timestamp=} line is
-newer than the bundled copy's is kept. The closing summary lists files the
-package no longer uses (\code{tools/wrapper-freshness.R},
+newer than the bundled copy's is kept. The closing summary also lists files
+the package no longer uses (\code{tools/wrapper-freshness.R},
 \code{tools/wrapper-inputs.rds}) and a git-tracked \verb{src/<pkg>-win.def}, which
 configure generates; the upgrade does not delete or untrack them.
 }

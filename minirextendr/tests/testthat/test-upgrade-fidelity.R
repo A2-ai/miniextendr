@@ -1,5 +1,5 @@
 # Upgrade fidelity: what upgrade_miniextendr_package() keeps, writes and
-# reports (#1711, #1712, #1669, #1670).
+# reports (#1711, #1712, #1669, #1670, #1713).
 
 # region: #1711 — config.guess / config.sub timestamps ----------------------
 
@@ -299,6 +299,135 @@ test_that("a monorepo upgrade adds the root template's entries and keeps user li
     # A rerun adds nothing.
     run_upgrade(dirs[[from]])
     expect_identical(readLines(root_ignore), after, info = from)
+  }
+})
+
+# endregion -------------------------------------------------------------------
+
+# region: #1713 — summary of the files an upgrade changed ---------------------
+
+test_that("upgrade_changes() sorts files into changed, added and removed", {
+  before <- c(a = "1", b = NA, c = "3", d = "4", e = NA)
+  after <- c(a = "1x", b = "2", c = NA, d = "4", e = NA)
+
+  expect_identical(minirextendr:::upgrade_changes(before, after),
+                   list(changed = "a", added = "b", removed = "c"))
+
+  text <- paste(capture_messages(minirextendr:::report_upgrade_changes(
+    list(changed = "src/stub.c", added = character(), removed = "cleanup")
+  )), collapse = "")
+  expect_match(text, "Changed 1 file:.*src/stub\\.c.*Removed 1 file:.*cleanup")
+  expect_match(text, "git diff", fixed = TRUE)
+  # `git status` is only needed to see added files.
+  expect_no_match(text, "git status", fixed = TRUE)
+})
+
+test_that("the upgrade names the owned files it changed, committed edits included", {
+  skip_if_not(nzchar(Sys.which("git")), "git not available")
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+
+  for (from in c("standalone", "root", "pkg")) {
+    tmp <- withr::local_tempdir()
+    if (from == "standalone") {
+      pkg <- make_upgrade_pkg(tmp)
+      repo <- pkg
+      prefix <- ""
+    } else {
+      dirs <- make_upgrade_monorepo(tmp, "mypkg-r")
+      pkg <- dirs$pkg
+      repo <- dirs$root
+      # Paths are relative to the workspace root, wherever `path` points.
+      prefix <- "mypkg-r/"
+    }
+    path <- if (from == "pkg") pkg else repo
+    before_files <- list.files(repo, recursive = TRUE, all.files = TRUE)
+
+    # First upgrade of a bare package: everything it writes is new, except
+    # the files the fixture already had.
+    first <- run_upgrade(path)
+    expect_identical(first$removed, character(), info = from)
+    expect_true(paste0(prefix, "inst/include/mx_abi.h") %in% first$added, info = from)
+    expect_true(paste0(prefix, "src/Makevars.in") %in% first$changed, info = from)
+    # Every file the upgrade created is reported, so upgrade_owned_files()
+    # covers each file the upgrade writes.
+    after_files <- list.files(repo, recursive = TRUE, all.files = TRUE)
+    expect_identical(sort(setdiff(after_files, before_files)), sort(first$added),
+                     info = from)
+
+    fidelity_git(repo, "init", "-q")
+    fidelity_git(repo, "add", "-A")
+    fidelity_git(repo, "commit", "-q", "-m", "scaffold")
+
+    # A committed local edit to a template-owned file.
+    abi_rel <- paste0(prefix, "inst/include/mx_abi.h")
+    abi <- file.path(repo, abi_rel)
+    pristine <- readLines(abi)
+    writeLines(c(pristine, "/* local edit */"), abi)
+    fidelity_git(repo, "commit", "-q", "-am", "edit mx_abi.h")
+
+    # allow_dirty = FALSE: a committed edit passes the uncommitted-changes check.
+    msgs <- capture_messages(second <- upgrade_miniextendr_package(
+      path = path, configure_ac = TRUE, autoconf = FALSE
+    ))
+    text <- paste(msgs, collapse = "")
+
+    expect_identical(readLines(abi), pristine, info = from)
+    expect_identical(second,
+                     list(changed = abi_rel, added = character(), removed = character()),
+                     info = from)
+    # The summary agrees with what git sees.
+    expect_identical(fidelity_git(repo, "diff", "--name-only"), abi_rel, info = from)
+    expect_match(text, paste0("Changed 1 file:.*", abi_rel), info = from)
+    expect_match(text, "git diff", fixed = TRUE, info = from)
+    expect_match(text, "committed ones included", fixed = TRUE, info = from)
+
+    # Upgrading the up-to-date package changes nothing and says so.
+    msgs <- capture_messages(third <- upgrade_miniextendr_package(
+      path = path, configure_ac = TRUE, autoconf = FALSE, allow_dirty = TRUE
+    ))
+    text <- paste(msgs, collapse = "")
+
+    expect_identical(third,
+                     list(changed = character(), added = character(),
+                          removed = character()),
+                     info = from)
+    expect_match(text, "No scaffold files changed", fixed = TRUE, info = from)
+    expect_no_match(text, "git diff", fixed = TRUE, info = from)
+  }
+})
+
+test_that("upgrading a fresh scaffold reports no changed files", {
+  # The scaffolders write some files by their own route (the monorepo one
+  # writes DESCRIPTION and the ignore files directly); an upgrade right after
+  # must agree with them byte for byte, or every first upgrade reports noise.
+  # Scaffolding only checks that cargo exists; nothing here compiles.
+  local_mocked_bindings(check_rust = function() invisible(TRUE),
+                        .package = "minirextendr")
+  withr::defer(minirextendr:::set_template_type("rpkg"))
+  # create_package() prints the new DESCRIPTION unless usethis is quiet.
+  withr::local_options(usethis.quiet = TRUE)
+  base <- withr::local_tempdir()
+  # create_miniextendr_monorepo() leaves its root as the active project;
+  # restore the caller's on exit.
+  usethis::local_project(base, force = TRUE, setwd = FALSE, quiet = TRUE)
+
+  pkg <- file.path(base, "freshpkg")
+  suppressWarnings(suppressMessages({
+    usethis::create_package(pkg, open = FALSE)
+    use_miniextendr(path = pkg, claude_skills = FALSE)
+  }))
+  mono <- file.path(base, "freshmono")
+  suppressWarnings(suppressMessages(create_miniextendr_monorepo(
+    mono, package = "freshmono", crate_name = "freshmono-rs", open = FALSE
+  )))
+
+  for (path in c(pkg, mono)) {
+    expect_identical(
+      suppressMessages(upgrade_miniextendr_package(path, autoconf = FALSE,
+                                                   allow_dirty = TRUE)),
+      list(changed = character(), added = character(), removed = character()),
+      info = basename(path)
+    )
   }
 })
 
