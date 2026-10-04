@@ -1,4 +1,4 @@
-use miniextendr_lint::{lint_enabled, run};
+use miniextendr_lint::{build_directives, lint_enabled, run};
 use std::fs;
 use std::sync::Mutex;
 
@@ -1404,6 +1404,167 @@ pub fn has_any(x: SEXP) -> bool {
 "#,
     );
     assert_eq!(lines, vec![3]);
+}
+
+// endregion
+
+// region: parse failures — `&Dots` hint (#1737) and rerun directives (#1738)
+
+/// Writes each `(file name, source)` of `files` into `dir`, creating it.
+fn write_crate(dir: &std::path::Path, files: &[(&str, &str)]) {
+    fs::create_dir_all(dir).unwrap();
+    for (name, body) in files {
+        fs::write(dir.join(name), body).unwrap();
+    }
+}
+
+const BAD_DOTS: &str = "\nuse miniextendr_api::prelude::*;\n\n#[miniextendr]\npub fn f(sources: ..., dosing_type: i32) -> i32 {\n    dosing_type\n}\n";
+
+#[test]
+fn parse_failure_names_the_dots_spelling() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_crate(&src, &[("lib.rs", "mod bad;\n"), ("bad.rs", BAD_DOTS)]);
+
+    let err = run(dir.path()).expect_err("bad.rs must not parse");
+    assert!(
+        err.message.contains("bad.rs: failed to parse: "),
+        "got: {}",
+        err.message
+    );
+    assert!(
+        err.message.contains(
+            "line 5: Rust's `...` is only valid as the last parameter; write a dots parameter \
+             that is not last as `sources: &Dots`"
+        ),
+        "the parse error must name the `&Dots` spelling, got: {}",
+        err.message
+    );
+}
+
+#[test]
+fn parse_failure_without_misplaced_dots_gets_no_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_crate(
+        &src,
+        &[(
+            "lib.rs",
+            "// fn commented(rest: ..., x: i32) {}\npub fn f( -> i32 { 1 }\n",
+        )],
+    );
+
+    let err = run(dir.path()).expect_err("lib.rs must not parse");
+    assert!(
+        err.message.contains("failed to parse"),
+        "got: {}",
+        err.message
+    );
+    assert!(!err.message.contains("&Dots"), "got: {}", err.message);
+}
+
+#[test]
+fn build_directives_watch_an_unparseable_file_in_src() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_crate(&src, &[("lib.rs", "mod bad;\n"), ("bad.rs", BAD_DOTS)]);
+
+    let directives = build_directives(dir.path());
+    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
+    for expected in [
+        rerun(&src),
+        rerun(&src.join("lib.rs")),
+        rerun(&src.join("bad.rs")),
+    ] {
+        assert!(
+            directives.contains(&expected),
+            "missing `{expected}` in {directives:#?}"
+        );
+    }
+    assert!(
+        directives
+            .iter()
+            .any(|d| d.starts_with("cargo::warning=") && d.contains("failed to parse")),
+        "the parse error must still be reported, got {directives:#?}"
+    );
+}
+
+#[test]
+fn build_directives_watch_files_not_the_manifest_dir_without_src() {
+    // The scaffolded layout: `lib.rs` next to `Cargo.toml`, no `src/`.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(root, &[("lib.rs", "mod bad;\n"), ("bad.rs", BAD_DOTS)]);
+    fs::create_dir(root.join("target")).unwrap();
+
+    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
+    let directives = build_directives(root);
+    assert!(
+        directives.contains(&rerun(&root.join("bad.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives.contains(&rerun(&root.join("lib.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        !directives.contains(&rerun(root)),
+        "the manifest dir (with its target/) must not be watched: {directives:#?}"
+    );
+
+    // Fixed, the same files stay watched and the warning is gone.
+    fs::write(root.join("bad.rs"), "pub fn f() -> i32 { 1 }\n").unwrap();
+    let directives = build_directives(root);
+    assert!(
+        directives.contains(&rerun(&root.join("bad.rs"))),
+        "{directives:#?}"
+    );
+    assert!(!directives.contains(&rerun(root)), "{directives:#?}");
+    assert!(
+        !directives.iter().any(|d| d.starts_with("cargo::warning=")),
+        "{directives:#?}"
+    );
+}
+
+#[test]
+fn build_directives_watch_an_unparseable_root_lib_rs() {
+    // Root-`lib.rs` layout where `lib.rs` itself fails, so no `mod` list is read.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("lib.rs", &format!("mod sources;\n{BAD_DOTS}")),
+            ("sources.rs", ""),
+        ],
+    );
+
+    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
+    let directives = build_directives(root);
+    assert!(
+        directives.contains(&rerun(&root.join("lib.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives
+            .iter()
+            .any(|d| d.starts_with("cargo::warning=") && d.contains("lib.rs: failed to parse")),
+        "{directives:#?}"
+    );
+
+    // Fixed, the lint reruns, reads the `mod` list again and the warning is gone.
+    fs::write(root.join("lib.rs"), "mod sources;\n").unwrap();
+    let directives = build_directives(root);
+    for file in ["lib.rs", "sources.rs"] {
+        assert!(
+            directives.contains(&rerun(&root.join(file))),
+            "{directives:#?}"
+        );
+    }
+    assert!(
+        !directives.iter().any(|d| d.starts_with("cargo::warning=")),
+        "{directives:#?}"
+    );
 }
 
 // endregion

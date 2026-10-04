@@ -170,6 +170,17 @@ pub fn expand_struct_or_enum(
         return expand_enum(attr, item, &item_enum);
     }
 
+    // A function (or a method in an impl or trait) whose Rust `...` is not the
+    // last parameter doesn't parse as one, so it lands here: name the cause (#1737).
+    if let Some(found) = crate::misplaced_dots::find(item.into()) {
+        return syn::Error::new_spanned(
+            found.dots,
+            crate::misplaced_dots::message(found.name.as_deref()),
+        )
+        .into_compile_error()
+        .into();
+    }
+
     // If neither, give a helpful error
     syn::Error::new(
         proc_macro2::Span::call_site(),

@@ -1,0 +1,5 @@
+error: Rust's `...` is only valid as the last parameter; write a dots parameter that is not last as `rest: &Dots` (`miniextendr_api::dots::Dots`), which is R's `...` at that position. See https://a2-ai.github.io/miniextendr/manual/dots-typed-list/#formals-after
+  --> tests/ui/impl_method_dots_not_last.rs:11:33
+   |
+11 |     pub fn collect(&self, rest: ..., n: i32) -> i32 {
+   |                                 ^^^

@@ -3,6 +3,7 @@
 //! All lint rules operate on this index rather than re-parsing files.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -228,20 +229,53 @@ pub struct CrateIndex {
     pub file_data: HashMap<PathBuf, FileData>,
 }
 
+/// Why [`CrateIndex::build`] failed, with the source files it had found.
+#[derive(Debug)]
+pub struct IndexError {
+    /// What went wrong (every parse error, joined with `; `).
+    pub message: String,
+    /// The module-tree files found before the failure. A file that fails to
+    /// parse is among them, so a build script can still watch it (#1738).
+    /// Empty when the crate root or its `lib.rs` is missing.
+    pub files: Vec<PathBuf>,
+}
+
+impl fmt::Display for IndexError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<String> for IndexError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            files: Vec::new(),
+        }
+    }
+}
+
 impl CrateIndex {
-    /// Build the index from a crate root directory.
-    pub fn build(root: &Path) -> Result<Self, String> {
-        let src_dir = if root.join("src").is_dir() {
-            root.join("src")
+    /// The directory the lint scans for `root`: `root/src` when it exists, else `root`.
+    pub fn source_dir(root: &Path) -> PathBuf {
+        let src_dir = root.join("src");
+        if src_dir.is_dir() {
+            src_dir
         } else {
             root.to_path_buf()
-        };
+        }
+    }
+
+    /// Build the index from a crate root directory.
+    pub fn build(root: &Path) -> Result<Self, IndexError> {
+        let src_dir = Self::source_dir(root);
 
         if !src_dir.is_dir() {
             return Err(format!(
                 "miniextendr-lint: root is not a directory: {}",
                 src_dir.display()
-            ));
+            )
+            .into());
         }
 
         let mut rs_files = Vec::new();
@@ -261,7 +295,10 @@ impl CrateIndex {
         }
 
         if !parse_errors.is_empty() {
-            return Err(parse_errors.join("; "));
+            return Err(IndexError {
+                message: parse_errors.join("; "),
+                files: rs_files,
+            });
         }
 
         Ok(Self {
@@ -448,8 +485,14 @@ fn parse_file(path: &Path) -> Result<FileData, String> {
     let src = fs::read_to_string(path)
         .map_err(|err| format!("{}: failed to read: {err}", path.display()))?;
 
-    let parsed = syn::parse_file(&src)
-        .map_err(|err| format!("{}: failed to parse: {err}", path.display()))?;
+    let parsed = syn::parse_file(&src).map_err(|err| {
+        let mut message = format!("{}: failed to parse: {err}", path.display());
+        if let Some(hint) = crate::misplaced_dots::hint(&src) {
+            message.push_str("; ");
+            message.push_str(&hint);
+        }
+        message
+    })?;
 
     let mut data = FileData::default();
     collect_items_recursive(&parsed.items, &mut data);

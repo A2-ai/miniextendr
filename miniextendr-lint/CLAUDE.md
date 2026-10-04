@@ -3,8 +3,9 @@
 Build-time static analysis. Runs from a downstream crate's `build.rs` (via the `build.rs` integration in `miniextendr-api`). Disable with `MINIEXTENDR_LINT=0`. See root `CLAUDE.md` for project rules.
 
 ## Layout
-- `lib.rs` — entrypoint + module-tree walker with `cfg`/feature evaluation.
+- `lib.rs` — entrypoint + module-tree walker with `cfg`/feature evaluation. `build_script()` prints what `build_directives()` returns: `rerun-if-changed` for every module file the walk found (on a parse error too, carried by `IndexError::files`, #1738), plus `src/` as a directory when the crate has one. Never watch the manifest dir of a root-`lib.rs` crate (every scaffolded package): it holds `target/` / `vendor/` / `.cargo/` and would rerun the script after every build.
 - `crate_index.rs` — resolves `mod foo;` → file paths through `#[cfg(feature = "...")]` gates so feature-gated modules are visited only when active.
+- `misplaced_dots.rs` — appends the `name: &Dots` hint to a "failed to parse" error when the file has a Rust `...` parameter that is not last (#1737). Mirror of `miniextendr-macros/src/misplaced_dots.rs`; keep the detector and message in sync.
 - `rules.rs` (+ `rules/`) — one rule per file, registered into a dispatcher.
 - `diagnostic.rs` — span+code emission.
 - `lint_code.rs` — the `MXL*` code registry.
