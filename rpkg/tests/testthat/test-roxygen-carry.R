@@ -82,17 +82,35 @@ test_that("leading prose drops its links and an explicit tag keeps them", {
 # A link no R package can resolve (`crate::` root, a `pkg::` part that is not
 # an R package name) loses its brackets in explicit tag text too
 # (rpkg/src/rust/roxygen_rustdoc_links_tests.rs, #1739); an R link there stays.
+# An inline link to such a Rust path keeps its text alone, in tag text and
+# leading prose, instead of becoming a dead \href (#1744).
+rd_tags <- function(x) {
+  c(attr(x, "Rd_tag"), if (is.list(x)) unlist(lapply(x, rd_tags)))
+}
+
 test_that("an explicit tag drops its rustdoc-only links and keeps its R links", {
   rd <- roxygen_carry_rd("roxygen_rustdoc_links_tests.Rd")
   expect_false(is.null(rd))
   details <- Filter(function(x) identical(attr(x, "Rd_tag"), "\\details"), rd)[[1L]]
-  rd_tags <- function(x) {
-    c(attr(x, "Rd_tag"), if (is.list(x)) unlist(lapply(x, rd_tags)))
-  }
   expect_equal(sum(rd_tags(details) == "\\link"), 1L)
+  expect_equal(sum(rd_tags(details) == "\\href"), 0L)
   text <- roxygen_carry_section(rd, "\\details")
   expect_match(text, "see\nroxygen_rustdoc_links_demo,", fixed = TRUE)
   expect_match(text, "roxygen_rustdoc_links_tests::roxygen_rustdoc_links_demo and", fixed = TRUE)
   expect_match(text, "crate::roxygen_carry_tests. An R link stays: roxygen_prose_links_demo()", fixed = TRUE)
+  expect_match(text, "Inline links lose theirs:\nthis demo\nand roxygen_carry_tests.", fixed = TRUE)
   expect_no_match(text, "[", fixed = TRUE)
+  expect_no_match(text, "crate::roxygen_rustdoc_links_tests", fixed = TRUE)
+})
+
+test_that("leading prose drops an inline rustdoc link", {
+  rd <- roxygen_carry_rd("roxygen_rustdoc_links_tests.Rd")
+  expect_false(is.null(rd))
+  description <- Filter(function(x) identical(attr(x, "Rd_tag"), "\\description"), rd)[[1L]]
+  expect_equal(sum(rd_tags(description) == "\\href"), 0L)
+  expect_match(
+    roxygen_carry_section(rd, "\\description"),
+    "Rustdoc-only links demo.\n\nDefined in its module.",
+    fixed = TRUE
+  )
 })

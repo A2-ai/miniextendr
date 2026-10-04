@@ -28,7 +28,10 @@
 //!   brackets unless the crate sets `roxygen_prose_links = "keep"`
 //!   ([`ProseLinks`]). Under `"keep"`, and in the text of every explicit tag
 //!   but the code ones ([`CODE_TAGS`]), only a link roxygen2 can never
-//!   resolve loses them ([`is_rustdoc_only_target`]).
+//!   resolve loses them ([`is_rustdoc_only_target`]). An inline link whose
+//!   destination is such a Rust path (`[text](crate::x)`) keeps only its text
+//!   under either setting ([`inline_rustdoc_destination`]); other
+//!   `[text](url)` links stay.
 //! - A tag runs from its `@tag` line to the next one. A multi-line tag
 //!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
 //!   roxygen2 paragraph break; a blank line in an example) and the indentation
@@ -898,6 +901,11 @@ fn closes_fence(line: &str, close: &str, open: &str) -> bool {
 /// crate writing for roxygen2 opts out with [`ProseLinks::Keep`]. With
 /// [`Neutralize::RustdocOnly`] only a link whose target roxygen2 can never
 /// resolve is stripped ([`is_rustdoc_only_target`]); the rest stay as written.
+///
+/// rustdoc's inline form `[text](crate::x)` is the one `[text](...)` that loses
+/// its link, under either scope: its destination is a rustdoc-only Rust path
+/// ([`inline_rustdoc_destination`]), which roxygen2 would render as a dead
+/// `\href{}`.
 fn sanitize_roxygen_links(s: &str, links: Neutralize) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
@@ -926,11 +934,21 @@ fn sanitize_roxygen_links(s: &str, links: Neutralize) -> String {
             if let Some(close_rel) = s[i + 1..].find(']') {
                 let close = i + 1 + close_rel;
                 let inner = &s[i + 1..close];
-                // `[text](url)` — real markdown link. Emit `[` literally and let
-                // the inner text + `](url)` flow through unchanged.
+                // `[text](dest)` — an inline link. A rustdoc-only Rust path
+                // (`[text](crate::x)`, [`inline_rustdoc_destination`]) keeps
+                // its text alone under every scope. Anything else is a real
+                // markdown link: emit `[` literally and let the inner text +
+                // `](url)` flow through unchanged.
                 if bytes.get(close + 1) == Some(&b'(') {
-                    out.push('[');
-                    i += 1;
+                    if let Some(end) = inline_rustdoc_destination(s, close + 2)
+                        && !inner.contains('[')
+                    {
+                        out.push_str(inner);
+                        i = end;
+                    } else {
+                        out.push('[');
+                        i += 1;
+                    }
                     continue;
                 }
                 // `[text][target]` — reference link; `[text]` — shortcut link,
@@ -957,6 +975,56 @@ fn sanitize_roxygen_links(s: &str, links: Neutralize) -> String {
         i += ch.len_utf8();
     }
     out
+}
+
+/// The end (past its `)`) of the destination of an inline link `[text](dest)`
+/// starting at byte `start` (just past the `(`), when that destination was
+/// written for rustdoc: a Rust path ([`is_rust_path`]) that is rustdoc-only
+/// ([`is_rustdoc_only_target`]), such as `crate::x` or `Self::new()`.
+///
+/// rustdoc reads `[text](crate::x)` as an intra-doc link; roxygen2 reads it as
+/// a web link and renders `\href{crate::x}{text}`, a dead link, without a
+/// warning (#1744). `None` for an unclosed destination, one that spans
+/// whitespace, any URL (`https://a.b/c::d`, `./x.html`), and a path that is
+/// not rustdoc-only: `Foo`, which a relative URL may spell, or `Type::method`
+/// and `dplyr::bind_rows`, whose root may be an R package.
+fn inline_rustdoc_destination(s: &str, start: usize) -> Option<usize> {
+    // The matching `)`: a destination may hold balanced parentheses, as the
+    // `()` of `crate::f()` does.
+    let mut depth = 1usize;
+    let close = start
+        + s[start..].find(|c: char| {
+            match c {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                _ => {}
+            }
+            depth == 0 || c.is_whitespace()
+        })?;
+    if s.as_bytes()[close] != b')' {
+        return None;
+    }
+    let dest = &s[start..close];
+    (is_rust_path(dest) && is_rustdoc_only_target(dest)).then_some(close + 1)
+}
+
+/// Whether `dest` is a Rust path as an inline link destination writes it:
+/// identifiers joined by `::`, with an optional `()` or `!` suffix. A URL with
+/// a `/`, `.`, `#`, `?` or lone `:` never is one, even with a `::` in it
+/// (`https://a.b/c::d`). A bare `Foo` can be either, so the caller also asks
+/// for a rustdoc-only target.
+fn is_rust_path(dest: &str) -> bool {
+    let path = dest
+        .strip_suffix("()")
+        .or_else(|| dest.strip_suffix('!'))
+        .unwrap_or(dest);
+    path.split("::").all(|segment| {
+        let mut chars = segment.chars();
+        chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
 }
 
 /// Whether roxygen2 can never resolve the link target `target`, so the link

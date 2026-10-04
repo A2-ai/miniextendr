@@ -11,10 +11,15 @@ The number 5.
 }
 \description{
 Rustdoc-only links demo.
+
+Defined in its module.
 }
 \details{
 Rust callers: see
 \code{roxygen_rustdoc_links_demo},
 \code{roxygen_rustdoc_links_tests::roxygen_rustdoc_links_demo} and
 crate::roxygen_carry_tests. An R link stays: \code{\link[=roxygen_prose_links_demo]{roxygen_prose_links_demo()}}.
+Inline links lose theirs:
+this demo
+and \code{roxygen_carry_tests}.
 }

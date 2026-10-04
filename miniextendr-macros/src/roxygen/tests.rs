@@ -778,7 +778,6 @@ fn rustdoc_only_scope_rewrites_each_rustdoc_form() {
 fn rustdoc_only_scope_leaves_r_links_and_code_alone() {
     for s in [
         "[the docs](https://example.com)",
-        "[text](crate::x)",
         "[other_fn()]",
         "[stats::median()]",
         "[topic]",
@@ -928,6 +927,123 @@ fn a_line_after_a_single_line_tag_keeps_any_link_out_of_r() {
             "Rust callers: see [`Sources::prepare`] and [`Prepared`].",
         ]
     );
+}
+
+// endregion
+
+// region: inline rustdoc links never reach roxygen2 as \href (#1744)
+//
+// rustdoc also reads `[text](crate::x)` as an intra-doc link. roxygen2 reads
+// it as a web link and renders `\href{crate::x}{text}`, a dead link, with no
+// warning. When the destination is a Rust path that is rustdoc-only, the link
+// keeps its text alone under every scope; any URL, and a path roxygen2 or a
+// relative URL may mean, stays as written.
+
+/// Both scopes the scanner runs with.
+fn under_each_scope(s: &str) -> [String; 2] {
+    [strip_links(s), rustdoc_only(s)]
+}
+
+#[test]
+fn inline_rustdoc_links_keep_their_text_under_each_scope() {
+    for (written, text) in [
+        ("see [text](crate::x).", "see text."),
+        ("see [`Foo`](crate::Foo).", "see `Foo`."),
+        ("[text](self::a::b())", "text"),
+        ("[m](Self::new)", "m"),
+        ("[t](my_crate::x)", "t"),
+        ("[mac](crate::mac!)", "mac"),
+        ("[c](a::b::c)", "c"),
+        ("café [`Foo`](crate::Foo) — déjà", "café `Foo` — déjà"),
+        ("[a](crate::x) and [b](Self::y())", "a and b"),
+    ] {
+        assert_eq!(under_each_scope(written), [text, text], "{written:?}");
+    }
+}
+
+#[test]
+fn inline_links_to_urls_or_r_paths_stay() {
+    for s in [
+        "[text](https://a.b/c::d)",
+        "[text](https://example.com)",
+        "[text](./x.html)",
+        "[text](x.html#crate::y)",
+        "[text](crate::x?y)",
+        "[text](crate:x)",
+        "[text](crate:::x)",
+        "[text](Foo)",
+        "[text](Type::method)",
+        "[text](dplyr::bind_rows)",
+        "[text](super::glue())",
+        "[text](crate::f(x))",
+        "[text](crate::x \"title\")",
+        "[text](<crate::x>)",
+        "[text]()",
+        "[text](::x)",
+        "[text](crate::)",
+    ] {
+        assert_eq!(under_each_scope(s), [s, s], "{s:?} must stay as written");
+    }
+}
+
+#[test]
+fn inline_rustdoc_links_leave_the_scanner_on_track() {
+    // An unclosed destination is no link: the brackets stay.
+    assert_eq!(
+        under_each_scope("[t](crate::x"),
+        ["[t](crate::x", "[t](crate::x"]
+    );
+    // An unmatched `)` after the link is text.
+    assert_eq!(
+        under_each_scope("[a](crate::f()) more)"),
+        ["a more)", "a more)"]
+    );
+    // CommonMark gives the inner link priority, so the outer `[` stays text.
+    assert_eq!(under_each_scope("[a [b](crate::x) c"), ["[a b c", "[a b c"]);
+    // A link after one that stays is still found.
+    assert_eq!(
+        under_each_scope("[u](https://x.y) then [r](crate::r)"),
+        ["[u](https://x.y) then r", "[u](https://x.y) then r"]
+    );
+    // Neither a code span nor an escaped bracket is a link.
+    for s in ["`[t](crate::x)` stays", r"escaped \[t](crate::x) stays"] {
+        assert_eq!(under_each_scope(s), [s, s], "{s:?} must stay as written");
+    }
+}
+
+#[test]
+fn inline_rustdoc_links_lose_their_link_in_prose_and_tags_under_either_setting() {
+    let attrs = make_doc_attrs_plain(&[
+        "See [`Foo`](crate::Foo) and [the docs](https://example.com).",
+        "@description Built by [new](Self::new), see [stats](stats::median).",
+        "@seealso [t](my_crate::x), [`bind_rows`](dplyr::bind_rows)",
+        "@examples",
+        "x[1](crate::x)",
+    ]);
+    for links in [ProseLinks::Strip, ProseLinks::Keep] {
+        assert_eq!(
+            roxygen_tags_with(&attrs, links),
+            vec![
+                "@description Built by new, see [stats](stats::median).".to_string(),
+                "@seealso t, [`bind_rows`](dplyr::bind_rows)".to_string(),
+                "@examples\nx[1](crate::x)".to_string(),
+            ]
+        );
+    }
+    // Leading prose (no explicit `@description`) loses it too.
+    let attrs = make_doc_attrs_plain(&[
+        "See [`Foo`](crate::Foo) and [the docs](https://example.com).",
+        "@export",
+    ]);
+    for links in [ProseLinks::Strip, ProseLinks::Keep] {
+        assert_eq!(
+            roxygen_tags_with(&attrs, links),
+            vec![
+                "@description See `Foo` and [the docs](https://example.com).".to_string(),
+                "@export".to_string(),
+            ]
+        );
+    }
 }
 
 // endregion
