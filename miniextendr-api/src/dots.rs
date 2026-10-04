@@ -26,8 +26,8 @@
 //! }
 //! ```
 
-use crate::from_r::TryFromSexp;
-use crate::list::{List, ListFromSexpError};
+use crate::from_r::{SexpTypeError, TryFromSexp};
+use crate::list::List;
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
 use crate::{SEXP, SexpExt};
 
@@ -100,28 +100,34 @@ impl Dots {
         unsafe { List::from_raw(self.inner) }
     }
 
-    /// Try to convert to a [`List`] with full validation.
+    /// Convert to a [`List`], checking that the underlying SEXP is a list.
     ///
-    /// This validates that the underlying SEXP is actually a list and
-    /// checks for duplicate names. Use this when you want strict validation
-    /// or are working with untrusted input.
+    /// Accepts a list (`VECSXP`), and a pairlist coerced to one, as
+    /// `TryFromSexp for List` does. Use this when `inner` may not come from a
+    /// generated wrapper's `list(...)`.
+    ///
+    /// Names are not checked: R lets the caller repeat a name in `...`
+    /// (`f(a = 1, a = 2)`). To refuse that, check
+    /// [`List::first_duplicate_name`]; a [`typed`](Dots::typed) spec refuses
+    /// repeated names itself.
     ///
     /// # Errors
     ///
-    /// Returns [`ListFromSexpError`] if:
-    /// - The SEXP is not a list type (VECSXP or pairlist)
-    /// - The list contains duplicate non-NA names
+    /// Returns [`SexpTypeError`] if the SEXP is neither a list nor a pairlist.
     ///
     /// # Example
     /// ```ignore
     /// #[miniextendr]
-    /// pub fn safe_process_dots(dots: ...) -> Result<i32, String> {
+    /// pub fn count_named_dots(dots: ...) -> Result<i32, String> {
     ///     let list = dots.try_list().map_err(|e| e.to_string())?;
+    ///     if let Some(name) = list.first_duplicate_name() {
+    ///         return Err(format!("argument {name:?} was given more than once"));
+    ///     }
     ///     Ok(list.len() as i32)
     /// }
     /// ```
     #[inline]
-    pub fn try_list(&self) -> Result<List, ListFromSexpError> {
+    pub fn try_list(&self) -> Result<List, SexpTypeError> {
         List::try_from_sexp(self.inner)
     }
 

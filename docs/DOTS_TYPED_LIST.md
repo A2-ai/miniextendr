@@ -36,7 +36,7 @@ Don't write a bare `...` with no pattern. rustc rejects it before `#[miniextendr
 ### Dots Methods
 
 - `as_list(&self) -> List` - Fast unchecked conversion to List
-- `try_list(&self) -> Result<List, ListFromSexpError>` - Validated conversion
+- `try_list(&self) -> Result<List, SexpTypeError>` - Type-checked conversion (a list, or a pairlist coerced to one). Names are not checked: `f(a = 1, a = 2)` reaches the body, and `List::first_duplicate_name` finds the repeat
 - `typed(&self, spec: TypedListSpec) -> Result<TypedList, TypedListError>` - Validate against a spec
 
 ### Named Dots
