@@ -95,7 +95,8 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Looks up a key in the Rust-side map. A missing key returns \code{NA_integer_}, as the same return type does from a standalone function.
+Looks up a key in the Rust-side map. A missing key returns
+\code{NA_integer_}, as the same return type does from a standalone function.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -103,7 +104,8 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Lowers the full Rust state to plain R data (a named list) via serde — safe to \code{saveRDS}/\code{save} and reload in another session.
+Lowers the full Rust state to plain R data (a named list) via serde —
+safe to \code{saveRDS}/\code{save} and reload in another session.
 
 Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
 (the class walk + method-table lookup). Use in hot loops where the
@@ -111,6 +113,7 @@ per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
 perform subclass dispatch: a method override defined on a child class
 will \emph{not} be honoured. Use the generic when subclassing is possible.
 
-Rebuilds a live object from serde-lowered R data; wraps into a classed S7 object exactly like the constructor does.
+Rebuilds a live object from serde-lowered R data; wraps into a classed
+S7 object exactly like the constructor does.
 }
 \keyword{internal}
