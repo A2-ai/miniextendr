@@ -586,6 +586,24 @@ pub fn gc_stress_dataframe_split_nested_flatten() -> SEXP {
     s
 }
 
+/// Check a list-column of `Point`-shaped cells: `Some(v)` must be
+/// `list(x = v, y = v + 0.5)` and `None` must be `NULL`.
+fn expect_point_cells(col: SEXP, cells: &[Option<f64>], what: &str) {
+    assert_eq!(col.type_of(), SEXPTYPE::VECSXP, "{what}: not a list-column");
+    assert_eq!(col.len(), cells.len(), "{what}: wrong length");
+    for (i, expected) in cells.iter().enumerate() {
+        let cell = col.vector_elt(i as isize);
+        let Some(v) = *expected else {
+            assert!(cell.is_nil(), "{what}[{i}]: expected NULL");
+            continue;
+        };
+        // SAFETY: `cell` is a VECSXP element of a rooted list-column.
+        let cell = unsafe { miniextendr_api::list::List::from_raw(cell) };
+        assert_eq!(cell.get_named::<f64>("x"), Some(v), "{what}[{i}]$x");
+        assert_eq!(cell.get_named::<f64>("y"), Some(v + 0.5), "{what}[{i}]$y");
+    }
+}
+
 /// Split and align an enum with a `#[dataframe(as_list)]` struct field and
 /// validate every list-column cell under GC pressure (#1748).
 ///
@@ -593,11 +611,10 @@ pub fn gc_stress_dataframe_split_nested_flatten() -> SEXP {
 /// must stay rooted while the later ones allocate. Returns the split.
 #[miniextendr(noexport)]
 pub fn gc_stress_dataframe_split_as_list() -> SEXP {
+    let located = |i: i32| i % 4 != 3;
     let rows: Vec<StructListEvent> = (0..8i32)
         .map(|i| {
-            if i % 4 == 3 {
-                StructListEvent::Other { id: i }
-            } else {
+            if located(i) {
                 StructListEvent::Located {
                     id: i,
                     origin: Point {
@@ -605,34 +622,12 @@ pub fn gc_stress_dataframe_split_as_list() -> SEXP {
                         y: f64::from(i) + 0.5,
                     },
                 }
+            } else {
+                StructListEvent::Other { id: i }
             }
         })
         .collect();
-
-    // Every Located cell must be a list(x = i, y = i + 0.5); Other cells are NULL.
-    let check_cells = |col: SEXP, ids: &[i32], what: &str| {
-        assert_eq!(col.type_of(), SEXPTYPE::VECSXP, "{what}: not a list-column");
-        assert_eq!(col.len(), ids.len(), "{what}: wrong length");
-        for (i, &id) in ids.iter().enumerate() {
-            let cell = col.vector_elt(i as isize);
-            if id % 4 == 3 {
-                assert!(cell.is_nil(), "{what}[{i}]: expected NULL");
-                continue;
-            }
-            // SAFETY: `cell` is a VECSXP element of a rooted list-column.
-            let cell = unsafe { miniextendr_api::list::List::from_raw(cell) };
-            assert_eq!(
-                cell.get_named::<f64>("x"),
-                Some(f64::from(id)),
-                "{what}[{i}]$x"
-            );
-            assert_eq!(
-                cell.get_named::<f64>("y"),
-                Some(f64::from(id) + 0.5),
-                "{what}[{i}]$y"
-            );
-        }
-    };
+    let cells: Vec<Option<f64>> = (0..8).map(|i| located(i).then_some(f64::from(i))).collect();
 
     // SAFETY: R main thread; each result is rooted before anything else allocates.
     let aligned =
@@ -643,10 +638,9 @@ pub fn gc_stress_dataframe_split_as_list() -> SEXP {
         8,
         &["_type", "id", "origin"],
     );
-    let all_ids: Vec<i32> = (0..8).collect();
-    check_cells(
+    expect_point_cells(
         df.column_raw("origin").expect("origin column"),
-        &all_ids,
+        &cells,
         "aligned origin",
     );
     drop(aligned);
@@ -654,14 +648,64 @@ pub fn gc_stress_dataframe_split_as_list() -> SEXP {
     // SAFETY: as above.
     let split = unsafe { OwnedProtect::new(rows.into_dataframe_split().into_sexp()) };
     let s = split.get();
-    let located = expect_split_partition(s, "located", 6, &["id", "origin"]);
-    check_cells(
-        located.column_raw("origin").expect("origin column"),
-        &[0, 1, 2, 4, 5, 6],
+    let located_df = expect_split_partition(s, "located", 6, &["id", "origin"]);
+    let located_cells: Vec<Option<f64>> = cells.iter().copied().filter(Option::is_some).collect();
+    expect_point_cells(
+        located_df.column_raw("origin").expect("origin column"),
+        &located_cells,
         "split origin",
     );
     expect_split_partition(s, "other", 2, &["id"]);
     s
+}
+
+/// Build a struct `DataFrameRow` frame with a `#[dataframe(as_list)]` struct
+/// field and validate every list-column cell under GC pressure (#1748).
+///
+/// The companion holds the struct values; each cell's R list is built only
+/// when the frame is assembled, straight into the rooted column. With the
+/// `rayon` feature the parallel companion fill is checked too. Returns the
+/// sequential frame.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_struct_as_list() -> SEXP {
+    use crate::dataframe_struct_flatten_test::{FlatAsList, FlatPoint};
+    use miniextendr_api::IntoDataFrame as _;
+
+    let rows: Vec<FlatAsList> = (0..8i32)
+        .map(|id| FlatAsList {
+            id,
+            origin: FlatPoint {
+                x: f64::from(id),
+                y: f64::from(id) + 0.5,
+            },
+        })
+        .collect();
+    let cells: Vec<Option<f64>> = (0..8).map(|i| Some(f64::from(i))).collect();
+
+    #[cfg(feature = "rayon")]
+    {
+        let par = rows
+            .clone()
+            .into_dataframe_par()
+            .expect("gc_stress_dataframe_struct_as_list: into_dataframe_par");
+        let df = expect_data_frame(par.as_sexp(), "parallel frame", 8, &["id", "origin"]);
+        expect_point_cells(
+            df.column_raw("origin").expect("origin column"),
+            &cells,
+            "parallel origin",
+        );
+    }
+
+    let built = rows
+        .into_dataframe()
+        .expect("gc_stress_dataframe_struct_as_list: into_dataframe");
+    let df = expect_data_frame(built.as_sexp(), "frame", 8, &["id", "origin"]);
+    expect_point_cells(
+        df.column_raw("origin").expect("origin column"),
+        &cells,
+        "origin",
+    );
+    built.into_sexp()
 }
 // endregion
 

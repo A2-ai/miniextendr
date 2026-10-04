@@ -83,12 +83,22 @@ test_that("gc_stress_dataframe_split_as_list returns list-column cells", {
   expect_equal(nrow(res$other), 2L)
 })
 
-test_that("enum split fixtures keep every partition intact under gctorture", {
+test_that("gc_stress_dataframe_struct_as_list returns list-column cells", {
+  df <- miniextendr:::gc_stress_dataframe_struct_as_list()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "origin"))
+  expect_equal(nrow(df), 8L)
+  expect_type(df$origin, "list")
+  expect_equal(df$origin[[8]], list(x = 7, y = 7.5))
+})
+
+test_that("DataFrameRow split and as_list fixtures stay intact under gctorture", {
   skip_gc_stress_if_disabled()
   fixtures <- c(
     "gc_stress_dataframe_split_multi_variant",
     "gc_stress_dataframe_split_nested_flatten",
-    "gc_stress_dataframe_split_as_list"
+    "gc_stress_dataframe_split_as_list",
+    "gc_stress_dataframe_struct_as_list"
   )
   ns <- getNamespace("miniextendr")
   gctorture(TRUE)
@@ -100,7 +110,8 @@ test_that("enum split fixtures keep every partition intact under gctorture", {
       res <- tryCatch(
         {
           out <- get(f, ns)()
-          if (!all(vapply(out, is.data.frame, logical(1L)))) {
+          parts <- if (is.data.frame(out)) list(out) else out
+          if (!all(vapply(parts, is.data.frame, logical(1L)))) {
             stop("a partition is not a data.frame")
           }
           "ok"
