@@ -298,6 +298,7 @@ mod rmath_tests;
 mod rng_tests;
 mod roxygen_carry_tests;
 mod roxygen_prose_links_tests;
+mod roxygen_rustdoc_links_tests;
 mod s3_nonsyntactic_tests;
 mod s3_tests;
 mod s4_helpers_tests;

@@ -26,7 +26,9 @@
 //!   `@description` (when the block has none) with its lines, blank lines and
 //!   indentation kept, and it stays in rustdoc. Its `[...]` links lose their
 //!   brackets unless the crate sets `roxygen_prose_links = "keep"`
-//!   ([`ProseLinks`]); tag text is never rewritten.
+//!   ([`ProseLinks`]). Under `"keep"`, and in the text of every explicit tag
+//!   but the code ones ([`CODE_TAGS`]), only a link roxygen2 can never
+//!   resolve loses them ([`is_rustdoc_only_target`]).
 //! - A tag runs from its `@tag` line to the next one. A multi-line tag
 //!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
 //!   roxygen2 paragraph break; a blank line in an example) and the indentation
@@ -86,6 +88,19 @@ const MULTILINE_TAGS: &[&str] = &[
     "evalNamespace",
     "source",
     "author",
+];
+
+/// Tags whose text is R code or raw Rd, not markdown: their `[...]` is never
+/// a link, so [`neutralize_tag_links`] leaves them as written.
+const CODE_TAGS: &[&str] = &[
+    "examples",
+    "examplesIf",
+    "usage",
+    "eval",
+    "evalRd",
+    "evalNamespace",
+    "rawRd",
+    "rawNamespace",
 ];
 
 /// Tags whose wrapped continuation lines are joined back onto one line with a
@@ -331,8 +346,14 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
 
 /// [`roxygen_tags_from_attrs_impl`] with the crate's [`ProseLinks`] setting
 /// passed in (testable without a manifest).
+///
+/// Every explicit tag loses its rustdoc-only links ([`neutralize_tag_links`])
+/// whatever the setting, which governs the leading prose only.
 fn roxygen_tags_with(attrs: &[syn::Attribute], links: ProseLinks) -> Vec<String> {
-    let mut tags = explicit_roxygen_tags_from_attrs(attrs);
+    let mut tags: Vec<String> = explicit_roxygen_tags_from_attrs(attrs)
+        .into_iter()
+        .map(neutralize_tag_links)
+        .collect();
 
     // Check which tags are present
     let tag_names_set = tag_names(&tags);
@@ -722,19 +743,21 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
 /// `[package.metadata.miniextendr]`.
 ///
 /// rustdoc and roxygen2 read the same `[name()]` / `[pkg::name()]` / `[Topic]`
-/// syntax as a link to a Rust item and to an R help topic respectively, so the
-/// two cannot be told apart from the text: rustdoc resolves `[name()]` to an
-/// in-scope Rust fn and warns `broken_intra_doc_links` on any it cannot find.
-/// The crate says which reader its doc comments are written for.
+/// / `` [`Topic`] `` syntax as a link to a Rust item and to an R help topic
+/// respectively, so the two cannot be told apart from the text: rustdoc
+/// resolves `[name()]` to an in-scope Rust fn and warns
+/// `broken_intra_doc_links` on any it cannot find. The crate says which reader
+/// its doc comments are written for.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ProseLinks {
     /// `"strip"`, the default: doc comments are written for rustdoc, so a link
-    /// loses its brackets ([`sanitize_prose_links`]) and roxygen2 never tries
+    /// loses its brackets ([`Neutralize::AllLinks`]) and roxygen2 never tries
     /// to resolve a Rust item as an R topic.
     #[default]
     Strip,
-    /// `"keep"`: doc comments are written for roxygen2, so leading prose
-    /// passes through unchanged, as the text of an explicit tag does.
+    /// `"keep"`: doc comments are written for roxygen2, so leading prose keeps
+    /// its links, as the text of an explicit tag does. Only the links roxygen2
+    /// can never resolve lose their brackets ([`Neutralize::RustdocOnly`]).
     Keep,
 }
 
@@ -758,8 +781,8 @@ impl ProseLinks {
 /// paragraph breaks, rendered as bare `#'` lines by `push_roxygen_tags`) and
 /// indentation, so a markdown list, a nested item or a fenced block reaches
 /// roxygen2 as written. Leading and trailing blank lines are dropped. With
-/// [`ProseLinks::Strip`] the links are neutralized ([`sanitize_prose_links`]);
-/// with [`ProseLinks::Keep`] the text is left as written.
+/// [`ProseLinks::Strip`] every link is neutralized; with [`ProseLinks::Keep`]
+/// only the rustdoc-only ones are ([`sanitize_prose_links`]).
 ///
 /// Returns `None` when the block has no leading prose (empty, or starts with a `@tag`),
 /// so tag-led blocks never gain a spurious `@description`.
@@ -775,9 +798,30 @@ fn leading_prose_from_attrs(attrs: &[syn::Attribute], links: ProseLinks) -> Opti
     let last = prose.iter().rposition(|line| !line.is_empty())?;
     let prose = &prose[first..=last];
     Some(match links {
-        ProseLinks::Strip => sanitize_prose_links(prose),
-        ProseLinks::Keep => prose.join("\n"),
+        ProseLinks::Strip => sanitize_prose_links(prose, Neutralize::AllLinks),
+        ProseLinks::Keep => sanitize_prose_links(prose, Neutralize::RustdocOnly),
     })
+}
+
+/// An explicit tag with its rustdoc-only links neutralized
+/// ([`Neutralize::RustdocOnly`]), or as written when its text is code
+/// ([`CODE_TAGS`]).
+fn neutralize_tag_links(tag: String) -> String {
+    if roxygen_tag_name(&tag).is_some_and(|name| CODE_TAGS.contains(&name)) {
+        return tag;
+    }
+    sanitize_prose_links(&tag.lines().collect::<Vec<_>>(), Neutralize::RustdocOnly)
+}
+
+/// Which `[...]` links [`sanitize_roxygen_links`] reduces to their text.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Neutralize {
+    /// Every link: leading prose under [`ProseLinks::Strip`].
+    AllLinks,
+    /// Only a link whose target roxygen2 can never resolve
+    /// ([`is_rustdoc_only_target`]): leading prose under [`ProseLinks::Keep`],
+    /// and explicit tag text ([`neutralize_tag_links`]).
+    RustdocOnly,
 }
 
 /// [`sanitize_roxygen_links`] over prose lines, one paragraph (the lines
@@ -788,10 +832,10 @@ fn leading_prose_from_attrs(attrs: &[syn::Attribute], links: ProseLinks) -> Opti
 /// backtick cannot switch neutralizing off beyond its paragraph. A fenced
 /// block (```` ``` ```` or `~~~`, blank lines included) is code and passes
 /// through untouched, so `x[i]` there is never rewritten.
-fn sanitize_prose_links(lines: &[&str]) -> String {
-    fn flush(paragraph: &mut Vec<&str>, out: &mut Vec<String>) {
+fn sanitize_prose_links(lines: &[&str], links: Neutralize) -> String {
+    fn flush(paragraph: &mut Vec<&str>, out: &mut Vec<String>, links: Neutralize) {
         if !paragraph.is_empty() {
-            out.push(sanitize_roxygen_links(&paragraph.join("\n")));
+            out.push(sanitize_roxygen_links(&paragraph.join("\n"), links));
             paragraph.clear();
         }
     }
@@ -806,17 +850,17 @@ fn sanitize_prose_links(lines: &[&str]) -> String {
             }
             out.push(line.to_string());
         } else if let Some(open) = fence_marker(line) {
-            flush(&mut paragraph, &mut out);
+            flush(&mut paragraph, &mut out, links);
             open_fence = Some(open);
             out.push(line.to_string());
         } else if line.is_empty() {
-            flush(&mut paragraph, &mut out);
+            flush(&mut paragraph, &mut out, links);
             out.push(String::new());
         } else {
             paragraph.push(line);
         }
     }
-    flush(&mut paragraph, &mut out);
+    flush(&mut paragraph, &mut out, links);
     out.join("\n")
 }
 
@@ -849,10 +893,12 @@ fn closes_fence(line: &str, close: &str, open: &str) -> bool {
 /// `[...]` as an R `\link{}` to a *help topic*, which can't resolve. We strip the
 /// link brackets down to the visible text (keeping any `` `code` `` span), while
 /// leaving genuine markdown links `[text](url)` — recognized by the `]( ` that
-/// follows — untouched. A roxygen2 link (`[other_fn()]`) is stripped too: the
-/// syntax is rustdoc's as well, so a crate writing for roxygen2 opts out with
-/// [`ProseLinks::Keep`].
-fn sanitize_roxygen_links(s: &str) -> String {
+/// follows — untouched. With [`Neutralize::AllLinks`] a roxygen2 link
+/// (`[other_fn()]`) is stripped too: the syntax is rustdoc's as well, so a
+/// crate writing for roxygen2 opts out with [`ProseLinks::Keep`]. With
+/// [`Neutralize::RustdocOnly`] only a link whose target roxygen2 can never
+/// resolve is stripped ([`is_rustdoc_only_target`]); the rest stay as written.
+fn sanitize_roxygen_links(s: &str, links: Neutralize) -> String {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
@@ -880,31 +926,30 @@ fn sanitize_roxygen_links(s: &str) -> String {
             if let Some(close_rel) = s[i + 1..].find(']') {
                 let close = i + 1 + close_rel;
                 let inner = &s[i + 1..close];
-                match bytes.get(close + 1) {
-                    // `[text](url)` — real markdown link. Emit `[` literally and let
-                    // the inner text + `](url)` flow through unchanged.
-                    Some(b'(') => {
-                        out.push('[');
-                        i += 1;
-                        continue;
-                    }
-                    // `[text][target]` — reference link. Keep `text`, drop `[target]`.
-                    Some(b'[') => {
-                        out.push_str(inner);
-                        if let Some(t_rel) = s[close + 2..].find(']') {
-                            i = close + 2 + t_rel + 1;
-                        } else {
-                            i = close + 1;
-                        }
-                        continue;
-                    }
-                    // `[text]` — shortcut link. Keep `text`, drop the brackets.
-                    _ => {
-                        out.push_str(inner);
-                        i = close + 1;
-                        continue;
-                    }
+                // `[text](url)` — real markdown link. Emit `[` literally and let
+                // the inner text + `](url)` flow through unchanged.
+                if bytes.get(close + 1) == Some(&b'(') {
+                    out.push('[');
+                    i += 1;
+                    continue;
                 }
+                // `[text][target]` — reference link; `[text]` — shortcut link,
+                // its own target.
+                let (target, end) = match bytes.get(close + 1) {
+                    Some(b'[') => match s[close + 2..].find(']') {
+                        Some(t_rel) => (&s[close + 2..close + 2 + t_rel], close + 2 + t_rel + 1),
+                        None => (inner, close + 1),
+                    },
+                    _ => (inner, close + 1),
+                };
+                // Keep `text`, drop the brackets and any `[target]`.
+                if links == Neutralize::AllLinks || is_rustdoc_only_target(target) {
+                    out.push_str(inner);
+                } else {
+                    out.push_str(&s[i..end]);
+                }
+                i = end;
+                continue;
             }
         }
         let ch = s[i..].chars().next().unwrap();
@@ -912,6 +957,43 @@ fn sanitize_roxygen_links(s: &str) -> String {
         i += ch.len_utf8();
     }
     out
+}
+
+/// Whether roxygen2 can never resolve the link target `target`, so the link
+/// was written for rustdoc.
+///
+/// roxygen2 reads `pkg::topic` as a link into the R package `pkg`, everything
+/// before the last `::`, and warns "refers to un-installed package" when no
+/// such package is installed. A target is rustdoc-only when that `pkg` is a
+/// Rust path root (`crate`, `self`, `Self`) or cannot be an R package name
+/// (`a::b`, `my_mod`; see [`is_r_package_name`]). Backticks around the target
+/// are ignored, as both readers do. Anything else may be an R link, so it is
+/// left alone: `[topic]`, `` [`topic`] ``, `[fn()]` and `[pkg::topic]`, which
+/// roxygen2 documents, and so `` [`Type::method`] `` (`Type` can be a package:
+/// `R6`, `S7`, `Matrix`) and `[super::x]` (`super` is on CRAN).
+fn is_rustdoc_only_target(target: &str) -> bool {
+    let target = target.trim();
+    let target = target
+        .strip_prefix('`')
+        .and_then(|t| t.strip_suffix('`'))
+        .unwrap_or(target);
+    let Some((pkg, _)) = target.rsplit_once("::") else {
+        return false;
+    };
+    matches!(pkg, "crate" | "self" | "Self") || !is_r_package_name(pkg)
+}
+
+/// R's rule for a package name (Writing R Extensions, "The DESCRIPTION
+/// file"): ASCII letters, digits and `.`, at least two characters, starting
+/// with a letter and not ending in `.`.
+fn is_r_package_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[bytes.len() - 1] != b'.'
+        && bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'.')
 }
 
 /// Check for conflicts between explicit `@title`/`@description` tags and implicit values.
