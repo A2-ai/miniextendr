@@ -1442,6 +1442,27 @@ fn parse_failure_names_the_dots_spelling() {
     );
 }
 
+/// `_: ...` (rustc's fix for a bare `...`, #1743) parses like `name: ...`, on a
+/// function and on a method.
+#[test]
+fn wild_dots_parse() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    write_crate(
+        &src,
+        &[(
+            "lib.rs",
+            "use miniextendr_api::prelude::*;\n\n\
+             #[miniextendr]\npub fn ignores(x: i32, _: ...) -> i32 { x }\n\n\
+             #[derive(miniextendr_api::ExternalPtr)]\npub struct T;\n\n\
+             #[miniextendr(env)]\nimpl T {\n    pub fn m(&self, _: ...) -> i32 { 1 }\n}\n",
+        )],
+    );
+
+    let report = run(dir.path()).expect("`_: ...` must parse");
+    assert!(report.errors.is_empty(), "got: {:?}", report.errors);
+}
+
 #[test]
 fn parse_failure_without_misplaced_dots_gets_no_hint() {
     let dir = tempfile::tempdir().unwrap();

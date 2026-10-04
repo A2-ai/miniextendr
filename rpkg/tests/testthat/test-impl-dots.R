@@ -10,6 +10,14 @@ test_that("R6 impl-block constructors and methods accept dots", {
   expect_identical(names(formals(ImplDotsR6$public_methods$explicit_dots)), "...")
 })
 
+test_that("an R6 method's `_: ...` is R's plain `...` and ignores its dots (#1743)", {
+  obj <- ImplDotsR6$new(10L)
+
+  expect_equal(obj$ignore_dots(), 10L)
+  expect_equal(obj$ignore_dots(1, b = 2, "c"), 10L)
+  expect_identical(names(formals(ImplDotsR6$public_methods$ignore_dots)), "...")
+})
+
 test_that("S3 impl-block constructors and methods accept dots without duplicate dispatch dots", {
   obj <- new_impldotss3(20L, alpha = 1, beta = 2, gamma = 3)
 

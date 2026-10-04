@@ -97,7 +97,7 @@ pub(crate) fn cov_fn_named_dots(dots: ...) {
 pub(crate) fn cov_fn_unused_named_dots(_dots: ...) {}
 
 #[miniextendr]
-pub(crate) fn cov_fn_unnamed_dots(_dots: ...) {}
+pub(crate) fn cov_fn_unnamed_dots(_: ...) {}
 
 #[miniextendr]
 pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
@@ -105,7 +105,7 @@ pub(crate) fn cov_fn_arg_plus_dots(_count: i32, dots: ...) {
 }
 
 #[miniextendr]
-pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, _dots: ...) {}
+pub(crate) fn cov_fn_arg_plus_unnamed_dots(_count: i32, _: ...) {}
 // endregion
 
 // region: Invisible / visible return

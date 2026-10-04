@@ -13,13 +13,18 @@ use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 
 /// A Rust `...` parameter followed by another parameter.
 pub(crate) struct MisplacedDots {
-    /// The parameter's name; `None` for a bare `...`.
+    /// The parameter's name; `None` for unnamed dots (a bare `...` or `_: ...`).
     pub(crate) name: Option<String>,
     /// The three `.` tokens, so a diagnostic can span the whole `...`.
     pub(crate) dots: TokenStream,
 }
 
-/// The diagnostic for a `...` parameter that is not last, named `name` (`None` for a bare `...`).
+/// The diagnostic for a `...` parameter that is not last, named `name` (`None` for unnamed dots).
+///
+/// Unnamed dots get `_dots`: `_: &Dots` would work on a function (its `_`
+/// parameters are renamed) but not on a method, where the `&Dots` parameter
+/// needs a plain name. No spelling of Rust `...` parses before another
+/// parameter, so the hint names `&Dots`, never `_: ...`.
 pub(crate) fn message(name: Option<&str>) -> String {
     let param = name.unwrap_or("_dots");
     format!(
@@ -91,7 +96,7 @@ fn in_params(params: TokenStream) -> Option<MisplacedDots> {
             i.checked_sub(1).map(|j| &tts[j]),
         ) {
             (Some(TokenTree::Ident(name)), Some(TokenTree::Punct(colon)))
-                if colon.as_char() == ':' =>
+                if colon.as_char() == ':' && name != "_" =>
             {
                 Some(name.to_string())
             }
@@ -132,6 +137,17 @@ mod tests {
         assert_eq!(name_of("fn f(x: i32, ..., y: i32) {}"), Some(None));
     }
 
+    /// `_: ...` is unnamed dots too, so the hint names `_dots: &Dots`, which a
+    /// method accepts (`_: &Dots` there needs a plain name).
+    #[test]
+    fn wild_dots_before_another_parameter_are_unnamed() {
+        assert_eq!(name_of("fn f(x: i32, _: ..., y: i32) {}"), Some(None));
+        assert_eq!(
+            name_of("impl T { fn m(&self, _: ..., n: i32) {} }"),
+            Some(None)
+        );
+    }
+
     #[test]
     fn method_in_an_impl_body() {
         assert_eq!(
@@ -153,6 +169,7 @@ mod tests {
         assert_eq!(name_of("fn f(x: i32, rest: ...) {}"), None);
         assert_eq!(name_of("fn f(x: i32, rest: ...,) {}"), None);
         assert_eq!(name_of("fn f(x: i32, ...) {}"), None);
+        assert_eq!(name_of("fn f(x: i32, _: ...) {}"), None);
     }
 
     #[test]

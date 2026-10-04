@@ -14,13 +14,18 @@ use proc_macro2::{Delimiter, Spacing, TokenStream, TokenTree};
 
 /// A Rust `...` parameter followed by another parameter.
 struct MisplacedDots {
-    /// The parameter's name; `None` for a bare `...`.
+    /// The parameter's name; `None` for unnamed dots (a bare `...` or `_: ...`).
     name: Option<String>,
     /// The three `.` tokens.
     dots: TokenStream,
 }
 
-/// The diagnostic for a `...` parameter that is not last, named `name` (`None` for a bare `...`).
+/// The diagnostic for a `...` parameter that is not last, named `name` (`None` for unnamed dots).
+///
+/// Unnamed dots get `_dots`: `_: &Dots` would work on a function (its `_`
+/// parameters are renamed) but not on a method, where the `&Dots` parameter
+/// needs a plain name. No spelling of Rust `...` parses before another
+/// parameter, so the hint names `&Dots`, never `_: ...`.
 fn message(name: Option<&str>) -> String {
     let param = name.unwrap_or("_dots");
     format!(
@@ -104,7 +109,7 @@ fn in_params(params: TokenStream) -> Option<MisplacedDots> {
             i.checked_sub(1).map(|j| &tts[j]),
         ) {
             (Some(TokenTree::Ident(name)), Some(TokenTree::Punct(colon)))
-                if colon.as_char() == ':' =>
+                if colon.as_char() == ':' && name != "_" =>
             {
                 Some(name.to_string())
             }
@@ -142,6 +147,15 @@ mod tests {
         assert!(hint.contains("`_dots: &Dots`"));
     }
 
+    /// `_: ...` is unnamed dots too: `_dots: &Dots` works on a method, where
+    /// `_: &Dots` needs a plain name.
+    #[test]
+    fn wild_dots_get_the_placeholder_name() {
+        let hint = hint("impl T { fn m(&self, _: ..., n: i32) {} }").expect("hint");
+        assert!(hint.contains("`_dots: &Dots`"), "got: {hint}");
+        assert!(!hint.contains("`_: &Dots`"), "got: {hint}");
+    }
+
     #[test]
     fn method_in_an_impl_body() {
         assert!(hint("impl T { fn m(&self, rest: ..., n: i32) {} }").is_some());
@@ -151,6 +165,7 @@ mod tests {
     fn last_dots_and_comments_get_no_hint() {
         assert_eq!(hint("fn f(x: i32, rest: ...) {}"), None);
         assert_eq!(hint("fn f(x: i32, rest: ...,) {}"), None);
+        assert_eq!(hint("fn f(x: i32, _: ...) {}"), None);
         assert_eq!(hint("// fn f(rest: ..., x: i32) {}\nfn g() {}"), None);
         assert_eq!(hint("/// fn f(rest: ..., x: i32) {}\nfn g() {}"), None);
     }

@@ -183,7 +183,7 @@ The error points at the `...` and links [Formals after `...`](DOTS_TYPED_LIST.md
 Rust's `...` is only valid as the last parameter; write a dots parameter that is not last as `sources: &Dots` (`miniextendr_api::dots::Dots`), which is R's `...` at that position. See https://a2-ai.github.io/miniextendr/manual/dots-typed-list/#formals-after
 ```
 
-A bare `...` gets `_dots: &Dots`. `miniextendr-lint` can't parse such a file either, so its "failed to parse" warning ends with `line <n>: ` and the same text.
+Unnamed dots (a bare `...` or `_: ...`) get `_dots: &Dots`. `miniextendr-lint` can't parse such a file either, so its "failed to parse" warning ends with `line <n>: ` and the same text.
 
 ### "expected `pub` function"
 

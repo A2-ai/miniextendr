@@ -501,9 +501,12 @@ fn build_match_arg_helpers(
 ///
 /// ## Variadics (`...`)
 ///
-/// Use `...` as the last argument. It becomes a `&Dots` parameter bound to
-/// `__miniextendr_dots`, so name it (`args: ...` → `args: &Dots`) to read the
-/// dots in the body.
+/// Use `name: ...` as the last argument. It becomes a `name: &Dots`
+/// parameter (`args: ...` → `args: &Dots`), through which the body reads
+/// the dots. For dots the function ignores, write `_: ...`. rustc rejects a
+/// bare `...` before the macro runs (the deny-by-default
+/// `varargs_without_pattern` lint) and suggests `_: ...`. The R formal is
+/// plain `...` either way.
 ///
 /// An explicit `rest: &Dots` parameter is R's `...` too, at any position:
 /// `fn f(x: i32, rest: &Dots, overwrite: bool)` becomes
@@ -517,7 +520,7 @@ fn build_match_arg_helpers(
 ///
 /// ```ignore
 /// #[miniextendr(dots = typed_list!(x => numeric(), y => integer(), z? => character()))]
-/// pub fn my_func(...) -> String {
+/// pub fn my_func(_: ...) -> String {
 ///     let x: f64 = dots_typed.get("x").expect("x");
 ///     let y: i32 = dots_typed.get("y").expect("y");
 ///     let z: Option<String> = dots_typed.get_opt("z").expect("z");
@@ -2993,7 +2996,7 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// ```ignore
 /// #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
-/// pub fn my_func(...) -> String {
+/// pub fn my_func(_: ...) -> String {
 ///     // `dots_typed` is automatically created and validated
 ///     let x: f64 = dots_typed.get("x").expect("x");
 ///     let y: f64 = dots_typed.get("y").expect("y");
@@ -3002,8 +3005,8 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// ```
 ///
 /// This injects validation at the start of the function body, reading the
-/// dots binding (`__miniextendr_dots` for an unnamed `...`, otherwise the
-/// name of the `name: ...` / `name: &Dots` parameter):
+/// dots binding (`__miniextendr_dots` for `_: ...`, otherwise the name of the
+/// `name: ...` / `name: &Dots` parameter):
 /// ```ignore
 /// let dots_typed = __miniextendr_dots.typed(typed_list!(...))
 ///     .unwrap_or_else(|e| panic!("dots validation failed: {e}"));

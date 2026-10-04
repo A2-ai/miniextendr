@@ -8,7 +8,7 @@ When an R function accepts `...`, miniextendr converts it to a `&Dots` parameter
 
 ## Basic Dots Usage
 
-When you use `...` in a function signature, miniextendr replaces it with a `&Dots` parameter. An unnamed `...` binds the synthetic name `__miniextendr_dots`, which is not meant for your code, so name the dots when the body reads them (see [Named Dots](#named-dots)):
+When you use `name: ...` in a function signature, miniextendr replaces it with a `name: &Dots` parameter (see [Named Dots](#named-dots)):
 
 ```rust
 #[miniextendr]
@@ -20,7 +20,18 @@ pub fn count_args(args: ...) -> i32 {
 }
 ```
 
-Use a plain `...` (or `_args: ...`) when the function accepts dots it ignores.
+Write `_: ...` (or `_args: ...`) when the function accepts dots it ignores:
+
+```rust
+#[miniextendr]
+pub fn first_only(x: i32, _: ...) -> i32 {
+    x
+}
+```
+
+`_: ...` binds the synthetic name `__miniextendr_dots`, which is not meant for your code; name the dots when the body reads them. The R formal is plain `...` either way.
+
+Don't write a bare `...` with no pattern. rustc rejects it before `#[miniextendr]` runs (the `varargs_without_pattern` lint, deny by default, [rust-lang/rust#145544](https://github.com/rust-lang/rust/issues/145544)) and suggests `_: ...`.
 
 ### Dots Methods
 
@@ -152,7 +163,7 @@ Use `#[miniextendr(dots = typed_list!(...))]` for automatic validation:
 
 ```rust
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
-pub fn my_func(...) -> String {
+pub fn my_func(_: ...) -> String {
     // `dots_typed` is automatically created and validated
     let x: f64 = dots_typed.get("x").expect("x");
     let y: f64 = dots_typed.get("y").expect("y");
@@ -160,7 +171,7 @@ pub fn my_func(...) -> String {
 }
 ```
 
-This injects validation at the start of the function body, over the dots binding (`__miniextendr_dots` for an unnamed `...`, otherwise the name of the `name: ...` or `name: &Dots` parameter, at any position):
+This injects validation at the start of the function body, over the dots binding (`__miniextendr_dots` for `_: ...`, otherwise the name of the `name: ...` or `name: &Dots` parameter, at any position):
 ```rust
 let dots_typed = __miniextendr_dots
     .typed(typed_list!(...))
@@ -174,7 +185,7 @@ let dots_typed = __miniextendr_dots
     name => character(),
     greeting? => character()
 ))]
-pub fn greet(...) -> String {
+pub fn greet(_: ...) -> String {
     let name: String = dots_typed.get("name").expect("name");
     let greeting: Option<String> = dots_typed.get_opt("greeting").expect("greeting");
     let greeting = greeting.unwrap_or_else(|| "Hello".to_string());
