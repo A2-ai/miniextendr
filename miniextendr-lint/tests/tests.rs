@@ -1900,6 +1900,7 @@ fn lib_path_spellings_with_comments_and_whitespace_parse() {
         "[\"lib\"]\n\"path\" = \"rust/lib.rs\"\n",
         "lib.path = \"rust/lib.rs\"\n[package]\nname = \"pkg\"\n",
         "[package]\r\nname = \"pkg\"\r\n\r\n[lib]\r\npath = \"rust/lib.rs\"\r\n",
+        "[package.metadata.grid]\ncells = [\n  [\n    1,\n  ],\n]\n[lib]\npath = \"rust/lib.rs\"\n",
     ] {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();

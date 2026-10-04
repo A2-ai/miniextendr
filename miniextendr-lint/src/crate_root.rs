@@ -93,7 +93,7 @@ fn normalize(path: &Path) -> PathBuf {
 ///
 /// Errors when the key is present but its value is not a single-line string
 /// without escapes, or when the `[lib]` table is written inline with a `path`.
-pub(crate) fn lib_path_from_manifest(text: &str) -> Result<Option<String>, String> {
+fn lib_path_from_manifest(text: &str) -> Result<Option<String>, String> {
     let mut table = String::new();
 
     for raw_line in text.lines() {
@@ -102,12 +102,14 @@ pub(crate) fn lib_path_from_manifest(text: &str) -> Result<Option<String>, Strin
             continue;
         }
         if let Some(header) = line.strip_prefix('[') {
-            // `[[array.of.tables]]` and `[table]`: keys below belong to it.
+            // `[[array.of.tables]]` and `[table]`: keys below belong to it. A
+            // line with no `]` (a nested array spread over lines) opens no
+            // table; the lint skips it where the macro crate's copy errors, so
+            // an unrelated value never costs the crate its lint.
             let header = header.strip_prefix('[').unwrap_or(header);
-            let Some(end) = header.find(']') else {
-                return Err(format!("unterminated table header `{line}`"));
-            };
-            table = normalize_key(&header[..end]);
+            if let Some(end) = header.find(']') {
+                table = normalize_key(&header[..end]);
+            }
             continue;
         }
         let Some((key, value)) = line.split_once('=') else {
