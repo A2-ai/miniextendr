@@ -412,6 +412,303 @@ pub fn gc_stress_dataframe_nested_enum() {
     // Status is already exercised via NestedFlattenEvent above.
 }
 
+// region: enum DataFrameRow split / align partitions validated in Rust (#1748)
+//
+// The fixtures above discard their results, so a partition reaped while the
+// next one was being built went unnoticed: nothing read its class or
+// row.names. These read every partition back while the result is still rooted
+// and panic on a mismatch, which the no-arg sweep reports as a failure.
+
+/// Look up the partition `name` of an `into_dataframe_split()` result and check
+/// that it is a `data.frame` with `nrow` rows and exactly the columns `cols`.
+fn expect_split_partition(
+    split: SEXP,
+    name: &str,
+    nrow: usize,
+    cols: &[&str],
+) -> miniextendr_api::dataframe::DataFrame {
+    assert_eq!(
+        split.type_of(),
+        SEXPTYPE::VECSXP,
+        "split result is not a list"
+    );
+    let names = split.get_names();
+    let idx = (0..split.len() as isize)
+        .find(|&i| names.string_elt_str(i) == Some(name))
+        .unwrap_or_else(|| panic!("split result has no `{name}` partition"));
+    expect_data_frame(split.vector_elt(idx), name, nrow, cols)
+}
+
+/// Check that `sexp` is a `data.frame` with `nrow` rows and exactly the columns
+/// `cols` (in order); `what` names it in the panic message.
+fn expect_data_frame(
+    sexp: SEXP,
+    what: &str,
+    nrow: usize,
+    cols: &[&str],
+) -> miniextendr_api::dataframe::DataFrame {
+    let df = miniextendr_api::dataframe::DataFrame::from_sexp(sexp)
+        .unwrap_or_else(|e| panic!("`{what}` is not a data.frame: {e}"));
+    assert_eq!(df.nrow(), nrow, "`{what}` has the wrong row count");
+    assert_eq!(df.names(), cols, "`{what}` has the wrong columns");
+    df
+}
+
+/// Split a multi-variant enum (three named variants, plus a unit-variant enum)
+/// and validate every partition under GC pressure (#1748).
+///
+/// Each partition is built while the earlier ones wait for the outer list, so
+/// an unrooted partition is reaped by the next one's allocations and comes back
+/// classless or as some other object. Returns the `EventRow` split.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_split_multi_variant() -> SEXP {
+    use crate::dataframe_examples::{EventRow, UnitStatus};
+
+    let rows: Vec<EventRow> = (0..12i64)
+        .map(|i| match i % 3 {
+            0 => EventRow::Click {
+                id: i,
+                x: i as f64,
+                y: i as f64 * 2.0,
+            },
+            1 => EventRow::Impression {
+                id: i,
+                slot: format!("slot_{i}"),
+            },
+            _ => EventRow::Error {
+                id: i,
+                code: 400 + i as i32,
+                message: format!("error {i}"),
+            },
+        })
+        .collect();
+    // SAFETY: R main thread; the result is rooted before anything else allocates.
+    let split = unsafe { OwnedProtect::new(rows.into_dataframe_split().into_sexp()) };
+    let s = split.get();
+    let click = expect_split_partition(s, "click", 4, &["id", "x", "y"]);
+    assert_eq!(
+        click.column::<Vec<f64>>("x"),
+        Some(vec![0.0, 3.0, 6.0, 9.0])
+    );
+    let impression = expect_split_partition(s, "impression", 4, &["id", "slot"]);
+    assert_eq!(
+        impression.column::<Vec<String>>("slot"),
+        Some(vec![
+            "slot_1".to_string(),
+            "slot_4".to_string(),
+            "slot_7".to_string(),
+            "slot_10".to_string(),
+        ])
+    );
+    let error = expect_split_partition(s, "error", 4, &["id", "code", "message"]);
+    assert_eq!(
+        error.column::<Vec<i32>>("code"),
+        Some(vec![402, 405, 408, 411])
+    );
+
+    // Unit + named variants: the unit partition is a 0-column frame.
+    let unit_rows = vec![
+        UnitStatus::Active,
+        UnitStatus::Pending { id: 7 },
+        UnitStatus::Active,
+        UnitStatus::Pending { id: 8 },
+        UnitStatus::Active,
+    ];
+    // SAFETY: as above.
+    let unit_split = unsafe { OwnedProtect::new(unit_rows.into_dataframe_split().into_sexp()) };
+    expect_split_partition(unit_split.get(), "active", 3, &[]);
+    let pending = expect_split_partition(unit_split.get(), "pending", 2, &["id"]);
+    assert_eq!(pending.column::<Vec<i32>>("id"), Some(vec![7, 8]));
+    drop(unit_split);
+
+    s
+}
+
+/// Split and align an enum whose `status: Status` field flattens a nested
+/// payload enum into `status_variant` / `status_code`, and validate both
+/// results under GC pressure (#1748).
+///
+/// The split partitions go through the nested-companion column path; the
+/// aligned frame scatters the inner columns back to the full row count, which
+/// allocates once per inner column. Returns the split.
+///
+/// The row counts are chosen for R's small-vector size classes: the `other`
+/// partition's first column (6 integers) is the size of the `tracked` frame
+/// (3 columns), so a reaped `tracked` is reused at once and the check sees it.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_split_nested_flatten() -> SEXP {
+    let mut rows = vec![
+        NestedFlattenEvent::Tracked {
+            id: 0,
+            status: Status::Ok,
+        },
+        NestedFlattenEvent::Tracked {
+            id: 1,
+            status: Status::Err { code: 401 },
+        },
+    ];
+    rows.extend((2..8i32).map(|id| NestedFlattenEvent::Other { id }));
+
+    // SAFETY: R main thread; each result is rooted before anything else allocates.
+    let aligned =
+        unsafe { OwnedProtect::new(NestedFlattenEvent::to_dataframe(rows.clone()).into_sexp()) };
+    let df = expect_data_frame(
+        aligned.get(),
+        "aligned frame",
+        8,
+        &["_type", "id", "status_variant", "status_code"],
+    );
+    let mut variants = vec![Some("Ok".to_string()), Some("Err".to_string())];
+    variants.resize(8, None);
+    assert_eq!(
+        df.column::<Vec<Option<String>>>("status_variant"),
+        Some(variants)
+    );
+    let mut codes = vec![None, Some(401)];
+    codes.resize(8, None);
+    assert_eq!(df.column::<Vec<Option<i32>>>("status_code"), Some(codes));
+    drop(aligned);
+
+    // SAFETY: as above.
+    let split = unsafe { OwnedProtect::new(rows.into_dataframe_split().into_sexp()) };
+    let s = split.get();
+    let tracked = expect_split_partition(s, "tracked", 2, &["id", "status_variant", "status_code"]);
+    assert_eq!(
+        tracked.column::<Vec<String>>("status_variant"),
+        Some(vec!["Ok".to_string(), "Err".to_string()])
+    );
+    assert_eq!(
+        tracked.column::<Vec<Option<i32>>>("status_code"),
+        Some(vec![None, Some(401)])
+    );
+    let other = expect_split_partition(s, "other", 6, &["id"]);
+    assert_eq!(other.column::<Vec<i32>>("id"), Some((2..8).collect()));
+    s
+}
+
+/// Check a list-column of `Point`-shaped cells: `Some(v)` must be
+/// `list(x = v, y = v + 0.5)` and `None` must be `NULL`.
+fn expect_point_cells(col: SEXP, cells: &[Option<f64>], what: &str) {
+    assert_eq!(col.type_of(), SEXPTYPE::VECSXP, "{what}: not a list-column");
+    assert_eq!(col.len(), cells.len(), "{what}: wrong length");
+    for (i, expected) in cells.iter().enumerate() {
+        let cell = col.vector_elt(i as isize);
+        let Some(v) = *expected else {
+            assert!(cell.is_nil(), "{what}[{i}]: expected NULL");
+            continue;
+        };
+        // SAFETY: `cell` is a VECSXP element of a rooted list-column.
+        let cell = unsafe { miniextendr_api::list::List::from_raw(cell) };
+        assert_eq!(cell.get_named::<f64>("x"), Some(v), "{what}[{i}]$x");
+        assert_eq!(cell.get_named::<f64>("y"), Some(v + 0.5), "{what}[{i}]$y");
+    }
+}
+
+/// Split and align an enum with a `#[dataframe(as_list)]` struct field and
+/// validate every list-column cell under GC pressure (#1748).
+///
+/// Each cell is its own freshly allocated R list, so the cells built first
+/// must stay rooted while the later ones allocate. Returns the split.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_split_as_list() -> SEXP {
+    let located = |i: i32| i % 4 != 3;
+    let rows: Vec<StructListEvent> = (0..8i32)
+        .map(|i| {
+            if located(i) {
+                StructListEvent::Located {
+                    id: i,
+                    origin: Point {
+                        x: f64::from(i),
+                        y: f64::from(i) + 0.5,
+                    },
+                }
+            } else {
+                StructListEvent::Other { id: i }
+            }
+        })
+        .collect();
+    let cells: Vec<Option<f64>> = (0..8).map(|i| located(i).then_some(f64::from(i))).collect();
+
+    // SAFETY: R main thread; each result is rooted before anything else allocates.
+    let aligned =
+        unsafe { OwnedProtect::new(StructListEvent::to_dataframe(rows.clone()).into_sexp()) };
+    let df = expect_data_frame(
+        aligned.get(),
+        "aligned frame",
+        8,
+        &["_type", "id", "origin"],
+    );
+    expect_point_cells(
+        df.column_raw("origin").expect("origin column"),
+        &cells,
+        "aligned origin",
+    );
+    drop(aligned);
+
+    // SAFETY: as above.
+    let split = unsafe { OwnedProtect::new(rows.into_dataframe_split().into_sexp()) };
+    let s = split.get();
+    let located_df = expect_split_partition(s, "located", 6, &["id", "origin"]);
+    let located_cells: Vec<Option<f64>> = cells.iter().copied().filter(Option::is_some).collect();
+    expect_point_cells(
+        located_df.column_raw("origin").expect("origin column"),
+        &located_cells,
+        "split origin",
+    );
+    expect_split_partition(s, "other", 2, &["id"]);
+    s
+}
+
+/// Build a struct `DataFrameRow` frame with a `#[dataframe(as_list)]` struct
+/// field and validate every list-column cell under GC pressure (#1748).
+///
+/// The companion holds the struct values; each cell's R list is built only
+/// when the frame is assembled, straight into the rooted column. With the
+/// `rayon` feature the parallel companion fill is checked too. Returns the
+/// sequential frame.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_struct_as_list() -> SEXP {
+    use crate::dataframe_struct_flatten_test::{FlatAsList, FlatPoint};
+    use miniextendr_api::IntoDataFrame as _;
+
+    let rows: Vec<FlatAsList> = (0..8i32)
+        .map(|id| FlatAsList {
+            id,
+            origin: FlatPoint {
+                x: f64::from(id),
+                y: f64::from(id) + 0.5,
+            },
+        })
+        .collect();
+    let cells: Vec<Option<f64>> = (0..8).map(|i| Some(f64::from(i))).collect();
+
+    #[cfg(feature = "rayon")]
+    {
+        let par = rows
+            .clone()
+            .into_dataframe_par()
+            .expect("gc_stress_dataframe_struct_as_list: into_dataframe_par");
+        let df = expect_data_frame(par.as_sexp(), "parallel frame", 8, &["id", "origin"]);
+        expect_point_cells(
+            df.column_raw("origin").expect("origin column"),
+            &cells,
+            "parallel origin",
+        );
+    }
+
+    let built = rows
+        .into_dataframe()
+        .expect("gc_stress_dataframe_struct_as_list: into_dataframe");
+    let df = expect_data_frame(built.as_sexp(), "frame", 8, &["id", "origin"]);
+    expect_point_cells(
+        df.column_raw("origin").expect("origin column"),
+        &cells,
+        "origin",
+    );
+    built.into_sexp()
+}
+// endregion
+
 /// Exercise the native-SEXP ALTREP (`NativeSexpIntAltrep`) under GC pressure.
 ///
 /// Constructs an ALTREP-backed integer vector where `data1` is a plain

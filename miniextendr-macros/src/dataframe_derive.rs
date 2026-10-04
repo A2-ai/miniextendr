@@ -689,15 +689,16 @@ struct SingleFieldData {
     col_name: syn::Ident,
     /// Column name string.
     col_name_str: String,
-    /// Field type stored in the companion `Vec<#ty>`. For `#[dataframe(as_list)]`
-    /// on a struct-typed field this is overridden to `::miniextendr_api::list::List`
-    /// — see `needs_into_list`.
+    /// Field type stored in the companion `Vec<#ty>`: the field's Rust type, also
+    /// for `#[dataframe(as_list)]` on a struct-typed field (see
+    /// `needs_into_list`), so the companion never holds R objects.
     ty: syn::Type,
     /// Index in tuple struct (None for named).
     tuple_index: Option<syn::Index>,
     /// `#[dataframe(as_list)]` on a struct-typed field (#485 workaround).
-    /// When `true`, the companion field type is overridden to `List` and
-    /// `From<Vec<Row>>` calls `IntoList::into_list()` on each row value.
+    /// When `true`, the frame assembly builds the list-column with
+    /// `into_list_column`, which converts each value via `IntoList::into_list()`
+    /// straight into the rooted column (#1748).
     needs_into_list: bool,
     /// `Some(elem)` when this Single field is an un-annotated *owned* collection
     /// (`Vec<scalar>` / `Box<[scalar]>`) stored as an opaque list-column (#809).
@@ -836,25 +837,24 @@ fn resolve_struct_field(
     let kind = classify_field_type(ty);
 
     // as_list suppresses expansion. For struct-typed fields (#485 opt-out), the
-    // companion stores `Vec<List>` and From<Vec<Row>> converts each row value
-    // via `IntoList::into_list()`. For non-struct as_list fields, the existing
-    // behavior is preserved: companion stores `Vec<#ty>` and the field type is
-    // serialized natively (this requires `Vec<#ty>: IntoR`).
+    // companion stores the struct values and the frame assembly converts each
+    // one via `IntoList::into_list()` straight into the rooted list-column
+    // (`into_list_column`). For non-struct as_list fields, the existing
+    // behavior is preserved: the field type is serialized natively (this
+    // requires `Vec<#ty>: IntoR`).
     if field_attrs.as_list {
         // Use `.ok()` here: `as_list` is an explicit opt-in, so wrapper types
         // like `Option<T>` / `Arc<T>` are allowed — they become opaque list-
         // columns. Any classification error is suppressed and treated as non-Struct.
-        let (final_ty, needs_into_list) = match classify_field_type(ty).ok() {
-            Some(FieldTypeKind::Struct { .. }) => {
-                (syn::parse_quote!(::miniextendr_api::list::List), true)
-            }
-            _ => (ty.clone(), false),
-        };
+        let needs_into_list = matches!(
+            classify_field_type(ty).ok(),
+            Some(FieldTypeKind::Struct { .. })
+        );
         return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
             rust_name,
             col_name,
             col_name_str,
-            ty: final_ty,
+            ty: ty.clone(),
             tuple_index,
             needs_into_list,
             list_elem_ty: None,
@@ -1180,6 +1180,18 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
 // region: Struct path (existing logic, extracted)
 
+/// The expression that turns companion column `self.#name` into a column SEXP:
+/// `IntoR` for the whole `Vec`, or for an `as_list` struct field
+/// `into_list_column`, which stores each cell's list in the rooted column as
+/// it is built (#1748).
+fn column_sexp(name: &syn::Ident, needs_into_list: bool) -> TokenStream {
+    if needs_into_list {
+        quote! { ::miniextendr_api::list::into_list_column(self.#name) }
+    } else {
+        quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) }
+    }
+}
+
 /// Generate `DataFrameRow` expansion for struct types.
 ///
 /// Produces:
@@ -1266,8 +1278,9 @@ fn derive_struct_dataframe(
         /// Type of the companion Vec<T>.
         vec_elem_ty: syn::Type,
         /// `#[dataframe(as_list)]` on a struct-typed field — companion stores
-        /// `Vec<List>`. The `from_rows_par` pre-pass handles these sequentially
-        /// instead of scatter-writing (List doesn't implement Default).
+        /// the struct values, converted to a list-column at frame assembly.
+        /// The `from_rows_par` pre-pass clones these sequentially instead of
+        /// scatter-writing (the struct need not implement `Default`).
         needs_into_list: bool,
     }
 
@@ -1385,12 +1398,12 @@ fn derive_struct_dataframe(
         .collect();
     let has_struct = !struct_cols.is_empty();
 
-    // Any `#[dataframe(as_list)]` on a struct-typed field stores `List` in the
-    // companion (#485 opt-out). We can't round-trip List back to the inner
-    // struct without a `FromList`-like trait, and `List` doesn't impl
-    // `Default`, so several codegen branches need to suppress themselves:
-    // IntoIterator generation, the `IntoList` compile-time assertion, and
-    // `from_rows_par`.
+    // Any `#[dataframe(as_list)]` on a struct-typed field (#485 opt-out) keeps
+    // the struct in the companion and becomes a list-column only at frame
+    // assembly. The struct need not implement `Default` and the row need not
+    // implement `IntoList`, so several codegen branches special-case it:
+    // IntoIterator generation and the `IntoList` compile-time assertion are
+    // skipped, and `from_rows_par` fills the column in a sequential pre-pass.
     let has_into_list_struct = resolved
         .iter()
         .any(|rf| matches!(rf, ResolvedField::Single(d) if d.needs_into_list));
@@ -1474,7 +1487,8 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
-            quote! { (#name_str, __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#name))) }
+            let column = column_sexp(name, fc.needs_into_list);
+            quote! { (#name_str, __scope.protect_raw(#column)) }
         })
         .collect();
 
@@ -1528,10 +1542,11 @@ fn derive_struct_dataframe(
                 ResolvedField::Single(data) => {
                     let col_name = &data.col_name;
                     let col_name_str = &data.col_name_str;
+                    let column = column_sexp(col_name, data.needs_into_list);
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(self.#col_name)),
+                            __scope.protect_raw(#column),
                         ));
                     }
                 }
@@ -1599,13 +1614,16 @@ fn derive_struct_dataframe(
                     quote! {
                         {
                             let __inner_df = <#inner_ty>::to_dataframe(self.#col_name);
-                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
+                            // The inner column list is rooted in __scope, which keeps its
+                            // columns alive across the later columns' allocations.
+                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                                __inner_df,
+                                &__scope,
+                            );
                             for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                                // Protect the source column SEXP across subsequent allocations.
-                                let __src = __scope.protect_raw(__inner_col_sexp);
                                 __df_pairs.push((
                                     format!("{}_{}", #base_name_str, __inner_col_name),
-                                    __src,
+                                    __inner_col_sexp,
                                 ));
                             }
                         }
@@ -1721,11 +1739,7 @@ fn derive_struct_dataframe(
                     quote! { row.#rust_name }
                 };
                 let col_name = &data.col_name;
-                if data.needs_into_list {
-                    quote! { #col_name.push(::miniextendr_api::list::IntoList::into_list(#access)); }
-                } else {
-                    quote! { #col_name.push(#access); }
-                }
+                quote! { #col_name.push(#access); }
             }
             ResolvedField::ExpandedFixed(data) => {
                 let access = if let Some(idx) = &data.tuple_index {
@@ -1873,8 +1887,9 @@ fn derive_struct_dataframe(
     //     `Vec<Inner>` where `Inner` doesn't implement `Default`. These are
     //     collected sequentially in a pre-pass (`for __prerow in &rows { ... }`)
     //     before `into_par_iter()` consumes the vector. Requires `Inner: Clone`.
-    //   - `as_list`-on-struct fields (#485 opt-out) store `Vec<List>` in the
-    //     companion, and `List` doesn't implement `Default`. Same pre-pass approach.
+    //   - `as_list`-on-struct fields (#485 opt-out) store the struct values too
+    //     (converted to a list-column only at frame assembly), and the struct
+    //     need not implement `Default`. Same pre-pass approach.
     // Both are handled via sequential pre-pass + skip in the parallel loop.
     // The pre-pass is O(n) extra per struct/list-struct field but does not change
     // asymptotic complexity — just adds a constant factor for these column types.
@@ -1913,24 +1928,24 @@ fn derive_struct_dataframe(
                 });
             }
         }
-        // Sequential pre-pass: as_list-on-struct fields (List: !Default).
+        // Sequential pre-pass: as_list-on-struct fields (the struct need not be
+        // `Default`). Pure Rust: the list-column is built at frame assembly.
         for rf in &resolved {
             if let ResolvedField::Single(data) = rf
                 && data.needs_into_list
             {
                 let col_name = &data.col_name;
                 let rust_name = &data.rust_name;
+                let ty = &data.ty;
                 let access = if let Some(idx) = &data.tuple_index {
                     quote! { __prerow.#idx }
                 } else {
                     quote! { __prerow.#rust_name }
                 };
                 par_col_decls.push(quote! {
-                    let mut #col_name: Vec<::miniextendr_api::list::List> = Vec::with_capacity(len);
+                    let mut #col_name: Vec<#ty> = Vec::with_capacity(len);
                     for __prerow in &rows {
-                        #col_name.push(::miniextendr_api::list::IntoList::into_list(
-                            ::core::clone::Clone::clone(&#access)
-                        ));
+                        #col_name.push(::core::clone::Clone::clone(&#access));
                     }
                 });
             }
@@ -3179,19 +3194,15 @@ pub(super) struct EnumSingleFieldData {
     pub(super) binding: syn::Ident,
     /// Original Rust field name (for named variants).
     pub(super) rust_name: syn::Ident,
-    /// Column type stored in the companion Vec.
-    ///
-    /// For most fields this is the raw Rust type. When `needs_into_list` is
-    /// `true` (struct-typed fields with `#[dataframe(as_list)]`), this is
-    /// `::miniextendr_api::list::List` — the actual inner type is erased at
-    /// the storage level and each row value is converted via `.into_list()`.
+    /// Column type stored in the companion Vec: the field's Rust type, also
+    /// when `needs_into_list` is set (the companion holds no R objects).
     pub(super) ty: syn::Type,
-    /// Whether the field's value must be converted via `.into_list()` before
-    /// being pushed into the companion `Vec<Option<List>>`.
+    /// Whether the column is built by converting each value via `.into_list()`
+    /// when the frame is assembled (`into_option_list_column` /
+    /// `into_list_column`), rather than through `IntoR` for the whole `Vec`.
     ///
     /// Set to `true` only for struct-typed fields (`FieldTypeKind::Struct`)
-    /// that carry `#[dataframe(as_list)]`. The companion struct field type is
-    /// `Vec<Option<::miniextendr_api::list::List>>` in this case.
+    /// that carry `#[dataframe(as_list)]`.
     pub(super) needs_into_list: bool,
     /// Whether the field should be emitted as an R factor column.
     ///

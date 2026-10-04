@@ -1138,11 +1138,59 @@ impl IntoR for ListMut {
     }
 }
 
+/// Build an R list-column (VECSXP) from values converted one at a time through
+/// [`IntoList`].
+///
+/// The column is allocated and protected first; each value's list is stored in
+/// it as soon as it is built, so no list is ever unrooted while the next one
+/// allocates. Collecting a `Vec<List>` first and converting that would leave
+/// every earlier list unrooted across the later allocations (#1748).
+///
+/// Used by `#[derive(DataFrameRow)]` for `#[dataframe(as_list)]` struct-typed
+/// fields.
+#[doc(hidden)]
+pub fn into_list_column<T: IntoList>(values: Vec<T>) -> SEXP {
+    let n: isize = values
+        .len()
+        .try_into()
+        .expect("list-column length exceeds isize::MAX");
+    unsafe {
+        let out = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
+        for (i, value) in values.into_iter().enumerate() {
+            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+            // No allocation between building the list and storing it.
+            out.get().set_vector_elt(idx, value.into_list().0);
+        }
+        out.get()
+    }
+}
+
+/// [`into_list_column`] for optional cells: `None` becomes `NULL`.
+#[doc(hidden)]
+pub fn into_option_list_column<T: IntoList>(values: Vec<Option<T>>) -> SEXP {
+    let n: isize = values
+        .len()
+        .try_into()
+        .expect("list-column length exceeds isize::MAX");
+    unsafe {
+        // VECSXP slots start as R_NilValue, so `None` cells need no write.
+        let out = OwnedProtect::new(sys::Rf_allocVector(VECSXP, n));
+        for (i, value) in values.into_iter().enumerate() {
+            if let Some(value) = value {
+                let idx: isize = i.try_into().expect("index exceeds isize::MAX");
+                out.get().set_vector_elt(idx, value.into_list().0);
+            }
+        }
+        out.get()
+    }
+}
+
 /// Convert a `Vec<List>` to an R list-column (VECSXP).
 ///
-/// Used by the split path (`IntoDataFrameSplit::into_dataframe_split`) generated
-/// by `DataFrameRow` derives when a struct-typed variant field carries
-/// `#[dataframe(as_list)]`. Each element becomes an R list in the output VECSXP.
+/// Each element becomes an R list in the output VECSXP. The elements must be
+/// rooted by the caller (for example, elements of an argument list): this
+/// allocates the column first. To build the lists as you go, use
+/// [`into_list_column`].
 impl IntoR for Vec<List> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
@@ -1172,8 +1220,8 @@ impl IntoR for Vec<List> {
 /// Convert a `Vec<Option<List>>` to an R list-column (VECSXP).
 ///
 /// `Some(list)` elements are placed directly as list elements; `None` elements
-/// become `R_NilValue`. Used by `DataFrameRow`-derived enum code when a
-/// struct-typed variant field carries `#[dataframe(as_list)]`.
+/// become `R_NilValue`. As with `Vec<List>`, the elements must be rooted by
+/// the caller; [`into_option_list_column`] builds them as it goes.
 impl IntoR for Vec<Option<List>> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {

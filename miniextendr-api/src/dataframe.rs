@@ -1532,19 +1532,27 @@ pub trait ColumnSource {
 
     /// Extract named column SEXPs from this value.
     ///
-    /// Returns `(name, raw SEXP)` per column. The SEXPs are owned by the produced
-    /// data-frame SEXP and must be protected by the caller before it is released.
+    /// Returns `(name, raw SEXP)` per column. The assembled column list is
+    /// protected in `scope` before anything is read from it, so every returned
+    /// SEXP stays reachable (as an element of that list) for as long as `scope`
+    /// lives, across any number of later allocations (#1748).
     ///
     /// # Safety
     ///
-    /// Calls R API functions; must run on the R main thread.
-    fn into_named_columns(self) -> Vec<(String, crate::SEXP)>
+    /// Must run on the R main thread, and `scope` must be the innermost live
+    /// [`ProtectScope`](crate::gc_protect::ProtectScope): its `Drop` unprotects
+    /// from the top of R's protect stack.
+    unsafe fn into_named_columns(
+        self,
+        scope: &crate::gc_protect::ProtectScope,
+    ) -> Vec<(String, crate::SEXP)>
     where
         Self: Sized,
     {
         use crate::SexpExt as _;
-        let list = self.into_column_list();
-        let sexp = list.as_sexp();
+        // SAFETY: R main thread and innermost scope (caller contract). Nothing
+        // allocates between building the list and protecting it.
+        let sexp = unsafe { scope.protect_raw(self.into_column_list().as_sexp()) };
         let n = sexp.len();
         let mut out = Vec::with_capacity(n);
         let names_sexp = sexp.get_names();

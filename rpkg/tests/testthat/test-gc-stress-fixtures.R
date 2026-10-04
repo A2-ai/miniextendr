@@ -45,6 +45,91 @@ test_that("gc_stress_named_df_list_builder returns correct structure", {
 
 # endregion
 
+# region: enum DataFrameRow split partitions (#1748) --------------------------
+
+# Each fixture checks its partitions in Rust and panics on a mismatch; these
+# blocks pin the shapes from R as well.
+test_that("gc_stress_dataframe_split_multi_variant returns one data.frame per variant", {
+  res <- miniextendr:::gc_stress_dataframe_split_multi_variant()
+  expect_type(res, "list")
+  expect_false(is.data.frame(res))
+  expect_named(res, c("click", "impression", "error"))
+  for (part in res) expect_s3_class(part, "data.frame")
+  expect_identical(colnames(res$click), c("id", "x", "y"))
+  expect_equal(res$click$x, c(0, 3, 6, 9))
+  expect_identical(res$impression$slot, c("slot_1", "slot_4", "slot_7", "slot_10"))
+  expect_identical(res$error$code, c(402L, 405L, 408L, 411L))
+})
+
+test_that("gc_stress_dataframe_split_nested_flatten returns flattened partitions", {
+  res <- miniextendr:::gc_stress_dataframe_split_nested_flatten()
+  expect_named(res, c("tracked", "other"))
+  expect_s3_class(res$tracked, "data.frame")
+  expect_s3_class(res$other, "data.frame")
+  expect_identical(colnames(res$tracked), c("id", "status_variant", "status_code"))
+  expect_equal(nrow(res$tracked), 2L)
+  expect_identical(res$tracked$status_variant, c("Ok", "Err"))
+  expect_identical(res$tracked$status_code, c(NA, 401L))
+  expect_identical(res$other$id, 2:7)
+})
+
+test_that("gc_stress_dataframe_split_as_list returns list-column cells", {
+  res <- miniextendr:::gc_stress_dataframe_split_as_list()
+  expect_named(res, c("located", "other"))
+  expect_s3_class(res$located, "data.frame")
+  expect_equal(nrow(res$located), 6L)
+  expect_type(res$located$origin, "list")
+  expect_equal(res$located$origin[[6]], list(x = 6, y = 6.5))
+  expect_equal(nrow(res$other), 2L)
+})
+
+test_that("gc_stress_dataframe_struct_as_list returns list-column cells", {
+  df <- miniextendr:::gc_stress_dataframe_struct_as_list()
+  expect_s3_class(df, "data.frame")
+  expect_identical(colnames(df), c("id", "origin"))
+  expect_equal(nrow(df), 8L)
+  expect_type(df$origin, "list")
+  expect_equal(df$origin[[8]], list(x = 7, y = 7.5))
+})
+
+test_that("DataFrameRow split and as_list fixtures stay intact under gctorture", {
+  skip_gc_stress_if_disabled()
+  fixtures <- c(
+    "gc_stress_dataframe_split_multi_variant",
+    "gc_stress_dataframe_split_nested_flatten",
+    "gc_stress_dataframe_split_as_list",
+    "gc_stress_dataframe_struct_as_list"
+  )
+  ns <- getNamespace("miniextendr")
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  fail <- character(0L)
+  for (f in fixtures) {
+    for (i in seq_len(10L)) {
+      res <- tryCatch(
+        {
+          out <- get(f, ns)()
+          parts <- if (is.data.frame(out)) list(out) else out
+          if (!all(vapply(parts, is.data.frame, logical(1L)))) {
+            stop("a partition is not a data.frame")
+          }
+          "ok"
+        },
+        error = function(e) conditionMessage(e)
+      )
+      if (!identical(res, "ok")) {
+        fail <- c(fail, sprintf("%s iteration %d: %s", f, i, res))
+        break
+      }
+    }
+  }
+
+  expect_identical(fail, character(0L))
+})
+
+# endregion
+
 # region: zero-copy &str argument borrow (#664) -------------------------------
 
 test_that("str_borrow_len round-trips a zero-copy &str argument", {
