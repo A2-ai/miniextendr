@@ -1,0 +1,5 @@
+error: Rust's `...` is only valid as the last parameter; write a dots parameter that is not last as `sources: &Dots` (`miniextendr_api::dots::Dots`), which is R's `...` at that position. See https://a2-ai.github.io/miniextendr/manual/dots-typed-list/#formals-after
+ --> tests/ui/fn_dots_not_last.rs:7:32
+  |
+7 | pub fn named_not_last(sources: ..., dosing_type: i32) -> i32 {
+  |                                ^^^

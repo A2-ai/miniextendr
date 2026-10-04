@@ -14,6 +14,8 @@ The lint also runs automatically during `cargo build`/`cargo check` via `build.r
 MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 ```
 
+A source file the lint cannot parse gets a `<file>: failed to parse: <error>` warning, and no rule checks that file. The build script watches every source file it found, so the warning goes away on the next build after the fix.
+
 ## Lint Codes Reference
 
 ### Errors (CI-blocking)
@@ -158,6 +160,30 @@ fn also_bad(rest: &Dots, x: i32, more: ...) -> i32 { x }
 #[miniextendr]
 fn good(x: i32, rest: &Dots, flag: bool) -> i32 { x }
 ```
+
+### "Rust's `...` is only valid as the last parameter"
+
+Rust's `...` parameter parses only in last position, so a function or method whose `...` has another parameter after it is not a function to `#[miniextendr]`. The parameter of type `&Dots` is R's `...` at its own position; write a dots parameter that is not last that way:
+
+```rust
+use miniextendr_api::dots::Dots;
+
+// Wrong: `sources: ...` has a parameter after it
+#[miniextendr]
+pub fn summarise(sources: ..., dosing_type: &str) -> i32 { 0 }
+
+// Correct: the R formals are `(..., dosing_type)`
+#[miniextendr]
+pub fn summarise(sources: &Dots, dosing_type: &str) -> i32 { 0 }
+```
+
+The error points at the `...` and links [Formals after `...`](DOTS_TYPED_LIST.md#formals-after):
+
+```text
+Rust's `...` is only valid as the last parameter; write a dots parameter that is not last as `sources: &Dots` (`miniextendr_api::dots::Dots`), which is R's `...` at that position. See https://a2-ai.github.io/miniextendr/manual/dots-typed-list/#formals-after
+```
+
+A bare `...` gets `_dots: &Dots`. `miniextendr-lint` can't parse such a file either, so its "failed to parse" warning ends with `line <n>: ` and the same text.
 
 ### "expected `pub` function"
 

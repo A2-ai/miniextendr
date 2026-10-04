@@ -202,6 +202,8 @@ mod newtype_derive;
 
 // Struct/enum dispatch for #[miniextendr] on structs and enums
 mod struct_enum_dispatch;
+// Its fallback's diagnostic for a Rust `...` parameter that is not last
+mod misplaced_dots;
 
 // r! proc-macro implementation
 mod r_macro;

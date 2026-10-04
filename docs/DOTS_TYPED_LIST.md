@@ -77,6 +77,7 @@ write_all(1L, TRUE)                     # a positional extra is a dot too
 The same holds for methods in every class system: `fn collect(&self, n: i32, rest: &Dots, flag: bool)` has the R formals `n, ..., flag` (after the receiver for S3, S4 and S7), with no second dispatch `...`.
 
 - A function takes at most one `...`. A second `&Dots` parameter, or Rust `...` next to an explicit `&Dots`, is a compile error.
+- Rust `...` with another parameter after it is a compile error that names the `&Dots` spelling, and `miniextendr-lint`'s "failed to parse" warning for that file ends with the same hint.
 - The dots parameter takes no default, `match_arg` or check; `Missing<&Dots>` is refused. The dots are always present.
 - On a `call = caller` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
 - `#[miniextendr(dots = typed_list!(...))]` reads an explicit `&Dots` the same way it reads `...`.
