@@ -14,7 +14,9 @@ resolve_bindgen_args(pkg, pkg_info, headers, allowlist_pattern = NULL)
 \item{headers}{Character vector of header paths relative to include/}
 
 \item{allowlist_pattern}{Optional regex for --allowlist-file; \code{NULL}
-defaults to files under the package's own include directory.}
+defaults to files under the package's own include directory. It is
+recorded in the result, but \code{\link[=invoke_bindgen]{invoke_bindgen()}} does not pass it to
+bindgen yet (#1772).}
 }
 \value{
 List with all resolved arguments for bindgen: \code{pkg},

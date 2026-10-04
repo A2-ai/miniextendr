@@ -184,7 +184,9 @@ check_native_package <- function(pkg) {
 #' @param pkg_info Result of [discover_native_package()]
 #' @param headers Character vector of header paths relative to include/
 #' @param allowlist_pattern Optional regex for --allowlist-file; `NULL`
-#'   defaults to files under the package's own include directory.
+#'   defaults to files under the package's own include directory. It is
+#'   recorded in the result, but [invoke_bindgen()] does not pass it to
+#'   bindgen yet (#1772).
 #' @return List with all resolved arguments for bindgen: `pkg`,
 #'   `include_paths`, `r_include`, `mode` (`"c"` or `"cpp"`), `cxx_std`,
 #'   `isysroot`, `blocklist_files`, `allowlist_pattern`, `headers` and
@@ -828,6 +830,7 @@ run_bindgen <- function(pkg, wrapper_path, args) {
 #'
 #' One bindgen run, with no fallbacks: builds the bindgen and clang command
 #' lines from `args` and writes bindgen's output to `ffi_out`.
+#' `args$allowlist_pattern` is not passed on as `--allowlist-file` (#1772).
 #'
 #' @param wrapper_path Path of the wrapper header to parse.
 #' @param ffi_out Path where the generated Rust bindings are written.

@@ -24,5 +24,6 @@ bindgen could not be run).
 \description{
 One bindgen run, with no fallbacks: builds the bindgen and clang command
 lines from \code{args} and writes bindgen's output to \code{ffi_out}.
+\code{args$allowlist_pattern} is not passed on as \code{--allowlist-file} (#1772).
 }
 \keyword{internal}
