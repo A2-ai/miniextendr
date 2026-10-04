@@ -484,6 +484,15 @@ upgrade_miniextendr_package(path = "mypackage")
 
 Updates templates, vendored crates, and configure.ac to match the latest minirextendr version.
 
+- **Changed files.** The template is the source of truth for the build-system
+  files it owns (`src/stub.c`, `src/Makevars.in`, `inst/include/mx_abi.h`,
+  the `tools/` scripts, ...), and the upgrade rewrites them in full. A local
+  edit you committed to one of them passes the uncommitted-changes check and
+  is replaced. The closing summary lists every file whose content changed and
+  every file the upgrade added, so review them with `git diff` (and
+  `git status` for the added files) before committing. The function returns
+  the same lists invisibly, as `changed`, `added` and `removed`. If nothing
+  changed, the summary says so in one line.
 - **Monorepos.** Pass the workspace root or the R package subdirectory. The
   upgrade renders the monorepo templates and adds the root template's entries
   to the workspace root `.gitignore`. It only adds lines; your own lines stay.
