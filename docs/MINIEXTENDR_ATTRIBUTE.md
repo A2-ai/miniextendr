@@ -97,9 +97,10 @@ which reader it was written for. By default leading prose is taken as written
 for rustdoc: its links lose their brackets (`[other_fn()]` becomes
 `other_fn()`, `` [`Foo`][crate::Foo] `` becomes `` `Foo` ``), so roxygen2 never
 tries to resolve a Rust item as an R topic. Markdown links `[text](url)`, code
-spans and fenced blocks are left alone. The text of an explicit tag
-(`@description`, `@details`, `@param`, ...) keeps its links, except the
-[rustdoc-only](#rustdoc-only-links) ones.
+spans and fenced blocks are left alone, except rustdoc's inline form
+`[text](crate::x)` (see [rustdoc-only links](#rustdoc-only-links)). The text
+of an explicit tag (`@description`, `@details`, `@param`, ...) keeps its
+links, except the [rustdoc-only](#rustdoc-only-links) ones.
 
 A crate whose doc comments are written for R first sets the default once:
 
@@ -137,8 +138,8 @@ rustdoc. Such a link loses its brackets wherever it is: in leading prose under
 either `roxygen_prose_links` setting, and in the text of every explicit tag
 except the code ones (`@examples`, `@examplesIf`, `@usage`, `@eval`,
 `@evalRd`, `@evalNamespace`, `@rawRd`, `@rawNamespace`). The target, bracketed
-(with or without backticks) or after `[text]`, is rustdoc-only when its `pkg`
-part is:
+(with or without backticks), after `[text]`, or in rustdoc's inline form
+`[text](target)`, is rustdoc-only when its `pkg` part is:
 
 - `crate`, `self` or `Self`;
 - not a valid R package name (ASCII letters, digits and `.`, at least two
@@ -152,14 +153,23 @@ part is:
 | `[the registry][crate::registry]` | `the registry` |
 | `` [`Sources::prepare`][crate::Sources::prepare] `` | `` `Sources::prepare` `` |
 | `` [`a::b::c`] ``, `[my_mod::f()]` | `` `a::b::c` ``, `my_mod::f()` |
+| `[text](crate::x)`, `` [`Foo`](crate::Foo) ``, `[new](Self::new())` | `text`, `` `Foo` ``, `new` |
 
 Everything else stays as written outside the default `"strip"` prose, because
 roxygen2 may read it as its own link: `[fn()]`, `[pkg::fn()]`, `[topic]`,
 `` [`topic`] ``, `` [`pkg::topic`] ``, `[text][topic]`. That includes
 `` [`Type::method`] `` and `[Type::method]`, since R package names can be
 capitalised (`R6`, `S7`, `Matrix`), and `[super::x]`, since `super` is a CRAN
-package. Markdown links `[text](url)`, code spans and fenced blocks are never
-rewritten.
+package. Code spans and fenced blocks are never rewritten.
+
+An inline link `[text](target)` loses its link only when the target is a Rust
+path, identifiers joined by `::` with an optional `()` or `!` suffix, that is
+rustdoc-only by the rule above. roxygen2 would otherwise render it as the dead
+web link `\href{crate::x}{text}`, with no warning. Every other markdown link
+stays: any URL (`[text](https://a.b/c::d)`, `[text](./x.html)`, since a `/`,
+`.`, `#`, `?` or lone `:` is never part of a Rust path), and a bare
+`[text](Foo)`, `[text](Type::method)` or `[text](dplyr::bind_rows)`, which may
+be a relative URL or name an R package.
 
 So to link a Rust item from text that reaches R without the link reaching
 roxygen2, root its target at the crate: `` [`Sources::prepare`][crate::Sources::prepare] ``
