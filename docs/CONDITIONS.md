@@ -26,6 +26,10 @@ leading `call = none`, which raises the condition without a call, like R's
 that already derive `serde::Serialize`, through
 [the serde shape](#deriving-the-classes-from-a-serde-error-type).
 
+A fifth macro, `arg_error!(param = "x", …)`, raises the condition of the
+wrapper's own argument checks from a body (see
+[Argument errors from a body](#argument-errors-from-a-body)).
+
 > **Import note.** `error!` and `condition!` are shadowed by the crate-root
 > modules `error` / `condition`, so `use miniextendr_api::*;` (or a direct
 > `use miniextendr_api::error;`) resolves to the module, not the macro. Use the
@@ -791,6 +795,89 @@ nothing.
 of the call, and the R-side argument checks they mirror name the call too, so
 `#[condition(call = none)]` on a type used as a `TryFromSexp::Error` has no
 effect on a failed conversion.
+
+## Argument errors from a body
+
+The generated wrapper's argument checks (`match_arg`, `inherits`, `no_na`, the
+type preconditions) and a failed argument conversion all raise one condition:
+`kind = "conversion"`, `e$param` naming the argument, and the crate's
+`conversion_error_class` before the `rust_error` layering
+([ERROR_HANDLING.md](ERROR_HANDLING.md#a-crate-level-class-for-every-conversion-error)).
+`arg_error!` raises that condition from a function body, for a check the body
+makes itself: an argument handed on to another function's body (which skips
+that function's wrapper and its checks), or a rule that depends on another
+argument (#1740).
+
+```rust
+use miniextendr_api::{arg_error, miniextendr};
+
+#[miniextendr]
+pub fn in_metres(x: f64, unit: &str) -> f64 {
+    match unit {
+        "m" => x,
+        "cm" => x / 100.0,
+        _ => arg_error!(param = "unit", "'unit' should be one of \"m\", \"cm\""),
+    }
+}
+```
+
+```r
+e <- tryCatch(in_metres(1, "km"), error = identity)
+class(e)
+# [1] "pkg_error_argument" "pkg_error" "rust_error" "simpleError" "error" "condition"
+e$kind
+# [1] "conversion"
+e$param
+# [1] "unit"
+conditionCall(e)
+# in_metres(1, "km")
+```
+
+(The first two classes are the crate's `conversion_error_class`; without the
+key the vector starts at `rust_error`.) The condition is the one the wrapper's
+own check raises: same classes, same fields (`message`, `call`, `kind`,
+`param`) and the same call, which is the wrapper's call as written or, under
+`#[miniextendr(call = caller)]`, its caller's. One handler
+(`tryCatch(pkg_error_argument = …)`) therefore catches the wrapper's checks and
+the body's alike.
+
+- **Grammar**: `arg_error!([call = none,] param = <expr>, <format>, <args>…)`.
+  `param` is the argument's R name (anything `Into<String>`); a leading
+  `call = none` raises it without a call, as for the other macros. There is no
+  `class =` or `data =`: the classes are the crate's and the only field is
+  `param`. A `call` after `param`, a missing `param`, `class =` and `data =`
+  are compile errors.
+- **Control flow**: it diverges like `error!` (the same `panic_any` transport),
+  so it fits any expression position. Conditions queued with `defer_warning!`
+  & co. are signalled before it, as before any error.
+- **Without the macro**: `ArgError::new(param, message).raise()` raises the
+  same condition from a value. `match_arg_param` returns one for a choice
+  argument the body matches itself
+  ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#matching-a-raw-argument-in-the-body)).
+  `ArgError` is a plain value and does not implement `RConditionError`:
+  returned as a body's `Err` it takes the `Result` path
+  (`kind = "result_err"`), so raise it with `.raise()`.
+- **Where it works**: immediate calls, `#[miniextendr(worker)]` bodies (the
+  worker wrapper builds the condition on the main thread) and trait-ABI calls,
+  where the consumer package's wrapper raises it with that crate's classes.
+
+**How the crate's classes get there.** A `macro_rules!` macro cannot read
+`[package.metadata.miniextendr]`, so the tagged condition value carries the
+marker class `.miniextendr_conversion_error_class` in its `class` slot (no new
+slot, no new kind). The wrapper file's `.miniextendr_raise_condition` replaces
+the marker with the value of the binding of that name, the classes its own
+checks use (`NULL` without the key). The generated `no_na` check after a
+conversion builds the same condition with `arg_check_condition_value`, which
+receives the classes the `#[miniextendr]` macro read at expansion time; the
+two are the generated-code and hand-written spellings of one condition.
+
+A raising guard without a generated R wrapper (an ALTREP `r_unwind` callback,
+`with_r_unwind_protect_or_raise`) resolves the marker in Rust, against the
+classes `miniextendr_init!` registered for the package, and raises an error
+with the crate classes, `e$param` and the `rust_error` layering. It sets no
+`kind`, as for every error it raises, and on wasm32, where that registry is
+host-only, the marker resolves to no classes (#1768). A connection
+callback returns its fallback value, as for any panic.
 
 ## Trait-ABI and ALTREP error class layering
 

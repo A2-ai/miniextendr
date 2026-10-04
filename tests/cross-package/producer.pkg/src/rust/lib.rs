@@ -368,6 +368,11 @@ impl Counter for SimpleCounter {
             self.value
         );
     }
+
+    /// arg_error!() — consumer verifies kind, param and its own crate classes.
+    fn raise_arg_error(&self, mode: String) {
+        miniextendr_api::arg_error!(param = "mode", "'mode' is not a counter mode: {mode:?}");
+    }
 }
 
 #[miniextendr]
@@ -475,6 +480,10 @@ impl Counter for StatefulCounter {
             "stateful error with structured data (value={})",
             self.value
         );
+    }
+
+    fn raise_arg_error(&self, mode: String) {
+        miniextendr_api::arg_error!(param = "mode", "'mode' is not a counter mode: {mode:?}");
     }
 }
 
@@ -831,6 +840,67 @@ pub fn producer_named_checks_msg(
 #[miniextendr(noexport, call = wrapper)]
 pub fn producer_no_na_dv(#[miniextendr(no_na)] dv: AsNumericVec) -> f64 {
     dv.0.into_iter().flatten().sum()
+}
+
+/// The choices of `producer_named_checks()`'s `mode`, as an enum.
+#[derive(Copy, Clone, Debug, PartialEq, miniextendr_api::MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum ProducerMode {
+    Fast,
+    Slow,
+}
+
+/// `arg_error!` from a body (#1740): `mode` is checked by the body, which
+/// raises the condition `producer_named_checks()`'s choices check raises,
+/// crate classes included (the generated R fills them in).
+/// @param mode A string; anything but `"fast"` or `"slow"` raises.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_arg_error(mode: &str) -> String {
+    if !matches!(mode, "fast" | "slow") {
+        miniextendr_api::arg_error!(param = "mode", r#"'mode' should be one of "fast", "slow""#);
+    }
+    mode.to_string()
+}
+
+/// `match_arg_param()` on a raw `mode` (#1741): the result and the argument
+/// error of `producer_named_checks()`'s check.
+/// @param mode One of `"fast"`, `"slow"`, matched by the body.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_match_arg_param(mode: SEXP) -> String {
+    let mode: ProducerMode =
+        miniextendr_api::match_arg_param(mode, "mode").unwrap_or_else(|e| e.raise());
+    miniextendr_api::MatchArg::to_choice(mode).to_string()
+}
+
+/// `producer_arg_error` under the crate default `call = caller`: the
+/// condition names the call the wrapper's checks name.
+/// @param mode A string; anything but `"fast"` or `"slow"` raises.
+#[miniextendr(noexport)]
+pub fn producer_arg_error_attributed(mode: &str) -> String {
+    if !matches!(mode, "fast" | "slow") {
+        miniextendr_api::arg_error!(param = "mode", r#"'mode' should be one of "fast", "slow""#);
+    }
+    mode.to_string()
+}
+
+/// `arg_error!` inside the raising guard ALTREP `RUnwind` callbacks use: no
+/// generated R raises it, so Rust fills in the crate classes that
+/// `miniextendr_init!` registered.
+/// @param mode A string; anything but `"fast"` or `"slow"` raises.
+#[miniextendr(noexport, call = wrapper)]
+pub fn producer_arg_error_guard(mode: &str) -> String {
+    miniextendr_api::unwind_protect::with_r_unwind_protect_or_raise(
+        || {
+            if !matches!(mode, "fast" | "slow") {
+                miniextendr_api::arg_error!(
+                    param = "mode",
+                    r#"'mode' should be one of "fast", "slow""#
+                );
+            }
+            mode.to_string()
+        },
+        None,
+    )
 }
 
 // endregion

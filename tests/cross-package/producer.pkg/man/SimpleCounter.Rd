@@ -16,6 +16,7 @@
 \alias{SimpleCounter$Counter$raise_message}
 \alias{SimpleCounter$Counter$raise_condition_classed}
 \alias{SimpleCounter$Counter$raise_error_with_data}
+\alias{SimpleCounter$Counter$raise_arg_error}
 \alias{SimpleCounter$Resettable$reset}
 \alias{SimpleCounter$Resettable$is_default}
 \title{SimpleCounter Class}
@@ -53,4 +54,6 @@ condition!() with a custom class — consumer verifies catchability + kind.
 
 Raise an error with structured data fields — tests ConditionData
 round-trip through from_tagged_sexp slot [4] (issue #996 path-1).
+
+arg_error!() — consumer verifies kind, param and its own crate classes.
 }

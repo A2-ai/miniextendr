@@ -1674,6 +1674,97 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr
 }
 "#;
 
+/// R source of the argument-check helpers of the wrappers preamble,
+/// `.miniextendr_arg_error`, `.miniextendr_match_arg_several` and
+/// `.miniextendr_match_arg`, with their comment blocks, as written by
+/// [`write_r_wrappers_to_file`] (they read `.miniextendr_conversion_error_class`,
+/// bound after them).
+///
+/// `.miniextendr_match_arg`'s messages are the ones
+/// [`crate::match_arg::match_arg_param`] words in Rust: both take their words
+/// from `match_arg::match_arg_wording!`, and the API tests
+/// (`miniextendr-api/tests/match_arg_param.rs`) evaluate this source and
+/// compare the two on every input class (#1741).
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub const ARG_CHECK_HELPERS: &str = concat!(
+    r#"# Internal helper: raise an argument error from an R-side check (#1591): a
+# type / length precondition, `no_na`, `inherits`, or a `match_arg` /
+# `choices` value. The condition is the one a failed Rust conversion raises:
+# the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
+# at the end of this preamble), then `rust_error`, with
+# `kind = "conversion"` and `e$param`, so one handler catches an argument
+# error whichever side finds it. The message is `'<param>' <what>`, or the
+# author's own `message` (`inherits(..., message = )` / `no_na(message = )`),
+# used as given. `call` defaults to the wrapper's own call, as `stopifnot()`
+# reported it; a `call = caller` wrapper passes `.mx_call` (#1548), by name
+# next to a named `message`. Only a failing check calls this: the passing path
+# is one `isTRUE()` test per check.
+.miniextendr_arg_error <- function(param, what, call = sys.call(-1L), message = sprintf("'%s' %s", param, what)) {
+  stop(structure(
+    list(message = message, call = call, kind = "conversion", param = param),
+    class = c(.miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")
+  ))
+}
+
+# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
+# Base R keeps only the elements that match as long as one of them does, so a
+# misspelled entry silently shortens the selection and the per-element check on
+# the Rust side never sees it (#1472). Here every element has to match a choice
+# (exactly or as a unique prefix), the first that does not is reported with its
+# position, and `NULL` selects every choice, like an omitted argument does. A
+# factor is read as its labels. The error is an argument error
+# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
+# call, not this helper; a `call = caller` wrapper passes its caller's matched
+# call (#1548).
+.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
+  if (is.null(arg)) return(choices)
+  if (is.factor(arg)) arg <- as.character(arg)
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
+    crate::match_arg::match_arg_wording!(not_character),
+    r#"", call)
+  if (length(arg) == 0L) .miniextendr_arg_error(arg_name, "must be of length >= 1", call)
+  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
+  bad <- which(is.na(i) | i == 0L)
+  if (length(bad)) {
+    .miniextendr_arg_error(arg_name, sprintf("element %d (\"%s\") "#,
+    crate::match_arg::match_arg_wording!(not_a_choice),
+    r#" %s", bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = ", ")), call)
+  }
+  choices[i]
+}
+
+# Internal helper: scalar `match.arg()` for `match_arg` / `choices` params.
+# `base::match.arg()` says `'arg'` in its messages and reports its own frame;
+# this names the argument and raises an argument error
+# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
+# call, for a `call = caller` wrapper its caller's matched call (#1548).
+# Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
+# (the formal default) select the first choice; otherwise exactly one string
+# that matches a choice exactly or as a unique prefix. A factor is read as its
+# labels (#1552). The Rust side's `match_arg_param()` gives a body the same
+# results and messages for a choice argument it matches itself (#1741).
+.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
+  if (is.null(arg)) return(choices[[1L]])
+  if (is.factor(arg)) arg <- as.character(arg)
+  if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
+    crate::match_arg::match_arg_wording!(not_character),
+    r#"", call)
+  if (identical(arg, choices)) return(arg[[1L]])
+  if (length(arg) != 1L) .miniextendr_arg_error(arg_name, ""#,
+    crate::match_arg::match_arg_wording!(not_scalar),
+    r#"", call)
+  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
+  if (is.na(i) || i == 0L) {
+    .miniextendr_arg_error(arg_name, sprintf(""#,
+    crate::match_arg::match_arg_wording!(not_a_choice),
+    r#" %s", paste(dQuote(choices, FALSE), collapse = ", ")), call)
+  }
+  choices[[i]]
+}
+"#
+);
+
 /// R source of the `.miniextendr_raise_condition` helper as a bare
 /// `function(.val, .call_default)` expression.
 ///
@@ -1695,6 +1786,16 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
   # `call. = FALSE`), which is signalled with `call = NULL`.
   .call <- if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call
   .class <- .val$class
+  # `arg_error!` (#1740) writes the class ".miniextendr_conversion_error_class"
+  # where the crate's `conversion_error_class` belongs: only the generated R
+  # knows those classes, bound under that name at the end of the wrappers
+  # preamble, so they replace it here. The copy of this helper that signals
+  # deferred conditions lives in the base namespace, where the name is unbound
+  # and the marker is dropped.
+  .at <- match(".miniextendr_conversion_error_class", .class)
+  if (!is.na(.at)) {
+    .class <- append(.class[-.at], get0(".miniextendr_conversion_error_class", ifnotfound = NULL), after = .at - 1L)
+  }
   # `.val$data` is an optional named list of structured fields (from the
   # macros' `data = ...` form). When present, splice its named elements into
   # the condition object alongside message/call/kind so handlers can read
@@ -1802,74 +1903,9 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str(RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
     content.push_str(CALLER_CALL_HELPER);
-    content.push_str(
-        "
-# Internal helper: raise an argument error from an R-side check (#1591): a
-# type / length precondition, `no_na`, `inherits`, or a `match_arg` /
-# `choices` value. The condition is the one a failed Rust conversion raises:
-# the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
-# at the end of this preamble), then `rust_error`, with
-# `kind = \"conversion\"` and `e$param`, so one handler catches an argument
-# error whichever side finds it. The message is `'<param>' <what>`, or the
-# author's own `message` (`inherits(..., message = )` / `no_na(message = )`),
-# used as given. `call` defaults to the wrapper's own call, as `stopifnot()`
-# reported it; a `call = caller` wrapper passes `.mx_call` (#1548), by name
-# next to a named `message`. Only a failing check calls this: the passing path
-# is one `isTRUE()` test per check.
-.miniextendr_arg_error <- function(param, what, call = sys.call(-1L), message = sprintf(\"'%s' %s\", param, what)) {
-  stop(structure(
-    list(message = message, call = call, kind = \"conversion\", param = param),
-    class = c(.miniextendr_conversion_error_class, \"rust_error\", \"simpleError\", \"error\", \"condition\")
-  ))
-}
-
-# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
-# Base R keeps only the elements that match as long as one of them does, so a
-# misspelled entry silently shortens the selection and the per-element check on
-# the Rust side never sees it (#1472). Here every element has to match a choice
-# (exactly or as a unique prefix), the first that does not is reported with its
-# position, and `NULL` selects every choice, like an omitted argument does. A
-# factor is read as its labels. The error is an argument error
-# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
-# call, not this helper; a `call = caller` wrapper passes its caller's matched
-# call (#1548).
-.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
-  if (is.null(arg)) return(choices)
-  if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) .miniextendr_arg_error(arg_name, \"must be NULL or a character vector\", call)
-  if (length(arg) == 0L) .miniextendr_arg_error(arg_name, \"must be of length >= 1\", call)
-  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
-  bad <- which(is.na(i) | i == 0L)
-  if (length(bad)) {
-    .miniextendr_arg_error(arg_name, sprintf(\"element %d (\\\"%s\\\") should be one of %s\", bad[[1L]], arg[[bad[[1L]]]], paste(dQuote(choices, FALSE), collapse = \", \")), call)
-  }
-  choices[i]
-}
-
-# Internal helper: scalar `match.arg()` for `match_arg` / `choices` params.
-# `base::match.arg()` says `'arg'` in its messages and reports its own frame;
-# this names the argument and raises an argument error
-# (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
-# call, for a `call = caller` wrapper its caller's matched call (#1548).
-# Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
-# (the formal default) select the first choice; otherwise exactly one string
-# that matches a choice exactly or as a unique prefix. A factor is read as its
-# labels (#1552).
-.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
-  if (is.null(arg)) return(choices[[1L]])
-  if (is.factor(arg)) arg <- as.character(arg)
-  if (!is.character(arg)) .miniextendr_arg_error(arg_name, \"must be NULL or a character vector\", call)
-  if (identical(arg, choices)) return(arg[[1L]])
-  if (length(arg) != 1L) .miniextendr_arg_error(arg_name, \"must be of length 1\", call)
-  i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
-  if (is.na(i) || i == 0L) {
-    .miniextendr_arg_error(arg_name, sprintf(\"should be one of %s\", paste(dQuote(choices, FALSE), collapse = \", \")), call)
-  }
-  choices[[i]]
-}
-
-",
-    );
+    content.push('\n');
+    content.push_str(ARG_CHECK_HELPERS);
+    content.push('\n');
     content.push_str(&conversion_error_class_binding());
     content.push_str("\n\n");
 
@@ -3686,6 +3722,59 @@ mod tests {
                 .lines()
                 .all(|l| parse_top_level_fn_def_name(l).is_none())
         );
+    }
+
+    /// The raise helper resolves `arg_error!`'s class marker (#1740) against
+    /// the binding the preamble defines under the same name, and only inside
+    /// the `if`, so the base-namespace copy that signals deferred conditions
+    /// never needs the binding.
+    #[test]
+    fn raise_helper_resolves_the_conversion_class_marker() {
+        let marker = crate::condition::CONVERSION_ERROR_CLASS_MARKER;
+        assert_eq!(
+            format!("{marker} <- NULL"),
+            format_conversion_error_class_binding(&[])
+                .lines()
+                .last()
+                .unwrap()
+        );
+        let lookup = format!(".at <- match(\"{marker}\", .class)");
+        let resolve = format!("get0(\"{marker}\", ifnotfound = NULL)");
+        let at = RAISE_CONDITION_HELPER_FN
+            .find(&lookup)
+            .expect("marker lookup");
+        let at_resolve = RAISE_CONDITION_HELPER_FN
+            .find(&resolve)
+            .expect("resolution");
+        let at_switch = RAISE_CONDITION_HELPER_FN.find("switch(.val$kind").unwrap();
+        assert!(at < at_resolve && at_resolve < at_switch);
+        // The bare binding name appears only as a string (no direct lookup).
+        assert_eq!(
+            RAISE_CONDITION_HELPER_FN.matches(marker).count(),
+            RAISE_CONDITION_HELPER_FN
+                .matches(&format!("\"{marker}\""))
+                .count()
+        );
+    }
+
+    /// The argument-check helpers define exactly the three preamble functions
+    /// and end on a closing brace.
+    #[test]
+    fn arg_check_helpers_define_the_three_functions() {
+        let defs: Vec<&str> = ARG_CHECK_HELPERS
+            .lines()
+            .filter_map(parse_top_level_fn_def_name)
+            .collect();
+        assert_eq!(
+            defs,
+            [
+                ".miniextendr_arg_error",
+                ".miniextendr_match_arg_several",
+                ".miniextendr_match_arg"
+            ]
+        );
+        assert!(ARG_CHECK_HELPERS.starts_with("# Internal helper"));
+        assert!(ARG_CHECK_HELPERS.ends_with("}\n"));
     }
 
     #[test]

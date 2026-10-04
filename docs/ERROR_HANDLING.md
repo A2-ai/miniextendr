@@ -949,6 +949,13 @@ the crate calling `miniextendr_init!`; they agree whenever the package's
 `tests/cross-package/producer.pkg` sets the key and tests it in
 `test-conversion-error-class.R`.
 
+A function body raises the same argument error, with these classes, through
+`arg_error!(param = "mode", "...")`, and `match_arg_param` matches a raw
+choice argument with the wrapper's own check and message (#1740, #1741). The
+Rust side sends a marker class that the wrappers file replaces with
+`.miniextendr_conversion_error_class`; see
+[CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body).
+
 ---
 
 ## Best Practices

@@ -375,3 +375,35 @@ pub fn match_arg_on_failure_choices() -> Vec<&'static str> {
     OnFailure::CHOICES.to_vec()
 }
 // endregion
+
+// region: a raw choice argument matched in the body (#1741)
+
+/// Choices with a shared prefix (`"dr"` is ambiguous), for the table that
+/// compares `match_arg_param()` with a `match_arg` parameter.
+#[derive(Copy, Clone, Debug, PartialEq, MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum FillMode {
+    Drop,
+    Draw,
+    Error,
+}
+
+/// `fill` matched by the generated wrapper.
+///
+/// @param fill One of `"drop"`, `"draw"`, `"error"`.
+#[miniextendr_api::miniextendr(internal)]
+pub fn match_arg_fill(#[miniextendr(match_arg)] fill: FillMode) -> String {
+    fill.to_choice().to_string()
+}
+
+/// `fill` matched by the body with `match_arg_param()`, which the wrapper
+/// does not check.
+///
+/// @param fill One of `"drop"`, `"draw"`, `"error"`.
+#[miniextendr_api::miniextendr(internal)]
+pub fn match_arg_param_fill(fill: miniextendr_api::SEXP) -> String {
+    let fill: FillMode =
+        miniextendr_api::match_arg_param(fill, "fill").unwrap_or_else(|e| e.raise());
+    fill.to_choice().to_string()
+}
+// endregion

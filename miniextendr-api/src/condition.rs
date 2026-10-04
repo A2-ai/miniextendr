@@ -230,7 +230,8 @@ impl ConditionCall {
 /// Every variant carries the same four parts: the message, the user classes
 /// (prepended to the `rust_*` layering, empty for none), the optional `data`
 /// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
-/// the payload can be queued from a worker thread.
+/// the payload can be queued from a worker thread. Each variant is one kind
+/// of the tagged condition value ([`crate::error_value::kind`]).
 #[doc(hidden)]
 #[derive(Debug)]
 pub enum RCondition {
@@ -261,6 +262,16 @@ pub enum RCondition {
     },
     /// Raised by `condition!(...)` / `condition!(class = "...", ...)`.
     Condition {
+        message: String,
+        class: Vec<String>,
+        data: Option<ConditionData>,
+        call: ConditionCall,
+    },
+    /// An argument error, `kind = "conversion"`: raised by
+    /// [`crate::arg_error!`] / [`ArgError::raise`] (built by
+    /// [`RCondition::arg_error`]), and a failed argument conversion once
+    /// reconstructed across a package boundary.
+    Conversion {
         message: String,
         class: Vec<String>,
         data: Option<ConditionData>,
@@ -301,6 +312,12 @@ impl RCondition {
                 data,
                 call,
             } => (kind::CONDITION, message, class, data, call),
+            RCondition::Conversion {
+                message,
+                class,
+                data,
+                call,
+            } => (kind::CONVERSION, message, class, data, call),
         };
         (
             kind,
@@ -320,7 +337,8 @@ impl RCondition {
             RCondition::Error { message, .. }
             | RCondition::Warning { message, .. }
             | RCondition::Message { message, .. }
-            | RCondition::Condition { message, .. } => message,
+            | RCondition::Condition { message, .. }
+            | RCondition::Conversion { message, .. } => message,
         }
     }
 
@@ -331,8 +349,83 @@ impl RCondition {
             RCondition::Error { call, .. }
             | RCondition::Warning { call, .. }
             | RCondition::Message { call, .. }
-            | RCondition::Condition { call, .. } => *call,
+            | RCondition::Condition { call, .. }
+            | RCondition::Conversion { call, .. } => *call,
         }
+    }
+
+    /// The payload of [`crate::arg_error!`] and [`ArgError::raise`]: the
+    /// argument error of parameter `param` (its R name) with `message`.
+    ///
+    /// `kind = "conversion"`, `e$param` as the only data field, and the class
+    /// [`CONVERSION_ERROR_CLASS_MARKER`], which the generated R replaces with
+    /// the crate's `conversion_error_class`: the condition the wrapper's own
+    /// argument checks raise (`.miniextendr_arg_error`).
+    #[doc(hidden)]
+    pub fn arg_error(param: impl Into<String>, message: String, call: ConditionCall) -> Self {
+        RCondition::Conversion {
+            message,
+            class: vec![CONVERSION_ERROR_CLASS_MARKER.to_string()],
+            data: Some(vec![(
+                CONVERSION_PARAM_FIELD.to_string(),
+                crate::RValue::from(param.into()),
+            )]),
+            call,
+        }
+    }
+}
+
+/// The class that stands for the crate's `conversion_error_class` in a tagged
+/// condition value (#1740).
+///
+/// A `macro_rules!` macro cannot read `[package.metadata.miniextendr]`, so
+/// [`crate::arg_error!`] cannot name the crate's classes the way the
+/// generated conversion arms do. It writes this class instead, and the
+/// generated R wrapper's `.miniextendr_raise_condition` replaces it with
+/// `.miniextendr_conversion_error_class`, the binding its own argument checks
+/// read. The string is that binding's name. Where no generated wrapper raises
+/// the condition (a raising guard: an ALTREP `RUnwind` callback,
+/// [`crate::unwind_protect::with_r_unwind_protect_or_raise`]) Rust replaces it
+/// with the classes `miniextendr_init!` registered for the package
+/// ([`resolve_conversion_error_class_marker`]).
+#[doc(hidden)]
+pub const CONVERSION_ERROR_CLASS_MARKER: &str = ".miniextendr_conversion_error_class";
+
+/// `class` with [`CONVERSION_ERROR_CLASS_MARKER`] replaced by `crate_classes`,
+/// in place, as the generated `.miniextendr_raise_condition` replaces it in R.
+/// A raising guard has no generated R to do it, so it calls this with
+/// [`crate_conversion_error_class`].
+pub(crate) fn resolve_conversion_error_class_marker(
+    class: Vec<String>,
+    crate_classes: &[&str],
+) -> Vec<String> {
+    let mut resolved = Vec::with_capacity(class.len() + crate_classes.len());
+    for c in class {
+        if c == CONVERSION_ERROR_CLASS_MARKER {
+            resolved.extend(crate_classes.iter().map(|&k| k.to_string()));
+        } else {
+            resolved.push(c);
+        }
+    }
+    resolved
+}
+
+/// The package crate's `conversion_error_class`, from the entry
+/// `miniextendr_init!` registers in
+/// [`MX_CONVERSION_ERROR_CLASS`](crate::registry::MX_CONVERSION_ERROR_CLASS)
+/// (each package links its own copy of this crate, so it is that package's).
+/// Empty when the crate sets none, and on wasm32, where the registry is
+/// host-only.
+pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::registry::MX_CONVERSION_ERROR_CLASS
+            .first()
+            .map_or(&[][..], |entry| entry.classes)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        &[]
     }
 }
 
@@ -945,6 +1038,154 @@ macro_rules! rust_condition {
     ($($t:tt)*) => { $crate::condition!($($t)*) };
 }
 
+/// Raise the argument error the generated R wrapper raises for a bad
+/// argument, from a `#[miniextendr]` function body.
+///
+/// `arg_error!(param = "mode", "'mode' should be one of {}", choices)` raises
+/// the condition of the wrapper's own argument checks (`match_arg`,
+/// `inherits`, `no_na`, type preconditions) and of a failed argument
+/// conversion: `kind = "conversion"`, `e$param` set to `param` (the
+/// argument's R name), the message as formatted, and the crate's
+/// `conversion_error_class` (`[package.metadata.miniextendr]`) before the
+/// `rust_error` layering:
+///
+/// ```r
+/// class(e)
+/// # [1] "pkg_error_argument" "pkg_error" "rust_error" "simpleError" "error" "condition"
+/// ```
+///
+/// Use it for a check that applies on some paths only, where a
+/// `#[miniextendr]` attribute on the parameter would check every call: an
+/// argument passed on to another function's body, say, which skips that
+/// function's R wrapper and its checks. [`crate::match_arg_param`] matches a
+/// raw choice argument with the wrapper's semantics and message and raises
+/// through this macro.
+///
+/// It diverges like [`crate::error!`] (the same `panic_any` transport), and
+/// conditions queued with [`crate::defer_warning!`] & co. are signalled first.
+/// The call is the one the wrapper's checks report: the wrapper's call as
+/// written, or under `#[miniextendr(call = caller)]` its caller's. A leading
+/// `call = none` raises it without a call, as for the other condition macros.
+/// There is no `class =` or `data =`: the classes are the crate's and the only
+/// field is `param`, so the condition is the wrapper's.
+///
+/// ```ignore
+/// use miniextendr_api::{arg_error, miniextendr};
+///
+/// #[miniextendr]
+/// pub fn in_metres(x: f64, unit: &str) -> f64 {
+///     match unit {
+///         "m" => x,
+///         "cm" => x / 100.0,
+///         _ => arg_error!(param = "unit", "'unit' should be one of \"m\", \"cm\""),
+///     }
+/// }
+/// ```
+///
+/// # How the crate's classes get there
+///
+/// A `macro_rules!` macro cannot read `[package.metadata.miniextendr]`, so the
+/// tagged condition value carries the marker class
+/// [`CONVERSION_ERROR_CLASS_MARKER`](crate::condition::CONVERSION_ERROR_CLASS_MARKER)
+/// and the generated wrapper's `.miniextendr_raise_condition` replaces it with
+/// `.miniextendr_conversion_error_class`, the binding its own checks use. Across
+/// a trait-ABI call the consumer package's wrapper raises the condition, so
+/// its crate's classes apply. A raising guard (an ALTREP `RUnwind` callback,
+/// `with_r_unwind_protect_or_raise`) has no generated R: it resolves the
+/// marker in Rust against the classes `miniextendr_init!` registered (none on
+/// wasm32). A connection callback returns its fallback, as for any panic.
+///
+/// The generated `no_na` check after a conversion builds the same condition
+/// with [`crate::error_value::arg_check_condition_value`], which takes the
+/// classes the macro read at expansion time.
+///
+/// # Grammar
+///
+/// `arg_error!([call = none,] param = <expr>, <format string>, <args>...)`.
+/// `param` is anything `Into<String>`. A `call` anywhere but first, a repeated
+/// one, a missing `param`, and `class =` / `data =` are compile errors:
+///
+/// ```compile_fail
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::arg_error!(param = "mode", call = none, "bad");
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::arg_error!("'mode' is bad");
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// mx::arg_error!(param = "mode", class = "pkg_error", "bad");
+/// # }
+/// ```
+///
+/// ```
+/// # use miniextendr_api as mx;
+/// # fn f(mode: &str) -> ! {
+/// mx::arg_error!(call = none, param = "mode", "'mode' is {mode:?}")
+/// # }
+/// ```
+#[macro_export]
+macro_rules! arg_error {
+    // Internal: after the optional `call = none`.
+    (@param $call:expr; call $($rest:tt)*) => {
+        ::core::compile_error!("arg_error!: `call = none` is given twice")
+    };
+    (@param $call:expr; param = $param:expr, call $($rest:tt)*) => {
+        ::core::compile_error!(
+            "arg_error!: `call = none` comes first, before `param`: \
+             `arg_error!(call = none, param = \"mode\", \"...\")`"
+        )
+    };
+    (@param $call:expr; param = $param:expr, class $($rest:tt)*) => {
+        $crate::arg_error!(@no_class_or_data)
+    };
+    (@param $call:expr; param = $param:expr, data $($rest:tt)*) => {
+        $crate::arg_error!(@no_class_or_data)
+    };
+    (@param $call:expr; param = $param:expr, $($arg:tt)+) => {
+        ::std::panic::panic_any($crate::condition::RCondition::arg_error(
+            $param,
+            ::std::format!($($arg)+),
+            $call,
+        ))
+    };
+    (@param $call:expr; $($rest:tt)*) => {
+        ::core::compile_error!(
+            "arg_error!: name the argument, then give the message: \
+             `arg_error!(param = \"mode\", \"'mode' should be one of ...\")`"
+        )
+    };
+    (@no_class_or_data) => {
+        ::core::compile_error!(
+            "arg_error!: takes no `class` or `data`: its classes are the crate's \
+             `conversion_error_class` and its only field is `param`, as for the wrapper's \
+             own argument errors; use `error!` for a classed error"
+        )
+    };
+    // Entry: the optional `call = none`, then `param = ...` and the message.
+    (call = none, $($rest:tt)*) => {
+        $crate::arg_error!(@param $crate::condition::ConditionCall::None; $($rest)*)
+    };
+    (call $($rest:tt)*) => {
+        ::core::compile_error!(
+            "arg_error!: the only call option is `call = none` (no call, like R's \
+             `call. = FALSE`), and it comes first, followed by a comma: \
+             `arg_error!(call = none, param = \"mode\", \"...\")`"
+        )
+    };
+    ($($rest:tt)*) => {
+        $crate::arg_error!(@param $crate::condition::ConditionCall::Inherit; $($rest)*)
+    };
+}
+
 // endregion
 
 // region: Class vectors and reserved field names
@@ -1308,6 +1549,75 @@ impl RConditionError for RError {
         self.call
     }
 }
+
+/// An argument error as a value: the parameter's R name and the message.
+/// [`ArgError::raise`] raises it as the generated wrapper's own argument
+/// error, through [`crate::arg_error!`].
+///
+/// [`crate::match_arg_param`] returns it for a choice argument the body
+/// matches itself. Raise it where the argument is bad, or handle it:
+///
+/// ```ignore
+/// use miniextendr_api::{SEXP, match_arg_param, miniextendr};
+///
+/// #[miniextendr]
+/// pub fn prepare(data: SEXP, mode: SEXP) -> String {
+///     if is_data_frame(data) {
+///         let mode: Mode = match_arg_param(mode, "mode").unwrap_or_else(|e| e.raise());
+///         // ...
+///     }
+///     // ...
+/// }
+/// ```
+///
+/// It does not implement [`RConditionError`]: returned as a body's `Err` it
+/// would take the `Result` path (`kind = "result_err"`), not the argument
+/// error's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArgError {
+    param: String,
+    message: String,
+}
+
+impl ArgError {
+    /// The argument error of parameter `param` (its R name) with `message`,
+    /// used as given.
+    pub fn new(param: impl Into<String>, message: impl Into<String>) -> Self {
+        ArgError {
+            param: param.into(),
+            message: message.into(),
+        }
+    }
+
+    /// The parameter's R name (`e$param`).
+    pub fn param(&self) -> &str {
+        &self.param
+    }
+
+    /// The message (`conditionMessage(e)`).
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Raise it: `arg_error!(param = <param>, "{}", <message>)`. The
+    /// condition is the one the generated wrapper raises for that parameter;
+    /// see [`crate::arg_error!`].
+    pub fn raise(self) -> ! {
+        std::panic::panic_any(RCondition::arg_error(
+            self.param,
+            self.message,
+            ConditionCall::Inherit,
+        ))
+    }
+}
+
+impl std::fmt::Display for ArgError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for ArgError {}
 
 /// The parts of a condition the generated `Err` arms hand to
 /// [`crate::error_value::result_err_condition_value`] /
@@ -1879,12 +2189,16 @@ impl RCondition {
     /// SEXPs (normal return values, `R_NilValue`, etc.).
     ///
     /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
-    /// `"result_err"`/`"none_err"`/`"conversion"`/`"other_rust_error"` →
+    /// `"result_err"`/`"none_err"`/`"other_rust_error"` →
     /// [`RCondition::Error`] (class, message, data and a [`ConditionCall::None`]
     /// choice kept; the kind itself is not carried by the variant);
-    /// `"warning"` → [`RCondition::Warning`]; `"message"` → [`RCondition::Message`];
-    /// `"condition"` → [`RCondition::Condition`]. Unknown kinds degrade to
-    /// [`RCondition::Error`] with the kind string prefixed to the message.
+    /// `"conversion"` → [`RCondition::Conversion`], so an argument error keeps
+    /// `kind = "conversion"` across a package boundary (and an
+    /// [`crate::arg_error!`] its class marker, which the consumer's wrapper
+    /// resolves); `"warning"` → [`RCondition::Warning`]; `"message"` →
+    /// [`RCondition::Message`]; `"condition"` → [`RCondition::Condition`].
+    /// Unknown kinds degrade to [`RCondition::Error`] with the kind string
+    /// prefixed to the message.
     ///
     /// # Safety
     ///
@@ -2021,8 +2335,13 @@ impl RCondition {
             | kind_const::PANIC
             | kind_const::RESULT_ERR
             | kind_const::NONE_ERR
-            | kind_const::CONVERSION
             | kind_const::OTHER_RUST_ERROR => RCondition::Error {
+                message: msg,
+                class,
+                data,
+                call,
+            },
+            kind_const::CONVERSION => RCondition::Conversion {
                 message: msg,
                 class,
                 data,
@@ -2206,6 +2525,75 @@ mod condition_macro_tests {
             // RValue has no PartialEq (f64); compare via Debug.
             assert_eq!(format!("{value:?}"), format!("{exp_value:?}"));
         }
+    }
+
+    /// `arg_error!` (#1740): the conversion kind, the crate-class marker as
+    /// the only class, `param` as the only field, and the call choice.
+    #[test]
+    fn arg_error_payload() {
+        use super::{CONVERSION_ERROR_CLASS_MARKER, ConditionCall};
+        let choices = r#""fast", "slow""#;
+        let check = |cond: RCondition, call: ConditionCall| {
+            let RCondition::Conversion {
+                message,
+                class,
+                data,
+                call: got_call,
+            } = cond
+            else {
+                panic!("expected RCondition::Conversion, got {cond:?}");
+            };
+            assert_eq!(message, r#"'mode' should be one of "fast", "slow""#);
+            assert_eq!(class, [CONVERSION_ERROR_CLASS_MARKER]);
+            assert_data(&data, &[("param", RValue::from("mode"))]);
+            assert_eq!(got_call, call);
+        };
+        check(
+            catch(|| crate::arg_error!(param = "mode", "'mode' should be one of {choices}")),
+            ConditionCall::Inherit,
+        );
+        let param = String::from("mode");
+        check(
+            catch(move || {
+                crate::arg_error!(
+                    call = none,
+                    param = param,
+                    "'mode' should be one of {}",
+                    choices
+                )
+            }),
+            ConditionCall::None,
+        );
+        check(
+            catch(|| {
+                super::ArgError::new("mode", format!("'mode' should be one of {choices}")).raise()
+            }),
+            ConditionCall::Inherit,
+        );
+
+        let (kind, parts) = catch(|| crate::arg_error!(param = "x", "bad")).into_parts();
+        assert_eq!(kind, crate::error_value::kind::CONVERSION);
+        assert_eq!(parts.message, "bad");
+    }
+
+    /// A raising guard resolves the marker in Rust: the crate's classes take
+    /// its place, every other class keeps its position, and with no crate
+    /// classes the marker just goes.
+    #[test]
+    fn raising_guard_resolves_the_conversion_class_marker() {
+        use super::CONVERSION_ERROR_CLASS_MARKER as MARKER;
+        use super::resolve_conversion_error_class_marker as resolve;
+        let class = || vec!["a".to_string(), MARKER.to_string(), "b".to_string()];
+        assert_eq!(
+            resolve(class(), &["pkg_error_argument", "pkg_error"]),
+            ["a", "pkg_error_argument", "pkg_error", "b"]
+        );
+        assert_eq!(resolve(class(), &[]), ["a", "b"]);
+        assert_eq!(
+            resolve(vec![MARKER.to_string()], &["pkg_error"]),
+            ["pkg_error"]
+        );
+        assert_eq!(resolve(vec!["a".to_string()], &["pkg_error"]), ["a"]);
     }
 
     #[test]

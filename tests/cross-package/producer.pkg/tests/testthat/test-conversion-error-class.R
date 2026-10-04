@@ -168,3 +168,55 @@ test_that("no_na's check after the conversion carries the crate classes", {
     "dv"
   )
 })
+
+test_that("arg_error! and match_arg_param() in a body raise the crate classes (#1740, #1741)", {
+  # The Rust side cannot read the crate's `conversion_error_class`; it sends a
+  # marker that the generated R replaces with
+  # `.miniextendr_conversion_error_class`, the binding the wrapper's own
+  # checks use. So a body's argument error equals the wrapper's choices check.
+  x <- structure(c(1, 2), class = "producer_num")
+  e_wrap <- tryCatch(producer.pkg:::producer_named_checks_impl(x, "medium"), error = function(e) e)
+  e_body <- tryCatch(producer.pkg:::producer_arg_error_impl("medium"), error = function(e) e)
+  e_param <- tryCatch(producer.pkg:::producer_match_arg_param_impl("medium"), error = function(e) e)
+  for (e in list(e_body, e_param)) {
+    expect_identical(class(e), crate_classes)
+    expect_identical(class(e), class(e_wrap))
+    expect_identical(e$kind, "conversion")
+    expect_identical(e$param, "mode")
+    expect_identical(conditionMessage(e), conditionMessage(e_wrap))
+    expect_identical(names(unclass(e)), names(unclass(e_wrap)))
+  }
+  expect_equal(conditionCall(e_body), quote(producer.pkg:::producer_arg_error_impl("medium")))
+  expect_identical(
+    tryCatch(
+      producer.pkg:::producer_arg_error_impl("medium"),
+      producer_error_argument = function(e) e$param
+    ),
+    "mode"
+  )
+  expect_identical(producer.pkg:::producer_arg_error_impl("slow"), "slow")
+  expect_identical(producer.pkg:::producer_match_arg_param_impl("sl"), "slow")
+  expect_identical(producer.pkg:::producer_match_arg_param_impl(c("fast", "slow")), "fast")
+
+  # Under the crate default `call = caller` the body's condition names the
+  # call the wrapper's checks name: here the one passed as `.call`.
+  e <- tryCatch(
+    producer.pkg:::producer_arg_error_attributed_impl("medium", .call = quote(user_fn(x))),
+    error = function(e) e
+  )
+  expect_identical(class(e), crate_classes)
+  expect_equal(conditionCall(e), quote(user_fn(x)))
+})
+
+test_that("a raising guard gives arg_error! the crate classes from Rust (#1740)", {
+  # `with_r_unwind_protect_or_raise` (ALTREP `RUnwind` callbacks) raises the
+  # condition itself, with no generated R to resolve the marker: Rust puts the
+  # classes `miniextendr_init!` registered in its place. It sets no `kind`, as
+  # for every error it raises.
+  e <- tryCatch(producer.pkg:::producer_arg_error_guard_impl("medium"), error = function(e) e)
+  expect_identical(class(e), crate_classes)
+  expect_identical(e$param, "mode")
+  expect_identical(conditionMessage(e), "'mode' should be one of \"fast\", \"slow\"")
+  expect_null(e$kind)
+  expect_identical(producer.pkg:::producer_arg_error_guard_impl("fast"), "fast")
+})

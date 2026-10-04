@@ -54,6 +54,7 @@
 //! [`match_arg_vec_from_sexp`] applies). Under `Either`, `NULL` is not a
 //! choice: it goes to `R` (or is `None` under `Option<Either<..>>`).
 
+use crate::condition::ArgError;
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::ProtectScope;
 use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
@@ -78,6 +79,24 @@ pub trait MatchArg: Sized + Copy + 'static {
     /// Convert the enum variant to its canonical choice string.
     fn to_choice(self) -> &'static str;
 }
+
+/// The words after `'<param>' ` in a `match_arg` argument error, shared by
+/// the wrappers preamble's `.miniextendr_match_arg` /
+/// `.miniextendr_match_arg_several` ([`crate::registry::ARG_CHECK_HELPERS`],
+/// built with `concat!`) and [`MatchArgError::arg_error`], so R and Rust word
+/// these errors from one source (#1741). It expands to string literals.
+macro_rules! match_arg_wording {
+    (not_character) => {
+        "must be NULL or a character vector"
+    };
+    (not_scalar) => {
+        "must be of length 1"
+    };
+    (not_a_choice) => {
+        "should be one of"
+    };
+}
+pub(crate) use match_arg_wording;
 
 /// Error type for `MatchArg` conversion failures.
 ///
@@ -131,6 +150,30 @@ impl MatchArgError {
     /// is a `match_arg` enum (#1594).
     pub fn expectation(&self) -> String {
         one_of(self.choices())
+    }
+
+    /// The argument error the generated wrapper's `match_arg` check
+    /// (`.miniextendr_match_arg`) raises for this value of parameter `param`
+    /// (its R name), word for word (#1741):
+    ///
+    /// - [`InvalidType`](Self::InvalidType): `'mode' must be NULL or a character vector`
+    /// - [`InvalidLength`](Self::InvalidLength): `'mode' must be of length 1`
+    /// - [`IsNa`](Self::IsNa), [`NoMatch`](Self::NoMatch): `'mode' should be
+    ///   one of "fast", "safe"`
+    ///
+    /// The choices are quoted as R's `dQuote(choices, FALSE)` quotes them,
+    /// without escapes. [`match_arg_param`] returns it; [`ArgError::raise`]
+    /// raises it as that condition.
+    pub fn arg_error(&self, param: &str) -> ArgError {
+        let what = match self {
+            MatchArgError::InvalidType { .. } => match_arg_wording!(not_character).to_string(),
+            MatchArgError::InvalidLength { .. } => match_arg_wording!(not_scalar).to_string(),
+            MatchArgError::IsNa { choices } | MatchArgError::NoMatch { choices, .. } => {
+                let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+                format!("{} {}", match_arg_wording!(not_a_choice), quoted.join(", "))
+            }
+        };
+        ArgError::new(param, format!("'{param}' {what}"))
     }
 
     /// The reason of this error in R terms, after `'<p>' must be one of "a",
@@ -271,62 +314,172 @@ fn sexp_err_to_match_arg_err<T: MatchArg>(e: SexpError) -> MatchArgError {
     }
 }
 
-/// Extract a single choice from a factor SEXP (INTSXP with `levels` attribute).
-fn factor_elt_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
+/// The first choice: what `NULL` and the full choices vector select.
+fn first_choice<T: MatchArg>() -> Result<T, MatchArgError> {
+    let choices = <T as MatchArg>::CHOICES;
+    choices
+        .first()
+        .and_then(|choice| T::from_choice(choice))
+        .ok_or(MatchArgError::NoMatch {
+            input: String::new(),
+            choices,
+        })
+}
+
+/// `NA` as a choice: `pmatch()`, and so the wrapper's check, matches it as
+/// the string `"NA"`, so a choice that is `"NA"` or the only one starting
+/// with it is selected. Anything else is [`MatchArgError::IsNa`].
+fn match_na<T: MatchArg>() -> Result<T, MatchArgError> {
+    match_choice::<T>("NA").map_err(|_| MatchArgError::IsNa {
+        choices: <T as MatchArg>::CHOICES,
+    })
+}
+
+/// Whether the `len` strings `label(i)` (`None` for `NA`) are `T::CHOICES`,
+/// in order: the formal default of a choice parameter, which an omitted
+/// argument evaluates to.
+fn is_full_choices<'a, T: MatchArg>(len: usize, label: impl Fn(isize) -> Option<&'a str>) -> bool {
+    let choices = <T as MatchArg>::CHOICES;
+    len == choices.len()
+        && choices
+            .iter()
+            .zip(0..)
+            .all(|(choice, i)| label(i) == Some(*choice))
+}
+
+/// The label of element `i` of a factor (`None` for a missing code or one
+/// outside the levels).
+fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<&'static str> {
+    let code = codes.integer_elt(i);
+    // R factor codes are 1-based; NA_integer_ is i32::MIN.
+    let level = isize::try_from(code).ok()?.checked_sub(1)?;
+    if level < 0 || level >= isize::try_from(levels.len()).ok()? {
+        return None;
+    }
+    let charsxp = levels.string_elt(level);
+    if charsxp.is_na_string() {
+        return None;
+    }
+    // UTF-8 locale asserted at package init — charsxp_to_str is safe.
+    Some(unsafe { charsxp_to_str(charsxp) })
+}
+
+/// A factor as a choice: read as its labels, like `as.character()`.
+fn factor_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
+    let levels = sexp.get_levels();
     let len = sexp.len();
+    if is_full_choices::<T>(len, |i| factor_label(sexp, levels, i)) {
+        return first_choice::<T>();
+    }
     if len != 1 {
         return Err(MatchArgError::InvalidLength {
             actual: len,
             choices: <T as MatchArg>::CHOICES,
         });
     }
-    let idx = sexp.integer_elt(0);
-    if idx == i32::MIN {
-        // NA_integer_
-        return Err(MatchArgError::IsNa {
-            choices: <T as MatchArg>::CHOICES,
-        });
+    match factor_label(sexp, levels, 0) {
+        Some(label) => match_choice::<T>(label),
+        None => match_na::<T>(),
     }
-    let levels = sexp.get_levels();
-    // R factor indices are 1-based.
-    let level_idx = (idx - 1) as R_xlen_t;
-    if level_idx < 0 || level_idx >= levels.len() as R_xlen_t {
-        return Err(MatchArgError::NoMatch {
-            input: format!("<factor index {}>", idx),
-            choices: <T as MatchArg>::CHOICES,
-        });
-    }
-    let charsxp = levels.string_elt(level_idx);
-    // UTF-8 locale asserted at package init — charsxp_to_str is safe.
-    match_choice::<T>(unsafe { charsxp_to_str(charsxp) })
 }
 
-/// Extract a single string from an R SEXP and match it against a `MatchArg` type.
+/// Match one choice argument with the semantics of the generated wrapper's
+/// `match_arg` check (`.miniextendr_match_arg`), which are those of
+/// `base::match.arg(arg, choices)`:
 ///
-/// Used by the generated `TryFromSexp for T` implementation (single-value `match.arg`).
+/// - `NULL` is the first choice;
+/// - a factor is read as its labels;
+/// - any other value that is not a character vector is
+///   [`MatchArgError::InvalidType`];
+/// - the full choices vector, `T::CHOICES` in order and without attributes
+///   (what an omitted argument evaluates to when the choices are its formal
+///   default), is the first choice;
+/// - otherwise the value must have length 1 ([`MatchArgError::InvalidLength`])
+///   and match a choice exactly or as a unique prefix
+///   ([`MatchArgError::NoMatch`]). The empty string matches nothing, and `NA`
+///   is matched as the string `"NA"`, as `pmatch()` does
+///   ([`MatchArgError::IsNa`] when that matches nothing).
+///
+/// Used by the generated `TryFromSexp for T` implementation, and by the
+/// generated C wrapper of a `#[miniextendr(match_arg)]` parameter, which only
+/// sees the single choice the R wrapper already matched. A body matching a raw
+/// `SEXP` argument wants [`match_arg_param`], which words its errors as the
+/// wrapper does.
 pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
-    // NIL → default (first choice), matching `base::match.arg()`.
-    if sexp.type_of() == SEXPTYPE::NILSXP {
-        return T::from_choice(<T as MatchArg>::CHOICES[0]).ok_or_else(|| MatchArgError::NoMatch {
-            input: String::new(),
-            choices: <T as MatchArg>::CHOICES,
+    let choices = <T as MatchArg>::CHOICES;
+    let sexptype = sexp.type_of();
+    if sexptype == SEXPTYPE::NILSXP {
+        return first_choice::<T>();
+    }
+    if sexp.is_factor() {
+        return factor_to_choice::<T>(sexp);
+    }
+    if sexptype != SEXPTYPE::STRSXP {
+        return Err(MatchArgError::InvalidType {
+            actual: sexptype,
+            choices,
         });
     }
-
-    // Factors (INTSXP with STRSXP levels attribute): extract the level label.
-    if sexp.is_factor() {
-        return factor_elt_to_choice::<T>(sexp);
+    let len = sexp.len();
+    // `identical(arg, choices)` compares attributes too: a named vector of
+    // the choices is not the formal default.
+    let label = |i: isize| {
+        let charsxp = sexp.string_elt(i);
+        // UTF-8 locale asserted at package init — charsxp_to_str is safe.
+        (!charsxp.is_na_string()).then(|| unsafe { charsxp_to_str(charsxp) })
+    };
+    if is_full_choices::<T>(len, &label) && !sexp.has_attributes() {
+        return first_choice::<T>();
     }
+    if len != 1 {
+        return Err(MatchArgError::InvalidLength {
+            actual: len,
+            choices,
+        });
+    }
+    match label(0) {
+        Some(input) => match_choice::<T>(input),
+        None => match_na::<T>(),
+    }
+}
 
-    // STRSXP length-1 path — delegate type/length checks to Option<&str>.
-    // NIL was handled above, so `None` here means NA_character_.
-    let input = <Option<&'static str> as TryFromSexp>::try_from_sexp(sexp)
-        .map_err(sexp_err_to_match_arg_err::<T>)?
-        .ok_or(MatchArgError::IsNa {
-            choices: <T as MatchArg>::CHOICES,
-        })?;
-
-    match_choice::<T>(input)
+/// Match a choice argument a body received as a raw `SEXP` exactly as the
+/// generated wrapper matches a `#[miniextendr(match_arg)]` parameter, and
+/// with the same error.
+///
+/// The result is [`match_arg_from_sexp`]'s (`NULL` and the full choices
+/// vector select the first choice, a factor is read as its labels, one string
+/// matches exactly or as a unique prefix). The error is the argument error
+/// the wrapper raises for parameter `param` (its R name), word for word:
+///
+/// - `'mode' must be NULL or a character vector`
+/// - `'mode' must be of length 1`
+/// - `'mode' should be one of "fast", "safe"`
+///
+/// [`ArgError::raise`] raises it as that condition (`kind = "conversion"`,
+/// the crate's `conversion_error_class`, `e$param`; see
+/// [`crate::arg_error!`]):
+///
+/// ```ignore
+/// use miniextendr_api::{SEXP, match_arg_param, miniextendr};
+///
+/// #[miniextendr]
+/// pub fn run(data: SEXP, mode: SEXP) -> String {
+///     if is_data_frame(data) {
+///         // Checked on this path only.
+///         let mode: Mode = match_arg_param(mode, "mode").unwrap_or_else(|e| e.raise());
+///         return format!("{mode:?}");
+///     }
+///     String::new()
+/// }
+/// ```
+///
+/// The choices are `T::CHOICES` in declaration order. A
+/// `#[miniextendr(match_arg, default = "...")]` parameter moves its default
+/// to the front of the R formal, so there the wrapper's first choice and the
+/// order of its message's choices differ from this function's (#1767).
+pub fn match_arg_param<T: MatchArg>(sexp: SEXP, param: &str) -> Result<T, ArgError> {
+    match_arg_from_sexp::<T>(sexp).map_err(|e| e.arg_error(param))
 }
 
 /// Optional form of [`match_arg_from_sexp`] for `Option<T>` parameters (#1473).
@@ -471,28 +624,28 @@ impl<R> EitherArmProbeFallback for EitherArmProbe<R> {}
 
 /// Match a string against the choices of a `MatchArg` type (exact or partial).
 fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
+    let no_match = || MatchArgError::NoMatch {
+        input: input.to_string(),
+        choices: <T as MatchArg>::CHOICES,
+    };
+    // `pmatch()` matches the empty string to nothing, not even to an empty
+    // choice; without this every choice would be a partial match.
+    if input.is_empty() {
+        return Err(no_match());
+    }
+
     // Exact match
     if let Some(val) = T::from_choice(input) {
         return Ok(val);
     }
 
     // Unique partial match (like R's match.arg)
-    let mut matches: Vec<(usize, &'static str)> = Vec::new();
-    for (i, choice) in <T as MatchArg>::CHOICES.iter().enumerate() {
-        if choice.starts_with(input) {
-            matches.push((i, choice));
-        }
-    }
-
-    match matches.len() {
-        1 => T::from_choice(matches[0].1).ok_or(MatchArgError::NoMatch {
-            input: input.to_string(),
-            choices: <T as MatchArg>::CHOICES,
-        }),
-        _ => Err(MatchArgError::NoMatch {
-            input: input.to_string(),
-            choices: <T as MatchArg>::CHOICES,
-        }),
+    let mut matches = <T as MatchArg>::CHOICES
+        .iter()
+        .filter(|choice| choice.starts_with(input));
+    match (matches.next(), matches.next()) {
+        (Some(choice), None) => T::from_choice(choice).ok_or_else(no_match),
+        _ => Err(no_match()),
     }
 }
 
@@ -560,7 +713,12 @@ pub fn match_arg_vec_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<Vec<T>, MatchA
     if sexp.type_of() == SEXPTYPE::NILSXP {
         return <T as MatchArg>::CHOICES
             .iter()
-            .map(|c| match_choice::<T>(c))
+            .map(|c| {
+                T::from_choice(c).ok_or(MatchArgError::NoMatch {
+                    input: (*c).to_string(),
+                    choices: <T as MatchArg>::CHOICES,
+                })
+            })
             .collect();
     }
 

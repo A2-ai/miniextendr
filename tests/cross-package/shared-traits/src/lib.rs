@@ -62,6 +62,12 @@ pub trait Counter {
     /// `ConditionData` survives the trait-ABI vtable re-panic path
     /// (`from_tagged_sexp` slot [4] round-trip, issue #996 path-1).
     fn raise_error_with_data(&self);
+
+    /// Raise an `arg_error!()` for argument `mode` — verifies that the
+    /// argument error keeps `e$kind == "conversion"` and `e$param` across the
+    /// trait-ABI boundary and takes the consumer crate's
+    /// `conversion_error_class` (#1740).
+    fn raise_arg_error(&self, mode: String);
 }
 
 /// A trait for types that can be reset to their default state.

@@ -6,10 +6,14 @@
 //! R-side type check and fails the Rust conversion. Both raise the same
 //! classes, `kind = "conversion"` and `e$param`; the conversion adds
 //! `e$rust_type`. rpkg sets no `conversion_error_class`; the configured case
-//! lives in `tests/cross-package/producer.pkg`.
+//! lives in `tests/cross-package/producer.pkg`. The `arg_error_body*`
+//! fixtures raise the same condition from a function body with `arg_error!`
+//! (#1740).
 
-use crate::match_arg_tests::Mode;
-use miniextendr_api::{AsNumeric, AsNumericVec, DataFrame, miniextendr};
+use crate::match_arg_tests::{FillMode, Mode};
+use miniextendr_api::{
+    AsNumeric, AsNumericVec, DataFrame, MatchArg, arg_error, defer_warning, miniextendr,
+};
 
 // region: the two paths
 
@@ -156,5 +160,72 @@ pub fn arg_error_strict_inputs(n: i64, ids: Vec<i64>) -> String {
 #[miniextendr(internal)]
 pub fn arg_error_plain_mode(speed: Mode) -> String {
     format!("{speed:?}")
+}
+// endregion
+
+// region: arg_error! from a body (#1740)
+
+/// The message `match_arg_fill()`'s wrapper raises for a `fill` that is not
+/// a choice.
+const FILL_NOT_A_CHOICE: &str = r#"'fill' should be one of "drop", "draw", "error""#;
+
+/// Whether `fill` is one of [`FillMode`]'s choices, exactly.
+fn is_fill_choice(fill: &str) -> bool {
+    FillMode::from_choice(fill).is_some()
+}
+
+/// `fill` checked by the body: anything but an exact choice raises the
+/// argument error `match_arg_fill()`'s wrapper raises.
+/// @param fill A string.
+#[miniextendr(internal)]
+pub fn arg_error_body(fill: &str) -> String {
+    if !is_fill_choice(fill) {
+        arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
+    }
+    fill.to_string()
+}
+
+/// [`arg_error_body`] with `call = none`.
+/// @param fill A string.
+#[miniextendr(internal)]
+pub fn arg_error_body_callless(fill: &str) -> String {
+    if !is_fill_choice(fill) {
+        arg_error!(call = none, param = "fill", "{FILL_NOT_A_CHOICE}");
+    }
+    fill.to_string()
+}
+
+/// A deferred warning, then `arg_error!`: the warning is signalled first.
+/// @param fill A string.
+#[miniextendr(internal)]
+pub fn arg_error_after_deferred(fill: &str) -> String {
+    defer_warning!(class = "pkg_note", "checking {fill:?}");
+    if !is_fill_choice(fill) {
+        arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
+    }
+    fill.to_string()
+}
+
+/// [`arg_error_body`] on the worker thread.
+/// @param fill A string.
+#[cfg(feature = "worker-thread")]
+#[miniextendr(internal, worker)]
+pub fn arg_error_body_worker(fill: String) -> String {
+    if !is_fill_choice(&fill) {
+        arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
+    }
+    fill
+}
+
+/// [`arg_error_body`] under `call = caller`: the condition names the call a
+/// helper passes as `.call`, as the wrapper's own checks do.
+/// @param fill A string.
+/// @noRd
+#[miniextendr(noexport, call = caller)]
+pub fn arg_error_body_caller_impl(fill: &str) -> String {
+    if !is_fill_choice(fill) {
+        arg_error!(param = "fill", "{FILL_NOT_A_CHOICE}");
+    }
+    fill.to_string()
 }
 // endregion

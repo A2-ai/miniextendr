@@ -13,6 +13,10 @@
 \alias{arg_error_pair}
 \alias{arg_error_strict_inputs}
 \alias{arg_error_plain_mode}
+\alias{arg_error_body}
+\alias{arg_error_body_callless}
+\alias{arg_error_after_deferred}
+\alias{arg_error_body_worker}
 \title{arg_error_ratio}
 \usage{
 arg_error_ratio(num, den)
@@ -38,6 +42,14 @@ arg_error_pair(pair)
 arg_error_strict_inputs(n, ids)
 
 arg_error_plain_mode(speed)
+
+arg_error_body(fill)
+
+arg_error_body_callless(fill)
+
+arg_error_after_deferred(fill)
+
+arg_error_body_worker(fill)
 }
 \arguments{
 \item{num, den}{A number, string or factor label of length 1.}
@@ -65,6 +77,8 @@ arg_error_plain_mode(speed)
 \item{ids}{Whole numbers.}
 
 \item{speed}{One of \code{"Fast"}, \code{"Safe"}, \code{"Debug"}.}
+
+\item{fill}{A string.}
 }
 \description{
 Ratio of two numbers read like \code{as.numeric()}.
@@ -98,5 +112,14 @@ argument error, not a panic.
 A \code{MatchArg} enum parameter without \verb{#[miniextendr(match_arg)]}: no R-side
 \code{match.arg()} check, so a bad value reaches the conversion, whose error
 still names the choices.
+
+\code{fill} checked by the body: anything but an exact choice raises the
+argument error \code{match_arg_fill()}'s wrapper raises.
+
+\code{arg_error_body} with \code{call = none}.
+
+A deferred warning, then \verb{arg_error!}: the warning is signalled first.
+
+\code{arg_error_body} on the worker thread.
 }
 \keyword{internal}

@@ -17,6 +17,7 @@
 \alias{DoubleCounter$Counter$raise_message}
 \alias{DoubleCounter$Counter$raise_condition_classed}
 \alias{DoubleCounter$Counter$raise_error_with_data}
+\alias{DoubleCounter$Counter$raise_arg_error}
 \title{DoubleCounter Class}
 \usage{
 DoubleCounter

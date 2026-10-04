@@ -301,8 +301,8 @@ fn result_err_parts_roundtrip() {
 /// `conversion_condition_value`: the probed parts of a classed conversion
 /// error, the crate classes, `param` and `rust_type` land in the tagged
 /// value; the
-/// trait-ABI re-panic path (`from_tagged_sexp`) keeps class, data and the
-/// message without an unknown-kind prefix.
+/// trait-ABI re-panic path (`from_tagged_sexp`) keeps the conversion kind,
+/// class, data and the message without an unknown-kind prefix.
 #[test]
 fn conversion_parts_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
@@ -323,7 +323,7 @@ fn conversion_parts_roundtrip() {
             None,
         );
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-            RCondition::Error {
+            RCondition::Conversion {
                 message,
                 class,
                 data,
@@ -436,5 +436,50 @@ fn no_call_marker_roundtrip() {
             RCondition::from_tagged_sexp(sexp).expect("tagged").call(),
             ConditionCall::None
         );
+    });
+}
+
+/// `arg_error!` (#1740): `kind = "conversion"`, the crate-class marker in the
+/// class slot, `param` as data and the call choice in the call slot; across
+/// the trait ABI (`from_tagged_sexp`) all of it survives, so the consumer's
+/// wrapper resolves the marker.
+#[test]
+fn arg_error_roundtrip() {
+    r_test_utils::with_r_thread(|| unsafe {
+        use miniextendr_api::condition::{
+            CONVERSION_ERROR_CLASS_MARKER, ConditionCall, RCondition,
+        };
+        use miniextendr_api::error_value::{kind, rust_condition_value};
+        use miniextendr_api::{OwnedProtect, RValue, SexpExt};
+
+        for call in [ConditionCall::Inherit, ConditionCall::None] {
+            let cond = RCondition::arg_error("mode", "'mode' is bad".to_string(), call);
+            let sexp = OwnedProtect::new(rust_condition_value(cond, None));
+            let sexp = sexp.get();
+            assert_eq!(sexp.vector_elt(1).string_elt_str(0), Some(kind::CONVERSION));
+            assert_eq!(
+                sexp.vector_elt(2).string_elt_str(0),
+                Some(CONVERSION_ERROR_CLASS_MARKER)
+            );
+            match RCondition::from_tagged_sexp(sexp).expect("tagged") {
+                RCondition::Conversion {
+                    message,
+                    class,
+                    data,
+                    call: got,
+                } => {
+                    assert_eq!(message, "'mode' is bad");
+                    assert_eq!(class, [CONVERSION_ERROR_CLASS_MARKER]);
+                    let data = data.expect("data");
+                    assert_eq!(data.len(), 1);
+                    assert_eq!(data[0].0, "param");
+                    assert!(
+                        matches!(&data[0].1, RValue::Character(v) if v == &[Some("mode".to_string())])
+                    );
+                    assert_eq!(got, call);
+                }
+                other => panic!("wrong variant: {other:?}"),
+            }
+        }
     });
 }
