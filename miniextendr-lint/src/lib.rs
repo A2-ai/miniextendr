@@ -92,24 +92,35 @@ pub fn build_script() {
 /// Once a build script prints a `rerun-if-*` directive, cargo reruns it only when
 /// one of them fires and replays its cached warnings in between, so every source
 /// file the lint found is watched on the error path too: a "failed to parse"
-/// warning must not outlive the fix (#1738). `Cargo.toml` is watched because
-/// `[lib] path` decides where the walk starts (#1745). A `src/` directory holding
-/// the crate root is also watched as a whole (cargo scans it recursively), which
-/// covers a module file created after the `mod` line naming it. A crate root
-/// anywhere else, such as the `lib.rs` next to `Cargo.toml` of every scaffolded R
-/// package, is watched file by file only: a recursive watch of the manifest
-/// directory would take in `target/`, `vendor/` and `.cargo/` and rerun the
-/// script after every build.
+/// warning must not outlive the fix (#1738). A `src/` directory holding the crate
+/// root is also watched as a whole (cargo scans it recursively), which covers a
+/// module file created after the `mod` line naming it. A crate root anywhere
+/// else, such as the `lib.rs` next to `Cargo.toml` of every scaffolded R package,
+/// is watched file by file only: a recursive watch of the manifest directory
+/// would take in `target/`, `vendor/` and `.cargo/` and rerun the script after
+/// every build.
+///
+/// `Cargo.toml` holds `[lib] path` (#1745) but is watched only while no crate
+/// root file can be found or read. Then no source file is watched, and without
+/// the manifest nothing would ever rerun the lint to clear its warning. A
+/// healthy crate leaves it unwatched: every scaffolded `configure` touches
+/// `Cargo.toml`, and watching it would rebuild the crate on every install (a
+/// crate cargo builds but the lint cannot read, such as an inline
+/// `lib = { path = ... }`, pays that cost until the spelling is rewritten).
+/// Moving the root file away is still seen, since a watched file that
+/// disappears reruns the script (#1752).
 pub fn build_directives(manifest_dir: &Path) -> Vec<String> {
     let mut directives = Vec::new();
 
+    let root = CrateRoot::resolve(manifest_dir);
     let manifest = manifest_dir.join("Cargo.toml");
-    if manifest.is_file() {
+    let root_found = matches!(&root, Ok(root) if root.file.is_file());
+    if !root_found && manifest.is_file() {
         directives.push(rerun_directive(&manifest));
     }
 
     let src_dir = manifest_dir.join("src");
-    if let Ok(root) = CrateRoot::resolve(manifest_dir)
+    if let Ok(root) = &root
         && root.file.starts_with(&src_dir)
     {
         directives.push(rerun_directive(&src_dir));

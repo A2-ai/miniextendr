@@ -1644,12 +1644,18 @@ fn lib_path_outside_src_is_linted_and_watched() {
     assert_eq!(mxl304_files(root), vec![path_in(root, "rust/child.rs")]);
 
     let directives = build_directives(root);
-    for file in ["Cargo.toml", "rust/lib.rs", "rust/child.rs"] {
+    for file in ["rust/lib.rs", "rust/child.rs"] {
         assert!(
             directives.contains(&rerun(&path_in(root, file))),
             "missing {file} in {directives:#?}"
         );
     }
+    // Scaffolded `configure` touches Cargo.toml on every run; watching it here
+    // would rebuild the crate on every install.
+    assert!(
+        !directives.contains(&rerun(&root.join("Cargo.toml"))),
+        "{directives:#?}"
+    );
     for watched_dir in [root.to_path_buf(), root.join("rust"), root.join("src")] {
         assert!(
             !directives.contains(&rerun(&watched_dir)),
@@ -1833,7 +1839,7 @@ fn lib_path_to_a_missing_file_reports_that_path() {
         )
     );
 
-    // Fixing the manifest must rerun the lint, so it is watched on this path too.
+    // No source file is watched, so the manifest is: fixing it reruns the lint.
     let directives = build_directives(root);
     assert!(
         directives.contains(&rerun(&root.join("Cargo.toml"))),
@@ -1841,6 +1847,28 @@ fn lib_path_to_a_missing_file_reports_that_path() {
     );
     assert!(
         !directives.contains(&rerun(&root.join("src"))),
+        "{directives:#?}"
+    );
+
+    // Fixed, the root's files are watched instead and the warning is gone.
+    write_crate(root, &[("Cargo.toml", "[lib]\npath = \"src/lib.rs\"\n")]);
+    let directives = build_directives(root);
+    assert!(
+        !directives.contains(&rerun(&root.join("Cargo.toml"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives.contains(&rerun(&root.join("src"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives.contains(&rerun(&path_in(root, "src/lib.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        !directives
+            .iter()
+            .any(|d| d.contains("cannot find crate root")),
         "{directives:#?}"
     );
 }
