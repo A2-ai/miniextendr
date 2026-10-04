@@ -1106,27 +1106,29 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
                             // Get attrs before moving fields out of self
                             let attrs = self.attrs();
+                            #class_slice_binding
 
                             // Build the fields list from pairs.
                             // Each `into_sexp()` is rooted via `__scope.protect_raw`
                             // so prior field SEXPs stay alive across the next
                             // field's allocations — UAF otherwise
                             // (reviews/2026-05-07-gctorture-audit.md).
+                            // `new_rcrd` roots the list on entry, and the scope
+                            // stays open across the call, so neither the list nor
+                            // its fields are ever unrooted across an allocation
+                            // (#1759).
                             // SAFETY: into_vctrs runs on the R main thread.
-                            let fields = unsafe {
+                            unsafe {
                                 let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                                 let pairs: Vec<(&str, ::miniextendr_api::SEXP)> = vec![
                                     #( (#field_names, __scope.protect_raw(self.#field_idents.into_sexp())), )*
                                 ];
-                                ::miniextendr_api::list::List::from_raw_pairs(pairs)
-                            };
-
-                            #class_slice_binding
-                            ::miniextendr_api::vctrs::new_rcrd(
-                                fields,
-                                #class_slice_expr,
-                                &attrs,
-                            )
+                                ::miniextendr_api::vctrs::new_rcrd(
+                                    ::miniextendr_api::list::List::from_raw_pairs(pairs),
+                                    #class_slice_expr,
+                                    &attrs,
+                                )
+                            }
                         }
                     }
                 }
@@ -1143,12 +1145,15 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
                             // Get attrs before moving data out of self
                             let attrs = self.attrs();
-                            // Convert data to List type - safe because into_sexp() for Vec<Vec<T>> produces VECSXP
+                            #class_slice_binding
+                            // Convert data to List type - safe because into_sexp() for Vec<Vec<T>> produces VECSXP.
+                            // `new_list_of` roots the list on entry; nothing allocates in between (#1759).
                             let data_sexp = self.#data_ident.into_sexp();
                             let list = unsafe { List::from_raw(data_sexp) };
                             // For list_of, we pass size = list length, ptype = None (handled in R wrapper)
-                            let size = Some(list.len() as i32);
-                            #class_slice_binding
+                            let size = Some(
+                                i32::try_from(list.len()).expect("list_of length exceeds i32::MAX"),
+                            );
                             ::miniextendr_api::vctrs::new_list_of(
                                 list,
                                 None,  // ptype - handled in R wrapper via attribute
@@ -1169,8 +1174,9 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
                             // Get attrs before moving data out of self
                             let attrs = self.attrs();
-                            let data = self.#data_ident.into_sexp();
                             #class_slice_binding
+                            // `new_vctr` roots `data` on entry; nothing allocates in between (#1759).
+                            let data = self.#data_ident.into_sexp();
                             ::miniextendr_api::vctrs::new_vctr(
                                 data,
                                 #class_slice_expr,

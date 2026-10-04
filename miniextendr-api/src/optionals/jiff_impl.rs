@@ -1090,9 +1090,12 @@ pub mod vctrs_support {
         // columns, so saturate at i32::MAX rather than silently wrapping for an
         // (in practice never observed) unbalanced span with a >2^31 field.
         //
-        // GC-SAFETY: all guards are held alive until after List::from_raw_values
-        // returns. from_raw_values calls Rf_allocVector(VECSXP, …) which can
-        // trigger GC — so every column must stay protected through that call.
+        // GC-SAFETY: each column guard (`g_*`) lives until this function
+        // returns, so the columns stay rooted through `from_raw_values`,
+        // `set_names_str` and `new_rcrd`, which all allocate. The field list
+        // itself is never rooted here: `set_names_str` and `new_rcrd` each
+        // protect it on entry, and nothing allocates between
+        // `from_raw_values` returning it and those calls (#1759).
         let g_years = unsafe { alloc_int_col(n, |i| i32::from(spans[i].get_years())) };
         let g_months = unsafe { alloc_int_col(n, |i| spans[i].get_months()) };
         let g_weeks = unsafe { alloc_int_col(n, |i| spans[i].get_weeks()) };
@@ -1136,8 +1139,6 @@ pub mod vctrs_support {
             g_microseconds.get(),
             g_nanoseconds.get(),
         ])
-        // guards drop here — safe because the list VECSXP now holds references
-        // to each column as a child object, keeping them alive via R's GC graph.
         .set_names_str(&[
             "years",
             "months",
@@ -1161,13 +1162,13 @@ pub mod vctrs_support {
     pub fn zoned_vec_to_rcrd(zones: &[Zoned]) -> SEXP {
         let n = zones.len();
         let (ts_col, ts_dst) = unsafe { crate::into_r::alloc_r_vector::<f64>(n) };
-        // GC-SAFETY: _ts_guard keeps ts_col rooted until after from_raw_values.
+        // GC-SAFETY: _ts_guard keeps ts_col rooted until this function returns.
         let _ts_guard = unsafe { crate::gc_protect::OwnedProtect::new(ts_col) };
 
-        // STRSXP column — allocate and protect via OwnedProtect so it outlives
-        // the List::from_raw_values call (which allocates a VECSXP and can GC).
+        // STRSXP column — allocate and protect via OwnedProtect so it survives
+        // the per-element CHARSXP allocations and every allocation below.
         let tz_col = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n as crate::R_xlen_t) };
-        // GC-SAFETY: _tz_guard keeps tz_col rooted until after from_raw_values.
+        // GC-SAFETY: _tz_guard keeps tz_col rooted until this function returns.
         let _tz_guard = unsafe { crate::gc_protect::OwnedProtect::new(tz_col) };
 
         for (i, z) in zones.iter().enumerate() {
@@ -1177,9 +1178,9 @@ pub mod vctrs_support {
             let iana = z.time_zone().iana_name().unwrap_or("UTC");
             tz_col.set_string_elt(i as crate::R_xlen_t, SEXP::charsxp(iana));
         }
-        // Guards (_ts_guard, _tz_guard) drop after from_raw_values returns —
-        // at that point the VECSXP owns both columns via SET_VECTOR_ELT, keeping
-        // them alive through R's GC object graph.
+        // The column guards stay alive through `new_rcrd`. The field list is
+        // rooted on entry by `set_names_str` and by `new_rcrd`, with no
+        // allocation in between (see span_vec_to_rcrd).
         let list = List::from_raw_values(vec![ts_col, tz_col]).set_names_str(&["timestamp", "tz"]);
 
         new_rcrd(list, &["jiff_zoned"], &[])
@@ -1191,7 +1192,8 @@ pub mod vctrs_support {
     /// Fields: `year`, `month`, `day`, `hour`, `minute`, `second`, `nanosecond`.
     pub fn datetime_vec_to_rcrd(dts: &[DateTime]) -> SEXP {
         let n = dts.len();
-        // GC-SAFETY: guards kept alive until after from_raw_values (see span_vec_to_rcrd).
+        // GC-SAFETY: column guards live until this function returns; the field
+        // list is rooted by `set_names_str` and `new_rcrd` (see span_vec_to_rcrd).
         let g_year = unsafe { alloc_int_col(n, |i| i32::from(dts[i].year())) };
         let g_month = unsafe { alloc_int_col(n, |i| i32::from(dts[i].month())) };
         let g_day = unsafe { alloc_int_col(n, |i| i32::from(dts[i].day())) };
@@ -1228,7 +1230,8 @@ pub mod vctrs_support {
     /// Fields: `hour`, `minute`, `second`, `nanosecond`.
     pub fn time_vec_to_rcrd(times: &[Time]) -> SEXP {
         let n = times.len();
-        // GC-SAFETY: guards kept alive until after from_raw_values (see span_vec_to_rcrd).
+        // GC-SAFETY: column guards live until this function returns; the field
+        // list is rooted by `set_names_str` and `new_rcrd` (see span_vec_to_rcrd).
         let g_hour = unsafe { alloc_int_col(n, |i| i32::from(times[i].hour())) };
         let g_minute = unsafe { alloc_int_col(n, |i| i32::from(times[i].minute())) };
         let g_second = unsafe { alloc_int_col(n, |i| i32::from(times[i].second())) };

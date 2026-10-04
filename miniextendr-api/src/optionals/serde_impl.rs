@@ -721,10 +721,11 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             sexp
         }
         JsonValue::String(s) => {
-            let sexp = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, 1) };
+            // Protect the vector before Rf_mkCharLenCE, which can trigger GC (#1760).
+            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1)) };
             let charsxp = unsafe { crate::altrep_impl::checked_mkchar(s) };
-            sexp.set_string_elt(0, charsxp);
-            sexp
+            sexp.get().set_string_elt(0, charsxp);
+            sexp.get()
         }
         JsonValue::Array(arr) => json_array_to_sexp(arr),
         JsonValue::Object(map) => {
