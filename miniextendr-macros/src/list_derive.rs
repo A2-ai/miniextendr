@@ -184,7 +184,9 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 /// Derive `TryFromList` for structs (R -> Rust).
 ///
 /// Generates an `impl TryFromList for T` that extracts struct fields from an R list:
-/// - Named structs: extract by field name from a named R list
+/// - Named structs: extract by field name from a named R list. A field whose
+///   name appears more than once in the list is a `SexpError::DuplicateName`
+///   error; other names, repeated or not, are ignored.
 /// - Tuple structs: extract by position (index 0, 1, 2, ...)
 /// - Unit structs: accept any list (no extraction needed)
 ///
@@ -211,7 +213,8 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let from_list_body = match &struct_data.fields {
         // Named struct: extract by field name
         Fields::Named(fields) => {
-            let mut field_extractions: Vec<proc_macro2::TokenStream> = Vec::new();
+            // (field ident, field type, R name) of every field read from the list.
+            let mut read_fields: Vec<(syn::Ident, &syn::Type, String)> = Vec::new();
             let mut field_inits: Vec<proc_macro2::TokenStream> = Vec::new();
 
             for f in fields.named.iter() {
@@ -233,21 +236,48 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 bounds.push(parse_quote!(::miniextendr_api::from_r::SexpError: ::core::convert::From<<#ty as ::miniextendr_api::from_r::TryFromSexp>::Error>));
 
                 let name_str = crate::naming::ident_name(&ident);
-                // Fetch the raw element, then convert — so a present-but-wrong-type
-                // field reports the real conversion error instead of being
-                // misreported as a missing field.
-                field_extractions.push(quote! {
+                field_inits.push(quote! { #ident });
+                read_fields.push((ident, ty, name_str));
+            }
+
+            // One pass over the list's names finds every field's element
+            // (`List::__mx_field_positions`, which takes the names sorted).
+            // A field name that appears twice in the list is a
+            // `DuplicateName` error: the struct could keep only one of the
+            // values. Repeated names that are not fields are ignored, as
+            // unknown names are (#1754).
+            let mut sorted_names: Vec<&str> =
+                read_fields.iter().map(|(_, _, n)| n.as_str()).collect();
+            sorted_names.sort_unstable();
+
+            // Fetch the raw element, then convert — so a present-but-wrong-type
+            // field reports the real conversion error instead of being
+            // misreported as a missing field.
+            let field_extractions = read_fields.iter().map(|(ident, ty, name_str)| {
+                let slot = sorted_names
+                    .binary_search(&name_str.as_str())
+                    .expect("field name is in the sorted list");
+                quote! {
                     let #ident: #ty = {
-                        let __elem = list.get_named_sexp(#name_str)
+                        let __elem = __mx_positions[#slot]
+                            .and_then(|__i| __mx_list.get(__i))
                             .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(#name_str.into()))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
                             .map_err(::miniextendr_api::from_r::SexpError::from)?
                     };
-                });
-                field_inits.push(quote! { #ident });
-            }
+                }
+            });
+
+            let positions = if read_fields.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    let __mx_positions = __mx_list.__mx_field_positions([#(#sorted_names),*])?;
+                }
+            };
 
             quote! {
+                #positions
                 #(#field_extractions)*
                 Ok(Self { #(#field_inits),* })
             }
@@ -283,11 +313,11 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
                 let idx_isize = input_idx as isize;
                 field_extractions.push(quote! {
                     let #ident: #ty = {
-                        let __elem = list.get(#idx_isize)
+                        let __elem = __mx_list.get(#idx_isize)
                             .ok_or_else(|| ::miniextendr_api::from_r::SexpError::Length(
                                 ::miniextendr_api::from_r::SexpLengthError {
                                     expected: #input_fields,
-                                    actual: list.len() as usize,
+                                    actual: __mx_list.len() as usize,
                                 }
                             ))?;
                         <#ty as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__elem)
@@ -323,7 +353,7 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::list::TryFromList for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::from_r::SexpError;
 
-            fn try_from_list(list: ::miniextendr_api::list::List) -> Result<Self, ::miniextendr_api::from_r::SexpError> {
+            fn try_from_list(__mx_list: ::miniextendr_api::list::List) -> Result<Self, ::miniextendr_api::from_r::SexpError> {
                 #from_list_body
             }
         }

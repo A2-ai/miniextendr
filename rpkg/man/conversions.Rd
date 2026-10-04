@@ -220,6 +220,10 @@
 \alias{conv_named_list_contains}
 \alias{conv_named_list_len}
 \alias{conv_named_list_roundtrip}
+\alias{conv_list_names_report}
+\alias{conv_list_get_named_a}
+\alias{conv_try_from_list_field_x}
+\alias{conv_dots_names_report}
 \alias{conv_tuple1_roundtrip}
 \alias{conv_tuple2_roundtrip}
 \alias{conv_tuple3_sum}
@@ -663,6 +667,14 @@ conv_named_list_len(config)
 
 conv_named_list_roundtrip(config)
 
+conv_list_names_report(lst)
+
+conv_list_get_named_a(lst)
+
+conv_try_from_list_field_x(input)
+
+conv_dots_names_report(...)
+
 conv_tuple1_roundtrip(solo)
 
 conv_tuple2_roundtrip(pair)
@@ -677,6 +689,12 @@ conv_tuple3_sum(triple)
 \item{b}{Second integer vector (mutated in-place).}
 
 \item{config}{Input named list.}
+
+\item{lst}{A list; its names may repeat.}
+
+\item{input}{A list with an \code{x} entry.}
+
+\item{...}{Any arguments.}
 
 \item{solo}{Unnamed list containing a single integer.}
 
@@ -1141,6 +1159,18 @@ Test \code{NamedList::contains}: checks existence of "a", "b", and "missing".
 Test \code{NamedList} length queries: returns total length and named-element count.
 
 Test \code{NamedList} roundtrip: converts to \code{List} and back to R.
+
+Test that a \code{List} argument accepts any R list, repeated names included,
+and reports \code{List::first_duplicate_name}.
+
+Test \code{List::get_named}: the element named \code{a} as a double (\code{NA} when
+absent). With a repeated \code{a}, R's \code{x[["a"]]} gives the first; so does this.
+
+Test \verb{#[derive(TryFromList)]} on a list with repeated names: a repeated
+field name (\code{x}) is an error, a repeated other name is ignored.
+
+Test \code{Dots::try_list} on repeated names: \code{f(a = 1, a = 2)} reaches the
+body, which reports the dots' length and first repeated name.
 
 Test 1-tuple argument round-trip: reads a 1-element unnamed list as \verb{(i32,)} and returns it.
 

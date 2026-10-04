@@ -579,6 +579,26 @@ pub fn list_length(x: List) -> i32 {
 }
 ```
 
+A `List` argument takes any R list (or pairlist), whatever its names. R lets a
+name appear more than once (`list(a = 1, a = 2)`), and so does `List`;
+`get_named` returns the first element with the name, as `x[["a"]]` does. A
+function that needs unique names checks for them itself, with its own message:
+
+```rust
+#[miniextendr]
+pub fn settings_count(settings: List) -> i32 {
+    if let Some(name) = settings.first_duplicate_name() {
+        panic!("`settings` has the name {name:?} more than once");
+    }
+    settings.len() as i32
+}
+```
+
+`first_duplicate_name` skips `NA` and empty names. The conversions that would
+have to drop a value refuse a repeated name themselves: `HashMap` / `BTreeMap`
+(from a list or via `TryFromList`), `NamedVector`, `typed_list!` specs, and a
+`#[derive(TryFromList)]` struct whose field name appears twice.
+
 ### Data Frames
 
 Accept a validated `DataFrame` view and use its typed column accessors:
@@ -786,7 +806,7 @@ pub fn get_option(config: NamedList) -> Option<String> {
 
 **When to use**: `List::get_named()` is fine for a single lookup. Use `NamedList` when you need multiple lookups on the same list (O(n) build + O(1) per lookup vs O(n) per lookup).
 
-`NamedList` implements `TryFromSexp`, so it can be used directly as a function parameter. `NA` and empty-string names are excluded from the index; duplicate names resolve to the last occurrence.
+`NamedList` implements `TryFromSexp`, so it can be used directly as a function parameter. `NA` and empty-string names are excluded from the index; a repeated name resolves to its first occurrence, as `x[["name"]]` does in R.
 
 ---
 

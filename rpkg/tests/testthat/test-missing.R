@@ -20,7 +20,8 @@ test_that("Missing<List> reads an omitted, a present and a refused list", {
   expect_equal(missing_test_list(), "absent")
   expect_equal(missing_test_list(list(1, "a")), "2 elements")
   expect_error(missing_test_list("a"), "'x'.*got character")
-  expect_error(missing_test_list(list(a = 1, a = 2)), "duplicate name 'a'")
+  # A repeated name is a list R accepts, and so does `List` (#1754).
+  expect_equal(missing_test_list(list(a = 1, a = 2)), "2 elements")
 })
 
 test_that("Missing<Option<f64>> distinguishes missing, NULL, and present", {

@@ -1330,9 +1330,11 @@ pub fn use_record(x: List) -> i32 {
 }
 ```
 
-`TryFromList` reports a `MissingField` error when a named element is absent and
-the field's own conversion error (e.g. a type mismatch) when an element is
-present but the wrong type.
+`TryFromList` reports a `MissingField` error when a named element is absent, a
+`DuplicateName` error when a field's name appears more than once in the list
+(the struct could keep only one of the values; other repeated names are
+ignored, as unknown names are), and the field's own conversion error (e.g. a
+type mismatch) when an element is present but the wrong type.
 
 #### DataFrame Mode
 

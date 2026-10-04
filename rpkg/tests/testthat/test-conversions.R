@@ -662,6 +662,99 @@ test_that("NamedList round-trips back to an R list", {
   expect_equal(res$b, "two")
 })
 
+test_that("NamedList: a repeated name gives its first element, as x[[name]] does (#1754)", {
+  x <- list(width = 3L, width = 5L, height = 4L)
+  expect_equal(conv_named_list_get(x), x[["width"]] * x[["height"]])
+  expect_equal(conv_named_list_get(x), 12L)
+  expect_equal(conv_named_list_len(x), c(3L, 2L))
+})
+
+# =============================================================================
+# Repeated list names (#1754)
+# =============================================================================
+
+test_that("a List argument accepts repeated names and reports the first repeat", {
+  expect_identical(
+    conv_list_names_report(list(a = 1, a = 2)),
+    list(len = 2L, dup = "a")
+  )
+  expect_identical(
+    conv_list_names_report(list(a = 1, b = 2, b = 3, a = 4)),
+    list(len = 4L, dup = "b")
+  )
+})
+
+test_that("first_duplicate_name is NA when no name repeats", {
+  expect_identical(
+    conv_list_names_report(list(a = 1, b = 2)),
+    list(len = 2L, dup = NA_character_)
+  )
+  expect_identical(
+    conv_list_names_report(list(1, 2)),
+    list(len = 2L, dup = NA_character_)
+  )
+  expect_identical(
+    conv_list_names_report(list()),
+    list(len = 0L, dup = NA_character_)
+  )
+})
+
+test_that("first_duplicate_name skips NA and empty names", {
+  x <- list(1, 2, 3, 4, 5)
+  names(x) <- c(NA, NA, "", "", "a")
+  expect_identical(conv_list_names_report(x), list(len = 5L, dup = NA_character_))
+  names(x) <- c(NA, "", "a", NA, "a")
+  expect_identical(conv_list_names_report(x), list(len = 5L, dup = "a"))
+})
+
+test_that("a pairlist with repeated names converts to List", {
+  expect_identical(
+    conv_list_names_report(pairlist(a = 1, a = 2)),
+    list(len = 2L, dup = "a")
+  )
+})
+
+test_that("a List argument still refuses a non-list", {
+  expect_error(conv_list_names_report("a"), "'lst'")
+  expect_error(conv_list_names_report(1:3), "'lst'")
+})
+
+test_that("List::get_named returns the first of a repeated name, as x[[name]] does", {
+  x <- list(a = 1, b = 2, a = 3)
+  expect_identical(conv_list_get_named_a(x), x[["a"]])
+  expect_identical(conv_list_get_named_a(x), 1)
+  expect_identical(conv_list_get_named_a(list(b = 2)), NA_real_)
+})
+
+test_that("derive(TryFromList) refuses a repeated field name", {
+  expect_error(
+    conv_try_from_list_field_x(list(x = 1, x = 2)),
+    'duplicate name.*"x"'
+  )
+  # The field's own name repeats even when other names come in between.
+  expect_error(
+    conv_try_from_list_field_x(list(x = 1, y = 0, x = 2)),
+    'duplicate name.*"x"'
+  )
+})
+
+test_that("derive(TryFromList) ignores repeated names that are not fields", {
+  expect_identical(conv_try_from_list_field_x(list(x = 1, extra = 2, extra = 3)), 1)
+  expect_identical(conv_try_from_list_field_x(list(extra = 2, extra = 3, x = 4)), 4)
+  expect_error(conv_try_from_list_field_x(list(extra = 2, extra = 3)), "missing")
+})
+
+test_that("dots with a repeated name reach the body (#1754)", {
+  expect_identical(
+    conv_dots_names_report(a = 1, a = 2),
+    list(len = 2L, dup = "a")
+  )
+  expect_identical(
+    conv_dots_names_report(a = 1, b = 2, 3),
+    list(len = 3L, dup = NA_character_)
+  )
+})
+
 # =============================================================================
 # Map conversion edge cases (Phase A1/A2)
 # =============================================================================

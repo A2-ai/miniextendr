@@ -345,25 +345,19 @@ mod tests {
         assert_eq!(none, Missing::Absent);
     }
 
-    /// `Missing<List>` is a parameter type: `List`'s conversion error reaches
-    /// `SexpError`, each variant to its `SexpError` counterpart.
+    /// `Missing<List>` is a parameter type: `List`'s conversion error (a
+    /// type error, the only way a `List` conversion fails) reaches
+    /// `SexpError::Type`.
     #[test]
     fn missing_list_converts() {
         fn is_param<T: TryFromSexp>() {}
         is_param::<Missing<crate::list::List>>();
 
-        let type_err = crate::from_r::SexpTypeError {
+        let type_err: <crate::list::List as TryFromSexp>::Error = crate::from_r::SexpTypeError {
             expected: crate::SEXPTYPE::VECSXP,
             actual: crate::SEXPTYPE::STRSXP,
         };
-        assert!(matches!(
-            SexpError::from(crate::list::ListFromSexpError::Type(type_err)),
-            SexpError::Type(_)
-        ));
-        let dup = crate::list::ListFromSexpError::DuplicateName(crate::list::DuplicateNameError {
-            name: "a".to_string(),
-        });
-        assert!(matches!(SexpError::from(dup), SexpError::DuplicateName(name) if name == "a"));
+        assert!(matches!(SexpError::from(type_err), SexpError::Type(_)));
     }
 }
 // endregion

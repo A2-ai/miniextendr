@@ -32,8 +32,8 @@
 //! let alpha: Vec<f64> = validated.get("alpha")?;
 //! ```
 
-use crate::from_r::TryFromSexp;
-use crate::list::{List, ListFromSexpError};
+use crate::from_r::{SexpTypeError, TryFromSexp};
+use crate::list::List;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use std::collections::HashSet;
 use std::ffi::CStr;
@@ -191,7 +191,7 @@ impl TypeSpec {
 #[derive(Debug, Clone)]
 pub enum TypedListError {
     /// The input was not a list.
-    NotList(ListFromSexpError),
+    NotList(SexpTypeError),
     /// A required field is missing.
     Missing {
         /// Name of the missing field.
@@ -261,12 +261,6 @@ impl std::fmt::Display for TypedListError {
 }
 
 impl std::error::Error for TypedListError {}
-
-impl From<ListFromSexpError> for TypedListError {
-    fn from(e: ListFromSexpError) -> Self {
-        TypedListError::NotList(e)
-    }
-}
 // endregion
 
 // region: TypedList wrapper

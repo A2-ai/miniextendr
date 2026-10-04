@@ -48,6 +48,13 @@ test_that("validate_numeric_args validates type and length", {
     validate_numeric_args(alpha = c(1.0, 2.0, 3.0, 4.0), beta = list(), gamma = "hello"),
     4L
   )
+
+  # A repeated name reaches the typed-list validation, which refuses it
+  # itself (#1754: the dots' list conversion no longer does).
+  expect_error(
+    validate_numeric_args(alpha = c(1.0, 2.0, 3.0, 4.0), beta = list(), beta = list()),
+    'duplicate field name: "beta"'
+  )
 })
 
 test_that("validate_strict_args rejects extra fields", {

@@ -28,8 +28,10 @@ use super::List;
 ///
 /// # Name Handling
 ///
-/// - `NA` and empty-string names are excluded from the index
-/// - If duplicate names exist, the **last** occurrence wins
+/// - `NA`, empty-string and non-UTF-8 names are excluded from the index
+/// - If a name appears more than once, the **first** occurrence wins, as with
+///   R's `x[["name"]]` and [`List::get_named`]; check
+///   [`List::first_duplicate_name`] to refuse such a list instead
 /// - Positional access via [`get_index`](Self::get_index) is always available
 pub struct NamedList {
     list: List,
@@ -38,28 +40,22 @@ pub struct NamedList {
 
 impl NamedList {
     /// Build a `NamedList` from a `List`, indexing all non-empty, non-NA names.
+    /// A repeated name indexes its first element.
     ///
     /// Returns `None` if the list has no `names` attribute.
     pub fn new(list: List) -> Option<Self> {
-        let names_sexp = list.names()?;
+        // No `names` attribute, no `NamedList`.
+        list.names()?;
         let n: usize = list
             .len()
             .try_into()
             .expect("list length must be non-negative");
         let mut index = HashMap::with_capacity(n);
 
-        for i in 0..n {
-            let idx: isize = i.try_into().expect("index exceeds isize::MAX");
-            let name_sexp = names_sexp.string_elt(idx);
-            if name_sexp == SEXP::na_string() {
-                continue;
-            }
-            let name_ptr = name_sexp.r_char();
-            let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-            if let Ok(s) = name_cstr.to_str() {
-                if !s.is_empty() {
-                    index.insert(s.to_owned(), i);
-                }
+        for (i, s) in list.text_names() {
+            if !s.is_empty() && !index.contains_key(s) {
+                let i: usize = i.try_into().expect("list position is non-negative");
+                index.insert(s.to_owned(), i);
             }
         }
 
@@ -166,7 +162,7 @@ impl TryFromSexp for NamedList {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
+        let list = List::try_from_sexp(sexp)?;
         NamedList::new(list)
             .ok_or_else(|| SexpError::InvalidValue("list has no names attribute".into()))
     }

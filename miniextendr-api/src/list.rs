@@ -111,30 +111,104 @@ impl List {
         T::try_from_sexp(sexp).ok()
     }
 
+    /// The names this list can be looked up by: `(position, name)` for each
+    /// element whose name is neither `NA` nor invalid UTF-8, in list order.
+    /// Empty names are included. Yields nothing when the list has no `names`
+    /// attribute.
+    ///
+    /// [`get_named_sexp`](Self::get_named_sexp),
+    /// [`first_duplicate_name`](Self::first_duplicate_name), [`NamedList`] and
+    /// the `#[derive(TryFromList)]` field lookup all walk the names through
+    /// this, so they agree on which names count.
+    ///
+    /// The `&str`s point into R's CHARSXP cache; they stay valid while the
+    /// list (which roots its `names` attribute) is reachable.
+    fn text_names(self) -> impl Iterator<Item = (isize, &'static str)> {
+        let names = self.names();
+        let n = if names.is_some() { self.len() } else { 0 };
+        (0..n).filter_map(move |i| {
+            let name_sexp = names?.string_elt(i);
+            if name_sexp == SEXP::na_string() {
+                return None;
+            }
+            let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_sexp.r_char()) };
+            name_cstr.to_str().ok().map(|s| (i, s))
+        })
+    }
+
     /// Get the raw element `SEXP` associated with `name`, without conversion.
     ///
     /// Returns the element exactly as stored so callers can convert it with any
     /// [`TryFromSexp`] error type — not only those whose error is `SexpError`.
     /// Returns `None` when the list has no `names` attribute or no name matches.
+    ///
+    /// When the name appears more than once, the first element with that name
+    /// is returned, as R's `x[["name"]]` does.
     pub fn get_named_sexp(self, name: &str) -> Option<SEXP> {
-        let names_sexp = self.names()?;
-        let n = self.len();
+        self.text_names()
+            .find(|&(_, s)| s == name)
+            .map(|(i, _)| self.0.vector_elt(i))
+    }
 
-        // Search for matching name
-        for i in 0..n {
-            let name_sexp = names_sexp.string_elt(i);
-            if name_sexp == SEXP::na_string() {
-                continue;
-            }
-            let name_ptr = name_sexp.r_char();
-            let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-            if let Ok(s) = name_cstr.to_str() {
-                if s == name {
-                    return Some(self.0.vector_elt(i));
+    /// The first name that appears more than once in the list, if any.
+    ///
+    /// An R list may repeat a name (`list(a = 1, a = 2)`), and a `List`
+    /// argument accepts such a list, as R does. A function that needs each
+    /// name to be unique checks for it itself, and words its own error:
+    ///
+    /// ```no_run
+    /// use miniextendr_api::{List, miniextendr};
+    ///
+    /// #[miniextendr]
+    /// pub fn settings_count(settings: List) -> i32 {
+    ///     if let Some(name) = settings.first_duplicate_name() {
+    ///         panic!("`settings` has the name {name:?} more than once; each entry needs a unique name");
+    ///     }
+    ///     settings.len() as i32
+    /// }
+    /// ```
+    ///
+    /// Only names that can identify an element are compared: `NA` and empty
+    /// names are skipped (R lets any number of elements go unnamed), and so
+    /// are names that are not valid UTF-8. Returns `None` for a list without
+    /// a `names` attribute.
+    pub fn first_duplicate_name(self) -> Option<String> {
+        let mut seen = HashSet::new();
+        self.text_names()
+            .map(|(_, s)| s)
+            .filter(|s| !s.is_empty())
+            .find(|s| !seen.insert(*s))
+            .map(str::to_owned)
+    }
+
+    /// Positions of a derived struct's fields, for the code
+    /// `#[derive(TryFromList)]` generates. Not public API.
+    ///
+    /// `sorted_fields` holds the struct's field names in ascending byte
+    /// order (the derive sorts them); entry `k` of the result is the position
+    /// of the first element named `sorted_fields[k]`, or `None` when no
+    /// element has that name. One pass over the names, `O(n log fields)`.
+    ///
+    /// A field name that appears more than once is an error
+    /// ([`SexpError::DuplicateName`]): the struct could only keep one of the
+    /// values. Other repeated names are ignored, as names that are not fields
+    /// are.
+    #[doc(hidden)]
+    pub fn __mx_field_positions<const N: usize>(
+        self,
+        sorted_fields: [&str; N],
+    ) -> Result<[Option<isize>; N], SexpError> {
+        debug_assert!(sorted_fields.is_sorted(), "field names must be sorted");
+        let mut positions = [None; N];
+        for (i, name) in self.text_names() {
+            if let Ok(k) = sorted_fields.binary_search(&name) {
+                if positions[k].is_some() {
+                    return Err(SexpError::DuplicateName(name.to_owned()));
                 }
+                positions[k] = Some(i);
             }
         }
-        None
+        Ok(positions)
     }
 
     /// Get element by name and convert to type `T`.
@@ -772,6 +846,11 @@ where
     }
 }
 
+/// Keys are the element names; an element without a usable name (no `names`
+/// attribute, `NA`, or not valid UTF-8) is keyed by its 0-based position, and
+/// empty names share the key `""` (the last one wins). A non-empty name that
+/// appears more than once is an error ([`SexpError::DuplicateName`]), as for
+/// the `TryFromSexp` map conversion.
 impl<V> TryFromList for HashMap<String, V>
 where
     V: TryFromSexp<Error = SexpError>,
@@ -779,6 +858,10 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        // A repeated name would leave only one of its values in the map.
+        if let Some(name) = list.first_duplicate_name() {
+            return Err(SexpError::DuplicateName(name));
+        }
         let n: usize = list
             .len()
             .try_into()
@@ -829,6 +912,11 @@ where
     }
 }
 
+/// Keys are the element names; an element without a usable name (no `names`
+/// attribute, `NA`, or not valid UTF-8) is keyed by its 0-based position, and
+/// empty names share the key `""` (the last one wins). A non-empty name that
+/// appears more than once is an error ([`SexpError::DuplicateName`]), as for
+/// the `TryFromSexp` map conversion.
 impl<V> TryFromList for BTreeMap<String, V>
 where
     V: TryFromSexp<Error = SexpError>,
@@ -836,6 +924,10 @@ where
     type Error = SexpError;
 
     fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        // A repeated name would leave only one of its values in the map.
+        if let Some(name) = list.first_duplicate_name() {
+            return Err(SexpError::DuplicateName(name));
+        }
         let n: usize = list
             .len()
             .try_into()
@@ -1250,60 +1342,15 @@ impl IntoR for Vec<Option<List>> {
     }
 }
 
-/// Error when a list has duplicate non-NA names.
-#[derive(Debug, Clone)]
-pub struct DuplicateNameError {
-    /// The duplicate name that was found.
-    pub name: String,
-}
-
-impl std::fmt::Display for DuplicateNameError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "list has duplicate name: {:?}", self.name)
-    }
-}
-
-impl std::error::Error for DuplicateNameError {}
-
-/// Error when converting SEXP to List fails.
-#[derive(Debug, Clone)]
-pub enum ListFromSexpError {
-    /// Wrong SEXP type.
-    Type(crate::from_r::SexpTypeError),
-    /// Duplicate non-NA name found.
-    DuplicateName(DuplicateNameError),
-}
-
-impl std::fmt::Display for ListFromSexpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ListFromSexpError::Type(e) => write!(f, "{}", e),
-            ListFromSexpError::DuplicateName(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for ListFromSexpError {}
-
-impl From<crate::from_r::SexpTypeError> for ListFromSexpError {
-    fn from(e: crate::from_r::SexpTypeError) -> Self {
-        ListFromSexpError::Type(e)
-    }
-}
-
-/// So a `List` reads through the wrappers that convert their inner error to
-/// [`SexpError`], such as `Missing<List>`.
-impl From<ListFromSexpError> for SexpError {
-    fn from(e: ListFromSexpError) -> Self {
-        match e {
-            ListFromSexpError::Type(e) => SexpError::Type(e),
-            ListFromSexpError::DuplicateName(e) => SexpError::DuplicateName(e.name),
-        }
-    }
-}
-
+/// A `List` reads any R list, whatever its names.
+///
+/// Accepts a `VECSXP`, and a pairlist (`LISTSXP`) coerced to one; anything
+/// else is a [`SexpTypeError`]. Names are not checked: R allows a name to
+/// appear more than once (`list(a = 1, a = 2)`), and so does `List`. A
+/// function that needs unique names checks with
+/// [`List::first_duplicate_name`].
 impl TryFromSexp for List {
-    type Error = ListFromSexpError;
+    type Error = SexpTypeError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
@@ -1311,49 +1358,17 @@ impl TryFromSexp for List {
         // Accept VECSXP (generic list) directly
         // Also accept LISTSXP (pairlist) by coercing to VECSXP
         // Note: Rf_isList() only returns true for LISTSXP/NILSXP, not VECSXP
-        let list_sexp = if actual == VECSXP {
-            sexp
+        if actual == VECSXP {
+            Ok(List(sexp))
         } else if actual == LISTSXP {
             // Accept pairlists by coercing to a VECSXP list.
-            sexp.coerce(VECSXP)
+            Ok(List(sexp.coerce(VECSXP)))
         } else {
-            return Err(crate::from_r::SexpTypeError {
+            Err(SexpTypeError {
                 expected: VECSXP,
                 actual,
-            }
-            .into());
-        };
-
-        // Check for duplicate non-NA names
-        let names_sexp = list_sexp.get_names();
-        if names_sexp != SEXP::nil() {
-            let n = list_sexp.xlength();
-            let n_usize: usize = n.try_into().expect("list length must be non-negative");
-            let mut seen = HashSet::with_capacity(n_usize);
-
-            for i in 0..n {
-                let name_sexp = names_sexp.string_elt(i);
-                // Skip NA names
-                if name_sexp == SEXP::na_string() {
-                    continue;
-                }
-                // Skip empty names
-                let name_ptr = name_sexp.r_char();
-                let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-                if let Ok(s) = name_cstr.to_str() {
-                    if s.is_empty() {
-                        continue;
-                    }
-                    if !seen.insert(s) {
-                        return Err(ListFromSexpError::DuplicateName(DuplicateNameError {
-                            name: s.to_string(),
-                        }));
-                    }
-                }
-            }
+            })
         }
-
-        Ok(List(list_sexp))
     }
 }
 
@@ -1364,8 +1379,7 @@ impl TryFromSexp for Option<List> {
         if sexp == SEXP::nil() {
             return Ok(None);
         }
-        let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
-        Ok(Some(list))
+        Ok(Some(List::try_from_sexp(sexp)?))
     }
 }
 

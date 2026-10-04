@@ -29,7 +29,7 @@ When a `#[miniextendr]` function has `name: ...` in its Rust signature, the macr
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `as_list()` | `List` | Fast unchecked conversion to a `List` |
-| `try_list()` | `Result<List, …>` | Validated conversion |
+| `try_list()` | `Result<List, SexpTypeError>` | Type-checked conversion (names not checked) |
 | `typed(spec)` | `Result<TypedList, TypedListError>` | Validate against a `TypedListSpec` |
 
 ### Custom binding name with `name: ...`
@@ -183,7 +183,7 @@ pub fn configure_model(dots: ...) -> String {
 ### Do I need positional dots or named/typed dots?
 
 - I just want to forward dots to another R function or count how many arguments were passed:
-  - Name the dots (`dots: ...`) and use `dots.as_list()` (unchecked) or `dots.try_list()` (validated).
+  - Name the dots (`dots: ...`) and use `dots.as_list()` (unchecked) or `dots.try_list()` (type-checked). Neither checks names: `f(a = 1, a = 2)` reaches the body; refuse it with `List::first_duplicate_name` if the function needs unique names.
 - I know the exact structure: specific named fields each with known types:
   - Use `typed_list!` either as attribute sugar or manually.
 - I want optional fields mixed with required ones:

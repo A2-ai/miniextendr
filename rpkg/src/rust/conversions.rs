@@ -1624,6 +1624,65 @@ pub fn conv_named_list_roundtrip(config: NamedList) -> miniextendr_api::list::Li
 }
 // endregion
 
+// region: Repeated list names (#1754)
+
+/// What `conv_list_names_report` returns: the list's length and its first
+/// repeated name (`NA` when no name repeats).
+#[derive(miniextendr_api::IntoList, miniextendr_api::PreferList)]
+pub struct ListNamesReport {
+    len: i32,
+    dup: Option<String>,
+}
+
+/// Test that a `List` argument accepts any R list, repeated names included,
+/// and reports `List::first_duplicate_name`.
+/// @param lst A list; its names may repeat.
+#[miniextendr]
+pub fn conv_list_names_report(lst: miniextendr_api::list::List) -> ListNamesReport {
+    ListNamesReport {
+        len: i32::try_from(lst.len()).expect("test list fits in i32"),
+        dup: lst.first_duplicate_name(),
+    }
+}
+
+/// Test `List::get_named`: the element named `a` as a double (`NA` when
+/// absent). With a repeated `a`, R's `x[["a"]]` gives the first; so does this.
+/// @param lst A list; its names may repeat.
+#[miniextendr]
+pub fn conv_list_get_named_a(lst: miniextendr_api::list::List) -> Option<f64> {
+    lst.get_named::<f64>("a")
+}
+
+/// A struct read from a list by `#[derive(TryFromList)]`.
+#[derive(miniextendr_api::TryFromList)]
+pub struct ListFieldX {
+    x: f64,
+}
+
+/// Test `#[derive(TryFromList)]` on a list with repeated names: a repeated
+/// field name (`x`) is an error, a repeated other name is ignored.
+/// @param input A list with an `x` entry.
+#[miniextendr]
+pub fn conv_try_from_list_field_x(input: miniextendr_api::list::List) -> Result<f64, String> {
+    use miniextendr_api::list::TryFromList;
+    ListFieldX::try_from_list(input)
+        .map(|s| s.x)
+        .map_err(|e| e.to_string())
+}
+
+/// Test `Dots::try_list` on repeated names: `f(a = 1, a = 2)` reaches the
+/// body, which reports the dots' length and first repeated name.
+/// @param ... Any arguments.
+#[miniextendr]
+pub fn conv_dots_names_report(dots: ...) -> ListNamesReport {
+    let x = dots.try_list().expect("dots are a list");
+    ListNamesReport {
+        len: i32::try_from(x.len()).expect("test list fits in i32"),
+        dup: x.first_duplicate_name(),
+    }
+}
+// endregion
+
 // region: Tuple arguments (TryFromSexp for tuples, #976)
 
 /// Test 1-tuple argument round-trip: reads a 1-element unnamed list as `(i32,)` and returns it.

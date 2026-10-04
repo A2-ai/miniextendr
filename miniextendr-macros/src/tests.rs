@@ -1217,9 +1217,35 @@ fn derive_try_from_list_defaults_ignored_named_fields() {
     let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
     let s = normalize_tokens(expanded);
 
-    assert!(s.contains("get_named_sexp(\"a\")"));
-    assert!(!s.contains("get_named_sexp(\"b\")"));
+    // Only the read field is looked up; the ignored one is never named, so a
+    // repeated `b` in the list is ignored like any other unknown name.
+    assert!(s.contains("__mx_field_positions([\"a\"])"));
+    assert!(!s.contains("\"b\""));
     assert!(s.contains("b:::core::default::Default::default()"));
+}
+
+#[test]
+fn derive_try_from_list_looks_fields_up_in_one_sorted_pass() {
+    // #1754: the derive hands `List::__mx_field_positions` the field names
+    // sorted (it binary-searches them), and each field reads the slot of its
+    // own name in that order.
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            zeta: f64,
+            alpha: f64,
+            r#type: f64,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("__mx_field_positions([\"alpha\",\"type\",\"zeta\"])?"));
+    assert!(s.contains("letzeta:f64={let__elem=__mx_positions[2usize]"));
+    assert!(s.contains("letalpha:f64={let__elem=__mx_positions[0usize]"));
+    assert!(s.contains("letr#type:f64={let__elem=__mx_positions[1usize]"));
+    assert!(s.contains("MissingField(\"type\".into())"));
 }
 
 #[test]

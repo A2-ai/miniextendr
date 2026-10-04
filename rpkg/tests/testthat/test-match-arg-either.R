@@ -44,8 +44,10 @@ test_that("Either<T, List>: a choice goes Left, a list goes Right", {
   expect_equal(match_arg_either_route_or_list("bol"), "Bolus")
   expect_equal(match_arg_either_route_or_list(list(100, 50, 25)), "list:3")
   expect_choice_error(match_arg_either_route_or_list("iv"), "route", routes)
-  # The list arm's own refusal reaches the argument error.
-  expect_error(match_arg_either_route_or_list(list(a = 1, a = 2)), "duplicate name 'a'")
+  # A repeated name is a list R accepts, and so does the `List` arm (#1754).
+  expect_equal(match_arg_either_route_or_list(list(a = 1, a = 2)), "list:2")
+  # The list arm's own refusal (not a list) reaches the argument error.
+  expect_error(match_arg_either_route_or_list(1:3), "'route'.*got integer")
 })
 
 test_that("Option<Either<T, R>>: NULL formal, NULL is None", {

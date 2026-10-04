@@ -153,7 +153,7 @@ fn prefer_list_changes_intor() {
 
 /// `get_named` / `get_index` are generic over any `TryFromSexp` error type, so
 /// a nested list is fetched as `List` directly (its error is
-/// `ListFromSexpError`, not `SexpError`). Regression test for the bound relaxed
+/// `SexpTypeError`, not `SexpError`). Regression test for the bound relaxed
 /// in #865; surfaced again while building a nested-config walker downstream.
 #[test]
 fn get_named_fetches_nested_list() {
@@ -176,3 +176,195 @@ fn get_named_fetches_nested_list() {
         assert!(outer.get_named::<List>("missing").is_none());
     });
 }
+
+// region: Repeated names (#1754)
+
+use miniextendr_api::from_r::SexpError;
+use miniextendr_api::gc_protect::OwnedProtect;
+use miniextendr_api::list::NamedList;
+
+/// Evaluate R source that yields a list, protected for the test's duration.
+fn r_list(code: &str) -> (OwnedProtect, List) {
+    let sexp = miniextendr_api::r_str!(code).expect("R code evaluates");
+    let guard = unsafe { OwnedProtect::new(sexp) };
+    let list = List::try_from_sexp(guard.get()).expect("a list converts to List");
+    (guard, list)
+}
+
+/// A field-reading struct for the `#[derive(TryFromList)]` checks below.
+#[derive(Debug, PartialEq, miniextendr_api::TryFromList)]
+struct Picked {
+    x: f64,
+    y: Option<f64>,
+    #[into_list(ignore)]
+    skipped: i32,
+}
+
+#[test]
+fn list_accepts_repeated_names() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list("list(a = 1, a = 2)");
+        assert_eq!(list.len(), 2);
+
+        // A pairlist with a repeated name converts too.
+        let (_g, list) = r_list("pairlist(a = 1, a = 2)");
+        assert_eq!(list.len(), 2);
+
+        // A non-list is still a type error.
+        let sexp = miniextendr_api::r_str!("1:3").unwrap();
+        let err = List::try_from_sexp(sexp).unwrap_err();
+        assert_eq!(err.expected, miniextendr_api::SEXPTYPE::VECSXP);
+        assert_eq!(err.actual, miniextendr_api::SEXPTYPE::INTSXP);
+    });
+}
+
+#[test]
+fn get_named_returns_first_of_repeated_name() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list("list(a = 1, b = 2, a = 3)");
+        assert_eq!(list.get_named::<f64>("a"), Some(1.0));
+        assert_eq!(
+            list.get_named_sexp("a").and_then(|s| s.as_real()),
+            Some(1.0)
+        );
+        assert_eq!(list.get_named::<f64>("b"), Some(2.0));
+        assert_eq!(list.get_named::<f64>("c"), None);
+    });
+}
+
+#[test]
+fn first_duplicate_name_cases() {
+    r_test_utils::with_r_thread(|| {
+        let dup = |code: &str| {
+            let (_g, list) = r_list(code);
+            list.first_duplicate_name()
+        };
+        assert_eq!(dup("list(a = 1, b = 2)"), None);
+        assert_eq!(dup("list(a = 1, a = 2)"), Some("a".to_string()));
+        // The first name to repeat, not the first name that has a repeat.
+        assert_eq!(
+            dup("list(a = 1, b = 2, b = 3, a = 4)"),
+            Some("b".to_string())
+        );
+        // Unnamed and empty lists have no names to repeat.
+        assert_eq!(dup("list(1, 2)"), None);
+        assert_eq!(dup("list()"), None);
+        // NA and empty names are skipped, however many there are.
+        assert_eq!(
+            dup(r#"setNames(list(1, 2, 3, 4, 5), c(NA, NA, "", "", "a"))"#),
+            None
+        );
+        assert_eq!(
+            dup(r#"setNames(list(1, 2, 3, 4), c(NA, "", "a", "a"))"#),
+            Some("a".to_string())
+        );
+    });
+}
+
+#[test]
+fn named_list_first_occurrence_wins() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list(r#"setNames(list(1, 2, 3, 4), c("a", "b", "a", ""))"#);
+        let named = NamedList::new(list).expect("list has names");
+        assert_eq!(named.get::<f64>("a"), Some(1.0));
+        assert_eq!(named.get_raw("a").and_then(|s| s.as_real()), Some(1.0));
+        assert_eq!(named.named_len(), 2);
+        assert_eq!(named.len(), 4);
+    });
+}
+
+#[test]
+fn derive_try_from_list_refuses_repeated_field_name() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list("list(x = 1, x = 2)");
+        match Picked::try_from_list(list) {
+            Err(SexpError::DuplicateName(name)) => assert_eq!(name, "x"),
+            other => panic!("expected DuplicateName(\"x\"), got {other:?}"),
+        }
+
+        // A field name repeated later, with other names in between.
+        let (_g, list) = r_list("list(y = 0, x = 1, z = 2, y = 3)");
+        match Picked::try_from_list(list) {
+            Err(SexpError::DuplicateName(name)) => assert_eq!(name, "y"),
+            other => panic!("expected DuplicateName(\"y\"), got {other:?}"),
+        }
+    });
+}
+
+#[test]
+fn derive_try_from_list_ignores_other_repeated_names() {
+    r_test_utils::with_r_thread(|| {
+        let expected = Picked {
+            x: 1.0,
+            y: None,
+            skipped: 0,
+        };
+
+        // A repeated name that is not a field. (`y` is an `Option` field: it
+        // must be present, and `NULL` reads as `None`.)
+        let (_g, list) = r_list("list(x = 1, y = NULL, extra = 2, extra = 3)");
+        assert_eq!(Picked::try_from_list(list).unwrap(), expected);
+
+        // A repeated name that matches an ignored field is not read either.
+        let (_g, list) = r_list("list(skipped = 5, x = 1, y = NULL, skipped = 6)");
+        assert_eq!(Picked::try_from_list(list).unwrap(), expected);
+
+        // Fields are found wherever they are, with NA names in between.
+        let (_g, list) = r_list(r#"setNames(list(9, 2, 1), c(NA, "y", "x"))"#);
+        assert_eq!(
+            Picked::try_from_list(list).unwrap(),
+            Picked {
+                x: 1.0,
+                y: Some(2.0),
+                skipped: 0,
+            }
+        );
+    });
+}
+
+/// A field named `list`: the generated `try_from_list` must not name its
+/// parameter `list`, or the field binding would shadow it for `y`.
+#[derive(Debug, PartialEq, miniextendr_api::TryFromList)]
+struct WithListField {
+    list: Vec<f64>,
+    y: f64,
+}
+
+#[test]
+fn derive_try_from_list_field_named_list() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list("list(list = c(1, 2), y = 3)");
+        assert_eq!(
+            WithListField::try_from_list(list).unwrap(),
+            WithListField {
+                list: vec![1.0, 2.0],
+                y: 3.0,
+            }
+        );
+    });
+}
+
+#[test]
+fn derive_try_from_list_missing_and_wrong_type() {
+    r_test_utils::with_r_thread(|| {
+        // An unnamed list has no field names.
+        let (_g, list) = r_list("list(1, 2)");
+        match Picked::try_from_list(list) {
+            Err(SexpError::MissingField(name)) => assert_eq!(name, "x"),
+            other => panic!("expected MissingField(\"x\"), got {other:?}"),
+        }
+
+        // A present field of the wrong type reports its conversion error.
+        let (_g, list) = r_list(r#"list(x = "one")"#);
+        let err = Picked::try_from_list(list).unwrap_err();
+        assert!(
+            !matches!(
+                err,
+                SexpError::MissingField(_) | SexpError::DuplicateName(_)
+            ),
+            "expected the field's conversion error, got {err:?}"
+        );
+    });
+}
+
+// endregion

@@ -2557,7 +2557,10 @@ pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
 /// Derive `TryFromList` for a struct (R list → Rust).
 ///
-/// - Named structs: extract by field name
+/// - Named structs: extract by field name. A field whose name appears more
+///   than once in the list is an error (`SexpError::DuplicateName`), since the
+///   struct could keep only one of the values; other names, repeated or not,
+///   are ignored.
 /// - Tuple structs: extract by position (0, 1, 2, ...)
 /// - Fields annotated `#[into_list(ignore)]` are not read and are initialized with `Default::default()`
 #[proc_macro_derive(TryFromList, attributes(into_list))]
