@@ -56,29 +56,40 @@ Attempts to serialize a u128 field; reports Ok/Err.
 
 Attempts to serialize a HashMap with i32 keys; reports Ok/Err.
 
-Lowers \verb{HostileBigU64 \{ id: 2^53 + 1 \}} to R data. The value is already corrupted in the returned SEXP (2^53 + 1 is not representable in f64).
+Lowers \verb{HostileBigU64 \{ id: 2^53 + 1 \}} to R data. The value is already
+corrupted in the returned SEXP (2^53 + 1 is not representable in f64).
 
-Re-reads lowered HostileBigU64 data; returns the id as a string so R can compare it to the original without its own f64 precision limits.
+Re-reads lowered HostileBigU64 data; returns the id as a string so R can
+compare it to the original without its own f64 precision limits.
 
-Lowers a struct whose Option fields are all None, so R can inspect what the serde path emits for absence (NULL vs typed NA).
+Lowers a struct whose Option fields are all None, so R can inspect what
+the serde path emits for absence (NULL vs typed NA).
 
 Re-reads HostileNones data; reports the parsed Options.
 
-Lowers a live handle-holding struct to plain R data via the ExternalPtr serde pass-through (by value: the \code{handle} entry is the pointee's list).
+Lowers a live handle-holding struct to plain R data via the ExternalPtr
+serde pass-through (by value: the \code{handle} entry is the pointee's list).
 
-Re-reads HandleHolder data, rebuilding a fresh live handle; reports the pointee's fields read THROUGH the rebuilt handle.
+Re-reads HandleHolder data, rebuilding a fresh live handle; reports the
+pointee's fields read THROUGH the rebuilt handle.
 
 Lowers \code{{ x: i32::MIN }}; R receives \code{x = NA_integer_} without error.
 
-Re-reads i32::MIN data as a required i32; reports the outcome (expected: unexpected-NA error — the value is unrecoverable).
+Re-reads i32::MIN data as a required i32; reports the outcome
+(expected: unexpected-NA error — the value is unrecoverable).
 
-Re-reads i32::MIN data as Option\if{html}{\out{<i32>}}; reports the outcome (expected: Some(i32::MIN) has silently become None).
+Re-reads i32::MIN data as Option\if{html}{\out{<i32>}}; reports the outcome
+(expected: Some(i32::MIN) has silently become None).
 
-Macro output path: a bare \verb{-> i32} return of i32::MIN reaches R as NA_integer_ too — the aliasing is IntoR-level, not serde-specific.
+Macro output path: a bare \verb{-> i32} return of i32::MIN reaches R as
+NA_integer_ too — the aliasing is IntoR-level, not serde-specific.
 
-R's NA_real_ IS a NaN with payload 1954, so a Rust f64 carrying exactly those bits round-trips Some -> (R sees NA) -> None, while an ordinary NaN survives as Some(NaN).
+R's NA_real_ IS a NaN with payload 1954, so a Rust f64 carrying exactly
+those bits round-trips Some -> (R sees NA) -> None, while an ordinary NaN
+survives as Some(NaN).
 
-JSON contrast: serde_json writes u64 natively, so the JSON-string path preserves values beyond 2^53 that the native SEXP path corrupts.
+JSON contrast: serde_json writes u64 natively, so the JSON-string path
+preserves values beyond 2^53 that the native SEXP path corrupts.
 
 Re-reads the JSON string; the id survives exactly.
 }
