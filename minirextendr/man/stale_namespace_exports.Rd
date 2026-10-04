@@ -13,7 +13,8 @@ stale_namespace_exports(pkg_dir = usethis::proj_get())
 \verb{list(status = "ok", stale = <chr>, has_export_patterns = <flag>)}
 when the check ran (\code{stale} empty = clean). \verb{list(status = "skip", reason = <chr>, detail = <chr or NULL>)} when it cannot run without
 guessing; \code{reason} is one of \code{"no-namespace"}, \code{"no-wrappers-file"},
-\code{"whole-package-import"} (\code{detail} = the imported package), or
+\code{"import-not-installed"}, \code{"import-export-patterns"}, or
+\code{"import-parse-error"} (\code{detail} = the imported package), or
 \code{"parse-error"} (\code{detail} = the unparseable file, relative to
 \code{pkg_dir}).
 }
@@ -21,10 +22,11 @@ guessing; \code{reason} is one of \code{"no-namespace"}, \code{"no-wrappers-file
 Compares the package's explicit \code{export()} directives against the union of
 (a) top-level objects defined in \verb{R/} sources -- which includes the
 generated \verb{R/<pkg>-wrappers.R}, since it lives in \verb{R/} -- and (b) names
-brought in by \code{importFrom()} directives (roxygen re-exports are
-\code{importFrom()} + \code{export()} pairs, so imported names are legitimate
-backing). Everything is derived statically (\code{parse()} +
-\code{parseNamespaceFile()}); the package is never loaded or executed, so the
+brought in by \code{importFrom()} and whole-package \code{import()} directives.
+Installed dependencies contribute explicit exports from \code{Meta/nsInfo.rds},
+falling back to their shipped NAMESPACE if the metadata is unavailable.
+Everything is derived statically (\code{parse()} + \code{parseNamespaceFile()} and
+installed metadata); no namespace is loaded or executed, so the
 check is side-effect-free and safe to run on a broken tree.
 }
 \details{
@@ -42,10 +44,10 @@ note that pattern-derived exports go unvalidated.
 \code{exportMethods()} / \code{exportClasses()} (S4) are backed by \code{setMethod()} /
 \code{setClass()} side effects, not top-level assignments -- a static
 assignment scan would false-positive them, so they are out of scope.
-\item A whole-package \code{import(pkg)} makes every export statically
-unattributable (any name might come from \code{pkg}), so the check skips
-rather than enumerate a dependency's exports (which would require
-loading its namespace).
+\item Whole-package imports contribute their installed explicit export sets,
+minus any \code{except} names. Missing/unreadable imports and dependencies
+using \code{exportPattern()} still require a skip rather than guessing their
+runtime exports.
 }
 
 The generated wrappers file is gitignored in the scaffold: a fresh clone
