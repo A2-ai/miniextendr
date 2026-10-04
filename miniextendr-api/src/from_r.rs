@@ -787,10 +787,9 @@ pub trait TryFromSexp: Sized {
     /// converts numbers, logicals or lists: that would reject valid
     /// parameters.
     ///
-    /// The built-in string and factor conversions, `#[derive(MatchArg)]`,
-    /// `#[derive(RFactor)]` and
-    /// [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse)
-    /// set it. `Option<T>`, `Vec<T>`, `Box<[T]>`,
+    /// The built-in string and factor conversions (including the uuid, url,
+    /// regex and num-bigint string parsers), `#[derive(MatchArg)]` and
+    /// `#[derive(RFactor)]` set it. `Option<T>`, `Vec<T>`, `Box<[T]>`,
     /// [`Missing<T>`](crate::Missing) and `#[derive(TryFromSexp)]` newtypes
     /// forward it. [`AsCharacter`](crate::AsCharacter) leaves it `false`,
     /// since it also converts numbers.
@@ -2357,11 +2356,11 @@ impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
 ///
 /// Each element must be an `EXTPTRSXP` carrying a `T`; conversion delegates to
 /// [`ExternalPtr::<T>::try_from_sexp`] per element. This lets `#[miniextendr]`
-/// functions accept an R `list()` of opaque handles (issue #827). The blanket
-/// `impl_vec_try_from_sexp_list!` macro can't be used downstream for this — the
-/// orphan rule rejects `impl TryFromSexp for Vec<ExternalPtr<T>>` in user crates
-/// because both `Vec` and `TryFromSexp` are foreign there — so the impl lives
-/// here, keyed on `ExternalPtr<T>` to avoid colliding with the atomic-vector impls.
+/// functions accept an R `list()` of opaque handles (issue #827). A user crate
+/// can't write this impl itself — the orphan rule rejects
+/// `impl TryFromSexp for Vec<ExternalPtr<T>>` there because both `Vec` and
+/// `TryFromSexp` are foreign — so it lives here, keyed on `ExternalPtr<T>` to
+/// avoid colliding with the atomic-vector impls.
 impl<T: TypedExternal + Send> TryFromSexp for Vec<ExternalPtr<T>> {
     type Error = SexpError;
 
@@ -2589,7 +2588,9 @@ mod txt_progress_bar_from_r {
 /// Implement `TryFromSexp for Option<T>` where T already implements TryFromSexp.
 ///
 /// NULL → None, otherwise delegates to T::try_from_sexp and wraps in Some.
-#[macro_export]
+///
+/// Crate-internal: the orphan rule forbids `impl TryFromSexp for Option<T>`
+/// outside `miniextendr-api` (#1731), so this only expands here.
 macro_rules! impl_option_try_from_sexp {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Option<$t> {
@@ -2625,11 +2626,13 @@ macro_rules! impl_option_try_from_sexp {
         }
     };
 }
+pub(crate) use impl_option_try_from_sexp;
 
 /// Implement `TryFromSexp for Vec<T>` from R list (VECSXP).
 ///
-/// Each element is converted via T::try_from_sexp.
-#[macro_export]
+/// Each element is converted via T::try_from_sexp. Crate-internal, like
+/// [`impl_option_try_from_sexp!`]: `Vec<T>` impls are orphans downstream.
+#[allow(unused_macros)] // every caller is behind a feature
 macro_rules! impl_vec_try_from_sexp_list {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Vec<$t> {
@@ -2688,11 +2691,15 @@ macro_rules! impl_vec_try_from_sexp_list {
         }
     };
 }
+// Every caller is a feature-gated integration (serde, aho-corasick, globset).
+#[allow(unused_imports)]
+pub(crate) use impl_vec_try_from_sexp_list;
 
 /// Implement `TryFromSexp for Vec<Option<T>>` from R list (VECSXP).
 ///
 /// NULL elements become None, others are converted via T::try_from_sexp.
-#[macro_export]
+/// Crate-internal, like [`impl_option_try_from_sexp!`].
+#[allow(unused_macros)] // every caller is behind a feature
 macro_rules! impl_vec_option_try_from_sexp_list {
     ($t:ty) => {
         impl $crate::from_r::TryFromSexp for Vec<Option<$t>> {
@@ -2761,6 +2768,9 @@ macro_rules! impl_vec_option_try_from_sexp_list {
         }
     };
 }
+// Every caller is a feature-gated integration (serde, aho-corasick, globset).
+#[allow(unused_imports)]
+pub(crate) use impl_vec_option_try_from_sexp_list;
 
 /// Cap on the number of per-element failures listed in a batched vector
 /// conversion error; the remainder is summarized as `"and N more"`.
@@ -2801,13 +2811,8 @@ pub(crate) const BATCHED_ERROR_CAP: usize = 10;
 ///
 /// Neither names the Rust type: an argument's conversion condition carries it
 /// as `e$rust_type` (#1591).
-///
-/// Public (but hidden) because `try_from_sexp_via_str_parse!` is
-/// `#[macro_export]` and expands in downstream crates — not intended to be
-/// used directly.
-#[doc(hidden)]
 #[derive(Default)]
-pub struct BatchedErrors {
+pub(crate) struct BatchedErrors {
     /// `(0-based index, reason or value)` of the first [`BATCHED_ERROR_CAP`]
     /// failures.
     listed: Vec<(usize, String)>,
@@ -2960,7 +2965,12 @@ pub(crate) fn element_position(index: usize) -> String {
 /// ```ignore
 /// try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
 /// ```
-#[macro_export]
+///
+/// Crate-internal: three of the four impls are for `Option<T>` / `Vec<T>` /
+/// `Vec<Option<T>>`, which the orphan rule (E0117) forbids outside
+/// `miniextendr-api` (#1731). A downstream crate writes `TryFromSexp` for its
+/// own type by hand.
+#[allow(unused_macros)] // every caller is behind a feature
 macro_rules! try_from_sexp_via_str_parse {
     ($ty:ty, $label:literal, |$s:ident| $parse:expr) => {
         impl $crate::from_r::TryFromSexp for $ty {
@@ -3062,6 +3072,9 @@ macro_rules! try_from_sexp_via_str_parse {
         }
     };
 }
+// Every caller is a feature-gated integration (uuid, url, regex, num-bigint).
+#[allow(unused_imports)]
+pub(crate) use try_from_sexp_via_str_parse;
 // endregion
 
 #[cfg(test)]
@@ -3169,6 +3182,6 @@ mod tests {
             }
         }
 
-        crate::try_from_sexp_via_str_parse!(Level, "level", |s| s.parse::<Level>());
+        crate::from_r::try_from_sexp_via_str_parse!(Level, "level", |s| s.parse::<Level>());
     }
 }

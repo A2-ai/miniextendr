@@ -14,8 +14,8 @@
 pub use num_bigint::{BigInt, BigUint};
 
 use crate::coerce::{Coerce, CoerceError, TryCoerce};
+use crate::from_r::try_from_sexp_via_str_parse;
 use crate::into_r::into_r_infallible;
-use crate::try_from_sexp_via_str_parse;
 use std::str::FromStr;
 
 // region: Coerce/TryCoerce impls for BigInt and BigUint

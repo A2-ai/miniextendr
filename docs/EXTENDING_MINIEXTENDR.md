@@ -143,20 +143,58 @@ default `false` otherwise. `false` is always safe: the check is skipped. Never
 set `true` on a type that also converts numbers, logicals or lists; that would
 reject valid parameters.
 
-For string-parsed scalar families, the exported
-`try_from_sexp_via_str_parse!` macro generates `T`, `Option<T>`, `Vec<T>`, and
-`Vec<Option<T>>` implementations (each with `CHARACTER_ONLY = true`) and
-batches every vector parse failure into one diagnostic:
+### Example: Type Parsed From a String
+
+For a type parsed out of an R string, read an `Option<String>` and parse it.
+`Option<String>` already checks the type and length, and returns `None` for
+`NA_character_` and `NULL`. Report NA as `SexpError::Na` and a parse failure
+as `SexpError::InvalidValue`, the same as the built-in uuid, url, regex and
+num-bigint conversions:
 
 ```rust
+use std::str::FromStr;
+use miniextendr_api::{SEXP, SEXPTYPE};
+use miniextendr_api::from_r::{SexpError, SexpNaError, TryFromSexp};
+
 pub struct Slug(String);
 
-miniextendr_api::try_from_sexp_via_str_parse!(Slug, "slug", |s| {
-    (!s.is_empty())
-        .then(|| Slug(s.to_owned()))
-        .ok_or("slug cannot be empty")
-});
+impl FromStr for Slug {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+            return Err("expected lowercase letters and '-'");
+        }
+        Ok(Slug(s.to_owned()))
+    }
+}
+
+impl TryFromSexp for Slug {
+    type Error = SexpError;
+    // Reads only character input.
+    const CHARACTER_ONLY: bool = true;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
+        let s = s.ok_or(SexpError::Na(SexpNaError {
+            sexp_type: SEXPTYPE::STRSXP,
+        }))?;
+        s.parse()
+            .map_err(|e| SexpError::InvalidValue(format!("invalid slug: {e}")))
+    }
+}
 ```
+
+A `#[miniextendr]` function can then take `slug: Slug`. It can't take
+`Option<Slug>`, `Vec<Slug>` or `Vec<Option<Slug>>` yet. `Option` and `Vec` are
+foreign to your crate, so the orphan rule (E0117) rejects
+`impl TryFromSexp for Vec<Slug>` there. Those impls would have to come from a
+blanket in `miniextendr-api` keyed on a trait your type implements, and there
+is none for string-parsed types yet (#1766). Until there is, take
+`Vec<String>` (or `Vec<Option<String>>` to allow `NA`) and parse in the
+function body. A newtype over a type that already converts
+(`struct UserId(Uuid)`) is different: `#[derive(TryFromSexp)]` gives it
+`Option<T>`, `Vec<T>` and `Vec<Option<T>>` through `FromRNewtype`.
 
 ### When to Use Direct Implementation
 

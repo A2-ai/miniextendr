@@ -7,8 +7,8 @@
 //! `Self::CHOICES` would name a variant `CHOICES`. The derives that accept
 //! enums and a `#[miniextendr]` impl block have to compile on enums whose
 //! variants take those names. (`try_from_sexp_via_str_parse!` is covered by a
-//! unit test in `miniextendr-api/src/from_r.rs`: its `Option<T>` / `Vec<T>`
-//! impls only compile inside that crate.)
+//! unit test in `miniextendr-api/src/from_r.rs`: the macro is internal to
+//! that crate, #1731.)
 
 #![allow(dead_code, non_camel_case_types)]
 
