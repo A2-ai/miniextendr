@@ -709,6 +709,590 @@ pub fn gc_stress_dataframe_struct_as_list() -> SEXP {
 }
 // endregion
 
+// region: vctrs, serde_json and raw-tagged objects rooted across allocations (#1759, #1760, #1761)
+//
+// Each constructor below allocates (a class vector, a CHARSXP, an attribute
+// value) while the object it is building or decorating is held only in a Rust
+// local. These fixtures build several objects per call, root each one as soon
+// as it is returned, then read every value back in Rust and panic on a
+// mismatch. The input sizes put the object in the same R small-vector size
+// class as the allocation inside the window, so a reaped object is handed
+// straight back out and the readback sees it.
+
+/// Number of objects of each kind built per fixture call.
+#[cfg(any(feature = "vctrs", feature = "serde_json"))]
+const GC_ROOTING_ROUNDS: i32 = 4;
+
+/// Read a character vector back as `Option<&str>` per element.
+#[cfg(any(feature = "vctrs", feature = "serde_json"))]
+fn read_strings(x: SEXP, what: &str) -> Vec<Option<String>> {
+    assert_eq!(
+        x.type_of(),
+        SEXPTYPE::STRSXP,
+        "{what}: not a character vector"
+    );
+    (0..x.xlength())
+        .map(|i| x.string_elt_str(i).map(str::to_string))
+        .collect()
+}
+
+/// Check that `x` is a character vector equal to `expected`.
+#[cfg(any(feature = "vctrs", feature = "serde_json"))]
+fn expect_strings(x: SEXP, expected: &[&str], what: &str) {
+    let expected: Vec<Option<String>> = expected.iter().map(|s| Some(s.to_string())).collect();
+    assert_eq!(read_strings(x, what), expected, "{what}");
+}
+
+/// Check that `x` is an integer vector equal to `expected`.
+#[cfg(any(feature = "vctrs", feature = "serde_json"))]
+fn expect_ints(x: SEXP, expected: &[i32], what: &str) {
+    assert_eq!(
+        x.type_of(),
+        SEXPTYPE::INTSXP,
+        "{what}: not an integer vector"
+    );
+    // SAFETY: INTSXP checked above; `x` is reachable from a rooted object.
+    assert_eq!(unsafe { x.as_slice::<i32>() }, expected, "{what}");
+}
+
+/// Check that `x` is a double vector equal to `expected`.
+#[cfg(any(feature = "vctrs", feature = "serde_json"))]
+fn expect_doubles(x: SEXP, expected: &[f64], what: &str) {
+    assert_eq!(
+        x.type_of(),
+        SEXPTYPE::REALSXP,
+        "{what}: not a double vector"
+    );
+    // SAFETY: REALSXP checked above; `x` is reachable from a rooted object.
+    assert_eq!(unsafe { x.as_slice::<f64>() }, expected, "{what}");
+}
+
+/// Check a vctrs record: `class`, field names, and the length of every field.
+#[cfg(feature = "vctrs")]
+fn expect_rcrd(x: SEXP, class: &[&str], fields: &[&str], len: isize, what: &str) {
+    assert_eq!(x.type_of(), SEXPTYPE::VECSXP, "{what}: not a list");
+    expect_strings(x.get_class(), class, &format!("{what} class"));
+    expect_strings(x.get_names(), fields, &format!("{what} field names"));
+    for (i, field) in fields.iter().enumerate() {
+        let i = isize::try_from(i).expect("field index fits isize");
+        assert_eq!(
+            x.vector_elt(i).xlength(),
+            len,
+            "{what}${field} has the wrong length"
+        );
+    }
+}
+
+/// Build the rpkg `#[derive(Vctrs)]` fixtures (vctr, record and list_of) and
+/// validate each result under GC pressure (#1759).
+///
+/// `new_vctr`, `new_rcrd` and `new_list_of` build the class vector while the
+/// object they decorate is held only in a Rust local. The sizes match the
+/// class vector's size class: 2 doubles for the 2-element percent class, 6
+/// integers per record field for the 3-element record class, and a 4-element
+/// list for the 4-element list_of class. Returns the last round's objects.
+#[cfg(feature = "vctrs")]
+#[miniextendr(noexport)]
+pub fn gc_stress_vctrs_constructors() -> SEXP {
+    use crate::vctrs_derive_example::{DerivedIntLists, DerivedPercent, DerivedRational};
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::vctrs::IntoVctrs as _;
+
+    // SAFETY: R main thread; every result is protected as soon as it returns.
+    let scope = unsafe { ProtectScope::new() };
+    let mut built = Vec::new();
+    for round in 0..GC_ROOTING_ROUNDS {
+        let base = f64::from(round);
+        let percent = DerivedPercent::new(vec![base + 0.25, base + 0.5])
+            .into_vctrs()
+            .expect("gc_stress_vctrs_constructors: percent");
+        // SAFETY: as above.
+        let percent = unsafe { scope.protect_raw(percent) };
+
+        let n: Vec<i32> = (1..=6).map(|i| i + round).collect();
+        let d: Vec<i32> = (2..=7).map(|i| i * (round + 1)).collect();
+        let rational = DerivedRational::new(n.clone(), d.clone())
+            .expect("gc_stress_vctrs_constructors: equal lengths")
+            .into_vctrs()
+            .expect("gc_stress_vctrs_constructors: rational");
+        // SAFETY: as above.
+        let rational = unsafe { scope.protect_raw(rational) };
+
+        let lists = vec![
+            vec![round],
+            vec![round, round + 1],
+            Vec::new(),
+            vec![round + 2],
+        ];
+        let int_lists = DerivedIntLists::new(lists.clone())
+            .into_vctrs()
+            .expect("gc_stress_vctrs_constructors: int_lists");
+        // SAFETY: as above.
+        let int_lists = unsafe { scope.protect_raw(int_lists) };
+
+        built.push((round, percent, (rational, n, d), (int_lists, lists)));
+    }
+
+    for (round, percent, (rational, n, d), (int_lists, lists)) in &built {
+        let what = format!("round {round} percent");
+        let base = f64::from(*round);
+        expect_doubles(*percent, &[base + 0.25, base + 0.5], &what);
+        expect_strings(
+            percent.get_class(),
+            &["derived_percent", "vctrs_vctr"],
+            &format!("{what} class"),
+        );
+
+        let what = format!("round {round} rational");
+        expect_rcrd(
+            *rational,
+            &["derived_rational", "vctrs_rcrd", "vctrs_vctr"],
+            &["n", "d"],
+            6,
+            &what,
+        );
+        expect_ints(rational.vector_elt(0), n, &format!("{what}$n"));
+        expect_ints(rational.vector_elt(1), d, &format!("{what}$d"));
+
+        let what = format!("round {round} int_lists");
+        assert_eq!(int_lists.type_of(), SEXPTYPE::VECSXP, "{what}: not a list");
+        expect_strings(
+            int_lists.get_class(),
+            &["derived_int_lists", "vctrs_list_of", "vctrs_vctr", "list"],
+            &format!("{what} class"),
+        );
+        expect_ints(
+            int_lists.get_attr(SEXP::symbol("size")),
+            &[4],
+            &format!("{what} size"),
+        );
+        assert_eq!(int_lists.xlength(), 4, "{what} has the wrong length");
+        for (i, expected) in lists.iter().enumerate() {
+            let i = isize::try_from(i).expect("element index fits isize");
+            expect_ints(int_lists.vector_elt(i), expected, &format!("{what}[[{i}]]"));
+        }
+    }
+
+    let (_, percent, (rational, ..), (int_lists, _)) = built.last().expect("at least one round");
+    miniextendr_api::list::List::from_raw_pairs(vec![
+        ("percent", *percent),
+        ("rational", *rational),
+        ("int_lists", *int_lists),
+    ])
+    .as_sexp()
+}
+
+/// Run all four jiff `*_vec_to_rcrd` helpers and validate each record under
+/// GC pressure (#1759).
+///
+/// Each helper roots its columns but hands `new_rcrd` a fresh field list,
+/// which `new_rcrd` must keep alive while it builds the class vector. The
+/// time record's 4-field list shares a size class with the 3-element class
+/// vector. Returns the last round's records.
+#[cfg(all(feature = "jiff", feature = "vctrs"))]
+#[miniextendr(noexport)]
+pub fn gc_stress_jiff_rcrd() -> SEXP {
+    use miniextendr_api::Span;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::jiff::civil;
+    use miniextendr_api::jiff_impl::{
+        datetime_vec_to_rcrd, span_vec_to_rcrd, time_vec_to_rcrd, zoned_vec_to_rcrd,
+    };
+
+    // SAFETY: R main thread; every result is protected as soon as it returns.
+    let scope = unsafe { ProtectScope::new() };
+    let zones = ["UTC", "Europe/Paris", "America/New_York"];
+    let mut built = Vec::new();
+    for round in 0..GC_ROOTING_ROUNDS {
+        let r = i64::from(round);
+        let spans: Vec<Span> = (1..=3i64)
+            .map(|i| Span::new().years(i + r).days(i * 2))
+            .collect();
+        // SAFETY: as above.
+        let span = unsafe { scope.protect_raw(span_vec_to_rcrd(&spans)) };
+
+        let zoned: Vec<miniextendr_api::Zoned> = zones
+            .iter()
+            .map(|tz| {
+                Timestamp::new(1_704_067_200 + r * 3_600, 0)
+                    .expect("valid timestamp")
+                    .in_tz(tz)
+                    .expect("known time zone")
+            })
+            .collect();
+        // SAFETY: as above.
+        let zoned_rcrd = unsafe { scope.protect_raw(zoned_vec_to_rcrd(&zoned)) };
+
+        let hour = i8::try_from(round).expect("round fits i8");
+        let datetimes: Vec<civil::DateTime> = (1..=3i8)
+            .map(|day| civil::date(2024, 1, day).at(hour, 30, 0, 0))
+            .collect();
+        // SAFETY: as above.
+        let datetime = unsafe { scope.protect_raw(datetime_vec_to_rcrd(&datetimes)) };
+
+        let times: Vec<civil::Time> = (0..3i8).map(|m| civil::time(hour, m, 15, 0)).collect();
+        // SAFETY: as above.
+        let time = unsafe { scope.protect_raw(time_vec_to_rcrd(&times)) };
+
+        built.push((round, span, zoned_rcrd, datetime, time));
+    }
+
+    for &(round, span, zoned_rcrd, datetime, time) in &built {
+        let what = format!("round {round} span");
+        expect_rcrd(
+            span,
+            &["jiff_span", "vctrs_rcrd", "vctrs_vctr"],
+            &[
+                "years",
+                "months",
+                "weeks",
+                "days",
+                "hours",
+                "minutes",
+                "seconds",
+                "milliseconds",
+                "microseconds",
+                "nanoseconds",
+            ],
+            3,
+            &what,
+        );
+        expect_ints(
+            span.vector_elt(0),
+            &[1 + round, 2 + round, 3 + round],
+            &format!("{what}$years"),
+        );
+        expect_ints(span.vector_elt(3), &[2, 4, 6], &format!("{what}$days"));
+
+        let what = format!("round {round} zoned");
+        expect_rcrd(
+            zoned_rcrd,
+            &["jiff_zoned", "vctrs_rcrd", "vctrs_vctr"],
+            &["timestamp", "tz"],
+            3,
+            &what,
+        );
+        let ts = 1_704_067_200.0 + f64::from(round) * 3_600.0;
+        expect_doubles(
+            zoned_rcrd.vector_elt(0),
+            &[ts; 3],
+            &format!("{what}$timestamp"),
+        );
+        expect_strings(zoned_rcrd.vector_elt(1), &zones, &format!("{what}$tz"));
+
+        let what = format!("round {round} datetime");
+        expect_rcrd(
+            datetime,
+            &["jiff_datetime", "vctrs_rcrd", "vctrs_vctr"],
+            &[
+                "year",
+                "month",
+                "day",
+                "hour",
+                "minute",
+                "second",
+                "nanosecond",
+            ],
+            3,
+            &what,
+        );
+        expect_ints(datetime.vector_elt(2), &[1, 2, 3], &format!("{what}$day"));
+        expect_ints(datetime.vector_elt(3), &[round; 3], &format!("{what}$hour"));
+
+        let what = format!("round {round} time");
+        expect_rcrd(
+            time,
+            &["jiff_time", "vctrs_rcrd", "vctrs_vctr"],
+            &["hour", "minute", "second", "nanosecond"],
+            3,
+            &what,
+        );
+        expect_ints(time.vector_elt(0), &[round; 3], &format!("{what}$hour"));
+        expect_ints(time.vector_elt(1), &[0, 1, 2], &format!("{what}$minute"));
+    }
+
+    let &(_, span, zoned_rcrd, datetime, time) = built.last().expect("at least one round");
+    miniextendr_api::list::List::from_raw_pairs(vec![
+        ("span", span),
+        ("zoned", zoned_rcrd),
+        ("datetime", datetime),
+        ("time", time),
+    ])
+    .as_sexp()
+}
+
+/// Convert JSON objects and mixed arrays holding string scalars and validate
+/// every string under GC pressure (#1760).
+///
+/// Each JSON string becomes a 1-element character vector that has to stay
+/// alive while its CHARSXP is created. The strings are six bytes, so each
+/// CHARSXP shares R's smallest vector size class with that vector, and they
+/// are unique per call so `mkChar` allocates instead of finding them cached.
+/// Returns the last round's object, mixed array and scalar.
+#[cfg(feature = "serde_json")]
+#[miniextendr(noexport)]
+pub fn gc_stress_json_scalar_strings() -> SEXP {
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::serde_impl::{JsonValue, serde_json};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static CALLS: AtomicU32 = AtomicU32::new(0);
+    let call = CALLS.fetch_add(1, Ordering::Relaxed) % 0x10_0000;
+    let text = |slot: i32| {
+        let tag = u8::try_from(slot).expect("slot fits u8") + b'a';
+        format!("{}{call:05x}", char::from(tag))
+    };
+
+    // SAFETY: R main thread; every result is protected as soon as it returns.
+    let scope = unsafe { ProtectScope::new() };
+    let mut built = Vec::new();
+    for round in 0..GC_ROOTING_ROUNDS {
+        let slot = |k: i32| text(round * 6 + k);
+
+        let mut map = serde_json::Map::new();
+        map.insert("k1".to_string(), JsonValue::from(slot(0)));
+        map.insert("k2".to_string(), JsonValue::from(7));
+        map.insert("k3".to_string(), JsonValue::from(slot(1)));
+        map.insert("k4".to_string(), JsonValue::from(true));
+        map.insert(
+            "k5".to_string(),
+            JsonValue::Array(vec![
+                JsonValue::from(slot(2)),
+                JsonValue::from(1.5),
+                JsonValue::Null,
+            ]),
+        );
+        let object = JsonValue::Object(map).into_sexp();
+        // SAFETY: as above.
+        let object = unsafe { scope.protect_raw(object) };
+
+        let array = JsonValue::Array(vec![
+            JsonValue::from(slot(3)),
+            JsonValue::from(2),
+            JsonValue::from(false),
+            JsonValue::from(slot(4)),
+        ])
+        .into_sexp();
+        // SAFETY: as above.
+        let array = unsafe { scope.protect_raw(array) };
+
+        // SAFETY: as above.
+        let scalar = unsafe { scope.protect_raw(JsonValue::from(slot(5)).into_sexp()) };
+
+        built.push((round, object, array, scalar));
+    }
+
+    for &(round, object, array, scalar) in &built {
+        let slot = |k: i32| text(round * 6 + k);
+        let what = format!("round {round} object");
+        assert_eq!(object.type_of(), SEXPTYPE::VECSXP, "{what}: not a list");
+        expect_strings(
+            object.get_names(),
+            &["k1", "k2", "k3", "k4", "k5"],
+            &format!("{what} names"),
+        );
+        expect_strings(object.vector_elt(0), &[&slot(0)], &format!("{what}$k1"));
+        expect_ints(object.vector_elt(1), &[7], &format!("{what}$k2"));
+        expect_strings(object.vector_elt(2), &[&slot(1)], &format!("{what}$k3"));
+        let k4 = object.vector_elt(3);
+        assert_eq!(k4.type_of(), SEXPTYPE::LGLSXP, "{what}$k4: not logical");
+        assert_eq!(k4.logical_elt(0), 1, "{what}$k4");
+        let k5 = object.vector_elt(4);
+        assert_eq!(k5.type_of(), SEXPTYPE::VECSXP, "{what}$k5: not a list");
+        assert_eq!(k5.xlength(), 3, "{what}$k5 has the wrong length");
+        expect_strings(k5.vector_elt(0), &[&slot(2)], &format!("{what}$k5[[1]]"));
+        expect_doubles(k5.vector_elt(1), &[1.5], &format!("{what}$k5[[2]]"));
+        assert!(k5.vector_elt(2).is_nil(), "{what}$k5[[3]]: expected NULL");
+
+        let what = format!("round {round} array");
+        assert_eq!(array.type_of(), SEXPTYPE::VECSXP, "{what}: not a list");
+        assert_eq!(array.xlength(), 4, "{what} has the wrong length");
+        expect_strings(array.vector_elt(0), &[&slot(3)], &format!("{what}[[1]]"));
+        expect_ints(array.vector_elt(1), &[2], &format!("{what}[[2]]"));
+        let flag = array.vector_elt(2);
+        assert_eq!(flag.type_of(), SEXPTYPE::LGLSXP, "{what}[[3]]: not logical");
+        assert_eq!(flag.logical_elt(0), 0, "{what}[[3]]");
+        expect_strings(array.vector_elt(3), &[&slot(4)], &format!("{what}[[4]]"));
+
+        expect_strings(scalar, &[&slot(5)], &format!("round {round} scalar"));
+    }
+
+    let &(_, object, array, scalar) = built.last().expect("at least one round");
+    miniextendr_api::list::List::from_raw_pairs(vec![
+        ("object", object),
+        ("array", array),
+        ("scalar", scalar),
+    ])
+    .as_sexp()
+}
+
+/// `N` words of POD payload for the raw-tagged fixture. A named type gives
+/// `std::any::type_name` a long name, so the `mx_raw_type` CHARSXP lands in the
+/// same size class (33 to 64 bytes) as the tagged raw vector.
+#[cfg(feature = "raw_conversions")]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct GcStressRawWords<const N: usize>([u64; N]);
+
+// SAFETY: `#[repr(transparent)]` over `[u64; N]`: no padding, and every bit
+// pattern (all zeros included) is a valid value.
+#[cfg(feature = "raw_conversions")]
+unsafe impl<const N: usize> miniextendr_api::raw_conversions::Zeroable for GcStressRawWords<N> {}
+// SAFETY: as above; the type is `Copy + 'static`.
+#[cfg(feature = "raw_conversions")]
+unsafe impl<const N: usize> miniextendr_api::raw_conversions::Pod for GcStressRawWords<N> {}
+
+/// A built tagged raw vector plus what it must decode to.
+#[cfg(feature = "raw_conversions")]
+struct RawTaggedCheck {
+    what: &'static str,
+    sexp: SEXP,
+    type_name: &'static str,
+    elem_size: usize,
+    words: Vec<u64>,
+    check_round_trip: fn(SEXP, &[u64]),
+}
+
+/// Check one tagged raw vector: type, length, header, payload and the
+/// `mx_raw_type` attribute; then decode it through `TryFromSexp`.
+#[cfg(feature = "raw_conversions")]
+fn expect_raw_tagged(check: &RawTaggedCheck, call: u64) {
+    use miniextendr_api::raw_conversions::RawHeader;
+
+    let RawTaggedCheck {
+        what,
+        sexp,
+        type_name,
+        elem_size,
+        ref words,
+        check_round_trip,
+    } = *check;
+    let payload: Vec<u8> = words.iter().flat_map(|w| w.to_ne_bytes()).collect();
+    assert_eq!(sexp.type_of(), SEXPTYPE::RAWSXP, "{what}: not a raw vector");
+    // SAFETY: RAWSXP checked above; `sexp` is rooted by the caller.
+    let bytes = unsafe { sexp.as_slice::<u8>() };
+    assert_eq!(
+        bytes.len(),
+        RawHeader::SIZE + payload.len(),
+        "{what} has the wrong length (call {call})"
+    );
+    let elem_count = payload.len() / elem_size;
+    let mut header = Vec::with_capacity(RawHeader::SIZE);
+    header.extend_from_slice(&RawHeader::MAGIC);
+    header.extend_from_slice(&RawHeader::VERSION.to_ne_bytes());
+    header.extend_from_slice(
+        &u32::try_from(elem_size)
+            .expect("elem_size fits u32")
+            .to_ne_bytes(),
+    );
+    header.extend_from_slice(
+        &u32::try_from(elem_count)
+            .expect("elem_count fits u32")
+            .to_ne_bytes(),
+    );
+    assert_eq!(&bytes[..RawHeader::SIZE], &header[..], "{what} header");
+    assert_eq!(&bytes[RawHeader::SIZE..], &payload[..], "{what} payload");
+
+    let tag = sexp.get_attr(SEXP::symbol("mx_raw_type"));
+    assert_eq!(
+        tag.type_of(),
+        SEXPTYPE::STRSXP,
+        "{what} mx_raw_type: not a character vector"
+    );
+    assert_eq!(tag.xlength(), 1, "{what} mx_raw_type has the wrong length");
+    assert_eq!(tag.string_elt_str(0), Some(type_name), "{what} mx_raw_type");
+    check_round_trip(sexp, words);
+}
+
+/// Convert `RawTagged` and `RawSliceTagged` values and validate every result
+/// under GC pressure (#1761).
+///
+/// The conversion allocates the raw vector, then the type-name CHARSXP and the
+/// 1-element character vector for `mx_raw_type`. Each value is a different
+/// type, so its type name is not yet cached and `mkChar` allocates, and each
+/// raw vector is 40 to 64 bytes, the size class of that CHARSXP. Returns the
+/// last tagged vector built.
+#[cfg(feature = "raw_conversions")]
+#[miniextendr(noexport)]
+pub fn gc_stress_raw_tagged() -> SEXP {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::raw_conversions::{RawSliceTagged, RawTagged};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn single<const N: usize>(sexp: SEXP, words: &[u64]) {
+        let decoded = RawTagged::<GcStressRawWords<N>>::try_from_sexp(sexp)
+            .unwrap_or_else(|e| panic!("RawTagged<{N}> did not decode: {e}"));
+        assert_eq!(&decoded.0.0[..], words, "RawTagged<{N}> round trip");
+    }
+    fn slice<const N: usize>(sexp: SEXP, words: &[u64]) {
+        let decoded = RawSliceTagged::<GcStressRawWords<N>>::try_from_sexp(sexp)
+            .unwrap_or_else(|e| panic!("RawSliceTagged<{N}> did not decode: {e}"));
+        let flat: Vec<u64> = decoded.0.iter().flat_map(|w| w.0).collect();
+        assert_eq!(flat, words, "RawSliceTagged<{N}> round trip");
+    }
+    fn words<const N: usize>(seed: u64) -> [u64; N] {
+        std::array::from_fn(|i| {
+            seed.wrapping_mul(31)
+                .wrapping_add(u64::try_from(i).unwrap())
+        })
+    }
+
+    static CALLS: AtomicU64 = AtomicU64::new(0);
+    let call = CALLS.fetch_add(1, Ordering::Relaxed);
+
+    // SAFETY: R main thread; every result is protected as soon as it returns.
+    let scope = unsafe { ProtectScope::new() };
+    let mut checks = Vec::new();
+    macro_rules! tagged {
+        ($n:literal) => {{
+            let value = GcStressRawWords::<$n>(words::<$n>(call + $n));
+            // SAFETY: as above.
+            let sexp = unsafe { scope.protect_raw(RawTagged(value).into_sexp()) };
+            checks.push(RawTaggedCheck {
+                what: concat!("RawTagged<GcStressRawWords<", $n, ">>"),
+                sexp,
+                type_name: std::any::type_name::<GcStressRawWords<$n>>(),
+                elem_size: 8 * $n,
+                words: value.0.to_vec(),
+                check_round_trip: single::<$n>,
+            });
+        }};
+    }
+    macro_rules! slice_tagged {
+        ($n:literal, $count:literal) => {{
+            let values: Vec<GcStressRawWords<$n>> = (0..$count)
+                .map(|k: u64| GcStressRawWords::<$n>(words::<$n>(call + 100 * k)))
+                .collect();
+            let flat: Vec<u64> = values.iter().flat_map(|w| w.0).collect();
+            // SAFETY: as above.
+            let sexp = unsafe { scope.protect_raw(RawSliceTagged(values).into_sexp()) };
+            checks.push(RawTaggedCheck {
+                what: concat!("RawSliceTagged<GcStressRawWords<", $n, ">>"),
+                sexp,
+                type_name: std::any::type_name::<GcStressRawWords<$n>>(),
+                elem_size: 8 * $n,
+                words: flat,
+                check_round_trip: slice::<$n>,
+            });
+        }};
+    }
+    // Header (16 bytes) + payload: 40, 48, 56 and 64 bytes for the singles,
+    // 48 bytes for both slices.
+    tagged!(3);
+    tagged!(4);
+    tagged!(5);
+    tagged!(6);
+    slice_tagged!(1, 4);
+    slice_tagged!(2, 2);
+
+    for check in &checks {
+        expect_raw_tagged(check, call);
+    }
+    checks.last().expect("at least one value").sexp
+}
+// endregion
+
 /// Exercise the native-SEXP ALTREP (`NativeSexpIntAltrep`) under GC pressure.
 ///
 /// Constructs an ALTREP-backed integer vector where `data1` is a plain

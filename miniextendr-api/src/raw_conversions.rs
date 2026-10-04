@@ -59,6 +59,7 @@ use std::fmt;
 use std::mem;
 
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::{RAW, Rf_allocVector};
 use crate::{SEXP, SEXPTYPE, SexpExt};
@@ -138,7 +139,7 @@ impl RawHeader {
         Self {
             magic: Self::MAGIC,
             version: Self::VERSION,
-            elem_size: mem::size_of::<T>() as u32,
+            elem_size: elem_size_u32::<T>(),
             elem_count: 1,
         }
     }
@@ -148,8 +149,9 @@ impl RawHeader {
         Self {
             magic: Self::MAGIC,
             version: Self::VERSION,
-            elem_size: mem::size_of::<T>() as u32,
-            elem_count: count as u32,
+            elem_size: elem_size_u32::<T>(),
+            elem_count: u32::try_from(count)
+                .expect("RawSliceTagged element count exceeds u32::MAX"),
         }
     }
 
@@ -169,7 +171,7 @@ impl RawHeader {
                 self.version
             )));
         }
-        let expected_size = mem::size_of::<T>() as u32;
+        let expected_size = elem_size_u32::<T>();
         if self.elem_size != expected_size {
             return Err(RawError::LengthMismatch {
                 expected: expected_size as usize,
@@ -186,6 +188,11 @@ impl RawHeader {
         }
         Ok(())
     }
+}
+
+/// `size_of::<T>()` as the header's `u32` element size.
+fn elem_size_u32<T: Pod>() -> u32 {
+    u32::try_from(mem::size_of::<T>()).expect("Pod element size exceeds u32::MAX")
 }
 // endregion
 
@@ -410,7 +417,7 @@ impl<T: Pod> IntoR for Raw<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bytes = bytemuck::bytes_of(&self.0);
         unsafe {
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
+            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, raw_len(bytes.len()));
             // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
@@ -424,7 +431,7 @@ impl<T: Pod> IntoR for RawSlice<T> {
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
         let bytes = bytemuck::cast_slice::<T, u8>(&self.0);
         unsafe {
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, bytes.len() as isize);
+            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, raw_len(bytes.len()));
             // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
@@ -433,61 +440,59 @@ impl<T: Pod> IntoR for RawSlice<T> {
     }
 }
 
+/// Convert a byte count to an R vector length.
+fn raw_len(len: usize) -> isize {
+    isize::try_from(len).expect("raw vector length exceeds R_xlen_t")
+}
+
+/// Build a tagged raw vector: `header`, then `value_bytes`, with the
+/// `mx_raw_type` attribute naming `T`.
+///
+/// The raw vector stays protected while the attribute value is built: the
+/// type-name CHARSXP, the 1-element character vector and, on first use, the
+/// `mx_raw_type` symbol all allocate (#1761).
+fn tagged_raw_sexp<T: Pod>(header: RawHeader, value_bytes: &[u8]) -> SEXP {
+    let header_bytes = bytemuck::bytes_of(&header);
+    let total_len = header_bytes.len() + value_bytes.len();
+
+    unsafe {
+        let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::RAWSXP, raw_len(total_len)));
+        // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
+        let ptr = RAW(sexp.get());
+        std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
+        std::ptr::copy_nonoverlapping(
+            value_bytes.as_ptr(),
+            ptr.add(header_bytes.len()),
+            value_bytes.len(),
+        );
+
+        // Set type attribute
+        let type_name = std::any::type_name::<T>();
+        let attr_sym = crate::cached_class::mx_raw_type_symbol();
+        sexp.get()
+            .set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
+
+        sexp.get()
+    }
+}
+
 impl<T: Pod> IntoR for RawTagged<T> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let header = RawHeader::new_single::<T>();
-        let header_bytes = bytemuck::bytes_of(&header);
-        let value_bytes = bytemuck::bytes_of(&self.0);
-        let total_len = header_bytes.len() + value_bytes.len();
-
-        unsafe {
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
-            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
-            let ptr = RAW(sexp);
-            std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
-            std::ptr::copy_nonoverlapping(
-                value_bytes.as_ptr(),
-                ptr.add(header_bytes.len()),
-                value_bytes.len(),
-            );
-
-            // Set type attribute
-            let type_name = std::any::type_name::<T>();
-            let attr_sym = crate::cached_class::mx_raw_type_symbol();
-            sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
-
-            Ok(sexp)
-        }
+        Ok(tagged_raw_sexp::<T>(
+            RawHeader::new_single::<T>(),
+            bytemuck::bytes_of(&self.0),
+        ))
     }
 }
 
 impl<T: Pod> IntoR for RawSliceTagged<T> {
     type Error = std::convert::Infallible;
     fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
-        let header = RawHeader::new_slice::<T>(self.0.len());
-        let header_bytes = bytemuck::bytes_of(&header);
-        let value_bytes = bytemuck::cast_slice::<T, u8>(&self.0);
-        let total_len = header_bytes.len() + value_bytes.len();
-
-        unsafe {
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
-            // keep raw: bulk byte write — no SexpExt helper for arbitrary-stride copy_nonoverlapping
-            let ptr = RAW(sexp);
-            std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
-            std::ptr::copy_nonoverlapping(
-                value_bytes.as_ptr(),
-                ptr.add(header_bytes.len()),
-                value_bytes.len(),
-            );
-
-            // Set type attribute
-            let type_name = std::any::type_name::<T>();
-            let attr_sym = crate::cached_class::mx_raw_type_symbol();
-            sexp.set_attr(attr_sym, SEXP::scalar_string(SEXP::charsxp(type_name)));
-
-            Ok(sexp)
-        }
+        Ok(tagged_raw_sexp::<T>(
+            RawHeader::new_slice::<T>(self.0.len()),
+            bytemuck::cast_slice::<T, u8>(&self.0),
+        ))
     }
 }
 // endregion

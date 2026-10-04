@@ -130,6 +130,115 @@ test_that("DataFrameRow split and as_list fixtures stay intact under gctorture",
 
 # endregion
 
+# region: vctrs / serde_json / raw-tagged rooting (#1759, #1760, #1761) -------
+
+# These fixtures are feature-gated (vctrs, jiff + vctrs, serde_json,
+# raw_conversions), so a build without the feature does not define them.
+skip_without_fixture <- function(f) {
+  if (!exists(f, envir = asNamespace("miniextendr"), inherits = FALSE)) {
+    skip(paste(f, "is not compiled into this build"))
+  }
+}
+
+# Each fixture checks every value in Rust and panics on a mismatch; these
+# blocks pin the last round's shapes from R as well.
+test_that("gc_stress_vctrs_constructors returns classed vctr, rcrd and list_of", {
+  skip_without_fixture("gc_stress_vctrs_constructors")
+  res <- miniextendr:::gc_stress_vctrs_constructors()
+  expect_named(res, c("percent", "rational", "int_lists"))
+  expect_identical(class(res$percent), c("derived_percent", "vctrs_vctr"))
+  expect_identical(unclass(res$percent), c(3.25, 3.5))
+  expect_identical(class(res$rational), c("derived_rational", "vctrs_rcrd", "vctrs_vctr"))
+  expect_identical(unclass(res$rational), list(n = 4:9, d = c(8L, 12L, 16L, 20L, 24L, 28L)))
+  expect_identical(
+    class(res$int_lists),
+    c("derived_int_lists", "vctrs_list_of", "vctrs_vctr", "list")
+  )
+  expect_identical(attr(res$int_lists, "size"), 4L)
+  expect_identical(
+    unclass(res$int_lists)[1:4],
+    list(3L, c(3L, 4L), integer(0), 5L)
+  )
+})
+
+test_that("gc_stress_jiff_rcrd returns all four jiff records", {
+  skip_without_fixture("gc_stress_jiff_rcrd")
+  res <- miniextendr:::gc_stress_jiff_rcrd()
+  expect_named(res, c("span", "zoned", "datetime", "time"))
+  for (nm in names(res)) {
+    expect_identical(class(res[[nm]]), c(paste0("jiff_", nm), "vctrs_rcrd", "vctrs_vctr"))
+  }
+  expect_identical(unclass(res$span)$years, 4:6)
+  expect_identical(unclass(res$span)$days, c(2L, 4L, 6L))
+  expect_identical(unclass(res$zoned)$tz, c("UTC", "Europe/Paris", "America/New_York"))
+  expect_equal(unclass(res$zoned)$timestamp, rep(1704078000, 3))
+  expect_identical(unclass(res$datetime)$day, 1:3)
+  expect_identical(unclass(res$time)$minute, 0:2)
+})
+
+test_that("gc_stress_json_scalar_strings returns per-call strings", {
+  skip_without_fixture("gc_stress_json_scalar_strings")
+  res <- miniextendr:::gc_stress_json_scalar_strings()
+  expect_named(res, c("object", "array", "scalar"))
+  obj <- res$object
+  expect_named(obj, c("k1", "k2", "k3", "k4", "k5"))
+  # Last round: slots 18-23, tags "s" to "x", then the call's 5-digit hex id.
+  call_id <- substring(res$scalar, 2L)
+  expect_match(call_id, "^[0-9a-f]{5}$")
+  expect_identical(obj$k1, paste0("s", call_id))
+  expect_identical(obj$k2, 7L)
+  expect_identical(obj$k3, paste0("t", call_id))
+  expect_true(obj$k4)
+  expect_identical(obj$k5, list(paste0("u", call_id), 1.5, NULL))
+  expect_identical(res$array, list(paste0("v", call_id), 2L, FALSE, paste0("w", call_id)))
+  expect_identical(res$scalar, paste0("x", call_id))
+})
+
+test_that("gc_stress_raw_tagged returns a tagged raw vector", {
+  skip_without_fixture("gc_stress_raw_tagged")
+  res <- miniextendr:::gc_stress_raw_tagged()
+  expect_type(res, "raw")
+  expect_length(res, 48L)
+  expect_identical(rawToChar(res[1:4]), "MXRB")
+  expect_match(attr(res, "mx_raw_type"), "GcStressRawWords<2>$")
+})
+
+test_that("vctrs, serde_json and raw-tagged fixtures stay intact under gctorture", {
+  skip_gc_stress_if_disabled()
+  ns <- getNamespace("miniextendr")
+  fixtures <- c(
+    "gc_stress_vctrs_constructors",
+    "gc_stress_jiff_rcrd",
+    "gc_stress_json_scalar_strings",
+    "gc_stress_raw_tagged"
+  )
+  fixtures <- Filter(function(f) exists(f, envir = ns, inherits = FALSE), fixtures)
+  if (length(fixtures) == 0L) skip("no fixture is compiled into this build")
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  fail <- character(0L)
+  for (f in fixtures) {
+    for (i in seq_len(10L)) {
+      res <- tryCatch(
+        {
+          get(f, ns)()
+          "ok"
+        },
+        error = function(e) conditionMessage(e)
+      )
+      if (!identical(res, "ok")) {
+        fail <- c(fail, sprintf("%s iteration %d: %s", f, i, res))
+        break
+      }
+    }
+  }
+
+  expect_identical(fail, character(0L))
+})
+
+# endregion
+
 # region: zero-copy &str argument borrow (#664) -------------------------------
 
 test_that("str_borrow_len round-trips a zero-copy &str argument", {

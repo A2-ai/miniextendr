@@ -1766,9 +1766,9 @@ pub(super) fn derive_enum_dataframe(
         // `R_PreserveObject`).
         //
         // Generic enums: Rust does not allow generic statics, so `IntoR` builds the levels
-        // SEXP on each call using `build_levels_sexp` + manual `Rf_protect`/`Rf_unprotect`.
-        // This is the same pattern used by `impl<T: UnitEnumFactor> IntoR for FactorOptionVec<T>`
-        // in `miniextendr-api/src/factor.rs`.
+        // SEXP on each call through `build_factor_with_levels`, which keeps the levels
+        // rooted while it builds the factor. `impl<T: UnitEnumFactor> IntoR for
+        // FactorOptionVec<T>` in `miniextendr-api/src/factor.rs` makes the same call.
         if all_unit {
             // Collect variant names and assign 1-based R factor indices (used by both branches).
             let variant_idents: Vec<&syn::Ident> =

@@ -9,7 +9,7 @@ use crate::SEXP;
 
 // region: Construction helpers (Phase A)
 
-use crate::gc_protect::OwnedProtect;
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::list::List;
 use crate::sys::Rf_allocVector;
 use crate::{R_xlen_t, SEXPTYPE, SexpExt};
@@ -161,6 +161,36 @@ unsafe fn build_class_vector(classes: &[&str]) -> OwnedProtect {
     class_sexp
 }
 
+/// Protect a constructor's inputs for the rest of the call: the object being
+/// decorated, the optional `list_of` prototype, and every attribute value.
+///
+/// The constructors allocate (the class vector, repaired names, attribute
+/// symbols, the `size` scalar) while they decorate `object`, and callers hand
+/// them freshly converted, unrooted values. A caller cannot close a window that
+/// is internal to the callee, so each constructor roots its inputs on entry
+/// (#1759), as `List::set_class_str` does.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+unsafe fn protect_inputs(
+    object: SEXP,
+    ptype: Option<SEXP>,
+    attrs: &[(&str, SEXP)],
+) -> ProtectScope {
+    let scope = unsafe { ProtectScope::new() };
+    unsafe {
+        scope.protect_raw(object);
+        if let Some(ptype) = ptype {
+            scope.protect_raw(ptype);
+        }
+        for &(_, value) in attrs {
+            scope.protect_raw(value);
+        }
+    }
+    scope
+}
+
 /// Create an R symbol from a Rust string.
 fn install_symbol(name: &str) -> SEXP {
     SEXP::symbol(name)
@@ -247,6 +277,14 @@ unsafe fn repair_na_names(names: SEXP) -> (SEXP, Option<OwnedProtect>) {
 ///
 /// If `data` has a names attribute with NA values, they are replaced with "".
 ///
+/// # GC protection
+///
+/// `data` and the `attrs` values may be unrooted: this function protects
+/// them for the whole call. Nothing else may allocate between creating them and
+/// this call (root them yourself if something does, e.g. when you build several
+/// fresh values before calling). The returned object is unrooted; protect it
+/// before the next allocation.
+///
 /// # Example
 ///
 /// ```ignore
@@ -261,6 +299,9 @@ pub fn new_vctr(
     attrs: &[(&str, SEXP)],
     inherit_base_type: Option<bool>,
 ) -> Result<SEXP, VctrsBuildError> {
+    // SAFETY: vctrs objects are built on R's main thread.
+    let _inputs = unsafe { protect_inputs(data, None, attrs) };
+
     // Validate: data must be a vector type
     let data_type = data.type_of();
     if !is_vector_type(data_type) {
@@ -338,6 +379,14 @@ pub fn new_vctr(
 /// - All fields must have the same length
 /// - Field names must be unique
 ///
+/// # GC protection
+///
+/// `fields` and the `attrs` values may be unrooted: this function protects
+/// them for the whole call. Nothing else may allocate between creating them and
+/// this call (root them yourself if something does, e.g. when you build several
+/// fresh values before calling). The returned object is unrooted; protect it
+/// before the next allocation.
+///
 /// # Example
 ///
 /// ```ignore
@@ -351,6 +400,9 @@ pub fn new_rcrd(
     class: &[&str],
     attrs: &[(&str, SEXP)],
 ) -> Result<SEXP, VctrsBuildError> {
+    // SAFETY: vctrs objects are built on R's main thread.
+    let _inputs = unsafe { protect_inputs(fields.as_sexp(), None, attrs) };
+
     let n_fields = fields.len();
 
     // Validate: must have at least one field
@@ -442,6 +494,14 @@ pub fn new_rcrd(
 /// - At least one of `ptype` or `size` must be provided
 /// - `size` must be non-negative if provided
 ///
+/// # GC protection
+///
+/// `x`, `ptype` and the `attrs` values may be unrooted: this function protects
+/// them for the whole call. Nothing else may allocate between creating them and
+/// this call (root them yourself if something does, e.g. when you build several
+/// fresh values before calling). The returned object is unrooted; protect it
+/// before the next allocation.
+///
 /// # Example
 ///
 /// ```ignore
@@ -458,6 +518,9 @@ pub fn new_list_of(
     class: &[&str],
     attrs: &[(&str, SEXP)],
 ) -> Result<SEXP, VctrsBuildError> {
+    // SAFETY: vctrs objects are built on R's main thread.
+    let _inputs = unsafe { protect_inputs(x.as_sexp(), ptype, attrs) };
+
     // Validate: at least one of ptype or size
     if ptype.is_none() && size.is_none() {
         return Err(VctrsBuildError::MissingPtypeOrSize);
@@ -485,10 +548,11 @@ pub fn new_list_of(
         data.set_attr(crate::cached_class::ptype_symbol(), p);
     }
 
-    // Set size attribute if provided
+    // Set size attribute if provided. Install the symbol first: on first use
+    // it allocates, which must not happen while the scalar is unrooted.
     if let Some(s) = size {
-        let size_sexp = crate::SEXP::scalar_integer(s);
-        data.set_attr(crate::cached_class::size_symbol(), size_sexp);
+        let size_sym = crate::cached_class::size_symbol();
+        data.set_attr(size_sym, crate::SEXP::scalar_integer(s));
     }
 
     // Set additional attributes
@@ -607,6 +671,13 @@ pub trait VctrsClass {
     ///
     /// Override this to add custom attributes like "digits", "units", etc.
     /// The default implementation returns an empty slice.
+    ///
+    /// The values are not rooted. [`new_vctr`], [`new_rcrd`] and
+    /// [`new_list_of`] protect them during the call, but a freshly allocated
+    /// value is unrooted until then: if this returns one, keep it protected
+    /// (e.g. with a [`ProtectScope`] in
+    /// `into_vctrs`) across anything else that allocates, including the
+    /// conversion of the data.
     fn attrs(&self) -> Vec<(&'static str, SEXP)> {
         Vec::new()
     }
@@ -637,11 +708,15 @@ pub trait VctrsClass {
 /// impl IntoVctrs for Percent {
 ///     fn into_vctrs(self) -> Result<SEXP, VctrsBuildError> {
 ///         use miniextendr_api::IntoR;
-///         let data = self.0.into_r();
+///         // The default `attrs()` holds no R objects. If yours allocates,
+///         // keep its values protected across the conversion below.
+///         let attrs = self.attrs();
+///         // `new_vctr` roots `data` on entry; nothing allocates in between.
+///         let data = self.0.into_sexp();
 ///         new_vctr(
 ///             data,
 ///             &[Self::CLASS_NAME],
-///             &self.attrs(),
+///             &attrs,
 ///             Some(Self::INHERIT_BASE_TYPE),
 ///         )
 ///     }
