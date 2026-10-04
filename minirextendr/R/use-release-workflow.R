@@ -110,7 +110,7 @@ use_release_workflow <- function(path = ".", rpkg_subdir = NULL,
 #' @param lines Character vector of template lines.
 #' @param subdir Subdirectory name (e.g. `"rpkg"`).
 #' @return Modified character vector.
-#' @noRd
+#' @keywords internal
 release_workflow_insert_workdir <- function(lines, subdir) {
   # Insert `working-directory:` *before* the matched `run:` line. Inserting
   # after breaks the build step: `run: |` starts a block scalar that would

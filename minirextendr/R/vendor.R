@@ -113,7 +113,9 @@ vendor_crates_io <- function(path = ".", tarball = NULL, revendor_args = charact
 #' Errors with install instructions if the `cargo-revendor` subcommand is
 #' missing. Called by [miniextendr_vendor()].
 #'
-#' @noRd
+#' @return `TRUE` invisibly when `cargo revendor --help` succeeds; otherwise
+#'   aborts.
+#' @keywords internal
 check_cargo_revendor <- function() {
   probe <- suppressWarnings(tryCatch(
     system2("cargo", c("revendor", "--help"), stdout = FALSE, stderr = FALSE),

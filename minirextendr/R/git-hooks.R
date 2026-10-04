@@ -195,7 +195,7 @@ resolve_git_hooks_dir <- function(proj_dir) {
 #'
 #' @param lines Character vector of hook file lines.
 #' @return Lines with the miniextendr section removed.
-#' @noRd
+#' @keywords internal
 strip_miniextendr_section <- function(lines) {
   banner_idx <- grep("miniextendr hooks (added by", lines, fixed = TRUE)
   if (length(banner_idx) == 0) {

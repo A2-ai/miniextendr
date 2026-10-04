@@ -63,7 +63,7 @@ miniextendr_knitr_setup <- function(path = ".", ...) {
 #'
 #' @param options Chunk options list (provided by knitr)
 #' @return Engine output (via [knitr::engine_output()])
-#' @noRd
+#' @keywords internal
 eng_miniextendr <- function(options) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
     cli::cli_abort("{.pkg knitr} is required")
@@ -105,7 +105,7 @@ eng_miniextendr <- function(options) {
 #' @param options Chunk options list (provided by knitr)
 #' @param extra_args Additional arguments from miniextendr_knitr_setup()
 #' @return Engine output (via [knitr::engine_output()])
-#' @noRd
+#' @keywords internal
 eng_miniextendr_inline <- function(options, extra_args = list()) {
   if (!requireNamespace("knitr", quietly = TRUE)) {
     cli::cli_abort("{.pkg knitr} is required")

@@ -2,12 +2,21 @@
 % Please edit documentation in R/feature-detect-configure.R
 \name{list_cargo_features}
 \alias{list_cargo_features}
+\alias{print.miniextendr_cargo_features}
 \title{List Cargo features and optional dependencies}
 \usage{
 list_cargo_features(path = ".")
+
+\method{print}{miniextendr_cargo_features}(x, ...)
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
+\item{x}{A \code{miniextendr_cargo_features} object, as returned by
+\code{list_cargo_features()}. Its \code{print()} method lists the features, the
+optional dependencies and the features still without detection rules.}
+
+\item{...}{Ignored.}
 }
 \value{
 A list with:
@@ -20,6 +29,8 @@ and \code{features} (character vector of enabled features)}
 corresponding detection rule in \code{tools/detect-features.R} (NULL if
 detection is not set up)}
 }
+
+The \code{print()} method returns \code{x} invisibly.
 }
 \description{
 Runs \verb{cargo metadata} on \code{src/rust/Cargo.toml} and parses the output to

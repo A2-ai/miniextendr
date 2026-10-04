@@ -162,7 +162,7 @@ rust_source_clean <- function(hash = NULL) {
 #' @param file File path or NULL
 #' @param code Code string or NULL
 #' @return Character string of Rust code
-#' @noRd
+#' @keywords internal
 validate_rust_input <- function(file, code) {
   if (is.null(file) && is.null(code)) {
     cli::cli_abort("One of `file` or `code` must be provided")
@@ -187,7 +187,7 @@ validate_rust_input <- function(file, code) {
 #' @param code Character string of Rust code
 #' @param features Character vector of cargo features
 #' @return MD5 hash string
-#' @noRd
+#' @keywords internal
 compute_inline_hash <- function(code, features = character()) {
   # Normalize: trim, collapse whitespace runs, sort features
   normalized <- trimws(code)
@@ -204,8 +204,9 @@ compute_inline_hash <- function(code, features = character()) {
 
 #' Get inline build cache directory
 #'
-#' @return Path to cache root
-#' @noRd
+#' @return Path to cache root: the `rust_source` directory under
+#'   `tools::R_user_dir("minirextendr", "cache")`. Not created here.
+#' @keywords internal
 inline_cache_dir <- function() {
   fs::path(tools::R_user_dir("minirextendr", "cache"), "rust_source")
 }
@@ -222,7 +223,7 @@ inline_cache_dir <- function() {
 #'
 #' @param code Rust code string
 #' @return Character vector of function names
-#' @noRd
+#' @keywords internal
 extract_pub_fn_names <- function(code) {
   # ponytail: brace counting ignores braces inside string literals; good
   # enough for inline snippets, swap for real parsing if it ever bites.
@@ -259,11 +260,12 @@ extract_pub_fn_names <- function(code) {
 
 #' Extract impl block type names from Rust code
 #'
-#' Simple regex extraction of `impl TypeName` blocks.
+#' Simple regex extraction of `impl TypeName` blocks preceded by a
+#' `#[miniextendr]` attribute (type names starting with an upper-case letter).
 #'
 #' @param code Rust code string
 #' @return Character vector of type names
-#' @noRd
+#' @keywords internal
 extract_impl_names <- function(code) {
   matches <- regmatches(
     code,
@@ -278,14 +280,22 @@ extract_impl_names <- function(code) {
 #' Creates the complete directory structure for an inline miniextendr
 #' package, including all necessary template files.
 #'
+#' Any previous `<cache_root>/<hash>/pkg` is deleted first. The package gets a
+#' DESCRIPTION, a NAMESPACE exporting the names from [extract_pub_fn_names()]
+#' and [extract_impl_names()], `src/rust/{lib.rs,Cargo.toml,build.rs}` (with
+#' `features` as the crate's default features), and the rpkg template's
+#' `stub.c`, `Makevars.in`, `win.def.in`, `configure.ac`, `mx_abi.h` and
+#' `tools/` config scripts. Sets the session template type to `"rpkg"`.
+#'
 #' @param code Rust code string
 #' @param hash MD5 hash of the code
 #' @param features Character vector of cargo features
 #' @param pkg_name R package name (e.g., "mxinline12345678")
 #' @param pkg_rs Rust-safe package name
 #' @param cache_root Path to cache root
-#' @param quiet Suppress messages
-#' @noRd
+#' @param quiet Suppress messages. Unused: scaffolding writes no messages.
+#' @return The package directory, `<cache_root>/<hash>/pkg`, invisibly.
+#' @keywords internal
 scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
                                      cache_root, quiet = FALSE) {
   pkg_dir <- fs::path(cache_root, hash, "pkg")
@@ -426,9 +436,11 @@ scaffold_inline_package <- function(code, hash, features, pkg_name, pkg_rs,
 #' Runs autoconf, configure, and R CMD INSTALL on the scaffolded package.
 #'
 #' @param pkg_dir Path to the scaffolded package
-#' @param lib_dir Path to install the package into
+#' @param lib_dir Path to install the package into (created if needed)
 #' @param quiet Suppress messages
-#' @noRd
+#' @return `lib_dir`, invisibly. Aborts (via [check_result()]) when a step
+#'   fails.
+#' @keywords internal
 build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
   fs::dir_create(lib_dir, recurse = TRUE)
 
@@ -472,14 +484,14 @@ build_inline_package <- function(pkg_dir, lib_dir, quiet = FALSE) {
 
 #' Load functions from an inline package into an environment
 #'
-#' Loads the compiled package and copies exported functions into the target
-#' environment.
+#' Attaches the compiled package with `library()` and copies every export
+#' into the target environment.
 #'
 #' @param pkg_name Package name
 #' @param lib_dir Library directory containing the installed package
 #' @param env Target environment
 #' @return Character vector of exported function names
-#' @noRd
+#' @keywords internal
 load_inline_functions <- function(pkg_name, lib_dir, env) {
   # Load the package
   library(pkg_name, lib.loc = as.character(lib_dir), character.only = TRUE,

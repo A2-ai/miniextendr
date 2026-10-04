@@ -304,7 +304,7 @@ report_upgrade_changes <- function(changes) {
 #'
 #' @param path Path to the monorepo workspace root.
 #' @return Name of the rpkg subdirectory (not a full path), or `NULL`.
-#' @noRd
+#' @keywords internal
 find_rpkg_subdir <- function(path) {
   subdirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
   matches <- character(0)
@@ -344,7 +344,7 @@ find_rpkg_subdir <- function(path) {
 #'   monorepo workspace root, `NULL` for a standalone package) and `subdir`
 #'   (the package directory relative to `root`, `NULL` for a standalone
 #'   package).
-#' @noRd
+#' @keywords internal
 upgrade_layout <- function(path, rpkg_subdir = NULL) {
   path <- normalizePath(path, mustWork = FALSE)
   standalone <- list(pkg = path, root = NULL, subdir = NULL)
@@ -381,7 +381,9 @@ upgrade_layout <- function(path, rpkg_subdir = NULL) {
 #'
 #' @param root Absolute path to the monorepo workspace root.
 #' @param rpkg_name The R package subdirectory, relative to `root`.
-#' @noRd
+#' @return `NULL` invisibly; called for its side effect of editing
+#'   `<root>/.gitignore`.
+#' @keywords internal
 upgrade_root_gitignore <- function(root, rpkg_name) {
   patterns <- gsub("{{rpkg_name}}", rpkg_name, mx_ignore_patterns("gitignore"),
                    fixed = TRUE)
@@ -402,7 +404,7 @@ upgrade_root_gitignore <- function(root, rpkg_name) {
 #'
 #' @param proj_dir Package directory to inspect.
 #' @return Called for its messages; returns `NULL` invisibly.
-#' @noRd
+#' @keywords internal
 report_upgrade_leftovers <- function(proj_dir) {
   unused <- c("tools/wrapper-freshness.R", "tools/wrapper-inputs.rds")
   unused <- unused[file.exists(file.path(proj_dir, unused))]
@@ -442,7 +444,10 @@ report_upgrade_leftovers <- function(proj_dir) {
 #'
 #' @param proj_dir Package directory to inspect (default `usethis::proj_get()`).
 #'   The relative `scaffolding_files` pathspecs are interpreted against it.
-#' @noRd
+#' @return `NULL` invisibly when the files are clean, or when git is missing
+#'   or `proj_dir` is not in a git repository; otherwise aborts, listing the
+#'   `git status --porcelain` lines.
+#' @keywords internal
 check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
   # Bail out if git is not available
   if (!nzchar(Sys.which("git"))) return(invisible())
@@ -493,7 +498,9 @@ check_scaffolding_clean <- function(proj_dir = usethis::proj_get()) {
 #'
 #' @param subdir Optional template subdirectory, passed to
 #'   `use_miniextendr_gitignore()` (`"rpkg"` in a monorepo).
-#' @noRd
+#' @return `NULL` invisibly; called for its side effect of editing the active
+#'   project's `.gitignore`.
+#' @keywords internal
 upgrade_gitignore <- function(subdir = NULL) {
   # Add current patterns (usethis handles deduplication)
   use_miniextendr_gitignore(subdir = subdir)
@@ -539,7 +546,10 @@ upgrade_gitignore <- function(subdir = NULL) {
 #'   about the active project, so the drift check and the upgrade agree on the
 #'   template set (#1720). The template type a previous scaffolding call left
 #'   active in this R session plays no part.
-#' @noRd
+#' @return `NULL` invisibly; called for the warning it raises when the
+#'   active project's `configure.ac` differs from the template (nothing
+#'   happens when the project has no `configure.ac`).
+#' @keywords internal
 check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis::proj_get())$root)) {
   configure_ac <- usethis::proj_path("configure.ac")
   if (!fs::file_exists(configure_ac)) return(invisible())
@@ -565,7 +575,9 @@ check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis:
 #'
 #' @param monorepo `TRUE` for the R package of a monorepo, `FALSE` for a
 #'   standalone package.
-#' @noRd
+#' @return Path of the installed `templates/monorepo/rpkg/configure.ac` or
+#'   `templates/rpkg/configure.ac`.
+#' @keywords internal
 configure_ac_template <- function(monorepo) {
   layout <- if (monorepo) file.path("monorepo", "rpkg") else "rpkg"
   system.file("templates", layout, "configure.ac",

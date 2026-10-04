@@ -16,10 +16,28 @@
 # stringr -> stringi) are still caught. Dependencies that are not installed
 # locally fall back to a curated list of well-known compiled packages.
 
-# Base-priority packages are exempt from the lint: the host R resolves them
-# from its own R.home("library"), never from the wasm library tree, so their
-# (native) .so files load fine. The webR-shipped wasm copies of these are a
-# separate problem, solved by the install-to-temp-lib pattern (#491/#744).
+#' Internals of the webR import lint
+#'
+#' The helpers behind [miniextendr_webr_import_lint()] (and the
+#' `webr = TRUE` part of [miniextendr_doctor()]). Detection is purely
+#' static: no `loadNamespace()`, no network.
+#'
+#' @param pkg Name of a dependency package.
+#' @param lib_paths Library paths to probe for installed packages.
+#' @param pkg_dir Directory of the package whose `NAMESPACE` is linted.
+#' @param findings Data frame from `webr_import_findings()`.
+#' @name webr_lint_internals
+#' @keywords internal
+NULL
+
+#' @rdname webr_lint_internals
+#' @details `webr_base_priority_pkgs()`: base-priority packages are exempt
+#'   from the lint. The host R resolves them from its own
+#'   `R.home("library")`, never from the wasm library tree, so their (native)
+#'   `.so` files load fine. The webR-shipped wasm copies of these are a
+#'   separate problem, solved by the install-to-temp-lib pattern (#491/#744).
+#' @return `webr_base_priority_pkgs()`: character vector of the
+#'   base-priority package names.
 webr_base_priority_pkgs <- function() {
   c(
     "base", "compiler", "datasets", "grDevices", "graphics", "grid",
@@ -28,14 +46,18 @@ webr_base_priority_pkgs <- function() {
   )
 }
 
-# Curated fallback list of packages known to put compiled code into the
-# namespace-load graph. Consulted only when a dependency is not installed
-# locally, so the DESCRIPTION/libs probe cannot run. Two flavours:
-#   - compiled themselves (`NeedsCompilation: yes` / ship a `libs/` dir),
-#   - pure-R umbrellas whose hard Imports are compiled (shiny -> httpuv,
-#     stringr -> stringi, httr/httr2 -> curl).
-# Note: rlang, cli, glue, fs, and purrr are all `NeedsCompilation: yes`
-# (verified 2026-06) despite being widely assumed pure-R.
+#' @rdname webr_lint_internals
+#' @details `webr_known_compiled_pkgs()`: curated fallback list of packages
+#'   known to put compiled code into the namespace-load graph. Consulted only
+#'   when a dependency is not installed locally, so the DESCRIPTION/libs
+#'   probe cannot run. Two flavours:
+#'   - compiled themselves (`NeedsCompilation: yes` / ship a `libs/` dir),
+#'   - pure-R umbrellas whose hard Imports are compiled (shiny -> httpuv,
+#'     stringr -> stringi, httr/httr2 -> curl).
+#'
+#'   Note: rlang, cli, glue, fs, and purrr are all `NeedsCompilation: yes`
+#'   (verified 2026-06) despite being widely assumed pure-R.
+#' @return `webr_known_compiled_pkgs()`: character vector of package names.
 webr_known_compiled_pkgs <- function() {
   c(
     # compiled themselves
@@ -50,8 +72,13 @@ webr_known_compiled_pkgs <- function() {
   )
 }
 
-# Probe one installed package: TRUE = compiled, FALSE = pure R, NA = cannot
-# tell (not installed, or DESCRIPTION unreadable / NeedsCompilation absent).
+#' @rdname webr_lint_internals
+#' @details `webr_pkg_compiled_status()`: probes one installed package. It
+#'   counts as compiled when it has a `libs/` directory, else when its
+#'   DESCRIPTION says `NeedsCompilation: yes`.
+#' @return `webr_pkg_compiled_status()`: `TRUE` = compiled, `FALSE` = pure R,
+#'   `NA` = cannot tell (not installed, or DESCRIPTION unreadable /
+#'   `NeedsCompilation` absent).
 webr_pkg_compiled_status <- function(pkg, lib_paths = .libPaths()) {
   pkg_dir <- find.package(pkg, lib.loc = lib_paths, quiet = TRUE)
   if (length(pkg_dir) == 0L) {
@@ -75,10 +102,12 @@ webr_pkg_compiled_status <- function(pkg, lib_paths = .libPaths()) {
   identical(tolower(trimws(needs_compilation)), "yes")
 }
 
-# Hard (namespace-loading) dependencies of an installed package: the
-# `Depends` + `Imports` fields of its DESCRIPTION, version constraints and
-# the `R` pseudo-dependency stripped. Returns character(0) when the package
-# is not installed or its DESCRIPTION is unreadable.
+#' @rdname webr_lint_internals
+#' @return `webr_hard_deps()`: the hard (namespace-loading) dependencies of
+#'   an installed package: the `Depends` + `Imports` fields of its
+#'   DESCRIPTION, version constraints and the `R` pseudo-dependency
+#'   stripped. `character(0)` when the package is not installed or its
+#'   DESCRIPTION is unreadable.
 webr_hard_deps <- function(pkg, lib_paths = .libPaths()) {
   pkg_dir <- find.package(pkg, lib.loc = lib_paths, quiet = TRUE)
   if (length(pkg_dir) == 0L) {
@@ -104,14 +133,17 @@ webr_hard_deps <- function(pkg, lib_paths = .libPaths()) {
   unique(deps)
 }
 
-# Walk the namespace-load graph rooted at `pkg` (breadth-first over hard
-# dependencies of locally installed, pure-R nodes). Returns
-# list(status =, via =) where status is one of:
-#   "compiled"       -- a reachable node is verifiably compiled; via = which
-#   "known-compiled" -- nothing verifiably compiled, but an unprobeable node
-#                       is on the curated list; via = which
-#   "unknown"        -- unprobeable node(s), none on the list; via = which
-#   "pure-r"         -- every reachable node probed pure R; via = character()
+#' @rdname webr_lint_internals
+#' @details `webr_load_graph_status()`: walks the namespace-load graph rooted
+#'   at `pkg` (breadth-first over hard dependencies of locally installed,
+#'   pure-R nodes; base-priority packages are skipped).
+#' @return `webr_load_graph_status()`: `list(status =, via =)` where `status`
+#'   is one of:
+#'   - `"compiled"`: a reachable node is verifiably compiled; `via` = which
+#'   - `"known-compiled"`: nothing verifiably compiled, but an unprobeable
+#'     node is on the curated list; `via` = which
+#'   - `"unknown"`: unprobeable node(s), none on the list; `via` = which
+#'   - `"pure-r"`: every reachable node probed pure R; `via` = `character()`
 webr_load_graph_status <- function(pkg, lib_paths = .libPaths()) {
   base_pkgs <- webr_base_priority_pkgs()
   queue <- pkg
@@ -146,9 +178,15 @@ webr_load_graph_status <- function(pkg, lib_paths = .libPaths()) {
   }
 }
 
-# Parse the package's NAMESPACE and classify every namespace-level import.
-# Returns a data frame with columns package / directive / status / via
-# (via is the comma-joined trail from webr_load_graph_status()).
+#' @rdname webr_lint_internals
+#' @details `webr_import_findings()`: parses the package's `NAMESPACE`
+#'   (aborting when it cannot be parsed) and classifies every
+#'   namespace-level `import()`, `importFrom()`, `importClassesFrom()` and
+#'   `importMethodsFrom()` target that is not a base-priority package.
+#' @return `webr_import_findings()`: a data frame with columns `package`,
+#'   `directive`, `status` and `via` (`via` is the comma-joined trail from
+#'   `webr_load_graph_status()`); no rows when there is no `NAMESPACE` or
+#'   nothing to classify.
 webr_import_findings <- function(pkg_dir, lib_paths = .libPaths()) {
   empty <- data.frame(
     package = character(), directive = character(),
@@ -219,9 +257,12 @@ webr_import_findings <- function(pkg_dir, lib_paths = .libPaths()) {
   )
 }
 
-# Print one cli line per finding plus a remediation block when anything is
-# flagged. Returns (invisibly) a list(pass =, warn =, fail =) shaped like
-# miniextendr_doctor()'s results, so doctor can merge it directly.
+#' @rdname webr_lint_internals
+#' @details `webr_report_findings()`: prints one cli line per finding, plus
+#'   a remediation block when anything is flagged.
+#' @return `webr_report_findings()`: invisibly, a
+#'   `list(pass =, warn =, fail =)` shaped like [miniextendr_doctor()]'s
+#'   results, so doctor can merge it directly.
 webr_report_findings <- function(findings) {
   results <- list(pass = character(), warn = character(), fail = character())
   if (nrow(findings) == 0L) {

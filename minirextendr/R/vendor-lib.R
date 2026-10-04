@@ -11,7 +11,7 @@
 #' @param crate Crate name
 #' @param version Version spec (e.g., "*", "0.1.0")
 #' @return Invisibly returns TRUE if modified, FALSE if already present
-#' @noRd
+#' @keywords internal
 add_cargo_dependency <- function(crate, version) {
   cargo_path <- usethis::proj_path("src", "rust", "Cargo.toml")
 
@@ -54,7 +54,7 @@ add_cargo_dependency <- function(crate, version) {
 #' @param crate Crate name
 #' @param dev_path Relative path from R package root to the crate
 #' @return Invisibly returns TRUE if modified, FALSE if already present
-#' @noRd
+#' @keywords internal
 add_cargo_patch <- function(crate, dev_path) {
   cargo_path <- usethis::proj_path("src", "rust", "Cargo.toml")
   lines <- readLines(cargo_path, warn = FALSE)
@@ -97,7 +97,7 @@ add_cargo_patch <- function(crate, dev_path) {
 #'
 #' @param lines Character vector of `configure.ac` lines
 #' @return Character vector of missing anchor names (empty if both present)
-#' @noRd
+#' @keywords internal
 vendor_lib_missing_anchors <- function(lines) {
   has_vendor_out <- any(grepl("AC_SUBST\\(\\[VENDOR_OUT_CARGO\\]\\)", lines)) ||
     any(grepl("AC_SUBST\\(\\[VENDOR_OUT\\]\\)", lines))
@@ -117,7 +117,7 @@ vendor_lib_missing_anchors <- function(lines) {
 #'
 #' @param lines Character vector of `configure.ac` lines
 #' @return Invisibly `TRUE` if both anchors are present; aborts otherwise
-#' @noRd
+#' @keywords internal
 abort_if_missing_vendor_lib_anchors <- function(lines) {
   missing <- vendor_lib_missing_anchors(lines)
   if (length(missing) == 0) {
@@ -146,8 +146,10 @@ abort_if_missing_vendor_lib_anchors <- function(lines) {
 #'
 #' @param crate Crate name
 #' @param dev_path Relative path from R package root to the crate
-#' @return Invisibly returns TRUE if modified
-#' @noRd
+#' @return Invisibly returns TRUE if modified, FALSE if `configure.ac`
+#'   already has a vendor-lib block for `crate`. Aborts when the project has
+#'   no `configure.ac`.
+#' @keywords internal
 add_vendor_lib_to_configure_ac <- function(crate, dev_path) {
   configure_ac <- usethis::proj_path("configure.ac")
 

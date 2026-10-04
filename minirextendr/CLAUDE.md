@@ -33,6 +33,7 @@ Templates may have extra standalone-project logic (e.g., checking for miniextend
 - `usethis::write_over()` skips silently in non-interactive mode. `use_template()` deletes the target first so `upgrade_miniextendr_package()` actually overwrites.
 - Cargo directory source can't find manually-extracted crates from `.crate` files — use `[patch.crates-io]` + path deps for workspace crates.
 - Regression tests in `tests/testthat/` grep function source for literal strings (`deparse(body)` style). Don't inline a helper just to satisfy them — fix the test or accept the indirection.
+- Every function in `R/` has an Rd page, internal helpers included: they get `@keywords internal` (never `@noRd`) with a title, a `@param` per formal and `@return`. Closely related helpers share a page via `@rdname` (e.g. `webr_lint_internals`, `prefreeze_manifest`). `tests/testthat/test-rd-coverage.R` fails on a function with no `\alias{}` in `man/`, or a page with an undocumented argument (#1727); R CMD check alone skips arguments on internal pages unless `_R_CHECK_RD_INTERNAL_TOO_=true`.
 - `configure` and `bootstrap.R` never vendor. `bootstrap.R` only stages path dependencies outside the package; `inst/vendor.tar.xz` comes from `miniextendr_vendor()`, which `miniextendr_build_tarball()` / `miniextendr_check()` run and clean up.
 
 ## End-user contract

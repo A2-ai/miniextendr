@@ -192,7 +192,9 @@ use_miniextendr_gitignore <- function(path = ".", subdir = NULL) {
 #'
 #' @param path Project directory; defaults to the active project.
 #' @param subdir Optional template subdirectory for the embedded R package.
-#' @noRd
+#' @return Invisibly `TRUE`; called for its side effect of updating
+#'   `.gitattributes`.
+#' @keywords internal
 use_miniextendr_gitattributes <- function(path = ".", subdir = NULL) {
   with_project(path)
   lines <- readLines(template_path("gitattributes", subdir = subdir))

@@ -12,7 +12,7 @@
 #' @param feature_name Name of the feature (e.g., "vctrs")
 #' @param feature_spec Feature specification (e.g., "miniextendr-api/vctrs")
 #' @return Invisibly returns TRUE if modified, FALSE if already present
-#' @noRd
+#' @keywords internal
 add_cargo_feature <- function(feature_name, feature_spec)
 {
   cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml")
@@ -62,7 +62,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
 #' @param pkg Package name to add to Imports
 #' @param min_version Optional minimum version (e.g., ">= 0.6.0")
 #' @return Invisibly returns TRUE if modified, FALSE if already present
-#' @noRd
+#' @keywords internal
 add_import <- function(pkg, min_version = NULL) {
   desc_path <- usethis::proj_path("DESCRIPTION")
 
@@ -232,7 +232,7 @@ use_s7 <- function(path = ".") {
 #' Load hook that `use_s7()` writes when a package has no `.onLoad()`
 #'
 #' Mirrors rpkg's `.onLoad()` (`rpkg/R/rpkg-package.R`).
-#' @noRd
+#' @keywords internal
 MX_S7_LOAD_HOOK <- c(
   "# Register S7 methods when the package loads. S7 records methods for",
   "# generics from other packages (base generics such as format(), operators",
@@ -251,7 +251,7 @@ MX_S7_LOAD_HOOK <- c(
 #' See `use_s7()` for the rules. Never edits an existing `.onLoad()`.
 #'
 #' @return Invisibly, `TRUE` if a hook was written.
-#' @noRd
+#' @keywords internal
 use_s7_load_hook <- function() {
   scan <- s7_load_hooks(usethis::proj_get())
   line <- "suppressMessages(S7::methods_register())"
@@ -321,7 +321,7 @@ use_s7_load_hook <- function() {
 #' @return `list(hooks = list(list(file, registers)), failed = <chr>)`: one
 #'   entry per definition (`file` relative to `pkg_dir`), and the files that
 #'   could not be parsed.
-#' @noRd
+#' @keywords internal
 s7_load_hooks <- function(pkg_dir) {
   r_dir <- file.path(pkg_dir, "R")
   r_files <- if (dir.exists(r_dir)) {
@@ -560,8 +560,9 @@ update_feature_detection <- function(path = ".", overwrite = TRUE) {
 #'
 #' Parses the `[features]` section of src/rust/Cargo.toml to extract feature names.
 #'
-#' @return Character vector of feature names
-#' @noRd
+#' @return Character vector of feature names, `default` excluded; empty when
+#'   there is no `[features]` section, or (with a warning) no Cargo.toml.
+#' @keywords internal
 detect_cargo_features <- function() {
   cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml")
 
@@ -603,10 +604,14 @@ detect_cargo_features <- function() {
 
 #' Generate Rust feature detection code
 #'
+#' Emits a module with one `#[miniextendr]` function,
+#' `<package_rs>_enabled_features()`, that returns the names of the listed
+#' features compiled in (checked with `cfg!(feature = ...)`).
+#'
 #' @param package_name Package name
 #' @param features Vector of feature names
 #' @return Character string of Rust code
-#' @noRd
+#' @keywords internal
 generate_feature_detection_rust <- function(package_name, features) {
   package_rs <- gsub("[.-]", "_", package_name)
   fn_name <- paste0(package_rs, "_enabled_features")
@@ -647,9 +652,14 @@ pub fn %s() -> Vec<&\'static str> {
 
 #' Generate R feature helper code
 #'
+#' Emits the exported `<package_rs>_has_feature()` and
+#' `skip_if_missing_feature()` helpers, both built on the Rust
+#' `<package_rs>_enabled_features()` from
+#' [generate_feature_detection_rust()].
+#'
 #' @param package_name Package name
 #' @return Character string of R code
-#' @noRd
+#' @keywords internal
 generate_feature_detection_r <- function(package_name) {
   package_rs <- gsub("[.-]", "_", package_name)
   fn_name <- paste0(package_rs, "_enabled_features")

@@ -647,18 +647,21 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
   invisible(results)
 }
 
-# Parse src/rust/Cargo.toml lines and return a list of list(crate, path) for
-# each [dependencies] entry that has a relative path = "..." value.
-#
-# Rules:
-#   - Only entries inside a [dependencies] section are checked.
-#   - [patch.crates-io] and all other sections are ignored.
-#   - A path is relative when it does NOT start with "/" (or on Windows "X:/").
-#   - Both bare `crate = { path = "..." }` inline tables and multi-line
-#     dependency blocks preceded by `[dependencies.crate]` are handled.
-#
-# @param lines Character vector: the raw lines of Cargo.toml.
-# @return A list of named lists with elements `crate` and `path`.
+#' Relative path dependencies declared in Cargo.toml
+#'
+#' Parses `src/rust/Cargo.toml` lines and returns a `list(crate, path)` for
+#' each `[dependencies]` entry that has a relative `path = "..."` value.
+#'
+#' Rules:
+#' - Only entries inside a `[dependencies]` section are checked.
+#' - `[patch.crates-io]` and all other sections are ignored.
+#' - A path is relative when [is_absolute_path()] says it is not absolute.
+#' - Both bare `crate = { path = "..." }` inline tables and multi-line
+#'   dependency blocks preceded by `[dependencies.crate]` are handled.
+#'
+#' @param lines Character vector: the raw lines of Cargo.toml.
+#' @return A list of named lists with elements `crate` and `path`.
+#' @keywords internal
 parse_relative_path_deps <- function(lines) {
   results <- list()
 
@@ -744,11 +747,18 @@ parse_relative_path_deps <- function(lines) {
   results
 }
 
-# Returns TRUE when path is absolute (starts with "/" or a Windows drive letter).
+#' Whether a path is absolute
+#'
+#' @param path Character vector of paths.
+#' @return Logical vector: `TRUE` where the path starts with `/`, or with a
+#'   Windows drive letter and colon followed by a slash or backslash.
+#' @keywords internal
 is_absolute_path <- function(path) {
   grepl("^(/|[A-Za-z]:[/\\\\])", path)
 }
 
+#' Git pathspecs of the generated files the scaffold ignores
+#'
 #' Git pathspecs for the configure-/install-generated files that the scaffold
 #' `.gitignore` keeps out of version control (see
 #' `inst/templates/rpkg/gitignore`). Only the mode-/machine-specific files
@@ -756,7 +766,7 @@ is_absolute_path <- function(path) {
 #' `inst/vendor.tar.xz`, which has its own dedicated doctor check. Keep the
 #' primary real-world offender (`src/rust/.cargo/config.toml`, #1226/#1250)
 #' first so it leads the report.
-#' @noRd
+#' @keywords internal
 MX_GENERATED_GITIGNORED_PATHSPECS <- c(
   "src/rust/.cargo/config.toml",
   "src/Makevars",
@@ -773,8 +783,8 @@ MX_GENERATED_GITIGNORED_PATHSPECS <- c(
 #' and never matched the nested path) may have `git add`ed generated files
 #' before the corrected pattern arrived, and `upgrade_gitignore()` cannot
 #' un-track them. Runs a single batched `git ls-files` over every pathspec
-#' (`MX_GENERATED_GITIGNORED_PATHSPECS` for generated files, vendor tarball
-#' paths for tracked_vendor_tarballs()) so all offenders are collected in one
+#' ([MX_GENERATED_GITIGNORED_PATHSPECS] for generated files, vendor tarball
+#' paths for [tracked_vendor_tarballs()]) so all offenders are collected in one
 #' pass rather than bailing at the first.
 #'
 #' `git ls-files` reads the index, so a file counts as tracked from the moment
@@ -792,7 +802,7 @@ MX_GENERATED_GITIGNORED_PATHSPECS <- c(
 #'   cannot run at all: git missing from PATH, or `proj_dir` not inside a git
 #'   work tree (CRAN's offline farm, an extracted source tarball, or a test
 #'   fixture's bare `.git` stub directory).
-#' @noRd
+#' @keywords internal
 tracked_files <- function(proj_dir, pathspecs) {
   if (!nzchar(Sys.which("git"))) {
     return(NULL)
@@ -819,8 +829,13 @@ tracked_files <- function(proj_dir, pathspecs) {
   tracked[nzchar(tracked)]
 }
 
-#' Generated files that are tracked in git (see tracked_files())
-#' @noRd
+#' Generated files that are tracked in git
+#'
+#' [tracked_files()] over [MX_GENERATED_GITIGNORED_PATHSPECS].
+#'
+#' @inheritParams tracked_files
+#' @return Same `NULL` / `character(0)` contract as [tracked_files()].
+#' @keywords internal
 tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
   tracked_files(proj_dir, MX_GENERATED_GITIGNORED_PATHSPECS)
 }
@@ -829,9 +844,11 @@ tracked_generated_files <- function(proj_dir = usethis::proj_get()) {
 #'
 #' `inst/vendor.tar.xz`, or any `vendor.tar.xz` below the package, such as the
 #' `src/rust/vendor.tar.xz` of older scaffolds. A plain pathspec `*` also
-#' matches `/`, so `*/vendor.tar.xz` covers every depth. Same `NULL` /
-#' `character(0)` contract as tracked_files().
-#' @noRd
+#' matches `/`, so `*/vendor.tar.xz` covers every depth.
+#'
+#' @inheritParams tracked_files
+#' @return Same `NULL` / `character(0)` contract as [tracked_files()].
+#' @keywords internal
 tracked_vendor_tarballs <- function(proj_dir = usethis::proj_get()) {
   tracked_files(proj_dir, c("vendor.tar.xz", "*/vendor.tar.xz"))
 }
@@ -846,7 +863,7 @@ tracked_vendor_tarballs <- function(proj_dir = usethis::proj_get()) {
 #' @return `NULL` when the package does not use S7; otherwise
 #'   `list(imported = <lgl>, hooks = , failed = )` with `hooks` / `failed`
 #'   from `s7_load_hooks()`.
-#' @noRd
+#' @keywords internal
 s7_registration_status <- function(pkg_dir = usethis::proj_get()) {
   desc_path <- file.path(pkg_dir, "DESCRIPTION")
   imported <- file.exists(desc_path) && {
@@ -906,7 +923,7 @@ s7_registration_status <- function(pkg_dir = usethis::proj_get()) {
 #'   `"whole-package-import"` (`detail` = the imported package), or
 #'   `"parse-error"` (`detail` = the unparseable file, relative to
 #'   `pkg_dir`).
-#' @noRd
+#' @keywords internal
 stale_namespace_exports <- function(pkg_dir = usethis::proj_get()) {
   skip <- function(reason, detail = NULL) {
     list(status = "skip", reason = reason, detail = detail)
@@ -979,7 +996,7 @@ stale_namespace_exports <- function(pkg_dir = usethis::proj_get()) {
 #' @param r_files Character vector of file paths to parse.
 #' @return `list(names = <chr>, failed = <chr>)`: the unique defined names,
 #'   and any files that could not be parsed (syntax errors).
-#' @noRd
+#' @keywords internal
 r_top_level_definitions <- function(r_files) {
   defined <- character()
   failed <- character()
