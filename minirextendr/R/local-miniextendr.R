@@ -68,7 +68,6 @@ to pick up the marker-file branch."
   }
 
   writeLines(abs, usethis::proj_path(".miniextendr-local"))
-  clean_local_build_ignore()
   usethis::use_build_ignore(".miniextendr-local")
   usethis::use_git_ignore(".miniextendr-local")
   cli::cli_alert_success("Recorded local miniextendr checkout: {.path {abs}}")
@@ -93,7 +92,6 @@ to pick up the marker-file branch."
 #' @export
 unuse_local_miniextendr <- function(path = ".") {
   with_project(path)
-  clean_local_build_ignore()
   marker <- usethis::proj_path(".miniextendr-local")
   if (!fs::file_exists(marker)) {
     cli::cli_alert_info("No {.path .miniextendr-local} marker present \u2014 nothing to remove.")
@@ -106,18 +104,4 @@ unuse_local_miniextendr <- function(path = ".") {
 {.path src/rust/.cargo/config.toml} without the local path override."
   )
   invisible(TRUE)
-}
-
-# Remove the double-escaped entry written before #1405. Keep unrelated rules
-# and the correct ignore entry, which still applies if the override is reused.
-clean_local_build_ignore <- function() {
-  path <- usethis::proj_path(".Rbuildignore")
-  if (!fs::file_exists(path)) return(invisible())
-
-  lines <- readLines(path, warn = FALSE)
-  obsolete <- lines == "^\\\\.miniextendr-local$$"
-  if (any(obsolete)) {
-    writeLines(lines[!obsolete], path)
-  }
-  invisible()
 }
