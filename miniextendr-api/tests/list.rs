@@ -322,6 +322,28 @@ fn derive_try_from_list_ignores_other_repeated_names() {
     });
 }
 
+/// A field named `list`: the generated `try_from_list` must not name its
+/// parameter `list`, or the field binding would shadow it for `y`.
+#[derive(Debug, PartialEq, miniextendr_api::TryFromList)]
+struct WithListField {
+    list: Vec<f64>,
+    y: f64,
+}
+
+#[test]
+fn derive_try_from_list_field_named_list() {
+    r_test_utils::with_r_thread(|| {
+        let (_g, list) = r_list("list(list = c(1, 2), y = 3)");
+        assert_eq!(
+            WithListField::try_from_list(list).unwrap(),
+            WithListField {
+                list: vec![1.0, 2.0],
+                y: 3.0,
+            }
+        );
+    });
+}
+
 #[test]
 fn derive_try_from_list_missing_and_wrong_type() {
     r_test_utils::with_r_thread(|| {
