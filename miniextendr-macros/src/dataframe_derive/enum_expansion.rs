@@ -879,29 +879,19 @@ pub(super) fn derive_enum_dataframe(
 
         // as_list struct fields: convert each element via into_list() at conversion time
         // (not during row accumulation), producing a VECSXP list-column with NULL for absent rows.
+        // `into_option_list_column` stores each list in the rooted column as it is built,
+        // so earlier cells are never unrooted while later ones allocate (#1748).
         let as_list_struct_pushes: Vec<TokenStream> = columns
             .iter()
             .filter(|col| as_list_struct_col_names.contains(&col.col_name.to_string()))
             .map(|col| {
                 let name = &col.col_name;
                 let name_str = name.to_string();
-                let ty = &col.ty;
                 quote! {
-                    {
-                        // Map Vec<Option<T>> → Vec<Option<List>> then convert to SEXP.
-                        // This is the only R-touching operation for as_list struct fields.
-                        let __as_list_col: Vec<Option<::miniextendr_api::list::List>> =
-                            self.#name
-                                .into_iter()
-                                .map(|__opt: Option<#ty>| {
-                                    __opt.map(|v| ::miniextendr_api::list::IntoList::into_list(v))
-                                })
-                                .collect();
-                        __df_pairs.push((
-                            #name_str.to_string(),
-                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col)),
-                        ));
-                    }
+                    __df_pairs.push((
+                        #name_str.to_string(),
+                        __scope.protect_raw(::miniextendr_api::list::into_option_list_column(self.#name)),
+                    ));
                 }
             })
             .collect();
@@ -985,22 +975,23 @@ pub(super) fn derive_enum_dataframe(
                         }
                         // Call Inner::to_dataframe and extract named column SEXPs.
                         let __inner_df = <#inner_ty>::to_dataframe(__inner_rows);
-                        // into_named_columns consumes __inner_df and returns (name, SEXP) pairs.
-                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
+                        // into_named_columns roots the inner column list in __scope, so
+                        // every source column outlives the scatter allocations below.
+                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                            __inner_df,
+                            &__scope,
+                        );
                         // Scatter each column back to full _n_rows with NA/NULL-fill,
                         // preserving the source column's SEXPTYPE.
                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                            // Protect the source column across the scatter allocation.
-                            let __src = __scope.protect_raw(__inner_col_sexp);
                             let __prefixed = format!("{}_{}", #base_name_str, __inner_col_name);
-                            let __scattered = unsafe {
-                                let __out = ::miniextendr_api::convert::scatter_column(
-                                    __src,
+                            let __scattered = __scope.protect_raw(
+                                ::miniextendr_api::convert::scatter_column(
+                                    __inner_col_sexp,
                                     &__present_idx,
                                     _n_rows,
-                                );
-                                __scope.protect_raw(__out)
-                            };
+                                ),
+                            );
                             __df_pairs.push((__prefixed, __scattered));
                         }
                     }
@@ -2105,7 +2096,8 @@ fn generate_split_method(
                                 crate::naming::unraw(&data.col_name)
                             );
                             let ty = &data.ty;
-                            // For needs_into_list fields, ty is already List (the stored type).
+                            // For needs_into_list fields this is the raw struct type; the
+                            // list-column is built from it when the partition is assembled.
                             buf_decls.push(quote! {
                                 let mut #buf: Vec<#ty> = Vec::new();
                             });
@@ -2332,17 +2324,12 @@ fn generate_split_method(
                                 let col_str = data.col_name.to_string();
                                 let ty = &data.ty;
                                 if data.needs_into_list {
+                                    // Each cell's list goes straight into the rooted column.
                                     vec![quote! {
-                                        {
-                                            let __as_list_col: Vec<::miniextendr_api::list::List> =
-                                                #buf.into_iter()
-                                                    .map(|v: #ty| ::miniextendr_api::list::IntoList::into_list(v))
-                                                    .collect();
-                                            #pairs_var.push((
-                                                #col_str.to_string(),
-                                                __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col)),
-                                            ));
-                                        }
+                                        #pairs_var.push((
+                                            #col_str.to_string(),
+                                            __scope.protect_raw(::miniextendr_api::list::into_list_column(#buf)),
+                                        ));
                                     }]
                                 } else if data.is_factor {
                                     // Factor column: convert Vec<T> → FactorOptionVec<T> (all present).
@@ -2450,13 +2437,15 @@ fn generate_split_method(
                                 vec![quote! {
                                     {
                                         let __inner_df = <#inner_ty>::to_dataframe(#buf);
-                                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
+                                        // The inner column list is rooted in __scope, which keeps
+                                        // its columns alive until this partition owns them.
+                                        let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                                            __inner_df,
+                                            &__scope,
+                                        );
                                         for (__inner_col_name, __inner_col_sexp) in __inner_cols {
                                             let __prefixed = format!("{}_{}", #base_str, __inner_col_name);
-                                            #pairs_var.push((
-                                                __prefixed,
-                                                __scope.protect_raw(__inner_col_sexp),
-                                            ));
+                                            #pairs_var.push((__prefixed, __inner_col_sexp));
                                         }
                                     }
                                 }]
@@ -2466,8 +2455,9 @@ fn generate_split_method(
 
                     df_constructions.push(quote! {
                         let #n_var = #len_expr;
-                        // SAFETY: split-method runs on the R main thread; scope
-                        // unprotects after each variant data.frame is built.
+                        // SAFETY: split-method runs on the R main thread. The scope
+                        // roots this partition's columns until `from_raw_pairs` owns
+                        // them; the multi-variant body roots the finished partition.
                         let #df_var = unsafe {
                             let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                             let mut #pairs_var: Vec<(String, ::miniextendr_api::SEXP)> = Vec::new();
@@ -2531,15 +2521,10 @@ fn generate_split_method(
                                 let col_str = data.col_name.to_string();
                                 let ty = &data.ty;
                                 if data.needs_into_list {
-                                    // Convert Vec<T> → Vec<List> → SEXP at split time.
+                                    // Convert Vec<T> → list-column at split time; each cell's
+                                    // list goes straight into the rooted column.
                                     vec![quote! {
-                                        (#col_str, {
-                                            let __as_list_col: Vec<::miniextendr_api::list::List> =
-                                                #buf.into_iter()
-                                                    .map(|v: #ty| ::miniextendr_api::list::IntoList::into_list(v))
-                                                    .collect();
-                                            __scope.protect_raw(::miniextendr_api::IntoR::into_sexp(__as_list_col))
-                                        })
+                                        (#col_str, __scope.protect_raw(::miniextendr_api::list::into_list_column(#buf)))
                                     }]
                                 } else if data.is_factor {
                                     // Factor: convert Vec<T> → FactorOptionVec<T> (all present).
@@ -2630,16 +2615,29 @@ fn generate_split_method(
         }
     } else {
         // Multiple variants: return named list of data.frames.
-        // Each per-variant data.frame's `into_sexp()` is rooted via
-        // `__outer_scope.protect_raw` so prior variant data.frames survive
-        // the next variant's allocation
-        // (reviews/2026-05-07-gctorture-audit.md).
+        // Each partition is rooted in `__outer_scope` the moment it is built:
+        // the later partitions allocate, and an unrooted earlier partition is
+        // reaped before the outer list owns it (#1748). The protect runs after
+        // the partition's own `ProtectScope` has closed, so `__outer_scope` is
+        // the innermost live scope (scopes unprotect from the top of the stack).
+        let rooted_constructions: Vec<TokenStream> = df_constructions
+            .iter()
+            .zip(df_var_names.iter())
+            .map(|(construction, var)| {
+                quote! {
+                    #construction
+                    // SAFETY: R main thread; nothing allocates between building
+                    // the partition and protecting it.
+                    let #var = unsafe {
+                        __outer_scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#var))
+                    };
+                }
+            })
+            .collect();
         let outer_pairs: Vec<TokenStream> = snake_names
             .iter()
             .zip(df_var_names.iter())
-            .map(|(name, var)| {
-                quote! { (#name, __outer_scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#var))) }
-            })
+            .map(|(name, var)| quote! { (#name, #var) })
             .collect();
 
         quote! {
@@ -2649,14 +2647,12 @@ fn generate_split_method(
                     #(#match_arms)*
                 }
             }
-            #(#df_constructions)*
             // SAFETY: split-method runs on the R main thread.
-            unsafe {
-                let __outer_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                ::miniextendr_api::list::List::from_raw_pairs(vec![
-                    #(#outer_pairs),*
-                ])
-            }
+            let __outer_scope = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
+            #(#rooted_constructions)*
+            ::miniextendr_api::list::List::from_raw_pairs(vec![
+                #(#outer_pairs),*
+            ])
         }
     };
 

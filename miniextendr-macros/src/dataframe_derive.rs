@@ -1599,13 +1599,16 @@ fn derive_struct_dataframe(
                     quote! {
                         {
                             let __inner_df = <#inner_ty>::to_dataframe(self.#col_name);
-                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(__inner_df);
+                            // The inner column list is rooted in __scope, which keeps its
+                            // columns alive across the later columns' allocations.
+                            let __inner_cols = ::miniextendr_api::convert::ColumnSource::into_named_columns(
+                                __inner_df,
+                                &__scope,
+                            );
                             for (__inner_col_name, __inner_col_sexp) in __inner_cols {
-                                // Protect the source column SEXP across subsequent allocations.
-                                let __src = __scope.protect_raw(__inner_col_sexp);
                                 __df_pairs.push((
                                     format!("{}_{}", #base_name_str, __inner_col_name),
-                                    __src,
+                                    __inner_col_sexp,
                                 ));
                             }
                         }
@@ -3179,19 +3182,15 @@ pub(super) struct EnumSingleFieldData {
     pub(super) binding: syn::Ident,
     /// Original Rust field name (for named variants).
     pub(super) rust_name: syn::Ident,
-    /// Column type stored in the companion Vec.
-    ///
-    /// For most fields this is the raw Rust type. When `needs_into_list` is
-    /// `true` (struct-typed fields with `#[dataframe(as_list)]`), this is
-    /// `::miniextendr_api::list::List` — the actual inner type is erased at
-    /// the storage level and each row value is converted via `.into_list()`.
+    /// Column type stored in the companion Vec: the field's Rust type, also
+    /// when `needs_into_list` is set (the companion holds no R objects).
     pub(super) ty: syn::Type,
-    /// Whether the field's value must be converted via `.into_list()` before
-    /// being pushed into the companion `Vec<Option<List>>`.
+    /// Whether the column is built by converting each value via `.into_list()`
+    /// when the frame is assembled (`into_option_list_column` /
+    /// `into_list_column`), rather than through `IntoR` for the whole `Vec`.
     ///
     /// Set to `true` only for struct-typed fields (`FieldTypeKind::Struct`)
-    /// that carry `#[dataframe(as_list)]`. The companion struct field type is
-    /// `Vec<Option<::miniextendr_api::list::List>>` in this case.
+    /// that carry `#[dataframe(as_list)]`.
     pub(super) needs_into_list: bool,
     /// Whether the field should be emitted as an R factor column.
     ///
