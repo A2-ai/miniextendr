@@ -756,7 +756,7 @@ pub use r_coerce::{
 };
 
 pub mod condition;
-pub use condition::{AsRError, RCondition};
+pub use condition::{ArgError, AsRError, RCondition};
 /// Conditions that accompany a returned value (`defer_warning` & co.).
 pub mod deferred_condition;
 pub use deferred_condition::{defer_condition, defer_message, defer_warning};
@@ -1230,7 +1230,7 @@ pub mod match_arg;
 pub use match_arg::match_arg_either_or;
 pub use match_arg::{
     MatchArg, MatchArgError, choices_sexp, match_arg_from_sexp, match_arg_missing_or,
-    match_arg_null_or, match_arg_option_from_sexp, match_arg_vec_from_sexp,
+    match_arg_null_or, match_arg_option_from_sexp, match_arg_param, match_arg_vec_from_sexp,
     match_arg_vec_into_sexp,
 };
 

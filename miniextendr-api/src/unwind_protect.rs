@@ -488,6 +488,10 @@ where
 ///   no R wrapper to inspect a tagged SEXP (Approach 3 from the issue-345 plan).
 ///   Custom `class = "..."` from `error!()` is preserved in the class vector.
 ///
+/// - `RCondition::Conversion` (`arg_error!`) — the same, with the crate-class
+///   marker replaced in Rust by the classes `miniextendr_init!` registered:
+///   no generated R is there to resolve it.
+///
 /// - `Warning`, `Message`, `Condition` — convert to a plain R error with a
 ///   diagnostic message. `warning!()`/`message!()` from ALTREP context cannot
 ///   suspend execution for non-fatal signals; documented limitation.
@@ -541,11 +545,23 @@ where
                         class,
                         data,
                         call: _,
+                    }
+                    | crate::condition::RCondition::Conversion {
+                        message,
+                        class,
+                        data,
+                        call: _,
                     } => {
                         // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
                         // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
                         // both match. No R wrapper needed. `data` fields are spliced in
                         // too (issue #996 path 2) — previously silently dropped here.
+                        // No generated R resolves an `arg_error!`'s class marker here
+                        // (#1740): Rust puts the package's registered classes in its place.
+                        let class = crate::condition::resolve_conversion_error_class_marker(
+                            class,
+                            crate::condition::crate_conversion_error_class(),
+                        );
                         crate::panic_telemetry::fire(&message, source);
                         unsafe { raise_rust_condition_via_stop(&message, &class, call, data) }
                     }

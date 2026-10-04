@@ -157,7 +157,7 @@ Use in functions:
 
 ```rust
 #[miniextendr]
-pub fn run(mode: Mode) -> String {
+pub fn run(#[miniextendr(match_arg)] mode: Mode) -> String {
     match mode {
         Mode::Fast => "running fast".into(),
         Mode::Safe => "running safe".into(),
@@ -205,9 +205,62 @@ run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
 
 A `MatchArg` enum parameter without `#[miniextendr(match_arg)]` gets no R-side
-`match.arg()` check; its Rust conversion refuses a value that is not a choice
-with the same argument error, naming the choices:
-`'mode' must be one of "Fast", "Safe", "Debug": got "X"`.
+`match.arg()` check. Its Rust conversion reads the value as the check does
+(`NULL` or the whole choice vector selects the first choice, a factor is read as
+its labels, a unique prefix matches) and refuses a value that is not a choice
+with an argument error naming the choices:
+`'mode' must be one of "Fast", "Safe", "Debug": got "X"` (the conversion
+wording; the R-side check says `should be one of`, #1767).
+
+### Matching a Raw Argument in the Body
+
+Some arguments are only a choice on some paths: an argument the body hands on
+to another function, or one whose meaning depends on another argument. Take
+it as `SEXP` and match it in the body with `match_arg_param::<T>(value, "mode")`.
+It follows the wrapper's `.miniextendr_match_arg()` exactly, results and
+messages alike (#1741), and its error raises as the wrapper's argument error
+(`kind = "conversion"`, `e$param`, the crate's `conversion_error_class`, the
+wrapper's call):
+
+```rust
+use miniextendr_api::{MatchArg, SEXP, match_arg_param, miniextendr};
+
+#[derive(Copy, Clone, MatchArg)]
+#[match_arg(rename_all = "snake_case")]
+pub enum Fill {
+    Drop,
+    Draw,
+    Error,
+}
+
+#[miniextendr]
+pub fn fill_with(fill: SEXP) -> String {
+    let fill: Fill = match_arg_param(fill, "fill").unwrap_or_else(|e| e.raise());
+    fill.to_choice().to_string()
+}
+```
+
+| `fill` | Result |
+|---|---|
+| `NULL`, or the whole choice vector `c("drop", "draw", "error")` | `Drop` (the first choice) |
+| `"error"`, `"e"` (a unique prefix), `factor("draw")` | that choice |
+| `"dr"` (an ambiguous prefix), `"zzz"`, `""`, `NA_character_` | `'fill' should be one of "drop", "draw", "error"` |
+| `c("drop", "draw")`, `character(0)` | `'fill' must be of length 1` |
+| `1L`, `TRUE`, `list("drop")` | `'fill' must be NULL or a character vector` |
+
+As in `match.arg()`, `NA_character_` is matched as the string `"NA"`, so it
+selects a choice spelled `"NA"` or with that prefix, and the whole choice
+vector selects the first choice only when it has no attributes (a named
+vector is a vector of length 3). The returned `ArgError` carries the parameter
+name and message (`e.param()`, `e.message()`) for a caller that words its own
+error; `arg_error!` raises any other argument error from a body
+([CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body)).
+
+`match_arg_param` knows only `T::CHOICES`. A parameter with
+`default = "..."` rotates the default to the front of its formal and its
+check, so for such a parameter the first choice, the vector that counts as
+"the whole choice vector" and the order in the message differ between the two
+(#1767).
 
 ### Optional Choice: `Option<T>`
 

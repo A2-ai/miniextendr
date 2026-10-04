@@ -368,3 +368,71 @@ test_that("match_arg enum with variants named like associated items round-trips 
   expect_equal(match_arg_on_failures(c("output", "error")), c("output", "error"))
   expect_error(match_arg_on_failure("warn"), "should be one of")
 })
+
+test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)", {
+  # `match_arg_fill()` matches `fill` in its R wrapper (`.miniextendr_match_arg`);
+  # `match_arg_param_fill()` takes it as a raw SEXP and matches it in Rust with
+  # `match_arg_param()`. Both are called as `f(x)`, so even the condition call
+  # must be the same.
+  outcome <- function(f, x) {
+    r <- tryCatch(f(x), error = function(e) e)
+    if (!inherits(r, "error")) {
+      return(r)
+    }
+    list(
+      class = class(r),
+      message = conditionMessage(r),
+      param = r$param,
+      kind = r$kind,
+      fields = names(unclass(r)),
+      call = conditionCall(r)
+    )
+  }
+  wrapped <- miniextendr:::match_arg_fill
+  in_body <- miniextendr:::match_arg_param_fill
+  layers <- c("rust_error", "simpleError", "error", "condition")
+  one_of <- "'fill' should be one of \"drop\", \"draw\", \"error\""
+  not_scalar <- "'fill' must be of length 1"
+  not_character <- "'fill' must be NULL or a character vector"
+  # input, then the choice or the error message both must give.
+  rows <- list(
+    list(NULL, "drop"),
+    list(c("drop", "draw", "error"), "drop"),
+    list(factor("draw"), "draw"),
+    list(factor(c("drop", "draw", "error")), "drop"),
+    list("draw", "draw"),
+    list("dro", "drop"),
+    list("e", "error"),
+    list("dr", one_of),
+    list("zzz", one_of),
+    list("", one_of),
+    list(NA_character_, one_of),
+    list(factor(NA_character_), one_of),
+    list(c("drop", "draw"), not_scalar),
+    list(c("draw", "drop", "error"), not_scalar),
+    list(c(a = "drop", b = "draw", c = "error"), not_scalar),
+    list(character(0), not_scalar),
+    list(1L, not_character),
+    list(2.5, not_character),
+    list(NA, not_character),
+    list(list("drop"), not_character)
+  )
+  for (row in rows) {
+    x <- row[[1]]
+    label <- paste(deparse(x), collapse = "")
+    want <- outcome(wrapped, x)
+    got <- outcome(in_body, x)
+    expect_identical(got, want, info = label)
+    if (is.list(want)) {
+      expect_identical(want$message, row[[2]], info = label)
+      expect_identical(want$class, layers, info = label)
+      expect_identical(want$kind, "conversion", info = label)
+      expect_identical(want$param, "fill", info = label)
+      expect_equal(want$call, quote(f(x)), info = label)
+    } else {
+      expect_identical(want, row[[2]], info = label)
+    }
+  }
+  # An omitted argument is the formal default, the full choice vector.
+  expect_identical(wrapped(), "drop")
+})

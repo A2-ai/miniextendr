@@ -154,6 +154,10 @@ impl Counter for DoubleCounter {
             self.value
         );
     }
+
+    fn raise_arg_error(&self, mode: String) {
+        miniextendr_api::arg_error!(param = "mode", "'mode' is not a counter mode: {mode:?}");
+    }
 }
 
 /// Create a new DoubleCounter (consumer's own Counter implementation)
@@ -363,6 +367,21 @@ pub fn counter_raise_warning(counter_sexp: SEXP, msg: String) {
 pub fn counter_raise_warning_without_call(counter_sexp: SEXP, msg: String) {
     let counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.raise_warning_without_call(msg);
+}
+
+/// Raise an arg_error!() through a Counter trait method via trait dispatch.
+///
+/// Verifies that a producer-side `arg_error!()` reaches the consumer as an
+/// argument error: `e$kind == "conversion"`, `e$param`, the consumer wrapper's
+/// call, and the consumer crate's `conversion_error_class` (none here), since
+/// the consumer's wrapper raises it (#1740).
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param mode The value reported as a bad `mode` argument
+/// @export
+#[miniextendr]
+pub fn counter_raise_arg_error(counter_sexp: SEXP, mode: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_arg_error(mode);
 }
 
 /// Raise a message!() through a Counter trait method via trait dispatch.

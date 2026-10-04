@@ -30,6 +30,8 @@
 \alias{match_arg_on_failure}
 \alias{match_arg_on_failures}
 \alias{match_arg_on_failure_choices}
+\alias{match_arg_fill}
+\alias{match_arg_param_fill}
 \title{match_arg_set_mode}
 \usage{
 match_arg_set_mode(mode = c("Fast", "Safe", "Debug"))
@@ -91,6 +93,10 @@ match_arg_on_failure(on_failure = c("error", "value", "output"))
 match_arg_on_failures(on_failure = c("error", "value", "output"))
 
 match_arg_on_failure_choices()
+
+match_arg_fill(fill = c("drop", "draw", "error"))
+
+match_arg_param_fill(fill)
 }
 \arguments{
 \item{mode}{A Mode enum value, or NULL.}
@@ -123,6 +129,8 @@ match_arg_on_failure_choices()
 \code{"info"}, \code{"debug"}, \code{"trace"} (case-insensitive, partial matching).}
 
 \item{on_failure}{One or more OnFailure choices.}
+
+\item{fill}{One of \code{"drop"}, \code{"draw"}, \code{"error"}.}
 }
 \description{
 Set mode using match_arg.
@@ -180,5 +188,10 @@ Round-trip an \code{OnFailure} choice through R.
 Round-trip several \code{OnFailure} choices through R.
 
 Return the choices for OnFailure.
+
+\code{fill} matched by the generated wrapper.
+
+\code{fill} matched by the body with \code{match_arg_param()}, which the wrapper
+does not check.
 }
 \keyword{internal}

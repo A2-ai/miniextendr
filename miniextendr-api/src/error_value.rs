@@ -137,8 +137,9 @@ pub mod kind {
     /// `Option<T>::None` reached where a value was required (raised by the
     /// `NoneOnErr` / required-Option return paths).
     pub const NONE_ERR: &str = "none_err";
-    /// `TryFromSexp` / coerce / strict-mode conversion failed at argument
-    /// unmarshalling.
+    /// An argument error: a `TryFromSexp` / coerce / strict-mode conversion
+    /// failed at argument unmarshalling, a post-conversion check refused the
+    /// value, or a body raised `arg_error!(...)`.
     pub const CONVERSION: &str = "conversion";
     /// User-raised `error!(...)` condition.
     pub const ERROR: &str = "error";
@@ -302,6 +303,12 @@ pub unsafe fn conversion_condition_value(
 /// (`.miniextendr_arg_error`): `kind = "conversion"`, `message` as given,
 /// the crate's `conversion_error_class` (`crate_class`) before `rust_error`,
 /// and `e$param`. See [`crate::condition::arg_check_parts`].
+///
+/// This is the generated code's form of the argument error: it returns the
+/// value from the conversion arm and takes the classes the macro read from
+/// `[package.metadata.miniextendr]` at expansion time. A function body raises
+/// the same condition with the safe [`crate::arg_error!`] instead, whose
+/// classes the generated R wrapper fills in (#1740).
 ///
 /// # Safety
 ///

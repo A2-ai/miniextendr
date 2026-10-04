@@ -240,6 +240,31 @@ test_that("trait condition!(): classed + catchable + e$kind", {
   expect_equal(c_val$kind, "condition")
 })
 
+# arg_error!() — an argument error found by the implementation's body
+test_that("trait arg_error!(): kind, param and the consumer crate's classes (#1740)", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  counters <- list(new_counter(5L), new_stateful_counter(2L), new_double_counter(1L))
+  for (counter in counters) {
+    e <- tryCatch(counter_raise_arg_error(counter, "sideways"), error = function(e) e)
+    # The consumer's wrapper raises the condition, so the crate classes are
+    # consumer.pkg's (it sets no conversion_error_class), not producer.pkg's.
+    expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+    expect_identical(e$kind, "conversion")
+    expect_identical(e$param, "mode")
+    expect_identical(conditionMessage(e), "'mode' is not a counter mode: \"sideways\"")
+    expect_identical(sort(names(unclass(e))), c("call", "kind", "message", "param"))
+    expect_true(grepl("counter_raise_arg_error", deparse(conditionCall(e))[[1]]))
+  }
+
+  # The consumer's own check of the same argument raises the same family.
+  e_check <- tryCatch(counter_raise_arg_error(new_counter(1L), 1:2), error = function(e) e)
+  expect_identical(class(e_check), class(e))
+  expect_identical(e_check$kind, "conversion")
+  expect_identical(e_check$param, "mode")
+})
+
 # class-vector ordering parity with the in-process matrix
 test_that("trait error!(class): user class precedes rust_error", {
   skip_if_not_installed("producer.pkg")

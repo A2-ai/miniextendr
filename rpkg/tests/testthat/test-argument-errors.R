@@ -726,6 +726,132 @@ test_that("a match_arg enum's conversion error names its choices", {
     "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": NA is not allowed"
   )
   expect_identical(miniextendr:::arg_error_plain_mode("Sa"), "Safe")
+  # The full choice vector is the first choice, as for `match.arg()` (#1741).
+  expect_identical(miniextendr:::arg_error_plain_mode(c("Fast", "Safe", "Debug")), "Fast")
+})
+
+# endregion
+
+# region: arg_error! from a body (#1740)
+
+# The fields of a condition, in order, without its class.
+fields <- function(e) names(unclass(e))
+
+test_that("arg_error! raises the condition the wrapper raises for the parameter", {
+  # `match_arg_fill()` checks `fill` in its R wrapper; `arg_error_body()`
+  # checks it in Rust and raises the same argument error.
+  e_wrap <- caught(miniextendr:::match_arg_fill("zzz"))
+  e_body <- caught(miniextendr:::arg_error_body("zzz"))
+  expect_identical(class(e_body), layers)
+  expect_identical(class(e_body), class(e_wrap))
+  expect_identical(e_body$kind, "conversion")
+  expect_identical(e_body$kind, e_wrap$kind)
+  expect_identical(e_body$param, "fill")
+  expect_identical(e_body$param, e_wrap$param)
+  expect_identical(
+    conditionMessage(e_body),
+    "'fill' should be one of \"drop\", \"draw\", \"error\""
+  )
+  expect_identical(conditionMessage(e_body), conditionMessage(e_wrap))
+  expect_identical(fields(e_body), c("message", "call", "kind", "param"))
+  expect_identical(fields(e_body), fields(e_wrap))
+  # The wrapper's call as written, like every argument error.
+  expect_equal(conditionCall(e_body), quote(miniextendr:::arg_error_body("zzz")))
+  expect_equal(conditionCall(e_wrap), quote(miniextendr:::match_arg_fill("zzz")))
+  expect_identical(miniextendr:::arg_error_body("draw"), "draw")
+  # One handler for both.
+  param_of <- function(expr) tryCatch(expr, rust_error = function(e) e$param)
+  expect_identical(param_of(miniextendr:::arg_error_body("zzz")), "fill")
+})
+
+test_that("arg_error! takes the crate's conversion_error_class from the generated R", {
+  # rpkg sets no `conversion_error_class`, so the binding is NULL and nothing
+  # shows. Bind classes as a crate that sets them would: the body's condition
+  # and the wrapper's check pick them up alike, before `rust_error`, and the
+  # marker the Rust side sends never reaches R.
+  expect_null(miniextendr:::.miniextendr_conversion_error_class)
+  local_mocked_bindings(
+    .miniextendr_conversion_error_class = c("pkg_error_argument", "pkg_error"),
+    .package = "miniextendr"
+  )
+  crate_classes <- c("pkg_error_argument", "pkg_error", layers)
+  e_wrap <- caught(miniextendr:::match_arg_fill("zzz"))
+  e_body <- caught(miniextendr:::arg_error_body("zzz"))
+  expect_identical(class(e_wrap), crate_classes)
+  expect_identical(class(e_body), crate_classes)
+  expect_identical(
+    tryCatch(miniextendr:::arg_error_body("zzz"), pkg_error_argument = function(e) e$param),
+    "fill"
+  )
+})
+
+test_that("arg_error! never shows its class marker", {
+  for (e in list(
+    caught(miniextendr:::arg_error_body("zzz")),
+    caught(miniextendr:::arg_error_body_callless("zzz")),
+    caught(miniextendr:::arg_error_body_caller_impl("zzz"))
+  )) {
+    expect_identical(class(e), layers)
+    expect_false(".miniextendr_conversion_error_class" %in% class(e))
+  }
+})
+
+test_that("arg_error!(call = none, ...) raises it without a call", {
+  e <- caught(miniextendr:::arg_error_body_callless("zzz"))
+  expect_null(conditionCall(e))
+  expect_identical(class(e), layers)
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "fill")
+  expect_identical(conditionMessage(e), conditionMessage(caught(miniextendr:::arg_error_body("zzz"))))
+})
+
+test_that("arg_error! on the worker thread keeps the condition", {
+  # The fixture exists only when rpkg is built with `worker-thread`.
+  skip_if_not(
+    exists("arg_error_body_worker", envir = asNamespace("miniextendr"), inherits = FALSE),
+    "worker-thread feature not enabled"
+  )
+  e <- caught(miniextendr:::arg_error_body_worker("zzz"))
+  e_body <- caught(miniextendr:::arg_error_body("zzz"))
+  expect_identical(class(e), layers)
+  expect_identical(class(e), class(e_body))
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "fill")
+  expect_identical(conditionMessage(e), conditionMessage(e_body))
+  expect_identical(fields(e), fields(e_body))
+  expect_equal(conditionCall(e), quote(miniextendr:::arg_error_body_worker("zzz")))
+  local_mocked_bindings(
+    .miniextendr_conversion_error_class = c("pkg_error_argument", "pkg_error"),
+    .package = "miniextendr"
+  )
+  e <- caught(miniextendr:::arg_error_body_worker("zzz"))
+  expect_identical(class(e), c("pkg_error_argument", "pkg_error", layers))
+})
+
+test_that("arg_error! under call = caller names the call the wrapper's checks name", {
+  e <- caught(miniextendr:::arg_error_body_caller_impl("zzz", .call = quote(user_fn(x))))
+  expect_equal(conditionCall(e), quote(user_fn(x)))
+  # The R-side check of a `call = caller` wrapper reports the same call.
+  e_check <- caught(miniextendr:::arg_error_ratio_caller_impl(c(1, 2), 3, .call = quote(user_fn(x))))
+  expect_equal(conditionCall(e_check), quote(user_fn(x)))
+})
+
+test_that("a deferred warning queued before arg_error! is signalled first", {
+  log <- character()
+  e <- withCallingHandlers(
+    tryCatch(miniextendr:::arg_error_after_deferred("zzz"), error = function(e) {
+      log <<- c(log, "error")
+      e
+    }),
+    warning = function(w) {
+      log <<- c(log, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(log, c("checking \"zzz\"", "error"))
+  expect_identical(class(e), layers)
+  expect_identical(e$param, "fill")
+  expect_identical(suppressWarnings(miniextendr:::arg_error_after_deferred("drop")), "drop")
 })
 
 # endregion
