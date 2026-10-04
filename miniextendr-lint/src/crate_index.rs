@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use syn::Item;
+use syn::ext::IdentExt;
 use syn::spanned::Spanned;
 
 use crate::crate_root::CrateRoot;
@@ -312,7 +313,7 @@ fn collect_rs_files_from_module_tree(
 
     let active_features = collect_active_cargo_features();
     let mut seen = HashSet::new();
-    walk_module_file(&root.file, true, &active_features, out, &mut seen);
+    walk_module_file(&root.file, None, &active_features, out, &mut seen);
     Ok(())
 }
 
@@ -327,13 +328,36 @@ fn collect_active_cargo_features() -> HashSet<String> {
         .collect()
 }
 
+/// Where the `mod` declarations of one scope resolve, tracked as rustc does
+/// (`rustc_expand::module`).
+struct ModDir {
+    /// The directory `#[path]` attributes are relative to: the declaring file's
+    /// own directory, extended by the enclosing inline modules.
+    dir: PathBuf,
+    /// The module name a non-mod-rs file adds before its child files: `mod b;`
+    /// in `src/a.rs` is `src/a/b.rs`. `None` for a mod-rs file (the crate root,
+    /// whatever its name, a `mod.rs`, or a file reached through `#[path]`) and
+    /// inside inline modules.
+    relative: Option<String>,
+}
+
+impl ModDir {
+    /// The directory a plain `mod child;` looks in for `child.rs` / `child/mod.rs`.
+    fn child_dir(&self) -> PathBuf {
+        match &self.relative {
+            Some(name) => self.dir.join(name),
+            None => self.dir.clone(),
+        }
+    }
+}
+
 /// Recursively walk a module file, following `mod` declarations.
 ///
-/// `mod_rs` marks a file whose child modules live next to it rather than in a
-/// directory named after it: the crate root, whatever its name, and `mod.rs`.
+/// `relative` is the module name when `file` is a non-mod-rs file (see
+/// [`ModDir::relative`]).
 fn walk_module_file(
     file: &Path,
-    mod_rs: bool,
+    relative: Option<String>,
     active_features: &HashSet<String>,
     out: &mut Vec<PathBuf>,
     seen: &mut HashSet<PathBuf>,
@@ -357,25 +381,21 @@ fn walk_module_file(
         return;
     };
 
-    let parent_dir = match file.parent() {
-        Some(dir) => dir,
-        None => return,
+    let Some(dir) = file.parent() else {
+        return;
+    };
+    let scope = ModDir {
+        dir: dir.to_path_buf(),
+        relative,
     };
 
-    // For `foo.rs`, child modules live in `foo/`; for the crate root and
-    // `mod.rs`, in the same directory.
-    let child_dir = match file.file_stem() {
-        Some(stem) if !mod_rs => parent_dir.join(stem),
-        _ => parent_dir.to_path_buf(),
-    };
-
-    discover_mod_declarations(&parsed.items, &child_dir, active_features, out, seen);
+    discover_mod_declarations(&parsed.items, &scope, active_features, out, seen);
 }
 
 /// Walk parsed items looking for `mod child;` declarations and recurse.
 fn discover_mod_declarations(
     items: &[Item],
-    child_dir: &Path,
+    scope: &ModDir,
     active_features: &HashSet<String>,
     out: &mut Vec<PathBuf>,
     seen: &mut HashSet<PathBuf>,
@@ -385,34 +405,48 @@ fn discover_mod_declarations(
             continue;
         };
 
-        if let Some((_, child_items)) = &item_mod.content {
-            // Inline module — recurse into its items (same file)
-            discover_mod_declarations(child_items, child_dir, active_features, out, seen);
-        } else {
-            // Out-of-line module declaration: `mod child;`
-            // Check if cfg-gated and whether the gate is active
-            let cfgs = extract_cfg_attrs(&item_mod.attrs);
-            if !cfgs.is_empty() && !is_cfg_active(&cfgs, active_features) {
-                continue; // Feature not enabled, skip this module
+        // A cfg-gated module, inline or not, is visited only when its gate is active.
+        let cfgs = extract_cfg_attrs(&item_mod.attrs);
+        if !cfgs.is_empty() && !is_cfg_active(&cfgs, active_features) {
+            continue;
+        }
+
+        // `mod r#type;` lives in `type.rs`.
+        let mod_name = item_mod.ident.unraw().to_string();
+        let path_attr = extract_path_attr(&item_mod.attrs);
+
+        match (&item_mod.content, path_attr) {
+            // `#[path = "dir"] mod name { ... }`: the attribute names the directory.
+            (Some((_, child_items)), Some(dir)) => {
+                let inner = ModDir {
+                    dir: scope.dir.join(dir),
+                    relative: None,
+                };
+                discover_mod_declarations(child_items, &inner, active_features, out, seen);
             }
-
-            let mod_name = item_mod.ident.to_string();
-
-            // Check for #[path = "file.rs"] attribute
-            let path_attr = extract_path_attr(&item_mod.attrs);
-
-            if let Some(file_path) = path_attr {
-                let target = child_dir.join(&file_path);
-                let mod_rs = target.file_name().is_some_and(|name| name == "mod.rs");
-                walk_module_file(&target, mod_rs, active_features, out, seen);
-            } else {
-                // Try child.rs first, then child/mod.rs
+            // `mod name { ... }`: its `mod` declarations look in `name/`.
+            (Some((_, child_items)), None) => {
+                let inner = ModDir {
+                    dir: scope.child_dir().join(&mod_name),
+                    relative: None,
+                };
+                discover_mod_declarations(child_items, &inner, active_features, out, seen);
+            }
+            // `#[path = "file.rs"] mod name;`: relative to the declaring scope's
+            // directory, and the file is a mod-rs file.
+            (None, Some(file_path)) => {
+                let target = scope.dir.join(file_path);
+                walk_module_file(&target, None, active_features, out, seen);
+            }
+            // `mod name;`: `name.rs`, else `name/mod.rs`.
+            (None, None) => {
+                let child_dir = scope.child_dir();
                 let sibling = child_dir.join(format!("{mod_name}.rs"));
                 if sibling.is_file() {
-                    walk_module_file(&sibling, false, active_features, out, seen);
+                    walk_module_file(&sibling, Some(mod_name), active_features, out, seen);
                 } else {
                     let subdir_mod = child_dir.join(&mod_name).join("mod.rs");
-                    walk_module_file(&subdir_mod, true, active_features, out, seen);
+                    walk_module_file(&subdir_mod, None, active_features, out, seen);
                 }
             }
         }

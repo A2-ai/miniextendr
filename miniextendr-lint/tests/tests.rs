@@ -1987,3 +1987,142 @@ fn inline_lib_table_without_path_falls_back() {
 }
 
 // endregion
+
+// region: module files resolve as rustc resolves them
+
+/// The files the walk visits in the crate whose manifest dir is `root`, as
+/// `/`-separated paths relative to it.
+fn walked_files(root: &std::path::Path) -> Vec<String> {
+    let report = run(root).expect("lint should succeed");
+    report
+        .files
+        .iter()
+        .map(|path| {
+            let rel = path.strip_prefix(root).unwrap();
+            rel.components()
+                .map(|c| c.as_os_str().to_str().unwrap())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect()
+}
+
+#[test]
+fn path_attr_in_a_non_mod_rs_file_is_relative_to_its_directory() {
+    // `#[path]` outside inline modules is relative to the declaring file's own
+    // directory, and the file it names keeps its children beside it.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod a;\n"),
+            ("src/a.rs", "#[path = \"shared.rs\"]\nmod s;\n"),
+            ("src/shared.rs", "mod leaf;\n"),
+            ("src/leaf.rs", ATTRIB_CALL),
+            ("src/a/shared.rs", ATTRIB_CALL),
+            ("src/shared/leaf.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        ["src/a.rs", "src/leaf.rs", "src/lib.rs", "src/shared.rs"]
+    );
+}
+
+#[test]
+fn inline_modules_add_their_name_to_the_child_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod a;\nmod outer {\n    mod inner;\n}\n"),
+            ("src/outer/inner.rs", ""),
+            (
+                "src/a.rs",
+                "mod nested {\n    mod deep;\n    #[path = \"other.rs\"]\n    mod p;\n}\n",
+            ),
+            ("src/a/nested/deep.rs", ""),
+            ("src/a/nested/other.rs", ""),
+            ("src/inner.rs", ATTRIB_CALL),
+            ("src/a/deep.rs", ATTRIB_CALL),
+            ("src/other.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        [
+            "src/a/nested/deep.rs",
+            "src/a/nested/other.rs",
+            "src/a.rs",
+            "src/lib.rs",
+            "src/outer/inner.rs",
+        ]
+    );
+}
+
+#[test]
+fn path_attr_on_an_inline_module_names_its_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "src/lib.rs",
+                "#[path = \"elsewhere\"]\nmod m {\n    mod x;\n}\n",
+            ),
+            ("src/elsewhere/x.rs", ""),
+            ("src/m/x.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(walked_files(root), ["src/elsewhere/x.rs", "src/lib.rs"]);
+}
+
+#[test]
+fn cfg_gated_inline_modules_follow_the_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "src/lib.rs",
+                concat!(
+                    "#[cfg(feature = \"mxl-test-never-on\")]\nmod gated {\n    mod hidden;\n}\n",
+                    "#[cfg(not(feature = \"mxl-test-never-on\"))]\nmod shown {\n    mod visible;\n}\n",
+                ),
+            ),
+            ("src/gated/hidden.rs", ATTRIB_CALL),
+            ("src/shown/visible.rs", ""),
+        ],
+    );
+
+    assert_eq!(walked_files(root), ["src/lib.rs", "src/shown/visible.rs"]);
+}
+
+#[test]
+fn raw_identifier_modules_drop_the_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod r#type;\n"),
+            ("src/type.rs", "mod r#match;\n"),
+            ("src/type/match.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        ["src/lib.rs", "src/type/match.rs", "src/type.rs"]
+    );
+    assert_eq!(mxl304_files(root), vec![path_in(root, "src/type/match.rs")]);
+}
+
+// endregion
