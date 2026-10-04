@@ -1562,11 +1562,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
 }
 
 impl ExternalPtr<()> {
-    /// Create a type-erased ExternalPtr from an EXTPTRSXP without checking the stored type.
+    /// Create a type-erased ExternalPtr from a non-null EXTPTRSXP without checking the stored type.
+    ///
+    /// Use [`Self::wrap_sexp`] when the external pointer may be null or cleared.
     ///
     /// # Safety
     ///
-    /// - `sexp` must be a valid EXTPTRSXP
+    /// - `sexp` must be a valid EXTPTRSXP containing a non-null `*mut Box<dyn Any>`
     /// - Caller must ensure exclusive ownership semantics are upheld
     #[inline]
     pub unsafe fn from_sexp(sexp: SEXP) -> Self {
