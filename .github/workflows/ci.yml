@@ -113,6 +113,20 @@ jobs:
         run: bash scripts/committed-artifacts-check.sh ${RANGE:+"$RANGE"}
 
   # ===========================================================================
+  # GitHub Actions workflow lint
+  # ===========================================================================
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run actionlint
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+  # ===========================================================================
   # Version consistency check
   # ===========================================================================
   version-check:
@@ -2052,6 +2066,7 @@ jobs:
     name: CI Success
     needs:
       - generated-files-check
+      - workflow-lint
       - version-check
       - sync-checks
       - docs-link-check
