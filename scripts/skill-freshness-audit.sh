@@ -118,6 +118,8 @@ GENERATED_PATH_SUFFIXES=(
     'R/miniextendr-wrappers.R'
     '.cargo/config.toml'
     'src/rust/wasm_registry.rs'
+    # Written by configure from `src/win.def.in`; gitignored as `src/*-win.def`.
+    'src/miniextendr-win.def'
     'Cargo.lock'
     # Member of the `cargo revendor --freeze --compress` archive (#1555).
     'vendor/.cargo-config.toml'
