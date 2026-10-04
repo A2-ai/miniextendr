@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use syn::Item;
 use syn::spanned::Spanned;
 
+use crate::crate_root::CrateRoot;
 use crate::helpers::{
     extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_derive, has_miniextendr_attr,
     impl_type_name, is_altrep_struct, parse_miniextendr_impl_attrs,
@@ -236,7 +237,7 @@ pub struct IndexError {
     pub message: String,
     /// The module-tree files found before the failure. A file that fails to
     /// parse is among them, so a build script can still watch it (#1738).
-    /// Empty when the crate root or its `lib.rs` is missing.
+    /// Empty when the crate root file is missing or `[lib] path` is unreadable.
     pub files: Vec<PathBuf>,
 }
 
@@ -256,30 +257,13 @@ impl From<String> for IndexError {
 }
 
 impl CrateIndex {
-    /// The directory the lint scans for `root`: `root/src` when it exists, else `root`.
-    pub fn source_dir(root: &Path) -> PathBuf {
-        let src_dir = root.join("src");
-        if src_dir.is_dir() {
-            src_dir
-        } else {
-            root.to_path_buf()
-        }
-    }
-
-    /// Build the index from a crate root directory.
-    pub fn build(root: &Path) -> Result<Self, IndexError> {
-        let src_dir = Self::source_dir(root);
-
-        if !src_dir.is_dir() {
-            return Err(format!(
-                "miniextendr-lint: root is not a directory: {}",
-                src_dir.display()
-            )
-            .into());
-        }
+    /// Build the index for the crate whose `Cargo.toml` sits in `manifest_dir`,
+    /// walking the module tree from its root file ([`CrateRoot::resolve`]).
+    pub fn build(manifest_dir: &Path) -> Result<Self, IndexError> {
+        let root = CrateRoot::resolve(manifest_dir)?;
 
         let mut rs_files = Vec::new();
-        collect_rs_files_from_module_tree(&src_dir, &mut rs_files)?;
+        collect_rs_files_from_module_tree(&root, &mut rs_files)?;
         rs_files.sort();
 
         let mut file_data = HashMap::new();
@@ -311,21 +295,24 @@ impl CrateIndex {
 
 // region: File collection (module-tree walker)
 
-/// Collect Rust source files by walking the module tree from `lib.rs`,
+/// Collect Rust source files by walking the module tree from the crate root,
 /// following `mod child;` declarations and respecting `#[cfg(feature = "...")]`
 /// gates via `CARGO_FEATURE_*` environment variables.
-fn collect_rs_files_from_module_tree(src_dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let lib_rs = src_dir.join("lib.rs");
-    if !lib_rs.is_file() {
+fn collect_rs_files_from_module_tree(
+    root: &CrateRoot,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    if !root.file.is_file() {
         return Err(format!(
-            "miniextendr-lint: cannot find lib.rs in {}",
-            src_dir.display()
+            "miniextendr-lint: cannot find crate root {} ({})",
+            root.file.display(),
+            root.origin
         ));
     }
 
     let active_features = collect_active_cargo_features();
     let mut seen = HashSet::new();
-    walk_module_file(&lib_rs, &active_features, out, &mut seen);
+    walk_module_file(&root.file, true, &active_features, out, &mut seen);
     Ok(())
 }
 
@@ -341,8 +328,12 @@ fn collect_active_cargo_features() -> HashSet<String> {
 }
 
 /// Recursively walk a module file, following `mod` declarations.
+///
+/// `mod_rs` marks a file whose child modules live next to it rather than in a
+/// directory named after it: the crate root, whatever its name, and `mod.rs`.
 fn walk_module_file(
     file: &Path,
+    mod_rs: bool,
     active_features: &HashSet<String>,
     out: &mut Vec<PathBuf>,
     seen: &mut HashSet<PathBuf>,
@@ -371,16 +362,11 @@ fn walk_module_file(
         None => return,
     };
 
-    // Determine the stem-based subdirectory for non-lib/mod files.
-    // For `foo.rs`, child modules live in `foo/`.
-    // For `lib.rs` or `mod.rs`, child modules live in the same directory.
-    let child_dir = {
-        let stem = file.file_stem().and_then(|s| s.to_str());
-        match stem {
-            Some("lib" | "mod") => parent_dir.to_path_buf(),
-            Some(name) => parent_dir.join(name),
-            None => parent_dir.to_path_buf(),
-        }
+    // For `foo.rs`, child modules live in `foo/`; for the crate root and
+    // `mod.rs`, in the same directory.
+    let child_dir = match file.file_stem() {
+        Some(stem) if !mod_rs => parent_dir.join(stem),
+        _ => parent_dir.to_path_buf(),
     };
 
     discover_mod_declarations(&parsed.items, &child_dir, active_features, out, seen);
@@ -417,15 +403,16 @@ fn discover_mod_declarations(
 
             if let Some(file_path) = path_attr {
                 let target = child_dir.join(&file_path);
-                walk_module_file(&target, active_features, out, seen);
+                let mod_rs = target.file_name().is_some_and(|name| name == "mod.rs");
+                walk_module_file(&target, mod_rs, active_features, out, seen);
             } else {
                 // Try child.rs first, then child/mod.rs
                 let sibling = child_dir.join(format!("{mod_name}.rs"));
                 if sibling.is_file() {
-                    walk_module_file(&sibling, active_features, out, seen);
+                    walk_module_file(&sibling, false, active_features, out, seen);
                 } else {
                     let subdir_mod = child_dir.join(&mod_name).join("mod.rs");
-                    walk_module_file(&subdir_mod, active_features, out, seen);
+                    walk_module_file(&subdir_mod, true, active_features, out, seen);
                 }
             }
         }

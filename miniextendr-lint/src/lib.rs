@@ -21,6 +21,7 @@
 //! Each diagnostic carries a stable `MXL###` code. See [`LintCode`] for the full catalog.
 
 pub mod crate_index;
+pub mod crate_root;
 pub mod diagnostic;
 pub mod helpers;
 pub mod lint_code;
@@ -31,6 +32,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 pub use crate_index::{CrateIndex, IndexError, LintItem, LintKind};
+pub use crate_root::{CrateRoot, RootOrigin};
 pub use diagnostic::{Diagnostic, Severity};
 pub use lint_code::LintCode;
 
@@ -90,17 +92,26 @@ pub fn build_script() {
 /// Once a build script prints a `rerun-if-*` directive, cargo reruns it only when
 /// one of them fires and replays its cached warnings in between, so every source
 /// file the lint found is watched on the error path too: a "failed to parse"
-/// warning must not outlive the fix (#1738). A `src/` directory is also watched as
-/// a whole (cargo scans it recursively), which covers a module file created after
-/// the `mod` line naming it. A crate whose `lib.rs` sits at the manifest root, as
-/// in every scaffolded R package, is watched file by file only: a recursive watch
-/// of the manifest directory would take in `target/`, `vendor/` and `.cargo/` and
-/// rerun the script after every build.
+/// warning must not outlive the fix (#1738). `Cargo.toml` is watched because
+/// `[lib] path` decides where the walk starts (#1745). A `src/` directory holding
+/// the crate root is also watched as a whole (cargo scans it recursively), which
+/// covers a module file created after the `mod` line naming it. A crate root
+/// anywhere else, such as the `lib.rs` next to `Cargo.toml` of every scaffolded R
+/// package, is watched file by file only: a recursive watch of the manifest
+/// directory would take in `target/`, `vendor/` and `.cargo/` and rerun the
+/// script after every build.
 pub fn build_directives(manifest_dir: &Path) -> Vec<String> {
     let mut directives = Vec::new();
 
-    let src_dir = CrateIndex::source_dir(manifest_dir);
-    if src_dir != manifest_dir {
+    let manifest = manifest_dir.join("Cargo.toml");
+    if manifest.is_file() {
+        directives.push(rerun_directive(&manifest));
+    }
+
+    let src_dir = manifest_dir.join("src");
+    if let Ok(root) = CrateRoot::resolve(manifest_dir)
+        && root.file.starts_with(&src_dir)
+    {
         directives.push(rerun_directive(&src_dir));
     }
 
@@ -157,13 +168,12 @@ pub fn lint_enabled(env_var: &str) -> Result<bool, String> {
     }
 }
 
-/// Run the lint against the crate rooted at `root`.
+/// Run the lint against the crate whose `Cargo.toml` sits in `manifest_dir`.
 ///
-/// If `root/src` exists, that directory is scanned. Otherwise `root` is scanned.
-pub fn run(root: impl AsRef<Path>) -> Result<LintReport, IndexError> {
-    let root = root.as_ref();
-
-    let index = CrateIndex::build(root)?;
+/// The module walk starts from `[lib] path` in `Cargo.toml`; without that key,
+/// from `src/lib.rs` when `src/` exists, else from `lib.rs` ([`CrateRoot`]).
+pub fn run(manifest_dir: impl AsRef<Path>) -> Result<LintReport, IndexError> {
+    let index = CrateIndex::build(manifest_dir.as_ref())?;
     let diagnostics = rules::run_all_rules(&index);
 
     let errors = diagnostics
