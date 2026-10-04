@@ -99,7 +99,7 @@ Makevars
       → R/miniextendr-wrappers.R + src/rust/wasm_registry.rs (rewritten only on content change)
 ```
 
-`stub.c` declares `extern const char miniextendr_force_link`, which references a
+`stub.c` declares `extern void miniextendr_force_link(void)`, referencing a
 symbol emitted by `miniextendr_init!()`. With `codegen-units = 1`, this pulls the
 entire user crate out of the staticlib archive, carrying all `#[distributed_slice]`
 entries — no `-force_load` / `--whole-archive` needed.
