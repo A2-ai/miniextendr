@@ -433,28 +433,30 @@ fn tag_led_block_gets_no_description_or_title() {
 // *Rust* items, which roxygen2 can't resolve. `sanitize_roxygen_links` strips the
 // link brackets (keeping `` `code` `` spans) before prose becomes `@description`.
 
+/// The scanner as the default `roxygen_prose_links = "strip"` runs it.
+fn strip_links(s: &str) -> String {
+    sanitize_roxygen_links(s, Neutralize::AllLinks)
+}
+
 #[test]
 fn sanitize_strips_shortcut_and_reference_links() {
     // Shortcut `[`Foo`]` → keep the code span; reference `[x][crate::y]` → keep `x`.
     assert_eq!(
-        sanitize_roxygen_links("same column shape as [`REMapB`]"),
+        strip_links("same column shape as [`REMapB`]"),
         "same column shape as `REMapB`"
     );
     assert_eq!(
-        sanitize_roxygen_links("see [`AsSerialize`][serde::AsSerialize] wrapper"),
+        strip_links("see [`AsSerialize`][serde::AsSerialize] wrapper"),
         "see `AsSerialize` wrapper"
     );
-    assert_eq!(
-        sanitize_roxygen_links("a plain [Topic] link"),
-        "a plain Topic link"
-    );
+    assert_eq!(strip_links("a plain [Topic] link"), "a plain Topic link");
 }
 
 #[test]
 fn sanitize_keeps_real_markdown_links() {
     // `[text](url)` is valid roxygen2 markdown — leave it alone.
     let s = "see [the docs](https://example.com) for more";
-    assert_eq!(sanitize_roxygen_links(s), s);
+    assert_eq!(strip_links(s), s);
 }
 
 #[test]
@@ -462,10 +464,10 @@ fn sanitize_leaves_brackets_inside_code_spans() {
     // Markdown (and roxygen2) never parse `[...]` inside backticks as a
     // link — stripping there would corrupt code like `x[i]`.
     let s = "index with `x[i]` or `m[, 1]` as usual";
-    assert_eq!(sanitize_roxygen_links(s), s);
+    assert_eq!(strip_links(s), s);
     // A rustdoc link *around* a code span is still stripped.
     assert_eq!(
-        sanitize_roxygen_links("see [`Vec<T>`] and `v[0]`"),
+        strip_links("see [`Vec<T>`] and `v[0]`"),
         "see `Vec<T>` and `v[0]`"
     );
 }
@@ -473,10 +475,7 @@ fn sanitize_leaves_brackets_inside_code_spans() {
 #[test]
 fn sanitize_is_utf8_safe() {
     // Multi-byte chars around a link must not panic or corrupt.
-    assert_eq!(
-        sanitize_roxygen_links("café [`Foo`] — déjà"),
-        "café `Foo` — déjà"
-    );
+    assert_eq!(strip_links("café [`Foo`] — déjà"), "café `Foo` — déjà");
 }
 
 #[test]
@@ -486,10 +485,10 @@ fn sanitize_preserves_escaped_brackets() {
     // backslashes produced invalid Rd macros like `Box<\u8\>` in
     // altrep_vec.Rd. Pass the escape through; roxygen2 markdown unescapes.
     let s = r"Create a Box<\[u8\]> ALTREP raw vector.";
-    assert_eq!(sanitize_roxygen_links(s), s);
+    assert_eq!(strip_links(s), s);
     // An unescaped shortcut link in the same string is still stripped.
     assert_eq!(
-        sanitize_roxygen_links(r"see [Foo] and Box<\[u8\]>"),
+        strip_links(r"see [Foo] and Box<\[u8\]>"),
         r"see Foo and Box<\[u8\]>"
     );
 }
@@ -698,6 +697,237 @@ fn prose_links_default_is_strip() {
     assert_eq!(ProseLinks::parse_name("keep"), Some(ProseLinks::Keep));
     assert_eq!(ProseLinks::parse_name("strip"), Some(ProseLinks::Strip));
     assert_eq!(ProseLinks::parse_name("Keep"), None);
+}
+
+// endregion
+
+// region: rustdoc-only links never reach roxygen2 (#1739)
+//
+// roxygen2 reads `[pkg::topic]` (and `` [`pkg::topic`] ``, `[text][pkg::topic]`)
+// as a link into the R package `pkg`, everything before the last `::`. When
+// that cannot be a package, the link is rustdoc's: it loses its brackets under
+// `"keep"` and in explicit tag text too, not only under the default `"strip"`.
+
+/// The scanner as `"keep"` prose and explicit tag text run it.
+fn rustdoc_only(s: &str) -> String {
+    sanitize_roxygen_links(s, Neutralize::RustdocOnly)
+}
+
+#[test]
+fn rustdoc_only_targets_are_those_no_r_package_can_resolve() {
+    for target in [
+        "crate::x",
+        "`crate::x`",
+        "self::x",
+        "Self::new",
+        "Self::new()",
+        "crate::a::B",
+        "a::b::c",
+        "`a::b::c`",
+        "my_mod::f()",
+        "std::vec::Vec",
+        "x::f",
+        "pkg.::f",
+        "1pkg::f",
+        "fn@crate::x",
+    ] {
+        assert!(is_rustdoc_only_target(target), "{target:?} is rustdoc-only");
+    }
+    // roxygen2's own forms, and paths whose root can be an R package.
+    for target in [
+        "Foo",
+        "`Foo`",
+        "fn()",
+        "`fn()`",
+        "pkg::fn()",
+        "stats::median()",
+        "data.table::fread",
+        "R6::R6Class",
+        "Type::method",
+        "`Sources::prepare`",
+        "super::glue()",
+        "S7::new_class",
+    ] {
+        assert!(
+            !is_rustdoc_only_target(target),
+            "{target:?} may be an R link"
+        );
+    }
+}
+
+#[test]
+fn rustdoc_only_scope_rewrites_each_rustdoc_form() {
+    assert_eq!(rustdoc_only("see [`crate::Foo`]."), "see `crate::Foo`.");
+    assert_eq!(rustdoc_only("see [Self::new()]."), "see Self::new().");
+    assert_eq!(rustdoc_only("see [self::helper]."), "see self::helper.");
+    assert_eq!(
+        rustdoc_only("the [registry][crate::registry]"),
+        "the registry"
+    );
+    assert_eq!(
+        rustdoc_only("[`Sources::prepare`][crate::Sources::prepare]"),
+        "`Sources::prepare`"
+    );
+    assert_eq!(
+        rustdoc_only("[`a::b::c`] and [my_mod::f()]"),
+        "`a::b::c` and my_mod::f()"
+    );
+}
+
+#[test]
+fn rustdoc_only_scope_leaves_r_links_and_code_alone() {
+    for s in [
+        "[the docs](https://example.com)",
+        "[text](crate::x)",
+        "[other_fn()]",
+        "[stats::median()]",
+        "[topic]",
+        "[`topic`]",
+        "[Type::method]",
+        "[`Sources::prepare`]",
+        "[super::glue()]",
+        "[text][other_fn()]",
+        "[`text`][pkg::topic]",
+        "code `x[crate::y]` stays",
+        r"escaped \[crate::x\] stays",
+    ] {
+        assert_eq!(rustdoc_only(s), s, "{s:?} must stay as written");
+    }
+}
+
+#[test]
+fn keep_prose_loses_only_its_rustdoc_links() {
+    let attrs = make_doc_attrs_plain(&[
+        "See [`crate::Sources::prepare`], [Self::new] and [other_fn()].",
+        "Also [`Sources::prepare`][crate::Sources::prepare] and [pkg::fn()].",
+        "@export",
+    ]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            "@description See `crate::Sources::prepare`, Self::new and [other_fn()].\n\
+             Also `Sources::prepare` and [pkg::fn()]."
+                .to_string(),
+            "@export".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn tag_text_loses_its_rustdoc_links_under_either_setting() {
+    let attrs = make_doc_attrs_plain(&[
+        "@param x A [crate::Thing], see [pkg::fn()].",
+        "@details See [`Sources::prepare`][crate::Sources::prepare]",
+        "and [`Self::x`].",
+        "",
+        "```r",
+        "a[crate::b]",
+        "```",
+        "Then [other_fn()].",
+    ]);
+    for links in [ProseLinks::Strip, ProseLinks::Keep] {
+        assert_eq!(
+            roxygen_tags_with(&attrs, links),
+            vec![
+                "@param x A crate::Thing, see [pkg::fn()].".to_string(),
+                "@details See `Sources::prepare`\nand `Self::x`.\n\n```r\na[crate::b]\n```\n\
+                 Then [other_fn()]."
+                    .to_string(),
+            ]
+        );
+    }
+}
+
+#[test]
+fn code_tags_keep_their_text() {
+    let attrs = make_doc_attrs_plain(&[
+        "@examples",
+        "x <- list(a = 1)",
+        "x[crate::a] # [Self::x]",
+        "@usage f(x[crate::a])",
+        "@rawRd \\note{[crate::x]}",
+    ]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            "@examples\nx <- list(a = 1)\nx[crate::a] # [Self::x]".to_string(),
+            "@usage f(x[crate::a])".to_string(),
+            "@rawRd \\note{[crate::x]}".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn ambiguous_type_paths_stay_r_links() {
+    // `[`Type::method`]` is roxygen2's `[`pkg::topic`]`: it stays a link in tag
+    // text and under "keep" (leading prose under "strip" loses it). Telling
+    // the two apart by the package's dependencies is #1742.
+    let attrs = make_doc_attrs_plain(&[
+        "See [`Sources::prepare`].",
+        "@details See [`Sources::prepare`].",
+    ]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            "@description See [`Sources::prepare`].".to_string(),
+            "@details See [`Sources::prepare`].".to_string(),
+        ]
+    );
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Strip),
+        vec![
+            "@description See `Sources::prepare`.".to_string(),
+            "@details See [`Sources::prepare`].".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn unqualified_underscore_topics_stay_r_links() {
+    // Only the package part before `::` is checked, so an R topic with an
+    // underscore and no package is never taken for a Rust path.
+    let links = "[run_model()], [`run_model()`], [pkg_results_methods], \
+                 [`pkg_results_methods`], [text][other_topic], [text][other_fn()], \
+                 [dplyr::bind_rows()], [readRDS()]";
+    let attrs = make_doc_attrs_plain(&[&format!("See {links}."), &format!("@seealso {links}")]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            format!("@description See {links}."),
+            format!("@seealso {links}"),
+        ]
+    );
+    // Under "strip" leading prose loses every link by design; tag text keeps them.
+    let tags = roxygen_tags_with(&attrs, ProseLinks::Strip);
+    assert_eq!(tags[1], format!("@seealso {links}"));
+}
+
+#[test]
+fn a_line_after_a_single_line_tag_keeps_any_link_out_of_r() {
+    // The docs' recipe for a rustdoc-only line (MINIEXTENDR_ATTRIBUTE.md).
+    let attrs = make_doc_attrs_plain(&[
+        "Prepares the sources.",
+        "",
+        "@export",
+        "",
+        "Rust callers: see [`Sources::prepare`] and [`Prepared`].",
+    ]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            "@description Prepares the sources.".to_string(),
+            "@export".to_string(),
+        ]
+    );
+    assert_eq!(
+        kept_docs(&attrs),
+        [
+            "Prepares the sources.",
+            "",
+            "",
+            "Rust callers: see [`Sources::prepare`] and [`Prepared`].",
+        ]
+    );
 }
 
 // endregion

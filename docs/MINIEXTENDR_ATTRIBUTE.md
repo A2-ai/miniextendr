@@ -55,7 +55,10 @@ The `///` comment is read line by line into the wrapper's `#'` block:
   indentation, so a markdown list or a fenced block renders as one. Rustdoc
   intra-doc links (`` [`Foo`] ``) lose their brackets, outside code, and so
   does a roxygen2 link such as `[other_fn()]`, unless the crate sets
-  `roxygen_prose_links = "keep"` ([below](#links-in-leading-prose)).
+  `roxygen_prose_links = "keep"` ([below](#links-in-leading-prose)). A link
+  that only rustdoc can resolve, such as `[crate::Foo]`, loses them under
+  either setting and in tag text too
+  ([rustdoc-only links](#rustdoc-only-links)).
 - A tag runs from its `@tag` line to the next one.
 - A multi-line tag (`@description`, `@details`, `@param`, `@return`,
   `@examples`, `@examplesIf`, `@section`, ...) keeps its blank lines, which
@@ -94,8 +97,9 @@ which reader it was written for. By default leading prose is taken as written
 for rustdoc: its links lose their brackets (`[other_fn()]` becomes
 `other_fn()`, `` [`Foo`][crate::Foo] `` becomes `` `Foo` ``), so roxygen2 never
 tries to resolve a Rust item as an R topic. Markdown links `[text](url)`, code
-spans and fenced blocks are left alone, and so is the text of every explicit
-tag (`@description`, `@details`, `@param`, ...).
+spans and fenced blocks are left alone. The text of an explicit tag
+(`@description`, `@details`, `@param`, ...) keeps its links, except the
+[rustdoc-only](#rustdoc-only-links) ones.
 
 A crate whose doc comments are written for R first sets the default once:
 
@@ -104,7 +108,7 @@ A crate whose doc comments are written for R first sets the default once:
 roxygen_prose_links = "keep"    # or "strip", the default
 ```
 
-Leading prose then passes through unchanged, like an explicit `@description`:
+Leading prose then keeps its links, like an explicit `@description`:
 
 ```rust
 /// `summary()`: 50 unless [set_threshold()] set another; see [stats::median()].
@@ -115,13 +119,68 @@ fn summary_thing(x: List) -> List { /* ... */ }
 
 renders `\code{\link[=set_threshold]{set_threshold()}}` and
 `\code{\link[stats:median]{stats::median()}}` in the Rd. Every link in the
-crate's leading prose is then roxygen2's to resolve, so a rustdoc-only link
-(`` [`RustType`] ``) there is a roxygen2 "could not resolve link" warning;
-keep those in `//` comments or in rustdoc-only lines (after a single-line tag
-such as `@export`). To keep the links of one block without the crate setting,
-write its prose under an explicit `@description`. The key must be `"strip"` or
-`"keep"`, set once; anything else is a compile error (see
-[MACRO_ERRORS.md](MACRO_ERRORS.md)).
+crate's leading prose but the [rustdoc-only](#rustdoc-only-links) ones is then
+roxygen2's to resolve, so a rustdoc link written in one of roxygen2's own
+forms (`` [`RustType`] ``, `` [`Type::method`] ``) is a roxygen2 warning there
+("could not resolve link", "refers to un-installed package"). Give it a
+rustdoc-only target or move it to a rustdoc-only line (both below). To keep
+the links of one block without the crate setting, write its prose under an
+explicit `@description`. The key must be `"strip"` or `"keep"`, set once;
+anything else is a compile error (see [MACRO_ERRORS.md](MACRO_ERRORS.md)).
+
+#### Rustdoc-only links
+
+roxygen2 reads a link target `pkg::topic` as a link into the R package `pkg`,
+everything before the last `::`. When `pkg` is a Rust path root or cannot be
+an R package name, no R package can resolve the link, so it was written for
+rustdoc. Such a link loses its brackets wherever it is: in leading prose under
+either `roxygen_prose_links` setting, and in the text of every explicit tag
+except the code ones (`@examples`, `@examplesIf`, `@usage`, `@eval`,
+`@evalRd`, `@evalNamespace`, `@rawRd`, `@rawNamespace`). The target, bracketed
+(with or without backticks) or after `[text]`, is rustdoc-only when its `pkg`
+part is:
+
+- `crate`, `self` or `Self`;
+- not a valid R package name (ASCII letters, digits and `.`, at least two
+  characters, starting with a letter and not ending in `.`): a path with two
+  or more `::` (`a::b::c`), or a module with a `_` (`my_mod::f()`).
+
+| Written | roxygen2 gets |
+|---|---|
+| `` [`crate::Foo`] `` | `` `crate::Foo` `` |
+| `[Self::new()]` | `Self::new()` |
+| `[the registry][crate::registry]` | `the registry` |
+| `` [`Sources::prepare`][crate::Sources::prepare] `` | `` `Sources::prepare` `` |
+| `` [`a::b::c`] ``, `[my_mod::f()]` | `` `a::b::c` ``, `my_mod::f()` |
+
+Everything else stays as written outside the default `"strip"` prose, because
+roxygen2 may read it as its own link: `[fn()]`, `[pkg::fn()]`, `[topic]`,
+`` [`topic`] ``, `` [`pkg::topic`] ``, `[text][topic]`. That includes
+`` [`Type::method`] `` and `[Type::method]`, since R package names can be
+capitalised (`R6`, `S7`, `Matrix`), and `[super::x]`, since `super` is a CRAN
+package. Markdown links `[text](url)`, code spans and fenced blocks are never
+rewritten.
+
+So to link a Rust item from text that reaches R without the link reaching
+roxygen2, root its target at the crate: `` [`Sources::prepare`][crate::Sources::prepare] ``
+is a link in rustdoc and `` `Sources::prepare` `` on the R page. Inside an
+`impl`, `` [`Self::prepare`] `` does the same.
+
+To keep a whole line out of R help, put it after a single-line tag
+(`@export`, `@noRd`, `@rdname topic`, ...): the lines after such a tag, up
+to the next tag, stay in rustdoc only.
+
+```rust
+/// Prepares the sources.
+///
+/// @export
+///
+/// Rust callers: see [`Sources::prepare`] and [`Prepared`].
+#[miniextendr]
+pub fn prepare_sources() { /* ... */ }
+```
+
+The R page gets "Prepares the sources." and rustdoc gets both paragraphs.
 
 ### Function Attributes
 
