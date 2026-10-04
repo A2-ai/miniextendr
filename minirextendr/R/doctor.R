@@ -1006,7 +1006,7 @@ stale_namespace_exports <- function(pkg_dir = usethis::proj_get()) {
 #' pattern-derived export sets cannot safely contribute to static attribution.
 #' @param package Name of the imported package.
 #' @return An `ok` result with `exports`, or a `skip` result with reason/detail.
-#' @noRd
+#' @keywords internal
 installed_namespace_exports <- function(package) {
   skip <- function(reason) {
     list(status = "skip", reason = reason, detail = package)
