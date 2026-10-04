@@ -181,11 +181,15 @@ check_native_package <- function(pkg) {
 #' the installed packages -- no user input needed.
 #'
 #' @param pkg Package name
-#' @param pkg_info Result of `discover_native_package()`
+#' @param pkg_info Result of [discover_native_package()]
 #' @param headers Character vector of header paths relative to include/
-#' @param allowlist_pattern Optional regex for --allowlist-file
-#' @return List with all resolved arguments for bindgen
-#' @noRd
+#' @param allowlist_pattern Optional regex for --allowlist-file; `NULL`
+#'   defaults to files under the package's own include directory.
+#' @return List with all resolved arguments for bindgen: `pkg`,
+#'   `include_paths`, `r_include`, `mode` (`"c"` or `"cpp"`), `cxx_std`,
+#'   `isysroot`, `blocklist_files`, `allowlist_pattern`, `headers` and
+#'   `wrapper_defines`.
+#' @keywords internal
 resolve_bindgen_args <- function(pkg, pkg_info, headers,
                                   allowlist_pattern = NULL) {
   # -- Include paths --
@@ -229,7 +233,13 @@ resolve_bindgen_args <- function(pkg, pkg_info, headers,
 #'
 #' Walks the LinkingTo dependency tree recursively so that transitive
 #' deps (e.g., mlpack -> RcppArmadillo -> Rcpp + BH) are all included.
-#' @noRd
+#'
+#' @inheritParams use_native_package
+#' @param pkg_include_path The package's own `include/` directory (from
+#'   [discover_native_package()]); it leads the result.
+#' @return Character vector of unique include directories: the package's own
+#'   first, then each installed `LinkingTo` dependency's (breadth-first).
+#' @keywords internal
 resolve_include_paths <- function(pkg, pkg_include_path) {
   paths <- pkg_include_path
   visited <- pkg
@@ -274,7 +284,14 @@ resolve_include_paths <- function(pkg, pkg_include_path) {
 #' fall back to C++ when needed.
 #'
 #' Strategy: try C first. If bindgen fails, the caller retries in C++ mode.
-#' @noRd
+#'
+#' Any `.hpp`/`.hh`/`.hxx` file means C++. Otherwise the first 200 lines of
+#' up to 20 `.h` files are scanned for C++ standard-library includes,
+#' `namespace`, `template` or `class` declarations.
+#'
+#' @param include_path The package's `include/` directory.
+#' @return `"cpp"` when the headers look like C++, else `"c"`.
+#' @keywords internal
 detect_header_mode <- function(include_path) {
   # Any .hpp/.hh/.hxx -> must use C++
   cpp_ext <- list.files(include_path, pattern = "\\.(hpp|hh|hxx)$",
@@ -307,7 +324,13 @@ detect_header_mode <- function(include_path) {
 }
 
 #' Detect macOS SDK path for C++ stdlib
-#' @noRd
+#'
+#' Asks `xcrun --show-sdk-path`, so clang (inside bindgen) can find the C++
+#' standard library headers via `-isysroot`.
+#'
+#' @return The SDK path on macOS, or `NULL` on other platforms or when
+#'   `xcrun` fails.
+#' @keywords internal
 detect_sdk_path <- function() {
   if (.Platform$OS.type != "unix") return(NULL)
   if (Sys.info()[["sysname"]] != "Darwin") return(NULL)
@@ -323,8 +346,13 @@ detect_sdk_path <- function() {
 #' Some header libraries contain anonymous types or constructs that crash
 #' bindgen. We blocklist their internal headers while still allowing the
 #' target package to reference their types opaquely.
-#' Uses the same recursive BFS as resolve_include_paths.
-#' @noRd
+#' Uses the same recursive BFS as [resolve_include_paths()].
+#'
+#' @inheritParams use_native_package
+#' @return Character vector of `--blocklist-file` regexes (`.*/boost/.*`
+#'   when BH is a transitive `LinkingTo` dependency, `.*/wdm/.*` for wdm);
+#'   empty when none apply.
+#' @keywords internal
 resolve_blocklist_files <- function(pkg) {
   # Collect ALL transitive deps via BFS
   all_deps <- character()
@@ -369,7 +397,10 @@ resolve_blocklist_files <- function(pkg) {
 # =============================================================================
 
 #' Assert that bindgen CLI is installed
-#' @noRd
+#'
+#' @return `NULL` invisibly when `bindgen` is on `PATH`; otherwise aborts
+#'   with the `cargo install` command.
+#' @keywords internal
 assert_bindgen_installed <- function() {
   if (!nzchar(Sys.which("bindgen"))) {
     cli::cli_abort(c(
@@ -385,7 +416,15 @@ assert_bindgen_installed <- function() {
 # =============================================================================
 
 #' Warn if a package is known not to work with bindgen
-#' @noRd
+#'
+#' Checks `pkg` against curated lists: Rcpp/cpp11-ecosystem packages and
+#' packages whose `include/` holds no headers abort; packages whose headers
+#' include Rcpp internally, or need system libraries R does not provide,
+#' warn.
+#'
+#' @inheritParams use_native_package
+#' @return `NULL` invisibly; called for its warnings and errors.
+#' @keywords internal
 warn_known_bad_package <- function(pkg) {
   # Rcpp/cpp11 ecosystem: headers exist but are C++ framework internals,
   # not standalone C APIs. Using them from Rust requires the full Rcpp runtime.
@@ -459,7 +498,12 @@ warn_known_bad_package <- function(pkg) {
 # =============================================================================
 
 #' Discover an installed R package's native resources
-#' @noRd
+#'
+#' @inheritParams use_native_package
+#' @return List with `include_path` and `libs_path` (the installed
+#'   package's `include/` and `libs/` directories, `""` when absent) and the
+#'   logical flags `has_include` and `has_libs`.
+#' @keywords internal
 discover_native_package <- function(pkg) {
   include_path <- system.file("include", package = pkg)
   libs_path <- system.file("libs", package = pkg)
@@ -473,7 +517,13 @@ discover_native_package <- function(pkg) {
 }
 
 #' Discover header files in a package's include directory
-#' @noRd
+#'
+#' @param pkg Package name. Unused: the headers are listed from
+#'   `include_path` alone.
+#' @param include_path The package's `include/` directory.
+#' @return Character vector of `.h`/`.hpp`/`.hh`/`.hxx` paths relative to
+#'   `include_path` (searched recursively).
+#' @keywords internal
 discover_native_headers <- function(pkg, include_path) {
   list.files(include_path, pattern = "\\.(h|hpp|hh|hxx)$",
              recursive = TRUE, full.names = FALSE)
@@ -484,7 +534,14 @@ discover_native_headers <- function(pkg, include_path) {
 # =============================================================================
 
 #' Add a package to LinkingTo in DESCRIPTION
-#' @noRd
+#'
+#' Adds `pkg` to both `LinkingTo` (for its headers) and `Imports` (so its
+#' DLL is loaded for `R_GetCCallable()`) of the active project's
+#' DESCRIPTION, skipping a field that already lists it.
+#'
+#' @inheritParams use_native_package
+#' @return Invisibly `TRUE`; aborts when the project has no DESCRIPTION.
+#' @keywords internal
 add_linking_to <- function(pkg) {
   desc_path <- usethis::proj_path("DESCRIPTION")
   if (!fs::file_exists(desc_path)) {
@@ -528,7 +585,7 @@ add_linking_to <- function(pkg) {
 #'
 #' @param lines Character vector of `configure.ac` lines
 #' @return Invisibly `TRUE` if an anchor is present; aborts otherwise
-#' @noRd
+#' @keywords internal
 abort_if_missing_native_anchor <- function(lines) {
   has_anchor <-
     any(grepl("MINIREXTENDR: native-pkg-cppflags", lines, fixed = TRUE)) ||
@@ -552,7 +609,16 @@ abort_if_missing_native_anchor <- function(lines) {
 #'
 #' Adds an m4 block that resolves the package's include path at configure time
 #' and appends it to NATIVE_PKG_CPPFLAGS.
-#' @noRd
+#'
+#' The block goes after the `MINIREXTENDR: native-pkg-cppflags` marker, or
+#' before an existing `AC_SUBST([NATIVE_PKG_CPPFLAGS])`; failing both, a whole
+#' `NATIVE_PKG_CPPFLAGS` section is created before `AC_CONFIG_SRCDIR`. A
+#' package already recorded (`dnl native: <pkg>`) is left alone.
+#'
+#' @inheritParams use_native_package
+#' @return `NULL` invisibly; called for its side effect of editing the
+#'   active project's `configure.ac` (a no-op when it does not exist).
+#' @keywords internal
 add_native_to_configure_ac <- function(pkg) {
   configure_ac <- usethis::proj_path("configure.ac")
   if (!file.exists(configure_ac)) return(invisible())
@@ -623,7 +689,14 @@ add_native_to_configure_ac <- function(pkg) {
 # =============================================================================
 
 #' Write wrapper header to the project's src/ directory
-#' @noRd
+#'
+#' Writes `src/<pkg>_wrapper.h` (dots and hyphens in `pkg` become
+#' underscores) through [write_wrapper_header_to()].
+#'
+#' @inheritParams use_native_package
+#' @inheritParams write_wrapper_header_to
+#' @return The path of the written wrapper header.
+#' @keywords internal
 write_wrapper_header <- function(pkg, args) {
   pkg_rs <- gsub("[.-]", "_", pkg)
   wrapper_path <- usethis::proj_path("src", paste0(pkg_rs, "_wrapper.h"))
@@ -651,7 +724,14 @@ write_wrapper_header <- function(pkg, args) {
 #'     diagnostic — fine for a dry-run that only cares about whether
 #'     parsing succeeded. Without this fallback, clang fails with
 #'     `unknown type name 'SEXP'` (#634).
-#' @noRd
+#'
+#' At most the first 20 of `args$headers` are included.
+#'
+#' @param path Destination path of the wrapper header.
+#' @param args Resolved bindgen arguments from [resolve_bindgen_args()];
+#'   this function reads `pkg`, `wrapper_defines` and `headers`.
+#' @return `NULL` invisibly; called for its side effect of writing `path`.
+#' @keywords internal
 write_wrapper_header_to <- function(path, args) {
   has_shim <- file.exists(file.path(dirname(path), "r_shim.h"))
   r_include <- if (has_shim) {
@@ -679,7 +759,21 @@ write_wrapper_header_to <- function(path, args) {
 # =============================================================================
 
 #' Run bindgen with resolved args, with c++14 fallback
-#' @noRd
+#'
+#' Writes the bindings to `src/rust/native/<pkg>_ffi.rs` and the static-inline
+#' shim to `src/<pkg>_static_wrappers.c`. A failed C run is retried as
+#' C++17, and a failed C++17 run as C++14. On success, a header with
+#' module-level `#![allow(...)]` and `use miniextendr_api::SEXP;` is
+#' prepended to the bindings.
+#'
+#' @inheritParams use_native_package
+#' @param wrapper_path Path of the wrapper header (from
+#'   [write_wrapper_header()]).
+#' @param args Resolved bindgen arguments from [resolve_bindgen_args()].
+#' @return The [invoke_bindgen()] result (`success`, `error`) plus `ffi_rs`
+#'   (the bindings path, or `NULL` on failure) and `static_wrappers_c` (the
+#'   shim path, or `NULL` when bindgen failed or wrote an empty shim).
+#' @keywords internal
 run_bindgen <- function(pkg, wrapper_path, args) {
   pkg_rs <- gsub("[.-]", "_", pkg)
   ffi_rs <- usethis::proj_path("src", "rust", "native", paste0(pkg_rs, "_ffi.rs"))
@@ -731,7 +825,19 @@ run_bindgen <- function(pkg, wrapper_path, args) {
 }
 
 #' Invoke bindgen with specific args
-#' @noRd
+#'
+#' One bindgen run, with no fallbacks: builds the bindgen and clang command
+#' lines from `args` and writes bindgen's output to `ffi_out`.
+#'
+#' @param wrapper_path Path of the wrapper header to parse.
+#' @param ffi_out Path where the generated Rust bindings are written.
+#' @param static_out Path for bindgen's `--wrap-static-fns` C shim.
+#' @param args Resolved bindgen arguments from [resolve_bindgen_args()]
+#'   (`mode` and `cxx_std` may be overridden by the caller's fallbacks).
+#' @return List with `success` (logical) and `error` (`NULL` on success,
+#'   else up to three `error:`/`panic` lines of bindgen's output, or why
+#'   bindgen could not be run).
+#' @keywords internal
 invoke_bindgen <- function(wrapper_path, ffi_out, static_out, args) {
   bindgen_path <- Sys.which("bindgen")
   if (!nzchar(bindgen_path)) {
@@ -799,7 +905,15 @@ invoke_bindgen <- function(wrapper_path, ffi_out, static_out, args) {
 # =============================================================================
 
 #' Fix the C shim's #include to use a relative path
-#' @noRd
+#'
+#' bindgen writes the wrapper header's absolute path into the shim's
+#' `#include "..."` line; this rewrites it to the header's basename.
+#'
+#' @param shim_path Path of the generated static-wrappers C file.
+#' @param wrapper_path Path of the wrapper header the shim includes.
+#' @return `NULL`; called for its side effect of rewriting `shim_path` (a
+#'   no-op when it does not exist).
+#' @keywords internal
 fix_shim_include <- function(shim_path, wrapper_path) {
   if (!file.exists(shim_path)) return()
   lines <- readLines(shim_path, warn = FALSE)
@@ -809,7 +923,15 @@ fix_shim_include <- function(shim_path, wrapper_path) {
 }
 
 #' Add a native FFI module declaration to lib.rs
-#' @noRd
+#'
+#' Declares `pub mod <pkg>_ffi;` in `src/rust/native.rs`, creating that file
+#' (and a `mod native;` line in `lib.rs`) when it does not exist yet.
+#' Nothing happens when `lib.rs` is missing or already declares the module.
+#'
+#' @inheritParams use_native_package
+#' @return `NULL` invisibly; called for its side effect of editing
+#'   `src/rust/native.rs` and `src/rust/lib.rs`.
+#' @keywords internal
 add_native_mod_to_lib_rs <- function(pkg) {
   pkg_rs <- gsub("[.-]", "_", pkg)
   mod_name <- paste0(pkg_rs, "_ffi")
