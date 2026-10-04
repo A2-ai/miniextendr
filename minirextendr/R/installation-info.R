@@ -1,4 +1,18 @@
-# Identify the copy actually loaded, including when rv and user libraries differ.
+#' Installed copies of minirextendr
+#'
+#' Identifies the copy of minirextendr actually loaded, including when rv and
+#' user libraries differ. `report_minirextendr_installation()` prints the
+#' loaded copy's version (and git revision, when installed from a remote) and
+#' path; the build workflows call it first so a log shows which minirextendr
+#' produced it.
+#'
+#' @param active_path Install path of the loaded minirextendr namespace.
+#' @param lib_paths Library paths searched for further installed copies.
+#' @return `minirextendr_installations()`: a list with one
+#'   `list(path, version, sha)` per distinct installed copy (the loaded one
+#'   first; `sha` is the DESCRIPTION's `RemoteSha`, `NA` when absent).
+#'   `report_minirextendr_installation()`: that list, invisibly.
+#' @keywords internal
 minirextendr_installations <- function(
     active_path = getNamespaceInfo(asNamespace("minirextendr"), "path"),
     lib_paths = .libPaths()) {
@@ -12,6 +26,7 @@ minirextendr_installations <- function(
   })
 }
 
+#' @rdname minirextendr_installations
 report_minirextendr_installation <- function() {
   copies <- minirextendr_installations()
   active <- copies[[1L]]

@@ -298,6 +298,12 @@ list_cargo_features <- function(path = ".") {
   )
 }
 
+#' @rdname list_cargo_features
+#' @param x A `miniextendr_cargo_features` object, as returned by
+#'   `list_cargo_features()`. Its `print()` method lists the features, the
+#'   optional dependencies and the features still without detection rules.
+#' @param ... Ignored.
+#' @return The `print()` method returns `x` invisibly.
 #' @export
 print.miniextendr_cargo_features <- function(x, ...) {
   # Features
@@ -358,7 +364,7 @@ print.miniextendr_cargo_features <- function(x, ...) {
 #'
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`
-#' @noRd
+#' @keywords internal
 parse_cargo_metadata_json <- function(json) {
   if (requireNamespace("jsonlite", quietly = TRUE)) {
     parse_cargo_metadata_jsonlite(json)
@@ -372,7 +378,7 @@ parse_cargo_metadata_json <- function(json) {
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`, matching
 #'   `parse_cargo_metadata_regex()`'s shape.
-#' @noRd
+#' @keywords internal
 parse_cargo_metadata_jsonlite <- function(json) {
   pkg <- jsonlite::fromJSON(json, simplifyVector = FALSE)$packages[[1]]
   features <- lapply(pkg$features, function(specs) as.character(unlist(specs)))
@@ -399,7 +405,7 @@ parse_cargo_metadata_jsonlite <- function(json) {
 #'
 #' @param json Raw JSON string from cargo metadata
 #' @return List with `features` and `optional_deps`
-#' @noRd
+#' @keywords internal
 parse_cargo_metadata_regex <- function(json) {
   # Extract the first package's features object:
   #   "features": { "name": ["spec1", "spec2"], ... }
@@ -486,7 +492,7 @@ parse_cargo_metadata_regex <- function(json) {
 #' @param package_name R package name
 #' @param features_var Features environment variable name (e.g., "CARGO_FEATURES")
 #' @return Character vector of script lines
-#' @noRd
+#' @keywords internal
 generate_empty_detect_script <- function(package_name, features_var) {
   c(
     "#!/usr/bin/env Rscript",
@@ -685,7 +691,9 @@ generate_empty_detect_script <- function(package_name, features_var) {
 #' @param script_path Path to detect-features.R
 #' @param feature Feature name
 #' @param detect Detection expression (TRUE or string)
-#' @noRd
+#' @return `NULL` invisibly; called for its side effect of rewriting
+#'   `script_path`. Aborts when the `## END RULES` marker is missing.
+#' @keywords internal
 append_feature_rule <- function(script_path, feature, detect) {
   lines <- readLines(script_path, warn = FALSE)
 
@@ -713,7 +721,7 @@ append_feature_rule <- function(script_path, feature, detect) {
 #' @param script_path Path to detect-features.R
 #' @param feature Feature name to remove
 #' @return TRUE if removed, FALSE if not found
-#' @noRd
+#' @keywords internal
 remove_feature_rule_from_script <- function(script_path, feature) {
   lines <- readLines(script_path, warn = FALSE)
 
@@ -748,7 +756,7 @@ remove_feature_rule_from_script <- function(script_path, feature) {
 #'
 #' @param script_path Path to detect-features.R
 #' @return Named list of feature -> detect expression pairs
-#' @noRd
+#' @keywords internal
 parse_detect_features_script <- function(script_path) {
   lines <- readLines(script_path, warn = FALSE)
 
@@ -780,7 +788,9 @@ parse_detect_features_script <- function(script_path) {
 #'
 #' @param configure_ac_path Path to configure.ac
 #' @param features_var Features environment variable name
-#' @noRd
+#' @return Invisibly, `TRUE` if `configure_ac_path` was patched; `FALSE` if
+#'   it already calls `detect-features.R` or the default block was not found.
+#' @keywords internal
 patch_configure_ac_for_detection <- function(configure_ac_path, features_var) {
   lines <- readLines(configure_ac_path, warn = FALSE)
   text <- paste(lines, collapse = "\n")
