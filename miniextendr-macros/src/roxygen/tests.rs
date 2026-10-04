@@ -883,6 +883,26 @@ fn ambiguous_type_paths_stay_r_links() {
 }
 
 #[test]
+fn unqualified_underscore_topics_stay_r_links() {
+    // Only the package part before `::` is checked, so an R topic with an
+    // underscore and no package is never taken for a Rust path.
+    let links = "[run_model()], [`run_model()`], [pkg_results_methods], \
+                 [`pkg_results_methods`], [text][other_topic], [text][other_fn()], \
+                 [dplyr::bind_rows()], [readRDS()]";
+    let attrs = make_doc_attrs_plain(&[&format!("See {links}."), &format!("@seealso {links}")]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        vec![
+            format!("@description See {links}."),
+            format!("@seealso {links}"),
+        ]
+    );
+    // Under "strip" leading prose loses every link by design; tag text keeps them.
+    let tags = roxygen_tags_with(&attrs, ProseLinks::Strip);
+    assert_eq!(tags[1], format!("@seealso {links}"));
+}
+
+#[test]
 fn a_line_after_a_single_line_tag_keeps_any_link_out_of_r() {
     // The docs' recipe for a rustdoc-only line (MINIEXTENDR_ATTRIBUTE.md).
     let attrs = make_doc_attrs_plain(&[
