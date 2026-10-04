@@ -39,6 +39,12 @@ impl ImplDotsR6 {
     pub fn explicit_dots(&self, dots: &Dots) -> i32 {
         dots.len() as i32
     }
+
+    /// Return the seed, ignoring the method dots (`_: ...`).
+    /// @param ... Additional method arguments, ignored.
+    pub fn ignore_dots(&self, _: ...) -> i32 {
+        self.seed
+    }
 }
 
 /// S3 class whose constructor and instance method accept dots.

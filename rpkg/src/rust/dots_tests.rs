@@ -23,10 +23,10 @@ pub fn greetings_with_named_dots(dots: ...) {
 #[miniextendr]
 pub fn greetings_with_named_and_unused_dots(_dots: ...) {}
 
-/// Test dots handling with nameless (underscore-prefixed) dots.
+/// Test dots handling with nameless dots (`_: ...`).
 /// @param ... Additional arguments (captured but unused).
 #[miniextendr]
-pub fn greetings_with_nameless_dots(_dots: ...) {}
+pub fn greetings_with_nameless_dots(_: ...) {}
 
 // LIMITATION: Good!
 // #[miniextendr]
@@ -46,11 +46,11 @@ pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
     let _ = dots;
 }
 
-/// Test dots as the last parameter with nameless dots.
+/// Test dots as the last parameter with nameless dots (`_: ...`).
 /// @param exclamations Integer count of exclamation marks.
 /// @param ... Additional arguments (captured but unused).
 #[miniextendr]
-pub fn greetings_last_as_nameless_dots(_exclamations: i32, _dots: ...) {}
+pub fn greetings_last_as_nameless_dots(_exclamations: i32, _: ...) {}
 
 // region: typed_list! macro examples
 
@@ -106,7 +106,7 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 /// Test dots attribute sugar for typed_list validation (x and y numeric).
 /// @param ... Named arguments: `x` (numeric), `y` (numeric).
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
-pub fn validate_with_attribute(_dots: ...) -> String {
+pub fn validate_with_attribute(_: ...) -> String {
     // dots_typed is automatically created by the attribute
     let x: f64 = dots_typed.get("x").expect("x");
     let y: f64 = dots_typed.get("y").expect("y");

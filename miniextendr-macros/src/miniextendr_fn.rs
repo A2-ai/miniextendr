@@ -97,10 +97,15 @@ pub(crate) fn is_dots_type(ty: &syn::Type) -> bool {
     type_ends_with(ty, "Dots")
 }
 
-/// Replace Rust variadic syntax (`...` / `name: ...`) with a trailing
+/// Replace Rust variadic syntax (`name: ...` / `_: ...`) with a trailing
 /// `&miniextendr_api::dots::Dots` parameter, so downstream codegen never
 /// emits a non-extern variadic Rust fn. Named dots keep the user's
-/// identifier; unnamed `...` binds `__miniextendr_dots`.
+/// identifier; `_: ...` binds `__miniextendr_dots`.
+///
+/// A bare `...` binds `__miniextendr_dots` too, but rustc rejects it before
+/// the macro runs (the deny-by-default `varargs_without_pattern` lint,
+/// rust-lang/rust#145544) unless the crate allows that lint, and its fix is
+/// `_: ...` (#1743).
 ///
 /// syn parses the variadic only in last position, so a formal after the dots
 /// is spelled with an explicit `rest: &Dots` parameter instead. A signature
@@ -121,18 +126,11 @@ pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<()>
             format!("this function already takes `...` as {existing}; remove one of them"),
         ));
     }
-    let ident = match variadic.pat {
-        Some((pat, _)) => {
-            let syn::Pat::Ident(pat_ident) = *pat else {
-                return Err(syn::Error::new(
-                    pat.span(),
-                    "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
-                ));
-            };
-            pat_ident.ident
-        }
-        None => {
-            // Cannot use `_` as a variable name, so unnamed `...` needs a
+    let ident = match variadic.pat.map(|(pat, _)| *pat) {
+        Some(syn::Pat::Ident(pat_ident)) => pat_ident.ident,
+        // `_: ...` (rustc's fix for a bare `...`) and a bare `...`.
+        Some(syn::Pat::Wild(_)) | None => {
+            // Cannot use `_` as a variable name, so unnamed dots need a
             // stable synthetic binding that does not collide with user args.
             for arg in &sig.inputs {
                 let syn::FnArg::Typed(pat_type) = arg else {
@@ -143,11 +141,18 @@ pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<()>
                 {
                     return Err(syn::Error::new(
                         pat_ident.ident.span(),
-                        "parameter named `__miniextendr_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
+                        "parameter named `__miniextendr_dots` conflicts with the binding of \
+                         unnamed dots (`_: ...`); name the dots instead, e.g. `args: ...`",
                     ));
                 }
             }
             syn::Ident::new("__miniextendr_dots", proc_macro2::Span::call_site())
+        }
+        Some(pat) => {
+            return Err(syn::Error::new(
+                pat.span(),
+                "variadic pattern must be a simple identifier (`args: ...`) or `_` (`_: ...`)",
+            ));
         }
     };
     sig.inputs
@@ -1437,7 +1442,7 @@ fn optional_choice_default_msg(param_name: &str) -> String {
 ///
 /// 1. **Variadic (`...`) rewriting**: Replaces Rust variadic syntax with a typed
 ///    `&miniextendr_api::dots::Dots` parameter. Named dots (`my_dots: ...`) preserve
-///    the user's identifier; unnamed `...` becomes `__miniextendr_dots`.
+///    the user's identifier; `_: ...` becomes `__miniextendr_dots`.
 /// 2. **Wildcard pattern renaming**: `_` parameter patterns become `__unused0`,
 ///    `__unused1`, etc., so they can be passed by name to the C wrapper.
 /// 3. **Destructuring expansion**: Tuple/struct destructuring patterns are replaced
@@ -1723,7 +1728,7 @@ impl MiniextendrFunctionParsed {
     }
 
     /// The Rust binding of the dots: the user's name (`args: ...`,
-    /// `rest: &Dots`), or `__miniextendr_dots` for an unnamed `...`.
+    /// `rest: &Dots`), or `__miniextendr_dots` for `_: ...`.
     pub(crate) fn dots_ident(&self) -> Option<&syn::Ident> {
         self.dots.as_ref()
     }

@@ -22,7 +22,7 @@ R's `...` (dots) passes an untyped sequence of named or unnamed arguments throug
 
 ### The `Dots` type
 
-When a `#[miniextendr]` function has `...` in its Rust signature, the macro transforms that position into a trailing `&Dots` parameter. An unnamed `...` binds the synthetic `__miniextendr_dots`, which user code should not rely on; name the dots (`args: ...`) to read them in the body.
+When a `#[miniextendr]` function has `name: ...` in its Rust signature, the macro transforms that position into a trailing `name: &Dots` parameter. For dots the body ignores, write `_: ...`: it binds the synthetic `__miniextendr_dots`, which user code should not rely on; name the dots (`args: ...`) to read them in the body. Don't write a bare `...`: rustc rejects it before the macro runs (`varargs_without_pattern`, deny by default, rust-lang/rust#145544) and suggests `_: ...`.
 
 `Dots` provides three accessors:
 
@@ -102,7 +102,7 @@ The most ergonomic pattern is `#[miniextendr(dots = typed_list!(...))]`. The mac
 
 ```rust
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
-pub fn compute(...) -> f64 {
+pub fn compute(_: ...) -> f64 {
     let x: Vec<f64> = dots_typed.get("x").expect("x");
     let y: Vec<f64> = dots_typed.get("y").expect("y");
     x.iter().zip(y.iter()).map(|(a, b)| a + b).sum()
@@ -190,9 +190,9 @@ pub fn configure_model(dots: ...) -> String {
   - Mark optional fields with `?`: `field? => type_spec`.
   - Use `get_opt` in the function body.
 
-### Unnamed `...` or a named binding?
+### Unnamed `_: ...` or a named binding?
 
-- Unnamed `...` is fine when the body ignores the dots.
+- `_: ...` is fine when the body ignores the dots (rustc rejects a bare `...` by default).
 - Use `name: ...` (or `name: &Dots`) when the body reads them, e.g. `options: ...`.
 - Use an explicit `name: &Dots` parameter when a formal must follow the dots.
 

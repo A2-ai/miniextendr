@@ -132,20 +132,20 @@ The `#[miniextendr]` attribute supports many options:
 R's `...` becomes `&Dots` in Rust:
 
 ```rust
-use miniextendr_api::dots::Dots;
-
 #[miniextendr]
-pub fn count_args(_dots: &Dots, ...) -> i32 {
-    _dots.len() as i32
+pub fn count_args(args: ...) -> i32 {
+    args.len() as i32
 }
 ```
 
-Validate dot structure with `typed_list!`:
+Validate dot structure with `typed_list!`. Write `_: ...` for dots the body doesn't read by name:
 
 ```rust
-#[miniextendr(dots = typed_list!(x: i32, y: f64))]
-pub fn structured_dots(_dots: &Dots, ...) -> f64 {
-    dots_typed.x as f64 + dots_typed.y
+#[miniextendr(dots = typed_list!(x => integer(), y => numeric()))]
+pub fn structured_dots(_: ...) -> f64 {
+    let x: i32 = dots_typed.get("x").expect("x");
+    let y: f64 = dots_typed.get("y").expect("y");
+    f64::from(x) + y
 }
 ```
 

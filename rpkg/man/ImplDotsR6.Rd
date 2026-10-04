@@ -13,6 +13,7 @@ ImplDotsR6 R6 Class
     \item \href{#method-ImplDotsR6-ctor_dots}{\code{ImplDotsR6$ctor_dots()}}
     \item \href{#method-ImplDotsR6-add_with_dots}{\code{ImplDotsR6$add_with_dots()}}
     \item \href{#method-ImplDotsR6-explicit_dots}{\code{ImplDotsR6$explicit_dots()}}
+    \item \href{#method-ImplDotsR6-ignore_dots}{\code{ImplDotsR6$ignore_dots()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -82,6 +83,25 @@ ImplDotsR6 R6 Class
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{...}}{Additional method arguments counted by Rust.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-ImplDotsR6-ignore_dots"></a>}}
+\if{latex}{\out{\hypertarget{method-ImplDotsR6-ignore_dots}{}}}
+\subsection{\code{ImplDotsR6$ignore_dots()}}{
+  Return the seed, ignoring the method dots (\verb{_: ...}).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{ImplDotsR6$ignore_dots(...)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{...}}{Additional method arguments, ignored.}
     }
     \if{html}{\out{</div>}}
   }

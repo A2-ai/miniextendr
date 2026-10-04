@@ -1,8 +1,15 @@
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
+/// `_: ...` (rustc's fix for a bare `...`, #1743) and a bare `...` (which
+/// rustc only lets through when the crate allows `varargs_without_pattern`)
+/// both bind the synthetic `__miniextendr_dots`.
 #[test]
 fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
-    let parsed: MiniextendrFunctionParsed =
-        syn::parse2(quote::quote! { fn f(a: i32, ...) -> i32 { a } }).unwrap();
+    assert_unnamed_dots_rewritten(quote::quote! { fn f(a: i32, _: ...) -> i32 { a } });
+    assert_unnamed_dots_rewritten(quote::quote! { fn f(a: i32, ...) -> i32 { a } });
+}
+
+fn assert_unnamed_dots_rewritten(item: proc_macro2::TokenStream) {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(item).unwrap();
 
     assert!(parsed.has_dots());
     assert_eq!(parsed.dots_ident().unwrap(), "__miniextendr_dots");
@@ -108,16 +115,19 @@ fn parsed_fn_lists_choice_params_in_signature_order() {
 
 #[test]
 fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
-    let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
-        fn f(__miniextendr_dots: i32, ...) {}
-    })
-    .err()
-    .unwrap();
-
-    assert!(
-        err.to_string()
-            .contains("conflicts with implicit dots parameter")
-    );
+    for item in [
+        quote::quote! { fn f(__miniextendr_dots: i32, _: ...) {} },
+        quote::quote! { fn f(__miniextendr_dots: i32, ...) {} },
+    ] {
+        let err = syn::parse2::<MiniextendrFunctionParsed>(item)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            err.contains("conflicts with the binding of unnamed dots (`_: ...`)"),
+            "got: {err}"
+        );
+    }
 }
 
 #[test]
@@ -128,9 +138,9 @@ fn parsed_fn_errors_on_non_ident_dots_pattern() {
     .err()
     .unwrap();
 
-    assert!(
-        err.to_string()
-            .contains("variadic pattern must be a simple identifier")
+    assert_eq!(
+        err.to_string(),
+        "variadic pattern must be a simple identifier (`args: ...`) or `_` (`_: ...`)"
     );
 }
 

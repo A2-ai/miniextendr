@@ -44,13 +44,13 @@ typed_list_get_vectors()
 \description{
 Test dots handling with named but unused dots parameter.
 
-Test dots handling with nameless (underscore-prefixed) dots.
+Test dots handling with nameless dots (\verb{_: ...}).
 
 Test dots as the last parameter with a named but unused dots argument.
 
 Test dots as the last parameter with a named dots argument.
 
-Test dots as the last parameter with nameless dots.
+Test dots as the last parameter with nameless dots (\verb{_: ...}).
 
 Test typed_list! validation with numeric, list, and optional character fields.
 

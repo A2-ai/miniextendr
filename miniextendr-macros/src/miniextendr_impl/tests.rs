@@ -85,6 +85,43 @@ fn impl_method_rewrites_raw_variadic_in_reemitted_impl() {
     assert!(crate::miniextendr_fn::is_dots_type(last.ty.as_ref()));
 }
 
+/// `_: ...` on a method binds `__miniextendr_dots`, as on a function, and the
+/// R formal is plain `...` (#1743).
+#[test]
+fn impl_method_wild_dots_bind_the_synthetic_name() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl WildDotsThing {
+            pub fn new(_: ...) -> Self {
+                unimplemented!()
+            }
+
+            pub fn collect(&self, n: i32, _: ...) -> i32 {
+                n
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    for method in &parsed.methods {
+        assert!(method.has_dots);
+        assert!(method.sig.variadic.is_none());
+    }
+    let syn::ImplItem::Fn(reemitted) = &parsed.original_impl.items[1] else {
+        panic!("expected reemitted method");
+    };
+    let Some(syn::FnArg::Typed(last)) = reemitted.sig.inputs.last() else {
+        panic!("expected trailing dots arg");
+    };
+    let syn::Pat::Ident(pat_ident) = last.pat.as_ref() else {
+        panic!("expected dots ident");
+    };
+    assert_eq!(pat_ident.ident, "__miniextendr_dots");
+
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(wrapper.contains("initialize = function(..., .ptr = NULL)"));
+    assert!(wrapper.contains("WildDotsThing$set(\"public\", \"collect\", function(n, ...)"));
+}
+
 #[test]
 fn r6_dots_constructor_and_method_emit_variadic_r_wrappers() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
