@@ -94,10 +94,12 @@ run_with_logging <- function(command, args = character(),
 
 #' Check command result and throw informative error if failed
 #'
-#' Internal helper used by workflow wrappers.
+#' Internal helper used by workflow wrappers. On failure it prints the status,
+#' the log path and the last 20 lines of output, then aborts.
 #'
-#' @param result Result from run_with_logging()
+#' @param result Result from [run_with_logging()]
 #' @param context Description of what was being done
+#' @return `result`, invisibly, when the command succeeded.
 #' @keywords internal
 check_result <- function(result, context) {
   if (!result$success) {

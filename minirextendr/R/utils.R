@@ -16,7 +16,7 @@
 #'   (default: the caller's frame, i.e. the function that called
 #'   `with_project()`).
 #' @return Called for its side effect; returns `NULL` invisibly.
-#' @noRd
+#' @keywords internal
 with_project <- function(path, .local_envir = parent.frame()) {
   # NULL is documented as "use the active project" on several exported
   # signatures; usethis::local_project(NULL) would instead UNSET the active
@@ -39,8 +39,13 @@ with_project <- function(path, .local_envir = parent.frame()) {
 
 #' Set template type for scaffolding
 #'
+#' Records the session-wide template type that [template_path()],
+#' [use_template()] and [template_data()] read back via
+#' [get_template_type()].
+#'
 #' @param type Either "rpkg" (standalone R package) or "monorepo" (Rust workspace)
-#' @noRd
+#' @return The validated `type`, invisibly.
+#' @keywords internal
 set_template_type <- function(type = c("rpkg", "monorepo")) {
   type <- match.arg(type)
   .template_type$current <- type
@@ -49,8 +54,9 @@ set_template_type <- function(type = c("rpkg", "monorepo")) {
 
 #' Get current template type
 #'
-#' @return Current template type
-#' @noRd
+#' @return The current template type, `"rpkg"` (the default) or
+#'   `"monorepo"`, as last set by [set_template_type()].
+#' @keywords internal
 get_template_type <- function() {
   .template_type$current
 }
@@ -58,15 +64,18 @@ get_template_type <- function() {
 #' Detect project type from directory structure
 #'
 #' Auto-detects whether the current project is:
-#' - "monorepo": Has a Cargo.toml anywhere in the parent tree
-#'   (indicates Rust project context where rpkg/ will be embedded)
-#' - "rpkg": Is a standalone R package (has DESCRIPTION, no Cargo.toml in tree)
+#' - "monorepo": `path` has a `Cargo.toml`, or `path` has a `DESCRIPTION`
+#'   and a `Cargo.toml` exists in `path` or one of its parents (an R package
+#'   embedded in a Rust project)
+#' - "rpkg": a standalone R package (has `DESCRIPTION`, no `Cargo.toml` in
+#'   it or above it)
 #'
-#' Uses rprojroot for reliable tree-walking detection.
+#' The walk up the tree is [find_rust_root()].
 #'
 #' @param path Path to check (default: current project)
-#' @return "monorepo" or "rpkg", or NULL if can't detect
-#' @noRd
+#' @return "monorepo" or "rpkg", or NULL if neither a `Cargo.toml` nor a
+#'   `DESCRIPTION` is found in `path`.
+#' @keywords internal
 detect_project_type <- function(path = usethis::proj_get()) {
   # Check if we're in a Rust project (has Cargo.toml in current dir)
   cargo_toml <- file.path(path, "Cargo.toml")
@@ -90,21 +99,16 @@ detect_project_type <- function(path = usethis::proj_get()) {
   NULL
 }
 
-#' Find the root of a Rust project
-#'
-#' Walks up the directory tree to find a directory containing Cargo.toml.
-#' Uses rprojroot for reliable detection.
-#'
-#' @param path Path to start searching from
 #' Walk up directories to find a file
 #'
 #' Starting from `path`, walks up parent directories looking for `filename`.
-#' Returns the directory containing the file, or NULL if not found.
+#' Returns the directory containing the file, or NULL if not found. The walk
+#' stops at the filesystem root (or after 100 levels).
 #'
 #' @param filename File to search for
 #' @param path Starting directory
 #' @return Path to the directory containing `filename`, or NULL
-#' @noRd
+#' @keywords internal
 find_root_with_file <- function(filename, path) {
   path <- normalizePath(path, mustWork = FALSE)
   for (i in seq_len(100)) {
@@ -116,8 +120,14 @@ find_root_with_file <- function(filename, path) {
   NULL
 }
 
+#' Find the root of a Rust project
+#'
+#' Walks up the directory tree from `path` (inclusive) to the nearest
+#' directory containing a `Cargo.toml`, via [find_root_with_file()].
+#'
+#' @param path Path to start searching from (default: current project)
 #' @return Path to Rust project root, or NULL if not found
-#' @noRd
+#' @keywords internal
 find_rust_root <- function(path = usethis::proj_get()) {
   find_root_with_file("Cargo.toml", path)
 }
@@ -130,7 +140,7 @@ find_rust_root <- function(path = usethis::proj_get()) {
 #' @param name Name of the template file (relative to template type directory)
 #' @param subdir Optional subdirectory within the template type
 #' @return Full path to the template
-#' @noRd
+#' @keywords internal
 template_path <- function(name, subdir = NULL) {
   type <- get_template_type()
   if (!is.null(subdir)) {
@@ -145,7 +155,7 @@ template_path <- function(name, subdir = NULL) {
 #'
 #' @param name Name of the script file
 #' @return Full path to the script
-#' @noRd
+#' @keywords internal
 script_path <- function(name) {
   system.file("scripts", name, package = "minirextendr", mustWork = TRUE)
 }
@@ -165,7 +175,7 @@ script_path <- function(name) {
 #' which never has an existing DESCRIPTION to update). Not used by the inline
 #' `rust_source()` path, which only needs `Config/build/bootstrap`.
 #'
-#' @noRd
+#' @keywords internal
 MX_CONFIG_BUILD_FIELDS <- c(
   "Config/build/bootstrap" = "TRUE",
   "Config/build/never-clean" = "true",
@@ -180,13 +190,13 @@ MX_CONFIG_BUILD_FIELDS <- c(
 #' `miniextendr-cli/src/scaffold.rs`, whose `r_floor_matches_minirextendr_and_rpkg`
 #' test asserts all three agree).
 #'
-#' @noRd
+#' @keywords internal
 MX_R_FLOOR <- "4.4"
 
 #' `Depends` entry carrying the `MX_R_FLOOR` R version floor
 #'
 #' @return Character string, e.g. `"R (>= 4.4)"`.
-#' @noRd
+#' @keywords internal
 mx_r_depends_entry <- function() {
   sprintf("R (>= %s)", MX_R_FLOOR)
 }
@@ -201,7 +211,7 @@ mx_r_depends_entry <- function() {
 #'
 #' @param pkg_name Package name to substitute into `useDynLib()`.
 #' @return Character string (NAMESPACE file content).
-#' @noRd
+#' @keywords internal
 mx_minimal_namespace <- function(pkg_name) {
   sprintf(
     "# Generated by roxygen2: do not edit by hand\n\nuseDynLib(%s, .registration = TRUE)\n",
@@ -216,7 +226,7 @@ mx_minimal_namespace <- function(pkg_name) {
 #'
 #' @param pkg_name Package name to substitute as the copyright holder.
 #' @return Character string (LICENSE file content).
-#' @noRd
+#' @keywords internal
 mx_license_content <- function(pkg_name) {
   sprintf("YEAR: %s\nCOPYRIGHT HOLDER: %s authors\n",
           format(Sys.Date(), "%Y"), pkg_name)
@@ -241,7 +251,7 @@ mx_license_content <- function(pkg_name) {
 #' @param subdir Optional subdirectory within the template type (e.g. `"rpkg"`
 #'   when scaffolding the R package subdirectory of a monorepo).
 #' @return Character vector of ignore patterns.
-#' @noRd
+#' @keywords internal
 mx_ignore_patterns <- function(template, subdir = NULL) {
   lines <- readLines(template_path(template, subdir = subdir))
   lines[nzchar(lines) & !grepl("^#", lines)]
@@ -267,7 +277,7 @@ mx_ignore_patterns <- function(template, subdir = NULL) {
 #'   resolved against the active template type: `"tools"`, or `"rpkg/tools"`
 #'   for the R package subdirectory of a monorepo.
 #' @return Invisibly returns TRUE.
-#' @noRd
+#' @keywords internal
 copy_config_scripts <- function(dest_dir, display_prefix = dest_dir,
                                 tools_subdir = "tools") {
   for (script in c("vendor-cache.R", "dev-bootstrap.R", "write-wrappers.R")) {
@@ -305,7 +315,7 @@ copy_config_scripts <- function(dest_dir, display_prefix = dest_dir,
 #' @param path Path to the script.
 #' @return The date string, or `NA` when the file is missing or has no
 #'   parseable timestamp line.
-#' @noRd
+#' @keywords internal
 config_script_timestamp <- function(path) {
   if (!file.exists(path)) return(NA_character_)
   lines <- readLines(path, n = 50L, warn = FALSE)
@@ -327,11 +337,13 @@ config_script_timestamp <- function(path) {
 #'
 #' @param template Name of template file (relative to template type directory)
 #' @param save_as Path to save the file (relative to project root)
-#' @param data Named list of template variables for {{variable}} substitution
+#' @param data Named list of template variables for `{{variable}}` substitution
 #' @param subdir Optional subdirectory within the template type (e.g., "rpkg" for monorepo)
-#' @param open Whether to open the file after creation
-#' @return Invisibly returns TRUE if file was created
-#' @noRd
+#' @param open Whether to open the file after creation (only honoured in an
+#'   interactive session)
+#' @return Invisibly, the value of `usethis::use_template()`: `TRUE` if the
+#'   file was written.
+#' @keywords internal
 use_template <- function(template, save_as = template, data = list(),
                          subdir = NULL, open = FALSE) {
   template_rel <- if (is.null(subdir)) {
@@ -368,7 +380,9 @@ use_template <- function(template, save_as = template, data = list(),
 #' @param save_as Target file path (relative to project root)
 #' @param data Named list of replacements (keys are matched as `{{{key}}}`)
 #' @param subdir Optional subdirectory within template type
-#' @noRd
+#' @return Invisibly `TRUE`; called for its side effect of writing
+#'   `save_as` (creating its parent directory if needed).
+#' @keywords internal
 copy_template <- function(template, save_as = template, data = list(),
                           subdir = NULL) {
   src <- template_path(template, subdir = subdir)
@@ -389,10 +403,13 @@ copy_template <- function(template, save_as = template, data = list(),
 
 #' Check if a system command is available
 #'
+#' Looks `cmd` up on `PATH` with `Sys.which()` and aborts when it is missing.
+#'
 #' @param cmd Command name to check
-#' @param msg Optional custom error message
-#' @return TRUE if available, otherwise aborts
-#' @noRd
+#' @param msg Optional custom error message (a character vector, passed to
+#'   `cli::cli_abort()`); `NULL` uses a generic "not found on PATH" message.
+#' @return `TRUE` invisibly if available, otherwise aborts
+#' @keywords internal
 check_installed_cmd <- function(cmd, msg = NULL) {
   path <- Sys.which(cmd)
   if (path == "") {
@@ -407,8 +424,9 @@ check_installed_cmd <- function(cmd, msg = NULL) {
 
 #' Check autoconf availability
 #'
-#' @return TRUE if autoconf is available
-#' @noRd
+#' @return `TRUE` invisibly if autoconf is on `PATH`; otherwise aborts with
+#'   install hints.
+#' @keywords internal
 check_autoconf <- function() {
   check_installed_cmd(
     "autoconf",
@@ -421,8 +439,9 @@ check_autoconf <- function() {
 
 #' Check cargo/rustc availability
 #'
-#' @return TRUE if Rust toolchain is available
-#' @noRd
+#' @return `TRUE` invisibly if both `cargo` and `rustc` are on `PATH`;
+#'   otherwise aborts.
+#' @keywords internal
 check_rust <- function() {
  check_installed_cmd(
     "cargo",
@@ -436,8 +455,9 @@ check_rust <- function() {
 
 #' Get package name from current project
 #'
-#' @return Package name as string
-#' @noRd
+#' @return Package name as string (the `Package` field of the active
+#'   project's DESCRIPTION).
+#' @keywords internal
 get_package_name <- function() {
   mx_desc_get_field("Package", file = usethis::proj_path("DESCRIPTION"))
 }
@@ -451,8 +471,9 @@ get_package_name <- function() {
 #' @param field Field name
 #' @param file Path to DESCRIPTION
 #' @param default Value if field missing
-#' @return Field value as string
-#' @noRd
+#' @return Field value as string (whitespace-trimmed), or `default` when the
+#'   field is absent.
+#' @keywords internal
 mx_desc_get_field <- function(field, file, default = NA_character_) {
   dcf <- read.dcf(file, fields = field)
   val <- dcf[1, 1]
@@ -461,9 +482,13 @@ mx_desc_get_field <- function(field, file, default = NA_character_) {
 
 #' Set fields in a DESCRIPTION file
 #'
+#' Replaces an existing field (including its continuation lines) in place,
+#' or appends the field at the end of the file.
+#'
 #' @param file Path to DESCRIPTION
 #' @param ... Named values to set (e.g., Package = "foo")
-#' @noRd
+#' @return `NULL` invisibly; called for its side effect of rewriting `file`.
+#' @keywords internal
 mx_desc_set <- function(file, ...) {
   fields <- list(...)
   lines <- readLines(file, warn = FALSE)
@@ -505,7 +530,7 @@ mx_desc_set <- function(file, ...) {
 #'
 #' @param file Path to DESCRIPTION
 #' @return Invisibly, `TRUE` if the file was modified
-#' @noRd
+#' @keywords internal
 mx_desc_ensure_r_floor <- function(file) {
   floor_entry <- mx_r_depends_entry()
   depends <- mx_desc_get_field("Depends", file = file, default = "")
@@ -544,7 +569,7 @@ mx_desc_ensure_r_floor <- function(file) {
 #'
 #' @param file Path to DESCRIPTION
 #' @return Data frame with columns: type, package, version
-#' @noRd
+#' @keywords internal
 mx_desc_get_deps <- function(file) {
   dcf <- read.dcf(file)
   result <- data.frame(type = character(), package = character(),
@@ -579,7 +604,7 @@ mx_desc_get_deps <- function(file) {
 #' @param pkg Package name
 #' @param type Dependency field (e.g., "Suggests")
 #' @return Invisibly, `TRUE` if the file was modified
-#' @noRd
+#' @keywords internal
 mx_desc_drop_dep <- function(file, pkg, type) {
   lines <- readLines(file, warn = FALSE)
   section_idx <- grep(paste0("^", type, ":"), lines)
@@ -612,11 +637,16 @@ mx_desc_drop_dep <- function(file, pkg, type) {
 
 #' Add or update a dependency in DESCRIPTION
 #'
+#' Replaces any existing entry for `pkg` in the `type` field (creating the
+#' field when absent) and re-sorts the field's entries.
+#'
 #' @param file Path to DESCRIPTION
 #' @param pkg Package name
 #' @param type Dependency type (e.g., "Imports")
-#' @param version Version constraint (e.g., ">= 1.0") or NULL
-#' @noRd
+#' @param version Version constraint (e.g., ">= 1.0") or NULL; `NULL`, `""`
+#'   and `"*"` add the package without a constraint.
+#' @return `NULL` invisibly; called for its side effect of rewriting `file`.
+#' @keywords internal
 mx_desc_set_dep <- function(file, pkg, type = "Imports", version = NULL) {
   lines <- readLines(file, warn = FALSE)
 
@@ -676,17 +706,24 @@ mx_desc_set_dep <- function(file, pkg, type = "Imports", version = NULL) {
 #'
 #' @param name R package name
 #' @return Rust-safe name
-#' @noRd
+#' @keywords internal
 to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
 #' Select a Rust library from Cargo workspace metadata
 #'
+#' Runs `cargo metadata --no-deps` on `cargo_path` and picks the workspace
+#' member with a `lib`/`rlib` target: the one named `crate_name` when given,
+#' else the package whose manifest is `cargo_path`, else the only library
+#' package. Aborts when no single package can be chosen, when `cargo_path`
+#' is missing, or when jsonlite is not installed.
+#'
 #' @param cargo_path Path to Cargo.toml file
 #' @param crate_name Optional workspace package to expose to R
-#' @return Cargo metadata for the selected library package
-#' @noRd
+#' @return Cargo metadata for the selected library package (one element of
+#'   `cargo metadata`'s `packages` array, as a list).
+#' @keywords internal
 get_monorepo_crate <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml"),
                                 crate_name = NULL) {
   if (!file.exists(cargo_path)) {
@@ -748,7 +785,7 @@ get_monorepo_crate <- function(cargo_path = file.path(usethis::proj_get(), "Carg
 #' @param package Optional package name override (for when DESCRIPTION doesn't exist yet)
 #' @param rpkg_name Optional R package subdirectory name for monorepo template
 #' @return Named list with package, package_rs, crate_name, year, etc.
-#' @noRd
+#' @keywords internal
 template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
   # Get package name: use provided, or read from DESCRIPTION
   if (is.null(package)) {
@@ -789,7 +826,7 @@ template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
 #'
 #' @param path Path to directory
 #' @return Invisibly returns path
-#' @noRd
+#' @keywords internal
 ensure_dir <- function(path) {
   if (!fs::dir_exists(path)) {
     fs::dir_create(path, recurse = TRUE)
@@ -800,8 +837,12 @@ ensure_dir <- function(path) {
 
 #' Check if current project has miniextendr setup
 #'
+#' A project counts as a miniextendr package when its `configure.ac`
+#' mentions `CARGO_FEATURES` and it has either `src/rust/Cargo.toml` plus
+#' `src/Makevars.in`, or `src/stub.c` plus a generated `src/Makevars`.
+#'
 #' @return TRUE if project appears to be a miniextendr package
-#' @noRd
+#' @keywords internal
 is_miniextendr_package <- function() {
   configure_ac <- usethis::proj_path("configure.ac")
   if (!fs::file_exists(configure_ac)) {
@@ -830,7 +871,8 @@ is_miniextendr_package <- function() {
 #'
 #' @param path Path that was created
 #' @param verb Action verb (default "Created")
-#' @noRd
+#' @return `NULL` invisibly; called for the `cli` success message.
+#' @keywords internal
 bullet_created <- function(path, verb = "Created") {
   cli::cli_alert_success("{verb} {.path {path}}")
 }

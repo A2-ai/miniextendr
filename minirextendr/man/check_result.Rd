@@ -7,11 +7,15 @@
 check_result(result, context)
 }
 \arguments{
-\item{result}{Result from run_with_logging()}
+\item{result}{Result from \code{\link[=run_with_logging]{run_with_logging()}}}
 
 \item{context}{Description of what was being done}
 }
+\value{
+\code{result}, invisibly, when the command succeeded.
+}
 \description{
-Internal helper used by workflow wrappers.
+Internal helper used by workflow wrappers. On failure it prints the status,
+the log path and the last 20 lines of output, then aborts.
 }
 \keyword{internal}
