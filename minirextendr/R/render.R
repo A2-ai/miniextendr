@@ -93,7 +93,7 @@ miniextendr_word_document <- function(..., sync_args = list()) {
 #'
 #' @param sync_args Named list of arguments for miniextendr_sync()
 #' @return A function suitable for use as `pre_knit` in an rmarkdown format
-#' @noRd
+#' @keywords internal
 make_pre_knit <- function(sync_args = list()) {
   function(input, ...) {
     # Resolve package root from input file location

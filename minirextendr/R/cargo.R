@@ -14,7 +14,7 @@
 #' @param wd Working directory (`NULL` for current).
 #' @return Invisibly, the list returned by `run_with_logging()` (`$status`,
 #'   `$output`, `$log_file`, `$success`).
-#' @noRd
+#' @keywords internal
 run_cargo <- function(subcommand, args = character(), quiet = FALSE, wd = NULL) {
   result <- run_with_logging(
     "cargo", c(subcommand, args),
@@ -48,7 +48,7 @@ run_cargo <- function(subcommand, args = character(), quiet = FALSE, wd = NULL) 
 #' @param offline Logical. If TRUE, add `--offline`.
 #' @param quiet Logical. If TRUE, add `--quiet`.
 #' @return Character vector of flag arguments.
-#' @noRd
+#' @keywords internal
 cargo_common_flags <- function(release = FALSE,
                                 no_default_features = FALSE,
                                 all_features = FALSE,
@@ -91,8 +91,9 @@ cargo_common_flags <- function(release = FALSE,
 
 #' Get the Cargo.toml path for current R package
 #'
-#' @return Path to src/rust/Cargo.toml
-#' @noRd
+#' @return Path to src/rust/Cargo.toml of the active project; aborts when
+#'   the file does not exist.
+#' @keywords internal
 cargo_toml_path <- function() {
   path <- usethis::proj_path("src", "rust", "Cargo.toml")
   if (!fs::file_exists(path)) {
@@ -104,6 +105,13 @@ cargo_toml_path <- function() {
   path
 }
 
+#' Validate a non-empty character argument
+#'
+#' @param x Value to validate: must be a character vector with at least one
+#'   element, no `NA`, and no empty or whitespace-only strings.
+#' @param arg Argument name used in the error message.
+#' @return `TRUE` invisibly; aborts otherwise.
+#' @keywords internal
 validate_non_empty_char <- function(x, arg) {
   if (!is.character(x) || length(x) == 0 || anyNA(x)) {
     cli::cli_abort("{arg} must be a non-empty character vector.")
@@ -114,6 +122,17 @@ validate_non_empty_char <- function(x, arg) {
   invisible(TRUE)
 }
 
+#' Validate Cargo feature names
+#'
+#' Each name must pass [validate_non_empty_char()] and, once trimmed, start
+#' with a letter, digit or `_`, followed by letters, digits, `.`, `_`, `:`,
+#' `/` or `-` (so `dep:name` and `crate/feature` forms pass). All invalid
+#' names are reported in one error.
+#'
+#' @param features Character vector of feature names, or `NULL` (always
+#'   valid).
+#' @return `TRUE` invisibly; aborts otherwise.
+#' @keywords internal
 validate_feature_names <- function(features) {
   if (is.null(features)) {
     return(invisible(TRUE))
@@ -1072,7 +1091,7 @@ cargo_new <- function(path = ".",
 #'
 #' @param path Path to start searching from
 #' @return Path to workspace root, or NULL if not in a workspace
-#' @noRd
+#' @keywords internal
 find_workspace_root <- function(path) {
   path <- normalizePath(path, mustWork = FALSE)
 
@@ -1117,7 +1136,7 @@ find_workspace_root <- function(path) {
 #' @param workspace_toml Path to workspace Cargo.toml
 #' @param crate_name Name of crate to add
 #' @return TRUE if successfully added, FALSE if already present
-#' @noRd
+#' @keywords internal
 add_crate_to_workspace <- function(workspace_toml, crate_name) {
   content <- readLines(workspace_toml, warn = FALSE)
 

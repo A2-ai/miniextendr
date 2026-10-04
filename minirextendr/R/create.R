@@ -202,9 +202,15 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
 #' still written directly here. See audit
 #' `2026-07-03-dogfooding-minirextendr-r.md` finding #4.
 #'
-#' @param data Template data list
+#' Runs with the monorepo workspace root as the active usethis project and
+#' with the "monorepo" template type set.
+#'
+#' @param data Template data list (as from [template_data()]; `package` is
+#'   read here, the rest is passed to the templates)
 #' @param rpkg_name Name of the R package subdirectory (default: "rpkg")
-#' @noRd
+#' @return Invisibly `TRUE`; called for its side effect of writing the R
+#'   package under `rpkg_name`.
+#' @keywords internal
 create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # Create directory structure
   ensure_dir(usethis::proj_path(rpkg_name, "R"))

@@ -58,7 +58,10 @@ use_claude_skills <- function(path = ".") {
 #' Write the AGENTS.md stub if absent
 #'
 #' AGENTS.md is user-owned once created, so this never overwrites.
-#' @noRd
+#'
+#' @return Invisibly, `TRUE` if the active project's `AGENTS.md` was
+#'   written, `FALSE` if it already existed.
+#' @keywords internal
 write_agents_md_stub <- function() {
   agents_path <- usethis::proj_path("AGENTS.md")
   if (fs::file_exists(agents_path)) {

@@ -7,8 +7,8 @@
 #' Path to render state file
 #'
 #' @param path Project root
-#' @return Path to `.miniextendr/render-state.rds`
-#' @noRd
+#' @return Path to `tools/.miniextendr/render-state.rds` under `path`
+#' @keywords internal
 render_state_path <- function(path = usethis::proj_get()) {
   file.path(path, "tools", ".miniextendr", "render-state.rds")
 }
@@ -19,8 +19,9 @@ render_state_path <- function(path = usethis::proj_get()) {
 #' DESCRIPTION and NAMESPACE.
 #'
 #' @param path Project root
-#' @return Single character string (MD5 digest)
-#' @noRd
+#' @return Single character string (MD5 digest), or `""` when none of the
+#'   files exist.
+#' @keywords internal
 compute_source_hash <- function(path = usethis::proj_get()) {
   rust_dir <- file.path(path, "src", "rust")
 
@@ -66,8 +67,9 @@ compute_source_hash <- function(path = usethis::proj_get()) {
 #' Read saved render state
 #'
 #' @param path Project root
-#' @return List with `hash` and `stage_run`, or NULL if no state
-#' @noRd
+#' @return List with `hash`, `stage_run` and `timestamp`, or NULL if no
+#'   state (an unreadable state file is deleted and also gives NULL)
+#' @keywords internal
 read_render_state <- function(path = usethis::proj_get()) {
   state_file <- render_state_path(path)
   if (!file.exists(state_file)) return(NULL)
@@ -87,7 +89,9 @@ read_render_state <- function(path = usethis::proj_get()) {
 #' @param hash Current source hash
 #' @param stage_run Stage that was executed
 #' @param path Project root
-#' @noRd
+#' @return `NULL` invisibly; called for its side effect of writing the state
+#'   file (with the current time as `timestamp`) at [render_state_path()].
+#' @keywords internal
 write_render_state <- function(hash, stage_run, path = usethis::proj_get()) {
   state_file <- render_state_path(path)
   state_dir <- dirname(state_file)

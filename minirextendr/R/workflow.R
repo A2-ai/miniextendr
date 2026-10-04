@@ -179,14 +179,21 @@ miniextendr_build <- function(path = ".", install = TRUE) {
   invisible(TRUE)
 }
 
-# Step 4 leaves a development namespace behind: roxygen2 documents through
-# pkgload::load_all(), and pkgload fills the namespace's export table from the
-# NAMESPACE file as it is at load time, i.e. before roxygen2 rewrote it. In the
-# same session, library(<pkg>) attaches an already-loaded namespace as is, so
-# it would come up without the exports this build added (a fresh package: with
-# none at all). Unload it so library() loads the installed image, or a later
-# load_all() reads the current NAMESPACE. Only a pkgload-registered namespace
-# is touched; an installed one the user loaded earlier is left alone (#1000).
+#' Unload the development namespace roxygen2 left loaded
+#'
+#' Step 4 of [miniextendr_build()] leaves a development namespace behind:
+#' roxygen2 documents through `pkgload::load_all()`, and pkgload fills the
+#' namespace's export table from the NAMESPACE file as it is at load time,
+#' i.e. before roxygen2 rewrote it. In the same session, `library(<pkg>)`
+#' attaches an already-loaded namespace as is, so it would come up without
+#' the exports this build added (a fresh package: with none at all). Unload
+#' it so `library()` loads the installed image, or a later `load_all()` reads
+#' the current NAMESPACE. Only a pkgload-registered namespace is touched; an
+#' installed one the user loaded earlier is left alone (#1000).
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return The package name, invisibly.
+#' @keywords internal
 unload_dev_namespace <- function(pkg_path) {
   pkg_name <- unname(mx_desc_get_field("Package", file = file.path(pkg_path, "DESCRIPTION")))
   if (pkgload::is_dev_package(pkg_name)) {
@@ -195,18 +202,24 @@ unload_dev_namespace <- function(pkg_path) {
   invisible(pkg_name)
 }
 
-# Step 3: compile the crate and regenerate the wrappers in the source tree.
-#
-# pkgbuild::compile_dll() runs a libs-only `R CMD INSTALL --no-test-load` into
-# a throwaway library: configure + make in `src/`, which links `src/<pkg>.so`
-# and runs the Makevars wrapper-gen rule against it, writing
-# R/<pkg>-wrappers.R and src/rust/wasm_registry.rs in place. force = TRUE skips
-# pkgbuild's own source-vs-DLL mtime check; cargo decides what to rebuild, and
-# make regenerates the wrappers whenever the library was relinked or the
-# wrappers file is missing. Nothing here loads the package namespace, so a
-# NAMESPACE that still exports a removed or renamed function cannot fail it
-# (#1288); document() reconciles NAMESPACE next. On a brand-new package this
-# is also what writes the first wrappers file (#822).
+#' Compile the crate and regenerate the wrappers in the source tree
+#'
+#' Step 3 of [miniextendr_build()]. `pkgbuild::compile_dll()` runs a
+#' libs-only `R CMD INSTALL --no-test-load` into a throwaway library:
+#' configure + make in `src/`, which links `src/<pkg>.so` and runs the
+#' Makevars wrapper-gen rule against it, writing `R/<pkg>-wrappers.R` and
+#' `src/rust/wasm_registry.rs` in place. `force = TRUE` skips pkgbuild's own
+#' source-vs-DLL mtime check; cargo decides what to rebuild, and make
+#' regenerates the wrappers whenever the library was relinked or the wrappers
+#' file is missing. Nothing here loads the package namespace, so a NAMESPACE
+#' that still exports a removed or renamed function cannot fail it (#1288);
+#' `document()` reconciles NAMESPACE next. On a brand-new package this is
+#' also what writes the first wrappers file (#822).
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return `TRUE` invisibly. Aborts when the compile fails or leaves no
+#'   `R/*-wrappers.R` behind.
+#' @keywords internal
 compile_and_generate_wrappers <- function(pkg_path) {
   tryCatch(
     pkgbuild::compile_dll(pkg_path, force = TRUE, quiet = FALSE),
@@ -229,23 +242,31 @@ compile_and_generate_wrappers <- function(pkg_path) {
   invisible(TRUE)
 }
 
-# Step 5: install the package via devtools.
-#
-# build = FALSE: install the source tree in place, as `R CMD INSTALL .` does.
-# The install reuses rust-target/ from Step 3, so Cargo compiles nothing, the
-# library is not relinked and the wrappers stay as Steps 3 and 4 left them.
-# A built tarball would install from a temporary copy instead: a cold Cargo
-# build on every call (unless CARGO_TARGET_DIR points outside the package),
-# and a monorepo's local framework crates, found by configure's walk up from
-# the package directory, would resolve from git there.
-#
-# reload = FALSE: do NOT reload the freshly-installed package into the building
-# session. The default (reload = TRUE) re-registers the package's namespace from
-# its just-written installed image; on R >= 4.6 (libdeflate-compressed .rdb) a
-# later pkgload unregister() of that namespace can fail with "internal error 1
-# in R_decompress1 with libdeflate" / "lazy-load database is corrupt" (#1000).
-# The build session never needs the package loaded, so skipping the reload is
-# both harmless and the fix.
+#' Install the package via devtools
+#'
+#' Step 5 of [miniextendr_build()].
+#'
+#' `build = FALSE`: install the source tree in place, as `R CMD INSTALL .`
+#' does. The install reuses `rust-target/` from Step 3, so Cargo compiles
+#' nothing, the library is not relinked and the wrappers stay as Steps 3 and
+#' 4 left them. A built tarball would install from a temporary copy instead:
+#' a cold Cargo build on every call (unless `CARGO_TARGET_DIR` points outside
+#' the package), and a monorepo's local framework crates, found by
+#' configure's walk up from the package directory, would resolve from git
+#' there.
+#'
+#' `reload = FALSE`: do NOT reload the freshly-installed package into the
+#' building session. The default (`reload = TRUE`) re-registers the package's
+#' namespace from its just-written installed image; on R >= 4.6
+#' (libdeflate-compressed `.rdb`) a later pkgload `unregister()` of that
+#' namespace can fail with "internal error 1 in R_decompress1 with
+#' libdeflate" / "lazy-load database is corrupt" (#1000). The build session
+#' never needs the package loaded, so skipping the reload is both harmless
+#' and the fix.
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return The value of `devtools::install()`. Aborts when the install fails.
+#' @keywords internal
 install_pkg <- function(pkg_path) {
   tryCatch(
     devtools::install(pkg_path, build = FALSE, upgrade = FALSE, quiet = FALSE,
@@ -259,9 +280,17 @@ install_pkg <- function(pkg_path) {
   )
 }
 
-# Leftovers of an interrupted release build: a vendor archive flips every
-# build into offline tarball mode, and a pre-freeze snapshot means
-# src/rust/Cargo.toml is still the frozen copy. Neither is deleted here.
+#' Warn about leftovers of an interrupted release build
+#'
+#' A vendor archive (`inst/vendor.tar.xz`) flips every build into offline
+#' tarball mode, and a pre-freeze snapshot
+#' (`src/rust/.Cargo.toml.prefreeze`) means `src/rust/Cargo.toml` is still
+#' the frozen copy. Each one present gets a warning naming the fix; neither
+#' is deleted here.
+#'
+#' @param pkg_path Absolute path to the package root.
+#' @return `TRUE` invisibly; called for its warnings.
+#' @keywords internal
 warn_release_leftovers <- function(pkg_path) {
   if (fs::file_exists(fs::path(pkg_path, "src", "rust", ".Cargo.toml.prefreeze"))) {
     cli::cli_warn(c(
@@ -289,7 +318,7 @@ warn_release_leftovers <- function(pkg_path) {
 #'
 #' @param pkg_path Absolute path to the package root.
 #' @return `TRUE` if any `R/*-wrappers.R` file exists.
-#' @noRd
+#' @keywords internal
 wrappers_file_exists <- function(pkg_path) {
   r_dir <- fs::path(pkg_path, "R")
   if (!fs::dir_exists(r_dir)) {
