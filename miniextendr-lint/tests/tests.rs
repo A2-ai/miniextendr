@@ -1526,4 +1526,45 @@ fn build_directives_watch_files_not_the_manifest_dir_without_src() {
     );
 }
 
+#[test]
+fn build_directives_watch_an_unparseable_root_lib_rs() {
+    // Root-`lib.rs` layout where `lib.rs` itself fails, so no `mod` list is read.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("lib.rs", &format!("mod sources;\n{BAD_DOTS}")),
+            ("sources.rs", ""),
+        ],
+    );
+
+    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
+    let directives = build_directives(root);
+    assert!(
+        directives.contains(&rerun(&root.join("lib.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives
+            .iter()
+            .any(|d| d.starts_with("cargo::warning=") && d.contains("lib.rs: failed to parse")),
+        "{directives:#?}"
+    );
+
+    // Fixed, the lint reruns, reads the `mod` list again and the warning is gone.
+    fs::write(root.join("lib.rs"), "mod sources;\n").unwrap();
+    let directives = build_directives(root);
+    for file in ["lib.rs", "sources.rs"] {
+        assert!(
+            directives.contains(&rerun(&root.join(file))),
+            "{directives:#?}"
+        );
+    }
+    assert!(
+        !directives.iter().any(|d| d.starts_with("cargo::warning=")),
+        "{directives:#?}"
+    );
+}
+
 // endregion
