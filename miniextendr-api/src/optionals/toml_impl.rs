@@ -69,9 +69,10 @@
 
 pub use toml::Value as TomlValue;
 
-use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{
+    SexpError, SexpTypeError, TryFromSexp, charsxp_to_str, impl_option_try_from_sexp,
+};
 use crate::gc_protect::OwnedProtect;
-use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 use crate::sys::Rf_allocVector;
 use crate::{SEXP, SEXPTYPE, SexpExt};

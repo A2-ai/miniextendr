@@ -3,9 +3,10 @@
 //! The reading rules are documented on [`AsCharacterVec`].
 
 use crate::expression::{RCall, RSymbol};
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::from_r::{
+    SexpError, SexpLengthError, SexpTypeError, TryFromSexp, impl_option_try_from_sexp,
+};
 use crate::gc_protect::OwnedProtect;
-use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 

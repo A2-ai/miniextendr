@@ -38,9 +38,9 @@
 pub use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
 
 use crate::SEXP;
-use crate::from_r::{SexpError, TryFromSexp};
-use crate::{
-    impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
+use crate::from_r::{
+    SexpError, TryFromSexp, impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list,
+    impl_vec_try_from_sexp_list,
 };
 
 // region: Build options

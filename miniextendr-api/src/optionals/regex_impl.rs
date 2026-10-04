@@ -60,7 +60,7 @@
 
 pub use regex::Regex;
 
-use crate::try_from_sexp_via_str_parse;
+use crate::from_r::try_from_sexp_via_str_parse;
 
 // region: TryFromSexp conversions
 

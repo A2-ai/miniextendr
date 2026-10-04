@@ -40,8 +40,8 @@
 
 pub use url::Url;
 
+use crate::from_r::try_from_sexp_via_str_parse;
 use crate::into_r::into_r_infallible;
-use crate::try_from_sexp_via_str_parse;
 
 // region: TryFromSexp / IntoR conversions
 

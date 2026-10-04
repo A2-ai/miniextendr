@@ -5,9 +5,8 @@
 use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{
     BatchedErrors, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
-    is_na_real, map_strsxp_with,
+    impl_option_try_from_sexp, is_na_real, map_strsxp_with,
 };
-use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
 

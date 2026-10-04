@@ -184,14 +184,14 @@ impl JsonOptions {
         self
     }
 }
-use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::from_r::{
+    SexpError, TryFromSexp, charsxp_to_str, impl_option_try_from_sexp,
+    impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
+};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::Rf_allocVector;
 use crate::{SEXP, SEXPTYPE, SexpExt};
-use crate::{
-    impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list,
-};
 
 /// Adapter trait for [`serde::Serialize`].
 ///
