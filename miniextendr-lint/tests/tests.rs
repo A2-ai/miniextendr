@@ -1410,12 +1410,20 @@ pub fn has_any(x: SEXP) -> bool {
 
 // region: parse failures — `&Dots` hint (#1737) and rerun directives (#1738)
 
-/// Writes each `(file name, source)` of `files` into `dir`, creating it.
+/// Writes each `(relative path, source)` of `files` into `dir`, creating the
+/// directories they need.
 fn write_crate(dir: &std::path::Path, files: &[(&str, &str)]) {
     fs::create_dir_all(dir).unwrap();
     for (name, body) in files {
-        fs::write(dir.join(name), body).unwrap();
+        let path = dir.join(name);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, body).unwrap();
     }
+}
+
+/// The `cargo::rerun-if-changed` directive for `path`.
+fn rerun(path: &std::path::Path) -> String {
+    format!("cargo::rerun-if-changed={}", path.display())
 }
 
 const BAD_DOTS: &str = "\nuse miniextendr_api::prelude::*;\n\n#[miniextendr]\npub fn f(sources: ..., dosing_type: i32) -> i32 {\n    dosing_type\n}\n";
@@ -1491,7 +1499,6 @@ fn build_directives_watch_an_unparseable_file_in_src() {
     write_crate(&src, &[("lib.rs", "mod bad;\n"), ("bad.rs", BAD_DOTS)]);
 
     let directives = build_directives(dir.path());
-    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
     for expected in [
         rerun(&src),
         rerun(&src.join("lib.rs")),
@@ -1518,7 +1525,6 @@ fn build_directives_watch_files_not_the_manifest_dir_without_src() {
     write_crate(root, &[("lib.rs", "mod bad;\n"), ("bad.rs", BAD_DOTS)]);
     fs::create_dir(root.join("target")).unwrap();
 
-    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
     let directives = build_directives(root);
     assert!(
         directives.contains(&rerun(&root.join("bad.rs"))),
@@ -1560,7 +1566,6 @@ fn build_directives_watch_an_unparseable_root_lib_rs() {
         ],
     );
 
-    let rerun = |path: &std::path::Path| format!("cargo::rerun-if-changed={}", path.display());
     let directives = build_directives(root);
     assert!(
         directives.contains(&rerun(&root.join("lib.rs"))),
@@ -1586,6 +1591,567 @@ fn build_directives_watch_an_unparseable_root_lib_rs() {
         !directives.iter().any(|d| d.starts_with("cargo::warning=")),
         "{directives:#?}"
     );
+}
+
+// endregion
+
+// region: crate root from `[lib] path` in Cargo.toml (#1745)
+
+/// A one-function source that MXL304 flags (a raw-text rule, no attributes needed).
+const ATTRIB_CALL: &str =
+    "pub fn has_any(x: SEXP) -> bool {\n    unsafe { ATTRIB(x) != R_NilValue }\n}\n";
+
+/// `root` joined with the `/`-separated `rel`, one component at a time, so it
+/// compares equal to the paths the walk builds on every platform.
+fn path_in(root: &std::path::Path, rel: &str) -> std::path::PathBuf {
+    rel.split('/')
+        .fold(root.to_path_buf(), |path, part| path.join(part))
+}
+
+/// The files MXL304 flags in the crate whose manifest dir is `root`.
+fn mxl304_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let report = run(root).expect("lint should succeed");
+    report
+        .diagnostics
+        .iter()
+        .filter(|d| format!("{}", d.code) == "MXL304")
+        .map(|d| d.path.clone())
+        .collect()
+}
+
+#[test]
+fn lib_path_outside_src_is_linted_and_watched() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "Cargo.toml",
+                "[package]\nname = \"pkg\"\n\n[lib]\npath = \"rust/lib.rs\"\ncrate-type = [\"staticlib\"]\n",
+            ),
+            ("rust/lib.rs", "mod child;\n"),
+            ("rust/child.rs", ATTRIB_CALL),
+        ],
+    );
+    fs::create_dir(root.join("target")).unwrap();
+
+    let report = run(root).expect("lint should succeed");
+    assert_eq!(
+        report.files,
+        vec![path_in(root, "rust/child.rs"), path_in(root, "rust/lib.rs")]
+    );
+    assert_eq!(mxl304_files(root), vec![path_in(root, "rust/child.rs")]);
+
+    let directives = build_directives(root);
+    for file in ["rust/lib.rs", "rust/child.rs"] {
+        assert!(
+            directives.contains(&rerun(&path_in(root, file))),
+            "missing {file} in {directives:#?}"
+        );
+    }
+    // Scaffolded `configure` touches Cargo.toml on every run; watching it here
+    // would rebuild the crate on every install.
+    assert!(
+        !directives.contains(&rerun(&root.join("Cargo.toml"))),
+        "{directives:#?}"
+    );
+    for watched_dir in [root.to_path_buf(), root.join("rust"), root.join("src")] {
+        assert!(
+            !directives.contains(&rerun(&watched_dir)),
+            "{} must not be watched as a directory: {directives:#?}",
+            watched_dir.display()
+        );
+    }
+    assert!(
+        directives
+            .iter()
+            .any(|d| d.starts_with("cargo::warning=[MXL304]")),
+        "{directives:#?}"
+    );
+}
+
+#[test]
+fn lib_path_root_not_named_lib_rs_keeps_children_beside_it() {
+    // A crate root is a "mod-rs" file whatever its name: `mod child;` in
+    // `rust/entry.rs` is `rust/child.rs`, not `rust/entry/child.rs`.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("Cargo.toml", "[lib]\npath = \"rust/entry.rs\"\n"),
+            ("rust/entry.rs", "mod child;\n"),
+            ("rust/child.rs", "mod grandchild;\n"),
+            ("rust/child/grandchild.rs", ATTRIB_CALL),
+            ("rust/entry/child.rs", "pub fn decoy() {}\n"),
+        ],
+    );
+
+    let report = run(root).expect("lint should succeed");
+    assert_eq!(
+        report.files,
+        vec![
+            path_in(root, "rust/child/grandchild.rs"),
+            path_in(root, "rust/child.rs"),
+            path_in(root, "rust/entry.rs"),
+        ]
+    );
+    assert_eq!(
+        mxl304_files(root),
+        vec![path_in(root, "rust/child/grandchild.rs")]
+    );
+}
+
+#[test]
+fn lib_path_at_the_manifest_root_ignores_an_unrelated_src_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("Cargo.toml", "[lib]\npath = \"lib.rs\"\n"),
+            ("lib.rs", "mod child;\n"),
+            ("child.rs", "pub fn f() -> i32 { 1 }\n"),
+            ("src/lib.rs", ATTRIB_CALL),
+        ],
+    );
+
+    let report = run(root).expect("lint should succeed");
+    assert_eq!(
+        report.files,
+        vec![root.join("child.rs"), root.join("lib.rs")]
+    );
+    assert!(mxl304_files(root).is_empty());
+
+    let directives = build_directives(root);
+    assert!(
+        !directives.contains(&rerun(&root.join("src"))),
+        "an unrelated src/ must not be watched: {directives:#?}"
+    );
+    assert!(!directives.contains(&rerun(root)), "{directives:#?}");
+    assert!(
+        !directives.iter().any(|d| d.starts_with("cargo::warning=")),
+        "{directives:#?}"
+    );
+}
+
+#[test]
+fn lib_path_with_a_dot_prefix_names_the_same_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("Cargo.toml", "[lib]\npath = \"./lib.rs\"\n"),
+            ("lib.rs", ""),
+        ],
+    );
+
+    let report = run(root).expect("lint should succeed");
+    assert_eq!(report.files, vec![root.join("lib.rs")]);
+    assert!(
+        build_directives(root).contains(&rerun(&root.join("lib.rs"))),
+        "the directive must name the file without `./`"
+    );
+}
+
+#[test]
+fn no_lib_path_keeps_the_src_lib_rs_guess() {
+    // A `[lib]` table without `path` (rpkg's shape minus one line) and a
+    // manifest without `[lib]` both fall back to the guess.
+    for manifest in [
+        "[package]\nname = \"pkg\"\n",
+        "[lib]\ncrate-type = [\"staticlib\"]\n",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_crate(
+            root,
+            &[
+                ("Cargo.toml", manifest),
+                ("src/lib.rs", "mod child;\n"),
+                ("src/child.rs", ATTRIB_CALL),
+            ],
+        );
+
+        assert_eq!(
+            mxl304_files(root),
+            vec![path_in(root, "src/child.rs")],
+            "{manifest}"
+        );
+        let directives = build_directives(root);
+        assert!(
+            directives.contains(&rerun(&root.join("src"))),
+            "{manifest}: {directives:#?}"
+        );
+    }
+}
+
+#[test]
+fn no_lib_path_keeps_the_root_lib_rs_guess() {
+    for manifest in [
+        "[package]\nname = \"pkg\"\n",
+        "[lib]\ncrate-type = [\"staticlib\"]\n",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_crate(
+            root,
+            &[
+                ("Cargo.toml", manifest),
+                ("lib.rs", "mod child;\n"),
+                ("child.rs", ATTRIB_CALL),
+            ],
+        );
+
+        assert_eq!(
+            mxl304_files(root),
+            vec![root.join("child.rs")],
+            "{manifest}"
+        );
+        let directives = build_directives(root);
+        assert!(
+            !directives.contains(&rerun(root)),
+            "{manifest}: {directives:#?}"
+        );
+    }
+}
+
+#[test]
+fn lib_path_to_a_missing_file_reports_that_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("Cargo.toml", "[lib]\npath = \"rust/lib.rs\"\n"),
+            ("src/lib.rs", ATTRIB_CALL),
+        ],
+    );
+
+    let err = run(root).expect_err("rust/lib.rs does not exist");
+    assert_eq!(
+        err.message,
+        format!(
+            "miniextendr-lint: cannot find crate root {} ([lib] path in Cargo.toml)",
+            path_in(root, "rust/lib.rs").display()
+        )
+    );
+
+    // No source file is watched, so the manifest is: fixing it reruns the lint.
+    let directives = build_directives(root);
+    assert!(
+        directives.contains(&rerun(&root.join("Cargo.toml"))),
+        "{directives:#?}"
+    );
+    assert!(
+        !directives.contains(&rerun(&root.join("src"))),
+        "{directives:#?}"
+    );
+
+    // Fixed, the root's files are watched instead and the warning is gone.
+    write_crate(root, &[("Cargo.toml", "[lib]\npath = \"src/lib.rs\"\n")]);
+    let directives = build_directives(root);
+    assert!(
+        !directives.contains(&rerun(&root.join("Cargo.toml"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives.contains(&rerun(&root.join("src"))),
+        "{directives:#?}"
+    );
+    assert!(
+        directives.contains(&rerun(&path_in(root, "src/lib.rs"))),
+        "{directives:#?}"
+    );
+    assert!(
+        !directives
+            .iter()
+            .any(|d| d.contains("cannot find crate root")),
+        "{directives:#?}"
+    );
+}
+
+#[test]
+fn missing_default_root_names_the_guess() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(root, &[("Cargo.toml", "[package]\nname = \"pkg\"\n")]);
+    fs::create_dir(root.join("src")).unwrap();
+
+    let err = run(root).expect_err("src/lib.rs does not exist");
+    assert_eq!(
+        err.message,
+        format!(
+            "miniextendr-lint: cannot find crate root {} (no [lib] path in Cargo.toml)",
+            root.join("src").join("lib.rs").display()
+        )
+    );
+}
+
+#[test]
+fn path_keys_of_other_tables_are_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "Cargo.toml",
+                concat!(
+                    "path = \"top/lib.rs\"\n",
+                    "[package]\nname = \"pkg\"\npath = \"package/lib.rs\"\n",
+                    "[[bin]]\nname = \"tool\"\npath = \"bin/main.rs\"\n",
+                    "[lib]\ncrate-type = [\"staticlib\"]\n",
+                    "[[bin]]\nname = \"other\"\npath = \"bin/other.rs\"\n",
+                    "[dependencies]\nfoo = { path = \"../foo\" }\n",
+                    "[dependencies.lib]\npath = \"../lib\"\n",
+                    "[package.metadata.lib]\npath = \"metadata/lib.rs\"\n",
+                ),
+            ),
+            ("src/lib.rs", ATTRIB_CALL),
+            ("bin/main.rs", ATTRIB_CALL),
+            ("bin/other.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(mxl304_files(root), vec![path_in(root, "src/lib.rs")]);
+}
+
+#[test]
+fn lib_path_spellings_with_comments_and_whitespace_parse() {
+    for manifest in [
+        "# [lib]\n# path = \"wrong.rs\"\n[lib]\npath = \"rust/lib.rs\"\n",
+        "[ lib ]   # the R package's library\n  path   =   'rust/lib.rs'   # moved\n",
+        "[lib]\n# path = \"wrong.rs\"\n\n\tpath=\"rust/lib.rs\"\ncrate-type = [\"staticlib\"]\n",
+        "[\"lib\"]\n\"path\" = \"rust/lib.rs\"\n",
+        "lib.path = \"rust/lib.rs\"\n[package]\nname = \"pkg\"\n",
+        "[package]\r\nname = \"pkg\"\r\n\r\n[lib]\r\npath = \"rust/lib.rs\"\r\n",
+        "[package.metadata.grid]\ncells = [\n  [\n    1,\n  ],\n]\n[lib]\npath = \"rust/lib.rs\"\n",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_crate(
+            root,
+            &[
+                ("Cargo.toml", manifest),
+                ("rust/lib.rs", ATTRIB_CALL),
+                ("src/lib.rs", ""),
+                ("wrong.rs", ""),
+            ],
+        );
+
+        let report = run(root).unwrap_or_else(|err| panic!("{manifest:?}: {err}"));
+        assert_eq!(
+            report.files,
+            vec![path_in(root, "rust/lib.rs")],
+            "{manifest:?}"
+        );
+    }
+}
+
+#[test]
+fn unreadable_lib_path_is_an_error_naming_the_manifest() {
+    for (manifest, expected) in [
+        (
+            "[lib]\npath = \"rust\\\\lib.rs\"\n",
+            "cannot read [lib] path `\"rust\\\\lib.rs\"`",
+        ),
+        (
+            "[lib]\npath = \"\"\"rust/lib.rs\"\"\"\n",
+            "cannot read [lib] path",
+        ),
+        ("[lib]\npath = rust/lib.rs\n", "cannot read [lib] path"),
+        (
+            "lib = { path = \"rust/lib.rs\", crate-type = [\"staticlib\"] }\n",
+            "an inline `lib = { path = ... }` table is not read",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write_crate(
+            root,
+            &[
+                ("Cargo.toml", manifest),
+                ("rust/lib.rs", ""),
+                ("src/lib.rs", ""),
+            ],
+        );
+
+        let err = run(root).expect_err(manifest);
+        let prefix = format!("miniextendr-lint: {}: ", root.join("Cargo.toml").display());
+        assert!(
+            err.message.starts_with(&prefix) && err.message.contains(expected),
+            "{manifest:?}: {}",
+            err.message
+        );
+
+        // The guessed `src/` tree is not watched in its place; the manifest is.
+        let directives = build_directives(root);
+        assert!(
+            !directives.contains(&rerun(&root.join("src"))),
+            "{directives:#?}"
+        );
+        assert!(
+            directives.contains(&rerun(&root.join("Cargo.toml"))),
+            "{directives:#?}"
+        );
+    }
+}
+
+#[test]
+fn inline_lib_table_without_path_falls_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("Cargo.toml", "lib = { crate-type = [\"staticlib\"] }\n"),
+            ("src/lib.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(mxl304_files(root), vec![path_in(root, "src/lib.rs")]);
+}
+
+// endregion
+
+// region: module files resolve as rustc resolves them
+
+/// The files the walk visits in the crate whose manifest dir is `root`, as
+/// `/`-separated paths relative to it.
+fn walked_files(root: &std::path::Path) -> Vec<String> {
+    let report = run(root).expect("lint should succeed");
+    report
+        .files
+        .iter()
+        .map(|path| {
+            let rel = path.strip_prefix(root).unwrap();
+            rel.components()
+                .map(|c| c.as_os_str().to_str().unwrap())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect()
+}
+
+#[test]
+fn path_attr_in_a_non_mod_rs_file_is_relative_to_its_directory() {
+    // `#[path]` outside inline modules is relative to the declaring file's own
+    // directory, and the file it names keeps its children beside it.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod a;\n"),
+            ("src/a.rs", "#[path = \"shared.rs\"]\nmod s;\n"),
+            ("src/shared.rs", "mod leaf;\n"),
+            ("src/leaf.rs", ATTRIB_CALL),
+            ("src/a/shared.rs", ATTRIB_CALL),
+            ("src/shared/leaf.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        ["src/a.rs", "src/leaf.rs", "src/lib.rs", "src/shared.rs"]
+    );
+}
+
+#[test]
+fn inline_modules_add_their_name_to_the_child_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod a;\nmod outer {\n    mod inner;\n}\n"),
+            ("src/outer/inner.rs", ""),
+            (
+                "src/a.rs",
+                "mod nested {\n    mod deep;\n    #[path = \"other.rs\"]\n    mod p;\n}\n",
+            ),
+            ("src/a/nested/deep.rs", ""),
+            ("src/a/nested/other.rs", ""),
+            ("src/inner.rs", ATTRIB_CALL),
+            ("src/a/deep.rs", ATTRIB_CALL),
+            ("src/other.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        [
+            "src/a/nested/deep.rs",
+            "src/a/nested/other.rs",
+            "src/a.rs",
+            "src/lib.rs",
+            "src/outer/inner.rs",
+        ]
+    );
+}
+
+#[test]
+fn path_attr_on_an_inline_module_names_its_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "src/lib.rs",
+                "#[path = \"elsewhere\"]\nmod m {\n    mod x;\n}\n",
+            ),
+            ("src/elsewhere/x.rs", ""),
+            ("src/m/x.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(walked_files(root), ["src/elsewhere/x.rs", "src/lib.rs"]);
+}
+
+#[test]
+fn cfg_gated_inline_modules_follow_the_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            (
+                "src/lib.rs",
+                concat!(
+                    "#[cfg(feature = \"mxl-test-never-on\")]\nmod gated {\n    mod hidden;\n}\n",
+                    "#[cfg(not(feature = \"mxl-test-never-on\"))]\nmod shown {\n    mod visible;\n}\n",
+                ),
+            ),
+            ("src/gated/hidden.rs", ATTRIB_CALL),
+            ("src/shown/visible.rs", ""),
+        ],
+    );
+
+    assert_eq!(walked_files(root), ["src/lib.rs", "src/shown/visible.rs"]);
+}
+
+#[test]
+fn raw_identifier_modules_drop_the_prefix() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_crate(
+        root,
+        &[
+            ("src/lib.rs", "mod r#type;\n"),
+            ("src/type.rs", "mod r#match;\n"),
+            ("src/type/match.rs", ATTRIB_CALL),
+        ],
+    );
+
+    assert_eq!(
+        walked_files(root),
+        ["src/lib.rs", "src/type/match.rs", "src/type.rs"]
+    );
+    assert_eq!(mxl304_files(root), vec![path_in(root, "src/type/match.rs")]);
 }
 
 // endregion

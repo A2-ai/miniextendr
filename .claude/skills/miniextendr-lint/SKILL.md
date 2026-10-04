@@ -38,9 +38,15 @@ known issues."
 
 ### Module-tree walking and cfg evaluation
 
+The walk starts at the library target's root file: `[lib] path` in the
+crate's `Cargo.toml`, else `lib.rs` in `src/` when that directory exists,
+else `lib.rs` next to `Cargo.toml` (`miniextendr-lint/src/crate_root.rs`).
 `miniextendr-lint/src/crate_index.rs` resolves `mod foo;` declarations into
 file paths, following the same rules as `rustc`: a bare `mod foo;` maps to
-`foo.rs` or `foo/mod.rs`. When a module is guarded with `#[cfg(feature = "...")]`,
+`foo.rs` or `foo/mod.rs`, next to the crate root (whatever its name), a
+`mod.rs` or a `#[path]` target, and in `bar/` for any other `bar.rs`; a
+`#[path]` is relative to the declaring file's directory, and inline modules
+add their name to the directory. When a module is guarded with `#[cfg(feature = "...")]`,
 the walker evaluates whether that feature is active for the current build before
 deciding to visit the module. This means linting correctly skips dead code and
 only flags live paths. Do not re-implement cfg evaluation in new rules; use the
@@ -186,8 +192,9 @@ exploration escape hatch only; committed code must be clean.
 
 ## Key files
 
-- `miniextendr-lint/src/lib.rs` — entrypoint and module-tree walker
-- `miniextendr-lint/src/crate_index.rs` — `mod` resolution + cfg evaluation
+- `miniextendr-lint/src/lib.rs` — entrypoint and build-script directives
+- `miniextendr-lint/src/crate_root.rs` — crate root from `[lib] path`
+- `miniextendr-lint/src/crate_index.rs` — module-tree walker: `mod` resolution + cfg evaluation
 - `miniextendr-lint/src/rules.rs` — rule dispatcher
 - `miniextendr-lint/src/rules/rf_error.rs` — MXL300
 - `miniextendr-lint/src/rules/ffi_unchecked.rs` — MXL301
