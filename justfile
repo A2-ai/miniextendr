@@ -588,11 +588,15 @@ expand *cargo_flags:
 # R_LIBS_SITE = rv's library, and configure inherits them, as under
 # `R CMD INSTALL rpkg`.
 #
+# `Sys.which("bash")` resolves bash from PATH only. A bare "bash" goes through
+# CreateProcess on Windows, which searches System32 before PATH and finds the
+# WSL launcher (System32\bash.exe) instead of Rtools/Git bash.
+#
 # See docs/CRAN_COMPATIBILITY.md for the full table.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi
-    Rscript -e 'setwd("rpkg"); quit(status = system2("bash", "./configure"))'
+    Rscript -e 'setwd("rpkg"); quit(status = system2(Sys.which("bash"), "./configure"))'
 
 # Skip configure when build outputs are already up to date.
 #
