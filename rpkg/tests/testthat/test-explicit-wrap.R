@@ -58,6 +58,7 @@ test_that("worker returns produce usable explicitly selected objects", {
 
 test_that("cross-class and trait factory wrapping survives GC stress", {
   skip_on_cran()
+  skip_on_os("windows") # gctorture(TRUE) never finishes on Windows, #1800
   factory <- WrapFactory$new()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
