@@ -90,6 +90,14 @@ test_that("CLI feature rules interoperate with R and drive configure detection",
 
   # CLI upgrade refreshes templates through the R helper instead of merely
   # running configure against the unchanged, stale scaffold.
+  # The upgrade refuses a configure.ac that doesn't substitute every variable
+  # of the current Makevars.in (#1733); replacing it is R-only
+  # (`configure_ac = TRUE`), so start from the current template.
+  template_ac <- readLines(
+    system.file("templates", "rpkg", "configure.ac", package = "minirextendr")
+  )
+  writeLines(sub("{{package}}", "clifeatures", template_ac, fixed = TRUE),
+             file.path(pkg, "configure.ac"))
   rust_before <- readLines(file.path(pkg, "src", "rust", "lib.rs"))
   cargo_before <- readLines(manifest)
   run_cli(c("workflow", "upgrade"))
