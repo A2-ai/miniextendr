@@ -1,0 +1,143 @@
+name: Windows experiments
+
+# Temporary: isolates which Windows build setting makes the gctorture tests hang
+# and the worker drop-on-panic test abort (see PR #1783 / issue #1654). Runs on
+# PRs carrying the `windows` label only. Delete once the causes are recorded.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  experiment:
+    name: ${{ matrix.name }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    if: contains(github.event.pull_request.labels.*.name, 'windows')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: clean-dev
+            legacy: "false"
+            profile: dev
+          - name: legacy-dev
+            legacy: "true"
+            profile: dev
+          - name: clean-release
+            legacy: "false"
+            profile: release
+    defaults:
+      run:
+        shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_PROFILE: ${{ matrix.profile }}
+      NOT_CRAN: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          rtools-version: "45"
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> ../../rust-target
+          cache-targets: false
+          shared-key: r-windows-exp-${{ matrix.name }}
+          cache-on-failure: true
+
+      - name: Configure Windows environment
+        run: |
+          rtools_home="/c/rtools45"
+          echo "${rtools_home}/x86_64-w64-mingw32.static.posix/bin" >> "$GITHUB_PATH"
+          echo "${rtools_home}/usr/bin" >> "$GITHUB_PATH"
+          echo "$(cygpath -u "$(Rscript.exe -e 'cat(R.home())')")/bin/x64" >> "$GITHUB_PATH"
+          if [ -n "${CARGO_HOME:-}" ]; then
+            echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
+          fi
+
+      # The pre-#1654 job setup, restored for the legacy variant only.
+      - name: Legacy job-level cargo setup
+        if: matrix.legacy == 'true'
+        run: |
+          echo "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> "$GITHUB_ENV"
+          mkdir -p libgcc_mock
+          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
+          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
+          cp "$real_libgcc" libgcc_mock/libgcc_s.a
+          mkdir -p .cargo
+          pwd_slash="$(cygpath -m "$(pwd)")"
+          cat > .cargo/config.toml <<TOML
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+          [env]
+          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
+          TOML
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Install cargo-revendor
+        run: cargo install --path cargo-revendor
+
+      - name: Configure and vendor
+        run: |
+          just configure
+          just vendor
+
+      - name: Build and install the tarball
+        run: |
+          mkdir -p /tmp/exp-lib
+          R CMD build --no-manual rpkg
+          R CMD INSTALL --library="$(cygpath -m /tmp/exp-lib)" miniextendr_*.tar.gz
+          ls -la /tmp/exp-lib/miniextendr/libs/x64/ || true
+
+      # Each file under each launcher: Rscript is what the earlier sweep used;
+      # R CMD BATCH is what R CMD check uses for tests/*.R.
+      - name: Run the problem files under both launchers
+        run: |
+          lib="$(cygpath -m /tmp/exp-lib)"
+          cd rpkg/tests/testthat
+          for f in test-errors-more.R test-externalptr.R test-explicit-wrap.R test-serialize-attribute.R test-borrowed-rows.R test-s7-conversion-markers.R; do
+            cat > "/tmp/one-$f" <<R
+          library(testthat); library(miniextendr)
+          invisible(testthat::test_file("$f", package = "miniextendr",
+            load_package = "installed", reporter = "location", stop_on_failure = FALSE))
+          R
+            timeout 120 env R_LIBS="$lib" Rscript "/tmp/one-$f" > "/tmp/rscript-$f.log" 2>&1 && rc=0 || rc=$?
+            echo "RSCRIPT $f exit=$rc"
+            grep -v '^\s*$' "/tmp/rscript-$f.log" | tail -4 | sed 's/^/    | /' || true
+            timeout 120 env R_LIBS="$lib" R CMD BATCH --vanilla --no-timing "/tmp/one-$f" "/tmp/batch-$f.log" && rc=0 || rc=$?
+            echo "BATCH   $f exit=$rc"
+            grep -v '^\s*$' "/tmp/batch-$f.log" | tail -4 | sed 's/^/    | /' || true
+          done
