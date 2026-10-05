@@ -126,10 +126,11 @@ vice versa).
 ## Version bumps
 
 Keep `DESCRIPTION` `Version:` and `src/rust/Cargo.toml` `version` in
-lockstep; the scaffold ships a helper:
+lockstep. A monorepo scaffold ships a helper; run it from the workspace root
+with the R package directory:
 
 ```sh
-Rscript tools/bump-version.R --sync
+Rscript tools/bump-version.R <rpkg-dir> --sync
 ```
 
 ## webR / wasm note

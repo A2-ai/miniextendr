@@ -138,30 +138,6 @@ update_description_version <- function(path, new_version) {
   }
 }
 
-update_configure_ac_version <- function(path, new_version) {
-  if (!file.exists(path)) {
-    return(FALSE)
-  }
-  lines <- readLines(path, warn = FALSE)
-  idx <- grep("^AC_INIT\\s*\\(\\s*\\[", lines)
-  if (length(idx) == 0) {
-    warning("No AC_INIT found in ", path)
-    return(FALSE)
-  }
-  lines[idx[1]] <- sub(
-    "^(AC_INIT\\s*\\(\\s*\\[[^]]*\\]\\s*,\\s*\\[)[^]]*",
-    paste0("\\1", new_version),
-    lines[idx[1]]
-  )
-  if (!identical(lines, readLines(path, warn = FALSE))) {
-    writeLines(lines, path, sep = "\n")
-    message("Updated ", path, " -> ", new_version)
-  }
-  TRUE
-}
-
-configure_ac_path <- file.path(rpkg_dir, "configure.ac")
-
 if (identical(op, "bump")) {
   if (is.null(op_value) || trimws(op_value) == "") {
     stop("Missing bump type. Use --bump=major|minor|patch|dev|dev+")
@@ -173,7 +149,6 @@ if (identical(op, "bump")) {
     version <- new_version
     update_description_version(desc_path, version)
     message("Updated DESCRIPTION Version -> ", version)
-    update_configure_ac_version(configure_ac_path, version)
   }
 } else if (identical(op, "set")) {
   if (is.null(op_value) || trimws(op_value) == "") {
@@ -183,7 +158,6 @@ if (identical(op, "bump")) {
   version <- op_value
   update_description_version(desc_path, version)
   message("Updated DESCRIPTION Version -> ", version)
-  update_configure_ac_version(configure_ac_path, version)
 }
 
 # Cargo versions cannot include a 4th dot segment; replace the 3rd dot with a dash.
@@ -318,6 +292,3 @@ update_cargo_version <- function(path, new_version, mode) {
 for (path in cargo_paths) {
   update_cargo_version(path, version_cargo, mode)
 }
-
-# Also sync configure.ac (uses R version format, not Cargo format)
-update_configure_ac_version(configure_ac_path, version)

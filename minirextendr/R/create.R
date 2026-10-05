@@ -130,8 +130,8 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   use_template("gitignore", save_as = ".gitignore", data = data)
   use_miniextendr_gitattributes()
 
-  # Standalone version-sync helper: `Rscript tools/bump-version.R --sync`
-  # keeps DESCRIPTION / Cargo.toml / configure.ac versions in lockstep.
+  # Version-sync helper: `Rscript tools/bump-version.R <rpkg> --sync` keeps
+  # the Cargo.toml versions in lockstep with DESCRIPTION.
   ensure_dir(usethis::proj_path("tools"))
   copy_template("bump-version.R", save_as = file.path("tools", "bump-version.R"),
                 subdir = "tools", data = data)
