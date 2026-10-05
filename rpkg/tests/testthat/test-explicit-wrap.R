@@ -53,6 +53,7 @@ test_that("explicit vctrs wrapping retains record behavior and parent classes", 
 
 test_that("cross-class and trait factory wrapping survives GC stress", {
   skip_on_cran()
+  skip_on_os("windows") # gctorture(TRUE) never finishes on Windows, #1800
   factory <- WrapFactory$new()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)

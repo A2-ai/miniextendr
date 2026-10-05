@@ -19,6 +19,7 @@ test_that("gc_stress_borrowed_rows survives gctorture(TRUE)", {
     exists("gc_stress_borrowed_rows", envir = getNamespace("miniextendr"), mode = "function", inherits = FALSE),
     "gc_stress_borrowed_rows not compiled (serde feature missing)"
   )
+  skip_on_os("windows") # gctorture(TRUE) never finishes on Windows, #1800
   old <- gctorture(TRUE)
   on.exit(gctorture(old), add = TRUE)
 

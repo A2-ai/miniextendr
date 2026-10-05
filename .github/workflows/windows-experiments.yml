@@ -1,8 +1,8 @@
 name: Windows experiments
 
-# Temporary: isolates which Windows build setting makes the gctorture tests hang
-# and the worker drop-on-panic test abort (see PR #1783 / issue #1654). Runs on
-# PRs carrying the `windows` label only. Delete once the causes are recorded.
+# Temporary: characterises the Windows gctorture hang (issue #1800) found while
+# getting the Windows R CMD check to run (PR #1783, issue #1654). Runs on PRs
+# carrying the `windows` label only. Delete once the cause is recorded.
 
 on:
   pull_request:
@@ -17,29 +17,16 @@ concurrency:
 
 jobs:
   experiment:
-    name: ${{ matrix.name }}
+    name: gctorture timing
     runs-on: windows-latest
     timeout-minutes: 90
     if: contains(github.event.pull_request.labels.*.name, 'windows')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: clean-dev
-            legacy: "false"
-            profile: dev
-          - name: legacy-dev
-            legacy: "true"
-            profile: dev
-          - name: clean-release
-            legacy: "false"
-            profile: release
     defaults:
       run:
         shell: C:\rtools45\usr\bin\bash.exe -e -o pipefail {0}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_PROFILE: ${{ matrix.profile }}
+      CARGO_PROFILE: dev
       NOT_CRAN: "true"
 
     steps:
@@ -71,7 +58,7 @@ jobs:
         with:
           workspaces: rpkg/src/rust -> ../../rust-target
           cache-targets: false
-          shared-key: r-windows-exp-${{ matrix.name }}
+          shared-key: r-windows-exp-clean-dev
           cache-on-failure: true
 
       - name: Configure Windows environment
@@ -83,26 +70,6 @@ jobs:
           if [ -n "${CARGO_HOME:-}" ]; then
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
-
-      # The pre-#1654 job setup, restored for the legacy variant only.
-      - name: Legacy job-level cargo setup
-        if: matrix.legacy == 'true'
-        run: |
-          echo "CARGO_BUILD_TARGET=x86_64-pc-windows-gnu" >> "$GITHUB_ENV"
-          mkdir -p libgcc_mock
-          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
-          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
-          cp "$real_libgcc" libgcc_mock/libgcc_s.a
-          mkdir -p .cargo
-          pwd_slash="$(cygpath -m "$(pwd)")"
-          cat > .cargo/config.toml <<TOML
-          [target.x86_64-pc-windows-gnu]
-          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
-          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-
-          [env]
-          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
-          TOML
 
       - name: Install just
         uses: taiki-e/install-action@just
@@ -120,24 +87,41 @@ jobs:
           mkdir -p /tmp/exp-lib
           R CMD build --no-manual rpkg
           R CMD INSTALL --library="$(cygpath -m /tmp/exp-lib)" miniextendr_*.tar.gz
-          ls -la /tmp/exp-lib/miniextendr/libs/x64/ || true
 
-      # Each file under each launcher: Rscript is what the earlier sweep used;
-      # R CMD BATCH is what R CMD check uses for tests/*.R.
-      - name: Run the problem files under both launchers
+      # No testthat: does a bare fixture call finish under gctorture, and how
+      # long does it take as the torture interval grows?
+      - name: Time the gctorture fixtures without testthat
         run: |
           lib="$(cygpath -m /tmp/exp-lib)"
-          cd rpkg/tests/testthat
-          for f in test-errors-more.R test-externalptr.R test-explicit-wrap.R test-serialize-attribute.R test-borrowed-rows.R test-s7-conversion-markers.R; do
-            cat > "/tmp/one-$f" <<R
-          library(testthat); library(miniextendr)
-          invisible(testthat::test_file("$f", package = "miniextendr",
-            load_package = "installed", reporter = "location", stop_on_failure = FALSE))
-          R
-            timeout 120 env R_LIBS="$lib" Rscript "/tmp/one-$f" > "/tmp/rscript-$f.log" 2>&1 && rc=0 || rc=$?
-            echo "RSCRIPT $f exit=$rc"
-            grep -v '^\s*$' "/tmp/rscript-$f.log" | tail -4 | sed 's/^/    | /' || true
-            timeout 120 env R_LIBS="$lib" R CMD BATCH --vanilla --no-timing "/tmp/one-$f" "/tmp/batch-$f.log" && rc=0 || rc=$?
-            echo "BATCH   $f exit=$rc"
-            grep -v '^\s*$' "/tmp/batch-$f.log" | tail -4 | sed 's/^/    | /' || true
+          run() { # name, R code
+            SECONDS=0
+            timeout 120 env R_LIBS="$lib" Rscript -e "$2" > "/tmp/t-$1.log" 2>&1 && rc=0 || rc=$?
+            echo "TIMING $1 exit=$rc elapsed=${SECONDS}s"
+            grep -v '^\s*$' "/tmp/t-$1.log" | tail -3 | sed 's/^/    | /' || true
+          }
+          run baseline 'library(miniextendr); n <- miniextendr:::gc_stress_borrowed_rows(); cat("n =", n, "\n")'
+          for step in 1000 100 10 1; do
+            run "borrowed-step$step" "library(miniextendr); gctorture2($step); n <- miniextendr:::gc_stress_borrowed_rows(); gctorture2(0); cat('n =', n, '\n')"
+          done
+          for step in 1000 100 10 1; do
+            run "wrap-step$step" "library(miniextendr); f <- WrapFactory\$new(); gctorture2($step); b <- f\$build(3L, 4L); d <- b\$dimensions(); c2 <- WrapBoard\$WrapBoardFactory\$copy_board(b)\$dimensions(); gctorture2(0); print(d); print(c2)"
+          done
+
+      # Reporter effect: the same body through testthat, with the Windows skips
+      # in the test files bypassed by calling the body directly.
+      - name: Gctorture body under each testthat reporter
+        run: |
+          lib="$(cygpath -m /tmp/exp-lib)"
+          for rep in silent location check; do
+            SECONDS=0
+            timeout 120 env R_LIBS="$lib" Rscript -e "
+              library(testthat); library(miniextendr)
+              testthat::with_reporter('$rep', {
+                test_that('borrowed rows under torture', {
+                  old <- gctorture(TRUE); on.exit(gctorture(old), add = TRUE)
+                  expect_equal(miniextendr:::gc_stress_borrowed_rows(), 10L)
+                })
+              })" > "/tmp/r-$rep.log" 2>&1 && rc=0 || rc=$?
+            echo "REPORTER $rep exit=$rc elapsed=${SECONDS}s"
+            grep -v '^\s*$' "/tmp/r-$rep.log" | tail -3 | sed 's/^/    | /' || true
           done
