@@ -57,6 +57,7 @@ test_that("serialize converts worker results on the R thread", {
 test_that("the serialized return boundary survives GC stress", {
   skip_if_missing_feature("serde")
   skip_on_cran()
+  skip_on_os("windows") # gctorture(TRUE) never finishes on Windows, #1800
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)
   expect_identical(miniextendr:::gc_stress_serialized_return(),
