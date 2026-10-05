@@ -1144,7 +1144,7 @@ jobs:
               .libPaths(c(args[1], .libPaths()))
               library(testthat); library(miniextendr)
               res <- as.data.frame(testthat::test_file(args[2], package = "miniextendr",
-                load_package = "installed", reporter = "silent", stop_on_failure = FALSE))
+                load_package = "installed", reporter = "location", stop_on_failure = FALSE))
               cat(sprintf("SWEEP-DETAIL failed=%d errors=%d skipped=%d passed=%d\n",
                 sum(res$failed), sum(res$error), sum(res$skipped), sum(res$passed)))
               bad <- res[res$failed > 0 | res$error, "test"]
@@ -1152,7 +1152,27 @@ jobs:
             ' "$lib" "$f" > "/tmp/sweep-$f.log" 2>&1 && rc=0 || rc=$?
             echo "SWEEP $f exit=$rc $(grep -h 'SWEEP-DETAIL' "/tmp/sweep-$f.log" | tail -1 || true)"
             grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5 || true
+            if [ "$rc" -ne 0 ]; then grep -v '^\s*$' "/tmp/sweep-$f.log" | tail -6 | sed 's/^/    | /' || true; fi
           done
+
+      # Diagnostic: the whole suite in one process with a reporter that names
+      # each test as it starts, so an aborting test shows up as the last line
+      # (R CMD check's own reporter prints names only for failures).
+      - name: Whole-suite run with location reporter (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          cd tests/testthat
+          timeout 900 Rscript -e '
+            .libPaths(c(commandArgs(TRUE)[1], .libPaths()))
+            library(testthat); library(miniextendr)
+            testthat::test_dir(".", package = "miniextendr", load_package = "installed",
+              reporter = "location", stop_on_failure = FALSE)
+          ' "$lib" > /tmp/suite.log 2>&1 && rc=0 || rc=$?
+          echo "WHOLE-SUITE exit=$rc"
+          grep -v '^\s*$' /tmp/suite.log | grep -v 'LazyIntSeq' | tail -15 || true
 
       - name: Print failed tests
         if: always()
