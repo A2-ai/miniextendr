@@ -1179,8 +1179,8 @@ jobs:
               bad <- res[res$failed > 0 | res$error, "test"]
               if (length(bad)) cat(paste0("SWEEP-BAD ", bad, "\n"), sep = "")
             ' "$lib" "$f" > "/tmp/sweep-$f.log" 2>&1 && rc=0 || rc=$?
-            echo "SWEEP $f exit=$rc $(grep -h 'SWEEP-DETAIL' "/tmp/sweep-$f.log" | tail -1)"
-            grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5
+            echo "SWEEP $f exit=$rc $(grep -h 'SWEEP-DETAIL' "/tmp/sweep-$f.log" | tail -1 || true)"
+            grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5 || true
           done
 
       - name: Print failed tests
