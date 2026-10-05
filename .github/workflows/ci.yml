@@ -1019,7 +1019,9 @@ jobs:
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
-    timeout-minutes: 90
+    # R CMD check is ~45 min (11 min install, 27 min "compiled code" on the
+    # 170 MB dev-profile DLL); the diagnostic steps after it need the rest.
+    timeout-minutes: 150
     if: contains(github.event.pull_request.labels.*.name, 'windows')
     # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
     # This matches R's own build system (SHELL = sh from Rtools).
@@ -1127,10 +1129,40 @@ jobs:
           # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
           _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
 
-      # Diagnostic: R CMD check stops at the first aborting test (a Rust panic
-      # that kills the R process), which hides every failure behind it. Run each
-      # test file in its own process against the library R CMD check installed,
-      # so one table shows which files pass, fail, or kill the process.
+      # Diagnostics. R CMD check stops at the first aborting test (a Rust panic
+      # that kills the R process), which hides every failure behind it, and it
+      # names a test only when it fails. These steps rerun the suite against the
+      # library R CMD check installed, in the ways that tell the causes apart.
+      # NOT_CRAN is unset where noted so the bare gctorture(TRUE) blocks skip.
+      - name: Rerun tests the way R CMD check does (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          mkdir -p /tmp/batch && cp tests/testthat.R /tmp/batch/ && cp -r tests/testthat /tmp/batch/
+          cd /tmp/batch
+          # Same launcher R CMD check uses for tests/*.R.
+          env -u NOT_CRAN R_LIBS="$lib" timeout 900 R CMD BATCH --vanilla --no-timing testthat.R batch.out && rc=0 || rc=$?
+          echo "BATCH exit=$rc"
+          grep -v '^\s*$' batch.out | grep -v 'LazyIntSeq' | tail -12 || true
+
+      - name: Whole suite, one process, location reporter (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          cd tests/testthat
+          env -u NOT_CRAN timeout 900 Rscript -e '
+            .libPaths(c(commandArgs(TRUE)[1], .libPaths()))
+            library(testthat); library(miniextendr)
+            testthat::test_dir(".", package = "miniextendr", load_package = "installed",
+              reporter = "location", stop_on_failure = FALSE)
+          ' "$lib" > /tmp/suite.log 2>&1 && rc=0 || rc=$?
+          echo "WHOLE-SUITE exit=$rc"
+          grep -v '^\s*$' /tmp/suite.log | grep -v 'LazyIntSeq' | tail -12 || true
+
       - name: Per-file test sweep (diagnostic)
         if: always()
         working-directory: rpkg
@@ -1138,8 +1170,10 @@ jobs:
           lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
           [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
           cd tests/testthat
-          for f in test-*.R; do
-            timeout 300 Rscript -e '
+          # The gctorture files run three times: they passed in seconds once
+          # and hung another time, so repeats separate a flake from a hang.
+          for f in test-*.R test-explicit-wrap.R test-explicit-wrap.R test-serialize-attribute.R test-serialize-attribute.R; do
+            timeout 120 Rscript -e '
               args <- commandArgs(TRUE)
               .libPaths(c(args[1], .libPaths()))
               library(testthat); library(miniextendr)
@@ -1154,25 +1188,6 @@ jobs:
             grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5 || true
             if [ "$rc" -ne 0 ]; then grep -v '^\s*$' "/tmp/sweep-$f.log" | tail -6 | sed 's/^/    | /' || true; fi
           done
-
-      # Diagnostic: the whole suite in one process with a reporter that names
-      # each test as it starts, so an aborting test shows up as the last line
-      # (R CMD check's own reporter prints names only for failures).
-      - name: Whole-suite run with location reporter (diagnostic)
-        if: always()
-        working-directory: rpkg
-        run: |
-          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
-          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
-          cd tests/testthat
-          timeout 900 Rscript -e '
-            .libPaths(c(commandArgs(TRUE)[1], .libPaths()))
-            library(testthat); library(miniextendr)
-            testthat::test_dir(".", package = "miniextendr", load_package = "installed",
-              reporter = "location", stop_on_failure = FALSE)
-          ' "$lib" > /tmp/suite.log 2>&1 && rc=0 || rc=$?
-          echo "WHOLE-SUITE exit=$rc"
-          grep -v '^\s*$' /tmp/suite.log | grep -v 'LazyIntSeq' | tail -15 || true
 
       - name: Print failed tests
         if: always()

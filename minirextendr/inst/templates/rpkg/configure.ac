@@ -607,6 +607,12 @@ CARGO_ENV_WIN_LINKER=""
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     _r_cc=`"${R_HOME}/bin/R" CMD config CC 2>/dev/null | awk '{print $1}'`
+    dnl R's CC is a bare 'gcc' on Rtools (found through PATH): resolve it to a path.
+    case "$_r_cc" in
+      */*) ;;
+      ?*) _r_cc_path=`command -v "$_r_cc" 2>/dev/null`
+          test -n "$_r_cc_path" && _r_cc="$_r_cc_path" ;;
+    esac
     if test -n "$_r_cc"; then
       _r_cc_bindir=`dirname "$_r_cc"`
       for _gcc_cand in "$_r_cc_bindir/gcc.exe" "$_r_cc_bindir/gcc"; do
