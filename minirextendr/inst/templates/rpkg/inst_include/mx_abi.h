@@ -49,7 +49,7 @@
 
 /* Suppress clang 21+'s -Wunknown-warning-option meta-warning for upstream R's
  * Boolean.h pragma. Out-of-PKG_CFLAGS scoped guard avoids R CMD check WARNING
- * on non-portable suppressor flags. See miniextendr issue #443. */
+ * on non-portable suppressor flags. See issue A2-ai/miniextendr#443. */
 #if defined(__clang__)
 #  pragma clang diagnostic push
 #  pragma clang diagnostic ignored "-Wunknown-warning-option"

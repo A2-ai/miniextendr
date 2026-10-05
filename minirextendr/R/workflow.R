@@ -391,10 +391,8 @@ miniextendr_vendor <- function(path = ".", revendor_args = character()) {
   ))
   cli::cli_bullets(c(
     "i" = "{.code miniextendr_build_tarball()} runs this step, builds the tarball and restores the source tree in one call.",
-    "i" = "By hand: run {.code R CMD build .} to produce the release tarball, then delete {.path inst/vendor.tar.xz} to resume source-mode dev:",
-    " " = "{.code unlink(\"inst/vendor.tar.xz\")}",
-    "i" = "If your package has a local path-dependency sibling, vendoring also froze {.path src/rust/Cargo.toml} (and {.path Cargo.lock}) to resolve against {.path vendor/}. After the build, restore source shape:",
-    " " = "{.code miniextendr_clean_vendor_leak()} (restores {.path Cargo.toml} from the {.path src/rust/.Cargo.toml.prefreeze} snapshot cargo-revendor left; cargo re-resolves {.path Cargo.lock} on the next build)",
+    "i" = "By hand: run {.code R CMD build .} to produce the release tarball, then restore source-mode dev with {.code miniextendr_clean_vendor_leak()}. Deleting {.path inst/vendor.tar.xz} alone is not enough when your package has a local path-dependency sibling: vendoring also froze {.path src/rust/Cargo.toml} (and {.path Cargo.lock}) to resolve against {.path vendor/}.",
+    " " = "{.code miniextendr_clean_vendor_leak()} (removes the archive and restores {.path Cargo.toml} from the {.path src/rust/.Cargo.toml.prefreeze} snapshot cargo-revendor left; cargo re-resolves {.path Cargo.lock} on the next build)",
     " " = "or {.code git checkout src/rust/Cargo.toml src/rust/Cargo.lock}"
   ))
 

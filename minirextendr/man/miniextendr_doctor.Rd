@@ -7,7 +7,9 @@
 miniextendr_doctor(path = ".", webr = FALSE)
 }
 \arguments{
-\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.
+From a monorepo workspace root the miniextendr package subdirectory is
+checked; any other directory without a \code{DESCRIPTION} is an error.}
 
 \item{webr}{Also lint namespace-level imports for webR compatibility (see
 \code{\link[=miniextendr_webr_import_lint]{miniextendr_webr_import_lint()}}). Off by default so packages that never

@@ -5,9 +5,9 @@
 #   4. CARGO_NET_GIT_FETCH_WITH_CLI=true for cargo + private git deps on both platforms
 #   5. macOS SDK + MACOSX_DEPLOYMENT_TARGET pinned to CRAN's binary-distribution targets
 #   6. CRAN system libraries (libcurl, openssl, libtiff, …) prefetched into /opt/R/<arch>
-# Gotchas 1–4 from issue #448; 5–6 align the Rust toolchain's ABI with the C
+# Gotchas 1–4 from issue A2-ai/miniextendr#448; 5–6 align the Rust toolchain's ABI with the C
 # libraries CRAN's macOS R was built against.
-# See docs/RELEASE_WORKFLOW.md for the full rationale.
+# See https://a2-ai.github.io/miniextendr/manual/release-workflow/ for the full rationale.
 #
 # Scaffold this file into your package with:
 #   minirextendr::use_release_workflow()
@@ -87,7 +87,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     # Note: NO LANG/LC_ALL here — macOS runners default to UTF-8 and break
-    # if you force C.UTF-8 (glibc-only). See docs/RELEASE_WORKFLOW.md Gotcha 2.
+    # if you force C.UTF-8 (glibc-only). See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-2-macos-rejects-c-utf-8
     #
     # macos-14 is arm64 (CRAN target: Sonoma / 14.0).
     # macos-13 is x86_64 (CRAN target: Big Sur / 11.0; last Intel macOS runner).
@@ -116,7 +116,7 @@ jobs:
       # Skipped vs. upstream: brew unlink (destructive), gfortran (no Fortran
       # deps), TinyTeX (no PDF manuals), xQuartz (no X11), /opt/R/<arch>/bin on
       # GITHUB_PATH (r-lib/actions/setup-r installs R independently).
-      # See docs/RELEASE_WORKFLOW.md Gotcha 5.
+      # See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-5-macos-sdk-and-deployment-target-must-match-cran
       - name: Pin macOS SDK and deployment target
         run: |
           if [ "$(uname -m)" = "x86_64" ]; then
@@ -135,7 +135,7 @@ jobs:
       # pkg-config will resolve against these — the same library set R itself
       # was built against. Pre-empts the "links fine locally, segfaults under
       # CRAN's R" trap. Inlined from r-devel/actions/setup-macos-tools@ec72e88
-      # (action.yml lines 44-53). See docs/RELEASE_WORKFLOW.md Gotcha 6.
+      # (action.yml lines 44-53). See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-6-cran-system-libraries-on-macos
       - name: Download CRAN system libraries
         run: |
           sudo mkdir -p /opt

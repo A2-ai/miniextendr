@@ -2050,14 +2050,20 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
   ignoring any local workspace edits. This is almost always a leftover from an
   interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
 
-  Remove it before building from source:
+  In this repository, run:
     just clean-vendor-leak
-  or:
-    rm -f inst/vendor.tar.xz
 
-  In a scaffolded package, run miniextendr_clean_vendor_leak, or
-  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
-  'The latch leak' and issue 1029." "$LINENO" 5
+  Recover with, in R:
+    minirextendr::miniextendr_clean_vendor_leak(\"$abs_top_srcdir\")
+  It removes the archive and, if vendoring rewrote src/rust/Cargo.toml
+  (cargo revendor --freeze), restores it from src/rust/.Cargo.toml.prefreeze.
+  Review src/rust/Cargo.lock separately. Without a snapshot, restore the
+  original dependency paths and patch entries by hand (git diff).
+
+  Removing inst/vendor.tar.xz alone does not repair a frozen manifest.
+  minirextendr::miniextendr_doctor(\"$abs_top_srcdir\") reports both.
+
+  See CLAUDE.md section 'The latch leak' and issue 1029." "$LINENO" 5
 fi
 
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then

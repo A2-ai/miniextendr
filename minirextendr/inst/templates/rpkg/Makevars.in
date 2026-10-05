@@ -79,7 +79,7 @@ FORCE_CARGO:
 # Cargo can restore an older cached archive when features/profile/target change.
 # Remember the last configured build at one package-local path, independent of
 # Cargo's target directory. Configure rewrites Makevars on every install, so
-# compare contents to keep no-op installs from relinking (#1498).
+# compare contents to keep no-op installs from relinking (A2-ai/miniextendr#1498).
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(CARGO_LINK_CONFIG)
 
 $(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)

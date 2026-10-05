@@ -113,14 +113,20 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
   ignoring any local workspace edits. This is almost always a leftover from an
   interrupted 'just r-cmd-build', 'just r-cmd-check', or 'just devtools-build'.
 
-  Remove it before building from source:
+  In this repository, run:
     just clean-vendor-leak
-  or:
-    rm -f inst/vendor.tar.xz
 
-  In a scaffolded package, run miniextendr_clean_vendor_leak, or
-  minirextendr::miniextendr_doctor to diagnose. See CLAUDE.md section
-  'The latch leak' and issue 1029.])
+  Recover with, in R:
+    minirextendr::miniextendr_clean_vendor_leak("$abs_top_srcdir")
+  It removes the archive and, if vendoring rewrote src/rust/Cargo.toml
+  (cargo revendor --freeze), restores it from src/rust/.Cargo.toml.prefreeze.
+  Review src/rust/Cargo.lock separately. Without a snapshot, restore the
+  original dependency paths and patch entries by hand (git diff).
+
+  Removing inst/vendor.tar.xz alone does not repair a frozen manifest.
+  minirextendr::miniextendr_doctor("$abs_top_srcdir") reports both.
+
+  See CLAUDE.md section 'The latch leak' and issue 1029.])
 fi
 
 dnl ---- install-mode detection ----
@@ -134,7 +140,7 @@ dnl     no tarball. configure leaves vendoring alone and lets cargo resolve deps
 dnl     over the network
 dnl     (or via monorepo path overrides — see below).
 dnl
-dnl See docs/CRAN_COMPATIBILITY.md for the full decision table.
+dnl See https://a2-ai.github.io/miniextendr/manual/cran-compatibility/ for the full decision table.
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
   IS_TARBALL_INSTALL=true
   _install_mode_label="tarball install (offline, vendored)"
@@ -778,13 +784,9 @@ dnl   [build]                                 target-dir = "<rust-target>"
 dnl   (cargo follows the git URL declared in Cargo.toml)
 dnl
 dnl WARNING: stale inst/vendor.tar.xz hazard.
-dnl   'just r-cmd-build' and 'just r-cmd-check' create inst/vendor.tar.xz
-dnl   transiently and remove it via a 'trap ... EXIT' handler; if the process is killed
-dnl   before the trap fires, the file is left behind.  Configure then detects
-dnl   it and sets IS_TARBALL_INSTALL=true, which (a) writes a tarball-mode
-dnl   config.toml here and (b) makes Makevars.in's post-build cleanup delete
-dnl   src/rust/.cargo/ from the SOURCE TREE on the next 'R CMD INSTALL .'.
-dnl   Recovery: rm inst/vendor.tar.xz && bash ./configure
+dnl   The source-checkout guard above rejects a leaked archive. Recovery must
+dnl   restore a frozen src/rust/Cargo.toml as well as remove the archive: see
+dnl   the guard's message.
 AC_CONFIG_COMMANDS([cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
@@ -924,9 +926,10 @@ AC_CONFIG_COMMANDS([cargo-config],
  CARGO_ENV_ABI_CXXFLAGS="$CARGO_ENV_ABI_CXXFLAGS"])
 
 dnl ---- 3) Cargo.lock shape check (tarball mode only) ----
-dnl In tarball mode, the lock must be in tarball-shape: no checksum = lines and
-dnl no path+... sources for framework crates. Drift is fatal at offline install
-dnl time; we catch it here before cargo starts building.
+dnl In tarball mode, tools/lock-shape-check.R rejects any source = "path+..."
+dnl entry: offline source replacement needs git+<url>#<sha> sources. checksum =
+dnl lines are allowed (#408). Drift is fatal at offline install time; we catch
+dnl it here before cargo starts building.
 dnl In source mode, cargo silently rewrites the lock; drift is tolerated.
 AC_CONFIG_COMMANDS([lock-shape-check],
 [
