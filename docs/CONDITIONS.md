@@ -650,8 +650,12 @@ e$value; e$max
   `c("mypkg_error", "rust_error", …)` with the text as the message, no data.
 - Values follow the `RValue` mapping (`RValue::from_serde`, see
   [SERDE_R.md](SERDE_R.md#owned-values-rvaluefrom_serde)): scalars,
-  homogeneous `Vec<T>` as atomic vectors, nested structs as named lists,
-  `None` as `NULL`. The reserved names above apply to the payload fields; a
+  non-empty homogeneous `Vec<T>` as atomic vectors, nested structs as named
+  lists, `None` as `NULL`. An empty `Vec<T>` arrives as `list()`, since serde
+  gives no element type for an empty sequence, so `e$columns` is `list()` when
+  empty and a character vector otherwise. Derive `RConditionError` (above)
+  for fields that must keep their type when empty: it converts each field
+  with `RValue::from`, and an empty `Vec<String>` becomes `character(0)`. The reserved names above apply to the payload fields; a
   clash raises a `rust_error` describing it, exactly as for `data()`, with
   the exceptions below.
 - `serde_error(..)` needs a `Result` return type and cannot be combined with
