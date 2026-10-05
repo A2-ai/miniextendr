@@ -1156,6 +1156,33 @@ jobs:
           # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
           _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
 
+      # Diagnostic: R CMD check stops at the first aborting test (a Rust panic
+      # that kills the R process), which hides every failure behind it. Run each
+      # test file in its own process against the library R CMD check installed,
+      # so one table shows which files pass, fail, or kill the process.
+      - name: Per-file test sweep (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          cd tests/testthat
+          for f in test-*.R; do
+            timeout 300 Rscript -e '
+              args <- commandArgs(TRUE)
+              .libPaths(c(args[1], .libPaths()))
+              library(testthat); library(miniextendr)
+              res <- as.data.frame(testthat::test_file(args[2], package = "miniextendr",
+                load_package = "installed", reporter = "silent", stop_on_failure = FALSE))
+              cat(sprintf("SWEEP-DETAIL failed=%d errors=%d skipped=%d passed=%d\n",
+                sum(res$failed), sum(res$error), sum(res$skipped), sum(res$passed)))
+              bad <- res[res$failed > 0 | res$error, "test"]
+              if (length(bad)) cat(paste0("SWEEP-BAD ", bad, "\n"), sep = "")
+            ' "$lib" "$f" > "/tmp/sweep-$f.log" 2>&1 && rc=0 || rc=$?
+            echo "SWEEP $f exit=$rc $(grep -h 'SWEEP-DETAIL' "/tmp/sweep-$f.log" | tail -1)"
+            grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5
+          done
+
       - name: Print failed tests
         if: always()
         run: |
