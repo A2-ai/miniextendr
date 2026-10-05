@@ -142,3 +142,86 @@ test_that("configure drift picks the template the upgrade's layout picks (#1720)
   check_in(file.path(ws, "crates", "rpkg"))
   expect_identical(seen, c(TRUE, FALSE))
 })
+
+# region: AC_INIT version is not drift (#1789)
+
+local_drift_package <- function(monorepo, env = parent.frame()) {
+  tmp <- withr::local_tempdir(.local_envir = env)
+  pkg <- tmp
+  if (monorepo) {
+    writeLines("[workspace]", file.path(tmp, "Cargo.toml"))
+    pkg <- file.path(tmp, "rpkg")
+    dir.create(pkg)
+  }
+  writeLines("Package: driftcheck", file.path(pkg, "DESCRIPTION"))
+  usethis::local_project(pkg, force = TRUE, setwd = FALSE, .local_envir = env)
+  old_type <- minirextendr:::get_template_type()
+  withr::defer(minirextendr:::set_template_type(old_type), envir = env)
+  minirextendr:::set_template_type(if (monorepo) "monorepo" else "rpkg")
+  suppressMessages(minirextendr:::use_miniextendr_configure(
+    subdir = if (monorepo) "rpkg"
+  ))
+  file.path(pkg, "configure.ac")
+}
+
+test_that("drift check ignores the AC_INIT version, for both templates (#1789)", {
+  for (monorepo in c(FALSE, TRUE)) {
+    configure <- local_drift_package(monorepo)
+    lines <- readLines(configure)
+    lines[1] <- "AC_INIT([driftcheck], [0.2.0])"
+    writeLines(lines, configure)
+    expect_no_warning(minirextendr:::check_configure_ac_drift(monorepo))
+
+    # Any other differing line still warns.
+    writeLines(c(lines, "CARGO_FEATURES='serde'"), configure)
+    expect_warning(
+      minirextendr:::check_configure_ac_drift(monorepo),
+      "configure.ac differs from the current template"
+    )
+  }
+})
+
+test_that("replacing configure.ac keeps the AC_INIT version (#1789)", {
+  configure <- local_drift_package(FALSE)
+  lines <- readLines(configure)
+  lines[1] <- "AC_INIT([driftcheck], [0.2.0])"
+  writeLines(c(lines, "CARGO_FEATURES='serde'"), configure)
+
+  suppressMessages(minirextendr:::use_miniextendr_configure())
+
+  new <- readLines(configure)
+  expect_identical(new[1], "AC_INIT([driftcheck], [0.2.0])")
+  expect_false("CARGO_FEATURES='serde'" %in% new)
+  expect_no_warning(minirextendr:::check_configure_ac_drift(FALSE))
+})
+
+test_that("a fresh scaffold gets the template's AC_INIT version (#1789)", {
+  configure <- local_drift_package(FALSE)
+  expect_identical(readLines(configure)[1], "AC_INIT([driftcheck], [0.1.0])")
+})
+
+test_that("bump-version.R does not cause configure.ac drift (#1789)", {
+  skip_if(!nzchar(Sys.which("Rscript")))
+  configure <- local_drift_package(TRUE)
+  pkg <- dirname(configure)
+  ws <- dirname(pkg)
+  dir.create(file.path(ws, "tools"))
+  file.copy(
+    system.file("templates", "monorepo", "tools", "bump-version.R",
+                package = "minirextendr", mustWork = TRUE),
+    file.path(ws, "tools", "bump-version.R")
+  )
+  dir.create(file.path(pkg, "src", "rust"), recursive = TRUE)
+  writeLines(c("[package]", "name = \"driftcheck\"", "version = \"0.1.0\""),
+             file.path(pkg, "src", "rust", "Cargo.toml"))
+  writeLines(c("Package: driftcheck", "Version: 0.0.0.9000"),
+             file.path(pkg, "DESCRIPTION"))
+
+  withr::with_dir(ws, system2("Rscript", c("tools/bump-version.R", basename(pkg)),
+                              stdout = FALSE, stderr = FALSE))
+  expect_identical(readLines(configure)[1],
+                   "AC_INIT([driftcheck], [0.0.0.9000])")
+  expect_no_warning(minirextendr:::check_configure_ac_drift(TRUE))
+})
+
+# endregion

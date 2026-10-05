@@ -23,7 +23,8 @@ happens when the project has no \code{configure.ac}).
 }
 \description{
 Compare the complete file with the current template, rendered for this
-package. Custom edits also produce a warning; leave the file untouched so
+package. The version in the \code{AC_INIT} line is ignored, since version bumps
+change it (#1789). Custom edits also produce a warning; leave the file untouched so
 users can review and retain those edits when updating the build system.
 }
 \keyword{internal}

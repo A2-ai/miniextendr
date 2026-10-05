@@ -537,7 +537,8 @@ upgrade_gitignore <- function(subdir = NULL) {
 #' Check configure.ac for drift
 #'
 #' Compare the complete file with the current template, rendered for this
-#' package. Custom edits also produce a warning; leave the file untouched so
+#' package. The version in the `AC_INIT` line is ignored, since version bumps
+#' change it (#1789). Custom edits also produce a warning; leave the file untouched so
 #' users can review and retain those edits when updating the build system.
 #'
 #' @param monorepo Whether the package is the R package of a monorepo, which
@@ -559,7 +560,10 @@ check_configure_ac_drift <- function(monorepo = !is.null(upgrade_layout(usethis:
   # configure.ac has one template variable: the package name in AC_INIT.
   template <- gsub("{{package}}", get_package_name(), template, fixed = TRUE)
 
-  if (!identical(content, template)) {
+  # The AC_INIT version is the one line the scaffold's own tooling changes
+  # (tools/bump-version.R), so it is not drift (#1789).
+  unversioned <- function(x) set_ac_init_version(x, "")
+  if (!identical(unversioned(content), unversioned(template))) {
     cli::cli_warn(c(
       "configure.ac differs from the current template and was left unchanged.",
       "i" = "Differences may be custom edits or outdated build-system logic; review them before rebuilding.",

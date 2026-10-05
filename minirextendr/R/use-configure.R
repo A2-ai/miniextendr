@@ -13,10 +13,51 @@
 #' @keywords internal
 use_miniextendr_configure <- function(path = ".", subdir = NULL) {
   with_project(path)
+  # Replacing configure.ac must not undo a version bump (#1789).
+  configure_ac <- usethis::proj_path("configure.ac")
+  version <- if (fs::file_exists(configure_ac)) {
+    ac_init_version(readLines(configure_ac, warn = FALSE))
+  }
   use_template("configure.ac", subdir = subdir, data = template_data())
+  if (!is.null(version)) {
+    lines <- readLines(configure_ac, warn = FALSE)
+    writeLines(set_ac_init_version(lines, version), configure_ac)
+  }
   cli::cli_alert_info("Run {.code minirextendr::miniextendr_autoconf()} to generate configure script")
   invisible(TRUE)
 }
+
+#' Version in the `AC_INIT` line of configure.ac
+#'
+#' @param lines Lines of a `configure.ac`.
+#' @return The version string of the first `AC_INIT([pkg], [version])` call,
+#'   or `NULL` when there is none.
+#' @keywords internal
+ac_init_version <- function(lines) {
+  m <- regmatches(lines, regexec(ac_init_version_pattern, lines))
+  m <- m[lengths(m) > 0L]
+  if (length(m) == 0L) NULL else m[[1L]][[3L]]
+}
+
+#' Replace the version in the `AC_INIT` line of configure.ac
+#'
+#' @param lines Lines of a `configure.ac`.
+#' @param version Version string to write.
+#' @return `lines`, with the first `AC_INIT` version replaced.
+#' @keywords internal
+set_ac_init_version <- function(lines, version) {
+  i <- grep(ac_init_version_pattern, lines)[1L]
+  if (!is.na(i)) {
+    lines[[i]] <- sub(ac_init_version_pattern,
+                      paste0("\\1", gsub("\\", "\\\\", version, fixed = TRUE)),
+                      lines[[i]])
+  }
+  lines
+}
+
+# `AC_INIT([pkg], [version]`: group 1 is everything up to the version, group 2
+# the version.
+ac_init_version_pattern <- "^(AC_INIT\\(\\[[^]]*\\],[[:space:]]*\\[)([^]]*)"
 
 #' Add bootstrap.R to package
 #'
