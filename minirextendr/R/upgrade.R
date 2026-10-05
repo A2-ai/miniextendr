@@ -199,6 +199,7 @@ upgrade_owned_files <- function(layout) {
     "src/stub.c",
     "src/r_shim.h",
     "src/Makevars.in",
+    "src/Makevars.win",
     "src/win.def.in",
     "src/rust/build.rs",
     "inst/include/mx_abi.h",
