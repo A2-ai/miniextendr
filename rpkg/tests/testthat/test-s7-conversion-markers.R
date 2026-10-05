@@ -34,10 +34,16 @@ test_that("S7 conversion checks Result errors before class construction", {
 
 test_that("S7 conversion markers remain safe under GC stress", {
   skip_on_cran()
-  skip_on_os("windows") # gctorture(TRUE) never finishes on Windows, #1800
   input <- ConvertInput(14L)
+  # Torture only the conversions: the expectation runs with gctorture off,
+  # because testthat under gctorture(TRUE) takes minutes on Windows (#1800).
   gctorture(TRUE)
-  on.exit(gctorture(FALSE), add = TRUE)
-  converted <- S7::convert(input, TypedConversion)
-  expect_identical(conversion_value(S7::convert(converted, ConvertInput)), 14L)
+  value <- tryCatch(
+    {
+      converted <- S7::convert(input, TypedConversion)
+      conversion_value(S7::convert(converted, ConvertInput))
+    },
+    finally = gctorture(FALSE)
+  )
+  expect_identical(value, 14L)
 })
