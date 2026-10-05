@@ -948,3 +948,31 @@ test_that("miniextendr_build() ships a Rust doc-comment edit to the installed he
   })
 })
 
+
+# region: leaked-tarball guard advice (#1787)
+
+test_that("the configure.ac leaked-tarball guard leads with miniextendr_clean_vendor_leak", {
+  for (tpl in c("rpkg", file.path("monorepo", "rpkg"))) {
+    path <- system.file("templates", tpl, "configure.ac", package = "minirextendr")
+    skip_if(!nzchar(path), "template not installed")
+    lines <- readLines(path, warn = FALSE)
+    start <- grep("leaked vendor tarball detected", lines, fixed = TRUE)
+    expect_length(start, 1L)
+    guard <- paste(lines[start:(start + 15L)], collapse = "\n")
+    expect_match(guard, "minirextendr::miniextendr_clean_vendor_leak(", fixed = TRUE)
+    expect_match(guard, "does not repair a frozen manifest", fixed = TRUE)
+    expect_no_match(guard, "Remove it before building from source:\n    rm -f", fixed = TRUE)
+    # No bare rm -f offered as the recovery, and no stale trap claim.
+    expect_no_match(paste(lines, collapse = "\n"), "Recovery: rm inst/vendor.tar.xz", fixed = TRUE)
+  }
+})
+
+test_that("templates cite published docs, not repository docs/ paths (#1790)", {
+  root <- system.file("templates", package = "minirextendr")
+  skip_if(!nzchar(root), "templates not installed")
+  for (f in c("r-release.yml", "rpkg/configure.ac", "monorepo/rpkg/configure.ac")) {
+    expect_no_match(readLines(file.path(root, f), warn = FALSE), "docs/[A-Z_]+\\.md")
+  }
+})
+
+# endregion
