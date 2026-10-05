@@ -81,29 +81,40 @@ create_miniextendr_monorepo("myproject",
 
 ## Build Workflow
 
-### Recommended: devtools (one-step)
-
-`devtools::document()` handles the entire pipeline automatically:
+### Recommended: `miniextendr_build()`
 
 ```r
-devtools::document("mypackage")   # Compiles Rust + generates R wrappers + runs roxygen2
-devtools::install("mypackage")    # Install the final package
+miniextendr_build(path = "mypackage")                   # compile + wrappers → roxygen2 → R CMD INSTALL
+miniextendr_build(path = "mypackage", install = FALSE)  # stop after roxygen2
 ```
 
-How it works: `devtools::document()` calls `pkgload::load_all()`, whose
-`pkgbuild::compile_dll()` runs `./configure` → `make` → cargo build → package
-shared-library link → `tools/write-wrappers.R`, and roxygen2 then reads the
-fresh wrappers, all in a single invocation. No manual
-`./configure` or two-pass install is needed for a scaffolded package.
+It runs `autoconf` and `./configure`, then compiles the crate with
+`pkgbuild::compile_dll()` (`make` → cargo build → shared-library link →
+`tools/write-wrappers.R`) before roxygen2 runs, so roxygen2 reads a current
+`R/<pkg>-wrappers.R` from its first pass. It then unloads the development
+namespace and installs.
+
+### `devtools::document()`
+
+`devtools::document()` compiles too, through `pkgload::load_all()`, but only
+after roxygen2 has updated the `NAMESPACE` imports from the R files it can
+see. The wrappers file is gitignored, so a fresh clone does not have it
+yet. An `@importFrom` that only a generated function carries, such as the
+generic of an S3 method for another package's generic, is then missing from
+that first pass. The load fails with "object '<generic>' not found whilst
+loading namespace", and roxygen2's second pass writes the correct
+`NAMESPACE`. The run ends in the right state but prints the error. Compile
+once first (`miniextendr_build(install = FALSE)` or
+`pkgbuild::compile_dll()`), and `document()` is clean from then on.
+`devtools::document()` does not install.
 
 ### Manual: step-by-step functions
 
-For fine-grained control or when not using devtools:
+For fine-grained control:
 
 ```r
 miniextendr_autoconf(path = "mypackage")     # autoconf → generate configure
 miniextendr_configure(path = "mypackage")    # ./configure → generate Makevars
-miniextendr_build(path = "mypackage")        # compile + wrappers → roxygen2 → R CMD INSTALL
 ```
 
 ### One-Shot Sync
