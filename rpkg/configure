@@ -2574,6 +2574,19 @@ printf '%s\n' "$as_me: WARNING: Autoconf host triple '$host' may differ from Rus
   Run 'rustc --print target-list' to see valid Rust targets." >&2;}
   else
     CARGO_BUILD_TARGET=""
+                case "$host_os" in
+      *msys*|*cygwin*|*mingw*)
+        case "$host_cpu" in
+          aarch64*)       CARGO_BUILD_TARGET="aarch64-pc-windows-gnu" ;;
+          x86_64*|amd64*) CARGO_BUILD_TARGET="x86_64-pc-windows-gnu" ;;
+        esac
+        if test -n "$CARGO_BUILD_TARGET"
+then :
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET not set; using $CARGO_BUILD_TARGET for the MinGW toolchain (needs: rustup target add $CARGO_BUILD_TARGET)" >&5
+printf '%s\n' "$as_me: CARGO_BUILD_TARGET not set; using $CARGO_BUILD_TARGET for the MinGW toolchain (needs: rustup target add $CARGO_BUILD_TARGET)" >&6;}
+fi
+        ;;
+    esac
   fi
 fi
 
@@ -2773,6 +2786,11 @@ CARGO_ENV_WIN_LINKER=""
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     _r_cc=`"${R_HOME}/bin/R" CMD config CC 2>/dev/null | awk '{print $1}'`
+        case "$_r_cc" in
+      */*) ;;
+      ?*) _r_cc_path=`command -v "$_r_cc" 2>/dev/null`
+          test -n "$_r_cc_path" && _r_cc="$_r_cc_path" ;;
+    esac
     if test -n "$_r_cc"; then
       _r_cc_bindir=`dirname "$_r_cc"`
       for _gcc_cand in "$_r_cc_bindir/gcc.exe" "$_r_cc_bindir/gcc"; do
@@ -4009,16 +4027,6 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
     if test -n "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
       echo "MACOSX_DEPLOYMENT_TARGET = \"$CARGO_ENV_MACOS_DEPLOY_TARGET\""
     fi
-    if test -n "$CARGO_ENV_WIN_LINKER"; then
-      case "$CARGO_ENV_RUST_TARGET_UPPER" in
-        *AARCH64*WINDOWS*)
-          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
-          ;;
-        *)
-          echo "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
-          ;;
-      esac
-    fi
     echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_NET_GIT_FETCH_WITH_CLI\""
     if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
       echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
@@ -4037,6 +4045,15 @@ printf '%s\n' "$as_me: executing $ac_file commands" >&6;}
       echo "CXXFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CXXFLAGS\""
     fi
     echo ""
+                    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      case "$CARGO_ENV_RUST_TARGET" in
+        *-pc-windows-gnu*)
+          echo "[target.$CARGO_ENV_RUST_TARGET]"
+          echo "linker = \"$CARGO_ENV_WIN_LINKER\""
+          echo ""
+          ;;
+      esac
+    fi
   }
 
   if test "$IS_TARBALL_INSTALL" = "true"; then

@@ -137,6 +137,14 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     }
 }
 
+/// `ErasedExternalPtr::from_sexp` requires a live pointer: a null one (R's
+/// `new("externalptr")`) trips its `debug_assert!` in a debug-assertions build,
+/// and a panic out of a raw `.Call` fixture has no handler to unwind to. The
+/// type-check fixtures answer "not that type" for a null pointer instead.
+fn is_null_extptr(ptr: SEXP) -> bool {
+    unsafe { miniextendr_api::sys::R_ExternalPtrAddr(ptr) }.is_null()
+}
+
 /// Test `ErasedExternalPtr::is::<Counter>`() type check.
 /// @param ptr ExternalPtr to test.
 #[miniextendr(noexport)]
@@ -145,6 +153,9 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
+        if is_null_extptr(ptr) {
+            return SEXP::scalar_integer(0);
+        }
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Counter>() {
             SEXP::scalar_integer(1)
@@ -162,6 +173,9 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
 pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
+        if is_null_extptr(ptr) {
+            return SEXP::scalar_integer(0);
+        }
         let erased = ErasedExternalPtr::from_sexp(ptr);
         if erased.is::<Point>() {
             SEXP::scalar_integer(1)

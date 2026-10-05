@@ -1019,7 +1019,9 @@ jobs:
   r-check-windows:
     name: R CMD check / Windows
     runs-on: windows-latest
-    timeout-minutes: 90
+    # R CMD check is ~45 min (11 min install, 27 min "compiled code" on the
+    # 170 MB dev-profile DLL); the diagnostic steps after it need the rest.
+    timeout-minutes: 150
     if: contains(github.event.pull_request.labels.*.name, 'windows')
     # Use Rtools45 MSYS2 bash as the default shell for all run: steps.
     # This matches R's own build system (SHELL = sh from Rtools).
@@ -1031,7 +1033,9 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       SCCACHE_GHA_ENABLED: "true"
-      CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
+      # No CARGO_BUILD_TARGET, no job-level cargo config and no libgcc staging:
+      # configure pins the *-pc-windows-gnu target and Rtools' gcc as the linker,
+      # and Makevars.win stages the libgcc stubs (#1654).
       # Dev profile: R CMD check doesn't benefit from optimized rustc output, and
       # MinGW linking is the dominant cost on Windows. Dev profile is ~3-5x faster
       # to compile/link than release and keeps codegen-units = 1 (linkme requirement).
@@ -1098,37 +1102,6 @@ jobs:
             echo "$(cygpath -u "$CARGO_HOME")/bin" >> "$GITHUB_PATH"
           fi
 
-          # Satisfy rustc's -lgcc_eh / -lgcc_s with the toolchain's real libgcc.
-          # Rtools45's `.static.posix` gcc ships a unified `libgcc.a` (no separate
-          # libgcc_eh.a / libgcc_s.a), so we stage symlinks to the real archive.
-          # Previous versions of this job used empty `ar crs` archives, which
-          # satisfied the linker but left `__gcc_personality_v0` unresolved at
-          # runtime — the panic machinery then aborted with
-          # "fatal runtime error: failed to initiate panic, error 5" whenever
-          # Rust tried to unwind on Windows. ld.bfd hid this; ld.lld exposes it.
-          mkdir -p libgcc_mock
-          real_libgcc="$(x86_64-w64-mingw32.static.posix-gcc.exe -print-libgcc-file-name)"
-          if [ ! -f "$real_libgcc" ]; then
-            echo "::error::gcc -print-libgcc-file-name returned non-file: $real_libgcc"
-            exit 1
-          fi
-          cp "$real_libgcc" libgcc_mock/libgcc_eh.a
-          cp "$real_libgcc" libgcc_mock/libgcc_s.a
-
-          # Configure Cargo for Windows GNU target
-          mkdir -p .cargo
-          pwd_slash="$(cygpath -m "$(pwd)")"
-          cat > .cargo/config.toml <<TOML
-          [target.x86_64-pc-windows-gnu]
-          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
-          # lld is dramatically faster than MinGW's bfd linker. rustup's
-          # bundled rust-lld (shipped with the toolchain) satisfies -fuse-ld=lld.
-          rustflags = ["-C", "link-arg=-fuse-ld=lld"]
-
-          [env]
-          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
-          TOML
-
       - name: Install just
         uses: taiki-e/install-action@just
 
@@ -1155,6 +1128,66 @@ jobs:
           # (5 min) kills the test process if it hasn't exited (tests finish
           # in ~60s). See reviews/windows-rcmdcheck-hang.md for details.
           _R_CHECK_TESTS_ELAPSED_TIMEOUT_: 300
+
+      # Diagnostics. R CMD check stops at the first aborting test (a Rust panic
+      # that kills the R process), which hides every failure behind it, and it
+      # names a test only when it fails. These steps rerun the suite against the
+      # library R CMD check installed, in the ways that tell the causes apart.
+      # NOT_CRAN is unset where noted so the bare gctorture(TRUE) blocks skip.
+      - name: Rerun tests the way R CMD check does (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          mkdir -p /tmp/batch && cp tests/testthat.R /tmp/batch/ && cp -r tests/testthat /tmp/batch/
+          cd /tmp/batch
+          # Same launcher R CMD check uses for tests/*.R.
+          env -u NOT_CRAN R_LIBS="$lib" timeout 900 R CMD BATCH --vanilla --no-timing testthat.R batch.out && rc=0 || rc=$?
+          echo "BATCH exit=$rc"
+          grep -v '^\s*$' batch.out | grep -v 'LazyIntSeq' | tail -12 || true
+
+      - name: Whole suite, one process, location reporter (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          cd tests/testthat
+          env -u NOT_CRAN timeout 900 Rscript -e '
+            .libPaths(c(commandArgs(TRUE)[1], .libPaths()))
+            library(testthat); library(miniextendr)
+            testthat::test_dir(".", package = "miniextendr", load_package = "installed",
+              reporter = "location", stop_on_failure = FALSE)
+          ' "$lib" > /tmp/suite.log 2>&1 && rc=0 || rc=$?
+          echo "WHOLE-SUITE exit=$rc"
+          grep -v '^\s*$' /tmp/suite.log | grep -v 'LazyIntSeq' | tail -12 || true
+
+      - name: Per-file test sweep (diagnostic)
+        if: always()
+        working-directory: rpkg
+        run: |
+          lib="$(cygpath -m "$PWD/check/miniextendr.Rcheck")"
+          [ -d "$lib/miniextendr" ] || { echo "no installed library at $lib"; exit 0; }
+          cd tests/testthat
+          # The gctorture files run three times: they passed in seconds once
+          # and hung another time, so repeats separate a flake from a hang.
+          for f in test-*.R test-explicit-wrap.R test-explicit-wrap.R test-serialize-attribute.R test-serialize-attribute.R; do
+            timeout 120 Rscript -e '
+              args <- commandArgs(TRUE)
+              .libPaths(c(args[1], .libPaths()))
+              library(testthat); library(miniextendr)
+              res <- as.data.frame(testthat::test_file(args[2], package = "miniextendr",
+                load_package = "installed", reporter = "location", stop_on_failure = FALSE))
+              cat(sprintf("SWEEP-DETAIL failed=%d errors=%d skipped=%d passed=%d\n",
+                sum(res$failed), sum(res$error), sum(res$skipped), sum(res$passed)))
+              bad <- res[res$failed > 0 | res$error, "test"]
+              if (length(bad)) cat(paste0("SWEEP-BAD ", bad, "\n"), sep = "")
+            ' "$lib" "$f" > "/tmp/sweep-$f.log" 2>&1 && rc=0 || rc=$?
+            echo "SWEEP $f exit=$rc $(grep -h 'SWEEP-DETAIL' "/tmp/sweep-$f.log" | tail -1 || true)"
+            grep -h 'SWEEP-BAD\|fatal runtime error' "/tmp/sweep-$f.log" | head -5 || true
+            if [ "$rc" -ne 0 ]; then grep -v '^\s*$' "/tmp/sweep-$f.log" | tail -6 | sed 's/^/    | /' || true; fi
+          done
 
       - name: Print failed tests
         if: always()

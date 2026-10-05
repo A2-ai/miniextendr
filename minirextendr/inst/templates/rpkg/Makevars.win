@@ -10,10 +10,25 @@ include Makevars
 # - secur32: Security Support Provider Interface (GetUserNameExW for whoami crate)
 # Use the full path to the staticlib so the MinGW linker cannot pick a .dll.a import lib
 #
-# Note: configure.ac sets CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER (and the
-# aarch64 equivalent) in src/rust/.cargo/config.toml [env] when rtools is
-# detected via `R CMD config CC`. This pins cargo's linker to rtools' gcc
-# rather than whichever gcc happens to be on PATH (MSYS2's separate gcc, etc).
+# Note: when rtools is detected via `R CMD config CC`, configure.ac writes a
+# `[target.<triple>] linker = ...` table into src/rust/.cargo/config.toml. This
+# pins cargo's linker to rtools' gcc rather than whichever gcc happens to be on
+# PATH (MSYS2's separate gcc, etc). It also pins CARGO_BUILD_TARGET to the
+# *-pc-windows-gnu triple when unset, so cargo does not build for MSVC.
 # BLAS_LAPACK_PKG_LIBS (from Makevars): R's BLAS/LAPACK when the `blas-lapack`
 # feature is on, empty otherwise.
 PKG_LIBS = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a $(BLAS_LAPACK_PKG_LIBS) -lws2_32 -lntdll -luserenv -lbcrypt -ladvapi32 -lsecur32
+
+# rustc's windows-gnu target asks the linker for -lgcc_eh and -lgcc_s whenever it
+# links an artifact whose Rust dependencies are all static, build scripts and
+# proc macros included. Rtools' static gcc ships neither archive (its unwinder
+# lives in libgcc.a, which the gcc driver already links), so the cargo link
+# fails with "cannot find -lgcc_eh". Satisfy it with empty archives on
+# LIBRARY_PATH for the cargo call only, the way rextendr does. Empty stubs are
+# enough: gcc still links the real libgcc into the final DLL.
+LIBGCC_MOCK = $(CARGO_TARGET_DIR)/libgcc_mock
+CARGO_PRE = mkdir -p "$(LIBGCC_MOCK)" \
+  && rm -f "$(LIBGCC_MOCK)/libgcc_eh.a" "$(LIBGCC_MOCK)/libgcc_s.a" \
+  && "$(AR)" crs "$(LIBGCC_MOCK)/libgcc_eh.a" \
+  && "$(AR)" crs "$(LIBGCC_MOCK)/libgcc_s.a" \
+  && export LIBRARY_PATH="$(LIBGCC_MOCK)$${LIBRARY_PATH:+;$$LIBRARY_PATH}"
