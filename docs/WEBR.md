@@ -146,7 +146,8 @@ prints how to enter and remove it.
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
    tree, installs the hard Imports from repo.r-wasm.org, and drives
    `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
-   (the local-smoke default; disable with `SMOKE_TESTTHAT=0`) it then runs
+   (the local-smoke default; disable with `SMOKE_TESTTHAT=0`; restrict the
+   files with `SMOKE_TESTTHAT_FILTER=<regex>`, see "Rosetta" below) it then runs
    an **informational testthat pass** (#1255): the runner installs testthat
    from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
    against the wasm install (`load_package = "installed"`, with
@@ -194,6 +195,17 @@ else (once at `Initialising webR...`, before any test ran), and the same
 tree passed on a rerun. The amd64 smoke run for #1254 hit it once, in
 phase 3 while webR installed the Imports from repo.r-wasm.org, and the
 automatic rerun passed.
+
+Some code traps nearly every time rather than at random: one test trapped
+in four whole-suite runs in a row on three trees. When the same test traps
+on consecutive runs, a rerun is a poor bet. Run the files after it on their
+own with `SMOKE_TESTTHAT_FILTER` (a regex matched against test file names
+without the `test-` prefix and `.R` suffix, passed to testthat's `filter`;
+unset or empty runs the whole suite), or use the arm64 image:
+
+```bash
+SMOKE_TESTTHAT_FILTER='^(dataframe|list)' just docker-webr-smoke
+```
 
 The smoke therefore reruns a failed step **once** when that step's output
 holds the assertion text (`tests/webr-smoke-retry.sh`, tested without Docker

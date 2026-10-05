@@ -77,6 +77,10 @@ const SCAFFOLD_PKGS = (process.env.SMOKE_SCAFFOLD_PKG ?? "")
 // comment and informationalTestthat() below for the tolerate-and-report
 // semantics.
 const SMOKE_TESTTHAT = process.env.SMOKE_TESTTHAT === "1";
+// SMOKE_TESTTHAT_FILTER (#1784): regex for testthat's `filter`, matched
+// against test file names with the `test-` prefix and `.R` suffix removed.
+// Unset or empty runs the whole suite.
+const SMOKE_TESTTHAT_FILTER = process.env.SMOKE_TESTTHAT_FILTER ?? "";
 const TESTS_MOUNT = "/rpkg-tests";
 
 // Base-R packages ship with webR itself — never install them from the repo.
@@ -331,8 +335,17 @@ async function informationalTestthat() {
   );
   await webR.FS.mkdir(TESTS_MOUNT);
   await webR.FS.mount("NODEFS", { root: testsDir }, TESTS_MOUNT);
+  const filterLabel = SMOKE_TESTTHAT_FILTER
+    ? ` (filter: ${JSON.stringify(SMOKE_TESTTHAT_FILTER)})`
+    : "";
   console.log(
-    `[tier3][testthat] NODEFS-mounted ${testsDir} -> ${TESTS_MOUNT}; running test_dir (silent reporter)...`,
+    `[tier3][testthat] NODEFS-mounted ${testsDir} -> ${TESTS_MOUNT}; running test_dir (silent reporter)${filterLabel}...`,
+  );
+  // Hand the regex to R as a string value, not spliced into the code, so no
+  // quoting in the filter can break the R source.
+  await webR.objs.globalEnv.bind(
+    ".smoke_testthat_filter",
+    SMOKE_TESTTHAT_FILTER,
   );
 
   // - MINIEXTENDR_STRESS stays unset: the gctorture blocks are ~94% of the
@@ -358,7 +371,8 @@ async function informationalTestthat() {
         package = "miniextendr",
         load_package = "installed",
         reporter = "silent",
-        stop_on_failure = FALSE
+        stop_on_failure = FALSE,
+        filter = if (nzchar(.smoke_testthat_filter)) .smoke_testthat_filter else NULL
       )
       df <- as.data.frame(res)
       sprintf(
@@ -373,7 +387,7 @@ async function informationalTestthat() {
     throw new Error(String(line));
   }
   console.log(
-    `[tier3][testthat] ${line.slice("COUNTS ".length)} (informational — test failures do not gate)`,
+    `[tier3][testthat] ${line.slice("COUNTS ".length)}${filterLabel} (informational — test failures do not gate)`,
   );
 }
 

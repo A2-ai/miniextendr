@@ -66,6 +66,12 @@
 #   SMOKE_TESTTHAT=0  Skip the informational testthat pass in Phase 3
 #                     (default: enabled, #1255). Test failures never gate
 #                     either way — the pass only reports counts.
+#   SMOKE_TESTTHAT_FILTER=<regex>
+#                     Run only the testthat files whose name (without the
+#                     `test-` prefix and `.R` suffix) matches the regex
+#                     (testthat's `filter`, #1784). Unset/empty = the whole
+#                     suite. Use it to cover the files after one that traps
+#                     under Rosetta on every run.
 
 set -euo pipefail
 
@@ -695,6 +701,7 @@ phase_webr_session() {
     # runner's own 20-min in-session testthat budget. Test failures never
     # gate; a cap hit or a harness error before the counts line does.
     local smoke_testthat="${SMOKE_TESTTHAT:-1}"
+    local smoke_testthat_filter="${SMOKE_TESTTHAT_FILTER:-}"
     local smoke_timeout=900
     if [[ "$smoke_testthat" == "1" ]]; then
         smoke_timeout=2400
@@ -703,7 +710,7 @@ phase_webr_session() {
         set -euo pipefail
         cd /work/tests/webr-node-smoke
         timeout ${smoke_timeout} node smoke.mjs
-    " -e "SMOKE_SCAFFOLD_PKG=${scaffold_pkg_env}" -e "SMOKE_TESTTHAT=${smoke_testthat}"
+    " -e "SMOKE_SCAFFOLD_PKG=${scaffold_pkg_env}" -e "SMOKE_TESTTHAT=${smoke_testthat}" -e "SMOKE_TESTTHAT_FILTER=${smoke_testthat_filter}"
 
     ok "webR session complete (library(miniextendr) loaded)."
 }

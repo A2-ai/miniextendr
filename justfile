@@ -1899,7 +1899,8 @@ docker-webr-test: docker-webr-build
 # in a webR Node session via the canonical runner
 # tests/webr-node-smoke/smoke.mjs, plus an informational testthat pass
 # (#1255; counts reported, test failures never gate — disable with
-# SMOKE_TESTTHAT=0).
+# SMOKE_TESTTHAT=0; restrict the test files with SMOKE_TESTTHAT_FILTER=<regex>,
+# #1784).
 docker-webr-smoke *args: docker-webr-build
     WEBR_IMAGE={{docker_webr_image}} bash tests/webr-smoke.sh {{args}}
 
