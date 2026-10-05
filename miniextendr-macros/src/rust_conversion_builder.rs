@@ -388,13 +388,16 @@ impl RustConversionBuilder {
             let span = ty.span();
             // The binding keeps the method's own use of the parameter from adding
             // a follow-on "cannot find value" to the diagnostic; the wrapper's call
-            // slot is in scope in every C wrapper, so it also type-checks.
+            // slot is in scope in every C wrapper, so it also type-checks. The slot
+            // is built with plain `quote!` so it keeps the declaration's call-site
+            // hygiene when the method comes from a `macro_rules!` expansion (#1489).
+            let call_slot = quote! { __miniextendr_call };
             let stmt = quote_spanned! {span=>
                 ::core::compile_error!(
                     "`Call` / `CallerCall` parameters are supported on standalone `#[miniextendr]` \
                      functions only; class and trait methods attribute conditions to the wrapper's own call"
                 );
-                let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+                let #ident: #ty = <#ty>::from_sexp(#call_slot);
             };
             return (vec![stmt], vec![]);
         }
@@ -685,8 +688,13 @@ impl RustConversionBuilder {
                         };
                         // `ty: TryFromSexp` here, so a failure can ask the
                         // type what it declares.
-                        let stmt =
-                            self.conversion_stmt(try_expr, &ctx.with_declared(ty), ident, ty, span);
+                        let stmt = self.conversion_stmt(
+                            try_expr,
+                            &ctx.with_declared(ty, span),
+                            ident,
+                            ty,
+                            span,
+                        );
                         // `ty: TryFromSexp` is proven here, so a `no_na`
                         // parameter's value can be asked after the binding.
                         // Owned vector: it runs on the main thread, before a
@@ -1084,10 +1092,10 @@ impl ArgContext {
     /// `Vec<Mode>`, a coercion helper) may name a type that has no impl. An
     /// `impl Trait` type gets no lookup: it cannot name a path, and its
     /// binding is already the compile error.
-    fn with_declared(&self, ty: &syn::Type) -> Self {
+    fn with_declared(&self, ty: &syn::Type, span: proc_macro2::Span) -> Self {
         let mut ctx = self.clone();
         if !ctx.expected_known && ctx.expected_at_run_time.is_none() && !names_impl_trait(ty) {
-            ctx.declared = Some(declared_expectation(ty));
+            ctx.declared = Some(declared_expectation(ty, span));
         }
         ctx
     }
@@ -1297,7 +1305,11 @@ pub(crate) fn conversion_value_tokens(
             )
         },
         Expected::FromError(declared) => {
-            let from_error = quote! { ::miniextendr_api::__mx_conversion_expectation!(e) };
+            // `e` must carry `span`, the span of the `Err(e)` binding above:
+            // a call-site `e` doesn't resolve to it when the method comes from
+            // a `macro_rules!` expansion with mixed spans (#1489).
+            let from_error =
+                quote_spanned! {span=> ::miniextendr_api::__mx_conversion_expectation!(e) };
             let expected = match declared {
                 Some(declared) => quote! { (#declared).or_else(|| #from_error) },
                 None => from_error,
@@ -1332,12 +1344,14 @@ pub(crate) fn conversion_value_tokens(
 /// expectation; any other type is asked for its `__MX_EXPECTATION` (a
 /// `#[derive(TryFromSexp)]` newtype says what its inner type does). The
 /// `NULL or` of an `Option<_>` parameter is the prefix's (`nullable`).
-pub(crate) fn declared_expectation(ty: &syn::Type) -> TokenStream {
+///
+/// `span` must be the span of the `Err(e)` binding, so `e` resolves to it.
+pub(crate) fn declared_expectation(ty: &syn::Type, span: proc_macro2::Span) -> TokenStream {
     let value = crate::miniextendr_fn::get_missing_inner_type(ty).unwrap_or(ty);
     let value = crate::type_inspect::option_inner_type(value).unwrap_or(value);
     if crate::type_inspect::either_arms(value).is_some() {
         let arms = expected_arm(value);
-        quote! { ::miniextendr_api::from_r::either_expectation(&e, &#arms) }
+        quote_spanned! {span=> ::miniextendr_api::from_r::either_expectation(&e, &#arms) }
     } else {
         let value = crate::type_inspect::erase_lifetimes(value);
         quote! {
