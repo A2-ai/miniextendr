@@ -1,10 +1,15 @@
 //! Mixed macro/caller spans must not hide the wrapper's call-context parameter.
 #![allow(dead_code)]
 
-use miniextendr_api::{ExternalPtr, MatchArg, miniextendr};
+use miniextendr_api::{AsNumericVec, DataFrame, Either, ExternalPtr, MatchArg, miniextendr};
 
 #[derive(Clone, Copy, MatchArg)]
 pub enum Mode { Fast, Safe }
+
+// An `Either` arm the macro can't word: the failure path asks the type what it
+// declares, which reads the error binding.
+#[derive(miniextendr_api::TryFromSexp)]
+pub struct OpaqueNumbers(pub AsNumericVec);
 
 macro_rules! define_class {
     ($name:ident, { $($methods:tt)* }) => {
@@ -36,6 +41,9 @@ define_class!(HygieneClass, {
     pub fn mutable_choices(&self, values: &mut [Mode]) -> i32 {
         values.reverse();
         i32::try_from(values.len()).unwrap()
+    }
+    pub fn opaque_or_frame(&self, x: Either<OpaqueNumbers, DataFrame>) -> bool {
+        x.is_left()
     }
     #[miniextendr(env(worker))]
     pub fn worker_text(text: &str) -> String { text.to_owned() }

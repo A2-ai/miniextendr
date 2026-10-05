@@ -695,7 +695,10 @@ fn generate_setter_body(
             // field), as for an argument.
             let prefix = crate::r_preconditions::conversion_expectation(ty, false)
                 .map(|expected| format!("'{field_r_name}' must be {expected}"));
-            let declared = crate::rust_conversion_builder::declared_expectation(ty);
+            let declared = crate::rust_conversion_builder::declared_expectation(
+                ty,
+                syn::spanned::Spanned::span(ty),
+            );
             let err_value = crate::rust_conversion_builder::conversion_value_tokens(
                 &crate::rust_conversion_builder::ConversionSubject {
                     expected: prefix.as_deref().map_or(
