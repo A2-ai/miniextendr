@@ -22,7 +22,9 @@
 
 pub mod crate_index;
 pub mod crate_root;
+pub mod description;
 pub mod diagnostic;
+mod doc_links;
 pub mod helpers;
 pub mod lint_code;
 mod misplaced_dots;
@@ -124,6 +126,12 @@ pub fn build_directives(manifest_dir: &Path) -> Vec<String> {
         && root.file.starts_with(&src_dir)
     {
         directives.push(rerun_directive(&src_dir));
+    }
+
+    // The doc-link rule (MXL204) reads `DESCRIPTION`, so adding a dependency
+    // there must rerun it.
+    if let Some(description) = description::locate(manifest_dir) {
+        directives.push(rerun_directive(&description));
     }
 
     match run(manifest_dir) {

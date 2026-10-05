@@ -162,14 +162,30 @@ roxygen2 may read it as its own link: `[fn()]`, `[pkg::fn()]`, `[topic]`,
 capitalised (`R6`, `S7`, `Matrix`), and `[super::x]`, since `super` is a CRAN
 package. Code spans and fenced blocks are never rewritten.
 
-An inline link `[text](target)` loses its link only when the target is a Rust
-path, identifiers joined by `::` with an optional `()` or `!` suffix, that is
-rustdoc-only by the rule above. roxygen2 would otherwise render it as the dead
-web link `\href{crate::x}{text}`, with no warning. Every other markdown link
-stays: any URL (`[text](https://a.b/c::d)`, `[text](./x.html)`, since a `/`,
-`.`, `#`, `?` or lone `:` is never part of a Rust path), and a bare
-`[text](Foo)`, `[text](Type::method)` or `[text](dplyr::bind_rows)`, which may
-be a relative URL or name an R package.
+An inline link `[text](target)` loses its link when the target is a Rust path:
+identifiers joined by at least one `::`, with an optional `()` or `!` suffix
+and an optional rustdoc disambiguator prefix (`fn@`, `struct@`, `enum@`,
+`trait@`, `macro@`, `mod@`, `type@`, `const@`, `static@`, `method@`, `field@`,
+`variant@`, `union@`, `value@`, `prim@`, ...). Unlike the bracketed forms, the
+root does not matter: roxygen2 never reads an inline destination as an R
+topic, only as the web link `\href{crate::x}{text}` (dead, and without a
+warning). Every other markdown link stays: any URL (`[text](https://a.b/c::d)`,
+`[text](./x.html)`, since a `/`, `.`, `#`, `?` or lone `:` is never part of a
+Rust path), and a bare `[text](Foo)`, which may be a relative URL.
+
+| Written | roxygen2 gets |
+|---|---|
+| ``[`Serialize`](serde::Serialize)``, `[text](fn@crate::x)` | `` `Serialize` ``, `text` |
+| `[text](Foo)` | `[text](Foo)` |
+
+A bracketed ``[`Type::method`]`` or `[Type::method]` in tag text (or in leading
+prose under `roxygen_prose_links = "keep"`) is the case the macro cannot
+classify: it is a roxygen2 link into the R package `Type` when that package
+exists. The lint rule MXL204 reports each `pkg::` link whose `pkg` is not the
+package itself, not declared in `DESCRIPTION` (Depends, Imports, Suggests,
+Enhances, LinkingTo) and not a base or recommended R package, and names the
+`[text][crate::path]` rewrite below. It reads `DESCRIPTION` from
+`<crate dir>/../../DESCRIPTION` and skips when there is none.
 
 So to link a Rust item from text that reaches R without the link reaching
 roxygen2, root its target at the crate: `` [`Sources::prepare`][crate::Sources::prepare] ``

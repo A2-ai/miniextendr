@@ -35,6 +35,9 @@ pub enum LintCode {
     // region: P1: Important
     /// `internal` + `noexport` redundancy.
     MXL203,
+    /// Doc link `[...pkg::topic...]` into an R package that is neither the
+    /// package itself, a `DESCRIPTION` dependency, nor shipped with R.
+    MXL204,
     // endregion
 
     // region: P2: Safety
@@ -84,6 +87,7 @@ impl LintCode {
             Self::MXL106
             | Self::MXL111
             | Self::MXL203
+            | Self::MXL204
             | Self::MXL300
             | Self::MXL301
             | Self::MXL302
