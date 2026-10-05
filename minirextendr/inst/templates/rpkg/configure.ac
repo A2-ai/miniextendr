@@ -357,6 +357,19 @@ if test -z "$CARGO_BUILD_TARGET"; then
   Run 'rustc --print target-list' to see valid Rust targets.])
   else
     CARGO_BUILD_TARGET=""
+    dnl Windows: R is built with Rtools' MinGW toolchain, so the Rust staticlib
+    dnl must be a *-pc-windows-gnu one. Without a pin cargo builds for rustup's
+    dnl default host, usually *-pc-windows-msvc, which the MinGW link cannot use.
+    case "$host_os" in
+      *msys*|*cygwin*|*mingw*)
+        case "$host_cpu" in
+          aarch64*)       CARGO_BUILD_TARGET="aarch64-pc-windows-gnu" ;;
+          x86_64*|amd64*) CARGO_BUILD_TARGET="x86_64-pc-windows-gnu" ;;
+        esac
+        AS_IF([test -n "$CARGO_BUILD_TARGET"],
+          [AC_MSG_NOTICE([CARGO_BUILD_TARGET not set; using $CARGO_BUILD_TARGET for the MinGW toolchain (needs: rustup target add $CARGO_BUILD_TARGET)])])
+        ;;
+    esac
   fi
 fi
 AC_SUBST([CARGO_BUILD_TARGET])
@@ -498,7 +511,7 @@ dnl via 'MACOSX_DEPLOYMENT_TARGET=12.0 R CMD INSTALL .' etc.
 dnl
 dnl Per-platform derivations:
 dnl   macOS   : MACOSX_DEPLOYMENT_TARGET (4-step fallback: env → R config → otool → arch default).
-dnl   Windows : CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER (and aarch64) from rtools gcc when detected.
+dnl   Windows : a '@<:@target.<triple>@:>@ linker = ...' table for rtools gcc when detected (not an '@<:@env@:>@' entry).
 dnl   Linux   : conservative — only AR_<target>/RANLIB_<target> overrides if R's are non-default.
 dnl   All     : CARGO_NET_GIT_FETCH_WITH_CLI = "true" (works around in-tree rustls/CA issues).
 dnl
@@ -797,16 +810,6 @@ AC_CONFIG_COMMANDS([cargo-config],
     if test -n "$CARGO_ENV_MACOS_DEPLOY_TARGET"; then
       echo "MACOSX_DEPLOYMENT_TARGET = \"$CARGO_ENV_MACOS_DEPLOY_TARGET\""
     fi
-    if test -n "$CARGO_ENV_WIN_LINKER"; then
-      case "$CARGO_ENV_RUST_TARGET_UPPER" in
-        *AARCH64*WINDOWS*)
-          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
-          ;;
-        *)
-          echo "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER = \"$CARGO_ENV_WIN_LINKER\""
-          ;;
-      esac
-    fi
     echo "CARGO_NET_GIT_FETCH_WITH_CLI = \"$CARGO_NET_GIT_FETCH_WITH_CLI\""
     if test -n "$CARGO_ENV_R_AR" && test "$CARGO_ENV_R_AR" != "ar"; then
       echo "AR_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_R_AR\""
@@ -825,6 +828,19 @@ AC_CONFIG_COMMANDS([cargo-config],
       echo "CXXFLAGS_$CARGO_ENV_RUST_TARGET = \"$CARGO_ENV_ABI_CXXFLAGS\""
     fi
     echo ""
+    dnl Windows: pin cargo's linker to Rtools' gcc. This is a '@<:@target.*@:>@'
+    dnl table, not an '@<:@env@:>@' entry: cargo reads CARGO_TARGET_<triple>_LINKER
+    dnl from its own process environment, and '@<:@env@:>@' only reaches the
+    dnl processes cargo spawns (build scripts, rustc).
+    if test -n "$CARGO_ENV_WIN_LINKER"; then
+      case "$CARGO_ENV_RUST_TARGET" in
+        *-pc-windows-gnu*)
+          echo "@<:@target.$CARGO_ENV_RUST_TARGET@:>@"
+          echo "linker = \"$CARGO_ENV_WIN_LINKER\""
+          echo ""
+          ;;
+      esac
+    fi
   }
 
   if test "$IS_TARBALL_INSTALL" = "true"; then

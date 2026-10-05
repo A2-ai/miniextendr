@@ -98,13 +98,18 @@ $(CARGO_LINK_CONFIG): FORCE_CARGO $(CARGO_AR)
 # symbols from C shim files (bindgen-generated static inline wrappers).
 #
 # Note: configure.ac emits an [env] block in src/rust/.cargo/config.toml with
-# platform-derived MACOSX_DEPLOYMENT_TARGET (macOS), CARGO_TARGET_*_LINKER
-# (Windows rtools), and AR_<target> overrides. Cargo inherits these on every
-# invocation below; they ensure the Rust staticlib's ABI matches R's build.
-# To override, set the variable in your shell — shell env wins over [env].
+# platform-derived MACOSX_DEPLOYMENT_TARGET (macOS) and AR_<target> overrides,
+# plus a [target.<triple>] linker entry on Windows (rtools gcc). Cargo inherits
+# these on every invocation below; they ensure the Rust staticlib's ABI matches
+# R's build. To override, set the variable in your shell — shell env wins over [env].
 # See `bash ./configure` output for the values actually emitted.
+#
+# CARGO_PRE: shell snippet run before cargo (a no-op here; Makevars.win uses it
+# to stage the libgcc stubs rustc's windows-gnu link asks for).
+CARGO_PRE = :
 $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 	@set -e; \
+	$(CARGO_PRE); \
 	TARGET_OPT=""; \
 	LINK_ARGS=""; \
 	for obj in $(OBJECTS); do LINK_ARGS="$$LINK_ARGS -C link-arg=$(ABS_RPKG_SRCDIR)/$$obj"; done; \
