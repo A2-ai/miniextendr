@@ -69,7 +69,6 @@ pub const EMBEDDED: &[(&str, &str)] = &[
     tpl!("templates/rpkg/package.R"),
     tpl!("templates/rpkg/r_shim.h"),
     tpl!("templates/rpkg/stub.c"),
-    tpl!("templates/rpkg/tools/bump-version.R"),
     tpl!("templates/rpkg/tools/detect-features.R"),
     tpl!("templates/rpkg/tools/build-html-reference.R"),
     tpl!("templates/rpkg/tools/lock-shape-check.R"),
