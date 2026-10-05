@@ -26,7 +26,10 @@
 #' manifest).
 #'
 #' @param path Path to the R package root, or `"."` to use the current
-#'   directory.
+#'   directory. From a monorepo workspace root (no `DESCRIPTION`, one
+#'   immediate subdirectory holding a miniextendr package) the package
+#'   subdirectory is used; any other directory that is not an R package is an
+#'   error naming the directory to pass.
 #' @return Invisibly returns `TRUE` if a leaked tarball was removed or the
 #'   manifest was restored from its snapshot, `FALSE` if there was nothing to
 #'   clean.
@@ -34,7 +37,7 @@
 #'   [miniextendr_doctor()] to detect this and other configuration issues.
 #' @export
 miniextendr_clean_vendor_leak <- function(path = ".") {
-  with_project(path)
+  with_project(resolve_package_dir(path, "leak-check"))
   root <- usethis::proj_get()
   restored <- restore_prefreeze_manifest(root)
   frozen <- frozen_manifest_entries(root)
@@ -167,4 +170,48 @@ report_frozen_manifest <- function(entries, snapshot = FALSE) {
     cli::cli_alert_info("Removing the tarball does not restore these source paths, and no pre-freeze snapshot ({.path src/rust/.Cargo.toml.prefreeze}) is present. Restore the original dependency paths and patch entries from before freezing (review {.code git diff -- src/rust/Cargo.toml} when tracked), then run {.code miniextendr_configure()}.")
   }
   invisible(entries)
+}
+
+#' Resolve the R package directory a package-level helper operates on
+#'
+#' `path` is returned as is when it holds a `DESCRIPTION`. A monorepo
+#' workspace root has none: the miniextendr package subdirectory found by
+#' `find_rpkg_subdir()` is used instead, as `upgrade_miniextendr_package()`
+#' does. Anything else aborts, so a directory that is not an R package is never
+#' reported as clean.
+#'
+#' @param path Path passed by the caller; `NULL` and `"."` mean the active
+#'   project, as in `with_project()`.
+#' @param action Short verb phrase for the monorepo message.
+#' @return Absolute path to the R package directory.
+#' @keywords internal
+resolve_package_dir <- function(path, action) {
+  if (is.null(path) || identical(path, ".")) {
+    path <- tryCatch(usethis::proj_get(), error = function(e) ".")
+  }
+  path <- normalizePath(path, mustWork = FALSE)
+  if (file.exists(file.path(path, "DESCRIPTION"))) return(path)
+
+  subdir <- if (dir.exists(path)) find_rpkg_subdir(path)
+  if (!is.null(subdir)) {
+    cli::cli_alert_info(
+      "Monorepo layout detected -- checking rpkg subdir {.path {subdir}} ({action})"
+    )
+    return(file.path(path, subdir))
+  }
+
+  candidates <- if (dir.exists(path)) {
+    dirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
+    dirs[file.exists(file.path(path, dirs, "DESCRIPTION"))]
+  } else {
+    character()
+  }
+  example <- sprintf(
+    "miniextendr_clean_vendor_leak(\"%s\")",
+    if (length(candidates) == 1L) candidates else "<package directory>"
+  )
+  cli::cli_abort(c(
+    "{.path {path}} has no {.file DESCRIPTION}, so it is not an R package.",
+    "i" = "Pass the package directory, e.g. {.code {example}}."
+  ))
 }

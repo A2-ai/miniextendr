@@ -8,7 +8,10 @@ miniextendr_clean_vendor_leak(path = ".")
 }
 \arguments{
 \item{path}{Path to the R package root, or \code{"."} to use the current
-directory.}
+directory. From a monorepo workspace root (no \code{DESCRIPTION}, one
+immediate subdirectory holding a miniextendr package) the package
+subdirectory is used; any other directory that is not an R package is an
+error naming the directory to pass.}
 }
 \value{
 Invisibly returns \code{TRUE} if a leaked tarball was removed or the

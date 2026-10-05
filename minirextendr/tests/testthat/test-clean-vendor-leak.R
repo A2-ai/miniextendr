@@ -143,3 +143,66 @@ test_that("the frozen-manifest report points at the snapshot when one exists", {
   expect_no_match(report(TRUE), "no\\s+pre-freeze\\s+snapshot")
   expect_match(report(FALSE), "no\\s+pre-freeze\\s+snapshot")
 })
+
+# region: monorepo workspace root (#1786)
+
+make_monorepo_leak <- function() {
+  ws <- tempfile("leak-ws-")
+  pkg <- file.path(ws, "rpkg")
+  dir.create(file.path(pkg, "inst"), recursive = TRUE)
+  dir.create(file.path(pkg, "src", "rust"), recursive = TRUE)
+  writeLines("[workspace]\nmembers = [\"core\"]", file.path(ws, "Cargo.toml"))
+  writeLines("Package: demo\nVersion: 0.0.0.9000", file.path(pkg, "DESCRIPTION"))
+  writeLines("CARGO_FEATURES=\"\"", file.path(pkg, "configure.ac"))
+  writeLines("fake", file.path(pkg, "inst", "vendor.tar.xz"))
+  writeLines(
+    c("[dependencies]", "core = { path = \"../../../core\" }"),
+    file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze")
+  )
+  writeLines(
+    c("[dependencies]", "core = { version = \"*\" }", "",
+      "[patch.crates-io]", "core = { path = \"../../vendor/core\" }"),
+    file.path(pkg, "src", "rust", "Cargo.toml")
+  )
+  ws
+}
+
+test_that("miniextendr_clean_vendor_leak cleans the package subdirectory from a monorepo root", {
+  ws <- make_monorepo_leak()
+  on.exit(unlink(ws, recursive = TRUE), add = TRUE)
+  pkg <- file.path(ws, "rpkg")
+
+  msgs <- capture_messages(result <- miniextendr_clean_vendor_leak(ws))
+
+  expect_true(result)
+  expect_true(any(grepl("Monorepo layout detected", msgs)))
+  expect_false(file.exists(file.path(pkg, "inst", "vendor.tar.xz")))
+  expect_false(file.exists(file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze")))
+  expect_true(any(grepl("../../../core", readLines(file.path(pkg, "src", "rust", "Cargo.toml")), fixed = TRUE)))
+})
+
+test_that("miniextendr_doctor reports the leak of the package subdirectory from a monorepo root", {
+  ws <- make_monorepo_leak()
+  on.exit(unlink(ws, recursive = TRUE), add = TRUE)
+
+  msgs <- capture_messages(result <- miniextendr_doctor(ws))
+
+  expect_true(any(grepl("Monorepo layout detected", msgs)))
+  expect_false(any(grepl("No vendor tarball leak", result$pass, fixed = TRUE)))
+})
+
+test_that("monorepo helpers abort for a directory that is not an R package", {
+  empty <- tempfile("not-a-package-")
+  dir.create(empty)
+  on.exit(unlink(empty, recursive = TRUE), add = TRUE)
+
+  expect_error(miniextendr_clean_vendor_leak(empty), "not an R package")
+  expect_error(miniextendr_doctor(empty), "not an R package")
+
+  # A directory with exactly one package subdirectory names that directory.
+  dir.create(file.path(empty, "pkgdir"))
+  writeLines("Package: x", file.path(empty, "pkgdir", "DESCRIPTION"))
+  expect_error(miniextendr_clean_vendor_leak(empty), "pkgdir")
+})
+
+# endregion
