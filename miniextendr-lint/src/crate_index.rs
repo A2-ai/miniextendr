@@ -12,6 +12,8 @@ use syn::ext::IdentExt;
 use syn::spanned::Spanned;
 
 use crate::crate_root::CrateRoot;
+use crate::description::{self, Description};
+use crate::doc_links::{self, PkgLink};
 use crate::helpers::{
     extract_cfg_attrs, extract_path_attr, extract_roxygen_tags, has_derive, has_miniextendr_attr,
     impl_type_name, is_altrep_struct, parse_miniextendr_impl_attrs,
@@ -214,6 +216,10 @@ pub struct FileData {
     /// `_unchecked` forms): (function_name, line_number). (MXL304)
     pub nonapi_attrib_calls: Vec<(String, usize)>,
 
+    /// `pkg::topic` links in the roxygen-bound doc text of `#[miniextendr]`
+    /// items. (MXL204)
+    pub doc_pkg_links: Vec<PkgLink>,
+
     // R reserved-word parameter names
     /// Maps fn/method name → list of (param_name, line) for params that are R reserved words.
     /// Key for free functions is the function name; for impl methods it is `"TypeName::method_name"`.
@@ -229,6 +235,12 @@ pub struct CrateIndex {
     pub files: Vec<PathBuf>,
     /// Per-file parsed data.
     pub file_data: HashMap<PathBuf, FileData>,
+    /// The R package's `DESCRIPTION`, when the crate sits at `<pkg>/src/rust`
+    /// of one ([`description::locate`]).
+    pub description: Option<Description>,
+    /// `roxygen_prose_links = "keep"` in `[package.metadata.miniextendr]`:
+    /// leading prose then reaches roxygen2 with its links.
+    pub prose_links_keep: bool,
 }
 
 /// Why [`CrateIndex::build`] failed, with the source files it had found.
@@ -289,6 +301,8 @@ impl CrateIndex {
         Ok(Self {
             files: rs_files,
             file_data,
+            description: description::read(manifest_dir),
+            prose_links_keep: crate::crate_root::prose_links_keep(manifest_dir),
         })
     }
 }
@@ -561,9 +575,34 @@ fn extract_param_names(sig: &syn::Signature) -> Vec<(String, usize)> {
     params
 }
 
+/// Record the `pkg::topic` links in the docs of a `#[miniextendr]` item and,
+/// for an impl block, of its methods.
+fn collect_doc_pkg_links(item: &Item, data: &mut FileData) {
+    let attrs: &[syn::Attribute] = match item {
+        Item::Fn(i) => &i.attrs,
+        Item::Impl(i) => &i.attrs,
+        Item::Struct(i) => &i.attrs,
+        Item::Enum(i) => &i.attrs,
+        _ => return,
+    };
+    if !has_miniextendr_attr(attrs) {
+        return;
+    }
+    data.doc_pkg_links.extend(doc_links::pkg_links(attrs));
+    if let Item::Impl(item_impl) = item {
+        for impl_item in &item_impl.items {
+            if let syn::ImplItem::Fn(method) = impl_item {
+                data.doc_pkg_links
+                    .extend(doc_links::pkg_links(&method.attrs));
+            }
+        }
+    }
+}
+
 /// Recursively collect all lint-relevant information from parsed items.
 fn collect_items_recursive(items: &[Item], data: &mut FileData) {
     for item in items {
+        collect_doc_pkg_links(item, data);
         match item {
             Item::Fn(item_fn) if has_miniextendr_attr(&item_fn.attrs) => {
                 let line = item_fn.sig.ident.span().start().line;

@@ -956,6 +956,17 @@ fn inline_rustdoc_links_keep_their_text_under_each_scope() {
         ("[c](a::b::c)", "c"),
         ("café [`Foo`](crate::Foo) — déjà", "café `Foo` — déjà"),
         ("[a](crate::x) and [b](Self::y())", "a and b"),
+        // The root may be an R package name: roxygen2 never reads the inline
+        // form as an R link (#1756).
+        ("[`Serialize`](serde::Serialize)", "`Serialize`"),
+        ("[t](Type::method)", "t"),
+        ("[t](dplyr::bind_rows)", "t"),
+        ("[t](super::glue())", "t"),
+        // A rustdoc disambiguator prefix.
+        ("[text](fn@crate::x)", "text"),
+        ("[t](struct@serde::Serialize)", "t"),
+        ("[t](macro@crate::mac)", "t"),
+        ("[t](prim@std::f64)", "t"),
     ] {
         assert_eq!(under_each_scope(written), [text, text], "{written:?}");
     }
@@ -972,9 +983,8 @@ fn inline_links_to_urls_or_r_paths_stay() {
         "[text](crate:x)",
         "[text](crate:::x)",
         "[text](Foo)",
-        "[text](Type::method)",
-        "[text](dplyr::bind_rows)",
-        "[text](super::glue())",
+        "[text](fn@Foo)",
+        "[text](bogus@crate::x)",
         "[text](crate::f(x))",
         "[text](crate::x \"title\")",
         "[text](<crate::x>)",
@@ -1015,7 +1025,7 @@ fn inline_rustdoc_links_leave_the_scanner_on_track() {
 fn inline_rustdoc_links_lose_their_link_in_prose_and_tags_under_either_setting() {
     let attrs = make_doc_attrs_plain(&[
         "See [`Foo`](crate::Foo) and [the docs](https://example.com).",
-        "@description Built by [new](Self::new), see [stats](stats::median).",
+        "@description Built by [new](Self::new), see [stats](stats::median), [web](fn@crate::x), [rel](Foo).",
         "@seealso [t](my_crate::x), [`bind_rows`](dplyr::bind_rows)",
         "@examples",
         "x[1](crate::x)",
@@ -1024,8 +1034,8 @@ fn inline_rustdoc_links_lose_their_link_in_prose_and_tags_under_either_setting()
         assert_eq!(
             roxygen_tags_with(&attrs, links),
             vec![
-                "@description Built by new, see [stats](stats::median).".to_string(),
-                "@seealso t, [`bind_rows`](dplyr::bind_rows)".to_string(),
+                "@description Built by new, see stats, web, [rel](Foo).".to_string(),
+                "@seealso t, `bind_rows`".to_string(),
                 "@examples\nx[1](crate::x)".to_string(),
             ]
         );

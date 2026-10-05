@@ -2155,3 +2155,119 @@ fn raw_identifier_modules_drop_the_prefix() {
 }
 
 // endregion
+
+// region: MXL204 — doc links into undeclared R packages
+
+/// An R package at `<tmp>/pkg` with its crate at `src/rust`; returns the crate
+/// directory and keeps the tempdir alive.
+fn r_package(
+    description: Option<&str>,
+    cargo_toml: &str,
+    lib_rs: &str,
+) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let crate_dir = dir.path().join("pkg/src/rust");
+    fs::create_dir_all(&crate_dir).unwrap();
+    if let Some(text) = description {
+        fs::write(dir.path().join("pkg/DESCRIPTION"), text).unwrap();
+    }
+    fs::write(crate_dir.join("Cargo.toml"), cargo_toml).unwrap();
+    fs::write(crate_dir.join("lib.rs"), lib_rs).unwrap();
+    (dir, crate_dir)
+}
+
+const DESCRIPTION: &str = "Package: mypkg\nImports: cli (>= 3.0),\n    rlang\nSuggests: testthat\n";
+
+fn mxl204_links(report: &miniextendr_lint::LintReport) -> Vec<&str> {
+    report
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == miniextendr_lint::LintCode::MXL204)
+        .map(|d| d.message.as_str())
+        .collect()
+}
+
+#[test]
+fn mxl204_undeclared_package_warns() {
+    let (_dir, crate_dir) = r_package(
+        Some(DESCRIPTION),
+        "[package]\nname = \"x\"\n",
+        r#"
+/// @details See [`Sources::prepare`] and [text][dplyr::bind_rows].
+#[miniextendr]
+pub fn f() {}
+"#,
+    );
+    let report = run(&crate_dir).unwrap();
+    let found = mxl204_links(&report);
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert!(found[0].contains("`Sources`") && found[1].contains("`dplyr`"));
+    let help = report.diagnostics[0].help.as_deref().unwrap();
+    assert!(help.contains("[text][crate::path]"));
+    assert!(report.errors.is_empty(), "a warning, not an error");
+}
+
+#[test]
+fn mxl204_declared_base_and_own_packages_are_silent() {
+    let (_dir, crate_dir) = r_package(
+        Some(DESCRIPTION),
+        "[package]\nname = \"x\"\n",
+        r#"
+/// @details [cli::cli_abort], [rlang::abort()], [testthat::expect_true],
+/// [stats::median], [MASS::mvrnorm], [mypkg::f], [crate::x], [Self::y],
+/// [`a::b::c`]
+#[miniextendr]
+pub fn f() {}
+"#,
+    );
+    let report = run(&crate_dir).unwrap();
+    assert!(mxl204_links(&report).is_empty(), "{:?}", report.diagnostics);
+}
+
+#[test]
+fn mxl204_leading_prose_counts_only_under_keep() {
+    let lib = r#"
+/// See [`Sources::prepare`].
+#[miniextendr]
+pub fn f() {}
+"#;
+    let (_dir, crate_dir) = r_package(Some(DESCRIPTION), "[package]\nname = \"x\"\n", lib);
+    assert!(mxl204_links(&run(&crate_dir).unwrap()).is_empty());
+
+    let (_dir, crate_dir) = r_package(
+        Some(DESCRIPTION),
+        "[package]\nname = \"x\"\n[package.metadata.miniextendr]\nroxygen_prose_links = \"keep\"\n",
+        lib,
+    );
+    assert_eq!(mxl204_links(&run(&crate_dir).unwrap()).len(), 1);
+}
+
+#[test]
+fn mxl204_skips_without_a_description() {
+    let (_dir, crate_dir) = r_package(
+        None,
+        "[package]\nname = \"x\"\n",
+        r#"
+/// @details [`Sources::prepare`]
+#[miniextendr]
+pub fn f() {}
+"#,
+    );
+    assert!(mxl204_links(&run(&crate_dir).unwrap()).is_empty());
+}
+
+#[test]
+fn mxl204_description_is_watched_when_present() {
+    let (_dir, crate_dir) = r_package(Some(DESCRIPTION), "[package]\nname = \"x\"\n", "");
+    let watched = build_directives(&crate_dir)
+        .into_iter()
+        .any(|d| d.starts_with("cargo::rerun-if-changed=") && d.ends_with("DESCRIPTION"));
+    assert!(watched);
+    let (_dir, crate_dir) = r_package(None, "[package]\nname = \"x\"\n", "");
+    let watched = build_directives(&crate_dir)
+        .into_iter()
+        .any(|d| d.ends_with("DESCRIPTION"));
+    assert!(!watched);
+}
+
+// endregion

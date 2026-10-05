@@ -4,6 +4,7 @@
 //! on the shared [`CrateIndex`] and produce
 //! [`Diagnostic`] values.
 
+pub mod doc_pkg_links;
 pub mod export_attrs;
 pub mod ffi_unchecked;
 pub mod fn_visibility;
@@ -31,6 +32,9 @@ pub fn run_all_rules(index: &CrateIndex) -> Vec<Diagnostic> {
 
     // Per-file: export attr redundancy (MXL203)
     export_attrs::check(index, &mut diagnostics);
+
+    // Per-file: doc links into undeclared R packages (MXL204)
+    doc_pkg_links::check(index, &mut diagnostics);
 
     // Per-file: R reserved words as parameter names (MXL110)
     r_reserved_params::check(index, &mut diagnostics);

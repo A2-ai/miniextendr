@@ -83,6 +83,44 @@ impl fmt::Display for RootOrigin {
     }
 }
 
+/// Whether the crate sets `roxygen_prose_links = "keep"` under
+/// `[package.metadata.miniextendr]`: leading doc prose then keeps its links on
+/// the way to roxygen2. Same line scanner as [`lib_path_from_manifest`]; a
+/// missing, unreadable or malformed value reads as the default (`"strip"`).
+pub(crate) fn prose_links_keep(manifest_dir: &Path) -> bool {
+    const KEY: &str = "package.metadata.miniextendr.roxygen_prose_links";
+    let Ok(text) = fs::read_to_string(manifest_dir.join("Cargo.toml")) else {
+        return false;
+    };
+    let mut table = String::new();
+    for raw_line in text.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(header) = line.strip_prefix('[') {
+            let header = header.strip_prefix('[').unwrap_or(header);
+            if let Some(end) = header.find(']') {
+                table = normalize_key(&header[..end]);
+            }
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = normalize_key(key);
+        let full = if table.is_empty() {
+            key
+        } else {
+            format!("{table}.{key}")
+        };
+        if full == KEY {
+            return parse_string_value(value.trim()).is_some_and(|v| v == "keep");
+        }
+    }
+    false
+}
+
 /// `manifest_dir.join(path)` without `.` components, so `path = "./lib.rs"`
 /// names the same file as `path = "lib.rs"`.
 fn normalize(path: &Path) -> PathBuf {

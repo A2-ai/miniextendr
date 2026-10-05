@@ -979,15 +979,17 @@ fn sanitize_roxygen_links(s: &str, links: Neutralize) -> String {
 
 /// The end (past its `)`) of the destination of an inline link `[text](dest)`
 /// starting at byte `start` (just past the `(`), when that destination was
-/// written for rustdoc: a Rust path ([`is_rust_path`]) that is rustdoc-only
-/// ([`is_rustdoc_only_target`]), such as `crate::x` or `Self::new()`.
+/// written for rustdoc: a Rust path ([`is_rust_path`]) containing `::`, with
+/// an optional disambiguator prefix ([`strip_rustdoc_disambiguator`]), such as
+/// `crate::x`, `serde::Serialize` or `fn@Self::new`.
 ///
 /// rustdoc reads `[text](crate::x)` as an intra-doc link; roxygen2 reads it as
 /// a web link and renders `\href{crate::x}{text}`, a dead link, without a
-/// warning (#1744). `None` for an unclosed destination, one that spans
-/// whitespace, any URL (`https://a.b/c::d`, `./x.html`), and a path that is
-/// not rustdoc-only: `Foo`, which a relative URL may spell, or `Type::method`
-/// and `dplyr::bind_rows`, whose root may be an R package.
+/// warning (#1744). roxygen2 never reads the inline form as an R link, so the
+/// root of the path does not matter (`dplyr::bind_rows` is as dead as
+/// `crate::x`, #1756). `None` for an unclosed destination, one that spans
+/// whitespace, any URL (`https://a.b/c::d`, `./x.html`), and a path without
+/// `::`: `Foo`, which a relative URL may spell.
 fn inline_rustdoc_destination(s: &str, start: usize) -> Option<usize> {
     // The matching `)`: a destination may hold balanced parentheses, as the
     // `()` of `crate::f()` does.
@@ -1005,14 +1007,51 @@ fn inline_rustdoc_destination(s: &str, start: usize) -> Option<usize> {
         return None;
     }
     let dest = &s[start..close];
-    (is_rust_path(dest) && is_rustdoc_only_target(dest)).then_some(close + 1)
+    let path = strip_rustdoc_disambiguator(dest);
+    (is_rust_path(path) && path.contains("::")).then_some(close + 1)
+}
+
+/// `dest` without a rustdoc disambiguator prefix (`fn@crate::x` -> `crate::x`).
+/// rustdoc's prefixes are the item kinds below; any other `word@rest` is left
+/// whole and so fails [`is_rust_path`].
+fn strip_rustdoc_disambiguator(dest: &str) -> &str {
+    const KINDS: &[&str] = &[
+        "struct",
+        "enum",
+        "trait",
+        "union",
+        "mod",
+        "module",
+        "const",
+        "constant",
+        "static",
+        "function",
+        "fn",
+        "method",
+        "derive",
+        "type",
+        "tyalias",
+        "typealias",
+        "macro",
+        "prim",
+        "primitive",
+        "field",
+        "variant",
+        "value",
+        "namespace",
+        "attr",
+    ];
+    match dest.split_once('@') {
+        Some((kind, rest)) if KINDS.contains(&kind) => rest,
+        _ => dest,
+    }
 }
 
 /// Whether `dest` is a Rust path as an inline link destination writes it:
 /// identifiers joined by `::`, with an optional `()` or `!` suffix. A URL with
 /// a `/`, `.`, `#`, `?` or lone `:` never is one, even with a `::` in it
 /// (`https://a.b/c::d`). A bare `Foo` can be either, so the caller also asks
-/// for a rustdoc-only target.
+/// for a `::`.
 fn is_rust_path(dest: &str) -> bool {
     let path = dest
         .strip_suffix("()")
