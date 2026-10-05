@@ -7,7 +7,7 @@
  * R CMD check --as-cran flags any non-portable "warning suppressor" flag
  * in PKG_CFLAGS, producing a CI-blocking WARNING for downstream packages
  * that don't pin error-on='"error"'. Scoped pragma keeps the flag out of
- * PKG_CFLAGS — see issue #443.
+ * PKG_CFLAGS — see issue A2-ai/miniextendr#443.
  *
  * Use this header *instead of* including <Rinternals.h> directly in
  * package C sources.
