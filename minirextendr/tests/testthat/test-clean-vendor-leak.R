@@ -146,36 +146,56 @@ test_that("the frozen-manifest report points at the snapshot when one exists", {
 
 # region: monorepo workspace root (#1786)
 
-make_monorepo_leak <- function() {
+# A workspace root (Cargo.toml, a git repository as in a developer checkout)
+# whose package subdirectories each carry a leak: the archive, a frozen
+# manifest and its pre-freeze snapshot. `marker` controls the configure.ac
+# CARGO_FEATURES marker that rpkg_subdir_candidates() keys on.
+make_monorepo_leak <- function(pkgs = "rpkg", marker = TRUE) {
   ws <- tempfile("leak-ws-")
-  pkg <- file.path(ws, "rpkg")
-  dir.create(file.path(pkg, "inst"), recursive = TRUE)
-  dir.create(file.path(pkg, "src", "rust"), recursive = TRUE)
+  dir.create(ws)
   writeLines("[workspace]\nmembers = [\"core\"]", file.path(ws, "Cargo.toml"))
-  writeLines("Package: demo\nVersion: 0.0.0.9000", file.path(pkg, "DESCRIPTION"))
-  writeLines("CARGO_FEATURES=\"\"", file.path(pkg, "configure.ac"))
-  writeLines("fake", file.path(pkg, "inst", "vendor.tar.xz"))
-  writeLines(
-    c("[dependencies]", "core = { path = \"../../../core\" }"),
-    file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze")
-  )
-  writeLines(
-    c("[dependencies]", "core = { version = \"*\" }", "",
-      "[patch.crates-io]", "core = { path = \"../../vendor/core\" }"),
-    file.path(pkg, "src", "rust", "Cargo.toml")
-  )
+  if (nzchar(Sys.which("git"))) {
+    suppressWarnings(system2(
+      "git", c("-C", shQuote(ws), "init", "--quiet"), stdout = TRUE, stderr = TRUE
+    ))
+  } else {
+    dir.create(file.path(ws, ".git"))
+  }
+  for (name in pkgs) {
+    pkg <- file.path(ws, name)
+    dir.create(file.path(pkg, "inst"), recursive = TRUE)
+    dir.create(file.path(pkg, "src", "rust"), recursive = TRUE)
+    writeLines("Package: demo\nVersion: 0.0.0.9000", file.path(pkg, "DESCRIPTION"))
+    if (marker) writeLines("CARGO_FEATURES=\"\"", file.path(pkg, "configure.ac"))
+    writeLines("fake", file.path(pkg, "inst", "vendor.tar.xz"))
+    writeLines(
+      c("[dependencies]", "core = { path = \"../../../core\" }"),
+      file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze")
+    )
+    writeLines(
+      c("[dependencies]", "core = { version = \"*\" }", "",
+        "[patch.crates-io]", "core = { path = \"../../vendor/core\" }"),
+      file.path(pkg, "src", "rust", "Cargo.toml")
+    )
+  }
   ws
 }
+
+# cli wraps messages at the console width; compare them as one line.
+one_line <- function(x) gsub("\\s+", " ", paste(x, collapse = " "))
 
 test_that("miniextendr_clean_vendor_leak cleans the package subdirectory from a monorepo root", {
   ws <- make_monorepo_leak()
   on.exit(unlink(ws, recursive = TRUE), add = TRUE)
-  pkg <- file.path(ws, "rpkg")
+  pkg <- normalizePath(file.path(ws, "rpkg"))
 
   msgs <- capture_messages(result <- miniextendr_clean_vendor_leak(ws))
 
   expect_true(result)
-  expect_true(any(grepl("Monorepo layout detected", msgs)))
+  # The message names the caller and the resolved package directory in full.
+  expect_match(one_line(msgs), "Monorepo layout detected", fixed = TRUE)
+  expect_match(one_line(msgs), "miniextendr_clean_vendor_leak()", fixed = TRUE)
+  expect_match(one_line(msgs), pkg, fixed = TRUE)
   expect_false(file.exists(file.path(pkg, "inst", "vendor.tar.xz")))
   expect_false(file.exists(file.path(pkg, "src", "rust", ".Cargo.toml.prefreeze")))
   expect_true(any(grepl("../../../core", readLines(file.path(pkg, "src", "rust", "Cargo.toml")), fixed = TRUE)))
@@ -184,25 +204,80 @@ test_that("miniextendr_clean_vendor_leak cleans the package subdirectory from a 
 test_that("miniextendr_doctor reports the leak of the package subdirectory from a monorepo root", {
   ws <- make_monorepo_leak()
   on.exit(unlink(ws, recursive = TRUE), add = TRUE)
+  pkg <- normalizePath(file.path(ws, "rpkg"))
 
   msgs <- capture_messages(result <- miniextendr_doctor(ws))
 
-  expect_true(any(grepl("Monorepo layout detected", msgs)))
-  expect_false(any(grepl("No vendor tarball leak", result$pass, fixed = TRUE)))
+  expect_match(one_line(msgs), "miniextendr_doctor()", fixed = TRUE)
+  expect_match(one_line(msgs), pkg, fixed = TRUE)
+  # Under a .git ancestor the archive is a failure, as in a developer checkout,
+  # and the frozen manifest is reported next to it.
+  expect_true("stale inst/vendor.tar.xz in source tree" %in% result$fail)
+  expect_true(any(grepl("vendor-bound Cargo.toml", result$warn, fixed = TRUE)))
+  expect_false("No vendor tarball leak" %in% result$pass)
 })
 
-test_that("monorepo helpers abort for a directory that is not an R package", {
+test_that("the abort for a directory that is not an R package names the caller and the full path", {
   empty <- tempfile("not-a-package-")
   dir.create(empty)
   on.exit(unlink(empty, recursive = TRUE), add = TRUE)
 
   expect_error(miniextendr_clean_vendor_leak(empty), "not an R package")
-  expect_error(miniextendr_doctor(empty), "not an R package")
+  err <- expect_error(miniextendr_doctor(empty), "not an R package")
+  # The example names the function that was called, not a fixed one.
+  expect_match(one_line(conditionMessage(err)), 'miniextendr_doctor("', fixed = TRUE)
+  expect_no_match(conditionMessage(err), "miniextendr_clean_vendor_leak")
 
-  # A directory with exactly one package subdirectory names that directory.
+  # One package subdirectory: the example is its full path, so it pastes from
+  # any working directory.
   dir.create(file.path(empty, "pkgdir"))
   writeLines("Package: x", file.path(empty, "pkgdir", "DESCRIPTION"))
-  expect_error(miniextendr_clean_vendor_leak(empty), "pkgdir")
+  err <- expect_error(miniextendr_clean_vendor_leak(empty), "not an R package")
+  expect_match(
+    one_line(conditionMessage(err)),
+    sprintf('miniextendr_clean_vendor_leak("%s")', normalizePath(file.path(empty, "pkgdir"))),
+    fixed = TRUE
+  )
+})
+
+test_that("two package subdirectories give a hint these helpers can act on", {
+  ws <- make_monorepo_leak(pkgs = c("rpkg", "rpkg2"))
+  on.exit(unlink(ws, recursive = TRUE), add = TRUE)
+
+  err <- expect_error(miniextendr_clean_vendor_leak(ws), "2 miniextendr packages")
+  msg <- one_line(conditionMessage(err))
+  # Neither helper has an `rpkg_subdir` argument; `path` is the way in.
+  expect_no_match(msg, "rpkg_subdir")
+  expect_match(msg, "Pass the package directory as `path`", fixed = TRUE)
+  for (name in c("rpkg", "rpkg2")) {
+    expect_match(
+      msg,
+      sprintf('miniextendr_clean_vendor_leak("%s")', normalizePath(file.path(ws, name))),
+      fixed = TRUE
+    )
+  }
+  # Nothing was cleaned.
+  expect_true(file.exists(file.path(ws, "rpkg", "inst", "vendor.tar.xz")))
+  expect_true(file.exists(file.path(ws, "rpkg2", "inst", "vendor.tar.xz")))
+})
+
+test_that("a package under a Rust workspace is resolved by DESCRIPTION, not the configure.ac marker", {
+  # The #1786 stand-in: a package subdirectory without the marker. Given the
+  # root, the helper names the package; given the package, it cleans it.
+  ws <- make_monorepo_leak(marker = FALSE)
+  on.exit(unlink(ws, recursive = TRUE), add = TRUE)
+  pkg <- normalizePath(file.path(ws, "rpkg"))
+
+  err <- expect_error(miniextendr_clean_vendor_leak(ws), "not an R package")
+  expect_match(
+    one_line(conditionMessage(err)),
+    sprintf('miniextendr_clean_vendor_leak("%s")', pkg),
+    fixed = TRUE
+  )
+
+  capture_messages(result <- miniextendr_clean_vendor_leak(pkg))
+  expect_true(result)
+  expect_false(file.exists(file.path(pkg, "inst", "vendor.tar.xz")))
 })
 
 # endregion

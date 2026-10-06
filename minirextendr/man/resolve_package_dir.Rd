@@ -4,22 +4,32 @@
 \alias{resolve_package_dir}
 \title{Resolve the R package directory a package-level helper operates on}
 \usage{
-resolve_package_dir(path, action)
+resolve_package_dir(path, caller)
 }
 \arguments{
 \item{path}{Path passed by the caller; \code{NULL} and \code{"."} mean the active
 project, as in \code{with_project()}.}
 
-\item{action}{Short verb phrase for the monorepo message.}
+\item{caller}{Name of the exported function whose \code{path} is resolved; the
+messages name it.}
 }
 \value{
 Absolute path to the R package directory.
 }
 \description{
 \code{path} is returned as is when it holds a \code{DESCRIPTION}. A monorepo
-workspace root has none: the miniextendr package subdirectory found by
-\code{find_rpkg_subdir()} is used instead, as \code{upgrade_miniextendr_package()}
-does. Anything else aborts, so a directory that is not an R package is never
-reported as clean.
+workspace root has none: when exactly one immediate subdirectory holds a
+miniextendr package (\code{\link[=rpkg_subdir_candidates]{rpkg_subdir_candidates()}}, the scan
+\code{upgrade_miniextendr_package()} uses), that package is used and a message
+names it in full. Anything else aborts and names the directory to pass, so
+a directory that is not an R package is never reported as clean.
+}
+\details{
+The test is \code{DESCRIPTION}, not the \code{configure.ac} marker \code{upgrade_layout()}
+keys on: the leak helpers must inspect any R package, including one under a
+Rust workspace whose \code{configure.ac} lacks the marker (hand-edited, or not
+yet scaffolded), which \code{upgrade_layout()} takes for a workspace root and
+rejects. The two agree on a standalone package, on a workspace root with
+one marked package, and on that package's own directory.
 }
 \keyword{internal}

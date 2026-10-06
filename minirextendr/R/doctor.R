@@ -61,7 +61,7 @@
 #' @return Invisibly returns a list with `pass`, `warn`, and `fail` entries.
 #' @export
 miniextendr_doctor <- function(path = ".", webr = FALSE) {
-  with_project(resolve_package_dir(path, "doctor"))
+  with_project(resolve_package_dir(path, "miniextendr_doctor"))
   cli::cli_h1("miniextendr doctor")
 
   results <- list(pass = character(), warn = character(), fail = character())
@@ -520,10 +520,14 @@ definition in {.path R/} or the generated wrappers (stale-export drift):"
         "i" = if ("inst/vendor.tar.xz" %in% tracked_tarballs) {
           paste0(
             "It is tracked in git (see below): untrack it first, then run ",
-            "{.code miniextendr_clean_vendor_leak()} to remove it."
+            "{.code miniextendr_clean_vendor_leak()}, which removes it and ",
+            "restores a frozen {.path src/rust/Cargo.toml} from its snapshot."
           )
         } else {
-          "Run {.code miniextendr_clean_vendor_leak()} to remove it."
+          paste0(
+            "Run {.code miniextendr_clean_vendor_leak()}: it removes the archive ",
+            "and restores a frozen {.path src/rust/Cargo.toml} from its snapshot."
+          )
         }
       ))
       results$fail <- c(results$fail, "stale inst/vendor.tar.xz in source tree")
