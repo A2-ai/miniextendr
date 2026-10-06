@@ -152,8 +152,10 @@ pub trait TryFromSexpElement: Sized {
     /// on any input but `NULL`, which stays "not given". It sees the value as
     /// R holds it, attributes and all, before anything is read from it.
     ///
-    /// Return an [`RError`](crate::condition::RError) (with `?` or
-    /// `.into()`) to give the refusal its own classes and fields. As an
+    /// Return an [`RError`](crate::condition::RError), or any
+    /// [`RConditionError`](crate::condition::RConditionError) type, with `?`
+    /// or `.into()` to give the refusal its own classes and fields
+    /// ([`SexpError::Condition`](crate::from_r::SexpError::Condition)). As an
     /// argument error it keeps the wrapper's context: `'<p>' must be
     /// <expected>: <message>`, the classes before the crate's
     /// `conversion_error_class`, `e$param` and `e$rust_type`. A plain

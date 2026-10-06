@@ -891,6 +891,21 @@ Rules:
   The built-in `SexpError` family and `MatchArgError` are reworded as in the
   table above; any other type is rendered with `Display`. The error type
   must implement `RConditionError` or `Display`.
+- **A newtype's refusal.** The `Option` / `Vec` / `Vec<Option>` conversions of
+  a `#[derive(TryFromSexp)]` newtype never call its own `try_from_sexp`, so a
+  refusal written there would not hold for them. A newtype refuses values its
+  inner type accepts with `#[try_from_sexp(validate = path)]`, a check on the
+  R value that every shape runs. It returns an `RError` (or any
+  `RConditionError` type), which becomes `SexpError::Condition`: the
+  `SexpError` arm above then carries its classes and fields, with its message
+  as the reason after the prefix, also from an `Either` arm whose other arm
+  refused the kind of value.
+  See [EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values).
+- **Raising instead of returning.** `rust_error!(class = ...)` inside a
+  `try_from_sexp` raises the function's error: its class and the call as
+  written, but `kind = "error"`, no `e$param` / `e$rust_type`, no crate class
+  and no parameter in the message. Return the error, or refuse in a newtype's
+  check, for an argument error.
 - **Worker and `call = caller`.** The conversion runs on the main thread in
   both cases, so the class, data and `e$param` are the same; `conditionCall(e)`
   follows the function's call attribution.

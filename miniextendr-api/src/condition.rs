@@ -1550,6 +1550,22 @@ impl RConditionError for RError {
     }
 }
 
+/// Any classed error (an [`RError`], a `#[derive(RConditionError)]` type)
+/// converts into a [`SexpError::Condition`](crate::from_r::SexpError::Condition)
+/// with its message, classes, fields and call choice, so a newtype's
+/// [`check_sexp`](crate::TryFromSexpElement::check_sexp) can refuse with it
+/// and a conversion whose error converts into `SexpError` keeps its classes.
+impl<E: RConditionError> From<E> for crate::from_r::SexpError {
+    fn from(e: E) -> Self {
+        crate::from_r::SexpError::Condition(RError {
+            message: e.message(),
+            class: e.class(),
+            data: e.data().unwrap_or_default(),
+            call: e.call(),
+        })
+    }
+}
+
 /// An argument error as a value: the parameter's R name and the message.
 /// [`ArgError::raise`] raises it as the generated wrapper's own argument
 /// error, through [`crate::arg_error!`].

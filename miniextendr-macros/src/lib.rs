@@ -2876,10 +2876,12 @@ pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::T
 /// struct Duration(f64);
 /// ```
 ///
-/// An `RError` refusal keeps its classes and fields on the argument error,
-/// before the crate's `conversion_error_class`, with `e$param` and the message
+/// An `RError` refusal (or one of any `RConditionError` type) keeps its classes
+/// and fields on the argument error, before the crate's
+/// `conversion_error_class`, with `e$param` and the message
 /// `'<p>' must be <expected>: <message>`. With `validate`, the newtype's
-/// scalar error is `SexpError`, so the inner type's error must convert into it.
+/// scalar error is `SexpError`, so the inner type's error must convert into it,
+/// as every built-in conversion error and every `RConditionError` type does.
 /// `validate` is the only key, and the attribute goes on the struct.
 #[proc_macro_derive(TryFromSexp, attributes(try_from_sexp))]
 pub fn derive_try_from_sexp(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

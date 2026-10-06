@@ -29,8 +29,9 @@
 //!
 //! `#[derive(TryFromSexp)]` takes one attribute, on the struct:
 //! `#[try_from_sexp(validate = path::to::check)]`, with `check` a
-//! `fn(SEXP) -> Result<(), E>` and `E: Into<SexpError>` (an `RError` for a
-//! classed refusal). It becomes `TryFromSexpElement::check_sexp`, which the
+//! `fn(SEXP) -> Result<(), E>` and `E: Into<SexpError>` (an `RError` or any
+//! `RConditionError` type for a classed refusal). It becomes
+//! `TryFromSexpElement::check_sexp`, which the
 //! scalar impl and every container run on the R value before the inner type
 //! reads it (#1815). The scalar impl's error is then `SexpError`, so the inner
 //! type's error must convert into it.
@@ -392,8 +393,7 @@ mod tests {
     fn try_from_sexp_derive_rejects_bad_options() {
         let error = |input: syn::DeriveInput| {
             super::derive_try_from_sexp(input)
-                .err()
-                .expect("the options should be refused")
+                .expect_err("the options should be refused")
                 .to_string()
         };
         assert!(

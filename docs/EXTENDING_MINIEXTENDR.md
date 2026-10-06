@@ -203,9 +203,101 @@ A newtype over a type that already converts (`struct UserId(Uuid)`) gets the
 same container shapes from `#[derive(TryFromSexp)]`, each one where the inner
 type's container converts.
 
+### Example: Newtype That Refuses Some Values
+
+The containers of an element type forward: `Option<T>` reads
+`Option<T::Inner>`, `Vec<T>` reads `Vec<T::Inner>` and `Vec<Option<T>>` reads
+`Vec<Option<T::Inner>>`, then each wraps what it read. None of them calls the
+newtype's own `try_from_sexp`, so a check written there would hold for a
+scalar argument and silently not for the containers. A value the inner type
+accepts but the newtype must refuse is refused by a check on the R value,
+`TryFromSexpElement::check_sexp`, which the derive takes as
+`#[try_from_sexp(validate = path)]`:
+
+```rust
+use miniextendr_api::condition::RError;
+use miniextendr_api::{SEXP, SexpExt, TryFromSexp, miniextendr};
+
+/// A number with a unit class drops the unit (`difftime`) or counts from 1970
+/// (`Date`, `POSIXct`).
+fn plain_number(x: SEXP) -> Result<(), RError> {
+    for class in [c"difftime", c"Date", c"POSIXt"] {
+        if x.inherits_class(class) {
+            let class = class.to_str().unwrap();
+            return Err(RError::new(format!("got a {class}; give a plain number"))
+                .class(["pkg_unit_error", "pkg_error"])
+                .data("unit_class", class));
+        }
+    }
+    Ok(())
+}
+
+#[derive(TryFromSexp)]
+#[try_from_sexp(validate = plain_number)]
+pub struct Elapsed(f64);
+
+#[miniextendr]
+pub fn total_time(x: Vec<Elapsed>) -> f64 {
+    x.iter().map(|x| x.0).sum()
+}
+```
+
+The check gets the argument's SEXP before the inner type reads it, attributes
+and all, in every shape:
+
+| Shape | When the check runs |
+|-------|---------------------|
+| `Elapsed` | before the inner conversion |
+| `Option<Elapsed>` | on any input but `NULL`, which stays "not given" |
+| `Vec<Elapsed>`, `Vec<Option<Elapsed>>` | once, on the whole vector, where R keeps its class |
+
+It is a `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. Return an
+`RError`, or any `RConditionError` type such as a `#[derive(RConditionError)]`
+enum, for a refusal with its own classes and fields, or a plain `SexpError`
+(`SexpError::InvalidValue(...)`) for one without. A classed refusal is the
+argument error, with the parameter context around it:
+
+```r
+e <- tryCatch(total_time(Sys.Date()), error = identity)
+conditionMessage(e)  # "invalid 'x' argument: got a Date; give a plain number"
+class(e)             # "pkg_unit_error" "pkg_error" "rust_error" "simpleError" "error" "condition"
+e$param              # "x"
+e$unit_class         # "Date"
+```
+
+The message is `'<p>' must be <expected>: <message>` (`invalid '<p>'
+argument: <message>` when the wrapper has no wording for the type): the check
+sees a value, not the parameter, so the wrapper names it. The refusal's
+classes come before the crate's `conversion_error_class`; `e$param` and
+`e$rust_type` are added, `kind` is `"conversion"`, and the call is the
+wrapper's call as written (`RError::without_call()` has no effect on an
+argument error). Inside an `Either`, the refusal is reported with its classes
+whenever the other arm refused the kind of value: an `Either<Option<Elapsed>,
+DataFrame>` given a `difftime` raises the check's condition.
+
+With `validate`, the newtype's scalar error is `SexpError` (every container's
+already is), so the inner type's error must convert into it, as every built-in
+conversion's does and every `RConditionError` type's does (its classes kept).
+The attribute goes on the struct, and `validate` is its only key.
+
+A hand-written `TryFromSexpElement` gets the same hook by overriding
+`check_sexp`. Its scalar `TryFromSexp` must then call `Self::check_sexp`
+itself, then convert the inner type and wrap it, and do nothing more: no
+container runs it.
+
+**Raising from a conversion.** A `TryFromSexp` impl can also raise a classed
+condition with `rust_error!(class = "...", "...")`. That arrives with its
+class and the wrapper's call as written, but as the function's error, not the
+argument's: `kind = "error"`, no `e$param` or `e$rust_type`, no
+`conversion_error_class`, and no parameter in the message. Inside an `Either`
+arm it ends the conversion, so the other arm is never tried. For a refusal
+that should read as an argument error, return it from a check instead.
+
 ### When to Use Direct Implementation
 
-- Type requires validation (like `Username` above)
+- Type requires validation and converts only as a scalar (like `Username`
+  above; for a newtype that also converts in `Option` / `Vec`, use
+  `#[try_from_sexp(validate = ...)]`)
 - Type stores borrowed data
 - Conversion involves complex transformation
 - Type maps to R list or other complex structure

@@ -186,6 +186,24 @@ The built-in `Uuid`, `Url`, `Regex`, `BigInt` and `BigUint` conversions
 | `Vec<T>` | STRSXP | One batched `InvalidValue`: `NA is not allowed (element 2)` | Batched with the `NA`s, 1-based: `invalid <label>: <err> (elements 3, 5)`, at most 10 listed then `and N more` |
 | `Vec<Option<T>>` | STRSXP | `None` | Batched as for `Vec<T>` |
 
+### Newtypes (`#[derive(TryFromSexp)]`)
+
+A newtype over a type that converts reads as its inner type in each shape
+whose inner container converts: `Option<T>` as `Option<Inner>`, `Vec<T>` as
+`Vec<Inner>`, `Vec<Option<T>>` as `Vec<Option<Inner>>`, with the inner type's
+accepted R types, `NA` policy and errors. The containers never call the
+newtype's own `try_from_sexp`; `#[try_from_sexp(validate = path)]` adds a check
+on the R value that every shape runs, to refuse what the inner type accepts:
+
+| Rust Type | The check runs on | Error type |
+|-----------|-------------------|------------|
+| `T` | the argument, before the inner conversion | the inner type's; `SexpError` with `validate` |
+| `Option<T>` | any argument but `NULL` (`None`) | `SexpError` |
+| `Vec<T>`, `Vec<Option<T>>` | the whole vector, once | `SexpError` |
+
+A check's `RError` refusal keeps its classes and fields on the argument error
+([EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values)).
+
 ---
 
 ## Rust-to-R Conversions (Output: IntoR)

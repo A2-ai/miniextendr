@@ -53,7 +53,10 @@ where
 fn assert_refused<T: std::fmt::Debug>(result: Result<T, SexpError>, class: &str) {
     match result {
         Err(SexpError::Condition(e)) => {
-            assert_eq!(e.message_str(), format!("got a {class}; give a plain number"));
+            assert_eq!(
+                e.message_str(),
+                format!("got a {class}; give a plain number")
+            );
             assert_eq!(e.classes(), ["unit_refused", "test_error"]);
             assert!(
                 matches!(e.fields().as_slice(), [(name, RValue::Character(v))]
@@ -147,17 +150,84 @@ fn vec_option_runs_the_check_once() {
 }
 
 /// The argument-error probe takes the refusal's classes and fields and uses
-/// its message as the reason after the wrapper's prefix.
+/// its message as the reason after the wrapper's prefix; the crate's
+/// `conversion_error_class` follows the refusal's classes, and `e$param` /
+/// `e$rust_type` follow its fields.
 #[test]
 fn argument_error_carries_the_refusal() {
+    use miniextendr_api::condition::conversion_err_parts;
+
     r_test_utils::with_r_thread(|| {
         let (value, _) = convert::<Vec<Elapsed>>(DATES, false);
         let parts = miniextendr_api::__mx_conversion_err_parts!(value.unwrap_err(), true);
         assert_eq!(parts.message, "got a Date; give a plain number");
         assert_eq!(parts.class, ["unit_refused", "test_error"]);
-        let data = parts.data.expect("the refusal's fields");
+        let data = parts.data.as_ref().expect("the refusal's fields");
         assert_eq!(data.len(), 1);
         assert_eq!(data[0].0, "unit_class");
+
+        let parts = conversion_err_parts(
+            "'x' must be numeric",
+            "x",
+            Some("Vec<Elapsed>"),
+            &["pkg_argument", "test_error"],
+            parts,
+            None,
+        );
+        assert_eq!(
+            parts.message,
+            "'x' must be numeric: got a Date; give a plain number"
+        );
+        assert_eq!(parts.class, ["unit_refused", "test_error", "pkg_argument"]);
+        let names: Vec<&str> = parts
+            .data
+            .iter()
+            .flatten()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(names, ["param", "rust_type", "unit_class"]);
+    });
+}
+
+/// A check can refuse with any `RConditionError` type, such as a
+/// `#[derive(RConditionError)]` enum: it converts into
+/// `SexpError::Condition` with its classes and fields.
+#[test]
+fn derived_condition_refusal_keeps_its_classes() {
+    use miniextendr_api::condition::RConditionError;
+
+    #[derive(Debug, RConditionError)]
+    #[condition(class = "test_family")]
+    enum UnitError {
+        #[condition(class = "test_bad_unit", message = "a {unit} is not a level")]
+        BadUnit { unit: String },
+    }
+
+    fn no_factor(x: SEXP) -> Result<(), UnitError> {
+        if x.inherits_class(c"factor") {
+            return Err(UnitError::BadUnit {
+                unit: "factor".to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    #[derive(miniextendr_api::TryFromSexp, Debug)]
+    #[try_from_sexp(validate = no_factor)]
+    struct Level(i32);
+
+    r_test_utils::with_r_thread(|| {
+        let (value, _) = convert::<Vec<Level>>("factor(c('a', 'b'))", false);
+        let parts = miniextendr_api::__mx_conversion_err_parts!(value.unwrap_err(), true);
+        assert_eq!(parts.message, "a factor is not a level");
+        assert_eq!(parts.class, ["test_bad_unit", "test_family"]);
+        let names: Vec<&str> = parts
+            .data
+            .iter()
+            .flatten()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(names, ["unit"]);
     });
 }
 
@@ -191,6 +261,9 @@ fn either_arm_reports_the_refusal() {
         let (value, _) = convert::<Interval>("NULL", false);
         assert!(matches!(value, Ok(Either::Left(None))));
         let (value, _) = convert::<Interval>("3", false);
-        assert!(matches!(value, Ok(Either::Left(Some(Tau(AsNumeric(Some(3.0))))))));
+        assert!(matches!(
+            value,
+            Ok(Either::Left(Some(Tau(AsNumeric(Some(3.0))))))
+        ));
     });
 }
