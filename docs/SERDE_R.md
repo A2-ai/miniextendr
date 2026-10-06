@@ -88,6 +88,7 @@ use `serialize`.
 | `Vec<i32>` | `integer` vector | Smart dispatch |
 | `Vec<f64>` | `numeric` vector | Smart dispatch |
 | `Vec<bool>` | `logical` vector | Smart dispatch |
+| empty `Vec<T>` | `list()` | No element type to dispatch on |
 | `Vec<String>` | `character` vector | Smart dispatch |
 | `Vec<struct>` | `list` of lists | Heterogeneous |
 | `HashMap<String, T>` | named `list` | Keys become names |
@@ -399,7 +400,11 @@ The mapping is the table above: homogeneous `Vec<scalar>` coalesces to an
 atomic vector, structs and string-keyed maps become named lists, unit variants
 become strings, data variants become `list(Variant = ...)`. `None` becomes
 `NULL`, not a typed `NA`, because the serializer never sees the absent inner
-type. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
+type. For the same reason an empty sequence becomes `list()`, not
+`character(0)` or `numeric(0)`: serde hands the serializer no element type
+when there are no elements. Where a field must keep its R type when empty, use
+the `IntoR` conversion (no `serialize`) or, for condition data,
+`#[derive(RConditionError)]`; both give `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
 enum into a classed R condition; see
 [CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
 
