@@ -602,3 +602,89 @@ test_that("a private R6 method keeps its argument checks", {
 })
 
 # endregion
+
+# region: inherits hints (#1824)
+#
+# A value that fails `inherits` gets the first `when(...)` hint naming one of
+# its classes, else the check's own message. A hint changes the message of a
+# refusal, never what is accepted.
+
+hint_plain <- "`model` must be an `mx_model` object; start from `mx_model()`."
+hint_df <- paste(hint_plain, "To name a column of a data frame, use `mx_col()`.")
+hint_fit <- "`model` is a fit; pass its `$model`."
+mx_model <- function() structure(list(a = 1), class = "mx_model")
+
+test_that("a data frame gets its hint, with the condition of the guard", {
+  # The condition of every R-side argument check, as `inherits` raises it.
+  inherits_e <- tryCatch(miniextendr:::param_inherits_one(list()), error = identity)
+  e <- tryCatch(miniextendr:::param_model_hinted(data.frame(dose = 1)), error = identity)
+  expect_identical(conditionMessage(e), hint_df)
+  expect_identical(class(e), class(inherits_e))
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "model")
+  expect_null(e$rust_type)
+  expect_equal(conditionCall(e), quote(miniextendr:::param_model_hinted(data.frame(dose = 1))))
+})
+
+test_that("hints are checked in the order written; the first match wins", {
+  for (cls in c("mx_fit", "mx_results")) {
+    expect_identical(
+      caught_msg(miniextendr:::param_model_hinted(structure(list(), class = cls))),
+      hint_fit
+    )
+  }
+  # A value of both hinted classes gets the hint written first.
+  both <- structure(list(), class = c("mx_fit", "data.frame"))
+  expect_identical(caught_msg(miniextendr:::param_model_hinted(both)), hint_df)
+})
+
+test_that("a value of no hinted class gets the plain message", {
+  for (x in list(NULL, 1, list(), "mx_model", structure(list(), class = "other"))) {
+    e <- tryCatch(miniextendr:::param_model_hinted(x), error = identity)
+    expect_identical(conditionMessage(e), hint_plain)
+    expect_identical(e$param, "model")
+  }
+})
+
+test_that("a value that passes inherits is accepted whatever else it inherits", {
+  expect_identical(miniextendr:::param_model_hinted(mx_model()), 1L)
+  expect_identical(
+    miniextendr:::param_model_hinted(structure(list(), class = c("mx_model", "data.frame"))),
+    0L
+  )
+  expect_identical(
+    miniextendr:::param_model_hinted(structure(list(1, 2), class = c("mx_fit", "mx_model"))),
+    2L
+  )
+})
+
+test_that("on an Option<List> NULL passes the hint and the check", {
+  f <- miniextendr:::param_model_hinted_optional
+  expect_false(f())
+  expect_false(f(NULL))
+  expect_true(f(mx_model()))
+  expect_identical(caught_msg(f(data.frame(dose = 1))), "a data frame is not an `mx_model`")
+  expect_identical(caught_msg(f(list())), "'model' must inherit from 'mx_model'")
+})
+
+test_that("impl methods take when(...) hints in inherits(p(...))", {
+  h <- ParamCheckHolder$new()
+  expect_identical(h$add_model(mx_model()), 1)
+  expect_identical(h$add_model(structure(list(), class = c("mx_model", "data.frame"))), 2)
+  e <- tryCatch(h$add_model(data.frame(dose = 1)), error = identity)
+  expect_identical(
+    conditionMessage(e),
+    "`model` is a data frame; use `mx_col()` to name its columns"
+  )
+  expect_identical(e$param, "model")
+  expect_identical(e$kind, "conversion")
+  expect_s3_class(e, "rust_error")
+  expect_identical(
+    caught_msg(h$add_model(structure(list(), class = "mx_results"))),
+    "`model` is a fit; pass its `$model`"
+  )
+  expect_identical(caught_msg(h$add_model(NULL)), "`model` must be an `mx_model` object")
+})
+
+# endregion

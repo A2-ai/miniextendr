@@ -659,6 +659,37 @@ impl ClassCheck {
         }
     }
 
+    /// The `when(...)` hints in this check's list of options, for errors:
+    /// only `inherits` takes them.
+    fn hints_option(self) -> &'static str {
+        match self {
+            Self::Inherits => ", `when(...)` hints",
+            Self::NotInherits => "",
+        }
+    }
+
+    /// The error for an unknown option `key` in a parameter-level
+    /// `inherits(...)` / `not_inherits(...)`.
+    fn unknown_option(self, key: &syn::Ident) -> String {
+        format!(
+            "unknown `{}` option `{key}`; expected class names \
+             (`\"cls\"` or `class = \"cls\"`){} and an optional `message = \"...\"`",
+            self.keyword(),
+            self.hints_option()
+        )
+    }
+
+    /// The error for an unknown option in a method-level
+    /// `inherits(p(...))` / `not_inherits(p(...))`.
+    fn unknown_method_option(self) -> String {
+        format!(
+            "unknown `{}` option; expected `class = \"...\"`{} and an optional \
+             `message = \"...\"`",
+            self.keyword(),
+            self.hints_option()
+        )
+    }
+
     /// This check's classes in `checks`, if it is requested.
     fn classes(self, checks: &crate::r_preconditions::ExplicitChecks) -> Option<&[String]> {
         match self {
@@ -700,6 +731,10 @@ impl ClassCheck {
 /// `message = "..."` gives the condition message of a failure, for all of
 /// them. No string is split on commas, as with `inherits = "cls"` (the
 /// method-level `class = "a, b"` is split, see [`parse_method_class_check`]).
+///
+/// `inherits(...)` also takes `when(...)` hints (#1824), each with its
+/// classes spelled the same way and a required `message = "..."`
+/// ([`parse_when_list`]).
 fn parse_class_check_list(
     list: &syn::MetaList,
     check: ClassCheck,
@@ -708,6 +743,7 @@ fn parse_class_check_list(
     let key_word = check.keyword();
     let mut classes = Vec::new();
     let mut message = None;
+    let mut hints = Vec::new();
     let parser = |input: syn::parse::ParseStream| -> syn::Result<()> {
         while !input.is_empty() {
             if input.peek(syn::LitStr) {
@@ -715,20 +751,23 @@ fn parse_class_check_list(
                 classes.push(class.value());
             } else {
                 let key: syn::Ident = input.parse()?;
-                input.parse::<syn::Token![=]>()?;
-                let value: syn::LitStr = input.parse()?;
-                if key == "class" {
-                    classes.push(value.value());
-                } else if key == "message" {
-                    set_check_message(&mut message, &value, key_word)?;
+                if key == "when" && input.peek(syn::token::Paren) {
+                    if check != ClassCheck::Inherits {
+                        return Err(syn::Error::new_spanned(&key, WHEN_ON_NOT_INHERITS));
+                    }
+                    let content;
+                    syn::parenthesized!(content in input);
+                    hints.push(parse_when_list(&key, &content)?);
                 } else {
-                    return Err(syn::Error::new_spanned(
-                        &key,
-                        format!(
-                            "unknown `{key_word}` option `{key}`; expected class names \
-                             (`\"cls\"` or `class = \"cls\"`) and an optional `message = \"...\"`"
-                        ),
-                    ));
+                    input.parse::<syn::Token![=]>()?;
+                    let value: syn::LitStr = input.parse()?;
+                    if key == "class" {
+                        classes.push(value.value());
+                    } else if key == "message" {
+                        set_check_message(&mut message, &value, key_word)?;
+                    } else {
+                        return Err(syn::Error::new_spanned(&key, check.unknown_option(&key)));
+                    }
                 }
             }
             if input.is_empty() {
@@ -748,7 +787,91 @@ fn parse_class_check_list(
             ),
         ));
     }
-    Ok(check.checks(classes, message))
+    if !hints.is_empty() && classes.is_empty() {
+        return Err(syn::Error::new_spanned(
+            list,
+            "`when(...)` in `inherits(...)` needs a class to check, e.g. \
+             `inherits(class = \"pkg_obj\", when(class = \"data.frame\", message = \"...\"))`",
+        ));
+    }
+    let mut checks = check.checks(classes, message);
+    checks.inherits_hints = hints;
+    Ok(checks)
+}
+
+/// The error for `when(...)` in `not_inherits(...)`.
+const WHEN_ON_NOT_INHERITS: &str = "`when(...)` is an `inherits` option: it gives a value that \
+     fails `inherits` a message for its class; `not_inherits` has one `message` for every \
+     class it refuses";
+
+/// The content of a parameter-level `when(...)` hint in `inherits(...)`
+/// (`key` is the `when` keyword, for error spans): its classes, spelled as in
+/// `inherits(...)` (each string literal and each `class = "..."` names one
+/// class, none split on commas), and its required `message = "..."`.
+fn parse_when_list(
+    key: &syn::Ident,
+    content: syn::parse::ParseStream,
+) -> syn::Result<crate::r_preconditions::InheritsHint> {
+    let mut classes = Vec::new();
+    let mut message = None;
+    while !content.is_empty() {
+        if content.peek(syn::LitStr) {
+            let class: syn::LitStr = content.parse()?;
+            classes.push(hint_class(&class)?);
+        } else {
+            let opt: syn::Ident = content.parse()?;
+            content.parse::<syn::Token![=]>()?;
+            let value: syn::LitStr = content.parse()?;
+            if opt == "class" {
+                classes.push(hint_class(&value)?);
+            } else if opt == "message" {
+                set_hint_message(&mut message, &value)?;
+            } else {
+                return Err(syn::Error::new_spanned(
+                    &opt,
+                    format!(
+                        "unknown `when` option `{opt}`; expected class names (`\"cls\"` or \
+                         `class = \"cls\"`) and `message = \"...\"`"
+                    ),
+                ));
+            }
+        }
+        if content.is_empty() {
+            break;
+        }
+        content.parse::<syn::Token![,]>()?;
+    }
+    inherits_hint(classes, message).map_err(|msg| syn::Error::new_spanned(key, msg))
+}
+
+/// One class name of a parameter-level `when(...)` hint: not empty.
+fn hint_class(value: &syn::LitStr) -> syn::Result<String> {
+    let class = value.value();
+    if class.is_empty() {
+        return Err(syn::Error::new(
+            value.span(),
+            "a class name in `when(...)` must not be empty",
+        ));
+    }
+    Ok(class)
+}
+
+/// A parsed `when(...)` hint, which needs both its classes and its message.
+fn inherits_hint(
+    classes: Vec<String>,
+    message: Option<String>,
+) -> Result<crate::r_preconditions::InheritsHint, &'static str> {
+    if classes.is_empty() {
+        return Err("`when(...)` needs the classes it is for, e.g. \
+             `when(class = \"data.frame\", message = \"...\")`");
+    }
+    let Some(message) = message else {
+        return Err(
+            "`when(...)` needs a `message = \"...\"`: the hint a value of its classes gets, \
+             e.g. `when(class = \"data.frame\", message = \"...\")`",
+        );
+    };
+    Ok(crate::r_preconditions::InheritsHint { classes, message })
 }
 
 /// `no_na(message = "...")` on a parameter: `no_na` with the condition
@@ -785,6 +908,34 @@ fn set_check_message(
     value: &syn::LitStr,
     check: &str,
 ) -> syn::Result<()> {
+    set_message(
+        slot,
+        value,
+        check,
+        "leave it out to get the generated message",
+    )
+}
+
+/// Record the `message = "..."` of a `when(...)` hint in `inherits(...)`,
+/// under the rules of [`set_check_message`]; unlike a check's message, the
+/// hint's is required.
+fn set_hint_message(slot: &mut Option<String>, value: &syn::LitStr) -> syn::Result<()> {
+    set_message(
+        slot,
+        value,
+        "when",
+        "it is the message a value of those classes gets",
+    )
+}
+
+/// Record `value` as the message in `slot` of `check(...)`; `if_empty`
+/// ends the error for an empty message.
+fn set_message(
+    slot: &mut Option<String>,
+    value: &syn::LitStr,
+    check: &str,
+    if_empty: &str,
+) -> syn::Result<()> {
     let text = value.value();
     if slot.is_some() {
         return Err(syn::Error::new(
@@ -795,10 +946,7 @@ fn set_check_message(
     if text.trim().is_empty() {
         return Err(syn::Error::new(
             value.span(),
-            format!(
-                "`message` in `{check}(...)` must not be empty; leave it out to get the \
-                 generated message"
-            ),
+            format!("`message` in `{check}(...)` must not be empty; {if_empty}"),
         ));
     }
     if text.contains('\0') {
@@ -858,8 +1006,9 @@ pub(crate) fn parse_method_no_na(
 /// inherit from (one of) or must not inherit from (any of), optionally with
 /// the condition message of the class check. A nested value cannot be a bare
 /// list of literals, so the classes are one comma-separated string, as in
-/// `choices(p = "a, b")`. Shared by the inherent-impl and trait-impl method
-/// parsers.
+/// `choices(p = "a, b")`. `inherits(q(class = "a", when(class = "b, c",
+/// message = "...")))` adds a hint (#1824; [`parse_method_when`]). Shared by
+/// the inherent-impl and trait-impl method parsers.
 pub(crate) fn parse_method_class_check(
     meta: &syn::meta::ParseNestedMeta,
     per_param: &mut std::collections::HashMap<String, ParamAttrs>,
@@ -870,6 +1019,7 @@ pub(crate) fn parse_method_class_check(
         let name = method_check_param(&entry)?;
         let mut classes = Vec::new();
         let mut message = None;
+        let mut hints = Vec::new();
         if entry.input.peek(syn::Token![=]) {
             let value: syn::LitStr = entry.value()?.parse()?;
             classes = method_class_list(&value, check)?;
@@ -882,11 +1032,14 @@ pub(crate) fn parse_method_class_check(
                 } else if opt.path.is_ident("message") {
                     let value: syn::LitStr = opt.value()?.parse()?;
                     set_check_message(&mut message, &value, key_word)
+                } else if opt.path.is_ident("when") {
+                    if check != ClassCheck::Inherits {
+                        return Err(opt.error(WHEN_ON_NOT_INHERITS));
+                    }
+                    hints.push(parse_method_when(&opt)?);
+                    Ok(())
                 } else {
-                    Err(opt.error(format!(
-                        "unknown `{key_word}` option; expected `class = \"...\"` and an \
-                         optional `message = \"...\"`"
-                    )))
+                    Err(opt.error(check.unknown_method_option()))
                 }
             })?;
             if classes.is_empty() {
@@ -900,13 +1053,46 @@ pub(crate) fn parse_method_class_check(
                 "expected `{name} = \"cls\"` or `{name}(class = \"cls\", message = \"...\")`"
             )));
         }
+        let mut checks = check.checks(classes, message);
+        checks.inherits_hints = hints;
         per_param
             .entry(name)
             .or_default()
             .checks
-            .merge(check.checks(classes, message))
+            .merge(checks)
             .map_err(|msg| entry.error(msg))
     })
+}
+
+/// A method-level `when(class = "a, b", message = "...")` hint in
+/// `inherits(p(...))`: its classes are one comma-separated string, as the
+/// entry's own `class`, and its message is required.
+fn parse_method_when(
+    opt: &syn::meta::ParseNestedMeta,
+) -> syn::Result<crate::r_preconditions::InheritsHint> {
+    let mut classes = Vec::new();
+    let mut message = None;
+    opt.parse_nested_meta(|hint| {
+        if hint.path.is_ident("class") {
+            let value: syn::LitStr = hint.value()?.parse()?;
+            let names = crate::r_wrapper_builder::split_choice_list(&value.value());
+            if names.is_empty() {
+                return Err(syn::Error::new(
+                    value.span(),
+                    "`when(class = \"...\")` needs one or more class names",
+                ));
+            }
+            classes.extend(names);
+            Ok(())
+        } else if hint.path.is_ident("message") {
+            let value: syn::LitStr = hint.value()?.parse()?;
+            set_hint_message(&mut message, &value)
+        } else {
+            Err(hint
+                .error("unknown `when` option; expected `class = \"...\"` and `message = \"...\"`"))
+        }
+    })?;
+    inherits_hint(classes, message).map_err(|msg| opt.error(msg))
 }
 
 /// The classes of a method-level `inherits` / `not_inherits` entry: a

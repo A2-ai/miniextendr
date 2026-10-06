@@ -285,6 +285,12 @@ pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
 /// `not_inherits(x(class = "bad", message = "..."))`,
 /// `no_na(x(message = "..."))`), used verbatim in place of the generated
 /// `'x' must inherit from 'cls'`. The condition is otherwise the same.
+///
+/// An `inherits` check can also give a value that fails it a message chosen
+/// by the value's class (#1824): `inherits(class = "cls",
+/// when(class = "data.frame", message = "..."))`, method level
+/// `inherits(x(class = "cls", when(class = "data.frame", message = "...")))`
+/// ([`InheritsHint`]).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ExplicitChecks {
     /// `inherits = "cls"` / `inherits("a", "b")`: the argument must inherit
@@ -294,6 +300,10 @@ pub struct ExplicitChecks {
     /// check, for all of its classes, and of that parameter's R type checks.
     /// Only set together with `inherits`.
     pub inherits_message: Option<String>,
+    /// `when(class = "...", message = "...")` in `inherits(...)`: the
+    /// messages a value that fails the `inherits` check gets for its class,
+    /// in the order written. Only set together with `inherits`.
+    pub inherits_hints: Vec<InheritsHint>,
     /// `not_inherits = "cls"` / `not_inherits("a", "b")`: the argument must
     /// inherit from none of these classes (`!inherits(x, c(...))`, #1815).
     pub not_inherits: Option<Vec<String>>,
@@ -319,6 +329,8 @@ impl ExplicitChecks {
     }
 
     /// Merge `other` into `self` (a parameter may carry several attributes).
+    /// The `inherits` hints of `other` follow those of `self`, so the hints
+    /// keep the order they are written in.
     ///
     /// Fails when both give a message for the same check; the error names
     /// the check.
@@ -337,6 +349,7 @@ impl ExplicitChecks {
         if let Some(classes) = other.inherits {
             self.inherits.get_or_insert_with(Vec::new).extend(classes);
         }
+        self.inherits_hints.extend(other.inherits_hints);
         if let Some(classes) = other.not_inherits {
             self.not_inherits
                 .get_or_insert_with(Vec::new)
@@ -348,18 +361,39 @@ impl ExplicitChecks {
 
     /// The error for a parameter whose checks contradict each other: a class
     /// both in `inherits` and in `not_inherits`, which no argument could
-    /// satisfy through that class. `None` when they agree.
+    /// satisfy through that class, or an `inherits` class in a `when(...)`
+    /// hint, whose message could never be shown (a value of that class
+    /// passes `inherits`). `None` when they agree.
+    ///
+    /// A hint class may also be a `not_inherits` class: a value of that
+    /// class alone gets the hint, and one that also inherits from a required
+    /// class passes the hint and `inherits` and is refused by `not_inherits`.
     ///
     /// Run once every attribute of the parameter is merged: the
-    /// `inherits = "cls"` spelling adds its class without a merge.
+    /// `inherits = "cls"` spelling adds its class without a merge, and a
+    /// hint can name a class that another attribute requires.
     pub fn class_conflict(&self, param: &str) -> Option<String> {
-        let (Some(required), Some(refused)) = (&self.inherits, &self.not_inherits) else {
-            return None;
-        };
-        let class = refused.iter().find(|c| required.contains(c))?;
+        let required = self.inherits.as_deref().unwrap_or_default();
+        if let Some(class) = self
+            .not_inherits
+            .iter()
+            .flatten()
+            .find(|c| required.contains(c))
+        {
+            return Some(format!(
+                "class `{class}` is in both `inherits` and `not_inherits` on parameter `{param}`; \
+                 name it in only one of them"
+            ));
+        }
+        let class = self
+            .inherits_hints
+            .iter()
+            .flat_map(|hint| &hint.classes)
+            .find(|c| required.contains(c))?;
         Some(format!(
-            "class `{class}` is in both `inherits` and `not_inherits` on parameter `{param}`; \
-             name it in only one of them"
+            "class `{class}` is in both `inherits` and a `when(...)` hint on parameter \
+             `{param}`; a value of that class passes `inherits`, so the hint would never be \
+             shown: drop it from `when(...)`"
         ))
     }
 
@@ -367,12 +401,30 @@ impl ExplicitChecks {
     /// `param` of type `ty`, which run before the parameter's type checks.
     /// Empty without either.
     ///
+    /// The `inherits` hints come first, one check each in the order written,
+    /// so a refused value gets the first hint naming one of its classes:
+    /// `inherits(p, <required>) || !inherits(p, <hint classes>)`, failing
+    /// with the hint's message. A value that passes `inherits` passes every
+    /// hint, so a hint changes the message of a refusal, never what is
+    /// accepted.
+    ///
     /// An `Option<T>` / `Missing<T>` parameter passes `NULL` / an omitted
     /// argument (see [`guarded`]).
     fn class_assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
         let mut out = Vec::new();
         if let Some(classes) = &self.inherits {
             let (what, class_arg) = class_list_r(classes);
+            for hint in &self.inherits_hints {
+                let (_, hint_arg) = class_list_r(&hint.classes);
+                out.push(
+                    RAssertion::new(
+                        param,
+                        format!("must inherit from {what}"),
+                        format!("inherits({param}, {class_arg}) || !inherits({param}, {hint_arg})"),
+                    )
+                    .with_message(Some(&hint.message)),
+                );
+            }
             out.push(
                 RAssertion::new(
                     param,
@@ -423,6 +475,19 @@ impl ExplicitChecks {
     fn type_check_message(&self) -> Option<&String> {
         self.inherits_message.as_ref()
     }
+}
+
+/// One `when(class = "...", message = "...")` hint of an `inherits` check
+/// (#1824): the message a value gets when it fails the check and inherits
+/// from one of `classes`, in place of the check's own. A `data.frame` passed
+/// where a model object is expected can be told which function takes a data
+/// frame, while `NULL` or a number gets the plain refusal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InheritsHint {
+    /// The classes the hint is for (any one of them).
+    pub classes: Vec<String>,
+    /// The condition message, used verbatim.
+    pub message: String,
 }
 
 /// A class check's classes in R: the quoted list for its message
@@ -2516,6 +2581,191 @@ mod tests {
         assert!(!not_inherits(&["a"]).is_empty());
         assert_eq!(not_inherits(&["a"]).class_conflict("x"), None);
     }
+
+    // region: `when(...)` hints on `inherits` (#1824)
+
+    /// `inherits(classes, message, when(...) ...)`: `hints` are
+    /// `(classes, message)` pairs, in the order written.
+    fn with_hints(
+        classes: &[&str],
+        message: Option<&str>,
+        hints: &[(&[&str], &str)],
+    ) -> ExplicitChecks {
+        ExplicitChecks {
+            inherits_message: message.map(str::to_string),
+            inherits_hints: hints
+                .iter()
+                .map(|(classes, message)| InheritsHint {
+                    classes: classes.iter().map(|c| c.to_string()).collect(),
+                    message: message.to_string(),
+                })
+                .collect(),
+            ..inherits(classes)
+        }
+    }
+
+    /// Each hint is one check ahead of the `inherits` check, in the order
+    /// written, so the first hint naming one of a refused value's classes is
+    /// raised. A value that passes `inherits` passes every hint
+    /// (`inherits(p, <required>) || ...`), so a `pkg_model` that is also a
+    /// `data.frame` is accepted. The type checks keep the `inherits` message.
+    #[test]
+    fn inherits_hints_precede_the_check_in_written_order() {
+        let checks = with_hints(
+            &["pkg_model"],
+            Some("`model` must be a `pkg_model` object"),
+            &[
+                (&["data.frame"], "a data frame: use `col_dose()`"),
+                (&["pkg_fit", "pkg_results"], "a fit: use `fit$model`"),
+            ],
+        );
+        let out = explicit_output("fn f(model: List)", &[("model", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(model, \"pkg_model\") || !inherits(model, \"data.frame\"))) .miniextendr_arg_error(\"model\", message = \"a data frame: use `col_dose()`\")",
+                "if (!isTRUE(inherits(model, \"pkg_model\") || !inherits(model, c(\"pkg_fit\", \"pkg_results\")))) .miniextendr_arg_error(\"model\", message = \"a fit: use `fit$model`\")",
+                "if (!isTRUE(inherits(model, \"pkg_model\"))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model` object\")",
+                "if (!isTRUE(is.list(model))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model` object\")",
+            ]
+        );
+        // Without its own message the check keeps the generated one; several
+        // required classes are all accepted by every hint.
+        let checks = with_hints(&["pkg_a", "pkg_b"], None, &[(&["data.frame"], "hint")]);
+        let out = explicit_output("fn f(x: SEXP)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(x, c(\"pkg_a\", \"pkg_b\")) || !inherits(x, \"data.frame\"))) .miniextendr_arg_error(\"x\", message = \"hint\")",
+                "if (!isTRUE(inherits(x, c(\"pkg_a\", \"pkg_b\")))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_a' or 'pkg_b'\")",
+            ]
+        );
+    }
+
+    /// A hint is an R string literal like any message: quotes, backslashes,
+    /// control characters and non-ASCII text are escaped, and so are its
+    /// class names.
+    #[test]
+    fn inherits_hints_are_escaped() {
+        let checks = with_hints(
+            &["pkg_model"],
+            None,
+            &[(
+                &["caf\u{e9}", "a\"b\\c"],
+                "say \"hi\" \\ back\nline caf\u{e9} \u{1F600}",
+            )],
+        );
+        let out = explicit_output("fn f(x: SEXP)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(None)[0],
+            r#"if (!isTRUE(inherits(x, "pkg_model") || !inherits(x, c("caf\u{e9}", "a\"b\\c")))) .miniextendr_arg_error("x", message = "say \"hi\" \\ back\nline caf\u{e9} \U{1f600}")"#
+        );
+    }
+
+    /// Under `call = caller` a hint names the caller's call, by name after
+    /// its message.
+    #[test]
+    fn inherits_hints_take_the_caller_call() {
+        let checks = with_hints(&["pkg_model"], None, &[(&["data.frame"], "hint")]);
+        let out = explicit_output("fn f(x: SEXP)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(Some(".mx_call")),
+            vec![
+                "if (!isTRUE(inherits(x, \"pkg_model\") || !inherits(x, \"data.frame\"))) .miniextendr_arg_error(\"x\", message = \"hint\", call = .mx_call)",
+                "if (!isTRUE(inherits(x, \"pkg_model\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_model'\", .mx_call)",
+            ]
+        );
+    }
+
+    /// An `Option<T>` parameter passes `NULL`, and a `Missing<T>` parameter
+    /// an omitted argument, through the hints as through the check. Under
+    /// `no_preconditions` the hints stay with the check.
+    #[test]
+    fn inherits_hints_pass_null_and_missing() {
+        let hinted = || with_hints(&["pkg_model"], None, &[(&["data.frame"], "hint")]);
+        let optional = explicit_output("fn f(x: Option<List>)", &[("x", hinted())], true);
+        assert_eq!(
+            optional.guards(None)[0],
+            "if (!isTRUE(is.null(x) || inherits(x, \"pkg_model\") || !inherits(x, \"data.frame\"))) .miniextendr_arg_error(\"x\", message = \"hint\")"
+        );
+        let missing = explicit_output("fn f(x: Missing<List>)", &[("x", hinted())], true);
+        assert_eq!(
+            missing.guards(None),
+            vec![
+                "if (!isTRUE(missing(x) || inherits(x, \"pkg_model\") || !inherits(x, \"data.frame\"))) .miniextendr_arg_error(\"x\", message = \"hint\")",
+                "if (!isTRUE(missing(x) || inherits(x, \"pkg_model\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_model'\")",
+            ]
+        );
+    }
+
+    /// Several `inherits` attributes on one parameter concatenate their
+    /// hints in the order written; every hint then accepts every required
+    /// class.
+    #[test]
+    fn inherits_hints_merge_in_order() {
+        let mut checks = with_hints(&["pkg_a"], Some("need an a"), &[(&["df"], "one")]);
+        checks
+            .merge(with_hints(&["pkg_b"], None, &[(&["tbl"], "two")]))
+            .unwrap();
+        checks.merge(inherits(&["pkg_c"])).unwrap();
+        let hints: Vec<&str> = checks
+            .inherits_hints
+            .iter()
+            .map(|h| h.message.as_str())
+            .collect();
+        assert_eq!(hints, ["one", "two"]);
+        assert_eq!(checks.class_conflict("x"), None);
+        let out = explicit_output("fn f(x: SEXP)", &[("x", checks)], false);
+        let guards = out.guards(None);
+        assert_eq!(guards.len(), 3);
+        assert!(
+            guards[0].starts_with(
+                "if (!isTRUE(inherits(x, c(\"pkg_a\", \"pkg_b\", \"pkg_c\")) || !inherits(x, \"df\")))"
+            ),
+            "{}",
+            guards[0]
+        );
+        assert!(guards[1].contains("!inherits(x, \"tbl\"))) "));
+        assert!(guards[1].ends_with("message = \"two\")"));
+        assert!(guards[2].ends_with("message = \"need an a\")"));
+    }
+
+    /// A hint class that `inherits` requires could never be shown: an error,
+    /// also when another attribute requires it. A hint class that
+    /// `not_inherits` refuses is fine: a value of that class alone gets the
+    /// hint, one that also has a required class gets the refusal.
+    #[test]
+    fn inherits_hint_class_conflicts() {
+        let checks = with_hints(&["pkg_model"], None, &[(&["df", "pkg_model"], "hint")]);
+        let err = checks
+            .class_conflict("model")
+            .expect("pkg_model is required");
+        assert!(
+            err.contains(
+                "class `pkg_model` is in both `inherits` and a `when(...)` hint on parameter `model`"
+            ),
+            "{err}"
+        );
+        let mut checks = with_hints(&["pkg_model"], None, &[(&["pkg_old"], "hint")]);
+        assert_eq!(checks.class_conflict("model"), None);
+        checks.merge(inherits(&["pkg_old"])).unwrap();
+        assert!(checks.class_conflict("model").is_some());
+
+        let mut checks = with_hints(&["pkg_model"], None, &[(&["pkg_old"], "hint")]);
+        checks.merge(not_inherits(&["pkg_old"])).unwrap();
+        assert_eq!(checks.class_conflict("model"), None);
+        let out = explicit_output("fn f(x: SEXP)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(x, \"pkg_model\") || !inherits(x, \"pkg_old\"))) .miniextendr_arg_error(\"x\", message = \"hint\")",
+                "if (!isTRUE(inherits(x, \"pkg_model\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'pkg_model'\")",
+                "if (!isTRUE(!inherits(x, \"pkg_old\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'pkg_old'\")",
+            ]
+        );
+    }
+
+    // endregion
 
     #[test]
     fn no_na_wording_follows_the_shape() {

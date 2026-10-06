@@ -594,6 +594,9 @@ Both places raise the same error condition (#1591):
   own message for an `inherits` check (which also covers that parameter's
   type checks), a `not_inherits` check or a `no_na` check that sets one
   ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
+  An `inherits` check can also pick its message by the refused value's
+  class: a `when(class = "data.frame", message = "...")` hint
+  ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#hints-for-common-wrong-classes)).
   A conversion says what the argument must be and why it is not:
   `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`
   for an opaque custom type without an R-facing expectation;
