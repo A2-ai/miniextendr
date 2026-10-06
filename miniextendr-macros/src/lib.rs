@@ -2850,7 +2850,40 @@ pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::T
 ///
 /// Direction is chosen by which derive you list — derive only `TryFromSexp` for
 /// inner types that read from R but cannot be written back (e.g. `regex::Regex`).
-#[proc_macro_derive(TryFromSexp)]
+///
+/// # Refusing values: `#[try_from_sexp(validate = path)]`
+///
+/// The containers read the inner type and wrap it; they never run the
+/// newtype's own `try_from_sexp`. To refuse a value the inner type accepts,
+/// name a check, `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. It
+/// becomes `TryFromSexpElement::check_sexp`, which runs on the R value before
+/// it is read, in every shape: the scalar, once on the whole vector for `Vec<T>`
+/// and `Vec<Option<T>>`, and on any input but `NULL` for `Option<T>`.
+///
+/// ```ignore
+/// use miniextendr_api::condition::RError;
+/// use miniextendr_api::{SEXP, SexpExt, TryFromSexp};
+///
+/// fn plain_number(x: SEXP) -> Result<(), RError> {
+///     if x.inherits_class(c"difftime") {
+///         return Err(RError::new("give the duration as a plain number").class("pkg_unit_error"));
+///     }
+///     Ok(())
+/// }
+///
+/// #[derive(TryFromSexp)]
+/// #[try_from_sexp(validate = plain_number)]
+/// struct Duration(f64);
+/// ```
+///
+/// An `RError` refusal (or one of any `RConditionError` type) keeps its classes
+/// and fields on the argument error, before the crate's
+/// `conversion_error_class`, with `e$param` and the message
+/// `'<p>' must be <expected>: <message>`. With `validate`, the newtype's
+/// scalar error is `SexpError`, so the inner type's error must convert into it,
+/// as every built-in conversion error and every `RConditionError` type does.
+/// `validate` is the only key, and the attribute goes on the struct.
+#[proc_macro_derive(TryFromSexp, attributes(try_from_sexp))]
 pub fn derive_try_from_sexp(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     newtype_derive::derive_try_from_sexp(input)

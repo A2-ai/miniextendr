@@ -1,0 +1,5 @@
+error: unknown `#[try_from_sexp(...)]` key; the only key is `validate = path::to::check`
+ --> tests/ui/derive_newtype_validate_unknown_key.rs:7:17
+  |
+7 | #[try_from_sexp(check = plain_number)]
+  |                 ^^^^^

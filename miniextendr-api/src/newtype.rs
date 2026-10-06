@@ -12,6 +12,22 @@
 //! implements [`TryFromSexpElement`] with
 //! [`ParsedRStr`](crate::from_r::ParsedRStr) as the inner type (#1766).
 //!
+//! # The containers forward; a check refuses
+//!
+//! The containers never call the element's own `TryFromSexp::try_from_sexp`.
+//! `Option<T>` reads `Option<T::Inner>`, `Vec<T>` reads `Vec<T::Inner>` and
+//! `Vec<Option<T>>` reads `Vec<Option<T::Inner>>`, each wrapping what it
+//! read with [`TryFromSexpElement::from_inner`]. So an element's scalar
+//! `try_from_sexp` must be the inner type's followed by `from_inner`, which
+//! is what the derive emits, and refusing values a type's inner type
+//! accepts belongs in [`TryFromSexpElement::check_sexp`], not in
+//! `try_from_sexp`. The check runs on the R value before it is read, in the
+//! scalar `try_from_sexp` and once per container input: on the whole vector
+//! for `Vec<T>` / `Vec<Option<T>>`, which is where R keeps a class, and on a
+//! non-`NULL` input for `Option<T>` (`NULL` is "not given").
+//! `#[derive(TryFromSexp)]` takes it as `#[try_from_sexp(validate = path)]`
+//! (#1815).
+//!
 //! # Why the markers live here and not in the derive
 //!
 //! A downstream crate cannot write `impl TryFromSexp for Vec<MyNewtype>`: `Vec` /
@@ -24,9 +40,11 @@
 //! [`TryFromSexpElement`] / [`IntoRNewtype`] / [`IntoRVecElement`] are
 //! **plumbing**: they are emitted by the derives and by
 //! `try_from_sexp_via_str_parse!`, not implemented by hand. Implementing them
-//! manually is supported but unusual; a hand-written [`TryFromSexpElement`]
+//! manually is supported but unusual. A hand-written [`TryFromSexpElement`]
 //! also needs a `TryFromSexp` impl on the type for `Option<T>` to convert (the
-//! derive and the macro emit both).
+//! derive and the macro emit both), and that impl must keep the forwarding
+//! rule above: call [`TryFromSexpElement::check_sexp`], then convert the inner
+//! type and wrap it, and nothing else, since no container ever runs it.
 //!
 //! # One element trait per direction
 //!
@@ -38,6 +56,13 @@
 //! what differs is the inner type the containers read first: the newtype's
 //! field type, or `ParsedRStr<T>` for a string-parsed type, whose container
 //! impls in `from_r` hold the NA policy and the batched element errors.
+//!
+//! Every container's error is [`SexpError`]: the inner container's error
+//! converts into it, and so does a check's refusal
+//! ([`SexpError::Condition`](crate::from_r::SexpError::Condition), carrying
+//! its own classes). The inner containers that exist are all `miniextendr-api`
+//! impls (the orphan rule keeps the rest out), and each one's error is a
+//! `SexpError` or converts into one.
 //!
 //! The blankets bound the inner type through the hidden `VecInner` /
 //! `OptionInner` / `VecOptionInner` helpers rather than
@@ -71,9 +96,9 @@
 //! `TryFromSexp for Vec<T>` / `Option<T>` / `Vec<Option<T>>` and `IntoR for
 //! Vec<Option<T>>` are coherence-free: no other blanket occupies those slots.
 
-use crate::SEXP;
-use crate::from_r::{NativeBorrow, TryFromSexp};
+use crate::from_r::{NativeBorrow, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
+use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: marker traits (emitted by the derives, not hand-written)
 
@@ -85,11 +110,24 @@ use crate::into_r::IntoR;
 /// [`from_inner`](Self::from_inner): `Vec<Self>` reads `Vec<Self::Inner>`,
 /// `Option<Self>` reads `Option<Self::Inner>`, and `Vec<Option<Self>>` reads
 /// `Vec<Option<Self::Inner>>`. Each shape exists when the inner container
-/// converts, independently of the other two, and keeps its error type, NA
-/// policy and metadata (`NATIVE_BORROW`, `CHARACTER_ONLY`).
+/// converts, independently of the other two, and keeps its NA policy and
+/// metadata (`NATIVE_BORROW`, `CHARACTER_ONLY`); its error converts into
+/// [`SexpError`].
 ///
-/// Emitted by `#[derive(TryFromSexp)]` (the inner type is the newtype's field)
-/// and by [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse)
+/// # Forwarding
+///
+/// No container calls `<Self as TryFromSexp>::try_from_sexp`. They read the
+/// inner type and wrap it, so the element's own `try_from_sexp`, when it has
+/// one, must do the same: [`check_sexp`](Self::check_sexp), then the inner
+/// type's conversion, then [`from_inner`](Self::from_inner). Anything else
+/// it did would hold for a scalar argument and silently not for
+/// `Option<Self>`, `Vec<Self>` or `Vec<Option<Self>>`. A value the inner type
+/// accepts but `Self` refuses is refused in `check_sexp`, which every shape
+/// runs.
+///
+/// Emitted by `#[derive(TryFromSexp)]` (the inner type is the newtype's field;
+/// `#[try_from_sexp(validate = path)]` gives the check) and by
+/// [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse)
 /// (the inner type is [`ParsedRStr<Self>`](crate::from_r::ParsedRStr)). See
 /// the module docs for why both share this one trait.
 #[diagnostic::on_unimplemented(
@@ -103,6 +141,32 @@ pub trait TryFromSexpElement: Sized {
 
     /// Wrap an inner value into `Self`.
     fn from_inner(inner: Self::Inner) -> Self;
+
+    /// Refuse an R value before it is read: `Err` for a value the inner type
+    /// would accept but `Self` must not, such as a number that carries a unit
+    /// class (`difftime`, `Date`, `POSIXct`).
+    ///
+    /// Called with the input of every shape, before its inner conversion: by
+    /// the scalar `TryFromSexp` (the derive's calls it), once on the whole
+    /// vector for `Vec<Self>` and `Vec<Option<Self>>`, and for `Option<Self>`
+    /// on any input but `NULL`, which stays "not given". It sees the value as
+    /// R holds it, attributes and all, before anything is read from it.
+    ///
+    /// Return an [`RError`](crate::condition::RError), or any
+    /// [`RConditionError`](crate::condition::RConditionError) type, with `?`
+    /// or `.into()` to give the refusal its own classes and fields
+    /// ([`SexpError::Condition`]). As an
+    /// argument error it keeps the wrapper's context: `'<p>' must be
+    /// <expected>: <message>`, the classes before the crate's
+    /// `conversion_error_class`, `e$param` and `e$rust_type`. A plain
+    /// `SexpError` (`SexpError::InvalidValue`) works too, with no classes.
+    ///
+    /// The default accepts every value; it is what the derive emits without
+    /// `validate` and what a string-parsed type has.
+    #[inline]
+    fn check_sexp(_sexp: SEXP) -> Result<(), SexpError> {
+        Ok(())
+    }
 }
 
 /// Unwrap a forwarding newtype into its inner value (Rust → R side).
@@ -133,132 +197,133 @@ pub trait IntoRVecElement: Sized {
 
 // region: container helpers (bound on the inner type itself, #1682)
 
-/// `Vec<Self>: TryFromSexp`, with `Self` as the bound's self type.
+/// `Vec<Self>: TryFromSexp` with an error that converts into [`SexpError`],
+/// with `Self` as the bound's self type.
 ///
 /// Plumbing for the `Vec<T>` blanket below: see the module docs (#1682).
 #[doc(hidden)]
 pub trait VecInner: Sized {
-    /// `<Vec<Self> as TryFromSexp>::Error`.
-    type VecError;
     /// `<Vec<Self> as TryFromSexp>::NATIVE_BORROW`.
     const VEC_NATIVE_BORROW: Option<NativeBorrow>;
     /// `<Vec<Self> as TryFromSexp>::CHARACTER_ONLY`.
     const VEC_CHARACTER_ONLY: bool;
-    /// `<Vec<Self> as TryFromSexp>::try_from_sexp`.
-    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, Self::VecError>;
-    /// `<Vec<Self> as TryFromSexp>::try_from_sexp_unchecked`.
+    /// `<Vec<Self> as TryFromSexp>::try_from_sexp`, its error as a
+    /// [`SexpError`].
+    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, SexpError>;
+    /// `<Vec<Self> as TryFromSexp>::try_from_sexp_unchecked`, its error as a
+    /// [`SexpError`].
     ///
     /// # Safety
     ///
     /// As [`TryFromSexp::try_from_sexp_unchecked`].
-    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, Self::VecError>;
+    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, SexpError>;
 }
 
 impl<I> VecInner for I
 where
     Vec<I>: TryFromSexp,
+    <Vec<I> as TryFromSexp>::Error: Into<SexpError>,
 {
-    type VecError = <Vec<I> as TryFromSexp>::Error;
     const VEC_NATIVE_BORROW: Option<NativeBorrow> = <Vec<I> as TryFromSexp>::NATIVE_BORROW;
     const VEC_CHARACTER_ONLY: bool = <Vec<I> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
-    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, Self::VecError> {
-        <Vec<I> as TryFromSexp>::try_from_sexp(sexp)
+    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, SexpError> {
+        <Vec<I> as TryFromSexp>::try_from_sexp(sexp).map_err(Into::into)
     }
 
     #[inline]
-    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, Self::VecError> {
-        unsafe { <Vec<I> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
+    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, SexpError> {
+        unsafe { <Vec<I> as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map_err(Into::into)
     }
 }
 
-/// `Option<Self>: TryFromSexp`, with `Self` as the bound's self type.
+/// `Option<Self>: TryFromSexp` with an error that converts into
+/// [`SexpError`], with `Self` as the bound's self type.
 ///
 /// Plumbing for the `Option<T>` blanket below: see the module docs (#1682).
 #[doc(hidden)]
 pub trait OptionInner: Sized {
-    /// `<Option<Self> as TryFromSexp>::Error`.
-    type OptionError;
     /// `<Option<Self> as TryFromSexp>::NATIVE_BORROW`.
     const OPTION_NATIVE_BORROW: Option<NativeBorrow>;
     /// `<Option<Self> as TryFromSexp>::CHARACTER_ONLY`.
     const OPTION_CHARACTER_ONLY: bool;
-    /// `<Option<Self> as TryFromSexp>::try_from_sexp`.
-    fn option_try_from_sexp(sexp: SEXP) -> Result<Option<Self>, Self::OptionError>;
-    /// `<Option<Self> as TryFromSexp>::try_from_sexp_unchecked`.
+    /// `<Option<Self> as TryFromSexp>::try_from_sexp`, its error as a
+    /// [`SexpError`].
+    fn option_try_from_sexp(sexp: SEXP) -> Result<Option<Self>, SexpError>;
+    /// `<Option<Self> as TryFromSexp>::try_from_sexp_unchecked`, its error as
+    /// a [`SexpError`].
     ///
     /// # Safety
     ///
     /// As [`TryFromSexp::try_from_sexp_unchecked`].
-    unsafe fn option_try_from_sexp_unchecked(sexp: SEXP)
-    -> Result<Option<Self>, Self::OptionError>;
+    unsafe fn option_try_from_sexp_unchecked(sexp: SEXP) -> Result<Option<Self>, SexpError>;
 }
 
 impl<I> OptionInner for I
 where
     Option<I>: TryFromSexp,
+    <Option<I> as TryFromSexp>::Error: Into<SexpError>,
 {
-    type OptionError = <Option<I> as TryFromSexp>::Error;
     const OPTION_NATIVE_BORROW: Option<NativeBorrow> = <Option<I> as TryFromSexp>::NATIVE_BORROW;
     const OPTION_CHARACTER_ONLY: bool = <Option<I> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
-    fn option_try_from_sexp(sexp: SEXP) -> Result<Option<Self>, Self::OptionError> {
-        <Option<I> as TryFromSexp>::try_from_sexp(sexp)
+    fn option_try_from_sexp(sexp: SEXP) -> Result<Option<Self>, SexpError> {
+        <Option<I> as TryFromSexp>::try_from_sexp(sexp).map_err(Into::into)
     }
 
     #[inline]
-    unsafe fn option_try_from_sexp_unchecked(
-        sexp: SEXP,
-    ) -> Result<Option<Self>, Self::OptionError> {
-        unsafe { <Option<I> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
+    unsafe fn option_try_from_sexp_unchecked(sexp: SEXP) -> Result<Option<Self>, SexpError> {
+        unsafe { <Option<I> as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map_err(Into::into)
     }
 }
 
-/// `Vec<Option<Self>>: TryFromSexp`, with `Self` as the bound's self type.
+/// `Vec<Option<Self>>: TryFromSexp` with an error that converts into
+/// [`SexpError`], with `Self` as the bound's self type.
 ///
 /// Plumbing for the `Vec<Option<T>>` blanket below: see the module docs
 /// (#1682).
 #[doc(hidden)]
 pub trait VecOptionInner: Sized {
-    /// `<Vec<Option<Self>> as TryFromSexp>::Error`.
-    type VecOptionError;
     /// `<Vec<Option<Self>> as TryFromSexp>::NATIVE_BORROW`.
     const VEC_OPTION_NATIVE_BORROW: Option<NativeBorrow>;
     /// `<Vec<Option<Self>> as TryFromSexp>::CHARACTER_ONLY`.
     const VEC_OPTION_CHARACTER_ONLY: bool;
-    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp`.
-    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, Self::VecOptionError>;
-    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp_unchecked`.
+    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp`, its error as a
+    /// [`SexpError`].
+    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, SexpError>;
+    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp_unchecked`, its
+    /// error as a [`SexpError`].
     ///
     /// # Safety
     ///
     /// As [`TryFromSexp::try_from_sexp_unchecked`].
     unsafe fn vec_option_try_from_sexp_unchecked(
         sexp: SEXP,
-    ) -> Result<Vec<Option<Self>>, Self::VecOptionError>;
+    ) -> Result<Vec<Option<Self>>, SexpError>;
 }
 
 impl<I> VecOptionInner for I
 where
     Vec<Option<I>>: TryFromSexp,
+    <Vec<Option<I>> as TryFromSexp>::Error: Into<SexpError>,
 {
-    type VecOptionError = <Vec<Option<I>> as TryFromSexp>::Error;
     const VEC_OPTION_NATIVE_BORROW: Option<NativeBorrow> =
         <Vec<Option<I>> as TryFromSexp>::NATIVE_BORROW;
     const VEC_OPTION_CHARACTER_ONLY: bool = <Vec<Option<I>> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
-    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, Self::VecOptionError> {
-        <Vec<Option<I>> as TryFromSexp>::try_from_sexp(sexp)
+    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, SexpError> {
+        <Vec<Option<I>> as TryFromSexp>::try_from_sexp(sexp).map_err(Into::into)
     }
 
     #[inline]
     unsafe fn vec_option_try_from_sexp_unchecked(
         sexp: SEXP,
-    ) -> Result<Vec<Option<Self>>, Self::VecOptionError> {
+    ) -> Result<Vec<Option<Self>>, SexpError> {
         unsafe { <Vec<Option<I>> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
+            .map_err(Into::into)
     }
 }
 
@@ -294,16 +359,21 @@ impl<T: IntoRVecElement> IntoR for Vec<T> {
 
 // region: TryFromSexp container blankets (R → Rust)
 
+// Each blanket runs `T::check_sexp` once on the input it is given, before the
+// inner container reads it, then wraps what it read with `T::from_inner`. None
+// calls `T::try_from_sexp`: see "Forwarding" on `TryFromSexpElement`.
+
 impl<T: TryFromSexpElement> TryFromSexp for Vec<T>
 where
     T::Inner: VecInner,
 {
-    type Error = <T::Inner as VecInner>::VecError;
+    type Error = SexpError;
     const NATIVE_BORROW: Option<NativeBorrow> = <T::Inner as VecInner>::VEC_NATIVE_BORROW;
     const CHARACTER_ONLY: bool = <T::Inner as VecInner>::VEC_CHARACTER_ONLY;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        T::check_sexp(sexp)?;
         Ok(<T::Inner as VecInner>::vec_try_from_sexp(sexp)?
             .into_iter()
             .map(T::from_inner)
@@ -312,6 +382,7 @@ where
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        T::check_sexp(sexp)?;
         Ok(
             unsafe { <T::Inner as VecInner>::vec_try_from_sexp_unchecked(sexp) }?
                 .into_iter()
@@ -328,7 +399,7 @@ impl<T: TryFromSexpElement + TryFromSexp> TryFromSexp for Option<T>
 where
     T::Inner: OptionInner,
 {
-    type Error = <T::Inner as OptionInner>::OptionError;
+    type Error = SexpError;
     const NATIVE_BORROW: Option<NativeBorrow> = <T::Inner as OptionInner>::OPTION_NATIVE_BORROW;
     const CHARACTER_ONLY: bool = <T::Inner as OptionInner>::OPTION_CHARACTER_ONLY;
     // `NULL` (`None`) is "not given" and passes `no_na`.
@@ -337,13 +408,20 @@ where
         self.as_ref().is_some_and(T::__mx_has_na)
     }
 
+    // `NULL` is "not given" too, so the check sees only a value.
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() != SEXPTYPE::NILSXP {
+            T::check_sexp(sexp)?;
+        }
         Ok(<T::Inner as OptionInner>::option_try_from_sexp(sexp)?.map(T::from_inner))
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() != SEXPTYPE::NILSXP {
+            T::check_sexp(sexp)?;
+        }
         Ok(
             unsafe { <T::Inner as OptionInner>::option_try_from_sexp_unchecked(sexp) }?
                 .map(T::from_inner),
@@ -355,13 +433,14 @@ impl<T: TryFromSexpElement> TryFromSexp for Vec<Option<T>>
 where
     T::Inner: VecOptionInner,
 {
-    type Error = <T::Inner as VecOptionInner>::VecOptionError;
+    type Error = SexpError;
     const NATIVE_BORROW: Option<NativeBorrow> =
         <T::Inner as VecOptionInner>::VEC_OPTION_NATIVE_BORROW;
     const CHARACTER_ONLY: bool = <T::Inner as VecOptionInner>::VEC_OPTION_CHARACTER_ONLY;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        T::check_sexp(sexp)?;
         Ok(
             <T::Inner as VecOptionInner>::vec_option_try_from_sexp(sexp)?
                 .into_iter()
@@ -372,6 +451,7 @@ where
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        T::check_sexp(sexp)?;
         Ok(
             unsafe { <T::Inner as VecOptionInner>::vec_option_try_from_sexp_unchecked(sexp) }?
                 .into_iter()

@@ -345,6 +345,22 @@ pub enum SexpError {
     /// A `match_arg` choice did not match (from `#[derive(MatchArg)]`'s
     /// `TryFromSexp`), kept whole so the argument error names the choices.
     MatchArg(crate::match_arg::MatchArgError),
+    /// A value a check refused with its own message, classes and fields,
+    /// typically a [`TryFromSexpElement::check_sexp`](crate::TryFromSexpElement::check_sexp)
+    /// (`#[try_from_sexp(validate = ...)]`). Any
+    /// [`RConditionError`](crate::condition::RConditionError) type, an
+    /// [`RError`](crate::condition::RError) or a `#[derive(RConditionError)]`
+    /// type, converts into it with `?`.
+    ///
+    /// As an argument error it keeps the parameter context: the message is
+    /// `'<p>' must be <expected>: <the RError's message>`, the classes come
+    /// before the crate's `conversion_error_class`, the fields are spliced in
+    /// next to `e$param` and `e$rust_type`, and the call is the wrapper's
+    /// ([`RError::without_call`](crate::condition::RError::without_call) has
+    /// no effect here, as for any argument error). Inside an `Either` it is
+    /// reported, classes and fields included, whenever the other arm refused
+    /// the kind of value.
+    Condition(crate::condition::RError),
     /// Failed to convert to `Either<L, R>` - both branches failed.
     ///
     /// Contains the errors from attempting both conversions, so the argument
@@ -615,6 +631,7 @@ impl SexpError {
     /// | missing field / duplicate name | either | `missing field 'x'` / `duplicate name 'x'` |
     /// | `match_arg` | yes | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
     /// | `match_arg` | no | `expected one of "a", "b", got "zzz"` |
+    /// | a check's refusal ([`SexpError::Condition`]) | either | its own message |
     /// | `Either` | either | see below |
     ///
     /// `expected_known` says whether the text before the reason already
@@ -641,6 +658,7 @@ impl SexpError {
             SexpError::MissingField(name) => format!("missing field '{name}'"),
             SexpError::DuplicateName(name) => format!("duplicate name '{name}'"),
             SexpError::MatchArg(e) => e.r_reason(expected_known),
+            SexpError::Condition(e) => e.message_str().to_string(),
             #[cfg(feature = "either")]
             SexpError::EitherConversion {
                 left_error,
@@ -663,6 +681,36 @@ impl SexpError {
                     if l == r { l } else { format!("{l}; {r}") }
                 }
             }
+        }
+    }
+
+    /// The [`SexpError::Condition`] refusals whose reasons
+    /// [`r_reason`](Self::r_reason) reports, left arm first: the error itself
+    /// when it is one, and inside an `Either` the refusals of the arm (or
+    /// arms) whose reason is reported. Their classes and fields go on the
+    /// argument error.
+    pub(crate) fn reported_conditions(&self) -> Vec<&crate::condition::RError> {
+        match self {
+            SexpError::Condition(e) => vec![e],
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion {
+                left_error,
+                right_error,
+            } => {
+                let (l, r) = (left_error.as_ref(), right_error.as_ref());
+                if both_kind_mismatches(l, r).is_some() {
+                    Vec::new()
+                } else if l.kind_mismatch().is_some() {
+                    r.reported_conditions()
+                } else if r.kind_mismatch().is_some() {
+                    l.reported_conditions()
+                } else {
+                    let mut both = l.reported_conditions();
+                    both.extend(r.reported_conditions());
+                    both
+                }
+            }
+            _ => Vec::new(),
         }
     }
 }
@@ -688,6 +736,7 @@ impl std::fmt::Display for SexpError {
             SexpError::MissingField(name) => write!(f, "missing field: {}", name),
             SexpError::DuplicateName(name) => write!(f, "duplicate name in list: {:?}", name),
             SexpError::MatchArg(e) => write!(f, "{}", e),
+            SexpError::Condition(e) => write!(f, "{}", e),
             #[cfg(feature = "either")]
             SexpError::EitherConversion {
                 left_error,
@@ -712,6 +761,8 @@ impl std::error::Error for SexpError {
             SexpError::MissingField(_) => None,
             SexpError::DuplicateName(_) => None,
             SexpError::MatchArg(e) => Some(e),
+            // `RError` does not implement `Error` (see its docs).
+            SexpError::Condition(_) => None,
             #[cfg(feature = "either")]
             SexpError::EitherConversion { .. } => None,
         }
