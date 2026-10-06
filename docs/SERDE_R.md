@@ -477,7 +477,8 @@ let df: BuiltDataFrame = builder.finish()?;
   the union of the `T` and `E` fields.
 
 ```rust
-use miniextendr_api::serde::{DataFrameShape, ResultShape, result_to_dataframe};
+use miniextendr_api::DataFrameShape;
+use miniextendr_api::serde::{ResultShape, result_to_dataframe};
 
 #[derive(serde::Serialize)]
 struct ErrorRow {
@@ -499,6 +500,9 @@ Every frame inside `DataFrameShape` is a rooted `BuiltDataFrame`. When an
 all-error split uses a caller-supplied sentinel, the shape keeps it alive in a
 `RootedSentinel` until `IntoR` consumes the result. The shape is therefore safe
 to hold across intervening R allocations; it is not a convert-immediately view.
+`DataFrameShape` is shared with the `#[derive(DataFrameRow)]` enum split
+(`rows.into_dataframe_split()`), so it lives in `miniextendr_api::dataframe`
+(re-exported at the crate root and in the prelude), not in `serde`.
 
 For streaming `Result<T, E>` rows, `dispatch_to_dataframes` incrementally fills
 two serde builders and always returns `list(ok = <df>, err = <df>)`; customize

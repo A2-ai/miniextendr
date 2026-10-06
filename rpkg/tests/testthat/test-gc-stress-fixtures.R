@@ -130,6 +130,54 @@ test_that("DataFrameRow split and as_list fixtures stay intact under gctorture",
 
 # endregion
 
+# region: enum DataFrameRow split held across the caller's allocations (#1750)
+
+test_that("gc_stress_dataframe_split_held returns the held splits and the other frame", {
+  res <- miniextendr:::gc_stress_dataframe_split_held()
+  expect_named(res, c("split", "single", "other"))
+  expect_false(is.data.frame(res$split))
+  expect_named(res$split, c("click", "impression", "error"))
+  for (part in res$split) expect_s3_class(part, "data.frame")
+  expect_equal(res$split$click$x, c(0, 3, 6, 9))
+  expect_identical(res$split$impression$slot, c("slot_1", "slot_4", "slot_7", "slot_10"))
+  expect_identical(res$split$error$code, c(402L, 405L, 408L, 411L))
+  expect_s3_class(res$single, "data.frame")
+  expect_identical(colnames(res$single), c("x", "y"))
+  expect_equal(res$single$y, c(0.5, 1.5, 2.5, 3.5))
+  expect_s3_class(res$other, "data.frame")
+  expect_identical(res$other$name, c("p0", "p1", "p2", "p3"))
+})
+
+test_that("a held into_dataframe_split result survives the caller's allocations under gctorture", {
+  skip_gc_stress_if_disabled()
+  # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
+  f <- miniextendr:::gc_stress_dataframe_split_held
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  fail <- character(0L)
+  for (i in seq_len(10L)) {
+    res <- tryCatch(
+      {
+        out <- f()
+        if (!all(vapply(c(out$split, list(out$single, out$other)), is.data.frame, logical(1L)))) {
+          stop("a partition is not a data.frame")
+        }
+        "ok"
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (!identical(res, "ok")) {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+      break
+    }
+  }
+
+  expect_identical(fail, character(0L))
+})
+
+# endregion
+
 # region: vctrs / serde_json / raw-tagged rooting (#1759, #1760, #1761) -------
 
 # These fixtures are feature-gated (vctrs, jiff + vctrs, serde_json,

@@ -2003,15 +2003,6 @@ pub(super) fn derive_enum_dataframe(
 
 // region: generate_split_method
 
-/// Generate the split representation for an enum `DataFrameRow`: the hidden
-/// `to_dataframe_split` associated method (body holder) plus the
-/// `DataFrameRowSplit` bridge impl that surfaces the public
-/// `rows.into_dataframe_split()` verb (`IntoDataFrameSplit`).
-///
-/// For a single-variant enum, returns the data.frame directly.
-/// For multi-variant enums, returns a named R list of data.frames (one per variant,
-/// named with snake_case variant names). Each partition data.frame has only that
-/// variant's columns (non-optional types — no NA fill from other variants).
 /// Error for an `Option<scalar>` field inside an enum variant (#1437).
 ///
 /// Enum variant fields are stored as `Vec<Option<T>>` (absent for the other
@@ -2027,6 +2018,16 @@ fn option_scalar_in_variant_error(ty: &syn::Type) -> syn::Error {
     )
 }
 
+/// Generate the split representation for an enum `DataFrameRow`: the hidden
+/// `to_dataframe_split` associated method (body holder) plus the
+/// `DataFrameRowSplit` bridge impl that surfaces the public
+/// `rows.into_dataframe_split()` verb (`IntoDataFrameSplit`).
+///
+/// Returns a `DataFrameShape` whose partitions are rooted `BuiltDataFrame`s
+/// (#1750): `Bare` for a single-variant enum, `PerVariantList` (one entry per
+/// variant, named with the snake_case variant name) otherwise. Each partition
+/// data.frame has only that variant's columns (non-optional types — no NA fill
+/// from other variants).
 fn generate_split_method(
     row_name: &syn::Ident,
     variant_infos: &[VariantInfo],
@@ -2599,61 +2600,59 @@ fn generate_split_method(
         }
     }
 
-    // Build the method body
-    let body = if variant_infos.len() == 1 {
-        // Single variant: return the data.frame directly
+    // Root every partition as an owned `BuiltDataFrame` the moment it is built:
+    // later partitions allocate, and an unrooted earlier one would be reaped
+    // before the result owns it (#1748). The handles also keep the partitions
+    // rooted after `to_dataframe_split` returns, so the caller may hold the
+    // result across allocations before converting it (#1750). Nothing allocates
+    // between a partition's construction (its own `ProtectScope` has closed)
+    // and `adopt_sexp`'s `R_PreserveObject`.
+    let rooted_constructions: Vec<TokenStream> = df_constructions
+        .iter()
+        .zip(df_var_names.iter())
+        .map(|(construction, var)| {
+            quote! {
+                #construction
+                // SAFETY: R main thread; `#var` is a freshly built data.frame
+                // and nothing allocates before it is rooted.
+                let #var = unsafe {
+                    ::miniextendr_api::dataframe::BuiltDataFrame::adopt_sexp(
+                        ::miniextendr_api::IntoR::into_sexp(#var),
+                    )
+                };
+            }
+        })
+        .collect();
+
+    let shape = if variant_infos.len() == 1 {
+        // Single variant: the data.frame itself.
         let df_var = &df_var_names[0];
         quote! {
-            #(#buf_decls)*
-            for __row in rows {
-                match __row {
-                    #(#match_arms)*
-                }
-            }
-            #(#df_constructions)*
-            #df_var
+            ::miniextendr_api::dataframe::DataFrameShape::Bare(#df_var)
         }
     } else {
-        // Multiple variants: return named list of data.frames.
-        // Each partition is rooted in `__outer_scope` the moment it is built:
-        // the later partitions allocate, and an unrooted earlier partition is
-        // reaped before the outer list owns it (#1748). The protect runs after
-        // the partition's own `ProtectScope` has closed, so `__outer_scope` is
-        // the innermost live scope (scopes unprotect from the top of the stack).
-        let rooted_constructions: Vec<TokenStream> = df_constructions
-            .iter()
-            .zip(df_var_names.iter())
-            .map(|(construction, var)| {
-                quote! {
-                    #construction
-                    // SAFETY: R main thread; nothing allocates between building
-                    // the partition and protecting it.
-                    let #var = unsafe {
-                        __outer_scope.protect_raw(::miniextendr_api::IntoR::into_sexp(#var))
-                    };
-                }
-            })
-            .collect();
+        // Multiple variants: one named partition per declared variant.
         let outer_pairs: Vec<TokenStream> = snake_names
             .iter()
             .zip(df_var_names.iter())
-            .map(|(name, var)| quote! { (#name, #var) })
+            .map(|(name, var)| quote! { (::std::string::String::from(#name), #var) })
             .collect();
-
         quote! {
-            #(#buf_decls)*
-            for __row in rows {
-                match __row {
-                    #(#match_arms)*
-                }
-            }
-            // SAFETY: split-method runs on the R main thread.
-            let __outer_scope = unsafe { ::miniextendr_api::gc_protect::ProtectScope::new() };
-            #(#rooted_constructions)*
-            ::miniextendr_api::list::List::from_raw_pairs(vec![
+            ::miniextendr_api::dataframe::DataFrameShape::PerVariantList(vec![
                 #(#outer_pairs),*
             ])
         }
+    };
+
+    let body = quote! {
+        #(#buf_decls)*
+        for __row in rows {
+            match __row {
+                #(#match_arms)*
+            }
+        }
+        #(#rooted_constructions)*
+        #shape
     };
 
     quote! {
@@ -2663,7 +2662,9 @@ fn generate_split_method(
             // body and stays `pub` off the documented surface, mirroring the hidden
             // `to_dataframe(rows)` companion helper.
             #[doc(hidden)]
-            pub fn to_dataframe_split(rows: Vec<Self>) -> ::miniextendr_api::list::List {
+            pub fn to_dataframe_split(
+                rows: Vec<Self>,
+            ) -> ::miniextendr_api::dataframe::DataFrameShape {
                 #body
             }
         }
@@ -2676,7 +2677,7 @@ fn generate_split_method(
         {
             fn rows_into_dataframe_split(
                 rows: ::std::vec::Vec<Self>,
-            ) -> ::miniextendr_api::list::List {
+            ) -> ::miniextendr_api::dataframe::DataFrameShape {
                 Self::to_dataframe_split(rows)
             }
         }

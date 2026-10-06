@@ -1,7 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
-use miniextendr_api::{BuiltDataFrame, IntoDataFrame, IntoDataFrameSplit};
-use miniextendr_api::{DataFrameRow, IntoList, List, miniextendr};
+use miniextendr_api::{BuiltDataFrame, DataFrameShape, IntoDataFrame, IntoDataFrameSplit};
+use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 // Test with homogeneous types first
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -162,7 +162,7 @@ pub enum SingleEvent {
 ///
 /// @export
 #[miniextendr]
-pub fn create_events_split() -> List {
+pub fn create_events_split() -> DataFrameShape {
     let rows = vec![
         EventRow::Click {
             id: 1,
@@ -191,7 +191,7 @@ pub fn create_events_split() -> List {
 ///
 /// @export
 #[miniextendr]
-pub fn create_single_event_split() -> List {
+pub fn create_single_event_split() -> DataFrameShape {
     let rows = vec![
         SingleEvent::Click { x: 1.0, y: 2.0 },
         SingleEvent::Click { x: 3.0, y: 4.0 },
@@ -203,7 +203,7 @@ pub fn create_single_event_split() -> List {
 ///
 /// @export
 #[miniextendr]
-pub fn create_shapes_split() -> List {
+pub fn create_shapes_split() -> DataFrameShape {
     let rows = vec![
         ShapeRow::Circle {
             radius: 5.0,
@@ -234,7 +234,7 @@ pub enum TupleSig {
 ///
 /// @export
 #[miniextendr]
-pub fn create_tuple_sig_split() -> List {
+pub fn create_tuple_sig_split() -> DataFrameShape {
     let rows = vec![
         TupleSig::Pair(1, 2),
         TupleSig::Triple(10, 20, 30),
@@ -255,7 +255,7 @@ pub enum UnitStatus {
 ///
 /// @export
 #[miniextendr]
-pub fn create_unit_status_split() -> List {
+pub fn create_unit_status_split() -> DataFrameShape {
     let rows = vec![
         UnitStatus::Active,
         UnitStatus::Pending { id: 7 },
@@ -442,7 +442,7 @@ pub fn check_events_df() -> BuiltDataFrame {
 ///
 /// @export
 #[miniextendr]
-pub fn check_events_split() -> List {
+pub fn check_events_split() -> DataFrameShape {
     check_events().into_dataframe_split()
 }
 // endregion

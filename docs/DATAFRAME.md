@@ -479,18 +479,20 @@ enum Observation {
 
 ### Enum split mode (`into_dataframe_split`)
 
-Alongside the aligned form (`into_dataframe()`, which produces a single data frame with `NA`/`NULL` fill for variants that don't carry a field), enums also get `rows.into_dataframe_split()` — the `IntoDataFrameSplit` trait, re-exported from `miniextendr_api::prelude` next to `IntoDataFrame`/`FromDataFrame` — which partitions the rows by variant. Each partition is a data frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants. Struct rows have no variants to partition, so the trait is implemented only for enum-derived `Vec<Row>`. It returns an `miniextendr_api::List` (a bare `data.frame` for a single-variant enum, a named list otherwise), so a `#[miniextendr]` function returns `List`:
+Alongside the aligned form (`into_dataframe()`, which produces a single data frame with `NA`/`NULL` fill for variants that don't carry a field), enums also get `rows.into_dataframe_split()` — the `IntoDataFrameSplit` trait, re-exported from `miniextendr_api::prelude` next to `IntoDataFrame`/`FromDataFrame` — which partitions the rows by variant. Each partition is a data frame with **only that variant's own columns** — no `NA`-filled columns from sibling variants. Struct rows have no variants to partition, so the trait is implemented only for enum-derived `Vec<Row>`. It returns a `DataFrameShape` (the same type the serde `vec_to_dataframe_split` returns), so a `#[miniextendr]` function returns `DataFrameShape`:
 
-| Variants × rows in input | R return |
-|--------------------------|----------|
-| **Single-variant enum**, any number of rows | bare `data.frame` |
-| **Multi-variant enum**, mixed rows | named `list` of data frames, one per variant in `snake_case` |
+| Variants × rows in input | `DataFrameShape` variant | R return |
+|--------------------------|--------------------------|----------|
+| **Single-variant enum**, any number of rows | `Bare(BuiltDataFrame)` | bare `data.frame` |
+| **Multi-variant enum**, mixed rows | `PerVariantList(Vec<(String, BuiltDataFrame)>)` | named `list` of data frames, one per variant in `snake_case` |
+
+Every partition is a rooted `BuiltDataFrame`, so the result can be held across R allocations (building another frame, calling back into R) before it is returned; it is not a convert-immediately view (#1750). Match on the variant to read a partition from Rust.
 
 ```rust
-use miniextendr_api::{IntoDataFrameSplit, List};
+use miniextendr_api::{DataFrameShape, IntoDataFrameSplit};
 
 #[miniextendr]
-fn split_events() -> List {
+fn split_events() -> DataFrameShape {
     let rows = vec![
         Event::Click { id: 1, x: 1.5, y: 2.5 },
         Event::Impression { id: 2, slot: "top_banner".into() },
