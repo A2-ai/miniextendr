@@ -44,6 +44,7 @@ pub fn new_percent(x: SEXP, _dots: ...) -> Result<SEXP, String> {
 /// Print abbreviation for percent vectors.
 ///
 /// Returns "%" to display in tibble headers and other compact contexts.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_ptype_abbr", class = "percent"))]
 pub fn vec_ptype_abbr_percent(_x: SEXP, _dots: ...) -> &'static str {
     "%"
@@ -52,6 +53,7 @@ pub fn vec_ptype_abbr_percent(_x: SEXP, _dots: ...) -> &'static str {
 /// Print method for percent vectors.
 ///
 /// Formats values as percentages (e.g., 0.5 -> "50%").
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "format", class = "percent"))]
 pub fn format_percent(x: SEXP, _dots: ...) -> Result<Vec<String>, String> {
     // Get the underlying numeric data
@@ -80,6 +82,7 @@ pub fn format_percent(x: SEXP, _dots: ...) -> Result<Vec<String>, String> {
 ///
 /// For percent vectors, the proxy is just the underlying numeric data
 /// without the class attribute.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_proxy", class = "percent"))]
 pub fn vec_proxy_percent(x: SEXP, _dots: ...) -> SEXP {
     // Return x without class attribute (strip vctrs class for operations)
@@ -99,6 +102,7 @@ pub fn vec_proxy_percent(x: SEXP, _dots: ...) -> SEXP {
 /// Restore from proxy after subsetting.
 ///
 /// Reconstructs a percent vector from the proxy data.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_restore", class = "percent"))]
 pub fn vec_restore_percent(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, String> {
     // Restore the percent class
@@ -108,6 +112,7 @@ pub fn vec_restore_percent(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, Strin
 /// Self-coercion prototype (percent + percent = percent).
 ///
 /// Returns an empty percent prototype when combining two percent vectors.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_ptype2", class = "percent.percent"))]
 pub fn vec_ptype2_percent_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
     // Create empty prototype with GC protection
@@ -116,12 +121,14 @@ pub fn vec_ptype2_percent_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP
 }
 
 /// Self-cast (percent -> percent is identity).
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_cast", class = "percent.percent"))]
 pub fn vec_cast_percent_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
     x
 }
 
 /// Cast from double to percent.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_cast", class = "percent.double"))]
 pub fn vec_cast_percent_double(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, String> {
     if !x.is_real() {
@@ -131,6 +138,7 @@ pub fn vec_cast_percent_double(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, S
 }
 
 /// Coercion: double + percent = percent.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_ptype2", class = "percent.double"))]
 pub fn vec_ptype2_percent_double(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
     let empty = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, 0)) };
@@ -138,6 +146,7 @@ pub fn vec_ptype2_percent_double(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP,
 }
 
 /// Coercion: double + percent = percent (symmetric).
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_ptype2", class = "double.percent"))]
 pub fn vec_ptype2_double_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
     let empty = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, 0)) };
@@ -145,6 +154,7 @@ pub fn vec_ptype2_double_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP,
 }
 
 /// Cast from percent to double.
+/// @param ... Additional arguments (ignored, for vctrs compatibility).
 #[miniextendr(s3(generic = "vec_cast", class = "double.percent"))]
 pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
     // Strip the class to get raw numeric, with GC protection

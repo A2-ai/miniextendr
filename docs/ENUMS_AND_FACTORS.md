@@ -761,15 +761,17 @@ write yourself are preserved verbatim; only missing entries are
 auto-generated. A
 block with `@describeIn`, `@inheritParams`, or an `@rdname` naming another
 page gets no generated line: the page it joins or the topic it inherits from
-documents the parameter. On a file-stem page shared by several functions the
-line is kept only when no function there documents the parameter (see
+documents the parameter. On a file-stem page several functions opt into
+(`@rdname <file stem>`) the line is kept only when no function there
+documents the parameter (see
 [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages)).
 
 #### One entry per parameter name on a shared page
 
-Functions documented on one Rd page (the functions of one source file by
-default, a shared `@rdname`, or the methods of one class) get one `\item` per
-parameter name. roxygen2 merges the blocks of a page in file order, and when
+Functions documented on one Rd page (a shared `@rdname`, such as the
+functions of one source file that opt into its file-stem page, or the methods
+of one class) get one `\item` per parameter name. roxygen2 merges the blocks
+of a page in file order, and when
 two blocks document the same name the later block's line replaces the
 earlier one. On a class page that includes a method's generated line
 replacing an explicit `@param` written on an earlier method's block. On a
@@ -780,8 +782,8 @@ types (`Mode` and `Missing<Option<Mode>>`) therefore show only the last
 one's text.
 
 miniextendr does not merge the texts into one line. Give such parameters
-distinct names, keep functions whose same-named parameters differ in their own
-source file, or send one of them to its own page with `@rdname`.
+distinct names, or leave such functions on pages of their own (the default
+for a free function without `@rdname`).
 
 ---
 

@@ -49,8 +49,15 @@ test_that("describeIn functions share the named help page in source order", {
                      function(name) as.integer(regexpr(name, usage, fixed = TRUE)), integer(1))
   expect_true(all(positions > 0L))
   expect_true(all(diff(positions) > 0L))
-  # Explicitly routed functions must not leak onto the automatic file-stem page.
-  expect_false(any(grepl("doc_shared_", unlist(db[["doc_attr_tests.Rd"]]), fixed = TRUE)))
+  # The routed functions are on no other page, and the file's functions
+  # without a page tag document their own pages, not a file-stem page (#1289).
+  other_pages <- db[setdiff(names(db), "doc_shared_topic.Rd")]
+  other_aliases <- unlist(lapply(other_pages, function(page) {
+    unlist(page[vapply(page, function(x) identical(attr(x, "Rd_tag"), "\\alias"), logical(1))])
+  }), use.names = FALSE)
+  expect_false(any(startsWith(other_aliases, "doc_shared_")))
+  expect_null(db[["doc_attr_tests.Rd"]])
+  expect_true(all(c("doc_attr_basic.Rd", "doc_attr_no_params.Rd") %in% names(db)))
 })
 
 test_that("shared-page functions and the S3 method remain callable", {
@@ -98,7 +105,7 @@ test_that("a shared R topic keeps its argument docs when Rust functions join it 
   expect_match(rd_section_text(rd, "\\section"), "Midpoint between the smallest and the largest", fixed = TRUE)
 
   # `@inheritParams` fills the arguments of a function on its own page.
-  inherited <- rd_argument_items(db[["shared_param_docs.Rd"]])
+  inherited <- rd_argument_items(db[["range_share_within.Rd"]])
   expect_identical(inherited[["values"]], args[["values"]])
   expect_identical(inherited[["lower, upper"]], args[["lower, upper"]])
   expect_length(inherited, 2L)
@@ -163,7 +170,7 @@ test_that("a method split onto its own page documents the S3 method arguments it
   expect_length(args, 2L)
 })
 
-test_that("a file-stem page keeps generated @param lines only where no function documents the argument (#1590)", {
+test_that("an opt-in file-stem page keeps generated @param lines only where no function documents the argument (#1590)", {
   db <- shared_pages_rd_db()
   expect_true("stem_page_docs.Rd" %in% names(db))
   rd <- db[["stem_page_docs.Rd"]]
@@ -206,4 +213,30 @@ test_that("the file-stem page functions behave as documented", {
   expect_identical(stem_shift(x, 1), c(2, 6))
   expect_identical(stem_shift(x, 1, direction = "down"), c(0, 4))
   expect_identical(stem_floor(x, 3), c(3, 5))
+})
+
+test_that("free functions of one file document a page each, so @inheritSection names another page (#1289)", {
+  db <- shared_pages_rd_db()
+  expect_null(db[["own_page_docs.Rd"]])
+  expect_true(all(c("own_page_round.Rd", "own_page_truncate.Rd") %in% names(db)))
+  round_rd <- db[["own_page_round.Rd"]]
+  truncate_rd <- db[["own_page_truncate.Rd"]]
+  # Each page keeps its own title and documents only its own function.
+  expect_identical(rd_section_text(round_rd, "\\title"), "Round values to a step")
+  expect_identical(rd_section_text(truncate_rd, "\\title"), "Truncate values to a step")
+  expect_identical(rd_aliases(round_rd), "own_page_round")
+  expect_identical(rd_aliases(truncate_rd), "own_page_truncate")
+  # The section is inherited once from the other page, not copied over and
+  # over from a merged page that inherits from itself.
+  for (rd in list(round_rd, truncate_rd)) {
+    sections <- Filter(function(x) identical(attr(x, "Rd_tag"), "\\section"), rd)
+    expect_length(sections, 1L)
+    expect_match(rd_section_text(rd, "\\section"), "Step rules", fixed = TRUE)
+    expect_match(rd_section_text(rd, "\\section"), "step must be positive", fixed = TRUE)
+  }
+})
+
+test_that("the own-page functions behave as documented", {
+  expect_identical(own_page_round(c(1.2, 2.6), 0.5), c(1, 2.5))
+  expect_identical(own_page_truncate(c(1.2, -2.6), 0.5), c(1, -2.5))
 })

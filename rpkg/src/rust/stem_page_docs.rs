@@ -1,13 +1,15 @@
-//! Functions sharing their file-stem help page, `stem_page_docs` (#1590).
+//! Functions grouped on their file-stem help page, `stem_page_docs` (#1590,
+//! #1289).
 //!
-//! Every function here lands on `man/stem_page_docs.Rd`: the first names the
-//! page with `@name` + `@rdname stem_page_docs`, the second spells out
-//! `@rdname stem_page_docs`, and the third takes the page the wrapper registry
-//! injects from the file stem. All three take `values`, which only the first
-//! documents. The registry keeps a generated `@param` line only for an
-//! argument no function on the page documents: `values` shows the first
-//! function's text once (a generated line written later would replace it),
-//! and the undocumented `direction` keeps its generated choice list.
+//! A free function documents its own page by default; grouping is opt-in.
+//! Every function here opts in with `@rdname stem_page_docs` and so lands on
+//! `man/stem_page_docs.Rd`: the first also names the page with `@name`, the
+//! other two only spell out the `@rdname`. All three take `values`, which
+//! only the first documents. The registry keeps a generated `@param` line
+//! only for an argument no function on the page documents: `values` shows
+//! the first function's text once (a generated line written later would
+//! replace it), and the undocumented `direction` keeps its generated choice
+//! list.
 
 use miniextendr_api::miniextendr;
 
@@ -36,6 +38,7 @@ pub fn stem_shift(
 }
 
 /// `stem_floor()` raises the values to at least a floor.
+/// @rdname stem_page_docs
 /// @param floor Smallest value kept.
 #[miniextendr]
 pub fn stem_floor(values: Vec<f64>, floor: f64) -> Vec<f64> {

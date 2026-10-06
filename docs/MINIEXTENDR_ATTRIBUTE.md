@@ -30,21 +30,23 @@ Generates:
 - C wrapper (`C_mypkg_greet` — prefixed with your crate's name for webR cross-package uniqueness, see `docs/WEBR.md`) handling SEXP conversion
 - R wrapper (`greet <- function(name) { .Call(C_mypkg_greet, name) }`)
 - `pub` functions get `@export`; non-pub get `@noRd`
-- Each function's roxygen gets an auto-generated `@rdname <file-stem>`
-  derived from `file!()`. Functions defined in `zero_copy_tests.rs`
-  share the `zero_copy_tests.Rd` page. Explicit `@rdname`, `@describeIn` or
-  `@name` wins (a `@name topic` block documents `topic.Rd`, as in roxygen2);
-  `@noRd` suppresses the injection; `lib.rs` / `mod.rs` stems are skipped.
+- Each function documents its own page, `man/greet.Rd`, as in roxygen2; a
+  block without a `@title` is titled with the function name. Grouping is
+  opt-in: `@rdname topic` puts the function on `topic`'s page (give the
+  functions of `zero_copy_tests.rs` `@rdname zero_copy_tests` to share
+  `zero_copy_tests.Rd`), and `@describeIn` / `@name` work as in roxygen2
+  (#1289).
 - Each parameter the doc comment does not document gets a generated `@param`
   line (`(no documentation available)`, or the choice list of a `choices` /
   `match_arg` parameter), except in a block with `@describeIn`,
-  `@inheritParams`, or an `@rdname` naming another page than the file-stem
-  page: there the page it joins, or the topic it inherits from, documents the
-  arguments. On a file-stem page the line is kept only when no function on
-  the page documents that argument. A block that joins another topic also
-  gets `@order NaN`, so that topic's own block names and titles the page
-  whatever the R file order. See
-  [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages).
+  `@inheritParams`, or an `@rdname` naming another page than its own or its
+  file-stem page: there the page it joins, or the topic it inherits from,
+  documents the arguments. On a file-stem page (`@rdname <file stem>`) the
+  line is kept only when no function on the page documents that argument. A
+  block that joins another topic also gets `@order NaN`, so that topic's own
+  block names and titles the page whatever the R file order. See
+  [Documentation pages for standalone methods](S3_METHODS.md#documentation-pages-for-standalone-methods)
+  and [Parameters on shared pages](S3_METHODS.md#parameters-on-shared-pages).
 
 ### Doc comments to roxygen
 

@@ -97,7 +97,7 @@ test_that("call = caller: the omission guard keeps the caller attribution (#1548
 test_that("the auto-generated @param line says that omitting means no choice", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  # The Rd page that documents `topic` (fixtures share a page per source file).
+  # The Rd page that documents `topic`.
   rd_text <- function(topic) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
@@ -106,16 +106,15 @@ test_that("the auto-generated @param line says that omitting means no choice", {
     expect_length(page, 1L)
     page[[1L]]
   }
-  # The standalone fixtures share one page, where each parameter name is
-  # listed once; the R6 method has its own argument list.
-  page <- rd_text("match_arg_omitted_plain")
-  expect_match(page, "\"Debug\"; omitting the argument means no choice.", fixed = TRUE)
+  # Each standalone fixture documents its own page (#1289); the R6 method has
+  # its own argument list.
+  expect_match(rd_text("match_arg_omitted_plain"), "\"Debug\"; omitting the argument means no choice.", fixed = TRUE)
   expect_match(
-    page,
+    rd_text("match_arg_omitted_modes"),
     "One or more of \"Fast\", \"Safe\", \"Debug\"; omitting the argument means no choice.",
     fixed = TRUE
   )
-  expect_match(page, "\"blue\", or NULL; omitting the argument means no choice.", fixed = TRUE)
+  expect_match(rd_text("choices_omitted_color"), "\"blue\", or NULL; omitting the argument means no choice.", fixed = TRUE)
   expect_match(
     rd_text("R6MatchArgCounter"),
     "\"Debug\", or NULL; omitting the argument means no choice.",

@@ -1,7 +1,7 @@
 # Doc comments carry their blank lines and indentation into R help
 # (rpkg/src/rust/roxygen_carry_tests.rs). load_all() has the generated man
 # pages but no installed help database, so read whichever exists.
-roxygen_carry_rd <- function(page = "roxygen_carry_tests.Rd") {
+roxygen_carry_rd <- function(page = "roxygen_carry_demo.Rd") {
   pkg_path <- getNamespaceInfo("miniextendr", "path")
   db <- if (dir.exists(file.path(pkg_path, "man"))) {
     tools::Rd_db(dir = pkg_path)
@@ -62,7 +62,7 @@ test_that("an example keeps its indentation and runs", {
 # (rpkg/src/rust/roxygen_prose_links_tests.rs): leading prose loses its link
 # brackets, an explicit tag keeps its \link{}.
 test_that("leading prose drops its links and an explicit tag keeps them", {
-  rd <- roxygen_carry_rd("roxygen_prose_links_tests.Rd")
+  rd <- roxygen_carry_rd("roxygen_prose_links_demo.Rd")
   expect_false(is.null(rd))
   # Every Rd macro used inside a node, nested ones included.
   rd_tags <- function(x) {
@@ -89,7 +89,7 @@ rd_tags <- function(x) {
 }
 
 test_that("an explicit tag drops its rustdoc-only links and keeps its R links", {
-  rd <- roxygen_carry_rd("roxygen_rustdoc_links_tests.Rd")
+  rd <- roxygen_carry_rd("roxygen_rustdoc_links_demo.Rd")
   expect_false(is.null(rd))
   details <- Filter(function(x) identical(attr(x, "Rd_tag"), "\\details"), rd)[[1L]]
   expect_equal(sum(rd_tags(details) == "\\link"), 1L)
@@ -104,7 +104,7 @@ test_that("an explicit tag drops its rustdoc-only links and keeps its R links", 
 })
 
 test_that("leading prose drops an inline rustdoc link", {
-  rd <- roxygen_carry_rd("roxygen_rustdoc_links_tests.Rd")
+  rd <- roxygen_carry_rd("roxygen_rustdoc_links_demo.Rd")
   expect_false(is.null(rd))
   description <- Filter(function(x) identical(attr(x, "Rd_tag"), "\\description"), rd)[[1L]]
   expect_equal(sum(rd_tags(description) == "\\href"), 0L)

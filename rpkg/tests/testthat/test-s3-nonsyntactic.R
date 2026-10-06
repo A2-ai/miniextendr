@@ -44,6 +44,8 @@ test_that("@describeIn keeps its continuation lines and lands on the destination
   # The wrapped continuation of the @describeIn description survived.
   expect_match(rd_text, "as an integer scalar")
   expect_match(rd_text, "keeps its continuation lines")
-  # No file-stem @rdname was injected next to @describeIn (roxygen2 rejects it).
-  expect_null(rd_db[["s3_nonsyntactic_tests.Rd"]][["mx_bag_len"]])
+  # The module's functions document their own pages, not a file-stem page
+  # (#1289), and nothing was injected next to @describeIn (roxygen2 rejects
+  # `@rdname` there).
+  expect_null(rd_db[["s3_nonsyntactic_tests.Rd"]])
 })

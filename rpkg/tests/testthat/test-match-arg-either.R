@@ -107,7 +107,7 @@ test_that("trait method with choices() on Either<String, f64>", {
 test_that("the auto-generated @param line names the other kind", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  # The Rd page that documents `topic` (fixtures share a page per source file).
+  # The Rd page that documents `topic`.
   rd_text <- function(topic) {
     pages <- vapply(rd_db, function(rd) {
       gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
@@ -116,11 +116,15 @@ test_that("the auto-generated @param line names the other kind", {
     expect_length(page, 1L)
     page[[1L]]
   }
-  # The standalone fixtures share one page, where each parameter name is
-  # listed once; the R6 method has its own argument list.
-  page <- rd_text("match_arg_either_route")
-  expect_match(page, "\"infusion\", a data frame, or NULL for no choice.", fixed = TRUE)
-  expect_match(page, "\"high\", or a number.", fixed = TRUE)
+  # Each standalone fixture documents its own page (#1289); the R6 method has
+  # its own argument list.
+  expect_match(rd_text("match_arg_either_route"), "\"infusion\", or a data frame.", fixed = TRUE)
+  expect_match(
+    rd_text("match_arg_either_route_optional"),
+    "\"infusion\", a data frame, or NULL for no choice.",
+    fixed = TRUE
+  )
+  expect_match(rd_text("choices_either_level"), "\"high\", or a number.", fixed = TRUE)
   expect_match(rd_text("EitherRoutePlanner"), "\"infusion\", or a data frame.", fixed = TRUE)
 })
 
@@ -458,18 +462,20 @@ test_that("several_ok Either choice lists name the other kind in their @param li
     expect_length(page, 1L)
     page[[1L]]
   }
-  # The standalone fixtures share one page with the scalar ones; every
-  # parameter name here is new, so each line survives.
-  page <- rd_text("match_arg_either_routes")
-  expect_match(page, "One or more of \"oral\", \"bolus\", \"infusion\", or a data frame.", fixed = TRUE)
-  expect_match(page, "One or more of \"low\", \"mid\", \"high\", or a number.", fixed = TRUE)
+  # Each standalone fixture documents its own page (#1289).
   expect_match(
-    page,
+    rd_text("match_arg_either_routes"),
+    "One or more of \"oral\", \"bolus\", \"infusion\", or a data frame.",
+    fixed = TRUE
+  )
+  expect_match(rd_text("choices_either_tiers"), "One or more of \"low\", \"mid\", \"high\", or a number.", fixed = TRUE)
+  expect_match(
+    rd_text("match_arg_either_routes_optional"),
     "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL for no choice.",
     fixed = TRUE
   )
   expect_match(
-    page,
+    rd_text("match_arg_either_routes_omitted_optional"),
     "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL; omitting the argument means no choice.",
     fixed = TRUE
   )

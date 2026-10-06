@@ -334,9 +334,9 @@ test_that("only `caller` wrappers take `.call`", {
 test_that("an `internal` `caller` wrapper documents `.call`", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  rd_name <- grep("^call_attribution_demo", names(rd_db), value = TRUE)[1]
-  skip_if(is.na(rd_name), "call_attribution_demo.Rd not found — package not documented")
-  rd_text <- paste(capture.output(print(rd_db[[rd_name]])), collapse = "\n")
+  # A free function documents its own page (#1289).
+  expect_true("call_attr_internal_impl.Rd" %in% names(rd_db))
+  rd_text <- paste(capture.output(print(rd_db[["call_attr_internal_impl.Rd"]])), collapse = "\n")
   expect_match(rd_text, "call_attr_internal_impl(x, .call = NULL)", fixed = TRUE)
   expect_match(rd_text, "\\item{.call}{", fixed = TRUE)
 })
