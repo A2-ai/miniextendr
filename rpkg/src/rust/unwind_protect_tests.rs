@@ -86,3 +86,56 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
         )
     }
 }
+
+// region: One condition whichever transport raises it (#1768, #1315)
+
+/// Raise the condition `what` names: `"error"` (`error!` with a class and a
+/// data field), `"arg"` (`arg_error!`), `"panic"`, `"warning"` (`warning!`),
+/// or `"reserved"`, a hand-built payload whose data fields are named `kind`
+/// and `message`. The macros reject those names, but a payload built by hand
+/// reaches the transports with them, and both must splice them the same way
+/// (#1315).
+fn raise_transport_condition(what: &str) -> i32 {
+    match what {
+        "error" => miniextendr_api::rust_error!(
+            class = "pkg_transport",
+            data = { step = 1 },
+            "transport error"
+        ),
+        "arg" => miniextendr_api::arg_error!(param = "what", "'what' is not a choice"),
+        "panic" => panic!("transport panic"),
+        "warning" => miniextendr_api::warning!("transport warning"),
+        "reserved" => std::panic::panic_any(miniextendr_api::RCondition::Error {
+            message: "base message".to_string(),
+            class: vec!["pkg_transport".to_string()],
+            data: Some(vec![
+                ("kind".to_string(), "user kind".into()),
+                ("message".to_string(), "user message".into()),
+                ("step".to_string(), 2i32.into()),
+            ]),
+            call: miniextendr_api::condition::ConditionCall::Inherit,
+        }),
+        _ => 0,
+    }
+}
+
+/// Raise the condition `what` names either as the generated wrapper does,
+/// from the tagged value the body returns, or through
+/// `with_r_unwind_protect_or_raise`, the raising guard ALTREP `RUnwind`
+/// callbacks use, given the wrapper's call. Both give one condition (#1768).
+/// @param what Which condition: `"error"` (a classed error with a data field),
+///   `"arg"` (an argument error), `"panic"`, `"warning"`, or `"reserved"` (data
+///   fields named `kind` and `message`); anything else returns `0L`.
+/// @param guard Whether to raise through the raising guard.
+/// @return `0L` when `what` names no condition.
+/// @export
+#[miniextendr]
+pub fn transport_condition(what: &str, guard: bool, call: miniextendr_api::Call) -> i32 {
+    if guard {
+        with_r_unwind_protect_or_raise(|| raise_transport_condition(what), Some(call.sexp()))
+    } else {
+        raise_transport_condition(what)
+    }
+}
+
+// endregion

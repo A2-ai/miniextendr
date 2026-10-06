@@ -1,13 +1,13 @@
 // AUTO-GENERATED — DO NOT EDIT.
 //
-// generator-version: 1
+// generator-version: 2
 // content-hash:      0000000000000000
 //
 // THIS IS A STUB. The cross-package test crates (consumer.pkg / producer.pkg)
 // are native-only trait-ABI fixtures and are never deployed to webR. This file
 // exists solely so `cargo check --target wasm32-unknown-emscripten` can resolve
 // the wasm32-gated `mod __miniextendr_wasm_registry;` that `miniextendr_init!()`
-// emits (see miniextendr-macros/src/lib.rs). The three slices are intentionally
+// emits (see miniextendr-macros/src/lib.rs). The four slices are intentionally
 // empty — a real snapshot is only produced for deployable crates by
 // `miniextendr_write_wasm_registry` during a host install.
 //
@@ -20,3 +20,4 @@ use ::miniextendr_api::sys::R_CallMethodDef;
 pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[];
 pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[];
 pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry] = &[];
+pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str] = &[];

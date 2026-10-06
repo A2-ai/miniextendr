@@ -276,13 +276,11 @@ pub fn altrep_condition_on_elt(n: i32, message: &str) -> SEXP {
 // region: DataErrorAltrep — error!(data = ...) from elt(), guard = RUnwind (issue #996 path 2)
 //
 // `with_r_unwind_protect_sourced` (the ALTREP `RUnwind` guard path) routes
-// `RCondition::Error` through `raise_rust_condition_via_stop`, which builds
-// `stop(structure(list(message = ..., call = ...), class = ...))` directly —
-// there is no R wrapper here to splice `.val$data` the way
-// `.miniextendr_raise_condition` does for the primary transport. Before
-// #996 path 2, this dropped the `data =` fields entirely: class layering and
-// message survived, `e$field_a` did not. `raise_rust_condition_via_stop` now
-// takes an optional `ConditionData` and splices it into the condition list.
+// `RCondition::Error` through `raise_rust_condition_via_stop`; there is no R
+// wrapper here to splice `.val$data`. Before #996 path 2 that path dropped the
+// `data =` fields entirely: class layering and message survived, `e$field_a`
+// did not. Since #1768 it hands the tagged value to the wrappers' own
+// `.miniextendr_raise_condition`, which splices the data as for a wrapper.
 
 /// ALTREP integer that raises `error!(data = ...)` on element access.
 #[derive(AltrepInteger)]

@@ -156,6 +156,25 @@ pub(crate) fn trait_dispatch() -> &'static [TraitDispatchEntry] {
     }
 }
 
+/// The package crate's `conversion_error_class` (empty when it sets none).
+///
+/// Native: the [`MX_CONVERSION_ERROR_CLASS`] entry `miniextendr_init!`
+/// registers (a package has one). wasm32: the copy the `wasm_registry.rs`
+/// snapshot carries, installed by `install_wasm_runtime_slices`.
+#[inline]
+pub(crate) fn conversion_error_class() -> &'static [&'static str] {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        MX_CONVERSION_ERROR_CLASS
+            .first()
+            .map_or(&[][..], |entry| entry.classes)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_runtime::conversion_error_class()
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_runtime {
     use super::{AltrepRegistration, R_CallMethodDef, TraitDispatchEntry};
@@ -164,11 +183,13 @@ mod wasm_runtime {
     static CALL_DEFS: OnceLock<&'static [R_CallMethodDef]> = OnceLock::new();
     static ALTREP_REGS: OnceLock<&'static [AltrepRegistration]> = OnceLock::new();
     static TRAIT_DISPATCH: OnceLock<&'static [TraitDispatchEntry]> = OnceLock::new();
+    static CONVERSION_ERROR_CLASS: OnceLock<&'static [&'static str]> = OnceLock::new();
 
     pub(super) fn install(
         c: &'static [R_CallMethodDef],
         a: &'static [AltrepRegistration],
         t: &'static [TraitDispatchEntry],
+        k: &'static [&'static str],
     ) {
         // Double-install is a programmer error but not memory-unsafe — silently
         // ignore so a second `R_init_*` (e.g. dyn.unload + dyn.load) doesn't
@@ -176,6 +197,7 @@ mod wasm_runtime {
         let _ = CALL_DEFS.set(c);
         let _ = ALTREP_REGS.set(a);
         let _ = TRAIT_DISPATCH.set(t);
+        let _ = CONVERSION_ERROR_CLASS.set(k);
     }
 
     pub(super) fn call_defs() -> &'static [R_CallMethodDef] {
@@ -187,6 +209,9 @@ mod wasm_runtime {
     pub(super) fn trait_dispatch() -> &'static [TraitDispatchEntry] {
         TRAIT_DISPATCH.get().copied().unwrap_or(&[])
     }
+    pub(super) fn conversion_error_class() -> &'static [&'static str] {
+        CONVERSION_ERROR_CLASS.get().copied().unwrap_or(&[])
+    }
 }
 
 /// Install the runtime-critical slice data on `wasm32-*`.
@@ -195,6 +220,8 @@ mod wasm_runtime {
 /// `miniextendr_init!`) before `package_init` runs. The slices are typically
 /// the `MX_*_WASM` constants emitted into `<crate>/src/rust/<crate>/src/wasm_registry.rs`
 /// by [`crate::wasm_registry_writer::write_wasm_registry_to_file`].
+/// `conversion_error_class` is the crate's `conversion_error_class` from the
+/// same snapshot, which the raising guards give an `arg_error!` (#1768).
 ///
 /// Calling more than once is harmless — the first install wins (the assumption
 /// being all calls supply the same data; second-install is treated as a
@@ -204,8 +231,14 @@ pub fn install_wasm_runtime_slices(
     call_defs: &'static [R_CallMethodDef],
     altrep_regs: &'static [AltrepRegistration],
     trait_dispatch: &'static [TraitDispatchEntry],
+    conversion_error_class: &'static [&'static str],
 ) {
-    wasm_runtime::install(call_defs, altrep_regs, trait_dispatch);
+    wasm_runtime::install(
+        call_defs,
+        altrep_regs,
+        trait_dispatch,
+        conversion_error_class,
+    );
 }
 
 // endregion
@@ -1847,10 +1880,7 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
 /// entry; with none (or a crate that sets no class) the binding is `NULL`.
 #[cfg(not(target_arch = "wasm32"))]
 fn conversion_error_class_binding() -> String {
-    let classes = MX_CONVERSION_ERROR_CLASS
-        .first()
-        .map_or(&[][..], |entry| entry.classes);
-    format_conversion_error_class_binding(classes)
+    format_conversion_error_class_binding(conversion_error_class())
 }
 
 /// [`conversion_error_class_binding`] for an explicit class list.

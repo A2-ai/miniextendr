@@ -69,39 +69,34 @@ use std::{
 
 // region: raise_rust_condition_via_stop — Approach 3 for ALTREP RUnwind path
 
-/// Cached `stop` symbol (permanently interned via `Rf_install`).
-fn stop_sym() -> crate::SEXP {
-    static CACHE: OnceLock<crate::SEXP> = OnceLock::new();
-    *CACHE.get_or_init(|| unsafe { crate::sys::Rf_install(c"stop".as_ptr()) })
-}
-
-/// Raise an R condition with `rust_*` class layering by evaluating
-/// `stop(structure(list(message = msg, call = call, ...data), class = c(...)))`.
+/// Raise the R condition for a tagged condition value by evaluating the
+/// shared `.miniextendr_raise_condition` helper on it, the helper every
+/// generated R wrapper calls on the value its `.Call()` returns.
 ///
-/// This is **Approach 3** from the issue-345 plan: the `Rf_eval(stop(...))` pattern
-/// that works in any context where there is no outer R wrapper to inspect a tagged SEXP.
-/// It is the only viable option for ALTREP callbacks, which are invoked directly by
-/// R's runtime (no `.Call` frame, no R wrapper).
+/// This is **Approach 3** from the issue-345 plan: an `Rf_eval` that ends in
+/// `stop(structure(...))`, for contexts with no outer R wrapper to inspect a
+/// tagged SEXP. It is the only viable option for ALTREP callbacks, which are
+/// invoked directly by R's runtime (no `.Call` frame, no R wrapper).
 ///
-/// The `stop()` call longjmps, so this function never returns — declared `-> !`.
+/// `tagged_value` builds the value (with [`crate::error_value`]'s
+/// constructors). Because the helper raises it, the condition is the one the
+/// wrapper raises for the same value, field for field (#1768): `message`,
+/// `call`, `kind`, then the `data =` fields spliced with `utils::modifyList`,
+/// so a data field named `message`, `call` or `kind` replaces the base field
+/// on both transports (#1315); the classes ahead of the `rust_*` layering.
+/// The copy evaluated here lives in the base namespace, so the caller
+/// resolves `arg_error!`'s class marker in Rust first.
 ///
-/// ## Class layering
+/// The value must be of an error kind (`stop()` longjmps, so this function
+/// never returns); the helper's warning / message / condition arms return.
 ///
-/// - With `class = ["my_class"]`, the resulting R condition has class:
-///   `c("my_class", "rust_error", "simpleError", "error", "condition")`; several
-///   classes are prepended in order.
-/// - Without a custom class: `c("rust_error", "simpleError", "error", "condition")`.
+/// ## Nothing Rust-owned survives the longjmp
 ///
-/// ## Structured `data` (issue #996 path 2)
-///
-/// When `data` is `Some`, each `(name, value)` pair is spliced directly into
-/// the condition list *after* `message`/`call` — mirroring how the
-/// tagged-transport path's `.miniextendr_raise_condition` R helper
-/// (`utils::modifyList`) layers the macros' `data = ...` payload onto the base
-/// condition fields (see `crate::error_value`). `message`/`call` are kept
-/// first so `$`'s first-match semantics protect `conditionMessage()` /
-/// `conditionCall()` even if a data field happens to share one of those names.
-/// `None` produces the original 2-element `(message, call)` list.
+/// The longjmp skips every Rust frame above R's, so no destructor runs past
+/// this point. `tagged_value` consumes what it captures (message, classes,
+/// data) and is itself dropped before `Rf_eval`; the SEXPs are rooted with
+/// plain `Rf_protect`, whose stack R resets on the jump, rather than a
+/// drop guard that would never run.
 ///
 /// ## MXL300 compliance
 ///
@@ -110,100 +105,40 @@ fn stop_sym() -> crate::SEXP {
 ///
 /// # Safety
 ///
-/// Must be called from R's main thread inside an `R_UnwindProtect` cleanup
-/// or equivalent context where R longjmps are safe. In practice, always called
-/// from `with_r_unwind_protect_sourced` on the ALTREP guard path.
+/// Must be called from R's main thread in a context where R longjmps are
+/// safe, with no Rust value that needs dropping left on the caller's frames.
+/// In practice, always called from `with_r_unwind_protect_sourced` (ALTREP
+/// `RUnwind` guards, [`with_r_unwind_protect_or_raise`]) after its guarded
+/// closure has returned.
 pub(crate) unsafe fn raise_rust_condition_via_stop(
-    message: &str,
-    class: &[String],
-    call: Option<crate::SEXP>,
-    data: Option<crate::condition::ConditionData>,
+    tagged_value: impl FnOnce() -> SEXP,
+    call: Option<SEXP>,
 ) -> ! {
-    use crate::sexp_types::CE_UTF8;
-    use crate::sys::{R_BaseEnv, Rf_allocVector, Rf_eval, Rf_lang2, Rf_mkCharCE, Rf_protect};
-    use crate::{IntoR, SEXP, SEXPTYPE, SexpExt};
+    use crate::sys::{R_BaseEnv, Rf_eval, Rf_lang3, Rf_protect};
 
     unsafe {
-        // Build the class vector: c(<custom classes…>, "rust_error", "simpleError", "error", "condition")
-        let base_classes: &[&std::ffi::CStr] =
-            &[c"rust_error", c"simpleError", c"error", c"condition"];
-        let class_count = base_classes.len() + class.len();
+        let helper = crate::deferred_condition::raise_condition_helper();
+        let tagged = Rf_protect(tagged_value());
+        let expr = Rf_protect(Rf_lang3(helper, tagged, call.unwrap_or(SEXP::nil())));
+        // Longjmps through `stop()`; R pops the protect stack on the way out.
+        Rf_eval(expr, R_BaseEnv);
+    }
+    // Only a non-error tagged value (a bug in the caller) gets here, and
+    // unwinding out of an ALTREP callback would cross R's C frames.
+    std::process::abort()
+}
 
-        let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, class_count as isize);
-        Rf_protect(class_vec);
-
-        let mut idx = 0isize;
-        for custom in class {
-            let custom_cstr = std::ffi::CString::new(custom.as_str())
-                .unwrap_or_else(|_| std::ffi::CString::new("rust_error").unwrap());
-            let custom_charsxp = Rf_mkCharCE(custom_cstr.as_ptr(), CE_UTF8);
-            class_vec.set_string_elt(idx, custom_charsxp);
-            idx += 1;
-        }
-        for base in base_classes {
-            let charsxp = crate::cached_class::permanent_charsxp(base);
-            class_vec.set_string_elt(idx, charsxp);
-            idx += 1;
-        }
-
-        // Build the message SEXP
-        let msg_cstr = std::ffi::CString::new(message)
-            .unwrap_or_else(|_| std::ffi::CString::new("<invalid error message>").unwrap());
-        let msg_charsxp = Rf_mkCharCE(msg_cstr.as_ptr(), CE_UTF8);
-        let msg_sexp = SEXP::scalar_string(msg_charsxp);
-        Rf_protect(msg_sexp);
-
-        let call_sexp = call.unwrap_or(SEXP::nil());
-
-        // Build a named list: list(message = msg, call = call_sexp, ...data).
-        // `data_len` extra slots hold the spliced `data =` fields (issue #996
-        // path 2); with no data this is the original 2-element list.
-        let data_len = data.as_ref().map_or(0, |fields| fields.len());
-        let total_len = 2 + data_len;
-
-        let err_list = Rf_allocVector(SEXPTYPE::VECSXP, total_len as isize);
-        Rf_protect(err_list);
-        err_list.set_vector_elt(0, msg_sexp);
-        err_list.set_vector_elt(1, call_sexp);
-
-        // Set names: c("message", "call", <data field names>...)
-        let names_vec = Rf_allocVector(SEXPTYPE::STRSXP, total_len as isize);
-        Rf_protect(names_vec);
-        names_vec.set_string_elt(0, crate::cached_class::permanent_charsxp(c"message"));
-        names_vec.set_string_elt(1, crate::cached_class::permanent_charsxp(c"call"));
-
-        // PROTECT discipline: err_list and names_vec are already protected
-        // above. Each data field's materialised value is stored into the
-        // protected err_list immediately (rooting it) before the next
-        // allocation (its name CHARSXP) — same discipline as
-        // `make_rust_condition_value_with_data` in `crate::error_value`.
-        if let Some(fields) = data {
-            for (i, (name, value)) in fields.into_iter().enumerate() {
-                let idx = (2 + i) as isize;
-                let value_sexp = value.into_sexp();
-                err_list.set_vector_elt(idx, value_sexp);
-                let name_cstr = std::ffi::CString::new(name)
-                    .unwrap_or_else(|_| std::ffi::CString::new("<invalid name>").unwrap());
-                let name_charsxp = Rf_mkCharCE(name_cstr.as_ptr(), CE_UTF8);
-                names_vec.set_string_elt(idx, name_charsxp);
-            }
-        }
-        err_list.set_names(names_vec);
-
-        // Set the class attribute directly (no structure() call needed)
-        err_list.set_class(class_vec);
-
-        // Build stop(err_list) as a language object: lang2(stop_sym, err_list)
-        // stop() accepts a condition object directly
-        let stop_call = Rf_lang2(stop_sym(), err_list);
-        Rf_protect(stop_call);
-
-        // Rf_eval(stop_call, R_BaseEnv) longjmps — never returns
-        // The protect stack is cleaned up by R's longjmp unwind
-        Rf_eval(stop_call, R_BaseEnv);
-
-        // Never reached — Rf_eval(stop(...), ...) always longjmps
-        std::hint::unreachable_unchecked()
+/// The tagged value of a generic panic, `kind = "panic"`: what
+/// [`with_r_unwind_protect`] returns for one.
+fn panic_condition_value(message: &str, call: Option<SEXP>) -> SEXP {
+    // SAFETY: only called by `raise_rust_condition_via_stop`, on the main thread.
+    unsafe {
+        crate::error_value::make_rust_condition_value(
+            message,
+            crate::error_value::kind::PANIC,
+            None,
+            call,
+        )
     }
 }
 
@@ -434,8 +369,8 @@ where
     }
 }
 
-/// Execute a closure with R unwind protection, raising any Rust panic as an R
-/// error via `Rf_eval(stop(structure(...)))`.
+/// Execute a closure with R unwind protection, raising any Rust panic as the R
+/// error a generated wrapper would raise for it.
 ///
 /// If the closure panics, the panic is caught and converted to an R error
 /// (longjmp) with `rust_*` class layering. If R raises an error (longjmp), all
@@ -453,7 +388,8 @@ where
 ///
 /// In those contexts there is no consumer-side R wrapper to inspect a tagged
 /// SEXP. Panics are routed through `raise_rust_condition_via_stop` so they
-/// still receive `rust_*` class layering (issue #345). Trait-ABI shims use a
+/// still receive `rust_*` class layering (issue #345), the same `kind` and
+/// the same fields as the wrapper's condition (#1768). Trait-ABI shims use a
 /// separate SEXP-returning variant ([`with_r_unwind_protect_shim`]) that
 /// re-panics at the View boundary.
 ///
@@ -480,21 +416,26 @@ where
 /// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
 /// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
 ///
-/// Handles [`crate::condition::RCondition`] payloads:
+/// Every outcome is raised through [`raise_rust_condition_via_stop`], which
+/// hands the tagged value [`with_r_unwind_protect`] would return to the R
+/// helper the generated wrappers call, so the condition is the wrapper's, with
+/// its `kind` (#1768). This works even in ALTREP callback context, where there
+/// is no R wrapper to inspect a tagged SEXP (Approach 3 from the issue-345
+/// plan):
 ///
-/// - `RCondition::Error` — routes through [`raise_rust_condition_via_stop`] which
-///   `Rf_eval`s `stop(structure(..., class = c("rust_error", ...)))`. This gives
-///   full `rust_*` class layering even in ALTREP callback context where there is
-///   no R wrapper to inspect a tagged SEXP (Approach 3 from the issue-345 plan).
-///   Custom `class = "..."` from `error!()` is preserved in the class vector.
+/// - `RCondition::Error` (`error!()`) — `kind = "error"`, its classes ahead of
+///   the `rust_*` layering, its `data =` fields.
 ///
-/// - `RCondition::Conversion` (`arg_error!`) — the same, with the crate-class
-///   marker replaced in Rust by the classes `miniextendr_init!` registered:
-///   no generated R is there to resolve it.
+/// - `RCondition::Conversion` (`arg_error!`) — `kind = "conversion"`, with the
+///   crate-class marker replaced in Rust by the classes `miniextendr_init!`
+///   registered: no generated R is there to resolve it.
 ///
-/// - `Warning`, `Message`, `Condition` — convert to a plain R error with a
-///   diagnostic message. `warning!()`/`message!()` from ALTREP context cannot
-///   suspend execution for non-fatal signals; documented limitation.
+/// - A generic panic — `kind = "panic"`, with the `(at file:line)` suffix.
+///
+/// - `Warning`, `Message`, `Condition` — a plain R error with a diagnostic
+///   message and `kind = "panic"`. `warning!()`/`message!()` from ALTREP
+///   context cannot suspend execution for non-fatal signals; documented
+///   limitation.
 pub(crate) fn with_r_unwind_protect_sourced<F, R>(
     f: F,
     call: Option<SEXP>,
@@ -531,56 +472,54 @@ where
         Err(payload) => {
             // region: RCondition recognition for the raising-variant path
             if payload.is::<crate::condition::RCondition>() {
-                // Take ownership so `data` (issue #996 path 2) can be moved into
-                // `raise_rust_condition_via_stop` without cloning — same idiom as
-                // `with_r_unwind_protect_shim`.
+                // Take ownership so the payload's parts move into the tagged
+                // value without cloning — same idiom as `with_r_unwind_protect_shim`.
                 let cond = *payload
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
-                // A call-less condition (`call = none`) drops the guard's call.
-                let call = cond.call().apply(call);
-                match cond {
-                    crate::condition::RCondition::Error {
-                        message,
-                        class,
-                        data,
-                        call: _,
+                let error_kind = matches!(
+                    cond,
+                    crate::condition::RCondition::Error { .. }
+                        | crate::condition::RCondition::Conversion { .. }
+                );
+                // The kind is the one the tagged path writes for this payload.
+                let (kind, mut parts) = cond.into_parts();
+                if error_kind {
+                    // Approach 3 (issue-345): the helper the wrappers use raises
+                    // the value, so `tryCatch(rust_error = h, ...)`,
+                    // `tryCatch(my_class = h, ...)`, `e$kind` and the `data`
+                    // fields (issue #996 path 2) all match the wrapper's
+                    // condition. That copy of the helper cannot resolve an
+                    // `arg_error!`'s class marker (#1740): Rust puts the
+                    // package's registered classes in its place.
+                    parts.class = crate::condition::resolve_conversion_error_class_marker(
+                        parts.class,
+                        crate::condition::crate_conversion_error_class(),
+                    );
+                    crate::panic_telemetry::fire(&parts.message, source);
+                    unsafe {
+                        raise_rust_condition_via_stop(
+                            move || crate::error_value::condition_parts_value(kind, parts, call),
+                            call,
+                        )
                     }
-                    | crate::condition::RCondition::Conversion {
-                        message,
-                        class,
-                        data,
-                        call: _,
-                    } => {
-                        // Approach 3 (issue-345): raise via Rf_eval(stop(structure(...)))
-                        // so tryCatch(rust_error = h, ...) and tryCatch(my_class = h, ...)
-                        // both match. No R wrapper needed. `data` fields are spliced in
-                        // too (issue #996 path 2) — previously silently dropped here.
-                        // No generated R resolves an `arg_error!`'s class marker here
-                        // (#1740): Rust puts the package's registered classes in its place.
-                        let class = crate::condition::resolve_conversion_error_class_marker(
-                            class,
-                            crate::condition::crate_conversion_error_class(),
-                        );
-                        crate::panic_telemetry::fire(&message, source);
-                        unsafe { raise_rust_condition_via_stop(&message, &class, call, data) }
-                    }
-                    crate::condition::RCondition::Warning { .. }
-                    | crate::condition::RCondition::Message { .. }
-                    | crate::condition::RCondition::Condition { .. } => {
-                        // warning!/message!/condition! cannot be cleanly raised from ALTREP
-                        // context (no mechanism to suspend execution for non-fatal signals).
-                        // Documented degradation: convert to a plain R error with a fixed
-                        // diagnostic, but route through `raise_rust_condition_via_stop` so
-                        // the resulting error gets `rust_error` class layering — consistent
-                        // with the generic-panic branch a few lines below (issue #366).
-                        // The data fields (if any) are dropped along with everything else
-                        // about the original kind — this branch already discards message.
-                        let msg = "warning!/message!/condition! from ALTREP callback context \
-                                   cannot be raised as non-fatal signals; use error!() instead. \
-                                   This context has no R wrapper to handle signal restart.";
-                        crate::panic_telemetry::fire(msg, source);
-                        unsafe { raise_rust_condition_via_stop(msg, &[], call, None) }
+                } else {
+                    // warning!/message!/condition! cannot be cleanly raised from ALTREP
+                    // context (no mechanism to suspend execution for non-fatal signals).
+                    // Documented degradation: a plain R error with a fixed diagnostic,
+                    // raised like the generic-panic branch below (`kind = "panic"`,
+                    // `rust_error` class layering, issue #366): an error reporting the
+                    // original kind would claim to be a warning. The classes and data
+                    // fields are dropped along with the message; the call choice is
+                    // kept (`call = none` drops the guard's call).
+                    let call = parts.call.apply(call);
+                    drop(parts);
+                    let msg = "warning!/message!/condition! from ALTREP callback context \
+                               cannot be raised as non-fatal signals; use error!() instead. \
+                               This context has no R wrapper to handle signal restart.";
+                    crate::panic_telemetry::fire(msg, source);
+                    unsafe {
+                        raise_rust_condition_via_stop(|| panic_condition_value(msg, call), call)
                     }
                 }
             } else {
@@ -591,8 +530,12 @@ where
                 // tryCatch(rust_error = h, ...) matches even for plain panics.
                 let msg =
                     panic_message.unwrap_or_else(|| panic_message_with_location(payload.as_ref()));
+                // The raise longjmps over this frame: free the payload first.
+                drop(payload);
                 crate::panic_telemetry::fire(&msg, source);
-                unsafe { raise_rust_condition_via_stop(&msg, &[], call, None) }
+                unsafe {
+                    raise_rust_condition_via_stop(move || panic_condition_value(&msg, call), call)
+                }
             }
             // endregion
         }

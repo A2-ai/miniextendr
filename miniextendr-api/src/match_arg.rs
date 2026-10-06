@@ -98,6 +98,8 @@ macro_rules! match_arg_wording {
         "should be one of"
     };
 }
+// The R helpers (host-only) read it from here; this module uses it in place.
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) use match_arg_wording;
 
 /// Error type for `MatchArg` conversion failures.

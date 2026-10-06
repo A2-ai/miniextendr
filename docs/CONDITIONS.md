@@ -218,7 +218,8 @@ live `SEXP` or arbitrary `IntoR` value cannot ride along.
 #### Reserved names
 
 `message`, `call` and `kind` are the condition's own slots (the R helper
-splices `data` over them with `utils::modifyList`), so they are **rejected**
+splices `data` over them with `utils::modifyList`, on every transport,
+the raising guards included, #1315), so they are **rejected**
 as field names: at compile time when the name is a literal or a bare
 identifier (`data = ("kind", 1)`, `data = { kind = 1 }`), at runtime otherwise
 (a plain `rust_error` explaining the clash, instead of the former silent
@@ -878,11 +879,10 @@ two are the generated-code and hand-written spellings of one condition.
 
 A raising guard without a generated R wrapper (an ALTREP `r_unwind` callback,
 `with_r_unwind_protect_or_raise`) resolves the marker in Rust, against the
-classes `miniextendr_init!` registered for the package, and raises an error
-with the crate classes, `e$param` and the `rust_error` layering. It sets no
-`kind`, as for every error it raises, and on wasm32, where that registry is
-host-only, the marker resolves to no classes (#1768). A connection
-callback returns its fallback value, as for any panic.
+classes `miniextendr_init!` registered for the package (on wasm32, the copy
+the `wasm_registry.rs` snapshot carries), and raises the same condition: the
+crate classes, `kind = "conversion"`, `e$param` and the `rust_error` layering
+(#1768). A connection callback returns its fallback value, as for any panic.
 
 ## Trait-ABI and ALTREP error class layering
 
@@ -901,12 +901,16 @@ to inspect a tagged SEXP. Two different mechanisms cover the two contexts:
   boundary — `e$field_name` is accessible in R handlers even when the error
   crossed a package boundary (see #996 path-1).
 
-- **ALTREP `r_unwind` callbacks**: the guard raises the R condition by
-  evaluating `stop(structure(list(message, call, ...), class = c(...)))`
-  directly (no R wrapper required). `tryCatch(rust_error = h, ...)` matches;
-  user classes match before `rust_error`. Structured `data =` fields are
-  spliced into the condition list after `message`/`call`, so `e$field_name`
-  works from ALTREP-raised errors too (see #996 path-2).
+- **ALTREP `r_unwind` callbacks** (and `with_r_unwind_protect_or_raise`): the
+  guard builds the tagged value a wrapper would receive and raises it with the
+  wrappers' own `.miniextendr_raise_condition` helper (no R wrapper required),
+  so the condition is the one a wrapper raises for the same payload (#1768):
+  `tryCatch(rust_error = h, ...)` matches, user classes match before
+  `rust_error`, `e$kind` is `"error"` for `error!()`, `"conversion"` for
+  `arg_error!()` and `"panic"` for a panic, and structured `data =` fields
+  follow `message`, `call` and `kind`, so `e$field_name` works from
+  ALTREP-raised errors too (see #996 path-2). The one difference is the call:
+  the guard reports the `call` it was given, `NULL` in an ALTREP callback.
 
 ### Remaining limitations
 
@@ -915,9 +919,9 @@ Two narrow cases still degrade:
 - `warning!()` / `message!()` / `condition!()` from an ALTREP `r_unwind`
   callback. There is no mechanism to suspend execution to deliver a
   non-fatal signal from inside R's vector-dispatch machinery. These produce
-  an R error with the message: *"warning!/message!/condition! from ALTREP
-  callback context cannot be raised as non-fatal signals; use error!()
-  instead"*.
+  an R error (`kind = "panic"`, no user classes or data) with the message:
+  *"warning!/message!/condition! from ALTREP callback context cannot be raised
+  as non-fatal signals; use error!() instead"*.
 
 - A trait View method (`view.method()`) called from Rust code that is not
   wrapped in `with_r_unwind_protect` (e.g., a manual call from a test harness

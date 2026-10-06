@@ -30,7 +30,7 @@
 //! the longjmp skips Rust destructors and the lint **MXL300** rejects it.
 //! Panic instead; whichever guard mode you pick converts the panic into the
 //! tagged-condition transport ([`crate::error_value`]) or, on the ALTREP
-//! `RUnwind` path, raises a structured `rust_*` condition via the
+//! `RUnwind` path, raises the same structured `rust_*` condition via the
 //! crate-private `raise_rust_condition_via_stop` helper.
 //!
 //! ## Cross references

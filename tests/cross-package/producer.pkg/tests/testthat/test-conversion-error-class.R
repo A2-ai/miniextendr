@@ -208,15 +208,18 @@ test_that("arg_error! and match_arg_param() in a body raise the crate classes (#
   expect_equal(conditionCall(e), quote(user_fn(x)))
 })
 
-test_that("a raising guard gives arg_error! the crate classes from Rust (#1740)", {
+test_that("a raising guard gives arg_error! the crate classes from Rust (#1740, #1768)", {
   # `with_r_unwind_protect_or_raise` (ALTREP `RUnwind` callbacks) raises the
   # condition itself, with no generated R to resolve the marker: Rust puts the
-  # classes `miniextendr_init!` registered in its place. It sets no `kind`, as
-  # for every error it raises.
+  # classes `miniextendr_init!` registered in its place, then raises through
+  # the wrappers' helper, so the condition is the wrapper's, `kind` included.
+  x <- structure(c(1, 2), class = "producer_num")
+  e_wrap <- tryCatch(producer.pkg:::producer_named_checks_impl(x, "medium"), error = function(e) e)
   e <- tryCatch(producer.pkg:::producer_arg_error_guard_impl("medium"), error = function(e) e)
   expect_identical(class(e), crate_classes)
   expect_identical(e$param, "mode")
   expect_identical(conditionMessage(e), "'mode' should be one of \"fast\", \"slow\"")
-  expect_null(e$kind)
+  expect_identical(e$kind, "conversion")
+  expect_identical(names(unclass(e)), names(unclass(e_wrap)))
   expect_identical(producer.pkg:::producer_arg_error_guard_impl("fast"), "fast")
 })
