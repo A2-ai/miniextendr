@@ -13,9 +13,7 @@ find_rpkg_subdir(path)
 Name of the rpkg subdirectory (not a full path), or \code{NULL}.
 }
 \description{
-Scans immediate subdirectories of \code{path} for one that contains a
-\code{configure.ac} with the \code{CARGO_FEATURES} marker (the canonical signal that
-a directory is a miniextendr rpkg). Returns the single match, \code{NULL} if
-none is found, or aborts if more than one match is found.
+The single match of \code{\link[=rpkg_subdir_candidates]{rpkg_subdir_candidates()}}, or \code{NULL} when there is
+none; aborts when there is more than one.
 }
 \keyword{internal}

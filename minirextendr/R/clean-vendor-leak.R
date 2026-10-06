@@ -37,7 +37,7 @@
 #'   [miniextendr_doctor()] to detect this and other configuration issues.
 #' @export
 miniextendr_clean_vendor_leak <- function(path = ".") {
-  with_project(resolve_package_dir(path, "leak-check"))
+  with_project(resolve_package_dir(path, "miniextendr_clean_vendor_leak"))
   root <- usethis::proj_get()
   restored <- restore_prefreeze_manifest(root)
   frozen <- frozen_manifest_entries(root)
@@ -175,43 +175,60 @@ report_frozen_manifest <- function(entries, snapshot = FALSE) {
 #' Resolve the R package directory a package-level helper operates on
 #'
 #' `path` is returned as is when it holds a `DESCRIPTION`. A monorepo
-#' workspace root has none: the miniextendr package subdirectory found by
-#' `find_rpkg_subdir()` is used instead, as `upgrade_miniextendr_package()`
-#' does. Anything else aborts, so a directory that is not an R package is never
-#' reported as clean.
+#' workspace root has none: when exactly one immediate subdirectory holds a
+#' miniextendr package ([rpkg_subdir_candidates()], the scan
+#' `upgrade_miniextendr_package()` uses), that package is used and a message
+#' names it in full. Anything else aborts and names the directory to pass, so
+#' a directory that is not an R package is never reported as clean.
+#'
+#' The test is `DESCRIPTION`, not the `configure.ac` marker `upgrade_layout()`
+#' keys on: the leak helpers must inspect any R package, including one under a
+#' Rust workspace whose `configure.ac` lacks the marker (hand-edited, or not
+#' yet scaffolded), which `upgrade_layout()` takes for a workspace root and
+#' rejects. The two agree on a standalone package, on a workspace root with
+#' one marked package, and on that package's own directory.
 #'
 #' @param path Path passed by the caller; `NULL` and `"."` mean the active
 #'   project, as in `with_project()`.
-#' @param action Short verb phrase for the monorepo message.
+#' @param caller Name of the exported function whose `path` is resolved; the
+#'   messages name it.
 #' @return Absolute path to the R package directory.
 #' @keywords internal
-resolve_package_dir <- function(path, action) {
+resolve_package_dir <- function(path, caller) {
   if (is.null(path) || identical(path, ".")) {
     path <- tryCatch(usethis::proj_get(), error = function(e) ".")
   }
   path <- normalizePath(path, mustWork = FALSE)
   if (file.exists(file.path(path, "DESCRIPTION"))) return(path)
 
-  subdir <- if (dir.exists(path)) find_rpkg_subdir(path)
-  if (!is.null(subdir)) {
+  found <- if (dir.exists(path)) rpkg_subdir_candidates(path) else character()
+  if (length(found) == 1L) {
+    pkg <- file.path(path, found)
     cli::cli_alert_info(
-      "Monorepo layout detected -- checking rpkg subdir {.path {subdir}} ({action})"
+      "Monorepo layout detected: {.fn {caller}} runs on the package {.path {pkg}}."
     )
-    return(file.path(path, subdir))
+    return(pkg)
   }
 
-  candidates <- if (dir.exists(path)) {
+  # Several marked packages, or none: name what to pass, as full paths so the
+  # example pastes from any working directory. Without a marked package, any
+  # immediate subdirectory with a DESCRIPTION is the candidate.
+  candidates <- found
+  if (!length(candidates) && dir.exists(path)) {
     dirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
-    dirs[file.exists(file.path(path, dirs, "DESCRIPTION"))]
-  } else {
-    character()
+    candidates <- dirs[file.exists(file.path(path, dirs, "DESCRIPTION"))]
   }
-  example <- sprintf(
-    "miniextendr_clean_vendor_leak(\"%s\")",
-    if (length(candidates) == 1L) candidates else "<package directory>"
+  if (!length(candidates)) candidates <- "<package directory>"
+  examples <- cli::cli_vec(
+    sprintf('%s("%s")', caller, file.path(path, candidates)),
+    list("vec-last" = " or ")
   )
   cli::cli_abort(c(
-    "{.path {path}} has no {.file DESCRIPTION}, so it is not an R package.",
-    "i" = "Pass the package directory, e.g. {.code {example}}."
+    if (length(found)) {
+      "{.path {path}} holds {length(found)} miniextendr packages."
+    } else {
+      "{.path {path}} has no {.file DESCRIPTION}, so it is not an R package."
+    },
+    "i" = "Pass the package directory as {.arg path}, e.g. {.code {examples}}."
   ))
 }

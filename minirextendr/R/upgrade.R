@@ -295,28 +295,38 @@ report_upgrade_changes <- function(changes) {
   invisible()
 }
 
+#' Immediate subdirectories that hold a miniextendr R package
+#'
+#' Scans the immediate subdirectories of `path` for a `configure.ac` with the
+#' `CARGO_FEATURES` marker, the canonical signal that a directory is a
+#' miniextendr rpkg. [find_rpkg_subdir()] reduces the result to the single
+#' match an upgrade needs; [resolve_package_dir()] words its own message when
+#' there are several.
+#'
+#' @param path Path to the monorepo workspace root.
+#' @return Character vector of matching subdirectory names (not full paths);
+#'   empty when there is none.
+#' @keywords internal
+rpkg_subdir_candidates <- function(path) {
+  subdirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
+  has_marker <- vapply(subdirs, function(d) {
+    configure_ac <- file.path(path, d, "configure.ac")
+    file.exists(configure_ac) &&
+      any(grepl("CARGO_FEATURES", readLines(configure_ac, warn = FALSE), fixed = TRUE))
+  }, logical(1))
+  subdirs[has_marker]
+}
+
 #' Find the rpkg subdirectory in a monorepo workspace root
 #'
-#' Scans immediate subdirectories of `path` for one that contains a
-#' `configure.ac` with the `CARGO_FEATURES` marker (the canonical signal that
-#' a directory is a miniextendr rpkg). Returns the single match, `NULL` if
-#' none is found, or aborts if more than one match is found.
+#' The single match of [rpkg_subdir_candidates()], or `NULL` when there is
+#' none; aborts when there is more than one.
 #'
 #' @param path Path to the monorepo workspace root.
 #' @return Name of the rpkg subdirectory (not a full path), or `NULL`.
 #' @keywords internal
 find_rpkg_subdir <- function(path) {
-  subdirs <- list.dirs(path, full.names = FALSE, recursive = FALSE)
-  matches <- character(0)
-  for (d in subdirs) {
-    configure_ac <- file.path(path, d, "configure.ac")
-    if (file.exists(configure_ac)) {
-      content <- readLines(configure_ac, warn = FALSE)
-      if (any(grepl("CARGO_FEATURES", content, fixed = TRUE))) {
-        matches <- c(matches, d)
-      }
-    }
-  }
+  matches <- rpkg_subdir_candidates(path)
   if (length(matches) > 1) {
     cli::cli_abort(c(
       "Multiple rpkg subdirectories detected in {.path {path}}:",
