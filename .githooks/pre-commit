@@ -1,8 +1,8 @@
 #!/bin/bash
 # miniextendr pre-commit hook
 # Blocks staged build artifacts and files over 5 MiB
-# (scripts/committed-artifacts-check.sh), and asserts rpkg/src/rust/Cargo.lock
-# stays in tarball-shape.
+# (scripts/committed-artifacts-check.sh), runs CI's rustfmt check when a Rust
+# file is staged, and asserts rpkg/src/rust/Cargo.lock stays in tarball-shape.
 #
 # Install (once per clone):
 #   git config core.hooksPath .githooks
@@ -30,6 +30,26 @@ fi
 artifacts_check="$(git rev-parse --show-toplevel)/scripts/committed-artifacts-check.sh"
 if [ -f "$artifacts_check" ]; then
     bash "$artifacts_check" --staged
+fi
+
+# ── rustfmt ──────────────────────────────────────────────────────────────────
+# CI's Rust lint runs `just fmt-check`, which checks every manifest: the root
+# workspace, rpkg/src/rust, both cross-package crates and cargo-revendor. Plain
+# `cargo fmt --all` reaches the root workspace only, so a misformatted rpkg
+# fixture passes it and fails CI. Run the same recipe whenever a Rust file is
+# staged. It checks the working tree, so an unformatted unstaged file blocks
+# the commit too: `just fmt`, then re-stage.
+if echo "$STAGED" | grep -qE '\.rs$'; then
+    if command -v just >/dev/null 2>&1; then
+        if ! fmt_out=$(just fmt-check 2>&1); then
+            echo "$fmt_out" | grep -E '^Diff in ' >&2 || true
+            echo "pre-commit: rustfmt check failed (just fmt-check, as CI's Rust lint runs it)." >&2
+            echo "  Fix: just fmt, then re-stage the changed files." >&2
+            exit 1
+        fi
+    else
+        echo "pre-commit: 'just' not found; skipping the rustfmt check CI runs (just fmt-check)." >&2
+    fi
 fi
 
 # ── Cargo.lock tarball-shape assertion ───────────────────────────────────────
