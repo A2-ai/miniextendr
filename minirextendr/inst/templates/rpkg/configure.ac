@@ -46,7 +46,8 @@ dnl ---- source-tree classification ----
 dnl Configure never creates inst/vendor.tar.xz. It only consumes that explicit
 dnl install-mode signal. Vendoring belongs to the explicit tarball workflow
 dnl (miniextendr_vendor(), miniextendr_build_tarball()).
-dnl SOURCE_IS_GIT/SOURCE_IS_BUILT exist solely for the leaked-tarball guard.
+dnl SOURCE_IS_GIT exists solely for the leaked-tarball guard; SOURCE_IS_BUILT
+dnl also gates the post-link cleanup in src/Makevars.in.
 SOURCE_IS_GIT=false
 _walk_dir="$abs_top_srcdir"
 while test -n "$_walk_dir" && test "$_walk_dir" != "/"; do
@@ -64,10 +65,18 @@ dnl 'R CMD INSTALL' adds 'Built:'. A git working tree's DESCRIPTION has neither.
 dnl Used by the leaked-tarball guard below to avoid misfiring on a legitimate
 dnl built-tarball install that happens to be extracted into a dir nested under
 dnl the repo .git (e.g. <pkg>.Rcheck/<pkg>/ during 'R CMD check').
+dnl src/Makevars.in reads it too: a built package is a throwaway unpack, so its
+dnl install removes the package-local target directories after the link, as a
+dnl vendored install does. From R 4.5 the symbol-table pass of 'R CMD INSTALL'
+dnl (run when 'R CMD check' sets _R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_) also
+dnl reads a static library named in PKG_LIBS that is still inside the package,
+dnl and the compiled-code check then attributes libc's exit, abort and _exit
+dnl from Rust's std to the package (A2-ai/miniextendr#1795).
 SOURCE_IS_BUILT=false
 if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
   SOURCE_IS_BUILT=true
 fi
+AC_SUBST([SOURCE_IS_BUILT])
 
 dnl ---- leaked-tarball guard (A2-ai/miniextendr#1029) ----
 dnl A vendor tarball sitting in a git-tracked source tree is almost always a

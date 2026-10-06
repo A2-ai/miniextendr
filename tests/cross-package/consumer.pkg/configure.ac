@@ -36,6 +36,17 @@ abs_rpkg_src="$abs_top_srcdir/src"
 AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
+dnl ---- source-tree classification ----
+dnl A package produced by 'R CMD build' carries a 'Packaged:' field in its
+dnl DESCRIPTION ('R CMD INSTALL' adds 'Built:'); a checkout has neither.
+dnl src/Makevars.in cleans the package-local target directories after the link
+dnl for such a throwaway tree, as it does for a vendored install (#1795).
+SOURCE_IS_BUILT=false
+if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
+  SOURCE_IS_BUILT=true
+fi
+AC_SUBST([SOURCE_IS_BUILT])
+
 dnl ---- install-mode detection ----
 dnl Single signal: presence of inst/vendor.tar.xz.
 dnl   Tarball install (R CMD INSTALL <built-tarball>): tarball is shipped inside

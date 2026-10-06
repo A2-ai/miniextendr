@@ -88,6 +88,41 @@ test_that("tarball cleanup preserves caller caches and removes default build dir
   }
 })
 
+test_that("a built package cleans its build directories in source mode and a checkout keeps them", {
+  skip_on_os("windows")
+  skip_if_not(nzchar(Sys.which("make")), "make not available")
+  template <- readLines(system.file("templates/rpkg/Makevars.in", package = "minirextendr"))
+  root <- normalizePath(withr::local_tempdir(), winslash = "/")
+  for (built in c(FALSE, TRUE)) {
+    pkg <- file.path(root, if (built) "built" else "checkout")
+    target <- file.path(pkg, "rust-target")
+    for (dir in c(target, file.path(pkg, "src/rust/.cargo"))) dir.create(dir, recursive = TRUE)
+    writeLines("target", file.path(target, "sentinel"))
+    # An unvendored tarball (devtools::build(), rcmdcheck) installs in source
+    # mode; configure reads R CMD build's 'Packaged:' stamp into SOURCE_IS_BUILT.
+    vars <- c(ABS_TOP_SRCDIR = pkg, ABS_RPKG_SRCDIR = file.path(pkg, "src"),
+              CARGO_TARGET_DIR = target, VENDOR_OUT = "",
+              CARGO_TARGET_DIR_USER_SET = "false", VENDOR_OUT_USER_SET = "false",
+              IS_TARBALL_INSTALL = "false", SOURCE_IS_BUILT = tolower(as.character(built)),
+              PACKAGE_NAME = "probe")
+    rendered <- template
+    for (name in names(vars)) {
+      rendered <- gsub(paste0("@", name, "@"), vars[[name]], rendered, fixed = TRUE)
+    }
+    writeLines(rendered, file.path(pkg, "Makevars"))
+    log <- file.path(root, paste0("built-", built, ".log"))
+    status <- withr::with_dir(pkg, system2("make", c(
+      "-f", "Makevars", "-o", "probe.so",
+      "-o", shQuote(file.path(target, ".miniextendr-wrappers")),
+      "SHLIB=probe.so", "all"), stdout = log, stderr = log))
+    expect_identical(status, 0L, info = paste(readLines(log), collapse = "\n"))
+    # Both are source-mode installs: the pkgbuild touch of Cargo.toml runs.
+    expect_true(file.exists(file.path(pkg, "src/rust/Cargo.toml")))
+    expect_identical(file.exists(file.path(target, "sentinel")), !built)
+    expect_identical(dir.exists(file.path(pkg, "src/rust/.cargo")), !built)
+  }
+})
+
 test_that("two tarball installs share vendor and Cargo caches and rebuild only the package", {
   skip_on_cran()
   skip_on_os("windows")
