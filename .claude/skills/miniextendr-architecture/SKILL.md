@@ -175,7 +175,7 @@ Three layered triggers all converge on this signal:
 
 A leaked tarball causes monorepo workspace-crate edits to be silently ignored
 (no `[patch."git+url"]` in effect). Fix: `just clean-vendor-leak`. Detection:
-`minirextendr_doctor()`.
+`miniextendr_doctor()`.
 
 ## How it works
 

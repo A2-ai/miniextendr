@@ -71,7 +71,7 @@ if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
   SOURCE_IS_BUILT=true
 fi
 
-dnl ---- leaked-tarball guard (#1029) ----
+dnl ---- leaked-tarball guard (A2-ai/miniextendr#1029) ----
 dnl A vendor tarball sitting in a git-tracked source tree is almost always a
 dnl LEAK: a previous 'just r-cmd-build' / 'r-cmd-check' / 'devtools-build'
 dnl produced inst/vendor.tar.xz and the trap-clean was bypassed (SIGKILL, a
@@ -120,13 +120,14 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
     minirextendr::miniextendr_clean_vendor_leak("$abs_top_srcdir")
   It removes the archive and, if vendoring rewrote src/rust/Cargo.toml
   (cargo revendor --freeze), restores it from src/rust/.Cargo.toml.prefreeze.
-  Review src/rust/Cargo.lock separately. Without a snapshot, restore the
+  src/rust/Cargo.lock is left as is: cargo re-resolves it on the next
+  source build (or restore it with git). Without a snapshot, restore the
   original dependency paths and patch entries by hand (git diff).
 
   Removing inst/vendor.tar.xz alone does not repair a frozen manifest.
   minirextendr::miniextendr_doctor("$abs_top_srcdir") reports both.
 
-  See CLAUDE.md section 'The latch leak' and issue 1029.])
+  See CLAUDE.md section 'The install-mode latch' and issue 1029.])
 fi
 
 dnl ---- install-mode detection ----
@@ -341,7 +342,7 @@ fi
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
-dnl wasm32/webR side-modules need one RUSTFLAGS adjustment. See #494.
+dnl wasm32/webR side-modules need one RUSTFLAGS adjustment. See A2-ai/miniextendr#494.
 dnl
 dnl -Zdefault-visibility=hidden
 dnl    Without it, the Rust staticlib drags roughly 3000 mangled stdlib/dep symbols
@@ -355,11 +356,11 @@ dnl    webR's maintainer (r-wasm/webr#532). It is a nightly -Z flag, but the
 dnl    wasm target already mandates nightly via -Z build-std, so it adds no
 dnl    new constraint.
 dnl
-dnl '-C relocation-model=pic' used to be set here too but was dropped (#745):
-dnl PR #749 proved the emcc side-module link succeeds without it, and tier-3
-dnl (#492) confirms the module still loads at runtime. wasm32-unknown-emscripten
+dnl '-C relocation-model=pic' used to be set here too but was dropped (A2-ai/miniextendr#745):
+dnl PR A2-ai/miniextendr#749 proved the emcc side-module link succeeds without it, and tier-3
+dnl (A2-ai/miniextendr#492) confirms the module still loads at runtime. wasm32-unknown-emscripten
 dnl is position-independent by default, so the explicit flag was a no-op. Do not
-dnl re-add without re-running the #749 experiment.
+dnl re-add without re-running the A2-ai/miniextendr#749 experiment.
 if test "$is_wasm_install" = true; then
   ENV_RUSTFLAGS="$ENV_RUSTFLAGS -Zdefault-visibility=hidden"
 fi
@@ -659,7 +660,7 @@ dnl Cargo applies CFLAGS_<target> and CXXFLAGS_<target> to *every* transitive
 dnl C/C++ build script (cc, cmake, etc.). R's raw CFLAGS contain R-specific
 dnl -I paths, R-private defines, and warning flags that have no business in
 dnl cargo deps. We allowlist a small set of ABI-affecting flags; everything
-dnl else is stripped. See issue #598 for the full rationale table.
+dnl else is stripped. See issue A2-ai/miniextendr#598 for the full rationale table.
 CARGO_ENV_ABI_CFLAGS=""
 CARGO_ENV_ABI_CXXFLAGS=""
 
@@ -692,7 +693,7 @@ dnl link fails: 'relocation R_WASM_MEMORY_ADDR_SLEB cannot be used against
 dnl symbol .L.str.N; recompile with -fPIC'. cc reads CFLAGS_<target> (form #1,
 dnl literal dashed triple) and appends it verbatim, so this reaches every
 dnl transitive C/C++ build script. Native builds are untouched (gated on
-dnl is_wasm_install). Surfaced by the zstd optional integration (#1005).
+dnl is_wasm_install). Surfaced by the zstd optional integration (A2-ai/miniextendr#1005).
 if test "$is_wasm_install" = true; then
   if test -n "$CARGO_ENV_ABI_CFLAGS"; then
     CARGO_ENV_ABI_CFLAGS="$CARGO_ENV_ABI_CFLAGS -fPIC"
@@ -747,11 +748,11 @@ AC_CONFIG_COMMANDS([unpack-vendor-tarball],
     else
       echo "configure: tarball install — vendor/ already populated"
     fi
-    dnl AUDIT-427: checksum strip removed. PR #408 rewrote cargo-revendor to
+    dnl AUDIT-427: checksum strip removed. PR A2-ai/miniextendr#408 rewrote cargo-revendor to
     dnl preserve the original 'package' field in each .cargo-checksum.json
     dnl (matching the lockfile's 'checksum = "..."' line). Cargo can therefore
     dnl verify checksums end-to-end; stripping them discards a valid integrity
-    dnl check. See issue #427 and tools/lock-shape-check.R which explicitly
+    dnl check. See issue A2-ai/miniextendr#427 and tools/lock-shape-check.R which explicitly
     dnl documents that checksum lines are allowed in tarball-shape locks.
   fi
 ],
@@ -840,7 +841,7 @@ AC_CONFIG_COMMANDS([cargo-config],
     dnl in vendor/.cargo-config.toml. Cargo matches a replacement by the exact
     dnl source id, so only that list covers Git dependencies pinned by rev,
     dnl branch or tag and Git dependencies reached only transitively; a scan
-    dnl of Cargo.toml cannot see either (#1555). An archive without the file
+    dnl of Cargo.toml cannot see either (A2-ai/miniextendr#1555). An archive without the file
     dnl was not made by cargo-revendor and cannot build offline.
     if test ! -r "$VENDOR_OUT/.cargo-config.toml"; then
       echo "configure: error: inst/vendor.tar.xz has no vendor/.cargo-config.toml, so the" >&2
@@ -927,9 +928,11 @@ AC_CONFIG_COMMANDS([cargo-config],
 
 dnl ---- 3) Cargo.lock shape check (tarball mode only) ----
 dnl In tarball mode, tools/lock-shape-check.R rejects any source = "path+..."
-dnl entry: offline source replacement needs git+<url>#<sha> sources. checksum =
-dnl lines are allowed (#408). Drift is fatal at offline install time; we catch
-dnl it here before cargo starts building.
+dnl entry: a git dependency must stay locked as git+<url>#<sha> for offline
+dnl source replacement to match it; registry crates keep their registry
+dnl source. checksum = lines are allowed (A2-ai/miniextendr#408). Drift is
+dnl fatal at offline install time; we catch it here before cargo starts
+dnl building.
 dnl In source mode, cargo silently rewrites the lock; drift is tolerated.
 AC_CONFIG_COMMANDS([lock-shape-check],
 [

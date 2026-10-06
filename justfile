@@ -709,7 +709,7 @@ vendor:
       echo "" >&2
       echo "Fix:  just clean-vendor-leak && just configure && just vendor" >&2
       echo "" >&2
-      echo "See CLAUDE.md \"The latch leak\" and #876." >&2
+      echo "See CLAUDE.md \"The install-mode latch\" and #876." >&2
       exit 1
     fi
     # A tarball install maps every vendored source through the archive's

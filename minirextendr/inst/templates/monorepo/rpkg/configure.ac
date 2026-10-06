@@ -95,7 +95,8 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
     minirextendr::miniextendr_clean_vendor_leak("$abs_top_srcdir")
   It removes the archive and, if vendoring rewrote src/rust/Cargo.toml
   (cargo revendor --freeze), restores it from src/rust/.Cargo.toml.prefreeze.
-  Review src/rust/Cargo.lock separately. Without a snapshot, restore the
+  src/rust/Cargo.lock is left as is: cargo re-resolves it on the next
+  source build (or restore it with git). Without a snapshot, restore the
   original dependency paths and patch entries by hand (git diff).
 
   Removing inst/vendor.tar.xz alone does not repair a frozen manifest.
@@ -919,9 +920,11 @@ AC_CONFIG_COMMANDS([cargo-config],
 
 dnl ---- 3) Cargo.lock shape check (tarball mode only) ----
 dnl In tarball mode, tools/lock-shape-check.R rejects any source = "path+..."
-dnl entry: offline source replacement needs git+<url>#<sha> sources. checksum =
-dnl lines are allowed (A2-ai/miniextendr#408). Drift is fatal at offline install time; we catch
-dnl it here before cargo starts building.
+dnl entry: a git dependency must stay locked as git+<url>#<sha> for offline
+dnl source replacement to match it; registry crates keep their registry
+dnl source. checksum = lines are allowed (A2-ai/miniextendr#408). Drift is
+dnl fatal at offline install time; we catch it here before cargo starts
+dnl building.
 dnl In source mode, cargo silently rewrites the lock; drift is tolerated.
 AC_CONFIG_COMMANDS([lock-shape-check],
 [

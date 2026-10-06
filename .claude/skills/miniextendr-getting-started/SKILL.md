@@ -53,7 +53,7 @@ signal that flips `configure` into offline (CRAN-safe) tarball mode.
 
 For a full explanation of the latch and why it works this way, see the
 `miniextendr-architecture` skill. For now: if you are just developing locally,
-you never need to worry about this unless `minirextendr_doctor()` reports a
+you never need to worry about this unless `miniextendr_doctor()` reports a
 stale tarball.
 
 ### What `#[miniextendr]` does
@@ -316,8 +316,10 @@ For CRAN submission:
 - **Install-mode latch leak**: if `inst/vendor.tar.xz` is present during local
   development (left over from a previous `R CMD build` that did not clean up),
   configure writes vendored mode and your edits to miniextendr workspace crates
-  have no effect. Run `just clean-vendor-leak` or delete the file manually. Use
-  `minirextendr_doctor()` to detect the condition automatically.
+  have no effect. Run `just clean-vendor-leak` (or
+  `minirextendr::miniextendr_clean_vendor_leak()`), not a manual delete: it also
+  restores a manifest that vendoring froze. Use `miniextendr_doctor()` to detect
+  the condition automatically.
 
 - **Modules must be reachable from `lib.rs`**: if you add a new `.rs` file with
   `#[miniextendr]` functions, you must add `mod my_module;` to `lib.rs`.
@@ -345,7 +347,7 @@ For CRAN submission:
 - `miniextendr-build` — configure.ac, Makevars.in, vendor pipeline, and the
   justfile recipes.
 - `miniextendr-scaffolding` — minirextendr templates, template sync workflow,
-  `minirextendr_doctor()`, and upgrade mechanics.
+  `miniextendr_doctor()`, and upgrade mechanics.
 - `miniextendr-conversions` — `TryFromSexp`, `IntoR`, `Coerce`, NA handling,
   and the full type conversion matrix.
 - `miniextendr-macros` — deep dive into what `#[miniextendr]` generates and

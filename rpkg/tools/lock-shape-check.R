@@ -8,8 +8,10 @@
 # during `cargo build`. The pre-commit hook + lock-shape-check just-recipe
 # protect commits; this script only fires in tarball mode where drift is fatal.
 #
-# Tarball-shape (post-#408):
-#   - no `source = "path+..."` for framework crates (must be `git+url#<sha>`)
+# Tarball-shape (post-A2-ai/miniextendr#408):
+#   - no `source = "path+..."` entries at all: a git dependency (the
+#     framework crates included) must stay `git+url#<sha>`; registry crates
+#     keep their registry source
 #   - `checksum = "..."` lines ARE allowed (cargo-revendor recomputes valid
 #     .cargo-checksum.json that matches them)
 #
@@ -37,7 +39,7 @@ if (!file.exists(lockfile)) quit("no", status = 0)
 
 content <- readLines(lockfile, warn = FALSE)
 
-# Check 1: no path+... source entries for framework crates.
+# Check 1: no path+... source entries.
 # In tarball mode, framework crates must use git+https://github.com/A2-ai/miniextendr#<sha>
 # so that cargo's source-replacement can match them against the vendored layout.
 path_re <- "^source = \"path\\+"
@@ -56,7 +58,7 @@ if (length(path_violations) > 0) {
 }
 
 # checksum = "..." lines are ALLOWED (cargo-revendor recomputes valid
-# .cargo-checksum.json post-trim, see PR #408).
+# .cargo-checksum.json post-trim, see PR A2-ai/miniextendr#408).
 # [[patch.unused]] blocks are also allowed in tarball-shape — see header.
 
 quit("no", status = 0)
