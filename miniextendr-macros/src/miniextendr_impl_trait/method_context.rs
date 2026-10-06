@@ -280,7 +280,7 @@ impl<'a> TraitMethodContext<'a> {
     /// Each parameter keeps or drops its type-derived checks as its own
     /// `preconditions(p)` / `no_preconditions(p)`, the method's, the impl
     /// block's, the crate default and the feature decide; the per-parameter
-    /// `inherits(...)` / `no_na(...)` checks stay.
+    /// `inherits(...)` / `not_inherits(...)` / `no_na(...)` checks stay.
     pub(super) fn precondition_checks(&self) -> Vec<String> {
         crate::r_class_formatter::build_method_precondition_checks(
             &self.method.sig.inputs,

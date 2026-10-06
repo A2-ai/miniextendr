@@ -7,6 +7,7 @@
 \alias{ParamCheckHolder$add_checked}
 \alias{ParamCheckHolder$add_dose}
 \alias{ParamCheckHolder$add_doses}
+\alias{ParamCheckHolder$add_duration}
 \alias{$.ParamCheckHolder}
 \alias{[[.ParamCheckHolder}
 \title{ParamCheckHolder Class}
@@ -50,5 +51,13 @@ Add several doses, with a method-level message for a missing one.
 
 \describe{
 \item{\code{doses}}{Numbers, strings or factor labels, none of them missing.}
+}
+
+Add a duration given as a plain number; \code{NULL} adds nothing. A
+\code{difftime}, \code{Date} or date-time is refused with the method-level
+\code{not_inherits} message.
+
+\describe{
+\item{\code{tau}}{\code{NULL}, or a number in the time unit of the data.}
 }
 }

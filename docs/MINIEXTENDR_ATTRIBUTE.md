@@ -538,7 +538,7 @@ impl Sampler {
 }
 ```
 
-The switch covers the type-derived checks only: `inherits`, `no_na`, the
+The switch covers the type-derived checks only: `inherits`, `not_inherits`, `no_na`, the
 `match_arg` / `choices` validation, the `.call` validation and the Rust
 conversion stay whatever the spelling. The markers
 (`miniextendr_api::{Checked, Unchecked}`, `repr(transparent)`, `Deref` to
@@ -620,6 +620,8 @@ Written on a single parameter of a standalone function:
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
+| `not_inherits = "cls"` / `not_inherits("a", "b")` | R check `!inherits(x, c(...))`: the argument must inherit from none of the classes (see [Refusing classes](#refusing-classes)) |
+| `not_inherits(class = "cls", message = "...")` / `not_inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 | `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
@@ -637,9 +639,9 @@ if (!isTRUE(inherits(x, "pkg_obj"))) .miniextendr_arg_error("x", "must inherit f
 if (!isTRUE(is.list(x))) .miniextendr_arg_error("x", "must be a list")
 ```
 
-`inherits` runs before the parameter's type checks and `no_na` after them,
-one guard per check (under `call = caller`, the same guards raising with the
-caller's call).
+`inherits` and then `not_inherits` run before the parameter's type checks and
+`no_na` after them, one guard per check (under `call = caller`, the same
+guards raising with the caller's call).
 A failure raises the same condition as a failed Rust conversion: the crate's
 `conversion_error_class`, `rust_error`, `kind = "conversion"` and `e$param`,
 with the message `'x' must inherit from 'pkg_obj'`
@@ -756,21 +758,77 @@ conversion's message. `no_na` keeps its own message.
 The message becomes the condition message as written, without a `'model'`
 prefix. Everything else stays the same: the classes, `kind = "conversion"`,
 `e$param` and the call (under `call = caller`, the caller's). Inside
-`inherits(...)`, each string literal and each `class = "..."` names one class,
-and one `message` covers all of them. Each check takes at most one message,
-and it must not be empty. The macro escapes it for the R string literal:
-quotes, backslashes, newlines and other control characters, and non-ASCII
-text as `\u{..}` (R code in a package must be ASCII).
+`inherits(...)` and `not_inherits(...)`, each string literal and each
+`class = "..."` names one class, and one `message` covers all of them. Each
+check takes at most one message, and it must not be empty. The macro escapes
+it for the R string literal: quotes, backslashes, newlines and other control
+characters, and non-ASCII text as `\u{..}` (R code in a package must be
+ASCII).
 
 Impl and trait methods cannot carry parameter attributes, so the same options
 are method-level and name the parameter: `match_arg(p)`,
 `match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
-`inherits(p = "cls_a, cls_b")`, `no_na(p, q)`. A message goes in parentheses
-after the parameter: `inherits(p(class = "cls_a, cls_b", message = "..."))`,
+`inherits(p = "cls_a, cls_b")`, `not_inherits(p = "cls_a, cls_b")`,
+`no_na(p, q)`. A message goes in parentheses after the parameter:
+`inherits(p(class = "cls_a, cls_b", message = "..."))`,
+`not_inherits(p(class = "cls_a, cls_b", message = "..."))`,
 `no_na(p(message = "..."), q)`. At method level the classes are one
 comma-separated string, as in `choices(p = "a, b")`, because a nested option
 cannot hold a list of literals. At parameter level no class name is split, so
 `inherits(class = "a, b")` names one class, `a, b`.
+
+#### Refusing classes
+
+`not_inherits` is the negative of `inherits`: the argument must inherit from
+none of the listed classes. It takes the same spellings
+(`not_inherits = "cls"`, `not_inherits("a", "b", message = "...")`, method
+level `not_inherits(p = "a, b")` / `not_inherits(p(class = "a, b", message = "..."))`),
+raises the same condition, lets `NULL` through on an `Option<T>` and an
+omitted argument on a `Missing<T>`, and stays under `no_preconditions`.
+
+Use it to keep a marker's checks while refusing the classes whose value the
+marker would read wrongly. `AsNumeric` reads a `difftime` as its bare number,
+which drops the unit, and a `Date` or date-time as days or seconds since 1970:
+
+```rust
+#[miniextendr]
+pub fn set_interval(
+    #[miniextendr(
+        no_na,
+        default = "NULL",
+        not_inherits(
+            "difftime",
+            "Date",
+            "POSIXt",
+            message = "`tau` must be a plain number in the time unit of the data"
+        )
+    )]
+    tau: Option<AsNumeric>,
+) { /* ... */ }
+```
+
+```r
+if (!isTRUE(is.null(tau) || !inherits(tau, c("difftime", "Date", "POSIXt")))) .miniextendr_arg_error("tau", message = "`tau` must be a plain number in the time unit of the data")
+if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error("tau", "must be NULL or numeric, logical, character, or factor")
+if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error("tau", "must be NULL or have length 1")
+if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error("tau", "must not be NA")
+```
+
+The refusal runs before the type checks (after `inherits`, when both are
+given). Here that order matters: `is.numeric()` is `FALSE` for a `difftime`, a
+`Date` and a `POSIXt`, so the type check would refuse them first, with its own
+message. A value of any other class passes the refusal and meets the type
+checks as before: `list(1)` still gets `'tau' must be NULL or numeric,
+logical, character, or factor`. So, unlike the `inherits` message, a
+`not_inherits` message does not replace the type checks' messages. Without a
+message, a failure reads `'tau' must not inherit from 'difftime', 'Date' or
+'POSIXt'`.
+
+The check is plain R on the argument, so it needs no type check: it also runs
+on an `Either` parameter, which has none, and under `no_preconditions`.
+`inherits` and `not_inherits` can share a parameter
+(`inherits = "pkg_model", not_inherits = "pkg_model_v1"`); naming the same
+class in both is a compile error.
 
 #### Parameters named like a base function
 
@@ -1070,6 +1128,8 @@ impl Person {
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
+| `not_inherits(p = "cls_a, cls_b")` | R check `!inherits(p, c(...))`: `p` must inherit from none of the classes |
+| `not_inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
 | `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |

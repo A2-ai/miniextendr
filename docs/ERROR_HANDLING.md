@@ -571,7 +571,7 @@ pub fn internal_function() {
 
 A bad argument is caught in one of two places: by an R-side check in the
 generated wrapper (the type and length checks most built-in argument types
-get, `no_na`, `inherits`, and the `match_arg` / `choices` validation), or by
+get, `no_na`, `inherits`, `not_inherits`, and the `match_arg` / `choices` validation), or by
 the Rust conversion (`TryFromSexp`) for what only Rust can judge, such as a
 non-numeric string given to `AsNumeric`. The arguments without an R-side type
 check convert in Rust directly: every custom `TryFromSexp` type,
@@ -592,7 +592,7 @@ Both places raise the same error condition (#1591):
   (`'x' must have length 1`, `'x' must not contain NA`,
   `'mode' should be one of "fast", "slow"`), or gives the package author's
   own message for an `inherits` check (which also covers that parameter's
-  type checks) or a `no_na` check that sets one
+  type checks), a `not_inherits` check or a `no_na` check that sets one
   ([MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#parameter-attributes)).
   A conversion says what the argument must be and why it is not:
   `'<p>' must be <expected>: <reason>`, or `invalid '<p>' argument: <reason>`
@@ -928,7 +928,7 @@ skipping any the error already names:
 
 ```r
 # A plain SexpError (e.g. an `i32` argument without a precondition), or any
-# R-side check (a length check, `no_na`, `inherits`, a bad choice):
+# R-side check (a length check, `no_na`, `inherits`, `not_inherits`, a bad choice):
 class(tryCatch(f("a"), error = identity))
 # [1] "pkg_error_argument" "pkg_error" "rust_error" "simpleError" "error" "condition"
 

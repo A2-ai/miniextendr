@@ -542,8 +542,9 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
                 }
             });
             let mut attrs = parse_trait_method_attrs(&method.attrs)?;
-            // Every parameter `choices(...)` / `inherits(...)` / `no_na(...)`
-            // name must exist, as on inherent methods; `Option<T>` scalar
+            // Every parameter `choices(...)` / `inherits(...)` /
+            // `not_inherits(...)` / `no_na(...)` name must exist, as on
+            // inherent methods; `Option<T>` scalar
             // choices params are the optional form (#1473).
             crate::miniextendr_fn::finalize_method_param_attrs(
                 &mut attrs.per_param,
@@ -711,7 +712,8 @@ struct TraitMethodAttrs {
     /// Rust parameter name. See `TraitMethod::per_param`.
     per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     /// Span of the first `choices` / `choices_several_ok` / `no_na` /
-    /// `inherits` option: where an unknown parameter name is reported.
+    /// `inherits` / `not_inherits` option: where an unknown parameter name is
+    /// reported.
     per_param_span: Option<proc_macro2::Span>,
     /// Span of the `defaults(...)` option: where an unknown parameter name in
     /// it is reported.
@@ -980,18 +982,19 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 per_param_span.get_or_insert(meta.path.span());
                 // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
                 crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)?;
-            } else if meta.path.is_ident("inherits") {
+            } else if let Some(check) = crate::miniextendr_fn::ClassCheck::of(&meta.path) {
                 per_param_span.get_or_insert(meta.path.span());
                 // `inherits(p = "cls_a, cls_b", q(class = "cls", message = "..."))` —
-                // R-side `inherits(p, c(...))` checks.
-                crate::miniextendr_fn::parse_method_inherits(&meta, &mut per_param)?;
+                // R-side `inherits(p, c(...))` checks; `not_inherits(...)` the
+                // same shape, `!inherits(p, c(...))`.
+                crate::miniextendr_fn::parse_method_class_check(&meta, &mut per_param, check)?;
             } else {
                 return Err(meta.error(
                     "unknown #[miniextendr] option on trait impl method; expected one of: \
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
-                     `choices`, `choices_several_ok`, `inherits`, `no_na`, `preconditions`, \
+                     `choices`, `choices_several_ok`, `inherits`, `not_inherits`, `no_na`, `preconditions`, \
                      `no_preconditions`",
                 ));
             }

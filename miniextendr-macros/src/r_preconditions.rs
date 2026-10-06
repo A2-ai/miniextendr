@@ -44,7 +44,8 @@ struct RAssertion {
     /// R expression that must evaluate to `TRUE` for the check to pass.
     condition: String,
     /// The author's own condition message (`message = "..."` on `inherits` /
-    /// `no_na`; an `inherits` message also on the parameter's type checks),
+    /// `not_inherits` / `no_na`; an `inherits` message also on the
+    /// parameter's type checks),
     /// used verbatim instead of `'<param>' <requirement>`.
     message: Option<String>,
 }
@@ -145,8 +146,8 @@ pub struct PreconditionOptions {
     pub coerce_all: bool,
     /// R-normalized names of parameters with a per-param `coerce` attribute.
     pub coerce_params: HashSet<String>,
-    /// Checks the author named per parameter (`inherits`, `no_na`), keyed by
-    /// R-normalized parameter name.
+    /// Checks the author named per parameter (`inherits`, `not_inherits`,
+    /// `no_na`), keyed by R-normalized parameter name.
     pub explicit: HashMap<String, ExplicitChecks>,
     /// R-normalized names of the parameters whose type-derived checks are
     /// dropped (each one resolved by [`resolve_type_checks`]). Their
@@ -252,14 +253,20 @@ pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
 /// R-side checks the author asked for by name on one parameter, rather than
 /// ones derived from its Rust type.
 ///
-/// Spelled `#[miniextendr(inherits = "cls", no_na)]` on a standalone fn
-/// parameter, or `inherits(x = "cls")` / `no_na(x)` on an impl or trait
-/// method. They are the same kind of guards as the type checks, raising the
-/// same argument error. The class check runs before the parameter's type
-/// checks, so a value of the wrong class gets the class message whatever its
-/// type. An `inherits` message also replaces the messages of the parameter's
-/// type checks. The NA check runs after the type checks, with its own
-/// message. Both survive `no_preconditions`: the Rust conversion does not
+/// Spelled `#[miniextendr(inherits = "cls", not_inherits = "bad", no_na)]` on
+/// a standalone fn parameter, or `inherits(x = "cls")` /
+/// `not_inherits(x = "bad")` / `no_na(x)` on an impl or trait method. They
+/// are the same kind of guards as the type checks, raising the same argument
+/// error. The class checks run before the parameter's type checks, so a value
+/// of the wrong class gets the class message whatever its type: `inherits`
+/// first, then `not_inherits` (#1815). That order matters for the classes a
+/// `not_inherits` typically refuses: `is.numeric()` is `FALSE` for a
+/// `difftime`, `Date` or `POSIXt`, so after an `AsNumeric` type check the
+/// refusal would never be reached. An `inherits` message also replaces the
+/// messages of the parameter's type checks; a `not_inherits` message does
+/// not, since a value that passes it is of none of the refused classes and is
+/// judged by its type. The NA check runs after the type checks, with its own
+/// message. All survive `no_preconditions`: the Rust conversion does not
 /// repeat them, so dropping them would change what the function accepts.
 ///
 /// `no_na` also has a Rust half. A type can read more inputs as missing than
@@ -272,8 +279,10 @@ pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
 /// ([`no_na_checked_after_conversion`]).
 ///
 /// Each check can carry the author's own condition message
-/// (`inherits(class = "cls", message = "...")`, `no_na(message = "...")`;
+/// (`inherits(class = "cls", message = "...")`,
+/// `not_inherits(class = "bad", message = "...")`, `no_na(message = "...")`;
 /// method level `inherits(x(class = "cls", message = "..."))`,
+/// `not_inherits(x(class = "bad", message = "..."))`,
 /// `no_na(x(message = "..."))`), used verbatim in place of the generated
 /// `'x' must inherit from 'cls'`. The condition is otherwise the same.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -285,6 +294,14 @@ pub struct ExplicitChecks {
     /// check, for all of its classes, and of that parameter's R type checks.
     /// Only set together with `inherits`.
     pub inherits_message: Option<String>,
+    /// `not_inherits = "cls"` / `not_inherits("a", "b")`: the argument must
+    /// inherit from none of these classes (`!inherits(x, c(...))`, #1815).
+    pub not_inherits: Option<Vec<String>>,
+    /// `message = "..."` in `not_inherits(...)`: the message of a failed
+    /// `not_inherits` check, for all of its classes. Unlike the `inherits`
+    /// message it leaves the type checks' messages alone. Only set together
+    /// with `not_inherits`.
+    pub not_inherits_message: Option<String>,
     /// `no_na`: the argument must not contain `NA` (`!anyNA(x)`, so `NaN`
     /// is refused too, as `is.na()` does), nor a value its type reads as `NA`
     /// (checked in Rust after the conversion). For an `Either`, both checks
@@ -298,7 +315,7 @@ pub struct ExplicitChecks {
 impl ExplicitChecks {
     /// Whether any check is requested.
     pub fn is_empty(&self) -> bool {
-        self.inherits.is_none() && !self.no_na
+        self.inherits.is_none() && self.not_inherits.is_none() && !self.no_na
     }
 
     /// Merge `other` into `self` (a parameter may carry several attributes).
@@ -311,39 +328,51 @@ impl ExplicitChecks {
             other.inherits_message,
             "inherits",
         )?;
+        merge_message(
+            &mut self.not_inherits_message,
+            other.not_inherits_message,
+            "not_inherits",
+        )?;
         merge_message(&mut self.no_na_message, other.no_na_message, "no_na")?;
         if let Some(classes) = other.inherits {
             self.inherits.get_or_insert_with(Vec::new).extend(classes);
+        }
+        if let Some(classes) = other.not_inherits {
+            self.not_inherits
+                .get_or_insert_with(Vec::new)
+                .extend(classes);
         }
         self.no_na |= other.no_na;
         Ok(())
     }
 
-    /// The class check (`inherits`) for parameter `param` of type `ty`, which
-    /// runs before the parameter's type checks. Empty without `inherits`.
+    /// The error for a parameter whose checks contradict each other: a class
+    /// both in `inherits` and in `not_inherits`, which no argument could
+    /// satisfy through that class. `None` when they agree.
+    ///
+    /// Run once every attribute of the parameter is merged: the
+    /// `inherits = "cls"` spelling adds its class without a merge.
+    pub fn class_conflict(&self, param: &str) -> Option<String> {
+        let (Some(required), Some(refused)) = (&self.inherits, &self.not_inherits) else {
+            return None;
+        };
+        let class = refused.iter().find(|c| required.contains(c))?;
+        Some(format!(
+            "class `{class}` is in both `inherits` and `not_inherits` on parameter `{param}`; \
+             name it in only one of them"
+        ))
+    }
+
+    /// The class checks (`inherits`, then `not_inherits`) for parameter
+    /// `param` of type `ty`, which run before the parameter's type checks.
+    /// Empty without either.
     ///
     /// An `Option<T>` / `Missing<T>` parameter passes `NULL` / an omitted
     /// argument (see [`guarded`]).
     fn class_assertions(&self, param: &str, ty: &syn::Type) -> Vec<RAssertion> {
         let mut out = Vec::new();
         if let Some(classes) = &self.inherits {
-            let quoted: Vec<String> = classes
-                .iter()
-                .map(|c| format!("'{}'", r_string_escape(c)))
-                .collect();
-            let literals: Vec<String> = classes
-                .iter()
-                .map(|c| format!("\"{}\"", r_string_escape(c)))
-                .collect();
-            let what = match quoted.as_slice() {
-                [one] => one.clone(),
-                [init @ .., last] => format!("{} or {last}", init.join(", ")),
-                [] => unreachable!("inherits() is parsed as a non-empty class list"),
-            };
-            let class_arg = match literals.as_slice() {
-                [one] => one.clone(),
-                _ => format!("c({})", literals.join(", ")),
-            };
+            let (what, class_arg) = class_list_r(classes);
             out.push(
                 RAssertion::new(
                     param,
@@ -351,6 +380,17 @@ impl ExplicitChecks {
                     format!("inherits({param}, {class_arg})"),
                 )
                 .with_message(self.inherits_message.as_ref()),
+            );
+        }
+        if let Some(classes) = &self.not_inherits {
+            let (what, class_arg) = class_list_r(classes);
+            out.push(
+                RAssertion::new(
+                    param,
+                    format!("must not inherit from {what}"),
+                    format!("!inherits({param}, {class_arg})"),
+                )
+                .with_message(self.not_inherits_message.as_ref()),
             );
         }
         guarded(param, ty, out)
@@ -377,10 +417,36 @@ impl ExplicitChecks {
 
     /// The message of the parameter's R type checks: the `inherits` message,
     /// when there is one. Without it the type checks keep their generated
-    /// messages.
+    /// messages. A `not_inherits` message is not one: a value that passed
+    /// `not_inherits` is of none of the refused classes, so its type check
+    /// keeps its own wording.
     fn type_check_message(&self) -> Option<&String> {
         self.inherits_message.as_ref()
     }
+}
+
+/// A class check's classes in R: the quoted list for its message
+/// (`'a', 'b' or 'c'`) and the argument of `inherits()` (`"a"` or
+/// `c("a", "b", "c")`), each class escaped as an R string.
+fn class_list_r(classes: &[String]) -> (String, String) {
+    let quoted: Vec<String> = classes
+        .iter()
+        .map(|c| format!("'{}'", r_string_escape(c)))
+        .collect();
+    let literals: Vec<String> = classes
+        .iter()
+        .map(|c| format!("\"{}\"", r_string_escape(c)))
+        .collect();
+    let what = match quoted.as_slice() {
+        [one] => one.clone(),
+        [init @ .., last] => format!("{} or {last}", init.join(", ")),
+        [] => unreachable!("a class check is parsed as a non-empty class list"),
+    };
+    let class_arg = match literals.as_slice() {
+        [one] => one.clone(),
+        _ => format!("c({})", literals.join(", ")),
+    };
+    (what, class_arg)
 }
 
 /// Let an `Option<T>` parameter pass `NULL`, and a `Missing<T>` parameter an
@@ -1103,8 +1169,8 @@ pub struct FallbackParam {
 /// Holds the R-side checks for known types and a list of parameters with
 /// unknown types that were not statically prechecked.
 pub struct PreconditionOutput {
-    /// The checks, in parameter order: each parameter's class check, its type
-    /// checks, then its NA check ([`ExplicitChecks`]). Rendered by
+    /// The checks, in parameter order: each parameter's class checks, its
+    /// type checks, then its NA check ([`ExplicitChecks`]). Rendered by
     /// [`PreconditionOutput::guards`].
     assertions: Vec<RAssertion>,
     /// Parameters with unknown custom types that were not prechecked.
@@ -1173,9 +1239,9 @@ fn needs_fallback(ty: &syn::Type) -> bool {
 /// - Skip types (SEXP, Dots, ExternalPtr, etc.)
 /// - The type-derived checks of the parameters in `opts.unchecked`
 ///
-/// A parameter's [`ExplicitChecks`] are never skipped: its class check comes
-/// before its type checks, which take the class check's message when it has
-/// one, and its NA check after them.
+/// A parameter's [`ExplicitChecks`] are never skipped: its class checks
+/// (`inherits`, then `not_inherits`) come before its type checks, which take
+/// the `inherits` message when there is one, and its NA check after them.
 pub fn build_precondition_checks(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     skip_params: &HashSet<String>,
@@ -1199,7 +1265,7 @@ pub fn build_precondition_checks(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_ident(&pat_ident.ident).to_string();
         let explicit = opts.explicit.get(&r_name);
 
-        // The class check first, so a value of the wrong class gets its
+        // The class checks first, so a value of the wrong class gets their
         // message whatever its type.
         if let Some(checks) = explicit {
             assertions.extend(checks.class_assertions(&r_name, pt.ty.as_ref()));
@@ -2267,6 +2333,190 @@ mod tests {
         );
     }
 
+    fn not_inherits(classes: &[&str]) -> ExplicitChecks {
+        ExplicitChecks {
+            not_inherits: Some(classes.iter().map(|c| c.to_string()).collect()),
+            ..Default::default()
+        }
+    }
+
+    fn with_not_inherits_message(classes: &[&str], message: &str) -> ExplicitChecks {
+        ExplicitChecks {
+            not_inherits_message: Some(message.to_string()),
+            ..not_inherits(classes)
+        }
+    }
+
+    /// The #1815 case: `not_inherits` with a message on an `Option<AsNumeric>`
+    /// with `no_na`. The refusal runs before the marker's type checks
+    /// (`is.numeric()` is `FALSE` for these classes, so after them it would
+    /// never be reached), passes `NULL`, and leaves the type and NA checks
+    /// their generated messages.
+    #[test]
+    fn not_inherits_precedes_the_type_checks_and_keeps_their_messages() {
+        let mut checks = with_not_inherits_message(
+            &["difftime", "Date", "POSIXt"],
+            "`tau` must be a plain number",
+        );
+        checks.merge(no_na()).unwrap();
+        let out = explicit_output("fn f(tau: Option<AsNumeric>)", &[("tau", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(is.null(tau) || !inherits(tau, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` must be a plain number\")",
+                "if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
+                "if (!isTRUE(is.null(tau) || length(tau) == 1L)) .miniextendr_arg_error(\"tau\", \"must be NULL or have length 1\")",
+                "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
+            ]
+        );
+    }
+
+    /// Without a message, the refusal names the classes the way `inherits`
+    /// names the required ones.
+    #[test]
+    fn not_inherits_generated_message() {
+        let one = explicit_output("fn f(x: SEXP)", &[("x", not_inherits(&["Date"]))], false);
+        assert_eq!(
+            one.guards(None),
+            vec![
+                "if (!isTRUE(!inherits(x, \"Date\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'Date'\")"
+            ]
+        );
+        let several = explicit_output(
+            "fn f(x: SEXP)",
+            &[("x", not_inherits(&["difftime", "Date", "POSIXt"]))],
+            false,
+        );
+        let guards = several.guards(None);
+        assert_eq!(
+            guards,
+            vec![
+                "if (!isTRUE(!inherits(x, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"x\", \"must not inherit from 'difftime', 'Date' or 'POSIXt'\")"
+            ]
+        );
+        let asserts = not_inherits(&["a\"b"]).class_assertions("x", &parse_type("SEXP"));
+        assert_eq!(asserts[0].message(), "'x' must not inherit from 'a\\\"b'");
+    }
+
+    /// `inherits` and `not_inherits` on one parameter: the required classes
+    /// first, then the refused ones, then the type checks, which take the
+    /// `inherits` message only.
+    #[test]
+    fn inherits_and_not_inherits_compose() {
+        let mut checks = with_inherits_message(&["pkg_obj"], "need a pkg_obj");
+        checks
+            .merge(with_not_inherits_message(
+                &["pkg_old"],
+                "pkg_old is retired",
+            ))
+            .unwrap();
+        let out = explicit_output("fn f(x: List)", &[("x", checks)], false);
+        assert_eq!(
+            out.guards(None),
+            vec![
+                "if (!isTRUE(inherits(x, \"pkg_obj\"))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")",
+                "if (!isTRUE(!inherits(x, \"pkg_old\"))) .miniextendr_arg_error(\"x\", message = \"pkg_old is retired\")",
+                "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", message = \"need a pkg_obj\")",
+            ]
+        );
+        // A `not_inherits` message alone leaves the type check's wording.
+        let out = explicit_output(
+            "fn f(x: List)",
+            &[("x", with_not_inherits_message(&["pkg_old"], "retired"))],
+            false,
+        );
+        assert_eq!(
+            out.guards(None)[1],
+            "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")"
+        );
+    }
+
+    /// The check is plain R on the formal, so it needs no type check: an
+    /// `Either` (no R guard at all, its `no_na` checked in Rust) gets it, and
+    /// so does a parameter under `no_preconditions`. `Missing<T>` passes an
+    /// omitted argument, `Option<Either<..>>` `NULL`. A bare `Either` arm
+    /// that reads `NULL` needs no prefix: `!inherits(NULL, cls)` is `TRUE`.
+    #[test]
+    fn not_inherits_without_type_checks() {
+        let refused = || not_inherits(&["difftime"]);
+        let guards = |sig: &str, no_type_checks: bool| {
+            let mut checks = refused();
+            checks.merge(no_na()).unwrap();
+            explicit_output(sig, &[("x", checks)], no_type_checks).guards(None)
+        };
+        let either = guards("fn f(x: Either<Option<AsNumeric>, DataFrame>)", false);
+        assert_eq!(
+            either,
+            vec![
+                "if (!isTRUE(!inherits(x, \"difftime\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'difftime'\")"
+            ]
+        );
+        let optional_either = guards("fn f(x: Option<Either<AsNumeric, DataFrame>>)", false);
+        assert_eq!(optional_either.len(), 1);
+        assert!(
+            optional_either[0]
+                .starts_with("if (!isTRUE(is.null(x) || !inherits(x, \"difftime\")))"),
+            "{optional_either:?}"
+        );
+        let unchecked = guards("fn f(x: Option<AsNumeric>)", true);
+        assert_eq!(unchecked.len(), 2, "{unchecked:?}");
+        assert!(unchecked[0].contains("!inherits(x, \"difftime\")"));
+        assert!(unchecked[1].contains("!anyNA(x)"));
+        let missing = explicit_output("fn f(x: Missing<f64>)", &[("x", refused())], false);
+        assert_eq!(
+            missing.guards(None)[0],
+            "if (!isTRUE(missing(x) || !inherits(x, \"difftime\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'difftime'\")"
+        );
+    }
+
+    /// Under `call = caller` the refusal names the caller's call: positional
+    /// after the generated requirement, by name after a message.
+    #[test]
+    fn not_inherits_takes_the_caller_call() {
+        let plain = explicit_output("fn f(x: SEXP)", &[("x", not_inherits(&["Date"]))], false);
+        assert!(plain.guards(Some(".mx_call"))[0].ends_with(
+            ".miniextendr_arg_error(\"x\", \"must not inherit from 'Date'\", .mx_call)"
+        ));
+        let custom = explicit_output(
+            "fn f(x: SEXP)",
+            &[("x", with_not_inherits_message(&["Date"], "no dates"))],
+            false,
+        );
+        assert!(
+            custom.guards(Some(".mx_call"))[0].ends_with(
+                ".miniextendr_arg_error(\"x\", message = \"no dates\", call = .mx_call)"
+            )
+        );
+    }
+
+    /// A class in both lists is a contradiction the parsers reject; any
+    /// other pairing, or one list alone, is fine. Merging keeps the two
+    /// lists and their messages apart.
+    #[test]
+    fn not_inherits_merge_and_conflict() {
+        let mut checks = inherits(&["a", "b"]);
+        checks.merge(not_inherits(&["c"])).unwrap();
+        assert_eq!(checks.class_conflict("x"), None);
+        checks
+            .merge(with_not_inherits_message(&["d"], "m"))
+            .unwrap();
+        assert_eq!(checks.not_inherits, Some(vec!["c".into(), "d".into()]));
+        assert_eq!(checks.not_inherits_message.as_deref(), Some("m"));
+        assert!(checks.inherits_message.is_none());
+        let err = checks
+            .merge(with_not_inherits_message(&["e"], "n"))
+            .unwrap_err();
+        assert!(err.contains("`not_inherits`"), "{err}");
+        checks.merge(not_inherits(&["b"])).unwrap();
+        let err = checks.class_conflict("x").expect("b is in both");
+        assert!(
+            err.contains("class `b` is in both `inherits` and `not_inherits` on parameter `x`"),
+            "{err}"
+        );
+        assert!(!not_inherits(&["a"]).is_empty());
+        assert_eq!(not_inherits(&["a"]).class_conflict("x"), None);
+    }
+
     #[test]
     fn no_na_wording_follows_the_shape() {
         let scalar = explicit_output("fn f(x: f64)", &[("x", no_na())], true);
@@ -2572,6 +2822,7 @@ mod tests {
             inherits_message: Some("`model` must be a `pkg_model`; see pkg_model().".into()),
             no_na: true,
             no_na_message: Some("no NA in `model`".into()),
+            ..Default::default()
         };
         let out = explicit_output("fn f(model: List)", &[("model", checks)], false);
         assert_eq!(

@@ -119,7 +119,7 @@ with `TryFromSexp`, so a trait-method parameter type needs both. `Missing<T>`
 crosses as R's missing-argument sentinel when absent. The reading markers
 (`AsNumeric`, `AsNumericVec`, `AsCharacter`, `AsCharacterVec`) cross as their
 inner value, and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text.
-Parameter checks such as `no_na` and `inherits` run in the implementing
+Parameter checks such as `no_na`, `inherits` and `not_inherits` run in the implementing
 method's R-facing wrappers: they check R arguments, not the typed values a
 View caller passes.
 

@@ -1,0 +1,23 @@
+error: unknown `not_inherits` option `msg`; expected class names (`"cls"` or `class = "cls"`) and an optional `message = "..."`
+ --> tests/ui/fn_param_not_inherits.rs:8:63
+  |
+8 | pub fn unknown_key(#[miniextendr(not_inherits(class = "Date", msg = "m"))] x: Vec<f64>) {}
+  |                                                               ^^^
+
+error: `message` in `not_inherits(...)` needs a class to check, e.g. `not_inherits(class = "pkg_obj", message = "...")`
+  --> tests/ui/fn_param_not_inherits.rs:11:44
+   |
+11 | pub fn message_without_class(#[miniextendr(not_inherits(message = "no dates"))] x: Vec<f64>) {}
+   |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `not_inherits` on parameter `x` needs one or more non-empty class names, e.g. `not_inherits = "pkg_obj"` or `not_inherits("pkg_a", "pkg_b")`
+  --> tests/ui/fn_param_not_inherits.rs:14:57
+   |
+14 | pub fn empty_class(#[miniextendr(not_inherits = "")] x: Vec<f64>) {}
+   |                                                         ^^^
+
+error: class `pkg_b` is in both `inherits` and `not_inherits` on parameter `x`; name it in only one of them
+  --> tests/ui/fn_param_not_inherits.rs:20:8
+   |
+20 |     x: Vec<f64>,
+   |        ^^^

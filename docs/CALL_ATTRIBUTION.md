@@ -103,7 +103,7 @@ the call with its formals matched (`match.call()`):
    report the call as written, and so does rlang / vctrs'
    `call = caller_env()`, which reports that frame's `sys.call()`.
 2. **One form on every path.** The R-side checks (type and length guards,
-   `no_na`, `inherits`, `match_arg` / `choices`), a Rust conversion error, an
+   `no_na`, `inherits`, `not_inherits`, `match_arg` / `choices`), a Rust conversion error, an
    `Err` or panic from the body, a warning or message deferred from Rust, and
    the `Call` / `CallerCall` markers all see the same call. A handler that
    compares `conditionCall(e)` does not have to know which side refused the
