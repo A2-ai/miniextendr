@@ -3371,7 +3371,8 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
     let expanded = quote::quote! {
         /// The package crate's `conversion_error_class`, read by the
-        /// wrapper-generation pass (host-only).
+        /// wrapper-generation pass and the raising guards (host-only; the
+        /// `wasm_registry.rs` snapshot carries it to wasm32).
         #[cfg(not(target_arch = "wasm32"))]
         #[::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CONVERSION_ERROR_CLASS)]
         #[linkme(crate = ::miniextendr_api::linkme)]
@@ -3401,12 +3402,14 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             // wasm32: install the pre-generated runtime tables before
             // package_init runs. linkme didn't gather anything (the slices
             // are OnceLock-backed on wasm32), so register_routines /
-            // universal_query would otherwise see empty slices.
+            // universal_query would otherwise see empty slices, and the
+            // raising guards no crate conversion classes (#1768).
             #[cfg(target_arch = "wasm32")]
             ::miniextendr_api::registry::install_wasm_runtime_slices(
                 __miniextendr_wasm_registry::MX_CALL_DEFS_WASM,
                 __miniextendr_wasm_registry::MX_ALTREP_REGISTRATIONS_WASM,
                 __miniextendr_wasm_registry::MX_TRAIT_DISPATCH_WASM,
+                __miniextendr_wasm_registry::MX_CONVERSION_ERROR_CLASS_WASM,
             );
 
             unsafe {

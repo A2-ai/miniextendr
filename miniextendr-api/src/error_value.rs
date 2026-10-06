@@ -226,7 +226,11 @@ pub unsafe fn rust_condition_value(condition: RCondition, call: Option<SEXP>) ->
 /// # Safety
 ///
 /// Same contract as [`make_rust_condition_value_with_data`].
-unsafe fn condition_parts_value(kind: &str, parts: ErrParts, call: Option<SEXP>) -> SEXP {
+pub(crate) unsafe fn condition_parts_value(
+    kind: &str,
+    parts: ErrParts,
+    call: Option<SEXP>,
+) -> SEXP {
     // SAFETY: forwarded from the caller.
     unsafe {
         make_rust_condition_value_with_data(

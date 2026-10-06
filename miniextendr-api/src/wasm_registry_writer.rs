@@ -5,7 +5,8 @@
 //! [`crate::wasm_registry_writer::write_wasm_registry_to_file`] to emit
 //! Rust source listing every `MX_CALL_DEFS` / `MX_ALTREP_REGISTRATIONS` /
 //! `MX_TRAIT_DISPATCH` entry as `extern "C" {}` declarations + ordinary
-//! `&[T]` static slices. On `wasm32-*` targets, the user crate compiles that
+//! `&[T]` static slices, plus the crate's `MX_CONVERSION_ERROR_CLASS` classes.
+//! On `wasm32-*` targets, the user crate compiles that
 //! file in place of the linkme distributed_slices (`miniextendr_init!` emits
 //! the wasm32-gated `mod __miniextendr_wasm_registry;` that includes it).
 //!
@@ -31,7 +32,10 @@ use std::fmt::Write as _;
 // qualified paths, formatting — are NOT part of the checked contract and
 // don't warrant a bump (#1307). The receiving `build.rs` (step 5) refuses
 // to compile a `wasm_registry.rs` whose header doesn't match.
-const GENERATOR_VERSION: u32 = 1;
+//
+// 2: `MX_CONVERSION_ERROR_CLASS_WASM`, which `miniextendr_init!` passes to
+//    `install_wasm_runtime_slices` (#1768).
+const GENERATOR_VERSION: u32 = 2;
 
 /// Pre-extracted, host-side view of one `R_CallMethodDef`.
 ///
@@ -66,17 +70,26 @@ pub struct TraitDispatchRow {
 /// pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[ ... ];
 /// pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[ ... ];
 /// pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry] = &[ ... ];
+/// pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str] = &[ ... ];
 /// ```
 ///
 /// Every fn / static referenced from a slice gets a matching `extern` decl —
 /// the WASM linker resolves them against the user crate's `#[no_mangle]`
-/// exports.
+/// exports. `conversion_error_class` is the crate's `conversion_error_class`
+/// (the `MX_CONVERSION_ERROR_CLASS` entry), which the raising guards resolve
+/// an `arg_error!`'s classes from (#1768).
 pub fn format_wasm_registry(
     call_defs: &[CallDefRow],
     altrep_regs: &[AltrepRegRow],
     trait_dispatches: &[TraitDispatchRow],
+    conversion_error_class: &[&str],
 ) -> String {
-    let body = format_body(call_defs, altrep_regs, trait_dispatches);
+    let body = format_body(
+        call_defs,
+        altrep_regs,
+        trait_dispatches,
+        conversion_error_class,
+    );
     let content_hash = fnv1a_64(body.as_bytes());
 
     let mut out = String::new();
@@ -104,6 +117,7 @@ fn format_body(
     call_defs: &[CallDefRow],
     altrep_regs: &[AltrepRegRow],
     trait_dispatches: &[TraitDispatchRow],
+    conversion_error_class: &[&str],
 ) -> String {
     let mut out = String::new();
 
@@ -125,6 +139,7 @@ fn format_body(
     format_call_defs_slice(&mut out, call_defs);
     format_altrep_regs_slice(&mut out, altrep_regs);
     format_trait_dispatch_slice(&mut out, trait_dispatches);
+    format_conversion_error_class_slice(&mut out, conversion_error_class);
 
     out
 }
@@ -234,6 +249,21 @@ fn format_trait_dispatch_slice(out: &mut String, trait_dispatches: &[TraitDispat
         writeln!(out, "    }},").unwrap();
     }
     writeln!(out, "];").unwrap();
+    writeln!(out).unwrap();
+}
+
+fn format_conversion_error_class_slice(out: &mut String, classes: &[&str]) {
+    writeln!(
+        out,
+        "pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str] = &["
+    )
+    .unwrap();
+    for class in classes {
+        // `{:?}` renders a valid Rust string literal (quotes, backslashes and
+        // control characters escaped).
+        writeln!(out, "    {class:?},").unwrap();
+    }
+    writeln!(out, "];").unwrap();
 }
 
 /// Comma-joined `_: SEXP` parameter list for an `extern { fn ...; }` decl.
@@ -319,7 +349,12 @@ fn read_runtime_slices() -> (Vec<CallDefRow>, Vec<AltrepRegRow>, Vec<TraitDispat
 /// to `path`. No-op when content is unchanged (matches `write_r_wrappers_to_file`).
 pub fn write_wasm_registry_to_file(path: &str) {
     let (call_defs, altrep_regs, trait_dispatches) = read_runtime_slices();
-    let content = format_wasm_registry(&call_defs, &altrep_regs, &trait_dispatches);
+    let content = format_wasm_registry(
+        &call_defs,
+        &altrep_regs,
+        &trait_dispatches,
+        crate::registry::conversion_error_class(),
+    );
 
     let existing = std::fs::read_to_string(path).unwrap_or_default();
     if existing == content {
@@ -350,6 +385,8 @@ pub fn write_wasm_registry_to_file(path: &str) {
 mod tests {
     use super::*;
 
+    const CLASSES: &[&str] = &["pkg_error_argument", "pkg_error"];
+
     fn sample_inputs() -> (Vec<CallDefRow>, Vec<AltrepRegRow>, Vec<TraitDispatchRow>) {
         let call_defs = vec![
             CallDefRow {
@@ -375,7 +412,7 @@ mod tests {
     #[test]
     fn header_carries_generator_version_and_content_hash() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
             out.contains(&format!("generator-version: {GENERATOR_VERSION}")),
             "expected generator-version line; got:\n{out}"
@@ -389,8 +426,8 @@ mod tests {
     #[test]
     fn content_hash_is_deterministic() {
         let (a, b, c) = sample_inputs();
-        let first = format_wasm_registry(&a, &b, &c);
-        let second = format_wasm_registry(&a, &b, &c);
+        let first = format_wasm_registry(&a, &b, &c, CLASSES);
+        let second = format_wasm_registry(&a, &b, &c, CLASSES);
         assert_eq!(first, second);
     }
 
@@ -402,15 +439,15 @@ mod tests {
             name: "different_fn".into(),
             num_args: 1,
         });
-        let first = format_wasm_registry(&a, &b, &c);
-        let second = format_wasm_registry(&a2, &b, &c);
+        let first = format_wasm_registry(&a, &b, &c, CLASSES);
+        let second = format_wasm_registry(&a2, &b, &c, CLASSES);
         assert_ne!(first, second);
     }
 
     #[test]
     fn emits_extern_decls_for_every_referenced_symbol() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         // call wrappers in the C-unwind block — params bound to `_` so the
         // declaration parses (extern fn decls require parameter bindings).
         assert!(out.contains("pub fn miniextendr_my_fn() -> SEXP;"));
@@ -423,16 +460,41 @@ mod tests {
     #[test]
     fn emits_named_slice_constants() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(out.contains("pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef]"));
         assert!(out.contains("pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration]"));
         assert!(out.contains("pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry]"));
+        assert!(out.contains("pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str]"));
+    }
+
+    /// #1768: the crate's `conversion_error_class` crosses to wasm32 in the
+    /// snapshot, in order, as Rust string literals.
+    #[test]
+    fn emits_conversion_error_class_literals() {
+        let (a, b, c) = sample_inputs();
+        let out = format_wasm_registry(&a, &b, &c, &["pkg_error_argument", r#"odd"\class"#]);
+        assert!(
+            out.contains(
+                "pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str] = &[\n    \
+                 \"pkg_error_argument\",\n    \"odd\\\"\\\\class\",\n];"
+            ),
+            "expected the escaped class literals in order; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn conversion_error_class_changes_the_content_hash() {
+        let (a, b, c) = sample_inputs();
+        assert_ne!(
+            format_wasm_registry(&a, &b, &c, CLASSES),
+            format_wasm_registry(&a, &b, &c, &[])
+        );
     }
 
     #[test]
     fn renders_mx_tag_with_const_constructor() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
             out.contains(
                 "::miniextendr_api::abi::mx_tag::new(0xdeadbeefdeadbeef, 0x1234567812345678)"
@@ -454,7 +516,7 @@ mod tests {
     #[test]
     fn dispatch_free_output_has_no_dispatch_only_imports() {
         let (call_defs, _, _) = sample_inputs();
-        let out = format_wasm_registry(&call_defs, &[], &[]);
+        let out = format_wasm_registry(&call_defs, &[], &[], &[]);
         assert!(
             !out.contains("mx_tag"),
             "dispatch-free output must not mention mx_tag; got:\n{out}"
@@ -472,7 +534,7 @@ mod tests {
     #[test]
     fn every_import_is_used_in_dispatch_free_output() {
         let (call_defs, _, _) = sample_inputs();
-        let out = format_wasm_registry(&call_defs, &[], &[]);
+        let out = format_wasm_registry(&call_defs, &[], &[], &[]);
         let (imports, rest): (Vec<&str>, Vec<&str>) =
             out.lines().partition(|l| l.starts_with("use "));
         assert!(!imports.is_empty(), "output has imports; got:\n{out}");
@@ -502,7 +564,7 @@ mod tests {
     #[test]
     fn dispatch_entries_reference_items_fully_qualified() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
             !out.contains("use ::miniextendr_api::abi::mx_tag;"),
             "mx_tag header import must not be emitted; got:\n{out}"
@@ -523,12 +585,13 @@ mod tests {
 
     #[test]
     fn empty_inputs_produce_empty_slices() {
-        let out = format_wasm_registry(&[], &[], &[]);
+        let out = format_wasm_registry(&[], &[], &[], &[]);
         assert!(out.contains("pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[\n];"));
         assert!(
             out.contains("pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[\n];")
         );
         assert!(out.contains("pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry] = &[\n];"));
+        assert!(out.contains("pub static MX_CONVERSION_ERROR_CLASS_WASM: &[&str] = &[\n];"));
     }
 
     #[test]
@@ -548,7 +611,7 @@ mod tests {
     #[test]
     fn altrep_register_decls_use_safe_keyword() {
         let (a, b, c) = sample_inputs();
-        let out = format_wasm_registry(&a, &b, &c);
+        let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
             out.contains("pub safe fn __mx_altrep_reg_MyType()"),
             "expected `safe fn` so the fn type matches AltrepRegistration.register; got:\n{out}"

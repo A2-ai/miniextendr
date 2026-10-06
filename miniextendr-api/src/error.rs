@@ -31,7 +31,8 @@
 //!
 //! ALTREP `RUnwind` callbacks now route through
 //! `with_r_unwind_protect_sourced` → `raise_rust_condition_via_stop`, which
-//! preserves `rust_*` class layering without going through `r_stop`.
+//! raises the condition a generated wrapper would (`rust_*` class layering,
+//! `kind`, `data` fields) without going through `r_stop`.
 //!
 //! `r_stop` is `pub(crate)` — no user code should depend on it.
 //!

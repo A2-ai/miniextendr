@@ -55,7 +55,7 @@ Mechanics (`miniextendr-api/src/unwind_protect.rs`):
 
 ### `with_r_unwind_protect_or_raise` — legacy panics-as-R-error variant
 
-Kept for explicit framework callers (test fixtures, benchmarks, trait-ABI vtable shims) that need panics converted directly to an R error via `raise_rust_condition_via_stop` (Approach 3: `Rf_eval(stop(structure(…)))`) — diverges via longjmp. **Not used by `#[miniextendr]` codegen.**
+Kept for explicit framework callers (test fixtures, benchmarks, trait-ABI vtable shims) that need panics converted directly to an R error via `raise_rust_condition_via_stop` (Approach 3: build the tagged value, then `Rf_eval` the wrappers' `.miniextendr_raise_condition` on it, so the condition equals the wrapper's, `kind` included, #1768) — diverges via longjmp. **Not used by `#[miniextendr]` codegen.**
 
 ### The ~8 byte longjmp-path leak
 
@@ -139,7 +139,7 @@ Use `_unchecked` variants. The callback is guaranteed on the main thread by R's 
 ### I'm raising an R error — which mechanism?
 
 - Inside `#[miniextendr]` function (default path): `panic!("message")` — the framework converts via `with_r_unwind_protect` to a tagged SEXP → R wrapper raises `stop(structure(…))`. Gives full `rust_*` class layering.
-- Inside ALTREP callback: `panic!("message")` — `with_r_unwind_protect_sourced` intercepts (if guard is `r_unwind` or `rust_unwind`) and calls `raise_rust_condition_via_stop` (Approach 3). Same class layering.
+- Inside ALTREP callback: `panic!("message")` — `with_r_unwind_protect_sourced` intercepts (if guard is `r_unwind` or `rust_unwind`) and calls `raise_rust_condition_via_stop` (Approach 3). Same class layering, `kind` and fields.
 - Explicit condition: use `miniextendr_api::error!("message")` or `miniextendr_api::warning!(…)` — emits a `RCondition` payload recognised by the error transport.
 - Never call `Rf_error` / `Rf_errorcall` directly — MXL300 flags this. The framework's transport is safer (correct PROTECT discipline, class layering) and avoids the ~8 byte leak.
 

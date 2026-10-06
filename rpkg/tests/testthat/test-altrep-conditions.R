@@ -38,6 +38,13 @@ test_that("PanickingAltrep: class vector is correctly ordered", {
   expect_equal(cls, c("rust_error", "simpleError", "error", "condition"))
 })
 
+test_that("PanickingAltrep: e$kind is 'panic', as through a wrapper (#1768)", {
+  x <- altrep_panic_on_elt(5L, "kind test")
+  e <- tryCatch(x[1L], rust_error = function(e) e)
+  expect_identical(e$kind, "panic")
+  expect_identical(names(unclass(e)), c("message", "call", "kind"))
+})
+
 test_that("PanickingAltrep: condition message is preserved", {
   x <- altrep_panic_on_elt(5L, "my specific panic message")
 
@@ -111,6 +118,16 @@ test_that("ClassedErrorAltrep: message is preserved with custom class", {
   )
 
   expect_equal(msg, "my classed error message")
+})
+
+test_that("ClassedErrorAltrep: e$kind is 'error', as through a wrapper (#1768)", {
+  x <- altrep_classed_error_on_elt(5L, "altrep_specific", "kind test")
+  e <- tryCatch(x[1L], altrep_specific = function(e) e)
+  expect_identical(e$kind, "error")
+  expect_identical(
+    class(e),
+    c("altrep_specific", "rust_error", "simpleError", "error", "condition")
+  )
 })
 
 test_that("LoopStressAltrep: earlier elements succeed, panic at the right index", {
@@ -187,7 +204,9 @@ test_that("LoopStressAltrep: many sequential panics do not corrupt state", {
 # ...))` with no `data` slot at all — class layering and message survived an
 # `error!(data = ...)` raised from an ALTREP callback, but the data fields
 # were silently dropped. `altrep_data_error_on_elt` (DataErrorAltrep) pins the
-# fix: the field must be readable as `e$field_a`.
+# fix: the field must be readable as `e$field_a`. Since #1768 the guard raises
+# through the wrappers' own helper, so the fields sit where a wrapper puts
+# them: message, call, kind, then the data.
 
 test_that("issue #996 path 2: structured data survives ALTREP or_raise degradation", {
   x <- altrep_data_error_on_elt(5L, 42L, "data bearing altrep error")
@@ -211,6 +230,8 @@ test_that("issue #996 path 2: message/call are unaffected by the spliced data fi
 
   expect_equal(conditionMessage(e), "another message")
   expect_equal(e$field_a, 99L)
+  expect_identical(e$kind, "error")
+  expect_identical(names(unclass(e)), c("message", "call", "kind", "field_a"))
 })
 
 # endregion

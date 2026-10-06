@@ -324,10 +324,13 @@ pub(crate) unsafe fn signal_now(queued: Vec<RCondition>, call: Option<SEXP>) {
 /// Evaluating the source here, rather than looking the helper up in a package
 /// namespace, keeps this path independent of which package (or embedded
 /// engine) is running: the helper only needs base and `utils::modifyList`.
-fn raise_condition_helper() -> SEXP {
+/// The raising guards raise their conditions with it too
+/// (`unwind_protect::raise_rust_condition_via_stop`).
+pub(crate) fn raise_condition_helper() -> SEXP {
     static HELPER: OnceLock<SEXP> = OnceLock::new();
     *HELPER.get_or_init(|| {
-        // SAFETY: only reached from `signal_now`, on the main thread.
+        // SAFETY: only reached from `signal_now` and
+        // `raise_rust_condition_via_stop`, on the main thread.
         unsafe {
             let closure = crate::expression::r_eval_str(
                 crate::registry::RAISE_CONDITION_HELPER_FN,

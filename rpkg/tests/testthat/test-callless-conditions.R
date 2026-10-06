@@ -292,8 +292,9 @@ test_that("#[condition(call = none)] on a variant drops the call of a Result err
 # region: Raising guard
 
 test_that("a call-less error drops the raising guard's call argument", {
-  # with_r_unwind_protect_or_raise raises with stop() itself (the ALTREP
-  # RUnwind transport): no `kind` field, but the same classes and data.
+  # with_r_unwind_protect_or_raise raises the condition itself (the ALTREP
+  # RUnwind transport), through the wrappers' helper: the same kind, classes
+  # and data as a wrapper's (#1768).
   e <- tryCatch(callless_raise_guard(TRUE), pkg_guard = function(e) e)
   expect_null(conditionCall(e))
   expect_identical(
@@ -301,6 +302,7 @@ test_that("a call-less error drops the raising guard's call argument", {
     c("pkg_guard", "rust_error", "simpleError", "error", "condition")
   )
   expect_identical(conditionMessage(e), "guard error")
+  expect_identical(e$kind, "error")
   expect_identical(e$step, 1L)
 
   sibling <- tryCatch(callless_raise_guard(FALSE), pkg_guard = function(e) e)

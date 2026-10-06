@@ -413,20 +413,11 @@ pub(crate) fn resolve_conversion_error_class_marker(
 /// The package crate's `conversion_error_class`, from the entry
 /// `miniextendr_init!` registers in
 /// [`MX_CONVERSION_ERROR_CLASS`](crate::registry::MX_CONVERSION_ERROR_CLASS)
-/// (each package links its own copy of this crate, so it is that package's).
-/// Empty when the crate sets none, and on wasm32, where the registry is
-/// host-only.
+/// (each package links its own copy of this crate, so it is that package's),
+/// or on wasm32 from the `wasm_registry.rs` snapshot (#1768). Empty when the
+/// crate sets none.
 pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        crate::registry::MX_CONVERSION_ERROR_CLASS
-            .first()
-            .map_or(&[][..], |entry| entry.classes)
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        &[]
-    }
+    crate::registry::conversion_error_class()
 }
 
 /// Run `f`, returning a condition raised inside it (`error!()`, `warning!()`,
@@ -1092,8 +1083,10 @@ macro_rules! rust_condition {
 /// a trait-ABI call the consumer package's wrapper raises the condition, so
 /// its crate's classes apply. A raising guard (an ALTREP `RUnwind` callback,
 /// `with_r_unwind_protect_or_raise`) has no generated R: it resolves the
-/// marker in Rust against the classes `miniextendr_init!` registered (none on
-/// wasm32). A connection callback returns its fallback, as for any panic.
+/// marker in Rust against the classes `miniextendr_init!` registered (on
+/// wasm32, the copy in the `wasm_registry.rs` snapshot), then raises the same
+/// condition, `kind = "conversion"` included (#1768). A connection callback
+/// returns its fallback, as for any panic.
 ///
 /// The generated `no_na` check after a conversion builds the same condition
 /// with [`crate::error_value::arg_check_condition_value`], which takes the
