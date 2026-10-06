@@ -709,6 +709,150 @@ pub fn gc_stress_dataframe_struct_as_list() -> SEXP {
 }
 // endregion
 
+// region: enum DataFrameRow split held across the caller's allocations (#1750)
+
+/// Hold `into_dataframe_split()` results across the caller's own R
+/// allocations before converting them (#1750).
+///
+/// #1748 roots each partition while the verb builds the next one; this pins
+/// the window *after* the verb returns. A multi-variant and a single-variant
+/// split are both held while a second frame is built with `into_dataframe()`
+/// and a burst of vectors in the partitions' size classes is allocated. Under
+/// `gctorture(TRUE)` every allocation is a full GC, so a partition without a
+/// root of its own is reaped and its slot handed back out. Every partition is
+/// a rooted `BuiltDataFrame` inside the returned `DataFrameShape`; the fixture
+/// reads them through the held handles, then converts and checks every
+/// partition again, and panics on a mismatch. With the pre-#1750 bare `List`
+/// return, this fixture failed every `gctorture(TRUE)` iteration.
+///
+/// Returns `list(split = <EventRow split>, single = <SingleEvent split>,
+/// other = <SimplePerson frame>)`. No arguments — suitable for the fast
+/// gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_dataframe_split_held() -> SEXP {
+    use crate::dataframe_examples::{EventRow, SimplePerson, SingleEvent};
+    use miniextendr_api::{DataFrameShape, IntoDataFrame as _};
+
+    let rows: Vec<EventRow> = (0..12i64)
+        .map(|i| match i % 3 {
+            0 => EventRow::Click {
+                id: i,
+                x: i as f64,
+                y: i as f64 * 2.0,
+            },
+            1 => EventRow::Impression {
+                id: i,
+                slot: format!("slot_{i}"),
+            },
+            _ => EventRow::Error {
+                id: i,
+                code: 400 + i as i32,
+                message: format!("error {i}"),
+            },
+        })
+        .collect();
+    let singles: Vec<SingleEvent> = (0..4i32)
+        .map(|i| SingleEvent::Click {
+            x: f64::from(i),
+            y: f64::from(i) + 0.5,
+        })
+        .collect();
+
+    let split = rows.into_dataframe_split();
+    let single = singles.into_dataframe_split();
+
+    // The caller's own allocations while both results are held: a second
+    // frame, then vectors in the size classes of the partition frames (2- and
+    // 3-element lists) and their 4-row columns.
+    let other = (0..4i32)
+        .map(|i| SimplePerson {
+            name: format!("p{i}"),
+            age: 20 + i,
+        })
+        .collect::<Vec<_>>()
+        .into_dataframe()
+        .expect("gc_stress_dataframe_split_held: into_dataframe");
+    for i in 0..32i32 {
+        let _ = vec![f64::from(i); 4].into_sexp();
+        let _ = vec![f64::from(i); 2].into_sexp();
+        let _ = vec![i; 4].into_sexp();
+        let _ = (0..4)
+            .map(|j| Some(format!("churn_{i}_{j}")))
+            .collect::<Vec<_>>()
+            .into_sexp();
+    }
+
+    // Read through the still-held handles first: each partition's own root
+    // kept it alive across the burst…
+    let DataFrameShape::PerVariantList(parts) = &split else {
+        panic!("gc_stress_dataframe_split_held: expected PerVariantList");
+    };
+    let names: Vec<&str> = parts.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["click", "impression", "error"],
+        "gc_stress_dataframe_split_held: partition names"
+    );
+    for (name, df) in parts {
+        assert_eq!(
+            df.nrow(),
+            4,
+            "gc_stress_dataframe_split_held: `{name}` row count"
+        );
+    }
+    let DataFrameShape::Bare(single_df) = &single else {
+        panic!("gc_stress_dataframe_split_held: expected Bare");
+    };
+    assert_eq!(
+        single_df.names(),
+        ["x", "y"],
+        "gc_stress_dataframe_split_held: single-variant columns"
+    );
+
+    // …then convert and check the assembled values.
+    // SAFETY: R main thread; each converted value is rooted before the next
+    // conversion allocates.
+    let split = unsafe { OwnedProtect::new(split.into_sexp()) };
+    let single = unsafe { OwnedProtect::new(single.into_sexp()) };
+    let other = unsafe { OwnedProtect::new(other.into_sexp()) };
+
+    let s = split.get();
+    let click = expect_split_partition(s, "click", 4, &["id", "x", "y"]);
+    assert_eq!(
+        click.column::<Vec<f64>>("x"),
+        Some(vec![0.0, 3.0, 6.0, 9.0])
+    );
+    let impression = expect_split_partition(s, "impression", 4, &["id", "slot"]);
+    assert_eq!(
+        impression.column::<Vec<String>>("slot"),
+        Some(vec![
+            "slot_1".to_string(),
+            "slot_4".to_string(),
+            "slot_7".to_string(),
+            "slot_10".to_string(),
+        ])
+    );
+    let error = expect_split_partition(s, "error", 4, &["id", "code", "message"]);
+    assert_eq!(
+        error.column::<Vec<i32>>("code"),
+        Some(vec![402, 405, 408, 411])
+    );
+    let single_df = expect_data_frame(single.get(), "single-variant split", 4, &["x", "y"]);
+    assert_eq!(
+        single_df.column::<Vec<f64>>("y"),
+        Some(vec![0.5, 1.5, 2.5, 3.5])
+    );
+    expect_data_frame(other.get(), "other frame", 4, &["name", "age"]);
+
+    miniextendr_api::list::List::from_raw_pairs(vec![
+        ("split", s),
+        ("single", single.get()),
+        ("other", other.get()),
+    ])
+    .into_sexp()
+}
+// endregion
+
 // region: vctrs, serde_json and raw-tagged objects rooted across allocations (#1759, #1760, #1761)
 //
 // Each constructor below allocates (a class vector, a CHARSXP, an attribute
@@ -2613,10 +2757,9 @@ pub fn gc_stress_split_collated() -> SEXP {
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn gc_stress_dataframe_shape_held() {
-    use miniextendr_api::dataframe::DataFrame;
+    use miniextendr_api::dataframe::{DataFrame, DataFrameShape, SplitResults};
     use miniextendr_api::serde::{
-        DataFrameShape, ResultShape, SplitResults, SplitShape, result_to_dataframe,
-        vec_to_dataframe_split,
+        ResultShape, SplitShape, result_to_dataframe, vec_to_dataframe_split,
     };
 
     #[derive(crate::serde::Serialize)]
