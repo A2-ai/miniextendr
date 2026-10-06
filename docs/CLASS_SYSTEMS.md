@@ -1310,9 +1310,9 @@ impl InternalType {
 ### `#[miniextendr(noexport)]`
 
 Emits `@noRd`: **no Rd contribution at all** — no alias, no usage entry, not
-even on a shared/grouped page it would otherwise land on (e.g. the
-per-source-file page standalone functions are grouped onto, or a class's
-`@rdname` page for methods). `?name` finds nothing. No `@keywords internal`.
+even on a shared/grouped page it would otherwise land on (e.g. a page its
+`@rdname` names, or a class's `@rdname` page for methods). `?name` finds
+nothing. No `@keywords internal`.
 
 For S3 class impls, `noexport` also drops the `S3method()` dispatch
 registration from NAMESPACE — zero observable trace. (A hand-written `@noRd`

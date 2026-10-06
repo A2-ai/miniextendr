@@ -587,15 +587,15 @@ pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
         }
     }
 
-    // Standalone functions: page routing (the file-stem `@rdname`), the
-    // generated `@param` fillers and the `@order` of blocks on an author
-    // topic are decided together, per page.
+    // Standalone functions: the default `@title`, the generated `@param`
+    // fillers and the `@order` of blocks on an author topic are decided
+    // together, per page.
     let standalone: Vec<StandaloneFragment<'static>> = fragments
         .iter()
         .filter(|(entry, _)| entry.priority == RWrapperPriority::Function)
         .map(|(entry, content)| StandaloneFragment {
             content,
-            stem: rdname_from_source_file(entry.source_file),
+            stem: source_file_stem(entry.source_file),
         })
         .collect();
     let mut resolved = resolve_standalone_pages(&standalone).into_iter();
@@ -636,7 +636,12 @@ const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 const ORDER_AFTER_TOPIC_BLOCKS: &str = "#' @order NaN";
 
 /// A standalone function's wrapper fragment and the stem of its source file
-/// (`None` for `lib.rs` / `mod.rs`, see [`rdname_from_source_file`]).
+/// (`None` for `lib.rs` / `mod.rs`, see [`source_file_stem`]).
+///
+/// The stem is the topic an explicit `@rdname <stem>` names to group the
+/// file's functions on one page (#1289): such a block is on its own file's
+/// page, not joining a topic defined elsewhere, so it keeps its generated
+/// `@param` lines where no function on the page documents the argument.
 #[cfg(not(target_arch = "wasm32"))]
 struct StandaloneFragment<'a> {
     content: &'a str,
@@ -649,11 +654,13 @@ struct StandalonePage {
     /// The `.Rd` topic, `None` for an `@noRd` block.
     page: Option<String>,
     /// The block joins a topic defined elsewhere: `@describeIn`, or an
-    /// `@rdname` naming neither the file-stem page nor the block's own
+    /// `@rdname` naming neither its file's stem page nor the block's own
     /// `@name` / function name.
     joined: bool,
-    /// The file-stem `@rdname` must be injected.
-    inject_stem: bool,
+    /// The `@title` to inject: the function name, for a roxygen block that
+    /// documents its own page and has no `@title` (roxygen2 renders no page
+    /// without one).
+    title: Option<String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -664,7 +671,7 @@ fn standalone_page(fragment: &StandaloneFragment<'_>) -> StandalonePage {
         return StandalonePage {
             page: None,
             joined: false,
-            inject_stem: false,
+            title: None,
         };
     }
     let rdname = roxygen_tag_value(content, "rdname");
@@ -674,31 +681,38 @@ fn standalone_page(fragment: &StandaloneFragment<'_>) -> StandalonePage {
     let own_page =
         |topic: &str| Some(topic) == stem || Some(topic) == own_name || Some(topic) == fn_name;
     let joined = describe_in.is_some() || rdname.is_some_and(|topic| !own_page(topic));
-    let inject_stem = !has_page_assignment_tag(content) && stem.is_some();
     let page = describe_in
         .or(rdname)
         .or(own_name)
-        .or(if inject_stem { stem } else { None })
         .or(fn_name)
+        .map(str::to_string);
+    let is_roxygen_block = content.lines().any(|l| l.trim_start().starts_with("#'"));
+    let has_title = content.lines().any(|l| l.trim().starts_with("#' @title "));
+    let title = fn_name
+        .filter(|_| is_roxygen_block && !has_title && !has_page_assignment_tag(content))
         .map(str::to_string);
     StandalonePage {
         page,
         joined,
-        inject_stem,
+        title,
     }
 }
 
 /// Resolve the standalone functions' fragments, in emission order (#1590):
 ///
-/// - inject the file-stem `@rdname` into a block that picks no page itself
-///   (see [`has_page_assignment_tag`]);
+/// - give a roxygen block that picks no page itself (see
+///   [`has_page_assignment_tag`]) and has no `@title` the function name as
+///   its title. Such a block documents the function's own page, as in
+///   roxygen2; grouping functions on one page is opt-in through an explicit
+///   `@rdname` (#1289);
 /// - resolve each generated `@param` filler (marked with
 ///   [`PARAM_FILLER_MARKER`] by the macro): keep it, unmarked, when the block
-///   stays on its own or file-stem page and no other block of that page
-///   documents the argument; drop it when the block joins a topic defined
-///   elsewhere (that topic's block documents the arguments) or another
-///   function on the page documents the argument (roxygen2 keeps the later of
-///   two `@param` lines for a name, so a filler would replace the real text);
+///   stays on its own page or its file's stem page (`@rdname <file stem>`)
+///   and no other block of that page documents the argument; drop it when
+///   the block joins a topic defined elsewhere (that topic's block documents
+///   the arguments) or another function on the page documents the argument
+///   (roxygen2 keeps the later of two `@param` lines for a name, so a filler
+///   would replace the real text);
 /// - give a block that joins a topic defined elsewhere `@order NaN`
 ///   ([`ORDER_AFTER_TOPIC_BLOCKS`]), so the topic's own block names and
 ///   titles the merged page whatever the R file order (an author `@order`
@@ -758,9 +772,9 @@ fn resolve_standalone_pages(fragments: &[StandaloneFragment<'_>]) -> Vec<String>
             if page.joined && !content.lines().any(|l| l.trim().starts_with("#' @order ")) {
                 content = insert_roxygen_line(&content, ORDER_AFTER_TOPIC_BLOCKS);
             }
-            match (page.inject_stem, fragment.stem.as_deref()) {
-                (true, Some(stem)) => inject_rdname(&content, stem),
-                _ => content,
+            match page.title.as_deref() {
+                Some(title) => insert_roxygen_line(&content, &format!("#' @title {title}")),
+                None => content,
             }
         })
         .collect()
@@ -824,12 +838,9 @@ fn sort_wrapper_entries(entries: &mut [&RWrapperEntry]) {
 /// Check if an R wrapper fragment already assigns itself to a documentation
 /// page: `@rdname <topic>`, `@describeIn <topic> <desc>`, or `@name <topic>`.
 ///
-/// roxygen2 rejects `@describeIn` next to `@rdname`, so the default
-/// `@rdname <file stem>` must not be injected into a fragment carrying it
-/// (#1476). `@name <topic>` counts too: in roxygen2 a block that names its
-/// topic documents `topic.Rd`, and injecting the file-stem `@rdname` on top of
-/// it silently overrode that choice. Blocks that only want a custom topic
-/// name on the shared file page spell out `@rdname <file stem>` themselves.
+/// A fragment without one documents the function's own page, and only such a
+/// fragment gets the default `@title` (the function name) when it has none
+/// (#1289).
 fn has_page_assignment_tag(content: &str) -> bool {
     content.lines().any(|line| {
         let trimmed = line.trim();
@@ -849,70 +860,20 @@ fn has_no_rd_tag(content: &str) -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-/// Derive an `@rdname` value from a source file path.
+/// The stem of a standalone function's source file: the topic an explicit
+/// `@rdname` names to group the file's functions on one page (see
+/// [`StandaloneFragment`]). `None` for `lib.rs` / `mod.rs`, whose stems name
+/// no page of their own.
 ///
-/// `"src/rust/zero_copy_tests.rs"` → `"zero_copy_tests"`
-/// `"lib.rs"` → `"lib"`
-fn rdname_from_source_file(path: &str) -> Option<String> {
+/// `"src/rust/zero_copy_tests.rs"` → `Some("zero_copy_tests")`
+/// `"lib.rs"` → `None`
+fn source_file_stem(path: &str) -> Option<String> {
     let file_name = path.rsplit(['/', '\\']).next()?;
     let stem = file_name.strip_suffix(".rs").unwrap_or(file_name);
     if stem.is_empty() || stem == "lib" || stem == "mod" {
         return None;
     }
     Some(stem.to_string())
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-/// Inject `#' @rdname <value>` (and `@title` if missing) into an R wrapper
-/// fragment. Inserts before the first `@export`/`@keywords`/`@source` line,
-/// or after the last roxygen line.
-fn inject_rdname(content: &str, rdname: &str) -> String {
-    let rdname_line = format!("#' @rdname {rdname}");
-    let has_title = content.lines().any(|l| l.trim().starts_with("#' @title "));
-    // Functions with no doc comments need a title so the @rdname page has an anchor
-    let title_line = if has_title {
-        None
-    } else {
-        Some(format!("#' @title {}", rdname.replace('_', " ")))
-    };
-
-    let lines: Vec<&str> = content.lines().collect();
-    let mut result = Vec::with_capacity(lines.len() + 2);
-    let mut inserted = false;
-
-    for line in &lines {
-        let trimmed = line.trim();
-        // Insert before @export, @keywords, or @source lines
-        if !inserted
-            && (trimmed.starts_with("#' @export")
-                || trimmed.starts_with("#' @keywords")
-                || trimmed.starts_with("#' @source"))
-        {
-            if let Some(ref t) = title_line {
-                result.push(t.as_str());
-            }
-            result.push(rdname_line.as_str());
-            inserted = true;
-        }
-        result.push(line);
-    }
-
-    // If we never found a good insertion point, insert before the function def
-    if !inserted {
-        let last_roxy = lines
-            .iter()
-            .rposition(|l| l.trim().starts_with("#'"))
-            .unwrap_or(0);
-        let insert_at = last_roxy + 1;
-        if let Some(ref t) = title_line {
-            result.insert(insert_at, t.as_str());
-            result.insert(insert_at + 1, rdname_line.as_str());
-        } else {
-            result.insert(insert_at, rdname_line.as_str());
-        }
-    }
-
-    result.join("\n")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -3442,8 +3403,7 @@ mod tests {
         assert!(has_page_assignment_tag(
             "#' @describeIn topic Short text\n#' wrapped\nf <- function() 1"
         ));
-        // `@name topic` documents `topic.Rd` in roxygen2; the file-stem
-        // `@rdname` must not be injected over it.
+        // `@name topic` documents `topic.Rd` in roxygen2.
         assert!(has_page_assignment_tag("#' @name topic\nf <- function() 1"));
         // A `@name` with no topic is malformed and does not count.
         assert!(!has_page_assignment_tag("#' @name\nf <- function() 1"));
@@ -3476,12 +3436,65 @@ mod tests {
         format!("#' @param {param} (no documentation available)")
     }
 
-    /// On a file-stem page (the author's `@rdname <stem>`, or the injected
-    /// one) a filler survives only for an argument no function on the page
-    /// documents: roxygen2 keeps the later `@param` of a name, so a filler
-    /// would replace the real description another block wrote.
+    /// The `.Rd` topic each fragment lands on, as `resolve_standalone_pages`
+    /// reads it.
+    fn page_topics(fragments: &[(&str, Option<&str>)]) -> Vec<Option<String>> {
+        fragments
+            .iter()
+            .map(|(content, stem)| {
+                standalone_page(&StandaloneFragment {
+                    content,
+                    stem: stem.map(str::to_string),
+                })
+                .page
+            })
+            .collect()
+    }
+
+    /// Two free functions of one source file document a page each (#1289):
+    /// no file-stem `@rdname` is injected, and each keeps the generated lines
+    /// of the arguments it leaves undocumented, even an argument the other
+    /// function documents.
     #[test]
-    fn file_stem_page_keeps_fillers_only_for_undocumented_arguments() {
+    fn free_functions_of_one_file_get_a_page_each() {
+        let scale = format!(
+            "#' @title stem_scale\n#' @param values Numbers.\n{}\n#' @export\nstem_scale <- function(values, factor) 1",
+            filler("factor")
+        );
+        let floor = format!(
+            "#' @title stem_floor\n{}\n{}\n#' @export\nstem_floor <- function(values, floor) 1",
+            filler("values"),
+            filler("floor")
+        );
+        let fragments = [
+            (scale.as_str(), Some("stem_docs")),
+            (&floor, Some("stem_docs")),
+        ];
+        assert_eq!(
+            page_topics(&fragments),
+            [
+                Some("stem_scale".to_string()),
+                Some("stem_floor".to_string())
+            ]
+        );
+        let out = resolve_pages(&fragments);
+        for page in &out {
+            assert!(!page.contains("@rdname"), "{page}");
+            assert!(!page.contains(PARAM_FILLER_MARKER), "{page}");
+            assert!(!page.contains("@order"), "own page, no order: {page}");
+        }
+        assert!(out[0].contains(&filler_resolved("factor")), "{}", out[0]);
+        assert!(out[1].contains(&filler_resolved("values")), "{}", out[1]);
+        assert!(out[1].contains(&filler_resolved("floor")), "{}", out[1]);
+    }
+
+    /// Grouping is opt-in through an explicit `@rdname <file stem>`. On that
+    /// page a filler survives only for an argument no function on the page
+    /// documents: roxygen2 keeps the later `@param` of a name, so a filler
+    /// would replace the real description another block wrote. The blocks are
+    /// the file's own page, so none of them gets `@order NaN`.
+    #[test]
+    fn explicit_stem_page_keeps_fillers_only_for_undocumented_arguments() {
         let first = format!(
             "#' @name stem_docs\n#' @rdname stem_docs\n#' @param values Numbers.\n{}\n#' @export\nstem_scale <- function(values, factor) 1",
             filler("factor")
@@ -3490,39 +3503,90 @@ mod tests {
             "#' @rdname stem_docs\n#' @param offset Amount.\n{}\n#' @export\nstem_shift <- function(values, offset) 1",
             filler("values")
         );
-        let injected = format!(
-            "#' @title stem_floor\n{}\n{}\n#' @export\nstem_floor <- function(values, floor) 1",
+        let third = format!(
+            "#' @title stem_floor\n#' @rdname stem_docs\n{}\n{}\n#' @export\nstem_floor <- function(values, floor) 1",
             filler("values"),
             filler("floor")
         );
-        let out = resolve_pages(&[
-            (&first, Some("stem_docs")),
+        let fragments = [
+            (first.as_str(), Some("stem_docs")),
             (&second, Some("stem_docs")),
-            (&injected, Some("stem_docs")),
-        ]);
+            (&third, Some("stem_docs")),
+        ];
+        assert!(
+            page_topics(&fragments)
+                .iter()
+                .all(|page| page.as_deref() == Some("stem_docs"))
+        );
+        let out = resolve_pages(&fragments);
         for page in &out {
             assert!(!page.contains(PARAM_FILLER_MARKER), "{page}");
             assert!(!page.contains("@order"), "own page, no order: {page}");
+            assert_eq!(page.matches("#' @rdname").count(), 1, "{page}");
         }
         assert!(out[0].contains(&filler_resolved("factor")), "{}", out[0]);
         assert!(!out[1].contains("@param values"), "{}", out[1]);
         assert!(!out[2].contains("@param values"), "{}", out[2]);
         assert!(out[2].contains(&filler_resolved("floor")), "{}", out[2]);
-        assert!(
-            out[2].contains("#' @rdname stem_docs"),
-            "stem injected: {}",
-            out[2]
+    }
+
+    /// The case that made a merged `.Rd` reach 3.7 MB and stall
+    /// `R CMD INSTALL` (#1289): functions of one file with their own `@title`,
+    /// the first defining a section the others `@inheritSection`. Each
+    /// function keeps its own page, so the inheritance names another page
+    /// instead of the merged page itself.
+    #[test]
+    fn titled_blocks_inheriting_a_section_keep_separate_pages() {
+        let first = "#' @title First setter\n#' @section Shared rules:\n#' Values are checked.\n#' @param x A value.\n#' @export\nfirst_setter <- function(x) 1";
+        let second = "#' @title Second setter\n#' @inheritSection first_setter Shared rules\n#' @param x A value.\n#' @export\nsecond_setter <- function(x) 1";
+        let third = "#' @title Third setter\n#' @inheritSection first_setter Shared rules\n#' @param x A value.\n#' @export\nthird_setter <- function(x) 1";
+        let fragments = [
+            (first, Some("setters")),
+            (second, Some("setters")),
+            (third, Some("setters")),
+        ];
+        assert_eq!(
+            page_topics(&fragments),
+            ["first_setter", "second_setter", "third_setter"].map(|t| Some(t.to_string()))
         );
-        // The author's @rdname is not duplicated by the injection.
-        assert_eq!(out[1].matches("#' @rdname").count(), 1, "{}", out[1]);
+        // Nothing to resolve: the blocks are written as the macro emitted them.
+        assert_eq!(resolve_pages(&fragments), [first, second, third]);
+    }
+
+    /// A roxygen block that picks no page and has no `@title` gets the
+    /// function name as its title, so roxygen2 renders its page; `lib.rs`
+    /// functions (no stem) too. A block with no roxygen line, or `@noRd`,
+    /// renders no page and gets none.
+    #[test]
+    fn untitled_own_page_blocks_get_the_function_name_as_title() {
+        let bare = "#' @export\nbare_fn <- function() 1";
+        let internal = "#' @keywords internal\ninternal_fn <- function() 1";
+        let undocumented = "plain_fn <- function() 1";
+        let no_rd = "#' @noRd\nhidden <- function() 1";
+        let out = resolve_pages(&[
+            (bare, Some("helpers")),
+            (internal, None),
+            (undocumented, Some("helpers")),
+            (no_rd, Some("helpers")),
+        ]);
+        assert_eq!(
+            out[0],
+            "#' @title bare_fn\n#' @export\nbare_fn <- function() 1"
+        );
+        assert_eq!(
+            out[1],
+            "#' @title internal_fn\n#' @keywords internal\ninternal_fn <- function() 1"
+        );
+        assert_eq!(out[2], undocumented);
+        assert_eq!(out[3], no_rd);
     }
 
     /// A grouped `@param lower,upper` documents both names.
     #[test]
     fn grouped_param_names_count_as_documented() {
-        let a = "#' @param lower,upper Bounds.\n#' @export\nf <- function(lower, upper) 1";
+        let a = "#' @rdname bounds\n#' @param lower,upper Bounds.\n#' @export\nf <- function(lower, upper) 1";
         let b = format!(
-            "{}\n{}\n#' @export\ng <- function(lower, upper) 1",
+            "#' @rdname bounds\n{}\n{}\n#' @export\ng <- function(lower, upper) 1",
             filler("lower"),
             filler("upper")
         );

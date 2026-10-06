@@ -1544,10 +1544,10 @@ pub fn miniextendr(
         String::new()
     };
     // `noexport` means no man page at all (docs/CLASS_SYSTEMS.md export-control
-    // table): inject @noRd so roxygen2 skips the Rd and the write-time
-    // @rdname-by-file-stem grouping (registry.rs) leaves the fn out of shared
-    // pages. Without this, an unexported fn keeps a \usage entry in man/,
-    // which R CMD check flags as a code/documentation mismatch.
+    // table): inject @noRd so roxygen2 skips the Rd and the write-time page
+    // pass (registry.rs) gives the fn no default title. Without this, an
+    // unexported fn keeps a \usage entry in man/, which R CMD check flags as a
+    // code/documentation mismatch.
     let no_rd_comment = if noexport && !has_no_rd_tag {
         "#' @noRd\n"
     } else {

@@ -33,17 +33,15 @@ test_that("noexport function is callable but not exported", {
 # differ at the documentation level: `internal` stays documented (with an
 # alias) under `\keyword{internal}`; `noexport` gets no Rd contribution at
 # all (`@noRd`) — no alias, anywhere. Before the fix, `noexport` still
-# contributed an `\alias{}` to the shared `export_control_tests.Rd` page.
+# contributed an `\alias{}` to a man page.
 
 test_that("internal function has an alias in the rendered Rd", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
-  # Anchor on the page name: `export_control_delegate.Rd` (the hand-written
-  # delegate around the postfixed entry point) also matches a bare prefix.
-  rd_name <- grep("^export_control_tests", names(rd_db), value = TRUE)[1]
-  skip_if(is.na(rd_name), "export_control_tests.Rd not found — package not documented")
+  # A free function documents its own page (#1289).
+  expect_true("export_control_internal.Rd" %in% names(rd_db))
 
-  rd <- rd_db[[rd_name]]
+  rd <- rd_db[["export_control_internal.Rd"]]
   rd_text <- paste(capture.output(print(rd)), collapse = "\n")
 
   expect_true(
@@ -59,8 +57,8 @@ test_that("noexport function has no alias anywhere in the rendered Rd", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
 
-  # `export_control_noexport` must not be an alias target on ANY Rd page —
-  # not just the shared `export_control_tests.Rd` page it used to leak into.
+  # `export_control_noexport` must not be an alias target on ANY Rd page,
+  # its own or one shared with other functions.
   has_alias <- vapply(rd_db, function(rd) {
     grepl("export_control_noexport", paste(capture.output(print(rd)), collapse = "\n"))
   }, logical(1))

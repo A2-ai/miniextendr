@@ -86,8 +86,8 @@ impl MxBagHandle {
 /// Numeric summaries of `mx_bag` values. `mx_bag_len()` is documented on this
 /// page through `@describeIn`, written in its Rust doc comment. roxygen2 sends
 /// a `@describeIn` block to the destination *object's own* topic, so the
-/// destination has to live on that page: `@rdname mx_bag_sum` keeps it off the
-/// file-stem page this module would otherwise share.
+/// destination has to live on that page. A free function without a page tag
+/// already does (#1289); `@rdname mx_bag_sum` spells it out.
 ///
 /// @rdname mx_bag_sum
 /// @param x A bag (numeric vector).

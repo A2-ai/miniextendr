@@ -172,23 +172,22 @@ lines with the same roles, so a multi-line tag keeps its blank lines and
 indentation in R and leaves rustdoc with them. Emit author tag text through
 `roxygen_line` / `push_roxygen_tags*` (bare `#'` for a blank line).
 
-**Free functions default to `@rdname <source-file-stem>`.** During wrapper
-collection (`collect_r_wrappers` in `miniextendr-api/src/registry.rs`), any
-`RWrapperPriority::Function` entry without an explicit `@rdname` or `@noRd`
-gets `#' @rdname <file-stem>` injected (`rdname_from_source_file`; `lib.rs` /
-`mod.rs` stems are exempt, and a `@title` is injected if missing). Consequence:
-all exported free functions in one `.rs` file silently share a single `.Rd`
-page — the extras become aliases with concatenated usage/params, with no
-diagnostic. Impl-block/class entries group by class name instead. For one man
-page per function, put an explicit `#' @rdname <fn_name>` on each free
-function. Making per-function pages the default (grouping opt-in) is proposed
-in A2-ai/miniextendr#1289. The same pass (`resolve_standalone_pages`) resolves
-the macro's marked `@param` fillers (`.__MX_PARAM_FILLER__`) per page, keeping
-one only where no function on the page documents the argument, and adds
-`@order NaN` to blocks that join another topic (`@describeIn`, or an `@rdname`
-naming neither the file stem nor the block's own name), so that topic's own
-block names and titles the merged page (`docs/S3_METHODS.md`, "Parameters on
-shared pages").
+**Free functions document their own page.** A `RWrapperPriority::Function`
+entry without `@rdname` / `@describeIn` / `@name` lands on `<fn_name>.Rd`, as
+in roxygen2; grouping is opt-in through an explicit `@rdname` (#1289). During
+wrapper collection (`collect_r_wrappers` in `miniextendr-api/src/registry.rs`),
+`resolve_standalone_pages` injects only a `@title <fn_name>` into a roxygen
+block that picks no page and has none, never an `@rdname`. Impl-block/class
+entries still group by class name. The same pass resolves the macro's marked
+`@param` fillers (`.__MX_PARAM_FILLER__`) per page, keeping one only where no
+function on the page documents the argument, and adds `@order NaN` to blocks
+that join another topic (`@describeIn`, or an `@rdname` naming neither the
+block's file stem nor its own name), so that topic's own block names and
+titles the merged page. An explicit `@rdname <file stem>` (`source_file_stem`;
+`lib.rs` / `mod.rs` have none) is the file's opt-in group page: its blocks keep
+their fillers per page and get no `@order` (`docs/S3_METHODS.md`,
+"Documentation pages for standalone methods" and "Parameters on shared
+pages").
 
 ### Trait ABI shims
 

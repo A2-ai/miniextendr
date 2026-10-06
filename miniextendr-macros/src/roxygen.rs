@@ -1387,9 +1387,9 @@ pub(crate) fn describe_in_topic(tags: &[String]) -> Option<&str> {
 /// `tags` must be the author's own tags (doc comment or `doc = "..."`), and
 /// `default_page` the page the framework puts the block on anyway: a class
 /// generator passes the class name, so a redundant author `@rdname <Class>`
-/// counts as no page tag. A standalone function passes `None` (its file-stem
-/// page is only known when the wrapper registry writes the file), so any
-/// `@rdname` counts there.
+/// counts as no page tag. A standalone function passes `None` (whether an
+/// `@rdname` names its own page or its file's stem page is only known when
+/// the wrapper registry writes the file), so any `@rdname` counts there.
 pub(crate) fn joins_author_topic(tags: &[String], default_page: Option<&str>) -> bool {
     describe_in_topic(tags).is_some()
         || rdname_value(tags).is_some_and(|topic| Some(topic) != default_page)
@@ -1485,11 +1485,11 @@ pub(crate) fn push_order_after_topic_blocks(
 /// wrapper registry to resolve when it writes the file
 /// (`resolve_standalone_pages` in `miniextendr-api/src/registry.rs`, which
 /// spells the same prefix). Whether an author `@rdname topic` names the
-/// function's own file-stem page, and whether another function on the page
-/// documents the argument, is only known then. The registry keeps the line
-/// (without the prefix) when the function stays on its own or file-stem page
-/// and no other function there documents the argument, and drops it
-/// otherwise. roxygen2 keeps the later of two `@param` lines for one name, so
+/// function's own page or its file's stem page (the opt-in group page,
+/// #1289), and whether another function on the page documents the argument,
+/// is only known then. The registry keeps the line (without the prefix) when
+/// the function stays on its own or file-stem page and no other function
+/// there documents the argument, and drops it otherwise. roxygen2 keeps the later of two `@param` lines for one name, so
 /// a filler written after the real description would replace it.
 pub(crate) const PARAM_FILLER_MARKER: &str = ".__MX_PARAM_FILLER__ ";
 

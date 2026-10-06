@@ -460,25 +460,36 @@ pub fn tbl_sum_my_tbl(x: SEXP, _dots: ...) -> Vec<String> { ... }
 
 ### Documentation pages for standalone methods
 
-Standalone functions without an explicit page assignment are grouped onto one
-`.Rd` page per Rust source file (the macro injects `@rdname <file stem>` at
-wrapper-generation time). Three tags override that, and the file-stem default
-is not injected when any of them is present:
+A standalone function without a page tag documents its own page, named after
+the function (`man/<fn>.Rd`), as in plain roxygen2. A block without a
+`@title` gets the function name as its title. Grouping functions on one page
+is opt-in (#1289), through one of these tags:
 
-- `/// @rdname topic` puts the function on `topic`'s page.
+- `/// @rdname topic` puts the function on `topic`'s page. To group the
+  functions of one Rust file, give each of them `/// @rdname <file stem>`
+  (`@rdname setters` in `setters.rs`).
 - `/// @name topic` documents the function on its own `topic.Rd`, exactly as in
-  plain roxygen2. A block that wants a custom topic name *on the shared file
-  page* spells out `/// @rdname <file stem>` as well.
+  plain roxygen2. A block that wants a custom topic name *and* a shared page
+  spells out the `@rdname` as well.
 - `/// @describeIn topic Short description.` puts it on `topic`'s page *and*
   lists it in that page's "Functions" section with the description. The
   description may wrap onto following `///` lines; they stay attached (#1476).
-  roxygen2 rejects `@describeIn` next to `@rdname`, which is one reason the
-  default is not injected here.
+  roxygen2 rejects `@describeIn` next to `@rdname`.
   roxygen2 resolves `topic` to the destination *object's own* page
   (`topic.Rd`), not to wherever that object's block was sent with `@rdname`.
-  So the destination must be documented under its own name: give it
-  `/// @name topic` or `/// @rdname topic` explicitly, otherwise it lands on
-  the file-stem page and the `@describeIn` block ends up alone on `topic.Rd`.
+  So the destination must be documented under its own name: a function
+  without a page tag already is; one sent elsewhere with `@rdname` needs
+  `/// @rdname topic` back, otherwise the `@describeIn` block ends up alone
+  on `topic.Rd`.
+
+Grouping is opt-in because a shared page has one title: roxygen2 drops the
+other blocks' titles without a warning, and their functions become aliases on
+someone else's page. An `@inheritSection` between two blocks of one page also
+resolves to that page itself, and roxygen2 copies the section once per block,
+copies already inherited included, so a family of ten such functions can grow
+one page to megabytes and stall `R CMD INSTALL`. On pages of their own,
+`@inheritSection first_fn Section` inherits from `first_fn`'s page as intended
+(`rpkg/src/rust/own_page_docs.rs` is the fixture).
 
 A `@title` wrapped onto the next `///` line is folded back onto one line, and
 a bare `@name` / `@rdname` takes the next `///` line as its topic, as roxygen2
@@ -493,11 +504,11 @@ of a shared page appear in the order the Rust file defines them.
 A parameter the Rust doc comment does not document gets a generated `@param`
 line: `(no documentation available)`, or the choice list of a `choices` /
 `match_arg` parameter. That keeps every argument of a function documented on
-its own page, including the file-stem page. The line is left out when the
-block takes its arguments from elsewhere:
+its own page, including a file-stem page it opts into. The line is left out
+when the block takes its arguments from elsewhere:
 
 - it has `@describeIn topic ...`, or an `@rdname topic` naming another page
-  than its own file-stem page, so `topic`'s page documents them;
+  than its own or its file-stem page, so `topic`'s page documents them;
 - it has `@inheritParams source` (or `@inherit source` including params),
   which fills in exactly the arguments the block leaves out.
 
@@ -547,12 +558,14 @@ the class page (no page tag, or `@rdname <Class>`) the lines stay. An
 `@inheritParams` alone keeps the method on the class page, so it keeps them
 too.
 
-A file-stem page is shared by every function of its Rust file (with the
-injected default, or with `@rdname <file stem>` spelled out to keep a custom
-`@name` on it). There the wrapper registry decides each generated line when
-it writes `R/miniextendr-wrappers.R`: the line stays only when no function on
+A file-stem page is shared by the functions of a Rust file that opt into it
+with `@rdname <file stem>` (one of them may add `@name <file stem>` to give
+the page a custom title). The registry treats that page as the file's own,
+not as a topic defined elsewhere, and decides each generated line when it
+writes `R/miniextendr-wrappers.R`: the line stays only when no function on
 the page documents that argument itself, so a shared argument shows the one
-real description once. `rpkg/src/rust/stem_page_docs.rs` is the fixture.
+real description once. `rpkg/src/rust/stem_page_docs.rs` is the fixture. An
+`@rdname` naming any other topic joins it as described above.
 
 The registry sees only the generated wrappers, not your R files. An R-file
 block on a file-stem page (typically `#' @name <file stem>` on `NULL`, to
