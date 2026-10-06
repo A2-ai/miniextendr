@@ -496,7 +496,7 @@ but don't `git add` the output. See `site/CLAUDE.md` for the full pipeline.
 - **"configure: command not found"**: `cd rpkg && autoconf && bash ./configure`.
 - **Permission errors installing**: `R CMD INSTALL --library=/tmp/claude/R_lib rpkg` (rv drops `R_LIBS`) or `just devtools-install`. `/tmp/claude/` is writable in sandboxes.
 - **Segfaults**: `R -d lldb -e '…'`; at `(lldb)` type `run`, then `bt` / `frame select` / `p`.
-- **Leaked vendor tarball** (missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings): `just clean-vendor-leak`. See "The latch leak" above. `miniextendr_doctor()` detects both conditions.
+- **Leaked vendor tarball** (missing `.cargo/config.toml` / cargo resolves framework crates from git instead of local siblings): `just clean-vendor-leak`. See "The install-mode latch" above. `miniextendr_doctor()` detects both conditions.
 - **Release workflow on AlmaLinux 8 / macOS arm64**: see `docs/RELEASE_WORKFLOW.md`. Use `minirextendr::use_release_workflow()` to scaffold a known-good template (#448).
 - **R CMD check `compilation flags used` WARNING**: `-W*` flags in `PKG_CFLAGS` trigger a non-portable-flag WARNING under `R CMD check --as-cran`. Use scoped `#pragma clang diagnostic` in a shim header (`rpkg/src/r_shim.h`) for clang-specific suppressions, not `PKG_CFLAGS`. See #443.
 

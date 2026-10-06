@@ -192,7 +192,7 @@ Recipes that produce the tarball (`just r-cmd-build`, `just r-cmd-check`,
 (`just rcmdinstall`, `just devtools-test`, `just devtools-load`,
 `just devtools-install`) refuse to run if the tarball is present.
 
-Detection: `minirextendr_doctor()` reports both stale-latch and missing
+Detection: `miniextendr_doctor()` reports both stale-latch and missing
 `.cargo/config.toml`.
 
 Fix: `just clean-vendor-leak` (safe, idempotent). Then re-run `just configure`.
@@ -284,7 +284,7 @@ If the generated `configure` script itself needs to change, edit
 3. Run: `just configure`.
 4. Verify: `cat rpkg/src/rust/.cargo/config.toml` shows `[patch."git+url"]`
    entries (monorepo) or only `[build] target-dir` (standalone).
-5. If `config.toml` is missing entirely: `minirextendr_doctor()` detects this
+5. If `config.toml` is missing entirely: `miniextendr_doctor()` detects this
    condition; run `bash ./configure` to regenerate.
 
 ### Cargo.lock mismatch during build

@@ -1,6 +1,6 @@
 ---
 name: miniextendr-scaffolding
-description: Use when creating a new R package with a Rust backend via minirextendr, upgrading an existing package's scaffold, diagnosing a broken setup with minirextendr_doctor(), maintaining or syncing templates between rpkg and minirextendr/inst/templates/, adding configure-time feature detection, or using use_release_workflow() for CRAN CI scaffolding.
+description: Use when creating a new R package with a Rust backend via minirextendr, upgrading an existing package's scaffold, diagnosing a broken setup with miniextendr_doctor(), maintaining or syncing templates between rpkg and minirextendr/inst/templates/, adding configure-time feature detection, or using use_release_workflow() for CRAN CI scaffolding.
 ---
 
 # miniextendr Scaffolding (minirextendr)
@@ -15,7 +15,7 @@ pipeline, doctor checks, and release-workflow scaffolding.
 
 - "How do I create a new R package with Rust using miniextendr?"
 - "How do I upgrade an existing package scaffold to a newer miniextendr version?"
-- "minirextendr_doctor() is reporting a problem — how do I fix it?"
+- "miniextendr_doctor() is reporting a problem — how do I fix it?"
 - "I changed rpkg — how do I sync the templates?"
 - "What is `just templates-approve` / `just templates-check`?"
 - "How does configure-time feature detection work?"
@@ -111,7 +111,7 @@ When `rpkg/` changes in a way that should propagate to end-user packages:
 `inst/templates/`. CI runs `just templates-check` to verify no unexpected
 drift has accumulated.
 
-### minirextendr_doctor()
+### miniextendr_doctor()
 
 `minirextendr/R/doctor.R` — detects two common broken states:
 
@@ -123,7 +123,7 @@ drift has accumulated.
 2. **Missing `.cargo/config.toml`**: configure was not run (or ran before the
    tarball was removed). Fix: `bash ./configure` (or `just configure`).
 
-Run `minirextendr_doctor()` from R when a build behaves unexpectedly — it is
+Run `miniextendr_doctor()` from R when a build behaves unexpectedly — it is
 the first diagnostic step for any configure or cargo resolution issue.
 
 ### Configure-time feature detection
@@ -194,10 +194,13 @@ the template.
 
 ### Diagnosing a broken setup
 
-1. `minirextendr_doctor()` from R — reports stale tarball or missing
+1. `miniextendr_doctor()` from R — reports stale tarball or missing
    `.cargo/config.toml`.
-2. If stale tarball: `just clean-vendor-leak` (monorepo) or manually
-   `rm rpkg/inst/vendor.tar.xz` (standalone).
+2. If stale tarball: `minirextendr::miniextendr_clean_vendor_leak()` (any
+   layout; from a monorepo root it finds the package subdirectory), or
+   `just clean-vendor-leak` in this repository. It removes the archive and
+   restores a manifest that `cargo revendor --freeze` rewrote; deleting the
+   archive alone leaves a frozen manifest broken.
 3. `bash ./configure` to regenerate `Makevars` and `.cargo/config.toml`.
 4. If still broken: check `miniextendr-build` skill for detailed pipeline
    diagnostics.
@@ -215,7 +218,7 @@ the template.
 - `minirextendr/R/create.R` — `use_miniextendr()` and
   `create_miniextendr_package()` entry points.
 - `minirextendr/R/upgrade.R` — `upgrade_miniextendr_package()`.
-- `minirextendr/R/doctor.R` — `minirextendr_doctor()` health checks.
+- `minirextendr/R/doctor.R` — `miniextendr_doctor()` health checks.
 - `minirextendr/R/render.R` — `use_template()` (delete-then-write wrapper).
 - `minirextendr/R/vendor.R` — `vendor_crates_io()` (the `cargo revendor` call).
 - `minirextendr/R/workflow.R` — `miniextendr_vendor()`, `miniextendr_build_tarball()`.

@@ -38,7 +38,7 @@
 # Vendor compression stamp file (dev-only)
 ^inst/\.vendor\.tar\.xz\.cksum$
 
-# Pre-freeze manifest snapshot (dev-only recovery aid, #1509)
+# Pre-freeze manifest snapshot (dev-only recovery aid, A2-ai/miniextendr#1509)
 ^src/rust/\.Cargo\.toml\.prefreeze$
 
 # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)

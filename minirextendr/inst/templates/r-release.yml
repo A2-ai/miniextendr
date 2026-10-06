@@ -87,7 +87,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
 
     # Note: NO LANG/LC_ALL here — macOS runners default to UTF-8 and break
-    # if you force C.UTF-8 (glibc-only). See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-2-macos-rejects-c-utf-8
+    # if you force C.UTF-8 (glibc-only). See https://a2-ai.github.io/miniextendr/manual/release-workflow/ (Gotcha 2)
     #
     # macos-14 is arm64 (CRAN target: Sonoma / 14.0).
     # macos-13 is x86_64 (CRAN target: Big Sur / 11.0; last Intel macOS runner).
@@ -116,7 +116,7 @@ jobs:
       # Skipped vs. upstream: brew unlink (destructive), gfortran (no Fortran
       # deps), TinyTeX (no PDF manuals), xQuartz (no X11), /opt/R/<arch>/bin on
       # GITHUB_PATH (r-lib/actions/setup-r installs R independently).
-      # See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-5-macos-sdk-and-deployment-target-must-match-cran
+      # See https://a2-ai.github.io/miniextendr/manual/release-workflow/ (Gotcha 5)
       - name: Pin macOS SDK and deployment target
         run: |
           if [ "$(uname -m)" = "x86_64" ]; then
@@ -135,7 +135,7 @@ jobs:
       # pkg-config will resolve against these — the same library set R itself
       # was built against. Pre-empts the "links fine locally, segfaults under
       # CRAN's R" trap. Inlined from r-devel/actions/setup-macos-tools@ec72e88
-      # (action.yml lines 44-53). See https://a2-ai.github.io/miniextendr/manual/release-workflow/#gotcha-6-cran-system-libraries-on-macos
+      # (action.yml lines 44-53). See https://a2-ai.github.io/miniextendr/manual/release-workflow/ (Gotcha 6)
       - name: Download CRAN system libraries
         run: |
           sudo mkdir -p /opt
