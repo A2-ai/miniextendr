@@ -1,7 +1,7 @@
 //! Borrow preflight must query the selected conversion, preserving custom paths.
 #![allow(dead_code, private_interfaces, non_camel_case_types)]
 use miniextendr_api::dots::Dots;
-use miniextendr_api::{miniextendr, FromRNewtype, SEXP, TryFromSexp};
+use miniextendr_api::{miniextendr, SEXP, TryFromSexp, TryFromSexpElement};
 
 #[miniextendr(no_worker)]
 pub fn named_lifetimes<'a>(x: &'a i32, y: &'a str) -> i32 { *x + i32::try_from(y.len()).unwrap() }
@@ -31,7 +31,7 @@ impl TryFromSexp for &RLogical {
 pub fn custom_reference(x: &RLogical, y: &mut [i32]) -> i32 { let _ = x; i32::try_from(y.len()).unwrap() }
 
 struct User;
-impl FromRNewtype for &User {
+impl TryFromSexpElement for &User {
     type Inner = i32;
     fn from_inner(_: i32) -> Self { &User }
 }
@@ -47,4 +47,7 @@ pub fn coerce_only(#[miniextendr(coerce)] x: u16, y: &mut [i32]) -> i32 { let _ 
 struct Borrowed(&'static mut i32);
 #[miniextendr(no_worker)]
 pub fn newtype_borrow(x: Box<[Option<Borrowed>]>, y: &i32) -> i32 { i32::try_from(x.len()).unwrap() + *y }
+// The element blankets forward the inner container's borrow metadata.
+const _: () = assert!(<Box<[Option<Borrowed>]> as TryFromSexp>::NATIVE_BORROW.is_some());
+const _: () = assert!(<Option<Borrowed> as TryFromSexp>::NATIVE_BORROW.is_some());
 fn main() {}

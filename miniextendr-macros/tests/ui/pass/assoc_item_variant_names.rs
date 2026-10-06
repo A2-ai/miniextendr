@@ -6,9 +6,8 @@
 //! position a variant silently wins over an associated const, so
 //! `Self::CHOICES` would name a variant `CHOICES`. The derives that accept
 //! enums and a `#[miniextendr]` impl block have to compile on enums whose
-//! variants take those names. (`try_from_sexp_via_str_parse!` is covered by a
-//! unit test in `miniextendr-api/src/from_r.rs`: the macro is internal to
-//! that crate, #1731.)
+//! variants take those names, and so does `try_from_sexp_via_str_parse!`,
+//! which expands in the user's crate (#1766).
 
 #![allow(dead_code, non_camel_case_types)]
 
@@ -188,6 +187,45 @@ impl miniextendr_api::adapter_traits::RIterator for Mode {
     fn size_hint(&self) -> (i64, Option<i64>) {
         (0, Some(0))
     }
+}
+
+// endregion
+
+// region: try_from_sexp_via_str_parse!
+
+/// Variants named after the associated items of the impls the macro writes:
+/// `TryFromSexp::Error`, `ParseRStr::LABEL` (and `FromStr::Err`, which the
+/// parse body uses), `TryFromSexpElement::Inner`.
+#[derive(Debug)]
+pub enum Severity {
+    Error,
+    Err,
+    LABEL,
+    Inner,
+    Value,
+}
+
+impl std::str::FromStr for Severity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "error" => Ok(Severity::Error),
+            "err" => Ok(Severity::Err),
+            "label" => Ok(Severity::LABEL),
+            "inner" => Ok(Severity::Inner),
+            "value" => Ok(Severity::Value),
+            other => Err(format!("unknown severity {other:?}")),
+        }
+    }
+}
+
+miniextendr_api::try_from_sexp_via_str_parse!(Severity, "severity", |s| s.parse::<Severity>());
+
+#[miniextendr]
+pub fn severities(x: Severity, y: Option<Severity>, z: Vec<Option<Severity>>) -> i32 {
+    let _ = (x, y);
+    z.len() as i32
 }
 
 // endregion

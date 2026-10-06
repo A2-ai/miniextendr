@@ -35,12 +35,11 @@
 
 pub use uuid::Uuid;
 
-use crate::from_r::try_from_sexp_via_str_parse;
 use crate::into_r::into_r_infallible;
 
 // region: TryFromSexp / IntoR conversions
 
-try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
+crate::try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
 
 into_r_infallible!(Uuid, |this| this.to_string().into_sexp());
 into_r_infallible!(Option<Uuid>, |this| this.map(|u| u.to_string()).into_sexp());

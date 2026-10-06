@@ -442,11 +442,12 @@ pub mod from_r;
 pub mod into_r;
 pub mod into_r_error;
 pub use into_r::{Altrep, IntoR, IntoRAltrep};
-/// Container conversions for forwarding newtypes (`#[derive(TryFromSexp)]` /
-/// `#[derive(IntoR)]`). See the module docs and issue #844.
+/// Container conversions for newtypes (`#[derive(TryFromSexp)]` /
+/// `#[derive(IntoR)]`) and string-parsed types
+/// (`try_from_sexp_via_str_parse!`). See the module docs, #844 and #1766.
 pub mod newtype;
 pub use into_r_error::IntoRError;
-pub use newtype::{FromRNewtype, IntoRNewtype, IntoRVecElement};
+pub use newtype::{IntoRNewtype, IntoRVecElement, TryFromSexpElement};
 pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod pump;

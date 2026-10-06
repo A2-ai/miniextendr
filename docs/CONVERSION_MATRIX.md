@@ -171,6 +171,21 @@ and refuses what the marker read as `None` (`"NA"`, blank strings, a factor
 `AsNumeric*`. The refusal is the R guard's condition: same classes, `kind`,
 `e$param` and message, no `e$rust_type`, reported with the matched call.
 
+### String-Parsed Types
+
+`AsFromStr<T>` / `AsFromStrVec<T>` parse at the call site. To make a type of
+your own convert directly, give it `try_from_sexp_via_str_parse!(T, "label",
+|s| ...)` ([EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-type-parsed-from-a-string)).
+The built-in `Uuid`, `Url`, `Regex`, `BigInt` and `BigUint` conversions
+(feature-gated) use it, so they read R input the same way:
+
+| Rust Type | Accepted R Type | On `NA` / `NULL` | On parse failure |
+|-----------|-----------------|------------------|------------------|
+| `T` | STRSXP, length 1 | `SexpError::Na` | `invalid <label>: <err>` |
+| `Option<T>` | STRSXP, length 1, or `NULL` | `None` | `invalid <label>: <err>` |
+| `Vec<T>` | STRSXP | One batched `InvalidValue`: `NA is not allowed (element 2)` | Batched with the `NA`s, 1-based: `invalid <label>: <err> (elements 3, 5)`, at most 10 listed then `and N more` |
+| `Vec<Option<T>>` | STRSXP | `None` | Batched as for `Vec<T>` |
+
 ---
 
 ## Rust-to-R Conversions (Output: IntoR)

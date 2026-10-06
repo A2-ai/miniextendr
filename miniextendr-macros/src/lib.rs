@@ -2829,8 +2829,12 @@ pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::T
 ///
 /// Generates a scalar `TryFromSexp` impl that delegates to the inner type (so the
 /// newtype inherits its exact SEXPTYPE checks, NA policy, and error text), plus a
-/// `FromRNewtype` marker impl. The marker lets `miniextendr-api`'s container
-/// blankets light up `Vec<T>` / `Option<T>` / `Vec<Option<T>>` automatically.
+/// `TryFromSexpElement` marker impl. The marker lets `miniextendr-api`'s container
+/// blankets light up `Vec<T>` / `Option<T>` / `Vec<Option<T>>` automatically,
+/// each one where the inner type's container converts.
+///
+/// Don't use it on a type that also gets `try_from_sexp_via_str_parse!`: both
+/// implement `TryFromSexpElement`.
 ///
 /// # Usage
 ///

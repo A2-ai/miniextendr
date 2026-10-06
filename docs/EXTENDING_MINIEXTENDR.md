@@ -145,16 +145,13 @@ reject valid parameters.
 
 ### Example: Type Parsed From a String
 
-For a type parsed out of an R string, read an `Option<String>` and parse it.
-`Option<String>` already checks the type and length, and returns `None` for
-`NA_character_` and `NULL`. Report NA as `SexpError::Na` and a parse failure
-as `SexpError::InvalidValue`, the same as the built-in uuid, url, regex and
-num-bigint conversions:
+For a type parsed out of an R string, use `try_from_sexp_via_str_parse!`. It
+gives the type all four argument shapes, `T`, `Option<T>`, `Vec<T>` and
+`Vec<Option<T>>`, with the same `NA` policy and error text as the built-in
+uuid, url, regex and num-bigint conversions, which use the same macro:
 
 ```rust
 use std::str::FromStr;
-use miniextendr_api::{SEXP, SEXPTYPE};
-use miniextendr_api::from_r::{SexpError, SexpNaError, TryFromSexp};
 
 pub struct Slug(String);
 
@@ -169,32 +166,42 @@ impl FromStr for Slug {
     }
 }
 
-impl TryFromSexp for Slug {
-    type Error = SexpError;
-    // Reads only character input.
-    const CHARACTER_ONLY: bool = true;
+// The label names the value in a parse error: `invalid slug: <err>`.
+miniextendr_api::try_from_sexp_via_str_parse!(Slug, "slug", |s| s.parse::<Slug>());
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or(SexpError::Na(SexpNaError {
-            sexp_type: SEXPTYPE::STRSXP,
-        }))?;
-        s.parse()
-            .map_err(|e| SexpError::InvalidValue(format!("invalid slug: {e}")))
-    }
+#[miniextendr]
+pub fn count_slugs(x: Vec<Option<Slug>>) -> i32 {
+    x.iter().flatten().count() as i32
 }
 ```
 
-A `#[miniextendr]` function can then take `slug: Slug`. It can't take
-`Option<Slug>`, `Vec<Slug>` or `Vec<Option<Slug>>` yet. `Option` and `Vec` are
-foreign to your crate, so the orphan rule (E0117) rejects
-`impl TryFromSexp for Vec<Slug>` there. Those impls would have to come from a
-blanket in `miniextendr-api` keyed on a trait your type implements, and there
-is none for string-parsed types yet (#1766). Until there is, take
-`Vec<String>` (or `Vec<Option<String>>` to allow `NA`) and parse in the
-function body. A newtype over a type that already converts
-(`struct UserId(Uuid)`) is different: `#[derive(TryFromSexp)]` gives it
-`Option<T>`, `Vec<T>` and `Vec<Option<T>>` through `FromRNewtype`.
+The parse body is a closure-style `|s| expr` with `s: &str`, returning
+`Result<T, E>` for any `E: Display`. It need not be `FromStr`. The four shapes
+read R input like this:
+
+| Rust type | `NA_character_` / `NULL` | Parse failure |
+|-----------|--------------------------|---------------|
+| `Slug` | `SexpError::Na` | `invalid slug: <err>` |
+| `Option<Slug>` | `None` | `invalid slug: <err>` |
+| `Vec<Slug>` | `NA is not allowed (element 2)` | `invalid slug: <err> (elements 3, 5)` |
+| `Vec<Option<Slug>>` | `None` | `invalid slug: <err> (elements 3, 5)` |
+
+A vector reports every failing element in one error, the elements numbered as
+R counts them, with the first 10 listed and the rest summarized as `and N
+more`. All four read only character input (`CHARACTER_ONLY`). `Box<[Slug]>`
+converts as `Vec<Slug>` does.
+
+The macro writes impls on your type only, which the orphan rule allows: the
+parse step (`from_r::ParseRStr`), `TryFromSexp`, and `TryFromSexpElement`.
+The three container impls can't be written in your crate (`Option` and `Vec`
+are foreign to it, E0117). They are blankets in `miniextendr-api` over
+`TryFromSexpElement`, the trait `#[derive(TryFromSexp)]` implements for a
+newtype too. So don't use the macro on a type that also derives
+`TryFromSexp`, and use it only on a non-generic type.
+
+A newtype over a type that already converts (`struct UserId(Uuid)`) gets the
+same container shapes from `#[derive(TryFromSexp)]`, each one where the inner
+type's container converts.
 
 ### When to Use Direct Implementation
 

@@ -5,9 +5,10 @@
 //!
 //! - `#[derive(TryFromSexp)]` generates the R → Rust direction: a scalar
 //!   `TryFromSexp` impl that forwards to the inner type, plus a
-//!   `miniextendr_api::FromRNewtype` marker impl. The marker lets
+//!   `miniextendr_api::TryFromSexpElement` marker impl. The marker lets
 //!   the container blankets in `miniextendr_api::newtype` light up
-//!   `Vec<UserId>` / `Option<UserId>` / `Vec<Option<UserId>>` — see issue #844.
+//!   `Vec<UserId>` / `Option<UserId>` / `Vec<Option<UserId>>` — see issues
+//!   #844 and #1766.
 //! - `#[derive(IntoR)]` generates the Rust → R direction: a scalar `IntoR` impl
 //!   that forwards to the inner type, plus
 //!   `miniextendr_api::IntoRNewtype` (for `Option` / `Vec<Option>`) and a
@@ -99,7 +100,7 @@ fn where_with(base: &Option<syn::WhereClause>, extra: TokenStream) -> TokenStrea
     quote! { where #(#preds),* }
 }
 
-/// `#[derive(TryFromSexp)]`: scalar forwarding `TryFromSexp` + `FromRNewtype` marker.
+/// `#[derive(TryFromSexp)]`: scalar forwarding `TryFromSexp` + `TryFromSexpElement` marker.
 pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
     let nt = parse_newtype(&input)?;
     let inner = &nt.inner;
@@ -147,7 +148,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
         }
 
         #[automatically_derived]
-        impl #impl_generics ::miniextendr_api::FromRNewtype for #name #ty_generics #base_where {
+        impl #impl_generics ::miniextendr_api::TryFromSexpElement for #name #ty_generics #base_where {
             type Inner = #inner;
             #[inline]
             fn from_inner(inner: #inner) -> Self {
