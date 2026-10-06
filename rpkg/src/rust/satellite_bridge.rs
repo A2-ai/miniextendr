@@ -9,10 +9,10 @@
 //! per-type code. Everything below is `satellite::T -> R` or `R -> satellite::T`
 //! routed through the serde bridge.
 
+use miniextendr_api::DataFrameShape;
 use miniextendr_api::SEXP;
 use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::miniextendr;
-use miniextendr_api::DataFrameShape;
 use miniextendr_api::serde::{
     AsSerialize, SplitShape, from_r, vec_to_dataframe, vec_to_dataframe_split,
 };

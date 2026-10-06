@@ -2,10 +2,10 @@
 //! `#[serde(flatten)]`, `#[serde(skip_serializing_if)]`, rename/drop/select API.
 
 use crate::serde::Serialize;
+use miniextendr_api::DataFrameShape;
 use miniextendr_api::IntoR;
 use miniextendr_api::dataframe::BuiltDataFrame;
 use miniextendr_api::miniextendr;
-use miniextendr_api::DataFrameShape;
 use miniextendr_api::serde::{SplitShape, vec_to_dataframe, vec_to_dataframe_split};
 
 // region: Test types
