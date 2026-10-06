@@ -384,23 +384,28 @@ pub(crate) fn validate_per_param_attr_conflicts(
         return Err(syn::Error::new(
             span,
             format!(
-                "`inherits` / `no_na` cannot apply to the variadic (...) parameter `{}`; \
-                 use `dots = typed_list!(...)` to check the entries",
+                "`inherits` / `not_inherits` / `no_na` cannot apply to the variadic (...) \
+                 parameter `{}`; use `dots = typed_list!(...)` to check the entries",
                 param_name
             ),
         ));
     }
-    if let Some(classes) = &attr.checks.inherits
-        && (classes.is_empty() || classes.iter().any(String::is_empty))
-    {
-        return Err(syn::Error::new(
-            span,
-            format!(
-                "`inherits` on parameter `{}` needs one or more non-empty class names, \
-                 e.g. `inherits = \"pkg_obj\"` or `inherits(\"pkg_a\", \"pkg_b\")`",
-                param_name
-            ),
-        ));
+    for check in [ClassCheck::Inherits, ClassCheck::NotInherits] {
+        if let Some(classes) = check.classes(&attr.checks)
+            && (classes.is_empty() || classes.iter().any(String::is_empty))
+        {
+            let key = check.keyword();
+            return Err(syn::Error::new(
+                span,
+                format!(
+                    "`{key}` on parameter `{param_name}` needs one or more non-empty class \
+                     names, e.g. `{key} = \"pkg_obj\"` or `{key}(\"pkg_a\", \"pkg_b\")`"
+                ),
+            ));
+        }
+    }
+    if let Some(msg) = attr.checks.class_conflict(param_name) {
+        return Err(syn::Error::new(span, msg));
     }
     if is_dots && attr.default_value.is_some() {
         return Err(syn::Error::new(
@@ -454,8 +459,9 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `several_ok` was present, enabling multi-value `match.arg(several.ok = TRUE)`.
     /// Only valid with `choices(...)` or `match_arg`.
     pub has_several_ok: bool,
-    /// `inherits = "cls"` / `inherits("a", "b")` and `no_na`, each with an
-    /// optional `message = "..."`: R-side checks named by the author (see
+    /// `inherits = "cls"` / `inherits("a", "b")`, `not_inherits` (the same
+    /// spellings) and `no_na`, each with an optional `message = "..."`: R-side
+    /// checks named by the author (see
     /// [`crate::r_preconditions::ExplicitChecks`]).
     pub checks: crate::r_preconditions::ExplicitChecks,
     /// `preconditions` / `no_preconditions` on the parameter (#1566):
@@ -494,8 +500,9 @@ impl PerParamMiniextendrAttr {
 /// Returns `Ok(None)` if `attr` is not a `#[miniextendr(...)]` attribute, if its
 /// content is not a list of options, or if it contains only function-level
 /// options (like `strict`) with no per-parameter options. A malformed
-/// `inherits(...)` / `no_na(...)` is an error, as is `preconditions = bool` /
-/// `no_preconditions = bool`, a function-level form the parameter spells bare.
+/// `inherits(...)` / `not_inherits(...)` / `no_na(...)` is an error, as is
+/// `preconditions = bool` / `no_preconditions = bool`, a function-level form
+/// the parameter spells bare.
 ///
 /// # Arguments
 ///
@@ -555,15 +562,14 @@ pub(crate) fn parse_per_param_attr(
                 {
                     result.default_value = Some((lit_str.value(), attr.span()));
                     is_per_param = true;
-                } else if nv.path.is_ident("inherits")
+                } else if let Some(check) = ClassCheck::of(&nv.path)
                     && let syn::Expr::Lit(syn::ExprLit {
                         lit: syn::Lit::Str(lit_str),
                         ..
                     }) = &nv.value
                 {
-                    result
-                        .checks
-                        .inherits
+                    check
+                        .classes_mut(&mut result.checks)
                         .get_or_insert_with(Vec::new)
                         .push(lit_str.value());
                     is_per_param = true;
@@ -594,9 +600,10 @@ pub(crate) fn parse_per_param_attr(
                     let choices: Vec<String> = choice_lits.iter().map(|l| l.value()).collect();
                     result.choices = Some(choices);
                     is_per_param = true;
-                } else if list.path.is_ident("inherits") {
-                    // inherits("a", "b"[, message = "..."]) / inherits(class = "a", ...)
-                    let checks = parse_inherits_list(list)?;
+                } else if let Some(check) = ClassCheck::of(&list.path) {
+                    // inherits("a", "b"[, message = "..."]) / inherits(class = "a", ...),
+                    // and the same for not_inherits.
+                    let checks = parse_class_check_list(list, check)?;
                     result
                         .checks
                         .merge(checks)
@@ -622,15 +629,83 @@ pub(crate) fn parse_per_param_attr(
     Ok(Some(result))
 }
 
-/// `inherits(...)` on a parameter: each string literal, and each
-/// `class = "..."`, names one class (the argument must inherit from one of
-/// them); `message = "..."` gives the condition message of a failure, for all
-/// of them. No string is split on commas, as with `inherits = "cls"`
-/// (the method-level `class = "a, b"` is split, see [`parse_method_inherits`]).
-fn parse_inherits_list(
+/// The two class checks a parameter can name: `inherits` (the argument must
+/// inherit from one of the classes) and `not_inherits` (from none of them,
+/// #1815). Both take the same spellings at parameter and method level; this
+/// says which one a spelling is, and words its errors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ClassCheck {
+    Inherits,
+    NotInherits,
+}
+
+impl ClassCheck {
+    /// The check `path` names, if it is `inherits` or `not_inherits`.
+    pub(crate) fn of(path: &syn::Path) -> Option<Self> {
+        if path.is_ident("inherits") {
+            Some(Self::Inherits)
+        } else if path.is_ident("not_inherits") {
+            Some(Self::NotInherits)
+        } else {
+            None
+        }
+    }
+
+    /// The attribute keyword, for error messages.
+    fn keyword(self) -> &'static str {
+        match self {
+            Self::Inherits => "inherits",
+            Self::NotInherits => "not_inherits",
+        }
+    }
+
+    /// This check's classes in `checks`, if it is requested.
+    fn classes(self, checks: &crate::r_preconditions::ExplicitChecks) -> Option<&[String]> {
+        match self {
+            Self::Inherits => checks.inherits.as_deref(),
+            Self::NotInherits => checks.not_inherits.as_deref(),
+        }
+    }
+
+    /// This check's classes in `checks`, to add to.
+    fn classes_mut(
+        self,
+        checks: &mut crate::r_preconditions::ExplicitChecks,
+    ) -> &mut Option<Vec<String>> {
+        match self {
+            Self::Inherits => &mut checks.inherits,
+            Self::NotInherits => &mut checks.not_inherits,
+        }
+    }
+
+    /// The checks holding this check with `classes` and `message`.
+    fn checks(
+        self,
+        classes: Vec<String>,
+        message: Option<String>,
+    ) -> crate::r_preconditions::ExplicitChecks {
+        let mut checks = crate::r_preconditions::ExplicitChecks::default();
+        *self.classes_mut(&mut checks) = Some(classes);
+        match self {
+            Self::Inherits => checks.inherits_message = message,
+            Self::NotInherits => checks.not_inherits_message = message,
+        }
+        checks
+    }
+}
+
+/// `inherits(...)` / `not_inherits(...)` on a parameter (`check` says
+/// which): each string literal, and each `class = "..."`, names one class
+/// (the argument must inherit from one of them, or from none of them);
+/// `message = "..."` gives the condition message of a failure, for all of
+/// them. No string is split on commas, as with `inherits = "cls"` (the
+/// method-level `class = "a, b"` is split, see [`parse_method_class_check`]).
+fn parse_class_check_list(
     list: &syn::MetaList,
+    check: ClassCheck,
 ) -> syn::Result<crate::r_preconditions::ExplicitChecks> {
     use syn::parse::Parser as _;
+    let key_word = check.keyword();
     let mut classes = Vec::new();
     let mut message = None;
     let parser = |input: syn::parse::ParseStream| -> syn::Result<()> {
@@ -645,12 +720,12 @@ fn parse_inherits_list(
                 if key == "class" {
                     classes.push(value.value());
                 } else if key == "message" {
-                    set_check_message(&mut message, &value, "inherits")?;
+                    set_check_message(&mut message, &value, key_word)?;
                 } else {
                     return Err(syn::Error::new_spanned(
                         &key,
                         format!(
-                            "unknown `inherits` option `{key}`; expected class names \
+                            "unknown `{key_word}` option `{key}`; expected class names \
                              (`\"cls\"` or `class = \"cls\"`) and an optional `message = \"...\"`"
                         ),
                     ));
@@ -667,15 +742,13 @@ fn parse_inherits_list(
     if message.is_some() && classes.is_empty() {
         return Err(syn::Error::new_spanned(
             list,
-            "`message` in `inherits(...)` needs a class to check, \
-             e.g. `inherits(class = \"pkg_obj\", message = \"...\")`",
+            format!(
+                "`message` in `{key_word}(...)` needs a class to check, \
+                 e.g. `{key_word}(class = \"pkg_obj\", message = \"...\")`"
+            ),
         ));
     }
-    Ok(crate::r_preconditions::ExplicitChecks {
-        inherits: Some(classes),
-        inherits_message: message,
-        ..Default::default()
-    })
+    Ok(check.checks(classes, message))
 }
 
 /// `no_na(message = "...")` on a parameter: `no_na` with the condition
@@ -704,9 +777,9 @@ fn parse_no_na_option(
     }
 }
 
-/// Record the `message = "..."` of an `inherits` / `no_na` check: the
-/// condition message of a failure, used verbatim. It is given once, is not
-/// empty, and holds no NUL (an R string cannot).
+/// Record the `message = "..."` of an `inherits` / `not_inherits` / `no_na`
+/// check: the condition message of a failure, used verbatim. It is given
+/// once, is not empty, and holds no NUL (an R string cannot).
 fn set_check_message(
     slot: &mut Option<String>,
     value: &syn::LitStr,
@@ -739,8 +812,8 @@ fn set_check_message(
 }
 
 /// The parameter an entry of a method-level `match_arg(...)` / `choices(...)`
-/// / `no_na(...)` / `inherits(...)` names, spelled as the signature's
-/// [`crate::naming::ident_name`] (`r#type` names `type`), so
+/// / `no_na(...)` / `inherits(...)` / `not_inherits(...)` names, spelled as
+/// the signature's [`crate::naming::ident_name`] (`r#type` names `type`), so
 /// [`finalize_method_param_attrs`] finds it.
 pub(crate) fn method_check_param(entry: &syn::meta::ParseNestedMeta) -> syn::Result<String> {
     Ok(crate::naming::ident_name(
@@ -779,43 +852,47 @@ pub(crate) fn parse_method_no_na(
     })
 }
 
-/// Method-level `inherits(p = "a, b", q(class = "a, b", message = "..."))` on
-/// an impl or trait method: each entry names a parameter and the classes it
-/// must inherit from (one of), optionally with the condition message of the
-/// class check. A nested value cannot be a bare list of literals, so the
-/// classes are one comma-separated string, as in `choices(p = "a, b")`.
-/// Shared by the inherent-impl and trait-impl method parsers.
-pub(crate) fn parse_method_inherits(
+/// Method-level `inherits(p = "a, b", q(class = "a, b", message = "..."))` /
+/// `not_inherits(...)` (the same shape, `check` says which) on an impl or
+/// trait method: each entry names a parameter and the classes it must
+/// inherit from (one of) or must not inherit from (any of), optionally with
+/// the condition message of the class check. A nested value cannot be a bare
+/// list of literals, so the classes are one comma-separated string, as in
+/// `choices(p = "a, b")`. Shared by the inherent-impl and trait-impl method
+/// parsers.
+pub(crate) fn parse_method_class_check(
     meta: &syn::meta::ParseNestedMeta,
     per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+    check: ClassCheck,
 ) -> syn::Result<()> {
+    let key_word = check.keyword();
     meta.parse_nested_meta(|entry| {
         let name = method_check_param(&entry)?;
         let mut classes = Vec::new();
         let mut message = None;
         if entry.input.peek(syn::Token![=]) {
             let value: syn::LitStr = entry.value()?.parse()?;
-            classes = method_class_list(&value)?;
+            classes = method_class_list(&value, check)?;
         } else if entry.input.peek(syn::token::Paren) {
             entry.parse_nested_meta(|opt| {
                 if opt.path.is_ident("class") {
                     let value: syn::LitStr = opt.value()?.parse()?;
-                    classes.extend(method_class_list(&value)?);
+                    classes.extend(method_class_list(&value, check)?);
                     Ok(())
                 } else if opt.path.is_ident("message") {
                     let value: syn::LitStr = opt.value()?.parse()?;
-                    set_check_message(&mut message, &value, "inherits")
+                    set_check_message(&mut message, &value, key_word)
                 } else {
-                    Err(opt.error(
-                        "unknown `inherits` option; expected `class = \"...\"` and an \
-                         optional `message = \"...\"`",
-                    ))
+                    Err(opt.error(format!(
+                        "unknown `{key_word}` option; expected `class = \"...\"` and an \
+                         optional `message = \"...\"`"
+                    )))
                 }
             })?;
             if classes.is_empty() {
                 return Err(entry.error(format!(
-                    "`inherits({name}(...))` needs `class = \"...\"`, \
-                     e.g. `inherits({name}(class = \"pkg_obj\", message = \"...\"))`"
+                    "`{key_word}({name}(...))` needs `class = \"...\"`, \
+                     e.g. `{key_word}({name}(class = \"pkg_obj\", message = \"...\"))`"
                 )));
             }
         } else {
@@ -823,28 +900,26 @@ pub(crate) fn parse_method_inherits(
                 "expected `{name} = \"cls\"` or `{name}(class = \"cls\", message = \"...\")`"
             )));
         }
-        let checks = crate::r_preconditions::ExplicitChecks {
-            inherits: Some(classes),
-            inherits_message: message,
-            ..Default::default()
-        };
         per_param
             .entry(name)
             .or_default()
             .checks
-            .merge(checks)
+            .merge(check.checks(classes, message))
             .map_err(|msg| entry.error(msg))
     })
 }
 
-/// The classes of a method-level `inherits` entry: a comma-separated,
-/// non-empty list.
-fn method_class_list(value: &syn::LitStr) -> syn::Result<Vec<String>> {
+/// The classes of a method-level `inherits` / `not_inherits` entry: a
+/// comma-separated, non-empty list.
+fn method_class_list(value: &syn::LitStr, check: ClassCheck) -> syn::Result<Vec<String>> {
     let classes = crate::r_wrapper_builder::split_choice_list(&value.value());
     if classes.is_empty() {
         return Err(syn::Error::new(
             value.span(),
-            "`inherits(param = \"...\")` needs one or more class names",
+            format!(
+                "`{}(param = \"...\")` needs one or more class names",
+                check.keyword()
+            ),
         ));
     }
     Ok(classes)
@@ -1089,7 +1164,8 @@ pub(crate) struct ParamAttrs {
     /// input; anything else, `NULL` included, reaches Rust unchanged and
     /// decodes as `R`. Set by [`classify_choice_param`].
     pub either_noun: Option<String>,
-    /// R-side checks named by the author: `inherits` / `no_na`.
+    /// R-side checks named by the author: `inherits` / `not_inherits` /
+    /// `no_na`.
     pub checks: crate::r_preconditions::ExplicitChecks,
     /// This parameter's own decision on its type-derived R-side checks
     /// (#1566), rank 1 of [`crate::r_preconditions::resolve_type_checks`]:
@@ -1355,10 +1431,12 @@ pub(crate) fn explicit_checks_by_r_name(
 
 /// Check an impl or trait method's per-parameter attributes against its
 /// signature, now that it is known. Every parameter a method-level
-/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `no_na(...)` /
-/// `preconditions(...)` / `no_preconditions(...)` names must exist (a typo
-/// would otherwise drop the check without a word); then the choice
-/// parameters are classified (see [`classify_choice_param`]) and each
+/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `not_inherits(...)`
+/// / `no_na(...)` / `preconditions(...)` / `no_preconditions(...)` names must
+/// exist (a typo would otherwise drop the check without a word); then the
+/// choice parameters are classified (see [`classify_choice_param`]), a class
+/// in both `inherits` and `not_inherits` is refused
+/// ([`crate::r_preconditions::ExplicitChecks::class_conflict`]), and each
 /// parameter's own precondition decision is checked
 /// ([`check_param_preconditions`]). The standalone-fn path does the same
 /// while parsing; this is the twin for method-level attributes, whose
@@ -1400,8 +1478,8 @@ pub(crate) fn finalize_method_param_attrs(
         return Err(syn::Error::new(
             span,
             format!(
-                "match_arg/choices/inherits/no_na/(no_)preconditions references non-existent \
-                 parameter `{first}`"
+                "match_arg/choices/inherits/not_inherits/no_na/(no_)preconditions references \
+                 non-existent parameter `{first}`"
             ),
         ));
     }
@@ -1418,6 +1496,9 @@ pub(crate) fn finalize_method_param_attrs(
         };
         let has_default = attrs.default.is_some() || defaults.contains_key(&name);
         classify_choice_param(attrs, &name, pt.ty.as_ref(), has_default)?;
+        if let Some(msg) = attrs.checks.class_conflict(&name) {
+            return Err(syn::Error::new(span, msg));
+        }
         let param_markers = markers
             .iter()
             .find(|(n, _)| *n == name)
@@ -1500,7 +1581,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             };
 
             // Consume the per-parameter miniextendr attributes (coerce,
-            // match_arg, choices, several_ok, default, inherits, no_na), merging
+            // match_arg, choices, several_ok, default, inherits, not_inherits,
+            // no_na), merging
             // them when a parameter carries several; keep every other attribute.
             let mut param_attr = PerParamMiniextendrAttr::default();
             let mut kept_attrs = Vec::with_capacity(pat_type.attrs.len());
@@ -1781,8 +1863,8 @@ impl MiniextendrFunctionParsed {
         self.per_param.get(param_name)
     }
 
-    /// The `inherits` / `no_na` checks of every parameter, keyed by R name
-    /// (see [`explicit_checks_by_r_name`]).
+    /// The `inherits` / `not_inherits` / `no_na` checks of every parameter,
+    /// keyed by R name (see [`explicit_checks_by_r_name`]).
     pub(crate) fn explicit_checks(
         &self,
     ) -> std::collections::HashMap<String, crate::r_preconditions::ExplicitChecks> {

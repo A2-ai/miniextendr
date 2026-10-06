@@ -802,7 +802,7 @@ effect on a failed conversion.
 
 ## Argument errors from a body
 
-The generated wrapper's argument checks (`match_arg`, `inherits`, `no_na`, the
+The generated wrapper's argument checks (`match_arg`, `inherits`, `not_inherits`, `no_na`, the
 type preconditions) and a failed argument conversion all raise one condition:
 `kind = "conversion"`, `e$param` naming the argument, and the crate's
 `conversion_error_class` before the `rust_error` layering

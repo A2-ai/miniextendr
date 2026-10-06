@@ -950,6 +950,51 @@ fn test_trait_method_checks_take_custom_messages() {
     );
 }
 
+/// Trait methods take `not_inherits(...)` at method level too (#1815), with
+/// the same guard and the same conflict check as inherent methods.
+#[test]
+fn test_trait_method_not_inherits() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(
+                not_inherits(tau(class = "difftime, Date", message = "`tau` is a time")),
+                not_inherits(model = "pkg_old")
+            )]
+            fn scale(&mut self, tau: f64, model: List) -> f64 { unimplemented!() }
+        }
+    };
+    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let result = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    for guard in [
+        "if (!isTRUE(!inherits(tau, c(\"difftime\", \"Date\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` is a time\")",
+        "if (!isTRUE(!inherits(model, \"pkg_old\"))) .miniextendr_arg_error(\"model\", \"must not inherit from 'pkg_old'\")",
+    ] {
+        assert!(result.contains(guard), "missing `{guard}` in:\n{result}");
+    }
+
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(inherits(model = "pkg_model"), not_inherits(model = "pkg_model"))]
+            fn scale(&mut self, model: List) -> f64 { unimplemented!() }
+        }
+    };
+    let Err(err) = super::vtable::extract_methods(&impl_item) else {
+        panic!("a class in both lists must be rejected");
+    };
+    assert!(
+        err.to_string()
+            .contains("class `pkg_model` is in both `inherits` and `not_inherits`"),
+        "{err}"
+    );
+}
+
 /// A method-level check or choice list naming no parameter of the trait
 /// method is rejected, as on inherent methods: the typo would otherwise drop
 /// the check without a word. `defaults(...)` gets the inherent wording too.

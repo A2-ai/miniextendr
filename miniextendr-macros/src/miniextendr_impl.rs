@@ -1573,13 +1573,15 @@ impl ParsedMethod {
                     // `no_na(p, q(message = "..."))` — R-side `!anyNA(p)` checks.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
                     crate::miniextendr_fn::parse_method_no_na(&meta, &mut method_attrs.per_param)?;
-                } else if meta.path.is_ident("inherits") {
+                } else if let Some(check) = crate::miniextendr_fn::ClassCheck::of(&meta.path) {
                     // `inherits(p = "cls_a, cls_b", q(class = "cls", message = "..."))` —
-                    // R-side `inherits(p, c(...))` checks.
+                    // R-side `inherits(p, c(...))` checks; `not_inherits(...)` the
+                    // same shape, `!inherits(p, c(...))`.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
-                    crate::miniextendr_fn::parse_method_inherits(
+                    crate::miniextendr_fn::parse_method_class_check(
                         &meta,
                         &mut method_attrs.per_param,
+                        check,
                     )?;
                 } else if meta.path.is_ident("match_arg") {
                     // `match_arg(param1, param2, ...)` — scalar match_arg params.
@@ -1873,7 +1875,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, no_na, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, not_inherits, no_na, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())
@@ -2125,7 +2127,7 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
-        // match_arg / choices / inherits / no_na on impl methods: unlike standalone
+        // match_arg / choices / inherits / not_inherits / no_na on impl methods: unlike standalone
         // functions, Rust doesn't accept `#[miniextendr(...)]` on method parameters
         // inside an impl (attribute macros aren't allowed there — "expected
         // non-macro attribute"). The surface is instead method-level:

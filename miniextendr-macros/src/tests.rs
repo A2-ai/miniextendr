@@ -675,10 +675,112 @@ fn parsed_fn_param_check_message_errors() {
     }
 }
 
+/// `not_inherits` takes every parameter-level spelling of `inherits` and
+/// lands in its own fields: a bare class, positional classes, `class = `
+/// keys, one `message` for all of them, and the merge of two attributes. A
+/// parameter with only `not_inherits` gets checks (#1815).
+#[test]
+fn parsed_fn_param_not_inherits_spellings() {
+    let checks = param_checks(quote::quote! {
+        fn f(
+            #[miniextendr(not_inherits = "a")] a: List,
+            #[miniextendr(not_inherits("b1", "b2"))] b: List,
+            #[miniextendr(not_inherits(class = "c", message = "`c` must not be a `c`"))] c: List,
+            #[miniextendr(not_inherits("d1", class = "d2", message = "one for both"))] d: List,
+            #[miniextendr(inherits = "e1", not_inherits = "e2")] e: List,
+            #[miniextendr(not_inherits("k1"))]
+            #[miniextendr(not_inherits(class = "k2", message = "m"))]
+            #[miniextendr(inherits(class = "k3", message = "i"), no_na)]
+            k: Vec<f64>,
+            plain: f64,
+        ) {}
+    });
+    let refused = |p: &str| checks[p].not_inherits.clone().unwrap();
+    let message = |p: &str| checks[p].not_inherits_message.as_deref();
+
+    assert_eq!(refused("a"), ["a"]);
+    assert_eq!(message("a"), None);
+    assert!(checks["a"].inherits.is_none() && !checks["a"].no_na);
+    assert_eq!(refused("b"), ["b1", "b2"]);
+    assert_eq!(refused("c"), ["c"]);
+    assert_eq!(message("c"), Some("`c` must not be a `c`"));
+    assert_eq!(refused("d"), ["d1", "d2"]);
+    assert_eq!(message("d"), Some("one for both"));
+    assert_eq!(checks["e"].inherits.clone().unwrap(), ["e1"]);
+    assert_eq!(refused("e"), ["e2"]);
+    assert_eq!(refused("k"), ["k1", "k2"]);
+    assert_eq!(message("k"), Some("m"));
+    assert_eq!(checks["k"].inherits.clone().unwrap(), ["k3"]);
+    assert_eq!(checks["k"].inherits_message.as_deref(), Some("i"));
+    assert!(checks["k"].no_na);
+    assert!(!checks.contains_key("plain"));
+}
+
+/// The rejected `not_inherits` forms on a parameter, each with an error that
+/// says why: the `inherits` errors under the `not_inherits` name, an empty
+/// class list, the variadic parameter, and a class named by both checks.
+#[test]
+fn parsed_fn_param_not_inherits_errors() {
+    for (tokens, expected) in [
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits(class = "a", message = ""))] x: List) {} },
+            "`message` in `not_inherits(...)` must not be empty",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits(message = "m"))] x: List) {} },
+            "`message` in `not_inherits(...)` needs a class to check",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits(class = "a", msg = "m"))] x: List) {} },
+            "unknown `not_inherits` option `msg`",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(not_inherits("a", message = "m"))]
+                    #[miniextendr(not_inherits("b", message = "n"))]
+                    x: List,
+                ) {}
+            },
+            "`not_inherits` is given more than one `message` on this parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits = "")] x: List) {} },
+            "`not_inherits` on parameter `x` needs one or more non-empty class names",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits())] x: List) {} },
+            "`not_inherits` on parameter `x` needs one or more non-empty class names",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(not_inherits = "a")] d: &Dots) {} },
+            "`inherits` / `not_inherits` / `no_na` cannot apply to the variadic (...) parameter",
+        ),
+        (
+            quote::quote! { fn f(#[miniextendr(inherits = "a", not_inherits = "a")] x: List) {} },
+            "class `a` is in both `inherits` and `not_inherits` on parameter `x`",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(not_inherits("b", "a"))]
+                    #[miniextendr(inherits(class = "a", message = "m"))]
+                    x: List,
+                ) {}
+            },
+            "class `a` is in both `inherits` and `not_inherits` on parameter `x`",
+        ),
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+}
+
 /// The method-level spellings shared by impl and trait methods:
-/// `no_na(p, q(message = ...))` and
-/// `inherits(p = "a, b", q(class = "a, b", message = ...))`, with the
-/// classes of a method-level entry split on commas.
+/// `no_na(p, q(message = ...))`,
+/// `inherits(p = "a, b", q(class = "a, b", message = ...))` and
+/// `not_inherits(...)` (the same shape), with the classes of a method-level
+/// entry split on commas.
 #[test]
 fn method_level_param_check_spellings_and_errors() {
     use syn::parse::Parser as _;
@@ -688,7 +790,9 @@ fn method_level_param_check_spellings_and_errors() {
             if meta.path.is_ident("no_na") {
                 crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)
             } else {
-                crate::miniextendr_fn::parse_method_inherits(&meta, &mut per_param)
+                let check = crate::miniextendr_fn::ClassCheck::of(&meta.path)
+                    .expect("inherits or not_inherits");
+                crate::miniextendr_fn::parse_method_class_check(&meta, &mut per_param, check)
             }
         })
         .parse2(tokens)
@@ -698,7 +802,12 @@ fn method_level_param_check_spellings_and_errors() {
 
     let per_param = parse(quote::quote! {
         no_na(p, q(message = "no NA in `q`")),
-        inherits(p = "a, b", q(class = "c, d", message = "`q` must be a c or d"), r(class = "e"))
+        inherits(p = "a, b", q(class = "c, d", message = "`q` must be a c or d"), r(class = "e")),
+        not_inherits(
+            p = "difftime, Date",
+            s(class = "difftime, Date, POSIXt", message = "`s` is a time"),
+        ),
+        not_inherits(p(class = "POSIXt"))
     })
     .expect("should parse");
     let checks = |p: &str| &per_param[p].checks;
@@ -713,8 +822,45 @@ fn method_level_param_check_spellings_and_errors() {
     );
     assert_eq!(checks("r").inherits.clone().unwrap(), ["e"]);
     assert!(!checks("r").no_na);
+    // `not_inherits` lands in its own fields; two entries on one parameter
+    // merge, and leave `inherits` alone.
+    assert_eq!(
+        checks("p").not_inherits.clone().unwrap(),
+        ["difftime", "Date", "POSIXt"]
+    );
+    assert!(checks("p").not_inherits_message.is_none());
+    assert_eq!(
+        checks("s").not_inherits.clone().unwrap(),
+        ["difftime", "Date", "POSIXt"]
+    );
+    assert_eq!(
+        checks("s").not_inherits_message.as_deref(),
+        Some("`s` is a time")
+    );
+    assert!(checks("s").inherits.is_none() && checks("s").inherits_message.is_none());
+    assert!(checks("q").not_inherits.is_none());
 
     for (tokens, expected) in [
+        (
+            quote::quote! { not_inherits(q(message = "m")) },
+            "`not_inherits(q(...))` needs `class = \"...\"`",
+        ),
+        (
+            quote::quote! { not_inherits(q(class = "a", msg = "m")) },
+            "unknown `not_inherits` option",
+        ),
+        (
+            quote::quote! { not_inherits(q(class = ", ")) },
+            "`not_inherits(param = \"...\")` needs one or more class names",
+        ),
+        (
+            quote::quote! { not_inherits(q(class = "a", message = "")) },
+            "`message` in `not_inherits(...)` must not be empty",
+        ),
+        (
+            quote::quote! { not_inherits(q(class = "a", message = "m"), q(class = "b", message = "n")) },
+            "`not_inherits` is given more than one `message`",
+        ),
         (
             quote::quote! { inherits(q(message = "m")) },
             "`inherits(q(...))` needs `class = \"...\"`",

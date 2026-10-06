@@ -626,6 +626,77 @@ fn env_method_checks_take_custom_messages() {
         "{err}"
     );
 }
+
+/// Method-level `not_inherits(p = "...")` / `not_inherits(p(class = ...,
+/// message = ...))` (#1815): the refusal precedes the parameter's type
+/// checks, which keep their wording, and composes with `inherits` and
+/// `no_na`. A parameter-name typo and a class in both lists are rejected.
+#[test]
+fn env_method_not_inherits() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Holder {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(
+                not_inherits(
+                    tau(class = "difftime, Date, POSIXt", message = "`tau` must be a plain number"),
+                    x = "mx_old"
+                ),
+                inherits(x = "mx_obj"),
+                no_na(tau)
+            )]
+            pub fn set(&mut self, tau: Option<AsNumeric>, x: List) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let wrapper = generate_env_r_wrapper(&parsed);
+    let guards = [
+        "if (!isTRUE(is.null(tau) || !inherits(tau, c(\"difftime\", \"Date\", \"POSIXt\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` must be a plain number\")",
+        "if (!isTRUE(is.null(tau) || is.numeric(tau) || is.logical(tau) || is.character(tau) || is.factor(tau))) .miniextendr_arg_error(\"tau\", \"must be NULL or numeric, logical, character, or factor\")",
+        "if (!isTRUE(is.null(tau) || !anyNA(tau))) .miniextendr_arg_error(\"tau\", \"must not be NA\")",
+        "if (!isTRUE(inherits(x, \"mx_obj\"))) .miniextendr_arg_error(\"x\", \"must inherit from 'mx_obj'\")",
+        "if (!isTRUE(!inherits(x, \"mx_old\"))) .miniextendr_arg_error(\"x\", \"must not inherit from 'mx_old'\")",
+        "if (!isTRUE(is.list(x))) .miniextendr_arg_error(\"x\", \"must be a list\")",
+    ];
+    let positions: Vec<usize> = guards
+        .iter()
+        .map(|guard| {
+            wrapper
+                .find(guard)
+                .unwrap_or_else(|| panic!("missing `{guard}` in:\n{wrapper}"))
+        })
+        .collect();
+    assert!(
+        positions.windows(2).all(|w| w[0] < w[1]),
+        "guards out of order in:\n{wrapper}"
+    );
+
+    for (item_impl, expected) in [
+        (
+            syn::parse_quote! {
+                impl Holder {
+                    #[miniextendr(not_inherits(taux = "Date"))]
+                    pub fn set(&mut self, tau: f64) -> f64 { unimplemented!() }
+                }
+            },
+            "non-existent parameter `taux`",
+        ),
+        (
+            syn::parse_quote! {
+                impl Holder {
+                    #[miniextendr(inherits(x = "mx_a, mx_b"), not_inherits(x = "mx_b"))]
+                    pub fn set(&mut self, x: List) -> f64 { unimplemented!() }
+                }
+            },
+            "class `mx_b` is in both `inherits` and `not_inherits` on parameter `x`",
+        ),
+    ] {
+        let item_impl: syn::ItemImpl = item_impl;
+        let Err(err) = ParsedImpl::parse(default_impl_attrs(ClassSystem::Env), item_impl) else {
+            panic!("`{expected}` must be rejected");
+        };
+        assert!(err.to_string().contains(expected), "{err}");
+    }
+}
 // endregion
 
 // region: R6 class system tests

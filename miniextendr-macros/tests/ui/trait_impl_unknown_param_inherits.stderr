@@ -1,4 +1,4 @@
-error: match_arg/choices/inherits/no_na/(no_)preconditions references non-existent parameter `modl`
+error: match_arg/choices/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `modl`
   --> tests/ui/trait_impl_unknown_param_inherits.rs:15:19
    |
 15 |     #[miniextendr(inherits(modl = "pkg_model"))]

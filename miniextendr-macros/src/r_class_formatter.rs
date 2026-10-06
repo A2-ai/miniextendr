@@ -251,8 +251,9 @@ pub(crate) fn match_arg_skip_set(
 }
 
 /// Build the R-side precondition guard lines for a parameter list, given
-/// its per-param map (match_arg/choices skips, `inherits` / `no_na` checks,
-/// each parameter's own `preconditions` decision), whether `coerce` is active
+/// its per-param map (match_arg/choices skips, `inherits` / `not_inherits` /
+/// `no_na` checks, each parameter's own `preconditions` decision), whether
+/// `coerce` is active
 /// for the whole method, and the method's and impl block's `preconditions` /
 /// `no_preconditions` (`method_level`, `impl_level`). Each parameter keeps
 /// its type-derived checks as `crate::r_preconditions::resolve_type_checks`
@@ -565,7 +566,8 @@ impl<'a> MethodContext<'a> {
     /// Each parameter keeps or drops its type-derived checks as its own
     /// spelling, the method's, the impl block's, the crate default and the
     /// feature decide ([`build_method_precondition_checks`]); the
-    /// per-parameter `inherits(...)` / `no_na(...)` checks stay.
+    /// per-parameter `inherits(...)` / `not_inherits(...)` / `no_na(...)`
+    /// checks stay.
     pub fn precondition_checks(&self) -> Vec<String> {
         // A coerced integer-element vector reads via `&[i32]` (INTSXP-only), so
         // its precondition tightens to `is.integer` (#616). Impl methods carry

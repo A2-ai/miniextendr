@@ -1,4 +1,4 @@
-error: unknown #[miniextendr] option on trait impl method; expected one of: `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, `choices`, `choices_several_ok`, `inherits`, `no_na`, `preconditions`, `no_preconditions`
+error: unknown #[miniextendr] option on trait impl method; expected one of: `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, `choices`, `choices_several_ok`, `inherits`, `not_inherits`, `no_na`, `preconditions`, `no_preconditions`
   --> tests/ui/trait_impl_nested_unknown_option.rs:15:19
    |
 15 |     #[miniextendr(typo_toplevel)]

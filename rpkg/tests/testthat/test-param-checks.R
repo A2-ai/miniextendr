@@ -1,4 +1,5 @@
-# Per-parameter `inherits` / `no_na` checks (src/rust/param_check_tests.rs).
+# Per-parameter `inherits` / `not_inherits` / `no_na` checks
+# (src/rust/param_check_tests.rs).
 
 mx_obj <- function() structure(list(a = 1, b = 2), class = "mx_obj")
 
@@ -455,6 +456,128 @@ test_that("no_na on an Either refuses what anyNA() sees, for the arm taken", {
   for (x in list(into_sexp_altrep(c(1L, NA)), into_sexp_altrep(c(1, NaN)))) {
     expect_identical(caught_msg(f(x)), "'x' must not contain NA")
   }
+})
+
+# endregion
+
+# region: not_inherits (#1815)
+#
+# A duration read with `AsNumeric` refuses the classes whose number drops the
+# unit (difftime) or counts from 1970 (Date, POSIXct, POSIXlt). The refusal
+# runs before the marker's type check, which would otherwise answer first
+# with its generic message: `is.numeric()` is FALSE for all of them.
+
+duration_msg <- paste(
+  "`tau` must be a plain number in the time unit of the data,",
+  "not a difftime, Date or date-time"
+)
+times <- list(
+  difftime = as.difftime(5, units = "mins"),
+  Date = as.Date("2024-01-02"),
+  POSIXct = as.POSIXct("2024-01-02 03:04:05", tz = "UTC"),
+  POSIXlt = as.POSIXlt("2024-01-02 03:04:05", tz = "UTC")
+)
+
+test_that("not_inherits refuses a difftime, Date or date-time with the author's message", {
+  # The condition of every R-side argument check, as `inherits` raises it.
+  inherits_e <- tryCatch(miniextendr:::param_inherits_one(list()), error = identity)
+  for (x in times) {
+    e <- tryCatch(miniextendr:::param_takes_duration(x), error = identity)
+    expect_identical(conditionMessage(e), duration_msg)
+    expect_identical(class(e), class(inherits_e))
+    expect_s3_class(e, "rust_error")
+    expect_identical(e$kind, "conversion")
+    expect_identical(e$param, "tau")
+    expect_null(e$rust_type)
+    expect_equal(conditionCall(e), quote(miniextendr:::param_takes_duration(x)))
+  }
+})
+
+test_that("not_inherits lets a number, NULL and a factor through", {
+  expect_identical(miniextendr:::param_takes_duration(), "NULL")
+  expect_identical(miniextendr:::param_takes_duration(NULL), "NULL")
+  expect_identical(miniextendr:::param_takes_duration(2.5), "2.5")
+  expect_identical(miniextendr:::param_takes_duration(3L), "3")
+  expect_identical(miniextendr:::param_takes_duration("4"), "4")
+  expect_identical(miniextendr:::param_takes_duration(factor("5")), "5")
+})
+
+test_that("a value of another class still gets the marker's own checks", {
+  expect_identical(
+    caught_msg(miniextendr:::param_takes_duration(list(1))),
+    "'tau' must be NULL or numeric, logical, character, or factor"
+  )
+  expect_identical(
+    caught_msg(miniextendr:::param_takes_duration(c(1, 2))),
+    "'tau' must be NULL or have length 1"
+  )
+  expect_identical(caught_msg(miniextendr:::param_takes_duration(NA_real_)), "'tau' must not be NA")
+  expect_identical(caught_msg(miniextendr:::param_takes_duration("NA")), "'tau' must not be NA")
+})
+
+test_that("without a message, not_inherits names the refused classes", {
+  expect_identical(miniextendr:::param_not_inherits_default(2), "2")
+  for (x in times) {
+    expect_identical(
+      caught_msg(miniextendr:::param_not_inherits_default(x)),
+      "'x' must not inherit from 'difftime', 'Date' or 'POSIXt'"
+    )
+  }
+})
+
+test_that("inherits and not_inherits compose on one parameter", {
+  expect_identical(miniextendr:::param_not_inherits_with_inherits(mx_obj()), 2L)
+  expect_identical(
+    caught_msg(miniextendr:::param_not_inherits_with_inherits(list())),
+    "'x' must inherit from 'mx_obj'"
+  )
+  expect_identical(
+    caught_msg(miniextendr:::param_not_inherits_with_inherits(
+      structure(list(), class = c("mx_old", "mx_obj"))
+    )),
+    "'x' must not inherit from 'mx_old'"
+  )
+})
+
+test_that("no_preconditions keeps not_inherits and drops the type checks", {
+  f <- miniextendr:::param_takes_duration_no_preconditions
+  expect_identical(f(2), "2")
+  for (x in times) {
+    expect_identical(caught_msg(f(x)), duration_msg)
+  }
+  # A list now reaches the Rust conversion and gets its message.
+  e <- tryCatch(f(list(1)), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$param, "tau")
+  expect_false(grepl("numeric, logical, character, or factor", conditionMessage(e), fixed = TRUE))
+})
+
+test_that("not_inherits runs on an Either, which has no R type check", {
+  skip_if_not(miniextendr_has_feature("either"), "either feature off")
+  f <- miniextendr:::param_takes_duration_or_table
+  expect_identical(f(), "NULL")
+  expect_identical(f(2), "2")
+  expect_identical(f(data.frame(v = 1)), "table")
+  for (x in times) {
+    expect_identical(caught_msg(f(x)), duration_msg)
+  }
+})
+
+test_that("impl methods take not_inherits(...) at method level", {
+  h <- ParamCheckHolder$new()
+  expect_identical(h$add_duration(2), 2)
+  expect_identical(h$add_duration(NULL), 2)
+  expect_identical(h$add_duration(factor("1")), 3)
+  for (x in times) {
+    e <- tryCatch(h$add_duration(x), error = identity)
+    expect_identical(conditionMessage(e), duration_msg)
+    expect_identical(e$param, "tau")
+    expect_s3_class(e, "rust_error")
+  }
+  expect_identical(
+    caught_msg(h$add_duration(list(1))),
+    "'tau' must be NULL or numeric, logical, character, or factor"
+  )
 })
 
 # endregion

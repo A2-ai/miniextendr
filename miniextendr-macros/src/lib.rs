@@ -1637,8 +1637,9 @@ pub fn miniextendr(
     // `r_preconditions::resolve_type_checks`). TryFromSexp still raises a
     // typed Rust error on mismatched input. The savings were measured against
     // the former `stopifnot()` block (~1230 ns / 1-arg or ~3900 ns / 5-arg);
-    // the guards cost about half. The per-parameter `inherits` / `no_na`
-    // checks stay: the Rust conversion does not repeat them. (The C wrapper's
+    // the guards cost about half. The per-parameter `inherits` /
+    // `not_inherits` / `no_na` checks stay: the Rust conversion does not
+    // repeat them. (The C wrapper's
     // post-conversion `no_na` check covers only what a type reads as `NA`
     // beyond `anyNA()`, such as `"NA"` for `AsNumeric`, except on an
     // `Either`, which has no R guard and is checked only in Rust.)

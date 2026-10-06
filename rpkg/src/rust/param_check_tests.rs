@@ -1,11 +1,13 @@
-//! Per-parameter `inherits` / `no_na` checks, driven by
+//! Per-parameter `inherits` / `not_inherits` / `no_na` checks, driven by
 //! `tests/testthat/test-param-checks.R`.
 //!
 //! Standalone fns spell them on the parameter
-//! (`#[miniextendr(inherits = "cls", no_na)]`); impl and trait methods on the
-//! method (`#[miniextendr(inherits(x = "cls"), no_na(y))]`). Both land in the
-//! generated precondition guards (`inherits` before the type checks, `no_na`
-//! after them) and survive `no_preconditions`. Either spelling takes an
+//! (`#[miniextendr(inherits = "cls", not_inherits = "bad", no_na)]`); impl
+//! and trait methods on the method
+//! (`#[miniextendr(inherits(x = "cls"), not_inherits(x = "bad"), no_na(y))]`).
+//! All land in the generated precondition guards (`inherits`, then
+//! `not_inherits`, before the type checks, `no_na` after them) and survive
+//! `no_preconditions`. Either spelling takes an
 //! optional `message = "..."`, the condition message of a failure, used
 //! verbatim (`inherits(class = "cls", message = "...")`,
 //! `no_na(message = "...")`, method level
@@ -380,6 +382,100 @@ fn describe(value: Option<Option<f64>>) -> String {
 }
 // endregion
 
+// region: not_inherits (#1815)
+//
+// A duration read with `AsNumeric` drops the unit of a `difftime` and counts
+// a `Date` or date-time from 1970, so these fixtures refuse those classes
+// with `not_inherits`. The refusal runs before the marker's type check
+// (`is.numeric()` is `FALSE` for all of them, so the type check would
+// otherwise answer first, with its generic message), and leaves the type and
+// NA checks their own messages.
+
+/// A duration as a plain number: `NULL` is "not given", a number, string or
+/// factor label is read like `as.numeric()`, and a `difftime`, `Date` or
+/// date-time is refused with the author's message.
+/// @param tau `NULL`, or a number in the time unit of the data.
+#[miniextendr(noexport)]
+pub fn param_takes_duration(
+    #[miniextendr(
+        no_na,
+        default = "NULL",
+        not_inherits(
+            "difftime",
+            "Date",
+            "POSIXt",
+            message = "`tau` must be a plain number in the time unit of the data, not a difftime, Date or date-time"
+        )
+    )]
+    tau: Option<AsNumeric>,
+) -> String {
+    describe(tau.map(|v| v.0))
+}
+
+/// `not_inherits` without a message: the generated one names the classes.
+/// @param x A number that is not a `difftime`, `Date` or date-time.
+#[miniextendr(noexport)]
+pub fn param_not_inherits_default(
+    #[miniextendr(not_inherits("difftime", "Date", "POSIXt"))] x: AsNumeric,
+) -> String {
+    describe(Some(x.0))
+}
+
+/// `inherits` and `not_inherits` on one parameter: an `mx_obj` that is not
+/// an `mx_old`.
+/// @param x An object of class `mx_obj` but not `mx_old`.
+#[miniextendr(noexport)]
+pub fn param_not_inherits_with_inherits(
+    #[miniextendr(inherits = "mx_obj", not_inherits = "mx_old")] x: List,
+) -> i32 {
+    i32::try_from(x.len()).expect("list length fits i32")
+}
+
+/// `param_takes_duration` under `no_preconditions`: the refusal stays, the
+/// marker's type checks are gone.
+/// @param tau `NULL`, or a number in the time unit of the data.
+#[miniextendr(noexport, no_preconditions)]
+pub fn param_takes_duration_no_preconditions(
+    #[miniextendr(
+        no_na,
+        default = "NULL",
+        not_inherits(
+            "difftime",
+            "Date",
+            "POSIXt",
+            message = "`tau` must be a plain number in the time unit of the data, not a difftime, Date or date-time"
+        )
+    )]
+    tau: Option<AsNumeric>,
+) -> String {
+    describe(tau.map(|v| v.0))
+}
+
+/// A duration or a table of durations: an `Either` has no R type check, and
+/// the refusal still runs on the formal.
+/// @param tau `NULL`, a number in the time unit of the data, or a data frame.
+#[cfg(feature = "either")]
+#[miniextendr(noexport)]
+pub fn param_takes_duration_or_table(
+    #[miniextendr(
+        no_na,
+        default = "NULL",
+        not_inherits(
+            "difftime",
+            "Date",
+            "POSIXt",
+            message = "`tau` must be a plain number in the time unit of the data, not a difftime, Date or date-time"
+        )
+    )]
+    tau: miniextendr_api::either_impl::Either<Option<AsNumeric>, miniextendr_api::DataFrame>,
+) -> String {
+    match tau {
+        miniextendr_api::either_impl::Either::Left(v) => describe(v.map(|v| v.0)),
+        miniextendr_api::either_impl::Either::Right(_) => "table".to_string(),
+    }
+}
+// endregion
+
 // region: impl methods
 
 /// Holder for the impl-method `inherits(...)` / `no_na(...)` fixture.
@@ -433,6 +529,24 @@ impl ParamCheckHolder {
     #[miniextendr(no_na(doses(message = "every dose must be a number")))]
     pub fn add_doses(&mut self, doses: AsNumericVec) -> f64 {
         self.total += doses.0.into_iter().flatten().sum::<f64>();
+        self.total
+    }
+
+    /// Add a duration given as a plain number; `NULL` adds nothing. A
+    /// `difftime`, `Date` or date-time is refused with the method-level
+    /// `not_inherits` message.
+    /// @param tau `NULL`, or a number in the time unit of the data.
+    #[miniextendr(
+        no_na(tau),
+        not_inherits(tau(
+            class = "difftime, Date, POSIXt",
+            message = "`tau` must be a plain number in the time unit of the data, not a difftime, Date or date-time"
+        ))
+    )]
+    pub fn add_duration(&mut self, tau: Option<AsNumeric>) -> f64 {
+        if let Some(tau) = tau {
+            self.total += tau.0.expect("no_na refuses a missing value");
+        }
         self.total
     }
 }
