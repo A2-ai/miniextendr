@@ -1832,9 +1832,27 @@ impl ConversionErrBuiltin for crate::from_r::SexpNaError {
     }
 }
 
+/// A `SexpError` also carries the classes and fields of the check refusals
+/// ([`SexpError::Condition`](crate::from_r::SexpError::Condition)) whose
+/// reasons its message reports, directly or from an `Either` arm.
 impl ConversionErrBuiltin for crate::from_r::SexpError {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts {
-        builtin_reason_parts(self.r_reason(expected_known))
+        let mut parts = builtin_reason_parts(self.r_reason(expected_known));
+        let mut data = ConditionData::new();
+        for refusal in self.reported_conditions() {
+            for class in refusal.classes() {
+                if !parts.class.contains(class) {
+                    parts.class.push(class.clone());
+                }
+            }
+            for (name, value) in refusal.fields() {
+                if !data.iter().any(|(seen, _)| seen == name) {
+                    data.push((name.clone(), value.clone()));
+                }
+            }
+        }
+        parts.data = check_condition_data((!data.is_empty()).then_some(data));
+        parts
     }
 }
 

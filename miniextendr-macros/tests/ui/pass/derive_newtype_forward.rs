@@ -3,7 +3,8 @@
 //! blankets in `miniextendr_api::newtype` light up `Vec` / `Option` /
 //! `Vec<Option>` automatically (issue #844).
 //!
-//! Direction is chosen by *which* derive is listed — there are no attributes.
+//! Direction is chosen by *which* derive is listed (`derive_newtype_validate.rs`
+//! covers the one attribute, `#[try_from_sexp(validate = ...)]`).
 //! The inner type is `f64` so the test needs no optional crate features. The
 //! static `assert_from` / `assert_into` helpers force each generated impl's
 //! trait-bound to resolve at compile time without touching the R runtime.
