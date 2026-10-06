@@ -501,8 +501,8 @@ impl PerParamMiniextendrAttr {
 /// content is not a list of options, or if it contains only function-level
 /// options (like `strict`) with no per-parameter options. A malformed
 /// `inherits(...)` / `not_inherits(...)` / `no_na(...)` is an error, as is
-/// `preconditions = bool` /
-/// `no_preconditions = bool`, a function-level form the parameter spells bare.
+/// `preconditions = bool` / `no_preconditions = bool`, a function-level form
+/// the parameter spells bare.
 ///
 /// # Arguments
 ///
@@ -652,7 +652,7 @@ impl ClassCheck {
     }
 
     /// The attribute keyword, for error messages.
-    pub(crate) fn keyword(self) -> &'static str {
+    fn keyword(self) -> &'static str {
         match self {
             Self::Inherits => "inherits",
             Self::NotInherits => "not_inherits",
@@ -660,10 +660,7 @@ impl ClassCheck {
     }
 
     /// This check's classes in `checks`, if it is requested.
-    pub(crate) fn classes(
-        self,
-        checks: &crate::r_preconditions::ExplicitChecks,
-    ) -> Option<&[String]> {
+    fn classes(self, checks: &crate::r_preconditions::ExplicitChecks) -> Option<&[String]> {
         match self {
             Self::Inherits => checks.inherits.as_deref(),
             Self::NotInherits => checks.not_inherits.as_deref(),
