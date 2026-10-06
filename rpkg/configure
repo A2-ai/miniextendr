@@ -620,6 +620,7 @@ CARGO_FEATURES_FLAG
 CARGO_FEATURES
 CARGO_OFFLINE_FLAG
 IS_TARBALL_INSTALL
+SOURCE_IS_BUILT
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 host_os
@@ -2039,6 +2040,7 @@ SOURCE_IS_BUILT=false
 if grep -Eq '^(Packaged|Built):' "$abs_top_srcdir/DESCRIPTION" 2>/dev/null; then
   SOURCE_IS_BUILT=true
 fi
+
 
 if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
    && test "$SOURCE_IS_GIT" = "true" \

@@ -42,6 +42,22 @@ Cargo manifest or lockfile. Shared-cache builds pass package-specific C objects
 only to the package crate, avoiding dependency rebuilds caused by changing
 extraction paths in global Rust flags.
 
+The `all` recipe removes the package-local build directories (`rust-target/`,
+`ra-target/`, `vendor/`, `src/rust/.cargo/`, `src/rust/target/`) after the link
+for a vendored install and for any install of a built package, one whose
+DESCRIPTION carries `R CMD build`'s `Packaged:` field (or `R CMD INSTALL`'s
+`Built:`). Such a tree is a throwaway unpack, so nothing is lost, and the Rust
+staticlib has to be gone before `R CMD INSTALL` writes `libs/symbols.rds`: from
+R 4.5, `tools:::.shlib_objects_symbol_tables()` (run when
+`_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_` is set, as `R CMD check` does) also
+reads the static libraries named in `PKG_LIBS` that are still inside the
+package, and the compiled-code check then reports libc's `exit`, `abort` and
+`_exit` from Rust's std against the package (#1795). The ordering holds because
+R's `make` finishes the default `all` goal, cleanup included, before it runs a
+separate `make symbols.rds`. A checkout's DESCRIPTION has neither field, so
+`R CMD INSTALL <dir>`, `devtools::load_all()` and `just rcmdinstall` keep their
+Cargo cache.
+
 Tarball cleanup preserves caller-selected target and vendor caches, including
 ones under the usual package-local cleanup paths. Cache entries are retained
 until the caller removes them. The install-mode latch still applies. Without `VENDOR_OUT`, extraction stays in the package's
@@ -268,7 +284,8 @@ Key design decisions:
 3. **`all: $(SHLIB) $(WRAPPERS_STAMP)` ordering**: links the package library
    first, then loads that same library to generate the R wrapper and wasm
    registry.
-   The final `all` recipe handles development touches and tarball cleanup.
+   The final `all` recipe handles development touches and the post-link
+   cleanup of vendored and built-package installs.
 
 4. **`$(CARGO_LINK_CONFIG)` prerequisite**: Cargo keeps a cached archive's old
    mtime when a feature, profile, or target-directory switch selects it again,

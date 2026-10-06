@@ -42,6 +42,14 @@ artifact is therefore not CRAN-ready. Only a tarball from the release step is
 meant to pass `R CMD check --as-cran`. The failure on CRAN's offline farm is the
 intended canary for a maintainer who shipped an incomplete release artifact.
 
+In one respect such a tarball still installs like a release one: its DESCRIPTION
+carries `R CMD build`'s `Packaged:` field, so the install removes the
+package-local `rust-target/` (and the other generated directories) after the
+link, as a vendored install does. `R CMD check` of an unvendored
+`devtools::build()` or rcmdcheck tarball therefore passes the compiled-code
+check on R >= 4.5, whose symbol-table pass otherwise reads the Rust staticlib
+left in the package (#1795; see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md)).
+
 ## Where each install path lands
 
 | You ran | Mode | Vendor used? | How vendor was produced |

@@ -87,6 +87,10 @@ test_that("monorepo configure rejects leaked tarballs without blocking builds", 
       mode <- if (tarball) "tarball install (offline, vendored)" else "source install (cargo network)"
       expect_match(output, mode, fixed = TRUE)
       expect_true(file.exists(file.path(pkg, "src", "Makevars")))
+      # Makevars.in cleans a built package's build directories after the link
+      # (#1795): configure substitutes the DESCRIPTION stamp it read.
+      expect_true(sprintf("SOURCE_IS_BUILT       = %s", tolower(length(stamp) > 0L)) %in%
+                    readLines(file.path(pkg, "src", "Makevars")))
       if (tarball) {
         expect_identical(readLines(file.path(pkg, "vendor", "README")), "vendor payload")
         config <- readLines(file.path(pkg, "src", "rust", ".cargo", "config.toml"))

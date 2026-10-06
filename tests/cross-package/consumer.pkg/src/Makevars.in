@@ -13,6 +13,7 @@ CARGO_LIBDIR          = @CARGO_LIBDIR@
 VENDOR_OUT            = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG    = @CARGO_OFFLINE_FLAG@
 IS_TARBALL_INSTALL    = @IS_TARBALL_INSTALL@
+SOURCE_IS_BUILT       = @SOURCE_IS_BUILT@
 CARGO_FEATURES_FLAG   = @CARGO_FEATURES_FLAG@
 TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
@@ -49,10 +50,11 @@ all: $(SHLIB) $(WRAPPERS_STAMP)
 	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
-	@# Tarball install: scrub vendor and target dirs after build to save space
-	@# in the installed package. Gate on IS_TARBALL_INSTALL so dev installs
-	@# don't blow away in-progress build state.
-	@if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
+	@# A vendored install, and any install of a built package (DESCRIPTION has
+	@# 'Packaged:' or 'Built:', so the tree is a throwaway unpack): scrub vendor
+	@# and target dirs after the link, so R >= 4.5's symbol-table pass does not
+	@# read the staticlib (#1795). A checkout keeps its in-progress build state.
+	@if [ "$(IS_TARBALL_INSTALL)" = "true" ] || [ "$(SOURCE_IS_BUILT)" = "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
 	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \

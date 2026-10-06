@@ -241,7 +241,16 @@ test_that("every pkgbuild frontend stages nested path siblings and never vendors
   utils::untar(tarball, files = "fallbackprobe/src/rust/Cargo.toml", exdir = sealed)
   expect_true('engine = { package = "devvalue", path = "vendor/devvalue-0.1.0" }' %in%
               readLines(file.path(sealed, "fallbackprobe/src/rust/Cargo.toml")))
-  run(file.path(R.home("bin"), "R"), c("CMD", "INSTALL", "-l", shQuote(lib), shQuote(tarball)), "install-tarball")
+  # R CMD check sets _R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_, and from R 4.5 the
+  # symbol-table pass also reads a static library named in PKG_LIBS that is
+  # still inside the package. The built package's install removes rust-target/
+  # after the link, so the Rust staticlib never reaches symbols.rds (#1795).
+  withr::with_envvar(c("_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_" = "TRUE"),
+    run(file.path(R.home("bin"), "R"), c("CMD", "INSTALL", "-l", shQuote(lib), shQuote(tarball)), "install-tarball"))
+  symbols <- file.path(lib, "fallbackprobe", "libs", "symbols.rds")
+  expect_true(file.exists(symbols))
+  objects <- names(readRDS(symbols))
+  expect_false(any(grepl("[.]a$", objects)), info = paste(objects, collapse = "\n"))
   run(file.path(R.home("bin"), "Rscript"), shQuote(probe), "runtime-tarball")
 
   # devtools::install(): the same bootstrap, then an install from R CMD build's copy.

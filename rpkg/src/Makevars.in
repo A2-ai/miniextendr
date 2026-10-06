@@ -16,6 +16,7 @@ VENDOR_OUT            = @VENDOR_OUT@
 VENDOR_OUT_USER_SET   = @VENDOR_OUT_USER_SET@
 CARGO_OFFLINE_FLAG    = @CARGO_OFFLINE_FLAG@
 IS_TARBALL_INSTALL    = @IS_TARBALL_INSTALL@
+SOURCE_IS_BUILT       = @SOURCE_IS_BUILT@
 CARGO_FEATURES_FLAG   = @CARGO_FEATURES_FLAG@
 TAR_FORCE_LOCAL       = @TAR_FORCE_LOCAL@
 NATIVE_PKG_CPPFLAGS   = @NATIVE_PKG_CPPFLAGS@
@@ -58,9 +59,16 @@ all: $(SHLIB) $(WRAPPERS_STAMP)
 	@if [ "$(IS_TARBALL_INSTALL)" != "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
-	@# Only package-local generated directories are ours to clean. Preserve a
-	@# caller-selected cache, including one nested under a usual cleanup path.
-	@if [ "$(IS_TARBALL_INSTALL)" = "true" ]; then \
+	@# A vendored install, and any install of a built package (DESCRIPTION has
+	@# 'Packaged:' or 'Built:', so the tree is a throwaway unpack, not a
+	@# checkout), remove the package-local generated directories after the
+	@# link. From R 4.5 the symbol-table pass of R CMD INSTALL (run by R CMD
+	@# check) otherwise reads the staticlib left under rust-target/ and the
+	@# compiled-code check attributes libc's exit, abort and _exit to the
+	@# package (A2-ai/miniextendr#1795). A checkout keeps its Cargo cache. Only
+	@# package-local directories are ours to clean: preserve a caller-selected
+	@# cache, including one nested under a usual cleanup path.
+	@if [ "$(IS_TARBALL_INSTALL)" = "true" ] || [ "$(SOURCE_IS_BUILT)" = "true" ]; then \
 	  set -e; \
 	  for dir in "$(ABS_TOP_SRCDIR)/vendor" "$(ABS_TOP_SRCDIR)/rust-target" "$(ABS_TOP_SRCDIR)/ra-target" "$(ABS_RPKG_SRCDIR)/rust/.cargo" "$(ABS_RPKG_SRCDIR)/rust/target" "$(ABS_RPKG_SRCDIR)/rust/ra_target"; do \
 	    if [ "$(CARGO_TARGET_DIR_USER_SET)" = "true" ]; then \
