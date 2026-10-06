@@ -4764,8 +4764,9 @@ pub fn gc_stress_slice_alias_guard() {
 
 /// Build factors through the raw-levels, one-shot, and cached-levels paths.
 ///
-/// Each call interns new level names for the first two factors. A fresh R
-/// process also exercises the cold factor-class and permanent-level caches.
+/// Each call uses new level names for the first two factors, so every level
+/// string is a fresh CHARSXP allocation. A fresh R process also exercises the
+/// cold factor-class and permanent-level caches.
 /// @return Three factors: codes 8, NA for the first; 8, NA, 1, 4, 8 for the others.
 #[miniextendr]
 pub fn gc_stress_factor_construction() -> SEXP {

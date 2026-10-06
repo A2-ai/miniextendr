@@ -23,7 +23,6 @@
 //! }
 //! ```
 
-use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::OnceLock;
@@ -34,7 +33,7 @@ use crate::from_r::{
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
-use crate::sys::{Rf_allocVector, Rf_install};
+use crate::sys::Rf_allocVector;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
 // region: Cached "factor" class STRSXP
@@ -63,24 +62,33 @@ pub trait RFactor: crate::match_arg::MatchArg + Copy + 'static {
 
 // region: Core building functions
 
-/// Build a levels STRSXP using symbol PRINTNAMEs for permanent CHARSXP protection.
+/// Build a levels STRSXP of UTF-8 CHARSXPs.
 ///
-/// The returned STRSXP is NOT protected - caller must protect or preserve it.
+/// Level names are not interned as R symbols, so names built from data stay
+/// collectable. The returned STRSXP is NOT protected - caller must protect or
+/// preserve it.
+///
+/// # Panics
+///
+/// If a level name contains a null byte.
 pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
     build_levels_sexp_protected(levels).get()
 }
 
-/// Keep the container rooted while installing previously unseen symbols.
+/// Keep the container rooted while each level's CHARSXP is allocated.
 fn build_levels_sexp_protected(levels: &[&str]) -> OwnedProtect {
+    // `Rf_mkCharLenCE` raises an R error on an embedded nul, which would
+    // longjmp over the container's protection.
+    if levels.iter().any(|level| level.as_bytes().contains(&0)) {
+        panic!("level name contains null byte");
+    }
     let len = levels.len().try_into().expect("too many factor levels");
     unsafe {
         let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, len));
         for (i, level) in (0..len).zip(levels) {
-            // Symbols and their PRINTNAMEs are permanent, but installation can
-            // allocate before the new symbol enters R's symbol table.
-            let c_str = CString::new(*level).expect("level name contains null byte");
-            let sym = Rf_install(c_str.as_ptr());
-            sexp.set_string_elt(i, sym.printname());
+            // A new CHARSXP is unrooted until it is stored in the protected
+            // container. R's CHARSXP cache shares repeated names.
+            sexp.set_string_elt(i, SEXP::charsxp(level));
         }
         sexp
     }
@@ -123,8 +131,8 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
 /// [`build_levels_sexp_cached`] (no protection needed because the cached
 /// SEXP is on R's precious list).
 ///
-/// Symbol PRINTNAMEs keep individual level strings alive, but the fresh
-/// levels container and factor payload also need roots while being built.
+/// The levels container roots its strings; the container and the factor
+/// payload are rooted while being built.
 pub fn build_factor_with_levels(indices: &[i32], level_names: &[&str]) -> SEXP {
     let levels = build_levels_sexp_protected(level_names);
     build_factor(indices, levels.get())

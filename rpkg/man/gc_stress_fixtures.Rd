@@ -33,6 +33,7 @@ asserted from the GC driver below.
 
 Build factors through the raw-levels, one-shot, and cached-levels paths.
 
-Each call interns new level names for the first two factors. A fresh R
-process also exercises the cold factor-class and permanent-level caches.
+Each call uses new level names for the first two factors, so every level
+string is a fresh CHARSXP allocation. A fresh R process also exercises the
+cold factor-class and permanent-level caches.
 }
