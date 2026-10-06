@@ -1973,10 +1973,12 @@ impl ParsedMethod {
 
     /// Parse a method from an impl item.
     ///
-    /// Regular doc comments are auto-converted to `@description` for all class systems.
+    /// Regular doc comments are auto-converted to `@description` for all class
+    /// systems. `class_page` is whether the class block renders a help page:
+    /// the method's docs go nowhere else when it does not.
     pub fn from_impl_item(
         item: &mut syn::ImplItemFn,
-        _class_system: ClassSystem,
+        class_page: crate::roxygen::RdPage,
     ) -> syn::Result<Self> {
         use syn::spanned::Spanned;
         let env = Self::detect_env(&item.sig);
@@ -2117,7 +2119,8 @@ impl ParsedMethod {
         }
 
         // Auto-convert regular doc comments to @description for all class systems
-        let mut doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
+        let mut doc_tags =
+            crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs, class_page);
 
         // Inject lifecycle badge into method roxygen tags if present
         if let Some(ref spec) = method_attrs.lifecycle {
@@ -2819,13 +2822,28 @@ impl ParsedImpl {
             }
         }
 
+        // The class block renders no page under `@noRd` or a plain `noexport`
+        // (`ClassDocBuilder::build`'s gate: `internal`, as the attribute or the
+        // `@keywords internal` tag, keeps the page). Its docs and every
+        // method's (R6 folds its method blocks into the class block) then
+        // keep no links (#1818).
+        let class_page = crate::roxygen::RdPage::suppressed_if(
+            crate::roxygen::attrs_have_roxygen_tag(&item_impl.attrs, "noRd")
+                || (attrs.noexport
+                    && !attrs.internal
+                    && !crate::roxygen::attrs_have_roxygen_tag(
+                        &item_impl.attrs,
+                        "keywords internal",
+                    )),
+        );
+
         // Parse methods and validate attributes. Method parsing also normalizes
         // raw variadic `...` syntax in the impl clone that gets re-emitted.
         let mut original_impl = item_impl.clone();
         let mut methods = Vec::new();
         for item in &mut original_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let mut method = ParsedMethod::from_impl_item(fn_item, attrs.class_system)?;
+                let mut method = ParsedMethod::from_impl_item(fn_item, class_page)?;
                 crate::s7_conversion::configure(
                     &mut method,
                     fn_item,
@@ -2935,7 +2953,7 @@ impl ParsedImpl {
             .filter(|attr| attr.path().is_ident("cfg"))
             .cloned()
             .collect();
-        let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs);
+        let raw_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item_impl.attrs, class_page);
         // For R6: keep class-level @param tags (roxygen2 8.0.0 inherits them into
         // all methods); for other class systems use the stricter filter. Each
         // stripped tag's warning lives in its own anonymous `const _: () = { .. };`

@@ -1466,7 +1466,12 @@ pub fn miniextendr(
         // Custom doc override: each line becomes a separate roxygen tag entry
         doc_text.lines().map(|l| l.to_string()).collect()
     } else {
-        crate::roxygen::roxygen_tags_from_attrs(attrs)
+        // `noexport` renders no page (it appends `@noRd` below), so its docs
+        // keep no links (#1818); the reader sees an explicit `@noRd` itself.
+        crate::roxygen::roxygen_tags_from_attrs(
+            attrs,
+            crate::roxygen::RdPage::suppressed_if(noexport),
+        )
     };
 
     // Determine lifecycle: explicit attr > #[deprecated] extraction

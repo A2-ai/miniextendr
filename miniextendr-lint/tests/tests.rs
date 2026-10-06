@@ -2242,6 +2242,61 @@ pub fn f() {}
     assert_eq!(mxl204_links(&run(&crate_dir).unwrap()).len(), 1);
 }
 
+/// A block that renders no help page hands roxygen2 no links (#1818): the
+/// macro strips them all, so there is nothing to report there.
+#[test]
+fn mxl204_skips_blocks_that_render_no_page() {
+    let (_dir, crate_dir) = r_package(
+        Some(DESCRIPTION),
+        "[package]\nname = \"x\"\n",
+        r#"
+/// @details See [`Sources::prepare`].
+#[miniextendr(noexport)]
+pub fn hidden() {}
+
+/// @details See [`Sources::prepare`].
+/// @noRd
+#[miniextendr]
+pub fn no_rd() {}
+
+/// @details See [`Sources::prepare`].
+#[miniextendr(r6, noexport)]
+impl Hidden {
+    /// @details See [`Sources::method`].
+    pub fn method(&self) {}
+}
+
+#[miniextendr(r6)]
+impl Shown {
+    /// @details See [`Sources::own_no_rd`].
+    /// @noRd
+    pub fn method(&self) {}
+    /// @details See [`Sources::shown`].
+    pub fn other(&self) {}
+}
+
+/// @details See [`Sources::internal`].
+#[miniextendr(r6, noexport, internal)]
+impl Internal {}
+
+/// @details See [`Sources::tagged_internal`].
+/// @keywords internal
+#[miniextendr(r6, noexport)]
+impl TaggedInternal {}
+"#,
+    );
+    let report = run(&crate_dir).unwrap();
+    let found = mxl204_links(&report);
+    assert_eq!(found.len(), 3, "{found:?}");
+    for (message, link) in found.iter().zip([
+        "Sources::shown",
+        "Sources::internal",
+        "Sources::tagged_internal",
+    ]) {
+        assert!(message.contains(link), "{message} names {link}");
+    }
+}
+
 #[test]
 fn mxl204_skips_without_a_description() {
     let (_dir, crate_dir) = r_package(

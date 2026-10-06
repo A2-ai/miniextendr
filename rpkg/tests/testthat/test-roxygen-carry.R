@@ -114,3 +114,24 @@ test_that("leading prose drops an inline rustdoc link", {
     fixed = TRUE
   )
 })
+
+# A block that renders no help page keeps no links, whatever
+# `roxygen_prose_links` says (rpkg/src/rust/roxygen_no_page_links_tests.rs,
+# #1818): the `noexport` fixture's rustdoc link reaches its `@noRd` wrapper
+# block as plain text, in the leading prose and in explicit tag text, so
+# roxygen2 never tries to resolve it. The generated wrappers exist only in a
+# source tree (load_all), not in an installed package.
+test_that("a noexport wrapper block keeps no links", {
+  wrappers <- file.path(getNamespaceInfo("miniextendr", "path"), "R", "miniextendr-wrappers.R")
+  skip_if_not(file.exists(wrappers), "needs the generated wrappers of a source tree")
+  lines <- readLines(wrappers)
+  def <- grep("^no_page_links_scoped_verbs <- function", lines)
+  expect_length(def, 1L)
+  start <- def
+  while (start > 1L && startsWith(lines[start - 1L], "#'")) start <- start - 1L
+  block <- lines[start:(def - 1L)]
+  expect_true("#' @noRd" %in% block)
+  expect_equal(sum(grepl("`no_page_takes_scope`", block, fixed = TRUE)), 3L)
+  expect_false(any(grepl("[`no_page_takes_scope`]", block, fixed = TRUE)))
+  expect_equal(miniextendr:::no_page_links_scoped_verbs(), c("filter", "mutate"))
+})

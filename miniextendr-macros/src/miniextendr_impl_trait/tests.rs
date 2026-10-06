@@ -879,7 +879,8 @@ fn test_trait_method_choices_prelude_in_signature_order() {
                 }
             }
         };
-        let methods = super::vtable::extract_methods(&impl_item).unwrap();
+        let methods =
+            super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
         let result = generate_trait_r_wrapper(
             &format_ident!("Foo"),
             &format_ident!("Bar"),
@@ -918,7 +919,8 @@ fn test_trait_method_checks_take_custom_messages() {
             fn scale(&mut self, x_factor: f64, model: List) -> f64 { unimplemented!() }
         }
     };
-    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
     let result = generate_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
@@ -940,7 +942,8 @@ fn test_trait_method_checks_take_custom_messages() {
             fn scale(&mut self, model: List) -> f64 { unimplemented!() }
         }
     };
-    let Err(err) = super::vtable::extract_methods(&impl_item) else {
+    let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+    else {
         panic!("a class check without a class must be rejected");
     };
     assert!(
@@ -963,7 +966,8 @@ fn test_trait_method_not_inherits() {
             fn scale(&mut self, tau: f64, model: List) -> f64 { unimplemented!() }
         }
     };
-    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
     let result = generate_trait_r_wrapper(
         &format_ident!("Foo"),
         &format_ident!("Bar"),
@@ -985,7 +989,8 @@ fn test_trait_method_not_inherits() {
             fn scale(&mut self, model: List) -> f64 { unimplemented!() }
         }
     };
-    let Err(err) = super::vtable::extract_methods(&impl_item) else {
+    let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+    else {
         panic!("a class in both lists must be rejected");
     };
     assert!(
@@ -1048,7 +1053,8 @@ fn test_trait_method_rejects_unknown_parameter_names() {
         ),
     ];
     for (impl_item, expected) in cases {
-        let Err(err) = super::vtable::extract_methods(&impl_item) else {
+        let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+        else {
             panic!("`{expected}` must be rejected");
         };
         assert!(err.to_string().contains(expected), "{err}");
@@ -1061,7 +1067,8 @@ fn test_trait_method_rejects_unknown_parameter_names() {
             fn run(&self, r#type: f64) -> f64 { unimplemented!() }
         }
     };
-    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
     assert!(methods[0].per_param["type"].checks.no_na);
 }
 
@@ -1075,7 +1082,8 @@ fn trait_method_no_na_checks_the_converted_value() {
             fn dose(&self, d: AsNumeric, doses: AsNumericVec) -> f64 { unimplemented!() }
         }
     };
-    let methods = super::vtable::extract_methods(&impl_item).unwrap();
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
     let out = super::vtable::generate_trait_method_c_wrapper(
         &methods[0],
         &format_ident!("Foo"),
@@ -2525,7 +2533,7 @@ fn trait_method_preconditions_list_names_a_parameter() {
             fn scaled(&self, k: f64) -> f64 { unimplemented!() }
         }
     };
-    let err = super::vtable::extract_methods(&impl_item)
+    let err = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
         .expect_err("rejected")
         .to_string();
     assert!(
@@ -2565,6 +2573,73 @@ fn tpie_carries_no_preconditions() {
         method { r_name = from_str; fn from_str(s: &str) -> Option<Self>; }
     };
     assert!(input.no_preconditions);
+}
+
+// endregion
+
+// region: a trait impl without a page keeps no links (#1818)
+
+/// An S3 trait impl whose method `@param` links the private Rust helper
+/// `takes_scope`, plus `extra` doc lines on the impl block; returns the
+/// expansion's token text. S3 keeps the `@param` lines of an impl without a
+/// page (`@noRd`, or a plain `noexport`) next to its `@method` registration.
+fn linked_trait_impl_expansion(attrs: proc_macro2::TokenStream, extra: &[&str]) -> String {
+    let mut impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            /// @param k The factor, see [`takes_scope`].
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    impl_item
+        .attrs
+        .extend(extra.iter().map(|line| syn::parse_quote!(#[doc = #line])));
+    trait_impl_expansion(attrs, impl_item)
+}
+
+#[test]
+fn trait_impl_without_a_page_keeps_no_links() {
+    for (attrs, extra) in [
+        (quote::quote!(s3, noexport), &[][..]),
+        (quote::quote!(s3), &[" @noRd"][..]),
+    ] {
+        // The re-emitted Rust impl keeps its doc attribute as written; only
+        // the `#'` line of the R wrapper changes.
+        let out = linked_trait_impl_expansion(attrs.clone(), extra);
+        assert!(
+            out.contains("#' @param k The factor, see `takes_scope`."),
+            "{attrs}: {out}"
+        );
+        assert!(
+            !out.contains("#' @param k The factor, see [`takes_scope`]."),
+            "{attrs}: {out}"
+        );
+    }
+    let out = linked_trait_impl_expansion(quote::quote!(s3), &[]);
+    assert!(
+        out.contains("#' @param k The factor, see [`takes_scope`]."),
+        "{out}"
+    );
+}
+
+#[test]
+fn suppressed_trait_methods_keep_no_links() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Scale for Meter {
+            /// Scaled, see [`takes_scope`].
+            ///
+            /// @return The value, see [other_fn()].
+            fn scaled(&self, k: f64) -> f64 { unimplemented!() }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Suppressed).unwrap();
+    assert_eq!(
+        methods[0].doc_tags,
+        [
+            "@description Scaled, see `takes_scope`.",
+            "@return The value, see other_fn().",
+        ]
+    );
 }
 
 // endregion

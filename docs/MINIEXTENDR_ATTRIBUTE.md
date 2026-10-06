@@ -129,6 +129,12 @@ the links of one block without the crate setting, write its prose under an
 explicit `@description`. The key must be `"strip"` or `"keep"`, set once;
 anything else is a compile error (see [MACRO_ERRORS.md](MACRO_ERRORS.md)).
 
+A block that renders no help page (`noexport` without `internal`, or an
+explicit `@noRd`; on an impl block, its methods too) keeps no links whatever
+the setting: every link in its leading prose and in its non-code tag text loses
+its brackets, since none could render and roxygen2 would still try to resolve
+each one (rustdoc keeps them).
+
 #### Rustdoc-only links
 
 roxygen2 reads a link target `pkg::topic` as a link into the R package `pkg`,
@@ -181,7 +187,8 @@ Rust path), and a bare `[text](Foo)`, which may be a relative URL.
 A bracketed ``[`Type::method`]`` or `[Type::method]` in tag text (or in leading
 prose under `roxygen_prose_links = "keep"`) is the case the macro cannot
 classify: it is a roxygen2 link into the R package `Type` when that package
-exists. The lint rule MXL204 reports each `pkg::` link whose `pkg` is not the
+exists. The lint rule MXL204 reports each `pkg::` link (outside a block that
+renders no page, whose links never reach roxygen2) whose `pkg` is not the
 package itself, not declared in `DESCRIPTION` (Depends, Imports, Suggests,
 Enhances, LinkingTo) and not a base or recommended R package, and names the
 `[text][crate::path]` rewrite below. It reads `DESCRIPTION` from

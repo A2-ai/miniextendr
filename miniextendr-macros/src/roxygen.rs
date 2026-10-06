@@ -31,7 +31,10 @@
 //!   resolve loses them ([`is_rustdoc_only_target`]). An inline link whose
 //!   destination is such a Rust path (`[text](crate::x)`) keeps only its text
 //!   under either setting ([`inline_rustdoc_destination`]); other
-//!   `[text](url)` links stay.
+//!   `[text](url)` links stay. A block that renders no help page (its own
+//!   `@noRd`, or a caller's [`RdPage::Suppressed`]: `noexport`, a class
+//!   without a page) loses every link in its prose and its non-code tag
+//!   text, whatever the setting.
 //! - A tag runs from its `@tag` line to the next one. A multi-line tag
 //!   (`@description`, `@return`, `@examples`, ...) keeps its blank lines (a
 //!   roxygen2 paragraph break; a blank line in an example) and the indentation
@@ -308,6 +311,35 @@ fn classify(lines: &[DocLine]) -> Vec<LineRole> {
 
 // endregion
 
+/// Whether a doc block's roxygen text can reach a rendered help page, as far
+/// as the caller knows, which decides what happens to its `[...]` links.
+///
+/// A block that renders no page sends roxygen2 no link: none of them could
+/// render, and roxygen2 still resolves (and warns on) every one it is handed
+/// (#1818). The reader sees an explicit `@noRd` in the block itself; the
+/// caller says when its attributes take the page away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RdPage {
+    /// The block renders a page unless its own tags say `@noRd`: its links
+    /// follow the crate's [`ProseLinks`] setting.
+    Rendered,
+    /// The block renders no page whatever its tags: a `noexport` entry point,
+    /// a class without a page, or a method of one. Every link loses its
+    /// brackets ([`Neutralize::AllLinks`]).
+    Suppressed,
+}
+
+impl RdPage {
+    /// [`RdPage::Suppressed`] when `no_page`, else [`RdPage::Rendered`].
+    pub(crate) fn suppressed_if(no_page: bool) -> Self {
+        if no_page {
+            Self::Suppressed
+        } else {
+            Self::Rendered
+        }
+    }
+}
+
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
 ///
 /// Most tags capture only a single line. Multi-line tags like `@examples`,
@@ -315,9 +347,10 @@ fn classify(lines: &[DocLine]) -> Vec<LineRole> {
 /// blank lines and indentation included (see the module docs).
 ///
 /// Leading prose (the paragraphs before the first tag) is promoted to
-/// `@description` when the block has none.
-pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
-    roxygen_tags_from_attrs_impl(attrs)
+/// `@description` when the block has none. `page` says whether the block can
+/// render a help page ([`RdPage`]).
+pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute], page: RdPage) -> Vec<String> {
+    roxygen_tags_from_attrs_impl(attrs, page)
 }
 
 /// Extract roxygen tags for an impl-block method.
@@ -325,8 +358,18 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
 /// Identical to [`roxygen_tags_from_attrs`] — leading prose is promoted to
 /// `@description` in every context. Kept as a named alias so the class-system
 /// generators read clearly at the call site.
-pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
-    roxygen_tags_from_attrs_impl(attrs)
+pub(crate) fn roxygen_tags_from_attrs_for_r6_method(
+    attrs: &[syn::Attribute],
+    page: RdPage,
+) -> Vec<String> {
+    roxygen_tags_from_attrs_impl(attrs, page)
+}
+
+/// Whether the doc comment in `attrs` has the roxygen tag `tag` (matched as
+/// [`has_roxygen_tag`] does), for a caller deciding a block's [`RdPage`]
+/// before it reads the block's tags.
+pub(crate) fn attrs_have_roxygen_tag(attrs: &[syn::Attribute], tag: &str) -> bool {
+    has_roxygen_tag(&explicit_roxygen_tags_from_attrs(attrs), tag)
 }
 
 /// Core implementation of roxygen tag extraction from `#[doc = "..."]` attributes.
@@ -343,19 +386,28 @@ pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) ->
 /// Leading prose (paragraphs before the first `@tag`) is promoted to a
 /// `@description` tag — never `@title`. The `@title` is left to the caller
 /// (structural name); see [`leading_prose_from_attrs`] for why.
-fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute]) -> Vec<String> {
-    roxygen_tags_with(attrs, crate::crate_config::roxygen_prose_links())
+fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], page: RdPage) -> Vec<String> {
+    roxygen_tags_with(attrs, crate::crate_config::roxygen_prose_links(), page)
 }
 
 /// [`roxygen_tags_from_attrs_impl`] with the crate's [`ProseLinks`] setting
 /// passed in (testable without a manifest).
 ///
 /// Every explicit tag loses its rustdoc-only links ([`neutralize_tag_links`])
-/// whatever the setting, which governs the leading prose only.
-fn roxygen_tags_with(attrs: &[syn::Attribute], links: ProseLinks) -> Vec<String> {
-    let mut tags: Vec<String> = explicit_roxygen_tags_from_attrs(attrs)
+/// whatever the setting, which governs the leading prose only. A block that
+/// renders no page ([`RdPage::Suppressed`], or its own `@noRd`) loses every
+/// link, in the prose and in each non-code tag (#1818).
+fn roxygen_tags_with(attrs: &[syn::Attribute], links: ProseLinks, page: RdPage) -> Vec<String> {
+    let explicit = explicit_roxygen_tags_from_attrs(attrs);
+    let no_page = page == RdPage::Suppressed || has_roxygen_tag(&explicit, "noRd");
+    let (links, tag_links) = if no_page {
+        (ProseLinks::Strip, Neutralize::AllLinks)
+    } else {
+        (links, Neutralize::RustdocOnly)
+    };
+    let mut tags: Vec<String> = explicit
         .into_iter()
-        .map(neutralize_tag_links)
+        .map(|tag| neutralize_tag_links(tag, tag_links))
         .collect();
 
     // Check which tags are present
@@ -761,6 +813,7 @@ pub(crate) enum ProseLinks {
     /// `"keep"`: doc comments are written for roxygen2, so leading prose keeps
     /// its links, as the text of an explicit tag does. Only the links roxygen2
     /// can never resolve lose their brackets ([`Neutralize::RustdocOnly`]).
+    /// A block that renders no page is read as under `Strip` ([`RdPage`]).
     Keep,
 }
 
@@ -778,7 +831,8 @@ impl ProseLinks {
 /// Collect the leading prose of a doc comment (the lines before the first
 /// `@tag`, [`LineRole::Prose`]) as roxygen `@description` text, its links
 /// treated per the crate's [`ProseLinks`] setting (passed in, so the unit tests
-/// need no manifest).
+/// need no manifest; [`roxygen_tags_with`] passes `Strip` for a block that
+/// renders no page).
 ///
 /// The lines ([`doc_lines`]) keep their line breaks, blank lines (roxygen2
 /// paragraph breaks, rendered as bare `#'` lines by `push_roxygen_tags`) and
@@ -806,24 +860,27 @@ fn leading_prose_from_attrs(attrs: &[syn::Attribute], links: ProseLinks) -> Opti
     })
 }
 
-/// An explicit tag with its rustdoc-only links neutralized
-/// ([`Neutralize::RustdocOnly`]), or as written when its text is code
-/// ([`CODE_TAGS`]).
-fn neutralize_tag_links(tag: String) -> String {
+/// An explicit tag with the `links` of its text neutralized: the rustdoc-only
+/// ones ([`Neutralize::RustdocOnly`]), or all of them in a block that renders
+/// no page ([`Neutralize::AllLinks`]). A code tag ([`CODE_TAGS`]) stays as
+/// written.
+fn neutralize_tag_links(tag: String, links: Neutralize) -> String {
     if roxygen_tag_name(&tag).is_some_and(|name| CODE_TAGS.contains(&name)) {
         return tag;
     }
-    sanitize_prose_links(&tag.lines().collect::<Vec<_>>(), Neutralize::RustdocOnly)
+    sanitize_prose_links(&tag.lines().collect::<Vec<_>>(), links)
 }
 
 /// Which `[...]` links [`sanitize_roxygen_links`] reduces to their text.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Neutralize {
-    /// Every link: leading prose under [`ProseLinks::Strip`].
+    /// Every link: leading prose under [`ProseLinks::Strip`], and the prose
+    /// and tag text of a block that renders no page ([`RdPage`]).
     AllLinks,
     /// Only a link whose target roxygen2 can never resolve
     /// ([`is_rustdoc_only_target`]): leading prose under [`ProseLinks::Keep`],
-    /// and explicit tag text ([`neutralize_tag_links`]).
+    /// and explicit tag text ([`neutralize_tag_links`]), in a block that
+    /// renders a page.
     RustdocOnly,
 }
 

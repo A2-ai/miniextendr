@@ -77,6 +77,34 @@ pub fn pkg_links(attrs: &[Attribute]) -> Vec<PkgLink> {
     links
 }
 
+/// Whether the doc comment of `attrs` has a `@tag` line for `tag`: its first
+/// word for a one-word `tag` (`noRd`), its whole text for a longer one
+/// (`keywords internal`), as `has_roxygen_tag` in the macros matches it.
+pub fn has_tag(attrs: &[Attribute], tag: &str) -> bool {
+    attrs.iter().any(|attr| {
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            return false;
+        };
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(lit),
+            ..
+        }) = &nv.value
+        else {
+            return false;
+        };
+        attr.path().is_ident("doc")
+            && lit.value().lines().any(|line| {
+                line.trim_start().strip_prefix('@').is_some_and(|rest| {
+                    if tag.contains(' ') {
+                        rest.trim() == tag
+                    } else {
+                        rest.split_whitespace().next() == Some(tag)
+                    }
+                })
+            })
+    })
+}
+
 /// The doc text of `attrs` that roxygen2 reads as markdown.
 pub fn markdown_lines(attrs: &[Attribute]) -> Vec<MarkdownLine> {
     let mut out = Vec::new();

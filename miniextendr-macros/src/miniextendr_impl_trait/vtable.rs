@@ -113,8 +113,16 @@ pub(super) fn generate_vtable_static(
         last.arguments = syn::PathArguments::None;
     }
 
+    // The impl block renders no page under `@noRd` or a plain `noexport`
+    // (`generate_trait_r_wrapper`'s `suppress_all_rd`); its methods' docs, of
+    // which S3 / vctrs keep the `@param` lines, then keep no links (#1818).
+    let impl_page = crate::roxygen::RdPage::suppressed_if(
+        crate::roxygen::attrs_have_roxygen_tag(&impl_item.attrs, "noRd")
+            || (impl_attrs.noexport && !impl_attrs.internal),
+    );
+
     // Parse methods and consts from the impl block
-    let all_methods = match extract_methods(impl_item) {
+    let all_methods = match extract_methods(impl_item, impl_page) {
         Ok(m) => m,
         Err(e) => return e.into_compile_error(),
     };
@@ -143,7 +151,7 @@ pub(super) fn generate_vtable_static(
         .collect();
 
     // Check if impl block has @noRd doc comment (strip @param from class-level tags)
-    let raw_impl_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    let raw_impl_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs, impl_page);
     let (impl_doc_tags, param_warnings) = crate::roxygen::strip_method_tags(
         &raw_impl_tags,
         &type_ident.to_string(),
@@ -528,8 +536,13 @@ fn generate_concrete_vtable_shims(
 ///
 /// Parses each `ImplItem::Fn` to determine receiver type, mutability,
 /// `#[miniextendr(...)]` attributes (coerce, skip, r_name, defaults, etc.),
-/// and roxygen `@param` tags from doc comments.
-pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMethod>> {
+/// and roxygen `@param` tags from doc comments. `impl_page` is whether the
+/// impl block renders a help page: the methods' docs keep no links when it
+/// does not.
+pub(super) fn extract_methods(
+    impl_item: &ItemImpl,
+    impl_page: crate::roxygen::RdPage,
+) -> syn::Result<Vec<TraitMethod>> {
     let mut methods = Vec::new();
     for item in &impl_item.items {
         if let syn::ImplItem::Fn(method) = item {
@@ -567,7 +580,7 @@ pub(super) fn extract_methods(impl_item: &ItemImpl) -> syn::Result<Vec<TraitMeth
             // lines and the page tags from them (every tag but `@title` and a
             // bare `@export` on blocks without `\usage`,
             // `r_wrappers::forwarded_body_tag`).
-            let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
+            let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs, impl_page);
 
             // Validate and peel a return-visibility marker (#1213): the
             // codegen sees the inner type, `.0` unwraps the value.

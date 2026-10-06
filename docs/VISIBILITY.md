@@ -231,9 +231,10 @@ It is off by default (#1552): roxygen2 renders each `@source` as its own
 paragraph, so a shared Rd page collected one per function, and the
 `# Generated from Rust fn … (file:line:col)` comment above each wrapper is
 the pointer back to the Rust source. A `@noRd` block, including every
-`noexport` function, also gets no injected `@title`, since it renders no
-page. `roxygen_prose_links = "keep"` lets the leading prose of every doc
-comment keep its `[other_fn()]` links on the way to `@description`, for a
+`noexport` function, also gets no injected `@title` and keeps no `[...]`
+links, since it renders no page. `roxygen_prose_links = "keep"` lets the
+leading prose of every other doc comment keep its `[other_fn()]` links on
+the way to `@description`, for a
 crate whose doc comments are written for roxygen2 (default `"strip"`; see
 [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#links-in-leading-prose)).
 The macro reads the manifest through `CARGO_MANIFEST_DIR` at expansion time;
