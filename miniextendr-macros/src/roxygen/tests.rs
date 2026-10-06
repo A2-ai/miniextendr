@@ -204,7 +204,7 @@ fn attr_interrupt_cfg_between_examples_lines_doc_continues() {
         syn::parse_quote!(#[cfg(feature = "x")]),
         syn::parse_quote!(#[doc = "more_ex()"]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     let examples_tag = tags.iter().find(|t| t.starts_with("@examples")).unwrap();
     assert!(
         examples_tag.contains("more_ex()"),
@@ -220,7 +220,7 @@ fn attr_interrupt_before_any_doc_does_not_affect_result() {
         syn::parse_quote!(#[cfg(feature = "x")]),
         syn::parse_quote!(#[doc = "@param x A value"]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert!(tags.iter().any(|t| t.starts_with("@param")));
 }
 
@@ -233,7 +233,7 @@ fn attr_interrupt_cfg_between_return_lines_doc_continues() {
         syn::parse_quote!(#[cfg(feature = "x")]),
         syn::parse_quote!(#[doc = "Extra continuation line."]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     let return_tag = tags.iter().find(|t| t.starts_with("@return")).unwrap();
     assert!(
         return_tag.contains("Extra continuation line."),
@@ -252,7 +252,7 @@ fn attr_interrupt_multiple_cfg_between_doc_all_continue() {
         syn::parse_quote!(#[cfg(feature = "b")]),
         syn::parse_quote!(#[doc = "line_b()"]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     let examples_tag = tags.iter().find(|t| t.starts_with("@examples")).unwrap();
     assert!(
         examples_tag.contains("line_a()") && examples_tag.contains("line_b()"),
@@ -279,7 +279,7 @@ fn make_r6_method_doc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
 #[test]
 fn method_prose_emits_description_not_title() {
     let attrs = make_r6_method_doc_attrs(&["Compute the sum of all elements."]);
-    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs, RdPage::Rendered);
     assert!(
         !tags.iter().any(|t| t.starts_with("@title")),
         "prose must not become @title: {:?}",
@@ -301,7 +301,7 @@ fn method_prose_paragraphs_fold_into_one_description() {
         "",
         "This is the second paragraph.",
     ]);
-    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs, RdPage::Rendered);
     assert!(
         !tags
             .iter()
@@ -322,7 +322,7 @@ fn method_prose_paragraphs_fold_into_one_description() {
 #[test]
 fn method_no_doc_emits_nothing() {
     let attrs: Vec<syn::Attribute> = vec![];
-    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs);
+    let tags = roxygen_tags_from_attrs_for_r6_method(&attrs, RdPage::Rendered);
     assert!(
         tags.is_empty(),
         "expected empty tags for no-doc: {:?}",
@@ -353,7 +353,7 @@ fn prose_promoted_to_description_never_title_or_details() {
         "What used to be details.",
         "@param x A value",
     ]);
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert!(
         !tags.iter().any(|t| t.starts_with("@title")),
         "no @title from prose: {:?}",
@@ -390,7 +390,7 @@ fn explicit_description_not_clobbered_by_prose() {
         "@description Explicit description.",
         "@param x A value",
     ]);
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     let count = tags
         .iter()
         .filter(|t| t.starts_with("@description"))
@@ -409,7 +409,7 @@ fn tag_led_block_gets_no_description_or_title() {
     // An @inherit-led block (no leading prose) must NOT gain a spurious description
     // or title; the tag is preserved.
     let attrs = make_doc_attrs_plain(&["@inherit foo"]);
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert!(
         !tags
             .iter()
@@ -615,7 +615,7 @@ fn r_first_block() -> Vec<syn::Attribute> {
 
 #[test]
 fn strip_drops_roxygen_links_from_prose_but_not_from_tags() {
-    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Strip);
+    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Strip, RdPage::Rendered);
     assert_eq!(
         tags,
         vec![
@@ -629,7 +629,7 @@ fn strip_drops_roxygen_links_from_prose_but_not_from_tags() {
 
 #[test]
 fn keep_passes_prose_through_like_an_explicit_tag() {
-    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Keep);
+    let tags = roxygen_tags_with(&r_first_block(), ProseLinks::Keep, RdPage::Rendered);
     assert_eq!(
         tags,
         vec![
@@ -672,7 +672,7 @@ fn keep_still_yields_no_description_for_a_tag_led_block() {
     let attrs = make_doc_attrs_plain(&["@param x A value, see [other_fn()]"]);
     assert_eq!(leading_prose_from_attrs(&attrs, ProseLinks::Keep), None);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec!["@param x A value, see [other_fn()]".to_string()]
     );
 }
@@ -685,7 +685,7 @@ fn explicit_description_wins_under_either_setting() {
     ]);
     for links in [ProseLinks::Strip, ProseLinks::Keep] {
         assert_eq!(
-            roxygen_tags_with(&attrs, links),
+            roxygen_tags_with(&attrs, links, RdPage::Rendered),
             vec!["@description See [other_fn()].".to_string()]
         );
     }
@@ -802,7 +802,7 @@ fn keep_prose_loses_only_its_rustdoc_links() {
         "@export",
     ]);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec![
             "@description See `crate::Sources::prepare`, Self::new and [other_fn()].\n\
              Also `Sources::prepare` and [pkg::fn()]."
@@ -826,7 +826,7 @@ fn tag_text_loses_its_rustdoc_links_under_either_setting() {
     ]);
     for links in [ProseLinks::Strip, ProseLinks::Keep] {
         assert_eq!(
-            roxygen_tags_with(&attrs, links),
+            roxygen_tags_with(&attrs, links, RdPage::Rendered),
             vec![
                 "@param x A crate::Thing, see [pkg::fn()].".to_string(),
                 "@details See `Sources::prepare`\nand `Self::x`.\n\n```r\na[crate::b]\n```\n\
@@ -847,7 +847,7 @@ fn code_tags_keep_their_text() {
         "@rawRd \\note{[crate::x]}",
     ]);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec![
             "@examples\nx <- list(a = 1)\nx[crate::a] # [Self::x]".to_string(),
             "@usage f(x[crate::a])".to_string(),
@@ -866,14 +866,14 @@ fn ambiguous_type_paths_stay_r_links() {
         "@details See [`Sources::prepare`].",
     ]);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec![
             "@description See [`Sources::prepare`].".to_string(),
             "@details See [`Sources::prepare`].".to_string(),
         ]
     );
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Strip),
+        roxygen_tags_with(&attrs, ProseLinks::Strip, RdPage::Rendered),
         vec![
             "@description See `Sources::prepare`.".to_string(),
             "@details See [`Sources::prepare`].".to_string(),
@@ -890,14 +890,14 @@ fn unqualified_underscore_topics_stay_r_links() {
                  [dplyr::bind_rows()], [readRDS()]";
     let attrs = make_doc_attrs_plain(&[&format!("See {links}."), &format!("@seealso {links}")]);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec![
             format!("@description See {links}."),
             format!("@seealso {links}"),
         ]
     );
     // Under "strip" leading prose loses every link by design; tag text keeps them.
-    let tags = roxygen_tags_with(&attrs, ProseLinks::Strip);
+    let tags = roxygen_tags_with(&attrs, ProseLinks::Strip, RdPage::Rendered);
     assert_eq!(tags[1], format!("@seealso {links}"));
 }
 
@@ -912,7 +912,7 @@ fn a_line_after_a_single_line_tag_keeps_any_link_out_of_r() {
         "Rust callers: see [`Sources::prepare`] and [`Prepared`].",
     ]);
     assert_eq!(
-        roxygen_tags_with(&attrs, ProseLinks::Keep),
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Rendered),
         vec![
             "@description Prepares the sources.".to_string(),
             "@export".to_string(),
@@ -1032,7 +1032,7 @@ fn inline_rustdoc_links_lose_their_link_in_prose_and_tags_under_either_setting()
     ]);
     for links in [ProseLinks::Strip, ProseLinks::Keep] {
         assert_eq!(
-            roxygen_tags_with(&attrs, links),
+            roxygen_tags_with(&attrs, links, RdPage::Rendered),
             vec![
                 "@description Built by new, see stats, web, [rel](Foo).".to_string(),
                 "@seealso t, `bind_rows`".to_string(),
@@ -1047,13 +1047,131 @@ fn inline_rustdoc_links_lose_their_link_in_prose_and_tags_under_either_setting()
     ]);
     for links in [ProseLinks::Strip, ProseLinks::Keep] {
         assert_eq!(
-            roxygen_tags_with(&attrs, links),
+            roxygen_tags_with(&attrs, links, RdPage::Rendered),
             vec![
                 "@description See `Foo` and [the docs](https://example.com).".to_string(),
                 "@export".to_string(),
             ]
         );
     }
+}
+
+// endregion
+
+// region: a block that renders no page keeps no links (#1818)
+//
+// A `noexport` fn (whose wrapper block gets `@noRd`) or a block with its own
+// `@noRd` renders no help page, so none of its links can render, yet roxygen2
+// still resolves each one and warns "Could not resolve link to topic" on every
+// run. Every link loses its brackets there, in the prose and in each non-code
+// tag, whatever `roxygen_prose_links` says.
+
+/// The report's shape: a plain rustdoc link to a private helper in the prose
+/// and in explicit tags, next to roxygen2's own link forms and code.
+fn no_page_block(extra: &[&str]) -> Vec<syn::Attribute> {
+    let mut lines = vec![
+        "Whether a verb takes a scope (see [`takes_scope`]).",
+        "Also [other_fn()] and [the docs](https://example.com).",
+        "@details Uses [`takes_scope`], [stats::median()] and `x[i]`.",
+        "@return Character vector, see [topic].",
+        "@examples",
+        "x <- c(a = 1)",
+        "x[1] # [`takes_scope`]",
+    ];
+    lines.extend_from_slice(extra);
+    make_doc_attrs_plain(&lines)
+}
+
+/// [`no_page_block`] with every link neutralized; the code stays.
+fn no_page_tags() -> Vec<String> {
+    vec![
+        "@description Whether a verb takes a scope (see `takes_scope`).\n\
+         Also other_fn() and [the docs](https://example.com)."
+            .to_string(),
+        "@details Uses `takes_scope`, stats::median() and `x[i]`.".to_string(),
+        "@return Character vector, see topic.".to_string(),
+        "@examples\nx <- c(a = 1)\nx[1] # [`takes_scope`]".to_string(),
+    ]
+}
+
+#[test]
+fn suppressed_page_keeps_no_links_under_either_setting() {
+    for links in [ProseLinks::Keep, ProseLinks::Strip] {
+        assert_eq!(
+            roxygen_tags_with(&no_page_block(&[]), links, RdPage::Suppressed),
+            no_page_tags(),
+            "{links:?}"
+        );
+    }
+}
+
+#[test]
+fn an_explicit_no_rd_block_keeps_no_links() {
+    let mut expected = no_page_tags();
+    expected.push("@noRd".to_string());
+    for links in [ProseLinks::Keep, ProseLinks::Strip] {
+        assert_eq!(
+            roxygen_tags_with(&no_page_block(&["@noRd"]), links, RdPage::Rendered),
+            expected,
+            "{links:?}"
+        );
+    }
+}
+
+#[test]
+fn a_block_with_a_page_keeps_its_links() {
+    assert_eq!(
+        roxygen_tags_with(
+            &no_page_block(&["@export"]),
+            ProseLinks::Keep,
+            RdPage::Rendered
+        ),
+        vec![
+            "@description Whether a verb takes a scope (see [`takes_scope`]).\n\
+             Also [other_fn()] and [the docs](https://example.com)."
+                .to_string(),
+            "@details Uses [`takes_scope`], [stats::median()] and `x[i]`.".to_string(),
+            "@return Character vector, see [topic].".to_string(),
+            "@examples\nx <- c(a = 1)\nx[1] # [`takes_scope`]".to_string(),
+            "@export".to_string(),
+        ]
+    );
+    // Under "strip" only the prose loses its links.
+    let tags = roxygen_tags_with(&no_page_block(&[]), ProseLinks::Strip, RdPage::Rendered);
+    assert_eq!(tags[0], no_page_tags()[0]);
+    assert_eq!(
+        tags[1],
+        "@details Uses [`takes_scope`], [stats::median()] and `x[i]`."
+    );
+}
+
+#[test]
+fn a_suppressed_page_leaves_code_tags_as_written() {
+    let attrs = make_doc_attrs_plain(&[
+        "@examples",
+        "x[crate::a] # [other_fn()]",
+        "@usage f(x[1])",
+        "@rawRd \\note{[topic]}",
+    ]);
+    assert_eq!(
+        roxygen_tags_with(&attrs, ProseLinks::Keep, RdPage::Suppressed),
+        vec![
+            "@examples\nx[crate::a] # [other_fn()]".to_string(),
+            "@usage f(x[1])".to_string(),
+            "@rawRd \\note{[topic]}".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn attrs_have_roxygen_tag_reads_the_explicit_tags() {
+    let attrs = make_doc_attrs_plain(&["Prose with @noRd in it.", "@keywords internal"]);
+    assert!(attrs_have_roxygen_tag(&attrs, "keywords internal"));
+    assert!(!attrs_have_roxygen_tag(&attrs, "noRd"));
+    assert!(attrs_have_roxygen_tag(
+        &make_doc_attrs_plain(&["@noRd"]),
+        "noRd"
+    ));
 }
 
 // endregion
@@ -1099,7 +1217,7 @@ fn test_describein_keeps_continuation_lines() {
         syn::parse_quote!(#[doc = "   as an integer scalar."]),
         syn::parse_quote!(#[doc = " @export"]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert_eq!(
         tags,
         vec![
@@ -1117,7 +1235,7 @@ fn test_wrapped_single_word_tags_keep_continuation() {
             syn::parse_quote!(#[doc = #first]),
             syn::parse_quote!(#[doc = "   beta"]),
         ];
-        let tags = roxygen_tags_from_attrs(&attrs);
+        let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
         assert_eq!(tags, vec![format!("{tag} alpha\n  beta")], "tag {tag}");
     }
 }
@@ -1131,7 +1249,7 @@ fn test_title_continuation_joined_onto_one_line() {
         syn::parse_quote!(#[doc = "  wrapped onto a second line"]),
         syn::parse_quote!(#[doc = "@param x A value."]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert_eq!(
         tags,
         vec![
@@ -1152,7 +1270,7 @@ fn test_keywords_and_concept_join_continuation_for_roxygen() {
             syn::parse_quote!(#[doc = "  beta"]),
             syn::parse_quote!(#[doc = "@param x A value."]),
         ];
-        let tags = roxygen_tags_from_attrs(&attrs);
+        let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
         assert_eq!(
             tags,
             vec![format!("{tag} alpha beta"), "@param x A value.".into()]
@@ -1173,7 +1291,7 @@ fn test_bare_name_takes_next_line_as_topic() {
             syn::parse_quote!(#[doc = "not part of the topic"]),
             syn::parse_quote!(#[doc = "@param x A value."]),
         ];
-        let tags = roxygen_tags_from_attrs(&attrs);
+        let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
         assert_eq!(
             tags,
             vec![
@@ -1192,7 +1310,7 @@ fn test_rdname_stays_single_line() {
         syn::parse_quote!(#[doc = "@rdname topic"]),
         syn::parse_quote!(#[doc = "stray prose"]),
     ];
-    let tags = roxygen_tags_from_attrs(&attrs);
+    let tags = roxygen_tags_from_attrs(&attrs, RdPage::Rendered);
     assert_eq!(tags, vec!["@rdname topic"]);
 }
 
@@ -1646,7 +1764,7 @@ fn generated_fn_param_tags_with_call(
 ) -> (Vec<String>, Vec<(String, String)>) {
     let parsed: crate::miniextendr_fn::MiniextendrFunctionParsed =
         syn::parse2(item).expect("fixture fn parses");
-    let mut tags = roxygen_tags_from_attrs(parsed.attrs());
+    let mut tags = roxygen_tags_from_attrs(parsed.attrs(), RdPage::Rendered);
     let placeholders = push_fn_param_tags(
         &mut tags,
         parsed.inputs(),

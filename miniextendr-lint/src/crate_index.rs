@@ -577,6 +577,12 @@ fn extract_param_names(sig: &syn::Signature) -> Vec<(String, usize)> {
 
 /// Record the `pkg::topic` links in the docs of a `#[miniextendr]` item and,
 /// for an impl block, of its methods.
+///
+/// A block that renders no help page hands roxygen2 no links: the macro
+/// strips every one of them there (#1818). That is a block with its own
+/// `@noRd`, a `noexport` fn, and an impl block (with all its methods) under
+/// `@noRd` or a plain `noexport`, by the macro's rules: `internal`, or on an
+/// inherent impl the `@keywords internal` tag, keeps the page.
 fn collect_doc_pkg_links(item: &Item, data: &mut FileData) {
     let attrs: &[syn::Attribute] = match item {
         Item::Fn(i) => &i.attrs,
@@ -588,10 +594,27 @@ fn collect_doc_pkg_links(item: &Item, data: &mut FileData) {
     if !has_miniextendr_attr(attrs) {
         return;
     }
+    let flags = parse_miniextendr_impl_attrs(attrs);
+    let no_page = match item {
+        Item::Fn(_) => flags.noexport || doc_links::has_tag(attrs, "noRd"),
+        Item::Impl(item_impl) => {
+            doc_links::has_tag(attrs, "noRd")
+                || (flags.noexport
+                    && !flags.internal
+                    && (item_impl.trait_.is_some()
+                        || !doc_links::has_tag(attrs, "keywords internal")))
+        }
+        _ => false,
+    };
+    if no_page {
+        return;
+    }
     data.doc_pkg_links.extend(doc_links::pkg_links(attrs));
     if let Item::Impl(item_impl) = item {
         for impl_item in &item_impl.items {
-            if let syn::ImplItem::Fn(method) = impl_item {
+            if let syn::ImplItem::Fn(method) = impl_item
+                && !doc_links::has_tag(&method.attrs, "noRd")
+            {
                 data.doc_pkg_links
                     .extend(doc_links::pkg_links(&method.attrs));
             }

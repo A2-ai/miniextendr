@@ -7,8 +7,10 @@
 //!   link in `#[miniextendr]` docs whose `pkg` is not the package itself, not
 //!   in `Depends` / `Imports` / `Suggests` / `Enhances` / `LinkingTo`, and not
 //!   shipped with R. Leading prose counts only under
-//!   `roxygen_prose_links = "keep"`: the default strips its links. The rule
-//!   reports and never rewrites. It skips when there is no `DESCRIPTION`.
+//!   `roxygen_prose_links = "keep"`: the default strips its links. A block
+//!   that renders no help page (`@noRd`, `noexport`) does not count at all:
+//!   the macro strips every link there (#1818). The rule reports and never
+//!   rewrites. It skips when there is no `DESCRIPTION`.
 
 use crate::crate_index::CrateIndex;
 use crate::diagnostic::Diagnostic;

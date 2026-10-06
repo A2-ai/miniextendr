@@ -6897,3 +6897,70 @@ fn env_method_param_paragraphs_stay_inside_the_describe_item() {
 }
 
 // endregion
+
+// region: a class without a page keeps no links (#1818)
+
+/// An R6 class whose class block, constructor and method docs each link the
+/// private Rust helper `takes_scope` from an explicit tag (whose links,
+/// unlike leading prose's, do not depend on the crate's
+/// `roxygen_prose_links`). R6 emits the method docs even when the class block
+/// has no page (they fold into it), so the class-level page rule must reach
+/// them.
+fn r6_linked_class() -> syn::ItemImpl {
+    syn::parse_quote! {
+        /// A scoped thing.
+        /// @details See [`takes_scope`].
+        impl Scoped {
+            /// @description Make one, see [`takes_scope`].
+            pub fn new() -> Self { unimplemented!() }
+            /// Whether it is scoped.
+            ///
+            /// @return `TRUE` when [`takes_scope`] says so.
+            pub fn scoped(&self) -> bool { unimplemented!() }
+        }
+    }
+}
+
+/// The R6 wrapper of [`r6_linked_class`] under the impl flags.
+fn r6_linked_wrapper(noexport: bool, internal: bool) -> String {
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.noexport = noexport;
+    attrs.internal = internal;
+    let parsed = ParsedImpl::parse(attrs, r6_linked_class()).expect("failed to parse impl");
+    generate_r6_r_wrapper(&parsed)
+}
+
+#[test]
+fn noexport_class_and_its_methods_keep_no_links() {
+    let wrapper = r6_linked_wrapper(true, false);
+    assert!(wrapper.contains("#' @noRd"), "{wrapper}");
+    assert!(!wrapper.contains("[`takes_scope`]"), "{wrapper}");
+    assert_eq!(wrapper.matches("`takes_scope`").count(), 3, "{wrapper}");
+}
+
+#[test]
+fn no_rd_class_and_its_methods_keep_no_links() {
+    let mut item = r6_linked_class();
+    item.attrs.push(syn::parse_quote!(#[doc = " @noRd"]));
+    let parsed =
+        ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), item).expect("failed to parse impl");
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(!wrapper.contains("[`takes_scope`]"), "{wrapper}");
+    assert_eq!(wrapper.matches("`takes_scope`").count(), 3, "{wrapper}");
+}
+
+#[test]
+fn a_class_with_a_page_keeps_its_links() {
+    // Exported, and `internal` (documented under `\keyword{internal}`, which
+    // wins over `noexport`): the links can render, so they stay.
+    for (noexport, internal) in [(false, false), (true, true)] {
+        let wrapper = r6_linked_wrapper(noexport, internal);
+        assert_eq!(
+            wrapper.matches("[`takes_scope`]").count(),
+            3,
+            "noexport = {noexport}, internal = {internal}:\n{wrapper}"
+        );
+    }
+}
+
+// endregion
