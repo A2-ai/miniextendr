@@ -148,8 +148,10 @@ with the Rust changes that produced it. `rpkg/R/miniextendr-wrappers.R` and
 `rpkg/src/rust/wasm_registry.rs` are gitignored and regenerated during install;
 they must be present on disk when building the tarball, not committed.
 
-The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock
-and runs `scripts/committed-artifacts-check.sh --staged` on the staged files.
+The pre-commit hook (`.githooks/pre-commit`) guards the tarball-shape Cargo.lock,
+runs `scripts/committed-artifacts-check.sh --staged` on the staged files, and
+runs `just fmt-check` when a `.rs` file is staged. Format with `just fmt`, not
+plain `cargo fmt --all`, which skips rpkg and the cross-package crates.
 Enable once per clone: `git config core.hooksPath .githooks`.
 
 ### Adding a `#[miniextendr]` function
