@@ -39,8 +39,8 @@
 //! field type, or `ParsedRStr<T>` for a string-parsed type, whose container
 //! impls in `from_r` hold the NA policy and the batched element errors.
 //!
-//! The blankets bound the inner type through the hidden [`VecInner`] /
-//! [`OptionInner`] / [`VecOptionInner`] helpers rather than
+//! The blankets bound the inner type through the hidden `VecInner` /
+//! `OptionInner` / `VecOptionInner` helpers rather than
 //! `Vec<T::Inner>: TryFromSexp`. For a type that is not an element,
 //! `T::Inner` cannot be normalized; with the projection as the bound's self
 //! type, the solver gives up on it at once and reports

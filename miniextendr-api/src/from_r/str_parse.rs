@@ -76,7 +76,7 @@ impl<T: ParseRStr> TryFromSexp for Option<ParsedRStr<T>> {
 }
 
 /// `NA` elements and parse failures are collected across the whole vector
-/// into one [`BatchedErrors`] `InvalidValue`, each reason followed by the
+/// into one batched `InvalidValue`, each reason followed by the
 /// 1-based positions that failed with it:
 /// `NA is not allowed (element 2); invalid <label>: <error> (elements 3, 5)`.
 impl<T: ParseRStr> TryFromSexp for Vec<ParsedRStr<T>> {
@@ -133,7 +133,8 @@ impl<T: ParseRStr> TryFromSexp for Vec<Option<ParsedRStr<T>>> {
 /// Give a type parsed from an R string its four `TryFromSexp` conversions:
 /// `T`, `Option<T>`, `Vec<T>` and `Vec<Option<T>>`.
 ///
-/// Expands in any crate. It implements [`ParseRStr`] (the parse step),
+/// Expands in any crate. It implements
+/// [`ParseRStr`](crate::from_r::ParseRStr) (the parse step),
 /// `TryFromSexp` for the type, and
 /// [`TryFromSexpElement`](crate::TryFromSexpElement), through which the
 /// container blankets in `miniextendr-api` convert `Option<T>`, `Vec<T>` and
