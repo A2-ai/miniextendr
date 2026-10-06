@@ -23,4 +23,9 @@ pub fn optional_local(_x: Option<Local>) {}
 #[miniextendr]
 pub fn local_vector(_x: Vec<Local>) {}
 
+// Two blankets match `Vec<Option<_>>`, so rustc reports the container
+// itself rather than one element bound; still E0277, not E0275.
+#[miniextendr]
+pub fn optional_local_vector(_x: Vec<Option<Local>>) {}
+
 fn main() {}

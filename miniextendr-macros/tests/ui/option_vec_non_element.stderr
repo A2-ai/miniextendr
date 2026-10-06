@@ -93,3 +93,37 @@ help: the trait `TryFromSexpElement` is not implemented for `Local`
              Vec<&f64>
            and $N others
    = note: required for `Vec<Local>` to implement `TryFromSexp`
+
+error[E0277]: the trait bound `Vec<Option<Local>>: TryFromSexp` is not satisfied
+  --> tests/ui/option_vec_non_element.rs:29:34
+   |
+29 | pub fn optional_local_vector(_x: Vec<Option<Local>>) {}
+   |                                  ^^^^^^^^^^^^^^^^^^ the trait `TryFromSexp` is not implemented for `Vec<Option<Local>>`
+   |
+   = help: the following other types implement trait `TryFromSexp`:
+             Vec<&RLogical>
+             Vec<&Rcomplex>
+             Vec<&[RLogical]>
+             Vec<&[Rcomplex]>
+             Vec<&[f64]>
+             Vec<&[i32]>
+             Vec<&[u8]>
+             Vec<&f64>
+           and $N others
+
+error[E0277]: the trait bound `Vec<Option<Local>>: TryFromSexp` is not satisfied
+  --> tests/ui/option_vec_non_element.rs:29:34
+   |
+29 | pub fn optional_local_vector(_x: Vec<Option<Local>>) {}
+   |                                  ^^^ the trait `TryFromSexp` is not implemented for `Vec<Option<Local>>`
+   |
+   = help: the following other types implement trait `TryFromSexp`:
+             Vec<&RLogical>
+             Vec<&Rcomplex>
+             Vec<&[RLogical]>
+             Vec<&[Rcomplex]>
+             Vec<&[f64]>
+             Vec<&[i32]>
+             Vec<&[u8]>
+             Vec<&f64>
+           and $N others
