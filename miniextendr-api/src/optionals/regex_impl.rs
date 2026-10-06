@@ -60,11 +60,9 @@
 
 pub use regex::Regex;
 
-use crate::from_r::try_from_sexp_via_str_parse;
-
 // region: TryFromSexp conversions
 
-try_from_sexp_via_str_parse!(Regex, "regex pattern", |s| Regex::new(s));
+crate::try_from_sexp_via_str_parse!(Regex, "regex pattern", |s| Regex::new(s));
 
 // Note: IntoR is intentionally not implemented for Regex.
 // A compiled regex cannot be meaningfully converted back to R.

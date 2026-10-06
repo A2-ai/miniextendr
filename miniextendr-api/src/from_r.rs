@@ -787,8 +787,9 @@ pub trait TryFromSexp: Sized {
     /// converts numbers, logicals or lists: that would reject valid
     /// parameters.
     ///
-    /// The built-in string and factor conversions (including the uuid, url,
-    /// regex and num-bigint string parsers), `#[derive(MatchArg)]` and
+    /// The built-in string and factor conversions (including the types given
+    /// [`try_from_sexp_via_str_parse!`](crate::try_from_sexp_via_str_parse),
+    /// such as uuid, url, regex and num-bigint), `#[derive(MatchArg)]` and
     /// `#[derive(RFactor)]` set it. `Option<T>`, `Vec<T>`, `Box<[T]>`,
     /// [`Missing<T>`](crate::Missing) and `#[derive(TryFromSexp)]` newtypes
     /// forward it. [`AsCharacter`](crate::AsCharacter) leaves it `false`,
@@ -1298,6 +1299,9 @@ where
 
 mod strings;
 
+mod str_parse;
+pub use str_parse::{ParseRStr, ParsedRStr};
+
 // region: Result conversions (NULL -> Err(()))
 
 impl<T> TryFromSexp for Result<T, ()>
@@ -1791,8 +1795,8 @@ where
 ///
 /// Backs [`from_numeric_vec_with`]'s four SEXP-type branches: successes go into
 /// the output `Vec`, failures accumulate by reason and position via
-/// [`BatchedErrors`] (`value out of range (elements 2, 3)`, the grammar of the
-/// `Vec<T>` arm of `try_from_sexp_via_str_parse!`). Each failure's reason is
+/// [`BatchedErrors`] (`value out of range (elements 2, 3)`, the grammar of
+/// `Vec<T>` for a string-parsed type, see [`ParsedRStr`]). Each failure's reason is
 /// [`SexpError::r_reason`]: an `InvalidValue`'s own text, `NA is not allowed`
 /// for an NA. The happy path allocates nothing for diagnostics, and a large
 /// all-failing vector never builds more than [`BATCHED_ERROR_CAP`] messages.
@@ -2784,8 +2788,8 @@ pub(crate) const BATCHED_ERROR_CAP: usize = 10;
 /// batched [`SexpError::InvalidValue`], with the elements numbered as R
 /// counts them (1-based).
 ///
-/// Backs every vector conversion that walks its input: the `Vec<T>` /
-/// `Vec<Option<T>>` arms of [`try_from_sexp_via_str_parse!`] (#1143), the
+/// Backs every vector conversion that walks its input: `Vec<T>` /
+/// `Vec<Option<T>>` for a string-parsed type ([`ParsedRStr`], #1143), the
 /// numeric-coercion vector shells [`from_numeric_vec_with`] /
 /// [`collect_coerced`] / [`coerce_slice_to_vec`] (#1192), tuples, factors,
 /// the `As*Vec` markers and the optional integrations. Instead of bailing on
@@ -2937,144 +2941,6 @@ pub(crate) fn element_position(index: usize) -> String {
     s
 }
 
-/// Implement the four string-parse `TryFromSexp` impls (`T`, `Option<T>`,
-/// `Vec<T>`, `Vec<Option<T>>`) for a type parsed from an R character vector.
-///
-/// Sibling of [`into_r_infallible!`](crate::into_r) for the reverse direction:
-/// every "parse a scalar type out of an R string" integration (uuid, url,
-/// regex, num-bigint) used to hand-write these four impls — some reinventing
-/// the STRSXP validation `String`'s own `TryFromSexp` already performs.
-/// This macro delegates to `Option<String>` / `Vec<Option<String>>`, so type,
-/// length, and NA checks live in exactly one place.
-///
-/// Semantics:
-/// - `T`: `NA_character_` / `NULL` → `SexpError::Na`; parse failure →
-///   `InvalidValue("invalid <label>: <err>")`.
-/// - `Option<T>`: `NA_character_` / `NULL` → `None`.
-/// - `Vec<T>`: NA elements and parse failures are collected across the whole
-///   vector into one batched `InvalidValue` (see [`BatchedErrors`]), each
-///   reason followed by the 1-based positions that failed with it:
-///   `NA is not allowed (element 2); invalid <label>: <err> (elements 3, 5)`.
-///   The first 10 failures are listed and the remainder is summarized as
-///   `"and N more"`.
-/// - `Vec<Option<T>>`: NA elements → `None`; parse failures batch as above.
-///
-/// The parse body is a closure-style `|s| expr` where `s: &str`, returning
-/// `Result<T, E>` with `E: Display`.
-///
-/// ```ignore
-/// try_from_sexp_via_str_parse!(Uuid, "UUID", |s| Uuid::parse_str(s));
-/// ```
-///
-/// Crate-internal: three of the four impls are for `Option<T>` / `Vec<T>` /
-/// `Vec<Option<T>>`, which the orphan rule (E0117) forbids outside
-/// `miniextendr-api` (#1731). A downstream crate writes `TryFromSexp` for its
-/// own type by hand.
-#[allow(unused_macros)] // every caller is behind a feature
-macro_rules! try_from_sexp_via_str_parse {
-    ($ty:ty, $label:literal, |$s:ident| $parse:expr) => {
-        impl $crate::from_r::TryFromSexp for $ty {
-            type Error = $crate::from_r::SexpError;
-            const CHARACTER_ONLY: bool = true;
-
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
-                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                let s = opt.ok_or($crate::from_r::SexpError::Na($crate::from_r::SexpNaError {
-                    sexp_type: $crate::SEXPTYPE::STRSXP,
-                }))?;
-                let $s: &str = &s;
-                ($parse).map_err(|e| {
-                    $crate::from_r::SexpError::InvalidValue(format!(
-                        concat!("invalid ", $label, ": {}"),
-                        e
-                    ))
-                })
-            }
-        }
-
-        impl $crate::from_r::TryFromSexp for Option<$ty> {
-            type Error = $crate::from_r::SexpError;
-            const CHARACTER_ONLY: bool = true;
-
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
-                let opt: Option<String> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                match opt {
-                    None => Ok(None),
-                    Some(s) => {
-                        let $s: &str = &s;
-                        ($parse).map(Some).map_err(|e| {
-                            $crate::from_r::SexpError::InvalidValue(format!(
-                                concat!("invalid ", $label, ": {}"),
-                                e
-                            ))
-                        })
-                    }
-                }
-            }
-        }
-
-        impl $crate::from_r::TryFromSexp for Vec<$ty> {
-            type Error = $crate::from_r::SexpError;
-            const CHARACTER_ONLY: bool = true;
-
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
-                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                let mut result = Vec::with_capacity(values.len());
-                let mut errors = $crate::from_r::BatchedErrors::default();
-                for (i, opt) in values.into_iter().enumerate() {
-                    match opt {
-                        None => errors.push(i, || "NA is not allowed".to_string()),
-                        Some(s) => {
-                            let $s: &str = &s;
-                            match ($parse) {
-                                Ok(v) => result.push(v),
-                                Err(e) => errors
-                                    .push(i, || format!(concat!("invalid ", $label, ": {}"), e)),
-                            }
-                        }
-                    }
-                }
-                if errors.is_empty() {
-                    Ok(result)
-                } else {
-                    Err(errors.into_element_error())
-                }
-            }
-        }
-
-        impl $crate::from_r::TryFromSexp for Vec<Option<$ty>> {
-            type Error = $crate::from_r::SexpError;
-            const CHARACTER_ONLY: bool = true;
-
-            fn try_from_sexp(sexp: $crate::SEXP) -> Result<Self, $crate::from_r::SexpError> {
-                let values: Vec<Option<String>> = $crate::from_r::TryFromSexp::try_from_sexp(sexp)?;
-                let mut result = Vec::with_capacity(values.len());
-                let mut errors = $crate::from_r::BatchedErrors::default();
-                for (i, opt) in values.into_iter().enumerate() {
-                    match opt {
-                        None => result.push(None),
-                        Some(s) => {
-                            let $s: &str = &s;
-                            match ($parse) {
-                                Ok(v) => result.push(Some(v)),
-                                Err(e) => errors
-                                    .push(i, || format!(concat!("invalid ", $label, ": {}"), e)),
-                            }
-                        }
-                    }
-                }
-                if errors.is_empty() {
-                    Ok(result)
-                } else {
-                    Err(errors.into_element_error())
-                }
-            }
-        }
-    };
-}
-// Every caller is a feature-gated integration (uuid, url, regex, num-bigint).
-#[allow(unused_imports)]
-pub(crate) use try_from_sexp_via_str_parse;
 // endregion
 
 #[cfg(test)]
@@ -3160,13 +3026,19 @@ mod tests {
         );
     }
 
-    /// `try_from_sexp_via_str_parse!` names `SexpError` rather than
-    /// `Self::Error`, which is ambiguous for an enum with an `Error` variant
-    /// (#1730). Compiling this module is the test.
-    mod str_parse_enum_with_error_variant {
+    /// `try_from_sexp_via_str_parse!` spells no associated item as
+    /// `Self::<Name>`, which is ambiguous for an enum with a variant of that
+    /// name (#1730): `Error` (`TryFromSexp`), `LABEL` (`ParseRStr`) and
+    /// `Inner` (`TryFromSexpElement`). Compiling this module is the test; the
+    /// downstream form is `miniextendr-macros/tests/ui/pass/assoc_item_variant_names.rs`.
+    mod str_parse_enum_with_assoc_item_variants {
         #[derive(Debug)]
+        #[allow(clippy::upper_case_acronyms)]
         pub(super) enum Level {
             Error,
+            Err,
+            LABEL,
+            Inner,
             Value,
         }
 
@@ -3176,12 +3048,28 @@ mod tests {
             fn from_str(s: &str) -> Result<Self, String> {
                 match s {
                     "error" => Ok(Level::Error),
+                    "err" => Ok(Level::Err),
+                    "label" => Ok(Level::LABEL),
+                    "inner" => Ok(Level::Inner),
                     "value" => Ok(Level::Value),
                     other => Err(format!("unknown level {other:?}")),
                 }
             }
         }
 
-        crate::from_r::try_from_sexp_via_str_parse!(Level, "level", |s| s.parse::<Level>());
+        crate::try_from_sexp_via_str_parse!(Level, "level", |s| s.parse::<Level>());
+
+        /// The container shapes come from the `TryFromSexpElement` blankets,
+        /// and every shape reads only character input.
+        #[test]
+        fn containers_convert() {
+            use crate::from_r::TryFromSexp;
+            const {
+                assert!(<Level as TryFromSexp>::CHARACTER_ONLY);
+                assert!(<Option<Level> as TryFromSexp>::CHARACTER_ONLY);
+                assert!(<Vec<Level> as TryFromSexp>::CHARACTER_ONLY);
+                assert!(<Vec<Option<Level>> as TryFromSexp>::CHARACTER_ONLY);
+            }
+        }
     }
 }

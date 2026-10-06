@@ -40,12 +40,11 @@
 
 pub use url::Url;
 
-use crate::from_r::try_from_sexp_via_str_parse;
 use crate::into_r::into_r_infallible;
 
 // region: TryFromSexp / IntoR conversions
 
-try_from_sexp_via_str_parse!(Url, "URL", |s| Url::parse(s));
+crate::try_from_sexp_via_str_parse!(Url, "URL", |s| Url::parse(s));
 
 into_r_infallible!(Url, |this| this.as_str().into_sexp());
 // Leverage Option<String>'s IntoR which handles NA correctly.

@@ -1,0 +1,95 @@
+error[E0277]: this `Vec` or `Option` of `Local` has no conversion from R
+  --> tests/ui/option_vec_non_element.rs:21:27
+   |
+21 | pub fn optional_local(_x: Option<Local>) {}
+   |                           ^^^^^^^^^^^^^ `Local` does not implement `TryFromSexpElement`
+   |
+help: the trait `TryFromSexpElement` is not implemented for `Local`
+  --> tests/ui/option_vec_non_element.rs:11:1
+   |
+11 | pub struct Local;
+   | ^^^^^^^^^^^^^^^^
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = help: the following other types implement trait `TryFromSexp`:
+             Option<&RLogical>
+             Option<&Rcomplex>
+             Option<&[T]>
+             Option<&f64>
+             Option<&i32>
+             Option<&mut RLogical>
+             Option<&mut Rcomplex>
+             Option<&mut [T]>
+           and $N others
+   = note: required for `Option<Local>` to implement `TryFromSexp`
+
+error[E0277]: this `Vec` or `Option` of `Local` has no conversion from R
+  --> tests/ui/option_vec_non_element.rs:21:27
+   |
+21 | pub fn optional_local(_x: Option<Local>) {}
+   |                           ^^^^^^ `Local` does not implement `TryFromSexpElement`
+   |
+help: the trait `TryFromSexpElement` is not implemented for `Local`
+  --> tests/ui/option_vec_non_element.rs:11:1
+   |
+11 | pub struct Local;
+   | ^^^^^^^^^^^^^^^^
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = help: the following other types implement trait `TryFromSexp`:
+             Option<&RLogical>
+             Option<&Rcomplex>
+             Option<&[T]>
+             Option<&f64>
+             Option<&i32>
+             Option<&mut RLogical>
+             Option<&mut Rcomplex>
+             Option<&mut [T]>
+           and $N others
+   = note: required for `Option<Local>` to implement `TryFromSexp`
+
+error[E0277]: this `Vec` or `Option` of `Local` has no conversion from R
+  --> tests/ui/option_vec_non_element.rs:24:25
+   |
+24 | pub fn local_vector(_x: Vec<Local>) {}
+   |                         ^^^^^^^^^^ `Local` does not implement `TryFromSexpElement`
+   |
+help: the trait `TryFromSexpElement` is not implemented for `Local`
+  --> tests/ui/option_vec_non_element.rs:11:1
+   |
+11 | pub struct Local;
+   | ^^^^^^^^^^^^^^^^
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = help: the following other types implement trait `TryFromSexp`:
+             Vec<&RLogical>
+             Vec<&Rcomplex>
+             Vec<&[RLogical]>
+             Vec<&[Rcomplex]>
+             Vec<&[f64]>
+             Vec<&[i32]>
+             Vec<&[u8]>
+             Vec<&f64>
+           and $N others
+   = note: required for `Vec<Local>` to implement `TryFromSexp`
+
+error[E0277]: this `Vec` or `Option` of `Local` has no conversion from R
+  --> tests/ui/option_vec_non_element.rs:24:25
+   |
+24 | pub fn local_vector(_x: Vec<Local>) {}
+   |                         ^^^ `Local` does not implement `TryFromSexpElement`
+   |
+help: the trait `TryFromSexpElement` is not implemented for `Local`
+  --> tests/ui/option_vec_non_element.rs:11:1
+   |
+11 | pub struct Local;
+   | ^^^^^^^^^^^^^^^^
+   = note: `Vec<T>`, `Option<T>` and `Vec<Option<T>>` convert from R for the built-in types, `#[derive(TryFromSexp)]` newtypes over a type whose container converts, and types given `try_from_sexp_via_str_parse!`
+   = help: the following other types implement trait `TryFromSexp`:
+             Vec<&RLogical>
+             Vec<&Rcomplex>
+             Vec<&[RLogical]>
+             Vec<&[Rcomplex]>
+             Vec<&[f64]>
+             Vec<&[i32]>
+             Vec<&[u8]>
+             Vec<&f64>
+           and $N others
+   = note: required for `Vec<Local>` to implement `TryFromSexp`
