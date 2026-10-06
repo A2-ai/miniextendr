@@ -114,16 +114,7 @@ pub(crate) fn choices_entry_tokens(
         static #entry_ident: ::miniextendr_api::registry::MatchArgChoicesEntry =
             ::miniextendr_api::registry::MatchArgChoicesEntry {
                 placeholder: #placeholder,
-                choices_str: || {
-                    <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES
-                        .iter()
-                        .map(|c| format!(
-                            "\"{}\"",
-                            ::miniextendr_api::match_arg::escape_r_string(c)
-                        ))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                },
+                choices: <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
                 preferred_default: #preferred_default,
             };
     }

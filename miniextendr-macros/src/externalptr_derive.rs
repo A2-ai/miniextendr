@@ -617,6 +617,7 @@ fn generate_setter_body(
                     true
                 ),
                 ::core::option::Option::None,
+                ::core::option::Option::None,
             )
         }
     };

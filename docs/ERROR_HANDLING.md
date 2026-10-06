@@ -691,7 +691,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | `(A, B, ...)` | `a list of length N` |
 | `DataFrame` | `a data frame` |
 | a `#[derive(TryFromSexp)]` newtype | the inner type's (`struct Dose(AsNumeric)`: `a single number`), declared by the derive; none for an inner type that has none |
-| a `match_arg` enum | `one of "fast", "slow"` (`NULL or one of ...` for `Option<T>`), from the choice error at run time, with or without `#[miniextendr(match_arg)]` |
+| a `match_arg` enum | none: a choice error is worded whole, as the R-side `match_arg` check words it (`'mode' should be one of "fast", "slow"`, `'mode' must be of length 1`, `'mode' must be NULL or a character vector`), with or without `#[miniextendr(match_arg)]` (#1767). As an `Either` arm it is named `one of "fast", "slow"` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
 | `Option<T>` | `NULL or <expected of T>` |
 | `i64`, `u64`, `isize`, `usize` under `strict` | `a single whole number` / `a single non-negative whole number` |
@@ -705,7 +705,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | NA | `NA is not allowed` |
 | invalid value | the value's own text, e.g. `non-numeric value(s): "BLQ" (element 2)` |
 | `Either` (both branches failed) | the reason of the branch that took the kind of value (`got length 2`, `data.frame has no column names`), else one for the value's type (`got numeric`) |
-| `match_arg` enum | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
+| `match_arg` enum, as an `Either` arm | `got "zzz"`, `got numeric`, `got length 2`, `NA is not allowed` |
 
 A vector conversion checks every element and reports them together, each
 reason once with the 1-based positions that failed with it, as R numbers them:
@@ -772,12 +772,13 @@ choices_either_level(TRUE)   # level: Either<String, f64>, choices("low", "mid",
 # Error: 'level' must be one of "low", "mid", "high", or a number: got logical
 ```
 
+When one arm took the kind of value and failed later, its reason is the
+message's: `either_route_or_number("zzz")` reads `'x' must be one of "oral",
+"bolus", "infusion", or a single double: got "zzz"`.
+
 `invalid '<p>' argument` is left for a type whose expectation neither the
-macro nor the error knows, with the error's own message (its `Display` text,
-or its `RConditionError` message) as the reason: an opaque custom type, or a
-plain `Either` with an opaque or `match_arg` arm where one arm took the kind
-of value and failed later (`either_route_or_number("zzz")` reads `invalid 'x'
-argument: expected one of "oral", "bolus", "infusion", got "zzz"`).
+macro nor the error knows, such as an opaque custom type, with the error's own
+message (its `Display` text, or its `RConditionError` message) as the reason.
 
 ### NA Handling
 

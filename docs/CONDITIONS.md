@@ -856,7 +856,8 @@ the body's alike.
   & co. are signalled before it, as before any error.
 - **Without the macro**: `ArgError::new(param, message).raise()` raises the
   same condition from a value. `match_arg_param` returns one for a choice
-  argument the body matches itself
+  argument the body matches itself (`match_arg_param_with_default` for one
+  forwarded from a `default = "..."` parameter)
   ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#matching-a-raw-argument-in-the-body)).
   `ArgError` is a plain value and does not implement `RConditionError`:
   returned as a body's `Err` it takes the `Result` path
