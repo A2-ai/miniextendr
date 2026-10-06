@@ -1942,6 +1942,70 @@ macro_rules! __mx_conversion_expectation {
     }};
 }
 
+/// Whole-message probe, built-in arm: a `match_arg` choice error, as a
+/// [`MatchArgError`](crate::match_arg::MatchArgError) or at the top of a
+/// `SexpError` (`#[derive(MatchArg)]`'s `TryFromSexp` returns one), words the
+/// whole argument error the way the wrapper's R-side `match_arg` check
+/// (`.miniextendr_match_arg`) does, from the same
+/// [`MatchArgError::arg_error`](crate::match_arg::MatchArgError::arg_error)
+/// (#1767): `'mode' should be one of "fast", "slow"`, `'mode' must be of
+/// length 1`, `'mode' must be NULL or a character vector`. So a `match_arg`
+/// type converted without `#[miniextendr(match_arg)]` and one checked by the
+/// wrapper raise the same message.
+///
+/// A choice error inside an `Either` is not one: the `Either` names both of
+/// its arms (`'x' must be one of "oral", "bolus", or a single double: got
+/// logical`).
+#[doc(hidden)]
+pub trait ConversionArgMessageBuiltin {
+    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
+}
+
+impl ConversionArgMessageBuiltin for crate::match_arg::MatchArgError {
+    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String> {
+        Some(self.arg_error(name).message().to_string())
+    }
+}
+
+impl ConversionArgMessageBuiltin for crate::from_r::SexpError {
+    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String> {
+        match self {
+            crate::from_r::SexpError::MatchArg(e) => Some(e.arg_error(name).message().to_string()),
+            _ => None,
+        }
+    }
+}
+
+/// Whole-message probe, fallback arm: any other error leaves the message to
+/// the prefix and the error's reason.
+#[doc(hidden)]
+pub trait ConversionArgMessageNone {
+    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
+}
+
+impl<E> ConversionArgMessageNone for &E {
+    fn __mx_conversion_arg_message(&self, _name: &str) -> Option<String> {
+        None
+    }
+}
+
+/// Internal: the whole message of a failed argument conversion whose error
+/// words it itself (a `match_arg` choice error, see
+/// [`ConversionArgMessageBuiltin`]), for the argument `$name`; `None`
+/// otherwise. [`crate::error_value::conversion_condition_value`] then uses it
+/// in place of `<prefix>: <reason>`. Not public API.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __mx_conversion_arg_message {
+    ($e:expr, $name:expr) => {{
+        #[allow(unused_imports)]
+        use $crate::condition::{ConversionArgMessageBuiltin as _, ConversionArgMessageNone as _};
+        match &$e {
+            __mx_e => __mx_e.__mx_conversion_arg_message($name),
+        }
+    }};
+}
+
 /// The message prefix of a conversion failure whose expectation comes from
 /// the error at run time (see [`crate::__mx_conversion_expectation!`]):
 /// `'<p>' must be <expected>` (`'<p>' must be NULL or <expected>` for an
@@ -1970,7 +2034,10 @@ const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
 ///   macro writes the prefix in R terms (#1591): `'<p>' must be <expected>`
 ///   when it knows what the argument should be (`'x' must be a single
 ///   integer`, `'dv' must be numeric`), `invalid '<p>' argument` otherwise.
-///   A sidecar setter passes its own prefix.
+///   A sidecar setter passes its own prefix. An error that words the whole
+///   argument error itself, a `match_arg` choice error, gives `arg_message`
+///   ([`crate::__mx_conversion_arg_message!`], #1767), which is the message
+///   instead.
 /// - The class vector is the error's own (empty for the built-in and
 ///   `Display` arms), followed by `crate_class`, the crate's
 ///   `conversion_error_class` from `[package.metadata.miniextendr]`, minus
@@ -1993,6 +2060,7 @@ pub fn conversion_err_parts(
     rust_type: Option<&str>,
     crate_class: &[&str],
     parts: ErrParts,
+    arg_message: Option<String>,
 ) -> ErrParts {
     let ErrParts {
         message,
@@ -2000,6 +2068,7 @@ pub fn conversion_err_parts(
         data,
         call: _,
     } = parts;
+    let message = arg_message.unwrap_or_else(|| format!("{prefix}: {message}"));
     for extra in crate_class {
         if !class.iter().any(|c| c == extra) {
             class.push((*extra).to_string());
@@ -2022,7 +2091,7 @@ pub fn conversion_err_parts(
         );
     }
     ErrParts {
-        message: format!("{prefix}: {message}"),
+        message,
         class,
         data: Some(fields),
         call: ConditionCall::Inherit,
@@ -3506,6 +3575,7 @@ mod condition_macro_tests {
                 data: None,
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(
             plain.message,
@@ -3527,6 +3597,7 @@ mod condition_macro_tests {
                 data: Some(vec![("value".into(), RValue::from(-1))]),
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(classed.message, "invalid 'x' argument: must be positive");
         assert_eq!(classed.class, ["pkg_bad_arg", "pkg_error"]);
@@ -3544,6 +3615,7 @@ mod condition_macro_tests {
                 data: None,
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(untyped.message, "'value' must be a number: got \"abc\"");
         assert_eq!(field_names(&untyped), ["param"]);
@@ -3566,6 +3638,7 @@ mod condition_macro_tests {
                 data: None,
                 call: ConditionCall::None,
             },
+            None,
         );
         assert_eq!(parts.call, ConditionCall::Inherit);
     }
@@ -3588,6 +3661,7 @@ mod condition_macro_tests {
                 data: None,
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(plain.class, ["pkg_error_argument", "pkg_error"]);
 
@@ -3602,6 +3676,7 @@ mod condition_macro_tests {
                 data: None,
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(
             classed.class,
@@ -3650,6 +3725,7 @@ mod condition_macro_tests {
                 ]),
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(field_names(&parts), ["rust_type", "value", "param"]);
         assert_eq!(character_field(&parts, "param"), Some("beta"));
@@ -3665,9 +3741,104 @@ mod condition_macro_tests {
                 data: Some(vec![("rust_type".into(), RValue::from("Inner"))]),
                 call: super::ConditionCall::Inherit,
             },
+            None,
         );
         assert_eq!(field_names(&parts), ["param", "rust_type"]);
         assert_eq!(character_field(&parts, "rust_type"), Some("Inner"));
+    }
+
+    /// An error that words the whole argument error gives the message in
+    /// place of `<prefix>: <reason>`; class and fields are as for any other.
+    #[test]
+    fn conversion_err_parts_takes_a_whole_message() {
+        use super::{ErrParts, conversion_err_parts};
+
+        let parts = conversion_err_parts(
+            "'mode' must be one of \"fast\", \"slow\"",
+            "mode",
+            Some("Mode"),
+            &["pkg_error_argument"],
+            ErrParts {
+                message: "got \"zzz\"".into(),
+                class: Vec::new(),
+                data: None,
+                call: super::ConditionCall::Inherit,
+            },
+            Some("'mode' should be one of \"fast\", \"slow\"".into()),
+        );
+        assert_eq!(parts.message, "'mode' should be one of \"fast\", \"slow\"");
+        assert_eq!(parts.class, ["pkg_error_argument"]);
+        assert_eq!(field_names(&parts), ["param", "rust_type"]);
+    }
+
+    /// A `match_arg` choice error, bare or at the top of a `SexpError`, words
+    /// the whole argument error as `.miniextendr_match_arg` does (#1767);
+    /// other errors do not.
+    #[test]
+    fn conversion_arg_message_probe_words_match_arg_errors_as_the_check() {
+        use crate::SEXPTYPE;
+        use crate::from_r::SexpError;
+        use crate::match_arg::MatchArgError;
+
+        const CHOICES: &[&str] = &["fast", "slow"];
+        let one_of = Some(r#"'mode' should be one of "fast", "slow""#.to_string());
+        let no_match = MatchArgError::NoMatch {
+            input: "zzz".into(),
+            choices: CHOICES,
+        };
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(no_match.clone(), "mode"),
+            one_of
+        );
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(SexpError::from(no_match), "mode"),
+            one_of
+        );
+        let na = MatchArgError::IsNa { choices: CHOICES };
+        assert_eq!(crate::__mx_conversion_arg_message!(na, "mode"), one_of);
+        let long = MatchArgError::InvalidLength {
+            actual: 2,
+            choices: CHOICES,
+        };
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(SexpError::from(long), "mode").as_deref(),
+            Some("'mode' must be of length 1")
+        );
+        let number = MatchArgError::InvalidType {
+            actual: SEXPTYPE::REALSXP,
+            choices: CHOICES,
+        };
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(number, "speed").as_deref(),
+            Some("'speed' must be NULL or a character vector")
+        );
+
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(SexpError::InvalidValue("x".into()), "mode"),
+            None
+        );
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(String::from("bad input"), "mode"),
+            None
+        );
+    }
+
+    /// A choice error inside an `Either` leaves the message to the `Either`,
+    /// which names both arms.
+    #[cfg(feature = "either")]
+    #[test]
+    fn conversion_arg_message_probe_leaves_an_either_alone() {
+        use crate::from_r::SexpError;
+        use crate::match_arg::MatchArgError;
+
+        let either = SexpError::EitherConversion {
+            left_error: Box::new(SexpError::from(MatchArgError::NoMatch {
+                input: "zzz".into(),
+                choices: &["fast", "slow"],
+            })),
+            right_error: Box::new(SexpError::InvalidValue("x".into())),
+        };
+        assert_eq!(crate::__mx_conversion_arg_message!(either, "mode"), None);
     }
 
     #[test]

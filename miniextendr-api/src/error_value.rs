@@ -267,8 +267,11 @@ pub unsafe fn result_err_condition_value(parts: ErrParts, call: Option<SEXP>) ->
 /// type), the crate's `conversion_error_class` (`crate_class`, emitted by the
 /// macro from `[package.metadata.miniextendr]`) after the error's own
 /// classes, the parameter's R name as `e$param` and the Rust type as
-/// `e$rust_type`. See [`crate::condition::conversion_err_parts`] for how they
-/// combine.
+/// `e$rust_type`. `arg_message`, when the error words the whole argument
+/// error itself ([`crate::__mx_conversion_arg_message!`]: a `match_arg`
+/// choice error, in the words of the R-side `match_arg` check, #1767), is
+/// the message instead of `<prefix>: <reason>`. See
+/// [`crate::condition::conversion_err_parts`] for how they combine.
 ///
 /// The R-side argument checks raise the same condition from R
 /// (`.miniextendr_arg_error`, #1591), so a handler for the crate class, or
@@ -285,10 +288,17 @@ pub unsafe fn conversion_condition_value(
     rust_type: Option<&str>,
     crate_class: &[&str],
     parts: ErrParts,
+    arg_message: Option<String>,
     call: Option<SEXP>,
 ) -> SEXP {
-    let parts =
-        crate::condition::conversion_err_parts(prefix, param, rust_type, crate_class, parts);
+    let parts = crate::condition::conversion_err_parts(
+        prefix,
+        param,
+        rust_type,
+        crate_class,
+        parts,
+        arg_message,
+    );
     // SAFETY: forwarded from the caller.
     unsafe { condition_parts_value(kind::CONVERSION, parts, call) }
 }

@@ -516,9 +516,9 @@ fn test_layered_choice_decoders() {
 /// the full Rust type as `e$rust_type` and the crate class, on every layer
 /// shape the decoder composes. Without an `Either` layer a choice type has no
 /// static R-facing expectation, so the prefix is built on the failure path
-/// from the error (`'mode' must be one of ...` for a `match_arg` choice error,
-/// `NULL or` under `Option`, #1594). With one, see
-/// `test_either_choice_err_arm_names_the_whole_parameter`.
+/// from the error (`NULL or` under `Option`, #1594), and a `match_arg` choice
+/// error words the whole message as the R-side check does (#1767). With one,
+/// see `test_either_choice_err_arm_names_the_whole_parameter`.
 #[test]
 fn test_layered_choice_err_arm_is_the_argument_error() {
     for (src, leaf, rust_type, nullable) in [
@@ -560,7 +560,23 @@ fn test_layered_choice_err_arm_is_the_argument_error() {
             s.contains("__mx_conversion_err_parts ! (e , __mx_expected . is_some ())"),
             "{src}: {s}"
         );
+        assert!(
+            s.contains("__mx_conversion_arg_message ! (e , \"mode\")"),
+            "{src}: {s}"
+        );
     }
+}
+
+/// A type the macro words itself is never a `match_arg` type: its `Err` arm
+/// does not ask the error for a whole message (#1767).
+#[test]
+fn test_literal_expectation_arm_has_no_whole_message_probe() {
+    let s = conversion_text(&RustConversionBuilder::new(), "x: i32");
+    assert!(!s.contains("__mx_conversion_arg_message"), "{s}");
+    assert!(
+        s.contains("__mx_conversion_err_parts ! (e , true) , :: core :: option :: Option :: None"),
+        "{s}"
+    );
 }
 
 /// A choice parameter with an `Either<.., R>` layer is refused against the

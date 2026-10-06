@@ -321,6 +321,7 @@ fn conversion_parts_roundtrip() {
             &["pkg_error_argument", "pkg_error"],
             parts,
             None,
+            None,
         );
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
             RCondition::Conversion {

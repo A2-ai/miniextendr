@@ -207,10 +207,10 @@ run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 A `MatchArg` enum parameter without `#[miniextendr(match_arg)]` gets no R-side
 `match.arg()` check. Its Rust conversion reads the value as the check does
 (`NULL` or the whole choice vector selects the first choice, a factor is read as
-its labels, a unique prefix matches) and refuses a value that is not a choice
-with an argument error naming the choices:
-`'mode' must be one of "Fast", "Safe", "Debug": got "X"` (the conversion
-wording; the R-side check says `should be one of`, #1767).
+its labels, a unique prefix matches) and refuses a value with the argument
+error the check raises, word for word: `'mode' should be one of "Fast",
+"Safe", "Debug"`, `'mode' must be of length 1`, `'mode' must be NULL or a
+character vector` (#1767). Only `e$rust_type` tells the two apart.
 
 ### Matching a Raw Argument in the Body
 
@@ -256,11 +256,21 @@ name and message (`e.param()`, `e.message()`) for a caller that words its own
 error; `arg_error!` raises any other argument error from a body
 ([CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body)).
 
-`match_arg_param` knows only `T::CHOICES`. A parameter with
-`default = "..."` rotates the default to the front of its formal and its
-check, so for such a parameter the first choice, the vector that counts as
-"the whole choice vector" and the order in the message differ between the two
-(#1767).
+`match_arg_param` matches against `T::CHOICES` in declaration order, the
+formal of a plain `match_arg` parameter. A parameter with `default = "..."`
+moves the default to the front of its formal and its check
+(`c("Safe", "Fast", "Debug")` for `default = "\"Safe\""`), which changes the
+first choice, the vector that counts as the whole choice vector, and the order
+of the choices in the message. A body that matches a value forwarded from such
+a formal passes the same default to `match_arg_param_with_default` (#1767):
+
+```rust
+let mode: Mode = match_arg_param_with_default(mode, "mode", Mode::Safe)
+    .unwrap_or_else(|e| e.raise());
+```
+
+The default is a `T`, not a string, so it is always one of the choices. Both
+this function and the wrappers writer order the choices with the same code.
 
 ### Optional Choice: `Option<T>`
 

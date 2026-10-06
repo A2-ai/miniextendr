@@ -376,7 +376,7 @@ pub fn match_arg_on_failure_choices() -> Vec<&'static str> {
 }
 // endregion
 
-// region: a raw choice argument matched in the body (#1741)
+// region: a raw choice argument matched in the body (#1741, #1767)
 
 /// Choices with a shared prefix (`"dr"` is ambiguous), for the table that
 /// compares `match_arg_param()` with a `match_arg` parameter.
@@ -405,5 +405,26 @@ pub fn match_arg_param_fill(fill: miniextendr_api::SEXP) -> String {
     let fill: FillMode =
         miniextendr_api::match_arg_param(fill, "fill").unwrap_or_else(|e| e.raise());
     fill.to_choice().to_string()
+}
+
+/// `fill` converted by `FillMode`'s own `TryFromSexp`: no `match_arg`
+/// attribute, so the wrapper does not check it (#1767).
+///
+/// @param fill One of `"drop"`, `"draw"`, `"error"`.
+#[miniextendr_api::miniextendr(internal)]
+pub fn match_arg_converted_fill(fill: FillMode) -> String {
+    fill.to_choice().to_string()
+}
+
+/// `mode` matched by the body with `match_arg_param_with_default()` against
+/// the formal of `match_arg_with_default()`, whose `default` puts `"Safe"`
+/// first (#1767).
+///
+/// @param mode One of `"Safe"`, `"Fast"`, `"Debug"`.
+#[miniextendr_api::miniextendr(internal)]
+pub fn match_arg_param_with_default_mode(mode: miniextendr_api::SEXP) -> String {
+    let mode: Mode = miniextendr_api::match_arg_param_with_default(mode, "mode", Mode::Safe)
+        .unwrap_or_else(|e| e.raise());
+    format!("{:?}", mode)
 }
 // endregion

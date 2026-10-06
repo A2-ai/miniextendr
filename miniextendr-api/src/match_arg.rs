@@ -84,7 +84,9 @@ pub trait MatchArg: Sized + Copy + 'static {
 /// the wrappers preamble's `.miniextendr_match_arg` /
 /// `.miniextendr_match_arg_several` ([`crate::registry::ARG_CHECK_HELPERS`],
 /// built with `concat!`) and [`MatchArgError::arg_error`], so R and Rust word
-/// these errors from one source (#1741). It expands to string literals.
+/// these errors from one source (#1741). The generated conversion of a
+/// `match_arg` type words its error with `arg_error` too (#1767). It expands
+/// to string literals.
 macro_rules! match_arg_wording {
     (not_character) => {
         "must be NULL or a character vector"
@@ -100,9 +102,9 @@ pub(crate) use match_arg_wording;
 
 /// Error type for `MatchArg` conversion failures.
 ///
-/// Every variant carries the type's choices, so an argument error can say
-/// what the argument must be (`'mode' must be one of "fast", "slow"`, #1594)
-/// whichever way the value was wrong.
+/// Every variant carries the type's choices, so an error can say what the
+/// value must be (`'mode' should be one of "fast", "slow"`) whichever way it
+/// was wrong.
 #[derive(Debug, Clone)]
 pub enum MatchArgError {
     /// The SEXP was not a character or factor type.
@@ -144,10 +146,10 @@ impl MatchArgError {
         }
     }
 
-    /// What the argument must be, in R terms: `one of "fast", "slow"`. The
-    /// argument error puts it in its message (`'mode' must be one of "fast",
-    /// "slow": got "zzz"`), whether or not the macro knew the parameter's type
-    /// is a `match_arg` enum (#1594).
+    /// What the value must be, in R terms: `one of "fast", "slow"`. An
+    /// `Either` whose arms both refused a value names a `match_arg` arm with
+    /// it (`'x' must be one of "oral", "bolus", or a single double: got
+    /// logical`, #1594).
     pub fn expectation(&self) -> String {
         one_of(self.choices())
     }
@@ -163,24 +165,34 @@ impl MatchArgError {
     ///
     /// The choices are quoted as R's `dQuote(choices, FALSE)` quotes them,
     /// without escapes. [`match_arg_param`] returns it; [`ArgError::raise`]
-    /// raises it as that condition.
+    /// raises it as that condition. The generated conversion of a `match_arg`
+    /// type, with or without `#[miniextendr(match_arg)]`, raises its message
+    /// too (#1767).
     pub fn arg_error(&self, param: &str) -> ArgError {
+        ArgError::new(param, self.arg_message(param, self.choices()))
+    }
+
+    /// The message of [`arg_error`](Self::arg_error), with the choices listed
+    /// in the order of `formal`, the choices of the parameter's R formal:
+    /// `T::CHOICES`, or those of a `default = "..."` parameter, which lists
+    /// its default first ([`match_arg_param_with_default`]).
+    pub(crate) fn arg_message(&self, param: &str, formal: &[&str]) -> String {
         let what = match self {
             MatchArgError::InvalidType { .. } => match_arg_wording!(not_character).to_string(),
             MatchArgError::InvalidLength { .. } => match_arg_wording!(not_scalar).to_string(),
-            MatchArgError::IsNa { choices } | MatchArgError::NoMatch { choices, .. } => {
-                let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+            MatchArgError::IsNa { .. } | MatchArgError::NoMatch { .. } => {
+                let quoted: Vec<String> = formal.iter().map(|c| format!("\"{c}\"")).collect();
                 format!("{} {}", match_arg_wording!(not_a_choice), quoted.join(", "))
             }
         };
-        ArgError::new(param, format!("'{param}' {what}"))
+        format!("'{param}' {what}")
     }
 
-    /// The reason of this error in R terms, after `'<p>' must be one of "a",
-    /// "b": ` in an argument error (#1591): `got "zzz"`, `got numeric`,
-    /// `got length 2`, `NA is not allowed`. With `expected_known = false`
-    /// (nothing before the reason names the choices) it is the `Display`
-    /// text, which says what was expected.
+    /// The reason of this error in R terms, after `<expected>: ` when an
+    /// `Either` names this arm in an argument error (#1591): `got "zzz"`,
+    /// `got numeric`, `got length 2`, `NA is not allowed`. With
+    /// `expected_known = false` (nothing before the reason names the choices)
+    /// it is the `Display` text, which says what was expected.
     pub(crate) fn r_reason(&self, expected_known: bool) -> String {
         if !expected_known {
             return self.to_string();
@@ -196,9 +208,10 @@ impl MatchArgError {
     }
 }
 
-/// `one of "fast", "slow"`: what a `match_arg` / `choices` argument must be,
-/// in the words of an argument error (`'mode' must be one of "fast", "slow":
-/// got "zzz"`, #1594).
+/// `one of "fast", "slow"`: what a `match_arg` / `choices` value must be, in
+/// the words of a conversion's argument error that names it beside other
+/// accepted values (`'x' must be one of "oral", "bolus", or a single double:
+/// got logical`, #1594).
 pub fn one_of(choices: &[&str]) -> String {
     choice_expectation(choices, false, "")
 }
@@ -314,15 +327,43 @@ fn sexp_err_to_match_arg_err<T: MatchArg>(e: SexpError) -> MatchArgError {
     }
 }
 
-/// The first choice: what `NULL` and the full choices vector select.
-fn first_choice<T: MatchArg>() -> Result<T, MatchArgError> {
-    let choices = <T as MatchArg>::CHOICES;
-    choices
+/// The choices of a `match_arg` parameter's R formal: `choices` with the
+/// default moved to the front and the others after it in their order
+/// (`"Safe"` in `"Fast", "Safe", "Debug"` gives `"Safe", "Fast", "Debug"`),
+/// or `None` when `is_default` holds for no choice.
+///
+/// `.miniextendr_match_arg()` takes the first element of the formal for
+/// `NULL` and for the formal itself, so this order is what makes a
+/// `default = "..."` the default, and the order its message lists. The
+/// wrappers writer builds such a formal with it
+/// ([`crate::registry::match_arg_formal`]) and
+/// [`match_arg_param_with_default`] matches against it, so the two cannot
+/// disagree (#1767).
+pub(crate) fn default_first<'a>(
+    choices: &[&'a str],
+    is_default: impl Fn(&str) -> bool,
+) -> Option<Vec<&'a str>> {
+    let at = choices.iter().position(|choice| is_default(choice))?;
+    let mut formal = Vec::with_capacity(choices.len());
+    formal.push(choices[at]);
+    formal.extend(
+        choices
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != at)
+            .map(|(_, choice)| *choice),
+    );
+    Some(formal)
+}
+
+/// The first choice of the formal: what `NULL` and the formal itself select.
+fn first_choice<T: MatchArg>(formal: &[&str]) -> Result<T, MatchArgError> {
+    formal
         .first()
         .and_then(|choice| T::from_choice(choice))
         .ok_or(MatchArgError::NoMatch {
             input: String::new(),
-            choices,
+            choices: <T as MatchArg>::CHOICES,
         })
 }
 
@@ -335,13 +376,12 @@ fn match_na<T: MatchArg>() -> Result<T, MatchArgError> {
     })
 }
 
-/// Whether the `len` strings `label(i)` (`None` for `NA`) are `T::CHOICES`,
-/// in order: the formal default of a choice parameter, which an omitted
-/// argument evaluates to.
-fn is_full_choices<'a, T: MatchArg>(len: usize, label: impl Fn(isize) -> Option<&'a str>) -> bool {
-    let choices = <T as MatchArg>::CHOICES;
-    len == choices.len()
-        && choices
+/// Whether the `len` strings `label(i)` (`None` for `NA`) are `formal`, in
+/// order: the formal default of a choice parameter, which an omitted argument
+/// evaluates to.
+fn is_formal<'a>(formal: &[&str], len: usize, label: impl Fn(isize) -> Option<&'a str>) -> bool {
+    len == formal.len()
+        && formal
             .iter()
             .zip(0..)
             .all(|(choice, i)| label(i) == Some(*choice))
@@ -365,11 +405,11 @@ fn factor_label(codes: SEXP, levels: SEXP, i: isize) -> Option<&'static str> {
 }
 
 /// A factor as a choice: read as its labels, like `as.character()`.
-fn factor_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
+fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgError> {
     let levels = sexp.get_levels();
     let len = sexp.len();
-    if is_full_choices::<T>(len, |i| factor_label(sexp, levels, i)) {
-        return first_choice::<T>();
+    if is_formal(formal, len, |i| factor_label(sexp, levels, i)) {
+        return first_choice::<T>(formal);
     }
     if len != 1 {
         return Err(MatchArgError::InvalidLength {
@@ -406,13 +446,20 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
 /// `SEXP` argument wants [`match_arg_param`], which words its errors as the
 /// wrapper does.
 pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> {
+    match_formal::<T>(sexp, <T as MatchArg>::CHOICES)
+}
+
+/// [`match_arg_from_sexp`] for a parameter whose R formal is `formal`, a
+/// permutation of `T::CHOICES`: its first element is what `NULL` and the
+/// formal itself select. Matching a string does not depend on the order.
+fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgError> {
     let choices = <T as MatchArg>::CHOICES;
     let sexptype = sexp.type_of();
     if sexptype == SEXPTYPE::NILSXP {
-        return first_choice::<T>();
+        return first_choice::<T>(formal);
     }
     if sexp.is_factor() {
-        return factor_to_choice::<T>(sexp);
+        return factor_to_choice::<T>(sexp, formal);
     }
     if sexptype != SEXPTYPE::STRSXP {
         return Err(MatchArgError::InvalidType {
@@ -428,8 +475,8 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
         // UTF-8 locale asserted at package init — charsxp_to_str is safe.
         (!charsxp.is_na_string()).then(|| unsafe { charsxp_to_str(charsxp) })
     };
-    if is_full_choices::<T>(len, &label) && !sexp.has_attributes() {
-        return first_choice::<T>();
+    if is_formal(formal, len, label) && !sexp.has_attributes() {
+        return first_choice::<T>(formal);
     }
     if len != 1 {
         return Err(MatchArgError::InvalidLength {
@@ -474,12 +521,58 @@ pub fn match_arg_from_sexp<T: MatchArg>(sexp: SEXP) -> Result<T, MatchArgError> 
 /// }
 /// ```
 ///
-/// The choices are `T::CHOICES` in declaration order. A
-/// `#[miniextendr(match_arg, default = "...")]` parameter moves its default
-/// to the front of the R formal, so there the wrapper's first choice and the
-/// order of its message's choices differ from this function's (#1767).
+/// The choices are `T::CHOICES` in declaration order, the formal of a
+/// `#[miniextendr(match_arg)]` parameter. A value forwarded from a parameter
+/// with `default = "..."` wants [`match_arg_param_with_default`].
 pub fn match_arg_param<T: MatchArg>(sexp: SEXP, param: &str) -> Result<T, ArgError> {
     match_arg_from_sexp::<T>(sexp).map_err(|e| e.arg_error(param))
+}
+
+/// [`match_arg_param`] for a choice argument whose R formal lists `default`
+/// first: the formal of a `#[miniextendr(match_arg, default = "...")]`
+/// parameter, which moves its default to the front and keeps the other
+/// choices in their order (#1767).
+///
+/// The formal's order decides three things, and here they follow the formal
+/// rather than `T::CHOICES`: the choice `NULL` selects, the vector that counts
+/// as the formal itself (what an omitted argument evaluates to), and the
+/// order of the choices in the message. For
+/// `#[miniextendr(match_arg, default = "\"Safe\"")] mode: Mode` with
+/// `Mode::CHOICES` `"Fast", "Safe", "Debug"`, the formal is
+/// `c("Safe", "Fast", "Debug")`:
+///
+/// | Input | `match_arg_param` | `match_arg_param_with_default(.., Mode::Safe)` |
+/// |---|---|---|
+/// | `NULL` | `Fast` | `Safe` |
+/// | `c("Safe", "Fast", "Debug")` | `'mode' must be of length 1` | `Safe` |
+/// | `c("Fast", "Safe", "Debug")` | `Fast` | `'mode' must be of length 1` |
+/// | `"zzz"` | `'mode' should be one of "Fast", "Safe", "Debug"` | `'mode' should be one of "Safe", "Fast", "Debug"` |
+///
+/// Matching a string is the same either way. The wrappers writer orders the
+/// formal with the same code, so the two agree on every input.
+///
+/// `default` is a `T`, not its string or its position: it is always one of
+/// the choices, a misspelled default does not compile, and a renamed or
+/// reordered choice moves with it.
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn run(mode: SEXP) -> String {
+///     let mode: Mode = match_arg_param_with_default(mode, "mode", Mode::Safe)
+///         .unwrap_or_else(|e| e.raise());
+///     format!("{mode:?}")
+/// }
+/// ```
+pub fn match_arg_param_with_default<T: MatchArg>(
+    sexp: SEXP,
+    param: &str,
+    default: T,
+) -> Result<T, ArgError> {
+    let default = default.to_choice();
+    let formal = default_first(<T as MatchArg>::CHOICES, |choice| choice == default)
+        .expect("MatchArg::to_choice returns one of MatchArg::CHOICES");
+    match_formal::<T>(sexp, &formal)
+        .map_err(|e| ArgError::new(param, e.arg_message(param, &formal)))
 }
 
 /// Optional form of [`match_arg_from_sexp`] for `Option<T>` parameters (#1473).
@@ -779,5 +872,26 @@ mod tests {
             r#"one of "say \"hi\"", "bye""#
         );
         assert_eq!(one_of(&["fast", "slow"]), r#"one of "fast", "slow""#);
+    }
+
+    /// A `default = "..."` formal: the default first, the rest in their
+    /// order (not a rotation of the list), and `None` for a default that is
+    /// no choice (#1767).
+    #[test]
+    fn default_first_moves_the_default_to_the_front() {
+        use super::default_first;
+        let choices = ["Fast", "Safe", "Debug"];
+        let is = |default: &'static str| move |c: &str| c == default;
+        assert_eq!(
+            default_first(&choices, is("Safe")).unwrap(),
+            ["Safe", "Fast", "Debug"]
+        );
+        assert_eq!(
+            default_first(&choices, is("Debug")).unwrap(),
+            ["Debug", "Fast", "Safe"]
+        );
+        assert_eq!(default_first(&choices, is("Fast")).unwrap(), choices);
+        assert_eq!(default_first(&choices, is("Slow")), None);
+        assert_eq!(default_first(&["only"], is("only")).unwrap(), ["only"]);
     }
 }

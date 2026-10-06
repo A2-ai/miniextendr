@@ -1257,9 +1257,13 @@ pub(crate) struct ConversionSubject<'a> {
 /// With [`Expected::FromError`] the prefix is built on the failure path by
 /// `condition::conversion_prefix` (`NULL or ...` when `nullable`) from what
 /// the type declares (a `#[derive(TryFromSexp)]` newtype, the sides of an
-/// `Either`), else what the error may know (a `match_arg` choice error: `one
-/// of "fast", "slow"`, #1594, from `__mx_conversion_expectation!(e)`),
-/// falling back to `invalid '<p>' argument`.
+/// `Either`), else what the error may know (`__mx_conversion_expectation!(e)`,
+/// #1594), falling back to `invalid '<p>' argument`.
+///
+/// With [`Expected::RunTime`] and [`Expected::FromError`] the error may also
+/// word the whole message (`__mx_conversion_arg_message!(e, quoted)`): a
+/// `match_arg` choice error reads as the R-side `match_arg` check
+/// (`'mode' should be one of "fast", "slow"`, #1767), whatever the prefix.
 /// Shared by the argument conversions and the sidecar setters.
 pub(crate) fn conversion_value_tokens(
     subject: &ConversionSubject,
@@ -1275,6 +1279,10 @@ pub(crate) fn conversion_value_tokens(
         rust_type,
     } = subject;
     let rust_type = quote! { ::core::option::Option::Some(#rust_type) };
+    // A `match_arg` choice error words the whole message as the R-side
+    // `match_arg` check does (#1767). A type with a literal expectation is
+    // never a `match_arg` type, so only the other two arms ask.
+    let arg_message = quote! { ::miniextendr_api::__mx_conversion_arg_message!(e, #quoted) };
     match expected {
         Expected::Literal(prefix) => quote_spanned! {span=>
             ::miniextendr_api::error_value::conversion_condition_value(
@@ -1283,6 +1291,7 @@ pub(crate) fn conversion_value_tokens(
                 #rust_type,
                 &[#(#crate_class),*],
                 ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                ::core::option::Option::None,
                 #call,
             )
         },
@@ -1293,6 +1302,7 @@ pub(crate) fn conversion_value_tokens(
                 #rust_type,
                 &[#(#crate_class),*],
                 ::miniextendr_api::__mx_conversion_err_parts!(e, true),
+                #arg_message,
                 #call,
             )
         },
@@ -1314,6 +1324,7 @@ pub(crate) fn conversion_value_tokens(
                     #rust_type,
                     &[#(#crate_class),*],
                     ::miniextendr_api::__mx_conversion_err_parts!(e, __mx_expected.is_some()),
+                    #arg_message,
                     #call,
                 )
             } }

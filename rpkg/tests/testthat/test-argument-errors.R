@@ -705,9 +705,10 @@ test_that("no_na's Rust check after the conversion raises the R guard's conditio
   expect_equal(conditionCall(e), quote(miniextendr:::param_no_na_number_caller("")))
 })
 
-test_that("a match_arg enum's conversion error names its choices", {
+test_that("a match_arg enum's conversion error is the match_arg check's (#1767)", {
   # No match_arg attribute, so no R-side match.arg(): the conversion refuses
-  # the value, and the error says what it must be.
+  # the value, in the words `.miniextendr_match_arg()` uses for a
+  # `#[miniextendr(match_arg)]` parameter.
   e <- caught(miniextendr:::arg_error_plain_mode("zzz"))
   expect_identical(class(e), layers)
   expect_identical(e$kind, "conversion")
@@ -715,15 +716,19 @@ test_that("a match_arg enum's conversion error names its choices", {
   expect_identical(e$rust_type, "Mode")
   expect_identical(
     conditionMessage(e),
-    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": got \"zzz\""
+    "'speed' should be one of \"Fast\", \"Safe\", \"Debug\""
   )
   expect_identical(
     conditionMessage(caught(miniextendr:::arg_error_plain_mode(1))),
-    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": got numeric"
+    "'speed' must be NULL or a character vector"
+  )
+  expect_identical(
+    conditionMessage(caught(miniextendr:::arg_error_plain_mode(c("Fast", "Safe")))),
+    "'speed' must be of length 1"
   )
   expect_identical(
     conditionMessage(caught(miniextendr:::arg_error_plain_mode(NA_character_))),
-    "'speed' must be one of \"Fast\", \"Safe\", \"Debug\": NA is not allowed"
+    "'speed' should be one of \"Fast\", \"Safe\", \"Debug\""
   )
   expect_identical(miniextendr:::arg_error_plain_mode("Sa"), "Safe")
   # The full choice vector is the first choice, as for `match.arg()` (#1741).

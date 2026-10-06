@@ -262,18 +262,15 @@ pub struct ConversionErrorClassEntry {
 pub struct MatchArgChoicesEntry {
     /// Placeholder string in the R formal default, e.g. `".__MX_MATCH_ARG_CHOICES_mode__"`.
     pub placeholder: &'static str,
-    /// Function that returns the choices as a comma-separated quoted string,
-    /// e.g. `"\"Fast\", \"Safe\", \"Debug\""`.
-    pub choices_str: fn() -> String,
+    /// The parameter type's `MatchArg::CHOICES`, unescaped.
+    pub choices: &'static [&'static str],
     /// User-supplied `default = "..."` value (unquoted, e.g. `"zstd"`), or `""`
     /// if the user did not supply one. When non-empty, the write-time pass
-    /// rotates the choice list so this value appears first, so R's
-    /// `match.arg(arg)` (no second arg) picks it as the default.
+    /// moves this choice to the front of the formal ([`match_arg_formal`]),
+    /// so `.miniextendr_match_arg()` picks it for `NULL` and for the omitted
+    /// argument.
     pub preferred_default: &'static str,
 }
-
-// SAFETY: function pointer and &'static str are Send+Sync.
-unsafe impl Sync for MatchArgChoicesEntry {}
 
 /// Entry for replacing match_arg `@param` doc placeholders with human-readable
 /// choice descriptions.
@@ -983,33 +980,39 @@ fn sort_s7_classes(entries: &mut [std::borrow::Cow<'static, str>]) {
 }
 // endregion
 
-#[cfg(not(target_arch = "wasm32"))]
-/// Rotate a comma-separated quoted-choice string so `preferred` is first.
+/// The R formal of a `match_arg` parameter, `c("a", "b")`, that the wrappers
+/// writer splices in place of its placeholder: `choices` (the type's
+/// `MatchArg::CHOICES`), each quoted and escaped for an R string literal
+/// ([`escape_r_string`](crate::match_arg::escape_r_string)).
 ///
-/// `choices_str` has the shape `"\"a\", \"b\", \"c\""` (already quoted +
-/// joined). `preferred` is the unquoted user-supplied default (e.g. `"b"`).
-/// On miss, panics with the placeholder name — the wrapper-gen write step is the
-/// only caller, so a panic surfaces as a load-time error in the host R session
-/// rather than silently producing a broken wrapper.
-fn rotate_choices_for_default(choices_str: &str, preferred: &str, placeholder: &str) -> String {
-    let parts: Vec<&str> = choices_str.split(", ").collect();
-    let pos = parts
-        .iter()
-        .position(|p| p.strip_prefix('"').and_then(|s| s.strip_suffix('"')) == Some(preferred))
-        .unwrap_or_else(|| {
+/// With a `default = "..."` (`preferred`: the literal's text without its
+/// quotes, so escaped as R source is), that choice comes first and the others
+/// keep their order ([`crate::match_arg::default_first`], the order
+/// [`crate::match_arg::match_arg_param_with_default`] matches against,
+/// #1767). An empty `preferred` keeps the declaration order.
+///
+/// A `preferred` that names no choice panics with the placeholder: the
+/// wrappers writer is the only caller, so the panic surfaces as a load-time
+/// error in the host R session rather than a broken wrapper.
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) -> String {
+    use crate::match_arg::{default_first, escape_r_string};
+    let formal = if preferred.is_empty() {
+        choices.to_vec()
+    } else {
+        default_first(choices, |choice| escape_r_string(choice) == preferred).unwrap_or_else(|| {
             panic!(
                 "miniextendr: preferred default `{preferred}` for placeholder `{placeholder}` \
-                 does not match any choice in [{choices_str}]"
+                 does not match any choice in {choices:?}"
             )
-        });
-    let mut rotated: Vec<&str> = Vec::with_capacity(parts.len());
-    rotated.push(parts[pos]);
-    for (i, p) in parts.iter().enumerate() {
-        if i != pos {
-            rotated.push(p);
-        }
-    }
-    rotated.join(", ")
+        })
+    };
+    let quoted: Vec<String> = formal
+        .iter()
+        .map(|choice| format!("\"{}\"", escape_r_string(choice)))
+        .collect();
+    format!("c({})", quoted.join(", "))
 }
 
 // region: R Wrapper File Generation
@@ -1681,10 +1684,11 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr
 /// bound after them).
 ///
 /// `.miniextendr_match_arg`'s messages are the ones
-/// [`crate::match_arg::match_arg_param`] words in Rust: both take their words
-/// from `match_arg::match_arg_wording!`, and the API tests
+/// [`crate::match_arg::match_arg_param`] and the generated conversion of a
+/// `match_arg` type word in Rust (#1767): all take their words from
+/// `match_arg::match_arg_wording!`, and the API tests
 /// (`miniextendr-api/tests/match_arg_param.rs`) evaluate this source and
-/// compare the two on every input class (#1741).
+/// compare them on every input class (#1741).
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub const ARG_CHECK_HELPERS: &str = concat!(
@@ -1917,17 +1921,12 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str("# nocov end\n# nolint end\n");
 
     // Replace match_arg choices placeholders with actual enum choices.
-    // If the entry has a `preferred_default`, rotate the list so that value
-    // is first — R's `match.arg(arg)` returns `arg[1]` when arg matches the
-    // formal default, so the position-0 element becomes the effective default.
+    // If the entry has a `preferred_default`, that choice comes first —
+    // `.miniextendr_match_arg()` returns `arg[1]` when arg is the formal
+    // default, so the position-0 element becomes the effective default.
     for entry in MX_MATCH_ARG_CHOICES.iter() {
-        let choices_str = (entry.choices_str)();
-        let rotated = if entry.preferred_default.is_empty() {
-            choices_str
-        } else {
-            rotate_choices_for_default(&choices_str, entry.preferred_default, entry.placeholder)
-        };
-        let replacement = format!("c({rotated})");
+        let replacement =
+            match_arg_formal(entry.choices, entry.preferred_default, entry.placeholder);
         content = content.replace(entry.placeholder, &replacement);
     }
 

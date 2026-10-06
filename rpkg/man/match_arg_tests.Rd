@@ -32,6 +32,8 @@
 \alias{match_arg_on_failure_choices}
 \alias{match_arg_fill}
 \alias{match_arg_param_fill}
+\alias{match_arg_converted_fill}
+\alias{match_arg_param_with_default_mode}
 \title{match_arg_set_mode}
 \usage{
 match_arg_set_mode(mode = c("Fast", "Safe", "Debug"))
@@ -97,9 +99,13 @@ match_arg_on_failure_choices()
 match_arg_fill(fill = c("drop", "draw", "error"))
 
 match_arg_param_fill(fill)
+
+match_arg_converted_fill(fill)
+
+match_arg_param_with_default_mode(mode)
 }
 \arguments{
-\item{mode}{A Mode enum value, or NULL.}
+\item{mode}{One of \code{"Safe"}, \code{"Fast"}, \code{"Debug"}.}
 
 \item{status}{A BuildStatus enum value.}
 
@@ -193,5 +199,12 @@ Return the choices for OnFailure.
 
 \code{fill} matched by the body with \code{match_arg_param()}, which the wrapper
 does not check.
+
+\code{fill} converted by \code{FillMode}'s own \code{TryFromSexp}: no \code{match_arg}
+attribute, so the wrapper does not check it (#1767).
+
+\code{mode} matched by the body with \code{match_arg_param_with_default()} against
+the formal of \code{match_arg_with_default()}, whose \code{default} puts \code{"Safe"}
+first (#1767).
 }
 \keyword{internal}

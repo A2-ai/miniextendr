@@ -372,8 +372,10 @@ test_that("match_arg enum with variants named like associated items round-trips 
 test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)", {
   # `match_arg_fill()` matches `fill` in its R wrapper (`.miniextendr_match_arg`);
   # `match_arg_param_fill()` takes it as a raw SEXP and matches it in Rust with
-  # `match_arg_param()`. Both are called as `f(x)`, so even the condition call
-  # must be the same.
+  # `match_arg_param()`; `match_arg_converted_fill()` has no `match_arg`
+  # attribute, so its Rust conversion matches it (#1767). All are called as
+  # `f(x)`, so even the condition call must be the same. Only the conversion
+  # adds `e$rust_type`, so the field list is compared between the first two.
   outcome <- function(f, x) {
     r <- tryCatch(f(x), error = function(e) e)
     if (!inherits(r, "error")) {
@@ -390,6 +392,7 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
   }
   wrapped <- miniextendr:::match_arg_fill
   in_body <- miniextendr:::match_arg_param_fill
+  converted <- miniextendr:::match_arg_converted_fill
   layers <- c("rust_error", "simpleError", "error", "condition")
   one_of <- "'fill' should be one of \"drop\", \"draw\", \"error\""
   not_scalar <- "'fill' must be of length 1"
@@ -423,6 +426,12 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
     want <- outcome(wrapped, x)
     got <- outcome(in_body, x)
     expect_identical(got, want, info = label)
+    by_conversion <- outcome(converted, x)
+    if (is.list(want)) {
+      expect_identical(by_conversion$fields, c(want$fields, "rust_type"), info = label)
+      by_conversion$fields <- want$fields
+    }
+    expect_identical(by_conversion, want, info = label)
     if (is.list(want)) {
       expect_identical(want$message, row[[2]], info = label)
       expect_identical(want$class, layers, info = label)
@@ -435,4 +444,60 @@ test_that("match_arg_param() in a body agrees with a match_arg parameter (#1741)
   }
   # An omitted argument is the formal default, the full choice vector.
   expect_identical(wrapped(), "drop")
+})
+
+test_that("match_arg_param_with_default() follows a default = parameter's rotated formal (#1767)", {
+  # `match_arg_with_default()` has `#[miniextendr(match_arg, default = "\"Safe\"")]`,
+  # so its formal and its check's choices are `c("Safe", "Fast", "Debug")`;
+  # `match_arg_param_with_default_mode()` matches a raw SEXP in the body with
+  # `match_arg_param_with_default::<Mode>(.., "mode", Mode::Safe)`.
+  outcome <- function(f, x) {
+    r <- tryCatch(f(x), error = function(e) e)
+    if (!inherits(r, "error")) {
+      return(r)
+    }
+    list(
+      class = class(r),
+      message = conditionMessage(r),
+      param = r$param,
+      kind = r$kind,
+      fields = names(unclass(r)),
+      call = conditionCall(r)
+    )
+  }
+  wrapped <- match_arg_with_default
+  in_body <- miniextendr:::match_arg_param_with_default_mode
+  one_of <- "'mode' should be one of \"Safe\", \"Fast\", \"Debug\""
+  not_scalar <- "'mode' must be of length 1"
+  rows <- list(
+    # The issue's table: the default is the first choice of the rotated
+    # formal, and only that vector counts as the formal itself.
+    list(NULL, "Safe"),
+    list(c("Safe", "Fast", "Debug"), "Safe"),
+    list(c("Fast", "Safe", "Debug"), not_scalar),
+    list("zzz", one_of),
+    # A factor is read as its labels.
+    list(factor(c("Safe", "Fast", "Debug")), "Safe"),
+    list(factor(c("Fast", "Safe", "Debug")), not_scalar),
+    # Matching itself does not depend on the order.
+    list("Fast", "Fast"),
+    list("Fa", "Fast"),
+    list("D", "Debug"),
+    list(NA_character_, one_of),
+    list(1L, "'mode' must be NULL or a character vector")
+  )
+  for (row in rows) {
+    x <- row[[1]]
+    label <- paste(deparse(x), collapse = "")
+    want <- outcome(wrapped, x)
+    expect_identical(outcome(in_body, x), want, info = label)
+    if (is.list(want)) {
+      expect_identical(want$message, row[[2]], info = label)
+      expect_identical(want$param, "mode", info = label)
+      expect_equal(want$call, quote(f(x)), info = label)
+    } else {
+      expect_identical(want, row[[2]], info = label)
+    }
+  }
+  expect_identical(wrapped(), "Safe")
 })
