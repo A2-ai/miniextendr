@@ -628,7 +628,8 @@ fn match_arg_statement_per_attribution() {
 
 /// Every accepted choice-parameter shape: the R formal, the prelude statement
 /// under the default and the `call = caller` attribution, and the `@param`
-/// line (#1473, #1551).
+/// line (#1473, #1551), then the same for `no_default` on a few of them
+/// (#1828): a bare formal, the prelude unchanged, no omission note.
 #[test]
 fn snapshot_choice_param_forms() {
     let forms = [
@@ -649,19 +650,38 @@ fn snapshot_choice_param_forms() {
         ("Option<Either<Vec<Mode>, DataFrame>>", true),
         ("Missing<Option<Either<Vec<Mode>, List>>>", true),
     ];
+    let no_default_forms = [
+        ("Mode", false),
+        ("Missing<Mode>", false),
+        ("Missing<Option<Either<Vec<Mode>, DataFrame>>>", true),
+    ];
     let choices = "c(\"fast\", \"safe\")";
     let mut output = String::new();
-    for (ty, several_ok) in forms {
-        let attrs = choice_attrs(ty, several_ok);
+    let rows = forms
+        .iter()
+        .map(|&(ty, several_ok)| (ty, several_ok, false))
+        .chain(
+            no_default_forms
+                .iter()
+                .map(|&(ty, several_ok)| (ty, several_ok, true)),
+        );
+    for (ty, several_ok, no_default) in rows {
+        let mut attrs = choice_attrs(ty, several_ok);
+        attrs.no_default = no_default;
         let prefix = if several_ok {
             "One or more of"
         } else {
             "One of"
         };
+        let formal = match attrs.choice_formal(choices) {
+            Some(default) => format!("mode = {default}"),
+            None => "mode".to_string(),
+        };
         output.push_str(&format!(
-            "{ty}{}\n  formal:  mode = {}\n  wrapper: {}\n  caller:  {}\n  @param:  mode {prefix} \"fast\", \"safe\"{}.\n",
+            "{ty}{}{}\n  formal:  {formal}\n  wrapper: {}\n  caller:  {}\n  @param:  mode {prefix} \"fast\", \"safe\"{}.\n",
             if several_ok { " (several_ok)" } else { "" },
-            attrs.choice_formal(choices),
+            // Not `Mode (no_default)`: the shadowing test reads `Mode (` as a call.
+            if no_default { " with no_default" } else { "" },
             CallAttribution::Wrapper.match_arg_statement("mode", choices, &attrs),
             CallAttribution::Caller.match_arg_statement("mode", choices, &attrs),
             attrs.choice_doc_suffix(),
@@ -750,7 +770,7 @@ fn either_choice_layers_record_the_other_arm() {
     );
     let optional = choice_attrs("Option<Either<Vec<Mode>, DataFrame>>", true);
     assert!(optional.optional && !optional.omittable);
-    assert_eq!(optional.choice_formal("c(\"a\")"), "NULL");
+    assert_eq!(optional.choice_formal("c(\"a\")").as_deref(), Some("NULL"));
     let mut literal_several = crate::miniextendr_fn::ParamAttrs {
         choices: Some(vec!["a".into(), "b".into()]),
         several_ok: true,

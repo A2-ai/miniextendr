@@ -140,8 +140,9 @@ impl<'a> TraitMethodContext<'a> {
         trait_name: &'a syn::Ident,
     ) -> Self {
         let c_ident = method.c_wrapper_ident_string(type_ident, trait_name);
-        // match_arg/choices formal defaults are load-bearing for match.arg()
-        // (see `effective_r_defaults` docs) — not just cosmetic.
+        // The choice formals (the choice vector, `NULL` for `Option<T>`, none
+        // under `no_default(p)`), as on inherent methods; see
+        // `effective_r_defaults`.
         let effective_defaults = crate::r_class_formatter::effective_r_defaults(
             &method.param_defaults,
             &method.per_param,

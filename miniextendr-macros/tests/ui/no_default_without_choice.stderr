@@ -1,0 +1,5 @@
+error: `no_default` on parameter `n`, which is neither `match_arg` nor `choices`; only a choice parameter gets a generated default to drop, and any other parameter without a default already has a bare formal
+ --> tests/ui/no_default_without_choice.rs:8:49
+  |
+8 | fn bad_no_default(#[miniextendr(no_default)] n: i32) {}
+  |                                                 ^^^

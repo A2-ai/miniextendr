@@ -1,8 +1,9 @@
 //! Omittable choice parameters: `match_arg` / `choices` on `Missing<..>`
 //! (#1551). The formal keeps the choice vector and an omitted argument reaches
-//! Rust as `Missing::Absent`. Also a choice parameter that refuses an explicit
-//! `NULL` with `not_inherits("NULL")`, which a plain choice would read as its
-//! first choice.
+//! Rust as `Missing::Absent`. Under `no_default` (#1828) the formal is bare
+//! instead. Also a choice parameter that refuses an explicit `NULL` with
+//! `not_inherits("NULL")`, which a plain choice would read as its first
+//! choice.
 //!
 //! These fixtures have their own file, so their own help page: on
 //! `match_arg_tests.Rd` other functions document `mode` / `modes` themselves,
@@ -136,6 +137,50 @@ pub fn match_arg_omitted_refuse_null(
     match mode {
         Missing::Absent => "absent".to_string(),
         Missing::Present(m) => format!("{m:?}"),
+    }
+}
+// endregion
+
+// region: Choice without a default — no_default (#1828)
+
+/// Mode without a default: the formal is bare and the function reports an
+/// omitted argument itself.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_no_default_mode(
+    #[miniextendr(match_arg, no_default)] mode: Missing<Mode>,
+) -> String {
+    match mode {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(m) => format!("{m:?}"),
+    }
+}
+
+/// Plain mode without a default: an omitted argument is R's
+/// missing-argument error, as for any parameter without a default.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_no_default_plain(
+    #[miniextendr(match_arg)]
+    #[miniextendr(no_default)]
+    mode: Mode,
+) -> String {
+    format!("{mode:?}")
+}
+
+/// Inline choice without a default on a `Missing<Option<String>>`.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn choices_no_default_color(
+    #[miniextendr(choices("red", "green", "blue"), no_default)] color: Missing<Option<String>>,
+) -> String {
+    match color {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(c)) => c,
     }
 }
 // endregion

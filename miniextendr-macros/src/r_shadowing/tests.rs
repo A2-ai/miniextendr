@@ -152,7 +152,7 @@ fn choice_formal_default_calls_the_base_c() {
     let choices = "c(\"fast\", \"slow\")";
     let text = format!(
         "function(mode = {}, c) {{\n  {}\n}}",
-        attrs.choice_formal(choices),
+        attrs.choice_formal(choices).unwrap(),
         CallAttribution::Wrapper.match_arg_statement("mode", choices, &attrs)
     );
     assert_eq!(

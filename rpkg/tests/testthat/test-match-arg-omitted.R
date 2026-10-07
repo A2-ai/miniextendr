@@ -378,3 +378,80 @@ test_that("not_inherits(\"NULL\") on Missing<T> keeps an omitted argument Absent
     "`mode` can't be NULL; omit it to keep the current mode."
   )
 })
+
+# region: no_default — a choice parameter without a formal default (#1828)
+
+# A formal without a default is the empty symbol.
+expect_bare_formal <- function(fn, param) {
+  fmls <- formals(fn)
+  expect_true(param %in% names(fmls))
+  expect_identical(fmls[[param]], quote(expr = ))
+}
+
+test_that("no_default on Missing<T> match_arg: bare formal, omitted is Absent, matching unchanged", {
+  expect_bare_formal(match_arg_no_default_mode, "mode")
+  expect_equal(match_arg_no_default_mode(), "absent")
+  expect_equal(match_arg_no_default_mode("Sa"), "Safe")
+  expect_equal(match_arg_no_default_mode("De"), "Debug")
+  expect_equal(match_arg_no_default_mode(factor("Fast")), "Fast")
+  expect_equal(match_arg_no_default_mode(NULL), "Fast")
+  # The whole choice vector is still the first choice: only the formal changed.
+  expect_equal(match_arg_no_default_mode(modes), "Fast")
+  expect_choice_error(match_arg_no_default_mode("nope"), "mode", modes)
+  # Omission passes through a caller without a default, as for any `Missing`.
+  forward <- function(mode) match_arg_no_default_mode(mode)
+  expect_equal(forward(), "absent")
+})
+
+test_that("no_default on a plain T: an omitted argument is R's missing-argument error", {
+  expect_bare_formal(match_arg_no_default_plain, "mode")
+  expect_equal(match_arg_no_default_plain("Sa"), "Safe")
+  expect_equal(match_arg_no_default_plain(factor("Debug")), "Debug")
+  expect_error(match_arg_no_default_plain(), 'argument "mode" is missing, with no default', fixed = TRUE)
+  expect_choice_error(match_arg_no_default_plain("nope"), "mode", modes)
+})
+
+test_that("no_default on choices() Missing<Option<String>>", {
+  colors <- c("red", "green", "blue")
+  expect_bare_formal(choices_no_default_color, "color")
+  expect_equal(choices_no_default_color(), "absent")
+  expect_equal(choices_no_default_color(NULL), "null")
+  expect_equal(choices_no_default_color("gr"), "green")
+  expect_choice_error(choices_no_default_color("purple"), "color", colors)
+})
+
+test_that("no_default on an env method: bare formal, omitted is Absent", {
+  expect_bare_formal(EnvMatchArgCounter$pick, "mode")
+  e <- EnvMatchArgCounter$new("Fast")
+  expect_equal(e$pick(), "absent")
+  expect_equal(e$pick("Sa"), "Safe")
+  expect_equal(e$pick(factor("Debug")), "Debug")
+  expect_choice_error(e$pick("nope"), "mode", modes)
+})
+
+test_that("no_default: the usage line shows the bare argument and the @param line drops the omission note", {
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_text <- function(topic) {
+    pages <- vapply(rd_db, function(rd) {
+      gsub("\\s+", " ", paste(utils::capture.output(print(rd)), collapse = " "))
+    }, character(1))
+    page <- pages[grepl(paste0("\\alias{", topic, "}"), pages, fixed = TRUE)]
+    expect_length(page, 1L)
+    page[[1L]]
+  }
+  mode_page <- rd_text("match_arg_no_default_mode")
+  expect_match(mode_page, "match_arg_no_default_mode(mode)", fixed = TRUE)
+  expect_match(mode_page, "One of \"Fast\", \"Safe\", \"Debug\".", fixed = TRUE)
+  expect_no_match(mode_page, "omitting the argument", fixed = TRUE)
+  expect_match(rd_text("match_arg_no_default_plain"), "match_arg_no_default_plain(mode)", fixed = TRUE)
+  color_page <- rd_text("choices_no_default_color")
+  expect_match(color_page, "choices_no_default_color(color)", fixed = TRUE)
+  expect_match(color_page, "One of \"red\", \"green\", \"blue\", or NULL.", fixed = TRUE)
+  expect_no_match(color_page, "omitting the argument", fixed = TRUE)
+  env_page <- rd_text("EnvMatchArgCounter")
+  expect_match(env_page, "Arguments of \\code{EnvMatchArgCounter$pick()}:", fixed = TRUE)
+  expect_no_match(env_page, "omitting the argument", fixed = TRUE)
+})
+
+# endregion

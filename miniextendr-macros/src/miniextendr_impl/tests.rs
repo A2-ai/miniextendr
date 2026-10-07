@@ -4769,6 +4769,104 @@ fn snapshot_env_match_arg_omitted() {
     insta::assert_snapshot!(generate_env_r_wrapper(&parsed));
 }
 
+/// `no_default(p)` on a method's choice parameters (#1828): each formal is the
+/// bare name, while the prelude still spells the choice list out (the
+/// placeholder for `match_arg`) and the `.Call()` still forwards the
+/// missing-argument sentinel for `Missing<..>`.
+#[test]
+fn snapshot_env_match_arg_no_default() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Picker {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(match_arg(mode), choices(color = "red, green"), no_default(mode, color))]
+            pub fn pick(&self, mode: Missing<Mode>, color: String) -> String {
+                unimplemented!()
+            }
+            #[miniextendr(no_default(modes), match_arg_several_ok(modes))]
+            pub fn pick_many(&self, modes: Missing<Option<Either<Vec<Mode>, DataFrame>>>) -> String {
+                unimplemented!()
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::Env, item_impl);
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("function(mode, color)"),
+        "bare choice formals:\n{wrapper}"
+    );
+    assert!(
+        wrapper.contains("function(modes)"),
+        "bare several_ok formal:\n{wrapper}"
+    );
+    insta::assert_snapshot!(wrapper);
+}
+
+/// Under `no_default(p)` a method's generated choice text keeps the other
+/// accepted values and drops the omission note (#1828).
+#[test]
+fn method_no_default_choice_text_drops_the_omission_note() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Picker {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(choices(color = "red, green"), no_default(color))]
+            pub fn pick(&self, color: Missing<Option<String>>) -> String { unimplemented!() }
+        }
+    };
+    let wrapper = generate_r6_r_wrapper(&parse_impl(ClassSystem::R6, item_impl));
+    assert!(
+        wrapper.contains("@param color One of \"red\", \"green\", or NULL."),
+        "{wrapper}"
+    );
+    assert!(!wrapper.contains("omitting the argument"), "{wrapper}");
+    assert!(wrapper.contains("function(color)"), "{wrapper}");
+}
+
+/// The method-level `no_default(p)` is refused where it cannot apply (#1828):
+/// on a parameter that is no choice, with a `defaults(p = ...)`, and on a
+/// name that is no parameter. Each message names the parameter.
+#[test]
+fn method_no_default_errors() {
+    let parse_err = |item_impl: syn::ItemImpl| {
+        ParsedImpl::parse(default_impl_attrs(ClassSystem::Env), item_impl)
+            .expect_err("rejected")
+            .to_string()
+    };
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(no_default(n))]
+            pub fn take(&self, n: i32) {}
+        }
+    });
+    assert!(
+        err.contains(
+            "`no_default(n)` on parameter `n`, which is neither `match_arg` nor `choices`"
+        ),
+        "{err}"
+    );
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(choices(mode = "a, b"), no_default(mode), defaults(mode = "\"a\""))]
+            pub fn take(&self, mode: String) {}
+        }
+    });
+    assert!(
+        err.contains(
+            "cannot combine `no_default(mode)` and `defaults(mode = ...)` on parameter `mode`"
+        ),
+        "{err}"
+    );
+    let err = parse_err(syn::parse_quote! {
+        impl S {
+            #[miniextendr(match_arg(mode), no_default(mdoe))]
+            pub fn take(&self, mode: Mode) {}
+        }
+    });
+    assert!(
+        err.contains("no_default/inherits/not_inherits/no_na/(no_)preconditions references non-existent parameter `mdoe`"),
+        "{err}"
+    );
+}
+
 /// `several_ok` choice lists with another kind of value on a method (#1612):
 /// the prelude matches only character or factor input (behind `!missing()`
 /// for the omittable one), and the formals keep the choice vectors.

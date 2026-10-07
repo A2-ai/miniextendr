@@ -1185,6 +1185,62 @@ fn parsed_fn_precondition_skips_use_r_names() {
 
 // endregion
 
+// region: `no_default` on a choice parameter (#1828)
+
+/// `no_default` reads the same in one attribute or its own, on `match_arg`
+/// (with `several_ok`) and `choices(...)`, and leaves the choice formal out.
+#[test]
+fn parsed_fn_no_default_spellings() {
+    let parsed = parsed_fn(quote::quote! {
+        fn f(
+            #[miniextendr(match_arg, no_default)] mode: Missing<Mode>,
+            #[miniextendr(match_arg, several_ok)]
+            #[miniextendr(no_default)]
+            modes: Missing<Option<Either<Vec<Mode>, DataFrame>>>,
+            #[miniextendr(choices("red", "green"), no_default)] color: String,
+            #[miniextendr(match_arg)] plain: Mode,
+        ) {}
+    });
+    for name in ["mode", "modes", "color"] {
+        let attrs = parsed.param_attrs(name).expect("choice param");
+        assert!(attrs.no_default, "{name}");
+        assert_eq!(attrs.choice_formal("c(\"a\")"), None, "{name}");
+    }
+    let plain = parsed.param_attrs("plain").expect("choice param");
+    assert!(!plain.no_default);
+    assert_eq!(plain.choice_formal("c(\"a\")").as_deref(), Some("c(\"a\")"));
+    // The omission note goes; the other accepted values stay.
+    let modes = parsed.param_attrs("modes").unwrap();
+    assert_eq!(modes.choice_doc_suffix(), ", a data frame, or NULL");
+    assert_eq!(parsed.param_attrs("mode").unwrap().choice_doc_suffix(), "");
+}
+
+/// `no_default` is refused on a parameter that is no choice, and with a
+/// `default`, whichever choice keyword it joins; each error names the
+/// parameter.
+#[test]
+fn parsed_fn_no_default_errors() {
+    let err = param_attr_error(quote::quote! {
+        fn f(#[miniextendr(no_default)] n: i32) {}
+    });
+    assert!(
+        err.contains("`no_default` on parameter `n`, which is neither `match_arg` nor `choices`"),
+        "{err}"
+    );
+    for tokens in [
+        quote::quote! { fn f(#[miniextendr(match_arg, no_default, default = "\"Fast\"")] mode: Mode) {} },
+        quote::quote! { fn f(#[miniextendr(choices("a", "b"), no_default, default = "\"a\"")] mode: String) {} },
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(
+            err.contains("cannot combine `no_default` and `default = \"...\"` on parameter `mode`"),
+            "{err}"
+        );
+    }
+}
+
+// endregion
+
 #[test]
 fn miniextendr_attr_rejects_unknown_options() {
     let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(typo))

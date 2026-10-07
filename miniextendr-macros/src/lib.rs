@@ -1306,26 +1306,33 @@ pub fn miniextendr(
             None => String::new(),
         };
         let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), &r_name);
-        // `Option<T>` (#1473): the formal is `NULL` (no choice); the prelude
-        // spells the choices out through the same placeholder instead.
+        // `Option<T>` (#1473): the formal is `NULL` (no choice); `no_default`
+        // (#1828, which `default` cannot join): no formal default. The prelude
+        // spells the choices out through the same placeholder either way, so
+        // its entry is emitted below in every case.
         let formal = match parsed.param_attrs(match_arg_param) {
             Some(attrs) => attrs.choice_formal(&placeholder),
-            None => placeholder.clone(),
+            None => Some(placeholder.clone()),
         };
-        merged_defaults.insert(r_name.clone(), formal);
+        if let Some(formal) = formal {
+            merged_defaults.insert(r_name.clone(), formal);
+        }
         match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg
-    // pattern); an `Option<T>` choices param defaults to `NULL` instead (#1473).
+    // pattern); an `Option<T>` choices param defaults to `NULL` instead
+    // (#1473), and a `no_default` one gets none (#1828).
     for (param_name, choices) in parsed.choices_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(param_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{}\"", c)).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
         let formal = match parsed.param_attrs(param_name) {
             Some(attrs) => attrs.choice_formal(&choices_expr),
-            None => choices_expr,
+            None => Some(choices_expr),
         };
-        merged_defaults.entry(r_name).or_insert(formal);
+        if let Some(formal) = formal {
+            merged_defaults.entry(r_name).or_insert(formal);
+        }
     }
     arg_builder = arg_builder.with_defaults(merged_defaults);
 

@@ -387,7 +387,55 @@ if its own formal has no default: `run <- function(mode) run_impl(mode)`
 reaches Rust as `Absent` when called as `run()`, while
 `function(mode = c("Fast", "Safe")) run_impl(mode)` hands the default vector
 over as a supplied value (R's `missing()` does not see through a formal with a
-default).
+default). To give the generated wrapper itself a bare formal, use
+`no_default` (below).
+
+#### Without a Default: `no_default`
+
+The choice vector in the formal tells an R user that omitting the argument
+picks the first choice (every choice under `several_ok`). A function that
+refuses an omitted argument has no such default. Add `no_default` and the
+formal is the bare name (#1828):
+
+```rust
+#[miniextendr]
+pub fn run(#[miniextendr(match_arg, no_default)] mode: Missing<Mode>) -> String {
+    match mode {
+        Missing::Absent => "name a mode: there is none to assume".into(),
+        Missing::Present(mode) => format!("running {mode:?}"),
+    }
+}
+```
+
+```r
+run <- function(mode) {
+  if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode")
+  .Call(C_mypkg_run, .call = sys.call(), if (missing(mode)) quote(expr=) else mode)
+}
+
+run()             # Missing::Absent
+run("Sa")         # Missing::Present(Safe)
+run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
+```
+
+Only the formal changes, and with it the usage line (`run(mode)`) and
+`args(run)`. The prelude, the choice list, partial matching and factor input
+stay as they were, since the helpers take the choice list as an argument. An
+omitted `Missing<..>` argument still reaches Rust as `Absent`, so the function
+words its own refusal. Any other type (`Mode`, `Option<Mode>`, an `Either`, a
+`several_ok` list) behaves like any parameter without a default: the prelude's
+first use of the omitted argument raises R's `argument "mode" is missing, with
+no default`.
+
+The auto-generated `@param` line still lists the choices and the other
+accepted values (`, or NULL`, `, or a data frame`), but it drops "omitting the
+argument means no choice": what omission means is yours to document. The
+keyword works with `choices(...)` and `several_ok` as well
+(`#[miniextendr(match_arg, several_ok, no_default)]`). It is a compile error
+together with `default = "..."` and on a parameter that is neither `match_arg`
+nor `choices`. Impl and trait methods name the parameter at method level,
+`no_default(p)` (or `no_default(p, q)`), next to `match_arg(p)` /
+`choices(p = "...")`.
 
 ### Choice or Another Value: `Either<T, R>`
 
