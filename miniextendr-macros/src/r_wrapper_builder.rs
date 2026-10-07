@@ -311,7 +311,10 @@ impl<'a> RArgumentBuilder<'a> {
 
             // `Quoted` / `Quosure` (also under `Missing<..>`, #1835): the
             // argument unevaluated, behind the same missing-argument sentinel
-            // as `Missing<T>`. Neither branch forces it.
+            // as `Missing<T>`. Neither branch forces it. A `default` on
+            // `Missing<..>` only writes the formal: `missing()` is `TRUE` for
+            // an omitted argument with a default, so the default is never
+            // evaluated.
             if let Some(param) = crate::type_inspect::unevaluated_param(pat_type.ty.as_ref()) {
                 call_args.push(param.kind.r_call_arg(&arg_ident.to_string()));
                 continue;

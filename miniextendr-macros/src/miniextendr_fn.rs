@@ -428,8 +428,12 @@ pub(crate) fn validate_per_param_attr_conflicts(
             ),
         ));
     }
+    // `Missing<Quoted>` / `Missing<Quosure>` takes a `default` that only
+    // writes the formal: the wrapper tests `missing()` before it captures the
+    // argument, so the default is never evaluated (#1835).
     if let Some(ty) = ty
         && is_missing_type(ty)
+        && crate::type_inspect::unevaluated_param(ty).is_none()
         && attr.default_value.is_some()
     {
         return Err(syn::Error::new(
@@ -1445,6 +1449,35 @@ pub(crate) struct ParamAttrs {
 }
 
 impl ParamAttrs {
+    /// Whether `default = "..."` is this parameter's only option: all that a
+    /// `Missing<Quoted>` / `Missing<Quosure>` parameter takes (#1835).
+    pub(crate) fn is_default_only(&self) -> bool {
+        let ParamAttrs {
+            coerce,
+            match_arg,
+            several_ok,
+            choices,
+            default,
+            optional,
+            omittable,
+            no_default,
+            either_noun,
+            checks,
+            preconditions,
+        } = self;
+        default.is_some()
+            && !coerce
+            && !match_arg
+            && !several_ok
+            && choices.is_none()
+            && !optional
+            && !omittable
+            && !no_default
+            && either_noun.is_none()
+            && checks.is_empty()
+            && preconditions.is_none()
+    }
+
     /// Whether this is a `match_arg` / `choices` parameter.
     pub(crate) fn is_choice(&self) -> bool {
         self.match_arg || self.choices.is_some()

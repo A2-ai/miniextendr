@@ -1000,6 +1000,10 @@ pub fn miniextendr(
     // would force it (a check, a coercion, a default evaluated in the wrapper's
     // frame), and a marker in any other position than the whole type or
     // `Missing<..>` would be converted as a forced value: all compile errors.
+    // One exception: `default` alone on `Missing<..>` only writes the formal
+    // (`x = NULL` in the usage). An omitted argument is still `missing()`, so
+    // the wrapper passes the missing-argument sentinel and never evaluates the
+    // default.
     let mut unevaluated_r_names: Vec<String> = Vec::new();
     for arg in all_inputs.iter() {
         let syn::FnArg::Typed(pt) = arg else {
@@ -1023,15 +1027,26 @@ pub fn miniextendr(
         };
         let marker = param.kind.name();
         let rust_name = crate::naming::ident_name(&pat_ident.ident);
-        if parsed.has_param_attrs(&rust_name) {
+        let default_only = param.optional
+            && parsed
+                .param_attrs(&rust_name)
+                .is_some_and(miniextendr_fn::ParamAttrs::is_default_only);
+        if parsed.has_param_attrs(&rust_name) && !default_only {
+            let hint = if param.optional {
+                format!(
+                    "`Missing<{marker}>` takes `default` alone, which only writes the \
+                     formal and is never evaluated"
+                )
+            } else {
+                format!("Use `Missing<{marker}>` for an optional argument")
+            };
             return syn::Error::new_spanned(
                 pt,
                 format!(
                     "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
                      `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not \
                      apply to a `{marker}` parameter: the wrapper passes the argument \
-                     unevaluated, and each of them would force it. Use `Missing<{marker}>` \
-                     for an optional argument"
+                     unevaluated, and each of them would force it. {hint}"
                 ),
             )
             .into_compile_error()

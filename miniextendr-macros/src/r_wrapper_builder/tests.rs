@@ -467,6 +467,23 @@ fn snapshot_formals_and_call_args() {
         output.push_str(&format!("call_arg: {arg}\n"));
     }
 
+    // A `default` on `Missing<..>` writes the formal only; the argument still
+    // passes behind the sentinel, so the default is never evaluated.
+    output.push_str("\n# Unevaluated arguments under Missing<..> with a default\n");
+    let inputs = parse_inputs("cols: Missing<Quosure>, by: Missing<Quoted>");
+    let builder = RArgumentBuilder::new(&inputs).with_defaults(
+        [
+            ("cols".to_string(), "NULL".to_string()),
+            ("by".to_string(), "stop(\"never evaluated\")".to_string()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    output.push_str(&format!("formals: {}\n", builder.build_formals()));
+    for arg in builder.build_call_args_vec() {
+        output.push_str(&format!("call_arg: {arg}\n"));
+    }
+
     insta::assert_snapshot!(output);
 }
 // endregion

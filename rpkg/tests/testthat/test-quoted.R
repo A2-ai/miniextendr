@@ -86,6 +86,30 @@ test_that("an omitted Quoted argument is a conversion error; Missing<Quoted> get
   expect_identical(fwd(TIME), "symbol")
 })
 
+test_that("a default on Missing<Quoted> writes the formal and is never evaluated", {
+  f <- miniextendr:::quoted_default
+  expect_identical(names(formals(f)), "x")
+  expect_identical(formals(f), as.pairlist(alist(x = NULL)))
+  expect_identical(deparse(args(f))[[1L]], "function (x = NULL) ")
+
+  expect_identical(f(), "absent")
+  expect_identical(f(TIME), "symbol")
+  expect_identical(f(a + b), "language")
+  expect_identical(f(NULL), "NULL")
+  fwd <- function(x) f(x)
+  expect_identical(fwd(), "absent")
+
+  g <- miniextendr:::quoted_default_unevaluated
+  expect_identical(formals(g)[["x"]], quote(stop("the default was evaluated")))
+  expect_identical(g(), "absent")
+  expect_identical(g(stop("not evaluated either")), "language")
+
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_text <- paste(capture.output(print(rd_db[["quoted_default.Rd"]])), collapse = "\n")
+  expect_match(rd_text, "quoted_default(x = NULL)", fixed = TRUE)
+})
+
 test_that("the caller's calling handlers see a warning once, and can muffle it", {
   seen <- 0L
   value <- withCallingHandlers(
@@ -181,6 +205,56 @@ test_that("repeated R exits leave the session usable", {
   expect_identical(miniextendr:::quoted_eval(x + 1), 2)
 })
 
+test_that("an R exit caught with catch_unwind and dropped is abandoned, as after R_tryEval", {
+  before <- drops()
+  ran <- FALSE
+  out <- tryCatch(
+    miniextendr:::quoted_eval_abandoned({
+      warning("caught in Rust")
+      1
+    }),
+    warning = function(w) {
+      ran <<- TRUE
+      "handler"
+    }
+  )
+  expect_true(out)
+  expect_false(ran)
+  expect_identical(drops() - before, 1L)
+
+  for (i in seq_len(200L)) {
+    out <- withRestarts(
+      miniextendr:::quoted_eval_abandoned(invokeRestart("mx_restart", 5)),
+      mx_restart = function(v) "restart ran"
+    )
+    expect_true(out)
+  }
+  expect_false(miniextendr:::quoted_eval_abandoned(1 + 1))
+  x <- 1
+  expect_identical(miniextendr:::quoted_eval(x + 1), 2)
+
+  # Dropped on another thread: released by the next evaluation instead.
+  for (i in seq_len(50L)) {
+    expect_true(tryCatch(
+      miniextendr:::quoted_eval_abandoned_elsewhere(stop("elsewhere")),
+      error = function(e) "handler"
+    ))
+    expect_identical(miniextendr:::quoted_eval(x + i), 1 + i)
+  }
+})
+
+test_that("an R exit resumed after its call returned is an error, not a jump", {
+  expect_true(tryCatch(
+    miniextendr:::quoted_eval_stash(stop("kept")),
+    error = function(e) "handler"
+  ))
+  e <- tryCatch(miniextendr:::quoted_resume_stashed(), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "panic")
+  expect_match(conditionMessage(e), "resumed outside the call that raised it", fixed = TRUE)
+  expect_false(miniextendr:::quoted_resume_stashed())
+})
+
 # endregion
 
 # region: Quosure
@@ -249,6 +323,26 @@ test_that("an omitted Quosure argument is a conversion error; Missing<Quosure> g
   expect_identical(fwd(TIME), "symbol")
   bare <- function(col) miniextendr:::quosure_name({{ col }})
   expect_identical(tryCatch(bare(), error = function(e) e$kind), "conversion")
+})
+
+test_that("a default on Missing<Quosure> writes the formal and is never evaluated", {
+  f <- miniextendr:::quosure_default
+  expect_identical(formals(f), as.pairlist(alist(x = NULL)))
+  expect_identical(deparse(args(f))[[1L]], "function (x = NULL) ")
+  # Omitted: the wrapper passes the sentinel before it would call enquo().
+  expect_identical(f(), "absent")
+
+  skip_if_not_installed("rlang")
+  expect_identical(f(TIME), "symbol")
+  expect_identical(f(a + b), "language")
+  fwd <- function(col) f({{ col }})
+  expect_identical(fwd(), "absent")
+  expect_identical(fwd(TIME), "symbol")
+
+  rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
+  skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
+  rd_text <- paste(capture.output(print(rd_db[["quosure_default.Rd"]])), collapse = "\n")
+  expect_match(rd_text, "quosure_default(x = NULL)", fixed = TRUE)
 })
 
 test_that("eval_tidy() conditions reach the caller's handlers", {
@@ -436,9 +530,28 @@ test_that("unevaluated arguments and R exits survive gctorture", {
     e <- tryCatch(miniextendr:::quoted_eval(stop("gc")), error = identity)
     w <- tryCatch(miniextendr:::quoted_eval(warning("gc")), warning = identity)
     n <- miniextendr:::quoted_name("x")
+    # A restart's value through an on.exit() frame, an abandoned exit, and an
+    # exit resumed after its call returned.
+    via <- function(v) {
+      on.exit(force(list(v)))
+      miniextendr:::quoted_eval(invokeRestart("mx_gc", list(v)))
+    }
+    r <- withRestarts(via(i), mx_gc = function(v) v[[1L]] * 2L)
+    abandoned <- tryCatch(
+      miniextendr:::quoted_eval_abandoned(stop("gc")),
+      error = function(e) FALSE
+    )
+    elsewhere <- tryCatch(
+      miniextendr:::quoted_eval_abandoned_elsewhere(stop("gc")),
+      error = function(e) FALSE
+    )
+    stashed <- tryCatch(miniextendr:::quoted_eval_stash(stop("gc")), error = function(e) FALSE)
+    stray <- tryCatch(miniextendr:::quoted_resume_stashed(), error = conditionMessage)
     if (identical(rows, 3:5) && identical(sub$a, 3:5) &&
         identical(conditionMessage(e), "gc") && inherits(w, "warning") &&
-        identical(n, "x") && identical(miniextendr:::gc_stress_quoted(), 66L)) {
+        identical(n, "x") && identical(miniextendr:::gc_stress_quoted(), 66L) &&
+        identical(r, i * 2L) && isTRUE(abandoned) && isTRUE(elsewhere) &&
+        isTRUE(stashed) && grepl("resumed outside the call", stray, fixed = TRUE)) {
       ok <- ok + 1L
     }
   }

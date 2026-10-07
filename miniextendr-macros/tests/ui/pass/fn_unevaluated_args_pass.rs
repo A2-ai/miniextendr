@@ -1,8 +1,8 @@
 //! Compile-pass test for unevaluated arguments (#1835): `Quoted` and
-//! `Quosure`, bare and under `Missing<..>`, with and without a written
-//! lifetime, a fully qualified path, next to ordinary and `Call` parameters,
-//! on a standalone S3 method, and under `worker` (which they keep on R's main
-//! thread).
+//! `Quosure`, bare and under `Missing<..>` (also with a `default`), with and
+//! without a written lifetime, a fully qualified path, next to ordinary and
+//! `Call` parameters, on a standalone S3 method, and under `worker` (which
+//! they keep on R's main thread).
 
 #![allow(dead_code)]
 
@@ -42,6 +42,19 @@ pub fn tidy_cols(data: SEXP, cols: Quosure, call: Call) -> SEXP {
 
 #[miniextendr]
 pub fn optional_cols(cols: Missing<Quosure<'_>>) -> bool {
+    cols.is_present()
+}
+
+// `default` alone on `Missing<..>` only writes the formal.
+#[miniextendr]
+pub fn optional_cond_default(#[miniextendr(default = "NULL")] cond: Missing<Quoted>) -> bool {
+    cond.is_missing()
+}
+
+#[miniextendr]
+pub fn optional_cols_default(
+    #[miniextendr(default = "NULL")] cols: Missing<Quosure<'_>>,
+) -> bool {
     cols.is_present()
 }
 

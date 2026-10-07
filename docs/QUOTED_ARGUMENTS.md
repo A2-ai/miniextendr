@@ -158,13 +158,32 @@ before the function body runs. An argument forwarded from a function whose
 own argument was omitted is omitted too: `g <- function(y) keep_rows(df, y);
 g()`, and for `Quosure`, `{{ col }}` with `col` omitted.
 
+`Missing<..>` takes a `default` for the formal, so the usage reads `x = NULL`:
+
+```rust
+#[miniextendr]
+pub fn summarise_by(
+    data: SEXP,
+    #[miniextendr(default = "NULL")] by: Missing<Quosure>,
+) -> SEXP { /* ... */ }
+```
+
+The default is never evaluated, and Rust never sees it: `missing(by)` is
+`TRUE` for an omitted argument with a default, so the wrapper passes the
+missing-argument sentinel (`if (missing(by)) quote(expr=) else
+rlang::enquo(by)`) and the function gets `Missing::Absent`. A default that
+would raise an error if evaluated is as good as `NULL`. Only `default` is
+accepted, and only under `Missing<..>`.
+
 ## Restrictions
 
 These are compile errors, each because it would force the argument or has no
 argument to act on:
 
-- per-parameter options (`default`, `coerce`, `match_arg`, `choices`,
-  `no_na`, `inherits`, `not_inherits`, `preconditions`) on the parameter;
+- per-parameter options (`coerce`, `match_arg`, `choices`, `no_na`,
+  `inherits`, `not_inherits`, `preconditions`) on the parameter, and
+  `default` on a bare marker or next to another option (`default` alone on
+  `Missing<..>` writes the formal only, above);
 - `Checked<Quoted>` / `Unchecked<..>`: the parameter has no R-side checks;
 - the marker anywhere but the whole type or `Missing<..>`'s type argument
   (`Option<Quoted>`, `Vec<Quoted>`);
@@ -205,13 +224,17 @@ Two rules follow from the unwind:
 
 - Don't stop it with `std::panic::catch_unwind` between the evaluation and the
   boundary: the R jump would be dropped, and R would carry on as after
-  `R_tryEval`. A caught payload must be resumed (`resume_unwind`).
+  `R_tryEval`. A caught payload must be resumed (`resume_unwind`) on the same
+  thread before the call returns. The jump's target is an R frame of that
+  call, so a payload kept and resumed in a later call cannot continue: the
+  boundary raises an error instead.
 - Don't evaluate from a `Drop` implementation: a jump there would start an
   unwind during an unwind, which aborts.
 
 It must run inside a miniextendr boundary on R's main thread: a
-`#[miniextendr]` body, a `with_r_unwind_protect` closure, a guarded ALTREP or
-connection callback, a `with_r_thread` closure.
+`#[miniextendr]` body, a `with_r_unwind_protect` closure, an ALTREP callback
+with the `r_unwind` or `rust_unwind` guard (the `unsafe` guard catches
+nothing), a connection callback, a `with_r_thread` closure.
 
 ### Calls built in Rust
 

@@ -351,7 +351,9 @@ parent.frame())` / `rlang::enquo(x)`) only for `x: Quoted`, `x: Quosure` and
 the same inside `Missing<..>`; `Option<Quoted>` or `Vec<Quosure>` would be
 converted from a forced value. Use `Missing<Quoted>` for an optional argument.
 The same family covers `per-parameter options (...) do not apply to a Quoted
-parameter` (a default, coercion or check would force the argument),
+parameter` (a default, coercion or check would force the argument; `default`
+alone is accepted on `Missing<Quoted>` / `Missing<Quosure>`, where it only
+writes the formal),
 `` `Checked<Quoted>` on parameter `x`: `Quoted` has no R-side type check to
 keep or drop `` and `` `Quoted` parameters are supported on
 standalone #[miniextendr] functions only `` (a class or trait method's wrapper

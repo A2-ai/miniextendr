@@ -89,12 +89,15 @@ where
     match mode {
         GuardMode::CatchUnwind => {
             let mark = crate::deferred_condition::mark();
+            let boundary = crate::unwind_protect::Boundary::enter();
             let outcome = catch_unwind(AssertUnwindSafe(f)).map_err(|payload| {
                 // An R exit carried out of an evaluation (#1835) continues in R.
                 // SAFETY: a callback boundary on R's main thread.
-                let payload = unsafe { crate::unwind_protect::resume_if_r_unwind(payload, mark) };
+                let payload =
+                    unsafe { crate::unwind_protect::resume_if_r_unwind(payload, mark, &boundary) };
                 crate::unwind_protect::panic_message_with_location(payload.as_ref())
             });
+            drop(boundary);
             match crate::deferred_condition::finish_guarded(mark, outcome) {
                 Ok(val) => val,
                 Err(msg) => {
@@ -125,22 +128,26 @@ where
     F: FnOnce() -> R,
 {
     let mark = crate::deferred_condition::mark();
+    let boundary = crate::unwind_protect::Boundary::enter();
     let outcome = match catch_unwind(AssertUnwindSafe(f)) {
         Ok(value) => Ok(value),
         Err(payload) => {
             let payload = match payload.downcast::<crate::unwind_protect::RUnwind>() {
                 // An R exit carried out of an evaluation (#1835) continues in R.
-                Ok(exit) => {
+                Ok(exit) if exit.belongs_to(&boundary) => {
                     drop(fallback);
                     crate::deferred_condition::discard(mark);
+                    boundary.leave();
                     // SAFETY: a callback boundary on R's main thread.
                     unsafe { (*exit).resume() }
                 }
+                Ok(exit) => exit.stray(),
                 Err(payload) => payload,
             };
             Err(panic_payload_to_string(payload.as_ref()).into_owned())
         }
     };
+    drop(boundary);
     let (outcome, fallback) = crate::deferred_condition::finish_guarded(mark, (outcome, fallback));
     match outcome {
         Ok(val) => val,

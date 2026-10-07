@@ -1,7 +1,8 @@
 //! Test: a per-parameter option on a `Quoted` parameter.
 //!
 //! The wrapper passes the argument unevaluated; a default, a coercion or a
-//! check would force it (#1835). `Missing<Quoted>` is the optional spelling.
+//! check would force it (#1835). `Missing<Quoted>` is the optional spelling,
+//! and the only one that takes a `default` (which it never evaluates).
 
 use miniextendr_macros::miniextendr;
 
