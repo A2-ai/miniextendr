@@ -16,7 +16,7 @@ Two parameter markers do this, both in `miniextendr_api`:
 
 Either may be wrapped in `Missing<..>` for an optional argument. Evaluating R
 code from Rust in the caller's R context is also available on its own, for
-calls built in Rust: [`eval_with_handlers`](#evaluating-in-the-callers-r-context).
+calls built in Rust: [`eval_with_handlers`](#handler-keeping-evaluation).
 
 ## `Quoted`
 
@@ -175,7 +175,7 @@ A function taking either marker runs on R's main thread (also under
 `worker`), and a marker borrows the `.Call()` argument: it cannot be stored
 or sent to another thread. A written lifetime (`Quoted<'a>`) is accepted.
 
-## Evaluating in the caller's R context
+## Handler-keeping evaluation
 
 `Quoted::eval()`, `eval_in()` and `Quosure::eval_tidy()` evaluate through
 `miniextendr_api::expression::eval_with_handlers(expr, env)`, which is also

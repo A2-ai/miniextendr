@@ -352,6 +352,30 @@ test_that("rlang's warn() and abort() through a built call with named arguments"
   expect_equal(conditionCall(e), quote(my_caller(x)))
 })
 
+test_that("rlang::eval_tidy() through a built call: column wins, conditions intact", {
+  skip_if_not_installed("rlang")
+  a <- 100
+  expect_identical(
+    miniextendr:::quoted_call_ns("rlang", "eval_tidy", list(expr = rlang::quo(a), data = tbl)),
+    1:5
+  )
+  expect_identical(
+    miniextendr:::quoted_call_ns("rlang", "eval_tidy", list(expr = rlang::quo(.env$a), data = tbl)),
+    100
+  )
+  before <- drops()
+  e <- tryCatch(
+    miniextendr:::quoted_call_ns("rlang", "eval_tidy", list(
+      expr = rlang::quo(rlang::abort("in the quosure", class = "mx_tidy_error", call = quote(tidy_caller()))),
+      data = tbl
+    )),
+    error = identity
+  )
+  expect_s3_class(e, "mx_tidy_error")
+  expect_equal(conditionCall(e), quote(tidy_caller()))
+  expect_identical(drops() - before, 1L)
+})
+
 test_that("tidyselect::eval_select() through a built call, error_call the wrapper's call", {
   skip_if_not_installed("rlang")
   skip_if_not_installed("tidyselect")
@@ -369,6 +393,28 @@ test_that("tidyselect::eval_select() through a built call, error_call the wrappe
   # allow_rename = FALSE reached eval_select().
   e <- tryCatch(miniextendr:::quosure_select(tbl, c(new = a)), error = identity)
   expect_s3_class(e, "rlang_error")
+})
+
+test_that("with_r_thread from a worker body keeps the caller's handlers", {
+  seen <- 0L
+  out <- withCallingHandlers(
+    miniextendr:::quoted_worker_call("base", "warning", "from the worker"),
+    warning = function(w) {
+      seen <<- seen + 1L
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(out, "from the worker")
+  expect_identical(seen, 1L)
+
+  e <- tryCatch(miniextendr:::quoted_worker_call("base", "stop", "worker error"), error = identity)
+  expect_s3_class(e, "simpleError")
+  expect_identical(conditionMessage(e), "worker error")
+  w <- tryCatch(miniextendr:::quoted_worker_call("base", "warning", "exit"), warning = identity)
+  expect_s3_class(w, "simpleWarning")
+  expect_identical(conditionMessage(w), "exit")
+  # The worker answers the next call.
+  expect_identical(miniextendr:::quoted_worker_call("base", "toupper", "ok"), "OK")
 })
 
 # endregion

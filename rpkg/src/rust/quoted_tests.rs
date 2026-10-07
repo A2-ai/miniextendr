@@ -104,6 +104,11 @@ pub fn mx_quoted_tbl_subset(x: SEXP, subset: Quoted, _dots: ...) -> SEXP {
     }
 }
 
+/// An R vector index.
+fn idx(i: usize) -> isize {
+    isize::try_from(i).expect("an R vector index fits in isize")
+}
+
 /// The 1-based positions of the `TRUE` elements of a logical vector.
 fn true_rows(keep: SEXP) -> Vec<i32> {
     assert!(
@@ -112,7 +117,7 @@ fn true_rows(keep: SEXP) -> Vec<i32> {
         keep.type_of().type_name()
     );
     (0..keep.len())
-        .filter(|&i| keep.logical_elt(i as isize) == 1)
+        .filter(|&i| keep.logical_elt(idx(i)) == 1)
         .map(|i| i32::try_from(i + 1).expect("row number fits an R integer"))
         .collect()
 }
@@ -197,11 +202,11 @@ pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
         let names = args.get_names();
         let mut call = RCall::namespaced(pkg, fun).unwrap_or_else(|e| panic!("{e}"));
         for i in 0..args.len() {
-            let value = args.vector_elt(i as isize);
+            let value = args.vector_elt(idx(i));
             let name = if names.is_nil() {
                 None
             } else {
-                names.string_elt_str(i as isize).filter(|n| !n.is_empty())
+                names.string_elt_str(idx(i)).filter(|n| !n.is_empty())
             };
             call = match name {
                 Some(name) => call.named_quoted_arg(name, value),
@@ -210,6 +215,30 @@ pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
         }
         call.eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
     }
+}
+
+/// Call `pkg::fun(arg)` from the worker thread, through `with_r_thread` and
+/// `RCall::eval_with_handlers`: the value as a string (`""` when it is not
+/// one). An R exit in the callback continues to the caller's handler, and the
+/// worker answers the next call.
+#[miniextendr(noexport, worker)]
+pub fn quoted_worker_call(pkg: String, fun: String, arg: String) -> String {
+    miniextendr_api::worker::with_r_thread(move || {
+        // SAFETY: `with_r_thread` runs this on R's main thread, inside the
+        // `.Call()`; `RCall` roots its arguments.
+        unsafe {
+            let arg = OwnedProtect::new(SEXP::scalar_string_from_str(&arg));
+            let value = RCall::namespaced(&pkg, &fun)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .arg(arg.get())
+                .eval_with_handlers(miniextendr_api::sys::R_BaseEnv);
+            if value.type_of() == SEXPTYPE::STRSXP && value.len() > 0 {
+                value.string_elt_str(0).unwrap_or_default().to_owned()
+            } else {
+                String::new()
+            }
+        }
+    })
 }
 
 // endregion
@@ -244,7 +273,7 @@ pub fn gc_stress_quoted() -> i32 {
             OwnedProtect::new(List::from_raw_pairs(vec![("a", a.get()), ("b", b.get())]).as_sexp());
         let sum = OwnedProtect::new(quoted.eval_in(data.get()));
         let total: i32 = (0..sum.get().len())
-            .map(|i| sum.get().integer_elt(i as isize))
+            .map(|i| sum.get().integer_elt(idx(i)))
             .sum();
         assert_eq!(total, 66);
 

@@ -82,7 +82,7 @@ match RCall::new("stop").arg(msg_sexp).eval(env) {
 caller's condition handlers: a warning is printed rather than reaching the
 caller's `withCallingHandlers()`, and an error comes back as its message only.
 For user code, or a call whose conditions the user should see as raised, use
-[`eval_with_handlers`](#eval-with-handlers) instead.
+[`eval_with_handlers`](#handler-keeping-evaluation) instead.
 
 ### Arguments that are language objects
 
@@ -162,7 +162,7 @@ unsafe {
 }
 ```
 
-## eval_with_handlers
+## Handler-keeping evaluation
 
 `eval_with_handlers(expr, env)` and `RCall::eval_with_handlers(env)` evaluate
 in the caller's R context: `Rf_eval` inside the evaluator's own
@@ -186,7 +186,7 @@ unsafe {
 
 It must run inside a miniextendr boundary on the main thread, and the unwind
 it starts must not be caught with `catch_unwind` on the way. Details:
-[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#evaluating-in-the-callers-r-context).
+[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#handler-keeping-evaluation).
 
 ## Safety Requirements
 
