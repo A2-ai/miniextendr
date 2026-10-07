@@ -344,6 +344,31 @@ impl RCall {
         self
     }
 
+    /// Add a positional argument passed as is: `quote(<value>)`.
+    ///
+    /// The call evaluates its arguments, so a symbol, a call or a quosure
+    /// added with [`arg`](Self::arg) is evaluated before the function sees
+    /// it. Use this for a language object the function must receive as a
+    /// value: a call for an `error_call` / `call` argument, an expression
+    /// for `eval()`. Any other value passes through `quote()` unchanged.
+    #[inline]
+    pub fn quoted_arg(self, value: SEXP) -> Self {
+        let quoted = unsafe { quote(value) };
+        self.arg(quoted)
+    }
+
+    /// Add a named argument passed as is: `name = quote(<value>)`. See
+    /// [`quoted_arg`](Self::quoted_arg).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    #[inline]
+    pub fn named_quoted_arg(self, name: &str, value: SEXP) -> Self {
+        let quoted = unsafe { quote(value) };
+        self.named_arg(name, quoted)
+    }
+
     /// Build the LANGSXP without evaluating it.
     ///
     /// The returned SEXP is **unprotected**. The caller must protect it if
@@ -538,6 +563,18 @@ pub unsafe fn dollar_extract(target: SEXP, name: &str) -> Result<SEXP, String> {
     }
 }
 // endregion
+
+/// `quote(<value>)`, unprotected. `value` is rooted across the allocation.
+///
+/// # Safety
+///
+/// R's main thread.
+unsafe fn quote(value: SEXP) -> SEXP {
+    unsafe {
+        let value = OwnedProtect::new(value);
+        crate::sys::Rf_lang2(Rf_install(c"quote".as_ptr()), value.get())
+    }
+}
 
 // region: eval_with_handlers (evaluation in the caller's R context)
 

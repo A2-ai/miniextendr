@@ -391,14 +391,18 @@ impl<'a> Quosure<'a> {
         // that received it, on R's main thread; `data` is rooted by the caller.
         unsafe {
             let scope = ProtectScope::new();
-            // `rlang::eval_tidy(quote(<quo>), <data>)`; a missing rlang raises
+            // `rlang::eval_tidy(quote(<quo>), quote(<data>))`; a missing rlang raises
             // R's own error, through the caller's handlers.
             let fun = scope.protect_raw(Rf_lang3(
                 Rf_install(c"::".as_ptr()),
                 Rf_install(c"rlang".as_ptr()),
                 Rf_install(c"eval_tidy".as_ptr()),
             ));
-            let quoted = scope.protect_raw(Rf_lang2(Rf_install(c"quote".as_ptr()), self.quo));
+            // Both arguments pass through `quote()`, so neither the quosure
+            // nor a language `data` is evaluated on the way in.
+            let quote = Rf_install(c"quote".as_ptr());
+            let quoted = scope.protect_raw(Rf_lang2(quote, self.quo));
+            let data = scope.protect_raw(Rf_lang2(quote, data));
             let call = scope.protect_raw(Rf_lang3(fun, quoted, data));
             crate::expression::eval_with_handlers(call, R_BaseEnv)
         }
