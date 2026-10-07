@@ -776,6 +776,36 @@ fn r6_wrapper_private_methods() {
 }
 
 #[test]
+fn r6_private_method_keeps_argument_checks() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Scaler {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(not_inherits(factor = "difftime"))]
+            fn scale(&self, factor: f64) -> f64 { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // A private method gets the same prelude as a public one: the explicit
+    // class check, then the type-derived checks.
+    let body = wrapper
+        .split("scale = function(factor) {")
+        .nth(1)
+        .expect("private method in the private list")
+        .split("\n    },")
+        .next()
+        .unwrap();
+    assert!(body.contains("!inherits(factor, \"difftime\")"), "{body}");
+    assert!(body.contains("length(factor) == 1L"), "{body}");
+    assert!(
+        body.find("!inherits(factor").unwrap() < body.find(".Call(").unwrap(),
+        "{body}"
+    );
+}
+
+#[test]
 fn r6_wrapper_roxygen_imports() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {

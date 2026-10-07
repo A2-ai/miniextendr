@@ -551,3 +551,36 @@ impl ParamCheckHolder {
     }
 }
 // endregion
+
+// region: private R6 methods
+
+/// Holder for the private R6 method fixture.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct PrivateCheckR6 {
+    total: f64,
+}
+
+/// R6 class whose private `add_private()` method checks its arguments with
+/// `inherits(...)` / `no_na(...)`, as a public method would.
+#[miniextendr(r6)]
+impl PrivateCheckR6 {
+    /// Create a holder with a zero total.
+    pub fn new() -> Self {
+        Self { total: 0.0 }
+    }
+
+    /// The running total.
+    pub fn total(&self) -> f64 {
+        self.total
+    }
+
+    /// Add `y` if `x` is an `mx_obj`. Private, so R reaches it as
+    /// `obj$.__enclos_env__$private$add_private()`.
+    #[miniextendr(inherits(x = "mx_obj"), no_na(y))]
+    fn add_private(&mut self, x: List, y: f64) -> f64 {
+        let _ = x;
+        self.total += y;
+        self.total
+    }
+}
+// endregion

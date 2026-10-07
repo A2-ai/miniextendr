@@ -388,27 +388,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ctx.params
         ));
 
-        // Inject r_entry
-        if let Some(ref entry) = ctx.method.method_attrs.r_entry {
-            for line in entry.lines() {
-                lines.push(format!("      {}", line));
-            }
-        }
-        // Inject on.exit cleanup
-        if let Some(ref on_exit) = ctx.method.method_attrs.r_on_exit {
-            lines.push(format!("      {}", on_exit.to_r_code()));
-        }
-        // Inject missing param defaults
-        // Inject match.arg validation for match_arg/choices params
-        for line in ctx.match_arg_prelude() {
-            lines.push(format!("      {}", line));
-        }
-        // Inject r_post_checks
-        if let Some(ref post) = ctx.method.method_attrs.r_post_checks {
-            for line in post.lines() {
-                lines.push(format!("      {}", line));
-            }
-        }
+        // The same prelude as a public method, so a private one keeps its
+        // lifecycle notice and its argument checks.
+        let what = format!("{}${}", class_name, ctx.method.r_method_name());
+        ctx.emit_method_prelude(&mut lines, "      ", &what);
 
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
