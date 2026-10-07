@@ -306,6 +306,109 @@ renders a page, gets a generated `@param .call` line. Fixtures: the
 `tests/cross-package/producer.pkg` (the crate default), verified by the
 `test-call-attribution.R` files.
 
+## An exported function: `call_arg`
+
+`caller` attribution is for internal entry points. An exported function's
+caller is arbitrary user code, so its conditions name its own call. An R
+function that composes exported functions then can't make them name its call
+instead. An `update()` method that applies verbs by name through `do.call()`
+is one: a verb that refuses a value reports `verb(x, value)`, or, called as
+`do.call(verb, ...)` with the function object, a call whose head deparses as
+the verb's whole body.
+
+`#[miniextendr(call_arg)]` gives a standalone function, exported or not, the
+same trailing `.call = NULL` formal as a `caller` wrapper (#1834). `NULL`, the
+default, is the wrapper's own call, so a direct call reports what it always
+did. A composing function passes its own frame:
+
+```rust
+/// @param x A count: negative is an error, zero a warning.
+/// @param mode One of the modes.
+#[miniextendr(call_arg)]
+pub fn call_arg_verb(x: i32, #[miniextendr(match_arg)] mode: Mode) -> Result<i32, String> {
+    if x < 0 {
+        return Err(format!("x must be non-negative, got {x}"));
+    }
+    if x == 0 {
+        defer_warning!("x is zero");
+    }
+    Ok(x)
+}
+```
+
+```r
+call_arg_verb <- function(x, mode = c("Fast", "Safe", "Debug"), .call = NULL) {
+  .mx_call <- if (is.null(.call)) sys.call() else .miniextendr_caller_call(.call, own = TRUE)
+  if (!isTRUE(is.integer(x))) .miniextendr_arg_error("x", "must be integer", .mx_call)
+  ...
+}
+
+compose_verb <- function(x, mode = "Fast") {
+  do.call("call_arg_verb", list(x, mode, .call = environment()))
+}
+compose_verb(-1L)
+# Error in compose_verb(-1L) : x must be non-negative, got -1
+compose_verb(1.5)
+# Error in compose_verb(1.5) : 'x' must be integer
+compose_verb(1L, "Slow")
+# Error in compose_verb(1L, "Slow") :
+#   'mode' should be one of "Fast", "Safe", "Debug"
+compose_verb(0L)
+# Warning message:
+# In compose_verb(0L) : x is zero
+call_arg_verb(-1L)
+# Error in call_arg_verb(-1L) : x must be non-negative, got -1
+```
+
+**From an S3 method, pass the generic's call.** Under `UseMethod()`
+dispatch a method's own frame call names the method: `environment()` from
+`update.thing()` reports `update.thing(object, ...)`, not the
+`update(a, dose = 1)` the user wrote. The generic's frame sits just below the
+method's, so the method passes `sys.call(-1L)`, a call object. Through
+`do.call()` that needs `quote = TRUE` (see "Pass a frame, not a call" above):
+
+```r
+update.thing <- function(object, ...) {
+  call <- sys.call(-1L)   # update(a, dose = 1), as written
+  changes <- list(...)
+  for (verb in names(changes)) {
+    object <- do.call(verb, list(object, changes[[verb]], .call = call), quote = TRUE)
+  }
+  object
+}
+```
+
+A method that is also called directly, `update.thing(a, ...)`, has no
+generic frame below it. There `sys.call(-1L)` is whatever called it, so check
+`identical(sys.function(-1L), stats::update)` first and pass `sys.call()`
+otherwise.
+
+Every condition the wrapper raises reads `.mx_call`: the R-side checks, the
+`match_arg` helpers, the `.Call()` slot and with it Rust errors and the
+warnings and messages deferred from Rust, and the raise helper's fallback.
+`.call` accepts what a `caller` wrapper's does (see the list above), with one
+difference: `NULL`, and an environment that is no closure's live frame, give
+the wrapper's own call, not its caller's. A call made without `.call` costs
+one `is.null()`; the helper runs only when `.call` is set.
+
+- The `.call` formal goes last, after the dots, as on a `caller` wrapper.
+  Pass it by name.
+- A `Call` parameter receives the call `.call` resolves to.
+- The generated `@param .call` line is written as an author's line would be,
+  so it stays on a page the function joins with `@rdname` / `@describeIn` and
+  next to `@inheritParams`; `R CMD check` finds `.call` documented wherever
+  the usage shows it. An author's own `@param .call` replaces it.
+- Compile errors: with `call = caller` or a `CallerCall` parameter (whose
+  wrapper already takes `.call`, where `NULL` is the caller's call), on an S3
+  method (`s3(...)`: a formal its generic lacks), and on an `extern
+  "C-unwind"` function (no call slot). Class and trait methods don't take it.
+- There is no crate default: the formal shows in every usage line that has
+  it, so a package opts in function by function.
+
+Fixtures: `call_arg_verb`, `call_arg_topic` / `call_arg_joined` (a page the
+`.call` function joins) and `call_arg_marker_impl` in
+`rpkg/src/rust/call_attribution_demo.rs`, verified by `test-call-arg.R`.
+
 ## Choosing the attribution: marker, attribute, crate default
 
 A standalone `#[miniextendr]` function picks one of two attributions, in
@@ -377,7 +480,7 @@ and the crate default in `tests/cross-package/producer.pkg`
 
 ## Where this is emitted
 
-Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (or `.call = NULL` for the lambda frames below, `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
+Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (or `.call = NULL` for the lambda frames below, `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller` and `call_arg`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
 
 It applies uniformly to:
 

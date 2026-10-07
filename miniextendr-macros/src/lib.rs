@@ -777,6 +777,7 @@ pub fn miniextendr(
         serde_error,
         preconditions,
         call_attribution: call_attribution_attr,
+        call_arg,
         return_pref,
         return_pref_span,
         s3_generic,
@@ -960,6 +961,17 @@ pub fn miniextendr(
                 "a `CallerCall` parameter attributes conditions to the wrapper's caller, which \
                  is only meaningful for a package-internal entry point; add `noexport` or \
                  `internal`.",
+            )
+            .into_compile_error()
+            .into();
+        }
+        if kind == r_wrapper_builder::CallAttribution::Caller && call_arg {
+            return syn::Error::new_spanned(
+                pt,
+                "a `CallerCall` parameter cannot be combined with `call_arg`: a `caller` wrapper \
+                 already takes `.call`, where NULL means the caller's call. Keep the \
+                 `CallerCall` parameter, or make it `Call` so that NULL means this function's \
+                 own call.",
             )
             .into_compile_error()
             .into();
@@ -1410,22 +1422,37 @@ pub fn miniextendr(
     // form passes the call as written: `sys.call()` for `wrapper`, the
     // caller's `sys.call()` for `caller`. `caller` also gives the wrapper a
     // trailing `.call = NULL` formal (#1613, S3 methods excluded; see
-    // `call_formal` below). Attribution is independent of the preconditions.
+    // `call_formal` below), as does `call_arg`. Attribution is independent of
+    // the preconditions.
+    //
+    // `call_arg` (#1834) turns `wrapper` into `Argument`: the same trailing
+    // formal, whose `NULL` is the wrapper's own call. It is an explicit
+    // choice, so the crate default doesn't apply with it (the parser and the
+    // marker loop above refuse it with `caller`).
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
-        crate_config.call_attribution,
+        crate_config.call_attribution.filter(|_| !call_arg),
         noexport || internal,
-    );
+    )
+    .with_call_arg(call_arg);
     if uses_internal_c_wrapper {
         r_call_args_strs.insert(0, call_attribution.dot_call_arg().to_string());
-    } else if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::Caller) {
+    } else if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::Caller) || call_arg
+    {
         // `extern "C-unwind"` fns have no generated call slot to redirect (a
         // `CallerCall` parameter already fails the extern signature check).
+        let option = if call_arg {
+            "`call_arg`"
+        } else {
+            "`call = caller`"
+        };
         return syn::Error::new_spanned(
             &parsed.item().sig.ident,
-            "`call = caller` needs the generated call slot; an `extern \"C-unwind\"` function \
-             has no `.call` argument to attribute",
+            format!(
+                "{option} needs the generated call slot; an `extern \"C-unwind\"` function \
+                 has no `.call` argument to attribute"
+            ),
         )
         .into_compile_error()
         .into();
@@ -1460,10 +1487,12 @@ pub fn miniextendr(
     };
     // Determine R function name and S3-specific comments
     let is_s3_method = s3_generic.is_some() || s3_class.is_some();
-    // The trailing `.call = NULL` formal of a `caller` wrapper (#1613): a
-    // hand-written helper between the public function and the entry point
-    // passes its caller's frame there. S3 methods keep the zero-argument
-    // prelude: a formal the generic lacks breaks generic/method consistency.
+    // The trailing `.call = NULL` formal of a `caller` wrapper (#1613) or a
+    // `call_arg` one (#1834): a hand-written helper between the public
+    // function and the entry point, or an R function composing the function,
+    // passes a frame there. S3 methods keep the zero-argument prelude: a
+    // formal the generic lacks breaks generic/method consistency (`call_arg`
+    // is refused on them).
     // `.call` joins the formals string only, never `inputs`, so the
     // precondition builder, the marker peels and the parameter fillers never
     // see it as a Rust parameter.
@@ -1548,9 +1577,14 @@ pub fn miniextendr(
     // unless the block takes them from a `@describeIn` topic or
     // `@inheritParams` (#1590); the wrapper registry decides the rest per page
     // at write time. The match_arg placeholders feed the
-    // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver. A `caller`
-    // wrapper's `.call` formal gets its line after the parameters' (#1613).
-    let call_param_doc = call_formal.and(call_attribution.param_doc());
+    // MX_MATCH_ARG_PARAM_DOCS entries of the write-time resolver. The `.call`
+    // formal gets its line after the parameters' (#1613, #1834), unless the
+    // block renders no page (`noexport`, `@noRd`): it is no filler, so the
+    // registry would not drop it there.
+    let renders_no_page = noexport || crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
+    let call_param_doc = call_formal
+        .and(call_attribution.param_doc())
+        .filter(|_| !renders_no_page);
     let match_arg_param_doc_placeholders = crate::roxygen::push_fn_param_tags(
         &mut roxygen_tags,
         inputs,

@@ -2362,7 +2362,7 @@ fn parse_lit_str(nv: &syn::MetaNameValue, field: &str) -> syn::Result<String> {
 /// drift.
 const FN_BOOL_FLAGS_HELP: &str = "invisible, visible, check_interrupt, worker, no_worker, coerce, no_coerce, \
      rng, unwrap_in_r, serialize, serde_error, strict, no_strict, \
-     preconditions, no_preconditions, internal, noexport, export";
+     preconditions, no_preconditions, internal, noexport, export, call_arg";
 
 /// Comma-separated list of fn-level nested options, for error messages.
 const FN_NESTED_OPTIONS_HELP: &str =
@@ -2401,6 +2401,11 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   marker spelling of `wrapper` / `caller`, and
 ///   `[package.metadata.miniextendr] call_attribution` the crate default; see
 ///   `CallAttribution::resolve`.
+/// - `call_arg`: the wrapper takes a trailing `.call = NULL` formal (#1834),
+///   exported or not. `NULL` is the wrapper's own call; an R function
+///   composing the function passes `.call = environment()` (or a call
+///   object) and its conditions name that function's call instead. Not with
+///   `call = caller` (whose wrapper already takes `.call`) or `s3(...)`.
 ///
 /// # Note
 ///
@@ -2447,6 +2452,12 @@ pub(crate) struct MiniextendrFnAttrs {
     /// parameter marker, the crate default and finally `wrapper`
     /// (`crate::r_wrapper_builder::CallAttribution::resolve`).
     pub(crate) call_attribution: Option<crate::r_wrapper_builder::CallAttribution>,
+    /// `call_arg` (#1834): the wrapper takes a trailing `.call = NULL` formal,
+    /// whose `NULL` is the wrapper's own call and through which an R function
+    /// composing it passes another (`environment()`, a call object). Turns
+    /// `wrapper` attribution into
+    /// `crate::r_wrapper_builder::CallAttribution::Argument`.
+    pub(crate) call_arg: bool,
     /// Preferred return conversion: forces `AsList`/`AsExternalPtr`/`AsRNative` wrapping
     /// of the return value before `IntoR::into_sexp` is called.
     pub(crate) return_pref: ReturnPref,
@@ -2903,6 +2914,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
         let mut r_name = None;
         let mut postfix = None;
         let mut call_attr: Option<crate::r_wrapper_builder::CallAttribution> = None;
+        let mut call_arg = false;
         let mut r_entry = None;
         let mut r_post_checks = None;
         let mut r_on_exit = None;
@@ -2957,6 +2969,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             noexport = true;
                         } else if ident == "export" {
                             export = true;
+                        } else if ident == "call_arg" {
+                            call_arg = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
@@ -3020,6 +3034,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 noexport = val;
                             } else if ident == "export" {
                                 export = val;
+                            } else if ident == "call_arg" {
+                                call_arg = val;
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
@@ -3311,6 +3327,25 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                  meaningful for a package-internal entry point; add `noexport` or `internal`.",
             ));
         }
+        // `call_arg` (#1834): a `.call` formal whose default is the wrapper's
+        // own call. A `caller` wrapper already has the formal, defaulting to
+        // the caller's call, and an S3 method can't take a formal its generic
+        // lacks.
+        if call_arg && call_attr == Some(CallAttribution::Caller) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call_arg` cannot be combined with `call = caller`: a `caller` wrapper already \
+                 takes `.call`, where NULL means the caller's call. Keep `call = caller`, or drop \
+                 it so that NULL means this function's own call.",
+            ));
+        }
+        if call_arg && (s3_generic.is_some() || s3_class.is_some()) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call_arg` cannot be used with `s3(...)`: it adds a `.call` formal, and an S3 \
+                 method can't take a formal its generic lacks.",
+            ));
+        }
         if r_name.is_some() && (s3_generic.is_some() || s3_class.is_some()) {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
@@ -3349,6 +3384,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             serde_error,
             preconditions,
             call_attribution: call_attr,
+            call_arg,
             return_pref,
             return_pref_span,
             s3_generic,

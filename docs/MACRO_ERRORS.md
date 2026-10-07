@@ -312,6 +312,18 @@ wrapped by a hand-written R function, and wrong for an exported function whose
 caller is arbitrary user code. Add `noexport` or `internal`, or drop the option.
 See [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#internal-entry-points-caller-attribution).
 
+### "`call_arg` cannot be combined with `call = caller`"
+
+A `caller` wrapper already ends its formals with `.call = NULL`, where `NULL`
+is its caller's call; `call_arg` gives the same formal `NULL` as the wrapper's
+own call. Keep `call = caller` for an internal entry point behind a
+hand-written function, or drop it for a function that reports its own call
+unless told otherwise. The same applies to a `CallerCall` parameter with
+`call_arg` (make it `Call`). `call_arg` is also refused with `s3(...)` (an S3
+method can't take a formal its generic lacks) and on an `extern "C-unwind"`
+function, which has no call slot. See
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#an-exported-function-call-arg).
+
 ### "`call = ...` accepts `wrapper` (the call as written, the default) or `caller` (...)"
 
 `call = parent`, `call = self` & co. name no attribution. The two values are

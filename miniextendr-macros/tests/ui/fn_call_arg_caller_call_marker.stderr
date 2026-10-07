@@ -1,0 +1,5 @@
+error: a `CallerCall` parameter cannot be combined with `call_arg`: a `caller` wrapper already takes `.call`, where NULL means the caller's call. Keep the `CallerCall` parameter, or make it `Call` so that NULL means this function's own call.
+  --> tests/ui/fn_call_arg_caller_call_marker.rs:10:42
+   |
+10 | pub fn call_arg_with_caller_call(x: i32, _call: miniextendr_api::CallerCall) -> i32 {
+   |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

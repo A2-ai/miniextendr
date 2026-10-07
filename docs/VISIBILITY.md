@@ -70,6 +70,7 @@ fn internal_helper(x: i32) -> i32 {
 | Rename the R-facing name | `r_name = "my.function"` |
 | Internal entry point behind a hand-written R function | `#[miniextendr(noexport, postfix = "_impl")]` |
 | Internal entry point whose errors should name the public R function | `#[miniextendr(noexport, call = caller)]` |
+| Exported function an R function composes, whose errors should name that function | `#[miniextendr(call_arg)]`, called with `.call = environment()` |
 | Rename the C symbol (e.g. to avoid collision) | `c_symbol = "pkg_my_fn"` |
 
 ### Mutually exclusive combinations
@@ -84,6 +85,8 @@ The following combinations are compile errors:
 - `call = caller` (or a `CallerCall` parameter) without `noexport` / `internal` — caller attribution is for internal entry points
 - a `Call` / `CallerCall` parameter that disagrees with the `call = ...` attribute — two spellings of one decision must agree
 - two `Call` / `CallerCall` parameters on one function — the call slot is a single value
+- `call_arg` with `call = caller` or a `CallerCall` parameter — a `caller` wrapper already takes `.call`
+- `call_arg` with `s3(...)` — an S3 method can't take a formal its generic lacks
 
 ---
 

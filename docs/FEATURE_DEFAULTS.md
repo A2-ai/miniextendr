@@ -199,7 +199,8 @@ repeat them. `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`)
 also checks the converted value, and that check stays too.
 
 The feature does not touch the call a wrapper reports: every wrapper passes
-`.call = sys.call()` (or the caller's call under `call = caller`), so
+`.call = sys.call()` (or the caller's call under `call = caller`, or the
+call passed as `.call` under `call_arg`), so
 conditions, including deferred warnings, name the call as written either way
 (see [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 

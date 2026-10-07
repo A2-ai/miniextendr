@@ -499,9 +499,49 @@ fn call_attribution_strings() {
     assert_eq!(CallAttribution::Caller.r_check_call(), Some(".mx_call"));
 }
 
+/// `call_arg` (#1834): every consumer reads `.mx_call`, which is the
+/// wrapper's own call unless the caller passed `.call`; the helper runs only
+/// for a `.call` that isn't `NULL`.
 #[test]
-fn call_attribution_formal_is_caller_only() {
+fn call_attribution_argument_strings() {
+    let argument = CallAttribution::Argument;
+    assert_eq!(argument.dot_call_arg(), ".call = .mx_call");
+    assert_eq!(argument.raise_default(), ".mx_call");
+    assert_eq!(argument.r_check_call(), Some(".mx_call"));
+    assert_eq!(
+        argument.prelude(true),
+        ".mx_call <- if (is.null(.call)) sys.call() else \
+         .miniextendr_caller_call(.call, own = TRUE)"
+    );
+    assert_eq!(argument.formal(), Some(".call = NULL"));
+    let doc = argument.param_doc().expect("call_arg documents .call");
+    assert!(doc.contains("NULL (the default) for this call"), "{doc}");
+    assert!(doc.contains("environment()"), "{doc}");
+    assert!(doc.contains("Pass it by name"), "{doc}");
+    // It is `wrapper` attribution plus the formal: same spelling, same marker.
+    assert_eq!(argument.name(), "wrapper");
+    assert_eq!(argument.marker_name(), "Call");
+    assert_eq!(CallAttribution::parse_name("argument"), None);
+}
+
+#[test]
+fn call_attribution_with_call_arg() {
+    use CallAttribution::{Argument, Caller, Wrapper};
+    assert_eq!(Wrapper.with_call_arg(true), Argument);
+    assert_eq!(Wrapper.with_call_arg(false), Wrapper);
+    assert_eq!(Caller.with_call_arg(false), Caller);
+    // The marker reads the same: a `Call` parameter with `call_arg` receives
+    // the resolved call.
+    assert_eq!(
+        CallAttribution::resolve(Some(Wrapper), None, None, false).with_call_arg(true),
+        Argument
+    );
+}
+
+#[test]
+fn call_attribution_formal_is_caller_and_argument_only() {
     assert_eq!(CallAttribution::Caller.formal(), Some(".call = NULL"));
+    assert_eq!(CallAttribution::Argument.formal(), Some(".call = NULL"));
     assert_eq!(CallAttribution::Wrapper.formal(), None);
     let doc = CallAttribution::Caller
         .param_doc()

@@ -275,6 +275,13 @@ test_that("a `CallerCall` body receives the call a helper passed on", {
   )
 })
 
+test_that("a `Call` parameter on an S3 method receives the method's call", {
+  obj <- structure(1, class = "mx_call_marker")
+  # `UseMethod()` dispatch: the method frame's call names the method.
+  expect_equal(format(obj), quote(format.mx_call_marker(obj)))
+  expect_equal(format(obj, extra = 2), quote(format.mx_call_marker(obj, extra = 2)))
+})
+
 test_that("`.call` takes a call object as is", {
   e <- tryCatch(
     miniextendr:::call_attr_caller_impl(-1L, .call = quote(verb(v = 1))),
@@ -324,7 +331,7 @@ test_that("on a `caller` wrapper with `...`, `.call` follows the dots", {
   expect_equal(conditionCall(e), quote(via(-1L)))
 })
 
-test_that("only `caller` wrappers take `.call`", {
+test_that("`caller` wrappers take `.call`; a default one does not", {
   expect_equal(names(formals(miniextendr:::call_attr_caller_impl)), c("x", ".call"))
   expect_equal(names(formals(miniextendr:::call_attr_internal_impl)), c("x", ".call"))
   expect_equal(names(formals(miniextendr:::call_attr_self_impl)), "x")

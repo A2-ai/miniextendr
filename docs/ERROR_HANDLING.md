@@ -636,7 +636,8 @@ e2$rust_type
 
 `conditionCall(e)` is the same call whichever side refused the argument: the
 wrapper's call as written (what `stopifnot()` reports), or under
-`call = caller` the caller's call ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
+`call = caller` the caller's call, or under `call_arg` the call passed as
+`.call` ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
 `no_na` on a reading marker (`AsNumeric*`, `AsCharacter*`) runs on both
 sides: the R guard refuses R's `NA`, and the C wrapper refuses what the

@@ -90,7 +90,7 @@ The same holds for methods in every class system: `fn collect(&self, n: i32, res
 - A function takes at most one `...`. A second `&Dots` parameter, or Rust `...` next to an explicit `&Dots`, is a compile error.
 - Rust `...` with another parameter after it is a compile error that names the `&Dots` spelling, and `miniextendr-lint`'s "failed to parse" warning for that file ends with the same hint.
 - The dots parameter takes no default, `match_arg` or check; `Missing<&Dots>` is refused. The dots are always present.
-- On a `call = caller` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
+- On a `call = caller` or `call_arg` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
 - `#[miniextendr(dots = typed_list!(...))]` reads an explicit `&Dots` the same way it reads `...`.
 - A function with dots runs on the R main thread, even under `worker`: the dots are an R list.
 

@@ -422,6 +422,21 @@ pub enum CallAttribution {
     /// call object, used as is. S3 methods keep the zero-argument prelude: a
     /// trailing formal would break generic/method consistency.
     Caller,
+    /// `.call = .mx_call`, where the wrapper body first binds
+    /// `.mx_call <- if (is.null(.call)) sys.call() else
+    /// .miniextendr_caller_call(.call, own = TRUE)`: the wrapper's own call,
+    /// as for [`CallAttribution::Wrapper`], unless the caller passes another
+    /// as the trailing `.call = NULL` formal (#1834). Selected by
+    /// `#[miniextendr(call_arg)]` on a standalone function, exported or not:
+    /// an R function composing exported functions (applying them through
+    /// `do.call()`, say) passes `.call = environment()` and every condition
+    /// names its own call. The helper resolves a frame or a call as under
+    /// [`CallAttribution::Caller`]; a frame no closure owns gives the
+    /// wrapper's own call. The success path without `.call` costs one
+    /// `is.null()`. Never parsed from `call = ...`: it is `wrapper`
+    /// attribution plus the formal, so a `Call` marker reads the resolved
+    /// call.
+    Argument,
 }
 
 impl CallAttribution {
@@ -435,10 +450,12 @@ impl CallAttribution {
         }
     }
 
-    /// The attribute spelling of this attribution.
+    /// The attribute spelling of this attribution. [`CallAttribution::Argument`]
+    /// is `wrapper` attribution with the `call_arg` option, so it shares
+    /// `wrapper`'s spelling.
     pub fn name(self) -> &'static str {
         match self {
-            CallAttribution::Wrapper => "wrapper",
+            CallAttribution::Wrapper | CallAttribution::Argument => "wrapper",
             CallAttribution::Caller => "caller",
         }
     }
@@ -447,7 +464,7 @@ impl CallAttribution {
     /// for `wrapper`, `CallerCall` for `caller`.
     pub fn marker_name(self) -> &'static str {
         match self {
-            CallAttribution::Wrapper => "Call",
+            CallAttribution::Wrapper | CallAttribution::Argument => "Call",
             CallAttribution::Caller => "CallerCall",
         }
     }
@@ -476,57 +493,81 @@ impl CallAttribution {
         })
     }
 
+    /// Apply the `call_arg` option (#1834) to a resolved attribution:
+    /// `wrapper` becomes [`CallAttribution::Argument`]. The option is
+    /// validated before this runs: it is a compile error with `call = caller`
+    /// or a `CallerCall` parameter (whose wrapper already takes `.call`), on
+    /// an S3 method and on an `extern "C-unwind"` function, and the caller
+    /// leaves the crate default out of [`CallAttribution::resolve`] when it
+    /// is set, so `caller` never reaches here with it.
+    pub fn with_call_arg(self, call_arg: bool) -> Self {
+        match self {
+            CallAttribution::Wrapper if call_arg => CallAttribution::Argument,
+            other => other,
+        }
+    }
+
     /// The `.call = ...` argument for the `.Call()` line.
     pub fn dot_call_arg(self) -> &'static str {
         match self {
             CallAttribution::Wrapper => ".call = sys.call()",
-            CallAttribution::Caller => ".call = .mx_call",
+            CallAttribution::Caller | CallAttribution::Argument => ".call = .mx_call",
         }
     }
 
     /// The fallback call handed to `.miniextendr_raise_condition`.
     pub fn raise_default(self) -> &'static str {
         match self {
-            CallAttribution::Caller => ".mx_call",
+            CallAttribution::Caller | CallAttribution::Argument => ".mx_call",
             CallAttribution::Wrapper => "sys.call()",
         }
     }
 
-    /// The statement the wrapper body needs before anything else: empty except
-    /// for [`CallAttribution::Caller`], which binds `.mx_call`. It is the
+    /// The statement the wrapper body needs before anything else: empty for
+    /// [`CallAttribution::Wrapper`]; the others bind `.mx_call`. It is the
     /// first part of the wrapper prelude, ahead of the R-side checks
     /// (preconditions, `match.arg`), so that those checks can attribute their
     /// failures to the caller too (#1548). `call_formal` says whether the
     /// wrapper has the `.call` formal ([`CallAttribution::formal`]); the
-    /// helper then resolves whatever the caller passed there (#1613).
+    /// helper then resolves whatever the caller passed there (#1613). Under
+    /// [`CallAttribution::Argument`] a `NULL` `.call` is the wrapper's own
+    /// call, read inline so that a call without `.call` costs one `is.null()`
+    /// (#1834); the wrapper always has the formal there, since the option is
+    /// refused on S3 methods.
     pub fn prelude(self, call_formal: bool) -> String {
         match self {
             CallAttribution::Caller if call_formal => {
                 ".mx_call <- .miniextendr_caller_call(.call)".to_string()
             }
             CallAttribution::Caller => ".mx_call <- .miniextendr_caller_call()".to_string(),
+            CallAttribution::Argument => ".mx_call <- if (is.null(.call)) sys.call() else \
+                 .miniextendr_caller_call(.call, own = TRUE)"
+                .to_string(),
             CallAttribution::Wrapper => String::new(),
         }
     }
 
-    /// The trailing formal a standalone wrapper with this attribution takes
-    /// (#1613): `.call = NULL` for [`CallAttribution::Caller`], so a
+    /// The trailing formal a standalone wrapper with this attribution takes:
+    /// `.call = NULL` for [`CallAttribution::Caller`] (#1613), so a
     /// hand-written helper between the public function and the entry point
-    /// can pass on the call to report. `NULL` keeps the helper's own
-    /// resolution; an environment names the closure owning that frame
-    /// (`parent.frame()` from a helper); a call object is used as is. Rust
-    /// identifiers cannot start with `.`, so the name never collides with a
-    /// parameter. The caller leaves S3 methods out.
+    /// can pass on the call to report, and for [`CallAttribution::Argument`]
+    /// (#1834), so an R function composing exported functions can. `NULL`
+    /// keeps the wrapper's default (the caller's call, or its own); an
+    /// environment names the closure owning that frame (`parent.frame()` from
+    /// a helper, `environment()` from the composing function); a call object
+    /// is used as is. Rust identifiers cannot start with `.`, so the name
+    /// never collides with a parameter. The caller leaves S3 methods out.
     pub fn formal(self) -> Option<&'static str> {
         match self {
-            CallAttribution::Caller => Some(".call = NULL"),
+            CallAttribution::Caller | CallAttribution::Argument => Some(".call = NULL"),
             CallAttribution::Wrapper => None,
         }
     }
 
-    /// The generated `@param` text for the [`CallAttribution::formal`], for a
-    /// wrapper that renders a page (`internal`); the wrapper registry drops it
-    /// with the other fillers on a `@noRd` block.
+    /// The generated `@param` text for the [`CallAttribution::formal`]. It is
+    /// written as the author's own line would be, not as a filler, so a block
+    /// on a page or an inheritance source no author block documents `.call`
+    /// for still documents it (see `crate::roxygen::push_fn_param_tags`).
     pub fn param_doc(self) -> Option<&'static str> {
         match self {
             CallAttribution::Caller => Some(
@@ -534,16 +575,21 @@ impl CallAttribution {
                  the calling function's call, a frame such as parent.frame() for the call \
                  of the function owning that frame, or a call object. Pass it by name.",
             ),
+            CallAttribution::Argument => Some(
+                "The call conditions from this function report: NULL (the default) for \
+                 this call, a frame such as environment() for the call of the function \
+                 owning that frame, or a call object. Pass it by name.",
+            ),
             CallAttribution::Wrapper => None,
         }
     }
 
     /// The call an R-side check raised in the wrapper body should carry:
-    /// `.mx_call` for [`CallAttribution::Caller`], otherwise `None` (the check
+    /// `.mx_call` when the prelude binds it, otherwise `None` (the check
     /// keeps its own attribution, which is the wrapper's frame).
     pub fn r_check_call(self) -> Option<&'static str> {
         match self {
-            CallAttribution::Caller => Some(".mx_call"),
+            CallAttribution::Caller | CallAttribution::Argument => Some(".mx_call"),
             CallAttribution::Wrapper => None,
         }
     }
@@ -565,9 +611,10 @@ impl CallAttribution {
     /// helpers name the argument in their messages, read a factor as its
     /// labels, and attribute the error to the wrapper's own call by default;
     /// under [`CallAttribution::Caller`] the statement passes `.mx_call` so the
-    /// caller is named instead (#1548). The list is spelled out because the
-    /// helpers, unlike `base::match.arg(param)`, do not read it off the
-    /// formal.
+    /// caller is named instead (#1548), and under
+    /// [`CallAttribution::Argument`] so that the call passed as `.call` is.
+    /// The list is spelled out because the helpers, unlike
+    /// `base::match.arg(param)`, do not read it off the formal.
     pub fn match_arg_statement(
         self,
         param: &str,

@@ -6,9 +6,8 @@
 //! The R-side error rendering is dramatically different.
 
 use miniextendr_api::dots::Dots;
-use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{Call, CallerCall, Missing};
+use miniextendr_api::{Call, CallerCall, Missing, defer_warning, miniextendr};
 
 use crate::match_arg_tests::Mode;
 
@@ -137,6 +136,19 @@ pub fn call_marker_caller_impl(_x: i32, call: CallerCall) -> SEXP {
     call.sexp()
 }
 
+/// `Call` marker on a standalone S3 method: the marker is accepted there, and
+/// the body sees the method frame's own `sys.call()`. Under `UseMethod()`
+/// dispatch that call names the method, `format.mx_call_marker(obj)` for
+/// `format(obj)`, here returned to R for the test to compare.
+///
+/// @param x An object of class `mx_call_marker`.
+/// @param ... Ignored.
+/// @return The call the method was handed.
+#[miniextendr(s3(generic = "format", class = "mx_call_marker"))]
+pub fn format_mx_call_marker(_x: SEXP, _dots: &Dots, call: Call) -> SEXP {
+    call.sexp()
+}
+
 /// `Call` marker together with an `Err`: the marker changes what the body can
 /// see, not how conditions are attributed, so this reports its own call like
 /// `call_attr_self_impl` does.
@@ -183,6 +195,65 @@ pub fn call_attr_dots_impl(x: i32, dots: &Dots) -> Result<i32, String> {
     }
     let extras = i32::try_from(dots.len()).map_err(|e| e.to_string())?;
     Ok(x + extras)
+}
+
+// endregion
+
+// region: call_arg — an exported function takes the call to report (#1834)
+
+/// An exported function with a `.call` argument: its conditions name the call
+/// passed there, or its own call when `.call` is `NULL`. An R function
+/// composing it, through `do.call()` say, passes `.call = environment()`.
+/// Each kind of condition goes through `.call`: an error from Rust (a negative
+/// `x`), the R-side checks of `x` (an integer scalar) and `mode` (a choice),
+/// and a warning deferred from Rust (`x` is zero).
+///
+/// @param x A count: negative is an error, zero a warning.
+/// @param mode One of the modes.
+/// @return `x`.
+#[miniextendr(call_arg)]
+pub fn call_arg_verb(x: i32, #[miniextendr(match_arg)] mode: Mode) -> Result<i32, String> {
+    let _ = mode;
+    if x < 0 {
+        return Err(format!("x must be non-negative, got {x}"));
+    }
+    if x == 0 {
+        defer_warning!("x is zero");
+    }
+    Ok(x)
+}
+
+/// A page for [call_arg_joined()] to join: a plain exported function, so the
+/// page's own block has no `.call` line.
+///
+/// @param x Returned.
+/// @return `x`.
+#[miniextendr]
+pub fn call_arg_topic(x: i32) -> i32 {
+    x
+}
+
+/// A `call_arg` function on a page defined by another block (`@rdname`). The
+/// generated `@param .call` line is kept there, so the shared page documents
+/// the `.call` in its usage.
+///
+/// @rdname call_arg_topic
+#[miniextendr(call_arg)]
+pub fn call_arg_joined(x: i32) -> Result<i32, String> {
+    if x < 0 {
+        return Err(format!("x must be non-negative, got {x}"));
+    }
+    Ok(x)
+}
+
+/// A `Call` marker with `call_arg`: the body receives the call `.call`
+/// resolves to, here returned to R for the test to compare.
+///
+/// @param x Ignored.
+/// @noRd
+#[miniextendr(noexport, call_arg)]
+pub fn call_arg_marker_impl(_x: i32, call: Call) -> SEXP {
+    call.sexp()
 }
 
 // endregion
