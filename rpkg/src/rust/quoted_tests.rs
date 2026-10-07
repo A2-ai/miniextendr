@@ -301,6 +301,24 @@ pub fn quoted_eval_abandoned(expr: Quoted) -> bool {
     .is_err()
 }
 
+/// Evaluate `expr`, catching the unwind an R exit starts and dropping it on
+/// another thread: `TRUE` when there was one. The next evaluation releases
+/// what the exit held, on R's main thread.
+#[miniextendr(noexport)]
+pub fn quoted_eval_abandoned_elsewhere(expr: Quoted) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        expr.eval();
+    })) {
+        Ok(()) => false,
+        Err(payload) => {
+            std::thread::spawn(move || drop(payload))
+                .join()
+                .expect("the dropping thread does not panic");
+            true
+        }
+    }
+}
+
 /// Evaluate `expr`, catching the unwind an R exit starts and keeping it for
 /// `quoted_resume_stashed()`: `TRUE` when there was one.
 #[miniextendr(noexport)]

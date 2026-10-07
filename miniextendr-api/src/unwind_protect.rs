@@ -355,12 +355,44 @@ impl Drop for RUnwind {
     /// Reached when something other than the exit's boundary caught the unwind
     /// and dropped it, or the boundary refused it ([`RUnwind::stray`]). The R
     /// exit is abandoned: R carries on from where the evaluation stopped, as
-    /// after `R_tryEval`. Release the token. Off R's main thread nothing may
-    /// touch R, so the token stays preserved for the rest of the session; no
-    /// framework path moves an exit off the main thread.
+    /// after `R_tryEval`. Release the token, on R's main thread: dropped on
+    /// another thread (code that moved the caught payload there), it waits in
+    /// [`ABANDONED_OFF_MAIN`] for the next evaluation.
     fn drop(&mut self) {
         if crate::worker::is_r_main_thread() {
             unsafe { sys::R_ReleaseObject(self.token) }
+        } else {
+            ABANDONED_OFF_MAIN
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(self.token);
+            HAS_ABANDONED_OFF_MAIN.store(true, std::sync::atomic::Ordering::Release);
+        }
+    }
+}
+
+/// Tokens of R exits dropped off R's main thread, where `R_ReleaseObject`
+/// would race R. [`eval_unwinding`] releases them on the main thread.
+static ABANDONED_OFF_MAIN: std::sync::Mutex<Vec<SEXP>> = std::sync::Mutex::new(Vec::new());
+
+/// Whether [`ABANDONED_OFF_MAIN`] may hold a token: the evaluation's fast path.
+static HAS_ABANDONED_OFF_MAIN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Release the tokens of exits dropped off the main thread.
+///
+/// # Safety
+///
+/// R's main thread.
+unsafe fn release_abandoned_off_main() {
+    if HAS_ABANDONED_OFF_MAIN.swap(false, std::sync::atomic::Ordering::Acquire) {
+        let tokens = std::mem::take(
+            &mut *ABANDONED_OFF_MAIN
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        );
+        for token in tokens {
+            unsafe { sys::R_ReleaseObject(token) };
         }
     }
 }
@@ -436,6 +468,7 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
     }
 
     unsafe {
+        release_abandoned_off_main();
         let token = sys::R_MakeUnwindCont();
         sys::R_PreserveObject(token);
         let boundary = BOUNDARY.with(Cell::get);

@@ -232,6 +232,15 @@ test_that("an R exit caught with catch_unwind and dropped is abandoned, as after
   expect_false(miniextendr:::quoted_eval_abandoned(1 + 1))
   x <- 1
   expect_identical(miniextendr:::quoted_eval(x + 1), 2)
+
+  # Dropped on another thread: released by the next evaluation instead.
+  for (i in seq_len(50L)) {
+    expect_true(tryCatch(
+      miniextendr:::quoted_eval_abandoned_elsewhere(stop("elsewhere")),
+      error = function(e) "handler"
+    ))
+    expect_identical(miniextendr:::quoted_eval(x + i), 1 + i)
+  }
 })
 
 test_that("an R exit resumed after its call returned is an error, not a jump", {
@@ -532,13 +541,17 @@ test_that("unevaluated arguments and R exits survive gctorture", {
       miniextendr:::quoted_eval_abandoned(stop("gc")),
       error = function(e) FALSE
     )
+    elsewhere <- tryCatch(
+      miniextendr:::quoted_eval_abandoned_elsewhere(stop("gc")),
+      error = function(e) FALSE
+    )
     stashed <- tryCatch(miniextendr:::quoted_eval_stash(stop("gc")), error = function(e) FALSE)
     stray <- tryCatch(miniextendr:::quoted_resume_stashed(), error = conditionMessage)
     if (identical(rows, 3:5) && identical(sub$a, 3:5) &&
         identical(conditionMessage(e), "gc") && inherits(w, "warning") &&
         identical(n, "x") && identical(miniextendr:::gc_stress_quoted(), 66L) &&
-        identical(r, i * 2L) && isTRUE(abandoned) && isTRUE(stashed) &&
-        grepl("resumed outside the call", stray, fixed = TRUE)) {
+        identical(r, i * 2L) && isTRUE(abandoned) && isTRUE(elsewhere) &&
+        isTRUE(stashed) && grepl("resumed outside the call", stray, fixed = TRUE)) {
       ok <- ok + 1L
     }
   }
