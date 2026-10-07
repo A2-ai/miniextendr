@@ -724,9 +724,9 @@ struct TraitMethodAttrs {
     /// Per-parameter `match_arg`/`choices`/`several_ok` attributes, keyed by
     /// Rust parameter name. See `TraitMethod::per_param`.
     per_param: std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
-    /// Span of the first `choices` / `choices_several_ok` / `no_na` /
-    /// `inherits` / `not_inherits` option: where an unknown parameter name is
-    /// reported.
+    /// Span of the first `choices` / `choices_several_ok` / `no_default` /
+    /// `no_na` / `inherits` / `not_inherits` option: where an unknown
+    /// parameter name is reported.
     per_param_span: Option<proc_macro2::Span>,
     /// Span of the `defaults(...)` option: where an unknown parameter name in
     /// it is reported.
@@ -979,6 +979,11 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                     entry.several_ok = true;
                     Ok(())
                 })?;
+            } else if meta.path.is_ident("no_default") {
+                per_param_span.get_or_insert(meta.path.span());
+                // `no_default(p, q)` — choice params whose R formal has no
+                // default (#1828).
+                crate::miniextendr_fn::parse_method_no_default(&meta, &mut per_param)?;
             } else if meta.path.is_ident("preconditions") || meta.path.is_ident("no_preconditions")
             {
                 // Bare: the whole method keeps / drops its type-derived R-side
@@ -1007,8 +1012,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                      `env`, `r6`, `s7`, `s3`, `s4`, `worker`, `main_thread`, `coerce`, `no_coerce`, \
                      `check_interrupt`, `rng`, `unwrap_in_r`, `serialize`, `skip`, `no_shortcut`, `r_name`, \
                      `defaults`, `strict`, `no_strict`, `lifecycle`, `r_entry`, `r_post_checks`, `r_on_exit`, \
-                     `choices`, `choices_several_ok`, `inherits`, `not_inherits`, `no_na`, `preconditions`, \
-                     `no_preconditions`",
+                     `choices`, `choices_several_ok`, `no_default`, `inherits`, `not_inherits`, `no_na`, \
+                     `preconditions`, `no_preconditions`",
                 ));
             }
             Ok(())

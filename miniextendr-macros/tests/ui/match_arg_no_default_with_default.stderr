@@ -1,0 +1,5 @@
+error: cannot combine `no_default` and `default = "..."` on parameter `mode`; `no_default` leaves the R formal without a default, so drop one of them
+ --> tests/ui/match_arg_no_default_with_default.rs:8:82
+  |
+8 | fn bad_no_default(#[miniextendr(match_arg, no_default, default = "\"a\"")] mode: String) {}
+  |                                                                                  ^^^^^^

@@ -96,6 +96,16 @@ impl EnvMatchArgCounter {
         self.modes = modes;
         self.count()
     }
+
+    /// A mode with no default (#1828): the formal is bare, and an omitted
+    /// argument reaches Rust as `Absent`.
+    #[miniextendr(match_arg(mode), no_default(mode))]
+    pub fn pick(&self, mode: Missing<ImplMode>) -> String {
+        match mode {
+            Missing::Absent => "absent".to_string(),
+            Missing::Present(m) => format!("{m:?}"),
+        }
+    }
 }
 
 // endregion

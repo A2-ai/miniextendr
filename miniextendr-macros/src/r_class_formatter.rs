@@ -300,13 +300,14 @@ pub(crate) fn build_method_precondition_checks(
 /// 3. User-provided `#[miniextendr(defaults(param = "..."))]` for non-match_arg
 ///    params.
 ///
-/// This formal default is load-bearing for `match.arg()`, not just cosmetic:
-/// `base::match.arg(arg)` (no explicit `choices=`) reads the choice list from
-/// the *formal default* of the calling function's `arg` parameter — a
-/// `match_arg`/`choices` param with no formal default makes `match.arg()`
-/// fail with "argument is missing, with no default" even when the caller
-/// passed a value. Shared by `MethodContext::new` (inherent impls) and
-/// `TraitMethodContext::new` (trait impls, `miniextendr_impl_trait/method_context.rs`).
+/// The `Option<T>` form of a choice parameter gets `NULL` instead (#1473),
+/// and a `no_default(p)` one no default at all (#1828; see
+/// [`ParamAttrs::choice_formal`](crate::miniextendr_fn::ParamAttrs::choice_formal)).
+/// A choice formal is documentation: the prelude
+/// ([`build_match_arg_prelude`]) passes the choice list to the helpers, which
+/// never read it off the formal (#1552). Shared by `MethodContext::new`
+/// (inherent impls) and `TraitMethodContext::new` (trait impls,
+/// `miniextendr_impl_trait/method_context.rs`).
 pub(crate) fn effective_r_defaults(
     param_defaults: &std::collections::HashMap<String, String>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
@@ -320,21 +321,24 @@ pub(crate) fn effective_r_defaults(
             continue;
         }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-        // `Option<T>` (#1473): the formal is NULL (no choice); the prelude
-        // spells the choices out through the placeholder instead.
-        let default = attrs.choice_formal(&match_arg_placeholder(c_ident, &r_name));
-        defaults.insert(r_name, default);
+        // `Option<T>` (#1473): the formal is NULL (no choice); `no_default`
+        // (#1828, refused with `defaults(p = ...)`): none. The prelude spells
+        // the choices out through the placeholder either way.
+        if let Some(default) = attrs.choice_formal(&match_arg_placeholder(c_ident, &r_name)) {
+            defaults.insert(r_name, default);
+        }
     }
-    // choices(...) → c("a", "b", ...) formal (NULL for the `Option<T>` form).
-    // Lower priority than user defaults (kept for back-compat on non-match_arg
-    // params).
+    // choices(...) → c("a", "b", ...) formal (NULL for the `Option<T>` form,
+    // none under `no_default`). Lower priority than user defaults (kept for
+    // back-compat on non-match_arg params).
     for (rust_name, attrs) in per_param {
-        if let Some(choices) = attrs.choices.as_ref() {
-            let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-            defaults.entry(r_name).or_insert_with(|| {
-                let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
-                attrs.choice_formal(&format!("c({})", quoted.join(", ")))
-            });
+        let Some(choices) = attrs.choices.as_ref() else {
+            continue;
+        };
+        let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
+        let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
+        if let Some(default) = attrs.choice_formal(&format!("c({})", quoted.join(", "))) {
+            defaults.entry(r_name).or_insert(default);
         }
     }
     defaults

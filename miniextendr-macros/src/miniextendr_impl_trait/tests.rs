@@ -825,8 +825,8 @@ fn test_bug2_match_arg_prelude_emitted_for_trait_method() {
 /// BUG2 regression, exercised via the actual macro-exposed surface:
 /// `#[miniextendr(choices(mode = "fast, slow"))]` on a trait method now
 /// produces both the `c("fast", "slow")` formal default (via the shared
-/// `effective_r_defaults`, also required for `match.arg()` to find its
-/// choice list — see its docs) and the `match.arg()` prelude line. Verified
+/// `effective_r_defaults`; documentation, since the prelude passes the list
+/// to the helper) and the `match.arg()` prelude line. Verified
 /// end-to-end (not just codegen strings) by
 /// `rpkg/tests/testthat/test-trait-method-emitter.R`.
 #[test]
@@ -852,7 +852,7 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
 
     assert!(
         result.contains("mode = c(\"fast\", \"slow\")"),
-        "choices param should get a formal default match.arg() can read, got:\n{}",
+        "choices param should get the choice vector as its formal default, got:\n{}",
         result
     );
     assert!(
@@ -903,6 +903,74 @@ fn test_trait_method_choices_prelude_in_signature_order() {
             "prelude out of signature order:\n{result}"
         );
     }
+}
+
+/// Trait methods take the method-level `no_default(p)` beside `choices(...)` /
+/// `choices_several_ok(...)` (#1828): the formal is the bare name, the prelude
+/// still matches against the list, and a `defaults(p = ...)` or a parameter
+/// that is no choice is refused.
+#[test]
+fn test_trait_method_choices_no_default() {
+    let impl_item: syn::ItemImpl = syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(
+                choices(mode = "fast, slow"),
+                choices_several_ok(tags = "a, b"),
+                no_default(mode, tags)
+            )]
+            fn pick(&self, mode: Missing<String>, tags: Vec<String>) -> String {
+                unimplemented!()
+            }
+        }
+    };
+    let methods =
+        super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered).unwrap();
+    let result = generate_trait_r_wrapper(
+        &format_ident!("Foo"),
+        &format_ident!("Bar"),
+        &methods,
+        &[],
+        opts(ClassSystem::S3, false, false, false),
+    )
+    .unwrap();
+    for line in [
+        "function(x, mode, tags, ...)",
+        "if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\")",
+        "tags <- .miniextendr_match_arg_several(tags, c(\"a\", \"b\"), \"tags\")",
+    ] {
+        assert!(result.contains(line), "missing `{line}` in:\n{result}");
+    }
+    assert!(!result.contains("mode = c("), "{result}");
+
+    let extract_err = |impl_item: syn::ItemImpl| {
+        let Err(err) = super::vtable::extract_methods(&impl_item, crate::roxygen::RdPage::Rendered)
+        else {
+            panic!("must be rejected");
+        };
+        err.to_string()
+    };
+    let err = extract_err(syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(choices(mode = "fast, slow"), no_default(mode), defaults(mode = "\"fast\""))]
+            fn pick(&self, mode: String) -> String { unimplemented!() }
+        }
+    });
+    assert!(
+        err.contains("cannot combine `no_default(mode)` and `defaults(mode = ...)`"),
+        "{err}"
+    );
+    let err = extract_err(syn::parse_quote! {
+        impl Bar for Foo {
+            #[miniextendr(no_default(n))]
+            fn pick(&self, n: i32) -> String { unimplemented!() }
+        }
+    });
+    assert!(
+        err.contains(
+            "`no_default(n)` on parameter `n`, which is neither `match_arg` nor `choices`"
+        ),
+        "{err}"
+    );
 }
 
 /// Trait methods parse the method-level `inherits(p(class = ..., message = ...))`

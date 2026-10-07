@@ -345,6 +345,16 @@ test_that("several_ok Missing<Option<Either<Vec<T>, R>>>: omitted is Absent, NUL
   expect_choice_error(match_arg_either_routes_omitted_optional("iv"), "route_pick", routes)
 })
 
+test_that("no_default on Missing<Option<Either<Vec<T>, DataFrame>>> several_ok (#1828)", {
+  expect_identical(formals(match_arg_either_routes_no_default)$route_order, quote(expr = ))
+  expect_equal(match_arg_either_routes_no_default(), "absent: no order to assume")
+  expect_equal(match_arg_either_routes_no_default(NULL), "null")
+  expect_equal(match_arg_either_routes_no_default(c("inf", "or")), "Infusion,Oral")
+  expect_equal(match_arg_either_routes_no_default(factor("bolus")), "Bolus")
+  expect_equal(match_arg_either_routes_no_default(doses), "frame:2x2")
+  expect_choice_error(match_arg_either_routes_no_default(c("oral", "iv")), "route_order", routes)
+})
+
 test_that("choices(), several_ok on Either<Vec<String>, f64>", {
   expect_equal(eval(formals(choices_either_tiers)$tiers), levels)
   expect_equal(choices_either_tiers(), "tiers:low,mid,high")
@@ -496,6 +506,15 @@ test_that("several_ok Either choice lists name the other kind in their @param li
     "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL; omitting the argument means no choice.",
     fixed = TRUE
   )
+  # `no_default` (#1828): a bare usage argument, and no omission note.
+  no_default_page <- rd_text("match_arg_either_routes_no_default")
+  expect_match(no_default_page, "match_arg_either_routes_no_default(route_order)", fixed = TRUE)
+  expect_match(
+    no_default_page,
+    "One or more of \"oral\", \"bolus\", \"infusion\", a data frame, or NULL.",
+    fixed = TRUE
+  )
+  expect_no_match(no_default_page, "omitting the argument", fixed = TRUE)
   tiers_or_number <- "One or more of \"low\", \"mid\", \"high\", or a number; omitting the argument means no choice."
   for (topic in c("EitherRoutesS3", "EitherRoutesS7", "EitherRoutesVctrs")) {
     expect_match(rd_text(topic), tiers_or_number, fixed = TRUE)

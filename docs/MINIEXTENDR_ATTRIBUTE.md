@@ -624,9 +624,10 @@ Written on a single parameter of a standalone function:
 |-----------|--------|
 | `coerce` | Coerce this argument only (see [COERCE.md](COERCE.md)) |
 | `default = "..."` | R formal default (an R expression) |
-| `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)) |
-| `choices("a", "b")` | Validate a string against a literal choice list |
+| `match_arg` | Validate against the parameter type's `MatchArg` choices (`Option<T>`: `NULL` is no choice; `Missing<..>`: the formal keeps the choices (none under `no_default`) and an omitted argument is `Absent`; `Either<T, R>` / `Either<Vec<T>, R>` (`several_ok`): non-character input goes to `R`, so `R` must read more than character or factor input; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#omitted-choice)) |
+| `choices("a", "b")` | Validate a string against a literal choice list (the formal is `c("a", "b")`; the same type layers and `no_default` as `match_arg`) |
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
+| `no_default` | With `match_arg` / `choices`: the R formal has no default (the bare name instead of the choice vector or `NULL`), and the generated `@param` line drops its omission note. An omitted `Missing<..>` argument is still `Absent`; any other type gets R's missing-argument error. Not with `default` (see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#without-a-default-no-default)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `inherits(class = "cls", when(class = "data.frame", message = "..."))` | The same check; a refused value of a `when` class gets that message instead (see [Hints for common wrong classes](#hints-for-common-wrong-classes)) |
@@ -778,7 +779,7 @@ ASCII).
 Impl and trait methods cannot carry parameter attributes, so the same options
 are method-level and name the parameter: `match_arg(p)`,
 `match_arg_several_ok(p)`, `choices(p = "a, b")`, `choices_several_ok(p = "a, b")`,
-`inherits(p = "cls_a, cls_b")`, `not_inherits(p = "cls_a, cls_b")`,
+`no_default(p, q)`, `inherits(p = "cls_a, cls_b")`, `not_inherits(p = "cls_a, cls_b")`,
 `no_na(p, q)`. A message goes in parentheses after the parameter:
 `inherits(p(class = "cls_a, cls_b", message = "..."))`,
 `not_inherits(p(class = "cls_a, cls_b", message = "..."))`,
@@ -1197,6 +1198,7 @@ impl Person {
 | `r_post_checks = "..."` | Inject R code after checks |
 | `r_on_exit = "..."` | Register `on.exit()` cleanup |
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
+| `no_default(p, q)` | The R formals of the choice parameters `p` and `q` have no default ([Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `inherits(p(class = "cls", when(class = "df_a, df_b", message = "...")))` | The same check; a refused value of a `when` class gets that message instead ([Hints for common wrong classes](#hints-for-common-wrong-classes)) |

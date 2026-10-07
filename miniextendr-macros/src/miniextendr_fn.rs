@@ -318,6 +318,8 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
 /// - `match_arg` + `choices(...)` on the same parameter (two sources for one
 ///   choice list; the `match_arg` placeholder would shadow the literal list
 ///   and, with no `MatchArg` entry to resolve it, dangle in the R formals)
+/// - `no_default` on a parameter that is neither `match_arg` nor `choices`,
+///   or together with `default` (#1828)
 /// - `default` on a `&Dots` parameter
 ///
 /// The type-dependent checks of a choice parameter live in
@@ -329,6 +331,16 @@ pub(crate) fn validate_per_param_attr_conflicts(
     ty: Option<&syn::Type>,
     span: proc_macro2::Span,
 ) -> syn::Result<()> {
+    if attr.has_no_default
+        && let Some(msg) = no_default_conflict(
+            param_name,
+            attr.has_match_arg || attr.choices.is_some(),
+            attr.default_value.is_some(),
+            false,
+        )
+    {
+        return Err(syn::Error::new(span, msg));
+    }
     if attr.has_coerce && attr.has_match_arg {
         return Err(syn::Error::new(
             span,
@@ -434,6 +446,45 @@ pub(crate) fn validate_per_param_attr_conflicts(
     Ok(())
 }
 
+/// The error of a `no_default` that cannot apply (#1828), or `None`: on a
+/// parameter that is neither `match_arg` nor `choices` (only a choice
+/// parameter gets a generated default to drop), or together with a default.
+/// `method_list` picks the spellings named: the method-level
+/// `no_default(p)` / `defaults(p = ...)`, else the parameter's own
+/// `no_default` / `default = "..."`.
+pub(crate) fn no_default_conflict(
+    param: &str,
+    is_choice: bool,
+    has_default: bool,
+    method_list: bool,
+) -> Option<String> {
+    let (no_default, default) = if method_list {
+        (
+            format!("`no_default({param})`"),
+            format!("`defaults({param} = ...)`"),
+        )
+    } else {
+        (
+            "`no_default`".to_string(),
+            "`default = \"...\"`".to_string(),
+        )
+    };
+    if !is_choice {
+        return Some(format!(
+            "{no_default} on parameter `{param}`, which is neither `match_arg` nor `choices`; \
+             only a choice parameter gets a generated default to drop, and any other \
+             parameter without a default already has a bare formal"
+        ));
+    }
+    if has_default {
+        return Some(format!(
+            "cannot combine {no_default} and {default} on parameter `{param}`; \
+             `no_default` leaves the R formal without a default, so drop one of them"
+        ));
+    }
+    None
+}
+
 // endregion
 
 // region: Per-parameter attribute parsing
@@ -459,6 +510,10 @@ pub(crate) struct PerParamMiniextendrAttr {
     /// Whether `several_ok` was present, enabling multi-value `match.arg(several.ok = TRUE)`.
     /// Only valid with `choices(...)` or `match_arg`.
     pub has_several_ok: bool,
+    /// Whether `no_default` was present: the choice parameter's R formal has
+    /// no default (#1828). Only valid with `choices(...)` or `match_arg`, and
+    /// not together with `default`.
+    pub has_no_default: bool,
     /// `inherits = "cls"` / `inherits("a", "b")`, `not_inherits` (the same
     /// spellings) and `no_na`, each with an optional `message = "..."`: R-side
     /// checks named by the author (see
@@ -482,6 +537,7 @@ impl PerParamMiniextendrAttr {
         self.has_coerce |= other.has_coerce;
         self.has_match_arg |= other.has_match_arg;
         self.has_several_ok |= other.has_several_ok;
+        self.has_no_default |= other.has_no_default;
         if self.default_value.is_none() {
             self.default_value = other.default_value;
         }
@@ -540,6 +596,9 @@ pub(crate) fn parse_per_param_attr(
                     is_per_param = true;
                 } else if path.is_ident("several_ok") {
                     result.has_several_ok = true;
+                    is_per_param = true;
+                } else if path.is_ident("no_default") {
+                    result.has_no_default = true;
                     is_per_param = true;
                 } else if path.is_ident("no_na") {
                     result.checks.no_na = true;
@@ -1095,6 +1154,22 @@ fn parse_method_when(
     inherits_hint(classes, message).map_err(|msg| opt.error(msg))
 }
 
+/// Method-level `no_default(p, q)` on an impl or trait method, whose
+/// parameters cannot carry attributes: each entry names a `match_arg` /
+/// `choices` parameter whose R formal has no default (#1828). Shared by the
+/// inherent-impl and trait-impl method parsers; [`finalize_method_param_attrs`]
+/// refuses a name that is no parameter, no choice or has a default.
+pub(crate) fn parse_method_no_default(
+    meta: &syn::meta::ParseNestedMeta,
+    per_param: &mut std::collections::HashMap<String, ParamAttrs>,
+) -> syn::Result<()> {
+    meta.parse_nested_meta(|entry| {
+        let name = method_check_param(&entry)?;
+        per_param.entry(name).or_default().no_default = true;
+        Ok(())
+    })
+}
+
 /// The classes of a method-level `inherits` / `not_inherits` entry: a
 /// comma-separated, non-empty list.
 fn method_class_list(value: &syn::LitStr, check: ClassCheck) -> syn::Result<Vec<String>> {
@@ -1319,7 +1394,7 @@ pub(crate) struct MiniextendrFunctionParsed {
 /// Collapsed per-parameter attribute state for a single function parameter.
 ///
 /// Built during parsing from `#[miniextendr(coerce | match_arg | several_ok |
-/// default = "…" | choices("…"))]` on the argument. Accessors on
+/// no_default | default = "…" | choices("…"))]` on the argument. Accessors on
 /// [`MiniextendrFunctionParsed`] query this struct rather than looking
 /// through multiple side-tables.
 #[derive(Default, Debug, Clone)]
@@ -1342,6 +1417,13 @@ pub(crate) struct ParamAttrs {
     /// omitted argument, and Rust sees `Missing::Absent`. Set by
     /// [`classify_choice_param`].
     pub omittable: bool,
+    /// `no_default` on a `match_arg` / `choices` parameter (#1828): the R
+    /// formal is the bare name instead of the choice vector (or `NULL`), so
+    /// an omitted argument is `Missing::Absent` under `Missing<..>` and R's
+    /// missing-argument error otherwise. The prelude and the choice list do
+    /// not change. Set from the parameter's `no_default` or the method's
+    /// `no_default(p)`.
+    pub no_default: bool,
     /// `Either<.., R>` layer of a `match_arg` / `choices` parameter, over a
     /// scalar choice (`Either<T, R>`) or a `several_ok` list
     /// (`Either<Vec<T>, R>` / `Either<Box<[T]>, R>`): the R-facing name of the
@@ -1372,11 +1454,16 @@ impl ParamAttrs {
     /// (`c("a", "b")` or the write-time placeholder): `NULL` for the
     /// `Option<T>` form (#1473), the choice list otherwise, including
     /// `Missing<Option<T>>`, whose omission is reported by `Missing` (#1551).
-    pub(crate) fn choice_formal(&self, choices: &str) -> String {
-        if self.optional && !self.omittable {
-            "NULL".to_string()
+    /// `None` under `no_default` (#1828): the formal is the bare name. The
+    /// prelude spells the choice list out either way, so a `match_arg`
+    /// placeholder then lives in the prelude only.
+    pub(crate) fn choice_formal(&self, choices: &str) -> Option<String> {
+        if self.no_default {
+            None
+        } else if self.optional && !self.omittable {
+            Some("NULL".to_string())
         } else {
-            choices.to_string()
+            Some(choices.to_string())
         }
     }
 
@@ -1387,7 +1474,9 @@ impl ParamAttrs {
     /// `, a data frame, or NULL for no choice` for both,
     /// `, or NULL; omitting the argument means no choice` for
     /// `Missing<Option<T>>`, `; omitting the argument means no choice` for
-    /// `Missing<T>`, and nothing for a plain choice.
+    /// `Missing<T>`, and nothing for a plain choice. Under `no_default`
+    /// (#1828) the omission note goes (the author documents what omission
+    /// means) and the rest stays.
     pub(crate) fn choice_doc_suffix(&self) -> String {
         let null_word = if self.omittable {
             "NULL"
@@ -1396,7 +1485,7 @@ impl ParamAttrs {
         };
         let mut suffix =
             choice_alternatives_suffix(self.either_noun.as_deref(), self.optional, null_word);
-        if self.omittable {
+        if self.omittable && !self.no_default {
             suffix.push_str("; omitting the argument means no choice");
         }
         suffix
@@ -1617,9 +1706,11 @@ pub(crate) fn explicit_checks_by_r_name(
 
 /// Check an impl or trait method's per-parameter attributes against its
 /// signature, now that it is known. Every parameter a method-level
-/// `match_arg(...)` / `choices(...)` / `inherits(...)` / `not_inherits(...)`
-/// / `no_na(...)` / `preconditions(...)` / `no_preconditions(...)` names must
-/// exist (a typo would otherwise drop the check without a word); then the
+/// `match_arg(...)` / `choices(...)` / `no_default(...)` / `inherits(...)` /
+/// `not_inherits(...)` / `no_na(...)` / `preconditions(...)` /
+/// `no_preconditions(...)` names must exist (a typo would otherwise drop the
+/// check without a word); then a `no_default(p)` is refused on a parameter
+/// that is no choice or has a default ([`no_default_conflict`]), the
 /// choice parameters are classified (see [`classify_choice_param`]), a class
 /// in both `inherits` and `not_inherits` is refused
 /// ([`crate::r_preconditions::ExplicitChecks::class_conflict`]), and each
@@ -1653,6 +1744,7 @@ pub(crate) fn finalize_method_param_attrs(
         .filter(|(name, a)| {
             (a.match_arg
                 || a.choices.is_some()
+                || a.no_default
                 || !a.checks.is_empty()
                 || a.preconditions.is_some())
                 && !sig_names.contains(name.as_str())
@@ -1664,8 +1756,8 @@ pub(crate) fn finalize_method_param_attrs(
         return Err(syn::Error::new(
             span,
             format!(
-                "match_arg/choices/inherits/not_inherits/no_na/(no_)preconditions references \
-                 non-existent parameter `{first}`"
+                "match_arg/choices/no_default/inherits/not_inherits/no_na/(no_)preconditions \
+                 references non-existent parameter `{first}`"
             ),
         ));
     }
@@ -1681,6 +1773,11 @@ pub(crate) fn finalize_method_param_attrs(
             continue;
         };
         let has_default = attrs.default.is_some() || defaults.contains_key(&name);
+        if attrs.no_default
+            && let Some(msg) = no_default_conflict(&name, attrs.is_choice(), has_default, true)
+        {
+            return Err(syn::Error::new(span, msg));
+        }
         classify_choice_param(attrs, &name, pt.ty.as_ref(), has_default)?;
         if let Some(msg) = attrs.checks.class_conflict(&name) {
             return Err(syn::Error::new(span, msg));
@@ -1787,6 +1884,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 default_value: default_with_span,
                 choices: had_choices,
                 has_several_ok: had_several_ok,
+                has_no_default: had_no_default,
                 checks: had_checks,
                 preconditions: had_preconditions,
             } = param_attr;
@@ -1868,6 +1966,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 default_value: default_with_span.clone(),
                 choices: had_choices.clone(),
                 has_several_ok: had_several_ok,
+                has_no_default: had_no_default,
                 checks: had_checks.clone(),
                 preconditions,
             };
@@ -1893,6 +1992,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 entry.coerce = had_coerce_attr;
                 entry.match_arg = had_match_arg_attr;
                 entry.several_ok = had_several_ok;
+                entry.no_default = had_no_default;
                 entry.choices = had_choices;
                 entry.preconditions = preconditions;
                 if let Some((default, span)) = default_with_span {

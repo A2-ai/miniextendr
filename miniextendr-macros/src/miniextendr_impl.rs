@@ -649,8 +649,9 @@ pub struct MethodAttrs {
     /// attribute macros on fn parameters inside impl items. Standalone
     /// functions take the per-param syntax directly; impl methods spell the
     /// same data through `#[miniextendr(match_arg(p1, p2))]`,
-    /// `#[miniextendr(match_arg_several_ok(p))]`, and
-    /// `#[miniextendr(choices(p = "a, b"))]` on the method attribute.
+    /// `#[miniextendr(match_arg_several_ok(p))]`,
+    /// `#[miniextendr(choices(p = "a, b"))]` and
+    /// `#[miniextendr(no_default(p))]` on the method attribute.
     ///
     /// Uses the shared [`ParamAttrs`](crate::miniextendr_fn::ParamAttrs)
     /// struct — the `coerce` / `default` fields are unused on the impl path.
@@ -1606,6 +1607,14 @@ impl ParsedMethod {
                         entry.several_ok = true;
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("no_default") {
+                    // `no_default(param1, param2, ...)` — choice params whose R
+                    // formal has no default (#1828).
+                    method_attrs.match_arg_span.get_or_insert(meta.path.span());
+                    crate::miniextendr_fn::parse_method_no_default(
+                        &meta,
+                        &mut method_attrs.per_param,
+                    )?;
                 } else if meta.path.is_ident("choices") {
                     // `choices(param = "a, b, c", param2 = "x, y")` — explicit string choice lists.
                     method_attrs.match_arg_span.get_or_insert(meta.path.span());
@@ -1875,7 +1884,7 @@ impl ParsedMethod {
                     method_attrs.dots_spec = Some(quote::quote!(#mac));
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, inherits, not_inherits, no_na, dots = typed_list!(...)"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, preconditions, no_preconditions, rng, unwrap_in_r, serialize, serde_error, as, lifecycle, r_name, postfix, r_entry, r_post_checks, r_on_exit, noexport, internal, invisible, visible, match_arg, match_arg_several_ok, choices, choices_several_ok, no_default, inherits, not_inherits, no_na, dots = typed_list!(...)"
                     ));
                 }
                 Ok(())

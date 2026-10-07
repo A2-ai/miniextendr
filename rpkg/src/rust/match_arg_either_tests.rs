@@ -457,6 +457,24 @@ pub fn match_arg_either_routes_omitted_optional(
     }
 }
 
+/// Optional route names or a data frame with no default (#1828): the formal
+/// is bare, so an omitted argument is refused here rather than read as every
+/// route.
+///
+/// @export
+#[miniextendr]
+pub fn match_arg_either_routes_no_default(
+    #[miniextendr(match_arg, several_ok, no_default)] route_order: Missing<
+        Option<Either<Vec<Route>, DataFrame>>,
+    >,
+) -> String {
+    match route_order {
+        Missing::Absent => "absent: no order to assume".to_string(),
+        Missing::Present(None) => "null".to_string(),
+        Missing::Present(Some(routes)) => describe_routes(routes),
+    }
+}
+
 /// Inline tier names or a number.
 ///
 /// @export
