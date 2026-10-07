@@ -581,3 +581,24 @@ test_that("impl methods take not_inherits(...) at method level", {
 })
 
 # endregion
+
+# region: private R6 methods
+
+test_that("a private R6 method keeps its argument checks", {
+  obj <- PrivateCheckR6$new()
+  priv <- obj$.__enclos_env__$private
+  mx <- structure(list(), class = "mx_obj")
+  expect_identical(priv$add_private(mx, 2), 2)
+  expect_identical(obj$total(), 2)
+  # Rust converts a classless list and an NA double without complaint, so
+  # these failures come from the R-side checks of the private method.
+  e <- tryCatch(priv$add_private(list(), 1), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(conditionMessage(e), "'x' must inherit from 'mx_obj'")
+  expect_identical(caught_msg(priv$add_private(mx, NA_real_)), "'y' must not be NA")
+  expect_identical(obj$total(), 2)
+})
+
+# endregion
