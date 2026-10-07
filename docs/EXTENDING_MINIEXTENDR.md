@@ -275,6 +275,43 @@ argument error). Inside an `Either`, the refusal is reported with its classes
 whenever the other arm refused the kind of value: an `Either<Option<Elapsed>,
 DataFrame>` given a `difftime` raises the check's condition.
 
+**The whole message.** A refusal can word the whole argument error instead,
+with `RError::argument_message(...)` (or `RConditionError::argument_message`,
+or `#[condition(argument_message = "...")]` on a derived type): its text is
+the message as given, with no prefix. That is how a type declares a check
+once for every parameter of that type, the way
+`#[miniextendr(inherits(class = ..., message = ..., when(...)))]` does for one
+parameter, and the two raise the same condition (message, classes, `kind`,
+`e$param`, call; the conversion also adds `e$rust_type`):
+
+```rust
+fn model_object(x: SEXP) -> Result<(), RError> {
+    if x.inherits_class(c"mx_model") {
+        return Ok(());
+    }
+    if x.inherits_class(c"data.frame") {
+        return Err(RError::new("got a data frame")
+            .argument_message("use model_from_df() for a data frame"));
+    }
+    Err(RError::new("got no model object").argument_message("expected a model object"))
+}
+
+#[derive(TryFromSexp)]
+#[try_from_sexp(validate = model_object)]
+pub struct Model(List);
+```
+
+```r
+conditionMessage(tryCatch(fit_summary(data.frame(a = 1)), error = identity))
+# "use model_from_df() for a data frame"
+```
+
+The check holds for `Model` and `Option<Model>` parameters alike; a type
+whose inner type has a vector conversion (`f64`, not `List`) also holds it
+for `Vec` and `Vec<Option>`. Inside an `Either` the message stays the
+`Either`'s, which names both arms. Fixtures:
+`rpkg/src/rust/argument_message_tests.rs`.
+
 With `validate`, the newtype's scalar error is `SexpError` (every container's
 already is), so the inner type's error must convert into it, as every built-in
 conversion's does and every `RConditionError` type's does (its classes kept).
