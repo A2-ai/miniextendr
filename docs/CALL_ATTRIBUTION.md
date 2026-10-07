@@ -360,6 +360,29 @@ call_arg_verb(-1L)
 # Error in call_arg_verb(-1L) : x must be non-negative, got -1
 ```
 
+**From an S3 method, pass the generic's call.** Under `UseMethod()`
+dispatch a method's own frame call names the method: `environment()` from
+`update.thing()` reports `update.thing(object, ...)`, not the
+`update(a, dose = 1)` the user wrote. The generic's frame sits just below the
+method's, so the method passes `sys.call(-1L)`, a call object. Through
+`do.call()` that needs `quote = TRUE` (see "Pass a frame, not a call" above):
+
+```r
+update.thing <- function(object, ...) {
+  call <- sys.call(-1L)   # update(a, dose = 1), as written
+  changes <- list(...)
+  for (verb in names(changes)) {
+    object <- do.call(verb, list(object, changes[[verb]], .call = call), quote = TRUE)
+  }
+  object
+}
+```
+
+A method that is also called directly, `update.thing(a, ...)`, has no
+generic frame below it. There `sys.call(-1L)` is whatever called it, so check
+`identical(sys.function(-1L), stats::update)` first and pass `sys.call()`
+otherwise.
+
 Every condition the wrapper raises reads `.mx_call`: the R-side checks, the
 `match_arg` helpers, the `.Call()` slot and with it Rust errors and the
 warnings and messages deferred from Rust, and the raise helper's fallback.

@@ -46,6 +46,29 @@ test_that("a warning deferred from Rust names the composing function's call", {
   expect_equal(suppressWarnings(compose_verb(0L)), 0L)
 })
 
+test_that("from an S3 method, pass the generic's call, not the method's frame", {
+  # Under `UseMethod()` a method's frame call names the method, so its
+  # `environment()` reports `compose.default(...)`.
+  compose <- function(x, ...) UseMethod("compose")
+  compose.default <- function(x, ...) {
+    do.call("call_arg_verb", list(x, .call = environment()))
+  }
+  e <- tryCatch(compose(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(compose.default(-1L)))
+  # The generic's call, `sys.call(-1L)` from the method, names what the user
+  # wrote. A call object goes through `do.call()` with `quote = TRUE`.
+  compose2 <- function(x, ...) UseMethod("compose2")
+  compose2.default <- function(x, ...) {
+    do.call("call_arg_verb", list(x, .call = sys.call(-1L)), quote = TRUE)
+  }
+  e <- tryCatch(compose2(-1L), error = identity)
+  expect_equal(conditionCall(e), quote(compose2(-1L)))
+  e <- tryCatch(compose2(1.5), error = identity)
+  expect_equal(conditionCall(e), quote(compose2(1.5)))
+  w <- tryCatch(compose2(0L), warning = identity)
+  expect_equal(conditionCall(w), quote(compose2(0L)))
+})
+
 test_that("without `.call` the wrapper names its own call", {
   e <- tryCatch(call_arg_verb(-1L), error = identity)
   expect_equal(conditionCall(e), quote(call_arg_verb(-1L)))
