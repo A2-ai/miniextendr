@@ -839,6 +839,11 @@ on an `Either` parameter, which has none, and under `no_preconditions`.
 (`inherits = "pkg_model", not_inherits = "pkg_model_v1"`); naming the same
 class in both is a compile error.
 
+`not_inherits("NULL")` refuses an explicit `NULL`, whose implicit class is
+`"NULL"`. On a `match_arg` / `choices` parameter it runs before the choice is
+matched, so `NULL` gets your message instead of becoming the first choice; see
+[Refusing an Explicit `NULL`](ENUMS_AND_FACTORS.md#refusing-an-explicit-null).
+
 #### Parameters named like a base function
 
 A parameter may share its name with a base function that generated wrappers

@@ -347,3 +347,34 @@ test_that("method choice params get the choice text as their @param line", {
 })
 
 # endregion
+
+# A plain choice reads an explicit NULL as its first choice. not_inherits("NULL")
+# refuses it instead: the class checks run before the choice is matched, and
+# NULL's implicit class is "NULL".
+expect_null_refused <- function(expr, param, message) {
+  e <- tryCatch(expr, error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, param)
+  expect_identical(conditionMessage(e), message)
+}
+
+test_that("not_inherits(\"NULL\") on a plain choice refuses NULL, not the first choice", {
+  expect_equal(eval(formals(match_arg_refuse_null)$mode), modes)
+  expect_equal(match_arg_refuse_null(), "Fast")
+  expect_equal(match_arg_refuse_null("Sa"), "Safe")
+  expect_null_refused(
+    match_arg_refuse_null(NULL), "mode",
+    "`mode` can't be NULL; name a mode such as \"Safe\"."
+  )
+  expect_choice_error(match_arg_refuse_null("X"), "mode", modes)
+})
+
+test_that("not_inherits(\"NULL\") on Missing<T> keeps an omitted argument Absent", {
+  expect_equal(match_arg_omitted_refuse_null(), "absent")
+  expect_equal(match_arg_omitted_refuse_null("Debug"), "Debug")
+  expect_null_refused(
+    match_arg_omitted_refuse_null(NULL), "mode",
+    "`mode` can't be NULL; omit it to keep the current mode."
+  )
+})

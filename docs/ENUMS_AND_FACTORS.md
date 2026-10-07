@@ -363,7 +363,12 @@ supplied value and adds `Absent` for an omitted one:
 | `Missing<Mode>` | choices | `Absent` | `Present(Fast)` | `Present(Safe)` |
 | `Missing<Option<Mode>>` | choices | `Absent` | `Present(None)` | `Present(Some(Safe))` |
 | `Missing<Vec<Mode>>` (`several_ok`) | choices | `Absent` | `Present` (all) | `Present(vec![Safe])` |
+| `Either<Mode, R>` | choices | `Left(Fast)` (first) | `Right(..)` (converted to `R`; a `DataFrame` refuses it) | `Left(Safe)` |
+| `Missing<Either<Mode, R>>` | choices | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(Safe))` |
 | `Missing<Either<Vec<Mode>, R>>` (`several_ok`) | choices | `Absent` | `Present(Right(..))` (converted to `R`) | `Present(Left(vec![Safe]))` |
+
+To refuse an explicit `NULL` in any of these forms, with your own message, see
+[Refusing an Explicit `NULL`](#refusing-an-explicit-null).
 
 `choices(...)` accepts the same wrappers around `String` / `&str`. `Missing<..>`
 has to be the outermost wrapper (`Option<Missing<T>>` is a compile error), and
@@ -529,6 +534,44 @@ Impl methods take all of these through `match_arg_several_ok(p)` /
 `choices_several_ok(p = "...")` on `Either<Vec<String>, R>` or
 `Missing<Either<Vec<String>, R>>`. The auto-generated `@param` line reads
 `One or more of "oral", "bolus", "infusion", or a data frame.`
+
+### Refusing an Explicit `NULL`
+
+A plain choice reads an explicit `NULL` as its first choice, as `match.arg()`
+does, and an `Either<T, R>` choice hands it to `R`, which may refuse it in
+generic words (`'route' must be one of "oral", "bolus", "infusion", or a data
+frame: got NULL`). When the first choice is a setting rather than a neutral
+default, or when `NULL` deserves its own hint, refuse it with `not_inherits`:
+
+```rust
+#[miniextendr]
+pub fn set_rule(
+    #[miniextendr(
+        match_arg,
+        not_inherits("NULL", message = "`rule` can't be NULL; use \"auto\" to reset it.")
+    )]
+    rule: Missing<Either<Rule, DataFrame>>,
+) -> String { /* ... */ }
+```
+
+```r
+set_rule <- function(rule = c("include", "exclude", "auto")) {
+  if (!isTRUE(missing(rule) || !inherits(rule, "NULL"))) .miniextendr_arg_error("rule", message = "`rule` can't be NULL; use \"auto\" to reset it.")
+  if (!missing(rule) && (is.character(rule) || is.factor(rule))) rule <- .miniextendr_match_arg(rule, c("include", "exclude", "auto"), "rule")
+  .Call(C_mypkg_set_rule, .call = sys.call(), if (missing(rule)) quote(expr=) else rule)
+}
+```
+
+`NULL`'s implicit class is `"NULL"`, so `inherits(NULL, "NULL")` is `TRUE`.
+The class checks run before the choice is matched, so `NULL` is refused before
+it can become the first choice or reach `R`. The refusal raises the same
+condition as a failed choice (`rust_error`, `kind = "conversion"`,
+`e$param`), and an omitted `Missing<..>` argument still passes as `Absent`.
+It works on every form in the table above, `several_ok` included, and on impl
+and trait methods through `not_inherits(p(class = "NULL", message = "..."))`.
+On an `Option<..>` parameter the check lets `NULL` through, since `NULL` is
+that parameter's `None`; drop the `Option` instead. See [Refusing
+classes](MINIEXTENDR_ATTRIBUTE.md#refusing-classes) for the attribute itself.
 
 ### Rename Variants
 
