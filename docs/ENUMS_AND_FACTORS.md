@@ -398,10 +398,12 @@ refuses an omitted argument has no such default. Add `no_default` and the
 formal is the bare name (#1828):
 
 ```rust
+use miniextendr_api::{arg_error, miniextendr, Missing};
+
 #[miniextendr]
 pub fn run(#[miniextendr(match_arg, no_default)] mode: Missing<Mode>) -> String {
     match mode {
-        Missing::Absent => "name a mode: there is none to assume".into(),
+        Missing::Absent => arg_error!(param = "mode", "'mode' is required: there is no mode to assume"),
         Missing::Present(mode) => format!("running {mode:?}"),
     }
 }
@@ -413,7 +415,7 @@ run <- function(mode) {
   .Call(C_mypkg_run, .call = sys.call(), if (missing(mode)) quote(expr=) else mode)
 }
 
-run()             # Missing::Absent
+run()             # Error: 'mode' is required: there is no mode to assume
 run("Sa")         # Missing::Present(Safe)
 run("X")          # Error: 'mode' should be one of "Fast", "Safe", "Debug"
 ```
@@ -422,7 +424,9 @@ Only the formal changes, and with it the usage line (`run(mode)`) and
 `args(run)`. The prelude, the choice list, partial matching and factor input
 stay as they were, since the helpers take the choice list as an argument. An
 omitted `Missing<..>` argument still reaches Rust as `Absent`, so the function
-words its own refusal. Any other type (`Mode`, `Option<Mode>`, an `Either`, a
+words its own refusal (here with `arg_error!`, the argument error the
+wrapper's own checks raise; see
+[CONDITIONS.md](CONDITIONS.md#argument-errors-from-a-body)). Any other type (`Mode`, `Option<Mode>`, an `Either`, a
 `several_ok` list) behaves like any parameter without a default: the prelude's
 first use of the omitted argument raises R's `argument "mode" is missing, with
 no default`.
