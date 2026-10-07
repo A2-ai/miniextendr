@@ -450,7 +450,7 @@ test_that("no_default: the usage line shows the bare argument and the @param lin
   expect_match(color_page, "One of \"red\", \"green\", \"blue\", or NULL.", fixed = TRUE)
   expect_no_match(color_page, "omitting the argument", fixed = TRUE)
   env_page <- rd_text("EnvMatchArgCounter")
-  expect_match(env_page, "Arguments of \\code{EnvMatchArgCounter$pick()}:", fixed = TRUE)
+  expect_match(env_page, "\\item{\\code{mode}}{One of \"Fast\", \"Safe\", \"Debug\".}", fixed = TRUE)
   expect_no_match(env_page, "omitting the argument", fixed = TRUE)
 })
 

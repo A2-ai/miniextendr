@@ -5,6 +5,7 @@
 \alias{EnvMatchArgCounter$new}
 \alias{EnvMatchArgCounter$count}
 \alias{EnvMatchArgCounter$reset}
+\alias{EnvMatchArgCounter$pick}
 \alias{$.EnvMatchArgCounter}
 \alias{[[.EnvMatchArgCounter}
 \title{EnvMatchArgCounter Class}
@@ -31,5 +32,12 @@ Arguments of \code{EnvMatchArgCounter$reset()}:
 
 \describe{
 \item{\code{modes}}{One or more of "Fast", "Safe", "Debug".}
+}
+
+A mode with no default (#1828): the formal is bare, and an omitted
+argument reaches Rust as \code{Absent}.
+
+\describe{
+\item{\code{mode}}{One of "Fast", "Safe", "Debug".}
 }
 }
