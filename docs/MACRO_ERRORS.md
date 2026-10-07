@@ -332,6 +332,19 @@ from the call slot, not from an R argument) and `Call / CallerCall parameters
 are supported on standalone #[miniextendr] functions only` (class and trait
 methods keep the wrapper's own call).
 
+### "`Quoted` / `Quosure` must be the parameter's whole type, or the type argument of `Missing<..>`"
+
+The wrapper passes an argument unevaluated (`list(substitute(x),
+parent.frame())` / `rlang::enquo(x)`) only for `x: Quoted`, `x: Quosure` and
+the same inside `Missing<..>`; `Option<Quoted>` or `Vec<Quosure>` would be
+converted from a forced value. Use `Missing<Quoted>` for an optional argument.
+The same family covers `per-parameter options (...) do not apply to a Quoted
+parameter` (a default, coercion or check would force the argument),
+`` `Checked<Quoted>` on parameter `x`: `Quoted` has no R-side type check to
+keep or drop `` and `` `Quoted` parameters are supported on
+standalone #[miniextendr] functions only `` (a class or trait method's wrapper
+forces its arguments). See [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#restrictions).
+
 ### "Cargo.toml: [package.metadata.miniextendr] `call_attribution` must be one of ..."
 
 The crate-wide default takes the same two values as the attribute, as a

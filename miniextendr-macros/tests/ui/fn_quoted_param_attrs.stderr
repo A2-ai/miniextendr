@@ -1,0 +1,5 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quoted` parameter: the wrapper passes the argument unevaluated, and each of them would force it. Use `Missing<Quoted>` for an optional argument
+  --> tests/ui/fn_quoted_param_attrs.rs:10:38
+   |
+10 |     #[miniextendr(default = "NULL")] cond: miniextendr_api::Quoted,
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -78,6 +78,19 @@ match RCall::new("stop").arg(msg_sexp).eval(env) {
 }
 ```
 
+`R_tryEvalSilent` runs the call through `R_ToplevelExec`, which hides the
+caller's condition handlers: a warning is printed rather than reaching the
+caller's `withCallingHandlers()`, and an error comes back as its message only.
+For user code, or a call whose conditions the user should see as raised, use
+[`eval_with_handlers`](#handler-keeping-evaluation) instead.
+
+### Arguments that are language objects
+
+A call evaluates its arguments, so a symbol, call or quosure added with `arg()`
+is evaluated before the function sees it. `quoted_arg(value)` /
+`named_quoted_arg(name, value)` pass it as is (`quote(<value>)`), for an
+`error_call` argument say.
+
 ### GC Protection
 
 `RCall` roots the callable and every positional or named argument for the
@@ -149,6 +162,32 @@ unsafe {
 }
 ```
 
+## Handler-keeping evaluation
+
+`eval_with_handlers(expr, env)` and `RCall::eval_with_handlers(env)` evaluate
+in the caller's R context: `Rf_eval` inside the evaluator's own
+`R_UnwindProtect`, so the caller's `withCallingHandlers()` and
+`suppressWarnings()` see every condition, and an R error or a `tryCatch()`
+exit unwinds the Rust frames (destructors run) and then reaches the caller's
+handler with the original condition. The result is unprotected.
+
+```rust
+use miniextendr_api::expression::RCall;
+use miniextendr_api::sys::R_BaseEnv;
+
+unsafe {
+    let selected = RCall::namespaced("tidyselect", "eval_select")?
+        .quoted_arg(cols.sexp())      // a `Quosure` parameter
+        .quoted_arg(data)
+        .named_quoted_arg("error_call", call.sexp())
+        .eval_with_handlers(R_BaseEnv);
+}
+```
+
+It must run inside a miniextendr boundary on the main thread, and the unwind
+it starts must not be caught with `catch_unwind` on the way. Details:
+[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#handler-keeping-evaluation).
+
 ## Safety Requirements
 
 All functions in this module require:
@@ -167,6 +206,7 @@ Standalone `#[miniextendr]` functions already run on the main thread (they are t
 
 ## See Also
 
+- [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md) -- `Quoted` / `Quosure` parameters and `eval_with_handlers`
 - [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#s4-helpers-module) -- S4 helpers built on RCall
 - [THREADS.md](THREADS.md) -- Main thread requirements
 - [GC_PROTECT.md](GC_PROTECT.md) -- Protecting returned SEXPs

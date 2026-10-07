@@ -1,0 +1,5 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quosure` parameter: the wrapper passes the argument unevaluated, and each of them would force it. Use `Missing<Quosure>` for an optional argument
+ --> tests/ui/fn_quosure_param_check.rs:9:67
+  |
+9 | pub fn quosure_with_check(#[miniextendr(inherits = "data.frame")] cols: miniextendr_api::Quosure) -> i32 {
+  |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

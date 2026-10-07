@@ -309,6 +309,14 @@ impl<'a> RArgumentBuilder<'a> {
                 _ => continue,
             };
 
+            // `Quoted` / `Quosure` (also under `Missing<..>`, #1835): the
+            // argument unevaluated, behind the same missing-argument sentinel
+            // as `Missing<T>`. Neither branch forces it.
+            if let Some(param) = crate::type_inspect::unevaluated_param(pat_type.ty.as_ref()) {
+                call_args.push(param.kind.r_call_arg(&arg_ident.to_string()));
+                continue;
+            }
+
             // `Missing<T>`: forward true missingness as the `R_MissingArg`
             // sentinel, produced *at the argument position*. A binding holding
             // the sentinel errors on symbol lookup ("argument is missing, with

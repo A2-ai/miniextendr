@@ -344,6 +344,31 @@ impl RCall {
         self
     }
 
+    /// Add a positional argument passed as is: `quote(<value>)`.
+    ///
+    /// The call evaluates its arguments, so a symbol, a call or a quosure
+    /// added with [`arg`](Self::arg) is evaluated before the function sees
+    /// it. Use this for a language object the function must receive as a
+    /// value: a call for an `error_call` / `call` argument, an expression
+    /// for `eval()`. Any other value passes through `quote()` unchanged.
+    #[inline]
+    pub fn quoted_arg(self, value: SEXP) -> Self {
+        let quoted = unsafe { quote(value) };
+        self.arg(quoted)
+    }
+
+    /// Add a named argument passed as is: `name = quote(<value>)`. See
+    /// [`quoted_arg`](Self::quoted_arg).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    #[inline]
+    pub fn named_quoted_arg(self, name: &str, value: SEXP) -> Self {
+        let quoted = unsafe { quote(value) };
+        self.named_arg(name, quoted)
+    }
+
     /// Build the LANGSXP without evaluating it.
     ///
     /// The returned SEXP is **unprotected**. The caller must protect it if
@@ -414,6 +439,38 @@ impl RCall {
     #[inline]
     pub unsafe fn eval_base(&self) -> Result<SEXP, String> {
         unsafe { self.eval(R_BaseEnv) }
+    }
+
+    /// Evaluate the call in `env` in the caller's R context, keeping R's
+    /// condition handlers: see [`eval_with_handlers`].
+    ///
+    /// Use it to call R code that signals conditions the user should see, with
+    /// their classes, through their own `withCallingHandlers()` /
+    /// `tryCatch()`. A tidyselect selection, say:
+    ///
+    /// ```ignore
+    /// // `cols` is a `Quosure` parameter, `data` a data frame.
+    /// let selected = unsafe {
+    ///     RCall::namespaced("tidyselect", "eval_select")?
+    ///         .arg(cols.sexp())
+    ///         .arg(data)
+    ///         .eval_with_handlers(R_BaseEnv)
+    /// };
+    /// ```
+    ///
+    /// A column that does not exist raises tidyselect's own error (class
+    /// `vctrs_error_subscript_oob`, with its call), which unwinds through the
+    /// Rust frames and reaches the user's `tryCatch()` as it was raised.
+    ///
+    /// # Safety
+    ///
+    /// As [`eval_with_handlers`]: R's main thread, inside a miniextendr
+    /// boundary, `env` an environment. The result is unprotected.
+    pub unsafe fn eval_with_handlers(&self, env: SEXP) -> SEXP {
+        unsafe {
+            let call = OwnedProtect::new(self.build());
+            eval_with_handlers(call.get(), env)
+        }
     }
 
     /// Start building a namespaced call: `pkg::fun(args…)`.
@@ -505,6 +562,68 @@ pub unsafe fn dollar_extract(target: SEXP, name: &str) -> Result<SEXP, String> {
         RCall::new("$").arg(target).arg(name_sexp.get()).eval_base()
     }
 }
+// endregion
+
+/// `quote(<value>)`, unprotected. `value` is rooted across the allocation.
+///
+/// # Safety
+///
+/// R's main thread.
+unsafe fn quote(value: SEXP) -> SEXP {
+    unsafe {
+        let value = OwnedProtect::new(value);
+        crate::sys::Rf_lang2(Rf_install(c"quote".as_ptr()), value.get())
+    }
+}
+
+// region: eval_with_handlers (evaluation in the caller's R context)
+
+/// Evaluate `expr` in `env` in the caller's R context, the way R code calling
+/// `eval(expr, env)` does.
+///
+/// | | [`RCall::eval`], [`r_eval_str`] | `eval_with_handlers` |
+/// |---|---|---|
+/// | R entry point | `R_tryEvalSilent` | `Rf_eval` in its own `R_UnwindProtect` |
+/// | caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition |
+/// | R error | `Err(String)`, the message only | unwinds as the R condition, class and call kept |
+/// | caller's `tryCatch(warning = )`, restarts, interrupts | not seen | exit through the Rust frames |
+///
+/// An R error, or any other exit from the evaluation (an exiting handler of
+/// the caller's `tryCatch()`, `invokeRestart()`, an interrupt), stops at this
+/// function's own `R_UnwindProtect` frame, so it never jumps over a Rust
+/// frame. It then leaves as a Rust unwind: the frames between here and the
+/// `#[miniextendr]` boundary drop their values (a guard's `Drop` runs), and
+/// the boundary hands the exit back to R, which carries on to the handler or
+/// restart it was going to, with the original condition object. A warning or
+/// message the caller muffles returns here and the evaluation continues.
+///
+/// So this is the evaluator for code a user wrote: an argument passed
+/// unevaluated ([`crate::Quoted`], [`crate::Quosure`]), a callback, a call into
+/// a package whose conditions are part of its interface. Keep [`RCall::eval`]
+/// for internal calls whose failure the Rust code handles itself.
+///
+/// The unwind must reach a miniextendr boundary. Don't catch it with
+/// `std::panic::catch_unwind` in between, or the R exit is abandoned (R
+/// carries on as after `R_tryEval`, without running the caller's handler);
+/// resume a caught payload with `std::panic::resume_unwind`. Don't call this
+/// from a `Drop` implementation: an exit there would start an unwind during an
+/// unwind, which aborts.
+///
+/// # Safety
+///
+/// - R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
+///   function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
+///   closure, a guarded ALTREP or connection callback, a
+///   [`with_r_thread`](crate::worker::with_r_thread) closure.
+/// - `expr` and `env` stay rooted for the call; `env` is an environment.
+///
+/// # Returns
+///
+/// The value, **unprotected**: protect it before the next allocation.
+pub unsafe fn eval_with_handlers(expr: SEXP, env: SEXP) -> SEXP {
+    unsafe { crate::unwind_protect::eval_unwinding(expr, env) }
+}
+
 // endregion
 
 // region: r_eval_str (runtime string parse + eval)

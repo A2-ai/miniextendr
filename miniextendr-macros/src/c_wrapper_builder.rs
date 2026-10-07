@@ -482,6 +482,12 @@ impl CWrapperContext {
         for (param, markers) in &self.param_markers {
             builder = builder.with_param_markers(param.clone(), markers.clone());
         }
+        // A standalone fn's R wrapper passes `Quoted` / `Quosure` arguments
+        // unevaluated (#1835); a method's is generated per class system and
+        // does not, so there they stay a compile error.
+        if self.type_context.is_none() {
+            builder = builder.with_unevaluated_args();
+        }
         builder
     }
 

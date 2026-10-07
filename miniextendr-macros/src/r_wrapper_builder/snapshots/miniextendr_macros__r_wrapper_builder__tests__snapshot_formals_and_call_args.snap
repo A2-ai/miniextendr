@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/r_wrapper_builder/tests.rs
-assertion_line: 395
+assertion_line: 470
 expression: output
 ---
 # Basic scalars
@@ -26,3 +26,12 @@ call_args: x, step, verbose
 # Missing<T> clean formals
 formals: x, y, z
 call_args: x, if (missing(y)) quote(expr=) else y, if (missing(z)) quote(expr=) else z
+
+# Unevaluated arguments (Quoted / Quosure)
+formals: data, cond, by, cols, keys, ...
+call_arg: data
+call_arg: if (missing(cond)) quote(expr=) else list(substitute(cond), parent.frame())
+call_arg: if (missing(by)) quote(expr=) else list(substitute(by), parent.frame())
+call_arg: if (missing(cols)) quote(expr=) else rlang::enquo(cols)
+call_arg: if (missing(keys)) quote(expr=) else rlang::enquo(keys)
+call_arg: list(...)

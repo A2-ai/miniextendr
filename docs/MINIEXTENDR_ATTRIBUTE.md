@@ -490,6 +490,17 @@ attribution is independent of `no_preconditions`, which on an impl block
 applies to trait impls too. Details and the fixtures:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 
+#### Unevaluated arguments: `Quoted` / `Quosure`
+
+A `Quoted` parameter stays an R formal that the wrapper passes unevaluated, as
+`list(substitute(x), parent.frame())`; a `Quosure` parameter passes
+`rlang::enquo(x)` (the package then needs rlang in `Imports:`). Rust reads the
+expression and its environment and evaluates it in the caller's R context,
+against a data frame's columns if it likes. Both work under `Missing<..>`, on
+standalone functions and standalone S3 methods only, without per-parameter
+options, and keep the function on the main thread. See
+[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md).
+
 #### R-side preconditions: markers and defaults
 
 A generated wrapper checks each argument's R type before the `.Call()`, one

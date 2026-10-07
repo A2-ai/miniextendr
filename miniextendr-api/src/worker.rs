@@ -228,9 +228,16 @@ where
     // location slot is valid here too.
     #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
+        let deferred_mark = crate::deferred_condition::mark();
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
             Ok(val) => Ok(val),
             Err(payload) => {
+                // An R exit carried out of an evaluation in an inline
+                // `with_r_thread` callback (#1835) continues to its R target,
+                // as it does from the worker path's main-thread loop.
+                // SAFETY: inline means R's main thread, inside the `.Call()`.
+                let payload =
+                    unsafe { crate::unwind_protect::resume_if_r_unwind(payload, deferred_mark) };
                 let msg = if payload.is::<crate::condition::RCondition>() {
                     crate::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned()
                 } else {
@@ -787,6 +794,24 @@ mod worker_channel {
                             Ok(_) => {
                                 // Check if trampoline caught a panic
                                 if let Some(payload) = data.panic_payload.take() {
+                                    // An R exit carried out of an evaluation in the
+                                    // callback (#1835): answer the waiting worker as
+                                    // the cleanup handler does for an R error, then
+                                    // let R continue its unwind.
+                                    let payload = match payload
+                                        .downcast::<crate::unwind_protect::RUnwind>()
+                                    {
+                                        Ok(exit) => {
+                                            let _ = response_tx.send(Err(
+                                                "R exited the main-thread callback (an R \
+                                                 error or a condition handler's exit)"
+                                                    .to_string(),
+                                            ));
+                                            drop(data);
+                                            (*exit).resume()
+                                        }
+                                        Err(payload) => payload,
+                                    };
                                     // This IS the real panic origin thread (main) —
                                     // fold its location in now (#1245), before the
                                     // message crosses back to the worker.

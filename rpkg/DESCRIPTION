@@ -31,10 +31,12 @@ Suggests:
     generics,
     ggplot2,
     jsonlite,
+    rlang,
     scales,
     testthat (>= 3.0.0),
     tibble,
     tidyr,
+    tidyselect,
     withr
 Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
