@@ -40,7 +40,11 @@
 //! spelled, takes one extra R formal, `.call = NULL`: a hand-written helper
 //! between the public function and the entry point passes its caller's frame
 //! there (`call = parent.frame()`) or a call object, and the body receives the
-//! call that resolves to. A marker and a `call = ...` attribute that disagree
+//! call that resolves to. `#[miniextendr(call_arg)]` gives a `wrapper`
+//! function, exported or not, the same formal, whose `NULL` is the wrapper's
+//! own call: an R function composing it (through `do.call()`, say) passes
+//! `.call = environment()` or a call object, and a `Call` parameter receives
+//! the call that resolves to. A marker and a `call = ...` attribute that disagree
 //! are a compile error, as are two markers on one
 //! function, a marker on an `extern "C-unwind"` function (no generated call
 //! slot) and a marker on a class method (methods keep the wrapper's own call).
@@ -55,8 +59,9 @@
 use crate::SEXP;
 
 /// The call this wrapper attributes conditions to: the call as the user wrote
-/// it (`sys.call()` in the generated wrapper). Taking it selects `wrapper`
-/// attribution. See the [module docs](self).
+/// it (`sys.call()` in the generated wrapper), or under `call_arg` the call
+/// passed as `.call`. Taking it selects `wrapper` attribution. See the
+/// [module docs](self).
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Call(SEXP);

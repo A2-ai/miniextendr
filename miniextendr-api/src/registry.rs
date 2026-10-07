@@ -1629,30 +1629,35 @@ fn resolve_list_return_wrappers(
 /// block, as written into the wrappers preamble by
 /// [`write_r_wrappers_to_file`]: the call a `call = caller` wrapper reports
 /// (#1450, #1548, #1552), including the frame or call a hand-written helper
-/// passed as the wrapper's `.call` formal (#1613).
+/// passed as the wrapper's `.call` formal (#1613), and the frame or call a
+/// `call_arg` wrapper was passed (`own = TRUE`, #1834).
 #[cfg(not(target_arch = "wasm32"))]
-const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr(noexport, call = caller)]` wrapper
-# attributes its conditions to, as written. Called as the wrapper's first
-# statement, `.mx_call <- .miniextendr_caller_call(.call)`,
-# with the wrapper's trailing `.call = NULL` formal (an S3 method has none and
-# calls it without an argument), so the calling chain is
-# [caller's caller] <- [caller] <- [wrapper] <- [this helper]: `sys.parent(1L)`
-# is the wrapper's frame, `sys.parent(2L)` its caller's. `call` is what the
-# wrapper's caller passed as `.call`:
+const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a `.call` formal attributes its
+# conditions to, as written. A `#[miniextendr(noexport, call = caller)]`
+# wrapper calls it as its first statement, `.mx_call <- .miniextendr_caller_call(.call)`,
+# with its trailing `.call = NULL` formal (an S3 method has none and calls it
+# without an argument). A `#[miniextendr(call_arg)]` wrapper binds
+# `.mx_call <- if (is.null(.call)) sys.call() else .miniextendr_caller_call(.call, own = TRUE)`,
+# so it calls the helper only for a `.call` that isn't NULL. The calling chain
+# is [caller's caller] <- [caller] <- [wrapper] <- [this helper]:
+# `sys.parent(1L)` is the wrapper's frame, `sys.parent(2L)` its caller's.
+# `call` is what the wrapper's caller passed as `.call`:
 # - an environment: a hand-written helper between the public function and the
 #   wrapper passes its caller's frame (`call = parent.frame()` in the helper's
-#   formals). The result is the call of the closure owning that frame.
+#   formals), or a function composing the wrapper its own (`environment()`).
+#   The result is the call of the closure owning that frame.
 #   `match(TRUE, ...)` takes the oldest frame with that environment, the
 #   closure's own, ahead of a later `eval()` over it. An environment that is no
 #   closure's live frame (`globalenv()`) counts as NULL.
 # - a call object: used as is.
-# - NULL, the default: when the wrapper's caller is a closure, that caller's
-#   call. Otherwise (top level, or an `eval()` frame such as a testthat block,
+# - NULL, the default: under `own = TRUE`, the wrapper's own call, without
+#   `.call`. Otherwise, when the wrapper's caller is a closure, that caller's
+#   call; else (top level, or an `eval()` frame such as a testthat block,
 #   `source()` or `local()`, whose frame function is not a closure and whose
 #   call names `eval`) the wrapper's own call, without `.call`.
 # - anything else: an argument error on `.call` against the wrapper's own call,
 #   which also catches a positional argument too many.
-.miniextendr_caller_call <- function(call = NULL) {
+.miniextendr_caller_call <- function(call = NULL, own = FALSE) {
   wrapper <- sys.parent(1L)
   if (is.environment(call)) {
     frames <- sys.frames()
@@ -1663,11 +1668,13 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr
   } else if (!is.null(call)) {
     .miniextendr_arg_error(".call", "must be NULL, an environment or a call", sys.call(wrapper))
   }
-  parent <- sys.parent(2L)
-  if (parent > 0L && typeof(sys.function(parent)) == "closure") return(sys.call(parent))
-  own <- sys.call(wrapper)
-  own$.call <- NULL
-  own
+  if (!own) {
+    parent <- sys.parent(2L)
+    if (parent > 0L && typeof(sys.function(parent)) == "closure") return(sys.call(parent))
+  }
+  call <- sys.call(wrapper)
+  call$.call <- NULL
+  call
 }
 "#;
 
@@ -3800,8 +3807,10 @@ mod tests {
 
     /// The preamble's caller-call helper (#1613) takes the wrapper's `.call`
     /// as an argument defaulting to `NULL` (an S3 method calls it without
-    /// one), and is the only top-level definition in its block, so the
-    /// duplicate-name scan sees it once.
+    /// one) and `own`, which a `call_arg` wrapper sets so that a frame no
+    /// closure owns gives its own call, not its caller's (#1834). It is the
+    /// only top-level definition in its block, so the duplicate-name scan
+    /// sees it once.
     #[test]
     fn caller_call_helper_takes_the_call_formal() {
         let defs: Vec<&str> = CALLER_CALL_HELPER
@@ -3809,9 +3818,14 @@ mod tests {
             .filter_map(parse_top_level_fn_def_name)
             .collect();
         assert_eq!(defs, [".miniextendr_caller_call"]);
-        assert!(CALLER_CALL_HELPER.contains(".miniextendr_caller_call <- function(call = NULL) {"));
+        assert!(
+            CALLER_CALL_HELPER
+                .contains(".miniextendr_caller_call <- function(call = NULL, own = FALSE) {")
+        );
+        // `own` skips the caller lookup.
+        assert!(CALLER_CALL_HELPER.contains("  if (!own) {\n    parent <- sys.parent(2L)"));
         // The fallback call leaves the plumbing formal out.
-        assert!(CALLER_CALL_HELPER.contains("own$.call <- NULL"));
+        assert!(CALLER_CALL_HELPER.contains("call$.call <- NULL"));
         // Every call it returns is the call as written (`sys.call()`), never
         // a matched one.
         assert!(!CALLER_CALL_HELPER.contains("match.call"));

@@ -228,6 +228,7 @@ The R page gets "Prepares the sources." and rustdoc gets both paragraphs.
 | `invisible` | Wrap R return in `invisible()` (same as an `Invisible<T>` return type) |
 | `visible` | Force visible return (same as a `Visible<T>` return type) |
 | `call = wrapper \| caller` | Which call conditions are attributed to (same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`. See [below](#condition-call-markers-and-defaults) |
+| `call_arg` | A trailing `.call = NULL` formal, exported functions included: `NULL` is the wrapper's own call, and a function composing it passes `.call = environment()`. Not with `call = caller` or `s3(...)`. See [below](#condition-call-markers-and-defaults) |
 | `doc = "..."` | Custom roxygen block (replaces auto-generated) |
 
 ```rust
@@ -485,8 +486,14 @@ options do not apply to it, and class / trait methods accept none of the three
 (they keep the wrapper's own call). A `caller` standalone wrapper (S3 methods
 aside) ends its formals with `.call = NULL`, so a hand-written helper in
 between can pass on its caller's frame (`call = parent.frame()`) or a call
-([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)). The
-attribution is independent of `no_preconditions`, which on an impl block
+([A helper in between](CALL_ATTRIBUTION.md#a-helper-in-between-call)).
+`call_arg` gives a `wrapper` standalone function, exported or not, the same
+formal, whose `NULL` is the wrapper's own call: an R function composing
+exported functions (an `update()` method applying verbs through `do.call()`)
+passes `.call = environment()`, and every condition names its call; a `Call`
+parameter receives that call
+([An exported function](CALL_ATTRIBUTION.md#an-exported-function-call-arg)).
+The attribution is independent of `no_preconditions`, which on an impl block
 applies to trait impls too. Details and the fixtures:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
 

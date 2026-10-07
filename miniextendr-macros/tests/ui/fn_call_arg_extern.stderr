@@ -1,0 +1,5 @@
+error: `call_arg` needs the generated call slot; an `extern "C-unwind"` function has no `.call` argument to attribute
+  --> tests/ui/fn_call_arg_extern.rs:11:22
+   |
+11 | extern "C-unwind" fn C_call_arg_raw(x: miniextendr_api::SEXP) -> miniextendr_api::SEXP {
+   |                      ^^^^^^^^^^^^^^

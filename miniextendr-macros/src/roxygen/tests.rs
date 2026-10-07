@@ -1894,47 +1894,59 @@ fn fn_param_tags_leave_arguments_to_the_topic_or_inheritance_source() {
     }
 }
 
-/// A `call = caller` wrapper's `.call` formal gets its filler after the
-/// parameters' lines, under the same rules (#1613): none under `@describeIn`
-/// or inherited params, none when the author documented `.call`.
+/// The `.call` formal of a `call = caller` (#1613) or `call_arg` (#1834)
+/// wrapper gets its line after the parameters' lines. It is no filler: the
+/// topic a block joins (`@describeIn`, an `@rdname` page defined elsewhere)
+/// or inherits from has no line for a generated formal, so the line is
+/// written under `@describeIn` and inherited params too, and the wrapper
+/// registry keeps it on a joined page. Only the author's own `.call` line
+/// replaces it.
 #[test]
 fn fn_param_tags_fill_the_call_formal_last() {
-    let call_doc = crate::r_wrapper_builder::CallAttribution::Caller
+    use crate::r_wrapper_builder::CallAttribution;
+    for attribution in [CallAttribution::Caller, CallAttribution::Argument] {
+        let call_doc = attribution
+            .param_doc()
+            .expect("the attribution documents its formal");
+        let (tags, _) = generated_fn_param_tags_with_call(summary_fn(None), Some(call_doc));
+        let mode_placeholder =
+            crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
+        let mut expected = vec!["@param values Numbers to summarise.".to_string()];
+        expected.extend(summary_filler_lines(&mode_placeholder));
+        expected.push(format!("@param .call {call_doc}"));
+        assert_eq!(param_lines(&tags), expected, "got {tags:?}");
+
+        for doc_tag in [
+            "@describeIn summaries Weighted summary.",
+            "@inheritParams summaries",
+        ] {
+            let (tags, _) =
+                generated_fn_param_tags_with_call(summary_fn(Some(doc_tag)), Some(call_doc));
+            assert_eq!(
+                param_lines(&tags),
+                [
+                    "@param values Numbers to summarise.".to_string(),
+                    format!("@param .call {call_doc}"),
+                ],
+                "`{doc_tag}`: got {tags:?}"
+            );
+        }
+    }
+    let call_doc = CallAttribution::Caller
         .param_doc()
         .expect("caller documents its formal");
-    let (tags, _) = generated_fn_param_tags_with_call(summary_fn(None), Some(call_doc));
-    let mode_placeholder = crate::match_arg_keys::param_doc_placeholder("C_pkg_summary", "mode");
-    let mut expected = vec!["@param values Numbers to summarise.".to_string()];
-    expected.extend(summary_filler_lines(&mode_placeholder));
-    expected.push(format!("{PARAM_FILLER_MARKER}@param .call {call_doc}"));
-    assert_eq!(param_lines(&tags), expected, "got {tags:?}");
-
-    for doc_tag in [
-        "@describeIn summaries Weighted summary.",
-        "@inheritParams summaries",
-    ] {
-        let (tags, _) =
-            generated_fn_param_tags_with_call(summary_fn(Some(doc_tag)), Some(call_doc));
-        assert_eq!(
-            param_lines(&tags),
-            ["@param values Numbers to summarise."],
-            "`{doc_tag}`: got {tags:?}"
-        );
-    }
 
     let (tags, _) = generated_fn_param_tags_with_call(
         summary_fn(Some("@param .call Where the error points.")),
         Some(call_doc),
     );
-    let lines = param_lines(&tags);
-    assert!(
-        lines.contains(&"@param .call Where the error points."),
-        "got {tags:?}"
-    );
-    assert!(
-        !lines
-            .iter()
-            .any(|line| line.starts_with(PARAM_FILLER_MARKER) && line.contains(".call")),
+    let call_lines: Vec<&str> = param_lines(&tags)
+        .into_iter()
+        .filter(|line| line.contains("@param .call"))
+        .collect();
+    assert_eq!(
+        call_lines,
+        ["@param .call Where the error points."],
         "the author's `.call` line keeps its text: got {tags:?}"
     );
 }

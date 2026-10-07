@@ -849,7 +849,8 @@ conditionCall(e)
 key the vector starts at `rust_error`.) The condition is the one the wrapper's
 own check raises: same classes, same fields (`message`, `call`, `kind`,
 `param`) and the same call, which is the wrapper's call as written or, under
-`#[miniextendr(call = caller)]`, its caller's. One handler
+`#[miniextendr(call = caller)]`, its caller's (under `call_arg`, the call
+passed as `.call`). One handler
 (`tryCatch(pkg_error_argument = …)`) therefore catches the wrapper's checks and
 the body's alike.
 

@@ -1517,6 +1517,51 @@ fn miniextendr_attr_call_parses_and_validates() {
     assert!(err.to_string().contains("set more than once"), "{err}");
 }
 
+/// `call_arg` (#1834): a flag on any standalone function, exported ones
+/// included; refused with `call = caller`, whose wrapper already takes
+/// `.call`, and on S3 methods.
+#[test]
+fn miniextendr_attr_call_arg_parses_and_validates() {
+    use crate::r_wrapper_builder::CallAttribution;
+
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call_arg)).unwrap();
+    assert!(attrs.call_arg);
+    assert_eq!(attrs.call_attribution, None);
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call_arg = false)).unwrap();
+    assert!(!attrs.call_arg);
+    let attrs =
+        syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport, call = wrapper, call_arg))
+            .unwrap();
+    assert!(attrs.call_arg);
+    assert_eq!(attrs.call_attribution, Some(CallAttribution::Wrapper));
+    assert!(
+        !syn::parse2::<MiniextendrFnAttrs>(quote::quote!())
+            .unwrap()
+            .call_arg
+    );
+
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(noexport, call = caller, call_arg))
+        .err()
+        .expect("call_arg with call = caller must fail");
+    assert!(
+        err.to_string()
+            .contains("`call_arg` cannot be combined with `call = caller`"),
+        "{err}"
+    );
+
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(
+        call_arg,
+        s3(generic = "print", class = "thing")
+    ))
+    .err()
+    .expect("call_arg on an S3 method must fail");
+    assert!(
+        err.to_string()
+            .contains("`call_arg` cannot be used with `s3(...)`"),
+        "{err}"
+    );
+}
+
 #[test]
 fn err_parts_mode_expr_selects_the_serde_path() {
     use crate::c_wrapper_builder::ErrPartsMode;
