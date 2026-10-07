@@ -169,7 +169,7 @@ argument to act on:
 - the marker anywhere but the whole type or `Missing<..>`'s type argument
   (`Option<Quoted>`, `Vec<Quoted>`);
 - a class or trait method taking one (only standalone functions, standalone
-  S3 methods included, pass arguments unevaluated).
+  S3 methods included, pass arguments unevaluated; methods are #1839).
 
 A function taking either marker runs on R's main thread (also under
 `worker`), and a marker borrows the `.Call()` argument: it cannot be stored
@@ -199,7 +199,7 @@ warning or message the caller muffles just returns, and evaluation goes on.
 So use it for code the user wrote or whose conditions are part of an
 interface (a callback, a tidyselect selection, a deprecation warning), and
 keep `RCall::eval` for internal calls whose failure the Rust code handles
-itself. The `R_tryEvalSilent` users in the framework are unchanged.
+itself. The framework's own `R_tryEvalSilent` users are unchanged so far (#1840).
 
 Two rules follow from the unwind:
 

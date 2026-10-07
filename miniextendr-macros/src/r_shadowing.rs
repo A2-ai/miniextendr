@@ -75,6 +75,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "standardGeneric",
     "stop",
     "structure",
+    "substitute",
     "switch",
     "topenv",
     "trunc",

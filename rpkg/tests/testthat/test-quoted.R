@@ -396,6 +396,8 @@ test_that("tidyselect::eval_select() through a built call, error_call the wrappe
 })
 
 test_that("with_r_thread from a worker body keeps the caller's handlers", {
+  skip_if_not(miniextendr_has_feature("worker-thread") ||
+                miniextendr_has_feature("worker-default"), "worker feature not enabled")
   seen <- 0L
   out <- withCallingHandlers(
     miniextendr:::quoted_worker_call("base", "warning", "from the worker"),

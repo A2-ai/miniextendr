@@ -221,6 +221,7 @@ pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
 /// `RCall::eval_with_handlers`: the value as a string (`""` when it is not
 /// one). An R exit in the callback continues to the caller's handler, and the
 /// worker answers the next call.
+#[cfg(any(feature = "worker-thread", feature = "worker-default"))]
 #[miniextendr(noexport, worker)]
 pub fn quoted_worker_call(pkg: String, fun: String, arg: String) -> String {
     miniextendr_api::worker::with_r_thread(move || {
