@@ -94,7 +94,10 @@ is evaluated before the function sees it. `quoted_arg(value)` /
 ### GC Protection
 
 `RCall` roots the callable and every positional or named argument for the
-builder's lifetime, including freshly allocated inline arguments. It also
+builder's lifetime, including freshly allocated inline arguments. Symbols are
+the exception: R never frees a symbol (`install()` links it into the symbol
+table, which the collector marks on every collection), so a symbol callable or
+argument takes no root. It also
 protects the call object and intermediate pairlist during construction. The
 **returned SEXP is unprotected** -- caller must protect it if it will survive
 across R API calls.

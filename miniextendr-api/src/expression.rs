@@ -250,7 +250,8 @@ pub struct RCall {
     fun: SEXP,
     /// Arguments as (optional_name, value) pairs.
     args: Vec<(Option<CString>, SEXP)>,
-    /// Roots the callable and every argument for the builder's lifetime.
+    /// Roots the callable and every argument for the builder's lifetime,
+    /// except symbols, which need no root ([`needs_root`]).
     ///
     /// Besides keeping inline allocations alive, `ProtectPool` makes `RCall`
     /// `!Send + !Sync`: construction, mutation, and drop stay on R's thread.
@@ -258,13 +259,20 @@ pub struct RCall {
 }
 
 impl RCall {
-    /// Root a callable and initialize an empty builder.
+    /// Initialize an empty builder calling `fun`, rooted unless it is a symbol.
     ///
     /// `fun` may be a freshly allocated, unprotected closure. The temporary
     /// stack root keeps it alive while the pool allocates its backing VECSXP.
     #[inline]
     unsafe fn from_callable(fun: SEXP) -> Self {
         unsafe {
+            if !needs_root(fun) {
+                return RCall {
+                    fun,
+                    args: Vec::new(),
+                    roots: ProtectPool::new(4),
+                };
+            }
             let fun_guard = OwnedProtect::new(fun);
             let mut roots = ProtectPool::new(4);
             roots.insert(fun_guard.get());
@@ -315,15 +323,28 @@ impl RCall {
         unsafe { Self::from_callable(fun) }
     }
 
+    /// Root an argument for the builder's lifetime, unless it is a symbol.
+    ///
+    /// The temporary stack root covers `ProtectPool::insert` if growing the
+    /// backing VECSXP allocates. The pool then owns the lasting root.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread.
+    #[inline]
+    unsafe fn root(&mut self, value: SEXP) {
+        if needs_root(value) {
+            unsafe {
+                let value_guard = OwnedProtect::new(value);
+                self.roots.insert(value_guard.get());
+            }
+        }
+    }
+
     /// Add a positional argument.
     #[inline]
     pub fn arg(mut self, value: SEXP) -> Self {
-        // The temporary stack root covers `ProtectPool::insert` if growing the
-        // backing VECSXP allocates. The pool then owns the lasting root.
-        unsafe {
-            let value_guard = OwnedProtect::new(value);
-            self.roots.insert(value_guard.get());
-        }
+        unsafe { self.root(value) };
         self.args.push((None, value));
         self
     }
@@ -336,10 +357,7 @@ impl RCall {
     #[inline]
     pub fn named_arg(mut self, name: &str, value: SEXP) -> Self {
         let c_name = CString::new(name).expect("argument name must not contain null bytes");
-        unsafe {
-            let value_guard = OwnedProtect::new(value);
-            self.roots.insert(value_guard.get());
-        }
+        unsafe { self.root(value) };
         self.args.push((Some(c_name), value));
         self
     }
@@ -564,15 +582,35 @@ pub unsafe fn dollar_extract(target: SEXP, name: &str) -> Result<SEXP, String> {
 }
 // endregion
 
-/// `quote(<value>)`, unprotected. `value` is rooted across the allocation.
+/// Whether `value` needs a GC root while Rust holds it across an allocation.
+///
+/// A symbol never does: R never frees one. `install()` links every new symbol
+/// into `R_SymbolTable` (`src/main/names.c`, `install`, and `installNoTrChar`
+/// likewise), nothing ever unlinks it, and the collector marks every bucket of
+/// the table on every collection (`src/main/memory.c`, `RunGenCollect`: the
+/// `R_SymbolTable` loop). The marker symbols outside the table
+/// (`R_MissingArg`, `R_UnboundValue`, `R_RestartToken` and the rest, made by
+/// `mkSymMarker` in `InitNames`) are forwarded as roots of their own in the
+/// same function.
+#[inline]
+fn needs_root(value: SEXP) -> bool {
+    value.type_of() != crate::SEXPTYPE::SYMSXP
+}
+
+/// `quote(<value>)`, unprotected. `value` is rooted across the allocation
+/// unless it is a symbol ([`needs_root`]).
 ///
 /// # Safety
 ///
 /// R's main thread.
 unsafe fn quote(value: SEXP) -> SEXP {
     unsafe {
+        let quote = Rf_install(c"quote".as_ptr());
+        if !needs_root(value) {
+            return crate::sys::Rf_lang2(quote, value);
+        }
         let value = OwnedProtect::new(value);
-        crate::sys::Rf_lang2(Rf_install(c"quote".as_ptr()), value.get())
+        crate::sys::Rf_lang2(quote, value.get())
     }
 }
 
