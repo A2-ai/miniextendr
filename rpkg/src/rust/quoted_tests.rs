@@ -69,6 +69,30 @@ pub fn quoted_optional(expr: Missing<Quoted>) -> String {
     }
 }
 
+/// `"absent"` when `x` was omitted, else `typeof()` of the expression. The
+/// `NULL` default only shows in the usage; the wrapper never evaluates it.
+///
+/// @param x An expression, passed unevaluated. Omitted by default.
+#[miniextendr(internal)]
+pub fn quoted_default(#[miniextendr(default = "NULL")] x: Missing<Quoted>) -> String {
+    match x {
+        Missing::Absent => "absent".to_owned(),
+        Missing::Present(x) => x.expr().type_of().type_name().to_owned(),
+    }
+}
+
+/// `"absent"` when `x` was omitted, though its default would raise an error
+/// if evaluated; else `typeof()` of the expression.
+#[miniextendr(noexport)]
+pub fn quoted_default_unevaluated(
+    #[miniextendr(default = "stop(\"the default was evaluated\")")] x: Missing<Quoted>,
+) -> String {
+    match x {
+        Missing::Absent => "absent".to_owned(),
+        Missing::Present(x) => x.expr().type_of().type_name().to_owned(),
+    }
+}
+
 /// 1-based rows of `data` where `cond`, evaluated with `data`'s columns in
 /// scope, is `TRUE` (`NA` counts as `FALSE`).
 #[miniextendr(noexport)]
@@ -166,6 +190,19 @@ pub fn quosure_optional(x: Missing<Quosure>) -> String {
     }
 }
 
+/// `"absent"` when `x` was omitted, else `typeof()` of the quosure's
+/// expression. The `NULL` default only shows in the usage; the wrapper never
+/// evaluates it.
+///
+/// @param x An expression, captured as a quosure. Omitted by default.
+#[miniextendr(internal)]
+pub fn quosure_default(#[miniextendr(default = "NULL")] x: Missing<Quosure>) -> String {
+    match x {
+        Missing::Absent => "absent".to_owned(),
+        Missing::Present(x) => x.expr().type_of().type_name().to_owned(),
+    }
+}
+
 /// `tidyselect::eval_select(cols, data, allow_rename = FALSE,
 /// allow_empty = TRUE, error_call = <this call>)`: the named positions of
 /// the selected columns.
@@ -240,6 +277,53 @@ pub fn quoted_worker_call(pkg: String, fun: String, arg: String) -> String {
             }
         }
     })
+}
+
+// endregion
+
+// region: an R exit caught with catch_unwind
+
+thread_local! {
+    /// A caught unwind, kept across calls by `quoted_eval_stash()`.
+    static STASHED: std::cell::RefCell<Option<Box<dyn std::any::Any + Send>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Evaluate `expr`, catching the unwind an R exit starts and dropping it:
+/// `TRUE` when there was one. R carries on from the evaluation, as after
+/// `R_tryEval`; the caller's handler never runs.
+#[miniextendr(noexport)]
+pub fn quoted_eval_abandoned(expr: Quoted) -> bool {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _sentinel = DropSentinel;
+        expr.eval();
+    }))
+    .is_err()
+}
+
+/// Evaluate `expr`, catching the unwind an R exit starts and keeping it for
+/// `quoted_resume_stashed()`: `TRUE` when there was one.
+#[miniextendr(noexport)]
+pub fn quoted_eval_stash(expr: Quoted) -> bool {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        expr.eval();
+    })) {
+        Ok(()) => false,
+        Err(payload) => {
+            STASHED.with(|stashed| *stashed.borrow_mut() = Some(payload));
+            true
+        }
+    }
+}
+
+/// Resume the unwind `quoted_eval_stash()` kept, in this later call. Its R
+/// exit cannot continue (its target is gone), so the boundary raises an error.
+#[miniextendr(noexport)]
+pub fn quoted_resume_stashed() -> bool {
+    match STASHED.with(|stashed| stashed.borrow_mut().take()) {
+        Some(payload) => std::panic::resume_unwind(payload),
+        None => false,
+    }
 }
 
 // endregion

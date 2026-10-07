@@ -1,0 +1,8 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to a `Quoted` parameter: the wrapper passes the argument unevaluated, and each of them would force it. `Missing<Quoted>` takes `default` alone, which only writes the formal and is never evaluated
+  --> tests/ui/fn_quoted_missing_default_check.rs:10:63
+   |
+10 |       #[miniextendr(default = "NULL", inherits = "data.frame")] cond: miniextendr_api::Missing<
+   |  _______________________________________________________________^
+11 | |         miniextendr_api::Quoted,
+12 | |     >,
+   | |_____^

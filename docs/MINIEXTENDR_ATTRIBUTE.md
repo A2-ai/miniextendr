@@ -505,8 +505,9 @@ A `Quoted` parameter stays an R formal that the wrapper passes unevaluated, as
 expression and its environment and evaluates it in the caller's R context,
 against a data frame's columns if it likes. Both work under `Missing<..>`, on
 standalone functions and standalone S3 methods only, without per-parameter
-options, and keep the function on the main thread. See
-[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md).
+options except a `default` under `Missing<..>` (it writes the formal and is
+never evaluated), and keep the function on the main thread. See
+[QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#omitted-arguments).
 
 #### R-side preconditions: markers and defaults
 
