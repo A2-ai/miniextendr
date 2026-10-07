@@ -119,6 +119,28 @@ pub fn match_arg_either_route_omitted_optional(
     }
 }
 
+/// A route name or data frame whose omission is reported and whose explicit
+/// `NULL` is refused with its own message, before it reaches the `DataFrame`
+/// arm.
+///
+/// @export
+#[miniextendr]
+pub fn match_arg_either_route_refuse_null(
+    #[miniextendr(
+        match_arg,
+        not_inherits(
+            "NULL",
+            message = "`route` can't be NULL; omit it to keep the current route."
+        )
+    )]
+    route: Missing<Either<Route, DataFrame>>,
+) -> String {
+    match route {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(route) => describe_route(route),
+    }
+}
+
 /// An inline level name or a number.
 ///
 /// @export

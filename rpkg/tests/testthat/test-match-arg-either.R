@@ -73,6 +73,23 @@ test_that("Missing<Either<T, R>> and Missing<Option<Either<T, R>>> report omissi
   expect_equal(match_arg_either_route_omitted_optional(doses), "frame:2x2")
 })
 
+test_that("not_inherits(\"NULL\") on Missing<Either<T, DataFrame>> refuses NULL with its own message", {
+  expect_equal(eval(formals(match_arg_either_route_refuse_null)$route), routes)
+  expect_equal(match_arg_either_route_refuse_null(), "absent")
+  expect_equal(match_arg_either_route_refuse_null("bol"), "Bolus")
+  expect_equal(match_arg_either_route_refuse_null(doses), "frame:2x2")
+  # Without the check, NULL goes to the DataFrame arm, which refuses it in
+  # generic words; with it, the author's message comes first.
+  e <- tryCatch(match_arg_either_route_refuse_null(NULL), error = identity)
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "route")
+  expect_identical(
+    conditionMessage(e),
+    "`route` can't be NULL; omit it to keep the current route."
+  )
+})
+
 test_that("choices() on Either<String, f64>", {
   levels <- c("low", "mid", "high")
   expect_equal(eval(formals(choices_either_level)$level), levels)

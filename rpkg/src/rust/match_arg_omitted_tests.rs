@@ -1,6 +1,8 @@
 //! Omittable choice parameters: `match_arg` / `choices` on `Missing<..>`
 //! (#1551). The formal keeps the choice vector and an omitted argument reaches
-//! Rust as `Missing::Absent`.
+//! Rust as `Missing::Absent`. Also a choice parameter that refuses an explicit
+//! `NULL` with `not_inherits("NULL")`, which a plain choice would read as its
+//! first choice.
 //!
 //! These fixtures have their own file, so their own help page: on
 //! `match_arg_tests.Rd` other functions document `mode` / `modes` themselves,
@@ -92,6 +94,48 @@ pub fn choices_omitted_colors(
     match colors {
         Missing::Absent => "absent".to_string(),
         Missing::Present(v) => v.join(", "),
+    }
+}
+// endregion
+
+// region: Refusing an explicit NULL — not_inherits("NULL")
+
+/// A mode whose explicit `NULL` is refused: the class check runs before the
+/// choice is matched, so `NULL` never becomes the first choice.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_refuse_null(
+    #[miniextendr(
+        match_arg,
+        not_inherits(
+            "NULL",
+            message = "`mode` can't be NULL; name a mode such as \"Safe\"."
+        )
+    )]
+    mode: Mode,
+) -> String {
+    format!("{mode:?}")
+}
+
+/// An omittable mode whose explicit `NULL` is refused: omitting the argument
+/// still reaches Rust as `Absent`.
+///
+/// @export
+#[miniextendr_api::miniextendr]
+pub fn match_arg_omitted_refuse_null(
+    #[miniextendr(
+        match_arg,
+        not_inherits(
+            "NULL",
+            message = "`mode` can't be NULL; omit it to keep the current mode."
+        )
+    )]
+    mode: Missing<Mode>,
+) -> String {
+    match mode {
+        Missing::Absent => "absent".to_string(),
+        Missing::Present(m) => format!("{m:?}"),
     }
 }
 // endregion
