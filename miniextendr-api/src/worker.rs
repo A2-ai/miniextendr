@@ -229,6 +229,7 @@ where
     #[cfg(not(all(feature = "worker-thread", not(target_family = "wasm"))))]
     {
         let deferred_mark = crate::deferred_condition::mark();
+        let boundary = crate::unwind_protect::Boundary::enter();
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
             Ok(val) => Ok(val),
             Err(payload) => {
@@ -236,8 +237,10 @@ where
                 // `with_r_thread` callback (#1835) continues to its R target,
                 // as it does from the worker path's main-thread loop.
                 // SAFETY: inline means R's main thread, inside the `.Call()`.
-                let payload =
-                    unsafe { crate::unwind_protect::resume_if_r_unwind(payload, deferred_mark) };
+                let payload = unsafe {
+                    crate::unwind_protect::resume_if_r_unwind(payload, deferred_mark, &boundary)
+                };
+                drop(boundary);
                 let msg = if payload.is::<crate::condition::RCondition>() {
                     crate::unwind_protect::panic_payload_to_string(payload.as_ref()).into_owned()
                 } else {
@@ -769,6 +772,7 @@ mod worker_channel {
                     }
 
                     let response: MainThreadResponse = unsafe {
+                        let boundary = crate::unwind_protect::Boundary::enter();
                         let token = crate::unwind_protect::get_continuation_token();
 
                         let data = Box::into_raw(Box::new(CallData {
@@ -801,15 +805,17 @@ mod worker_channel {
                                     let payload = match payload
                                         .downcast::<crate::unwind_protect::RUnwind>()
                                     {
-                                        Ok(exit) => {
+                                        Ok(exit) if exit.belongs_to(&boundary) => {
                                             let _ = response_tx.send(Err(
                                                 "R exited the main-thread callback (an R \
                                                  error or a condition handler's exit)"
                                                     .to_string(),
                                             ));
                                             drop(data);
+                                            boundary.leave();
                                             (*exit).resume()
                                         }
+                                        Ok(exit) => exit.stray(),
                                         Err(payload) => payload,
                                     };
                                     // This IS the real panic origin thread (main) —
@@ -828,6 +834,7 @@ mod worker_channel {
                                 // Check if this was an R error (cleanup handler already sent response)
                                 if payload.downcast_ref::<RErrorMarker>().is_some() {
                                     drop(data);
+                                    boundary.leave();
                                     sys::R_ContinueUnwind(token);
                                 }
                                 // Rust panic - return as error response. Also

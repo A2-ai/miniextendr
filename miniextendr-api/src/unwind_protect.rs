@@ -62,6 +62,7 @@
 use std::{
     any::Any,
     borrow::Cow,
+    cell::Cell,
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::OnceLock,
@@ -237,6 +238,55 @@ pub(crate) fn panic_message_with_location(payload: &(dyn Any + Send)) -> String 
 
 // region: R exits carried as a Rust unwind (#1835)
 
+thread_local! {
+    /// The innermost [`Boundary`] on this thread; `0` outside any.
+    static BOUNDARY: Cell<u64> = const { Cell::new(0) };
+    /// The last boundary id handed out on this thread.
+    static LAST_BOUNDARY: Cell<u64> = const { Cell::new(0) };
+}
+
+/// A miniextendr boundary that resumes R exits ([`RUnwind`]): the innermost on
+/// its thread from [`enter`](Self::enter) until it is dropped or
+/// [`leave`](Self::leave)s.
+///
+/// An exit belongs to the boundary that was innermost when its evaluation
+/// started, and only that boundary may resume it. Its jump target is an R
+/// context on the C stack, alive only while that boundary's call is: an exit
+/// caught with `catch_unwind`, kept, and resumed after the call returned would
+/// jump into a frame that no longer exists. [`resume_if_r_unwind`] refuses it.
+pub(crate) struct Boundary {
+    id: u64,
+    outer: u64,
+}
+
+impl Boundary {
+    /// Become the innermost boundary on this thread.
+    #[inline]
+    pub(crate) fn enter() -> Self {
+        let id = LAST_BOUNDARY.with(|last| {
+            let id = last.get() + 1;
+            last.set(id);
+            id
+        });
+        let outer = BOUNDARY.with(|current| current.replace(id));
+        Boundary { id, outer }
+    }
+
+    /// Make the enclosing boundary the innermost again. Call it before leaving
+    /// by an R jump, which skips `Drop`.
+    #[inline]
+    pub(crate) fn leave(&self) {
+        BOUNDARY.with(|current| current.set(self.outer));
+    }
+}
+
+impl Drop for Boundary {
+    #[inline]
+    fn drop(&mut self) {
+        self.leave();
+    }
+}
+
 /// An R non-local exit that [`eval_unwinding`] carries out of its `Rf_eval`
 /// as a Rust unwind: an error, a condition caught by an exiting handler set up
 /// outside the call (`tryCatch(warning = )`), a restart, an interrupt.
@@ -255,31 +305,59 @@ pub(crate) struct RUnwind {
     /// `R_MakeUnwindCont()`, preserved: the jump target and the value R was
     /// jumping with.
     token: SEXP,
+    /// The [`Boundary`] that was innermost when the evaluation started.
+    boundary: u64,
 }
 
 impl RUnwind {
+    /// Whether `boundary` may resume this exit: the boundary its evaluation
+    /// ran in, still on the stack.
+    #[inline]
+    pub(crate) fn belongs_to(&self, boundary: &Boundary) -> bool {
+        self.boundary == boundary.id
+    }
+
     /// Continue the R exit where `R_UnwindProtect` stopped it. Never returns.
     ///
     /// # Safety
     ///
-    /// R's main thread, with no Rust value left to drop between this call and
-    /// the R context that owns the frame (the C entry point R called).
+    /// R's main thread, at the boundary the exit [`belongs_to`](Self::belongs_to),
+    /// after its [`Boundary::leave`], with no Rust value left to drop between
+    /// this call and the R context that owns the frame (the C entry point R
+    /// called).
     pub(crate) unsafe fn resume(self) -> ! {
         let token = self.token;
         std::mem::forget(self);
         unsafe {
-            // `R_ContinueUnwind` reads the jump target and value out of the
-            // token before it allocates, and roots the value itself.
+            // `R_jumpctxt` roots the value it jumps with only after the cleanups
+            // of the contexts it passes have run (it sets `R_ReturnedValue`
+            // after `R_run_onexits`), and those may allocate. The protection
+            // keeps the token, and with it the value, alive until then; the
+            // jump resets the protect stack (`R_restore_globals`), which ends it.
+            sys::Rf_protect(token);
             sys::R_ReleaseObject(token);
             R_ContinueUnwind(token)
         }
     }
+
+    /// The payload a boundary raises in place of an exit it may not resume
+    /// (see [`Boundary`]). The exit is dropped.
+    pub(crate) fn stray(self: Box<Self>) -> Box<dyn Any + Send> {
+        drop(self);
+        Box::new(
+            "an R exit (an error, a condition handler's exit or a restart) was caught with \
+             `catch_unwind` and resumed outside the call that raised it; it cannot continue",
+        )
+    }
 }
 
 impl Drop for RUnwind {
-    /// Only reached when something other than a miniextendr boundary caught
-    /// the unwind and dropped it: the R exit is abandoned and R carries on
-    /// from that point, as after `R_tryEval`. Free the token.
+    /// Reached when something other than the exit's boundary caught the unwind
+    /// and dropped it, or the boundary refused it ([`RUnwind::stray`]). The R
+    /// exit is abandoned: R carries on from where the evaluation stopped, as
+    /// after `R_tryEval`. Release the token. Off R's main thread nothing may
+    /// touch R, so the token stays preserved for the rest of the session; no
+    /// framework path moves an exit off the main thread.
     fn drop(&mut self) {
         if crate::worker::is_r_main_thread() {
             unsafe { sys::R_ReleaseObject(self.token) }
@@ -287,23 +365,27 @@ impl Drop for RUnwind {
     }
 }
 
-/// Resume `payload` if it carries an R exit ([`RUnwind`]); return it
-/// otherwise. Conditions deferred since `deferred_mark` belong to the call the
+/// Resume `payload` if it carries an R exit ([`RUnwind`]) that belongs to
+/// `boundary`; return it otherwise, or [`RUnwind::stray`] for an exit from
+/// elsewhere. Conditions deferred since `deferred_mark` belong to the call the
 /// exit abandons and are discarded first, as on the R-error path.
 ///
 /// # Safety
 ///
-/// As [`RUnwind::resume`]: R's main thread, at a boundary with nothing left to
-/// drop above the C entry point.
+/// As [`RUnwind::resume`]: R's main thread, at `boundary`, with nothing left
+/// to drop above the C entry point.
 pub(crate) unsafe fn resume_if_r_unwind(
     payload: Box<dyn Any + Send>,
     deferred_mark: usize,
+    boundary: &Boundary,
 ) -> Box<dyn Any + Send> {
     match payload.downcast::<RUnwind>() {
-        Ok(exit) => {
+        Ok(exit) if exit.belongs_to(boundary) => {
             crate::deferred_condition::discard(deferred_mark);
+            boundary.leave();
             unsafe { exit.resume() }
         }
+        Ok(exit) => exit.stray(),
         Err(payload) => payload,
     }
 }
@@ -326,6 +408,8 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
     struct EvalData {
         expr: SEXP,
         env: SEXP,
+        token: SEXP,
+        boundary: u64,
     }
 
     unsafe extern "C-unwind" fn trampoline(data: *mut c_void) -> SEXP {
@@ -335,13 +419,18 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
         unsafe { sys::Rf_eval(data.expr, data.env) }
     }
 
-    unsafe extern "C-unwind" fn cleanup(token: *mut c_void, jump: Rboolean) {
+    unsafe extern "C-unwind" fn cleanup(data: *mut c_void, jump: Rboolean) {
         if jump != Rboolean::FALSE {
+            let data = unsafe { &*data.cast::<EvalData>() };
+            // A boundary the R code entered and an R jump left skipped its
+            // `leave`; this evaluation's boundary is the innermost again.
+            BOUNDARY.with(|current| current.set(data.boundary));
             // R stopped its jump at our frame and would continue it after this
             // returns. Carry it out as a Rust unwind instead. `resume_unwind`
             // skips the panic hook: this is no panic.
             std::panic::resume_unwind(Box::new(RUnwind {
-                token: SEXP(token.cast()),
+                token: data.token,
+                boundary: data.boundary,
             }));
         }
     }
@@ -349,14 +438,21 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let token = sys::R_MakeUnwindCont();
         sys::R_PreserveObject(token);
-        let mut data = EvalData { expr, env };
+        let boundary = BOUNDARY.with(Cell::get);
+        let mut data = EvalData {
+            expr,
+            env,
+            token,
+            boundary,
+        };
         let value = R_UnwindProtect_C_unwind(
             Some(trampoline),
             (&raw mut data).cast(),
             Some(cleanup),
-            token.0.cast(),
+            (&raw mut data).cast(),
             token,
         );
+        BOUNDARY.with(|current| current.set(boundary));
         sys::R_ReleaseObject(token);
         value
     }
@@ -433,6 +529,7 @@ where
     }
 
     let deferred_mark = crate::deferred_condition::mark();
+    let boundary = Boundary::enter();
     unsafe {
         let token = get_continuation_token();
 
@@ -464,7 +561,7 @@ where
                     drain_log_queue_if_available();
                     // An R exit carried out of `eval_unwinding` (#1835): the Rust
                     // frames it crossed have dropped their values; continue it.
-                    let payload = resume_if_r_unwind(payload, deferred_mark);
+                    let payload = resume_if_r_unwind(payload, deferred_mark, &boundary);
                     Err(payload)
                 } else {
                     // Normal completion - return the result
@@ -489,6 +586,7 @@ where
                     // No signalling while resuming an R error or exiting handler.
                     // Conditions from the abandoned call must not survive it.
                     crate::deferred_condition::discard(deferred_mark);
+                    boundary.leave();
                     // Continue R's unwind (diverges, never returns)
                     R_ContinueUnwind(token);
                 } else {

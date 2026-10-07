@@ -643,15 +643,18 @@ unsafe fn quote(value: SEXP) -> SEXP {
 /// The unwind must reach a miniextendr boundary. Don't catch it with
 /// `std::panic::catch_unwind` in between, or the R exit is abandoned (R
 /// carries on as after `R_tryEval`, without running the caller's handler);
-/// resume a caught payload with `std::panic::resume_unwind`. Don't call this
-/// from a `Drop` implementation: an exit there would start an unwind during an
+/// resume a caught payload with `std::panic::resume_unwind` on the same
+/// thread before the call returns. An exit resumed in a later call has lost
+/// its target: the boundary raises an error instead. Don't call this from a
+/// `Drop` implementation: an exit there would start an unwind during an
 /// unwind, which aborts.
 ///
 /// # Safety
 ///
 /// - R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
 ///   function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
-///   closure, a guarded ALTREP or connection callback, a
+///   closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard
+///   (not `unsafe`, which catches nothing), a connection callback, a
 ///   [`with_r_thread`](crate::worker::with_r_thread) closure.
 /// - `expr` and `env` stay rooted for the call; `env` is an environment.
 ///
