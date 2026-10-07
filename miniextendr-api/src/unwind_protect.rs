@@ -235,6 +235,135 @@ pub(crate) fn panic_message_with_location(payload: &(dyn Any + Send)) -> String 
     }
 }
 
+// region: R exits carried as a Rust unwind (#1835)
+
+/// An R non-local exit that [`eval_unwinding`] carries out of its `Rf_eval`
+/// as a Rust unwind: an error, a condition caught by an exiting handler set up
+/// outside the call (`tryCatch(warning = )`), a restart, an interrupt.
+///
+/// The unwind runs the destructors of the Rust frames between the evaluation
+/// and the boundary that catches it. The boundary ([`run_r_unwind_protect`],
+/// the worker's main-thread loop, the FFI guards) then resumes the exit with
+/// `R_ContinueUnwind`, and R carries on to the context it was jumping to, with
+/// the condition object and call it was jumping with.
+///
+/// The continuation token is private to one evaluation and preserved until
+/// the exit resumes, so R code that a destructor runs during the unwind (a
+/// protected call of its own, which reuses the shared token) cannot overwrite
+/// the pending jump or let the collector reclaim it (#1507).
+pub(crate) struct RUnwind {
+    /// `R_MakeUnwindCont()`, preserved: the jump target and the value R was
+    /// jumping with.
+    token: SEXP,
+}
+
+impl RUnwind {
+    /// Continue the R exit where `R_UnwindProtect` stopped it. Never returns.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread, with no Rust value left to drop between this call and
+    /// the R context that owns the frame (the C entry point R called).
+    pub(crate) unsafe fn resume(self) -> ! {
+        let token = self.token;
+        std::mem::forget(self);
+        unsafe {
+            // `R_ContinueUnwind` reads the jump target and value out of the
+            // token before it allocates, and roots the value itself.
+            sys::R_ReleaseObject(token);
+            R_ContinueUnwind(token)
+        }
+    }
+}
+
+impl Drop for RUnwind {
+    /// Only reached when something other than a miniextendr boundary caught
+    /// the unwind and dropped it: the R exit is abandoned and R carries on
+    /// from that point, as after `R_tryEval`. Free the token.
+    fn drop(&mut self) {
+        if crate::worker::is_r_main_thread() {
+            unsafe { sys::R_ReleaseObject(self.token) }
+        }
+    }
+}
+
+/// Resume `payload` if it carries an R exit ([`RUnwind`]); return it
+/// otherwise. Conditions deferred since `deferred_mark` belong to the call the
+/// exit abandons and are discarded first, as on the R-error path.
+///
+/// # Safety
+///
+/// As [`RUnwind::resume`]: R's main thread, at a boundary with nothing left to
+/// drop above the C entry point.
+pub(crate) unsafe fn resume_if_r_unwind(
+    payload: Box<dyn Any + Send>,
+    deferred_mark: usize,
+) -> Box<dyn Any + Send> {
+    match payload.downcast::<RUnwind>() {
+        Ok(exit) => {
+            crate::deferred_condition::discard(deferred_mark);
+            unsafe { exit.resume() }
+        }
+        Err(payload) => payload,
+    }
+}
+
+/// Evaluate `expr` in `env` with `Rf_eval`, in the caller's R context: the
+/// condition handlers and restarts established around the `.Call()` stay in
+/// place, unlike under `R_tryEval`, whose `R_ToplevelExec` empties the handler
+/// and restart stacks for the duration.
+///
+/// The `Rf_eval` runs in its own `R_UnwindProtect`, so an R exit stops at that
+/// frame, never jumping over a Rust frame. Its cleanup turns the exit into a
+/// Rust unwind ([`RUnwind`]); the boundary resumes it.
+///
+/// # Safety
+///
+/// R's main thread, inside a miniextendr boundary (a `#[miniextendr]` body, a
+/// `with_r_unwind_protect*` closure, a guarded callback). `expr` and `env` are
+/// rooted for the call, `env` an environment. The result is unprotected.
+pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
+    struct EvalData {
+        expr: SEXP,
+        env: SEXP,
+    }
+
+    unsafe extern "C-unwind" fn trampoline(data: *mut c_void) -> SEXP {
+        let data = unsafe { &*data.cast::<EvalData>() };
+        // An R exit from here jumps to `R_UnwindProtect`, over no Rust frame
+        // that holds anything to drop.
+        unsafe { sys::Rf_eval(data.expr, data.env) }
+    }
+
+    unsafe extern "C-unwind" fn cleanup(token: *mut c_void, jump: Rboolean) {
+        if jump != Rboolean::FALSE {
+            // R stopped its jump at our frame and would continue it after this
+            // returns. Carry it out as a Rust unwind instead. `resume_unwind`
+            // skips the panic hook: this is no panic.
+            std::panic::resume_unwind(Box::new(RUnwind {
+                token: SEXP(token.cast()),
+            }));
+        }
+    }
+
+    unsafe {
+        let token = sys::R_MakeUnwindCont();
+        sys::R_PreserveObject(token);
+        let mut data = EvalData { expr, env };
+        let value = R_UnwindProtect_C_unwind(
+            Some(trampoline),
+            (&raw mut data).cast(),
+            Some(cleanup),
+            token.0.cast(),
+            token,
+        );
+        sys::R_ReleaseObject(token);
+        value
+    }
+}
+
+// endregion
+
 // region: Log drain integration
 
 /// Drain the cross-thread log queue if the `log` feature is enabled.
@@ -333,6 +462,9 @@ where
                     // Drain worker-thread log records before returning the panic
                     // payload to the caller (which will convert it to an R error).
                     drain_log_queue_if_available();
+                    // An R exit carried out of `eval_unwinding` (#1835): the Rust
+                    // frames it crossed have dropped their values; continue it.
+                    let payload = resume_if_r_unwind(payload, deferred_mark);
                     Err(payload)
                 } else {
                     // Normal completion - return the result

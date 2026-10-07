@@ -787,6 +787,24 @@ mod worker_channel {
                             Ok(_) => {
                                 // Check if trampoline caught a panic
                                 if let Some(payload) = data.panic_payload.take() {
+                                    // An R exit carried out of an evaluation in the
+                                    // callback (#1835): answer the waiting worker as
+                                    // the cleanup handler does for an R error, then
+                                    // let R continue its unwind.
+                                    let payload = match payload
+                                        .downcast::<crate::unwind_protect::RUnwind>()
+                                    {
+                                        Ok(exit) => {
+                                            let _ = response_tx.send(Err(
+                                                "R exited the main-thread callback (an R \
+                                                 error or a condition handler's exit)"
+                                                    .to_string(),
+                                            ));
+                                            drop(data);
+                                            (*exit).resume()
+                                        }
+                                        Err(payload) => payload,
+                                    };
                                     // This IS the real panic origin thread (main) —
                                     // fold its location in now (#1245), before the
                                     // message crosses back to the worker.

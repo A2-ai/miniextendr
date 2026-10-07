@@ -187,6 +187,10 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     // Condition-call markers wrap the `.call` slot's SEXP (#1566).
     "Call",
     "CallerCall",
+    // Unevaluated-argument markers hold the argument's expression and
+    // environment (#1835); `Missing<..>` around them is checked by the caller.
+    "Quoted",
+    "Quosure",
     "AltrepSexp",
     "RDVector",
     "RDMatrix",
@@ -265,6 +269,128 @@ pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::Ca
         "Call" => Some(crate::r_wrapper_builder::CallAttribution::Wrapper),
         "CallerCall" => Some(crate::r_wrapper_builder::CallAttribution::Caller),
         _ => None,
+    }
+}
+
+// endregion
+
+// region: unevaluated-argument markers (#1835)
+
+/// Which unevaluated-argument marker a parameter takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnevaluatedKind {
+    /// `Quoted`: base R's `substitute(x)` and `parent.frame()`.
+    Quoted,
+    /// `Quosure`: `rlang::enquo(x)`.
+    Quosure,
+}
+
+impl UnevaluatedKind {
+    /// The marker's type name, for diagnostics.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Quoted => "Quoted",
+            Self::Quosure => "Quosure",
+        }
+    }
+
+    /// The `.Call()` argument the R wrapper passes for parameter `p`: the
+    /// missing-argument sentinel, as for `Missing<T>`, else the capture. Never
+    /// forces `p`.
+    pub(crate) fn r_call_arg(self, p: &str) -> String {
+        let capture = match self {
+            Self::Quoted => format!("list(substitute({p}), parent.frame())"),
+            Self::Quosure => format!("rlang::enquo({p})"),
+        };
+        format!("if (missing({p})) quote(expr=) else {capture}")
+    }
+
+    /// The marker's path in `miniextendr_api`.
+    pub(crate) fn api_path(self) -> proc_macro2::TokenStream {
+        match self {
+            Self::Quoted => quote::quote!(::miniextendr_api::Quoted),
+            Self::Quosure => quote::quote!(::miniextendr_api::Quosure),
+        }
+    }
+
+    /// The marker a path segment names: `Quoted` / `Quosure`, bare or with
+    /// lifetime arguments only (`Quoted<'_>`).
+    fn of_segment(seg: &syn::PathSegment) -> Option<Self> {
+        let lifetimes_only = match &seg.arguments {
+            syn::PathArguments::None => true,
+            syn::PathArguments::AngleBracketed(ab) => ab
+                .args
+                .iter()
+                .all(|arg| matches!(arg, syn::GenericArgument::Lifetime(_))),
+            syn::PathArguments::Parenthesized(_) => false,
+        };
+        if !lifetimes_only {
+            return None;
+        }
+        match seg.ident.to_string().as_str() {
+            "Quoted" => Some(Self::Quoted),
+            "Quosure" => Some(Self::Quosure),
+            _ => None,
+        }
+    }
+}
+
+/// An unevaluated-argument parameter: `Quoted` / `Quosure`, or either inside
+/// `Missing<..>` (`optional`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UnevaluatedParam {
+    pub(crate) kind: UnevaluatedKind,
+    /// `Missing<Quoted>` / `Missing<Quosure>`: an omitted argument is
+    /// `Missing::Absent` instead of an error.
+    pub(crate) optional: bool,
+}
+
+/// Detect an unevaluated-argument parameter type, matched on the last path
+/// segment like the other markers: `Quoted`, `Quosure`, or one of them as the
+/// type argument of `Missing<..>`. Any other position (`Option<Quoted>`,
+/// `&Quoted`) is not one; [`mentions_unevaluated_marker`] lets the caller
+/// refuse it.
+pub(crate) fn unevaluated_param(ty: &syn::Type) -> Option<UnevaluatedParam> {
+    let marker = |ty: &syn::Type| match ty {
+        syn::Type::Path(p) => p
+            .path
+            .segments
+            .last()
+            .and_then(UnevaluatedKind::of_segment),
+        _ => None,
+    };
+    if let Some(kind) = marker(ty) {
+        return Some(UnevaluatedParam {
+            kind,
+            optional: false,
+        });
+    }
+    let inner = crate::miniextendr_fn::get_missing_inner_type(ty)?;
+    marker(inner).map(|kind| UnevaluatedParam {
+        kind,
+        optional: true,
+    })
+}
+
+/// Whether `ty` names `Quoted` / `Quosure` anywhere, at any depth.
+pub(crate) fn mentions_unevaluated_marker(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(p) => p.path.segments.iter().any(|seg| {
+            matches!(seg.ident.to_string().as_str(), "Quoted" | "Quosure")
+                || match &seg.arguments {
+                    syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(|arg| {
+                        matches!(arg, syn::GenericArgument::Type(t) if mentions_unevaluated_marker(t))
+                    }),
+                    _ => false,
+                }
+        }),
+        syn::Type::Reference(r) => mentions_unevaluated_marker(&r.elem),
+        syn::Type::Paren(p) => mentions_unevaluated_marker(&p.elem),
+        syn::Type::Group(g) => mentions_unevaluated_marker(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(mentions_unevaluated_marker),
+        syn::Type::Array(a) => mentions_unevaluated_marker(&a.elem),
+        syn::Type::Slice(s) => mentions_unevaluated_marker(&s.elem),
+        _ => false,
     }
 }
 
@@ -603,9 +729,10 @@ pub(crate) fn erase_lifetimes(ty: &syn::Type) -> syn::Type {
 #[cfg(test)]
 mod tests {
     use super::{
-        ParamMarker, call_marker, choice_layer_name, choice_layers, erase_lifetimes,
-        is_main_thread_bound_input, is_main_thread_bound_return, match_arg_choices_ty,
-        peel_param_markers, r_value_noun, type_display, visibility_marker_error,
+        ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name,
+        choice_layers, erase_lifetimes, is_main_thread_bound_input, is_main_thread_bound_return,
+        match_arg_choices_ty, mentions_unevaluated_marker, peel_param_markers, r_value_noun,
+        type_display, unevaluated_param, visibility_marker_error,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -639,6 +766,74 @@ mod tests {
         )));
         assert!(!is_main_thread_bound_return(&ty("ExternalPtr<MyType>")));
         assert!(!is_main_thread_bound_return(&ty("DataFrame")));
+    }
+
+    #[test]
+    fn unevaluated_param_matches_bare_and_missing_markers_only() {
+        let required = |kind| {
+            Some(UnevaluatedParam {
+                kind,
+                optional: false,
+            })
+        };
+        let optional = |kind| {
+            Some(UnevaluatedParam {
+                kind,
+                optional: true,
+            })
+        };
+        assert_eq!(
+            unevaluated_param(&ty("Quoted")),
+            required(UnevaluatedKind::Quoted)
+        );
+        assert_eq!(
+            unevaluated_param(&ty("Quoted<'_>")),
+            required(UnevaluatedKind::Quoted)
+        );
+        assert_eq!(
+            unevaluated_param(&ty("::miniextendr_api::Quosure<'a>")),
+            required(UnevaluatedKind::Quosure)
+        );
+        assert_eq!(
+            unevaluated_param(&ty("Missing<Quoted>")),
+            optional(UnevaluatedKind::Quoted)
+        );
+        assert_eq!(
+            unevaluated_param(&ty("miniextendr_api::Missing<Quosure<'_>>")),
+            optional(UnevaluatedKind::Quosure)
+        );
+        for other in [
+            "Option<Quoted>",
+            "&Quoted",
+            "Vec<Quosure>",
+            "Quoted<i32>",
+            "Missing<Option<Quoted>>",
+            "SEXP",
+        ] {
+            assert_eq!(unevaluated_param(&ty(other)), None, "{other}");
+        }
+        // The misplaced shapes are still recognised as mentioning a marker, so
+        // the macro can refuse them by name.
+        for misplaced in ["Option<Quoted>", "&Quoted", "Vec<Quosure<'_>>", "(i32, Quoted)"] {
+            assert!(mentions_unevaluated_marker(&ty(misplaced)), "{misplaced}");
+        }
+        assert!(!mentions_unevaluated_marker(&ty("Vec<i32>")));
+        // Bare markers are main-thread-bound inputs; `Missing<..>` is checked
+        // by the caller.
+        assert!(is_main_thread_bound_input(&ty("Quoted")));
+        assert!(is_main_thread_bound_input(&ty("Quosure<'_>")));
+    }
+
+    #[test]
+    fn unevaluated_kind_r_call_args_never_force_the_argument() {
+        assert_eq!(
+            UnevaluatedKind::Quoted.r_call_arg("cond"),
+            "if (missing(cond)) quote(expr=) else list(substitute(cond), parent.frame())"
+        );
+        assert_eq!(
+            UnevaluatedKind::Quosure.r_call_arg("cols"),
+            "if (missing(cols)) quote(expr=) else rlang::enquo(cols)"
+        );
     }
 
     #[test]

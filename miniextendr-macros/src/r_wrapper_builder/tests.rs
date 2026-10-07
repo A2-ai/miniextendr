@@ -455,6 +455,18 @@ fn snapshot_formals_and_call_args() {
     output.push_str(&format!("formals: {}\n", builder.build_formals()));
     output.push_str(&format!("call_args: {}\n", builder.build_call_args()));
 
+    // Quoted / Quosure (#1835): plain formals; the arguments pass unevaluated
+    // behind the missing-argument sentinel, required or under Missing<..>
+    output.push_str("\n# Unevaluated arguments (Quoted / Quosure)\n");
+    let inputs = parse_inputs(
+        "data: SEXP, cond: Quoted, by: Missing<Quoted<'_>>, cols: Quosure, keys: Missing<Quosure>, _dots: &Dots",
+    );
+    let builder = RArgumentBuilder::new(&inputs);
+    output.push_str(&format!("formals: {}\n", builder.build_formals()));
+    for arg in builder.build_call_args_vec() {
+        output.push_str(&format!("call_arg: {arg}\n"));
+    }
+
     insta::assert_snapshot!(output);
 }
 // endregion

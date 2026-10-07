@@ -49,4 +49,6 @@ dependencies = [
     "jsonlite",
     "ggbeeswarm",
     "attachment",
+    "rlang",
+    "tidyselect",
 ]

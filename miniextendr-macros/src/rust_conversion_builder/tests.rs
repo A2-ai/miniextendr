@@ -997,3 +997,56 @@ fn no_na_check_on_an_either_reads_the_input() {
 }
 
 // endregion
+
+/// `Quoted` / `Quosure` parameters (#1835) bind from the argument the R
+/// wrapper passed unevaluated, never through `TryFromSexp`: a bare marker
+/// returns R's missing-argument error as a conversion condition naming the
+/// parameter, `Missing<..>` reads the sentinel as `Missing::Absent`, and
+/// lifetimes are erased in the binding. No native-borrow query is emitted.
+#[test]
+fn test_unevaluated_params_bind_from_the_wrapper_argument() {
+    let builder = RustConversionBuilder::new().with_unevaluated_args();
+
+    let s = conversion_text(&builder, "_cond: Quoted<'a>");
+    assert!(
+        s.contains("let _cond : Quoted < '_ > = match unsafe { :: miniextendr_api :: Quoted :: from_wrapper_arg (& arg_0) }"),
+        "{s}"
+    );
+    assert!(
+        s.contains("arg_check_condition_value (\"argument \\\"cond\\\" is missing, with no default\" , \"cond\" , & [] , Some (__miniextendr_call) ,)"),
+        "{s}"
+    );
+    assert!(!s.contains("TryFromSexp"), "{s}");
+
+    let s = conversion_text(&builder, "cols: Missing<Quosure>");
+    assert_eq!(
+        s,
+        "let cols : Missing < Quosure > = unsafe { :: miniextendr_api :: Quosure :: missing_from_wrapper_arg (& arg_0) } ;"
+    );
+
+    for src in ["cond: Quoted", "cols: Missing<Quosure<'_>>"] {
+        let syn::FnArg::Typed(pat_type) = parse_param(src) else {
+            unreachable!()
+        };
+        let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+        assert!(
+            builder
+                .native_borrow_metadata(&pat_type, &sexp_ident)
+                .is_none(),
+            "{src}"
+        );
+    }
+}
+
+/// Without `with_unevaluated_args` (a class or trait method, whose wrapper
+/// forces its arguments) a marker is a compile error.
+#[test]
+fn test_unevaluated_params_rejected_in_methods() {
+    let s = conversion_text(&RustConversionBuilder::new(), "cond: Quoted");
+    assert!(
+        s.contains(":: core :: compile_error ! (\"`Quoted` parameters are supported on standalone `#[miniextendr]` functions only"),
+        "{s}"
+    );
+    let s = conversion_text(&RustConversionBuilder::new(), "cols: Missing<Quosure>");
+    assert!(s.contains("`Quosure` parameters are supported"), "{s}");
+}

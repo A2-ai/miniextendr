@@ -982,6 +982,62 @@ pub fn miniextendr(
         }
         call_marker = Some((pat_ident.ident.clone(), kind));
     }
+    // Unevaluated-argument markers (#1835): a `Quoted` / `Quosure` parameter
+    // stays an R formal, which the wrapper passes unevaluated
+    // (`RArgumentBuilder::build_call_args_vec`). Every per-parameter option
+    // would force it (a check, a coercion, a default evaluated in the wrapper's
+    // frame), and a marker in any other position than the whole type or
+    // `Missing<..>` would be converted as a forced value: all compile errors.
+    let mut unevaluated_r_names: Vec<String> = Vec::new();
+    for arg in all_inputs.iter() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let Some(param) = crate::type_inspect::unevaluated_param(&pt.ty) else {
+            if crate::type_inspect::mentions_unevaluated_marker(&pt.ty) {
+                return syn::Error::new_spanned(
+                    &pt.ty,
+                    "`Quoted` / `Quosure` must be the parameter's whole type, or the type \
+                     argument of `Missing<..>`: the wrapper passes the argument unevaluated \
+                     only for those shapes",
+                )
+                .into_compile_error()
+                .into();
+            }
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let marker = param.kind.name();
+        let rust_name = crate::naming::ident_name(&pat_ident.ident);
+        if parsed.has_param_attrs(&rust_name) {
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not \
+                     apply to a `{marker}` parameter: the wrapper passes the argument \
+                     unevaluated, and each of them would force it. Use `Missing<{marker}>` \
+                     for an optional argument"
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+        if parsed.param_markers().iter().any(|(name, _)| *name == rust_name) {
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "`Checked<..>` / `Unchecked<..>` select a parameter's R-side checks, and a \
+                     `{marker}` parameter has none: the wrapper passes the argument unevaluated"
+                ),
+            )
+            .into_compile_error()
+            .into();
+        }
+        unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
+    }
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
         .filter(|arg| match arg {
@@ -1129,8 +1185,12 @@ pub fn miniextendr(
     // - force_worker cannot override hard requirements for main thread
     // - Hard requirements: returns_sexp, has_sexp_inputs,
     //   has_main_thread_bound_return, has_dots, check_interrupt
+    // A `Quoted` / `Quosure` parameter (also under `Missing<..>`, which
+    // `is_main_thread_bound_input` does not look into) holds R objects and
+    // evaluates R code (#1835).
     let requires_main_thread = returns_sexp
         || has_sexp_inputs
+        || !unevaluated_r_names.is_empty()
         || has_main_thread_bound_return
         || has_dots
         || check_interrupt;
@@ -1641,7 +1701,9 @@ pub fn miniextendr(
 
     // Generate R-side precondition checks (one `isTRUE()` guard per check)
     // Skip both match_arg and choices params (already validated by match.arg)
-    let skip_params = parsed.precondition_skip_params();
+    // and `Quoted` / `Quosure` params, which no check may force (#1835).
+    let mut skip_params = parsed.precondition_skip_params();
+    skip_params.extend(unevaluated_r_names.iter().cloned());
     // A parameter drops its type-derived checks when its own spelling
     // (`Unchecked<T>`, `#[miniextendr(no_preconditions)]` on it), else the
     // function's `no_preconditions`, else the crate's `preconditions = false`,

@@ -43,6 +43,10 @@ pub struct RustConversionBuilder {
     /// The crate's `conversion_error_class` (`[package.metadata.miniextendr]`),
     /// appended to every conversion condition's class vector.
     conversion_error_class: Vec<String>,
+    /// Whether `Quoted` / `Quosure` parameters are bound (a standalone fn,
+    /// whose R wrapper passes them unevaluated, #1835). Elsewhere they are a
+    /// compile error.
+    unevaluated_args: bool,
 }
 
 impl RustConversionBuilder {
@@ -58,7 +62,17 @@ impl RustConversionBuilder {
             no_na_params: Vec::new(),
             param_markers: Vec::new(),
             conversion_error_class: crate::crate_config::conversion_error_class(),
+            unevaluated_args: false,
         }
+    }
+
+    /// Bind `Quoted` / `Quosure` parameters (#1835): set for standalone fns,
+    /// whose R wrapper passes those arguments unevaluated
+    /// (`r_wrapper_builder::RArgumentBuilder::build_call_args_vec`). Without
+    /// it such a parameter is a compile error.
+    pub fn with_unevaluated_args(mut self) -> Self {
+        self.unevaluated_args = true;
+        self
     }
 
     /// Override the crate-level conversion-error classes (the manifest's
@@ -191,7 +205,9 @@ impl RustConversionBuilder {
             return None;
         };
         let ty = pat_type.ty.as_ref();
-        if crate::type_inspect::call_marker(ty).is_some() {
+        if crate::type_inspect::call_marker(ty).is_some()
+            || crate::type_inspect::unevaluated_param(ty).is_some()
+        {
             return None;
         }
         let param_name = crate::naming::ident_name(&pat_ident.ident);
@@ -244,6 +260,68 @@ impl RustConversionBuilder {
             }
         }
         Some(quote! { <#ty as ::miniextendr_api::TryFromSexp>::NATIVE_BORROW })
+    }
+
+    /// The binding of a `Quoted` / `Quosure` parameter (#1835) from the
+    /// argument its R wrapper passed: the capture, or the missing-argument
+    /// sentinel. `Missing<..>` reads the sentinel as `Missing::Absent`; a bare
+    /// marker returns R's own error for a missing argument as a conversion
+    /// condition naming the parameter (`e$param`). The marker borrows the
+    /// argument SEXP (rooted by `.Call()` for the call), so it cannot outlive
+    /// the call.
+    fn unevaluated_binding(
+        &self,
+        ident: &syn::Ident,
+        sexp_ident: &syn::Ident,
+        r_name: &str,
+        ty: &syn::Type,
+        param: crate::type_inspect::UnevaluatedParam,
+    ) -> TokenStream {
+        let span = ty.span();
+        let marker = param.kind.api_path();
+        let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+        if !self.unevaluated_args {
+            let message = format!(
+                "`{}` parameters are supported on standalone `#[miniextendr]` functions only \
+                 (standalone S3 methods included); a class or trait method's wrapper cannot \
+                 pass an argument unevaluated",
+                param.kind.name()
+            );
+            // The binding keeps the method's own use of the parameter from
+            // adding a follow-on "cannot find value" to the diagnostic.
+            return quote_spanned! {span=>
+                ::core::compile_error!(#message);
+                let #ident: #bound_ty = ::core::unreachable!();
+            };
+        }
+        if param.optional {
+            // SAFETY (of the emitted `unsafe`): on the R main thread inside the
+            // wrapper's with_r_unwind_protect closure; `.Call()` roots the
+            // argument for the call.
+            return quote_spanned! {span=>
+                let #ident: #bound_ty = unsafe { #marker::missing_from_wrapper_arg(&#sexp_ident) };
+            };
+        }
+        let message = format!("argument \"{r_name}\" is missing, with no default");
+        let crate_class = &self.conversion_error_class;
+        // SAFETY (of the emitted `unsafe`): as above; the `None` arm returns
+        // the tagged condition from inside the wrapper's closure, like a
+        // conversion `Err` arm.
+        quote_spanned! {span=>
+            let #ident: #bound_ty = match unsafe { #marker::from_wrapper_arg(&#sexp_ident) } {
+                ::core::option::Option::Some(v) => v,
+                ::core::option::Option::None => {
+                    return unsafe {
+                        ::miniextendr_api::error_value::arg_check_condition_value(
+                            #message,
+                            #r_name,
+                            &[#(#crate_class),*],
+                            Some(__miniextendr_call),
+                        )
+                    };
+                }
+            };
+        }
     }
 
     /// Generate a conversion expression that returns a tagged condition SEXP on failure.
@@ -397,6 +475,16 @@ impl RustConversionBuilder {
                 let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
             };
             return (vec![stmt], vec![]);
+        }
+
+        // `Quoted` / `Quosure` (#1835): the R wrapper passes the argument
+        // unevaluated, behind the missing-argument sentinel; it never goes
+        // through `TryFromSexp`.
+        if let Some(param) = crate::type_inspect::unevaluated_param(ty) {
+            return (
+                vec![self.unevaluated_binding(ident, sexp_ident, &r_name, ty, param)],
+                vec![],
+            );
         }
 
         match ty {
