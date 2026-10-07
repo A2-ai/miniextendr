@@ -1632,8 +1632,8 @@ fn resolve_list_return_wrappers(
 /// passed as the wrapper's `.call` formal (#1613).
 #[cfg(not(target_arch = "wasm32"))]
 const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr(noexport, call = caller)]` wrapper
-# attributes its conditions to (#1450, #1548, #1552, #1613), as written. Called
-# as the wrapper's first statement, `.mx_call <- .miniextendr_caller_call(.call)`,
+# attributes its conditions to, as written. Called as the wrapper's first
+# statement, `.mx_call <- .miniextendr_caller_call(.call)`,
 # with the wrapper's trailing `.call = NULL` formal (an S3 method has none and
 # calls it without an argument), so the calling chain is
 # [caller's caller] <- [caller] <- [wrapper] <- [this helper]: `sys.parent(1L)`
@@ -1683,10 +1683,15 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a `#[miniextendr
 /// `match_arg::match_arg_wording!`, and the API tests
 /// (`miniextendr-api/tests/match_arg_param.rs`) evaluate this source and
 /// compare them on every input class (#1741).
+///
+/// History, kept here because the R comments ship in every package and cite
+/// no PR numbers (#1832): `.miniextendr_arg_error` is #1591, the `call`
+/// argument a `call = caller` wrapper passes is #1548, the strict
+/// `several_ok` match is #1472, and reading a factor as its labels is #1552.
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub const ARG_CHECK_HELPERS: &str = concat!(
-    r#"# Internal helper: raise an argument error from an R-side check (#1591): a
+    r#"# Internal helper: raise an argument error from an R-side check: a
 # type / length precondition, `no_na`, `inherits`, or a `match_arg` /
 # `choices` value. The condition is the one a failed Rust conversion raises:
 # the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
@@ -1695,7 +1700,7 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # error whichever side finds it. The message is `'<param>' <what>`, or the
 # author's own `message` (`inherits(..., message = )` / `no_na(message = )`),
 # used as given. `call` defaults to the wrapper's own call, as `stopifnot()`
-# reported it; a `call = caller` wrapper passes `.mx_call` (#1548), by name
+# reported it; a `call = caller` wrapper passes `.mx_call`, by name
 # next to a named `message`. Only a failing check calls this: the passing path
 # is one `isTRUE()` test per check.
 .miniextendr_arg_error <- function(param, what, call = sys.call(-1L), message = sprintf("'%s' %s", param, what)) {
@@ -1708,13 +1713,13 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
 # Base R keeps only the elements that match as long as one of them does, so a
 # misspelled entry silently shortens the selection and the per-element check on
-# the Rust side never sees it (#1472). Here every element has to match a choice
+# the Rust side never sees it. Here every element has to match a choice
 # (exactly or as a unique prefix), the first that does not is reported with its
 # position, and `NULL` selects every choice, like an omitted argument does. A
 # factor is read as its labels. The error is an argument error
 # (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
 # call, not this helper; a `call = caller` wrapper passes its caller's matched
-# call (#1548).
+# call.
 .miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
   if (is.null(arg)) return(choices)
   if (is.factor(arg)) arg <- as.character(arg)
@@ -1736,12 +1741,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # `base::match.arg()` says `'arg'` in its messages and reports its own frame;
 # this names the argument and raises an argument error
 # (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
-# call, for a `call = caller` wrapper its caller's matched call (#1548).
+# call, for a `call = caller` wrapper its caller's matched call.
 # Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
 # (the formal default) select the first choice; otherwise exactly one string
 # that matches a choice exactly or as a unique prefix. A factor is read as its
-# labels (#1552). The Rust side's `match_arg_param()` gives a body the same
-# results and messages for a choice argument it matches itself (#1741).
+# labels. The Rust side's `match_arg_param()` gives a body the same results
+# and messages for a choice argument it matches itself.
 .miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
   if (is.null(arg)) return(choices[[1L]])
   if (is.factor(arg)) arg <- as.character(arg)
@@ -1777,6 +1782,7 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 /// re-raises the tagged Rust condition value as the matching R condition:
 /// `stop()` for the error kinds, `warning()` / `message()` /
 /// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
+/// The marker class it replaces is the one `arg_error!` writes (#1740).
 pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_default) {
   .msg <- .val$error
   # `.val$call` is the call the Rust side captured, NULL to use the wrapper's
@@ -1784,7 +1790,7 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
   # `call. = FALSE`), which is signalled with `call = NULL`.
   .call <- if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call
   .class <- .val$class
-  # `arg_error!` (#1740) writes the class ".miniextendr_conversion_error_class"
+  # `arg_error!` writes the class ".miniextendr_conversion_error_class"
   # where the crate's `conversion_error_class` belongs: only the generated R
   # knows those classes, bound under that name at the end of the wrappers
   # preamble, so they replace it here. The copy of this helper that signals
@@ -1863,19 +1869,12 @@ fn format_conversion_error_class_binding(classes: &[&str]) -> String {
     )
 }
 
-/// Write all R wrapper entries to a file.
-///
-/// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
-/// installed shared object). All distributed_slice entries from `#[miniextendr]`
-/// items are available because stub.c force-loads the whole user crate.
-///
-/// Host-only — wasm32 doesn't run wrapper-gen.
+/// The comment block that opens the wrappers preamble, ahead of the
+/// `.miniextendr_raise_condition` binding, as written by
+/// [`write_r_wrappers_to_file`].
 #[cfg(not(target_arch = "wasm32"))]
-pub fn write_r_wrappers_to_file(path: &str) {
-    // Build the new content in memory; `wrappers_file_content` prepends the
-    // header (marker line + version/fingerprint line) once the body is final.
-    let mut content = String::from(
-        "# This file is generated by the miniextendr proc-macro during package build.
+const WRAPPERS_PREAMBLE_HEADER: &str =
+    "# This file is generated by the miniextendr proc-macro during package build.
 # Any manual changes will be overwritten.
 #
 # To regenerate: rebuild the package (R CMD INSTALL or devtools::install).
@@ -1892,8 +1891,20 @@ pub fn write_r_wrappers_to_file(path: &str) {
 # `stop()` longjmps; for warning/message/condition the helper signals and
 # returns invisible(NULL), which the wrapper's surrounding `return(...)`
 # propagates as its result.
-",
-    );
+";
+
+/// Write all R wrapper entries to a file.
+///
+/// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
+/// installed shared object). All distributed_slice entries from `#[miniextendr]`
+/// items are available because stub.c force-loads the whole user crate.
+///
+/// Host-only — wasm32 doesn't run wrapper-gen.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn write_r_wrappers_to_file(path: &str) {
+    // Build the new content in memory; `wrappers_file_content` prepends the
+    // header (marker line + version/fingerprint line) once the body is final.
+    let mut content = String::from(WRAPPERS_PREAMBLE_HEADER);
     content.push_str(".miniextendr_raise_condition <- ");
     content.push_str(RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
@@ -3762,6 +3773,29 @@ mod tests {
         assert_eq!(parse_top_level_fn_def_name("x <- 1L"), None);
         // Comment / arbitrary line.
         assert_eq!(parse_top_level_fn_def_name("# a comment"), None);
+    }
+
+    /// The preamble ships in every package's `R/` and source tarball, where a
+    /// bare `#1548` reads as that package's own issue, so its R text cites
+    /// none (#1832). The citations live in the Rust comments around it.
+    #[test]
+    fn preamble_cites_no_issue_numbers() {
+        let binding = format_conversion_error_class_binding(&["pkg_error"]);
+        for (name, text) in [
+            ("WRAPPERS_PREAMBLE_HEADER", WRAPPERS_PREAMBLE_HEADER),
+            ("RAISE_CONDITION_HELPER_FN", RAISE_CONDITION_HELPER_FN),
+            ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
+            ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
+            ("the conversion_error_class binding", binding.as_str()),
+        ] {
+            for line in text.lines() {
+                let cites = line
+                    .as_bytes()
+                    .windows(2)
+                    .any(|w| w[0] == b'#' && w[1].is_ascii_digit());
+                assert!(!cites, "{name} cites an issue number: {line}");
+            }
+        }
     }
 
     /// The preamble's caller-call helper (#1613) takes the wrapper's `.call`
