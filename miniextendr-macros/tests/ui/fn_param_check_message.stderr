@@ -10,7 +10,7 @@ error: `message` in `inherits(...)` needs a class to check, e.g. `inherits(class
 11 | pub fn message_without_class(#[miniextendr(inherits(message = "needs a pkg_obj"))] x: Vec<f64>) {}
    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: unknown `inherits` option `msg`; expected class names (`"cls"` or `class = "cls"`) and an optional `message = "..."`
+error: unknown `inherits` option `msg`; expected class names (`"cls"` or `class = "cls"`), `when(...)` hints and an optional `message = "..."`
   --> tests/ui/fn_param_check_message.rs:14:71
    |
 14 | pub fn unknown_inherits_key(#[miniextendr(inherits(class = "pkg_obj", msg = "m"))] x: Vec<f64>) {}

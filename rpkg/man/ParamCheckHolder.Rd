@@ -8,6 +8,7 @@
 \alias{ParamCheckHolder$add_dose}
 \alias{ParamCheckHolder$add_doses}
 \alias{ParamCheckHolder$add_duration}
+\alias{ParamCheckHolder$add_model}
 \alias{$.ParamCheckHolder}
 \alias{[[.ParamCheckHolder}
 \title{ParamCheckHolder Class}
@@ -59,5 +60,12 @@ Add a duration given as a plain number; \code{NULL} adds nothing. A
 
 \describe{
 \item{\code{tau}}{\code{NULL}, or a number in the time unit of the data.}
+}
+
+Count one more \code{mx_model}. A data frame or a fit is refused with the
+method-level \code{when(...)} hint for its class.
+
+\describe{
+\item{\code{model}}{An object of class \code{mx_model}.}
 }
 }

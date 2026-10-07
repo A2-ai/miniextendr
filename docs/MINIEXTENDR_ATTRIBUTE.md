@@ -629,6 +629,7 @@ Written on a single parameter of a standalone function:
 | `several_ok` | With `match_arg` / `choices`: accept several values (`Either<Vec<T>, R>`: several values or a value of another kind; see [ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#several-choices-or-another-value)) |
 | `inherits = "cls"` / `inherits("a", "b")` | R check `inherits(x, c(...))`: the argument must inherit from one of the classes |
 | `inherits(class = "cls", message = "...")` / `inherits("a", "b", message = "...")` | The same check, failing with your message |
+| `inherits(class = "cls", when(class = "data.frame", message = "..."))` | The same check; a refused value of a `when` class gets that message instead (see [Hints for common wrong classes](#hints-for-common-wrong-classes)) |
 | `not_inherits = "cls"` / `not_inherits("a", "b")` | R check `!inherits(x, c(...))`: the argument must inherit from none of the classes (see [Refusing classes](#refusing-classes)) |
 | `not_inherits(class = "cls", message = "...")` / `not_inherits("a", "b", message = "...")` | The same check, failing with your message |
 | `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
@@ -785,6 +786,62 @@ are method-level and name the parameter: `match_arg(p)`,
 comma-separated string, as in `choices(p = "a, b")`, because a nested option
 cannot hold a list of literals. At parameter level no class name is split, so
 `inherits(class = "a, b")` names one class, `a, b`.
+
+#### Hints for common wrong classes
+
+Some wrong values are common enough to deserve their own advice: a data frame
+passed where a model object is expected should be told which function takes a
+data frame, but `NULL` or a number should not. A `when(...)` inside
+`inherits(...)` gives a refused value of the listed classes its own message:
+
+```rust
+#[miniextendr]
+pub fn set_dose(
+    #[miniextendr(inherits(
+        class = "pkg_model",
+        message = "`model` must be a `pkg_model` object; start from `pkg_model()`.",
+        when(
+            class = "data.frame",
+            message = "`model` must be a `pkg_model` object; start from `pkg_model()`. To name the dose column of a data frame, use `col_dose()`."
+        ),
+        when("pkg_fit", "pkg_results", message = "`model` is a fit; pass its `$model`."),
+    ))]
+    model: List,
+) -> List { /* ... */ }
+```
+
+```r
+if (!isTRUE(inherits(model, "pkg_model") || !inherits(model, "data.frame"))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; start from `pkg_model()`. To name the dose column of a data frame, use `col_dose()`.")
+if (!isTRUE(inherits(model, "pkg_model") || !inherits(model, c("pkg_fit", "pkg_results")))) .miniextendr_arg_error("model", message = "`model` is a fit; pass its `$model`.")
+if (!isTRUE(inherits(model, "pkg_model"))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; start from `pkg_model()`.")
+if (!isTRUE(is.list(model))) .miniextendr_arg_error("model", message = "`model` must be a `pkg_model` object; start from `pkg_model()`.")
+```
+
+Each hint is one more guard ahead of the `inherits` guard, so the hints are
+tried in the order written and the first one naming a class of the value is
+raised. A value that passes `inherits` passes every hint: an object whose
+class is `c("pkg_model", "data.frame")` is accepted. A hint changes the
+message of a refusal, never what the function accepts. A value of no hinted
+class gets the check's own message, or the generated
+`'model' must inherit from 'pkg_model'` without one.
+
+A hint raises the condition the check raises (the classes,
+`kind = "conversion"`, `e$param`, the call, under `call = caller` the
+caller's), its message is escaped like any other, and an `Option<T>` /
+`Missing<T>` parameter still passes `NULL` / an omitted argument. Inside
+`when(...)` the classes are spelled as in `inherits(...)` (each string
+literal and each `class = "..."` names one class), and `message` is
+required. At method level the classes are one comma-separated string:
+`inherits(model(class = "pkg_model", when(class = "pkg_fit, pkg_results", message = "...")))`.
+
+The hints of several `inherits` attributes on one parameter run in the order
+written, and each one accepts every required class. A `when` class that
+`inherits` requires is a compile error, since a value of that class passes
+the check and never sees the hint. `when(...)` belongs to `inherits` only:
+`not_inherits` has one message for every class it refuses. A class may be
+both a hint class and a `not_inherits` class: a value of that class alone gets
+the hint, and one that also inherits from a required class gets the
+`not_inherits` refusal.
 
 #### Refusing classes
 
@@ -1142,6 +1199,7 @@ impl Person {
 | `match_arg(p)` / `choices(p = "a, b")` | Validate `p` with `match.arg()` (see [Parameter Attributes](#parameter-attributes)) |
 | `inherits(p = "cls_a, cls_b")` | R check `inherits(p, c(...))` |
 | `inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
+| `inherits(p(class = "cls", when(class = "df_a, df_b", message = "...")))` | The same check; a refused value of a `when` class gets that message instead ([Hints for common wrong classes](#hints-for-common-wrong-classes)) |
 | `not_inherits(p = "cls_a, cls_b")` | R check `!inherits(p, c(...))`: `p` must inherit from none of the classes |
 | `not_inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
 | `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |

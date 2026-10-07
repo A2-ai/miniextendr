@@ -12,7 +12,9 @@
 //! verbatim (`inherits(class = "cls", message = "...")`,
 //! `no_na(message = "...")`, method level
 //! `inherits(x(class = "cls", message = "..."))`). An `inherits` message also
-//! covers the parameter's type checks.
+//! covers the parameter's type checks. `inherits` also takes `when(...)`
+//! hints: the message a refused value gets for its class
+//! (`inherits(class = "cls", when(class = "data.frame", message = "..."))`).
 //!
 //! On a reading marker (`AsNumeric*`, `AsCharacter*`, and aliases or derived
 //! newtypes of them) `no_na` also checks the converted value, for what the
@@ -476,6 +478,53 @@ pub fn param_takes_duration_or_table(
 }
 // endregion
 
+// region: inherits hints (#1824)
+//
+// A value that fails `inherits` gets the first `when(...)` hint naming one of
+// its classes, else the check's own message. A value that passes `inherits`
+// is accepted whatever else it inherits from: a hint changes a refusal's
+// message, never what is accepted.
+
+/// An `mx_model` object, with a hint for a data frame and one for a fit.
+/// @param model An object of class `mx_model`.
+#[miniextendr(noexport)]
+pub fn param_model_hinted(
+    #[miniextendr(inherits(
+        class = "mx_model",
+        message = "`model` must be an `mx_model` object; start from `mx_model()`.",
+        when(
+            class = "data.frame",
+            message = "`model` must be an `mx_model` object; start from `mx_model()`. To name a column of a data frame, use `mx_col()`."
+        ),
+        when(
+            "mx_fit",
+            "mx_results",
+            message = "`model` is a fit; pass its `$model`."
+        ),
+    ))]
+    model: List,
+) -> i32 {
+    i32::try_from(model.len()).expect("list length fits i32")
+}
+
+/// `param_model_hinted` on an `Option<List>`: `NULL` passes the hint and the
+/// check.
+/// @param model `NULL`, or an object of class `mx_model`.
+#[miniextendr(noexport)]
+pub fn param_model_hinted_optional(
+    #[miniextendr(
+        default = "NULL",
+        inherits(
+            class = "mx_model",
+            when(class = "data.frame", message = "a data frame is not an `mx_model`")
+        )
+    )]
+    model: Option<List>,
+) -> bool {
+    model.is_some()
+}
+// endregion
+
 // region: impl methods
 
 /// Holder for the impl-method `inherits(...)` / `no_na(...)` fixture.
@@ -547,6 +596,27 @@ impl ParamCheckHolder {
         if let Some(tau) = tau {
             self.total += tau.0.expect("no_na refuses a missing value");
         }
+        self.total
+    }
+
+    /// Count one more `mx_model`. A data frame or a fit is refused with the
+    /// method-level `when(...)` hint for its class.
+    /// @param model An object of class `mx_model`.
+    #[miniextendr(inherits(model(
+        class = "mx_model",
+        message = "`model` must be an `mx_model` object",
+        when(
+            class = "data.frame",
+            message = "`model` is a data frame; use `mx_col()` to name its columns"
+        ),
+        when(
+            class = "mx_fit, mx_results",
+            message = "`model` is a fit; pass its `$model`"
+        ),
+    )))]
+    pub fn add_model(&mut self, model: List) -> f64 {
+        let _ = model;
+        self.total += 1.0;
         self.total
     }
 }

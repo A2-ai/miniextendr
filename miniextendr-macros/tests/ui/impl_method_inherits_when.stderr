@@ -1,0 +1,11 @@
+error: `when(...)` needs a `message = "..."`: the hint a value of its classes gets, e.g. `when(class = "data.frame", message = "...")`
+  --> tests/ui/impl_method_inherits_when.rs:11:55
+   |
+11 |     #[miniextendr(inherits(model(class = "pkg_model", when(class = "data.frame"))))]
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: class `pkg_fit` is in both `inherits` and a `when(...)` hint on parameter `model`; a value of that class passes `inherits`, so the hint would never be shown: drop it from `when(...)`
+  --> tests/ui/impl_method_inherits_when.rs:21:19
+   |
+21 |     #[miniextendr(inherits(model(
+   |                   ^^^^^^^^

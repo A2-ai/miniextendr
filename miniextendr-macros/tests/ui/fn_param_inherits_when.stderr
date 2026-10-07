@@ -1,0 +1,29 @@
+error: `when(...)` needs a `message = "..."`: the hint a value of its classes gets, e.g. `when(class = "data.frame", message = "...")`
+  --> tests/ui/fn_param_inherits_when.rs:10:49
+   |
+10 |     #[miniextendr(inherits(class = "pkg_model", when(class = "data.frame")))] model: Vec<f64>,
+   |                                                 ^^^^
+
+error: class `pkg_model` is in both `inherits` and a `when(...)` hint on parameter `model`; a value of that class passes `inherits`, so the hint would never be shown: drop it from `when(...)`
+  --> tests/ui/fn_param_inherits_when.rs:20:12
+   |
+20 |     model: Vec<f64>,
+   |            ^^^
+
+error: class `pkg_fit` is in both `inherits` and a `when(...)` hint on parameter `model`; a value of that class passes `inherits`, so the hint would never be shown: drop it from `when(...)`
+  --> tests/ui/fn_param_inherits_when.rs:28:12
+   |
+28 |     model: Vec<f64>,
+   |            ^^^
+
+error: `when(...)` in `inherits(...)` needs a class to check, e.g. `inherits(class = "pkg_obj", when(class = "data.frame", message = "..."))`
+  --> tests/ui/fn_param_inherits_when.rs:34:19
+   |
+34 |     #[miniextendr(inherits(when(class = "data.frame", message = "a data frame")))] model: Vec<f64>,
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `when(...)` is an `inherits` option: it gives a value that fails `inherits` a message for its class; `not_inherits` has one `message` for every class it refuses
+  --> tests/ui/fn_param_inherits_when.rs:40:48
+   |
+40 |     #[miniextendr(not_inherits(class = "Date", when(class = "POSIXt", message = "m")))] x: Vec<f64>,
+   |                                                ^^^^

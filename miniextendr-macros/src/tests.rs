@@ -783,22 +783,7 @@ fn parsed_fn_param_not_inherits_errors() {
 /// entry split on commas.
 #[test]
 fn method_level_param_check_spellings_and_errors() {
-    use syn::parse::Parser as _;
-    let parse = |tokens: proc_macro2::TokenStream| {
-        let mut per_param = std::collections::HashMap::new();
-        syn::meta::parser(|meta| {
-            if meta.path.is_ident("no_na") {
-                crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)
-            } else {
-                let check = crate::miniextendr_fn::ClassCheck::of(&meta.path)
-                    .expect("inherits or not_inherits");
-                crate::miniextendr_fn::parse_method_class_check(&meta, &mut per_param, check)
-            }
-        })
-        .parse2(tokens)
-        .map(|()| per_param)
-        .map_err(|e| e.to_string())
-    };
+    let parse = parse_method_checks;
 
     let per_param = parse(quote::quote! {
         no_na(p, q(message = "no NA in `q`")),
@@ -893,6 +878,280 @@ fn method_level_param_check_spellings_and_errors() {
         let err = parse(tokens).expect_err("should fail");
         assert!(err.contains(expected), "expected `{expected}` in: {err}");
     }
+}
+
+/// The method-level `no_na(...)` / `inherits(...)` / `not_inherits(...)`
+/// options in `tokens`, parsed as the impl and trait method parsers do, by
+/// parameter; or the error, as text.
+fn parse_method_checks(
+    tokens: proc_macro2::TokenStream,
+) -> Result<std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>, String> {
+    use syn::parse::Parser as _;
+    let mut per_param = std::collections::HashMap::new();
+    syn::meta::parser(|meta| {
+        if meta.path.is_ident("no_na") {
+            crate::miniextendr_fn::parse_method_no_na(&meta, &mut per_param)
+        } else {
+            let check = crate::miniextendr_fn::ClassCheck::of(&meta.path)
+                .expect("inherits or not_inherits");
+            crate::miniextendr_fn::parse_method_class_check(&meta, &mut per_param, check)
+        }
+    })
+    .parse2(tokens)
+    .map(|()| per_param)
+    .map_err(|e| e.to_string())
+}
+
+/// The classes and message of each `when(...)` hint, in order.
+fn hint_list(checks: &crate::r_preconditions::ExplicitChecks) -> Vec<(Vec<String>, String)> {
+    checks
+        .inherits_hints
+        .iter()
+        .map(|h| (h.classes.clone(), h.message.clone()))
+        .collect()
+}
+
+/// `when(...)` hints in a parameter-level `inherits(...)` (#1824): classes
+/// spelled as in `inherits(...)` (string literals and repeated `class = `,
+/// no comma splitting), a message each, in the order written, also across
+/// two attributes. The check's own message stays optional.
+#[test]
+fn parsed_fn_param_inherits_hints() {
+    let checks = param_checks(quote::quote! {
+        fn f(
+            #[miniextendr(inherits(
+                class = "pkg_model",
+                message = "`a` must be a `pkg_model`",
+                when(class = "data.frame", message = "a data frame"),
+                when("pkg_fit", class = "pkg_results", message = "a fit"),
+            ))]
+            a: List,
+            #[miniextendr(inherits("pkg_model", when(class = "a, b", message = "m")))]
+            b: List,
+            #[miniextendr(inherits(class = "k1", when(class = "df", message = "one")))]
+            #[miniextendr(inherits = "k2")]
+            #[miniextendr(inherits(class = "k3", when(class = "tbl", message = "two")))]
+            k: List,
+            #[miniextendr(inherits = "plain")] plain: List,
+        ) {}
+    });
+    let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(checks["a"].inherits.clone().unwrap(), ["pkg_model"]);
+    assert_eq!(
+        checks["a"].inherits_message.as_deref(),
+        Some("`a` must be a `pkg_model`")
+    );
+    assert_eq!(
+        hint_list(&checks["a"]),
+        [
+            (strings(&["data.frame"]), "a data frame".to_string()),
+            (strings(&["pkg_fit", "pkg_results"]), "a fit".to_string()),
+        ]
+    );
+    assert!(checks["b"].inherits_message.is_none());
+    assert_eq!(
+        hint_list(&checks["b"]),
+        [(strings(&["a, b"]), "m".to_string())]
+    );
+    assert_eq!(checks["k"].inherits.clone().unwrap(), ["k1", "k2", "k3"]);
+    assert_eq!(
+        hint_list(&checks["k"]),
+        [
+            (strings(&["df"]), "one".to_string()),
+            (strings(&["tbl"]), "two".to_string()),
+        ]
+    );
+    assert!(checks["plain"].inherits_hints.is_empty());
+}
+
+/// The rejected `when(...)` forms on a parameter, each with an error that
+/// says why.
+#[test]
+fn parsed_fn_param_inherits_hint_errors() {
+    for (tokens, expected) in [
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", when(class = "df")))] x: List) {}
+            },
+            "`when(...)` needs a `message = \"...\"`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", when(message = "m")))] x: List) {}
+            },
+            "`when(...)` needs the classes it is for",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits(when(class = "df", message = "m")))] x: List) {}
+            },
+            "`when(...)` in `inherits(...)` needs a class to check",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", when(class = "", message = "m")))] x: List) {}
+            },
+            "a class name in `when(...)` must not be empty",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", when(class = "df", message = " ")))] x: List) {}
+            },
+            "`message` in `when(...)` must not be empty; it is the message a value of those \
+             classes gets",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(inherits("a", when("df", message = "m", message = "n")))]
+                    x: List,
+                ) {}
+            },
+            "`message` is given more than once in `when(...)`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits("a", when(class = "df", msg = "m")))] x: List) {}
+            },
+            "unknown `when` option `msg`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(not_inherits("a", when(class = "df", message = "m")))] x: List) {}
+            },
+            "`when(...)` is an `inherits` option",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(inherits("a", "b", when(class = "df", class = "b", message = "m")))]
+                    x: List,
+                ) {}
+            },
+            "class `b` is in both `inherits` and a `when(...)` hint on parameter `x`",
+        ),
+        (
+            quote::quote! {
+                fn f(
+                    #[miniextendr(inherits("a", when(class = "b", message = "m")))]
+                    #[miniextendr(inherits = "b")]
+                    x: List,
+                ) {}
+            },
+            "class `b` is in both `inherits` and a `when(...)` hint on parameter `x`",
+        ),
+        (
+            quote::quote! {
+                fn f(#[miniextendr(inherits(class = "a", mesage = "m"))] x: List) {}
+            },
+            "expected class names (`\"cls\"` or `class = \"cls\"`), `when(...)` hints and an \
+             optional `message = \"...\"`",
+        ),
+    ] {
+        let err = param_attr_error(tokens);
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+    // A hint class that `not_inherits` refuses is no conflict.
+    let checks = param_checks(quote::quote! {
+        fn f(
+            #[miniextendr(inherits("a", when(class = "old", message = "m")), not_inherits = "old")]
+            x: List,
+        ) {}
+    });
+    assert_eq!(checks["x"].not_inherits.clone().unwrap(), ["old"]);
+}
+
+/// `when(...)` hints in a method-level `inherits(p(...))`: the classes are
+/// one comma-separated string, as the entry's own, and the rejected forms
+/// mirror the parameter level's. The conflict with a required class is
+/// checked once the method's attributes are merged
+/// ([`crate::miniextendr_fn::finalize_method_param_attrs`]).
+#[test]
+fn method_level_inherits_hints() {
+    let per_param = parse_method_checks(quote::quote! {
+        inherits(model(
+            class = "pkg_model",
+            message = "need a pkg_model",
+            when(class = "data.frame", message = "a data frame"),
+            when(class = "pkg_fit, pkg_results", message = "a fit"),
+        )),
+        inherits(model(class = "pkg_model2", when(class = "tbl", message = "a tibble")))
+    })
+    .expect("should parse");
+    let checks = &per_param["model"].checks;
+    let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        checks.inherits.clone().unwrap(),
+        ["pkg_model", "pkg_model2"]
+    );
+    assert_eq!(checks.inherits_message.as_deref(), Some("need a pkg_model"));
+    assert_eq!(
+        hint_list(checks),
+        [
+            (strings(&["data.frame"]), "a data frame".to_string()),
+            (strings(&["pkg_fit", "pkg_results"]), "a fit".to_string()),
+            (strings(&["tbl"]), "a tibble".to_string()),
+        ]
+    );
+
+    for (tokens, expected) in [
+        (
+            quote::quote! { inherits(q(class = "a", when(class = "df"))) },
+            "`when(...)` needs a `message = \"...\"`",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", when(message = "m"))) },
+            "`when(...)` needs the classes it is for",
+        ),
+        (
+            quote::quote! { inherits(q(when(class = "df", message = "m"))) },
+            "`inherits(q(...))` needs `class = \"...\"`",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", when(class = ", ", message = "m"))) },
+            "`when(class = \"...\")` needs one or more class names",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", when(class = "df", message = ""))) },
+            "`message` in `when(...)` must not be empty",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", when(class = "df", msg = "m"))) },
+            "unknown `when` option",
+        ),
+        (
+            quote::quote! { not_inherits(q(class = "a", when(class = "df", message = "m"))) },
+            "`when(...)` is an `inherits` option",
+        ),
+        (
+            quote::quote! { inherits(q(class = "a", mesage = "m")) },
+            "expected `class = \"...\"`, `when(...)` hints and an optional `message = \"...\"`",
+        ),
+    ] {
+        let err = parse_method_checks(tokens).expect_err("should fail");
+        assert!(err.contains(expected), "expected `{expected}` in: {err}");
+    }
+
+    // The conflict check runs on the merged method attributes.
+    let mut per_param = parse_method_checks(quote::quote! {
+        inherits(model(class = "pkg_model", when(class = "pkg_old", message = "m"))),
+        inherits(model = "pkg_old")
+    })
+    .expect("should parse");
+    let sig: syn::Signature = syn::parse_quote!(fn fit(&self, model: List));
+    let err = crate::miniextendr_fn::finalize_method_param_attrs(
+        &mut per_param,
+        &sig.inputs,
+        &[],
+        &std::collections::HashMap::new(),
+        proc_macro2::Span::call_site(),
+    )
+    .expect_err("pkg_old is required and hinted")
+    .to_string();
+    assert!(
+        err.contains("class `pkg_old` is in both `inherits` and a `when(...)` hint"),
+        "{err}"
+    );
 }
 
 /// `match_arg` and `choices(...)` parameters skip their type-derived checks
