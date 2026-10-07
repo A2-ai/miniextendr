@@ -1407,6 +1407,22 @@ pub trait RConditionError {
     fn call(&self) -> ConditionCall {
         ConditionCall::Inherit
     }
+    /// The whole message when this error refuses an argument, or `None`.
+    ///
+    /// When the error comes out of a parameter's conversion (the type's
+    /// `TryFromSexp`, or its [`check_sexp`](crate::TryFromSexpElement::check_sexp)
+    /// under `Option<T>` / `Vec<T>` / `Vec<Option<T>>`), a `Some` is the
+    /// condition's message as given, in place of
+    /// `'<p>' must be <expected>: <message()>`. The classes, `kind`,
+    /// `e$param`, `e$rust_type` and the call are unchanged. This is how a type
+    /// words a refusal once for every parameter of that type, as
+    /// `#[miniextendr(inherits(..., message = ...))]` does for one parameter:
+    /// both use the author's message as given and name the argument in
+    /// `e$param`. Ignored everywhere else (`Result` returns, `defer_*`), and
+    /// inside an `Either`, whose message names both arms.
+    fn argument_message(&self) -> Option<String> {
+        None
+    }
 }
 
 /// `#[derive(RConditionError)]`: the trait impl generated from a type's shape
@@ -1453,6 +1469,7 @@ pub struct RError {
     class: Vec<String>,
     data: ConditionData,
     call: ConditionCall,
+    argument_message: Option<String>,
 }
 
 impl RError {
@@ -1463,6 +1480,7 @@ impl RError {
             class: Vec::new(),
             data: Vec::new(),
             call: ConditionCall::Inherit,
+            argument_message: None,
         }
     }
 
@@ -1491,9 +1509,34 @@ impl RError {
         self
     }
 
+    /// The whole message of the argument error when this error refuses an
+    /// argument, used as given instead of `'<p>' must be <expected>:
+    /// <message>`; see [`RConditionError::argument_message`]. `message` stays
+    /// the message everywhere else.
+    ///
+    /// ```ignore
+    /// fn model_object(x: SEXP) -> Result<(), RError> {
+    ///     if x.inherits_class(c"data.frame") {
+    ///         return Err(RError::new("got a data frame")
+    ///             .argument_message("use model_from_df() for a data frame"));
+    ///     }
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn argument_message(mut self, message: impl Into<String>) -> Self {
+        self.argument_message = Some(message.into());
+        self
+    }
+
     /// The message.
     pub fn message_str(&self) -> &str {
         &self.message
+    }
+
+    /// The whole argument-error message, if one was given
+    /// ([`RError::argument_message`]).
+    pub fn argument_message_str(&self) -> Option<&str> {
+        self.argument_message.as_deref()
     }
 
     /// The user classes, most specific first.
@@ -1541,6 +1584,9 @@ impl RConditionError for RError {
     fn call(&self) -> ConditionCall {
         self.call
     }
+    fn argument_message(&self) -> Option<String> {
+        self.argument_message.clone()
+    }
 }
 
 /// Any classed error (an [`RError`], a `#[derive(RConditionError)]` type)
@@ -1555,6 +1601,7 @@ impl<E: RConditionError> From<E> for crate::from_r::SexpError {
             class: e.class(),
             data: e.data().unwrap_or_default(),
             call: e.call(),
+            argument_message: e.argument_message(),
         })
     }
 }
@@ -1998,8 +2045,28 @@ impl ConversionArgMessageBuiltin for crate::from_r::SexpError {
     fn __mx_conversion_arg_message(&self, name: &str) -> Option<String> {
         match self {
             crate::from_r::SexpError::MatchArg(e) => Some(e.arg_error(name).message().to_string()),
+            // A type's check refusal (`check_sexp` under `Option<T>` /
+            // `Vec<T>`, or a conversion whose error converted into
+            // `SexpError`) with its own whole message (#1833).
+            crate::from_r::SexpError::Condition(e) => e.argument_message_str().map(str::to_string),
             _ => None,
         }
+    }
+}
+
+/// Whole-message probe, classed arm: any [`RConditionError`] answers with its
+/// [`argument_message`](RConditionError::argument_message), so a type's own
+/// conversion error can word the whole argument error (#1833). Same autoref
+/// level as [`ConversionArgMessageBuiltin`], like [`ConversionErrClassed`]:
+/// no built-in error type implements [`RConditionError`].
+#[doc(hidden)]
+pub trait ConversionArgMessageClassed {
+    fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
+}
+
+impl<E: RConditionError> ConversionArgMessageClassed for E {
+    fn __mx_conversion_arg_message(&self, _name: &str) -> Option<String> {
+        self.argument_message()
     }
 }
 
@@ -2018,7 +2085,9 @@ impl<E> ConversionArgMessageNone for &E {
 
 /// Internal: the whole message of a failed argument conversion whose error
 /// words it itself (a `match_arg` choice error, see
-/// [`ConversionArgMessageBuiltin`]), for the argument `$name`; `None`
+/// [`ConversionArgMessageBuiltin`], or an error with an
+/// [`argument_message`](RConditionError::argument_message), see
+/// [`ConversionArgMessageClassed`]), for the argument `$name`; `None`
 /// otherwise. [`crate::error_value::conversion_condition_value`] then uses it
 /// in place of `<prefix>: <reason>`. Not public API.
 #[doc(hidden)]
@@ -2026,7 +2095,10 @@ impl<E> ConversionArgMessageNone for &E {
 macro_rules! __mx_conversion_arg_message {
     ($e:expr, $name:expr) => {{
         #[allow(unused_imports)]
-        use $crate::condition::{ConversionArgMessageBuiltin as _, ConversionArgMessageNone as _};
+        use $crate::condition::{
+            ConversionArgMessageBuiltin as _, ConversionArgMessageClassed as _,
+            ConversionArgMessageNone as _,
+        };
         match &$e {
             __mx_e => __mx_e.__mx_conversion_arg_message($name),
         }
@@ -2062,9 +2134,10 @@ const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
 ///   when it knows what the argument should be (`'x' must be a single
 ///   integer`, `'dv' must be numeric`), `invalid '<p>' argument` otherwise.
 ///   A sidecar setter passes its own prefix. An error that words the whole
-///   argument error itself, a `match_arg` choice error, gives `arg_message`
-///   ([`crate::__mx_conversion_arg_message!`], #1767), which is the message
-///   instead.
+///   argument error itself, a `match_arg` choice error (#1767) or one with an
+///   [`argument_message`](RConditionError::argument_message) (#1833), gives
+///   `arg_message` ([`crate::__mx_conversion_arg_message!`]), which is the
+///   message instead.
 /// - The class vector is the error's own (empty for the built-in and
 ///   `Display` arms), followed by `crate_class`, the crate's
 ///   `conversion_error_class` from `[package.metadata.miniextendr]`, minus
@@ -3866,6 +3939,77 @@ mod condition_macro_tests {
             right_error: Box::new(SexpError::InvalidValue("x".into())),
         };
         assert_eq!(crate::__mx_conversion_arg_message!(either, "mode"), None);
+    }
+
+    /// A classed error with an `argument_message` words the whole argument
+    /// error, directly or carried in a `SexpError` from a type's
+    /// `check_sexp`; without one, or inside an `Either`, it does not (#1833).
+    #[test]
+    fn conversion_arg_message_probe_takes_a_classed_errors_argument_message() {
+        use super::{ConditionCall, RConditionError, RError};
+        use crate::from_r::SexpError;
+
+        let advice = "use model_from_df() for a data frame";
+        let refusal = || {
+            RError::new("got a data frame")
+                .class("mx_model_refused")
+                .argument_message(advice)
+        };
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(refusal(), "fit").as_deref(),
+            Some(advice)
+        );
+        let carried = SexpError::from(refusal());
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(carried, "fit").as_deref(),
+            Some(advice)
+        );
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(RError::new("got a data frame"), "fit"),
+            None
+        );
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(SexpError::from(RError::new("no")), "fit"),
+            None
+        );
+
+        // A hand-written impl answers through the trait method.
+        struct ModelRefused;
+        impl RConditionError for ModelRefused {
+            fn message(&self) -> String {
+                "got a data frame".into()
+            }
+            fn argument_message(&self) -> Option<String> {
+                Some("use model_from_df() for a data frame".into())
+            }
+        }
+        assert_eq!(
+            crate::__mx_conversion_arg_message!(ModelRefused, "fit").as_deref(),
+            Some(advice)
+        );
+        // The conversion into `SexpError` keeps it, and the call choice.
+        let SexpError::Condition(kept) = SexpError::from(ModelRefused) else {
+            panic!("a classed error converts into SexpError::Condition");
+        };
+        assert_eq!(kept.argument_message_str(), Some(advice));
+        assert!(matches!(kept.call(), ConditionCall::Inherit));
+    }
+
+    /// A type's refusal inside an `Either` leaves the message to the
+    /// `Either`, which names both arms.
+    #[cfg(feature = "either")]
+    #[test]
+    fn conversion_arg_message_probe_leaves_a_classed_refusal_in_an_either_alone() {
+        use super::RError;
+        use crate::from_r::SexpError;
+
+        let either = SexpError::EitherConversion {
+            left_error: Box::new(SexpError::from(
+                RError::new("got a data frame").argument_message("use model_from_df()"),
+            )),
+            right_error: Box::new(SexpError::InvalidValue("x".into())),
+        };
+        assert_eq!(crate::__mx_conversion_arg_message!(either, "fit"), None);
     }
 
     #[test]

@@ -23,6 +23,10 @@
 //!   one variant raises that condition without a call (`conditionCall()` is
 //!   `NULL`, R's `call. = FALSE`). Without it the method keeps the trait's
 //!   default, the call the transport captured.
+//! - `argument_message()`: `#[condition(argument_message = "…")]` on the
+//!   struct or on a variant, a `format!` string like `message`. It is the
+//!   whole message when the error refuses an argument in a conversion
+//!   (#1833); a variant without it keeps the trait's default, `None`.
 //!
 //! The payload feeds `defer_warning` & co. (a condition accompanying a value)
 //! and `Result<T, E>` returns (a classed error): both go through the trait.
@@ -46,6 +50,8 @@ const RESERVED_FIELDS: [&str; 3] = ["message", "call", "kind"];
 struct ContainerAttrs {
     class: Option<syn::LitStr>,
     message: Option<syn::LitStr>,
+    /// `argument_message = "…"`: the whole message of an argument error.
+    argument_message: Option<syn::LitStr>,
     /// `call = none`: the condition carries no call.
     call_none: bool,
 }
@@ -67,6 +73,11 @@ fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<Cont
                     return Err(meta.error("`message` is given twice"));
                 }
                 out.message = Some(meta.value()?.parse()?);
+            } else if meta.path.is_ident("argument_message") {
+                if out.argument_message.is_some() {
+                    return Err(meta.error("`argument_message` is given twice"));
+                }
+                out.argument_message = Some(meta.value()?.parse()?);
             } else if meta.path.is_ident("call") {
                 if out.call_none {
                     return Err(meta.error("`call` is given twice"));
@@ -91,7 +102,7 @@ fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<Cont
             } else {
                 return Err(meta.error(format!(
                     "unknown `condition` option on {on}; expected `class = \"…\"`, \
-                     `message = \"…\"` or `call = none`"
+                     `message = \"…\"`, `argument_message = \"…\"` or `call = none`"
                 )));
             }
             Ok(())
@@ -325,9 +336,11 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
     let display = quote! { ::std::string::ToString::to_string(self) };
     let call_none = quote! { ::miniextendr_api::condition::ConditionCall::None };
 
-    // `call_body` is `None` when no part of the type asks for `call = none`:
-    // the impl then keeps the trait's default `call()`.
-    let (message_body, class_body, data_body, call_body) = match &input.data {
+    // `call_body` is `None` when no part of the type asks for `call = none`,
+    // and `argument_message_body` when none gives an `argument_message`: the
+    // impl then keeps the trait's default.
+    let (message_body, class_body, data_body, call_body, argument_message_body) = match &input.data
+    {
         Data::Struct(data) => {
             let shape = Shape::from_fields(&data.fields, &format!("`{name}`"))?;
             let self_path = quote! { Self };
@@ -350,13 +363,27 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                 #data_expr
             };
             let call = container.call_none.then(|| call_none.clone());
-            (message, class, data, call)
+            let argument_message = container.argument_message.as_ref().map(|fmt| {
+                let pattern = shape.pattern_all(&self_path);
+                quote! {
+                    #[allow(unused_variables)]
+                    let #pattern = self;
+                    ::core::option::Option::Some(::std::format!(#fmt))
+                }
+            });
+            (message, class, data, call, argument_message)
         }
         Data::Enum(data) => {
             if let Some(message) = &container.message {
                 return Err(syn::Error::new(
                     message.span(),
                     "`message` goes on the variants of an enum, not on the enum itself",
+                ));
+            }
+            if let Some(message) = &container.argument_message {
+                return Err(syn::Error::new(
+                    message.span(),
+                    "`argument_message` goes on the variants of an enum, not on the enum itself",
                 ));
             }
             if data.variants.is_empty() {
@@ -370,6 +397,7 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
             let mut class_arms = Vec::new();
             let mut data_arms = Vec::new();
             let mut call_none_arms = Vec::new();
+            let mut argument_message_arms = Vec::new();
             let mut needs_display = false;
             for variant in &data.variants {
                 let variant_ident = &variant.ident;
@@ -403,6 +431,13 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                 let pattern = shape.pattern_data(&path);
                 let data_expr = shape.data_expr();
                 data_arms.push(quote! { #pattern => #data_expr, });
+                if let Some(fmt) = &attrs.argument_message {
+                    let pattern = shape.pattern_all(&path);
+                    argument_message_arms.push(quote! {
+                        #[allow(unused_variables)]
+                        #pattern => ::core::option::Option::Some(::std::format!(#fmt)),
+                    });
+                }
                 if attrs.call_none {
                     call_none_arms.push(wild);
                 }
@@ -428,7 +463,20 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
                     }
                 })
             };
-            (message, class, data, call)
+            let argument_message = if argument_message_arms.is_empty() {
+                None
+            } else if argument_message_arms.len() == variant_count {
+                Some(quote! { match self { #(#argument_message_arms)* } })
+            } else {
+                Some(quote! {
+                    #[allow(unreachable_patterns)]
+                    match self {
+                        #(#argument_message_arms)*
+                        _ => ::core::option::Option::None,
+                    }
+                })
+            };
+            (message, class, data, call, argument_message)
         }
         Data::Union(_) => {
             return Err(syn::Error::new(
@@ -441,6 +489,13 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
     let call_method = call_body.map(|body| {
         quote! {
             fn call(&self) -> ::miniextendr_api::condition::ConditionCall {
+                #body
+            }
+        }
+    });
+    let argument_message_method = argument_message_body.map(|body| {
+        quote! {
+            fn argument_message(&self) -> ::core::option::Option<::std::string::String> {
                 #body
             }
         }
@@ -464,6 +519,8 @@ pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> 
             }
 
             #call_method
+
+            #argument_message_method
         }
     })
 }
@@ -734,6 +791,59 @@ mod tests {
             enum Empty {}
         });
         assert!(err.contains("at least one variant"));
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(argument_message = "nope")]
+            enum E {
+                A,
+            }
+        });
+        assert!(
+            err.contains("`argument_message` goes on the variants"),
+            "{err}"
+        );
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(argument_message = "a", argument_message = "b")]
+            struct S;
+        });
+        assert!(err.contains("`argument_message` is given twice"), "{err}");
+    }
+
+    /// `argument_message` on a struct, or on some variants of an enum (the
+    /// rest keep `None`), is a `format!` string over the fields; without it
+    /// the impl keeps the trait's default (#1833).
+    #[test]
+    fn argument_message_on_a_struct_or_on_variants() {
+        let code = derive(syn::parse_quote! {
+            #[condition(argument_message = "use model_from_df() for a {what}")]
+            struct ModelRefused {
+                what: String,
+            }
+        });
+        assert!(code.contains("fn argument_message (& self)"), "{code}");
+        assert!(
+            code.contains("Some (:: std :: format ! (\"use model_from_df() for a {what}\"))"),
+            "{code}"
+        );
+
+        let code = derive(syn::parse_quote! {
+            enum Refused {
+                #[condition(argument_message = "use model_from_df() for a data frame")]
+                DataFrame,
+                Other { class: String },
+            }
+        });
+        assert!(code.contains("fn argument_message (& self)"), "{code}");
+        assert!(
+            code.contains("_ => :: core :: option :: Option :: None"),
+            "{code}"
+        );
+
+        let code = derive(syn::parse_quote! {
+            struct Plain;
+        });
+        assert!(!code.contains("fn argument_message"), "{code}");
     }
 }
 

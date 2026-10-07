@@ -592,6 +592,12 @@ pub enum PkgError {
   variant raises the condition without a call
   ([Conditions without a call](#conditions-without-a-call)); the others keep
   the wrapper's call.
+- **Argument message.** `#[condition(argument_message = "…")]` on a struct or
+  variant, a `format!` string like `message`, is the whole message when the
+  error refuses an argument in a conversion (a type's `TryFromSexp` or its
+  `validate` check), in place of `'<p>' must be …: <message>`. A variant
+  without it keeps the prefixed message. See
+  [EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values).
 
 The same derive serves
 [deferred conditions](#deferred-conditions-a-warning-and-a-value) and
