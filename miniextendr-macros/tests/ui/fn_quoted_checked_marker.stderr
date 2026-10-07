@@ -1,0 +1,13 @@
+error: `Checked<Quoted>` on parameter `cond`: `Quoted` has no R-side type check to keep or drop
+ --> tests/ui/fn_quoted_checked_marker.rs:9:37
+  |
+9 | pub fn checked_quoted(cond: Checked<Quoted>) -> i32 {
+  |                                     ^^^^^^
+
+warning: unused imports: `Checked` and `Quoted`
+ --> tests/ui/fn_quoted_checked_marker.rs:6:23
+  |
+6 | use miniextendr_api::{Checked, Quoted, miniextendr};
+  |                       ^^^^^^^  ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

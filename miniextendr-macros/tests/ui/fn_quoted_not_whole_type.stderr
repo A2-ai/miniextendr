@@ -1,0 +1,13 @@
+error: `Quoted` / `Quosure` must be the parameter's whole type, or the type argument of `Missing<..>`: the wrapper passes the argument unevaluated only for those shapes
+  --> tests/ui/fn_quoted_not_whole_type.rs:10:30
+   |
+10 | pub fn optional_quoted(cond: Option<Quoted>) -> i32 {
+   |                              ^^^^^^^^^^^^^^
+
+warning: unused import: `Quoted`
+ --> tests/ui/fn_quoted_not_whole_type.rs:7:23
+  |
+7 | use miniextendr_api::{Quoted, miniextendr};
+  |                       ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

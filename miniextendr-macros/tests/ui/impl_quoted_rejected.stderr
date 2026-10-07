@@ -1,0 +1,5 @@
+error: `Quoted` parameters are supported on standalone `#[miniextendr]` functions only (standalone S3 methods included); a class or trait method's wrapper cannot pass an argument unevaluated
+  --> tests/ui/impl_quoted_rejected.rs:19:28
+   |
+19 |     fn filter(&self, cond: Quoted) -> i32 {
+   |                            ^^^^^^

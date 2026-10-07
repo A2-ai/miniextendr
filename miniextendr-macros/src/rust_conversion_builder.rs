@@ -289,9 +289,19 @@ impl RustConversionBuilder {
             );
             // The binding keeps the method's own use of the parameter from
             // adding a follow-on "cannot find value" to the diagnostic.
+            let binding = if param.optional {
+                quote_spanned! {span=> unsafe { #marker::missing_from_wrapper_arg(&#sexp_ident) } }
+            } else {
+                quote_spanned! {span=>
+                    match unsafe { #marker::from_wrapper_arg(&#sexp_ident) } {
+                        ::core::option::Option::Some(v) => v,
+                        ::core::option::Option::None => ::core::panic!(),
+                    }
+                }
+            };
             return quote_spanned! {span=>
                 ::core::compile_error!(#message);
-                let #ident: #bound_ty = ::core::unreachable!();
+                let #ident: #bound_ty = #binding;
             };
         }
         if param.optional {

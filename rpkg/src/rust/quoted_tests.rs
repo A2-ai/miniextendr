@@ -190,10 +190,7 @@ pub fn quosure_select(data: SEXP, cols: Quosure, call: Call) -> SEXP {
 #[miniextendr(noexport)]
 pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
     let _sentinel = DropSentinel;
-    assert!(
-        args.type_of() == SEXPTYPE::VECSXP,
-        "`args` must be a list"
-    );
+    assert!(args.type_of() == SEXPTYPE::VECSXP, "`args` must be a list");
     // SAFETY: R's main thread; `args` is the rooted `.Call()` argument and
     // `RCall` roots every argument it is given.
     unsafe {
@@ -257,7 +254,8 @@ pub fn gc_stress_quoted() -> i32 {
 
         // A string as a name.
         let name = OwnedProtect::new(SEXP::scalar_string_from_str("col"));
-        let named = OwnedProtect::new(List::from_raw_values(vec![name.get(), R_GlobalEnv]).as_sexp());
+        let named =
+            OwnedProtect::new(List::from_raw_values(vec![name.get(), R_GlobalEnv]).as_sexp());
         let named_sexp = named.get();
         let named = Quoted::from_wrapper_arg(&named_sexp).expect("an argument was passed");
         assert_eq!(named.as_name(), Some("col"));

@@ -1025,17 +1025,8 @@ pub fn miniextendr(
             .into_compile_error()
             .into();
         }
-        if parsed.param_markers().iter().any(|(name, _)| *name == rust_name) {
-            return syn::Error::new_spanned(
-                pt,
-                format!(
-                    "`Checked<..>` / `Unchecked<..>` select a parameter's R-side checks, and a \
-                     `{marker}` parameter has none: the wrapper passes the argument unevaluated"
-                ),
-            )
-            .into_compile_error()
-            .into();
-        }
+        // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
+        // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
         unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
     }
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs

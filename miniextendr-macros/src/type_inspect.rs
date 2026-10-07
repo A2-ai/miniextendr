@@ -352,11 +352,7 @@ pub(crate) struct UnevaluatedParam {
 /// refuse it.
 pub(crate) fn unevaluated_param(ty: &syn::Type) -> Option<UnevaluatedParam> {
     let marker = |ty: &syn::Type| match ty {
-        syn::Type::Path(p) => p
-            .path
-            .segments
-            .last()
-            .and_then(UnevaluatedKind::of_segment),
+        syn::Type::Path(p) => p.path.segments.last().and_then(UnevaluatedKind::of_segment),
         _ => None,
     };
     if let Some(kind) = marker(ty) {
@@ -814,7 +810,12 @@ mod tests {
         }
         // The misplaced shapes are still recognised as mentioning a marker, so
         // the macro can refuse them by name.
-        for misplaced in ["Option<Quoted>", "&Quoted", "Vec<Quosure<'_>>", "(i32, Quoted)"] {
+        for misplaced in [
+            "Option<Quoted>",
+            "&Quoted",
+            "Vec<Quosure<'_>>",
+            "(i32, Quoted)",
+        ] {
             assert!(mentions_unevaluated_marker(&ty(misplaced)), "{misplaced}");
         }
         assert!(!mentions_unevaluated_marker(&ty("Vec<i32>")));
