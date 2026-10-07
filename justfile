@@ -754,7 +754,7 @@ clean-vendor-leak:
 # devtools-load, devtools-install) that would silently do the wrong thing
 # in tarball mode. NOT wired to producer recipes (r-cmd-build, r-cmd-check,
 # devtools-build) which intentionally create the tarball and trap-clean it.
-# See CLAUDE.md "Vendor tarball is a latch" for context.
+# See CLAUDE.md "The install-mode latch" for context.
 [private]
 [script("bash")]
 _assert-no-vendor-leak:
@@ -771,7 +771,7 @@ _assert-no-vendor-leak:
           "" \
           "Or:   rm rpkg/inst/vendor.tar.xz && just configure" \
           "" \
-          "See CLAUDE.md \"Vendor tarball is a latch\" for context." \
+          "See CLAUDE.md \"The install-mode latch\" for context." \
           >&2
         exit 1
     fi
@@ -942,13 +942,14 @@ devtools-build: configure vendor
     trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
-# No _assert-no-vendor-leak dep — devtools::check internally calls
-# pkgbuild::build, which legitimately produces inst/vendor.tar.xz mid-run.
-# The guard would fire spuriously. Same for `test-r-build`.
-# Check rpkg with devtools::check
+# Check rpkg with devtools::check: the unvendored built-tarball path.
+# devtools::check builds the tarball with pkgbuild::build, which runs
+# bootstrap.R, and bootstrap.R never vendors. A leaked inst/vendor.tar.xz would
+# ship in that tarball and turn the check into a tarball-mode build of stale
+# vendored crates, so _assert-no-vendor-leak refuses to run with one present.
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
-devtools-check: devtools-document
+devtools-check: _assert-no-vendor-leak devtools-document
     Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages).

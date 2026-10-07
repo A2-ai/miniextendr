@@ -230,8 +230,8 @@ artifact stays a source-mode artifact and is not CRAN-ready; only the release
 tarball has to pass `R CMD check --as-cran`. Recipes
 that **produce** it (`r-cmd-build`, `r-cmd-check`, `devtools-build`) trap-clean
 on exit; recipes that **consume** configure state (`rcmdinstall`,
-`devtools-test`, `devtools-load`, `devtools-install`) refuse to run while it is
-present (#441). Symptom of a leaked tarball: workspace-crate edits silently
+`devtools-test`, `devtools-load`, `devtools-install`) or check the unvendored
+built tarball (`devtools-check`) refuse to run while it is present (#441). Symptom of a leaked tarball: workspace-crate edits silently
 ignored, or `Cargo.lock` mismatch errors. Fix: `just clean-vendor-leak` (safe,
 idempotent); regression test `just test-bootstrap-vendor`;
 `miniextendr_doctor()` detects both the stale latch and a missing

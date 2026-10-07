@@ -215,7 +215,7 @@ left for cargo to re-resolve on the next build.
 Dev-consume recipes (`just rcmdinstall`, `just devtools-test`,
 `just devtools-load`, `just devtools-install`) will abort with an error if the
 tarball is present in the source tree, preventing silent tarball-mode iteration.
-See CLAUDE.md "Vendor tarball is a latch" for the full context and the
+See CLAUDE.md "The install-mode latch" for the full context and the
 `just test-bootstrap-vendor` regression test (#441).
 
 ## Constraints, in case you're tempted
