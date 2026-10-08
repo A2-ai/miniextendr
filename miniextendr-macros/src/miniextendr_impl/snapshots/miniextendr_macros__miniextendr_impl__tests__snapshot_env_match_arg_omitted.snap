@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 4260
+assertion_line: 4798
 expression: generate_env_r_wrapper(&parsed)
 ---
 #' @title Picker Class
@@ -30,7 +30,7 @@ Picker$new <- function() {
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, color = c("red", "green")) {
-  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode")
+  if (!missing(mode) && !is.null(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
   if (!missing(color)) color <- .miniextendr_match_arg(color, c("red", "green"), "color")
   .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), self, if (missing(mode)) quote(expr=) else mode, if (missing(color)) quote(expr=) else color)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
@@ -46,7 +46,7 @@ Picker$pick <- function(mode = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker
 #' @name Picker$pick_many
 #' @rdname Picker
 Picker$pick_many <- function(modes = .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__) {
-  if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes")
+  if (!missing(modes)) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_many_modes__)
   .val <- .Call(C_miniextendr_macros_Picker__pick_many, .call = sys.call(), self, if (missing(modes)) quote(expr=) else modes)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val

@@ -3649,10 +3649,12 @@ fn generate_method_match_arg_helpers(
             .as_deref()
             .map(crate::match_arg_keys::extract_match_arg_default)
             .unwrap_or_default();
+        let aliases_placeholder = crate::match_arg_keys::aliases_placeholder(&c_ident_str, &r_name);
         let choices_entry_tokens = crate::match_arg_keys::choices_entry_tokens(
             cfg_attrs,
             &entry_ident,
             &placeholder,
+            &aliases_placeholder,
             &choices_ty,
             &preferred_default,
         );

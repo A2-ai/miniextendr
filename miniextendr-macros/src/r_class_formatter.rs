@@ -219,7 +219,13 @@ pub(crate) fn build_match_arg_prelude(
         }
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let placeholder = match_arg_placeholder(c_ident, &r_name);
-        lines.push(CallAttribution::Wrapper.match_arg_statement(&r_name, &placeholder, attrs));
+        let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &r_name);
+        lines.push(CallAttribution::Wrapper.match_arg_statement(
+            &r_name,
+            &placeholder,
+            Some(&aliases),
+            attrs,
+        ));
     }
 
     for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
@@ -229,7 +235,12 @@ pub(crate) fn build_match_arg_prelude(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
-        lines.push(CallAttribution::Wrapper.match_arg_statement(&r_name, &choices_expr, attrs));
+        lines.push(CallAttribution::Wrapper.match_arg_statement(
+            &r_name,
+            &choices_expr,
+            None,
+            attrs,
+        ));
     }
 
     lines

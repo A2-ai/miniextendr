@@ -49,6 +49,10 @@
 //! (#1612): character or factor input is matched element by element and
 //! becomes `Left(Vec<T>)`, anything else converts to `R`.
 //!
+//! [`MatchArg::ALIASES`] (`#[match_arg(alias = "grey")]` on a variant) adds
+//! other spellings of a choice, matched only when typed in full, by every
+//! matcher on both sides, and listed nowhere the choices are.
+//!
 //! `several_ok` parameters are validated strictly on the R side: every element
 //! has to match a choice, and `NULL` selects every choice (the same fallback
 //! [`match_arg_vec_from_sexp`] applies). Under `Either`, `NULL` is not a
@@ -71,9 +75,30 @@ pub trait MatchArg: Sized + Copy + 'static {
     /// The first choice is the default when the R argument is `NULL`.
     const CHOICES: &'static [&'static str];
 
+    /// Other spellings of a choice, as `(alias, choice)` pairs: `("grey",
+    /// "gray")` lets a user write `"grey"` for the choice `"gray"` (#1843).
+    ///
+    /// An alias selects its choice only when typed in full: a prefix matches
+    /// the choices alone, so `"gr"` stays the prefix of `"gray"` it was. Every
+    /// matcher reads it, the generated wrapper's check and the Rust side
+    /// alike ([`match_arg_from_sexp`], [`match_arg_param`],
+    /// [`match_arg_vec_from_sexp`] element by element, the `Either` arm), and
+    /// nothing that lists the choices does: the R formal, the `@param` line
+    /// and the error messages name `CHOICES` only.
+    ///
+    /// `#[derive(MatchArg)]` fills it from `#[match_arg(alias = "...")]` on a
+    /// variant. A hand-written impl lists its aliases here, not in
+    /// [`from_choice`](Self::from_choice), which the R-side check never
+    /// reaches. The wrappers writer refuses, for a type used as a `match_arg`
+    /// parameter, an alias that is empty, `"NA"`, a choice, repeated, or a
+    /// prefix of a choice other than its own, and a target that is not a
+    /// choice.
+    const ALIASES: &'static [(&'static str, &'static str)] = &[];
+
     /// Convert a choice string to the corresponding enum variant.
     ///
-    /// Returns `None` if the string doesn't match any choice exactly.
+    /// Returns `None` if the string doesn't match any choice exactly. An
+    /// alias is not a choice: [`ALIASES`](Self::ALIASES) maps it.
     fn from_choice(choice: &str) -> Option<Self>;
 
     /// Convert the enum variant to its canonical choice string.
@@ -286,6 +311,44 @@ pub fn escape_r_string(s: &str) -> String {
     out
 }
 
+/// What is wrong with the aliases of a type whose choices are `choices`, one
+/// sentence per bad alias, in order (empty when they are fine): an alias that
+/// is empty or `"NA"`, a choice, given twice, or a prefix of a choice other
+/// than its own (typing it would select something else than without the
+/// alias), and a target that is not a choice. `#[derive(MatchArg)]` refuses
+/// the same at compile time, with the same words; the wrappers writer checks
+/// a hand-written impl with this ([`crate::registry::match_arg_aliases_arg`]).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn alias_problems(choices: &[&str], aliases: &[(&str, &str)]) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for &(alias, target) in aliases {
+        if alias.is_empty() {
+            problems
+                .push("an alias can't be empty: the empty string matches no choice".to_string());
+        } else if alias == "NA" {
+            problems.push("alias \"NA\" would read as a missing value".to_string());
+        } else if choices.contains(&alias) {
+            problems.push(format!("alias {alias:?} is already a choice"));
+        } else if !seen.insert(alias) {
+            problems.push(format!("alias {alias:?} is given more than once"));
+        } else if !choices.contains(&target) {
+            problems.push(format!(
+                "alias {alias:?} names {target:?}, which is not a choice"
+            ));
+        } else if let Some(other) = choices
+            .iter()
+            .find(|choice| **choice != target && choice.starts_with(alias))
+        {
+            problems.push(format!(
+                "alias {alias:?} for {target:?} is a prefix of the choice {other:?}, \
+                 so it would change what typing {alias:?} selects"
+            ));
+        }
+    }
+    problems
+}
+
 /// Build an R character vector (STRSXP) from the choices of a `MatchArg` type.
 ///
 /// This is called by generated choices-helper C wrappers to provide the
@@ -371,9 +434,11 @@ fn first_choice<T: MatchArg>(formal: &[&str]) -> Result<T, MatchArgError> {
 
 /// `NA` as a choice: `pmatch()`, and so the wrapper's check, matches it as
 /// the string `"NA"`, so a choice that is `"NA"` or the only one starting
-/// with it is selected. Anything else is [`MatchArgError::IsNa`].
+/// with it is selected. Anything else is [`MatchArgError::IsNa`]. No alias
+/// maps it: the wrapper looks aliases up with `match()`, which never matches
+/// `NA` to `"NA"`.
 fn match_na<T: MatchArg>() -> Result<T, MatchArgError> {
-    match_choice::<T>("NA").map_err(|_| MatchArgError::IsNa {
+    match_string::<T>("NA", &[]).map_err(|_| MatchArgError::IsNa {
         choices: <T as MatchArg>::CHOICES,
     })
 }
@@ -437,10 +502,10 @@ fn factor_to_choice<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, Match
 ///   (what an omitted argument evaluates to when the choices are its formal
 ///   default), is the first choice;
 /// - otherwise the value must have length 1 ([`MatchArgError::InvalidLength`])
-///   and match a choice exactly or as a unique prefix
-///   ([`MatchArgError::NoMatch`]). The empty string matches nothing, and `NA`
-///   is matched as the string `"NA"`, as `pmatch()` does
-///   ([`MatchArgError::IsNa`] when that matches nothing).
+///   and match a choice exactly, an alias exactly ([`MatchArg::ALIASES`]),
+///   or a choice as a unique prefix ([`MatchArgError::NoMatch`]). The empty
+///   string matches nothing, and `NA` is matched as the string `"NA"`, as
+///   `pmatch()` does ([`MatchArgError::IsNa`] when that matches nothing).
 ///
 /// Used by the generated `TryFromSexp for T` implementation, and by the
 /// generated C wrapper of a `#[miniextendr(match_arg)]` parameter, which only
@@ -498,7 +563,8 @@ fn match_formal<T: MatchArg>(sexp: SEXP, formal: &[&str]) -> Result<T, MatchArgE
 ///
 /// The result is [`match_arg_from_sexp`]'s (`NULL` and the full choices
 /// vector select the first choice, a factor is read as its labels, one string
-/// matches exactly or as a unique prefix). The error is the argument error
+/// matches a choice exactly, an alias exactly, or a choice as a unique
+/// prefix). The error is the argument error
 /// the wrapper raises for parameter `param` (its R name), word for word:
 ///
 /// - `'mode' must be NULL or a character vector`
@@ -717,8 +783,15 @@ pub trait EitherArmProbeFallback {
 
 impl<R> EitherArmProbeFallback for EitherArmProbe<R> {}
 
-/// Match a string against the choices of a `MatchArg` type (exact or partial).
+/// Match a string against the choices of a `MatchArg` type: a choice typed
+/// exactly, then an alias typed exactly ([`MatchArg::ALIASES`]), then a
+/// unique prefix of a choice.
 fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
+    match_string::<T>(input, <T as MatchArg>::ALIASES)
+}
+
+/// [`match_choice`] with the aliases `aliases`.
+fn match_string<T: MatchArg>(input: &str, aliases: &[(&str, &str)]) -> Result<T, MatchArgError> {
     let no_match = || MatchArgError::NoMatch {
         input: input.to_string(),
         choices: <T as MatchArg>::CHOICES,
@@ -732,6 +805,12 @@ fn match_choice<T: MatchArg>(input: &str) -> Result<T, MatchArgError> {
     // Exact match
     if let Some(val) = T::from_choice(input) {
         return Ok(val);
+    }
+
+    // An alias, typed in full only: a prefix of an alias is not one, so an
+    // alias never makes a prefix of the choices ambiguous.
+    if let Some((_, choice)) = aliases.iter().find(|(alias, _)| *alias == input) {
+        return T::from_choice(choice).ok_or_else(no_match);
     }
 
     // Unique partial match (like R's match.arg)

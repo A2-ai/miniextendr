@@ -244,6 +244,7 @@ mod list_newtype_vec_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 mod macro_equivalence;
+mod match_arg_aliases_tests;
 #[cfg(feature = "either")]
 mod match_arg_either_tests;
 mod match_arg_foreign_tests;

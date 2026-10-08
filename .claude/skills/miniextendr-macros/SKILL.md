@@ -281,7 +281,11 @@ effective default**. Details:
   time via the `MX_MATCH_ARG_CHOICES` distributed slice — the placeholder in
   the R formal default is substituted in `write_r_wrappers_to_file`. Adding
   `default = "\"Variant\""` alongside `match_arg` rotates that choice to
-  position 0 so it becomes the `match.arg` default.
+  position 0 so it becomes the `match.arg` default. `#[match_arg(alias =
+  "grey")]` on a variant (`MatchArg::ALIASES`) accepts another spelling,
+  typed in full only, and lists it nowhere; the writer passes it to the
+  check as `aliases = base::c(...)` (#1843). Literal `choices(...)` lists
+  take no aliases (#1873).
 - Invalid combinations are compile errors (`validate_per_param_attr_conflicts`
   in `miniextendr-macros/src/miniextendr_fn.rs`): `choices` + `default`
   (choices derives its default from the first choice), `coerce` + `choices`,

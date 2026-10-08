@@ -618,10 +618,17 @@ impl CallAttribution {
     /// [`CallAttribution::Argument`] so that the call passed as `.call` is.
     /// The list is spelled out because the helpers, unlike
     /// `base::match.arg(param)`, do not read it off the formal.
+    ///
+    /// `aliases` is the `match_arg` parameter's write-time
+    /// `match_arg_keys::aliases_placeholder`, written last as `, <placeholder>`:
+    /// the wrapper writer turns it into the type's `aliases =` argument, or
+    /// removes it for a type without aliases (#1843). `None` for a literal
+    /// `choices(...)` list, which has no aliases.
     pub fn match_arg_statement(
         self,
         param: &str,
         choices: &str,
+        aliases: Option<&str>,
         attrs: &crate::miniextendr_fn::ParamAttrs,
     ) -> String {
         let helper = if attrs.several_ok {
@@ -633,7 +640,12 @@ impl CallAttribution {
             Some(call) => format!(", {call}"),
             None => String::new(),
         };
-        let statement = format!("{param} <- {helper}({param}, {choices}, \"{param}\"{call})");
+        let aliases = match aliases {
+            Some(placeholder) => format!(", {placeholder}"),
+            None => String::new(),
+        };
+        let statement =
+            format!("{param} <- {helper}({param}, {choices}, \"{param}\"{call}{aliases})");
         let mut guards = Vec::new();
         if attrs.omittable {
             guards.push(format!("!missing({param})"));
