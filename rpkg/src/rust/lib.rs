@@ -240,6 +240,7 @@ mod lazy_tests;
 mod lbfgsb_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+mod list_newtype_vec_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 mod macro_equivalence;

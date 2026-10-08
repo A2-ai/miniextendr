@@ -903,14 +903,19 @@ Rules:
   `RConditionError` type), which becomes `SexpError::Condition`: the
   `SexpError` arm above then carries its classes and fields, with its message
   as the reason after the prefix, also from an `Either` arm whose other arm
-  refused the kind of value.
+  refused the kind of value. For a `Vec` of a newtype over `List` (a list of
+  R objects) the check runs on each element, and the error reports every
+  refused element with its position, `(element 2)`, with the classes of
+  every refusal.
 - **The whole message.** An error whose `RConditionError::argument_message`
   is `Some` (`RError::argument_message(...)`,
   `#[condition(argument_message = "…")]`) gives the argument error's whole
   message, as an `inherits(..., message = )` guard does: no prefix, the
   classes, `kind`, `e$param`, `e$rust_type` and the call as above. It holds
   for a type's own `TryFromSexp` error and for a `validate` refusal under
-  `Option` / `Vec`; inside an `Either` the `Either` words the message.
+  `Option` / `Vec`; inside an `Either` the `Either` words the message. In a
+  list of objects (`Vec` of a newtype over `List`) it is the reason of the
+  element it refused, before that element's position, after the prefix.
   See [EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values).
 - **Raising instead of returning.** `rust_error!(class = ...)` inside a
   `try_from_sexp` raises the function's error: its class and the call as

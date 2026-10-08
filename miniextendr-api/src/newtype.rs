@@ -22,11 +22,31 @@
 //! is what the derive emits, and refusing values a type's inner type
 //! accepts belongs in [`TryFromSexpElement::check_sexp`], not in
 //! `try_from_sexp`. The check runs on the R value before it is read, in the
-//! scalar `try_from_sexp` and once per container input: on the whole vector
-//! for `Vec<T>` / `Vec<Option<T>>`, which is where R keeps a class, and on a
-//! non-`NULL` input for `Option<T>` (`NULL` is "not given").
-//! `#[derive(TryFromSexp)]` takes it as `#[try_from_sexp(validate = path)]`
-//! (#1815).
+//! scalar `try_from_sexp`, on a non-`NULL` input for `Option<T>` (`NULL` is
+//! "not given"), and for `Vec<T>` / `Vec<Option<T>>` where R keeps the
+//! element's class. `#[derive(TryFromSexp)]` takes it as
+//! `#[try_from_sexp(validate = path)]` (#1815).
+//!
+//! # Where a `Vec`'s check runs: the inner container decides
+//!
+//! An atomic vector keeps one class for all its elements, on the vector; a
+//! list of R objects keeps a class on each element. So the `Vec` blankets
+//! don't run the check themselves: they pass `T::check_sexp` to the inner
+//! container's hidden
+//! [`TryFromSexp::__mx_try_from_sexp_with_check`](crate::TryFromSexp::__mx_try_from_sexp_with_check)
+//! (#1837). Its default runs the check once on the whole input, which every
+//! atomic inner container keeps. `Vec<List>` and `Vec<Option<List>>` override
+//! it to run the check on each element (but `NULL`) and to report every
+//! failing element in one error, with its position. The blankets override it
+//! too, adding their own check after the one they are given, so a newtype of a
+//! newtype over `List` checks each element, outer check first, as its scalar
+//! does.
+//!
+//! This keeps one blanket per container slot and one element trait: the
+//! choice follows the inner type, through an impl that only `miniextendr-api`
+//! can write (`Vec<List>`), not a second marker trait a downstream type could
+//! implement next to `TryFromSexpElement`. The `Option<T>` blanket runs the
+//! check itself: a scalar keeps its class on itself whatever its inner type.
 //!
 //! # Why the markers live here and not in the derive
 //!
@@ -95,8 +115,11 @@
 //!
 //! `TryFromSexp for Vec<T>` / `Option<T>` / `Vec<Option<T>>` and `IntoR for
 //! Vec<Option<T>>` are coherence-free: no other blanket occupies those slots.
+//! The concrete `TryFromSexp for Vec<List>` / `Vec<Option<List>>` impls sit
+//! beside them because `List` is not a `TryFromSexpElement`, and no other
+//! crate can make it one (both are `miniextendr-api`'s).
 
-use crate::from_r::{NativeBorrow, SexpError, TryFromSexp};
+use crate::from_r::{ElementCheck, NativeBorrow, SexpError, TryFromSexp, no_element_check};
 use crate::into_r::IntoR;
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
@@ -147,10 +170,13 @@ pub trait TryFromSexpElement: Sized {
     /// class (`difftime`, `Date`, `POSIXct`).
     ///
     /// Called with the input of every shape, before its inner conversion: by
-    /// the scalar `TryFromSexp` (the derive's calls it), once on the whole
-    /// vector for `Vec<Self>` and `Vec<Option<Self>>`, and for `Option<Self>`
-    /// on any input but `NULL`, which stays "not given". It sees the value as
-    /// R holds it, attributes and all, before anything is read from it.
+    /// the scalar `TryFromSexp` (the derive's calls it), for `Option<Self>`
+    /// on any input but `NULL`, which stays "not given", and for `Vec<Self>`
+    /// and `Vec<Option<Self>>` where R keeps the element's class: once on the
+    /// whole vector for an atomic inner type, on each element (but `NULL`)
+    /// for a list of R objects (`Self::Inner` is `List`, or a newtype over
+    /// it). It sees the value as R holds it, attributes and all, before
+    /// anything is read from it.
     ///
     /// Return an [`RError`](crate::condition::RError), or any
     /// [`RConditionError`](crate::condition::RConditionError) type, with `?`
@@ -207,16 +233,18 @@ pub trait VecInner: Sized {
     const VEC_NATIVE_BORROW: Option<NativeBorrow>;
     /// `<Vec<Self> as TryFromSexp>::CHARACTER_ONLY`.
     const VEC_CHARACTER_ONLY: bool;
-    /// `<Vec<Self> as TryFromSexp>::try_from_sexp`, its error as a
-    /// [`SexpError`].
-    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, SexpError>;
-    /// `<Vec<Self> as TryFromSexp>::try_from_sexp_unchecked`, its error as a
-    /// [`SexpError`].
+    /// `<Vec<Self> as TryFromSexp>::__mx_try_from_sexp_with_check`: the
+    /// vector, with `check` run where `Vec<Self>` keeps an element's class.
+    fn vec_try_from_sexp(sexp: SEXP, check: &ElementCheck<'_>) -> Result<Vec<Self>, SexpError>;
+    /// `<Vec<Self> as TryFromSexp>::__mx_try_from_sexp_unchecked_with_check`.
     ///
     /// # Safety
     ///
     /// As [`TryFromSexp::try_from_sexp_unchecked`].
-    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, SexpError>;
+    unsafe fn vec_try_from_sexp_unchecked(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Vec<Self>, SexpError>;
 }
 
 impl<I> VecInner for I
@@ -228,13 +256,16 @@ where
     const VEC_CHARACTER_ONLY: bool = <Vec<I> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
-    fn vec_try_from_sexp(sexp: SEXP) -> Result<Vec<Self>, SexpError> {
-        <Vec<I> as TryFromSexp>::try_from_sexp(sexp).map_err(Into::into)
+    fn vec_try_from_sexp(sexp: SEXP, check: &ElementCheck<'_>) -> Result<Vec<Self>, SexpError> {
+        <Vec<I> as TryFromSexp>::__mx_try_from_sexp_with_check(sexp, check)
     }
 
     #[inline]
-    unsafe fn vec_try_from_sexp_unchecked(sexp: SEXP) -> Result<Vec<Self>, SexpError> {
-        unsafe { <Vec<I> as TryFromSexp>::try_from_sexp_unchecked(sexp) }.map_err(Into::into)
+    unsafe fn vec_try_from_sexp_unchecked(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Vec<Self>, SexpError> {
+        unsafe { <Vec<I> as TryFromSexp>::__mx_try_from_sexp_unchecked_with_check(sexp, check) }
     }
 }
 
@@ -290,17 +321,21 @@ pub trait VecOptionInner: Sized {
     const VEC_OPTION_NATIVE_BORROW: Option<NativeBorrow>;
     /// `<Vec<Option<Self>> as TryFromSexp>::CHARACTER_ONLY`.
     const VEC_OPTION_CHARACTER_ONLY: bool;
-    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp`, its error as a
-    /// [`SexpError`].
-    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, SexpError>;
-    /// `<Vec<Option<Self>> as TryFromSexp>::try_from_sexp_unchecked`, its
-    /// error as a [`SexpError`].
+    /// `<Vec<Option<Self>> as TryFromSexp>::__mx_try_from_sexp_with_check`:
+    /// the vector, with `check` run where `Vec<Option<Self>>` keeps an
+    /// element's class.
+    fn vec_option_try_from_sexp(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Vec<Option<Self>>, SexpError>;
+    /// `<Vec<Option<Self>> as TryFromSexp>::__mx_try_from_sexp_unchecked_with_check`.
     ///
     /// # Safety
     ///
     /// As [`TryFromSexp::try_from_sexp_unchecked`].
     unsafe fn vec_option_try_from_sexp_unchecked(
         sexp: SEXP,
+        check: &ElementCheck<'_>,
     ) -> Result<Vec<Option<Self>>, SexpError>;
 }
 
@@ -314,16 +349,21 @@ where
     const VEC_OPTION_CHARACTER_ONLY: bool = <Vec<Option<I>> as TryFromSexp>::CHARACTER_ONLY;
 
     #[inline]
-    fn vec_option_try_from_sexp(sexp: SEXP) -> Result<Vec<Option<Self>>, SexpError> {
-        <Vec<Option<I>> as TryFromSexp>::try_from_sexp(sexp).map_err(Into::into)
+    fn vec_option_try_from_sexp(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Vec<Option<Self>>, SexpError> {
+        <Vec<Option<I>> as TryFromSexp>::__mx_try_from_sexp_with_check(sexp, check)
     }
 
     #[inline]
     unsafe fn vec_option_try_from_sexp_unchecked(
         sexp: SEXP,
+        check: &ElementCheck<'_>,
     ) -> Result<Vec<Option<Self>>, SexpError> {
-        unsafe { <Vec<Option<I>> as TryFromSexp>::try_from_sexp_unchecked(sexp) }
-            .map_err(Into::into)
+        unsafe {
+            <Vec<Option<I>> as TryFromSexp>::__mx_try_from_sexp_unchecked_with_check(sexp, check)
+        }
     }
 }
 
@@ -359,9 +399,13 @@ impl<T: IntoRVecElement> IntoR for Vec<T> {
 
 // region: TryFromSexp container blankets (R → Rust)
 
-// Each blanket runs `T::check_sexp` once on the input it is given, before the
-// inner container reads it, then wraps what it read with `T::from_inner`. None
-// calls `T::try_from_sexp`: see "Forwarding" on `TryFromSexpElement`.
+// The `Vec` blankets hand `T::check_sexp`, after the check of any enclosing
+// newtype, to the inner container's `__mx_try_from_sexp_with_check`, which
+// runs it where that container keeps an element's class: once on the whole
+// input for an atomic vector, on each element for a list of R objects
+// (#1837). They then wrap what was read with `T::from_inner`. `Option<T>`
+// runs the check itself, on a non-`NULL` input. None calls
+// `T::try_from_sexp`: see "Forwarding" on `TryFromSexpElement`.
 
 impl<T: TryFromSexpElement> TryFromSexp for Vec<T>
 where
@@ -373,18 +417,40 @@ where
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        T::check_sexp(sexp)?;
-        Ok(<T::Inner as VecInner>::vec_try_from_sexp(sexp)?
+        Self::__mx_try_from_sexp_with_check(sexp, &no_element_check)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { Self::__mx_try_from_sexp_unchecked_with_check(sexp, &no_element_check) }
+    }
+
+    #[inline]
+    fn __mx_try_from_sexp_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        let check = |x: SEXP| {
+            check(x)?;
+            T::check_sexp(x)
+        };
+        Ok(<T::Inner as VecInner>::vec_try_from_sexp(sexp, &check)?
             .into_iter()
             .map(T::from_inner)
             .collect())
     }
 
     #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        T::check_sexp(sexp)?;
+    unsafe fn __mx_try_from_sexp_unchecked_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        let check = |x: SEXP| {
+            check(x)?;
+            T::check_sexp(x)
+        };
         Ok(
-            unsafe { <T::Inner as VecInner>::vec_try_from_sexp_unchecked(sexp) }?
+            unsafe { <T::Inner as VecInner>::vec_try_from_sexp_unchecked(sexp, &check) }?
                 .into_iter()
                 .map(T::from_inner)
                 .collect(),
@@ -440,9 +506,25 @@ where
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        T::check_sexp(sexp)?;
+        Self::__mx_try_from_sexp_with_check(sexp, &no_element_check)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { Self::__mx_try_from_sexp_unchecked_with_check(sexp, &no_element_check) }
+    }
+
+    #[inline]
+    fn __mx_try_from_sexp_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        let check = |x: SEXP| {
+            check(x)?;
+            T::check_sexp(x)
+        };
         Ok(
-            <T::Inner as VecOptionInner>::vec_option_try_from_sexp(sexp)?
+            <T::Inner as VecOptionInner>::vec_option_try_from_sexp(sexp, &check)?
                 .into_iter()
                 .map(|opt| opt.map(T::from_inner))
                 .collect(),
@@ -450,14 +532,20 @@ where
     }
 
     #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        T::check_sexp(sexp)?;
-        Ok(
-            unsafe { <T::Inner as VecOptionInner>::vec_option_try_from_sexp_unchecked(sexp) }?
-                .into_iter()
-                .map(|opt| opt.map(T::from_inner))
-                .collect(),
-        )
+    unsafe fn __mx_try_from_sexp_unchecked_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        let check = |x: SEXP| {
+            check(x)?;
+            T::check_sexp(x)
+        };
+        Ok(unsafe {
+            <T::Inner as VecOptionInner>::vec_option_try_from_sexp_unchecked(sexp, &check)
+        }?
+        .into_iter()
+        .map(|opt| opt.map(T::from_inner))
+        .collect())
     }
 }
 

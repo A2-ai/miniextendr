@@ -131,6 +131,8 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
+| `Vec<List>` | VECSXP only | Each element must be a list (VECSXP; a pairlist is refused, not coerced); all failing elements reported in one batched error |
+| `Vec<Option<List>>` | VECSXP only | NULL element -> None; any other element as for `Vec<List>` |
 
 ### Parsing and Reading Markers
 
@@ -199,10 +201,21 @@ on the R value that every shape runs, to refuse what the inner type accepts:
 |-----------|-------------------|------------|
 | `T` | the argument, before the inner conversion | the inner type's; `SexpError` with `validate` |
 | `Option<T>` | any argument but `NULL` (`None`) | `SexpError` |
-| `Vec<T>`, `Vec<Option<T>>` | the whole vector, once | `SexpError` |
+| `Vec<T>`, `Vec<Option<T>>` over an atomic inner type (`f64`, `String`, ...) | the whole vector, once (R keeps the class on the vector) | `SexpError` |
+| `Vec<T>` over `List` (a list of R objects) | each element, before it is read | `SexpError` |
+| `Vec<Option<T>>` over `List` | each element but `NULL` (`None`) | `SexpError` |
+
+The inner container decides where the check runs, so a newtype of a newtype
+over `List` checks each element too, outer check first. A list of objects
+reports every failing element in one error, its position as R counts it:
+`invalid 'fits' argument: got a data frame (element 2); got no model object
+(elements 3, 5)`. A refusal with an argument message gives that message as
+its element's reason.
 
 A check's `RError` refusal keeps its classes and fields on the argument error
 ([EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values)).
+In a list of objects, the error carries the classes of every refusal, and
+each field name once, from the first refusal that has it.
 
 ---
 
@@ -342,6 +355,7 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
 | `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
+| `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
 
 #### `Vec<Option<C>>` for collection element types
 

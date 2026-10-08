@@ -945,6 +945,73 @@ pub trait TryFromSexp: Sized {
     fn __mx_input_has_na(&self, input: SEXP) -> bool {
         any_na(input) || self.__mx_has_na()
     }
+
+    /// Convert, running `check`, an element type's
+    /// [`TryFromSexpElement::check_sexp`](crate::TryFromSexpElement::check_sexp),
+    /// on the R value that carries an element's class (#1837).
+    ///
+    /// The newtype containers read `Vec<T>` through `Vec<T::Inner>` and
+    /// `Vec<Option<T>>` through `Vec<Option<T::Inner>>` with this, passing
+    /// `T::check_sexp`, so the inner container decides where the check runs:
+    ///
+    /// - The default runs it once, on the whole input, then converts. An
+    ///   atomic vector carries its class on the vector.
+    /// - A list of R objects runs it on each element instead, where each
+    ///   object carries its own class: `Vec<List>` on every element,
+    ///   `Vec<Option<List>>` on every element but `NULL`.
+    /// - The newtype containers pass it on, with their own element's check
+    ///   after it, so a newtype of a newtype checks outer then inner, as its
+    ///   scalar does.
+    ///
+    /// An override must also override
+    /// [`__mx_try_from_sexp_unchecked_with_check`](Self::__mx_try_from_sexp_unchecked_with_check).
+    /// Not public API.
+    #[doc(hidden)]
+    #[inline]
+    fn __mx_try_from_sexp_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError>
+    where
+        Self::Error: Into<SexpError>,
+    {
+        check(sexp)?;
+        Self::try_from_sexp(sexp).map_err(Into::into)
+    }
+
+    /// [`__mx_try_from_sexp_with_check`](Self::__mx_try_from_sexp_with_check)
+    /// through [`try_from_sexp_unchecked`](Self::try_from_sexp_unchecked).
+    /// Not public API.
+    ///
+    /// # Safety
+    ///
+    /// As [`try_from_sexp_unchecked`](Self::try_from_sexp_unchecked).
+    #[doc(hidden)]
+    #[inline]
+    unsafe fn __mx_try_from_sexp_unchecked_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError>
+    where
+        Self::Error: Into<SexpError>,
+    {
+        check(sexp)?;
+        unsafe { Self::try_from_sexp_unchecked(sexp) }.map_err(Into::into)
+    }
+}
+
+/// An element type's check on an R value, as the newtype containers pass it
+/// to [`TryFromSexp::__mx_try_from_sexp_with_check`]: `T::check_sexp`, with
+/// the checks of any enclosing newtypes before it. Not public API.
+#[doc(hidden)]
+pub type ElementCheck<'a> = dyn Fn(SEXP) -> Result<(), SexpError> + 'a;
+
+/// The [`ElementCheck`] that accepts every value: what a container starts
+/// from when nothing encloses it. Not public API.
+#[doc(hidden)]
+#[inline]
+pub fn no_element_check(_sexp: SEXP) -> Result<(), SexpError> {
+    Ok(())
 }
 
 // region: Box<[T]> delegates to Vec<T>
@@ -2982,6 +3049,102 @@ pub(crate) fn push_element_positions(
         let _ = write!(msg, "{}", index + 1);
     }
     msg.push(')');
+}
+
+/// The failures of a list read element by element ([`map_vecsxp_batched`]),
+/// folded into one error that keeps the classes and fields of the check
+/// refusals among them.
+///
+/// Each failure's reason goes into a [`BatchedErrors`], so the message has the
+/// grammar of every batched conversion: `got a data frame (element 2); expected
+/// list, got numeric (elements 3, 5)`. A check's refusal
+/// ([`SexpError::Condition`]) is worded by its
+/// [`argument_message`](crate::condition::RError::argument_message) when it has
+/// one (the type's own words for a value refused as an argument), else by its
+/// message; any other error by [`SexpError::r_reason`].
+///
+/// With no refusal among the failures the error is the batch's
+/// [`SexpError::InvalidValue`]. With one, it is a [`SexpError::Condition`]
+/// with the batch's message, the classes of every refusal (in the order they
+/// first occur) and their fields (the first of each name), so a handler for a
+/// check's class catches a list of the type as it catches one value of it.
+#[derive(Default)]
+pub(crate) struct ElementErrors {
+    batch: BatchedErrors,
+    refused: bool,
+    class: Vec<String>,
+    data: crate::condition::ConditionData,
+}
+
+impl ElementErrors {
+    /// Record the failure of the element at 0-based `index`.
+    pub(crate) fn push(&mut self, index: usize, error: SexpError) {
+        for refusal in error.reported_conditions() {
+            self.refused = true;
+            for class in refusal.classes() {
+                if !self.class.contains(class) {
+                    self.class.push(class.clone());
+                }
+            }
+            for (name, value) in refusal.fields() {
+                if !self.data.iter().any(|(seen, _)| seen == name) {
+                    self.data.push((name.clone(), value.clone()));
+                }
+            }
+        }
+        self.batch.push(index, || match &error {
+            SexpError::Condition(refusal) => refusal
+                .argument_message_str()
+                .unwrap_or(refusal.message_str())
+                .to_string(),
+            other => other.r_reason(false),
+        });
+    }
+
+    /// The values read, or the one error for every failure recorded.
+    pub(crate) fn into_result<U>(self, values: Vec<U>) -> Result<Vec<U>, SexpError> {
+        if self.batch.is_empty() {
+            return Ok(values);
+        }
+        if !self.refused {
+            return Err(self.batch.into_element_error());
+        }
+        let mut error =
+            crate::condition::RError::new(self.batch.element_message()).class(self.class);
+        for (name, value) in self.data {
+            error = error.data(name, value);
+        }
+        Err(SexpError::Condition(error))
+    }
+}
+
+/// Read a list (`VECSXP`) element by element with `read`, which gets each
+/// element's `SEXP`, and report every element that fails in one error
+/// ([`ElementErrors`]), its position numbered as R counts it. Anything but a
+/// `VECSXP` is a type error, and no element is read.
+pub(crate) fn map_vecsxp_batched<U>(
+    sexp: SEXP,
+    mut read: impl FnMut(SEXP) -> Result<U, SexpError>,
+) -> Result<Vec<U>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+    let len = sexp.len();
+    let mut values = Vec::with_capacity(len);
+    let mut errors = ElementErrors::default();
+    for i in 0..len {
+        let index = crate::R_xlen_t::try_from(i).expect("a list index fits R_xlen_t");
+        match read(sexp.vector_elt(index)) {
+            Ok(value) => values.push(value),
+            Err(e) => errors.push(i, e),
+        }
+    }
+    errors.into_result(values)
 }
 
 /// ` (element <k>)` for one 0-based `index`: the position suffix of a single

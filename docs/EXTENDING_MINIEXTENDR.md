@@ -251,6 +251,11 @@ and all, in every shape:
 | `Option<Elapsed>` | on any input but `NULL`, which stays "not given" |
 | `Vec<Elapsed>`, `Vec<Option<Elapsed>>` | once, on the whole vector, where R keeps its class |
 
+The inner container decides where the check runs. For an atomic inner type
+(`f64` here) that is the whole vector. A newtype over `List` is the other
+case: a list of such objects keeps each object's class on the element, so its
+`Vec` checks each element (see [A list of objects](#a-list-of-objects)).
+
 It is a `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. Return an
 `RError`, or any `RConditionError` type such as a `#[derive(RConditionError)]`
 enum, for a refusal with its own classes and fields, or a plain `SexpError`
@@ -306,11 +311,57 @@ conditionMessage(tryCatch(fit_summary(data.frame(a = 1)), error = identity))
 # "use model_from_df() for a data frame"
 ```
 
-The check holds for `Model` and `Option<Model>` parameters alike; a type
-whose inner type has a vector conversion (`f64`, not `List`) also holds it
-for `Vec` and `Vec<Option>`. Inside an `Either` the message stays the
-`Either`'s, which names both arms. Fixtures:
-`rpkg/src/rust/argument_message_tests.rs`.
+The check holds for `Model`, `Option<Model>`, `Vec<Model>` and
+`Vec<Option<Model>>` parameters alike. In a `Vec` of `Model` the argument
+message words one element's failure, after its position (see below). Inside
+an `Either` the message stays the `Either`'s, which names both arms.
+Fixtures: `rpkg/src/rust/argument_message_tests.rs`.
+
+#### A list of objects
+
+`Vec<Model>` takes a list of model objects, `list(m1, m2)`, and
+`Vec<Option<Model>>` a list of models and `NULL`s. Each element is checked as
+a `Model`: the check runs on the element, where the object keeps its class,
+never on the outer list, then the element is read as a list. A `NULL` element
+of `Vec<Option<Model>>` is `None` and is not checked. Every element that fails
+is reported in one argument error, with its position as R counts it:
+
+```rust
+#[miniextendr]
+pub fn fit_all(fits: Vec<Model>) -> i32 {
+    fits.len() as i32
+}
+```
+
+```r
+e <- tryCatch(fit_all(list(m1, data.frame(a = 1), 3)), error = identity)
+conditionMessage(e)
+# "invalid 'fits' argument: use model_from_df() for a data frame (element 2); expected a model object (element 3)"
+```
+
+- **Message.** The batched grammar of every vector conversion,
+  `<reason> (element 2); <reason> (elements 3, 5)`, after `invalid '<p>'
+  argument`. A refusal's reason is its argument message when it has one (the
+  type's own words for a refused value), else its message. A failing element
+  is not the whole argument, so no element's argument message replaces the
+  prefix.
+- **Classes and fields.** The error carries the classes of every refusal, so
+  a handler for a check's class catches a list of the type as it catches one
+  value of it, and each field name once, from the first refusal that has it.
+  `e$param`, `e$rust_type` and `kind = "conversion"` are as for any argument
+  error. The positions are in the message only, as in every batched
+  conversion error.
+- **The argument.** It must be a list (`VECSXP`), else the error is a type
+  error (`expected list, got integer`) and no element is checked. Each
+  element must be a list too; a pairlist is refused, where a `List` argument
+  would coerce it, because the coerced copy would be an object nothing roots
+  while the rest of the list is read.
+- **Newtypes of newtypes.** `struct Fit(Model)` checks each element as a
+  `Fit`, outer check first, as its scalar does.
+
+The same reading without a check is `Vec<List>` / `Vec<Option<List>>`. With
+`#[derive(IntoR)]` too, a `Vec<Model>` returns as a list of the models.
+Fixtures: `rpkg/src/rust/list_newtype_vec_tests.rs`.
 
 With `validate`, the newtype's scalar error is `SexpError` (every container's
 already is), so the inner type's error must convert into it, as every built-in
