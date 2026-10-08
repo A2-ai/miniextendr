@@ -2102,6 +2102,32 @@ fn s7_syntactic_names_stay_bare() {
             "missing `{expected}`:\n{wrapper}"
         );
     }
+    // The package's own generic keeps its binding.
+    assert!(!wrapper.contains("base::rm("), "{wrapper}");
+}
+
+/// `S7::method(`[[`, Foo) <- f` binds base's `[[` in the package namespace,
+/// which would send every `S3method("[[", ...)` of the package to the
+/// namespace's own methods table, out of reach of a user's `x[[i]]`. The
+/// binding is removed right after the registration (#1853).
+#[test]
+fn s7_base_operator_method_leaves_no_namespace_binding() {
+    for (attr, op) in [
+        (quote::quote!(#[miniextendr(r_name = "[[")]), "[["),
+        (quote::quote!(#[miniextendr(s7(generic = "["))]), "["),
+        (quote::quote!(#[miniextendr(s7(generic = "base::$"))]), "$"),
+    ] {
+        let wrapper = generate_s7_r_wrapper(&parse_s7_operator(attr));
+        let registration = format!("S7::method(`{op}`, Foo) <- function(");
+        let after = wrapper
+            .split(&registration)
+            .nth(1)
+            .unwrap_or_else(|| panic!("no `{registration}` in:\n{wrapper}"));
+        assert!(
+            after.contains(&format!("\n}}\nbase::rm(list = \"{op}\")\n")),
+            "{wrapper}"
+        );
+    }
 }
 
 /// An instance `r_name = "[["` emits no shortcut, so it cannot collide with a
@@ -2158,6 +2184,9 @@ fn s7_ops_operator_methods_dispatch_on_both_operands() {
                     "#' @usage NULL\nS7::method({symbol}, list(Money, S7::class_any)) <- function(e1, e2, ...) {{"
                 ),
                 "e1@.ptr, e2)".to_string(),
+                // The registration binds the operator in the namespace;
+                // the next line removes it (#1853).
+                format!("}}\nbase::rm(list = \"{op}\")\n"),
             ] {
                 assert!(
                     wrapper.contains(&expected),
@@ -7089,6 +7118,57 @@ fn a_class_with_a_page_keeps_its_links() {
             "noexport = {noexport}, internal = {internal}:\n{wrapper}"
         );
     }
+}
+
+// endregion
+
+// region: S3 methods for replacement generics (#1853)
+
+/// The formals of the generated `<generic>.<Class>` S3 method.
+fn s3_method_formals(wrapper: &str, method: &str) -> String {
+    let head = format!("{} <- function(", crate::naming::r_def_name(method));
+    let line = wrapper
+        .lines()
+        .find(|l| l.starts_with(&head))
+        .unwrap_or_else(|| panic!("no `{head}` in:\n{wrapper}"));
+    line[head.len()..]
+        .strip_suffix(") {")
+        .unwrap_or_else(|| panic!("unexpected definition line `{line}`"))
+        .to_string()
+}
+
+/// `R CMD check` (`tools::checkReplaceFuns()`) requires the last formal of a
+/// replacement method to be `value`, so the dispatch `...` every S3 method
+/// gets goes before it; any other generic keeps `...` last.
+#[test]
+fn s3_replacement_method_keeps_value_last() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Slots {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "[[<-"))]
+            pub fn set_at(&mut self, i: i32, value: f64) { unimplemented!() }
+            #[miniextendr(s3(generic = "names<-"))]
+            pub fn rename(&mut self, value: Vec<String>) { unimplemented!() }
+            #[miniextendr(s3(generic = "[<-"))]
+            pub fn set_many(&mut self, i: Vec<i32>, _rest: &Dots, value: Vec<f64>) {
+                unimplemented!()
+            }
+            #[miniextendr(s3(generic = "[["))]
+            pub fn at(&self, i: i32) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[<-.Slots"),
+        "x, i, ..., value"
+    );
+    assert_eq!(
+        s3_method_formals(&wrapper, "names<-.Slots"),
+        "x, ..., value"
+    );
+    assert_eq!(s3_method_formals(&wrapper, "[<-.Slots"), "x, i, ..., value");
+    assert_eq!(s3_method_formals(&wrapper, "[[.Slots"), "x, i, ...");
 }
 
 // endregion

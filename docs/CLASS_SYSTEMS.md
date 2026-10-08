@@ -655,7 +655,12 @@ The generic is the method's R name (`r_name`, or the Rust name), unless
   "Registering methods when the package loads" below).
 - **A base operator** (`[`, `[[`, `$`, the `Ops` group, `%*%`): the method
   attaches to base's operator directly. Nothing is defined, exported or
-  documented as a package generic.
+  documented as a package generic. `` S7::method(`[[`, Bag) <- f `` is a
+  replacement call, so R binds `[[` in the package namespace; the generated
+  `base::rm(list = "[[")` on the next line removes that binding. With it, R
+  would take `[[` for a generic of the package's own and register the
+  package's S3 `[[` methods in the namespace's own table, where a user's
+  `x[[i]]` never finds them.
 
 ### Multiple dispatch
 

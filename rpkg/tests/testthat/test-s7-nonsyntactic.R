@@ -20,6 +20,22 @@ test_that("r_name = \"[[\" dispatches `bag[[i]]` and emits no `MxS7Bag_[[` short
   expect_false(exists("MxS7Bag_[[", envir = ns, inherits = FALSE))
 })
 
+test_that("a method on a base operator leaves no binding of the operator in the namespace", {
+  # `S7::method(`[[`, MxS7Bag) <- f` assigns base's `[[` to `[[` in the
+  # namespace. R would then treat `[[` as a generic of the package's own and
+  # register every S3 `[[` method of the package (`[[.mx_thing`,
+  # `[[.MxBagHandle`, ...) in the namespace's own table, out of reach of a
+  # user's `x[[i]]` (#1853). The generated wrappers remove the binding.
+  ns <- asNamespace("miniextendr")
+  for (op in c("[", "[[", "+", "*", "==", "<", "%*%")) {
+    expect_false(exists(op, envir = ns, inherits = FALSE), label = op)
+  }
+  bag <- MxS7Bag(c(10, 20, 30))
+  expect_equal(eval(quote(bag[[2L]]), list2env(list(bag = bag), parent = globalenv())), 20)
+  expect_false(is.null(getS3method("[[", "MxBagHandle", optional = TRUE, envir = globalenv())))
+  expect_false(is.null(getS3method("[", "mx_bag", optional = TRUE, envir = globalenv())))
+})
+
 test_that("r_name = \"%mx_scale%\" defines and exports a package-local operator", {
   bag <- MxS7Bag(c(1, 2, 3))
   expect_equal(bag %mx_scale% 2, c(2, 4, 6))

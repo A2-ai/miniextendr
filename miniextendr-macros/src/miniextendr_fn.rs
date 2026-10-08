@@ -2881,6 +2881,68 @@ pub(crate) fn parse_serde_error_nested(
     Err(meta.error(SERDE_ERROR_BARE_HELP))
 }
 
+/// Check that an S3 method for a replacement generic takes the new value last,
+/// as `value`.
+///
+/// A replacement generic is one whose name ends in `<-` (`$<-`, `[[<-`,
+/// `names<-`). R calls it with the new value as a named argument
+/// (`x$f <- v` runs `` `$<-`(x, "f", value = v) ``), and `R CMD check`
+/// (`tools::checkReplaceFuns()`) requires the last formal of every replacement
+/// function, registered S3 methods included, to be `value`. The last
+/// non-receiver parameter of `inputs` must therefore become the R formal
+/// `value` (`_value` does too); a trailing `&Dots` is `...`, so it can't be
+/// last. Any other generic passes. `fallback` spans the error when there is no
+/// parameter to point at.
+///
+/// Used by standalone `s3(generic = ..., class = ...)` functions (`lib.rs`,
+/// once the condition-call markers have left the R formals) and by S3
+/// impl-block instance methods (`miniextendr_impl.rs`).
+pub(crate) fn check_replacement_value_param(
+    generic: &str,
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    fallback: proc_macro2::Span,
+) -> syn::Result<()> {
+    use syn::spanned::Spanned;
+
+    if !generic.ends_with("<-") {
+        return Ok(());
+    }
+    let last = inputs
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(idx, arg)| match arg {
+            syn::FnArg::Typed(pat_type) => Some((idx, pat_type)),
+            syn::FnArg::Receiver(_) => None,
+        });
+    let found = match last {
+        Some((idx, _)) if Some(idx) == dots_index(inputs) => "the last R argument is `...`".into(),
+        Some((_, pat_type)) => match pat_type.pat.as_ref() {
+            syn::Pat::Ident(pat_ident) => {
+                let formal = crate::r_wrapper_builder::normalize_r_arg_string(
+                    &crate::naming::ident_name(&pat_ident.ident),
+                );
+                if formal == "value" {
+                    return Ok(());
+                }
+                format!("the last R argument is `{formal}`")
+            }
+            _ => "the last parameter is not a plain name".into(),
+        },
+        None => "it takes no new-value parameter".to_string(),
+    };
+    let span = last.map_or(fallback, |(_, pat_type)| pat_type.span());
+    Err(syn::Error::new(
+        span,
+        format!(
+            "an S3 method for the replacement generic `{generic}` must take the new value as \
+             its last parameter, named `value`, but {found}. R passes the new value as \
+             `value = ` (`x$f <- v` calls `` `$<-`(x, \"f\", value = v) ``), and `R CMD check` \
+             requires the last argument of a replacement function to be named `value`."
+        ),
+    ))
+}
+
 #[derive(Clone, Copy, Default)]
 /// Preferred return-conversion path for `IntoR`.
 pub(crate) enum ReturnPref {

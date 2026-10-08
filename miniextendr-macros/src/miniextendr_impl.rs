@@ -4161,6 +4161,33 @@ fn check_method_formals(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// Check that every S3 instance method for a replacement generic
+/// (`s3(generic = "[[<-")`, or an `r_name` ending in `<-`) takes the new value
+/// last, as `value`
+/// ([`check_replacement_value_param`](crate::miniextendr_fn::check_replacement_value_param),
+/// #1853). The generator puts the dispatch `...` before that formal
+/// ([`s3_method_formals`](crate::r_class_formatter::MethodContext::s3_method_formals)).
+/// Other class systems register their methods themselves, and static methods
+/// are plain functions.
+fn check_s3_replacement_methods(parsed: &ParsedImpl) -> syn::Result<()> {
+    if !matches!(parsed.class_system, ClassSystem::S3 | ClassSystem::Vctrs) {
+        return Ok(());
+    }
+    for m in parsed.instance_methods() {
+        let generic = m
+            .method_attrs
+            .generic
+            .clone()
+            .unwrap_or_else(|| m.r_method_name());
+        crate::miniextendr_fn::check_replacement_value_param(
+            &generic,
+            &m.sig.inputs,
+            m.ident.span(),
+        )?;
+    }
+    Ok(())
+}
+
 /// Validate the S7 dispatch arguments of every S7 instance method: an explicit
 /// `s7(dispatch = "...")`, and the pair S7 fixes for an `Ops` / `%*%`
 /// operator generic (`e1, e2` / `x, y`).
@@ -4379,6 +4406,10 @@ pub fn expand_impl(
     // Every R formal must parse, be distinct, and leave the names the class
     // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
     if let Err(e) = check_method_formals(&parsed) {
+        return e.into_compile_error().into();
+    }
+    // A replacement method (`s3(generic = "[[<-")`) takes `value` last.
+    if let Err(e) = check_s3_replacement_methods(&parsed) {
         return e.into_compile_error().into();
     }
     // Detect S7 fast-path shortcut name collisions (#986). The shortcut

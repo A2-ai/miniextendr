@@ -4,12 +4,15 @@
 \alias{MxBagHandle}
 \alias{new_mxbaghandle}
 \alias{[[.MxBagHandle}
+\alias{[[<-.MxBagHandle}
 \alias{size.MxBagHandle}
 \title{MxBagHandle S3 Class}
 \usage{
 new_mxbaghandle(values)
 
 \method{[[}{MxBagHandle}(x, i, ...)
+
+\method{[[}{MxBagHandle}(x, i, ...) <- value
 
 \method{size}{MxBagHandle}(x, ...)
 
@@ -20,12 +23,18 @@ MxBagHandle
 
 \item{x}{An object.}
 
-\item{i}{(undocumented)}
+\item{i}{1-based position.}
 
 \item{...}{Additional arguments.}
+
+\item{value}{The new value.}
 }
 \description{
 Element at 1-based position \code{i}.
+
+Replace the value at 1-based position \code{i}: \code{h[[i]] <- value}. The
+handle changes in place and the method returns it, which R assigns
+back to \code{h}.
 
 S3 generic for \code{size}
 
