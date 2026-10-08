@@ -1,4 +1,4 @@
-error: unknown class system 'flutter'; expected one of: env, r6, s3, s4, s7, vctrs
+error: unknown class system 'flutter'; expected one of: env, r6, s3, s4, s7, vctrs, or `revive = path`
  --> tests/ui/derive_externalptr_unknown_class_system.rs:6:15
   |
 6 | #[externalptr(flutter)]

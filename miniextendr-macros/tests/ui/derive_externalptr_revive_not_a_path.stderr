@@ -1,0 +1,5 @@
+error: `revive` takes the path of the rebuild hook, `fn(StoredSidecars<'_>) -> Result<Self, E>`: `#[externalptr(revive = Self::revive)]`
+ --> tests/ui/derive_externalptr_revive_not_a_path.rs:7:28
+  |
+7 | #[externalptr(r6, revive = "Self::revive")]
+  |                            ^^^^^^^^^^^^^^

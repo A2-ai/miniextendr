@@ -103,6 +103,12 @@
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
 //!   - Index 2..: one value per [`Sidecar<T>`] field of `T`
 //!
+//! A type with `Sidecar` fields (or a revive hook) also sets `names()` on the
+//! list: `""` for the first two entries, then the field names. That layout
+//! record lets a rebuild hook (`#[externalptr(revive = path)]`, see
+//! [`StoredSidecars`]) look a slot up by name after `readRDS()`, whatever
+//! version of the crate saved it (#1854).
+//!
 //! ## `TYPE_NAME_CSTR` vs `TYPE_ID_CSTR`
 //!
 //! [`TypedExternal`] exposes two associated constants with distinct roles —
@@ -172,8 +178,8 @@ use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
-    Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
+    R_RegisterCFinalizerEx_unchecked, Rf_allocVector_unchecked, Rf_install, Rf_install_unchecked,
+    Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -216,6 +222,48 @@ const PROT_VEC_LEN: isize = 2;
 fn prot_vec_len<T: TypedExternal>() -> R_xlen_t {
     let r_slots = R_xlen_t::try_from(T::R_SLOT_COUNT).expect("sidecar count exceeds R_xlen_t::MAX");
     PROT_VEC_LEN + r_slots
+}
+
+/// Allocates and protects `T`'s `prot` list: the type ID, `user_slot`, one
+/// empty entry per [`Sidecar<T>`] field, and the layout record (the field
+/// names as `names()`, see [`write_layout_record`]) when `T` keeps sidecar
+/// values or has a rebuild hook. Other types pay for the two entries only.
+///
+/// The caller unprotects it (one protection).
+///
+/// # Safety
+///
+/// Must be called from R's main thread. `type_id_sym` must be `T`'s interned
+/// type-ID symbol and `user_slot` a SEXP the caller keeps rooted.
+#[inline]
+unsafe fn alloc_prot_unchecked<T: TypedExternal>(type_id_sym: SEXP, user_slot: SEXP) -> SEXP {
+    let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
+    unsafe { Rf_protect_unchecked(prot) };
+    unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
+    unsafe { prot.set_vector_elt_unchecked(PROT_USER_INDEX, user_slot) };
+    if T::R_SLOT_COUNT > 0 || T::__MX_REVIVES {
+        unsafe { write_layout_record::<T>(prot) };
+    }
+    prot
+}
+
+/// The type-ID symbol an `ExternalPtr`-built pointer keeps in `prot[0]`, or
+/// `None` when `sexp`'s `prot` is not the list `ExternalPtr` builds.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+#[inline]
+unsafe fn stored_type_id_symbol(sexp: SEXP) -> Option<SEXP> {
+    let prot = unsafe { R_ExternalPtrProtected(sexp) };
+    if prot.is_null_or_nil()
+        || prot.type_of() != SEXPTYPE::VECSXP
+        || prot.len() < PROT_VEC_LEN as usize
+    {
+        return None;
+    }
+    let sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
+    (sym.type_of() == SEXPTYPE::SYMSXP).then_some(sym)
 }
 
 #[inline]
@@ -326,6 +374,21 @@ pub trait TypedExternal: 'static {
     /// `Sidecar<_>`.
     const R_SLOT_COUNT: usize = 0;
 
+    /// The names of the [`Sidecar<T>`] fields, in slot order: the layout
+    /// record a pointer of this type writes as `names()` on its protection
+    /// list, so a rebuild hook can look a slot up by name whatever the
+    /// version that saved it (#1854).
+    ///
+    /// `#[derive(ExternalPtr)]` emits it next to `R_SLOT_COUNT`.
+    #[doc(hidden)]
+    const __MX_SIDECAR_NAMES: &'static [&'static str] = &[];
+
+    /// Whether the type has a rebuild hook (`#[externalptr(revive = path)]`),
+    /// which the framework runs when it meets a pointer of this type whose
+    /// address is NULL (after `readRDS()`).
+    #[doc(hidden)]
+    const __MX_REVIVES: bool = false;
+
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
     /// name, so the handle can write the field's back-reference, flush its
     /// pending value or detach it.
@@ -335,6 +398,20 @@ pub trait TypedExternal: 'static {
     #[doc(hidden)]
     #[inline]
     fn __mx_visit_sidecars(&self, _visit: &mut dyn FnMut(usize, &'static str, &dyn SidecarField)) {}
+
+    /// The rebuild hook: a value of this type from the state a pointer
+    /// without an address kept. `#[derive(ExternalPtr)]` emits the body for
+    /// `#[externalptr(revive = path)]`, converting the hook's error into the
+    /// condition the framework raises; see [`StoredSidecars`].
+    ///
+    /// Only called when [`__MX_REVIVES`](Self::__MX_REVIVES) is `true`.
+    #[doc(hidden)]
+    fn __mx_revive(_stored: StoredSidecars<'_>) -> Result<Self, crate::condition::RCondition>
+    where
+        Self: Sized,
+    {
+        panic!("`{}` has no revive hook", Self::TYPE_NAME)
+    }
 }
 
 /// Marker trait for types that should be converted to R as ExternalPtr.
@@ -526,17 +603,27 @@ unsafe fn list_element(sexp: SEXP, name: &str) -> Option<SEXP> {
 /// decided by the `Any::downcast` that follows; this only widens the accepted
 /// R-side shape.
 ///
+/// A pointer without an address (read back by `readRDS()`) of a type with a
+/// revive hook (`#[externalptr(revive = path)]`) is rebuilt in place here,
+/// so the downcast that follows finds a live value; see [`StoredSidecars`].
+///
 /// Runs on R's main thread: generated preludes execute before any worker
 /// hand-off.
 #[inline]
 pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
-    if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
-        return sexp;
+    let ptr = if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
+        sexp
+    } else {
+        match unsafe { unwrap_class_handle(sexp) } {
+            Some(inner) => inner,
+            None => receiver_not_a_handle::<T>(sexp),
+        }
+    };
+    if T::__MX_REVIVES {
+        // SAFETY: on R's main thread with a valid EXTPTRSXP.
+        unsafe { live_addr::<T>(ptr) };
     }
-    match unsafe { unwrap_class_handle(sexp) } {
-        Some(inner) => inner,
-        None => receiver_not_a_handle::<T>(sexp),
-    }
+    ptr
 }
 
 #[cold]
@@ -755,6 +842,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// [`with_r_thread`]: crate::worker::with_r_thread
     #[inline]
     pub fn new(x: T) -> Self {
+        Self::new_with_slot(x, SEXP::nil())
+    }
+
+    /// Like [`new`](Self::new), with `user_slot` stored in the user slot of
+    /// the protection list ([`protected`](Self::protected)) from the start.
+    ///
+    /// A pointer rebuilt by a revive hook, or derived from another, can carry
+    /// its recipe forward this way instead of calling the `unsafe`
+    /// [`set_protected`](Self::set_protected) after construction (#1418).
+    /// `user_slot` must be rooted by the caller until this returns; the
+    /// pointer roots it afterwards. The slot is written before the value's
+    /// [`Sidecar<T>`] fields are flushed, and `saveRDS()` writes it with
+    /// them.
+    #[inline]
+    pub fn new_with_protected(x: T, user_slot: SEXP) -> Self {
+        Self::new_with_slot(x, user_slot)
+    }
+
+    /// The body of [`new`](Self::new) and [`new_with_protected`](Self::new_with_protected).
+    #[inline]
+    fn new_with_slot(x: T, user_slot: SEXP) -> Self {
         // Get concrete pointer with full write provenance from Box::into_raw,
         // BEFORE erasing to dyn Any. This preserves mutable provenance for
         // cached_ptr (downcast_ref would give shared-reference provenance,
@@ -776,7 +884,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // crosses back by value — `(SEXP, ProtectKey)` is `Send`.
         let (sexp, root) = crate::worker::with_r_thread(move || {
             let any_raw = sendable_any_ptr_into_ptr(sendable);
-            unsafe { Self::create_extptr_sexp_unchecked(any_raw) }
+            unsafe { Self::create_extptr_sexp_unchecked(any_raw, user_slot) }
         });
 
         Self::from_owned_parts(sexp, cached_ptr, root)
@@ -796,7 +904,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let inner: Box<dyn Any> = unsafe { Box::from_raw(raw) };
         let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
 
-        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw, SEXP::nil()) };
         Self::from_owned_parts(sexp, cached_ptr, root)
     }
 
@@ -812,6 +920,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "create_extptr_sexp received null pointer"
         );
 
+        // The checked symbol lookups assert R's main thread (in debug builds)
+        // for the whole construction.
         let type_sym = unsafe { type_symbol::<T>() };
         let type_id_sym = unsafe { type_id_symbol::<T>() };
 
@@ -819,9 +929,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // (`root_owned` below), a two-stage rooting boundary that outlives this
         // function via the pool key — not a lexical RAII scope. `OwnedProtect` /
         // `ProtectScope` would misrepresent the ownership transfer.
-        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
-        unsafe { Rf_protect(prot) };
-        prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym);
+        let prot = unsafe { alloc_prot_unchecked::<T>(type_id_sym, SEXP::nil()) };
 
         let sexp = unsafe { R_MakeExternalPtr(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
@@ -850,13 +958,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Create an EXTPTRSXP from a `*mut Box<dyn Any>` without thread safety checks.
     ///
+    /// `user_slot` is stored in the user slot of the protection list
+    /// (`R_NilValue` from [`new`](Self::new), the caller's value from
+    /// [`new_with_protected`](Self::new_with_protected)).
+    ///
     /// # Safety
     ///
     /// Must be called from R's main thread. No debug assertions for thread safety.
+    /// `user_slot` must be rooted by the caller.
     ///
     /// Returns the SEXP and the [`ProtectPool`] key that roots it.
     #[inline]
-    unsafe fn create_extptr_sexp_unchecked(any_raw: *mut Box<dyn Any>) -> (SEXP, ProtectKey) {
+    unsafe fn create_extptr_sexp_unchecked(
+        any_raw: *mut Box<dyn Any>,
+        user_slot: SEXP,
+    ) -> (SEXP, ProtectKey) {
         debug_assert!(
             !any_raw.is_null(),
             "create_extptr_sexp_unchecked received null pointer"
@@ -865,9 +981,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let type_sym = unsafe { type_symbol_unchecked::<T>() };
         let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
 
-        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
-        unsafe { Rf_protect_unchecked(prot) };
-        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
+        let prot = unsafe { alloc_prot_unchecked::<T>(type_id_sym, user_slot) };
 
         let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
@@ -990,9 +1104,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         dest: SEXP,
         idx: R_xlen_t,
     ) {
-        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
-        unsafe { Rf_protect_unchecked(prot) };
-        unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
+        let prot = unsafe { alloc_prot_unchecked::<T>(type_id_sym, SEXP::nil()) };
 
         let sexp = unsafe { R_MakeExternalPtr_unchecked(any_raw.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
@@ -1070,7 +1182,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let outer: Box<Box<dyn Any>> = Box::new(inner);
         let any_raw: *mut Box<dyn Any> = Box::into_raw(outer);
 
-        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw) };
+        let (sexp, root) = unsafe { Self::create_extptr_sexp_unchecked(any_raw, SEXP::nil()) };
         Self::from_owned_parts(sexp, unsafe { NonNull::new_unchecked(raw) }, root)
     }
 
@@ -1446,7 +1558,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "wrap_sexp: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
-        let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
+        let any_raw = unsafe { live_addr::<T>(sexp) };
         if any_raw.is_null() {
             return None;
         }
@@ -1488,9 +1600,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "wrap_sexp_unchecked: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
-        let any_raw = unsafe { R_ExternalPtrAddr_unchecked(sexp) as *mut Box<dyn Any> };
+        let mut any_raw = unsafe { R_ExternalPtrAddr_unchecked(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
-            return None;
+            // A hooked type is rebuilt in place (checked FFI: the main thread
+            // is a precondition here anyway).
+            if !T::__MX_REVIVES {
+                return None;
+            }
+            any_raw = unsafe { live_addr::<T>(sexp) };
+            if any_raw.is_null() {
+                return None;
+            }
         }
 
         if is_type_erased::<T>() {
@@ -1523,7 +1643,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "wrap_sexp_with_error: expected EXTPTRSXP, got {:?}",
             sexp.type_of()
         );
-        let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
+        let any_raw = unsafe { live_addr::<T>(sexp) };
         if any_raw.is_null() {
             return Err(TypeMismatchError::NullPointer);
         }
@@ -1540,23 +1660,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 NonNull::new_unchecked(ptr::from_mut(concrete))
             })),
             None => {
-                // Try to get the stored type name from R symbol for error reporting
-                let found = unsafe {
-                    let prot = R_ExternalPtrProtected(sexp);
-                    if !prot.is_null_or_nil()
-                        && prot.type_of() == SEXPTYPE::VECSXP
-                        && prot.len() >= PROT_VEC_LEN as usize
-                    {
-                        let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
-                        if stored_sym.type_of() == SEXPTYPE::SYMSXP {
-                            symbol_name(stored_sym)
-                        } else {
-                            "<unknown>"
-                        }
-                    } else {
-                        "<unknown>"
-                    }
-                };
+                // The stored type ID, for the diagnostic.
+                let found = unsafe { stored_type_id_symbol(sexp) }.map_or("<unknown>", symbol_name);
                 Err(TypeMismatchError::Mismatch {
                     expected: T::TYPE_NAME,
                     found,
@@ -1581,11 +1686,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
             sexp.type_of()
         );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
-        debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
 
         let cached_ptr = if is_type_erased::<T>() {
-            unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) }
+            // A type-erased handle never reads through `cached_ptr` (its
+            // methods read the address afresh), so a pointer without an
+            // address (read back by `readRDS()`, or consumed) is accepted
+            // here; the downcast that follows refuses or revives it.
+            NonNull::new(any_raw.cast::<T>()).unwrap_or(NonNull::dangling())
         } else {
+            debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
             let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
             let concrete: &mut T = unsafe { any_box.downcast_mut::<T>().unwrap_unchecked() };
             unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) }
@@ -1608,20 +1717,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Returns `None` if the prot slot doesn't contain a valid type symbol.
     #[inline]
     pub fn stored_type_name(&self) -> Option<&'static str> {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return None;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return None;
-            }
-            let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
-            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-                return None;
-            }
-            Some(symbol_name(stored_sym))
-        }
+        unsafe { stored_type_id_symbol(self.sexp) }.map(symbol_name)
+    }
+
+    /// The type ID a pointer stores (`prot[0]`, in the form
+    /// `crate@version::module::Type` for a `#[derive(ExternalPtr)]` type),
+    /// whether its address is live or NULL (after `readRDS()`).
+    ///
+    /// `sexp` may be a bare `EXTPTRSXP` or an R6 / S4 / S7 / list handle
+    /// carrying one in `.ptr`, like a method receiver. `None` when nothing
+    /// `ExternalPtr` built is there. `T` plays no part: the ID read is the
+    /// stored one, so a package can name the version that saved an object,
+    /// or refuse it with its own message (#1854). On R's main thread.
+    pub fn stored_type_id(sexp: SEXP) -> Option<String> {
+        let ptr = if sexp.type_of() == SEXPTYPE::EXTPTRSXP {
+            sexp
+        } else {
+            // SAFETY: on R's main thread (caller contract); `sexp` is valid.
+            unsafe { unwrap_class_handle(sexp) }?
+        };
+        // SAFETY: `ptr` is a valid EXTPTRSXP.
+        unsafe { stored_type_id_symbol(ptr) }.map(|sym| symbol_name(sym).to_owned())
     }
     // endregion
 }
@@ -1657,10 +1773,13 @@ impl ExternalPtr<()> {
     /// Uses `Any::downcast_ref` for authoritative runtime type checking. This
     /// is where every generated method receiver (inherent and trait-impl) and
     /// the ALTREP `data1` helpers get the struct, so it writes the value's
-    /// [`Sidecar<T>`] back-references (a no-op for other types).
+    /// [`Sidecar<T>`] back-references (a no-op for other types). A pointer
+    /// without an address is rebuilt in place first when `T` has a revive
+    /// hook (see [`StoredSidecars`]); otherwise it is `None`.
     #[inline]
     pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        // SAFETY: `self.sexp` is a valid EXTPTRSXP; on R's main thread.
+        let any_raw = unsafe { live_addr::<T>(self.sexp) };
         if any_raw.is_null() {
             return None;
         }
@@ -1674,10 +1793,12 @@ impl ExternalPtr<()> {
     ///
     /// Uses `Any::downcast_mut` for authoritative runtime type checking, and
     /// writes the value's [`Sidecar<T>`] back-references like
-    /// [`downcast_ref`](Self::downcast_ref).
+    /// [`downcast_ref`](Self::downcast_ref), which also says how a pointer
+    /// without an address is handled.
     #[inline]
     pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        // SAFETY: `self.sexp` is a valid EXTPTRSXP; on R's main thread.
+        let any_raw = unsafe { live_addr::<T>(self.sexp) };
         if any_raw.is_null() {
             return None;
         }
@@ -1738,10 +1859,20 @@ pub fn handle_downcast_failed<T: TypedExternal>(ptr: &ExternalPtr<()>) -> ! {
             ExternalPtr::<T>::type_name()
         );
     }
+    let found = ptr.stored_type_name();
+    // A pointer of this very type without an address: read back by `readRDS()`
+    // (and `T` has no revive hook), or cleared by `into_inner`. Name that
+    // rather than the stored ID, which would read as a type mismatch.
+    if ptr.is_null() && found.is_none_or(|id| same_type_identity(id, T::TYPE_ID_CSTR)) {
+        panic!(
+            "expected ExternalPtr<{}>, got a null external pointer",
+            ExternalPtr::<T>::type_name()
+        );
+    }
     panic!(
         "expected ExternalPtr<{}>, found `{}`",
         ExternalPtr::<T>::type_name(),
-        ptr.stored_type_name().unwrap_or("<unknown>")
+        found.unwrap_or("<unknown>")
     );
 }
 
@@ -1763,10 +1894,12 @@ impl ExternalPtr<()> {
     /// `Box<Box<dyn Any>>` cell stays allocated, so the finaliser and every
     /// other accessor keep working on the marker. The value's [`Sidecar<T>`]
     /// fields are detached first (their slot values become pending values),
-    /// so the moved value reads them. Runs on R's main thread (the generated
-    /// receiver prelude).
+    /// so the moved value reads them. A pointer without an address is rebuilt
+    /// in place first when `T` has a revive hook. Runs on R's main thread
+    /// (the generated receiver prelude).
     pub fn take_for_consuming<T: TypedExternal>(&mut self) -> Option<T> {
-        let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
+        // SAFETY: `self.sexp` is a valid EXTPTRSXP; on R's main thread.
+        let any_raw = unsafe { live_addr::<T>(self.sexp) };
         if any_raw.is_null() {
             return None;
         }

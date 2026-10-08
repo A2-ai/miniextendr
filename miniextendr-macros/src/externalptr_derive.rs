@@ -80,7 +80,30 @@
 //! field read and write the protection list by slot index: the setter
 //! validates the value with `TryFromSexp::<T>` and stores the value R gave,
 //! and both keep working on a pointer `readRDS()` brought back without an
-//! address (checked by the type ID in `prot[0]`).
+//! address (checked by the type ID in `prot[0]`, crate version included).
+//!
+//! ### Reading a save by another version: `revive`
+//!
+//! A type with `Sidecar` fields also writes a layout record, the field names
+//! as `names()` on its protection list. `#[externalptr(revive = path)]`
+//! names a rebuild hook, `fn(StoredSidecars<'_>) -> Result<Self, E>`, which
+//! the framework runs when it meets a pointer of the type without an address
+//! (a method receiver, an `ExternalPtr<T>` argument, an R accessor): the hook
+//! reads the stored slots by name through the view, whatever version saved
+//! them, and the rebuilt value is installed in the same pointer. An `Err`
+//! raises with the error's own classes when it is an `RConditionError`.
+//! Having a hook is the opt-in; without one a save by another version is
+//! refused as before. See `miniextendr_api::externalptr::StoredSidecars`.
+//!
+//! ```ignore
+//! #[derive(ExternalPtr)]
+//! #[externalptr(r6, revive = Self::revive)]
+//! pub struct MyType { ... }
+//!
+//! impl MyType {
+//!     fn revive(stored: StoredSidecars<'_>) -> Result<Self, MyError> { ... }
+//! }
+//! ```
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
@@ -165,7 +188,18 @@ use syn::{DeriveInput, Field, Ident, Visibility};
 
 use crate::miniextendr_impl::ClassSystem;
 
-/// Parse `#[externalptr(...)]` attributes to extract class system.
+/// The type-level `#[externalptr(...)]` options.
+struct ExternalPtrAttrs {
+    /// The class system, `env` by default.
+    class_system: ClassSystem,
+    /// `revive = path`: the rebuild hook, `fn(StoredSidecars<'_>) ->
+    /// Result<Self, E>`, run when the framework meets a pointer of the type
+    /// without an address (after `readRDS()`).
+    revive: Option<syn::Path>,
+}
+
+/// Parse `#[externalptr(...)]` attributes: the class system and the revive
+/// hook.
 ///
 /// Supported forms:
 /// - `#[externalptr(env)]` - Environment style (default)
@@ -173,8 +207,12 @@ use crate::miniextendr_impl::ClassSystem;
 /// - `#[externalptr(s3)]` - S3 class
 /// - `#[externalptr(s4)]` - S4 class
 /// - `#[externalptr(s7)]` - S7 class
-fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
+/// - `#[externalptr(vctrs)]` - vctrs class
+/// - `#[externalptr(revive = path)]` - the rebuild hook (#1854), with any
+///   of the above
+fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
+    let mut revive: Option<syn::Path> = None;
 
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
@@ -192,11 +230,26 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
                     "s4" => class_system = ClassSystem::S4,
                     "s7" => class_system = ClassSystem::S7,
                     "vctrs" => class_system = ClassSystem::Vctrs,
+                    "revive" => {
+                        if revive.is_some() {
+                            return Err(meta.error("duplicate `revive` option"));
+                        }
+                        let path: syn::Path = meta.value()?.parse().map_err(|err| {
+                            syn::Error::new(
+                                err.span(),
+                                "`revive` takes the path of the rebuild hook, \
+                                 `fn(StoredSidecars<'_>) -> Result<Self, E>`: \
+                                 `#[externalptr(revive = Self::revive)]`",
+                            )
+                        })?;
+                        revive = Some(path);
+                    }
                     _ => {
                         return Err(syn::Error::new_spanned(
                             &meta.path,
                             format!(
-                                "unknown class system '{}'; expected one of: env, r6, s3, s4, s7, vctrs",
+                                "unknown class system '{}'; expected one of: env, r6, s3, s4, s7, vctrs, \
+                                 or `revive = path`",
                                 ident_str
                             ),
                         ));
@@ -207,7 +260,10 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
         }
     }
 
-    Ok(class_system)
+    Ok(ExternalPtrAttrs {
+        class_system,
+        revive,
+    })
 }
 
 /// Check if a field has the `#[r_data]` attribute.
@@ -1201,6 +1257,9 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         // accessors have no `__miniextendr_call` slot (#344/#348), so the
         // transport uses null call attribution; the R wrapper's guard passes
         // `sys.call()` to `.miniextendr_raise_condition` as the fallback.
+        // Conditions queued inside the body (`defer_warning!` in a revive
+        // hook or a field's `IntoR`) are signalled at this call, like the
+        // generated wrappers' `mark()` / `finish()` pair does.
         c_functions.push(quote::quote! {
             #[doc = #getter_doc_lit]
             #[doc = #source_location_doc]
@@ -1210,10 +1269,18 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
             pub unsafe extern "C-unwind" fn #getter_fn_name(
                 x: ::miniextendr_api::SEXP
             ) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || { #getter_body },
                     ::core::option::Option::None,
-                )
+                );
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        ::core::option::Option::None,
+                    )
+                }
             }
         });
 
@@ -1229,10 +1296,18 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
                 x: ::miniextendr_api::SEXP,
                 value: ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || { #setter_body },
                     ::core::option::Option::None,
-                )
+                );
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        ::core::option::Option::None,
+                    )
+                }
             }
         });
 
@@ -1391,12 +1466,23 @@ fn sidecar_slots(info: &SidecarInfo) -> impl Iterator<Item = (usize, &SidecarSlo
 ///   `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`,
 ///   using `CARGO_PKG_NAME`, `CARGO_PKG_VERSION`, and `module_path!()`.
 /// - `R_SLOT_COUNT`: the number of `Sidecar<T>` fields, when there are any,
-///   with the `__mx_visit_sidecars` hook that hands each of them, with its
+///   with `__MX_SIDECAR_NAMES` (their names in slot order, the layout record
+///   every pointer of the type writes as `names()` on its protection list)
+///   and the `__mx_visit_sidecars` hook that hands each of them, with its
 ///   slot index and name, to the handle (which writes their back-references,
 ///   flushes their pending values and detaches them).
+/// - `__MX_REVIVES` and `__mx_revive`, for `#[externalptr(revive = path)]`:
+///   the hook `path` (`fn(StoredSidecars<'_>) -> Result<Self, E>`) behind the
+///   framework's entry, which converts `E` into the condition it raises the
+///   way a `Result` return of a `#[miniextendr]` fn is: an `RConditionError`
+///   keeps its classes, message and data (`__mx_result_err_parts!`).
 ///
 /// Supports generic structs (generics are forwarded to the impl).
-fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStream {
+fn generate_typed_external(
+    input: &DeriveInput,
+    info: &SidecarInfo,
+    revive: Option<&syn::Path>,
+) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -1406,6 +1492,10 @@ fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStre
     let sidecars: Vec<_> = sidecar_slots(info).collect();
     let r_slot_count = (!sidecars.is_empty()).then(|| {
         let count = sidecars.len();
+        let names: Vec<String> = sidecars
+            .iter()
+            .map(|&(_, slot)| crate::naming::ident_name(&slot.name))
+            .collect();
         let visits = sidecars.iter().map(|&(index, slot)| {
             let field = &slot.name;
             let field_name = crate::naming::ident_name(field);
@@ -1414,11 +1504,38 @@ fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStre
         quote::quote! {
             const R_SLOT_COUNT: usize = #count;
 
+            const __MX_SIDECAR_NAMES: &'static [&'static str] = &[#(#names),*];
+
             fn __mx_visit_sidecars(
                 &self,
                 visit: &mut dyn FnMut(usize, &'static str, &dyn ::miniextendr_api::externalptr::SidecarField),
             ) {
                 #(#visits)*
+            }
+        }
+    });
+    let revive_hook = revive.map(|path| {
+        let prefix = crate::miniextendr_fn::default_serde_error_prefix();
+        quote::quote! {
+            const __MX_REVIVES: bool = true;
+
+            fn __mx_revive(
+                stored: ::miniextendr_api::externalptr::StoredSidecars<'_>,
+            ) -> ::core::result::Result<Self, ::miniextendr_api::condition::RCondition> {
+                match #path(stored) {
+                    ::core::result::Result::Ok(value) => ::core::result::Result::Ok(value),
+                    ::core::result::Result::Err(e) => {
+                        let parts = ::miniextendr_api::__mx_result_err_parts!(e, #prefix);
+                        ::core::result::Result::Err(
+                            ::miniextendr_api::condition::RCondition::Error {
+                                message: parts.message,
+                                class: parts.class,
+                                data: parts.data,
+                                call: parts.call,
+                            },
+                        )
+                    }
+                }
             }
         }
     });
@@ -1441,6 +1558,7 @@ fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStre
                     "::", module_path!(), "::", #name_lit, "\0"
                 ).as_bytes();
             #r_slot_count
+            #revive_hook
         }
     }
 }
@@ -1568,13 +1686,13 @@ pub fn derive_external_ptr(
     input: DeriveInput,
     emit_into_r_marker: bool,
 ) -> syn::Result<TokenStream> {
-    // Parse class system from #[externalptr(...)] attribute
-    let class_system = parse_externalptr_attrs(&input)?;
+    // Parse the class system and the revive hook from #[externalptr(...)]
+    let attrs = parse_externalptr_attrs(&input)?;
 
     // Parse sidecar information from struct fields
-    let sidecar_info = parse_sidecar_info(&input, class_system)?;
+    let sidecar_info = parse_sidecar_info(&input, attrs.class_system)?;
 
-    let typed_external = generate_typed_external(&input, &sidecar_info);
+    let typed_external = generate_typed_external(&input, &sidecar_info, attrs.revive.as_ref());
     let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (
@@ -2051,8 +2169,8 @@ mod tests {
         assert!(message.contains("takes one type argument"), "{message}");
     }
 
-    /// A struct without `Sidecar` fields keeps the trait's default count and
-    /// hook, and gets no accessors.
+    /// A struct without `Sidecar` fields keeps the trait's default count,
+    /// names and hooks, and gets no accessors.
     #[test]
     fn no_sidecar_fields_emit_no_count_or_hook() {
         let input: syn::DeriveInput =
@@ -2060,8 +2178,132 @@ mod tests {
                 .unwrap();
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
         assert!(!out.contains("R_SLOT_COUNT"), "{out}");
+        assert!(!out.contains("__MX_SIDECAR_NAMES"), "{out}");
         assert!(!out.contains("__mx_visit_sidecars"), "{out}");
         assert!(!out.contains("__mx_get"), "{out}");
+        assert!(!out.contains("__MX_REVIVES"), "{out}");
+        assert!(!out.contains("__mx_revive"), "{out}");
+    }
+
+    /// The `Sidecar` field names are emitted in slot order: the layout
+    /// record every pointer of the type writes on its protection list.
+    #[test]
+    fn sidecar_field_names_are_the_layout_record() {
+        let input: syn::DeriveInput = syn::parse_str(
+            "struct Engine { #[r_data] _r: RSidecar, #[r_data] pub a: i32, \
+             #[r_data] pub keys: Sidecar<Vec<i32>>, #[r_data] steps: Sidecar<Option<List>> }",
+        )
+        .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(
+            out.contains(
+                "const __MX_SIDECAR_NAMES : & 'static [& 'static str] = & [\"keys\" , \"steps\"] ;"
+            ),
+            "{out}"
+        );
+    }
+
+    /// `#[externalptr(revive = path)]` emits the hook flag and the entry
+    /// that calls `path` and converts its error like a `Result` return; the
+    /// path may be `Self::revive` or a free function, next to the class
+    /// system in either order.
+    #[test]
+    fn revive_option_emits_the_hook() {
+        for attrs in [
+            "#[externalptr(r6, revive = Self::revive)]",
+            "#[externalptr(revive = rebuild_engine, r6)]",
+            "#[externalptr(revive = crate::engine::rebuild)]",
+        ] {
+            let input: syn::DeriveInput = syn::parse_str(&format!(
+                "{attrs} struct Engine {{ #[r_data] _r: RSidecar, #[r_data] pub keys: Sidecar<Vec<i32>> }}"
+            ))
+            .unwrap();
+            let attrs = super::parse_externalptr_attrs(&input).unwrap();
+            assert!(attrs.revive.is_some(), "{attrs:?}", attrs = attrs.revive);
+            let out = super::derive_external_ptr(input, true).unwrap().to_string();
+            assert!(out.contains("const __MX_REVIVES : bool = true ;"), "{out}");
+            assert!(
+                out.contains(
+                    "fn __mx_revive (stored : :: miniextendr_api :: externalptr :: StoredSidecars < '_ >"
+                ),
+                "{out}"
+            );
+            assert!(
+                out.contains(
+                    "-> :: core :: result :: Result < Self , :: miniextendr_api :: condition :: RCondition >"
+                ),
+                "{out}"
+            );
+            assert!(out.contains("__mx_result_err_parts ! (e ,"), "{out}");
+            assert!(
+                out.contains(":: miniextendr_api :: condition :: RCondition :: Error {"),
+                "{out}"
+            );
+        }
+        let input: syn::DeriveInput = syn::parse_str(
+            "#[externalptr(r6, revive = Self::revive)] struct Engine { \
+             #[r_data] _r: RSidecar, #[r_data] pub keys: Sidecar<Vec<i32>> }",
+        )
+        .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(out.contains("match Self :: revive (stored)"), "{out}");
+        // The class system is kept next to the hook.
+        let input: syn::DeriveInput =
+            syn::parse_str("#[externalptr(s7, revive = f)] struct Engine { a: i32 }").unwrap();
+        let attrs = super::parse_externalptr_attrs(&input).unwrap();
+        assert_eq!(attrs.class_system, ClassSystem::S7);
+        // A hook on a type without `Sidecar` fields is allowed: it can
+        // rebuild from the user slot alone.
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(out.contains("const __MX_REVIVES : bool = true ;"), "{out}");
+        assert!(!out.contains("__MX_SIDECAR_NAMES"), "{out}");
+    }
+
+    /// A `revive` without a path, with a non-path value, or given twice is
+    /// refused.
+    #[test]
+    fn revive_option_is_checked() {
+        let refused = |attrs: &str| {
+            let input: syn::DeriveInput =
+                syn::parse_str(&format!("{attrs} struct Engine {{ a: i32 }}")).unwrap();
+            super::parse_externalptr_attrs(&input)
+                .err()
+                .map(|err| err.to_string())
+                .unwrap_or_else(|| panic!("`{attrs}` must be refused"))
+        };
+        let message = refused("#[externalptr(revive)]");
+        assert!(message.contains("expected `=`"), "{message}");
+        let message = refused("#[externalptr(revive = \"Self::revive\")]");
+        assert!(
+            message.contains("`revive` takes the path of the rebuild hook"),
+            "{message}"
+        );
+        let message = refused("#[externalptr(revive = a, revive = b)]");
+        assert!(message.contains("duplicate `revive`"), "{message}");
+    }
+
+    /// The accessors' C functions signal the conditions queued inside them
+    /// (a revive hook's `defer_warning!`, a field's `IntoR`) at that call,
+    /// like the generated wrappers do.
+    #[test]
+    fn sidecar_accessors_flush_deferred_conditions() {
+        let input: syn::DeriveInput = syn::parse_str(
+            "struct Engine { #[r_data] _r: RSidecar, #[r_data] pub keys: Sidecar<Vec<i32>> }",
+        )
+        .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert_eq!(
+            out.matches(":: miniextendr_api :: deferred_condition :: mark ()")
+                .count(),
+            2,
+            "{out}"
+        );
+        assert_eq!(
+            out.matches(":: miniextendr_api :: deferred_condition :: finish (")
+                .count(),
+            2,
+            "{out}"
+        );
     }
 
     /// A bare `SEXP` under `#[r_data]` is refused: nothing would root it.

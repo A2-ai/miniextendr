@@ -11,17 +11,30 @@
 //!
 //! The type is named in one place (this module) and re-exported from
 //! [`crate::externalptr`]; its final name is #1857.
+//!
+//! After `readRDS()` the pointer has no address. A type with a rebuild hook
+//! (`#[externalptr(revive = path)]`) is rebuilt in place from what the
+//! pointer kept, through a [`StoredSidecars`] view (#1854, #1418); the
+//! "Reviving a reloaded pointer" region below holds that path.
 
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::marker::PhantomData;
 use std::ptr;
 
-use super::{PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal};
+use super::{
+    PROT_TYPE_ID_INDEX, PROT_USER_INDEX, PROT_VEC_LEN, TypedExternal, alloc_prot_unchecked,
+    release_any, symbol_name, type_id_symbol,
+};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
-use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
-use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
+use crate::sys::{
+    R_ExternalPtrAddr, R_ExternalPtrProtected, R_MakeExternalPtr, R_NamesSymbol,
+    R_RegisterCFinalizerEx, R_SetExternalPtrAddr, R_SetExternalPtrProtected, Rf_allocVector,
+    Rf_install, Rf_mkCharLen, Rf_protect, Rf_unprotect,
+};
+use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 // region: Sidecar<T>
 
@@ -443,11 +456,13 @@ fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
 }
 
 /// The `prot` list of `x`, after checking that `x` is an external pointer to
-/// a `T`, and the live `T` when `x` still has an address. Allocates nothing.
+/// a `T`, and the live `T` when `x` still has an address. Allocates nothing
+/// unless it revives.
 ///
 /// A live pointer is checked by `Any::downcast`. A pointer whose address is
-/// NULL (finalized, or read back by `readRDS`) still holds its sidecar
-/// values, so it is accepted when its stored type ID is `T`'s.
+/// NULL (finalized, or read back by `readRDS`) is rebuilt in place first
+/// when `T` has a revive hook; otherwise it still holds its sidecar values,
+/// so it is accepted when its stored type ID is `T`'s.
 ///
 /// # Panics
 ///
@@ -463,8 +478,9 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
             T::TYPE_NAME
         );
     }
+    let any_raw = unsafe { live_addr::<T>(x) };
+    // After `live_addr`: a revived pointer has a fresh `prot`.
     let prot = unsafe { R_ExternalPtrProtected(x) };
-    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
         if !(prot.type_of() == SEXPTYPE::VECSXP
             && prot.len() > 0
@@ -507,7 +523,8 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 ///
 /// Called by the R getters `#[derive(ExternalPtr)]` generates. A live struct
 /// is reattached and its pending value for the field flushed first; a pointer
-/// without an address (after `readRDS()`) reads its protection list as is.
+/// without an address (after `readRDS()`) is rebuilt first when `T` has a
+/// revive hook, else reads its protection list as is.
 ///
 /// # Panics
 ///
@@ -557,6 +574,413 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(x: SEXP, index: usize, value: SEXP
         });
     }
     prot.set_vector_elt(prot_index(index), value);
+}
+
+// endregion
+
+// region: The layout record
+
+/// Writes the layout record on `prot`: `names()` with `""` for the type ID
+/// and the user slot, then `T`'s `Sidecar` field names in slot order. A
+/// rebuild hook reads a slot by name through it, whatever version of the
+/// crate saved the pointer (#1854).
+///
+/// # Safety
+///
+/// On R's main thread; `prot` must be `T`'s protected `prot` list.
+pub(super) unsafe fn write_layout_record<T: TypedExternal>(prot: SEXP) {
+    let len = R_xlen_t::try_from(prot.len()).expect("prot length exceeds R_xlen_t::MAX");
+    // `allocVector(STRSXP, ..)` fills the entries with `R_BlankString`.
+    let names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len) };
+    unsafe { Rf_protect(names) };
+    for (index, name) in T::__MX_SIDECAR_NAMES.iter().enumerate() {
+        let n = i32::try_from(name.len()).expect("field name length exceeds i32::MAX");
+        // `mkCharLen` may allocate: `names` is protected and holds the
+        // entries written so far.
+        let charsxp = unsafe { Rf_mkCharLen(name.as_ptr().cast(), n) };
+        names.set_string_elt(prot_index(index), charsxp);
+    }
+    // May allocate the attribute cell: both lists are protected.
+    prot.set_attr(unsafe { R_NamesSymbol }, names);
+    unsafe { Rf_unprotect(1) };
+}
+
+/// The text of a `CHARSXP`, which lives as long as R's string cache keeps it.
+fn charsxp_str<'a>(charsxp: SEXP) -> &'a str {
+    // SAFETY: a CHARSXP's data holds `len()` bytes.
+    let bytes = unsafe { std::slice::from_raw_parts(charsxp.r_char().cast::<u8>(), charsxp.len()) };
+    std::str::from_utf8(bytes).unwrap_or("")
+}
+
+// endregion
+
+// region: Reviving a reloaded pointer
+
+/// What a pointer read back by `readRDS()` kept, as a revive hook sees it.
+///
+/// After `readRDS()` an external pointer has no address: the Rust value is
+/// gone, and only the protection list survives, with the type ID of the
+/// crate version that saved it, the user slot, the [`Sidecar<T>`] values,
+/// and the layout record (the field names) a type writes since #1854. A
+/// type opts into reading such a pointer, from any version of its crate,
+/// with a rebuild hook:
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// #[externalptr(r6, revive = Self::revive)]
+/// pub struct Engine {
+///     #[r_data] _r: RSidecar,
+///     #[r_data] pub keys: Sidecar<Vec<i32>>,
+///     #[r_data] pub label: Sidecar<String>,
+///     n: usize,
+/// }
+///
+/// impl Engine {
+///     fn revive(stored: StoredSidecars<'_>) -> Result<Self, EngineError> {
+///         let keys: Vec<i32> = match stored.slot("keys") {
+///             Ok(keys) => keys,
+///             Err(SlotError::Missing { .. }) => Vec::new(),
+///             Err(SlotError::Conversion { name, error }) => {
+///                 defer_warning!(class = "engine_rebuilt", "`{name}` was rebuilt: {error}");
+///                 Vec::new()
+///             }
+///         };
+///         if stored.version() != Some(env!("CARGO_PKG_VERSION")) {
+///             defer_warning!("saved by version {}", stored.version().unwrap_or("?"));
+///         }
+///         Ok(Engine {
+///             _r: RSidecar,
+///             n: keys.len(),
+///             keys: Sidecar::new(keys),
+///             label: Sidecar::new(stored.slot("label").unwrap_or_default()),
+///         })
+///     }
+/// }
+/// ```
+///
+/// The framework calls the hook, on R's main thread, the first time it meets
+/// a pointer of the type without an address: a method receiver, an
+/// `ExternalPtr<T>` argument, an R accessor of a `Sidecar` field. The stored
+/// type ID has to name the same crate and type name (the module path and the
+/// version may differ); a pointer of another type is refused as before. The
+/// rebuilt value is installed in the same `EXTPTRSXP`, so every R binding
+/// sharing the object sees it, with a fresh protection list: the current
+/// type ID, the stored user slot, the rebuilt struct's `Sidecar` values and
+/// the current layout record. Every later access sees a live, current
+/// object. An `Err` from the hook is raised at that call, with the error's
+/// own classes when it implements `RConditionError` (through
+/// `#[derive(RConditionError)]`), as the `Err` of a `#[miniextendr]` fn
+/// would be. A type without a hook is unchanged: a pointer from another
+/// version is refused, and reading its slots by index stays safe.
+///
+/// What a hook can read:
+///
+/// - [`type_id`](Self::type_id) and [`version`](Self::version): which crate
+///   version saved the object (a later one, say);
+/// - [`field_names`](Self::field_names): the layout record, `None` for a
+///   save from before the record existed; then only the raw
+///   [`prot`](Self::prot) and the [`user_slot`](Self::user_slot) are there to
+///   read, positionally;
+/// - [`slot`](Self::slot): a slot by name, converted; the error says whether
+///   the slot is missing (a field this version added, or no record) or its
+///   value no longer converts (a field this version retyped), so a hook can
+///   keep the field's default, rebuild it from its other state, and say so
+///   with its own warning. A stored slot nobody asks for (a field this
+///   version dropped) is ignored.
+///
+/// The view borrows the pointer's stored protection list for the hook's
+/// call; it is replaced once the hook returns.
+pub struct StoredSidecars<'a> {
+    /// The stored `prot` list.
+    prot: SEXP,
+    /// The name of the `prot[0]` symbol; symbols live for the session.
+    type_id: &'static str,
+    /// The field names of the layout record, in slot order; `None` without
+    /// one.
+    names: Option<Vec<&'a str>>,
+    _marker: PhantomData<&'a SEXP>,
+}
+
+impl<'a> StoredSidecars<'a> {
+    /// A view of `prot`, or `None` when it is not a list `ExternalPtr`
+    /// built (a `VECSXP` of at least two entries with a symbol first).
+    fn new(prot: SEXP) -> Option<Self> {
+        if prot.is_null_or_nil()
+            || prot.type_of() != SEXPTYPE::VECSXP
+            || prot.len() < PROT_VEC_LEN as usize
+        {
+            return None;
+        }
+        let sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
+        if sym.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
+        let names_sexp = prot.get_names();
+        let names = (names_sexp.type_of() == SEXPTYPE::STRSXP && names_sexp.len() == prot.len())
+            .then(|| {
+                (PROT_VEC_LEN as usize..prot.len())
+                    .map(|i| {
+                        let i = isize::try_from(i).expect("prot length exceeds isize::MAX");
+                        charsxp_str(names_sexp.string_elt(i))
+                    })
+                    .collect()
+            });
+        Some(Self {
+            prot,
+            type_id: symbol_name(sym),
+            names,
+            _marker: PhantomData,
+        })
+    }
+
+    /// The stored type ID, `crate@version::module::Type` for a
+    /// `#[derive(ExternalPtr)]` type: the crate version that saved the
+    /// object.
+    pub fn type_id(&self) -> &str {
+        self.type_id
+    }
+
+    /// The version part of the stored type ID (between `@` and the first
+    /// `::`), `None` for a hand-written `TYPE_ID_CSTR` without one.
+    pub fn version(&self) -> Option<&str> {
+        let (_, rest) = self.type_id.split_once('@')?;
+        Some(rest.split_once("::").map_or(rest, |(version, _)| version))
+    }
+
+    /// The layout record: the names of the `Sidecar` fields the saving
+    /// version had, in slot order. `None` for a save from before the record
+    /// existed; the hook then has only [`prot`](Self::prot) and
+    /// [`user_slot`](Self::user_slot).
+    pub fn field_names(&self) -> Option<&[&'a str]> {
+        self.names.as_deref()
+    }
+
+    /// The stored value of the slot named `name`, as stored, or `None`
+    /// without a record or a slot by that name.
+    pub fn slot_raw(&self, name: &str) -> Option<SEXP> {
+        let index = self.names.as_ref()?.iter().position(|n| *n == name)?;
+        Some(self.prot.vector_elt(prot_index(index)))
+    }
+
+    /// The stored value of the slot named `name`, converted to `T`.
+    ///
+    /// [`SlotError::Missing`] when there is no slot by that name (a field
+    /// this version added, or a save without a record);
+    /// [`SlotError::Conversion`] when the stored value does not convert (a
+    /// field this version retyped), with the conversion error.
+    pub fn slot<T: TryFromSexp>(&self, name: &str) -> Result<T, SlotError<T::Error>> {
+        let Some(value) = self.slot_raw(name) else {
+            return Err(SlotError::Missing {
+                name: name.to_owned(),
+            });
+        };
+        T::try_from_sexp(value).map_err(|error| SlotError::Conversion {
+            name: name.to_owned(),
+            error,
+        })
+    }
+
+    /// The stored user slot (`ExternalPtr::protected()`), `NULL` when none
+    /// was set.
+    pub fn user_slot(&self) -> SEXP {
+        self.prot.vector_elt(PROT_USER_INDEX)
+    }
+
+    /// The raw stored protection list: the type-ID symbol, the user slot,
+    /// then the slot values in the saving version's order.
+    pub fn prot(&self) -> SEXP {
+        self.prot
+    }
+}
+
+impl fmt::Debug for StoredSidecars<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StoredSidecars")
+            .field("type_id", &self.type_id)
+            .field("field_names", &self.names)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Why [`StoredSidecars::slot`] could not give a slot's value.
+#[derive(Debug)]
+pub enum SlotError<E> {
+    /// No slot by that name: a field this version added, or a save without
+    /// a layout record.
+    Missing {
+        /// The name asked for.
+        name: String,
+    },
+    /// The stored value does not convert to the type asked for: a field this
+    /// version retyped.
+    Conversion {
+        /// The name asked for.
+        name: String,
+        /// The conversion error.
+        error: E,
+    },
+}
+
+impl<E> SlotError<E> {
+    /// The slot name asked for.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Missing { name } | Self::Conversion { name, .. } => name,
+        }
+    }
+
+    /// Whether the slot is absent, as opposed to present but of another
+    /// shape.
+    pub fn is_missing(&self) -> bool {
+        matches!(self, Self::Missing { .. })
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for SlotError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing { name } => write!(f, "no stored slot `{name}`"),
+            Self::Conversion { name, error } => {
+                write!(f, "stored slot `{name}` does not convert: {error}")
+            }
+        }
+    }
+}
+
+impl<E: fmt::Debug + fmt::Display> std::error::Error for SlotError<E> {}
+
+/// The parts of a type ID that persist across versions: the crate name
+/// (before `@`, else before the first `::`) and the type name (after the
+/// last `::`).
+fn type_identity(id: &str) -> (&str, &str) {
+    let crate_name = match id.split_once('@') {
+        Some((crate_name, _)) => crate_name,
+        None => id.split("::").next().unwrap_or(id),
+    };
+    let type_name = id.rsplit("::").next().unwrap_or(id);
+    (crate_name, type_name)
+}
+
+/// Whether a stored type ID names the type whose `TYPE_ID_CSTR` is `own`:
+/// the same crate and type name, at any version and module path.
+pub(super) fn same_type_identity(stored: &str, own: &[u8]) -> bool {
+    let own = own.strip_suffix(b"\0").unwrap_or(own);
+    let Ok(own) = std::str::from_utf8(own) else {
+        return false;
+    };
+    type_identity(stored) == type_identity(own)
+}
+
+/// The address of `sexp`'s value, reviving a pointer without one when `T`
+/// has a rebuild hook and the stored type ID names `T` (see
+/// [`StoredSidecars`]). Null when there is no value and no hook applies; the
+/// caller then refuses the pointer as before.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+pub(super) unsafe fn live_addr<T: TypedExternal>(sexp: SEXP) -> *mut Box<dyn Any> {
+    let any_raw = unsafe { R_ExternalPtrAddr(sexp) }.cast::<Box<dyn Any>>();
+    if !any_raw.is_null() || !T::__MX_REVIVES {
+        return any_raw;
+    }
+    unsafe { revive_in_place::<T>(sexp) }
+}
+
+/// Runs `T`'s rebuild hook on the pointer `sexp`, which has no address, and
+/// installs the value and a fresh protection list in it. Returns the new
+/// address, or null when the stored type ID does not name `T`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP` whose
+/// address is NULL; `T::__MX_REVIVES` must hold.
+#[cold]
+unsafe fn revive_in_place<T: TypedExternal>(sexp: SEXP) -> *mut Box<dyn Any> {
+    let stored_prot = unsafe { R_ExternalPtrProtected(sexp) };
+    let Some(stored) = StoredSidecars::new(stored_prot) else {
+        return ptr::null_mut();
+    };
+    if !same_type_identity(stored.type_id(), T::TYPE_ID_CSTR) {
+        return ptr::null_mut();
+    }
+
+    // The hook may allocate: `stored_prot` is reachable from `sexp`, which
+    // the caller roots, until it is replaced below.
+    let value = match T::__mx_revive(stored) {
+        Ok(value) => value,
+        Err(condition) => std::panic::panic_any(condition),
+    };
+
+    // A fresh `prot`: the current type ID, the stored user slot (still
+    // rooted by the stored list), empty slots and the current record.
+    let user_slot = stored_prot.vector_elt(PROT_USER_INDEX);
+    let type_id_sym = unsafe { type_id_symbol::<T>() };
+    let prot = unsafe { alloc_prot_unchecked::<T>(type_id_sym, user_slot) };
+    unsafe { R_SetExternalPtrProtected(sexp, prot) };
+    unsafe { Rf_unprotect(1) };
+
+    // The value, in the same `EXTPTRSXP`. A pointer read back by `readRDS()`
+    // has no finalizer; one cleared by Rust has one already, which then runs
+    // twice and returns at once the second time (a NULL address).
+    let inner: Box<dyn Any> = Box::new(value);
+    let any_raw: *mut Box<dyn Any> = Box::into_raw(Box::new(inner));
+    unsafe { R_SetExternalPtrAddr(sexp, any_raw.cast()) };
+    unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
+
+    // The rebuilt struct's pending sidecar values, into the new slots.
+    if T::R_SLOT_COUNT > 0 {
+        unsafe { init_sidecars::<T>(any_raw, sexp) };
+    }
+    any_raw
+}
+
+/// Builds the `EXTPTRSXP` that `readRDS()` gives for a save by another
+/// version of a crate: no address, `type_id` as the stored type ID, the user
+/// slot, the slot values, and the layout record when `names` is given (one
+/// name per slot). For tests of revive hooks.
+///
+/// Returns an unprotected `EXTPTRSXP`: protect it or return it to R at once.
+///
+/// # Safety
+///
+/// Must be called from R's main thread; `user_slot` and `slots` must be
+/// rooted by the caller.
+#[doc(hidden)]
+pub unsafe fn stored_pointer_for_tests(
+    type_id: &str,
+    user_slot: SEXP,
+    slots: &[SEXP],
+    names: Option<&[&str]>,
+) -> SEXP {
+    let type_id_c = std::ffi::CString::new(type_id).expect("a type ID has no NUL");
+    let tag_c = std::ffi::CString::new(type_identity(type_id).1).expect("a type name has no NUL");
+    let len = R_xlen_t::try_from(PROT_VEC_LEN as usize + slots.len()).expect("slot count");
+    let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len) };
+    unsafe { Rf_protect(prot) };
+    prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe {
+        Rf_install(type_id_c.as_ptr())
+    });
+    prot.set_vector_elt(PROT_USER_INDEX, user_slot);
+    for (index, &slot) in slots.iter().enumerate() {
+        prot.set_vector_elt(prot_index(index), slot);
+    }
+    if let Some(names) = names {
+        assert_eq!(names.len(), slots.len(), "one name per slot");
+        let record = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len) };
+        unsafe { Rf_protect(record) };
+        for (index, name) in names.iter().enumerate() {
+            let n = i32::try_from(name.len()).expect("name length");
+            let charsxp = unsafe { Rf_mkCharLen(name.as_ptr().cast(), n) };
+            record.set_string_elt(prot_index(index), charsxp);
+        }
+        prot.set_attr(unsafe { R_NamesSymbol }, record);
+        unsafe { Rf_unprotect(1) };
+    }
+    let tag = unsafe { Rf_install(tag_c.as_ptr()) };
+    let sexp = unsafe { R_MakeExternalPtr(ptr::null_mut(), tag, prot) };
+    unsafe { Rf_unprotect(1) };
+    sexp
 }
 
 // endregion

@@ -544,14 +544,77 @@ same address again, its next accessor reads a freed R object (#1856). Use
 `saveRDS()` writes an external pointer's tag and `prot` list but not its
 address, and `readRDS()` brings it back with a NULL address. So:
 
-- The struct's fields are lost. Their getters raise
+- The struct's fields are lost. Their getters, and the type's methods, raise
   `expected ExternalPtr<MyType>, got a null external pointer`.
 - `Sidecar<T>` values come back, and their R accessors work on the reloaded
   pointer. A live pointer is checked with `Any::downcast`; one without an
   address is checked by the type ID in `prot[0]`. That ID includes the crate
   version, so a file another version of the package wrote is refused.
+- `ExternalPtr::<T>::stored_type_id(sexp)` reads that ID (as
+  `crate@version::module::Type`) from any pointer or class handle, live or
+  not, so a package can name the version that saved an object.
 
-Transparent persistence of the Rust value is the open design #1418.
+A type that wants to read its saves across versions, and to have a live Rust
+value again after `readRDS()`, opts in with a rebuild hook (#1854, the first
+step of #1418):
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(r6, revive = Self::revive)]
+pub struct MyType { /* as above */ }
+
+impl MyType {
+    fn revive(stored: StoredSidecars<'_>) -> Result<Self, MyError> {
+        let keys: Vec<i32> = match stored.slot("keys") {
+            Ok(keys) => keys,
+            Err(SlotError::Missing { .. }) => Vec::new(),          // a field this version added
+            Err(SlotError::Conversion { name, error }) => {         // a field this version retyped
+                defer_warning!(class = "mypkg_rebuilt", "`{name}` was rebuilt: {error}");
+                Vec::new()
+            }
+        };
+        if stored.version() != Some(env!("CARGO_PKG_VERSION")) {
+            defer_warning!("saved by version {}", stored.version().unwrap_or("?"));
+        }
+        let count = i32::try_from(keys.len()).expect("key count fits i32");
+        Ok(MyType { x: 0, r: RSidecar, count, name: String::new(), keys: Sidecar::new(keys) })
+    }
+}
+```
+
+- **The layout record.** Every type with `Sidecar` fields writes the field
+  names as `names()` on its `prot` list at creation, so a hook looks slots up
+  by name, whatever version saved them. `saveRDS()` writes it with the list.
+  A type with neither `Sidecar` fields nor a hook pays nothing.
+- **When the hook runs.** The first time the framework meets a pointer of the
+  type without an address: a method receiver (any `self` form), an
+  `ExternalPtr<T>` argument, an R accessor of a `Sidecar` field. The stored
+  type ID has to name the same crate and type name (the module path and the
+  version may differ); a pointer of another type is refused as before. The
+  rebuilt value is installed in the same `EXTPTRSXP`, so every R binding
+  sharing the object sees it, with a fresh `prot` list: the current type ID,
+  the stored user slot, the rebuilt struct's `Sidecar` values and the current
+  record. Every later access sees a live, current object.
+- **What the hook reads.** `stored.type_id()` / `stored.version()` (the
+  saving version); `stored.field_names()` (the record, `None` for a save from
+  before it existed, when only `stored.prot()` and `stored.user_slot()` are
+  there to read, positionally); `stored.slot::<T>("name")`, which separates
+  "no such slot" (a field this version added) from "does not convert" (a
+  field this version retyped) so the hook can keep the default or rebuild
+  the field and say so with its own warning; a stored slot nobody asks for
+  (a field this version dropped) is ignored.
+- **Errors.** An `Err` is raised at that call, with the error's own classes
+  when it is an `RConditionError` (`#[derive(RConditionError)]`), like the
+  `Err` of a `#[miniextendr]` fn.
+- **The recipe.** `ExternalPtr::new_with_protected(value, user_slot)` builds
+  a pointer with the user slot set from the start, so a rebuilt or derived
+  pointer carries what it needs to rebuild again; a hook reads it with
+  `stored.user_slot()`.
+- **Without a hook** nothing changes: a save by another version is refused,
+  and reading slots by index stays safe.
+
+Transparent persistence of the Rust value at `readRDS()` time (an ALTREP
+wrapper that would run the same hook eagerly) is the rest of #1418.
 
 ## SEXP Layout
 
@@ -564,13 +627,14 @@ EXTPTRSXP
   tag   → SYMSXP (TYPE_NAME_CSTR, for display)
   prot  → VECSXP[2 + T::R_SLOT_COUNT]
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
-            [1] → user-protected SEXP (set via set_protected)
+            [1] → user-protected SEXP (set via set_protected / new_with_protected)
             [2..] → one value per Sidecar<T> field
+            names() → c("", "", "<field>", ...) for a type with Sidecar fields or a revive hook
 ```
 
 Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
 
-The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
+The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number, and the list's `names()` record their field names (the layout record a revive hook reads slots by, "Serialization" above).
 
 ## Thread Safety
 

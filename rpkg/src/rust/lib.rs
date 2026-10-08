@@ -327,6 +327,7 @@ mod sha2_adapter_tests;
 mod shadowed_formal_tests;
 mod shared_param_docs;
 mod shared_trait_test;
+mod sidecar_revive_tests;
 mod stem_page_docs;
 mod str_parse_tests;
 mod streaming_altrep_tests;
