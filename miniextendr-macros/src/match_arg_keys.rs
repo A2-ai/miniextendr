@@ -5,14 +5,16 @@
 //! wrapper writer's substitution pass. The `match.arg` codegen path
 //! deliberately splits responsibilities — the proc macro emits placeholders
 //! into the R wrapper, and the wrapper writer resolves them to a concrete `c("a",
-//! "b", ...)` literal at write time using `MX_MATCH_ARG_CHOICES`. That
+//! "b", ...)` literal (and the check's `aliases =` argument, if any) at
+//! write time using `MX_MATCH_ARG_CHOICES`. That
 //! split lets the variant list change without re-running `cargo expand` on
 //! every consumer. Compared to hand-rolling `match.arg` in a wrapper body,
 //! the user gets partial matching, R-visible defaults, and `@param` doc
 //! lines for free, without ever stringifying the variant list in source.
 //!
-//! All four shapes (`choices_placeholder`, `param_doc_placeholder`,
-//! `choices_helper_c_name`, `choices_helper_def_ident`) share the same
+//! All five shapes (`choices_placeholder`, `aliases_placeholder`,
+//! `param_doc_placeholder`, `choices_helper_c_name`,
+//! `choices_helper_def_ident`) share the same
 //! `{c_ident_without_prefix}_{r_param}` stem so the wrapper writer's pass
 //! can correlate them. Keep them together so the shape can't drift.
 //!
@@ -20,7 +22,7 @@
 //! already, e.g. `MyType__method`). Callers that have a full `c_ident` should
 //! pass `c_ident.trim_start_matches("C_")`.
 //!
-//! All four helpers call `c_stem(...)` internally so callers may also pass a
+//! All five helpers call `c_stem(...)` internally so callers may also pass a
 //! full `c_ident` (e.g. `"C_my_fn"`) — the `C_` prefix is normalized away.
 
 fn c_stem(c_ident: &str) -> &str {
@@ -37,6 +39,24 @@ pub(crate) const CHOICES_PLACEHOLDER_PREFIX: &str = ".__MX_MATCH_ARG_CHOICES_";
 pub(crate) fn choices_placeholder(c_ident: &str, r_param: &str) -> String {
     format!(
         "{CHOICES_PLACEHOLDER_PREFIX}{}_{}__",
+        c_stem(c_ident),
+        r_param
+    )
+}
+
+/// Start of every [`aliases_placeholder`].
+pub(crate) const ALIASES_PLACEHOLDER_PREFIX: &str = ".__MX_MATCH_ARG_ALIASES_";
+
+/// R-side placeholder for the trailing `aliases =` argument of a `match_arg`
+/// parameter's check (#1843), written as `, <placeholder>` after the other
+/// arguments. The wrapper writer replaces `, <placeholder>` with
+/// `, aliases = base::c("grey" = "gray")`, or with nothing when the type has
+/// no aliases (`registry::match_arg_aliases_arg`), from the same
+/// `MX_MATCH_ARG_CHOICES` entry as [`choices_placeholder`]. The macro can't
+/// tell which: `MatchArg::ALIASES` resolves at link time, as `CHOICES` does.
+pub(crate) fn aliases_placeholder(c_ident: &str, r_param: &str) -> String {
+    format!(
+        "{ALIASES_PLACEHOLDER_PREFIX}{}_{}__",
         c_stem(c_ident),
         r_param
     )
@@ -99,10 +119,15 @@ pub(crate) fn placeholder_ident_suffix(placeholder: &str) -> String {
 /// `preferred_default` is the unquoted form of the user's `default = "..."`
 /// (e.g. `"zstd"`). Pass `""` when the user supplied no default — the write
 /// pass then keeps the natural enum order.
+///
+/// `aliases_placeholder` is the parameter's [`aliases_placeholder`], which
+/// its check carries; the entry resolves it from the type's
+/// `MatchArg::ALIASES`.
 pub(crate) fn choices_entry_tokens(
     cfg_attrs: &[syn::Attribute],
     entry_ident: &syn::Ident,
     placeholder: &str,
+    aliases_placeholder: &str,
     choices_ty: &syn::Type,
     preferred_default: &str,
 ) -> proc_macro2::TokenStream {
@@ -116,6 +141,8 @@ pub(crate) fn choices_entry_tokens(
                 placeholder: #placeholder,
                 choices: <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::CHOICES,
                 preferred_default: #preferred_default,
+                aliases_placeholder: #aliases_placeholder,
+                aliases: <#choices_ty as ::miniextendr_api::match_arg::MatchArg>::ALIASES,
             };
     }
 }

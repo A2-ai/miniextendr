@@ -303,6 +303,13 @@ pub struct MatchArgChoicesEntry {
     /// so `.miniextendr_match_arg()` picks it for `NULL` and for the omitted
     /// argument.
     pub preferred_default: &'static str,
+    /// Placeholder for the trailing `aliases =` argument of the parameter's
+    /// `.miniextendr_match_arg` / `.miniextendr_match_arg_several` call, e.g.
+    /// `".__MX_MATCH_ARG_ALIASES_run_mode__"`. The writer replaces `, ` and
+    /// it with [`match_arg_aliases_arg`]: nothing for a type without aliases.
+    pub aliases_placeholder: &'static str,
+    /// The parameter type's `MatchArg::ALIASES`, unescaped.
+    pub aliases: &'static [(&'static str, &'static str)],
 }
 
 /// Entry for replacing match_arg `@param` doc placeholders with human-readable
@@ -1009,6 +1016,65 @@ pub fn match_arg_formal(choices: &[&str], preferred: &str, placeholder: &str) ->
     format!("c({})", quoted.join(", "))
 }
 
+/// The trailing argument a `match_arg` parameter's check passes to
+/// `.miniextendr_match_arg` / `.miniextendr_match_arg_several` for the
+/// type's `MatchArg::ALIASES` (#1843), which the wrappers writer splices in
+/// place of `, <placeholder>`: `, aliases = base::c("grey" = "gray")`, each
+/// alias and choice escaped for an R string literal. For a type without
+/// aliases it is empty, so that wrapper keeps the text it had before aliases
+/// existed. `base::c` is spelled out because the argument is written after
+/// the shadowing pass, which would otherwise qualify it for a parameter
+/// named `c`.
+///
+/// Aliases a hand-written impl got wrong (empty, `"NA"`, a choice, repeated,
+/// a prefix of another choice, or naming no choice; the rules
+/// `#[derive(MatchArg)]` enforces at compile time) panic with the
+/// placeholder, as [`match_arg_formal`] does for a bad default.
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn match_arg_aliases_arg(
+    choices: &[&str],
+    aliases: &[(&str, &str)],
+    placeholder: &str,
+) -> String {
+    use crate::match_arg::{alias_problems, escape_r_string};
+    if aliases.is_empty() {
+        return String::new();
+    }
+    let problems = alias_problems(choices, aliases);
+    if !problems.is_empty() {
+        panic!(
+            "miniextendr: the `MatchArg::ALIASES` behind placeholder `{placeholder}` \
+             can't be used (choices {choices:?}): {}",
+            problems.join("; ")
+        );
+    }
+    let pairs: Vec<String> = aliases
+        .iter()
+        .map(|(alias, choice)| {
+            format!(
+                "\"{}\" = \"{}\"",
+                escape_r_string(alias),
+                escape_r_string(choice)
+            )
+        })
+        .collect();
+    format!(", aliases = base::c({})", pairs.join(", "))
+}
+
+/// `content` with one `match_arg` parameter's placeholders resolved from its
+/// [`MatchArgChoicesEntry`]: every choices placeholder (the formal and the
+/// check) by [`match_arg_formal`], and the check's `, <aliases placeholder>`
+/// by [`match_arg_aliases_arg`], which is empty for a type without aliases.
+#[cfg(not(target_arch = "wasm32"))]
+fn splice_match_arg_entry(content: &str, entry: &MatchArgChoicesEntry) -> String {
+    let formal = match_arg_formal(entry.choices, entry.preferred_default, entry.placeholder);
+    let aliases = match_arg_aliases_arg(entry.choices, entry.aliases, entry.aliases_placeholder);
+    content
+        .replace(entry.placeholder, &formal)
+        .replace(&format!(", {}", entry.aliases_placeholder), &aliases)
+}
+
 // region: R Wrapper File Generation
 
 // region: Generic doc marker resolution
@@ -1694,7 +1760,8 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 /// History, kept here because the R comments ship in every package and cite
 /// no PR numbers (#1832): `.miniextendr_arg_error` is #1591, the `call`
 /// argument a `call = caller` wrapper passes is #1548, the strict
-/// `several_ok` match is #1472, and reading a factor as its labels is #1552.
+/// `several_ok` match is #1472, reading a factor as its labels is #1552, and
+/// the `aliases` argument ([`match_arg_aliases_arg`]) is #1843.
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
 pub const ARG_CHECK_HELPERS: &str = concat!(
@@ -1723,17 +1790,23 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # the Rust side never sees it. Here every element has to match a choice
 # (exactly or as a unique prefix), the first that does not is reported with its
 # position, and `NULL` selects every choice, like an omitted argument does. A
-# factor is read as its labels. The error is an argument error
+# factor is read as its labels. `aliases`, a named character vector
+# (`c(grey = "gray")`), maps each element typed exactly as an alias to its
+# choice first; a prefix of an alias is not one. The error is an argument error
 # (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
 # call, not this helper; a `call = caller` wrapper passes its caller's matched
 # call.
-.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L)) {
+.miniextendr_match_arg_several <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL) {
   if (is.null(arg)) return(choices)
   if (is.factor(arg)) arg <- as.character(arg)
   if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
     crate::match_arg::match_arg_wording!(not_character),
     r#"", call)
   if (length(arg) == 0L) .miniextendr_arg_error(arg_name, "must be of length >= 1", call)
+  if (!is.null(aliases)) {
+    a <- match(arg, names(aliases))
+    arg[!is.na(a)] <- aliases[a[!is.na(a)]]
+  }
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   bad <- which(is.na(i) | i == 0L)
   if (length(bad)) {
@@ -1752,9 +1825,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # Semantics follow `match.arg(arg, choices)`: `NULL` and the full choice vector
 # (the formal default) select the first choice; otherwise exactly one string
 # that matches a choice exactly or as a unique prefix. A factor is read as its
-# labels. The Rust side's `match_arg_param()` gives a body the same results
-# and messages for a choice argument it matches itself.
-.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L)) {
+# labels. `aliases`, a named character vector (`c(grey = "gray")`), maps a
+# string typed exactly as an alias to its choice; a prefix of an alias is not
+# one, and the message lists the choices only. The Rust side's
+# `match_arg_param()` gives a body the same results and messages for a choice
+# argument it matches itself.
+.miniextendr_match_arg <- function(arg, choices, arg_name, call = sys.call(-1L), aliases = NULL) {
   if (is.null(arg)) return(choices[[1L]])
   if (is.factor(arg)) arg <- as.character(arg)
   if (!is.character(arg)) .miniextendr_arg_error(arg_name, ""#,
@@ -1764,6 +1840,7 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
   if (length(arg) != 1L) .miniextendr_arg_error(arg_name, ""#,
     crate::match_arg::match_arg_wording!(not_scalar),
     r#"", call)
+  if (!is.null(aliases) && !is.na(a <- match(arg, names(aliases)))) return(aliases[[a]])
   i <- pmatch(arg, choices, nomatch = 0L, duplicates.ok = TRUE)
   if (is.na(i) || i == 0L) {
     .miniextendr_arg_error(arg_name, sprintf(""#,
@@ -1932,11 +2009,11 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // Replace match_arg choices placeholders with actual enum choices.
     // If the entry has a `preferred_default`, that choice comes first —
     // `.miniextendr_match_arg()` returns `arg[1]` when arg is the formal
-    // default, so the position-0 element becomes the effective default.
+    // default, so the position-0 element becomes the effective default. The
+    // check's aliases placeholder becomes its `aliases =` argument, or
+    // nothing (#1843).
     for entry in MX_MATCH_ARG_CHOICES.iter() {
-        let replacement =
-            match_arg_formal(entry.choices, entry.preferred_default, entry.placeholder);
-        content = content.replace(entry.placeholder, &replacement);
+        content = splice_match_arg_entry(&content, entry);
     }
 
     // Replace match_arg @param doc placeholders with human-readable choice descriptions
@@ -3895,6 +3972,106 @@ mod tests {
             RAISE_CONDITION_HELPER_FN
                 .matches(&format!("\"{marker}\""))
                 .count()
+        );
+    }
+
+    /// A `match_arg` check as the macro writes it, for `splice_match_arg_entry`.
+    const ALIASES_CHECK: &str = "f <- function(mode = .__MX_MATCH_ARG_CHOICES_f_mode__) {\n  \
+        mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_f_mode__, \"mode\", \
+        .__MX_MATCH_ARG_ALIASES_f_mode__)\n}";
+
+    fn aliases_entry(
+        choices: &'static [&'static str],
+        aliases: &'static [(&'static str, &'static str)],
+    ) -> MatchArgChoicesEntry {
+        MatchArgChoicesEntry {
+            placeholder: ".__MX_MATCH_ARG_CHOICES_f_mode__",
+            choices,
+            preferred_default: "",
+            aliases_placeholder: ".__MX_MATCH_ARG_ALIASES_f_mode__",
+            aliases,
+        }
+    }
+
+    /// A type without aliases gets the check it had before aliases existed;
+    /// one with aliases gets the `aliases =` argument, after the others
+    /// (#1843).
+    #[test]
+    fn splice_match_arg_entry_writes_the_aliases_argument() {
+        assert_eq!(
+            splice_match_arg_entry(ALIASES_CHECK, &aliases_entry(&["red", "gray"], &[])),
+            "f <- function(mode = c(\"red\", \"gray\")) {\n  \
+             mode <- .miniextendr_match_arg(mode, c(\"red\", \"gray\"), \"mode\")\n}"
+        );
+        assert_eq!(
+            splice_match_arg_entry(
+                ALIASES_CHECK,
+                &aliases_entry(&["red", "gray"], &[("grey", "gray"), ("rouge", "red")])
+            ),
+            "f <- function(mode = c(\"red\", \"gray\")) {\n  \
+             mode <- .miniextendr_match_arg(mode, c(\"red\", \"gray\"), \"mode\", \
+             aliases = base::c(\"grey\" = \"gray\", \"rouge\" = \"red\"))\n}"
+        );
+        // With a call argument before it, as under `call = caller`.
+        let caller = ALIASES_CHECK.replace("\"mode\", .__MX", "\"mode\", .mx_call, .__MX");
+        assert!(
+            splice_match_arg_entry(&caller, &aliases_entry(&["red", "gray"], &[]))
+                .contains("c(\"red\", \"gray\"), \"mode\", .mx_call)\n")
+        );
+    }
+
+    /// Aliases and choices are escaped for an R string literal.
+    #[test]
+    fn match_arg_aliases_arg_escapes() {
+        assert_eq!(match_arg_aliases_arg(&["a"], &[], "p"), "");
+        assert_eq!(
+            match_arg_aliases_arg(
+                &["say \"hi\"", r"c:\path"],
+                &[("hello", "say \"hi\""), (r"d:\", r"c:\path")],
+                "p"
+            ),
+            r#", aliases = base::c("hello" = "say \"hi\"", "d:\\" = "c:\\path")"#
+        );
+    }
+
+    /// The wrappers writer refuses the aliases of a hand-written impl that the
+    /// derive refuses at compile time, naming the placeholder, every problem
+    /// at once.
+    #[test]
+    fn match_arg_aliases_arg_refuses_bad_aliases() {
+        let refused = |aliases: &'static [(&'static str, &'static str)]| {
+            std::panic::catch_unwind(|| {
+                match_arg_aliases_arg(&["red", "gray", "green"], aliases, ".__MX_ALIASES_p__")
+            })
+            .expect_err("refused")
+            .downcast::<String>()
+            .map(|m| *m)
+            .unwrap()
+        };
+        let message = refused(&[
+            ("", "red"),
+            ("NA", "red"),
+            ("red", "gray"),
+            ("grey", "gray"),
+            ("grey", "gray"),
+            ("blue", "navy"),
+            ("gr", "green"),
+        ]);
+        assert!(message.contains(".__MX_ALIASES_p__"), "{message}");
+        for problem in [
+            "an alias can't be empty",
+            "alias \"NA\" would read as a missing value",
+            "alias \"red\" is already a choice",
+            "alias \"grey\" is given more than once",
+            "alias \"blue\" names \"navy\", which is not a choice",
+            "alias \"gr\" for \"green\" is a prefix of the choice \"gray\"",
+        ] {
+            assert!(message.contains(problem), "{problem:?} in {message}");
+        }
+        // A prefix of its own choice only is fine.
+        assert_eq!(
+            match_arg_aliases_arg(&["red", "gray"], &[("gr", "gray")], "p"),
+            r#", aliases = base::c("gr" = "gray")"#
         );
     }
 

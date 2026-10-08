@@ -122,6 +122,22 @@ fn choices_placeholder_counts_as_a_call_to_c() {
     assert_eq!(qualify(&text, &["mode"]), text);
 }
 
+/// The aliases placeholder is left alone, even beside a formal named `c`:
+/// the wrapper writer replaces `, <placeholder>` whole (with `base::c(...)`
+/// spelled out, or nothing), so a `base::` in front of it would survive as
+/// `"mode", base::)` (#1843).
+#[test]
+fn aliases_placeholder_is_not_qualified() {
+    let choices = crate::match_arg_keys::choices_placeholder("C_f", "mode");
+    let aliases = crate::match_arg_keys::aliases_placeholder("C_f", "mode");
+    let text = format!(
+        "f <- function(mode = {choices}, c) {{\n  mode <- .miniextendr_match_arg(mode, {choices}, \"mode\", {aliases})\n}}"
+    );
+    let out = qualify(&text, &["mode", "c"]);
+    assert!(out.contains(&format!("\"mode\", {aliases})")), "{out}");
+    assert!(!out.contains(&format!("base::{aliases}")), "{out}");
+}
+
 // endregion
 
 // region: one test per generated site
@@ -153,7 +169,7 @@ fn choice_formal_default_calls_the_base_c() {
     let text = format!(
         "function(mode = {}, c) {{\n  {}\n}}",
         attrs.choice_formal(choices).unwrap(),
-        CallAttribution::Wrapper.match_arg_statement("mode", choices, &attrs)
+        CallAttribution::Wrapper.match_arg_statement("mode", choices, None, &attrs)
     );
     assert_eq!(
         qualify(&text, &["mode", "c"]),
@@ -225,6 +241,10 @@ fn snapshot_shadowed_formals() {
     body.push(CallAttribution::Wrapper.match_arg_statement(
         "mode",
         &placeholder,
+        Some(&crate::match_arg_keys::aliases_placeholder(
+            "C_shadowed",
+            "mode",
+        )),
         &choice_attrs("mode", "Mode"),
     ));
     body.push(format!(

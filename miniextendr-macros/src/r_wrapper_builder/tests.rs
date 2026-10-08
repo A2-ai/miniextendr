@@ -667,30 +667,30 @@ fn match_arg_statement_per_attribution() {
     // `base::match.arg()` into them).
     let wrapper = CallAttribution::Wrapper;
     assert_eq!(
-        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
+        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", None, &scalar),
         "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
     );
     assert_eq!(
-        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
+        wrapper.match_arg_statement("mode", "c(\"a\", \"b\")", None, &optional),
         "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\")"
     );
     assert_eq!(
-        wrapper.match_arg_statement("modes", ".__MX_CHOICES__", &several),
+        wrapper.match_arg_statement("modes", ".__MX_CHOICES__", None, &several),
         "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\")"
     );
     // `call = caller` (#1548): every form raises with `.mx_call` and names the
     // argument; the scalar helper gets the choice list explicitly.
     let caller = CallAttribution::Caller;
     assert_eq!(
-        caller.match_arg_statement("mode", "c(\"a\", \"b\")", &scalar),
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", None, &scalar),
         "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
     );
     assert_eq!(
-        caller.match_arg_statement("mode", "c(\"a\", \"b\")", &optional),
+        caller.match_arg_statement("mode", "c(\"a\", \"b\")", None, &optional),
         "if (!is.null(mode)) mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", .mx_call)"
     );
     assert_eq!(
-        caller.match_arg_statement("modes", ".__MX_CHOICES__", &several),
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", None, &several),
         "modes <- .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );
 }
@@ -751,8 +751,8 @@ fn snapshot_choice_param_forms() {
             if several_ok { " (several_ok)" } else { "" },
             // Not `Mode (no_default)`: the shadowing test reads `Mode (` as a call.
             if no_default { " with no_default" } else { "" },
-            CallAttribution::Wrapper.match_arg_statement("mode", choices, &attrs),
-            CallAttribution::Caller.match_arg_statement("mode", choices, &attrs),
+            CallAttribution::Wrapper.match_arg_statement("mode", choices, None, &attrs),
+            CallAttribution::Caller.match_arg_statement("mode", choices, None, &attrs),
             attrs.choice_doc_suffix(),
         ));
     }
@@ -904,6 +904,33 @@ fn choice_alternatives_suffix_serves_the_param_line_and_the_error() {
     }
 }
 
+/// A `match_arg` parameter's statement ends in `, <aliases placeholder>`,
+/// after the call argument, for the wrapper writer to replace with the type's
+/// `aliases =` argument or with nothing (#1843); a literal `choices(...)`
+/// list (`None`) has none.
+#[test]
+fn match_arg_statement_carries_the_aliases_placeholder() {
+    let aliases = crate::match_arg_keys::aliases_placeholder("C_f", "mode");
+    assert_eq!(aliases, ".__MX_MATCH_ARG_ALIASES_f_mode__");
+    let scalar = choice_attrs("Mode", false);
+    let several = choice_attrs("Vec<Mode>", true);
+    let either = choice_attrs("Either<Mode, DataFrame>", false);
+    assert_eq!(
+        CallAttribution::Wrapper.match_arg_statement("mode", ".__CH__", Some(&aliases), &scalar),
+        "mode <- .miniextendr_match_arg(mode, .__CH__, \"mode\", .__MX_MATCH_ARG_ALIASES_f_mode__)"
+    );
+    assert_eq!(
+        CallAttribution::Caller.match_arg_statement("mode", ".__CH__", Some(&aliases), &several),
+        "mode <- .miniextendr_match_arg_several(mode, .__CH__, \"mode\", .mx_call, \
+         .__MX_MATCH_ARG_ALIASES_f_mode__)"
+    );
+    assert_eq!(
+        CallAttribution::Wrapper.match_arg_statement("mode", ".__CH__", Some(&aliases), &either),
+        "if (is.character(mode) || is.factor(mode)) mode <- \
+         .miniextendr_match_arg(mode, .__CH__, \"mode\", .__MX_MATCH_ARG_ALIASES_f_mode__)"
+    );
+}
+
 /// `several_ok` under `Either` and `Missing` with `call = caller` (#1612): the
 /// several-choice helper carries `.mx_call` and sits behind both guards.
 #[test]
@@ -912,12 +939,12 @@ fn match_arg_statement_several_either_caller() {
     let omitted = choice_attrs("Missing<Either<Vec<Mode>, DataFrame>>", true);
     let caller = CallAttribution::Caller;
     assert_eq!(
-        caller.match_arg_statement("modes", ".__MX_CHOICES__", &either),
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", None, &either),
         "if (is.character(modes) || is.factor(modes)) modes <- \
          .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );
     assert_eq!(
-        caller.match_arg_statement("modes", ".__MX_CHOICES__", &omitted),
+        caller.match_arg_statement("modes", ".__MX_CHOICES__", None, &omitted),
         "if (!missing(modes) && (is.character(modes) || is.factor(modes))) modes <- \
          .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );

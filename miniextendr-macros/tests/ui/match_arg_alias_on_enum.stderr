@@ -1,0 +1,5 @@
+error: `alias` names another spelling of one choice: put #[match_arg(alias = "...")] on that choice's variant
+ --> tests/ui/match_arg_alias_on_enum.rs:7:21
+  |
+7 | #[match_arg(alias = "grey")]
+  |                     ^^^^^^

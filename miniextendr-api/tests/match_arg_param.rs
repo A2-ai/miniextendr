@@ -14,7 +14,7 @@ mod r_test_utils;
 
 use miniextendr_api::expression::r_eval_str;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
-use miniextendr_api::registry::{ARG_CHECK_HELPERS, match_arg_formal};
+use miniextendr_api::registry::{ARG_CHECK_HELPERS, match_arg_aliases_arg, match_arg_formal};
 use miniextendr_api::sys::R_GlobalEnv;
 use miniextendr_api::{
     MatchArg, MatchArgError, OwnedProtect, SEXP, match_arg_from_sexp, match_arg_param,
@@ -22,14 +22,16 @@ use miniextendr_api::{
 };
 
 /// A choice type over arbitrary strings: `from_choice` is an exact lookup in
-/// `CHOICES`, as the derive's is.
+/// `CHOICES`, as the derive's is, and the aliases are `(alias, choice)`
+/// pairs, as the derive writes them.
 macro_rules! choice_type {
-    ($name:ident, [$($choice:literal),+ $(,)?]) => {
+    ($name:ident, [$($choice:literal),+ $(,)?] $(, aliases = [$(($alias:literal, $target:literal)),+ $(,)?])?) => {
         #[derive(Clone, Copy, Debug, PartialEq)]
         struct $name(usize);
 
         impl MatchArg for $name {
             const CHOICES: &'static [&'static str] = &[$($choice),+];
+            $(const ALIASES: &'static [(&'static str, &'static str)] = &[$(($alias, $target)),+];)?
 
             fn from_choice(choice: &str) -> Option<Self> {
                 Self::CHOICES.iter().position(|c| *c == choice).map($name)
@@ -48,6 +50,17 @@ choice_type!(NaPrefixed, ["NAME", "other"]);
 choice_type!(Quoted, ["say \"hi\"", r"c:\path", "plain"]);
 choice_type!(Single, ["only"]);
 choice_type!(WithEmpty, ["", "x"]);
+// Aliases (#1843): "gr" is a unique prefix of "gray" and must stay one.
+choice_type!(
+    Shade,
+    ["red", "gray", "blue"],
+    aliases = [("grey", "gray"), ("rouge", "red")]
+);
+choice_type!(
+    QuotedAlias,
+    ["say \"hi\"", "plain"],
+    aliases = [("hello \"you\"", "say \"hi\""), (r"c:\plain", "plain")]
+);
 
 /// `c("a", "b")`: the formal the wrappers writer splices for a `match_arg`
 /// parameter of type `T`, with `default = "<preferred>"` (`""` for none).
@@ -55,19 +68,26 @@ fn r_formal<T: MatchArg>(preferred: &str) -> String {
     match_arg_formal(T::CHOICES, preferred, "test")
 }
 
+/// `, aliases = base::c(...)`, or nothing: the argument the wrappers writer
+/// splices into the check of a `match_arg` parameter of type `T` (#1843).
+fn r_aliases<T: MatchArg>() -> String {
+    match_arg_aliases_arg(T::CHOICES, T::ALIASES, "test")
+}
+
 /// The outcome as `c("ok", <choice>)` or `c("error", <message>, <param>)`.
 type Outcome = Vec<String>;
 
 /// The wrapper's helper on the R value of `input`, with the choices `formal`
-/// (`c(...)`).
+/// (`c(...)`) and the aliases argument `aliases` (`, aliases = ...` or
+/// empty).
 ///
 /// # Safety
 ///
 /// R main thread; `env` holds the helpers.
-unsafe fn r_outcome(env: SEXP, input: &str, formal: &str) -> Outcome {
+unsafe fn r_outcome(env: SEXP, input: &str, formal: &str, aliases: &str) -> Outcome {
     let code = format!(
         r#"local({{
-  r <- tryCatch(.miniextendr_match_arg({input}, {formal}, "mode"), error = function(e) e)
+  r <- tryCatch(.miniextendr_match_arg({input}, {formal}, "mode"{aliases}), error = function(e) e)
   if (inherits(r, "error")) {{
     stopifnot(
       identical(class(r), c("rust_error", "simpleError", "error", "condition")),
@@ -118,7 +138,7 @@ fn by_conversion<T: MatchArg>(sexp: SEXP) -> Result<T, (String, String)> {
 ///
 /// R main thread; `env` holds the helpers.
 unsafe fn agree<T: MatchArg>(env: SEXP, input: &str) -> Outcome {
-    let r = unsafe { r_outcome(env, input, &r_formal::<T>("")) };
+    let r = unsafe { r_outcome(env, input, &r_formal::<T>(""), &r_aliases::<T>()) };
     let in_body = unsafe {
         rust_outcome::<T>(env, input, |sexp| {
             match_arg_param::<T>(sexp, "mode").map_err(|e| (e.message().into(), e.param().into()))
@@ -153,7 +173,7 @@ unsafe fn agree_with_default<T: MatchArg>(
     preferred: &str,
     default: T,
 ) -> Outcome {
-    let r = unsafe { r_outcome(env, input, &r_formal::<T>(preferred)) };
+    let r = unsafe { r_outcome(env, input, &r_formal::<T>(preferred), &r_aliases::<T>()) };
     let in_body = unsafe {
         rust_outcome::<T>(env, input, |sexp| {
             match_arg_param_with_default::<T>(sexp, "mode", default)
@@ -348,6 +368,157 @@ fn match_arg_param_with_default_agrees_with_the_rotated_formal() {
             agree_with_default::<Quoted>(env, r#""say""#, r"c:\\path", path),
             ok("say \"hi\"")
         );
+    });
+}
+
+/// Aliases (#1843) on all three paths: an alias typed in full selects its
+/// choice; a prefix still matches the choices only, so a prefix of a choice
+/// keeps selecting it and a prefix of an alias is no match; the messages list
+/// the choices only.
+#[test]
+fn aliases_agree_with_the_wrapper_helper() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        let env = env.get();
+
+        assert_eq!(
+            r_aliases::<Shade>(),
+            r#", aliases = base::c("grey" = "gray", "rouge" = "red")"#
+        );
+        let one_of = r#"'mode' should be one of "red", "gray", "blue""#;
+        let rows: &[(&str, Outcome)] = &[
+            (r#""grey""#, ok("gray")),
+            (r#""rouge""#, ok("red")),
+            (r#""gray""#, ok("gray")),
+            // A prefix of a choice, as before the alias.
+            (r#""gr""#, ok("gray")),
+            (r#""r""#, ok("red")),
+            // A prefix of an alias is not one.
+            (r#""gre""#, err(one_of)),
+            (r#""rou""#, err(one_of)),
+            // Exact means exact.
+            (r#""GREY""#, err(one_of)),
+            (r#""grey ""#, err(one_of)),
+            // A factor is read as its labels, a classed string is a string.
+            (r#"factor("grey")"#, ok("gray")),
+            (r#"factor("grey", levels = c("x", "grey"))"#, ok("gray")),
+            (r#"structure("grey", class = "pkg_shade")"#, ok("gray")),
+            // Everything else as without aliases.
+            ("NULL", ok("red")),
+            (&r_formal::<Shade>(""), ok("red")),
+            ("NA_character_", err(one_of)),
+            ("factor(NA_character_)", err(one_of)),
+            (r#""""#, err(one_of)),
+            (r#""zzz""#, err(one_of)),
+            (r#"c("grey", "red")"#, err("'mode' must be of length 1")),
+            ("1L", err("'mode' must be NULL or a character vector")),
+        ];
+        for (input, expected) in rows {
+            assert_eq!(&agree::<Shade>(env, input), expected, "Shade on `{input}`");
+        }
+
+        // A `default = "..."` formal: the aliases are matched the same way,
+        // and the message follows the formal's order.
+        let blue = Shade(2);
+        assert_eq!(
+            agree_with_default::<Shade>(env, r#""grey""#, "blue", blue),
+            ok("gray")
+        );
+        assert_eq!(
+            agree_with_default::<Shade>(env, "NULL", "blue", blue),
+            ok("blue")
+        );
+        assert_eq!(
+            agree_with_default::<Shade>(env, r#""gre""#, "blue", blue),
+            err(r#"'mode' should be one of "blue", "red", "gray""#)
+        );
+
+        // Escaped in the argument, matched unescaped.
+        assert_eq!(
+            r_aliases::<QuotedAlias>(),
+            r#", aliases = base::c("hello \"you\"" = "say \"hi\"", "c:\\plain" = "plain")"#
+        );
+        assert_eq!(
+            agree::<QuotedAlias>(env, r#""hello \"you\"""#),
+            ok("say \"hi\"")
+        );
+        assert_eq!(agree::<QuotedAlias>(env, r#""c:\\plain""#), ok("plain"));
+        assert_eq!(
+            agree::<QuotedAlias>(env, r#""hello""#),
+            err(r#"'mode' should be one of "say "hi"", "plain""#)
+        );
+    });
+}
+
+/// The outcome of a `several_ok` matcher: `c("ok", <choices>...)` or
+/// `c("error", ...)`.
+///
+/// # Safety
+///
+/// R main thread; `env` holds the helpers.
+unsafe fn r_several_outcome<T: MatchArg>(env: SEXP, input: &str) -> Outcome {
+    let code = format!(
+        r#"local({{
+  r <- tryCatch(
+    .miniextendr_match_arg_several({input}, {}, "mode"{}),
+    error = function(e) e
+  )
+  if (inherits(r, "error")) c("error", conditionMessage(r)) else c("ok", r)
+}})"#,
+        r_formal::<T>(""),
+        r_aliases::<T>()
+    );
+    let value = unsafe { r_eval_str(&code, env) }.unwrap_or_else(|e| panic!("{input}: {e}"));
+    Vec::<String>::try_from_sexp(value).expect("a character vector")
+}
+
+/// `several_ok` maps aliases element by element, in the R helper and in
+/// `match_arg_vec_from_sexp` alike (#1843). The two word a refusal
+/// differently (#1806), so a refusal is compared as a refusal only.
+#[test]
+fn several_ok_aliases_agree_with_the_wrapper_helper() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let env = helpers_env();
+        let env = env.get();
+        let rows: &[(&str, &[&str])] = &[
+            (r#"c("grey", "red")"#, &["gray", "red"]),
+            (r#"c("rouge", "gr", "grey")"#, &["red", "gray", "gray"]),
+            (r#""grey""#, &["gray"]),
+            ("NULL", &["red", "gray", "blue"]),
+            (r#"c("grey", "zzz")"#, &[]),
+            (r#"c("gre", "red")"#, &[]),
+            (r#"c("grey", NA)"#, &[]),
+        ];
+        for (input, expected) in rows {
+            let r = r_several_outcome::<Shade>(env, input);
+            let value = OwnedProtect::new(r_eval_str(input, env).expect("evaluates"));
+            let rust = miniextendr_api::match_arg_vec_from_sexp::<Shade>(value.get());
+            if expected.is_empty() {
+                assert_eq!(r[0], "error", "R helper on `{input}`: {r:?}");
+                assert!(
+                    rust.is_err(),
+                    "match_arg_vec_from_sexp on `{input}`: {rust:?}"
+                );
+                if *input == r#"c("grey", "zzz")"# {
+                    assert_eq!(
+                        r[1],
+                        r#"'mode' element 2 ("zzz") should be one of "red", "gray", "blue""#
+                    );
+                }
+            } else {
+                let want: Vec<String> = std::iter::once("ok")
+                    .chain(expected.iter().copied())
+                    .map(String::from)
+                    .collect();
+                assert_eq!(r, want, "R helper on `{input}`");
+                let got: Vec<&str> = rust
+                    .unwrap_or_else(|e| panic!("match_arg_vec_from_sexp on `{input}`: {e}"))
+                    .into_iter()
+                    .map(MatchArg::to_choice)
+                    .collect();
+                assert_eq!(&got, expected, "match_arg_vec_from_sexp on `{input}`");
+            }
+        }
     });
 }
 

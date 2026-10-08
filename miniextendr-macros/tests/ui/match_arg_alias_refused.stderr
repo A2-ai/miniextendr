@@ -1,0 +1,29 @@
+error: an alias can't be empty: the empty string matches no choice
+  --> tests/ui/match_arg_alias_refused.rs:10:25
+   |
+10 |     #[match_arg(alias = "")]
+   |                         ^^
+
+error: alias "NA" would read as a missing value
+  --> tests/ui/match_arg_alias_refused.rs:12:25
+   |
+12 |     #[match_arg(alias = "NA", alias = "blue", alias = "grey")]
+   |                         ^^^^
+
+error: alias "blue" is already a choice
+  --> tests/ui/match_arg_alias_refused.rs:12:39
+   |
+12 |     #[match_arg(alias = "NA", alias = "blue", alias = "grey")]
+   |                                       ^^^^^^
+
+error: alias "grey" is given more than once
+  --> tests/ui/match_arg_alias_refused.rs:14:25
+   |
+14 |     #[match_arg(alias = "grey")]
+   |                         ^^^^^^
+
+error: alias "gr" for "green" is a prefix of the choice "gray", so it would change what typing "gr" selects
+  --> tests/ui/match_arg_alias_refused.rs:16:25
+   |
+16 |     #[match_arg(alias = "gr")]
+   |                         ^^^^

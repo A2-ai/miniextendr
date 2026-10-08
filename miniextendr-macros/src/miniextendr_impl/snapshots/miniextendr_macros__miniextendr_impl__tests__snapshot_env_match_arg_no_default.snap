@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 4771
+assertion_line: 4830
 expression: wrapper
 ---
 #' @title Picker Class
@@ -30,7 +30,7 @@ Picker$new <- function() {
 #' @name Picker$pick
 #' @rdname Picker
 Picker$pick <- function(mode, color) {
-  if (!missing(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode")
+  if (!missing(mode)) mode <- .miniextendr_match_arg(mode, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_mode__, "mode", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_mode__)
   color <- .miniextendr_match_arg(color, c("red", "green"), "color")
   .val <- .Call(C_miniextendr_macros_Picker__pick, .call = sys.call(), self, if (missing(mode)) quote(expr=) else mode, color)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
@@ -46,7 +46,7 @@ Picker$pick <- function(mode, color) {
 #' @name Picker$pick_many
 #' @rdname Picker
 Picker$pick_many <- function(modes) {
-  if (!missing(modes) && (is.character(modes) || is.factor(modes))) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes")
+  if (!missing(modes) && (is.character(modes) || is.factor(modes))) modes <- .miniextendr_match_arg_several(modes, .__MX_MATCH_ARG_CHOICES_miniextendr_macros_Picker__pick_many_modes__, "modes", .__MX_MATCH_ARG_ALIASES_miniextendr_macros_Picker__pick_many_modes__)
   .val <- .Call(C_miniextendr_macros_Picker__pick_many, .call = sys.call(), self, if (missing(modes)) quote(expr=) else modes)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
   .val

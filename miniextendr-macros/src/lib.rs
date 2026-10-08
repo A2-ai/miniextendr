@@ -1385,8 +1385,9 @@ pub fn miniextendr(
     // NOT become the formal (otherwise R's `match.arg` would only see one
     // choice).
     //
-    // Tuple: (placeholder, rust_param, preferred_default_unquoted_or_empty)
-    let mut match_arg_placeholders: Vec<(String, String, String)> = Vec::new();
+    // Tuple: (placeholder, aliases_placeholder, rust_param,
+    // preferred_default_unquoted_or_empty)
+    let mut match_arg_placeholders: Vec<(String, String, String, String)> = Vec::new();
     for match_arg_param in parsed.match_arg_params() {
         let r_name = r_wrapper_builder::normalize_r_arg_string(match_arg_param);
         let preferred = match merged_defaults.get(&r_name) {
@@ -1405,7 +1406,14 @@ pub fn miniextendr(
         if let Some(formal) = formal {
             merged_defaults.insert(r_name.clone(), formal);
         }
-        match_arg_placeholders.push((placeholder, match_arg_param.clone(), preferred));
+        let aliases_placeholder =
+            crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), &r_name);
+        match_arg_placeholders.push((
+            placeholder,
+            aliases_placeholder,
+            match_arg_param.clone(),
+            preferred,
+        ));
     }
     // Add c("a", "b", "c") default for choices params (idiomatic R match.arg
     // pattern); an `Option<T>` choices param defaults to `NULL` instead
@@ -1709,8 +1717,14 @@ pub fn miniextendr(
             // every form raises with `.mx_call` (#1548).
             let placeholder =
                 crate::match_arg_keys::choices_placeholder(&c_ident.to_string(), r_param);
+            let aliases = crate::match_arg_keys::aliases_placeholder(&c_ident.to_string(), r_param);
             if let Some(attrs) = parsed.param_attrs(rust_name) {
-                lines.push(call_attribution.match_arg_statement(r_param, &placeholder, attrs));
+                lines.push(call_attribution.match_arg_statement(
+                    r_param,
+                    &placeholder,
+                    Some(&aliases),
+                    attrs,
+                ));
             }
         }
         lines.join("\n  ")
@@ -1733,7 +1747,12 @@ pub fn miniextendr(
                     let quoted: Vec<String> =
                         choices.iter().map(|c| format!("\"{}\"", c)).collect();
                     let choices_expr = format!("c({})", quoted.join(", "));
-                    lines.push(call_attribution.match_arg_statement(&r_name, &choices_expr, attrs));
+                    lines.push(call_attribution.match_arg_statement(
+                        &r_name,
+                        &choices_expr,
+                        None,
+                        attrs,
+                    ));
                 }
             }
         }
@@ -1922,23 +1941,26 @@ pub fn miniextendr(
 
     let match_arg_choices_entries: Vec<proc_macro2::TokenStream> = match_arg_placeholders
         .iter()
-        .filter_map(|(placeholder, rust_param, preferred_default)| {
-            let choices_ty = choices_ty_for(rust_param)?;
-            let entry_ident = syn::Ident::new(
-                &format!(
-                    "match_arg_choices_entry_{}",
-                    crate::match_arg_keys::placeholder_ident_suffix(placeholder)
-                ),
-                proc_macro2::Span::call_site(),
-            );
-            Some(crate::match_arg_keys::choices_entry_tokens(
-                &cfg_attrs,
-                &entry_ident,
-                placeholder,
-                choices_ty,
-                preferred_default,
-            ))
-        })
+        .filter_map(
+            |(placeholder, aliases_placeholder, rust_param, preferred_default)| {
+                let choices_ty = choices_ty_for(rust_param)?;
+                let entry_ident = syn::Ident::new(
+                    &format!(
+                        "match_arg_choices_entry_{}",
+                        crate::match_arg_keys::placeholder_ident_suffix(placeholder)
+                    ),
+                    proc_macro2::Span::call_site(),
+                );
+                Some(crate::match_arg_keys::choices_entry_tokens(
+                    &cfg_attrs,
+                    &entry_ident,
+                    placeholder,
+                    aliases_placeholder,
+                    choices_ty,
+                    preferred_default,
+                ))
+            },
+        )
         .collect();
 
     // Generate MX_MATCH_ARG_PARAM_DOCS entries for @param doc placeholder → choice description

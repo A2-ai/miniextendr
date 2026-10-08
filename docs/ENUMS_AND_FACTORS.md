@@ -645,6 +645,54 @@ pub enum Priority {
 }
 ```
 
+### Aliases
+
+`#[match_arg(alias = "...")]` on a variant accepts another spelling of its
+choice without making it a choice of its own. It is repeatable, and
+`rename_all` does not change it:
+
+```rust
+#[derive(Copy, Clone, MatchArg)]
+#[match_arg(rename_all = "lower")]
+pub enum Color {
+    Red,
+    #[match_arg(alias = "grey")]
+    Gray,
+    Blue,
+}
+
+#[miniextendr]
+pub fn paint(#[miniextendr(match_arg)] color: Color) -> String { /* ... */ }
+```
+
+```r
+paint(color = c("red", "gray", "blue"))   # the formal and the usage
+paint("grey")   # Gray
+paint("gr")     # Gray: a unique prefix of "gray", as before the alias
+paint("gre")    # Error: 'color' should be one of "red", "gray", "blue"
+```
+
+- An alias matches only when typed in full. Prefixes match the choices alone,
+  so an alias never makes a prefix ambiguous, and a prefix of an alias is no
+  match.
+- Matching tries a choice typed exactly, then an alias typed exactly, then a
+  unique prefix of a choice.
+- Every matcher reads the aliases: the wrapper's check, the `Option`,
+  `Missing` and `Either` forms, `several_ok` element by element
+  (`c("grey", "red")` is `Gray, Red`), the derived `TryFromSexp`, and
+  `match_arg_param()` / `match_arg_param_with_default()`.
+- Nothing that lists the choices shows an alias: not the formal, the usage,
+  the `@param` line, the "should be one of" error or the `Either` error.
+- The wrapper passes them to its check as `aliases = base::c("grey" =
+  "gray")`. A type without aliases gets the same wrapper as before aliases
+  existed.
+- The derive refuses, at the alias, one that is empty, `"NA"`, already a
+  choice, given twice, or a prefix of another variant's choice (`alias =
+  "re"` on `Gray` would change what `"re"`, today `"red"`, selects). A prefix
+  of its own choice is allowed.
+
+`choices("a", "b")` parameters take no aliases yet (#1873).
+
 ### Via `#[miniextendr]`
 
 ```rust
@@ -726,6 +774,13 @@ the newtype is a compile error rather than silent drift.
 input, as a derived enum's does, so `Either<InterpChoice, String>` is refused
 like `Either<Route, String>` (see [Choice or Another
 Value](#choice-or-another-value-either-t-r)).
+
+[Aliases](#aliases) go in `MatchArg::ALIASES` as `(alias, choice)` pairs,
+`const ALIASES: &'static [(&'static str, &'static str)] = &[("nn",
+"nearest")];`, not in `from_choice`: the wrapper's check reads `ALIASES` and
+never reaches a `from_choice` that maps `"nn"`, so the two would disagree.
+The wrappers writer refuses the aliases the derive refuses, plus one whose
+choice is not in `CHOICES`, with an error naming the parameter's placeholder.
 `rpkg/src/rust/match_arg_foreign_tests.rs` is the reference fixture.
 
 ### Inline String Choices
