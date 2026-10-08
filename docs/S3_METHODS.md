@@ -489,8 +489,9 @@ string (`"f"`), so a `&str` or `String` parameter fits `$` and `$<-`.
 
 **`[[` and `[[<-` take `i: SEXP`.** `x[["f"]]` passes a string, `x[[2]]` a
 double and `lapply()` an integer. A `&str` parameter's generated check refuses
-the number before the method runs (`'i' must be character`), so take a `SEXP`
-and branch on its type, or use a type that converts from both.
+the number before the method runs (`'<param>' must be character`, the error
+`$<-` gives for a number as its `name`), so take a `SEXP` and branch on its
+type, or use a type that converts from both.
 
 **`[<-` takes `&Dots` before `value`.** `x[i, j] <- v` passes `j` as a further
 positional argument, which the `...` collects. Without a `&Dots` parameter,
