@@ -1077,7 +1077,7 @@ macro_rules! rust_condition {
 ///
 /// A `macro_rules!` macro cannot read `[package.metadata.miniextendr]`, so the
 /// tagged condition value carries the marker class
-/// [`CONVERSION_ERROR_CLASS_MARKER`](crate::condition::CONVERSION_ERROR_CLASS_MARKER)
+/// [`CONVERSION_ERROR_CLASS_MARKER`]
 /// and the generated wrapper's `.miniextendr_raise_condition` replaces it with
 /// `.miniextendr_conversion_error_class`, the binding its own checks use. Across
 /// a trait-ABI call the consumer package's wrapper raises the condition, so

@@ -28,7 +28,7 @@ See `plans/r6-deep-integration-plan.md` for full spec.
   - ndarray is designed for numeric/Copy types; `String` doesn't fit the model
   - `Vec<String>` / `Vec<Vec<String>>` are the natural Rust representations
 - [x] Quoted-expression evaluation helpers — `RSymbol`, `RCall`, `REnv`
-  - `RCall` builder: `.arg()`, `.named_arg()`, `.eval()` via `R_tryEvalSilent`
+  - `RCall` builder: `.arg()`, `.named_arg()`, `.eval()` returns an R error as `REvalError` (R's condition, #1861)
   - `RSymbol`: interned SYMSXP wrapper; `REnv`: GlobalEnv/BaseEnv/EmptyEnv handles
 - [x] S4 compatibility helpers — `s4_helpers` module with slot access wrappers
   - `s4_is`, `s4_class_name`, `s4_has_slot`, `s4_get_slot`, `s4_set_slot`

@@ -1032,7 +1032,7 @@ fn real_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, D
 ///
 /// The temporary key vector is protected while `as.character()` allocates; a
 /// failing method surfaces as [`DataFrameError::Conversion`] (it is evaluated
-/// with `R_tryEvalSilent`, so it never unwinds through Rust frames).
+/// with `RCall::eval`, so it never unwinds through Rust frames).
 fn real_labels(column: SEXP, values: &[f64], col: &str) -> Result<Vec<String>, DataFrameError> {
     let label_error = |detail: String| {
         DataFrameError::Conversion(format!("cannot label the keys of column {col:?}: {detail}"))

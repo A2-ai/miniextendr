@@ -54,7 +54,7 @@ pub fn console_r_warning(msg: &str) -> i32 {
 #[miniextendr]
 pub fn console_r_str_sum_seq(n: i32) -> Result<i32, String> {
     let code = format!("sum(seq_len({n}))");
-    let sexp = r_str!(&code)?;
+    let sexp = r_str!(&code).map_err(|e| e.to_string())?;
     i32::try_from_sexp(sexp).map_err(|e| e.to_string())
 }
 
@@ -62,6 +62,6 @@ pub fn console_r_str_sum_seq(n: i32) -> Result<i32, String> {
 /// surface as an `Err` (mapped to an R condition), never a crash.
 #[miniextendr]
 pub fn console_r_str_parse_error() -> Result<i32, String> {
-    let sexp = r_str!("1 +")?;
+    let sexp = r_str!("1 +").map_err(|e| e.to_string())?;
     i32::try_from_sexp(sexp).map_err(|e| e.to_string())
 }

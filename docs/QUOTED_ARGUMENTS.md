@@ -203,9 +203,9 @@ public for any expression or call built in Rust. It differs from
 
 | | `RCall::eval`, `r_eval_str` | `eval_with_handlers`, `RCall::eval_with_handlers` |
 |---|---|---|
-| R entry point | `R_tryEvalSilent` | `Rf_eval` in its own `R_UnwindProtect` |
+| R entry point | `R_tryCatchError` inside `R_ToplevelExec` | `Rf_eval` in its own `R_UnwindProtect` |
 | caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition |
-| R error | `Err(String)`, the message only | reaches the caller's `tryCatch()` as raised: class, call, fields |
+| R error | `Err(REvalError)`: R's condition, with its message (no `Error in` prefix, no `Calls:` line), call and classes; the Rust code decides what to raise | reaches the caller's `tryCatch()` as raised: class, call, fields |
 | caller's `tryCatch(warning = )`, restarts | not seen | exit through the Rust frames |
 
 An R error, or any other jump out of the evaluation (an exiting handler of
@@ -218,7 +218,11 @@ warning or message the caller muffles just returns, and evaluation goes on.
 So use it for code the user wrote or whose conditions are part of an
 interface (a callback, a tidyselect selection, a deprecation warning), and
 keep `RCall::eval` for internal calls whose failure the Rust code handles
-itself. The framework's own `R_tryEvalSilent` users are unchanged so far (#1840).
+itself; `REvalError::reraise_class` raises a caught error again under the
+package's class with R's classes kept
+([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own)). The
+framework's own calls into user R code (`as.character()` dispatch, S4
+`slot()`) still go through `RCall::eval` (#1840).
 
 Two rules follow from the unwind:
 

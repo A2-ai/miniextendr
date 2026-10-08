@@ -538,7 +538,7 @@ macro_rules! report_growth {
 /// - `r_str!(code)` — evaluate in `R_GlobalEnv`.
 /// - `r_str!(code, env = e)` — evaluate in the environment SEXP `e`.
 ///
-/// Both forms evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**
+/// Both forms evaluate to `Result<SEXP, REvalError>`; the `SEXP` is **unprotected**
 /// (protect it before further allocations).
 ///
 /// # Safety
@@ -618,7 +618,7 @@ macro_rules! r_str {
 ///   `;` separator is used instead of a trailing `, env =` because R source is
 ///   a free token stream — a trailing keyword can't be reliably split off it.)
 ///
-/// Both evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**.
+/// Both evaluate to `Result<SEXP, REvalError>`; the `SEXP` is **unprotected**.
 ///
 /// For genuinely dynamic code, use [`r_str!`](crate::r_str) instead.
 ///
@@ -709,7 +709,7 @@ pub mod encoding;
 
 // Expression evaluation helpers (RSymbol, RCall, REnv)
 pub mod expression;
-pub use expression::{RCall, REnv, RSymbol, r_eval_str, r_eval_str_global};
+pub use expression::{RCall, REnv, REvalError, RSymbol, r_eval_str, r_eval_str_global};
 
 // S4 slot access and class checking helpers
 pub mod s4_helpers;

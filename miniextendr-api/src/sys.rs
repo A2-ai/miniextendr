@@ -947,7 +947,7 @@ unsafe extern "C-unwind" {
     #[doc(alias = "FindNamespace")]
     pub fn R_FindNamespace(info: SEXP) -> SEXP;
 
-    // Issue #112 cat. 9: kept pub(crate) — R_GetCurrentEnv used from s4_helpers.rs; R_tryEvalSilent from expression.rs
+    // Issue #112 cat. 9: kept pub(crate) — R_GetCurrentEnv used from s4_helpers.rs
     /// Return the current execution environment (innermost closure on call
     /// stack, or `R_GlobalEnv` if none).
     #[doc(alias = "GetCurrentEnv")]
@@ -966,10 +966,32 @@ unsafe extern "C-unwind" {
         check: Rboolean,
     ) -> SEXP;
     pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
-    pub(crate) fn R_tryEvalSilent(
-        expr: SEXP,
-        env: SEXP,
-        error_occurred: *mut ::std::os::raw::c_int,
+    // Kept pub(crate): the safe entry is `RCall::eval` / `r_eval_str`
+    // (expression.rs), which combine the two below.
+    /// Run `fun(data)` in a new top-level context: the caller's condition
+    /// handlers and restarts are hidden from it, and any jump out of it
+    /// (an unhandled error, an interrupt, an `abort` restart) stops here.
+    /// `TRUE` when `fun` returned, `FALSE` after such a jump.
+    #[doc(alias = "ToplevelExec")]
+    pub(crate) fn R_ToplevelExec(
+        fun: ::std::option::Option<unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void)>,
+        data: *mut ::std::os::raw::c_void,
+    ) -> Rboolean;
+    /// Call `body(bdata)` with an exiting handler for conditions of class
+    /// `error`: on such a condition, `handler(cond, hdata)` runs after the
+    /// unwind and its value is returned. Built on R's `tryCatch()`, so the
+    /// caller's handlers stay visible to `body` (wrap it in
+    /// [`R_ToplevelExec`] to hide them).
+    #[doc(alias = "tryCatchError")]
+    pub(crate) fn R_tryCatchError(
+        body: ::std::option::Option<
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
+        >,
+        bdata: *mut ::std::os::raw::c_void,
+        handler: ::std::option::Option<
+            unsafe extern "C-unwind" fn(SEXP, *mut ::std::os::raw::c_void) -> SEXP,
+        >,
+        hdata: *mut ::std::os::raw::c_void,
     ) -> SEXP;
     pub fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
 

@@ -3,8 +3,9 @@
 //! [`RTxtProgressBar`] constructs and drives R's built-in text progress bar
 //! entirely from Rust. The bar is created via `utils::txtProgressBar()` and
 //! pinned on R's precious list for the lifetime of the struct. It
-//! auto-closes on [`Drop`] (calls `pb$kill()` via `R_tryEvalSilent` so that
-//! the close path cannot unwind through a Rust destructor stack).
+//! auto-closes on [`Drop`] (calls `pb$kill()` through
+//! [`RCall::eval`](crate::expression::RCall::eval), which catches an R error,
+//! so that the close path cannot unwind through a Rust destructor stack).
 //!
 //! # Feature gate
 //!
@@ -107,11 +108,9 @@ impl RTxtProgressBar {
     ///
     /// # Errors
     ///
-    /// Returns `Err(String)` if the bar is closed or if the R call fails.
-    /// Note: R may print the error message to stderr (via `R_WriteConsoleEx`)
-    /// before the `Err` is returned. Callers in a tight update loop who want to
-    /// suppress that output should route the bar's `file` to `RNullConnection`
-    /// or call via `R_tryEvalSilent` directly.
+    /// Returns `Err(String)` if the bar is closed, or R's error message if the
+    /// R call fails ([`RCall::eval`](crate::expression::RCall::eval) catches
+    /// it without printing it).
     pub fn set(&self, value: f64) -> Result<(), String> {
         if !self.open {
             return Err("RTxtProgressBar is closed".to_string());
@@ -125,9 +124,8 @@ impl RTxtProgressBar {
     ///
     /// # Errors
     ///
-    /// Returns `Err(String)` if the bar is closed or if the R call fails.
-    /// Note: R may print the error message to stderr (via `R_WriteConsoleEx`)
-    /// before the `Err` is returned.
+    /// Returns `Err(String)` if the bar is closed, or R's error message if the
+    /// R call fails.
     pub fn get(&self) -> Result<f64, String> {
         if !self.open {
             return Err("RTxtProgressBar is closed".to_string());
@@ -353,6 +351,7 @@ unsafe fn set_txt_progress_bar_inner(sexp: SEXP, value: f64) -> Result<(), Strin
             .arg(val_sexp.get())
             .eval_base()
             .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -364,22 +363,31 @@ unsafe fn get_txt_progress_bar_inner(sexp: SEXP) -> Result<f64, String> {
     use crate::expression::RCall;
 
     unsafe {
-        let result = RCall::new("getTxtProgressBar").arg(sexp).eval_base()?;
+        let result = RCall::new("getTxtProgressBar")
+            .arg(sexp)
+            .eval_base()
+            .map_err(|e| e.to_string())?;
         // getTxtProgressBar returns a numeric(1); unwrap NA as 0.0.
         Ok(result.as_real().unwrap_or(0.0))
     }
 }
 
 // Call close(pb) — explicit close path.
-// Errors are returned as Err(String). Release of the precious list is the
-// caller's responsibility.
+// Errors are returned as Err(String), R's message. Release of the precious
+// list is the caller's responsibility.
 //
 // # Safety
 // Must be called from the R main thread.
 unsafe fn close_txt_progress_bar_inner(sexp: SEXP) -> Result<(), String> {
     use crate::expression::RCall;
 
-    unsafe { RCall::new("close").arg(sexp).eval_base().map(|_| ()) }
+    unsafe {
+        RCall::new("close")
+            .arg(sexp)
+            .eval_base()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
 }
 
 // Call pb$kill() — silent close used by the Drop impl.
@@ -409,8 +417,9 @@ unsafe fn kill_txt_progress_bar_inner(sexp: SEXP) {
 /// Run a closure with a style-3 [`RTxtProgressBar`] from `min` to `max`.
 ///
 /// The bar is automatically closed when the closure returns or panics —
-/// [`RTxtProgressBar`]'s `Drop` impl calls `pb$kill()` via
-/// `R_tryEvalSilent`, so close-on-unwind is guaranteed without any
+/// [`RTxtProgressBar`]'s `Drop` impl calls `pb$kill()` through
+/// [`RCall::eval`](crate::expression::RCall::eval), so close-on-unwind is
+/// guaranteed without any
 /// additional teardown in the closure.
 ///
 /// # Panics

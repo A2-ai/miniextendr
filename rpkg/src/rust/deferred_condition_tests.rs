@@ -172,8 +172,8 @@ pub fn deferred_nested(f: miniextendr_api::SEXP) -> i32 {
     use miniextendr_api::expression::RCall;
     use miniextendr_api::{OwnedProtect, sys};
     defer_warning!(class = "pkg_outer", "outer");
-    // Plain `Rf_eval` rather than `RCall::eval` (`R_tryEval` runs under
-    // `R_ToplevelExec`, which hides the caller's handlers), so the inner
+    // Plain `Rf_eval` rather than `RCall::eval` (which runs under
+    // `R_ToplevelExec`, hiding the caller's handlers), so the inner
     // call's warning reaches the same `withCallingHandlers` as this one's.
     let inner = unsafe {
         let call = OwnedProtect::new(RCall::from_sexp(f).build());

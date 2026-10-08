@@ -9,6 +9,7 @@ Safe wrappers for building and evaluating R function calls from Rust.
 | `RSymbol` | Interned R symbol (SYMSXP) -- never GC'd |
 | `RCall` | Builder for R function calls (LANGSXP) |
 | `REnv` | Well-known R environments (Global, Base, Empty) |
+| `REvalError` | An R error caught by `RCall::eval` / `r_eval_str`: R's condition |
 
 Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
 string of R source) and `dollar_extract` (the R `$` operator).
@@ -69,20 +70,55 @@ unsafe {
 
 ### Error Handling
 
-`eval()` uses `R_tryEvalSilent` and returns `Result<SEXP, String>`. On failure, the error message comes from R's `geterrmessage()`.
+`eval()` returns `Result<SEXP, REvalError>`. An R error comes back as
+`REvalError`, which holds R's condition object (rooted while the value lives)
+and what R reports about it:
+
+| Method | What it gives |
+|---|---|
+| `message()` | `conditionMessage(cond)`: no `Error in <call> :` prefix, no `Calls:` traceback line |
+| `call()` | `conditionCall(cond)` as `Option<SEXP>` |
+| `classes()` | the class vector, most specific first |
+| `specific_classes()` | the classes ahead of `rust_error` / `simpleError` / `error` / `condition` |
+| `inherits(class)` | whether `classes()` contains `class` |
+| `condition()` | the condition object |
+| `reraise_class(own)` | `own`, then the specific classes: the `class =` for raising it again |
+
+`Display` writes the message alone, and `REvalError` is a `std::error::Error`.
 
 ```rust
-match RCall::new("stop").arg(msg_sexp).eval(env) {
-    Ok(result) => { /* success */ },
-    Err(msg) => { /* msg contains R's error message */ },
+match RCall::new("print").arg(df).named_arg("na.print", one).eval_base() {
+    Ok(_) => {}
+    // e.message() is "invalid 'na.print' specification", not
+    // "Error in print.default(...) : invalid 'na.print' specification\nCalls: ..."
+    Err(e) => rust_error!(class = e.reraise_class("pkg_print_error"), "{e}"),
 }
 ```
 
-`R_tryEvalSilent` runs the call through `R_ToplevelExec`, which hides the
-caller's condition handlers: a warning is printed rather than reaching the
-caller's `withCallingHandlers()`, and an error comes back as its message only.
-For user code, or a call whose conditions the user should see as raised, use
-[`eval_with_handlers`](#handler-keeping-evaluation) instead.
+[CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own) covers
+raising the caught error again as the package's own condition.
+
+The call runs in a new top-level context (`R_ToplevelExec`, as under
+`R_tryEval`) under an exiting handler for `error` conditions
+(`R_tryCatchError`). The top-level context hides the caller's condition
+handlers and restarts: a warning goes to R's default handler rather than to
+the caller's `withCallingHandlers()`, and an interrupt ends the evaluation
+with an `Err`. For user code, or a call whose conditions the user should see
+as raised, use [`eval_with_handlers`](#handler-keeping-evaluation) instead.
+
+Two details follow from the `tryCatch()` underneath:
+
+- An error raised at the top of the evaluated expression (`stop()` called
+  directly, not from a function) gets the call of R's `tryCatch()` frame,
+  `doTryCatch(return(expr), name, parentenv, handler)`; `call()` reports
+  `None` for it, as base R's `try()` leaves it out. `condition()` keeps what
+  R recorded.
+- Code at the top of the evaluated expression that inspects the call stack
+  (`sys.call()`, `sys.function()`) sees the `tryCatch()` frames.
+
+`REvalError` is `!Send`: dropping it releases its root, which must happen on
+R's main thread. Carry `message()` (a `String`) or a
+`condition::RError` across threads instead.
 
 ### Arguments that are language objects
 
@@ -148,14 +184,18 @@ unsafe {
 }
 ```
 
-Parse failures (syntax error, incomplete input) and R evaluation errors both
-come back as `Err(String)` — evaluation uses `R_tryEvalSilent`, so R errors
-never longjmp through Rust frames. The returned SEXP is unprotected.
+An R evaluation error comes back as `Err(REvalError)`, caught as by
+`RCall::eval`, so it never longjmps through Rust frames. A parse failure
+(syntax error, incomplete input) raises no R condition; it comes back as an
+`REvalError` holding a `simpleError` built for it, whose message names the
+failure and the source (`incomplete R expression (unbalanced delimiter?): 1 +`).
+The returned SEXP is unprotected.
 
 ## dollar_extract
 
 Convenience wrapper for the R `$` extraction operator, replacing hand-rolled
-`Rf_install("$")` + `Rf_lang3` + `R_tryEvalSilent` ladders:
+`Rf_install("$")` + `Rf_lang3` + `R_tryEval` ladders. It evaluates through
+`RCall::eval`, so a failure is an `REvalError`:
 
 ```rust
 use miniextendr_api::expression::dollar_extract;

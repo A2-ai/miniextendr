@@ -134,7 +134,7 @@ impl<T: ParseRStr> TryFromSexp for Vec<Option<ParsedRStr<T>>> {
 /// `T`, `Option<T>`, `Vec<T>` and `Vec<Option<T>>`.
 ///
 /// Expands in any crate. It implements
-/// [`ParseRStr`](crate::from_r::ParseRStr) (the parse step),
+/// [`ParseRStr`] (the parse step),
 /// `TryFromSexp` for the type, and
 /// [`TryFromSexpElement`](crate::TryFromSexpElement), through which the
 /// container blankets in `miniextendr-api` convert `Option<T>`, `Vec<T>` and
