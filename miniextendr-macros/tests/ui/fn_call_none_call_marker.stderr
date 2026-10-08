@@ -1,0 +1,5 @@
+error: `call = none` passes no call, so a `Call` parameter has nothing to receive; drop the parameter or the option
+  --> tests/ui/fn_call_none_call_marker.rs:10:36
+   |
+10 | pub fn no_call_with_marker(x: i32, _call: miniextendr_api::Call) -> i32 {
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

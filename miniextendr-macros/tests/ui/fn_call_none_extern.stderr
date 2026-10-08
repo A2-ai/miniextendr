@@ -1,0 +1,5 @@
+error: `call = none` needs the generated call slot; an `extern "C-unwind"` function has no `.call` argument to attribute
+  --> tests/ui/fn_call_none_extern.rs:10:22
+   |
+10 | extern "C-unwind" fn C_no_call_raw(x: miniextendr_api::SEXP) -> miniextendr_api::SEXP {
+   |                      ^^^^^^^^^^^^^

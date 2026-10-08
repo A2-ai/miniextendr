@@ -137,9 +137,11 @@ pub fn call_marker_caller_impl(_x: i32, call: CallerCall) -> SEXP {
 }
 
 /// `Call` marker on a standalone S3 method: the marker is accepted there, and
-/// the body sees the method frame's own `sys.call()`. Under `UseMethod()`
-/// dispatch that call names the method, `format.mx_call_marker(obj)` for
-/// `format(obj)`, here returned to R for the test to compare.
+/// the body sees the call the method's conditions would report. Under
+/// `UseMethod()` dispatch that is the generic's call, `format(obj)` (#1851:
+/// the method frame's own `sys.call()` would name the method,
+/// `format.mx_call_marker(obj)`); called directly, the method's own. Here it
+/// is returned to R for the test to compare.
 ///
 /// @param x An object of class `mx_call_marker`.
 /// @param ... Ignored.

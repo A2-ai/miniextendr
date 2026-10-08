@@ -178,7 +178,7 @@ fn s3_user_dots_suppress_duplicate_dispatch_dots() {
         )
     );
     assert!(wrapper.contains(
-        ".Call(C_miniextendr_macros_S3DotsThing__collect, .call = sys.call(), x, list(...))"
+        ".Call(C_miniextendr_macros_S3DotsThing__collect, .call = environment(), x, list(...))"
     ));
     assert!(!wrapper.contains("function(x, ..., ...)"));
 }
@@ -1432,12 +1432,13 @@ fn s3_wrapper_full_snapshot() {
     // Verify S3 methods
     assert!(wrapper.contains("#' @method get Counter"));
     assert!(wrapper.contains("get.Counter <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), x)"));
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = environment(), x)"));
 
     assert!(wrapper.contains("#' @method increment Counter"));
     assert!(wrapper.contains("increment.Counter <- function(x, ...)"));
     assert!(
-        wrapper.contains(".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x)")
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__increment, .call = environment(), x)")
     );
 
     // Verify static methods with prefix

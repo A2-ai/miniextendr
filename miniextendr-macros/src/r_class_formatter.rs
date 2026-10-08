@@ -208,9 +208,9 @@ pub(crate) fn build_match_arg_prelude(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     per_param: &std::collections::HashMap<String, crate::miniextendr_fn::ParamAttrs>,
     c_ident: &str,
+    attribution: crate::r_wrapper_builder::CallAttribution,
 ) -> Vec<String> {
     use crate::miniextendr_fn::per_param_in_signature_order;
-    use crate::r_wrapper_builder::CallAttribution;
     let mut lines = Vec::new();
 
     for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
@@ -220,12 +220,7 @@ pub(crate) fn build_match_arg_prelude(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let placeholder = match_arg_placeholder(c_ident, &r_name);
         let aliases = crate::match_arg_keys::aliases_placeholder(c_ident, &r_name);
-        lines.push(CallAttribution::Wrapper.match_arg_statement(
-            &r_name,
-            &placeholder,
-            Some(&aliases),
-            attrs,
-        ));
+        lines.push(attribution.match_arg_statement(&r_name, &placeholder, Some(&aliases), attrs));
     }
 
     for (rust_name, attrs) in per_param_in_signature_order(inputs, per_param) {
@@ -235,12 +230,7 @@ pub(crate) fn build_match_arg_prelude(
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
         let quoted: Vec<String> = choices.iter().map(|c| format!("\"{c}\"")).collect();
         let choices_expr = format!("c({})", quoted.join(", "));
-        lines.push(CallAttribution::Wrapper.match_arg_statement(
-            &r_name,
-            &choices_expr,
-            None,
-            attrs,
-        ));
+        lines.push(attribution.match_arg_statement(&r_name, &choices_expr, None, attrs));
     }
 
     lines
@@ -273,7 +263,9 @@ pub(crate) fn match_arg_skip_set(
 ///
 /// Neither impl methods nor trait methods carry a per-param `coerce` flag
 /// (only function-wide `coerce`, see `ParsedMethod::per_param` docs), so
-/// `coerce_params` is always empty here. Shared by
+/// `coerce_params` is always empty here. `call` is the call every failing
+/// guard is attributed to (`PreconditionOutput::guards`): `None` for the
+/// method's own frame, `environment()` for an S3 method (#1851). Shared by
 /// `MethodContext::precondition_checks`,
 /// `TraitMethodContext::precondition_checks` and the R6 active-binding
 /// setter.
@@ -283,6 +275,7 @@ pub(crate) fn build_method_precondition_checks(
     coerce_all: bool,
     method_level: Option<bool>,
     impl_level: Option<bool>,
+    call: Option<&str>,
 ) -> Vec<String> {
     let opts = crate::r_preconditions::PreconditionOptions {
         coerce_all,
@@ -297,7 +290,7 @@ pub(crate) fn build_method_precondition_checks(
         ),
     };
     crate::r_preconditions::build_precondition_checks(inputs, &match_arg_skip_set(per_param), &opts)
-        .guards(None)
+        .guards(call)
 }
 
 /// Effective R-formal defaults for a method.
@@ -377,6 +370,12 @@ pub struct MethodContext<'a> {
     /// parameter's, above the crate default (see
     /// `build_method_precondition_checks`).
     pub impl_preconditions: Option<bool>,
+    /// The call the method's conditions report (`CallAttribution`): the
+    /// method's own `sys.call()` by default; an S3 method's generator sets
+    /// `CallAttribution::Generic`, the frame resolved to the generic's call
+    /// on a raise (#1851). It decides the `.call` of `instance_call`, the
+    /// call the R-side checks raise with and the raise fallback.
+    pub call_attribution: crate::r_wrapper_builder::CallAttribution,
 }
 
 impl<'a> MethodContext<'a> {
@@ -405,6 +404,7 @@ impl<'a> MethodContext<'a> {
             params,
             args,
             impl_preconditions: None,
+            call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
         }
     }
 
@@ -413,6 +413,16 @@ impl<'a> MethodContext<'a> {
     /// `MethodContext::new`.
     pub fn with_impl_preconditions(mut self, impl_preconditions: Option<bool>) -> Self {
         self.impl_preconditions = impl_preconditions;
+        self
+    }
+
+    /// Set the call the method's conditions report (see
+    /// [`MethodContext::call_attribution`]).
+    pub fn with_call_attribution(
+        mut self,
+        call_attribution: crate::r_wrapper_builder::CallAttribution,
+    ) -> Self {
+        self.call_attribution = call_attribution;
         self
     }
 
@@ -439,6 +449,7 @@ impl<'a> MethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.method_attrs.per_param,
             &self.c_ident,
+            self.call_attribution,
         )
     }
 
@@ -452,8 +463,10 @@ impl<'a> MethodContext<'a> {
     /// Build the `.Call()` expression for an instance method with `self` as ptr.
     ///
     /// The `self_expr` is typically "self", "private$.ptr", "x", "x@ptr", or "x@.ptr".
+    /// The `.call` is the context's [`MethodContext::call_attribution`].
     pub fn instance_call(&self, self_expr: &str) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_call_attribution(self.call_attribution)
             .with_self(self_expr)
             .with_args_str(&self.args)
             .build()
@@ -616,6 +629,7 @@ impl<'a> MethodContext<'a> {
             self.method.method_attrs.coerce,
             self.method.method_attrs.preconditions,
             self.impl_preconditions,
+            self.call_attribution.r_check_call(),
         )
     }
 

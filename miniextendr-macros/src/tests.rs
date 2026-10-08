@@ -1549,17 +1549,39 @@ fn miniextendr_attr_call_parses_and_validates() {
         "{err}"
     );
 
+    // `call = none` (#1851): accepted on any standalone function, S3 methods
+    // included, in both forms.
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = none)).unwrap();
+    assert_eq!(attrs.call_attribution, Some(CallAttribution::NoCall));
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(
+        s3(generic = "summary", class = "thing"),
+        call = "none"
+    ))
+    .unwrap();
+    assert_eq!(attrs.call_attribution, Some(CallAttribution::NoCall));
+    // Not with `call_arg`: `.call` would name a call `none` never reports.
+    let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call_arg, call = none))
+        .err()
+        .expect("call_arg + call = none must fail");
+    assert!(
+        err.to_string()
+            .contains("`call_arg` cannot be combined with `call = none`"),
+        "{err}"
+    );
+
     for value in [
         quote::quote!(parent),
-        quote::quote!(none),
-        quote::quote!("none"),
+        quote::quote!(self),
+        quote::quote!("self"),
     ] {
         let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(call = #value))
             .err()
             .expect("unknown attribution must fail");
         assert!(
-            err.to_string()
-                .contains("accepts `wrapper` (the call as written, the default) or `caller`"),
+            err.to_string().contains(
+                "accepts `wrapper` (the call as written, the default), `caller` (attribute \
+                 conditions to the wrapper's caller) or `none` (conditions carry no call)"
+            ),
             "{err}"
         );
     }

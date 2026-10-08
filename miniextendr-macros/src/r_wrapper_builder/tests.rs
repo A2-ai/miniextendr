@@ -537,8 +537,92 @@ fn call_attribution_argument_strings() {
     assert!(doc.contains("Pass it by name"), "{doc}");
     // It is `wrapper` attribution plus the formal: same spelling, same marker.
     assert_eq!(argument.name(), "wrapper");
-    assert_eq!(argument.marker_name(), "Call");
+    assert_eq!(argument.marker_name(), Some("Call"));
     assert_eq!(CallAttribution::parse_name("argument"), None);
+}
+
+/// `call = none` (#1851): the slot carries the "no call" marker, every R-side
+/// check and the raise fallback get `NULL`, and there is no prelude, formal,
+/// `@param` line or marker type.
+#[test]
+fn call_attribution_none_strings() {
+    let none = CallAttribution::NoCall;
+    assert_eq!(none.dot_call_arg(), ".call = FALSE");
+    assert_eq!(none.dot_call_expr(), "FALSE");
+    assert_eq!(none.raise_default(), "NULL");
+    assert_eq!(none.r_check_call(), Some("NULL"));
+    assert_eq!(none.prelude(false), "");
+    assert_eq!(none.formal(), None);
+    assert_eq!(none.param_doc(), None);
+    assert_eq!(none.name(), "none");
+    assert_eq!(none.marker_name(), None);
+    assert_eq!(CallAttribution::parse_name("none"), Some(none));
+    // An explicit choice: `call_arg` is refused with it, so it never turns
+    // into `Argument`, and on an S3 method it stays.
+    assert_eq!(none.with_call_arg(true), none);
+    assert_eq!(none.for_s3_method(false), none);
+    assert_eq!(none.for_s3_method(true), none);
+    // The crate default applies to exported and internal functions alike.
+    assert_eq!(
+        CallAttribution::resolve(None, None, Some(none), false),
+        none
+    );
+    assert_eq!(CallAttribution::resolve(None, None, Some(none), true), none);
+    let scalar = choice_attrs("Mode", false);
+    assert_eq!(
+        none.match_arg_statement("mode", "c(\"a\", \"b\")", None, &scalar),
+        "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", NULL)"
+    );
+}
+
+/// A generated S3 method's `wrapper` attribution (#1851): the slot, the
+/// checks and the raise fallback carry the frame, `environment()`, which the
+/// R helpers turn into the generic's call on a raise; with a `Call`
+/// parameter the frame is resolved up front into `.mx_call`. `caller` is
+/// untouched.
+#[test]
+fn call_attribution_for_s3_method() {
+    use CallAttribution::{Caller, Generic, GenericEager, Wrapper};
+    assert_eq!(Wrapper.for_s3_method(false), Generic);
+    assert_eq!(Wrapper.for_s3_method(true), GenericEager);
+    assert_eq!(Caller.for_s3_method(false), Caller);
+    assert_eq!(Caller.for_s3_method(true), Caller);
+
+    assert_eq!(Generic.dot_call_arg(), ".call = environment()");
+    assert_eq!(Generic.dot_call_expr(), "environment()");
+    assert_eq!(Generic.raise_default(), "environment()");
+    assert_eq!(Generic.r_check_call(), Some("environment()"));
+    assert_eq!(Generic.prelude(false), "");
+    assert_eq!(Generic.formal(), None);
+    assert_eq!(Generic.param_doc(), None);
+
+    assert_eq!(GenericEager.dot_call_arg(), ".call = .mx_call");
+    assert_eq!(GenericEager.raise_default(), ".mx_call");
+    assert_eq!(GenericEager.r_check_call(), Some(".mx_call"));
+    assert_eq!(
+        GenericEager.prelude(false),
+        ".mx_call <- .miniextendr_frame_call(environment())"
+    );
+    assert_eq!(GenericEager.formal(), None);
+
+    // Both are `wrapper` attribution on a dispatched method.
+    for s3 in [Generic, GenericEager] {
+        assert_eq!(s3.name(), "wrapper");
+        assert_eq!(s3.marker_name(), Some("Call"));
+    }
+    let scalar = choice_attrs("Mode", false);
+    assert_eq!(
+        Generic.match_arg_statement("mode", "c(\"a\", \"b\")", None, &scalar),
+        "mode <- .miniextendr_match_arg(mode, c(\"a\", \"b\"), \"mode\", environment())"
+    );
+    assert_eq!(
+        DotCallBuilder::new("C_pkg_f")
+            .with_call_attribution(Generic)
+            .with_self("x")
+            .with_args_str("i")
+            .build(),
+        ".Call(C_pkg_f, .call = environment(), x, i)"
+    );
 }
 
 #[test]
@@ -596,16 +680,20 @@ fn call_formal_is_appended_after_the_dots() {
 
 #[test]
 fn call_attribution_names_and_markers_round_trip() {
-    for attribution in [CallAttribution::Wrapper, CallAttribution::Caller] {
+    for attribution in [
+        CallAttribution::Wrapper,
+        CallAttribution::Caller,
+        CallAttribution::NoCall,
+    ] {
         assert_eq!(
             CallAttribution::parse_name(attribution.name()),
             Some(attribution)
         );
     }
     assert_eq!(CallAttribution::parse_name("parent"), None);
-    assert_eq!(CallAttribution::parse_name("none"), None);
-    assert_eq!(CallAttribution::Wrapper.marker_name(), "Call");
-    assert_eq!(CallAttribution::Caller.marker_name(), "CallerCall");
+    assert_eq!(CallAttribution::parse_name("self"), None);
+    assert_eq!(CallAttribution::Wrapper.marker_name(), Some("Call"));
+    assert_eq!(CallAttribution::Caller.marker_name(), Some("CallerCall"));
 }
 
 #[test]

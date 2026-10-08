@@ -277,9 +277,11 @@ test_that("a `CallerCall` body receives the call a helper passed on", {
 
 test_that("a `Call` parameter on an S3 method receives the method's call", {
   obj <- structure(1, class = "mx_call_marker")
-  # `UseMethod()` dispatch: the method frame's call names the method.
-  expect_equal(format(obj), quote(format.mx_call_marker(obj)))
-  expect_equal(format(obj, extra = 2), quote(format.mx_call_marker(obj, extra = 2)))
+  # `UseMethod()` dispatch: the method frame's call, under the generic's name
+  # (#1851); called directly, the method's own.
+  expect_equal(format(obj), quote(format(obj)))
+  expect_equal(format(obj, extra = 2), quote(format(obj, extra = 2)))
+  expect_equal(format.mx_call_marker(obj), quote(format.mx_call_marker(obj)))
 })
 
 test_that("`.call` takes a call object as is", {

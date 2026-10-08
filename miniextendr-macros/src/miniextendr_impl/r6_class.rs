@@ -104,6 +104,7 @@ fn active_setter_precondition_checks(
         setter.method_attrs.coerce,
         setter.method_attrs.preconditions,
         impl_preconditions,
+        None,
     )
 }
 

@@ -31,8 +31,15 @@ use crate::miniextendr_impl::ReceiverKind;
 /// - `message` — `message()` signals; same propagation.
 /// - `condition` — `signalCondition()` signals; same propagation.
 pub fn condition_check_lines(indent: &str) -> Vec<String> {
+    condition_check_lines_with_default(indent, "sys.call()")
+}
+
+/// [`condition_check_lines`] with an explicit raise fallback
+/// (`CallAttribution::raise_default`): `environment()` for an S3 method, whose
+/// frame the raise helper turns into the generic's call (#1851).
+pub fn condition_check_lines_with_default(indent: &str, raise_default: &str) -> Vec<String> {
     vec![format!(
-        "{indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, sys.call()))"
+        "{indent}if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) return(.miniextendr_raise_condition(.val, {raise_default}))"
     )]
 }
 
@@ -67,7 +74,8 @@ pub fn standalone_body(call_expr: &str, final_return: &str, indent: &str) -> Str
 }
 
 /// [`standalone_body`] with an explicit raise fallback: `sys.call()` for the
-/// wrapper's own frame, `.mx_call` for `call = caller` wrappers (see
+/// wrapper's own frame, `.mx_call` for `call = caller` wrappers, `NULL` under
+/// `call = none` and `environment()` for an S3 method (see
 /// `crate::r_wrapper_builder::CallAttribution::raise_default`).
 pub fn standalone_body_with_call_default(
     call_expr: &str,
@@ -238,6 +246,9 @@ pub struct MethodReturnBuilder {
     invisible: bool,
     /// Number of leading spaces for each generated line.
     indent: usize,
+    /// The raise helper's fallback call (`CallAttribution::raise_default`):
+    /// `sys.call()` unless set, `environment()` for an S3 method (#1851).
+    raise_default: String,
 }
 
 impl MethodReturnBuilder {
@@ -252,7 +263,15 @@ impl MethodReturnBuilder {
             chain_var: None,
             invisible: false,
             indent: 2,
+            raise_default: "sys.call()".to_string(),
         }
+    }
+
+    /// Set the raise helper's fallback call (see
+    /// `CallAttribution::raise_default`).
+    pub fn with_raise_default(mut self, raise_default: &str) -> Self {
+        self.raise_default = raise_default.to_string();
+        self
     }
 
     /// Wrap the method's final expression in `invisible(...)` (marker or
@@ -409,7 +428,10 @@ impl MethodReturnBuilder {
         let call_expr = &self.call_expr;
 
         let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
-        lines.extend(condition_check_lines(&indent));
+        lines.extend(condition_check_lines_with_default(
+            &indent,
+            &self.raise_default,
+        ));
         if let Some(wrap) = &self.explicit_wrap {
             lines.push(format!(
                 "{indent}{}",

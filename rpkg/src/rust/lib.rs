@@ -306,6 +306,7 @@ mod roxygen_carry_tests;
 mod roxygen_no_page_links_tests;
 mod roxygen_prose_links_tests;
 mod roxygen_rustdoc_links_tests;
+mod s3_call_tests;
 mod s3_nonsyntactic_tests;
 mod s3_replacement_tests;
 mod s3_tests;

@@ -433,7 +433,10 @@ definition is backtick-quoted, `` `[.percent` <- function(x, i, ...) ``, and
 the roxygen line stays `#' @method [ percent` (which roxygen2 turns into
 `S3method("[", percent)`). The same quoting applies to an impl-block method
 that overrides its generic, `#[miniextendr(s3(generic = "[["))]` (#1475). Group
-generics (`Ops`, `Math`) are not special-cased: write a method per operator.
+generics (`Ops`, `Math`) are not special-cased: write a method per operator,
+or one on the group name (`s3(generic = "Ops", class = "thing")`, formals
+`e1`, `e2`), which R calls for every operator in the group; a condition it
+raises names the operator call, `x + 1` (#1851).
 
 `$` methods receive the field name as a character string (`x$n` dispatches as
 `` `$.percent`(x, "n") ``), so type that parameter `String` or `&str`.
@@ -538,6 +541,20 @@ runs before the Rust function: `is.list(x)` for a `List` receiver
 (`'x' must be a list`), a length-1 character vector for `&str`
 (`'name' must be character`, `'name' must have length 1`). A `SEXP`
 parameter has none.
+
+**The call a condition reports is the assignment.** R calls a replacement
+method with the temporary it assigns through and the whole new value,
+`` `$<-.thing`(`*tmp*`, f, value = <the new f>) ``, and that is the call a
+hand-written method's `stop()` would name. A generated method reports
+`x$f <- value` instead (`x[["f"]] <- value`, `x["f"] <- value`,
+`names(x) <- value`): compact, and never holding the value, which for
+`x$f$col <- big` is the evaluated inner value inlined. The same rewrite gives
+every generated S3 method the generic's call, `summary(x)` rather than
+`summary.thing(x)` and `x + 1` from an `Ops` method, for every condition it
+raises, the R-side checks above included; a method called directly by its
+name reports that call. See
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#s3-methods-the-generic-call)
+(#1851).
 
 ### Double dispatch (vctrs)
 

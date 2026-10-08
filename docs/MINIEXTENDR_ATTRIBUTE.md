@@ -227,7 +227,7 @@ The R page gets "Prepares the sources." and rustdoc gets both paragraphs.
 | `noexport` | Suppress `@export` only |
 | `invisible` | Wrap R return in `invisible()` (same as an `Invisible<T>` return type) |
 | `visible` | Force visible return (same as a `Visible<T>` return type) |
-| `call = wrapper \| caller` | Which call conditions are attributed to (same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`. See [below](#condition-call-markers-and-defaults) |
+| `call = wrapper \| caller \| none` | Which call conditions are attributed to (`wrapper` and `caller` are the same as a `Call` / `CallerCall` parameter); `caller` needs `noexport` / `internal`; `none` drops the call from every condition, argument errors included. An S3 method's `wrapper` call is the generic's. See [below](#condition-call-markers-and-defaults) |
 | `call_arg` | A trailing `.call = NULL` formal, exported functions included: `NULL` is the wrapper's own call, and a function composing it passes `.call = environment()`. Not with `call = caller` or `s3(...)`. See [below](#condition-call-markers-and-defaults) |
 | `doc = "..."` | Custom roxygen block (replaces auto-generated) |
 
@@ -452,15 +452,27 @@ return markers, renamed imports and type aliases do not select the syntax.
 
 Every generated wrapper passes a call object to its C entry point
 (`.Call(C_pkg_f, .call = <call>, ...)`), and conditions raised from Rust are
-attributed to it, as written. Which call it is has two attributions and three
-equivalent spellings (#1566), most specific first:
+attributed to it, as written. Which call it is has three attributions and up
+to three equivalent spellings (#1566, #1851), most specific first:
 
-| | `wrapper` (default) | `caller` |
-|-|---------------------|----------|
-| `.call =` | `sys.call()` | `.mx_call`, the caller's call, or the frame / call passed as `.call` |
-| Marker parameter | `call: Call` | `call: CallerCall` |
-| Attribute | `call = wrapper` | `call = caller` |
-| `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` |
+| | `wrapper` (default) | `caller` | `none` |
+|-|---------------------|----------|--------|
+| `.call =` | `sys.call()` | `.mx_call`, the caller's call, or the frame / call passed as `.call` | `FALSE`: no call |
+| Marker parameter | `call: Call` | `call: CallerCall` | none |
+| Attribute | `call = wrapper` | `call = caller` | `call = none` |
+| `Cargo.toml` default | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
+
+An S3 method (`s3(generic = ..., class = ...)`, or a method of a
+`#[miniextendr(s3)]` impl block) under `wrapper` reports the generic's call,
+`summary(x)` where its own frame's call is `summary.mx_rec(x)`, and a
+replacement method `x$f <- value`, a compact call that never holds the new
+value; a direct call of the method by name is reported as is. The wrapper
+passes `.call = environment()` and the frame is resolved only when a condition
+is raised ([S3 methods: the generic call](CALL_ATTRIBUTION.md#s3-methods-the-generic-call)).
+`none` drops the call from every condition the function raises, the R-side
+argument checks and failed conversions included; it has no marker, and
+`call_arg` or a marker next to it is a compile error
+([No call](CALL_ATTRIBUTION.md#no-call-at-all-none)).
 
 ```rust
 use miniextendr_api::{Call, CallerCall, miniextendr};
@@ -480,7 +492,8 @@ The marker (`miniextendr_api::{Call, CallerCall}`, `repr(transparent)` over
 so the body sees exactly the call the wrapper attributed to. A function taking
 one runs on the main thread. `caller`, in either spelling, requires
 `noexport` / `internal`; a crate default of `"caller"` applies to those
-functions only and leaves exported ones at `wrapper`. Two spellings on one
+functions only and leaves exported ones at `wrapper`, while `"none"` applies
+to every free function. Two spellings on one
 function must agree, a function takes at most one marker, per-parameter
 options do not apply to it, and class / trait methods accept none of the three
 (they keep the wrapper's own call). A `caller` standalone wrapper (S3 methods

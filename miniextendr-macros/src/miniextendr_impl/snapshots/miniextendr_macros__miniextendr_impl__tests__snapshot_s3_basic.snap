@@ -1,6 +1,6 @@
 ---
 source: miniextendr-macros/src/miniextendr_impl/tests.rs
-assertion_line: 4419
+assertion_line: 5198
 expression: generate_s3_r_wrapper(&parsed)
 ---
 # Counter::new (1:1)
@@ -52,8 +52,8 @@ if (!base::exists("get", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 get.Counter <- function(x, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__get, .call = sys.call(), x)
-  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val <- .Call(C_miniextendr_macros_Counter__get, .call = environment(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   .val
 }
 
@@ -92,8 +92,8 @@ if (!base::exists("increment", mode = "function")) {
 #' @param ... Additional arguments.
 #' @export
 increment.Counter <- function(x, ...) {
-  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x)
-  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val <- .Call(C_miniextendr_macros_Counter__increment, .call = environment(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   x
 }
 

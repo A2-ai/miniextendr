@@ -461,9 +461,13 @@ use vtable::is_self_ref_type;
 
 /// Generate R function body lines that capture the `.Call()` result in `.val`,
 /// check for a tagged `rust_condition_value`, and return `.val`.
-fn trait_method_body_lines(call_expr: &str, indent: &str) -> Vec<String> {
+/// `raise_default` is the raise helper's fallback call
+/// (`CallAttribution::raise_default`).
+fn trait_method_body_lines(call_expr: &str, indent: &str, raise_default: &str) -> Vec<String> {
     let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
-    lines.extend(crate::method_return_builder::condition_check_lines(indent));
+    lines.extend(
+        crate::method_return_builder::condition_check_lines_with_default(indent, raise_default),
+    );
     lines.push(format!("{}.val", indent));
     lines
 }

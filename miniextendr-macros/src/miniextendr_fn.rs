@@ -2426,14 +2426,17 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   below the function come the crate's `[package.metadata.miniextendr]
 ///   preconditions = true | false` and then the `no-preconditions-default`
 ///   feature (`crate::r_preconditions::resolve_type_checks`).
-/// - `call = wrapper | caller`: which call the wrapper attributes conditions
-///   to (#1566), always as written. `wrapper` (the framework default) passes
-///   `.call = sys.call()`; `caller` binds the caller's call first and passes
-///   that (internal entry points behind a hand-written R function; needs
-///   `noexport` / `internal`). A `Call` / `CallerCall` parameter is the
-///   marker spelling of `wrapper` / `caller`, and
-///   `[package.metadata.miniextendr] call_attribution` the crate default; see
-///   `CallAttribution::resolve`.
+/// - `call = wrapper | caller | none`: which call the wrapper attributes
+///   conditions to (#1566), always as written. `wrapper` (the framework
+///   default) passes `.call = sys.call()`; `caller` binds the caller's call
+///   first and passes that (internal entry points behind a hand-written R
+///   function; needs `noexport` / `internal`); `none` passes no call, so
+///   every condition, the argument errors included, has a NULL call (#1851;
+///   not with a `Call` / `CallerCall` parameter or `call_arg`). A `Call` /
+///   `CallerCall` parameter is the marker spelling of `wrapper` / `caller`,
+///   and `[package.metadata.miniextendr] call_attribution` the crate default;
+///   see `CallAttribution::resolve`. On an S3 method `wrapper` reports the
+///   generic's call (`CallAttribution::for_s3_method`).
 /// - `call_arg`: the wrapper takes a trailing `.call = NULL` formal (#1834),
 ///   exported or not. `NULL` is the wrapper's own call; an R function
 ///   composing the function passes `.call = environment()` (or a call
@@ -2480,7 +2483,7 @@ pub(crate) struct MiniextendrFnAttrs {
     /// (`crate::r_preconditions::resolve_type_checks`).
     pub(crate) preconditions: Option<bool>,
     /// The attribution the attribute asked for, if any (#1566):
-    /// `call = wrapper | caller`. `None` here means the attribute said
+    /// `call = wrapper | caller | none`. `None` here means the attribute said
     /// nothing; the codegen then falls back to a `Call` / `CallerCall`
     /// parameter marker, the crate default and finally `wrapper`
     /// (`crate::r_wrapper_builder::CallAttribution::resolve`).
@@ -3235,8 +3238,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             return Err(syn::Error::new_spanned(
                                 &nv.value,
                                 "`call = ...` accepts `wrapper` (the call as written, the \
-                                 default) or `caller` (attribute conditions to the wrapper's \
-                                 caller)",
+                                 default), `caller` (attribute conditions to the wrapper's \
+                                 caller) or `none` (conditions carry no call)",
                             ));
                         };
                         if call_attr.is_some() {
@@ -3269,7 +3272,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller`, `r_entry = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller | none`, `r_entry = \"...\"`, \
                                  `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
@@ -3432,6 +3435,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 "`call_arg` cannot be combined with `call = caller`: a `caller` wrapper already \
                  takes `.call`, where NULL means the caller's call. Keep `call = caller`, or drop \
                  it so that NULL means this function's own call.",
+            ));
+        }
+        // `call = none` (#1851) passes no call, so there is nothing for a
+        // `.call` argument to replace.
+        if call_arg && call_attr == Some(CallAttribution::NoCall) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call_arg` cannot be combined with `call = none`: `.call` names the call the \
+                 conditions report, and `none` reports none. Keep one of them.",
             ));
         }
         if call_arg && (s3_generic.is_some() || s3_class.is_some()) {

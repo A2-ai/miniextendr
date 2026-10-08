@@ -1,0 +1,7 @@
+error: `call_arg` cannot be combined with `call = none`: `.call` names the call the conditions report, and `none` reports none. Keep one of them.
+ --> tests/ui/fn_call_none_call_arg.rs:9:1
+  |
+9 | #[miniextendr(call_arg, call = none)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

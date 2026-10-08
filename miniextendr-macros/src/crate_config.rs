@@ -65,11 +65,12 @@ pub(crate) struct CrateConfig {
     /// shared Rd page, and the `# Generated from Rust fn … (file:line:col)`
     /// comment above each wrapper remains the navigation pointer.
     pub(crate) source_tags: bool,
-    /// `call_attribution = "wrapper" | "caller"`: the condition-call
+    /// `call_attribution = "wrapper" | "caller" | "none"`: the condition-call
     /// attribution of every free function that neither takes a `Call` /
     /// `CallerCall` parameter nor sets `call = ...` (#1566). `caller` applies
     /// to `noexport` / `internal` functions; exported ones keep `wrapper`.
-    /// Unset means the framework default, `wrapper`.
+    /// `none` (#1851) applies to every free function: its conditions carry
+    /// no call. Unset means the framework default, `wrapper`.
     pub(crate) call_attribution: Option<CallAttribution>,
     /// `conversion_error_class = "..." | ["...", ...]`: classes added to every
     /// argument-conversion condition of the crate, after the error type's own
@@ -247,7 +248,7 @@ pub(crate) fn parse_crate_config(text: &str) -> Result<CrateConfig, String> {
                 .and_then(CallAttribution::parse_name)
                 .ok_or_else(|| {
                     format!(
-                        "`call_attribution` must be one of \"wrapper\", \"caller\", found \
+                        "`call_attribution` must be one of \"wrapper\", \"caller\", \"none\", found \
                          `{value}`"
                     )
                 })?;
@@ -647,13 +648,17 @@ noexport_postfix = "also not ours"
             attribution("[package]\nmetadata.miniextendr.call_attribution = \"wrapper\"\n"),
             Ok(Some(CallAttribution::Wrapper))
         );
-        for value in ["\"parent\"", "'none'"] {
+        assert_eq!(
+            attribution("[package.metadata.miniextendr]\ncall_attribution = 'none'\n"),
+            Ok(Some(CallAttribution::NoCall))
+        );
+        for value in ["\"parent\"", "'self'"] {
             let bad = attribution(&format!(
                 "[package.metadata.miniextendr]\ncall_attribution = {value}\n"
             ))
             .unwrap_err();
             assert!(
-                bad.contains("must be one of \"wrapper\", \"caller\"")
+                bad.contains("must be one of \"wrapper\", \"caller\", \"none\"")
                     && bad.contains(&format!("`{value}`")),
                 "{bad}"
             );

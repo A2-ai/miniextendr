@@ -199,9 +199,10 @@ repeat them. `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`)
 also checks the converted value, and that check stays too.
 
 The feature does not touch the call a wrapper reports: every wrapper passes
-`.call = sys.call()` (or the caller's call under `call = caller`, or the
-call passed as `.call` under `call_arg`), so
-conditions, including deferred warnings, name the call as written either way
+`.call = sys.call()` (or the caller's call under `call = caller`, the call
+passed as `.call` under `call_arg`, the generic's call for an S3 method, and
+no call under `call = none`), so conditions, including deferred warnings,
+name the call as written either way
 (see [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
 Each dropped check saves one `isTRUE()` guard on every call. On the rpkg

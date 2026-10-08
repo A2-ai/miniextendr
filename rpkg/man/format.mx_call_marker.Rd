@@ -16,7 +16,9 @@ The call the method was handed.
 }
 \description{
 \code{Call} marker on a standalone S3 method: the marker is accepted there, and
-the body sees the method frame's own \code{sys.call()}. Under \code{UseMethod()}
-dispatch that call names the method, \code{format.mx_call_marker(obj)} for
-\code{format(obj)}, here returned to R for the test to compare.
+the body sees the call the method's conditions would report. Under
+\code{UseMethod()} dispatch that is the generic's call, \code{format(obj)} (#1851:
+the method frame's own \code{sys.call()} would name the method,
+\code{format.mx_call_marker(obj)}); called directly, the method's own. Here it
+is returned to R for the test to compare.
 }
