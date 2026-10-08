@@ -3373,7 +3373,7 @@ pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// - `r!(env: e; R tokens…)` — evaluate in the environment SEXP `e`. The
 ///   leading `env: <expr> ;` is consumed as Rust, the rest is R source.
 ///
-/// Both evaluate to `Result<SEXP, String>`; the `SEXP` is **unprotected**.
+/// Both evaluate to `Result<SEXP, REvalError>`; the `SEXP` is **unprotected**.
 ///
 /// # Safety
 ///

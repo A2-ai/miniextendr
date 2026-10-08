@@ -429,6 +429,36 @@ test_that("gc_stress_expression_call survives gctorture and returns the right va
   expect_equal(ok, 20L, info = paste("failures:", paste(fail, collapse = "; ")))
 })
 
+test_that("gc_stress_eval_error keeps the caught condition rooted under gctorture (#1861)", {
+  expected <- c("held", "gc_held_error", "error", "condition", "thrower", "held")
+  expect_identical(miniextendr:::gc_stress_eval_error(), expected)
+
+  skip_gc_stress_if_disabled()
+  # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(10L)) {
+    res <- tryCatch(
+      {
+        stopifnot(identical(miniextendr:::gc_stress_eval_error(), expected))
+        "ok"
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+  gctorture(FALSE)
+
+  expect_equal(ok, 10L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
 # endregion
 
 # region: trait View argument rooting -----------------------------------------

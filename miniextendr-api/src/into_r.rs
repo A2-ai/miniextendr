@@ -2420,23 +2420,14 @@ mod connections_into_r {
     use crate::connection::{RNullConnection, RStderr, RStdin, RStdout};
     use crate::into_r::IntoR;
 
-    // Evaluate a no-arg base function and return the resulting SEXP (unprotected).
+    // Evaluate a no-arg base function and return the resulting SEXP
+    // (unprotected). An R error panics with R's message.
     //
     // # Safety
     // Must be called from the R main thread.
-    unsafe fn eval_base_noarg(name: &std::ffi::CStr) -> SEXP {
-        use crate::gc_protect::OwnedProtect;
-        use crate::sys::{R_BaseEnv, Rf_install, Rf_lang1};
-        unsafe {
-            let call = OwnedProtect::new(Rf_lang1(Rf_install(name.as_ptr())));
-            let mut err: std::os::raw::c_int = 0;
-            let result = crate::sys::R_tryEvalSilent(call.get(), R_BaseEnv, &mut err);
-            if err != 0 {
-                panic!("failed to evaluate {}()", name.to_string_lossy());
-            }
-            result
-        }
-        // `call` (OwnedProtect) drops here, issuing the matching UNPROTECT(1).
+    unsafe fn eval_base_noarg(name: &str) -> SEXP {
+        unsafe { crate::expression::RCall::new(name).eval_base() }
+            .unwrap_or_else(|e| panic!("failed to evaluate {name}(): {e}"))
     }
 
     impl IntoR for RStdin {
@@ -2447,7 +2438,7 @@ mod connections_into_r {
         }
 
         fn into_sexp(self) -> SEXP {
-            unsafe { eval_base_noarg(c"stdin") }
+            unsafe { eval_base_noarg("stdin") }
         }
     }
 
@@ -2459,7 +2450,7 @@ mod connections_into_r {
         }
 
         fn into_sexp(self) -> SEXP {
-            unsafe { eval_base_noarg(c"stdout") }
+            unsafe { eval_base_noarg("stdout") }
         }
     }
 
@@ -2471,7 +2462,7 @@ mod connections_into_r {
         }
 
         fn into_sexp(self) -> SEXP {
-            unsafe { eval_base_noarg(c"stderr") }
+            unsafe { eval_base_noarg("stderr") }
         }
     }
 

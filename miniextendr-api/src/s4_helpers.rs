@@ -28,7 +28,7 @@
 ///     }
 /// }
 /// ```
-use crate::expression::{RCall, REnv};
+use crate::expression::{RCall, REnv, REvalError};
 use crate::{SEXP, SexpExt};
 
 /// Get the `methods` package namespace for evaluating S4 functions.
@@ -36,7 +36,7 @@ use crate::{SEXP, SexpExt};
 /// # Safety
 ///
 /// Must be called from the R main thread.
-unsafe fn methods_namespace() -> Result<REnv, String> {
+unsafe fn methods_namespace() -> Result<REnv, REvalError> {
     unsafe { REnv::package_namespace("methods") }
 }
 
@@ -77,8 +77,9 @@ pub unsafe fn s4_has_slot(obj: SEXP, slot_name: &str) -> bool {
 /// # Returns
 ///
 /// - `Ok(SEXP)` with the slot value (unprotected).
-/// - `Err(String)` if the slot doesn't exist or another R error occurs.
-pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
+/// - `Err(REvalError)` with R's error if the slot doesn't exist or another R
+///   error occurs.
+pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, REvalError> {
     unsafe {
         let env = methods_namespace()?;
         RCall::new("slot")
@@ -101,8 +102,9 @@ pub unsafe fn s4_get_slot(obj: SEXP, slot_name: &str) -> Result<SEXP, String> {
 /// # Returns
 ///
 /// - `Ok(())` on success.
-/// - `Err(String)` if the slot doesn't exist or the value type is incompatible.
-pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), String> {
+/// - `Err(REvalError)` with R's error if the slot doesn't exist or the value
+///   type is incompatible.
+pub unsafe fn s4_set_slot(obj: SEXP, slot_name: &str, value: SEXP) -> Result<(), REvalError> {
     unsafe {
         // slot(obj, name) <- value  is equivalent to `slot<-`(obj, name, value)
         let env = methods_namespace()?;

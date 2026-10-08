@@ -257,9 +257,9 @@ pub(crate) fn read_character(sexp: SEXP) -> Result<Vec<Option<String>>, SexpErro
 /// The call's head is the function bound in the base environment, and it is
 /// evaluated in the global environment: R finds the methods a top-level
 /// `as.character(x)` would find, and a global binding named `as.character`
-/// does not replace the function. `R_tryEvalSilent` (inside [`RCall::eval`])
-/// turns an R error into `Err`, so a failing method never unwinds through
-/// Rust frames.
+/// does not replace the function. [`RCall::eval`] catches an R error as
+/// `Err`, so a failing method never unwinds through Rust frames; its message
+/// (R's own, without the `Error in` prefix) goes into the conversion error.
 fn dispatch_as_character(sexp: SEXP) -> Result<OwnedProtect, SexpError> {
     // SAFETY: argument conversion runs on R's main thread, and `as.character`
     // is always bound in the base environment, so `Rf_findFun` cannot fail.
@@ -271,7 +271,7 @@ fn dispatch_as_character(sexp: SEXP) -> Result<OwnedProtect, SexpError> {
         let call = RCall::from_sexp(fun).arg(sexp);
         let result = call
             .eval(crate::sys::R_GlobalEnv)
-            .map_err(|msg| SexpError::InvalidValue(format!("as.character() failed: {msg}")))?;
+            .map_err(|e| SexpError::InvalidValue(format!("as.character() failed: {e}")))?;
         // `eval` returns the value unprotected: root it before anything else
         // allocates.
         let result = OwnedProtect::new(result);

@@ -129,6 +129,26 @@ pub fn check_connections_version() {
 /// }
 /// ```
 pub unsafe fn check_connections_runtime() -> Result<(), String> {
+    // SAFETY: R's main thread (caller contract).
+    let (major, minor) = unsafe { running_r_version() }
+        .map_err(|e| format!("could not read the running R version: {e}"))?;
+
+    // R_new_custom_connection requires R >= 4.3.0
+    if major > 4 || (major == 4 && minor >= 3) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Custom connections require R >= 4.3.0, but running R {major}.{minor}"
+        ))
+    }
+}
+
+/// The running R's major and minor version, from `R.Version()`.
+///
+/// # Safety
+///
+/// Must be called from the R main thread.
+unsafe fn running_r_version() -> Result<(i32, i32), crate::expression::REvalError> {
     use crate::SexpExt;
     use crate::expression::{RCall, dollar_extract};
     use crate::gc_protect::OwnedProtect;
@@ -160,14 +180,7 @@ pub unsafe fn check_connections_runtime() -> Result<(), String> {
             .eval(R_BaseEnv)?;
         let minor = minor_int.as_integer().expect("R.Version()$minor is not NA");
 
-        // R_new_custom_connection requires R >= 4.3.0
-        if major > 4 || (major == 4 && minor >= 3) {
-            Ok(())
-        } else {
-            Err(format!(
-                "Custom connections require R >= 4.3.0, but running R {major}.{minor}"
-            ))
-        }
+        Ok((major, minor))
     }
 }
 
@@ -1246,8 +1259,7 @@ pub struct RStderr;
 unsafe fn eval_base_connection(name: &std::ffi::CStr) -> SEXP {
     use crate::expression::RCall;
     unsafe {
-        // R_tryEvalSilent (inside RCall::eval) routes errors back as Err
-        // rather than longjmping.
+        // RCall::eval catches an R error as Err rather than longjmping.
         RCall::from_cstr(name)
             .eval_base()
             .unwrap_or_else(|_| panic!("failed to evaluate {}()", name.to_string_lossy()))

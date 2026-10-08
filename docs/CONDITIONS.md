@@ -24,7 +24,10 @@ leading `call = none`, which raises the condition without a call, like R's
 [`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait
 (hand-written or [derived](#deriving-rconditionerror)), or, for error enums
 that already derive `serde::Serialize`, through
-[the serde shape](#deriving-the-classes-from-a-serde-error-type).
+[the serde shape](#deriving-the-classes-from-a-serde-error-type). An R error
+caught by `RCall::eval` or `r_eval_str` (an `REvalError`) is raised again the
+same ways, keeping R's message and classes (see
+[Raising a caught R error as your own](#raising-a-caught-r-error-as-your-own)).
 
 A fifth macro, `arg_error!(param = "x", …)`, raises the condition of the
 wrapper's own argument checks from a body (see
@@ -716,6 +719,74 @@ must be skipped or renamed.
 - Choose `RConditionError` when the message or class vector needs to differ
   from the serde shape (it takes precedence); the serde path is the
   zero-boilerplate default for enums that are already serde-tagged.
+
+## Raising a caught R error as your own
+
+`RCall::eval`, `eval_base` and `r_eval_str` catch an R error as
+`expression::REvalError`, which holds R's condition: `message()` (R's
+`conditionMessage()`, without the `Error in <call> :` prefix and the `Calls:`
+line R prints), `call()`, `classes()` and the condition object
+([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)). Three ways raise it
+again from a `#[miniextendr]` function, each keeping R's message as the
+message:
+
+```rust
+use miniextendr_api::expression::{RCall, REvalError};
+use miniextendr_api::condition::RError;
+use miniextendr_api::{miniextendr, rust_error, SEXP};
+
+// 1. The package's class first, the caught classes after it.
+#[miniextendr]
+pub fn summarise(df: SEXP) -> SEXP {
+    match unsafe { RCall::new("summary").arg(df).eval_base() } {
+        Ok(value) => value,
+        Err(e) => rust_error!(class = e.reraise_class("pkg_summary_error"), "{e}"),
+    }
+}
+
+// 2. Returned as is: the caught classes, then the `rust_error` layers.
+#[miniextendr]
+pub fn summarise_plain(df: SEXP) -> Result<SEXP, REvalError> {
+    unsafe { RCall::new("summary").arg(df).eval_base() }
+}
+
+// 3. Through `RError`, for data fields or to carry it off R's main thread.
+#[miniextendr]
+pub fn summarise_with_data(df: SEXP) -> Result<SEXP, RError> {
+    unsafe { RCall::new("summary").arg(df).eval_base() }.map_err(|e| {
+        let class = e.reraise_class("pkg_summary_error");
+        RError::from(e).class(class).data("step", "summary")
+    })
+}
+```
+
+For an error R raised as `errorCondition("…", class = "vctrs_error_x")`, the
+first form gives
+
+```r
+e <- tryCatch(summarise(x), error = function(e) e)
+class(e)
+# [1] "pkg_summary_error" "vctrs_error_x" "rust_error" "simpleError" "error" "condition"
+```
+
+`reraise_class(own)` puts `own` (one class or several, most specific first)
+ahead of the caught `specific_classes()`: R's classes without the trailing
+`rust_error`, `simpleError`, `error` and `condition` layers, which the macro
+adds back once. A plain `stop("…")` has no specific class, so the result is
+`c(own, "rust_error", "simpleError", "error", "condition")`. A handler for the
+package's class, or for the class R raised, catches it either way.
+
+The raised condition's call is the `#[miniextendr]` function's own, as for
+any condition the function raises; `e.call()` is the call R recorded, there
+for a message that wants it. Fields of the caught condition other than its
+message (`rlang`'s `body` or `parent`, say) are not copied; read them from
+`e.condition()` and attach the ones a handler needs with `data =`. A `data =`
+value can't be an R object, so the caught condition itself can't be kept as
+the new one's `parent` yet (#1874).
+
+`REvalError` is `!Send`: dropping it releases the condition's root, which
+must happen on R's main thread. Convert it to an `RError` (the third form), or
+keep the `String` from `message()`, to carry the failure to a worker thread.
 
 ## Conditions without a call
 

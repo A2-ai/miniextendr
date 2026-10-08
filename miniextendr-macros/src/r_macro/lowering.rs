@@ -414,7 +414,7 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
     }
 
     // Wrap the expansion in an immediately-invoked closure that returns
-    // `Result<SEXP, String>`. This lets `?` inside the body (from
+    // `Result<SEXP, REvalError>`. This lets `?` inside the body (from
     // `RCall::namespaced()?` and nested calls) propagate to the closure's
     // return type rather than to the enclosing function (which may return `()`).
     //
@@ -422,7 +422,7 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
     match &call.fun {
         LowerFun::Simple(name) => {
             quote! {
-                (|| -> ::std::result::Result<::miniextendr_api::SEXP, ::std::string::String> {
+                (|| -> ::std::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::expression::REvalError> {
                     unsafe {
                         let __r_scope = ::miniextendr_api::gc_protect::ProtectScope::new();
                         #(#scope_lets)*
@@ -435,7 +435,7 @@ fn emit_call(call: &LowerCall, env_expr: &TokenStream) -> TokenStream {
         }
         LowerFun::Namespaced { pkg, fun } => {
             quote! {
-                (|| -> ::std::result::Result<::miniextendr_api::SEXP, ::std::string::String> {
+                (|| -> ::std::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::expression::REvalError> {
                     let __r_ns_call = unsafe {
                         ::miniextendr_api::expression::RCall::namespaced(#pkg, #fun)?
                     };
@@ -534,7 +534,7 @@ fn emit_atom(atom: &LowerAtom, scope_lets: &mut Vec<TokenStream>) -> TokenStream
 ///
 /// For namespaced nested calls (`pkg::fn(args…)`), the namespace resolution
 /// is inlined via `RCall::namespaced(pkg, fun)?.build()`. The `?` propagates
-/// resolution errors to the outer `Result<SEXP, String>` return.
+/// resolution errors to the outer `Result<SEXP, REvalError>` return.
 fn emit_nested_call(call: &LowerCall, scope_lets: &mut Vec<TokenStream>) -> TokenStream {
     // Allocate vars for this nested call's args.
     static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

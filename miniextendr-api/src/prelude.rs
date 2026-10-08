@@ -119,8 +119,9 @@ pub use crate::{r_print, r_println, r_warning};
 // region: R evaluation
 //
 // `r!` / `r_str!` evaluate R source from Rust; `r_eval_str` is the underlying
-// protect-safe parse + eval function they expand to.
-pub use crate::expression::r_eval_str;
+// protect-safe parse + eval function they expand to, and `REvalError` the R
+// error they return.
+pub use crate::expression::{REvalError, r_eval_str};
 pub use crate::{r, r_str};
 // endregion
 

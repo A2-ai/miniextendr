@@ -24,37 +24,37 @@ use miniextendr_macros::r;
 #[allow(dead_code)]
 fn _check_r_macro_forms() {
     // Basic arithmetic
-    let _: Result<miniextendr_api::SEXP, String> = r!(1L + 2L);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(1L + 2L);
 
     // Assignment with `<-`
-    let _: Result<miniextendr_api::SEXP, String> = r!(.x <- 1L);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(.x <- 1L);
 
     // Semicolon-separated statements
-    let _: Result<miniextendr_api::SEXP, String> = r!(a <- 7L; a * 6L);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(a <- 7L; a * 6L);
 
     // Trailing semicolon
-    let _: Result<miniextendr_api::SEXP, String> = r!(x <- 1L;);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(x <- 1L;);
 
     // Nested function call with string arg
-    let _: Result<miniextendr_api::SEXP, String> = r!(nchar("hello"));
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(nchar("hello"));
 
     // Tilde formula
-    let _: Result<miniextendr_api::SEXP, String> = r!(y ~ x);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(y ~ x);
 
     // Logical operators (not trailing)
-    let _: Result<miniextendr_api::SEXP, String> = r!(x && y);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(x && y);
 
     // %in% operator (tokenises as `%`, ident, `%`)
-    let _: Result<miniextendr_api::SEXP, String> = r!(x %in% y);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(x %in% y);
 
     // Bracket index with empty first slot
-    let _: Result<miniextendr_api::SEXP, String> = r!(m[, 1]);
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(m[, 1]);
 
     // Empty (missing) call arguments — valid R sublist grammar
-    let _: Result<miniextendr_api::SEXP, String> = r!(matrix(, 2, 2));
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(matrix(, 2, 2));
 
     // `env` followed by `::` is R namespace access, not the env head
-    let _: Result<miniextendr_api::SEXP, String> = r!(env::foo());
+    let _: Result<miniextendr_api::SEXP, miniextendr_api::REvalError> = r!(env::foo());
 }
 
 fn main() {}

@@ -4575,7 +4575,7 @@ pub fn gc_stress_as_named_list_deferred() {
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
-pub fn gc_stress_expression_call() -> Result<SEXP, String> {
+pub fn gc_stress_expression_call() -> Result<SEXP, miniextendr_api::REvalError> {
     use miniextendr_api::expression::RCall;
 
     unsafe {
@@ -4585,6 +4585,73 @@ pub fn gc_stress_expression_call() -> Result<SEXP, String> {
             .named_arg("sep", SEXP::scalar_string_from_str("-"))
             .eval_base()
     }
+}
+
+/// Hold an `REvalError` (#1861) across allocations under GC pressure, then
+/// read every part of it.
+///
+/// Catching the error allocates (the `conditionMessage()` and
+/// `conditionCall()` calls, the list that roots the condition with its
+/// call), and the error then lives across a loop that allocates strings and
+/// lists. The condition and the call it computed must stay rooted by the
+/// error itself: the fixture keeps no other reference. Returns the message,
+/// the classes, the call's function name and the condition's own message
+/// field, which read `"held"`, `c("gc_held_error", "error", "condition")`,
+/// `"thrower"` and `"held"`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_eval_error() -> Vec<String> {
+    use miniextendr_api::expression::{RCall, r_eval_str};
+
+    // SAFETY: main thread (#[miniextendr] body); `thrower` is rooted while the
+    // call is built, and the error roots what it holds.
+    let error = unsafe {
+        let thrower = OwnedProtect::new(
+            r_eval_str(
+                r#"function() {
+                    stop(errorCondition("held", class = "gc_held_error", call = quote(thrower())))
+                }"#,
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .expect("the closure evaluates"),
+        );
+        let call = RCall::from_sexp(thrower.get());
+        call.eval_base().expect_err("thrower() raises")
+    };
+
+    // Allocate while only the error holds the condition and its call.
+    for i in 0..50 {
+        let text = unsafe { OwnedProtect::new(SEXP::scalar_string_from_str(&format!("x{i}"))) };
+        let _list = unsafe { OwnedProtect::new(SEXP::alloc_list(8)) };
+        assert!(text.get().string_elt_str(0).is_some());
+    }
+
+    let call_name = error.call().map_or_else(
+        || "<no call>".to_owned(),
+        |call| {
+            // SAFETY: `call` is a LANGSXP rooted by `error`.
+            let head = unsafe { miniextendr_api::sys::CAR(call) };
+            if head.type_of() == SEXPTYPE::SYMSXP {
+                head.printname()
+                    .r_char_str()
+                    .map_or_else(String::new, ToOwned::to_owned)
+            } else {
+                "<not a symbol>".to_owned()
+            }
+        },
+    );
+    let condition_message = error
+        .condition()
+        .vector_elt(0)
+        .string_elt_str(0)
+        .unwrap_or_default()
+        .to_owned();
+    let mut out = vec![error.message().to_owned()];
+    out.extend(error.classes().iter().cloned());
+    out.push(call_name);
+    out.push(condition_message);
+    out
 }
 
 // endregion

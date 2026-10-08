@@ -11,9 +11,10 @@
 
 mod r_test_utils;
 
-use miniextendr_api::expression::r_eval_str;
+use miniextendr_api::condition::RError;
+use miniextendr_api::expression::{RCall, REnv, r_eval_str};
 use miniextendr_api::sys::R_GlobalEnv;
-use miniextendr_api::{SexpExt, r, r_str};
+use miniextendr_api::{SEXP, SEXPTYPE, SexpExt, r, r_str};
 
 #[test]
 fn r_eval_suite() {
@@ -101,30 +102,204 @@ fn test_empty_source() {
     assert!(nil.is_nil(), "blank source should evaluate to NULL");
 }
 
-/// A genuine R syntax error must return `Err`, not crash or wrong-answer.
+/// A genuine R syntax error must return `Err`, not crash or wrong-answer. It
+/// has no R condition, so it comes back as a `simpleError` built for it.
 fn test_parse_error_is_err() {
     // Unbalanced paren — a classic parse failure.
-    let err = unsafe { r_eval_str("1 + (2", R_GlobalEnv) };
-    assert!(err.is_err(), "unbalanced paren must be an Err, got {err:?}");
+    let err =
+        unsafe { r_eval_str("1 + (2", R_GlobalEnv) }.expect_err("unbalanced paren must be an Err");
+    assert_eq!(
+        err.message(),
+        "incomplete R expression (unbalanced delimiter?): 1 + (2"
+    );
+    assert_eq!(err.classes(), ["simpleError", "error", "condition"]);
+    assert!(err.call().is_none());
+    assert!(err.condition().inherits_class(c"error"));
 
     // Outright garbage tokens.
-    let err2 = unsafe { r_eval_str("if if if", R_GlobalEnv) };
-    assert!(err2.is_err(), "garbage must be an Err, got {err2:?}");
+    let err2 = unsafe { r_eval_str("if if if", R_GlobalEnv) }.expect_err("garbage must be an Err");
+    assert!(err2.message().contains("syntax error"), "got: {err2}");
 }
 
-/// A runtime R error (valid syntax, failing eval) is captured as `Err`.
+/// A runtime R error (valid syntax, failing eval) is captured as `Err`
+/// holding R's condition: the message alone, no call for a `stop()` at the
+/// top of the source.
 fn test_eval_error_is_err() {
-    let err = r_str!("stop(\"boom from R\")");
-    assert!(err.is_err(), "stop() should surface as Err");
-    let msg = err.unwrap_err();
-    assert!(
-        msg.contains("boom from R"),
-        "error message should carry R's message, got: {msg}"
+    let err = r_str!("stop(\"boom from R\")").expect_err("stop() should surface as Err");
+    assert_eq!(err.message(), "boom from R");
+    assert_eq!(
+        err.to_string(),
+        "boom from R",
+        "Display is the message alone"
     );
+    assert_eq!(err.classes(), ["simpleError", "error", "condition"]);
+    assert!(err.specific_classes().is_empty());
+    assert!(
+        err.call().is_none(),
+        "a top-level stop() has no call of its own"
+    );
+    assert!(err.condition().inherits_class(c"simpleError"));
 
     // Calling an undefined function is also an eval-time error.
-    let err2 = r_str!("this_function_does_not_exist_687()");
-    assert!(err2.is_err(), "undefined function should surface as Err");
+    let err2 = r_str!("this_function_does_not_exist_687()")
+        .expect_err("undefined function should surface as Err");
+    assert!(
+        err2.message()
+            .contains("could not find function \"this_function_does_not_exist_687\""),
+        "got: {err2}"
+    );
+}
+
+#[test]
+fn r_eval_error_suite() {
+    r_test_utils::with_r_thread(|| {
+        test_classed_condition_from_function();
+        test_nested_error_has_no_traceback();
+        test_reraise_class();
+        test_missing_package_condition();
+        test_error_survives_gc();
+    });
+}
+
+/// A fresh child of the global environment, rooted for the caller.
+fn fresh_env() -> miniextendr_api::OwnedProtect {
+    let env = r_str!("new.env()").expect("new.env() evaluates");
+    unsafe { miniextendr_api::OwnedProtect::new(env) }
+}
+
+/// The head of a call: its function name, for `f(...)`.
+fn head(call: SEXP) -> SEXP {
+    unsafe { miniextendr_api::sys::CAR(call) }
+}
+
+/// A classed condition raised by the called function arrives with its class
+/// vector, its message and its call.
+fn test_classed_condition_from_function() {
+    let env = fresh_env();
+    r_str!(
+        r#"check_input <- function(x) {
+            stop(errorCondition("bad input", class = "my_input_error", call = sys.call()))
+        }"#,
+        env = env.get()
+    )
+    .expect("defining the function works");
+
+    let err = unsafe {
+        let one = miniextendr_api::OwnedProtect::new(SEXP::scalar_integer(1));
+        RCall::new("check_input").arg(one.get()).eval(env.get())
+    }
+    .expect_err("check_input() raises");
+    assert_eq!(err.message(), "bad input");
+    assert_eq!(err.classes(), ["my_input_error", "error", "condition"]);
+    assert_eq!(err.specific_classes(), ["my_input_error"]);
+    assert!(err.inherits("my_input_error"));
+    assert!(!err.inherits("simpleError"));
+
+    let call = err.call().expect("the condition has a call");
+    assert_eq!(call.type_of(), SEXPTYPE::LANGSXP);
+    assert_eq!(head(call), SEXP::symbol("check_input"));
+    assert!(err.condition().inherits_class(c"my_input_error"));
+}
+
+/// A `stop()` two functions deep, with `showErrorCalls` on (as in `Rscript`):
+/// R's printed error would read `Error in g() : boom` plus a `Calls: f -> g`
+/// line; the caught message is `boom` and the call `g()`.
+fn test_nested_error_has_no_traceback() {
+    let env = fresh_env();
+    r_str!(
+        r#"f <- function() g(); g <- function() stop("boom")"#,
+        env = env.get()
+    )
+    .expect("defining the functions works");
+
+    let old = r_str!("options(showErrorCalls = TRUE)").expect("options() evaluates");
+    let old = unsafe { miniextendr_api::OwnedProtect::new(old) };
+    let err = unsafe { RCall::new("f").eval(env.get()) }.expect_err("f() raises");
+    unsafe { RCall::new("options").arg(old.get()).eval_base() }.expect("options restored");
+
+    assert_eq!(err.message(), "boom");
+    let call = err.call().expect("stop() inside g() has a call");
+    assert_eq!(head(call), SEXP::symbol("g"));
+}
+
+/// `reraise_class` puts the package's classes first, then the caught specific
+/// classes, without the base layers and without duplicates.
+fn test_reraise_class() {
+    let err = r_str!(r#"stop(errorCondition("x", class = c("vctrs_error_x", "rlang_error")))"#)
+        .expect_err("raises");
+    assert_eq!(err.specific_classes(), ["vctrs_error_x", "rlang_error"]);
+    assert_eq!(
+        err.reraise_class(["pkg_print_error", "pkg_error"]),
+        [
+            "pkg_print_error",
+            "pkg_error",
+            "vctrs_error_x",
+            "rlang_error"
+        ]
+    );
+    assert_eq!(
+        err.reraise_class("rlang_error"),
+        ["rlang_error", "vctrs_error_x"]
+    );
+
+    // Converted to `RError` (Send, takes data fields): R's message, the
+    // classes given.
+    let class = err.reraise_class("pkg_error");
+    let carried = RError::from(err).class(class);
+    assert_eq!(carried.message_str(), "x");
+    assert_eq!(
+        carried.classes(),
+        ["pkg_error", "vctrs_error_x", "rlang_error"]
+    );
+
+    // A condition raised by a miniextendr function carries `rust_error` and
+    // R's layers after its own classes; neither is specific.
+    let err = r_str!(
+        r#"stop(structure(class = c("pkg_bad", "rust_error", "simpleError", "error", "condition"),
+                          list(message = "bad", call = NULL)))"#
+    )
+    .expect_err("raises");
+    assert_eq!(err.specific_classes(), ["pkg_bad"]);
+    assert!(err.call().is_none());
+}
+
+/// `REnv::package_namespace` for a package that is not installed returns R's
+/// `packageNotFoundError`, message included.
+fn test_missing_package_condition() {
+    let err = unsafe { REnv::package_namespace("mxNoSuchPackage1861") }
+        .map(|_| ())
+        .expect_err("no such package");
+    assert!(err.inherits("packageNotFoundError"), "{:?}", err.classes());
+    assert!(
+        err.message()
+            .contains("there is no package called \u{2018}mxNoSuchPackage1861\u{2019}")
+            || err
+                .message()
+                .contains("there is no package called 'mxNoSuchPackage1861'"),
+        "got: {err}"
+    );
+}
+
+/// The condition and its call stay rooted while the error is held across
+/// collections.
+fn test_error_survives_gc() {
+    let env = fresh_env();
+    r_str!(
+        r#"h <- function() {
+            stop(errorCondition(paste("held", "error"), class = "held_error", call = sys.call()))
+        }"#,
+        env = env.get()
+    )
+    .expect("defining the function works");
+    let err = unsafe { RCall::new("h").eval(env.get()) }.expect_err("h() raises");
+    for _ in 0..5 {
+        r_str!("invisible(lapply(1:200, function(i) paste(i, 'x'))); gc()").expect("gc runs");
+    }
+    assert_eq!(err.message(), "held error");
+    assert!(err.condition().inherits_class(c"held_error"));
+    let message = err.condition().vector_elt(0);
+    assert_eq!(message.string_elt_str(0), Some("held error"));
+    assert_eq!(head(err.call().expect("h() call")), SEXP::symbol("h"));
 }
 
 /// The runtime-string use case from the issue: `format!`-built source.
