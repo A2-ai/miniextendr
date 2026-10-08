@@ -539,19 +539,62 @@ back-reference, and if the pointer is later freed and the struct lands at that
 same address again, its next accessor reads a freed R object (#1856). Use
 `ExternalPtr::into_inner`. The type's name is provisional (#1857).
 
+The `Sidecar` values are what a save keeps: `saveRDS()` writes them with
+the pointer and the struct's other fields are lost ("Serialization" below).
+They are also shared by every R name bound to the pointer ("Copies" below).
+
+### Copies
+
+An external pointer is one R object. `y <- x` (or passing `x` to a
+function) copies the handle, not the Rust value: both names reach the same
+`EXTPTRSXP`, so a `set_f()` through `y` is visible through `x`, as is a
+`Sidecar` write. R's copy-on-modify does not apply to the Rust value, nor
+to the values in the pointer's `prot` list. A crate that wants a copy makes
+one explicitly, with a method that clones the struct into a new
+`ExternalPtr` (`ExternalPtr::new(self.clone())`); the `Sidecar` values are
+copied by the struct's `Clone`.
+
 ### Serialization
 
 `saveRDS()` writes an external pointer's tag and `prot` list but not its
-address, and `readRDS()` brings it back with a NULL address. So:
+address, and `readRDS()` brings it back with a NULL address. `serialize()`
+/ `unserialize()` behave the same way, so the same holds for anything built
+on them (`save()` / `load()`, a parallel worker's result, a cache). So a
+save keeps:
 
-- The struct's fields are lost. Their getters raise
-  `expected ExternalPtr<MyType>, got a null external pointer`.
-- `Sidecar<T>` values come back, and their R accessors work on the reloaded
-  pointer. A live pointer is checked with `Any::downcast`; one without an
-  address is checked by the type ID in `prot[0]`. That ID includes the crate
-  version, so a file another version of the package wrote is refused.
+- the `Sidecar<T>` values and the user slot (`protected()`), which come back
+  with the pointer: the R accessors of `Sidecar` fields read and write the
+  restored pointer;
+- the type ID in `prot[0]`, crate version included, which says what saved
+  it.
 
-Transparent persistence of the Rust value is the open design #1418.
+It does not keep the Rust value. Everything that needs it raises a classed
+error on the restored object, so code can tell the case apart and
+re-create the object: a method (any receiver), an `ExternalPtr<T>`
+argument, the R accessor of a struct field.
+
+- Saved by this version of the package: class
+  `miniextendr_restored_no_value`, message ``this `MyType` object was
+  restored from a saved session and has no Rust value; re-create it``.
+- Saved by another version: class `miniextendr_restored_other_version`,
+  message ``this `MyType` object was saved by mypkg 0.6.0 and can't be read
+  by mypkg 0.7.0; re-create it``, with `e$saved_version` and
+  `e$current_version`. The `Sidecar` accessors refuse such a pointer too:
+  slots are positional, and another version may lay them out differently.
+- Both carry the class `miniextendr_restored`. A pointer miniextendr did
+  not build (R's `new("externalptr")`, another library's) keeps the plain
+  `expected ExternalPtr<MyType>` errors.
+
+A live pointer is checked with `Any::downcast`; one without an address by
+the type ID in `prot[0]`.
+
+Reading a save across versions is deliberately not supported for now
+(#1854); rebuilding the Rust value of a restored object, eagerly at
+`readRDS()` time or from a per-type hook, is the open design #1418.
+
+**webR:** the round trip has not been tested there. Nothing in it is
+platform-specific (R serializes the pointer's tag and `prot` the same way),
+but the webR workflow is opt-in and this path has not been run under it.
 
 ## SEXP Layout
 

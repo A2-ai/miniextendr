@@ -2379,6 +2379,24 @@ fn type_mismatch_to_sexp_error(e: TypeMismatchError) -> SexpError {
             "type mismatch: expected `{}`, found `{}`",
             expected, found
         )),
+        // A pointer restored from a saved session: the classed error, with
+        // its message as the whole argument error.
+        TypeMismatchError::Restored { .. } | TypeMismatchError::OtherVersion { .. } => {
+            let message = e.to_string();
+            let classes: Vec<String> = e
+                .restored_classes()
+                .map(|classes| classes.iter().map(|&class| class.to_owned()).collect())
+                .unwrap_or_default();
+            let mut error = crate::condition::RError::new(message.clone())
+                .class(classes)
+                .argument_message(message);
+            if let TypeMismatchError::OtherVersion { saved, current, .. } = e {
+                error = error
+                    .data("saved_version", saved)
+                    .data("current_version", current);
+            }
+            SexpError::Condition(error)
+        }
     }
 }
 

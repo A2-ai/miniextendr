@@ -3365,28 +3365,25 @@ pub fn generate_method_c_wrapper(
                     };
                 },
             },
+            // `wrap_receiver` resolves the handle and fails like the erased
+            // receivers above (consumed, restored from a saved session, or a
+            // type mismatch, #1872).
             ReceiverKind::ExternalPtrRef => {
                 quote! {
-                    let __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
-                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
-                    };
+                    let __self_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
                 }
             }
             ReceiverKind::ExternalPtrRefMut => {
                 quote! {
-                    let mut __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
-                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
-                    };
+                    let mut __self_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
                 }
             }
             ReceiverKind::ExternalPtrValue => {
                 quote! {
-                    let __self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ExternalPtr::<#type_ident>::wrap_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
-                            .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"))
-                    };
+                    let __self_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
                 }
             }
             _ => unreachable!(),

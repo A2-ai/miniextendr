@@ -82,6 +82,18 @@
 //! and both keep working on a pointer `readRDS()` brought back without an
 //! address (checked by the type ID in `prot[0]`).
 //!
+//! ### A saved and restored object
+//!
+//! `saveRDS()` / `serialize()` keep the pointer's `prot` list (the `Sidecar`
+//! values and the user slot) but not the Rust value. On the restored pointer
+//! the `Sidecar` accessors work; the accessor of a struct field, like every
+//! method, raises the classed error `miniextendr_restored_no_value` ("restored
+//! from a saved session and has no Rust value; re-create it"). A pointer
+//! another version of the crate saved is refused by every accessor with
+//! `miniextendr_restored_other_version`, which names both versions. R's
+//! `y <- x` shares the one Rust value and the one `prot` list: a write through
+//! `y` is visible through `x`.
+//!
 //! ```ignore
 //! #[derive(ExternalPtr)]
 //! #[externalptr(r6)]
@@ -607,30 +619,14 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: generate the pointer extraction code for Box<dyn Any> storage.
-    // R_ExternalPtrAddr returns *mut Box<dyn Any>; we downcast to &T.
-    // Failure modes panic (caught by the surrounding with_r_unwind_protect
-    // and raised as an R error) instead of silently returning R_NilValue.
+    // Helper: the live struct behind the pointer. `sidecar_r_struct` panics
+    // (caught by the surrounding with_r_unwind_protect and raised as an R
+    // error) on a non-pointer, a wrong type, or a pointer without an address
+    // (a restored object: the classed errors) instead of silently returning
+    // R_NilValue.
     let extract_ref = quote::quote! {
-        use ::miniextendr_api::{SEXP, SexpExt};
-        use ::miniextendr_api::sys::R_ExternalPtrAddr;
-        if x.type_of() != ::miniextendr_api::SEXPTYPE::EXTPTRSXP {
-            ::std::panic!(concat!(
-                "expected ExternalPtr<", stringify!(#struct_name),
-                ">, got a non-external-pointer object"
-            ));
-        }
-        let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
-        if any_raw.is_null() {
-            ::std::panic!(concat!(
-                "expected ExternalPtr<", stringify!(#struct_name),
-                ">, got a null external pointer"
-            ));
-        }
-        let any_box: &Box<dyn ::std::any::Any> = &*any_raw;
-        let data: &#struct_name = any_box
-            .downcast_ref::<#struct_name>()
-            .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
+        let data: &#struct_name =
+            ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
     };
 
     match slot.kind {
@@ -717,29 +713,12 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
-    // Helper: extract mutable reference via Box<dyn Any> downcast.
-    // Failure modes panic (caught by the surrounding with_r_unwind_protect
-    // and raised as an R error) instead of silently no-op'ing.
+    // Helper: the live struct behind the pointer, mutably. Failure modes
+    // panic like the getter's (`sidecar_r_struct_mut`) instead of silently
+    // no-op'ing.
     let extract_mut = quote::quote! {
-        use ::miniextendr_api::SexpExt;
-        use ::miniextendr_api::sys::R_ExternalPtrAddr;
-        if x.type_of() != ::miniextendr_api::SEXPTYPE::EXTPTRSXP {
-            ::std::panic!(concat!(
-                "expected ExternalPtr<", stringify!(#struct_name),
-                ">, got a non-external-pointer object"
-            ));
-        }
-        let any_raw = R_ExternalPtrAddr(x) as *mut Box<dyn ::std::any::Any>;
-        if any_raw.is_null() {
-            ::std::panic!(concat!(
-                "expected ExternalPtr<", stringify!(#struct_name),
-                ">, got a null external pointer"
-            ));
-        }
-        let any_box: &mut Box<dyn ::std::any::Any> = &mut *any_raw;
-        let data = any_box
-            .downcast_mut::<#struct_name>()
-            .expect(concat!("expected ExternalPtr<", stringify!(#struct_name), ">"));
+        let data: &mut #struct_name =
+            ::miniextendr_api::externalptr::sidecar_r_struct_mut::<#struct_name>(x);
     };
 
     // Conversion-failure condition, the argument error of #1594 on the
@@ -1201,6 +1180,9 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         // accessors have no `__miniextendr_call` slot (#344/#348), so the
         // transport uses null call attribution; the R wrapper's guard passes
         // `sys.call()` to `.miniextendr_raise_condition` as the fallback.
+        // Conditions queued inside the body (a `defer_warning!` in a field's
+        // `IntoR` / `TryFromSexp`) are signalled at this call, through the
+        // same `mark()` / `finish()` pair the generated wrappers have.
         c_functions.push(quote::quote! {
             #[doc = #getter_doc_lit]
             #[doc = #source_location_doc]
@@ -1210,10 +1192,18 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
             pub unsafe extern "C-unwind" fn #getter_fn_name(
                 x: ::miniextendr_api::SEXP
             ) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || { #getter_body },
                     ::core::option::Option::None,
-                )
+                );
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        ::core::option::Option::None,
+                    )
+                }
             }
         });
 
@@ -1229,10 +1219,18 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
                 x: ::miniextendr_api::SEXP,
                 value: ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || { #setter_body },
                     ::core::option::Option::None,
-                )
+                );
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        ::core::option::Option::None,
+                    )
+                }
             }
         });
 
