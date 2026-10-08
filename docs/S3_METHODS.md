@@ -344,8 +344,8 @@ When the R object needs fields that R code reads and writes next to the Rust
 value, declare them as sidecar fields: `#[r_data]` fields on the
 `#[derive(ExternalPtr)]` struct, next to an `#[r_data] _r: RSidecar` selector.
 Each public field gets `Type_get_<field>(x)` and `Type_set_<field>(x, value)`;
-an `RSlot` field holds an R value, such as a data frame, that the pointer
-roots. The fields live with the handle, so every method sees them and nothing
+a `Sidecar<T>` field holds a value, such as a data frame in a
+`Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so every method sees them and nothing
 has to be re-wrapped. An S3 class gets no `$` / `$<-` methods for them. The
 walkthrough and the per-class-system accessor table are in `CLASS_SYSTEMS.md`,
 "Direct Field Access via Sidecar". The sidecar is the supported answer for

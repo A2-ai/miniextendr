@@ -429,7 +429,7 @@ pub struct MyType {
     pub name: String,     // Generates MyType_get_name() / MyType_set_name()
 
     #[r_data]
-    pub keys: RSlot,      // Generates MyType_get_keys() / MyType_set_keys()
+    pub keys: Sidecar<Vec<i32>>,  // Generates MyType_get_keys() / MyType_set_keys()
 }
 ```
 
@@ -444,53 +444,100 @@ properties (`obj@count`). The other class systems get only the
 |---|---|---|---|
 | `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
 | any `IntoR + TryFromSexp` type | the Rust struct | converts with `IntoR` | converts with `TryFromSexp`, or raises `'name' must be ...` |
-| `RSlot` | the pointer's `prot` list | the stored R value; `NULL` until set | stores `value` as is |
+| `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
 
 A struct field is a view of the Rust value: every read converts it afresh, and
 every write converts into Rust or fails, so no R copy can drift from it.
 
 A bare `SEXP` under `#[r_data]` is a compile error. The GC doesn't trace Rust
 memory, so once R dropped its own references the value would be freed while
-the struct still pointed at it (#1846). Keep R values in an `RSlot`.
+the struct still pointed at it (#1846). Keep R values in a `Sidecar<SEXP>`.
 
-### `RSlot`: R values the pointer roots
+### `Sidecar<T>`: values the pointer roots
 
-An `RSlot` field is zero-sized. Its value lives in the pointer's `prot` list
-("SEXP Layout" below), which roots it as long as the pointer is reachable.
-Rust reaches it through the pointer, with the key the derive generates for
-each `RSlot` field, `<FIELD>_SLOT`, with the field's visibility:
+A `Sidecar<T>` field's value lives in the pointer's `prot` list ("SEXP Layout"
+below), which roots it as long as the pointer is reachable. Rust reads and
+writes it through accessors the derive generates on the struct, with the
+field's visibility; the `#[r_data(...)]` option selects them:
+
+| `#[r_data(...)]` | Rust accessors |
+|---|---|
+| `ref` | `fn keys(&self) -> T` |
+| `mut` | `fn set_keys(&mut self, value: T)` |
+| `ref, mut`, or a bare `#[r_data]` | both |
+
+`T` is any `IntoR + TryFromSexp` type; the getter also needs `T: Clone`.
+Rust code sees no `SEXP`s or slot indices: a plain constructor fills the
+field with `Sidecar::new(v)` (or `Sidecar::default()`, which is
+`Sidecar::new(T::default())`), and a method reads it with `self.keys()` and
+writes it with `self.set_keys(v)`:
 
 ```rust
 #[miniextendr(r6(r_data_accessors))]
 impl MyType {
-    #[miniextendr(r6(constructor))]
-    pub fn new(n: i32) -> ExternalPtr<Self> {
-        let ptr = ExternalPtr::new(MyType {
+    pub fn new(n: i32) -> Self {
+        MyType {
             x: 0,
             r: RSidecar,
             count: n,
             name: String::new(),
-            keys: RSlot,
-        });
-        // `set_r_slot` allocates nothing, so the fresh vector needs no protection.
-        ptr.set_r_slot(Self::KEYS_SLOT, (1..=n).collect::<Vec<i32>>().into_sexp());
-        ptr
+            keys: Sidecar::new((1..=n).collect()),
+        }
     }
 
-    pub fn n_keys(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(self.r_slot(Self::KEYS_SLOT).len()).unwrap_or(i32::MAX)
+    pub fn n_keys(&self) -> usize {
+        self.keys().len()
+    }
+
+    pub fn push_key(&mut self, key: i32) {
+        let mut keys = self.keys();
+        keys.push(key);
+        self.set_keys(keys);
     }
 }
 ```
 
-- A constructor that fills a slot returns `ExternalPtr<Self>`. Mark it
-  `#[miniextendr(<system>(constructor))]`, here `r6(constructor)`: only
-  `new() -> Self` is recognised by name.
-- A private `RSlot` gets a private key and no R accessor. That is how Rust
-  keeps an R value alive for as long as the object.
-- `ExternalPtr::clone` gives the new pointer the same R values. A method
-  returning `Self` wraps the value in a new pointer whose slots are empty;
-  return `ExternalPtr<Self>` to keep them.
+How the value moves:
+
+- `Sidecar::new(v)` holds `v` as a *pending* value in the struct.
+  `ExternalPtr::new` moves every pending value into the pointer's `prot` list
+  and writes a back-reference (the pointer, the field's own address, its slot
+  index) into each `Sidecar` field. From then on the value lives in R only.
+- The handle rewrites the back-reference whenever it hands the struct out:
+  `Deref` / `DerefMut`, `as_ref` / `as_mut`, the receiver of a
+  `#[miniextendr]` method (inherent, trait impl or ALTREP), the R accessors.
+  A back-reference is trusted only when the recorded address is the field's
+  current address, so a struct that moved (`mem::swap(&mut *a, &mut *b)`, a
+  struct nested as a plain field of another wrapped struct, a value on the
+  stack) works on its own pending value until the handle attaches it again.
+  After a swap the sidecar values stay with each pointer.
+- Every accessor, Rust or R, first moves a pending value into the `prot`
+  list. So `*ptr = MyType::new(..)` through `DerefMut` takes effect at the
+  next access from either side; a `saveRDS()` before any access writes the
+  old slot values.
+- `ExternalPtr::into_inner` converts each slot back into a pending value, so
+  wrapping the value again keeps the values. A `self -> Self` method writes
+  its result back into the same pointer, values included.
+- `Clone` reads the slot and gives a detached `Sidecar` holding that value, so
+  `#[derive(Clone)]` on the struct copies the sidecar values, through
+  `ExternalPtr::clone` or directly, and the two pointers are independent.
+- A private `Sidecar<T>` gets private accessors and no R accessor. That is how
+  Rust keeps an R value (`Sidecar<Option<List>>`, `Sidecar<SEXP>`) alive for
+  as long as the object. A `Sidecar<SEXP>` getter returns a view the slot
+  roots until the next write to that field; a pending `SEXP` passed to
+  `Sidecar::new` is not rooted until the struct is wrapped.
+- The accessors run on R's main thread only. Off it (a thread the package
+  spawned) an accessor on an attached field panics with a message naming the
+  field and the type.
+- A conversion failure in a getter (the slot holds an R value that does not
+  convert to `T`) is a panic naming the field and the type; the framework
+  turns it into an R error.
+
+Don't move a sidecar struct out of its pointer through `&mut` (`mem::replace`,
+`mem::take`, `mem::swap` with a local): the moved struct keeps its
+back-reference, and if the pointer is later freed and the struct lands at that
+same address again, its next accessor reads a freed R object (#1856). Use
+`ExternalPtr::into_inner`. The type's name is provisional (#1857).
 
 ### Serialization
 
@@ -499,10 +546,10 @@ address, and `readRDS()` brings it back with a NULL address. So:
 
 - The struct's fields are lost. Their getters raise
   `expected ExternalPtr<MyType>, got a null external pointer`.
-- `RSlot` values come back, and their accessors work on the reloaded pointer.
-  A live pointer is checked with `Any::downcast`; one without an address is
-  checked by the type ID in `prot[0]`. That ID includes the crate version, so
-  a file another version of the package wrote is refused.
+- `Sidecar<T>` values come back, and their R accessors work on the reloaded
+  pointer. A live pointer is checked with `Any::downcast`; one without an
+  address is checked by the type ID in `prot[0]`. That ID includes the crate
+  version, so a file another version of the package wrote is refused.
 
 Transparent persistence of the Rust value is the open design #1418.
 
@@ -518,12 +565,12 @@ EXTPTRSXP
   prot  → VECSXP[2 + T::R_SLOT_COUNT]
             [0] → SYMSXP (TYPE_ID_CSTR, for mismatch diagnostics)
             [1] → user-protected SEXP (set via set_protected)
-            [2..] → one value per RSlot field (NULL until set)
+            [2..] → one value per Sidecar<T> field
 ```
 
 Internally the value is stored as `Box<Box<dyn Any>>`: the outer `Box` is a thin pointer that fits in R's `EXTPTRSXP` `addr` slot, and the inner `Box<dyn Any>` carries the trait-object vtable needed for `Any::downcast` at retrieval time. This lets one non-generic finalizer (`release_any`) free any `T` without per-type monomorphization. Type safety relies on `Any::downcast`, not on the `prot` symbols.
 
-The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `RSlot` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
+The `prot` slot holds a list. Slot 0 is the namespaced type ID symbol, retained for display/debug parity; authoritative type checking is `Any::downcast`. Slot 1 is available for user-protected R objects that should be kept alive alongside the pointer. The slots after it hold the type's `Sidecar<T>` values; `TypedExternal::R_SLOT_COUNT`, which the derive sets, gives their number.
 
 ## Thread Safety
 

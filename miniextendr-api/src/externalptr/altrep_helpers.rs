@@ -134,22 +134,24 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///
 /// # Supported Field Types
 ///
-/// - **[`RSlot`](super::RSlot)** - an R value, kept in the external pointer's
-///   protection list (not in the struct), so the pointer roots it
+/// - **[`Sidecar<T>`](super::Sidecar)** - a typed value kept in the external
+///   pointer's protection list (not in the struct), so the pointer roots it
+///   and `saveRDS()` writes it; Rust reads and writes it through the
+///   accessors the derive generates
 /// - **`i32`, `f64`, `bool`, `u8`** - scalars read with `Rf_as*` on write and
 ///   returned as a fresh length-1 vector on read
 /// - **Any `IntoR + TryFromSexp` type** - converted on every read and write
 ///   (e.g., `String`, `Vec<T>`)
 ///
-/// Every field but an `RSlot` lives in the Rust struct, so a reader always sees
-/// the Rust value and a writer either converts into it or gets an error. Those
-/// values sit behind the pointer's address, which `saveRDS` does not write.
-/// `RSlot` values travel with the pointer.
+/// Every field but a `Sidecar` lives in the Rust struct, so a reader always
+/// sees the Rust value and a writer either converts into it or gets an error.
+/// Those values sit behind the pointer's address, which `saveRDS` does not
+/// write. `Sidecar` values travel with the pointer.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::SEXP;
+/// use miniextendr_api::externalptr::{RSidecar, Sidecar};
 ///
 /// #[derive(ExternalPtr)]
 /// pub struct MyType {
@@ -159,9 +161,10 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///     #[r_data]
 ///     r: RSidecar,
 ///
-///     /// R value - MyType_get_raw() / MyType_set_raw()
+///     /// Rooted value - MyType_get_keys() / MyType_set_keys(), and
+///     /// `self.keys()` / `self.set_keys(v)` in Rust
 ///     #[r_data]
-///     pub raw: RSlot,
+///     pub keys: Sidecar<Vec<i32>>,
 ///
 ///     /// Zero-overhead scalar - MyType_get_count() / MyType_set_count()
 ///     #[r_data]

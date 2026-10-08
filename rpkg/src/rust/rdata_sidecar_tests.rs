@@ -1,11 +1,14 @@
 //! Tests for RSidecar and `#[r_data]` functionality.
 //!
-//! This module tests the R-side sidecar accessor generation with different class systems.
+//! This module tests the R-side sidecar accessor generation with different
+//! class systems, and the typed `Sidecar<T>` fields whose values live in the
+//! external pointer's protection list (#1846, #1855).
 
-use miniextendr_api::externalptr::{ExternalPtr, RSidecar, RSlot};
+use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr, RSidecar, Sidecar};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
-use miniextendr_api::prelude::{SEXP, SexpExt};
+use miniextendr_api::prelude::SEXP;
+use miniextendr_api::{List, TryFromSexp};
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 
@@ -38,9 +41,9 @@ pub struct SidecarEnv {
     #[r_data]
     pub name: String,
 
-    /// R value, kept in the external pointer's protection list
+    /// Any R value, kept unconverted in the external pointer's protection list
     #[r_data]
-    pub raw_slot: RSlot,
+    pub raw_slot: Sidecar<SEXP>,
 }
 
 /// Env class registration for SidecarEnv (enables R sidecar accessors).
@@ -66,7 +69,7 @@ pub fn rdata_sidecar_env_new(
         score,
         flag,
         name,
-        raw_slot: RSlot,
+        raw_slot: Sidecar::new(SEXP::nil()),
     })
 }
 // endregion
@@ -283,9 +286,9 @@ pub fn rdata_sidecar_vctrs_new(vec_data: Vec<f64>, vec_label: String) -> Externa
 }
 // endregion
 
-// region: RSlot fields holding various R types
+// region: Sidecar<SEXP> fields holding various R types
 
-/// Tests `RSlot` fields with various R types.
+/// Tests `Sidecar<SEXP>` fields with various R types.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(env)]
 pub struct SidecarRawSexp {
@@ -294,44 +297,44 @@ pub struct SidecarRawSexp {
 
     /// Any R value - integer vector
     #[r_data]
-    pub int_vec: RSlot,
+    pub int_vec: Sidecar<SEXP>,
 
     /// Any R value - real vector
     #[r_data]
-    pub real_vec: RSlot,
+    pub real_vec: Sidecar<SEXP>,
 
     /// Any R value - character vector
     #[r_data]
-    pub char_vec: RSlot,
+    pub char_vec: Sidecar<SEXP>,
 
     /// Any R value - list
     #[r_data]
-    pub list_val: RSlot,
+    pub list_val: Sidecar<SEXP>,
 
     /// Any R value - function/closure
     #[r_data]
-    pub func_val: RSlot,
+    pub func_val: Sidecar<SEXP>,
 
     /// Any R value - environment
     #[r_data]
-    pub env_val: RSlot,
+    pub env_val: Sidecar<SEXP>,
 }
 
 /// Env class registration for SidecarRawSexp (raw SEXP slot testing).
 #[miniextendr(env)]
 impl SidecarRawSexp {}
 
-/// Test creating a SidecarRawSexp with all RSlot fields unset (`NULL`).
+/// Test creating a SidecarRawSexp with every `Sidecar<SEXP>` field `NULL`.
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
     ExternalPtr::new(SidecarRawSexp {
         _r: RSidecar,
-        int_vec: RSlot,
-        real_vec: RSlot,
-        char_vec: RSlot,
-        list_val: RSlot,
-        func_val: RSlot,
-        env_val: RSlot,
+        int_vec: Sidecar::new(SEXP::nil()),
+        real_vec: Sidecar::new(SEXP::nil()),
+        char_vec: Sidecar::new(SEXP::nil()),
+        list_val: Sidecar::new(SEXP::nil()),
+        func_val: Sidecar::new(SEXP::nil()),
+        env_val: Sidecar::new(SEXP::nil()),
     })
 }
 // endregion
@@ -417,109 +420,314 @@ pub fn rdata_sidecar_panicky_new() -> ExternalPtr<SidecarPanicky> {
 }
 // endregion
 
-// region: RSlot fields on an R6 class, filled and read from Rust
+// region: Typed Sidecar<T> fields on an R6 class, filled and read from Rust
 
-/// R6 class whose `keys` field is an R value the constructor builds in Rust.
+/// R6 class whose `keys` live in the external pointer's protection list,
+/// filled by a plain constructor and read back from Rust through `&self`.
 ///
-/// `cache` is a private `RSlot`: no R accessor, only Rust reaches it.
+/// `keys` gets both Rust accessors, `label` only the getter, `note` only
+/// the setter; `cache` is private, so only Rust reaches it. R gets its
+/// accessors for every `pub` field whatever the Rust option.
 #[derive(miniextendr_api::ExternalPtr, Debug, Clone)]
 #[externalptr(r6)]
 pub struct SidecarSlotR6 {
     #[r_data]
     _r: RSidecar,
 
-    #[r_data]
-    pub keys: RSlot,
+    /// Integer keys, `1:n` from the constructor.
+    #[r_data(ref, mut)]
+    pub keys: Sidecar<Vec<i32>>,
 
+    /// Number of keys the constructor built (a struct field).
     #[r_data]
     pub n: i32,
 
+    /// A label Rust only reads; R reads and writes it.
+    #[r_data(ref)]
+    pub label: Sidecar<String>,
+
+    /// A note Rust only writes; R reads and writes it.
+    #[r_data(mut)]
+    pub note: Sidecar<String>,
+
+    /// A private cache: no R accessor.
     #[r_data]
-    cache: RSlot,
+    cache: Sidecar<Option<List>>,
 }
 
-/// R6 class with `RSlot` sidecar fields.
+impl std::fmt::Display for SidecarSlotR6 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "keys={:?} label={}", self.keys(), self.label())
+    }
+}
+
+/// R6 class with typed `Sidecar<T>` fields.
 /// @field keys Integer keys `1:n`, built by the constructor (active binding).
 /// @field n Number of keys the constructor built (active binding).
+/// @field label A label the constructor sets to `"fresh"` (active binding).
+/// @field note A note Rust writes with `write_note()` (active binding).
 #[miniextendr(r6(r_data_accessors))]
 impl SidecarSlotR6 {
     /// Create a SidecarSlotR6 whose `keys` are `1:n`, set from Rust.
     /// @param n Number of keys.
-    #[miniextendr(r6(constructor))]
-    pub fn new(n: i32) -> ExternalPtr<Self> {
-        let ptr = ExternalPtr::new(SidecarSlotR6 {
+    pub fn new(n: i32) -> Self {
+        SidecarSlotR6 {
             _r: RSidecar,
-            keys: RSlot,
+            keys: Sidecar::new((1..=n).collect()),
             n,
-            cache: RSlot,
-        });
-        // `set_r_slot` allocates nothing, so the fresh vector needs no
-        // protection before the slot roots it.
-        ptr.set_r_slot(Self::KEYS_SLOT, (1..=n).collect::<Vec<i32>>().into_sexp());
-        ptr
+            label: Sidecar::new(String::from("fresh")),
+            note: Sidecar::new(String::new()),
+            cache: Sidecar::default(),
+        }
     }
 
-    /// Length of the `keys` value, read from Rust.
-    pub fn key_count(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(self.r_slot(Self::KEYS_SLOT).len()).expect("keys length exceeds i32")
+    /// Length of `keys`, read from Rust through `&self`.
+    pub fn key_count(&self) -> i32 {
+        i32::try_from(self.keys().len()).expect("keys length exceeds i32")
     }
 
-    /// Keep `value` in the private `cache` slot.
-    /// @param value Any R value.
-    pub fn remember(self: &ExternalPtr<Self>, value: SEXP) {
-        self.set_r_slot(Self::CACHE_SLOT, value);
+    /// Length of `label`, read from Rust (a `ref`-only field).
+    pub fn label_len(&self) -> i32 {
+        i32::try_from(self.label().len()).expect("label length exceeds i32")
     }
 
-    /// The value `remember()` kept; `NULL` before.
-    pub fn recall(self: &ExternalPtr<Self>) -> SEXP {
-        self.r_slot(Self::CACHE_SLOT)
+    /// Writes `note` from Rust (a `mut`-only field).
+    /// @param note The new note.
+    pub fn write_note(&mut self, note: String) {
+        self.set_note(note);
     }
 
-    /// A clone: a new Rust value, with the same R values in its slots.
-    pub fn duplicate(self: &ExternalPtr<Self>) -> ExternalPtr<Self> {
-        ExternalPtr::clone(self)
+    /// Appends `key` to `keys` from Rust, through `&mut self`.
+    /// @param key The key to append.
+    pub fn push_key(&mut self, key: i32) {
+        let mut keys = self.keys();
+        keys.push(key);
+        self.set_keys(keys);
+    }
+
+    /// Keep `value` in the private `cache`.
+    /// @param value Any R list.
+    pub fn remember(&mut self, value: List) {
+        self.set_cache(Some(value));
+    }
+
+    /// The list `remember()` kept; `NULL` before.
+    pub fn recall(&self) -> SEXP {
+        self.cache().into_sexp()
+    }
+
+    /// Reads `keys` from another thread: an error, since sidecar accessors
+    /// run on R's main thread only. Returns the panic message.
+    pub fn keys_off_thread(&self) -> String {
+        struct SendPtr(*const SidecarSlotR6);
+        // SAFETY: the pointee outlives the joined thread, and the accessor
+        // panics on the thread check before it touches R.
+        unsafe impl Send for SendPtr {}
+        let ptr = SendPtr(std::ptr::from_ref(self));
+        let outcome = std::thread::spawn(move || {
+            let ptr = ptr;
+            let _ = unsafe { &*ptr.0 }.keys();
+        })
+        .join();
+        match outcome {
+            Ok(()) => String::from("no error"),
+            Err(payload) => {
+                miniextendr_api::unwind_protect::panic_payload_to_string(&*payload).into_owned()
+            }
+        }
+    }
+
+    /// A copy of this value in a new external pointer: the sidecar values are
+    /// copied by the struct's `Clone`, and the two pointers are independent.
+    pub fn duplicate(&self) -> ExternalPtr<Self> {
+        ExternalPtr::new(self.clone())
+    }
+
+    /// Replaces the whole value through `DerefMut`: `n` keys again, no cache.
+    /// Both sides see the new values at their next access.
+    /// @param n Number of keys.
+    pub fn reset(self: &mut ExternalPtr<Self>, n: i32) {
+        **self = Self::new(n);
+    }
+
+    /// Rebuilds the value by value (`self -> Self`): `keys` gain `extra`, the
+    /// other sidecar values travel with the struct.
+    /// @param extra A key appended to `keys`.
+    pub fn rebuilt(self, extra: i32) -> Self {
+        let mut keys = self.keys();
+        keys.push(extra);
+        Self {
+            keys: Sidecar::new(keys),
+            n: self.n + 1,
+            ..self
+        }
     }
 }
 
-/// Store fresh R values in `RSlot` fields, churn the GC, and read them back.
-///
-/// Regression fixture for #1846: a sidecar field used to hold a bare `SEXP`
-/// that nothing rooted, so a value R no longer referenced was freed under the
-/// pointer. Each value here is referenced only by its slot. The clone at the
-/// end must share them.
-///
-/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
-#[miniextendr(noexport)]
-pub fn gc_stress_sidecar_r_slot() {
-    let handles: Vec<ExternalPtr<SidecarSlotR6>> = (1..=8).map(SidecarSlotR6::new).collect();
-    for (i, handle) in (0i32..).zip(&handles) {
-        handle.set_r_slot(SidecarSlotR6::CACHE_SLOT, vec![i; 16].into_sexp());
+/// RDisplay trait ABI registration for SidecarSlotR6: `as_r_string()` reads
+/// the sidecar fields through the trait-impl receiver path.
+#[miniextendr(r6)]
+impl miniextendr_api::adapter_traits::RDisplay for SidecarSlotR6 {}
+
+/// Swaps the Rust values of two pointers. The sidecar values stay with each
+/// pointer: they live in its protection list.
+/// @param a,b Two `SidecarSlotR6` pointers.
+#[miniextendr]
+pub fn sidecar_swap(mut a: ExternalPtr<SidecarSlotR6>, mut b: ExternalPtr<SidecarSlotR6>) {
+    std::mem::swap(&mut *a, &mut *b);
+}
+
+/// Moves the value out of `ptr` (whose R object is cleared) and wraps it
+/// again: the sidecar values travel with it.
+/// @param ptr A `SidecarSlotR6` pointer.
+#[miniextendr]
+pub fn sidecar_rewrap(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlotR6> {
+    ExternalPtr::new(ExternalPtr::into_inner(ptr))
+}
+
+/// Clones the handle: a new pointer with its own copies of the sidecar values.
+/// @param ptr A `SidecarSlotR6` pointer.
+#[miniextendr]
+pub fn sidecar_clone_handle(ptr: ExternalPtr<SidecarSlotR6>) -> ExternalPtr<SidecarSlotR6> {
+    ptr.clone()
+}
+
+/// The `keys` of a pointer, read through `ExternalPtr`'s `Deref`.
+/// @param ptr A `SidecarSlotR6` pointer.
+#[miniextendr]
+pub fn sidecar_keys_via_deref(ptr: ExternalPtr<SidecarSlotR6>) -> Vec<i32> {
+    ptr.keys()
+}
+
+/// A wrapped struct holding another sidecar struct as a plain field: the
+/// inner struct's sidecar fields are detached and work on their own values.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(r6)]
+pub struct SidecarNest {
+    #[r_data]
+    _r: RSidecar,
+
+    /// The inner struct, a plain Rust field.
+    inner: SidecarSlotR6,
+
+    /// The outer struct's own sidecar field.
+    #[r_data]
+    pub tag: Sidecar<String>,
+}
+
+/// R6 class nesting a `SidecarSlotR6` as a plain field.
+/// @field tag The outer struct's own sidecar value (active binding).
+#[miniextendr(r6(r_data_accessors))]
+impl SidecarNest {
+    /// Create a SidecarNest whose inner struct has `n` keys.
+    /// @param n Number of inner keys.
+    pub fn new(n: i32) -> Self {
+        SidecarNest {
+            _r: RSidecar,
+            inner: SidecarSlotR6::new(n),
+            tag: Sidecar::new(String::from("outer")),
+        }
     }
 
+    /// The inner struct's `keys`, from its own value.
+    pub fn inner_keys(&self) -> Vec<i32> {
+        self.inner.keys()
+    }
+
+    /// Writes the inner struct's `keys`.
+    /// @param keys The new inner keys.
+    pub fn set_inner_keys(&mut self, keys: Vec<i32>) {
+        self.inner.set_keys(keys);
+    }
+}
+
+/// Allocate garbage so a GC runs between the writes and the reads.
+fn churn() {
     for i in 0..64 {
         let _garbage = vec![f64::from(i); 64].into_sexp();
     }
+}
 
+/// Attach, flush, detach, clone and swap `Sidecar<T>` fields, churn the GC
+/// between the steps, and read every value back.
+///
+/// Regression fixture for #1846: a sidecar field used to hold a bare `SEXP`
+/// that nothing rooted. Here every value is referenced only by its slot. No
+/// arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_sidecar_fields() {
+    // Attach + flush at creation; writes through `DerefMut` on attached fields.
+    let mut handles: Vec<ExternalPtr<SidecarSlotR6>> = (1..=8)
+        .map(|n| ExternalPtr::new(SidecarSlotR6::new(n)))
+        .collect();
+    for (i, handle) in (0i32..).zip(handles.iter_mut()) {
+        handle.set_cache(Some(List::from_values(vec![i; 16])));
+        handle.push_key(100 + i);
+    }
+    churn();
     for (i, handle) in (0i32..).zip(&handles) {
-        let keys: Vec<i32> =
-            miniextendr_api::TryFromSexp::try_from_sexp(handle.r_slot(SidecarSlotR6::KEYS_SLOT))
-                .expect("keys slot holds an integer vector");
-        assert_eq!(keys, (1..=i + 1).collect::<Vec<i32>>());
-        let cache: Vec<i32> =
-            miniextendr_api::TryFromSexp::try_from_sexp(handle.r_slot(SidecarSlotR6::CACHE_SLOT))
-                .expect("cache slot holds an integer vector");
-        assert_eq!(cache, vec![i; 16]);
+        let mut expected: Vec<i32> = (1..=i + 1).collect();
+        expected.push(100 + i);
+        assert_eq!(handle.keys(), expected);
+        let cache = handle.cache().expect("cache was set");
+        assert_eq!(cache.len(), 16);
+        assert_eq!(cache.get_index::<i32>(0), Some(i));
     }
 
+    // Clone: copies, then independent.
     let copy = ExternalPtr::clone(&handles[3]);
+    churn();
+    assert_eq!(copy.keys(), handles[3].keys());
+    let mut copy = copy;
+    copy.set_keys(vec![-1]);
+    assert_eq!(copy.keys(), vec![-1]);
+    assert_eq!(handles[3].keys(), vec![1, 2, 3, 4, 103]);
+
+    // Swap the Rust values of two pointers: the sidecar values stay put.
+    let (first, rest) = handles.split_at_mut(1);
+    std::mem::swap(&mut *first[0], &mut *rest[0]);
+    churn();
+    assert_eq!(first[0].n, 2);
+    assert_eq!(first[0].keys(), vec![1, 100]);
+    assert_eq!(rest[0].n, 1);
+    assert_eq!(rest[0].keys(), vec![1, 2, 101]);
+
+    // Detach (`into_inner`) keeps the values; wrapping again reattaches them.
+    let value = ExternalPtr::into_inner(handles.pop().expect("eight handles"));
+    assert_eq!(value.keys(), vec![1, 2, 3, 4, 5, 6, 7, 8, 107]);
+    let back = ExternalPtr::new(value);
+    churn();
+    assert_eq!(back.keys(), vec![1, 2, 3, 4, 5, 6, 7, 8, 107]);
     assert_eq!(
-        copy.r_slot(SidecarSlotR6::KEYS_SLOT),
-        handles[3].r_slot(SidecarSlotR6::KEYS_SLOT)
+        back.cache().expect("cache travels").get_index::<i32>(0),
+        Some(7)
     );
-    assert_eq!(
-        copy.r_slot(SidecarSlotR6::CACHE_SLOT),
-        handles[3].r_slot(SidecarSlotR6::CACHE_SLOT)
-    );
+
+    // The by-value receiver path: take, rebuild, write back.
+    let keep = ExternalPtr::new(SidecarSlotR6::new(3));
+    let sexp = keep.as_sexp();
+    let mut erased = unsafe { ErasedExternalPtr::from_sexp(sexp) };
+    let taken = erased
+        .take_for_consuming::<SidecarSlotR6>()
+        .expect("the slot holds a SidecarSlotR6");
+    assert_eq!(taken.keys(), vec![1, 2, 3]);
+    erased.restore_after_consuming::<SidecarSlotR6>(taken.rebuilt(9));
+    churn();
+    // `keep`'s cached pointer predates the write-back, so read through a view.
+    let view = unsafe { ExternalPtr::<SidecarSlotR6>::wrap_sexp(sexp) }.expect("live pointer");
+    assert_eq!(view.keys(), vec![1, 2, 3, 9]);
+    assert_eq!(view.label(), "fresh");
+    drop(view);
+    drop(keep);
+
+    // A `Sidecar<SEXP>` read back from the R side of the fence.
+    let env = rdata_sidecar_env_new(1, 1.0, true, String::from("x"));
+    let payload: Vec<i32> = (0..32).collect();
+    let mut env = env;
+    env.set_raw_slot(payload.into_sexp());
+    churn();
+    let raw: Vec<i32> = TryFromSexp::try_from_sexp(env.raw_slot()).expect("an integer vector");
+    assert_eq!(raw, (0..32).collect::<Vec<i32>>());
 }
 // endregion
 

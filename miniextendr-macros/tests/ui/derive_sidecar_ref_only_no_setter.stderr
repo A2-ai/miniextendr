@@ -1,0 +1,15 @@
+error[E0599]: no method named `set_keys` found for struct `Engine` in the current scope
+  --> tests/ui/derive_sidecar_ref_only_no_setter.rs:17:12
+   |
+ 7 | struct Engine {
+   | ------------- method `set_keys` not found for this struct
+...
+17 |     engine.set_keys(vec![3]);
+   |            ^^^^^^^^
+   |
+help: there is a method `keys` with a similar name, but with different arguments
+  --> tests/ui/derive_sidecar_ref_only_no_setter.rs:6:10
+   |
+ 6 | #[derive(ExternalPtr)]
+   |          ^^^^^^^^^^^
+   = note: this error originates in the derive macro `ExternalPtr` (in Nightly builds, run with -Z macro-backtrace for more info)

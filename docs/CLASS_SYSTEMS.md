@@ -1254,7 +1254,7 @@ the class system.
 ### Rust Code
 
 ```rust
-use miniextendr_api::externalptr::{RSidecar, RSlot};
+use miniextendr_api::externalptr::{RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
 pub struct MyConfig {
@@ -1270,23 +1270,28 @@ pub struct MyConfig {
     #[r_data]
     pub score: f64,
     #[r_data]
-    pub table: RSlot, // any R value, e.g. a data frame
+    pub table: Sidecar<SEXP>, // any R value, e.g. a data frame
 }
 
 #[miniextendr(r6(r_data_accessors))]
 impl MyConfig {
     pub fn new(name: String, score: f64) -> Self {
-        MyConfig { cache: vec![], _r: RSidecar, name, score, table: RSlot }
+        MyConfig { cache: vec![], _r: RSidecar, name, score, table: Sidecar::new(SEXP::nil()) }
+    }
+
+    pub fn has_table(&self) -> bool {
+        !self.table().is_null()
     }
 }
 ```
 
 `name` and `score` live in the Rust struct: each read converts the Rust value
-to R, and each write converts into Rust or raises an error. `table` is an
-`RSlot`: its R value lives in the external pointer's protection list, which
-roots it. The field types, the `RSlot` API for Rust code
-(`ExternalPtr::r_slot` / `set_r_slot`) and what survives `saveRDS()` are in
-`EXTERNALPTR.md`, "RSidecar (R Data Fields)".
+to R, and each write converts into Rust or raises an error. `table` is a
+`Sidecar<T>`: its value lives in the external pointer's protection list, which
+roots it, and Rust reads and writes it through the `table()` / `set_table()`
+accessors the derive generates. The field types, the `Sidecar<T>` lifecycle
+and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R Data
+Fields)".
 
 ### R Behavior by Class System
 

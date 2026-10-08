@@ -1,0 +1,5 @@
+error: a `Sidecar<T>` field needs `#[r_data]`, `#[r_data(ref)]`, `#[r_data(mut)]` or `#[r_data(ref, mut)]`: the derive attaches only the fields it knows to the external pointer
+ --> tests/ui/derive_sidecar_without_r_data.rs:9:15
+  |
+9 |     pub keys: Sidecar<Vec<i32>>,
+  |               ^^^^^^^^^^^^^^^^^

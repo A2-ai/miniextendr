@@ -1,0 +1,8 @@
+error[E0624]: method `keys` is private
+  --> tests/ui/derive_sidecar_private_accessor.rs:32:34
+   |
+10 |     #[derive(ExternalPtr)]
+   |              ----------- private method defined here
+...
+32 |     let _keys: Vec<i32> = engine.keys();
+   |                                  ^^^^ private method

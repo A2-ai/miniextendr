@@ -1,0 +1,5 @@
+error: `ref` and `mut` in `#[r_data(...)]` apply to `Sidecar<T>` fields only; a plain `#[r_data]` field stays a struct field with its R accessors
+  --> tests/ui/derive_sidecar_access_on_plain_field.rs:10:14
+   |
+10 |     #[r_data(ref)]
+   |              ^^^

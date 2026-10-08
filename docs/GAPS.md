@@ -275,7 +275,7 @@ turns them into R6 active bindings or S7 properties.
 
 **Working example (R6):**
 ```rust
-use miniextendr_api::externalptr::{RSidecar, RSlot};
+use miniextendr_api::externalptr::{RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
 pub struct Config {
@@ -291,13 +291,13 @@ pub struct Config {
     #[r_data]
     pub score: f64,
     #[r_data]
-    pub extra: RSlot, // any R value, rooted by the pointer
+    pub extra: Sidecar<SEXP>, // any R value, rooted by the pointer
 }
 
 #[miniextendr(r6(r_data_accessors))]
 impl Config {
     pub fn new(name: String, score: f64) -> Self {
-        Config { internal_cache: vec![], _r: RSidecar, name, score, extra: RSlot }
+        Config { internal_cache: vec![], _r: RSidecar, name, score, extra: Sidecar::new(SEXP::nil()) }
     }
 }
 ```

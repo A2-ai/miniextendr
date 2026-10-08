@@ -155,18 +155,26 @@ arguments, not `numArgs + 1`. This was the root cause of a PR #344 regression
 that was subsequently reverted.
 
 Three field tiers are supported in sidecar slots:
-- `RSlot` — an R value kept in the external pointer's `prot` list (after the
-  type ID and the user slot), so the pointer roots it and `saveRDS()` writes
-  it. Rust reaches it through `ExternalPtr::r_slot` / `set_r_slot` with the
-  derive-generated key `Type::FIELD_SLOT`. A bare `SEXP` field is a compile
-  error: the struct can't root it (#1846).
+- `Sidecar<T>` — a typed value kept in the external pointer's `prot` list
+  (after the type ID and the user slot), so the pointer roots it and
+  `saveRDS()` writes it. The derive generates Rust accessors with the field's
+  visibility: `#[r_data(ref)]` → `fn f(&self) -> T`, `#[r_data(mut)]` →
+  `fn set_f(&mut self, value: T)`, `#[r_data(ref, mut)]` or a bare
+  `#[r_data]` → both. The struct holds only a back-reference (pointer, own
+  address, slot index), which the handle rewrites whenever it hands the struct
+  out (`Deref`, `as_ref`, every method receiver, the R accessors); a value
+  passed to `Sidecar::new` is pending until the struct is wrapped or next
+  accessed. Main thread only. A bare `SEXP` field is a compile error: the
+  struct can't root it (#1846). Moving the struct out through `&mut` is the
+  open hole #1856; the name is provisional (#1857).
 - Scalars (`i32`, `f64`, `bool`, `u8`) — struct fields, returned as a fresh
   length-1 vector and written with `Rf_as*`.
 - Conversion types — struct fields, `IntoR` / `TryFromSexp` on every access.
 
 Scalar and conversion values live behind the pointer's address, which
 `saveRDS()` does not write; after `readRDS()` their getters error on the null
-pointer while `RSlot` accessors still work (checked by the `prot[0]` type ID).
+pointer while the `Sidecar<T>` R accessors still work (checked by the
+`prot[0]` type ID).
 
 ### Cross-package ABI
 
@@ -256,18 +264,19 @@ If the data is array-like and benefits from lazy evaluation:
 Sidecar fields (`#[r_data]`) are appropriate when a subset of the struct's
 fields should be readable or writable from R without hand-written getters.
 Scalar and conversion fields live in the Rust struct and convert on every
-access (a view: no R copy to drift); `RSlot` fields hold R values in the
-pointer's `prot` list.
+access (a view: no R copy to drift); `Sidecar<T>` fields hold their values in
+the pointer's `prot` list.
 
 Use sidecar fields for:
 - Values R code reads and writes as fields (R6 `obj$f`, S7 `obj@f`).
 - R-owned values (data frames, closures, environments) that must live as long
-  as the object: an `RSlot`, private if only Rust needs it.
+  as the object: a `Sidecar<SEXP>` / `Sidecar<List>`, private if only Rust
+  needs it.
 
 Avoid sidecar fields for:
 - Large data in a conversion field — every read converts the whole value.
 - State that must survive `saveRDS()` in a scalar or conversion field (#1418);
-  `RSlot` values do survive.
+  `Sidecar<T>` values do survive.
 
 ### Crossing a crate boundary?
 

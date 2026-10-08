@@ -6,6 +6,11 @@
 \alias{SidecarSlotR6_set_keys}
 \alias{SidecarSlotR6_get_n}
 \alias{SidecarSlotR6_set_n}
+\alias{SidecarSlotR6_get_label}
+\alias{SidecarSlotR6_set_label}
+\alias{SidecarSlotR6_get_note}
+\alias{SidecarSlotR6_set_note}
+\alias{SidecarSlotR6$RDisplay$as_r_string}
 \title{SidecarSlotR6 Sidecar Accessors}
 \usage{
 SidecarSlotR6_get_keys(x)
@@ -15,6 +20,14 @@ SidecarSlotR6_set_keys(x, value)
 SidecarSlotR6_get_n(x)
 
 SidecarSlotR6_set_n(x, value)
+
+SidecarSlotR6_get_label(x)
+
+SidecarSlotR6_set_label(x, value)
+
+SidecarSlotR6_get_note(x)
+
+SidecarSlotR6_set_note(x, value)
 }
 \arguments{
 \item{x}{The SidecarSlotR6 external pointer}
@@ -29,11 +42,19 @@ The SidecarSlotR6 pointer (invisibly)
 The value of the \code{n} field
 
 The SidecarSlotR6 pointer (invisibly)
+
+The value of the \code{label} field
+
+The SidecarSlotR6 pointer (invisibly)
+
+The value of the \code{note} field
+
+The SidecarSlotR6 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarSlotR6}.
 
-R6 class with \code{RSlot} sidecar fields.
+R6 class with typed \verb{Sidecar<T>} fields.
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
@@ -41,6 +62,10 @@ R6 class with \code{RSlot} sidecar fields.
     \item{\code{keys}}{Integer keys \code{1:n}, built by the constructor (active binding).}
 
     \item{\code{n}}{Number of keys the constructor built (active binding).}
+
+    \item{\code{label}}{A label the constructor sets to \code{"fresh"} (active binding).}
+
+    \item{\code{note}}{A note Rust writes with \code{write_note()} (active binding).}
   }
   \if{html}{\out{</div>}}
 }
@@ -49,9 +74,15 @@ R6 class with \code{RSlot} sidecar fields.
   \itemize{
     \item \href{#method-SidecarSlotR6-initialize}{\code{SidecarSlotR6$new()}}
     \item \href{#method-SidecarSlotR6-key_count}{\code{SidecarSlotR6$key_count()}}
+    \item \href{#method-SidecarSlotR6-label_len}{\code{SidecarSlotR6$label_len()}}
+    \item \href{#method-SidecarSlotR6-write_note}{\code{SidecarSlotR6$write_note()}}
+    \item \href{#method-SidecarSlotR6-push_key}{\code{SidecarSlotR6$push_key()}}
     \item \href{#method-SidecarSlotR6-remember}{\code{SidecarSlotR6$remember()}}
     \item \href{#method-SidecarSlotR6-recall}{\code{SidecarSlotR6$recall()}}
+    \item \href{#method-SidecarSlotR6-keys_off_thread}{\code{SidecarSlotR6$keys_off_thread()}}
     \item \href{#method-SidecarSlotR6-duplicate}{\code{SidecarSlotR6$duplicate()}}
+    \item \href{#method-SidecarSlotR6-reset}{\code{SidecarSlotR6$reset()}}
+    \item \href{#method-SidecarSlotR6-rebuilt}{\code{SidecarSlotR6$rebuilt()}}
   }
 }
 \if{html}{\out{<hr>}}
@@ -78,7 +109,7 @@ R6 class with \code{RSlot} sidecar fields.
 \if{html}{\out{<a id="method-SidecarSlotR6-key_count"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-key_count}{}}}
 \subsection{\code{SidecarSlotR6$key_count()}}{
-  Length of the \code{keys} value, read from Rust.
+  Length of \code{keys}, read from Rust through \verb{&self}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$key_count()}
@@ -87,10 +118,60 @@ R6 class with \code{RSlot} sidecar fields.
 }
 
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-label_len"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-label_len}{}}}
+\subsection{\code{SidecarSlotR6$label_len()}}{
+  Length of \code{label}, read from Rust (a \code{ref}-only field).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$label_len()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-write_note"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-write_note}{}}}
+\subsection{\code{SidecarSlotR6$write_note()}}{
+  Writes \code{note} from Rust (a \code{mut}-only field).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$write_note(note)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{note}}{The new note.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-push_key"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-push_key}{}}}
+\subsection{\code{SidecarSlotR6$push_key()}}{
+  Appends \code{key} to \code{keys} from Rust, through \verb{&mut self}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$push_key(key)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{key}}{The key to append.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-SidecarSlotR6-remember"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-remember}{}}}
 \subsection{\code{SidecarSlotR6$remember()}}{
-  Keep \code{value} in the private \code{cache} slot.
+  Keep \code{value} in the private \code{cache}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$remember(value)}
@@ -99,7 +180,7 @@ R6 class with \code{RSlot} sidecar fields.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{value}}{Any R value.}
+      \item{\code{value}}{Any R list.}
     }
     \if{html}{\out{</div>}}
   }
@@ -109,7 +190,7 @@ R6 class with \code{RSlot} sidecar fields.
 \if{html}{\out{<a id="method-SidecarSlotR6-recall"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-recall}{}}}
 \subsection{\code{SidecarSlotR6$recall()}}{
-  The value \code{remember()} kept; \code{NULL} before.
+  The list \code{remember()} kept; \code{NULL} before.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$recall()}
@@ -118,13 +199,67 @@ R6 class with \code{RSlot} sidecar fields.
 }
 
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-keys_off_thread"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-keys_off_thread}{}}}
+\subsection{\code{SidecarSlotR6$keys_off_thread()}}{
+  Reads \code{keys} from another thread: an error, since sidecar accessors
+run on R's main thread only. Returns the panic message.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$keys_off_thread()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-SidecarSlotR6-duplicate"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-duplicate}{}}}
 \subsection{\code{SidecarSlotR6$duplicate()}}{
-  A clone: a new Rust value, with the same R values in its slots.
+  A copy of this value in a new external pointer: the sidecar values are
+copied by the struct's \code{Clone}, and the two pointers are independent.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$duplicate()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-reset"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-reset}{}}}
+\subsection{\code{SidecarSlotR6$reset()}}{
+  Replaces the whole value through \code{DerefMut}: \code{n} keys again, no cache.
+Both sides see the new values at their next access.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$reset(n)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{n}}{Number of keys.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-SidecarSlotR6-rebuilt"></a>}}
+\if{latex}{\out{\hypertarget{method-SidecarSlotR6-rebuilt}{}}}
+\subsection{\code{SidecarSlotR6$rebuilt()}}{
+  Rebuilds the value by value (\code{self -> Self}): \code{keys} gain \code{extra}, the
+other sidecar values travel with the struct.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{SidecarSlotR6$rebuilt(extra)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{extra}}{A key appended to \code{keys}.}
+    }
     \if{html}{\out{</div>}}
   }
 }
