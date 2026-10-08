@@ -1069,6 +1069,16 @@ pub fn miniextendr(
         // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
         unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
     }
+    // The argument-count marker (#1860): an `NArgs` parameter is no R formal;
+    // the wrapper passes `nargs()` at its position and the C wrapper converts
+    // it like any argument, so it stays in `inputs`. `RArgumentBuilder`,
+    // `r_formal_names`, the preconditions, the `@param` fillers and the
+    // replacement-generic check each skip it.
+    if let Err(err) =
+        miniextendr_fn::check_nargs_params(all_inputs, |name| parsed.has_param_attrs(name))
+    {
+        return err.into_compile_error().into();
+    }
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
         .filter(|arg| match arg {

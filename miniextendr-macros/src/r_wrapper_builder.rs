@@ -123,8 +123,8 @@ pub(crate) fn check_r_formals(
 
 /// The R formal each parameter of a signature becomes, with the parameter's
 /// ident: [`normalize_r_arg_string`] of its name. The `&Dots` parameter
-/// becomes `...` wherever it sits and is skipped, as are receivers and
-/// non-ident patterns.
+/// becomes `...` wherever it sits and is skipped, as are receivers,
+/// non-ident patterns and an `NArgs` parameter, which is no formal (#1860).
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
 /// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
@@ -137,7 +137,7 @@ pub(crate) fn r_formal_names(
         let syn::FnArg::Typed(pat_type) = input else {
             return None;
         };
-        if Some(idx) == dots_index {
+        if Some(idx) == dots_index || crate::type_inspect::is_nargs_marker(&pat_type.ty) {
             return None;
         }
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
@@ -172,6 +172,8 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 /// - Unit type defaults (`()` → `= NULL`)
 /// - Dots: the `&Dots` parameter is `...` in the formals and `list(...)` in
 ///   the call arguments, at its own position in the signature
+/// - The argument count: an `NArgs` parameter is no formal and `nargs()` in
+///   the call arguments, at its own position (#1860)
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
     /// The function's input parameters from the parsed Rust signature.
@@ -243,6 +245,12 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
+            // The argument count (#1860) is no formal: the call arguments pass
+            // `nargs()` in its place.
+            if crate::type_inspect::is_nargs_marker(&pat_type.ty) {
+                continue;
+            }
+
             // Extract and normalize argument name
             let arg_ident = match pat_type.pat.as_ref() {
                 syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
@@ -300,6 +308,15 @@ impl<'a> RArgumentBuilder<'a> {
             // the argument is always `list(...)`.
             if Some(idx) == self.dots_index {
                 call_args.push("list(...)".to_string());
+                continue;
+            }
+
+            // The argument count (#1860): the wrapper's own `nargs()`, which
+            // the C wrapper converts like any argument. `.Call()` evaluates
+            // its arguments in the wrapper's frame, so `nargs()` counts the
+            // wrapper's call as typed.
+            if crate::type_inspect::is_nargs_marker(&pat_type.ty) {
+                call_args.push("nargs()".to_string());
                 continue;
             }
 

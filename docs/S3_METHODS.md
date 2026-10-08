@@ -556,6 +556,102 @@ name reports that call. See
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#s3-methods-the-generic-call)
 (#1851).
 
+### Subscript forms and the argument count
+
+`x[i]`, `x[i, ]`, `x[, j]`, `x[i, j]` and `x[i, j, drop = FALSE]` all call
+the same `[` method. Two things decide what a method can do with them.
+
+**Declare `i`, `j` and `drop` as `Missing`.** An empty subscript is an empty
+argument: `x[1, ]` binds `j` to it, and so does `x[, 2]` for `i`. The
+wrapper reads a plain parameter (in its generated check, or for a `SEXP` in
+the `.Call()`), which fails before the method runs with R's
+`argument "j" is missing, with no default`. A
+`Missing<T>` parameter takes it as `Missing::Absent`. A method that does not
+name `j` at all gets `unused argument` for `x[1, 2]` unless it takes `...`
+(`_dots: ...` or `&Dots`). Name `drop` too if `x[i, j, drop = FALSE]` should
+reach the method.
+
+**Take `NArgs` to tell `x[i]` from `x[i, ]`.** Both give the same `i` and a
+missing `j`; only R's `nargs()` tells them apart, and `[.data.frame` uses it
+to choose between list-style and matrix-style subscripting. A parameter of
+type `miniextendr_api::NArgs` is filled with that count (#1860):
+
+```rust
+use miniextendr_api::{Missing, NArgs, SEXP, miniextendr};
+
+#[miniextendr(s3(generic = "[", class = "mx_vec1"))]
+pub fn mx_vec1_subset(
+    x: Vec<f64>,
+    i: Missing<Vec<i32>>,
+    _j: Missing<SEXP>,
+    drop: Missing<SEXP>,
+    nargs: NArgs,
+) -> Result<Vec<f64>, Vec1SubscriptError> {
+    // `x` and a named `drop` count; every other argument is a subscript.
+    let subscripts = nargs.get() - 1 - usize::from(drop.is_present());
+    if subscripts > 1 {
+        return Err(/* ... */);
+    }
+    /* x[i] or x[] */
+}
+```
+
+`NArgs` is no R formal. The method above is
+`` `[.mx_vec1` <- function(x, i, j, drop) ``, and its wrapper passes
+`nargs()` where the parameter sits in the `.Call()`. A function without an
+`NArgs` parameter keeps its wrapper unchanged. The count is the one `nargs()`
+gives in the method, the call as typed:
+
+| Typed | `nargs()` |
+|---|---|
+| `x[1:3]` | 2 |
+| `x[1:3, ]` | 3 |
+| `x[, 1:3]` | 3 |
+| `x[1, 2]` | 3 |
+| `x[1, , drop = FALSE]` | 4 |
+| `x[]` | 2 |
+| `x[i] <- v`, `x[] <- v` | 3 |
+| `x[i, ] <- v`, `x[1, 2] <- v` | 4 |
+
+`x` counts, every empty argument counts, and a named `drop = FALSE` counts;
+the subscript slots are `nargs - 1`, less one when `drop` was given. In a
+replacement method put the `NArgs` parameter anywhere, after `value`
+included: `value` stays the last formal.
+
+**An impl-block method has `...`.** The `[[` or `[` of a
+`#[miniextendr(s3)] impl` gets `(x, i, ...)`, so `h[[i, j]]` and `h[[i, ]]`
+put the extra subscript in the `...`, which the method never evaluates. It
+runs as if `h[[i]]` had been typed; an `NArgs` parameter tells the forms apart
+(`MxBagHandle::at` in `rpkg/src/rust/s3_nonsyntactic_tests.rs` refuses
+`h[[i, ]]` this way).
+
+**Forwarding to `[.data.frame`.** A class built on a data frame can hand
+every form on as typed: build the call with an empty argument
+(`SEXP::missing_arg()`) for each absent subscript within the slot count, add
+`drop` when given, and evaluate it in base:
+
+```rust
+let slots = nargs.get() - 1 - usize::from(drop.is_present());
+let mut call = RCall::new("[.data.frame").quoted_arg(x);
+if slots >= 1 { call = subscript(call, i); } // Absent -> SEXP::missing_arg()
+if slots >= 2 { call = subscript(call, j); }
+if let Missing::Present(drop) = drop {
+    call = call.named_quoted_arg("drop", drop);
+}
+call.eval_with_handlers(R_BaseEnv)
+```
+
+Call it by name, as above: the list-style branch of `[.data.frame` calls
+`NextMethod()`, which fails when the call's head is the function itself.
+
+`rpkg/src/rust/s3_subscript_tests.rs` has the fixtures: `[.mx_vec1` refuses
+every two-subscript form with a classed error, `[.mx_frame` forwards each form
+and gives results `identical()` to `[.data.frame`'s, `[<-.mx_nargs` records
+the count of a replacement call, and an environment-class trait method takes
+`NArgs` too. `rpkg/tests/testthat/test-s3-subscript.R` tests them. See
+[MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#argument-count-nargs) for
+where `NArgs` is accepted.
+
 ### Double dispatch (vctrs)
 
 A few generics dispatch on two arguments. vctrs calls `vec_ptype2(x, y, ...)` and resolves the method as `vec_ptype2.<class_of_x>.<class_of_y>`. Encode that as a dotted class string:

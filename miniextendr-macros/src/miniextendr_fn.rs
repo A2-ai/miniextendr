@@ -1794,6 +1794,12 @@ pub(crate) fn finalize_method_param_attrs(
             ),
         ));
     }
+    // An `NArgs` parameter (#1860) takes no option: the method-level forms
+    // name it like any parameter, and the wrapper, which never makes it a
+    // formal, would silently drop them.
+    check_nargs_params(inputs, |name| {
+        per_param.contains_key(name) || defaults.contains_key(name)
+    })?;
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -1938,6 +1944,17 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                          the inner type",
                         marker.name()
                     ),
+                ));
+            }
+            // `NArgs` (#1860) is filled by the generated R wrapper, which an
+            // extern function does not have.
+            if is_extern && crate::type_inspect::is_nargs_marker(&inner_ty) {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    "`NArgs` on an `extern \"C-unwind\"` function: the generated R wrapper \
+                     passes `nargs()` for it, and an extern function has none (`.Call()` reaches \
+                     it directly). Drop the `extern \"C-unwind\"` to let the macro generate the \
+                     wrapper, or take a `SEXP` and pass the count yourself",
                 ));
             }
 
@@ -2884,6 +2901,55 @@ pub(crate) fn parse_serde_error_nested(
     Err(meta.error(SERDE_ERROR_BARE_HELP))
 }
 
+/// Check the `NArgs` parameters of a signature (#1860): at most one, and none
+/// that a per-parameter option names (`has_options`, keyed by Rust name). The
+/// parameter is no R argument (the wrapper fills it with `nargs()`), so an
+/// option would have nothing to act on.
+///
+/// Shared by standalone functions (`lib.rs`) and impl / trait methods
+/// ([`finalize_method_param_attrs`]). Both errors point at the parameter,
+/// also for a method, whose options are written on the method.
+pub(crate) fn check_nargs_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    has_options: impl Fn(&str) -> bool,
+) -> syn::Result<()> {
+    let mut first: Option<&syn::Ident> = None;
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        if !crate::type_inspect::is_nargs_marker(&pt.ty) {
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let ident = &pat_ident.ident;
+        if let Some(first) = first {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "a `#[miniextendr]` function takes at most one `NArgs` parameter: `{first}` \
+                     already receives `nargs()`, and `{ident}` would receive the same count"
+                ),
+            ));
+        }
+        if has_options(&crate::naming::ident_name(ident)) {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
+                     `preconditions`) do not apply to the `NArgs` parameter `{ident}`: it is no \
+                     R argument, the generated wrapper fills it with `nargs()`"
+                ),
+            ));
+        }
+        first = Some(ident);
+    }
+    Ok(())
+}
+
 /// Check that an S3 method for a replacement generic takes the new value last,
 /// as `value`.
 ///
@@ -2892,9 +2958,10 @@ pub(crate) fn parse_serde_error_nested(
 /// (`x$f <- v` runs `` `$<-`(x, "f", value = v) ``), and `R CMD check`
 /// (`tools::checkReplaceFuns()`) requires the last formal of every replacement
 /// function, registered S3 methods included, to be `value`. The last
-/// non-receiver parameter of `inputs` must therefore become the R formal
-/// `value` (`_value` does too); a trailing `&Dots` is `...`, so it can't be
-/// last. Any other generic passes. `fallback` spans the error when there is no
+/// non-receiver parameter of `inputs` that is an R formal (an `NArgs`
+/// parameter is none, #1860) must therefore become the R formal `value`
+/// (`_value` does too); a trailing `&Dots` is `...`, so it can't be last. Any
+/// other generic passes. `fallback` spans the error when there is no
 /// parameter to point at.
 ///
 /// Used by standalone `s3(generic = ..., class = ...)` functions (`lib.rs`,
@@ -2910,13 +2977,17 @@ pub(crate) fn check_replacement_value_param(
     if !generic.ends_with("<-") {
         return Ok(());
     }
+    // The last R formal: an `NArgs` parameter is none (#1860), so `value`
+    // may come before it.
     let last = inputs
         .iter()
         .enumerate()
         .rev()
         .find_map(|(idx, arg)| match arg {
-            syn::FnArg::Typed(pat_type) => Some((idx, pat_type)),
-            syn::FnArg::Receiver(_) => None,
+            syn::FnArg::Typed(pat_type) if !crate::type_inspect::is_nargs_marker(&pat_type.ty) => {
+                Some((idx, pat_type))
+            }
+            _ => None,
         });
     let found = match last {
         Some((idx, _)) if Some(idx) == dots_index(inputs) => "the last R argument is `...`".into(),

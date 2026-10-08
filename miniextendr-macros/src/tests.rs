@@ -197,6 +197,15 @@ fn replacement_method_takes_value_last() {
         ("[[<-", "&mut self, i: i32, value: f64"),
         ("$", "x: List, name: &str"),
         ("format", "x: SEXP, rest: &Dots"),
+        // `NArgs` is no R formal (#1860), so it may follow `value`.
+        (
+            "[<-",
+            "x: SEXP, i: SEXP, j: Missing<SEXP>, value: SEXP, n: NArgs",
+        ),
+        (
+            "[[<-",
+            "&mut self, i: i32, value: f64, n: miniextendr_api::NArgs",
+        ),
     ] {
         assert_eq!(check(generic, sig), Ok(()), "{generic}: {sig}");
     }
@@ -216,6 +225,11 @@ fn replacement_method_takes_value_last() {
             "&mut self",
             "but it takes no new-value parameter",
         ),
+        (
+            "[<-",
+            "x: SEXP, i: SEXP, n: NArgs",
+            "but the last R argument is `i`",
+        ),
     ] {
         let msg = check(generic, sig).expect_err(sig);
         assert!(
@@ -231,6 +245,84 @@ fn replacement_method_takes_value_last() {
             "{msg}"
         );
     }
+}
+
+/// `NArgs` (#1860): at most one per signature, no per-parameter option on it
+/// (the function forms and a method's `defaults(..)` / `no_na(..)` alike),
+/// and none on an `extern "C-unwind"` function. `&NArgs` and `Option<NArgs>`
+/// are no marker, so they are not checked here.
+#[test]
+fn nargs_parameter_checks() {
+    use crate::miniextendr_fn::check_nargs_params;
+    let check = |sig: &str, with_options: &[&str]| {
+        check_nargs_params(&inputs_of(sig), |name| with_options.contains(&name))
+            .map_err(|err| err.to_string())
+    };
+    for sig in [
+        "x: SEXP, n: NArgs",
+        "n: miniextendr_api::NArgs, x: SEXP",
+        "&self, i: i32, nargs: NArgs",
+        "x: SEXP, a: &NArgs, b: Option<NArgs>",
+        "x: SEXP",
+    ] {
+        assert_eq!(check(sig, &[]), Ok(()), "{sig}");
+    }
+    assert_eq!(check("x: SEXP, n: NArgs", &["x"]), Ok(()));
+
+    let msg = check("x: SEXP, n: NArgs, m: NArgs", &[]).expect_err("two NArgs");
+    assert!(
+        msg.contains(
+            "a `#[miniextendr]` function takes at most one `NArgs` parameter: `n` already \
+             receives `nargs()`, and `m` would receive the same count"
+        ),
+        "{msg}"
+    );
+    let msg = check("x: SEXP, n: NArgs", &["n"]).expect_err("an option on NArgs");
+    assert!(
+        msg.contains("do not apply to the `NArgs` parameter `n`: it is no R argument"),
+        "{msg}"
+    );
+
+    // The method path: `finalize_method_param_attrs` checks the same, with
+    // the method-level forms naming the parameter.
+    let sig: syn::Signature = syn::parse_quote!(fn at(&self, i: i32, nargs: NArgs));
+    let defaults: std::collections::HashMap<String, String> =
+        [("nargs".to_string(), "2L".to_string())].into();
+    let msg = crate::miniextendr_fn::finalize_method_param_attrs(
+        &mut std::collections::HashMap::new(),
+        &sig.inputs,
+        &[],
+        &defaults,
+        proc_macro2::Span::call_site(),
+    )
+    .expect_err("defaults(nargs = ..)")
+    .to_string();
+    assert!(msg.contains("the `NArgs` parameter `nargs`"), "{msg}");
+    let mut per_param = parse_method_checks(quote::quote! { no_na(nargs) }).expect("parses");
+    let msg = crate::miniextendr_fn::finalize_method_param_attrs(
+        &mut per_param,
+        &sig.inputs,
+        &[],
+        &std::collections::HashMap::new(),
+        proc_macro2::Span::call_site(),
+    )
+    .expect_err("no_na(nargs)")
+    .to_string();
+    assert!(msg.contains("the `NArgs` parameter `nargs`"), "{msg}");
+
+    // An extern function has no generated wrapper to pass `nargs()`; the parse
+    // refuses it before the generic "parameters must be SEXP" check.
+    let msg = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
+        #[unsafe(no_mangle)]
+        extern "C-unwind" fn C_f(x: SEXP, n: NArgs) -> SEXP { x }
+    })
+    .err()
+    .expect("NArgs on extern")
+    .to_string();
+    assert!(
+        msg.starts_with("`NArgs` on an `extern \"C-unwind\"` function"),
+        "{msg}"
+    );
 }
 
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`

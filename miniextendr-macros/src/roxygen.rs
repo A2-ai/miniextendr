@@ -1600,7 +1600,8 @@ pub(crate) fn push_fn_param_tags(
         let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
             continue;
         };
-        if parsed.is_dots_param(&pat_ident.ident) {
+        // `NArgs` is no R formal (#1860), so it gets no `@param`.
+        if parsed.is_dots_param(&pat_ident.ident) || crate::type_inspect::is_nargs_marker(&pt.ty) {
             continue;
         }
         let rust_name = crate::naming::ident_name(&pat_ident.ident);

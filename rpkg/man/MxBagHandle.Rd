@@ -30,7 +30,8 @@ MxBagHandle
 \item{value}{The new value.}
 }
 \description{
-Element at 1-based position \code{i}.
+Element at 1-based position \code{i}. A handle has one dimension, so
+\code{h[[i, ]]} and \code{h[[i, j]]} are refused.
 
 Replace the value at 1-based position \code{i}: \code{h[[i]] <- value}. The
 handle changes in place and the method returns it, which R assigns

@@ -522,6 +522,35 @@ options except a `default` under `Missing<..>` (it writes the formal and is
 never evaluated), and keep the function on the main thread. See
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#omitted-arguments).
 
+#### Argument count: `NArgs`
+
+A parameter of type `miniextendr_api::NArgs` receives the number of arguments
+in the generated function's own call, as R's `nargs()` gives it: `x[1:3]` is
+2 and `x[1:3, ]` is 3, the one difference between the two forms a `[` method
+sees (#1860). It is no R formal: the wrapper passes `nargs()` at the
+parameter's position in the `.Call()`, and a function without one keeps its
+wrapper unchanged.
+
+```rust
+#[miniextendr(s3(generic = "[", class = "mx_vec1"))]
+pub fn mx_vec1_subset(x: Vec<f64>, i: Missing<Vec<i32>>, _j: Missing<SEXP>,
+                      drop: Missing<SEXP>, nargs: NArgs) -> Vec<f64> { /* ... */ }
+// `[.mx_vec1` <- function(x, i, j, drop) { ... .Call(..., x, i, j, drop, nargs()) }
+```
+
+It is matched by the last path segment (`NArgs`, `miniextendr_api::NArgs`);
+`&NArgs` and `Option<NArgs>` are not it. Standalone functions, `s3(...)`
+methods, impl-block methods and trait methods accept it; for an R6 or
+environment-class inherent method the count leaves out the object. A function
+takes at most one, per-parameter options (`default`, `coerce`, `match_arg`,
+`no_na`, ... and a method's `defaults(..)`) do not apply to it, and an
+`extern "C-unwind"` function cannot take it (no generated wrapper passes the
+count). It holds a plain number and leaves the function's thread as it was.
+Unlike the call markers it has no attribute or crate-default spelling: it
+hands the body a value, and an attribute would compute a count that no
+parameter receives. The subscript forms, the count table and the fixtures:
+[S3_METHODS.md](S3_METHODS.md#subscript-forms-and-the-argument-count).
+
 #### R-side preconditions: markers and defaults
 
 A generated wrapper checks each argument's R type before the `.Call()`, one

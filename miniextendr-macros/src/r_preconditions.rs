@@ -1321,6 +1321,12 @@ pub fn build_precondition_checks(
             continue;
         };
 
+        // `NArgs` is no R formal: the wrapper passes `nargs()`, which no
+        // check needs to look at (#1860).
+        if crate::type_inspect::is_nargs_marker(&pt.ty) {
+            continue;
+        }
+
         // Extract parameter name
         let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
             continue;

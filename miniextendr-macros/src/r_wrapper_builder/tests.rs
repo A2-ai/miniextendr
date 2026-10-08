@@ -486,6 +486,80 @@ fn snapshot_formals_and_call_args() {
 
     insta::assert_snapshot!(output);
 }
+
+/// `NArgs` (#1860) is no formal; the call arguments pass `nargs()` at its
+/// position, first, between the others or last, receiver and dots included.
+/// The snapshot above, which has no `NArgs`, is unchanged by it.
+#[test]
+fn snapshot_nargs_formals_and_call_args() {
+    let mut output = String::new();
+    for (label, sig, skip_first) in [
+        ("NArgs first", "n: NArgs, x: SEXP, i: Missing<SEXP>", false),
+        (
+            "NArgs between (with dots and a defaulted formal)",
+            "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, n: miniextendr_api::NArgs, _dots: &Dots, drop: Missing<SEXP>",
+            false,
+        ),
+        (
+            "NArgs last (replacement method, value before it)",
+            "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, value: SEXP, _nargs: NArgs",
+            false,
+        ),
+        (
+            "NArgs on a method (receiver skipped)",
+            "&self, i: i32, nargs: NArgs",
+            true,
+        ),
+    ] {
+        output.push_str(&format!("# {label}\n"));
+        let inputs = parse_inputs(sig);
+        let mut builder = RArgumentBuilder::new(&inputs);
+        if skip_first {
+            builder = builder.skip_first();
+        }
+        output.push_str(&format!("formals: {}\n", builder.build_formals()));
+        output.push_str(&format!("call_args: {}\n\n", builder.build_call_args()));
+    }
+    insta::assert_snapshot!(output);
+}
+
+/// `NArgs` is no formal, so `r_formal_names` (the name checks and the
+/// shadowing pass) skips it: its own name never qualifies `nargs()`, while a
+/// real formal named `nargs` does, as `base::nargs()`, which still counts
+/// the wrapper's own call.
+#[test]
+fn nargs_is_no_formal_for_the_name_checks_and_shadowing() {
+    let inputs = parse_inputs("x: SEXP, nargs: NArgs");
+    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    assert_eq!(names, ["x"]);
+    check_r_formals(&inputs, &[]).expect("NArgs takes no formal name");
+    let call = format!(
+        ".Call(C_f, {})",
+        RArgumentBuilder::new(&inputs).build_call_args()
+    );
+    let formals = crate::r_shadowing::formal_names([&inputs]);
+    assert_eq!(
+        crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
+        ".Call(C_f, x, nargs())"
+    );
+
+    // A formal named `nargs` (a function passed there would be called in
+    // place of base's) qualifies the call.
+    let inputs = parse_inputs("x: SEXP, nargs: SEXP, n: NArgs");
+    let call = format!(
+        ".Call(C_f, {})",
+        RArgumentBuilder::new(&inputs).build_call_args()
+    );
+    let formals = crate::r_shadowing::formal_names([&inputs]);
+    assert_eq!(
+        crate::r_shadowing::qualify_shadowed_calls(&call, &formals),
+        ".Call(C_f, x, nargs, base::nargs())"
+    );
+
+    // Two parameters that both become `n` still collide; `NArgs` is neither.
+    let inputs = parse_inputs("n: i32, _n: NArgs");
+    check_r_formals(&inputs, &[]).expect("NArgs is no formal, so no collision");
+}
 // endregion
 
 #[test]
