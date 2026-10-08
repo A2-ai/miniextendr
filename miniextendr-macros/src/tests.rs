@@ -180,6 +180,59 @@ fn find_dots_param_by_type_at_any_position() {
     }
 }
 
+/// A method for a replacement generic (a name ending in `<-`) takes the new
+/// value last, as the R formal `value` (#1853); other generics take any
+/// signature.
+#[test]
+fn replacement_method_takes_value_last() {
+    use crate::miniextendr_fn::check_replacement_value_param;
+    let check = |generic: &str, sig: &str| {
+        check_replacement_value_param(generic, &inputs_of(sig), proc_macro2::Span::call_site())
+            .map_err(|err| err.to_string())
+    };
+    for (generic, sig) in [
+        ("$<-", "x: List, name: &str, value: SEXP"),
+        ("[<-", "x: List, i: SEXP, rest: &Dots, value: SEXP"),
+        ("names<-", "x: List, _value: Vec<String>"),
+        ("[[<-", "&mut self, i: i32, value: f64"),
+        ("$", "x: List, name: &str"),
+        ("format", "x: SEXP, rest: &Dots"),
+    ] {
+        assert_eq!(check(generic, sig), Ok(()), "{generic}: {sig}");
+    }
+    for (generic, sig, found) in [
+        (
+            "$<-",
+            "x: List, name: &str, v: SEXP",
+            "but the last R argument is `v`",
+        ),
+        (
+            "[<-",
+            "x: List, i: SEXP, value: SEXP, rest: &Dots",
+            "but the last R argument is `...`",
+        ),
+        (
+            "names<-",
+            "&mut self",
+            "but it takes no new-value parameter",
+        ),
+    ] {
+        let msg = check(generic, sig).expect_err(sig);
+        assert!(
+            msg.starts_with(&format!(
+                "an S3 method for the replacement generic `{generic}` must take the new value \
+                 as its last parameter, named `value`, {found}. R passes the new value as \
+                 `value = `"
+            )),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("`R CMD check` requires the last argument"),
+            "{msg}"
+        );
+    }
+}
+
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
 /// next to an explicit `&Dots`, are compile errors.
 #[test]

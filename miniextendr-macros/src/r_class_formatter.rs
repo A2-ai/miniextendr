@@ -468,6 +468,27 @@ impl<'a> MethodContext<'a> {
         self.instance_formals_with_dots(add_self_param, true)
     }
 
+    /// Full R formals of a `<generic>.<Class>` S3 method: `"x, <params>, ..."`,
+    /// except that for a replacement generic (a name ending in `<-`, such as
+    /// `[[<-` or `names<-`) the dispatch `...` goes before the last formal,
+    /// `"x, i, ..., value"`. `R CMD check` (`tools::checkReplaceFuns()`)
+    /// requires a replacement method's last formal to be `value`, and the
+    /// impl-block check (`check_s3_replacement_methods`) makes sure it is
+    /// (#1853). A method that takes `&Dots` keeps its own order.
+    pub fn s3_method_formals(&self) -> String {
+        if self.method.has_dots || !self.generic_name().ends_with("<-") {
+            return self.instance_formals(true);
+        }
+        let mut formals = crate::roxygen::split_r_formals(&self.params);
+        formals.retain(|formal| !formal.is_empty());
+        let last = formals.pop();
+        let mut out = vec!["x"];
+        out.extend(formals);
+        out.push("...");
+        out.extend(last);
+        out.join(", ")
+    }
+
     /// Build full R formals for instance methods with optional dots.
     ///
     /// When `include_dots` is false, omits `...` from the signature.

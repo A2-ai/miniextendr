@@ -1,6 +1,6 @@
-//! Standalone S3 methods on non-syntactic generics (`[`, `$`, and `[[` from an
-//! impl block) plus `@describeIn` documentation written in Rust doc comments
-//! (#1475, #1476).
+//! Standalone S3 methods on non-syntactic generics (`[`, `$`, and `[[` /
+//! `[[<-` from an impl block) plus `@describeIn` documentation written in Rust
+//! doc comments (#1475, #1476, #1853).
 //!
 //! `mx_bag` is a plain classed double vector created in R
 //! (`structure(c(1, 2, 3), class = "mx_bag")`); only its methods live here. The
@@ -46,7 +46,7 @@ pub fn mx_bag_dollar(x: Vec<f64>, name: String) -> Result<f64, String> {
 
 // endregion
 
-// region: impl-block S3 class with a `[[` generic override (#1475)
+// region: impl-block S3 class with `[[` (#1475) and `[[<-` (#1853) generic overrides
 
 /// Handle-backed bag whose element access is the `[[` generic.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -69,6 +69,26 @@ impl MxBagHandle {
             .and_then(|k| k.checked_sub(1))
             .and_then(|k| self.values.get(k).copied())
             .ok_or_else(|| format!("index {i} out of range for {} values", self.values.len()))
+    }
+
+    /// Replace the value at 1-based position `i`: `h[[i]] <- value`. The
+    /// handle changes in place and the method returns it, which R assigns
+    /// back to `h`.
+    ///
+    /// @param i 1-based position.
+    /// @param value The new value.
+    // The generated method is `[[<-.MxBagHandle`(x, i, ..., value): the dispatch
+    // `...` goes before `value`, a replacement method's last formal (#1853).
+    #[miniextendr(s3(generic = "[[<-"))]
+    pub fn set_at(&mut self, i: i32, value: f64) -> Result<&mut Self, String> {
+        let len = self.values.len();
+        let slot = usize::try_from(i)
+            .ok()
+            .and_then(|k| k.checked_sub(1))
+            .and_then(|k| self.values.get_mut(k))
+            .ok_or_else(|| format!("index {i} out of range for {len} values"))?;
+        *slot = value;
+        Ok(self)
     }
 
     /// Number of values.

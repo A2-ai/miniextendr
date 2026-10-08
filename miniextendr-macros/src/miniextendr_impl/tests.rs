@@ -7121,3 +7121,54 @@ fn a_class_with_a_page_keeps_its_links() {
 }
 
 // endregion
+
+// region: S3 methods for replacement generics (#1853)
+
+/// The formals of the generated `<generic>.<Class>` S3 method.
+fn s3_method_formals(wrapper: &str, method: &str) -> String {
+    let head = format!("{} <- function(", crate::naming::r_def_name(method));
+    let line = wrapper
+        .lines()
+        .find(|l| l.starts_with(&head))
+        .unwrap_or_else(|| panic!("no `{head}` in:\n{wrapper}"));
+    line[head.len()..]
+        .strip_suffix(") {")
+        .unwrap_or_else(|| panic!("unexpected definition line `{line}`"))
+        .to_string()
+}
+
+/// `R CMD check` (`tools::checkReplaceFuns()`) requires the last formal of a
+/// replacement method to be `value`, so the dispatch `...` every S3 method
+/// gets goes before it; any other generic keeps `...` last.
+#[test]
+fn s3_replacement_method_keeps_value_last() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Slots {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "[[<-"))]
+            pub fn set_at(&mut self, i: i32, value: f64) { unimplemented!() }
+            #[miniextendr(s3(generic = "names<-"))]
+            pub fn rename(&mut self, value: Vec<String>) { unimplemented!() }
+            #[miniextendr(s3(generic = "[<-"))]
+            pub fn set_many(&mut self, i: Vec<i32>, _rest: &Dots, value: Vec<f64>) {
+                unimplemented!()
+            }
+            #[miniextendr(s3(generic = "[["))]
+            pub fn at(&self, i: i32) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[<-.Slots"),
+        "x, i, ..., value"
+    );
+    assert_eq!(
+        s3_method_formals(&wrapper, "names<-.Slots"),
+        "x, ..., value"
+    );
+    assert_eq!(s3_method_formals(&wrapper, "[<-.Slots"), "x, i, ..., value");
+    assert_eq!(s3_method_formals(&wrapper, "[[.Slots"), "x, i, ...");
+}
+
+// endregion

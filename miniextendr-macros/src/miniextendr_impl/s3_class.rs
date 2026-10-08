@@ -105,7 +105,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .map(|s| s.to_string())
             .unwrap_or_else(|| class_name.clone());
         let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
-        let full_params = ctx.instance_formals(true); // adds x, ..., params
+        let full_params = ctx.s3_method_formals(); // x, params, ... (`value` last for `*<-`)
 
         // Only create the S3 generic if no generic/class override was provided
         // (custom class suffix implies using an existing generic)

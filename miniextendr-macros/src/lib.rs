@@ -1066,6 +1066,16 @@ pub fn miniextendr(
         .collect();
     let inputs = &r_inputs;
 
+    // A method for a replacement generic (`s3(generic = "$<-", ...)`) takes
+    // the new value last, as `value` (#1853). Checked on the R formals, so a
+    // trailing condition-call marker doesn't hide the parameter before it.
+    if let Some(generic) = &s3_generic
+        && let Err(err) =
+            miniextendr_fn::check_replacement_value_param(generic, inputs, rust_ident.span())
+    {
+        return err.into_compile_error().into();
+    }
+
     // Check for @title/@description conflicts with implicit values (doc-lint feature)
     // Skip when `doc` attribute overrides the roxygen — implicit docs are irrelevant then.
     let doc_lint_warnings = if doc.is_some() {

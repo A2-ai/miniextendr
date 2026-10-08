@@ -107,6 +107,11 @@ pub fn describe(&self, verbose: bool) -> String { ... }
 // → describe.Person <- function(x, verbose, ...) { ... }
 ```
 
+A method for a replacement generic (`s3(generic = "[[<-")`, any name ending
+in `<-`) gets the `...` before its last parameter, which must be `value`:
+`` `[[<-.Person` <- function(x, i, ..., value) ``. See
+[Replacement and extraction generics](#replacement-and-extraction-generics).
+
 ### Constructor
 
 The constructor is always the method returning `Self`. It generates a function named
@@ -431,6 +436,106 @@ generics (`Ops`, `Math`) are not special-cased: write a method per operator.
 
 `$` methods receive the field name as a character string (`x$n` dispatches as
 `` `$.percent`(x, "n") ``), so type that parameter `String` or `&str`.
+
+### Replacement and extraction generics
+
+A class built in R as a list (`structure(list(...), class = "thing")`) can
+take its `$`, `[[`, `$<-`, `[[<-`, `[<-` and `names<-` methods from Rust:
+
+```rust
+use miniextendr_api::dots::Dots;
+use miniextendr_api::{List, SEXP, miniextendr};
+
+#[miniextendr(s3(generic = "$<-", class = "thing"))]
+pub fn dollar_assign_thing(x: List, name: &str, value: SEXP) -> SEXP { /* … */ }
+
+#[miniextendr(s3(generic = "[[<-", class = "thing"))]
+pub fn element_assign_thing(x: List, i: SEXP, value: SEXP) -> SEXP { /* … */ }
+
+#[miniextendr(s3(generic = "[<-", class = "thing"))]
+pub fn subset_assign_thing(x: List, i: SEXP, _dots: &Dots, value: SEXP) -> SEXP { /* … */ }
+
+#[miniextendr(s3(generic = "$", class = "thing"))]
+pub fn dollar_thing(x: List, name: &str) -> SEXP { /* … */ }
+```
+
+The generated methods take the formals R passes:
+
+```r
+`$<-.thing` <- function(x, name, value) { ... }
+`[[<-.thing` <- function(x, i, value) { ... }
+`[<-.thing` <- function(x, i, ..., value) { ... }
+`$.thing` <- function(x, name) { ... }
+```
+
+roxygen2 registers each one (`S3method("$<-",thing)`), and
+`tools::checkS3methods()` and `tools::checkReplaceFuns()`, which `R CMD check`
+runs, report nothing for them. `rpkg/src/rust/s3_replacement_tests.rs` is the
+working fixture, and `rpkg/tests/testthat/test-s3-replacement.R` tests each
+point below.
+
+**How R calls a replacement method.** R turns an assignment into a getter
+call, an edit of the value it got, and a replacement call with the result:
+
+- `x$f$col[i] <- v` first calls `` `$.thing`(x, "f") ``, changes `col[i]` in
+  that copy of `f`, then calls `` `$<-.thing`(`*tmp*`, "f", value = <the new f>) ``.
+  The method sees the whole new element, never the changed cell.
+- `x[["f"]]$col <- v` reads through `[[` and writes back through `[[<-`.
+  `modifyList(x, list(f = v))` does the same for each name in its list.
+- `x["f"] <- list(v)` goes through `[<-`.
+
+**`name` is a string.** `x$f` and `x$f <- v` pass the name as a character
+string (`"f"`), so a `&str` or `String` parameter fits `$` and `$<-`.
+
+**`[[` and `[[<-` take `i: SEXP`.** `x[["f"]]` passes a string, `x[[2]]` a
+double and `lapply()` an integer. A `&str` parameter's generated check refuses
+the number before the method runs (`'i' must be character`), so take a `SEXP`
+and branch on its type, or use a type that converts from both.
+
+**`[<-` takes `&Dots` before `value`.** `x[i, j] <- v` passes `j` as a further
+positional argument, which the `...` collects. Without a `&Dots` parameter,
+`x[1, 2] <- v` fails in R with `unused argument (2)`.
+
+**`value` comes last.** R passes the new value by name, `value = v`, and
+`R CMD check` (`tools::checkReplaceFuns()`) requires the last formal of every
+replacement function, registered S3 methods included, to be `value`. A method
+for a generic whose name ends in `<-` must therefore name its last parameter
+`value` (`_value` counts, since the R name drops leading underscores);
+anything else is a compile error:
+
+```text
+error: an S3 method for the replacement generic `$<-` must take the new value
+as its last parameter, named `value`, but the last R argument is `new_value`.
+R passes the new value as `value = ` (...), and `R CMD check` requires the
+last argument of a replacement function to be named `value`.
+```
+
+The same holds for an impl-block method (`#[miniextendr(s3(generic = "[[<-"))]`
+in a `#[miniextendr(s3)] impl`), whose generated `...` goes before `value`
+(`x, i, ..., value`), so a trailing `&Dots` parameter is refused too.
+
+**Return the object.** R assigns whatever the method returns to the variable:
+a `$<-` method that returns `NULL` leaves `x` as `NULL`. Change a copy and
+return it (`SexpExt::shallow_duplicate()`, rooted with a `ProtectScope` while
+you allocate), since R may still share `x`'s elements with other bindings. An
+impl-block method on an `ExternalPtr` class that changes `&mut self` and
+returns `()`, `&mut Self` or `Result<&mut Self, E>` already returns `x`.
+
+**Some forms reach a method only if one exists.** `names(x) <- v` uses the
+default unless the class has a `names<-` method, and `names(x)[2] <- "y"`
+calls that method with the whole new names vector. `attr<-` and `class<-` are
+not generics: `attr(x, "a") <- v` and `class(x) <- v` never reach a method.
+
+**`lapply()` and `str()` call `[[`.** `lapply()`, `sapply()`, `vapply()`,
+`Map()` and `str()` read each element through `x[[i]]` with an integer `i`,
+so a `[[` method runs for them too and must accept positions. A `for` loop,
+`as.list()` and `unlist()` do not call it.
+
+**The generated checks apply.** Each parameter keeps its R-side check, which
+runs before the Rust function: `is.list(x)` for a `List` receiver
+(`'x' must be a list`), a length-1 character vector for `&str`
+(`'name' must be character`, `'name' must have length 1`). A `SEXP`
+parameter has none.
 
 ### Double dispatch (vctrs)
 

@@ -1,0 +1,5 @@
+error: an S3 method for the replacement generic `[<-` must take the new value as its last parameter, named `value`, but the last R argument is `...`. R passes the new value as `value = ` (`x$f <- v` calls `` `$<-`(x, "f", value = v) ``), and `R CMD check` requires the last argument of a replacement function to be named `value`.
+  --> tests/ui/impl_s3_replacement_value_not_last.rs:23:9
+   |
+23 |         _rest: &miniextendr_api::dots::Dots,
+   |         ^^^^^
