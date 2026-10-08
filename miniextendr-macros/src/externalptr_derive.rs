@@ -40,16 +40,18 @@
 //!
 //! ### With R Sidecar Slots and Class System
 //!
-//! The `#[r_data]` attribute marks fields for R-side storage. Use `#[externalptr(...)]`
-//! to specify a class system for appropriate R wrapper generation:
+//! The `#[r_data]` attribute marks fields that get R accessors. Every public
+//! slot gets the standalone `Type_get_field(x)` / `Type_set_field(x, value)`.
+//! Use `#[externalptr(...)]` to name the class system; for R6 and S7 the impl's
+//! `r_data_accessors` option also wires the slots into the class:
 //!
 //! | Class System | Attribute | R Accessors |
 //! |--------------|-----------|-------------|
 //! | Environment | `#[externalptr(env)]` (default) | `Type_get_field()`, `Type_set_field()` |
-//! | R6 | `#[externalptr(r6)]` | Active bindings in R6Class |
-//! | S3 | `#[externalptr(s3)]` | `$.class`, `$<-.class` methods |
-//! | S4 | `#[externalptr(s4)]` | Slot accessors |
-//! | S7 | `#[externalptr(s7)]` | Properties via `new_property()` |
+//! | R6 | `#[externalptr(r6)]` + `#[miniextendr(r6(r_data_accessors))]` | Active bindings, `obj$field` / `obj$field <- value` |
+//! | S3 | `#[externalptr(s3)]` | `Type_get_field()`, `Type_set_field()` |
+//! | S4 | `#[externalptr(s4)]` | `Type_get_field()`, `Type_set_field()` |
+//! | S7 | `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | Properties, `obj@field` / `obj@field <- value` |
 //!
 //! Standalone setters and R6 active-binding setters return the receiver invisibly
 //! by default. `#[r_data(setter = "visible")]` exposes that return value;
@@ -59,13 +61,22 @@
 //!
 //! Three field tiers are supported:
 //!
-//! 1. **Raw SEXP** (`SEXP`) - Direct SEXP access, no conversion
-//! 2. **Zero-overhead scalars** (`i32`, `f64`, `bool`, `u8`) - Direct R memory access
-//! 3. **Conversion types** (anything else) - Uses `IntoR`/`TryFromSexp` traits
+//! 1. **R values** (`RSlot`) - kept in the external pointer's protection
+//!    list, which roots them and serializes them with the pointer; no
+//!    conversion. Rust reads and writes them through `ExternalPtr::r_slot` /
+//!    `set_r_slot` with the generated `Type::FIELD_SLOT` key. A bare `SEXP`
+//!    field is refused: the struct can't root it.
+//! 2. **Scalars** (`i32`, `f64`, `bool`, `u8`) - struct fields, returned as a
+//!    length-1 vector and written with `Rf_as*`
+//! 3. **Conversion types** (anything else) - struct fields, converted with the
+//!    `IntoR`/`TryFromSexp` traits on every read and write
+//!
+//! Scalar and conversion values live in the Rust struct, behind the pointer's
+//! address, which `saveRDS` does not write.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
-//! #[externalptr(r6)]  // R6 class - generates active bindings
+//! #[externalptr(r6)]
 //! pub struct MyType {
 //!     pub x: i32,
 //!
@@ -73,18 +84,18 @@
 //!     r: RSidecar,  // Selector - enables R accessors for this type
 //!
 //!     #[r_data]
-//!     pub raw_slot: SEXP,  // Raw SEXP, no conversion
+//!     pub keys: RSlot,  // R value in the protection list; key `MyType::KEYS_SLOT`
 //!
 //!     #[r_data]
-//!     pub count: i32,  // Zero-overhead: stored as R INTEGER(1)
-//!
-//!     #[r_data]
-//!     pub score: f64,  // Zero-overhead: stored as R REAL(1)
+//!     pub count: i32,  // Scalar struct field
 //!
 //!     #[r_data]
 //!     pub name: String,  // Conversion: uses IntoR/TryFromSexp
 //! }
-//! // Generates: active bindings `count`, `score`, `name` in R6Class
+//!
+//! #[miniextendr(r6(r_data_accessors))]
+//! impl MyType { /* ... */ }
+//! // Generates: active bindings `keys`, `count`, `name` in the R6Class
 //! ```
 //!
 //! ### Trait ABI wiring
@@ -273,22 +284,24 @@ fn is_pub(field: &Field) -> bool {
 
 /// The kind of sidecar slot, determining how getter/setter FFI functions are generated.
 ///
-/// Each kind maps to a different codegen strategy for reading from and writing to
-/// the Rust struct through R's `.Call` interface:
-/// - Raw SEXP: no conversion, direct pass-through.
-/// - Zero-overhead scalars: use R's `Rf_Scalar*`/`Rf_as*` for single-element coercion.
-/// - Conversion: use the `IntoR`/`TryFromSexp` traits for arbitrary types.
+/// Each kind maps to a different codegen strategy for reading and writing the
+/// slot through R's `.Call` interface:
+/// - `RSlot`: an R value in the external pointer's protection list, no conversion.
+/// - Scalars: a struct field, read into R with `Rf_Scalar*`, written with `Rf_as*`.
+/// - Conversion: a struct field, converted with the `IntoR`/`TryFromSexp` traits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SlotKind {
-    /// SEXP type -- raw SEXP access (getter returns SEXP, setter takes SEXP).
-    RawSexp,
-    /// Zero-overhead scalar: `i32` (or `i16`/`i8`) stored as `INTEGER(1)`.
+    /// `RSlot` field: the R value at this position among the type's `RSlot`
+    /// fields, kept in the external pointer's protection list (getter returns
+    /// it, setter stores `value` there).
+    RSlot(usize),
+    /// Scalar struct field `i32` (or `i16`/`i8`), returned as a length-1 integer.
     ScalarInt,
-    /// Zero-overhead scalar: `f64` (or `f32`) stored as `REAL(1)`.
+    /// Scalar struct field `f64` (or `f32`), returned as a length-1 double.
     ScalarReal,
-    /// Zero-overhead scalar: `bool` (or `Rbool`) stored as `LOGICAL(1)`.
+    /// Scalar struct field `bool` (or `Rbool`), returned as a length-1 logical.
     ScalarLogical,
-    /// Zero-overhead scalar: `u8` stored as `RAW(1)`.
+    /// Scalar struct field `u8`, returned as a length-1 raw.
     ScalarRaw,
     /// Conversion type -- uses `IntoR`/`TryFromSexp` traits for arbitrary Rust types.
     Conversion,
@@ -303,9 +316,6 @@ struct SidecarSlot {
     name: Ident,
     /// Rust type of the field, used in conversion-based getter/setter codegen.
     ty: syn::Type,
-    /// Zero-based index of this slot in the protection VECSXP
-    /// (offset from `PROT_BASE_LEN`, which reserves slots for type ID and user data).
-    index: usize,
     /// Whether the field is `pub`. Only public fields get R accessor functions.
     is_public: bool,
     /// Determines the codegen strategy for reading/writing this slot.
@@ -336,34 +346,42 @@ struct SidecarInfo {
 
 /// Determine the [`SlotKind`] for a field type by inspecting its last path segment.
 ///
-/// Recognizes `SEXP`, scalar numerics (`i32`, `i16`, `i8`, `f64`, `f32`),
-/// booleans (`bool`, `Rbool`), and raw bytes (`u8`). Everything else falls
-/// through to [`SlotKind::Conversion`].
-fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
+/// Recognizes `RSlot`, which takes position `r_slots` (the number of `RSlot`
+/// fields before it), scalar numerics (`i32`, `i16`, `i8`, `f64`, `f32`),
+/// booleans (`bool`, `Rbool`), and raw bytes (`u8`). A bare `SEXP` is an
+/// error: the struct can't root it. Everything else falls through to
+/// [`SlotKind::Conversion`].
+fn slot_kind_for_type(ty: &syn::Type, r_slots: usize) -> syn::Result<SlotKind> {
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
     {
         let ident = &seg.ident;
-        // Check for raw SEXP access
-        if ident == "SEXP" {
-            return SlotKind::RawSexp;
+        if ident == "RSlot" {
+            return Ok(SlotKind::RSlot(r_slots));
         }
-        // Check for zero-overhead scalar types
+        if ident == "SEXP" {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "a `SEXP` sidecar field is not rooted: the GC frees its value once R drops \
+                 its own references. Declare the field as `RSlot`, which keeps the value in \
+                 the external pointer's protection list",
+            ));
+        }
         if ident == "i32" || ident == "i16" || ident == "i8" {
-            return SlotKind::ScalarInt;
+            return Ok(SlotKind::ScalarInt);
         }
         if ident == "f64" || ident == "f32" {
-            return SlotKind::ScalarReal;
+            return Ok(SlotKind::ScalarReal);
         }
         if ident == "bool" || ident == "Rbool" {
-            return SlotKind::ScalarLogical;
+            return Ok(SlotKind::ScalarLogical);
         }
         if ident == "u8" {
-            return SlotKind::ScalarRaw;
+            return Ok(SlotKind::ScalarRaw);
         }
     }
     // Everything else uses conversion
-    SlotKind::Conversion
+    Ok(SlotKind::Conversion)
 }
 
 /// Parse struct fields for sidecar information.
@@ -388,7 +406,7 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 
     let mut selector_fields: Vec<&Field> = vec![];
     let mut slots = vec![];
-    let mut slot_index = 0usize;
+    let mut r_slots = 0usize;
 
     for field in fields.iter() {
         if !has_r_data_attr(field) {
@@ -401,17 +419,18 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
             selector_fields.push(field);
         } else if let Some(ref ident) = field.ident {
             // Any other type with #[r_data] becomes a slot
-            let kind = slot_kind_for_type(&field.ty);
+            let kind = slot_kind_for_type(&field.ty, r_slots)?;
+            if matches!(kind, SlotKind::RSlot(_)) {
+                r_slots += 1;
+            }
             slots.push(SidecarSlot {
                 name: ident.clone(),
                 ty: field.ty.clone(),
-                index: slot_index,
                 is_public: is_pub(field),
                 kind,
                 prop_doc: options.prop_doc,
                 setter_invisible: options.setter_invisible,
             });
-            slot_index += 1;
         }
     }
 
@@ -432,23 +451,21 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 
 /// Generate the token stream for a sidecar getter function body.
 ///
-/// Reads the field value from the Rust struct (accessed via the external
-/// pointer address) and converts it to an R SEXP. The conversion strategy
-/// depends on the slot kind:
-/// - `RawSexp`: returns the SEXP field directly.
-/// - Scalar kinds: wraps in `Rf_Scalar*` for zero-overhead conversion.
-/// - `Conversion`: clones the value and calls `IntoR::into_sexp`.
+/// Reads the slot and returns it as an R SEXP. The strategy depends on the
+/// slot kind:
+/// - `RSlot`: returns the R value from the external pointer's protection list
+///   (`NULL` until set). It needs no live address, so it also reads a pointer
+///   that `readRDS` brought back.
+/// - Scalar kinds: reads the struct field (accessed via the external pointer
+///   address) and wraps it with `Rf_Scalar*`.
+/// - `Conversion`: clones the struct field and calls `IntoR::into_sexp`.
 ///
 /// The body runs inside `with_r_unwind_protect` (see the emission site in
 /// [`generate_sidecar_accessors`]); a non-external-pointer argument, a null
 /// pointer address, or a wrong stored type panics with the same
 /// `expected ExternalPtr<T>` message the main class-method path uses. The
 /// panic is transported as a tagged condition and re-raised by the R wrapper.
-fn generate_getter_body(
-    struct_name: &syn::Ident,
-    slot: &SidecarSlot,
-    _prot_index_lit: &syn::LitInt,
-) -> TokenStream {
+fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
     // Helper: generate the pointer extraction code for Box<dyn Any> storage.
@@ -478,12 +495,10 @@ fn generate_getter_body(
     };
 
     match slot.kind {
-        SlotKind::RawSexp => {
-            // Raw SEXP field - return directly (already an R value)
+        SlotKind::RSlot(index) => {
             quote::quote! {
                 unsafe {
-                    #extract_ref
-                    data.#field_name
+                    ::miniextendr_api::externalptr::r_slot_from_sexp::<#struct_name>(x, #index)
                 }
             }
         }
@@ -540,10 +555,12 @@ fn generate_getter_body(
 
 /// Generate the token stream for a sidecar setter function body.
 ///
-/// Converts the incoming R SEXP `value` and writes it to the corresponding
-/// Rust struct field. The conversion strategy depends on the slot kind:
-/// - `RawSexp`: stores the SEXP directly.
-/// - Scalar kinds: uses `Rf_as*` or coercion for single-element extraction;
+/// Stores the incoming R SEXP `value` in the slot. The strategy depends on the
+/// slot kind:
+/// - `RSlot`: stores `value` in the external pointer's protection list, which
+///   roots it.
+/// - Scalar kinds: writes the struct field, using `Rf_as*` or coercion for
+///   single-element extraction;
 ///   an input that doesn't reduce to a single non-NA scalar raises a
 ///   conversion error instead of silently storing an NA/`false` sentinel.
 /// - `Conversion`: uses `TryFromSexp::try_from_sexp`; a failed conversion
@@ -556,11 +573,7 @@ fn generate_getter_body(
 /// condition SEXP with kind `conversion` — both are re-raised by the R
 /// wrapper. Sidecar accessors have no `__miniextendr_call` slot (#344/#348),
 /// so the tagged conditions carry null call attribution.
-fn generate_setter_body(
-    struct_name: &syn::Ident,
-    slot: &SidecarSlot,
-    _prot_index_lit: &syn::LitInt,
-) -> TokenStream {
+fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
     // Helper: extract mutable reference via Box<dyn Any> downcast.
@@ -623,11 +636,12 @@ fn generate_setter_body(
     };
 
     match slot.kind {
-        SlotKind::RawSexp => {
+        SlotKind::RSlot(index) => {
             quote::quote! {
                 unsafe {
-                    #extract_mut
-                    data.#field_name = value;
+                    ::miniextendr_api::externalptr::set_r_slot_in_sexp::<#struct_name>(
+                        x, #index, value,
+                    );
                     x
                 }
             }
@@ -973,9 +987,6 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
     let name_str = name.to_string();
     let name_upper = name_str.to_uppercase();
 
-    // Base prot slot indices (type ID at 0, user at 1)
-    const PROT_BASE_LEN: usize = 2;
-
     // Generate getter/setter functions and R wrappers for each pub slot
     let mut c_functions = vec![];
     let mut r_wrappers = String::new();
@@ -1004,7 +1015,6 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
     for slot in &pub_slots {
         let field_name = &slot.name;
         let field_name_str = crate::naming::ident_name(field_name);
-        let prot_index = PROT_BASE_LEN + slot.index;
 
         // C function names (crate-prefixed for webR cross-package symbol
         // uniqueness — #1273, routed through the shared naming.rs helpers)
@@ -1024,11 +1034,9 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         let getter_doc_lit = syn::LitStr::new(&getter_doc, field_name.span());
         let setter_doc_lit = syn::LitStr::new(&setter_doc, field_name.span());
 
-        let prot_index_lit = syn::LitInt::new(&prot_index.to_string(), Span::call_site());
-
         // Generate getter/setter bodies based on slot kind
-        let getter_body = generate_getter_body(name, slot, &prot_index_lit);
-        let setter_body = generate_setter_body(name, slot, &prot_index_lit);
+        let getter_body = generate_getter_body(name, slot);
+        let setter_body = generate_setter_body(name, slot);
 
         // Generate C getter function.
         //
@@ -1213,21 +1221,24 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
 
 /// Generate the `TypedExternal` trait implementation for the derive target.
 ///
-/// Produces three associated constants:
+/// Produces the associated constants:
 /// - `TYPE_NAME`: the struct name as a `&'static str`
 /// - `TYPE_NAME_CSTR`: null-terminated byte string of the struct name
 /// - `TYPE_ID_CSTR`: globally unique ID in the format
 ///   `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`,
 ///   using `CARGO_PKG_NAME`, `CARGO_PKG_VERSION`, and `module_path!()`.
+/// - `R_SLOT_COUNT`: the number of `RSlot` fields, when there are any.
 ///
 /// Supports generic structs (generics are forwarded to the impl).
-fn generate_typed_external(input: &DeriveInput) -> TokenStream {
+fn generate_typed_external(input: &DeriveInput, r_slot_count: usize) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, name.span());
     let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+    let r_slot_count =
+        (r_slot_count > 0).then(|| quote::quote! { const R_SLOT_COUNT: usize = #r_slot_count; });
 
     // TYPE_ID_CSTR format: "<crate_name>@<crate_version>::<module_path>::<type_name>\0"
     //
@@ -1246,7 +1257,70 @@ fn generate_typed_external(input: &DeriveInput) -> TokenStream {
                     env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION"),
                     "::", module_path!(), "::", #name_lit, "\0"
                 ).as_bytes();
+            #r_slot_count
         }
+    }
+}
+
+/// Generate the `RSlotKey` constant of each `RSlot` field: `KEYS_SLOT` for a
+/// field `keys`, with the field's visibility.
+///
+/// Rust code passes it to `ExternalPtr::r_slot` / `set_r_slot`. Private fields
+/// get one too: an `RSlot` is how Rust keeps an R value rooted.
+///
+/// An `RSlot` field holds nothing, so no code reads it and rustc would warn
+/// that it is never read. A function the `dead_code` lint allows is a root of
+/// rustc's dead-code analysis, so the fields it reads count as read.
+fn generate_r_slot_keys(input: &DeriveInput) -> TokenStream {
+    let syn::Data::Struct(data) = &input.data else {
+        return TokenStream::new();
+    };
+    let fields: Vec<_> = data
+        .fields
+        .iter()
+        .filter(|field| has_r_data_attr(field))
+        .filter_map(|field| {
+            let ident = field.ident.as_ref()?;
+            let syn::Type::Path(type_path) = &field.ty else {
+                return None;
+            };
+            (type_path.path.segments.last()?.ident == "RSlot").then_some((field, ident))
+        })
+        .collect();
+    let idents: Vec<_> = fields.iter().map(|&(_, ident)| ident).collect();
+    let keys: Vec<_> = fields
+        .iter()
+        .enumerate()
+        .map(|(index, &(field, ident))| {
+            let field_name = crate::naming::ident_name(ident);
+            let key = quote::format_ident!("{}_SLOT", field_name.to_uppercase());
+            let vis = &field.vis;
+            let doc = format!(
+                "Key of the `{field_name}` `RSlot` field, for `ExternalPtr::r_slot` / `set_r_slot`."
+            );
+            quote::quote! {
+                #[doc = #doc]
+                #vis const #key: ::miniextendr_api::externalptr::RSlotKey<Self> =
+                    ::miniextendr_api::externalptr::RSlotKey::new(#index);
+            }
+        })
+        .collect();
+    if keys.is_empty() {
+        return TokenStream::new();
+    }
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    quote::quote! {
+        impl #impl_generics #name #ty_generics #where_clause {
+            #(#keys)*
+        }
+
+        const _: () = {
+            #[allow(dead_code)]
+            fn __mx_read_r_slot_fields #impl_generics (value: &#name #ty_generics) #where_clause {
+                let _ = (#(&value.#idents,)*);
+            }
+        };
     }
 }
 
@@ -1316,7 +1390,13 @@ pub fn derive_external_ptr(
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external = generate_typed_external(&input);
+    let r_slot_count = sidecar_info
+        .slots
+        .iter()
+        .filter(|slot| matches!(slot.kind, SlotKind::RSlot(_)))
+        .count();
+    let typed_external = generate_typed_external(&input, r_slot_count);
+    let r_slot_keys = generate_r_slot_keys(&input);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (
             generate_into_external_ptr(&input),
@@ -1333,6 +1413,7 @@ pub fn derive_external_ptr(
 
     Ok(quote::quote! {
         #typed_external
+        #r_slot_keys
         #into_external_ptr
         #into_r_vec_element
         #sidecar_accessors
@@ -1493,17 +1574,14 @@ mod tests {
             let slot = super::SidecarSlot {
                 name: syn::Ident::new("f", proc_macro2::Span::call_site()),
                 ty,
-                index: 0,
                 is_public: true,
                 kind,
                 prop_doc: None,
                 setter_invisible: None,
             };
-            let lit = syn::LitInt::new("0", proc_macro2::Span::call_site());
             super::generate_setter_body(
                 &syn::Ident::new("T", proc_macro2::Span::call_site()),
                 &slot,
-                &lit,
             )
             .to_string()
         };
@@ -1543,7 +1621,6 @@ mod tests {
         let slot = super::SidecarSlot {
             name: syn::Ident::new("f", proc_macro2::Span::call_site()),
             ty: syn::parse_quote!(i32),
-            index: 0,
             is_public: true,
             kind: super::SlotKind::ScalarInt,
             prop_doc: None,
@@ -1626,5 +1703,88 @@ mod tests {
             assert_eq!(info.slots[0].prop_doc.as_deref(), Some("A counter"));
             assert_eq!(info.slots[0].setter_invisible, Some(false));
         }
+    }
+
+    /// `RSlot` fields count among themselves: the scalars and conversion
+    /// fields between them take no protection-list position.
+    #[test]
+    fn r_slot_fields_number_their_own_positions() {
+        let input: syn::DeriveInput = syn::parse_str(
+            "struct Engine { #[r_data] _r: RSidecar, #[r_data] pub a: i32, \
+             #[r_data] pub keys: RSlot, #[r_data] pub c: String, #[r_data] steps: RSlot }",
+        )
+        .unwrap();
+        let info = super::parse_sidecar_info(&input, ClassSystem::Env).unwrap();
+        let kinds: Vec<_> = info.slots.iter().map(|slot| slot.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                super::SlotKind::ScalarInt,
+                super::SlotKind::RSlot(0),
+                super::SlotKind::Conversion,
+                super::SlotKind::RSlot(1),
+            ]
+        );
+
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(
+            out.contains("const R_SLOT_COUNT : usize = 2usize ;"),
+            "{out}"
+        );
+        assert!(
+            out.contains("pub const KEYS_SLOT : :: miniextendr_api :: externalptr :: RSlotKey < Self > = :: miniextendr_api :: externalptr :: RSlotKey :: new (0usize) ;"),
+            "{out}"
+        );
+        // A private field keeps a private key and gets no R accessor.
+        assert!(
+            out.contains("const STEPS_SLOT : :: miniextendr_api :: externalptr :: RSlotKey < Self > = :: miniextendr_api :: externalptr :: RSlotKey :: new (1usize) ;"),
+            "{out}"
+        );
+        assert!(!out.contains("pub const STEPS_SLOT"), "{out}");
+        assert!(!out.contains("get_steps"), "{out}");
+
+        // The accessors read and write the protection list, not the struct.
+        let keys = &info.slots[1];
+        let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
+        let getter = super::generate_getter_body(&name, keys).to_string();
+        assert!(
+            getter.contains("r_slot_from_sexp :: < Engine > (x , 0usize)"),
+            "{getter}"
+        );
+        assert!(!getter.contains("R_ExternalPtrAddr"), "{getter}");
+        let setter = super::generate_setter_body(&name, keys).to_string();
+        assert!(
+            setter.contains("set_r_slot_in_sexp :: < Engine > (x , 0usize , value ,)"),
+            "{setter}"
+        );
+    }
+
+    /// A struct without `RSlot` fields keeps the trait's default count and
+    /// gets no key constants.
+    #[test]
+    fn no_r_slot_fields_emit_no_count_or_keys() {
+        let input: syn::DeriveInput =
+            syn::parse_str("struct Plain { #[r_data] _r: RSidecar, #[r_data] pub a: i32 }")
+                .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(!out.contains("R_SLOT_COUNT"), "{out}");
+        assert!(!out.contains("RSlotKey"), "{out}");
+    }
+
+    /// A bare `SEXP` under `#[r_data]` is refused: nothing would root it.
+    #[test]
+    fn bare_sexp_sidecar_field_is_refused() {
+        let input: syn::DeriveInput =
+            syn::parse_str("struct Engine { #[r_data] _r: RSidecar, #[r_data] pub keys: SEXP }")
+                .unwrap();
+        let Err(err) = super::parse_sidecar_info(&input, ClassSystem::Env) else {
+            panic!("a SEXP sidecar field must be refused");
+        };
+        let message = err.to_string();
+        assert!(message.contains("is not rooted"), "{message}");
+        assert!(
+            message.contains("Declare the field as `RSlot`"),
+            "{message}"
+        );
     }
 }

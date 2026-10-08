@@ -10,5 +10,5 @@ rdata_sidecar_s3_new(data)
 \item{data}{Numeric sidecar field.}
 }
 \description{
-Test creating a SidecarS3 with S3 $ method dispatch for sidecar fields.
+Test creating a SidecarS3 with a sidecar field.
 }

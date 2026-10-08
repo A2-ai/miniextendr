@@ -134,9 +134,17 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///
 /// # Supported Field Types
 ///
-/// - **`SEXP`** - Raw SEXP access, no conversion
-/// - **`i32`, `f64`, `bool`, `u8`** - Zero-overhead scalars (stored directly in R)
-/// - **Any `IntoR` type** - Automatic conversion (e.g., `String`, `Vec<T>`)
+/// - **[`RSlot`](super::RSlot)** - an R value, kept in the external pointer's
+///   protection list (not in the struct), so the pointer roots it
+/// - **`i32`, `f64`, `bool`, `u8`** - scalars read with `Rf_as*` on write and
+///   returned as a fresh length-1 vector on read
+/// - **Any `IntoR + TryFromSexp` type** - converted on every read and write
+///   (e.g., `String`, `Vec<T>`)
+///
+/// Every field but an `RSlot` lives in the Rust struct, so a reader always sees
+/// the Rust value and a writer either converts into it or gets an error. Those
+/// values sit behind the pointer's address, which `saveRDS` does not write.
+/// `RSlot` values travel with the pointer.
 ///
 /// # Example
 ///
@@ -151,9 +159,9 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///     #[r_data]
 ///     r: RSidecar,
 ///
-///     /// Raw SEXP slot - MyType_get_raw() / MyType_set_raw()
+///     /// R value - MyType_get_raw() / MyType_set_raw()
 ///     #[r_data]
-///     pub raw: SEXP,
+///     pub raw: RSlot,
 ///
 ///     /// Zero-overhead scalar - MyType_get_count() / MyType_set_count()
 ///     #[r_data]

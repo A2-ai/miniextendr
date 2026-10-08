@@ -155,10 +155,18 @@ arguments, not `numArgs + 1`. This was the root cause of a PR #344 regression
 that was subsequently reverted.
 
 Three field tiers are supported in sidecar slots:
-- Raw SEXP — direct SEXP storage, no conversion.
-- Zero-overhead scalars (`i32`, `f64`, `bool`, `u8`) — stored directly in R
-  memory, read/written without copying.
-- Conversion types — uses `IntoR` / `TryFromSexp` round-trip.
+- `RSlot` — an R value kept in the external pointer's `prot` list (after the
+  type ID and the user slot), so the pointer roots it and `saveRDS()` writes
+  it. Rust reaches it through `ExternalPtr::r_slot` / `set_r_slot` with the
+  derive-generated key `Type::FIELD_SLOT`. A bare `SEXP` field is a compile
+  error: the struct can't root it (#1846).
+- Scalars (`i32`, `f64`, `bool`, `u8`) — struct fields, returned as a fresh
+  length-1 vector and written with `Rf_as*`.
+- Conversion types — struct fields, `IntoR` / `TryFromSexp` on every access.
+
+Scalar and conversion values live behind the pointer's address, which
+`saveRDS()` does not write; after `readRDS()` their getters error on the null
+pointer while `RSlot` accessors still work (checked by the `prot[0]` type ID).
 
 ### Cross-package ABI
 
@@ -216,10 +224,13 @@ The `#[externalptr(...)]` attribute selects the R class system:
 | Attribute | Class system | Sidecar R accessor form |
 |-----------|-------------|------------------------|
 | `#[externalptr(env)]` (default) | Environment | `Type_get_field()`, `Type_set_field()` |
-| `#[externalptr(r6)]` | R6 | Active bindings in R6Class |
-| `#[externalptr(s3)]` | S3 | `$.class`, `$<-.class` methods |
-| `#[externalptr(s4)]` | S4 | Slot accessors |
-| `#[externalptr(s7)]` | S7 | Properties via `new_property()` |
+| `#[externalptr(r6)]` + `#[miniextendr(r6(r_data_accessors))]` | R6 | Active bindings in R6Class |
+| `#[externalptr(s3)]` | S3 | `Type_get_field()`, `Type_set_field()` (no `$` / `$<-` methods) |
+| `#[externalptr(s4)]` | S4 | `Type_get_field()`, `Type_set_field()` |
+| `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | S7 | Properties via `new_property()` |
+
+Every class system also gets the standalone `Type_get_field()` /
+`Type_set_field()`; there is no `r_data_accessors!` macro.
 
 ## Decision trees
 
@@ -243,19 +254,20 @@ If the data is array-like and benefits from lazy evaluation:
 ### When to use sidecar fields?
 
 Sidecar fields (`#[r_data]`) are appropriate when a subset of the struct's
-fields should be readable or writable from R without going through a full
-round-trip of serialization. They store R SEXP values alongside the Rust
-data inside the `EXTPTRSXP`.
+fields should be readable or writable from R without hand-written getters.
+Scalar and conversion fields live in the Rust struct and convert on every
+access (a view: no R copy to drift); `RSlot` fields hold R values in the
+pointer's `prot` list.
 
 Use sidecar fields for:
-- Small scalar values that R code needs to read frequently without a Rust
-  function call overhead.
-- R-owned SEXP values (plots, closures, environments) that the Rust struct
-  must retain a reference to without R GC-ing them.
+- Values R code reads and writes as fields (R6 `obj$f`, S7 `obj@f`).
+- R-owned values (data frames, closures, environments) that must live as long
+  as the object: an `RSlot`, private if only Rust needs it.
 
 Avoid sidecar fields for:
-- Large data — each sidecar slot is a separate R allocation.
-- Data that changes often and where conversion cost matters.
+- Large data in a conversion field — every read converts the whole value.
+- State that must survive `saveRDS()` in a scalar or conversion field (#1418);
+  `RSlot` values do survive.
 
 ### Crossing a crate boundary?
 

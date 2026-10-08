@@ -8,7 +8,8 @@
 //!
 //! | Module | Contents |
 //! |--------|----------|
-//! | [`altrep_helpers`] | ALTREP data1/data2 slot access helpers + `Sidecar` marker type |
+//! | [`altrep_helpers`] | ALTREP data1/data2 slot access helpers + `RSidecar` marker type |
+//! | [`r_slot`] | [`RSlot`] sidecar fields: R values kept in the `prot` list |
 //!
 //! # Core Types
 //!
@@ -204,8 +205,17 @@ fn sendable_any_ptr_into_ptr(ptr: SendableAnyPtr) -> *mut Box<dyn Any> {
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
-/// Length of the `prot` list (`VECSXP`)
+/// Length of the `prot` list (`VECSXP`) before the [`RSlot`] entries, which
+/// start at this index
 const PROT_VEC_LEN: isize = 2;
+
+/// Length of `T`'s `prot` list: the type ID, the user slot and one entry per
+/// [`RSlot`] field.
+#[inline]
+fn prot_vec_len<T: TypedExternal>() -> R_xlen_t {
+    let r_slots = R_xlen_t::try_from(T::R_SLOT_COUNT).expect("RSlot count exceeds R_xlen_t::MAX");
+    PROT_VEC_LEN + r_slots
+}
 
 #[inline]
 fn is_type_erased<T: 'static>() -> bool {
@@ -307,6 +317,13 @@ pub trait TypedExternal: 'static {
     /// Use `concat!(module_path!(), "::", stringify!(Type), "\0").as_bytes()`
     /// when implementing manually, or use `#[derive(ExternalPtr)]`.
     const TYPE_ID_CSTR: &'static [u8];
+
+    /// Number of [`RSlot`] fields: R values the external pointer's protection
+    /// list keeps after the type ID and the user slot.
+    ///
+    /// `#[derive(ExternalPtr)]` counts the type's `#[r_data]` fields of type
+    /// `RSlot`.
+    const R_SLOT_COUNT: usize = 0;
 }
 
 /// Marker trait for types that should be converted to R as ExternalPtr.
@@ -791,7 +808,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // (`root_owned` below), a two-stage rooting boundary that outlives this
         // function via the pool key — not a lexical RAII scope. `OwnedProtect` /
         // `ProtectScope` would misrepresent the ownership transfer.
-        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
         unsafe { Rf_protect(prot) };
         prot.set_vector_elt(PROT_TYPE_ID_INDEX, type_id_sym);
 
@@ -831,7 +848,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let type_sym = unsafe { type_symbol_unchecked::<T>() };
         let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
 
-        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
         unsafe { Rf_protect_unchecked(prot) };
         unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
 
@@ -951,7 +968,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         dest: SEXP,
         idx: R_xlen_t,
     ) {
-        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, prot_vec_len::<T>()) };
         unsafe { Rf_protect_unchecked(prot) };
         unsafe { prot.set_vector_elt_unchecked(PROT_TYPE_ID_INDEX, type_id_sym) };
 
@@ -1858,15 +1875,19 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     /// Deep clones the inner value into a new ExternalPtr.
     ///
     /// This creates a completely independent ExternalPtr with its own
-    /// heap allocation and finalizer.
+    /// heap allocation and finalizer. The [`RSlot`] values are shared with
+    /// `self`: R values are copied on modification.
     #[inline]
     fn clone(&self) -> Self {
-        Self::new((**self).clone())
+        let cloned = Self::new((**self).clone());
+        cloned.copy_r_slots_from(self);
+        cloned
     }
 
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         (**self).clone_from(&**source);
+        self.copy_r_slots_from(source);
     }
 }
 
@@ -2169,6 +2190,9 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 
 mod altrep_helpers;
 pub use altrep_helpers::*;
+
+mod r_slot;
+pub use r_slot::*;
 
 #[cfg(test)]
 mod tests {
