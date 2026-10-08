@@ -1419,7 +1419,10 @@ pub trait RConditionError {
     /// `#[miniextendr(inherits(..., message = ...))]` does for one parameter:
     /// both use the author's message as given and name the argument in
     /// `e$param`. Ignored everywhere else (`Result` returns, `defer_*`), and
-    /// inside an `Either`, whose message names both arms.
+    /// inside an `Either`, whose message names both arms. For a refused
+    /// element of a list of objects (`Vec<T>` of a newtype over `List`), it
+    /// is that element's reason, before the element's position, in the
+    /// prefixed batched message: an element is not the whole argument.
     fn argument_message(&self) -> Option<String> {
         None
     }

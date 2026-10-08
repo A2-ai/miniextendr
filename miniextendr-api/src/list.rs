@@ -17,8 +17,11 @@
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
-use crate::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::SEXPTYPE::{LISTSXP, NILSXP, STRSXP, VECSXP};
+use crate::from_r::{
+    ElementCheck, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_batched,
+    no_element_check,
+};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::{self};
@@ -1412,6 +1415,110 @@ impl TryFromSexp for Option<List> {
             return Ok(None);
         }
         Ok(Some(List::try_from_sexp(sexp)?))
+    }
+}
+
+/// One element of a list of lists: a `VECSXP`. A pairlist element is refused
+/// rather than coerced, because the coerced copy would be a new object that
+/// nothing roots while the rest of the list is read.
+fn list_element(elem: SEXP) -> Result<List, SexpError> {
+    let actual = elem.type_of();
+    if actual == VECSXP {
+        Ok(List(elem))
+    } else {
+        Err(SexpTypeError {
+            expected: VECSXP,
+            actual,
+        }
+        .into())
+    }
+}
+
+/// A list of lists (a list of R objects, such as model objects), read element
+/// by element (#1837).
+///
+/// The argument must be a list (`VECSXP`), and each element a list too. A
+/// pairlist is refused, at either level: a `List` argument coerces one, but
+/// the coerced copy of an element would be an object nothing roots while the
+/// rest of the list is read. Every element that fails is reported in one
+/// error, with its position as R counts it: `expected list, got numeric
+/// (elements 2, 3)`. The elements stay rooted by the argument list.
+///
+/// A `Vec` of a `#[derive(TryFromSexp)]` newtype over `List` reads through
+/// this, and runs the newtype's check (`#[try_from_sexp(validate = ...)]`) on
+/// each element, where each object keeps its class, not on the outer list.
+impl TryFromSexp for Vec<List> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::__mx_try_from_sexp_with_check(sexp, &no_element_check)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+
+    /// `check` runs on each element, before the element is read.
+    fn __mx_try_from_sexp_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        map_vecsxp_batched(sexp, |elem| {
+            check(elem)?;
+            list_element(elem)
+        })
+    }
+
+    #[inline]
+    unsafe fn __mx_try_from_sexp_unchecked_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        Self::__mx_try_from_sexp_with_check(sexp, check)
+    }
+}
+
+/// A list of lists and `NULL`s, read element by element: a `NULL` element is
+/// `None`, any other element is read as for `Vec<List>`, with every failing
+/// element reported in one error.
+///
+/// For a `Vec<Option<T>>` of a newtype over `List`, the newtype's check runs
+/// on each element but `NULL`, which stays "not given", as for `Option<T>`.
+impl TryFromSexp for Vec<Option<List>> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::__mx_try_from_sexp_with_check(sexp, &no_element_check)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+
+    /// `check` runs on each element but `NULL`, before the element is read.
+    fn __mx_try_from_sexp_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        map_vecsxp_batched(sexp, |elem| {
+            if elem.type_of() == NILSXP {
+                return Ok(None);
+            }
+            check(elem)?;
+            list_element(elem).map(Some)
+        })
+    }
+
+    #[inline]
+    unsafe fn __mx_try_from_sexp_unchecked_with_check(
+        sexp: SEXP,
+        check: &ElementCheck<'_>,
+    ) -> Result<Self, SexpError> {
+        Self::__mx_try_from_sexp_with_check(sexp, check)
     }
 }
 

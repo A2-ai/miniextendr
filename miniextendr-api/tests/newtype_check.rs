@@ -267,3 +267,272 @@ fn either_arm_reports_the_refusal() {
         ));
     });
 }
+
+// region: newtypes over List: the check on each element (#1837)
+
+/// Each element check, in the order it ran: `"fit"` for [`fit_object`],
+/// `"model"` for [`model_object`].
+static ELEMENT_CHECKS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
+/// A model object; a data frame gets advice as its argument message, and a
+/// field, `what`.
+fn model_object(x: SEXP) -> Result<(), RError> {
+    ELEMENT_CHECKS.lock().unwrap().push("model");
+    if x.inherits_class(c"mx_model") {
+        return Ok(());
+    }
+    if x.inherits_class(c"data.frame") {
+        return Err(RError::new("got a data frame")
+            .class(["model_refused", "test_error"])
+            .data("what", "data frame")
+            .argument_message("use model_from_df() for a data frame"));
+    }
+    Err(RError::new("got no model object").class("model_refused"))
+}
+
+#[derive(miniextendr_api::TryFromSexp, Debug)]
+#[try_from_sexp(validate = model_object)]
+struct Model(miniextendr_api::List);
+
+/// A fit, which is also a model: a newtype of the newtype.
+fn fit_object(x: SEXP) -> Result<(), RError> {
+    ELEMENT_CHECKS.lock().unwrap().push("fit");
+    if x.inherits_class(c"mx_fit") {
+        return Ok(());
+    }
+    Err(RError::new("got no fit").class("fit_refused"))
+}
+
+#[derive(miniextendr_api::TryFromSexp, Debug)]
+#[try_from_sexp(validate = fit_object)]
+struct Fit(Model);
+
+/// Three models in a plain list, which a check on the outer list would refuse.
+const MODELS: &str = "rep(list(structure(list(a = 1), class = 'mx_model')), 3)";
+const MODEL: &str = "structure(list(), class = 'mx_model')";
+const FIT: &str = "structure(list(), class = c('mx_fit', 'mx_model'))";
+
+/// `src` evaluated and converted to `T` (`unchecked`: by
+/// `try_from_sexp_unchecked`), with the element checks that ran.
+fn convert_elements<T>(src: &str, unchecked: bool) -> (Result<T, SexpError>, Vec<&'static str>)
+where
+    T: TryFromSexp<Error = SexpError>,
+{
+    let input = unsafe { OwnedProtect::new(r_str!(src).expect("R source should evaluate")) };
+    ELEMENT_CHECKS.lock().unwrap().clear();
+    let value = if unchecked {
+        unsafe { T::try_from_sexp_unchecked(input.get()) }
+    } else {
+        T::try_from_sexp(input.get())
+    };
+    (value, std::mem::take(&mut *ELEMENT_CHECKS.lock().unwrap()))
+}
+
+/// The one error of a list read element by element, with a refusal among
+/// its failures: the batched message, the refusals' classes and fields.
+fn assert_element_refusal<T: std::fmt::Debug>(
+    result: Result<T, SexpError>,
+    message: &str,
+    classes: &[&str],
+    fields: &[&str],
+) {
+    match result {
+        Err(SexpError::Condition(e)) => {
+            assert_eq!(e.message_str(), message);
+            assert_eq!(e.classes(), classes);
+            let names: Vec<&str> = e.fields().iter().map(|(name, _)| name.as_str()).collect();
+            assert_eq!(names, fields);
+            assert_eq!(e.argument_message_str(), None);
+        }
+        other => panic!("expected the batched refusal {message:?}, got {other:?}"),
+    }
+}
+
+/// `Vec<T>` of a newtype over `List` runs the check on each element, never on
+/// the outer list, and reports every element that fails.
+#[test]
+fn vec_of_list_newtype_checks_each_element() {
+    r_test_utils::with_r_thread(|| {
+        for unchecked in [false, true] {
+            let (value, checks) = convert_elements::<Vec<Model>>(MODELS, unchecked);
+            assert_eq!(value.unwrap().len(), 3);
+            assert_eq!(checks, ["model"; 3]);
+
+            let (value, checks) = convert_elements::<Vec<Model>>("list()", unchecked);
+            assert!(value.unwrap().is_empty());
+            assert!(checks.is_empty());
+
+            // One bad element: its position, with the refusal's argument
+            // message as its reason.
+            let (value, checks) = convert_elements::<Vec<Model>>(
+                &format!("list({MODEL}, data.frame(a = 1))"),
+                unchecked,
+            );
+            assert_eq!(checks, ["model"; 2]);
+            assert_element_refusal(
+                value,
+                "use model_from_df() for a data frame (element 2)",
+                &["model_refused", "test_error"],
+                &["what"],
+            );
+
+            // Every bad element, grouped by reason, and every element checked.
+            let (value, checks) = convert_elements::<Vec<Model>>(
+                &format!("list(1, data.frame(a = 1), {MODEL}, 'x')"),
+                unchecked,
+            );
+            assert_eq!(checks, ["model"; 4]);
+            assert_element_refusal(
+                value,
+                "got no model object (elements 1, 4); \
+                 use model_from_df() for a data frame (element 2)",
+                &["model_refused", "test_error"],
+                &["what"],
+            );
+
+            // Not a list: a type error, and no element is checked.
+            let (value, checks) = convert_elements::<Vec<Model>>("1:3", unchecked);
+            assert!(matches!(value, Err(SexpError::Type(_))), "{value:?}");
+            assert!(checks.is_empty());
+        }
+    });
+}
+
+/// `Vec<Option<T>>` of a newtype over `List`: `NULL` elements are `None` and
+/// are not checked; every other element is.
+#[test]
+fn vec_option_of_list_newtype_skips_null() {
+    r_test_utils::with_r_thread(|| {
+        for unchecked in [false, true] {
+            let (value, checks) = convert_elements::<Vec<Option<Model>>>(
+                &format!("list({MODEL}, NULL, {MODEL})"),
+                unchecked,
+            );
+            let present: Vec<bool> = value.unwrap().iter().map(Option::is_some).collect();
+            assert_eq!(present, [true, false, true]);
+            assert_eq!(checks, ["model"; 2]);
+
+            let (value, checks) =
+                convert_elements::<Vec<Option<Model>>>("list(NULL, 2)", unchecked);
+            assert_eq!(checks, ["model"]);
+            assert_element_refusal(
+                value,
+                "got no model object (element 2)",
+                &["model_refused"],
+                &[],
+            );
+        }
+    });
+}
+
+/// A newtype of a newtype over `List` checks each element, outer check
+/// first, as its scalar does.
+#[test]
+fn vec_of_nested_list_newtype_checks_outer_then_inner() {
+    r_test_utils::with_r_thread(|| {
+        for unchecked in [false, true] {
+            let (value, checks) = convert_elements::<Fit>(FIT, unchecked);
+            assert!(value.is_ok());
+            assert_eq!(checks, ["fit", "model"]);
+
+            let (value, checks) =
+                convert_elements::<Vec<Fit>>(&format!("list({FIT}, {FIT})"), unchecked);
+            assert_eq!(value.unwrap().len(), 2);
+            assert_eq!(checks, ["fit", "model", "fit", "model"]);
+
+            let (value, checks) =
+                convert_elements::<Vec<Option<Fit>>>(&format!("list(NULL, {MODEL})"), unchecked);
+            assert_eq!(checks, ["fit"]);
+            assert_element_refusal(value, "got no fit (element 2)", &["fit_refused"], &[]);
+        }
+    });
+}
+
+/// `Vec<List>` and `Vec<Option<List>>` themselves: every element must be a
+/// list (a pairlist is refused too), and every failure is reported, with no
+/// refusal classes, as one `InvalidValue`.
+#[test]
+fn vec_of_list_reads_lists_only() {
+    use miniextendr_api::List;
+
+    r_test_utils::with_r_thread(|| {
+        for unchecked in [false, true] {
+            let (value, _) =
+                convert_elements::<Vec<List>>("list(list(1), data.frame(a = 1:2))", unchecked);
+            let lens: Vec<isize> = value.unwrap().iter().map(|l| l.len()).collect();
+            assert_eq!(lens, [1, 1]);
+
+            let (value, _) =
+                convert_elements::<Vec<List>>("list(list(1), 2, pairlist(a = 1), NULL)", unchecked);
+            match value {
+                Err(SexpError::InvalidValue(message)) => assert_eq!(
+                    message,
+                    "expected list, got numeric (element 2); expected list, got pairlist \
+                     (element 3); expected list, got NULL (element 4)"
+                ),
+                other => panic!("expected the batched type errors, got {other:?}"),
+            }
+
+            let (value, _) =
+                convert_elements::<Vec<Option<List>>>("list(NULL, list(), 'a')", unchecked);
+            match value {
+                Err(SexpError::InvalidValue(message)) => {
+                    assert_eq!(message, "expected list, got character (element 3)")
+                }
+                other => panic!("expected the type error, got {other:?}"),
+            }
+            let (value, _) = convert_elements::<Vec<Option<List>>>("list(NULL, list())", unchecked);
+            let present: Vec<bool> = value.unwrap().iter().map(Option::is_some).collect();
+            assert_eq!(present, [false, true]);
+
+            let (value, _) = convert_elements::<Vec<List>>("NULL", unchecked);
+            assert!(matches!(value, Err(SexpError::Type(_))), "{value:?}");
+        }
+    });
+}
+
+/// The argument error of a `Vec<T>` of a newtype over `List`: the refusals'
+/// classes and fields, and the batched message as the reason after the
+/// wrapper's prefix (no element's argument message replaces it).
+#[test]
+fn vec_of_list_newtype_argument_error() {
+    use miniextendr_api::condition::conversion_err_parts;
+
+    r_test_utils::with_r_thread(|| {
+        let (value, _) = convert_elements::<Vec<Model>>("list(data.frame(a = 1), 3)", false);
+        let error = value.unwrap_err();
+        assert_eq!(
+            miniextendr_api::__mx_conversion_arg_message!(error, "fits"),
+            None
+        );
+        let parts = miniextendr_api::__mx_conversion_err_parts!(error, false);
+        assert_eq!(
+            parts.message,
+            "use model_from_df() for a data frame (element 1); got no model object (element 2)"
+        );
+        assert_eq!(parts.class, ["model_refused", "test_error"]);
+        let parts = conversion_err_parts(
+            "invalid 'fits' argument",
+            "fits",
+            Some("Vec<Model>"),
+            &["pkg_argument"],
+            parts,
+            None,
+        );
+        assert_eq!(
+            parts.message,
+            "invalid 'fits' argument: use model_from_df() for a data frame (element 1); \
+             got no model object (element 2)"
+        );
+        assert_eq!(parts.class, ["model_refused", "test_error", "pkg_argument"]);
+        let names: Vec<&str> = parts
+            .data
+            .iter()
+            .flatten()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(names, ["param", "rust_type", "what"]);
+    });
+}
+
+// endregion

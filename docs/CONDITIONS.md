@@ -596,7 +596,8 @@ pub enum PkgError {
   variant, a `format!` string like `message`, is the whole message when the
   error refuses an argument in a conversion (a type's `TryFromSexp` or its
   `validate` check), in place of `'<p>' must be …: <message>`. A variant
-  without it keeps the prefixed message. See
+  without it keeps the prefixed message. In a list of objects (a `Vec` of a
+  newtype over `List`) it words the refused element, before its position. See
   [EXTENDING_MINIEXTENDR.md](EXTENDING_MINIEXTENDR.md#example-newtype-that-refuses-some-values).
 
 The same derive serves

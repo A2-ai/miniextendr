@@ -2984,8 +2984,10 @@ pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::T
 /// newtype's own `try_from_sexp`. To refuse a value the inner type accepts,
 /// name a check, `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. It
 /// becomes `TryFromSexpElement::check_sexp`, which runs on the R value before
-/// it is read, in every shape: the scalar, once on the whole vector for `Vec<T>`
-/// and `Vec<Option<T>>`, and on any input but `NULL` for `Option<T>`.
+/// it is read, in every shape: the scalar, on any input but `NULL` for
+/// `Option<T>`, and for `Vec<T>` and `Vec<Option<T>>` once on the whole vector
+/// of an atomic inner type, or on each element (but `NULL`) of a list when the
+/// inner type is `List` (a list of R objects, each with its own class).
 ///
 /// ```ignore
 /// use miniextendr_api::condition::RError;
