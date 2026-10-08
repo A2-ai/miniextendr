@@ -134,6 +134,21 @@ impl S7GenericTarget {
     }
 }
 
+/// The line that follows an `S7::method(<op>, ...) <-` registration on a base
+/// operator: `base::rm(list = "<op>")`.
+///
+/// `S7::method(`[[`, Class) <- f` is a replacement call, so R assigns its
+/// result, the base `[[` primitive, to `[[` in the package namespace. A
+/// generic the namespace binds counts as the package's own when R registers
+/// the package's S3 methods (`registerS3methods()`), so every `S3method("[[",
+/// ...)` of the package would land in the namespace's own methods table
+/// instead of base's: those methods would dispatch only from code inside the
+/// namespace, never from a user's `x[[i]]` or from `lapply()`. Removing the
+/// binding right after the registration keeps the S7 call itself unchanged.
+pub(crate) fn s7_base_operator_unbind(op: &str) -> String {
+    format!("base::rm(list = \"{op}\")")
+}
+
 /// Classify a method's generic name (`ctx.generic_name()`).
 pub(crate) fn s7_generic_target(generic_name: &str) -> S7GenericTarget {
     let (package, name) = match generic_name.split_once("::") {
@@ -1063,6 +1078,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         ctx.emit_method_prelude(&mut lines, "  ", &what);
         lines.extend(body_lines);
         lines.push("}".to_string());
+        if let S7GenericTarget::BaseOperator(op) = &target {
+            lines.push(s7_base_operator_unbind(op));
+        }
         lines.push(String::new());
 
         // Per-class fast-path dispatch shortcut (#949).

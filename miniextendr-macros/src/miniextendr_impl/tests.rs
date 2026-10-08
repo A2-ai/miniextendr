@@ -2102,6 +2102,32 @@ fn s7_syntactic_names_stay_bare() {
             "missing `{expected}`:\n{wrapper}"
         );
     }
+    // The package's own generic keeps its binding.
+    assert!(!wrapper.contains("base::rm("), "{wrapper}");
+}
+
+/// `S7::method(`[[`, Foo) <- f` binds base's `[[` in the package namespace,
+/// which would send every `S3method("[[", ...)` of the package to the
+/// namespace's own methods table, out of reach of a user's `x[[i]]`. The
+/// binding is removed right after the registration (#1853).
+#[test]
+fn s7_base_operator_method_leaves_no_namespace_binding() {
+    for (attr, op) in [
+        (quote::quote!(#[miniextendr(r_name = "[[")]), "[["),
+        (quote::quote!(#[miniextendr(s7(generic = "["))]), "["),
+        (quote::quote!(#[miniextendr(s7(generic = "base::$"))]), "$"),
+    ] {
+        let wrapper = generate_s7_r_wrapper(&parse_s7_operator(attr));
+        let registration = format!("S7::method(`{op}`, Foo) <- function(");
+        let after = wrapper
+            .split(&registration)
+            .nth(1)
+            .unwrap_or_else(|| panic!("no `{registration}` in:\n{wrapper}"));
+        assert!(
+            after.contains(&format!("\n}}\nbase::rm(list = \"{op}\")\n")),
+            "{wrapper}"
+        );
+    }
 }
 
 /// An instance `r_name = "[["` emits no shortcut, so it cannot collide with a
@@ -2158,6 +2184,9 @@ fn s7_ops_operator_methods_dispatch_on_both_operands() {
                     "#' @usage NULL\nS7::method({symbol}, list(Money, S7::class_any)) <- function(e1, e2, ...) {{"
                 ),
                 "e1@.ptr, e2)".to_string(),
+                // The registration binds the operator in the namespace;
+                // the next line removes it (#1853).
+                format!("}}\nbase::rm(list = \"{op}\")\n"),
             ] {
                 assert!(
                     wrapper.contains(&expected),
