@@ -1,0 +1,5 @@
+error: a `SEXP` sidecar field is not rooted: the GC frees its value once R drops its own references. Declare the field as `Sidecar<SEXP>`, which keeps the value in the external pointer's protection list
+  --> tests/ui/derive_sidecar_bare_sexp.rs:10:15
+   |
+10 |     pub keys: SEXP,
+   |               ^^^^

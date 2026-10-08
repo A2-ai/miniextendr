@@ -346,14 +346,15 @@ cat(format(t), "\n")  # 36.6°C
 ## Handles with R-visible state
 
 When the R object needs fields that R code reads and writes next to the Rust
-value, declare them as sidecar fields: an `#[r_data]` struct,
-`r_data_accessors!(Type, TypeData)`, and a constructor that returns
-`(Self, TypeData)`. For an S3 class the generator emits a getter generic and a
-replacement generic per field (`name(x)`, `name(x) <- value`); the fields live
-with the handle, so every method sees them and nothing has to be re-wrapped.
-The walkthrough and the per-class-system accessor table are in
-`CLASS_SYSTEMS.md`, "Direct Field Access via Sidecar". The sidecar is the
-supported answer for state the package owns; the shape below is for interop.
+value, declare them as sidecar fields: `#[r_data]` fields on the
+`#[derive(ExternalPtr)]` struct, next to an `#[r_data] _r: RSidecar` selector.
+Each public field gets `Type_get_<field>(x)` and `Type_set_<field>(x, value)`;
+a `Sidecar<T>` field holds a value, such as a data frame in a
+`Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so every method sees them and nothing
+has to be re-wrapped. An S3 class gets no `$` / `$<-` methods for them. The
+walkthrough and the per-class-system accessor table are in `CLASS_SYSTEMS.md`,
+"Direct Field Access via Sidecar". The sidecar is the supported answer for
+state the package owns; the shape below is for interop.
 
 ### Interop: an existing list shape carrying the handle
 

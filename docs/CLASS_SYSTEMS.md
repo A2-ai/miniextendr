@@ -310,21 +310,30 @@ even when it cannot trace the code attachment itself.
 
 ### Field Access via Sidecar
 
-For R6 and Env classes, the sidecar pattern (`#[r_data]` + `RSidecar`) provides
-zero-overhead field access as R6 active bindings:
+For R6 classes, `#[r_data]` sidecar fields become active bindings with
+`r6(r_data_accessors)`:
 
 ```rust
-#[r_data]
-pub struct MyData {
+#[derive(ExternalPtr)]
+pub struct MyStruct {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data]
     pub name: String,
+    #[r_data]
     pub value: f64,
 }
 
-r_data_accessors!(MyStruct, MyData);
+#[miniextendr(r6(r_data_accessors))]
+impl MyStruct {
+    pub fn new(name: String, value: f64) -> Self {
+        MyStruct { _r: RSidecar, name, value }
+    }
+}
 ```
 
-This generates `obj$name` and `obj$value` active bindings automatically.
-See the R6 section above for a complete example.
+This generates `obj$name` and `obj$value` active bindings, with setters
+(`obj$name <- "new"`). See "Direct Field Access via Sidecar" below.
 
 ---
 
@@ -1232,53 +1241,72 @@ This enables type-erased dispatch across package boundaries.
 
 ## Direct Field Access via Sidecar
 
-The sidecar pattern (`#[r_data]` + `RSidecar` + `r_data_accessors!`) is the recommended
-approach for exposing struct fields directly to R. It separates R-visible fields from
-Rust-internal state, and generates accessor functions appropriate to each class system.
+Sidecar fields (`#[r_data]` + `RSidecar`) are the way to expose struct fields
+to R. Every public field gets generated accessors, in a form that depends on
+the class system.
 
 ### How It Works
 
-1. Define a sidecar struct with `#[r_data]` containing the fields you want to expose to R.
-2. Call `r_data_accessors!(MainStruct, SidecarStruct)` to generate accessor trait impls.
-3. The constructor returns `(Self, SidecarData)` instead of just `Self`.
+1. On the `#[derive(ExternalPtr)]` struct, add an `#[r_data] _r: RSidecar`
+   selector and mark each exposed field `#[r_data]`. Fields without it stay
+   Rust-only.
+2. Each `pub` `#[r_data]` field gets `Type_get_<field>(x)` /
+   `Type_set_<field>(x, value)`.
+3. For R6 and S7, `r_data_accessors` on the impl also wires the fields into
+   the class: `#[miniextendr(r6(r_data_accessors))]` or
+   `#[miniextendr(s7(r_data_accessors))]`.
 
 ### Rust Code
 
 ```rust
-use miniextendr_api::{r_data_accessors, RSidecar};
+use miniextendr_api::externalptr::{RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
 pub struct MyConfig {
     // Rust-only internal state
     cache: Vec<u8>,
-}
 
-/// Fields exposed to R.
-#[r_data]
-pub struct MyConfigData {
+    #[r_data]
+    _r: RSidecar,
+
+    // Fields exposed to R
+    #[r_data]
     pub name: String,
+    #[r_data]
     pub score: f64,
+    #[r_data]
+    pub table: Sidecar<SEXP>, // any R value, e.g. a data frame
 }
 
-r_data_accessors!(MyConfig, MyConfigData);
-
-#[miniextendr(r6)]  // Works with r6, env, s3, s4, s7
+#[miniextendr(r6(r_data_accessors))]
 impl MyConfig {
-    pub fn new(name: String, score: f64) -> (Self, MyConfigData) {
-        (MyConfig { cache: vec![] }, MyConfigData { name, score })
+    pub fn new(name: String, score: f64) -> Self {
+        MyConfig { cache: vec![], _r: RSidecar, name, score, table: Sidecar::new(SEXP::nil()) }
+    }
+
+    pub fn has_table(&self) -> bool {
+        !self.table().is_null()
     }
 }
 ```
+
+`name` and `score` live in the Rust struct: each read converts the Rust value
+to R, and each write converts into Rust or raises an error. `table` is a
+`Sidecar<T>`: its value lives in the external pointer's protection list, which
+roots it, and Rust reads and writes it through the `table()` / `set_table()`
+accessors the derive generates. The field types, the `Sidecar<T>` lifecycle
+and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R Data
+Fields)".
 
 ### R Behavior by Class System
 
 | System | Get | Set |
 |--------|-----|-----|
-| **R6** | `obj$name` (active binding) | `obj$name <- "new"` |
-| **Env** | `MyConfig_get_name(obj)` | `MyConfig_set_name(obj, "new")` |
-| **S3** | `name(obj)` (generic) | `name<-(obj, "new")` |
-| **S4** | `name(obj)` (S4 method) | `name<-(obj, "new")` |
-| **S7** | `obj@name` (S7 property) | `obj@name <- "new"` |
+| **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` |
+| **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` |
+| **Env, S3, S4, vctrs** (and R6/S7 without the option) | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` |
+
+The standalone functions take the external pointer itself.
 
 ### When to Use Sidecar vs Manual Getters
 

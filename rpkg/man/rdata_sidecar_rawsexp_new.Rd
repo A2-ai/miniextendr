@@ -7,5 +7,5 @@
 rdata_sidecar_rawsexp_new()
 }
 \description{
-Test creating a SidecarRawSexp with all SEXP slots initialized to NULL.
+Test creating a SidecarRawSexp with every \verb{Sidecar<SEXP>} field \code{NULL}.
 }

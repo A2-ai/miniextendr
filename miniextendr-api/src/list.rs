@@ -1230,6 +1230,38 @@ impl IntoR for ListMut {
     }
 }
 
+/// `Some(list)` → the list, `None` → `NULL`: the inverse of
+/// `TryFromSexp for Option<List>`.
+impl IntoR for Option<List> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.map_or_else(SEXP::nil, |list| list.0)
+    }
+}
+
+/// `Some(list)` → the list, `None` → `NULL`: the inverse of
+/// `TryFromSexp for Option<ListMut>`.
+impl IntoR for Option<ListMut> {
+    type Error = std::convert::Infallible;
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        Ok(self.into_sexp())
+    }
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        self.try_into_sexp()
+    }
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.map_or_else(SEXP::nil, |list| list.0)
+    }
+}
+
 /// Build an R list-column (VECSXP) from values converted one at a time through
 /// [`IntoList`].
 ///

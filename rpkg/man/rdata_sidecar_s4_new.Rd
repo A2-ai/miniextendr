@@ -14,5 +14,5 @@ rdata_sidecar_s4_new(slot_int, slot_real, slot_str)
 \item{slot_str}{Character sidecar field.}
 }
 \description{
-Test creating a SidecarS4 with S4 slot accessors.
+Test creating a SidecarS4 with sidecar fields.
 }

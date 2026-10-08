@@ -269,32 +269,35 @@ r$area          # Active binding: 12 (no parentheses!)
 ### ~~3.3 No Direct Field Access~~ RESOLVED
 
 **Status:** Solved via sidecar pattern
-**Resolution:** The `#[r_data]` attribute + `RSidecar` + `r_data_accessors` macro provides
-automatic field access for R6 and Env class systems.
+**Resolution:** `#[r_data]` fields next to an `#[r_data] _r: RSidecar` selector
+get generated accessors in every class system; `r_data_accessors` on the impl
+turns them into R6 active bindings or S7 properties.
 
 **Working example (R6):**
 ```rust
-use miniextendr_api::{r_data_accessors, RSidecar};
+use miniextendr_api::externalptr::{RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
 pub struct Config {
-    // Rust-only fields (not exposed to R)
+    // Rust-only field (not exposed to R)
     internal_cache: Vec<u8>,
-}
 
-/// Sidecar: fields accessible from R as active bindings.
-#[r_data]
-pub struct ConfigData {
+    #[r_data]
+    _r: RSidecar,
+
+    // Fields accessible from R as active bindings.
+    #[r_data]
     pub name: String,
+    #[r_data]
     pub score: f64,
+    #[r_data]
+    pub extra: Sidecar<SEXP>, // any R value, rooted by the pointer
 }
 
-r_data_accessors!(Config, ConfigData);
-
-#[miniextendr(r6)]
+#[miniextendr(r6(r_data_accessors))]
 impl Config {
-    pub fn new(name: String, score: f64) -> (Self, ConfigData) {
-        (Config { internal_cache: vec![] }, ConfigData { name, score })
+    pub fn new(name: String, score: f64) -> Self {
+        Config { internal_cache: vec![], _r: RSidecar, name, score, extra: Sidecar::new(SEXP::nil()) }
     }
 }
 ```
@@ -305,12 +308,16 @@ cfg <- Config$new("test", 0.95)
 cfg$name         # "test" (active binding, no parentheses)
 cfg$name <- "x"  # Sets the field
 cfg$score        # 0.95
+cfg$extra <- data.frame(a = 1:3)
 ```
 
 **Class system support for sidecar field access:**
-- **R6**: Active bindings (`obj$field` for get, `obj$field <- value` for set)
-- **Env**: Standalone functions (`Type_get_field()` / `Type_set_field()`)
-- **S3, S4, S7**: Sidecar also supported via generated accessor generics/methods
+- **R6**: Active bindings (`obj$field` for get, `obj$field <- value` for set) with `r6(r_data_accessors)`
+- **S7**: Properties (`obj@field`) with `s7(r_data_accessors)`
+- **Env, S3, S4, vctrs**: Standalone functions (`Type_get_field()` / `Type_set_field()`)
+
+See `EXTERNALPTR.md`, "RSidecar (R Data Fields)", for the field types and
+what survives `saveRDS()`.
 
 For non-sidecar structs, manual getters are the recommended approach and work well
 across all class systems.

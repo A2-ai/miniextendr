@@ -341,6 +341,7 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<Box<[T]>>` / `Vec<[T; N]>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP), as `Vec<Vec<T>>` |
 | `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
 | `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
+| `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 
 #### `Vec<Option<C>>` for collection element types
 
