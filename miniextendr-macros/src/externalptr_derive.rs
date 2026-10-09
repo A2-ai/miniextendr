@@ -18,13 +18,22 @@
 //! | Aspect | `#[miniextendr]` fn / method (`c_wrapper_builder`) | Sidecar accessor (here) |
 //! |---|---|---|
 //! | First C param | `__miniextendr_call: SEXP` | none |
-//! | C `numArgs` | 1 + user args | `1` (getter) / `2` (setter) |
-//! | R `.Call` | `.Call(C_…, .call = sys.call(), …)` | `.Call(C_…, x)` / `.Call(C_…, x, value)` |
+//! | Last C param | — | `require_live: SEXP`, the restored-pointer flag (#1891) |
+//! | C `numArgs` | 1 + user args | `2` (getter) / `3` (setter) |
+//! | R `.Call` | `.Call(C_…, .call = sys.call(), …)` | `.Call(C_…, x, FALSE)` / `.Call(C_…, x, value, FALSE)`; the field methods pass `TRUE` |
 //! | Error transport | tagged-condition SEXP via `with_r_unwind_protect(…, Some(call))` | tagged-condition SEXP via `with_r_unwind_protect(…, None)`; the R guard's `sys.call()` supplies attribution |
 //!
 //! **A sidecar R wrapper passes no `.call` argument.** The C function doesn't
 //! have a slot for it: R would throw "Incorrect number of arguments" at
 //! runtime (#344, #348).
+//!
+//! **The `require_live` flag** is how the generated `$` / `[[` / `$<-` /
+//! `[[<-` field methods refuse a pointer restored from a saved session while
+//! the standalone accessors, the R6 active bindings and the S7 properties
+//! keep reading its `Sidecar` values (#1891): one accessor per field, no
+//! extra `.Call()`. Only a `Sidecar` slot's accessors read the flag
+//! (`externalptr::sidecar_require_live`); the other kinds need the live Rust
+//! value whatever it says.
 //!
 //! ## Usage
 //!
@@ -65,7 +74,7 @@
 //! control S7 property setters, whose unmarked return remains visible.
 //! R assignment itself stays invisible regardless of the setter's choice.
 //!
-//! Three field tiers are supported:
+//! Four field tiers are supported:
 //!
 //! 1. **Rooted values** (`Sidecar<T>`) - kept in the external pointer's
 //!    protection list, which roots them and serializes them with the
@@ -83,25 +92,44 @@
 //!    length-1 vector and written with `Rf_as*`
 //! 3. **Conversion types** (anything else) - struct fields, converted with the
 //!    `IntoR`/`TryFromSexp` traits on every read and write
+//! 4. **Computed fields** (`#[r_data(get = "Self::f")] pub f: Computed`,
+//!    #1883) - no value in the struct; the getter calls the named
+//!    `fn(&Self) -> impl IntoR` on the live Rust value. There is no setter:
+//!    no `Type_set_f()`, and under the get/set field syntax an assignment
+//!    raises `miniextendr_read_only_field`. Only `pub`, and not under
+//!    `#[externalptr(r6)]` / `#[externalptr(s7)]`, whose bindings and
+//!    properties need a setter (#1888).
 //!
-//! Scalar and conversion values live in the Rust struct, behind the pointer's
-//! address, which `saveRDS` does not write. The R accessors of a `Sidecar`
-//! field read and write the protection list by slot index: the setter
-//! validates the value with `TryFromSexp::<T>` and stores the value R gave,
-//! and both keep working on a pointer `readRDS()` brought back without an
-//! address (checked by the type ID in `prot[0]`).
+//! `#[r_data(name = "keys")]` gives a field its R name (#1891): the field
+//! list, the `$` / `[[` labels, the R6 binding / S7 property and the
+//! standalone `Type_get_keys()` / `Type_set_keys()` use it; the C symbols and
+//! the Rust accessors keep the Rust identifier. The name must be a syntactic
+//! R name, unique in the type, and not `.ptr`.
+//!
+//! Scalar, conversion and computed values come from the Rust struct, behind
+//! the pointer's address, which `saveRDS` does not write. The R accessors of
+//! a `Sidecar` field read and write the protection list by slot index: the
+//! setter validates the value with `TryFromSexp::<T>` and stores the value R
+//! gave, and the standalone accessors keep working on a pointer `readRDS()`
+//! brought back without an address (checked by the type ID in `prot[0]`).
 //!
 //! ### A saved and restored object
 //!
 //! `saveRDS()` / `serialize()` keep the pointer's `prot` list (the `Sidecar`
 //! values and the user slot) but not the Rust value. On the restored pointer
-//! the `Sidecar` accessors work; the accessor of a struct field, like every
+//! the standalone `Sidecar` accessors, the R6 active bindings and the S7
+//! properties work; the generated `$` / `[[` / `$<-` / `[[<-` field methods
+//! refuse it whatever the field (they pass the accessors' `require_live`
+//! flag, #1891), and the accessor of a struct or computed field, like every
 //! method, raises the classed error `miniextendr_restored_no_value` ("restored
 //! from a saved session and has no Rust value; re-create it"). A pointer
 //! another version of the crate saved is refused by every accessor with
-//! `miniextendr_restored_other_version`, which names both versions. R's
-//! `y <- x` shares the one Rust value and the one `prot` list: a write through
-//! `y` is visible through `x`.
+//! `miniextendr_restored_other_version`, which names both versions.
+//! `#[externalptr(restored(class = ["pkg_saved", "pkg_error"], message =
+//! "..."))]` puts the package's classes in front of those (which stay) and
+//! replaces the message, on every restored refusal of the type. R's `y <- x`
+//! shares the one Rust value and the one `prot` list: a write through `y` is
+//! visible through `x`.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
@@ -189,7 +217,28 @@ use syn::{DeriveInput, Field, Ident, Visibility};
 
 use crate::miniextendr_impl::ClassSystem;
 
-/// Parse `#[externalptr(...)]` attributes to extract class system.
+/// The package's condition classes and message for a pointer of the type
+/// restored from a saved session, `#[externalptr(restored(class = "..." |
+/// ["...", "..."], message = "..."))]` (#1891). Each is optional; the derive
+/// emits `TypedExternal::RESTORED_ERROR_CLASS` / `RESTORED_ERROR_MESSAGE` for
+/// the ones given.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct RestoredOptions {
+    /// The classes, in order, put in front of the `miniextendr_restored*`
+    /// classes.
+    class: Vec<String>,
+    /// The message, replacing miniextendr's in both restored cases.
+    message: Option<String>,
+}
+
+/// What `#[externalptr(...)]` says about the type.
+struct ExternalPtrAttrs {
+    class_system: ClassSystem,
+    restored: RestoredOptions,
+}
+
+/// Parse `#[externalptr(...)]` attributes: the class system and the restored
+/// refusal's classes and message.
 ///
 /// Supported forms:
 /// - `#[externalptr(env)]` - Environment style (default)
@@ -197,8 +246,13 @@ use crate::miniextendr_impl::ClassSystem;
 /// - `#[externalptr(s3)]` - S3 class
 /// - `#[externalptr(s4)]` - S4 class
 /// - `#[externalptr(s7)]` - S7 class
-fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
+/// - `#[externalptr(vctrs)]` - vctrs class
+/// - `#[externalptr(restored(class = "pkg_saved", message = "..."))]`, with
+///   `class = ["pkg_saved", "pkg_error"]` for several classes; next to the
+///   class system (`#[externalptr(s3, restored(...))]`) or on its own.
+fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ExternalPtrAttrs> {
     let mut class_system = ClassSystem::Env; // Default
+    let mut restored: Option<RestoredOptions> = None;
 
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
@@ -216,11 +270,17 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
                     "s4" => class_system = ClassSystem::S4,
                     "s7" => class_system = ClassSystem::S7,
                     "vctrs" => class_system = ClassSystem::Vctrs,
+                    "restored" => {
+                        if restored.is_some() {
+                            return Err(meta.error("`restored(...)` is given twice"));
+                        }
+                        restored = Some(parse_restored_options(&meta)?);
+                    }
                     _ => {
                         return Err(syn::Error::new_spanned(
                             &meta.path,
                             format!(
-                                "unknown class system '{}'; expected one of: env, r6, s3, s4, s7, vctrs",
+                                "unknown `externalptr` option '{}'; expected a class system (env, r6, s3, s4, s7, vctrs) or `restored(class = ..., message = ...)`",
                                 ident_str
                             ),
                         ));
@@ -231,7 +291,68 @@ fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
         }
     }
 
-    Ok(class_system)
+    Ok(ExternalPtrAttrs {
+        class_system,
+        restored: restored.unwrap_or_default(),
+    })
+}
+
+/// The arguments of `restored(...)`: `class = "..."` or `class = ["...", ...]`
+/// (non-empty, in order) and `message = "..."` (non-empty), each at most
+/// once. syn refuses empty parentheses, so at least one is given.
+fn parse_restored_options(meta: &syn::meta::ParseNestedMeta) -> syn::Result<RestoredOptions> {
+    let mut options = RestoredOptions::default();
+    let mut class_span: Option<Span> = None;
+    meta.parse_nested_meta(|inner| {
+        if inner.path.is_ident("class") {
+            if class_span.is_some() {
+                return Err(inner.error("`class` is given twice"));
+            }
+            class_span = Some(syn::spanned::Spanned::span(&inner.path));
+            let value = inner.value()?;
+            let classes: Vec<syn::LitStr> = if value.peek(syn::token::Bracket) {
+                let content;
+                syn::bracketed!(content in value);
+                content
+                    .parse_terminated(<syn::LitStr as syn::parse::Parse>::parse, syn::Token![,])?
+                    .into_iter()
+                    .collect()
+            } else {
+                vec![value.parse()?]
+            };
+            if classes.is_empty() {
+                return Err(inner.error("`class` needs at least one condition class"));
+            }
+            for class in &classes {
+                if class.value().is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        class,
+                        "a condition class can't be empty",
+                    ));
+                }
+            }
+            options.class = classes.iter().map(syn::LitStr::value).collect();
+            Ok(())
+        } else if inner.path.is_ident("message") {
+            if options.message.is_some() {
+                return Err(inner.error("`message` is given twice"));
+            }
+            let message: syn::LitStr = inner.value()?.parse()?;
+            if message.value().is_empty() {
+                return Err(syn::Error::new_spanned(
+                    message,
+                    "`message` can't be empty",
+                ));
+            }
+            options.message = Some(message.value());
+            Ok(())
+        } else {
+            Err(inner.error(
+                "unknown `restored` option; expected `class = \"...\"` (or `class = [\"...\", ...]`) and `message = \"...\"`",
+            ))
+        }
+    })?;
+    Ok(options)
 }
 
 /// Check if a field has the `#[r_data]` attribute.
@@ -264,6 +385,18 @@ fn sidecar_inner_type(ty: &syn::Type) -> Option<&syn::Type> {
     types.next().is_none().then_some(inner)
 }
 
+/// The last path segment that names the marker type of a computed field,
+/// `miniextendr_api::externalptr::Computed` (#1883).
+const COMPUTED_TYPE_NAME: &str = "Computed";
+
+/// Whether a field type is `Computed`, the marker of a read-only field
+/// computed from the Rust value by the function `#[r_data(get = "...")]`
+/// names.
+fn is_computed_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(type_path)
+        if type_path.path.segments.last().is_some_and(|seg| seg.ident == COMPUTED_TYPE_NAME))
+}
+
 /// Options for a sidecar field's generated documentation, setters and Rust
 /// accessors.
 #[derive(Default)]
@@ -274,6 +407,12 @@ struct RDataOptions {
     access_ref: Option<Span>,
     /// `mut`: generate the Rust setter of a `Sidecar<T>` field.
     access_mut: Option<Span>,
+    /// `name = "..."`: the field's R name, in place of the Rust identifier
+    /// (#1891).
+    name: Option<syn::LitStr>,
+    /// `get = "path"`: the getter of a `Computed` field, a
+    /// `fn(&Self) -> impl IntoR` (#1883).
+    get: Option<syn::LitStr>,
 }
 
 /// Which Rust accessors a `Sidecar<T>` field gets: `#[r_data(ref)]` the
@@ -354,11 +493,23 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
                         }
                     });
                 }
+                RDataArg::KeyValue { key, value } if key == "name" => {
+                    if options.name.is_some() {
+                        return Err(syn::Error::new_spanned(key, "duplicate `name` option"));
+                    }
+                    options.name = Some(value);
+                }
+                RDataArg::KeyValue { key, value } if key == "get" => {
+                    if options.get.is_some() {
+                        return Err(syn::Error::new_spanned(key, "duplicate `get` option"));
+                    }
+                    options.get = Some(value);
+                }
                 RDataArg::KeyValue { key, .. } => {
                     return Err(syn::Error::new_spanned(
                         &key,
                         format!(
-                            "unknown key `{key}`; supported: `ref`, `mut`, `prop_doc`, `setter`"
+                            "unknown key `{key}`; supported: `ref`, `mut`, `name`, `get`, `prop_doc`, `setter`"
                         ),
                     ));
                 }
@@ -366,11 +517,15 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
         }
     }
     if options.setter_invisible.is_some()
-        && (is_rsidecar_type(field) || !is_pub(field) || field.ident.is_none())
+        && (is_rsidecar_type(field)
+            || is_computed_type(&field.ty)
+            || !is_pub(field)
+            || field.ident.is_none())
     {
         return Err(syn::Error::new_spanned(
             field,
-            "`setter` requires a public named sidecar slot, not the RSidecar selector",
+            "`setter` requires a public named sidecar slot with a setter, not the RSidecar \
+             selector or a `Computed` field",
         ));
     }
     if let Some(span) = options.access_ref.or(options.access_mut)
@@ -380,9 +535,68 @@ fn parse_r_data_options(field: &Field) -> syn::Result<RDataOptions> {
             span,
             format!(
                 "`ref` and `mut` in `#[r_data(...)]` apply to `{SIDECAR_TYPE_NAME}<T>` fields only; \
-                 a plain `#[r_data]` field stays a struct field with its R accessors"
+                 a plain `#[r_data]` field stays a struct field with its R accessors{}",
+                if is_computed_type(&field.ty) {
+                    format!(
+                        ", and a `{COMPUTED_TYPE_NAME}` field is read through its `get` function"
+                    )
+                } else {
+                    String::new()
+                }
             ),
         ));
+    }
+    if let Some(name) = &options.name {
+        if is_rsidecar_type(field) {
+            return Err(syn::Error::new_spanned(
+                name,
+                "`name` applies to a sidecar slot, not the RSidecar selector, which has no R name",
+            ));
+        }
+        let value = name.value();
+        if value.is_empty() {
+            return Err(syn::Error::new_spanned(
+                name,
+                "an R field name can't be empty",
+            ));
+        }
+        if value == ".ptr" {
+            return Err(syn::Error::new_spanned(
+                name,
+                "`.ptr` is the element that carries the pointer in a list or environment receiver, \
+                 so it can't be an R field name",
+            ));
+        }
+        if !crate::naming::is_syntactic_r_name(&value) {
+            return Err(syn::Error::new_spanned(
+                name,
+                format!(
+                    "`{value}` is not a syntactic R name; an R field name has letters, digits, `.` and `_` \
+                     only, starts with a letter or a `.` not followed by a digit, and is not a reserved word"
+                ),
+            ));
+        }
+    }
+    match (&options.get, is_computed_type(&field.ty)) {
+        (Some(get), false) => {
+            return Err(syn::Error::new_spanned(
+                get,
+                format!(
+                    "`get` applies to a `{COMPUTED_TYPE_NAME}` field only: declare the field as \
+                     `pub <name>: {COMPUTED_TYPE_NAME}`, and `get` names the function that computes its value"
+                ),
+            ));
+        }
+        (None, true) => {
+            return Err(syn::Error::new_spanned(
+                &field.ty,
+                format!(
+                    "a `{COMPUTED_TYPE_NAME}` field needs `#[r_data(get = \"Self::f\")]`, the function \
+                     `fn(&Self) -> impl IntoR` that computes its value"
+                ),
+            ));
+        }
+        _ => {}
     }
     Ok(options)
 }
@@ -417,13 +631,18 @@ fn is_pub(field: &Field) -> bool {
 ///   with `TryFromSexp::<T>` on write and stored as R gave it.
 /// - Scalars: a struct field, read into R with `Rf_Scalar*`, written with `Rf_as*`.
 /// - Conversion: a struct field, converted with the `IntoR`/`TryFromSexp` traits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// - Computed: no field; a getter function of the Rust value, no setter.
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum SlotKind {
     /// `Sidecar<T>` field: the value at this position among the type's
     /// `Sidecar` fields, kept in the external pointer's protection list
     /// (getter returns it, setter validates `value` as a `T` and stores it
     /// there).
     Sidecar(usize),
+    /// `Computed` marker field: the getter calls this function, a
+    /// `fn(&Self) -> impl IntoR` (a leading `Self` already replaced by the
+    /// struct's name), on the live Rust value; there is no setter (#1883).
+    Computed(syn::Path),
     /// Scalar struct field `i32` (or `i16`/`i8`), returned as a length-1 integer.
     ScalarInt,
     /// Scalar struct field `f64` (or `f32`), returned as a length-1 double.
@@ -441,8 +660,14 @@ enum SlotKind {
 /// Collected during struct field parsing and used to generate FFI getter/setter
 /// functions and R wrapper code for each public slot.
 struct SidecarSlot {
-    /// Rust identifier of the field (e.g., `count`, `name`).
+    /// Rust identifier of the field (e.g., `count`, `name`). The C symbols,
+    /// the `R_CallMethodDef` statics and the Rust accessors are named by it.
     name: Ident,
+    /// The field's R name: `#[r_data(name = "...")]`, else the Rust
+    /// identifier (#1891). Every R-facing string uses it: `.rdata_fields_T`,
+    /// the `$` switch labels, the R6 binding / S7 property, the standalone
+    /// `T_get_<name>()` / `T_set_<name>()` and the setter's message.
+    r_name: String,
     /// Rust type of the field, used in conversion-based getter/setter codegen.
     ty: syn::Type,
     /// The field's visibility, which its generated Rust accessors take.
@@ -478,16 +703,45 @@ struct SidecarInfo {
     class_system: ClassSystem,
 }
 
+/// The getter path of a `Computed` field, `#[r_data(get = "Self::f")]`,
+/// parsed from the literal; a leading `Self` becomes the struct's name, since
+/// the getter is called from a free function the derive emits outside any
+/// impl.
+fn computed_getter_path(get: &syn::LitStr, struct_name: &Ident) -> syn::Result<syn::Path> {
+    let mut path: syn::Path = get.parse().map_err(|err| {
+        syn::Error::new_spanned(
+            get,
+            format!("`get` must be a path to the getter function, e.g. `Self::f`: {err}"),
+        )
+    })?;
+    if let Some(first) = path.segments.first_mut()
+        && first.ident == "Self"
+    {
+        first.ident = Ident::new(&struct_name.to_string(), first.ident.span());
+    }
+    Ok(path)
+}
+
 /// Determine the [`SlotKind`] for a field type by inspecting its last path segment.
 ///
 /// Recognizes `Sidecar<T>`, which takes position `sidecars` (the number of
-/// `Sidecar` fields before it), scalar numerics (`i32`, `i16`, `i8`, `f64`,
-/// `f32`), booleans (`bool`, `Rbool`), and raw bytes (`u8`). A bare `SEXP` is
-/// an error: the struct can't root it. Everything else falls through to
-/// [`SlotKind::Conversion`].
-fn slot_kind_for_type(ty: &syn::Type, sidecars: usize) -> syn::Result<SlotKind> {
+/// `Sidecar` fields before it), `Computed` with its `get` function, scalar
+/// numerics (`i32`, `i16`, `i8`, `f64`, `f32`), booleans (`bool`, `Rbool`),
+/// and raw bytes (`u8`). A bare `SEXP` is an error: the struct can't root it.
+/// Everything else falls through to [`SlotKind::Conversion`].
+fn slot_kind_for_type(
+    ty: &syn::Type,
+    sidecars: usize,
+    get: Option<&syn::LitStr>,
+    struct_name: &Ident,
+) -> syn::Result<SlotKind> {
     if sidecar_inner_type(ty).is_some() {
         return Ok(SlotKind::Sidecar(sidecars));
+    }
+    if is_computed_type(ty) {
+        // `parse_r_data_options` refused a `Computed` field without `get`.
+        let get = get.expect("a Computed field has a `get` option");
+        return Ok(SlotKind::Computed(computed_getter_path(get, struct_name)?));
     }
     if let syn::Type::Path(type_path) = ty
         && let Some(seg) = type_path.path.segments.last()
@@ -571,7 +825,38 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
             selector_fields.push(field);
         } else if let Some(ref ident) = field.ident {
             // Any other type with #[r_data] becomes a slot
-            let kind = slot_kind_for_type(&field.ty, sidecars)?;
+            let kind = slot_kind_for_type(&field.ty, sidecars, options.get.as_ref(), &input.ident)?;
+            if matches!(kind, SlotKind::Computed(_)) {
+                // Only a `pub` `#[r_data]` field reaches R, and a computed
+                // field exists for R only.
+                if !is_pub(field) {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        format!(
+                            "a `{COMPUTED_TYPE_NAME}` field must be `pub`: it exists only as an R field, \
+                             and only `pub` `#[r_data]` fields reach R"
+                        ),
+                    ));
+                }
+                // The R6 active bindings and the S7 properties need a setter;
+                // a getters-only form for them is #1888.
+                if matches!(class_system, ClassSystem::R6 | ClassSystem::S7) {
+                    return Err(syn::Error::new_spanned(
+                        field,
+                        format!(
+                            "a `{COMPUTED_TYPE_NAME}` field is not supported under `#[externalptr({})]`: \
+                             its R6 active bindings / S7 properties need a setter, and a computed field \
+                             has none (#1888). Use an active method / a computed property, or an S3, S4 \
+                             or env class",
+                            if class_system == ClassSystem::R6 {
+                                "r6"
+                            } else {
+                                "s7"
+                            }
+                        ),
+                    ));
+                }
+            }
             let access = if matches!(kind, SlotKind::Sidecar(_)) {
                 sidecars += 1;
                 let (get, set) = (options.access_ref.is_some(), options.access_mut.is_some());
@@ -583,8 +868,13 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
             } else {
                 SidecarAccess::default()
             };
+            let r_name = options
+                .name
+                .as_ref()
+                .map_or_else(|| crate::naming::ident_name(ident), syn::LitStr::value);
             slots.push(SidecarSlot {
                 name: ident.clone(),
+                r_name,
                 ty: field.ty.clone(),
                 vis: field.vis.clone(),
                 is_public: is_pub(field),
@@ -604,11 +894,43 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
         ));
     }
 
+    // Two slots can't share an R name: a renamed field can't take another
+    // field's name (the `$` switch and the standalone accessors would clash).
+    for (i, slot) in slots.iter().enumerate() {
+        if let Some(earlier) = slots[..i].iter().find(|other| other.r_name == slot.r_name) {
+            return Err(syn::Error::new(
+                slot.name.span(),
+                format!(
+                    "the R field name `{}` is already taken by the field `{}`; every `#[r_data]` field \
+                     of a type needs its own R name (`#[r_data(name = \"...\")]` renames one)",
+                    slot.r_name, earlier.name
+                ),
+            ));
+        }
+    }
+
     Ok(SidecarInfo {
         has_selector: !selector_fields.is_empty(),
         slots,
         class_system,
     })
+}
+
+/// Whether a slot's C accessors read the `require_live` flag: only a
+/// `Sidecar` slot can serve a restored pointer, so only its accessors decide
+/// by the flag; the other kinds need the live Rust value whatever it says.
+fn uses_require_live(slot: &SidecarSlot) -> bool {
+    matches!(slot.kind, SlotKind::Sidecar(_))
+}
+
+/// The `require_live` parameter of a slot's C accessors: named for the body
+/// to read when the slot uses it, underscored otherwise.
+fn require_live_param(slot: &SidecarSlot) -> Ident {
+    if uses_require_live(slot) {
+        quote::format_ident!("require_live")
+    } else {
+        quote::format_ident!("_require_live")
+    }
 }
 
 /// Generate the token stream for a sidecar getter function body.
@@ -617,10 +939,14 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 /// slot kind:
 /// - `Sidecar`: returns the value from the external pointer's protection list,
 ///   after flushing a live struct's pending value for the field. It needs no
-///   live address, so it also reads a pointer that `readRDS` brought back.
+///   live address, so without `require_live` it also reads a pointer that
+///   `readRDS` brought back; with it (the field methods of
+///   `r_data_accessors`, #1891) a restored pointer is refused.
 /// - Scalar kinds: reads the struct field (accessed via the external pointer
 ///   address) and wraps it with `Rf_Scalar*`.
 /// - `Conversion`: clones the struct field and calls `IntoR::into_sexp`.
+/// - `Computed`: calls the `get` function on the live struct and converts
+///   its value with `IntoR::into_sexp`.
 ///
 /// The body runs inside `with_r_unwind_protect` (see the emission site in
 /// [`generate_sidecar_accessors`]). The receiver is the pointer or an object
@@ -642,11 +968,29 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             ::miniextendr_api::externalptr::sidecar_r_struct::<#struct_name>(x);
     };
 
-    match slot.kind {
+    match &slot.kind {
         SlotKind::Sidecar(index) => {
             quote::quote! {
                 unsafe {
-                    ::miniextendr_api::externalptr::sidecar_r_get::<#struct_name>(x, #index)
+                    ::miniextendr_api::externalptr::sidecar_r_get::<#struct_name>(
+                        x,
+                        #index,
+                        ::miniextendr_api::externalptr::sidecar_require_live(require_live),
+                    )
+                }
+            }
+        }
+        SlotKind::Computed(getter) => {
+            // The getter's own conditions (`rust_error!(class = ...)`) are
+            // panics the surrounding guard catches, so they reach R with
+            // their classes. Naming the marker field is its only Rust use:
+            // it keeps `dead_code` quiet and checks the field's type.
+            quote::quote! {
+                use ::miniextendr_api::into_r::IntoR;
+                unsafe {
+                    #extract_ref
+                    let ::miniextendr_api::externalptr::Computed = data.#field_name;
+                    IntoR::into_sexp(#getter(data))
                 }
             }
         }
@@ -723,6 +1067,9 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 /// condition SEXP with kind `conversion` — both are re-raised by the R
 /// wrapper. Sidecar accessors have no `__miniextendr_call` slot (#344/#348),
 /// so the tagged conditions carry null call attribution.
+///
+/// A `Computed` slot has no setter: the result is empty, and the caller
+/// emits none.
 fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
@@ -751,7 +1098,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
     // A `Sidecar<T>` slot converts and reports its `T`.
     let value_ty = sidecar_inner_type(&slot.ty).unwrap_or(&slot.ty);
     let rust_type = crate::type_inspect::type_display(value_ty);
-    let field_r_name = crate::naming::ident_name(field_name);
+    // The message names the field as R knows it.
+    let field_r_name = slot.r_name.clone();
     let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
         let prefix = format!("'{field_r_name}' must be {expected}");
         quote::quote! {
@@ -794,7 +1142,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
         )
     };
 
-    match slot.kind {
+    match &slot.kind {
+        SlotKind::Computed(_) => TokenStream::new(),
         SlotKind::Sidecar(index) => {
             let err_value = conversion_err(value_ty);
             // The receiver is checked before the value, so a wrong pointer is
@@ -802,12 +1151,14 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             quote::quote! {
                 use ::miniextendr_api::TryFromSexp;
                 unsafe {
-                    ::miniextendr_api::externalptr::sidecar_r_check::<#struct_name>(x);
+                    let require_live =
+                        ::miniextendr_api::externalptr::sidecar_require_live(require_live);
+                    ::miniextendr_api::externalptr::sidecar_r_check::<#struct_name>(x, require_live);
                     if let Err(e) = <#value_ty as TryFromSexp>::try_from_sexp(value) {
                         return #err_value;
                     }
                     ::miniextendr_api::externalptr::sidecar_r_set::<#struct_name>(
-                        x, #index, value,
+                        x, #index, value, require_live,
                     );
                     x
                 }
@@ -904,13 +1255,18 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 /// panics/conversion failures are re-raised as structured R conditions.
 /// Note the sidecar C functions have **no** `.call` slot — the `.Call()`
 /// passes no `.call` argument (#344/#348); `sys.call()` inside the guard
-/// supplies fallback attribution instead.
+/// supplies fallback attribution instead. The last `.Call()` argument is the
+/// `require_live` flag: `FALSE` here, so the standalone accessors keep
+/// reading a save's `Sidecar` values (#1891).
+///
+/// `field_name` is the field's R name (`Type_get_<name>()`). A `Computed`
+/// field (`setter_c_name` is `None`) gets the getter only.
 fn generate_r_wrapper_for_slot(
     class_system: ClassSystem,
     type_name: &str,
     field_name: &str,
     getter_c_name: &str,
-    setter_c_name: &str,
+    setter_c_name: Option<&str>,
     setter_invisible: bool,
 ) -> String {
     // Only the roxygen title suffix differs between class systems.
@@ -923,22 +1279,12 @@ fn generate_r_wrapper_for_slot(
         ClassSystem::Vctrs => " (for vctrs)",
     };
     let r_getter_name = format!("{}_get_{}", type_name, field_name);
-    let r_setter_name = format!("{}_set_{}", type_name, field_name);
     let getter_body = crate::method_return_builder::standalone_body(
-        &format!(".Call({getter_c_name}, x)"),
+        &format!(".Call({getter_c_name}, x, FALSE)"),
         ".val",
         "  ",
     );
-    let setter_body = crate::method_return_builder::standalone_body(
-        &format!(".Call({setter_c_name}, x, value)"),
-        if setter_invisible {
-            "invisible(x)"
-        } else {
-            "x"
-        },
-        "  ",
-    );
-    format!(
+    let mut out = format!(
         r#"
 #' Get `{field}` field from {type}{suffix}
 #' @rdname {type}
@@ -948,7 +1294,28 @@ fn generate_r_wrapper_for_slot(
 {r_getter} <- function(x) {{
   {getter_body}
 }}
-
+"#,
+        type = type_name,
+        field = field_name,
+        suffix = suffix,
+        r_getter = r_getter_name,
+        getter_body = getter_body,
+    );
+    let Some(setter_c_name) = setter_c_name else {
+        return out;
+    };
+    let r_setter_name = format!("{}_set_{}", type_name, field_name);
+    let setter_body = crate::method_return_builder::standalone_body(
+        &format!(".Call({setter_c_name}, x, value, FALSE)"),
+        if setter_invisible {
+            "invisible(x)"
+        } else {
+            "x"
+        },
+        "  ",
+    );
+    out.push_str(&format!(
+        r#"
 #' Set `{field}` field on {type}{suffix}
 #' @rdname {type}
 #' @param x The {type} external pointer
@@ -962,12 +1329,11 @@ fn generate_r_wrapper_for_slot(
         type = type_name,
         field = field_name,
         suffix = suffix,
-        r_getter = r_getter_name,
         r_setter = r_setter_name,
-        getter_body = getter_body,
         setter_body = setter_body,
         visibility = if setter_invisible { "invisibly" } else { "visibly" },
-    )
+    ));
+    out
 }
 
 /// Generate class-integrated R code for sidecar fields.
@@ -1014,19 +1380,23 @@ fn generate_class_integration_r_code(
                 type = type_name,
             ));
             for slot in pub_slots {
-                let field = crate::naming::ident_name(&slot.name);
+                // The binding takes the R name; the C symbols keep the Rust
+                // identifier (#1891).
+                let field = &slot.r_name;
+                let rust_field = crate::naming::ident_name(&slot.name);
                 // Must match the sidecar accessor's actual C symbol exactly (#1273
                 // crate-prefixing) — routed through the shared naming.rs helpers.
-                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &field);
-                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &field);
+                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &rust_field);
+                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
+                // `FALSE`: the bindings keep reading a save's `Sidecar` values.
                 code.push_str(&format!(
                     "  cls$set(\"active\", \"{field}\", function(value) {{\n\
                      \x20   if (missing(value)) {{\n\
-                     \x20     .val <- .Call({getter_c}, private$.ptr)\n\
+                     \x20     .val <- .Call({getter_c}, private$.ptr, FALSE)\n\
                      {getter_guard}\n\
                      \x20     .val\n\
                      \x20   }} else {{\n\
-                     \x20     .val <- .Call({setter_c}, private$.ptr, value)\n\
+                     \x20     .val <- .Call({setter_c}, private$.ptr, value, FALSE)\n\
                      {setter_guard}\n\
                      \x20     {setter_return}\n\
                      \x20   }}\n\
@@ -1059,21 +1429,25 @@ fn generate_class_integration_r_code(
                 type = type_name,
             ));
             for (i, slot) in pub_slots.iter().enumerate() {
-                let field = crate::naming::ident_name(&slot.name);
+                // The property takes the R name; the C symbols keep the Rust
+                // identifier (#1891).
+                let field = &slot.r_name;
+                let rust_field = crate::naming::ident_name(&slot.name);
                 // Must match the sidecar accessor's actual C symbol exactly (#1273
                 // crate-prefixing) — routed through the shared naming.rs helpers.
-                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &field);
-                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &field);
+                let getter_c = crate::naming::sidecar_getter_c_name(type_name, &rust_field);
+                let setter_c = crate::naming::sidecar_setter_c_name(type_name, &rust_field);
                 let comma = if i < pub_slots.len() - 1 { "," } else { "" };
+                // `FALSE`: the properties keep reading a save's `Sidecar` values.
                 code.push_str(&format!(
                     "    {field} = S7::new_property(\n\
                      \x20       getter = function(self) {{\n\
-                     \x20         .val <- .Call({getter_c}, self@.ptr)\n\
+                     \x20         .val <- .Call({getter_c}, self@.ptr, FALSE)\n\
                      {getter_guard}\n\
                      \x20         .val\n\
                      \x20       }},\n\
                      \x20       setter = function(self, value) {{\n\
-                     \x20         .val <- .Call({setter_c}, self@.ptr, value)\n\
+                     \x20         .val <- .Call({setter_c}, self@.ptr, value, FALSE)\n\
                      {setter_guard}\n\
                      \x20         {setter_return}\n\
                      \x20       }}\n\
@@ -1106,52 +1480,64 @@ fn generate_class_integration_r_code(
 ///
 /// Emitted for every type with R accessors, whatever `#[externalptr(...)]`
 /// names, so the impl's option never depends on the derive attribute. The
-/// helpers are named by the Rust type ([`crate::naming::rdata_helper_name`]).
+/// helpers are named by the Rust type ([`crate::naming::rdata_helper_name`]);
+/// the field names and the `switch()` labels are the fields' R names, in
+/// declared order, computed fields included (#1891, #1883).
+///
+/// Every arm passes `TRUE` as the accessor's `require_live` flag, so the
+/// field methods refuse a pointer restored from a saved session (the
+/// standalone accessors pass `FALSE` and keep reading its `Sidecar` values).
 /// The accessors return a failed conversion or a panic as a tagged condition
 /// value with no call; the calling method raises it with its own frame as
-/// the fallback, so the condition reports `x$keys <- value`.
+/// the fallback, so the condition reports `x$keys <- value`. A computed
+/// field's setter arm raises `miniextendr_read_only_field` itself, with the
+/// calling method's frame (`parent.frame()`) resolved the same way.
 fn generate_field_syntax_helpers(type_name: &str, pub_slots: &[&SidecarSlot]) -> String {
     use crate::naming::{RDataHelper, rdata_helper_name};
 
-    let fields: Vec<String> = pub_slots
+    let names = pub_slots
         .iter()
-        .map(|slot| crate::naming::ident_name(&slot.name))
-        .collect();
-    let names = fields
-        .iter()
-        .map(|f| format!("\"{f}\""))
+        .map(|slot| format!("\"{}\"", slot.r_name))
         .collect::<Vec<_>>()
         .join(", ");
-    let listed = fields
+    let listed = pub_slots
         .iter()
-        .map(|f| format!("`{f}`"))
+        .map(|slot| format!("`{}`", slot.r_name))
         .collect::<Vec<_>>()
         .join(", ");
     // `switch()` arm labels are R symbols: a raw identifier such as `r#for`
-    // becomes the reserved word `for`, which needs backticks.
+    // becomes the reserved word `for`, which needs backticks. The C symbols
+    // are named by the Rust identifier.
     let arms = |setter: bool| {
-        fields
+        pub_slots
             .iter()
-            .map(|f| {
-                let call = if setter {
-                    format!(
-                        ".Call({}, x, value)",
-                        crate::naming::sidecar_setter_c_name(type_name, f)
-                    )
-                } else {
-                    format!(
-                        ".Call({}, x)",
-                        crate::naming::sidecar_getter_c_name(type_name, f)
-                    )
+            .map(|slot| {
+                let rust_field = crate::naming::ident_name(&slot.name);
+                let call = match (&slot.kind, setter) {
+                    (SlotKind::Computed(_), true) => format!(
+                        "stop(errorCondition(\"`{field}` of `{type_name}` is computed from the Rust \
+                         value and can't be assigned\", class = \"miniextendr_read_only_field\", \
+                         call = .miniextendr_frame_call(parent.frame())))",
+                        field = slot.r_name,
+                    ),
+                    (_, true) => format!(
+                        ".Call({}, x, value, TRUE)",
+                        crate::naming::sidecar_setter_c_name(type_name, &rust_field)
+                    ),
+                    (_, false) => format!(
+                        ".Call({}, x, TRUE)",
+                        crate::naming::sidecar_getter_c_name(type_name, &rust_field)
+                    ),
                 };
-                format!("  {} = {call}", crate::naming::r_def_name(f))
+                format!("  {} = {call}", crate::naming::r_def_name(&slot.r_name))
             })
             .collect::<Vec<_>>()
             .join(",\n")
     };
     format!(
         "\n# Field syntax helpers for {type_name} sidecar fields, shared by the `$` / `[[`\n\
-         # methods `r_data_accessors` generates on S3, S4 and env classes.\n\
+         # methods `r_data_accessors` generates on S3, S4 and env classes. The `TRUE`\n\
+         # is the accessors' `require_live` flag: the methods refuse a restored pointer.\n\
          {fields_var} <- c({names})\n\
          {get_fn} <- function(x, name) switch(name,\n{get_arms})\n\
          {set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n\
@@ -1231,7 +1617,12 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
 
     for slot in &pub_slots {
         let field_name = &slot.name;
+        // The C symbols and the `R_CallMethodDef` statics are named by the
+        // Rust identifier (`Ident::new` would refuse an R name such as
+        // `n.rows`); every R-facing string takes the R name (#1891).
         let field_name_str = crate::naming::ident_name(field_name);
+        let r_name = &slot.r_name;
+        let computed = matches!(slot.kind, SlotKind::Computed(_));
 
         // C function names (crate-prefixed for webR cross-package symbol
         // uniqueness — #1273, routed through the shared naming.rs helpers)
@@ -1250,6 +1641,10 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         );
         let getter_doc_lit = syn::LitStr::new(&getter_doc, field_name.span());
         let setter_doc_lit = syn::LitStr::new(&setter_doc, field_name.span());
+        // The `require_live` flag the R side passes last: `TRUE` from the
+        // field methods, `FALSE` from the standalone accessors, the R6
+        // bindings and the S7 properties. Only a `Sidecar` slot reads it.
+        let require_live = require_live_param(slot);
 
         // Generate getter/setter bodies based on slot kind
         let getter_body = generate_getter_body(name, slot);
@@ -1273,7 +1668,8 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
-                x: ::miniextendr_api::SEXP
+                x: ::miniextendr_api::SEXP,
+                #require_live: ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
                 let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
@@ -1290,40 +1686,10 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
             }
         });
 
-        // Generate C setter function (same unwind/condition transport as the
-        // getter above).
-        c_functions.push(quote::quote! {
-            #[doc = #setter_doc_lit]
-            #[doc = #source_location_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
-            #[doc(hidden)]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C-unwind" fn #setter_fn_name(
-                x: ::miniextendr_api::SEXP,
-                value: ::miniextendr_api::SEXP,
-            ) -> ::miniextendr_api::SEXP {
-                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
-                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || { #setter_body },
-                    ::core::option::Option::None,
-                );
-                unsafe {
-                    ::miniextendr_api::deferred_condition::finish(
-                        __miniextendr_deferred_mark,
-                        __miniextendr_value,
-                        ::core::option::Option::None,
-                    )
-                }
-            }
-        });
-
         // Generate R_CallMethodDef entries via distributed slice
         let getter_c_name_cstr = format!("{}\0", getter_c_name);
-        let setter_c_name_cstr = format!("{}\0", setter_c_name);
         let getter_cstr_lit =
             syn::LitByteStr::new(getter_c_name_cstr.as_bytes(), Span::call_site());
-        let setter_cstr_lit =
-            syn::LitByteStr::new(setter_c_name_cstr.as_bytes(), Span::call_site());
         let getter_def_ident = Ident::new(
             &format!(
                 "__MX_CALL_DEF_RDATA_GET_{}_{}",
@@ -1332,53 +1698,97 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
             ),
             Span::call_site(),
         );
-        let setter_def_ident = Ident::new(
-            &format!(
-                "__MX_CALL_DEF_RDATA_SET_{}_{}",
-                name_upper,
-                field_name_str.to_uppercase()
-            ),
-            Span::call_site(),
-        );
-
         c_functions.push(quote::quote! {
             #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
             static #getter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
                 ::miniextendr_api::sys::R_CallMethodDef {
                     name: #getter_cstr_lit.as_ptr().cast(),
-                    fun: Some(unsafe { ::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_) -> _) }),
-                    numArgs: 1,
-                };
-        });
-        c_functions.push(quote::quote! {
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
-            #[doc(hidden)]
-            static #setter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
-                ::miniextendr_api::sys::R_CallMethodDef {
-                    name: #setter_cstr_lit.as_ptr().cast(),
-                    fun: Some(unsafe { ::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
+                    fun: Some(unsafe { ::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
                     numArgs: 2,
                 };
         });
 
+        // A computed field has no setter: no C function, no `CallDef`, no
+        // `Type_set_<name>()` (#1883).
+        if !computed {
+            // Generate C setter function (same unwind/condition transport as
+            // the getter above).
+            c_functions.push(quote::quote! {
+                #[doc = #setter_doc_lit]
+                #[doc = #source_location_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[doc(hidden)]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C-unwind" fn #setter_fn_name(
+                    x: ::miniextendr_api::SEXP,
+                    value: ::miniextendr_api::SEXP,
+                    #require_live: ::miniextendr_api::SEXP,
+                ) -> ::miniextendr_api::SEXP {
+                    let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                    let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || { #setter_body },
+                        ::core::option::Option::None,
+                    );
+                    unsafe {
+                        ::miniextendr_api::deferred_condition::finish(
+                            __miniextendr_deferred_mark,
+                            __miniextendr_value,
+                            ::core::option::Option::None,
+                        )
+                    }
+                }
+            });
+
+            let setter_c_name_cstr = format!("{}\0", setter_c_name);
+            let setter_cstr_lit =
+                syn::LitByteStr::new(setter_c_name_cstr.as_bytes(), Span::call_site());
+            let setter_def_ident = Ident::new(
+                &format!(
+                    "__MX_CALL_DEF_RDATA_SET_{}_{}",
+                    name_upper,
+                    field_name_str.to_uppercase()
+                ),
+                Span::call_site(),
+            );
+            c_functions.push(quote::quote! {
+                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
+                #[doc(hidden)]
+                static #setter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
+                    ::miniextendr_api::sys::R_CallMethodDef {
+                        name: #setter_cstr_lit.as_ptr().cast(),
+                        fun: Some(unsafe { ::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _, _) -> _) }),
+                        numArgs: 3,
+                    };
+            });
+        }
+
         // Generate R wrapper code based on class system
         let field_start = field_name.span().start();
+        let via = if computed {
+            format!("`{getter_c_name}`")
+        } else {
+            format!("`{getter_c_name}` and `{setter_c_name}`")
+        };
         r_wrappers.push_str(&format!(
-            "# Generated from Rust source line {}:{}\n# Wraps sidecar field `{}` on Rust type `{}` via `{}` and `{}`.\n",
+            "# Generated from Rust source line {}:{}\n# Wraps {} `{}` on Rust type `{}` via {}.\n",
             field_start.line,
             field_start.column + 1,
-            field_name_str,
+            if computed {
+                "computed field"
+            } else {
+                "sidecar field"
+            },
+            r_name,
             name_str,
-            getter_c_name,
-            setter_c_name,
+            via,
         ));
         r_wrappers.push_str(&generate_r_wrapper_for_slot(
             info.class_system,
             &name_str,
-            &field_name_str,
+            r_name,
             &getter_c_name,
-            &setter_c_name,
+            (!computed).then_some(setter_c_name.as_str()),
             slot.setter_invisible.unwrap_or(true),
         ));
     }
@@ -1408,16 +1818,20 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         let entries: Vec<_> = pub_slots
             .iter()
             .map(|slot| {
-                let field_str = crate::naming::ident_name(&slot.name);
+                // The property's R name; `registry.rs` derives the
+                // `<Class>_get_<name>` collision names from it too.
+                let field_str = slot.r_name.as_str();
                 let doc_str = slot
                     .prop_doc
                     .as_deref()
                     .unwrap_or("(undocumented sidecar property)");
+                // The static is named by the Rust identifier: an R name may
+                // hold a `.`.
                 let entry_ident = Ident::new(
                     &format!(
                         "__MX_S7_SIDECAR_PROP_{}_{}",
                         name_upper,
-                        field_str.to_uppercase()
+                        crate::naming::ident_name(&slot.name).to_uppercase()
                     ),
                     Span::call_site(),
                 );
@@ -1480,13 +1894,33 @@ fn sidecar_slots(info: &SidecarInfo) -> impl Iterator<Item = (usize, &SidecarSlo
 ///   into the slots and loads the slots back into them).
 ///
 /// Supports generic structs (generics are forwarded to the impl).
-fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStream {
+fn generate_typed_external(
+    input: &DeriveInput,
+    info: &SidecarInfo,
+    restored: &RestoredOptions,
+) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let name_str = name.to_string();
     let name_lit = syn::LitStr::new(&name_str, name.span());
     let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+    // `#[externalptr(restored(class = ..., message = ...))]` (#1891): the
+    // package's classes go in front of the `miniextendr_restored*` classes,
+    // its message replaces miniextendr's, on every restored refusal of the
+    // type (`refuse_restored`, `TypeMismatchError`).
+    let restored_class = (!restored.class.is_empty()).then(|| {
+        let classes = &restored.class;
+        quote::quote! {
+            const RESTORED_ERROR_CLASS: &'static [&'static str] = &[#(#classes),*];
+        }
+    });
+    let restored_message = restored.message.as_ref().map(|message| {
+        quote::quote! {
+            const RESTORED_ERROR_MESSAGE: ::core::option::Option<&'static str> =
+                ::core::option::Option::Some(#message);
+        }
+    });
     let sidecars: Vec<_> = sidecar_slots(info).collect();
     let r_slot_count = (!sidecars.is_empty()).then(|| {
         let count = sidecars.len();
@@ -1525,6 +1959,8 @@ fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStre
                     "::", module_path!(), "::", #name_lit, "\0"
                 ).as_bytes();
             #r_slot_count
+            #restored_class
+            #restored_message
         }
     }
 }
@@ -1658,13 +2094,17 @@ pub fn derive_external_ptr(
     input: DeriveInput,
     emit_into_r_marker: bool,
 ) -> syn::Result<TokenStream> {
-    // Parse class system from #[externalptr(...)] attribute
-    let class_system = parse_externalptr_attrs(&input)?;
+    // Parse the class system and the restored refusal's classes / message
+    // from the #[externalptr(...)] attribute
+    let ExternalPtrAttrs {
+        class_system,
+        restored,
+    } = parse_externalptr_attrs(&input)?;
 
     // Parse sidecar information from struct fields
     let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
-    let typed_external = generate_typed_external(&input, &sidecar_info);
+    let typed_external = generate_typed_external(&input, &sidecar_info, &restored);
     let sidecar_rust_accessors = generate_sidecar_rust_accessors(&input, &sidecar_info);
     let (into_external_ptr, into_r_vec_element) = if emit_into_r_marker {
         (
@@ -1795,14 +2235,16 @@ mod tests {
         let setter_c = "C__mx_rdata_set_T_f";
 
         for cs in ALL_CLASS_SYSTEMS {
-            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c, true);
-            // Correct form: no .call argument — the C function only accepts x (getter) or x, value (setter).
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, Some(setter_c), true);
+            // Correct form: no .call argument — the C function accepts x (getter)
+            // or x, value (setter), then the `require_live` flag, `FALSE` for a
+            // standalone accessor (#1891).
             assert!(
-                out.contains(&format!(".Call({getter_c}, x)")),
+                out.contains(&format!(".Call({getter_c}, x, FALSE)")),
                 "{cs:?} getter should call without .call:\n{out}"
             );
             assert!(
-                out.contains(&format!(".Call({setter_c}, x, value)")),
+                out.contains(&format!(".Call({setter_c}, x, value, FALSE)")),
                 "{cs:?} setter should call without .call:\n{out}"
             );
             // No `.call =` in either spelling.
@@ -1823,12 +2265,22 @@ mod tests {
         let setter_c = "C__mx_rdata_set_T_f";
 
         for cs in ALL_CLASS_SYSTEMS {
-            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, setter_c, true);
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, Some(setter_c), true);
             assert_eq!(
                 out.matches(".miniextendr_raise_condition(.val, sys.call())")
                     .count(),
                 2,
                 "{cs:?} getter+setter should each carry the condition guard:\n{out}"
+            );
+            // A computed field gets the getter only (#1883).
+            let out = generate_r_wrapper_for_slot(cs, "T", "f", getter_c, None, true);
+            assert!(out.contains("T_get_f <- function(x)"), "{out}");
+            assert!(!out.contains("T_set_f"), "{out}");
+            assert_eq!(
+                out.matches(".miniextendr_raise_condition(.val, sys.call())")
+                    .count(),
+                1,
+                "{cs:?} computed getter should carry the condition guard:\n{out}"
             );
         }
     }
@@ -1842,6 +2294,7 @@ mod tests {
         let body = |ty: syn::Type, kind: super::SlotKind| {
             let slot = super::SidecarSlot {
                 name: syn::Ident::new("f", proc_macro2::Span::call_site()),
+                r_name: String::from("f"),
                 ty,
                 vis: syn::parse_quote!(pub),
                 is_public: true,
@@ -1891,6 +2344,7 @@ mod tests {
     fn sidecar_class_integration_reraises_tagged_conditions() {
         let slot = super::SidecarSlot {
             name: syn::Ident::new("f", proc_macro2::Span::call_site()),
+            r_name: String::from("f"),
             ty: syn::parse_quote!(i32),
             vis: syn::parse_quote!(pub),
             is_public: true,
@@ -1913,7 +2367,373 @@ mod tests {
                 !out.contains(".call ="),
                 "{cs:?} integration code must not pass a .call argument:\n{out}"
             );
+            // The bindings / properties keep reading a save: `FALSE` as the
+            // accessors' `require_live` flag (#1891).
+            let getter_c = crate::naming::sidecar_getter_c_name("T", "f");
+            let setter_c = crate::naming::sidecar_setter_c_name("T", "f");
+            assert!(
+                out.contains(&format!(".Call({getter_c}, ")) && out.contains(", FALSE)"),
+                "{out}"
+            );
+            assert!(
+                out.contains(&format!(".Call({setter_c}, ")) && out.contains(", value, FALSE)"),
+                "{out}"
+            );
         }
+    }
+
+    /// `#[r_data(name = "...")]` renames the R field: the R6 binding, the S7
+    /// property and its `@prop` entry, the standalone accessors and the field
+    /// list use the R name; the C symbols, the `CallDef` statics and the Rust
+    /// accessors keep the Rust identifier (#1891).
+    #[test]
+    fn r_data_name_renames_the_r_field_only() {
+        let input: syn::DeriveInput = syn::parse_str(
+            "struct Engine { #[r_data] _r: RSidecar, #[r_data(name = \"keys\")] pub r_keys: Sidecar<Vec<i32>>, \
+             #[r_data(name = \"n.rows\")] pub n_rows: i32 }",
+        )
+        .unwrap();
+        let info = super::parse_sidecar_info(&input, ClassSystem::R6).unwrap();
+        assert_eq!(info.slots[0].r_name, "keys");
+        assert_eq!(info.slots[1].r_name, "n.rows");
+        let pub_slots: Vec<_> = info.slots.iter().collect();
+
+        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots);
+        assert!(
+            helpers.contains(".rdata_fields_Engine <- c(\"keys\", \"n.rows\")\n"),
+            "{helpers}"
+        );
+        let getter = crate::naming::sidecar_getter_c_name("Engine", "r_keys");
+        assert!(
+            helpers.contains(&format!("  keys = .Call({getter}, x, TRUE)")),
+            "{helpers}"
+        );
+        assert!(
+            helpers.contains("its fields are `keys`, `n.rows`"),
+            "{helpers}"
+        );
+
+        let r6 = super::generate_class_integration_r_code(ClassSystem::R6, "Engine", &pub_slots);
+        assert!(r6.contains("cls$set(\"active\", \"keys\","), "{r6}");
+        assert!(
+            r6.contains(&format!(".Call({getter}, private$.ptr, FALSE)")),
+            "{r6}"
+        );
+        assert!(!r6.contains("\"r_keys\""), "{r6}");
+        let s7 = super::generate_class_integration_r_code(ClassSystem::S7, "Engine", &pub_slots);
+        assert!(s7.contains("    keys = S7::new_property("), "{s7}");
+
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(out.contains("Engine_get_keys <- function(x)"), "{out}");
+        assert!(
+            out.contains("Engine_set_keys <- function(x, value)"),
+            "{out}"
+        );
+        assert!(out.contains("Engine_get_n.rows <- function(x)"), "{out}");
+        assert!(!out.contains("Engine_get_r_keys"), "{out}");
+        assert!(out.contains(&getter), "{out}");
+        assert!(
+            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_R_KEYS"),
+            "{out}"
+        );
+        assert!(
+            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_N_ROWS"),
+            "{out}"
+        );
+        // The Rust accessors and the visitor hook keep the Rust name.
+        assert!(out.contains("pub fn r_keys (ptr :"), "{out}");
+        assert!(out.contains("pub fn set_r_keys (ptr :"), "{out}");
+        assert!(
+            out.contains("visit (0usize , \"r_keys\" , & self . r_keys)"),
+            "{out}"
+        );
+        // The setter's message names the R field.
+        assert!(out.contains("'n.rows' must be a number"), "{out}");
+    }
+
+    /// The R name must be non-empty, syntactic, unique, not `.ptr`, and not
+    /// on the selector.
+    #[test]
+    fn r_data_name_is_checked() {
+        let refused = |source: &str| {
+            let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+            super::parse_sidecar_info(&input, ClassSystem::Env)
+                .err()
+                .map(|err| err.to_string())
+                .unwrap_or_else(|| panic!("`{source}` must be refused"))
+        };
+        let message = refused("struct E { #[r_data(name = \"\")] pub count: i32 }");
+        assert!(message.contains("can't be empty"), "{message}");
+        let message = refused("struct E { #[r_data(name = \".ptr\")] pub count: i32 }");
+        assert!(message.contains("`.ptr` is the element"), "{message}");
+        let message = refused("struct E { #[r_data(name = \"n rows\")] pub count: i32 }");
+        assert!(message.contains("not a syntactic R name"), "{message}");
+        let message = refused("struct E { #[r_data(name = \"for\")] pub count: i32 }");
+        assert!(message.contains("not a syntactic R name"), "{message}");
+        let message = refused(
+            "struct E { #[r_data] pub keys: i32, #[r_data(name = \"keys\")] pub r_keys: Sidecar<Vec<i32>> }",
+        );
+        assert!(
+            message.contains("`keys` is already taken by the field `keys`"),
+            "{message}"
+        );
+        let message =
+            refused("struct E { #[r_data(name = \"r\")] _r: RSidecar, #[r_data] pub count: i32 }");
+        assert!(message.contains("not the RSidecar selector"), "{message}");
+        let message = refused("struct E { #[r_data(name = \"a\", name = \"b\")] pub count: i32 }");
+        assert!(message.contains("duplicate `name`"), "{message}");
+    }
+
+    /// A `Computed` field (#1883): its getter arm calls the `get` function on
+    /// the live struct (a leading `Self` resolved to the type), it takes its
+    /// declared place among the other fields, it gets no setter C function,
+    /// `CallDef` or `Type_set_<f>()`, and the setter switch raises
+    /// `miniextendr_read_only_field` for it.
+    #[test]
+    fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
+        let input: syn::DeriveInput = syn::parse_str(
+            "struct Engine { #[r_data] _r: RSidecar, \
+             #[r_data(get = \"Self::group_by\")] pub group_by: Computed, \
+             #[r_data(name = \"keys\")] pub r_keys: Sidecar<Vec<i32>>, \
+             #[r_data(get = \"n_rows_of\")] pub n_rows: Computed, \
+             #[r_data] pub base: i32 }",
+        )
+        .unwrap();
+        let info = super::parse_sidecar_info(&input, ClassSystem::S3).unwrap();
+        let kinds: Vec<_> = info.slots.iter().map(|slot| slot.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            [
+                super::SlotKind::Computed(syn::parse_quote!(Engine::group_by)),
+                super::SlotKind::Sidecar(0),
+                super::SlotKind::Computed(syn::parse_quote!(n_rows_of)),
+                super::SlotKind::ScalarInt,
+            ]
+        );
+        let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
+        let getter = super::generate_getter_body(&name, &info.slots[0]).to_string();
+        assert!(
+            getter.contains("sidecar_r_struct :: < Engine > (x)"),
+            "{getter}"
+        );
+        assert!(
+            getter.contains("IntoR :: into_sexp (Engine :: group_by (data))"),
+            "{getter}"
+        );
+        assert!(
+            super::generate_setter_body(&name, &info.slots[0]).is_empty(),
+            "a computed field has no setter body"
+        );
+
+        let pub_slots: Vec<_> = info.slots.iter().collect();
+        let helpers = super::generate_field_syntax_helpers("Engine", &pub_slots);
+        assert!(
+            helpers.contains(
+                ".rdata_fields_Engine <- c(\"group_by\", \"keys\", \"n_rows\", \"base\")\n"
+            ),
+            "{helpers}"
+        );
+        let group_by_getter = crate::naming::sidecar_getter_c_name("Engine", "group_by");
+        assert!(
+            helpers.contains(&format!("  group_by = .Call({group_by_getter}, x, TRUE),")),
+            "{helpers}"
+        );
+        assert!(
+            helpers.contains(
+                "  group_by = stop(errorCondition(\"`group_by` of `Engine` is computed from the Rust \
+                 value and can't be assigned\", class = \"miniextendr_read_only_field\", \
+                 call = .miniextendr_frame_call(parent.frame()))),"
+            ),
+            "{helpers}"
+        );
+        let keys_setter = crate::naming::sidecar_setter_c_name("Engine", "r_keys");
+        assert!(
+            helpers.contains(&format!("  keys = .Call({keys_setter}, x, value, TRUE),")),
+            "{helpers}"
+        );
+
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(out.contains("Engine_get_group_by <- function(x)"), "{out}");
+        assert!(!out.contains("Engine_set_group_by"), "{out}");
+        assert!(
+            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_GROUP_BY"),
+            "{out}"
+        );
+        assert!(
+            !out.contains("__MX_CALL_DEF_RDATA_SET_ENGINE_GROUP_BY"),
+            "{out}"
+        );
+        assert!(
+            !out.contains(&crate::naming::sidecar_setter_c_name("Engine", "group_by")),
+            "{out}"
+        );
+        assert!(
+            out.contains("Engine_set_keys <- function(x, value)"),
+            "{out}"
+        );
+        // Only the `Sidecar` field's accessors read the flag; the others take
+        // it unused.
+        assert!(
+            out.contains("_require_live : :: miniextendr_api :: SEXP"),
+            "{out}"
+        );
+        assert!(out.contains("sidecar_require_live (require_live)"), "{out}");
+    }
+
+    /// The `Computed` compile errors: `get` on another type, no `get`,
+    /// `ref` / `mut` / `setter` on it, a non-`pub` one, and one under R6 / S7.
+    #[test]
+    fn computed_fields_are_checked() {
+        let refused = |source: &str, system: ClassSystem| {
+            let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+            super::parse_sidecar_info(&input, system)
+                .err()
+                .map(|err| err.to_string())
+                .unwrap_or_else(|| panic!("`{source}` must be refused"))
+        };
+        let message = refused(
+            "struct E { #[r_data(get = \"Self::f\")] pub count: i32 }",
+            ClassSystem::S3,
+        );
+        assert!(
+            message.contains("`get` applies to a `Computed` field only"),
+            "{message}"
+        );
+        let message = refused(
+            "struct E { #[r_data] pub count: Computed }",
+            ClassSystem::S3,
+        );
+        assert!(
+            message.contains("needs `#[r_data(get = \"Self::f\")]`"),
+            "{message}"
+        );
+        let message = refused(
+            "struct E { #[r_data(ref, get = \"Self::f\")] pub count: Computed }",
+            ClassSystem::S3,
+        );
+        assert!(
+            message.contains("read through its `get` function"),
+            "{message}"
+        );
+        let message = refused(
+            "struct E { #[r_data(setter = \"visible\", get = \"Self::f\")] pub count: Computed }",
+            ClassSystem::S3,
+        );
+        assert!(
+            message.contains("not the RSidecar selector or a `Computed` field"),
+            "{message}"
+        );
+        let message = refused(
+            "struct E { #[r_data(get = \"Self::f\")] count: Computed }",
+            ClassSystem::S3,
+        );
+        assert!(message.contains("must be `pub`"), "{message}");
+        for (system, name) in [(ClassSystem::R6, "r6"), (ClassSystem::S7, "s7")] {
+            let message = refused(
+                "struct E { #[r_data(get = \"Self::f\")] pub count: Computed }",
+                system,
+            );
+            assert!(
+                message.contains(&format!("not supported under `#[externalptr({name})]`")),
+                "{message}"
+            );
+        }
+        let message = refused(
+            "struct E { #[r_data(get = \"not a path\")] pub count: Computed }",
+            ClassSystem::S3,
+        );
+        assert!(message.contains("`get` must be a path"), "{message}");
+    }
+
+    /// `#[externalptr(restored(class = ..., message = ...))]` (#1891): the
+    /// classes (one, or several in order) and the message reach the
+    /// `TypedExternal` impl; each alone works; the arguments are checked.
+    #[test]
+    fn restored_options_reach_the_typed_external_impl() {
+        let attrs = |source: &str| {
+            let input: syn::DeriveInput = syn::parse_str(source).unwrap();
+            super::parse_externalptr_attrs(&input).map(|attrs| (attrs.class_system, attrs.restored))
+        };
+        let (system, restored) = attrs(
+            "#[externalptr(s3, restored(class = [\"pkg_saved\", \"pkg_error\"], message = \"saved; rebuild it\"))] struct E;",
+        )
+        .unwrap();
+        assert_eq!(system, ClassSystem::S3);
+        assert_eq!(restored.class, ["pkg_saved", "pkg_error"]);
+        assert_eq!(restored.message.as_deref(), Some("saved; rebuild it"));
+        let (system, restored) =
+            attrs("#[externalptr(restored(class = \"pkg_saved\"))] #[externalptr(s4)] struct E;")
+                .unwrap();
+        assert_eq!(system, ClassSystem::S4);
+        assert_eq!(restored.class, ["pkg_saved"]);
+        assert_eq!(restored.message, None);
+        let (_, restored) = attrs("#[externalptr(restored(message = \"m\"))] struct E;").unwrap();
+        assert!(restored.class.is_empty());
+        assert_eq!(restored.message.as_deref(), Some("m"));
+        let (_, restored) = attrs("#[externalptr(env)] struct E;").unwrap();
+        assert_eq!(restored, super::RestoredOptions::default());
+
+        let refused = |source: &str, expected: &str| {
+            let message = attrs(source)
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| panic!("`{source}` must be refused"));
+            assert!(message.contains(expected), "`{source}`: {message}");
+        };
+        // syn refuses the empty parentheses itself.
+        refused(
+            "#[externalptr(restored())] struct E;",
+            "expected nested attribute",
+        );
+        refused(
+            "#[externalptr(restored(class = []))] struct E;",
+            "at least one",
+        );
+        refused(
+            "#[externalptr(restored(class = \"\"))] struct E;",
+            "can't be empty",
+        );
+        refused(
+            "#[externalptr(restored(message = \"\"))] struct E;",
+            "can't be empty",
+        );
+        refused(
+            "#[externalptr(restored(class = \"a\", class = \"b\"))] struct E;",
+            "given twice",
+        );
+        refused(
+            "#[externalptr(restored(class = \"a\"), restored(class = \"b\"))] struct E;",
+            "given twice",
+        );
+        refused(
+            "#[externalptr(restored(klass = \"a\"))] struct E;",
+            "unknown `restored` option",
+        );
+        refused(
+            "#[externalptr(saved)] struct E;",
+            "unknown `externalptr` option",
+        );
+
+        let input: syn::DeriveInput = syn::parse_str(
+            "#[externalptr(s3, restored(class = [\"pkg_saved\", \"pkg_error\"], message = \"saved; rebuild it\"))] struct E { n: i32 }",
+        )
+        .unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(
+            out.contains(
+                "const RESTORED_ERROR_CLASS : & 'static [& 'static str] = & [\"pkg_saved\" , \"pkg_error\"] ;"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "const RESTORED_ERROR_MESSAGE : :: core :: option :: Option < & 'static str > = :: core :: option :: Option :: Some (\"saved; rebuild it\") ;"
+            ),
+            "{out}"
+        );
+        let input: syn::DeriveInput = syn::parse_str("struct E { n: i32 }").unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(!out.contains("RESTORED_ERROR_"), "{out}");
     }
 
     #[test]
@@ -1936,7 +2756,7 @@ mod tests {
                     "Example",
                     "value",
                     "get_value",
-                    "set_value",
+                    Some("set_value"),
                     slot.setter_invisible.unwrap_or(true),
                 );
                 assert_eq!(
@@ -1992,7 +2812,7 @@ mod tests {
         )
         .unwrap();
         let info = super::parse_sidecar_info(&input, ClassSystem::Env).unwrap();
-        let kinds: Vec<_> = info.slots.iter().map(|slot| slot.kind).collect();
+        let kinds: Vec<_> = info.slots.iter().map(|slot| slot.kind.clone()).collect();
         assert_eq!(
             kinds,
             [
@@ -2056,14 +2876,18 @@ mod tests {
         let keys = &info.slots[1];
         let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
         let getter = super::generate_getter_body(&name, keys).to_string();
+        // The `require_live` flag of the `.Call()` decides whether a restored
+        // pointer is read or refused (#1891).
         assert!(
-            getter.contains("sidecar_r_get :: < Engine > (x , 0usize)"),
+            getter.contains(
+                "sidecar_r_get :: < Engine > (x , 0usize , :: miniextendr_api :: externalptr :: sidecar_require_live (require_live) ,)"
+            ),
             "{getter}"
         );
         assert!(!getter.contains("R_ExternalPtrAddr"), "{getter}");
         let setter = super::generate_setter_body(&name, keys).to_string();
         assert!(
-            setter.contains("sidecar_r_check :: < Engine > (x)"),
+            setter.contains("sidecar_r_check :: < Engine > (x , require_live)"),
             "{setter}"
         );
         // The value is validated as the field's `T` and reported as it.
@@ -2074,7 +2898,7 @@ mod tests {
         assert!(setter.contains("\"'keys' must be integer\""), "{setter}");
         assert!(setter.contains("Some (\"Vec<i32>\")"), "{setter}");
         assert!(
-            setter.contains("sidecar_r_set :: < Engine > (x , 0usize , value ,)"),
+            setter.contains("sidecar_r_set :: < Engine > (x , 0usize , value , require_live ,)"),
             "{setter}"
         );
     }
@@ -2165,6 +2989,7 @@ mod tests {
     fn field_syntax_helpers_switch_over_the_accessors() {
         let slot = |name: &str| super::SidecarSlot {
             name: syn::parse_str(name).unwrap(),
+            r_name: crate::naming::ident_name(&syn::parse_str::<syn::Ident>(name).unwrap()),
             ty: syn::parse_quote!(i32),
             vis: syn::parse_quote!(pub),
             is_public: true,
@@ -2183,12 +3008,12 @@ mod tests {
         let setter = crate::naming::sidecar_setter_c_name("Engine", "for");
         assert!(
             out.contains(&format!(
-                ".rdata_get_Engine <- function(x, name) switch(name,\n  keys = .Call({getter}, x),"
+                ".rdata_get_Engine <- function(x, name) switch(name,\n  keys = .Call({getter}, x, TRUE),"
             )),
             "{out}"
         );
         assert!(
-            out.contains(&format!("  `for` = .Call({setter}, x, value))\n")),
+            out.contains(&format!("  `for` = .Call({setter}, x, value, TRUE))\n")),
             "{out}"
         );
         assert!(

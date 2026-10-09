@@ -8,7 +8,7 @@
 //!
 //! | Module | Contents |
 //! |--------|----------|
-//! | [`altrep_helpers`] | ALTREP data1/data2 slot access helpers + `RSidecar` marker type |
+//! | [`altrep_helpers`] | ALTREP data1/data2 slot access helpers + the `RSidecar` and `Computed` marker types |
 //! | [`sidecar`] | [`Sidecar<T>`] fields: typed values kept in the `prot` list |
 //!
 //! # Core Types
@@ -422,11 +422,32 @@ pub(crate) fn restored_other_version_message(
     )
 }
 
+/// The condition classes of a restored refusal of a `T`: the package's
+/// classes ([`TypedExternal::RESTORED_ERROR_CLASS`], in order), then the
+/// specific class, then [`RESTORED_CLASS`].
+pub(crate) fn restored_classes_of<T: TypedExternal>(specific: &'static str) -> Vec<String> {
+    T::RESTORED_ERROR_CLASS
+        .iter()
+        .copied()
+        .chain([specific, RESTORED_CLASS])
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The message of a restored refusal of a `T`: the package's
+/// ([`TypedExternal::RESTORED_ERROR_MESSAGE`]) when it has one, else
+/// miniextendr's (`default`).
+pub(crate) fn restored_message_of<T: TypedExternal>(default: impl FnOnce() -> String) -> String {
+    T::RESTORED_ERROR_MESSAGE.map_or_else(default, str::to_owned)
+}
+
 /// Raises the error for a pointer without an address when it was built for
 /// `T` (by this version: [`RESTORED_NO_VALUE_CLASS`]; by another:
-/// [`RESTORED_OTHER_VERSION_CLASS`]), and returns the other cases for the
-/// caller to word as it did before. The condition is raised through the
-/// panic transport (`panic_any`), like `error!`.
+/// [`RESTORED_OTHER_VERSION_CLASS`]), with the package's classes in front and
+/// its message when the type declares them (`#[externalptr(restored(...))]`),
+/// and returns the other cases for the caller to word as it did before. The
+/// condition is raised through the panic transport (`panic_any`), like
+/// `error!`.
 ///
 /// # Safety
 ///
@@ -437,7 +458,7 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddres
     let kind = unsafe { classify_null_address::<T>(sexp) };
     let (message, class, data) = match kind {
         NullAddress::Restored => (
-            restored_no_value_message(T::TYPE_NAME),
+            restored_message_of::<T>(|| restored_no_value_message(T::TYPE_NAME)),
             RESTORED_NO_VALUE_CLASS,
             None,
         ),
@@ -446,7 +467,9 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddres
             saved,
             current,
         } => (
-            restored_other_version_message(T::TYPE_NAME, crate_name, saved, current),
+            restored_message_of::<T>(|| {
+                restored_other_version_message(T::TYPE_NAME, crate_name, saved, current)
+            }),
             RESTORED_OTHER_VERSION_CLASS,
             Some(vec![
                 (String::from("saved_version"), RValue::from(saved)),
@@ -457,7 +480,7 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddres
     };
     std::panic::panic_any(RCondition::Error {
         message,
-        class: vec![class.to_owned(), RESTORED_CLASS.to_owned()],
+        class: restored_classes_of::<T>(class),
         data,
         call: ConditionCall::Inherit,
     })
@@ -552,6 +575,28 @@ pub trait TypedExternal: 'static {
     /// `#[derive(ExternalPtr)]` counts the type's `#[r_data]` fields of type
     /// `Sidecar<_>`.
     const R_SLOT_COUNT: usize = 0;
+
+    /// The package's condition classes for a pointer of this type restored
+    /// from a saved session, in front of the `miniextendr_restored*` classes
+    /// ([`RESTORED_NO_VALUE_CLASS`] / [`RESTORED_OTHER_VERSION_CLASS`], then
+    /// [`RESTORED_CLASS`]), which every restored refusal keeps.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(restored(class = "pkg_saved"))]` or
+    /// `restored(class = ["pkg_saved", "pkg_error"])`; the default adds
+    /// nothing.
+    const RESTORED_ERROR_CLASS: &'static [&'static str] = &[];
+
+    /// The package's message for a pointer of this type restored from a saved
+    /// session, replacing miniextendr's in both the no-value and the
+    /// other-version case (the condition's `saved_version` /
+    /// `current_version` fields stay). A static string: one type is one R
+    /// class, so the package names it literally.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(restored(message = "..."))]`; the default keeps
+    /// miniextendr's messages.
+    const RESTORED_ERROR_MESSAGE: Option<&'static str> = None;
 
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
     /// name, so the handle can flush the field's pending value into its slot
@@ -1784,6 +1829,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 NullAddress::Foreign => TypeMismatchError::NullPointer,
                 NullAddress::Restored => TypeMismatchError::Restored {
                     type_name: T::TYPE_NAME,
+                    package_classes: T::RESTORED_ERROR_CLASS,
+                    package_message: T::RESTORED_ERROR_MESSAGE,
                 },
                 NullAddress::OtherVersion {
                     crate_name,
@@ -1794,6 +1841,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
                     crate_name,
                     saved,
                     current,
+                    package_classes: T::RESTORED_ERROR_CLASS,
+                    package_message: T::RESTORED_ERROR_MESSAGE,
                 },
                 NullAddress::OtherType { found } => TypeMismatchError::Mismatch {
                     expected: T::TYPE_NAME,
@@ -2116,6 +2165,12 @@ pub enum TypeMismatchError {
     Restored {
         /// The type's name.
         type_name: &'static str,
+        /// The package's classes for the type
+        /// ([`TypedExternal::RESTORED_ERROR_CLASS`]).
+        package_classes: &'static [&'static str],
+        /// The package's message for the type
+        /// ([`TypedExternal::RESTORED_ERROR_MESSAGE`]).
+        package_message: Option<&'static str>,
     },
     /// A pointer another version of the crate saved
     /// ([`RESTORED_OTHER_VERSION_CLASS`]).
@@ -2128,18 +2183,36 @@ pub enum TypeMismatchError {
         saved: &'static str,
         /// This version.
         current: &'static str,
+        /// The package's classes for the type
+        /// ([`TypedExternal::RESTORED_ERROR_CLASS`]).
+        package_classes: &'static [&'static str],
+        /// The package's message for the type
+        /// ([`TypedExternal::RESTORED_ERROR_MESSAGE`]).
+        package_message: Option<&'static str>,
     },
 }
 
 impl TypeMismatchError {
-    /// The condition classes of the error about a restored pointer (most
-    /// specific first), `None` for the other variants.
-    pub fn restored_classes(&self) -> Option<[&'static str; 2]> {
-        match self {
-            Self::Restored { .. } => Some([RESTORED_NO_VALUE_CLASS, RESTORED_CLASS]),
-            Self::OtherVersion { .. } => Some([RESTORED_OTHER_VERSION_CLASS, RESTORED_CLASS]),
-            Self::NullPointer | Self::InvalidTypeId | Self::Mismatch { .. } => None,
-        }
+    /// The condition classes of the error about a restored pointer: the
+    /// package's classes, then the specific class, then [`RESTORED_CLASS`];
+    /// `None` for the other variants.
+    pub fn restored_classes(&self) -> Option<Vec<&'static str>> {
+        let (package_classes, specific) = match self {
+            Self::Restored {
+                package_classes, ..
+            } => (package_classes, RESTORED_NO_VALUE_CLASS),
+            Self::OtherVersion {
+                package_classes, ..
+            } => (package_classes, RESTORED_OTHER_VERSION_CLASS),
+            Self::NullPointer | Self::InvalidTypeId | Self::Mismatch { .. } => return None,
+        };
+        Some(
+            package_classes
+                .iter()
+                .copied()
+                .chain([specific, RESTORED_CLASS])
+                .collect(),
+        )
     }
 }
 
@@ -2155,15 +2228,27 @@ impl fmt::Display for TypeMismatchError {
                     expected, found
                 )
             }
-            Self::Restored { type_name } => f.write_str(&restored_no_value_message(type_name)),
+            Self::Restored {
+                type_name,
+                package_message,
+                ..
+            } => match package_message {
+                Some(message) => f.write_str(message),
+                None => f.write_str(&restored_no_value_message(type_name)),
+            },
             Self::OtherVersion {
                 type_name,
                 crate_name,
                 saved,
                 current,
-            } => f.write_str(&restored_other_version_message(
-                type_name, crate_name, saved, current,
-            )),
+                package_message,
+                ..
+            } => match package_message {
+                Some(message) => f.write_str(message),
+                None => f.write_str(&restored_other_version_message(
+                    type_name, crate_name, saved, current,
+                )),
+            },
         }
     }
 }

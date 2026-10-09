@@ -2,17 +2,20 @@
 #
 # `saveRDS()` / `serialize()` write an external pointer's tag and `prot`
 # list, not its address: the `Sidecar<T>` values and the user slot come back,
-# the Rust value does not. The R accessors of `Sidecar` fields read and
-# write the restored pointer; everything that needs the Rust value (a
-# method, an `ExternalPtr<T>` argument, the accessor of a struct field)
-# raises a classed error: `miniextendr_restored_no_value` for a save by this
-# version of the package, `miniextendr_restored_other_version` for a save by
-# another (simulated here by `sidecar_rewrite_saved_version()`, which
-# rewrites the version in the stored type ID). Both carry
-# `miniextendr_restored`. A pointer not built by miniextendr keeps the
-# plain `expected ExternalPtr<T>` messages.
+# the Rust value does not. The standalone R accessors of `Sidecar` fields,
+# the R6 active bindings and the S7 properties read and write the restored
+# pointer; everything that needs the Rust value (a method, an
+# `ExternalPtr<T>` argument, the accessor of a struct field) raises a classed
+# error: `miniextendr_restored_no_value` for a save by this version of the
+# package, `miniextendr_restored_other_version` for a save by another
+# (simulated here by `sidecar_rewrite_saved_version()`, which rewrites the
+# version in the stored type ID). Both carry `miniextendr_restored`. A
+# pointer not built by miniextendr keeps the plain `expected ExternalPtr<T>`
+# messages. The `$` / `[[` field methods of S3, S4 and env classes refuse a
+# restored pointer whatever the field (#1891): test-sidecar-field-syntax.R.
 #
-# Fixture: `SidecarSlotR6` in `src/rust/rdata_sidecar_tests.rs`.
+# Fixture: `SidecarSlotR6` in `src/rust/rdata_sidecar_tests.rs`; its `label`
+# field is `r_label` in Rust (`#[r_data(name = "label")]`).
 
 ptr_of <- function(obj) obj$.__enclos_env__$private$.ptr
 

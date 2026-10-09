@@ -142,6 +142,8 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///   returned as a fresh length-1 vector on read
 /// - **Any `IntoR + TryFromSexp` type** - converted on every read and write
 ///   (e.g., `String`, `Vec<T>`)
+/// - **[`Computed`]** - a read-only field computed from the Rust value by a
+///   getter function (`#[r_data(get = "Self::f")]`)
 ///
 /// Every field but a `Sidecar` lives in the Rust struct, so a reader always
 /// sees the Rust value and a writer either converts into it or gets an error.
@@ -183,4 +185,52 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 /// - Multiple `RSidecar` fields in one struct is a compile error
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct RSidecar;
+
+/// Marker type of a read-only R field computed from the Rust value
+/// (#1883).
+///
+/// Declare it as `#[r_data(get = "Self::f")] pub f: Computed` on a
+/// `#[derive(ExternalPtr)]` struct with an [`RSidecar`] selector. `get`
+/// names a plain Rust function `fn(&Self) -> T` with `T: IntoR`, resolved in
+/// the struct's module (a leading `Self` is the struct); it needs no
+/// `#[miniextendr]`. The field holds no value: it is a zero-sized marker that
+/// gives the computed field its place among the type's R fields, so every
+/// struct literal writes `f: Computed` once, as it writes `_r: RSidecar`.
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// #[externalptr(s3)]
+/// pub struct Engine {
+///     inner: Model,
+///     #[r_data] _r: RSidecar,
+///     #[r_data(get = "Self::group_by")] pub group_by: Computed,
+///     #[r_data(name = "keys")] pub r_keys: Sidecar<SEXP>,
+///     #[r_data(get = "Self::n_rows")] pub n_rows: Computed,
+/// }
+///
+/// impl Engine {
+///     fn group_by(&self) -> Vec<String> { self.inner.group_by.clone() }
+///     fn n_rows(&self) -> i32 { self.inner.n_rows() }
+/// }
+/// ```
+///
+/// What the derive generates for it:
+///
+/// - the standalone getter `Engine_get_group_by(x)`, and an arm in the
+///   `$` / `[[` field methods of `s3(r_data_accessors)` & co., at the field's
+///   declared place among the `Sidecar` and struct fields;
+/// - no setter: no `Engine_set_group_by()`, and under the get/set form an
+///   assignment (`x$group_by <- v`) raises `miniextendr_read_only_field`.
+///
+/// The getter runs on R's main thread with the live Rust value, so a
+/// computed field refuses a pointer restored from a saved session like a
+/// struct field does. Its errors are its own: a `rust_error!(class = ...)`
+/// in the getter reaches R with that class. The getter returns a value, not a
+/// `Result`; it takes `&Self`, so it can't read `Sidecar` values (#1856),
+/// which are R fields already.
+///
+/// Only a `pub` `Computed` field reaches R, and only on S3, S4, env and
+/// vctrs types: R6 active bindings and S7 properties need a setter (#1888).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct Computed;
 // endregion

@@ -307,19 +307,218 @@ test_that("env: a refused write reports the call; an unknown name is refused", {
 
 # endregion
 
-# region: a saved and restored object
+# region: computed fields and R names (#1883, #1891)
+#
+# Fixture: `SidecarComputed` in `src/rust/rdata_sidecar_tests.rs`, an S3 class
+# whose `Computed` fields (`doubled`, `nothing`, `boom`) interleave with a
+# `Sidecar` field named `keys` in R (`r_keys` in Rust), a struct field `base`
+# and a `Sidecar<SEXP>` named `table` (`r_table`).
 
-test_that("restored: `$` reads a `Sidecar` field; a struct field raises the restored error", {
+test_that("computed fields read through `$`, `[[` and the standalone getter, at their declared place", {
+  x <- new_sidecarcomputed(4L)
+  expect_identical(x$doubled, 8L)
+  expect_identical(x[["doubled"]], 8L)
+  expect_identical(SidecarComputed_get_doubled(x), 8L)
+  expect_null(x$nothing)
+  expect_null(x[["nothing"]])
+  expect_null(SidecarComputed_get_nothing(x))
+  # Declared order, computed fields interleaved with the `Sidecar` and struct
+  # fields, under the R names.
+  expect_identical(
+    miniextendr:::.rdata_fields_SidecarComputed,
+    c("doubled", "keys", "nothing", "base", "boom", "table")
+  )
+  # A computed field follows the Rust value.
+  x$base <- 10L
+  expect_identical(x$doubled, 20L)
+  expect_identical(x$base, 10L)
+  # No setter exists for a computed field.
+  expect_false(exists("SidecarComputed_set_doubled", envir = asNamespace("miniextendr")))
+  expect_true(exists("SidecarComputed_set_keys", envir = asNamespace("miniextendr")))
+})
+
+test_that("a computed getter's own error reaches R with its class and the call", {
+  x <- new_sidecarcomputed(4L)
+  e <- caught(x$boom)
+  expect_s3_class(e, "sidecar_computed_boom")
+  expect_s3_class(e, "rust_error")
+  expect_identical(conditionMessage(e), "boom: base is 4")
+  expect_equal(conditionCall(e), quote(x$boom))
+  e <- caught(x[["boom"]])
+  expect_s3_class(e, "sidecar_computed_boom")
+  expect_equal(conditionCall(e), quote(x[["boom"]]))
+  e <- caught(SidecarComputed_get_boom(x))
+  expect_s3_class(e, "sidecar_computed_boom")
+  expect_equal(conditionCall(e), quote(SidecarComputed_get_boom(x)))
+})
+
+test_that("assigning a computed field raises miniextendr_read_only_field with the assignment call", {
+  x <- new_sidecarcomputed(4L)
+  e <- caught(x$doubled <- 1L)
+  expect_s3_class(e, "miniextendr_read_only_field")
+  expect_identical(
+    conditionMessage(e),
+    "`doubled` of `SidecarComputed` is computed from the Rust value and can't be assigned"
+  )
+  expect_equal(conditionCall(e), quote(x$doubled <- value))
+  e <- caught(x[["nothing"]] <- 1L)
+  expect_s3_class(e, "miniextendr_read_only_field")
+  expect_equal(conditionCall(e), quote(x[["nothing"]] <- value))
+  expect_identical(x$doubled, 8L)
+})
+
+test_that("`name =` gives a field its R name everywhere R sees it", {
+  x <- new_sidecarcomputed(3L)
+  expect_identical(x$keys, 1:3)
+  expect_identical(x[["keys"]], 1:3)
+  expect_identical(SidecarComputed_get_keys(x), 1:3)
+  x$keys <- 7L
+  expect_identical(SidecarComputed_get_keys(x), 7L)
+  SidecarComputed_set_keys(x, 8:9)
+  expect_identical(x$keys, 8:9)
+  # The Rust side reads the same slot under its Rust name.
+  expect_identical(sidecar_computed_keys(x), 8:9)
+  expect_identical(key_count(x), 2L)
+  expect_null(x$table)
+  x$table <- data.frame(a = 1)
+  expect_identical(x$table, data.frame(a = 1))
+  expect_identical(SidecarComputed_get_table(x), data.frame(a = 1))
+  # The Rust identifier is no R name.
+  e <- caught(x$r_keys)
+  expect_s3_class(e, "miniextendr_no_field")
+  expect_match(
+    conditionMessage(e),
+    "its fields are `doubled`, `keys`, `nothing`, `base`, `boom`, `table`",
+    fixed = TRUE
+  )
+  expect_false(exists("SidecarComputed_get_r_keys", envir = asNamespace("miniextendr")))
+  # The setter's message names the R field.
+  e <- caught(x$keys <- "a")
+  expect_match(conditionMessage(e), "'keys' must be", fixed = TRUE)
+  expect_identical(x$keys, 8:9)
+})
+
+# endregion
+
+# region: a saved and restored object (#1891)
+
+reload <- function(x) {
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
+  saveRDS(x, path)
+  readRDS(path)
+}
+
+# The classes a restored refusal carries, in order, before `rust_error`.
+expect_restored_classes <- function(e, classes, label) {
+  at <- match(classes, class(e))
+  expect_false(anyNA(at), label = paste(label, "carries", paste(classes, collapse = ", ")))
+  expect_identical(at, sort(at), label = paste(label, "class order"))
+  expect_true(at[length(at)] < match("rust_error", class(e)), label = paste(label, "before rust_error"))
+}
+
+test_that("restored: the field methods refuse the pointer; the standalone accessors still read the save", {
   x <- new_sidecars3(1.5)
   x$tags <- c("saved", "tags")
-  saveRDS(x, path)
-  back <- readRDS(path)
-  expect_identical(back$tags, c("saved", "tags"))
-  back$tags <- "edited"
-  expect_identical(back$tags, "edited")
-  expect_error(back$data, class = "miniextendr_restored_no_value")
+  back <- reload(x)
+  # The `Sidecar` value is there: the standalone accessors read and write it.
+  expect_identical(SidecarS3_get_tags(back), c("saved", "tags"))
+  SidecarS3_set_tags(back, "edited")
+  expect_identical(SidecarS3_get_tags(back), "edited")
+  # The field methods refuse a restored pointer, `Sidecar` field or not.
+  for (read in alist(back$tags, back[["tags"]], back$data, back[["data"]])) {
+    e <- caught(eval(read))
+    expect_s3_class(e, "miniextendr_restored_no_value")
+    expect_s3_class(e, "miniextendr_restored")
+    expect_identical(
+      conditionMessage(e),
+      "this `SidecarS3` object was restored from a saved session and has no Rust value; re-create it",
+      label = deparse(read)
+    )
+  }
+  e <- caught(back$tags <- "again")
+  expect_s3_class(e, "miniextendr_restored_no_value")
+  expect_equal(conditionCall(e), quote(x$tags <- value))
+  e <- caught(back[["tags"]] <- "again")
+  expect_s3_class(e, "miniextendr_restored_no_value")
+  expect_identical(SidecarS3_get_tags(back), "edited")
+  # A name that is not a field never calls into Rust, so it still answers.
+  expect_s3_class(caught(back$nope), "miniextendr_no_field")
+})
+
+test_that("restored: the S4 and env field methods refuse too", {
+  o <- SidecarS4(1L, 2.5, "s")
+  o$history <- c(1, 2)
+  back <- reload(o)
+  expect_identical(SidecarS4_get_history(back@ptr), c(1, 2))
+  expect_s3_class(caught(back$history), "miniextendr_restored_no_value")
+  expect_s3_class(caught(back$history <- 3), "miniextendr_restored_no_value")
+  expect_identical(SidecarS4_get_history(back@ptr), c(1, 2))
+
+  obj <- SidecarEnv$new(3L, 1.5, TRUE, "n")
+  obj$raw_slot <- list(1)
+  back <- reload(obj)
+  expect_identical(SidecarEnv_get_raw_slot(back), list(1))
+  expect_s3_class(caught(back$raw_slot), "miniextendr_restored_no_value")
+  expect_s3_class(caught(back[["raw_slot"]]), "miniextendr_restored_no_value")
+  expect_s3_class(caught(back$raw_slot <- list(2)), "miniextendr_restored_no_value")
+  expect_identical(SidecarEnv_get_raw_slot(back), list(1))
+})
+
+test_that("the package's restored classes and message apply to every restored refusal of the type", {
+  back <- reload(new_sidecarcomputed(2L))
+  message <- "this SidecarComputed was saved; build a new one with new_sidecarcomputed()"
+  classes <- c(
+    "sidecar_computed_saved", "sidecar_computed_error",
+    "miniextendr_restored_no_value", "miniextendr_restored"
+  )
+  paths <- list(
+    `$ on a Sidecar field` = function() back$keys,
+    `$ on a struct field` = function() back$base,
+    `$ on a computed field` = function() back$doubled,
+    `[[` = function() back[["keys"]],
+    `$<-` = function() back$keys <- 1L,
+    `standalone struct-field getter` = function() SidecarComputed_get_base(back),
+    `standalone computed getter` = function() SidecarComputed_get_doubled(back),
+    `method taking the handle` = function() key_count(back),
+    `ExternalPtr<T> argument` = function() sidecar_computed_keys(back)
+  )
+  for (path in names(paths)) {
+    e <- caught(paths[[path]]())
+    expect_match(conditionMessage(e), message, fixed = TRUE, label = path)
+    expect_restored_classes(e, classes, path)
+  }
+  # The standalone `Sidecar` accessors still read and write the save.
+  expect_identical(SidecarComputed_get_keys(back), 1:2)
+  SidecarComputed_set_keys(back, 5L)
+  expect_identical(SidecarComputed_get_keys(back), 5L)
+  # A type without the option keeps miniextendr's message and classes.
+  e <- caught(reload(new_sidecars3(1))$data)
+  expect_identical(class(e)[1:2], c("miniextendr_restored_no_value", "miniextendr_restored"))
+})
+
+test_that("another version's save keeps the package's classes and message, with the version fields", {
+  back <- reload(new_sidecarcomputed(2L))
+  miniextendr:::sidecar_rewrite_saved_version(back, "0.0.1")
+  current <- as.character(utils::packageVersion("miniextendr"))
+  classes <- c(
+    "sidecar_computed_saved", "sidecar_computed_error",
+    "miniextendr_restored_other_version", "miniextendr_restored"
+  )
+  for (expr in alist(
+    back$keys, back$doubled, SidecarComputed_get_keys(back), key_count(back), sidecar_computed_keys(back)
+  )) {
+    e <- caught(eval(expr))
+    expect_match(
+      conditionMessage(e),
+      "this SidecarComputed was saved; build a new one with new_sidecarcomputed()",
+      fixed = TRUE,
+      label = deparse(expr)
+    )
+    expect_restored_classes(e, classes, deparse(expr))
+    expect_identical(e$saved_version, "0.0.1", label = deparse(expr))
+    expect_identical(e$current_version, current, label = deparse(expr))
+  }
 })
 
 # endregion

@@ -10,14 +10,14 @@ error: duplicate `setter` option
 13 |     #[r_data(setter = "invisible")]
    |              ^^^^^^
 
-error: `setter` requires a public named sidecar slot, not the RSidecar selector
+error: `setter` requires a public named sidecar slot with a setter, not the RSidecar selector or a `Computed` field
   --> tests/ui/derive_sidecar_setter_invalid.rs:19:5
    |
 19 | /     #[r_data(setter = "visible")]
 20 | |     value: i32,
    | |______________^
 
-error: `setter` requires a public named sidecar slot, not the RSidecar selector
+error: `setter` requires a public named sidecar slot with a setter, not the RSidecar selector or a `Computed` field
   --> tests/ui/derive_sidecar_setter_invalid.rs:25:5
    |
 25 | /     #[r_data(setter = "visible")]

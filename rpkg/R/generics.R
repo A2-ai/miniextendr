@@ -64,6 +64,12 @@ NULL
 #' @name tag_count
 NULL
 
+#' Count the keys of an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name key_count
+NULL
+
 #' Add a tag to an object
 #' @param x An object.
 #' @param ... Additional arguments.

@@ -1,0 +1,45 @@
+error: `get` applies to a `Computed` field only: declare the field as `pub <name>: Computed`, and `get` names the function that computes its value
+  --> tests/ui/derive_computed_invalid.rs:14:20
+   |
+14 |     #[r_data(get = "Self::f")]
+   |                    ^^^^^^^^^
+
+error: a `Computed` field needs `#[r_data(get = "Self::f")]`, the function `fn(&Self) -> impl IntoR` that computes its value
+  --> tests/ui/derive_computed_invalid.rs:23:16
+   |
+23 |     pub count: Computed,
+   |                ^^^^^^^^
+
+error: `ref` and `mut` in `#[r_data(...)]` apply to `Sidecar<T>` fields only; a plain `#[r_data]` field stays a struct field with its R accessors, and a `Computed` field is read through its `get` function
+  --> tests/ui/derive_computed_invalid.rs:30:14
+   |
+30 |     #[r_data(ref, get = "Self::f")]
+   |              ^^^
+
+error: `setter` requires a public named sidecar slot with a setter, not the RSidecar selector or a `Computed` field
+  --> tests/ui/derive_computed_invalid.rs:38:5
+   |
+38 | /     #[r_data(setter = "visible", get = "Self::f")]
+39 | |     pub count: Computed,
+   | |_______________________^
+
+error: a `Computed` field must be `pub`: it exists only as an R field, and only `pub` `#[r_data]` fields reach R
+  --> tests/ui/derive_computed_invalid.rs:46:5
+   |
+46 | /     #[r_data(get = "Self::f")]
+47 | |     count: Computed,
+   | |___________________^
+
+error: a `Computed` field is not supported under `#[externalptr(r6)]`: its R6 active bindings / S7 properties need a setter, and a computed field has none (#1888). Use an active method / a computed property, or an S3, S4 or env class
+  --> tests/ui/derive_computed_invalid.rs:55:5
+   |
+55 | /     #[r_data(get = "Self::f")]
+56 | |     pub count: Computed,
+   | |_______________________^
+
+error: a `Computed` field is not supported under `#[externalptr(s7)]`: its R6 active bindings / S7 properties need a setter, and a computed field has none (#1888). Use an active method / a computed property, or an S3, S4 or env class
+  --> tests/ui/derive_computed_invalid.rs:64:5
+   |
+64 | /     #[r_data(get = "Self::f")]
+65 | |     pub count: Computed,
+   | |_______________________^

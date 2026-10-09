@@ -121,7 +121,8 @@ R6 class with typed \verb{Sidecar<T>} fields.
 \if{html}{\out{<a id="method-SidecarSlotR6-label_len"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-label_len}{}}}
 \subsection{\code{SidecarSlotR6$label_len()}}{
-  Length of \code{label}, read from Rust (a \code{ref}-only field).
+  Length of \code{label}, read from Rust (a \code{ref}-only field, named
+\code{r_label} in Rust).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$label_len()}

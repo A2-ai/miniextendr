@@ -3,9 +3,10 @@
 //! This module tests the R-side sidecar accessor generation with different
 //! class systems, and the typed `Sidecar<T>` fields whose values live in the
 //! external pointer's protection list (#1846, #1855), read and written
-//! through the `ExternalPtr` handle (#1856).
+//! through the `ExternalPtr` handle (#1856); `Computed` fields, per-field R
+//! names and the package's restored classes (#1883, #1891).
 
-use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr, RSidecar, Sidecar};
+use miniextendr_api::externalptr::{Computed, ErasedExternalPtr, ExternalPtr, RSidecar, Sidecar};
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
@@ -249,6 +250,99 @@ impl SidecarS3Get {
 }
 // endregion
 
+// region: S3 with computed fields, R names and the package's restored classes (#1883, #1891)
+
+/// An S3 class with `Computed` fields interleaved with `Sidecar` and struct
+/// fields, R field names that differ from the Rust identifiers, and its own
+/// condition classes and message for a pointer restored from a saved
+/// session (`#[externalptr(restored(...))]`).
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(
+    s3,
+    restored(
+        class = ["sidecar_computed_saved", "sidecar_computed_error"],
+        message = "this SidecarComputed was saved; build a new one with new_sidecarcomputed()"
+    )
+)]
+pub struct SidecarComputed {
+    #[r_data]
+    _r: RSidecar,
+
+    /// `base * 2`, computed from the Rust value.
+    #[r_data(get = "Self::doubled")]
+    pub doubled: Computed,
+
+    /// Keys kept in the pointer's protection list; `keys` in R.
+    #[r_data(name = "keys")]
+    pub r_keys: Sidecar<Vec<i32>>,
+
+    /// A computed field whose value is `NULL`.
+    #[r_data(get = "Self::nothing")]
+    pub nothing: Computed,
+
+    /// The base value, a struct field.
+    #[r_data]
+    pub base: i32,
+
+    /// A computed field whose getter raises its own classed error.
+    #[r_data(get = "Self::boom")]
+    pub boom: Computed,
+
+    /// Any R value, kept in the pointer's protection list; `table` in R.
+    #[r_data(name = "table")]
+    pub r_table: Sidecar<SEXP>,
+}
+
+/// The getters of the computed fields: plain Rust functions of `&Self`.
+impl SidecarComputed {
+    fn doubled(&self) -> i32 {
+        self.base * 2
+    }
+
+    fn nothing(&self) {}
+
+    fn boom(&self) -> i32 {
+        miniextendr_api::rust_error!(
+            class = "sidecar_computed_boom",
+            "boom: base is {}",
+            self.base
+        )
+    }
+}
+
+/// S3 class registration for SidecarComputed: the generated `$` / `[[` /
+/// `$<-` / `[[<-` read and write the fields, and `key_count()` takes the
+/// handle (the path a restored pointer refuses with the package's classes).
+#[miniextendr(s3(r_data_accessors))]
+impl SidecarComputed {
+    /// Create a SidecarComputed whose `keys` are `1:base` and whose `table` is `NULL`.
+    /// @param base The base value.
+    pub fn new(base: i32) -> Self {
+        SidecarComputed {
+            _r: RSidecar,
+            doubled: Computed,
+            r_keys: Sidecar::new((1..=base).collect()),
+            nothing: Computed,
+            base,
+            boom: Computed,
+            r_table: Sidecar::new(SEXP::nil()),
+        }
+    }
+
+    /// Number of `keys`, read through the handle.
+    pub fn key_count(self: &ExternalPtr<Self>) -> i32 {
+        i32::try_from(Self::r_keys(self).len()).expect("key count exceeds i32")
+    }
+}
+
+/// The `keys` of a `SidecarComputed`, through an `ExternalPtr<T>` argument.
+/// @param ptr A `SidecarComputed` pointer.
+#[miniextendr]
+pub fn sidecar_computed_keys(ptr: ExternalPtr<SidecarComputed>) -> Vec<i32> {
+    SidecarComputed::r_keys(&ptr)
+}
+// endregion
+
 // region: S4 - standalone accessors: SidecarS4_get_slot_int(x), ...
 
 /// Demonstrates S4 class system.
@@ -341,9 +435,13 @@ pub struct SidecarS7 {
     #[r_data(prop_doc = "A character sidecar property.", setter = "invisible")]
     pub prop_name: String,
 
-    /// Scores kept in the pointer's protection list.
-    #[r_data(prop_doc = "Scores kept in the pointer's protection list.")]
-    pub scores: Sidecar<Vec<f64>>,
+    /// Scores kept in the pointer's protection list. The S7 property is
+    /// `scores` (`name = "scores"`); Rust reads `Self::r_scores(&ptr)`.
+    #[r_data(
+        prop_doc = "Scores kept in the pointer's protection list.",
+        name = "scores"
+    )]
+    pub r_scores: Sidecar<Vec<f64>>,
 }
 
 /// S7 class registration for SidecarS7 with property-based sidecar accessors.
@@ -359,21 +457,21 @@ impl SidecarS7 {
             prop_int,
             prop_flag,
             prop_name,
-            scores: Sidecar::new(vec![]),
+            r_scores: Sidecar::new(vec![]),
         }
     }
 
     /// Sum of `scores`, read through the handle.
     pub fn score_total(self: &ExternalPtr<Self>) -> f64 {
-        Self::scores(self).iter().sum()
+        Self::r_scores(self).iter().sum()
     }
 
     /// Appends `score` to `scores` through the handle.
     /// @param score The score to append.
     pub fn add_score(self: &mut ExternalPtr<Self>, score: f64) {
-        let mut scores = Self::scores(self);
+        let mut scores = Self::r_scores(self);
         scores.push(score);
-        Self::set_scores(self, scores);
+        Self::set_r_scores(self, scores);
     }
 }
 
@@ -584,9 +682,11 @@ pub struct SidecarSlotR6 {
     #[r_data]
     pub n: i32,
 
-    /// A label Rust only reads; R reads and writes it.
-    #[r_data(ref)]
-    pub label: Sidecar<String>,
+    /// A label Rust only reads; R reads and writes it. Its Rust name differs
+    /// from its R name (`name = "label"`): the active binding, the
+    /// standalone accessors and the field list use `label` (#1891).
+    #[r_data(ref, name = "label")]
+    pub r_label: Sidecar<String>,
 
     /// A note Rust only writes; R reads and writes it.
     #[r_data(mut)]
@@ -619,7 +719,7 @@ impl SidecarSlotR6 {
             _r: RSidecar,
             keys: Sidecar::new((1..=n).collect()),
             n,
-            label: Sidecar::new(String::from("fresh")),
+            r_label: Sidecar::new(String::from("fresh")),
             note: Sidecar::new(String::new()),
             cache: Sidecar::default(),
         }
@@ -630,9 +730,10 @@ impl SidecarSlotR6 {
         i32::try_from(Self::keys(self).len()).expect("keys length exceeds i32")
     }
 
-    /// Length of `label`, read from Rust (a `ref`-only field).
+    /// Length of `label`, read from Rust (a `ref`-only field, named
+    /// `r_label` in Rust).
     pub fn label_len(self: &ExternalPtr<Self>) -> i32 {
-        i32::try_from(Self::label(self).len()).expect("label length exceeds i32")
+        i32::try_from(Self::r_label(self).len()).expect("label length exceeds i32")
     }
 
     /// Writes `note` from Rust (a `mut`-only field).
@@ -912,7 +1013,7 @@ pub fn gc_stress_sidecar_fields() {
     let view = unsafe { ExternalPtr::<SidecarSlotR6>::wrap_sexp(sexp) }.expect("live pointer");
     assert_eq!(view.n, 12);
     assert_eq!(SidecarSlotR6::keys(&view), vec![1, 2, 3]);
-    assert_eq!(SidecarSlotR6::label(&view), "fresh");
+    assert_eq!(SidecarSlotR6::r_label(&view), "fresh");
     assert_eq!(
         SidecarSlotR6::cache(&view)
             .expect("the write-back flushed the cache")

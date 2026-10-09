@@ -440,8 +440,11 @@ pub struct MyType {
     #[r_data]
     pub name: String,     // Generates MyType_get_name() / MyType_set_name()
 
-    #[r_data]
-    pub keys: Sidecar<Vec<i32>>,  // Generates MyType_get_keys() / MyType_set_keys()
+    #[r_data(name = "keys")]
+    pub r_keys: Sidecar<Vec<i32>>,  // Generates MyType_get_keys() / MyType_set_keys()
+
+    #[r_data(get = "Self::total")]
+    pub total: Computed,  // Generates MyType_get_total() only
 }
 ```
 
@@ -460,9 +463,19 @@ only the `MyType_get_*()` / `MyType_set_*()` functions. See
 | `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
 | any `IntoR + TryFromSexp` type | the Rust struct | converts with `IntoR` | converts with `TryFromSexp`, or raises `'name' must be ...` |
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
+| `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR` | none; the field syntax raises `miniextendr_read_only_field` |
+
+`#[r_data(name = "keys")]` sets the field's R name, used by every R-facing
+string (the field list, the `$` / `[[` labels, the R6 binding or S7 property,
+`MyType_get_keys()` / `MyType_set_keys()`, the setter's message); the Rust
+accessors (`MyType::r_keys(&ptr)`) and the C symbols keep the Rust
+identifier. The name must be syntactic, unique in the type and not `.ptr`. A
+`Computed` field must be `pub`, and is refused under `#[externalptr(r6)]` /
+`#[externalptr(s7)]`, whose bindings and properties need a setter (#1888).
 
 A struct field is a view of the Rust value: every read converts it afresh, and
-every write converts into Rust or fails, so no R copy can drift from it.
+every write converts into Rust or fails, so no R copy can drift from it. A
+computed field is a view too, through its function.
 
 A bare `SEXP` under `#[r_data]` is a compile error. The GC doesn't trace Rust
 memory, so once R dropped its own references the value would be freed while
@@ -567,9 +580,10 @@ They are also shared by every R name bound to the pointer ("Copies" below).
 
 A saved object (`saveRDS()`, `serialize()`) stores its `Sidecar` values by
 position: one slot per `Sidecar` field, in the order the fields appear in the
-struct. After a reload, the R accessors (`Type_get_f()`, the R6 / S7 fields
-and the `$` getters of `s3(r_data_accessors)` & co.) read each field from its
-position. No field names are stored.
+struct. After a reload, the R accessors that read a save (`Type_get_f()` and
+the R6 / S7 fields; the `$` / `[[` methods of `s3(r_data_accessors)` & co.
+refuse a restored pointer instead) read each field from its position. No
+field names are stored.
 
 So reordering, adding, removing or retyping `Sidecar` fields changes how an
 old save is read. Within one version of the crate nothing detects it: a field
@@ -604,15 +618,19 @@ on them (`save()` / `load()`, a parallel worker's result, a cache). So a
 save keeps:
 
 - the `Sidecar<T>` values and the user slot (`protected()`), which come back
-  with the pointer: the R accessors of `Sidecar` fields read and write the
-  restored pointer;
+  with the pointer: the standalone R accessors of `Sidecar` fields
+  (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and the S7
+  properties read and write the restored pointer;
 - the type ID in `prot[0]`, crate version included, which says what saved
   it.
 
 It does not keep the Rust value. Everything that needs it raises a classed
 error on the restored object, so code can tell the case apart and
 re-create the object: a method (any receiver), an `ExternalPtr<T>`
-argument, the R accessor of a struct field.
+argument, the R accessor of a struct or computed field. The `$` / `[[` /
+`$<-` / `[[<-` field methods of `s3(r_data_accessors)`, `s4(...)` and
+`env(...)` raise it for every field, `Sidecar` fields included: a reloaded
+object is refused, not recovered (`CLASS_SYSTEMS.md`, "A restored pointer").
 
 - Saved by this version of the package: class
   `miniextendr_restored_no_value`, message ``this `MyType` object was
@@ -625,6 +643,10 @@ argument, the R accessor of a struct field.
 - Both carry the class `miniextendr_restored`. A pointer miniextendr did
   not build (R's `new("externalptr")`, another library's) keeps the plain
   `expected ExternalPtr<MyType>` errors.
+- `#[externalptr(restored(class = ["pkg_saved", "pkg_error"], message =
+  "..."))]` on the type puts the package's classes, in order, in front of
+  those (which stay) and replaces the message, in both cases and on every
+  path above; `e$saved_version` / `e$current_version` stay.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.

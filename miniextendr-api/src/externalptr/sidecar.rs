@@ -134,8 +134,13 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// - **`*ptr = new` and `mem::swap(&mut *a, &mut *b)`** are plain Rust
 ///   moves. The sidecar values stay in each pointer's protection list; only
 ///   pending values travel with the struct.
-/// - **After `readRDS()`** there is no Rust value. The R accessors read the
-///   protection list directly, checked by the type ID stored with it.
+/// - **After `readRDS()`** there is no Rust value. The standalone R
+///   accessors (`Type_get_f()` / `Type_set_f()`), the R6 active bindings and
+///   the S7 properties read and write the protection list directly, checked
+///   by the type ID stored with it. The `$` / `[[` / `$<-` / `[[<-` field
+///   methods of `s3(r_data_accessors)` & co. refuse the restored pointer
+///   instead, with the classed restored-object errors: they pass
+///   `require_live` to the same accessor (#1891).
 ///
 /// Use the accessors on R's main thread only. Off the main thread an
 /// accessor panics with a clear message before it touches R.
@@ -144,11 +149,11 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///
 /// A saved object (`saveRDS()`, `serialize()`) stores its sidecar values by
 /// position: one slot per `Sidecar` field, in the order the fields appear in
-/// the struct, with no field names. After a reload, the R accessors and the
-/// generated `$` getters read each field from its position. So reordering,
-/// adding, removing or retyping `Sidecar` fields changes how an old save is
-/// read, and within one version of the crate nothing detects it: a field can
-/// read another field's value.
+/// the struct, with no field names. After a reload, the standalone R
+/// accessors, the R6 bindings and the S7 properties read each field from its
+/// position. So reordering, adding, removing or retyping `Sidecar` fields
+/// changes how an old save is read, and within one version of the crate
+/// nothing detects it: a field can read another field's value.
 ///
 /// Bump the crate's version (the `version` in its `Cargo.toml`, which the
 /// stored type ID records) whenever the `Sidecar` fields change. A save from
@@ -473,6 +478,16 @@ unsafe fn sidecar_receiver<T: TypedExternal>(x: SEXP) -> SEXP {
     }
 }
 
+/// Reads the `require_live` flag the R accessors' `.Call()`s pass: `TRUE`
+/// from the `$` / `[[` / `$<-` / `[[<-` field methods, which refuse a
+/// restored pointer, `FALSE` from the standalone accessors, the R6 bindings
+/// and the S7 properties, which read a save (#1891). Anything but `TRUE`
+/// reads as `false`.
+#[doc(hidden)]
+pub fn sidecar_require_live(flag: SEXP) -> bool {
+    flag.as_logical() == Some(true)
+}
+
 /// The `prot` list of the external pointer `x` carries
 /// ([`sidecar_receiver`]), after checking that it points to a `T`, and the
 /// live `T` when it still has an address. Allocates nothing for a pointer, a
@@ -480,28 +495,34 @@ unsafe fn sidecar_receiver<T: TypedExternal>(x: SEXP) -> SEXP {
 ///
 /// A live pointer is checked by `Any::downcast`. A pointer whose address is
 /// NULL (restored from a saved session by `readRDS()` / `unserialize()`)
-/// still holds its sidecar values, so it is accepted when its stored type ID
-/// is `T`'s; one another version of the crate saved is refused with the
-/// classed [`RESTORED_OTHER_VERSION_CLASS`](super::RESTORED_OTHER_VERSION_CLASS)
-/// error.
+/// still holds its sidecar values, so without `require_live` it is accepted
+/// when its stored type ID is `T`'s; one another version of the crate saved
+/// is refused with the classed
+/// [`RESTORED_OTHER_VERSION_CLASS`](super::RESTORED_OTHER_VERSION_CLASS)
+/// error. With `require_live` (the field methods of `r_data_accessors`)
+/// every restored pointer is refused through [`refuse_restored`], so a save
+/// by this version gets [`RESTORED_NO_VALUE_CLASS`](super::RESTORED_NO_VALUE_CLASS).
 ///
 /// # Panics
 ///
-/// When `x` carries no external pointer to a `T`.
+/// When `x` carries no external pointer to a `T`, or, with `require_live`,
+/// no live one.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `x`.
-unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
+unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP, require_live: bool) -> (SEXP, Option<&'a T>) {
     let x = unsafe { sidecar_receiver::<T>(x) };
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
-        if !(prot.type_of() == SEXPTYPE::VECSXP
-            && prot.len() > 0
-            && is_type_id_symbol::<T>(prot.vector_elt(PROT_TYPE_ID_INDEX)))
+        if require_live
+            || !(prot.type_of() == SEXPTYPE::VECSXP
+                && prot.len() > 0
+                && is_type_id_symbol::<T>(prot.vector_elt(PROT_TYPE_ID_INDEX)))
         {
-            // Another version's save raises its own error here.
+            // A save by this version (`require_live`) or by another version
+            // raises its own error here.
             unsafe { refuse_restored::<T>(x) };
             panic!("expected ExternalPtr<{}>", T::TYPE_NAME);
         }
@@ -584,18 +605,19 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
 }
 
 /// Checks that `x` carries an external pointer to a `T` ([`sidecar_receiver`]),
-/// live or read back by `readRDS()`, before a setter validates its value.
+/// live or (without `require_live`) read back by `readRDS()`, before a setter
+/// validates its value.
 ///
 /// # Panics
 ///
-/// When `x` carries no external pointer to a `T`.
+/// When `x` carries no external pointer to a `T` ([`checked_prot`]).
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `x`.
 #[doc(hidden)]
-pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
-    let _ = unsafe { checked_prot::<T>(x) };
+pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
+    let _ = unsafe { checked_prot::<T>(x, require_live) };
 }
 
 /// Reads `T`'s `Sidecar` field `index` from the external pointer `x` carries
@@ -604,7 +626,7 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 /// Called by the R getters `#[derive(ExternalPtr)]` generates. A live
 /// struct's pending value for the field is flushed into the slot first; a
 /// pointer without an address (after `readRDS()`) reads its protection list
-/// as is.
+/// as is, unless `require_live` refuses it ([`checked_prot`]).
 ///
 /// # Panics
 ///
@@ -614,8 +636,8 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 ///
 /// Must be called from R's main thread with a valid `x`.
 #[doc(hidden)]
-pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
-    let (prot, live) = unsafe { checked_prot::<T>(x) };
+pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize, require_live: bool) -> SEXP {
+    let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
     if let Some(value) = live {
         value.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {
@@ -630,11 +652,11 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
 /// `T`'s `Sidecar` field `index` of the external pointer `x` carries
 /// ([`sidecar_receiver`]).
 ///
-/// Called by the R setters `#[derive(ExternalPtr)]` generates. A live
-/// struct's pending value for the field is dropped, since this write
-/// supersedes it. The store allocates nothing; reading an S4 receiver's slot
-/// does, and `value`, an argument of the setter's `.Call()`, is rooted by
-/// that call.
+/// Called by the R setters `#[derive(ExternalPtr)]` generates, after
+/// [`sidecar_r_check`] with the same `require_live`. A live struct's pending
+/// value for the field is dropped, since this write supersedes it. The store
+/// allocates nothing; reading an S4 receiver's slot does, and `value`, an
+/// argument of the setter's `.Call()`, is rooted by that call.
 ///
 /// # Panics
 ///
@@ -644,8 +666,13 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
 ///
 /// Must be called from R's main thread with valid `x` and `value`.
 #[doc(hidden)]
-pub unsafe fn sidecar_r_set<T: TypedExternal>(x: SEXP, index: usize, value: SEXP) {
-    let (prot, live) = unsafe { checked_prot::<T>(x) };
+pub unsafe fn sidecar_r_set<T: TypedExternal>(
+    x: SEXP,
+    index: usize,
+    value: SEXP,
+    require_live: bool,
+) {
+    let (prot, live) = unsafe { checked_prot::<T>(x, require_live) };
     if let Some(data) = live {
         data.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {
