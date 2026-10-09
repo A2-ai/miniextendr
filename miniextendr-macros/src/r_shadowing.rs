@@ -48,6 +48,7 @@ use std::ops::Range;
 /// wrappers in the macro snapshots and the tracked cross-package wrapper
 /// files, and fails on an undotted callee that is missing here.
 pub(crate) const BASE_CALLEES: &[&str] = &[
+    "NextMethod",
     "UseMethod",
     "all",
     "anyNA",
@@ -67,6 +68,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "length",
     "list",
     "local",
+    "match",
     "missing",
     "names",
     // The argument count an `NArgs` parameter receives (#1860).

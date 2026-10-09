@@ -1,0 +1,59 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+#' @title Engine S4 Class
+#' @name Engine
+#' @rdname Engine
+#' @importFrom methods setClass setGeneric setMethod new
+#' @slot ptr External pointer to Rust `Engine` struct
+methods::setClass("Engine", slots = c(ptr = "externalptr"))
+
+# Engine::new (1:1)
+#' @param n (undocumented)
+#' @name Engine
+#' @rdname Engine
+#' @export
+Engine <- function(n) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Engine__new, .call = sys.call(), n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  methods::new("Engine", ptr = .val)
+}
+
+# Field syntax for the `#[r_data]` fields of Engine (`s4(r_data_accessors)`).
+if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), inherits = FALSE))) stop("`s4(r_data_accessors)` on `Engine` needs the field helpers `#[derive(ExternalPtr)]` emits for a type with an `#[r_data]` `RSidecar` selector and a `pub` `#[r_data]` field", call. = FALSE)
+
+#' @rdname Engine
+#' @param name A field name.
+#' @exportMethod $
+methods::setMethod("$", "Engine", function(x, name) {
+  if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment())
+  .val <- .rdata_get_Engine(x@ptr, name)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+})
+
+#' @rdname Engine
+#' @param name A field name.
+#' @exportMethod $<-
+methods::setMethod("$<-", "Engine", function(x, name, value) {
+  if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment())
+  .val <- .rdata_set_Engine(x@ptr, name, value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  x
+})
+
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_size", class="Engine", export=true)
+# Engine::size (1:1)
+#' @name Engine-s4_size
+#' @rdname Engine
+#' @aliases s4_size,Engine-method
+if (!exists("s4_size", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_size", function(x, ...) standardGeneric("s4_size"))
+#' @exportMethod s4_size
+methods::setMethod("s4_size", "Engine", function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Engine__size, .call = sys.call(), x@ptr)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

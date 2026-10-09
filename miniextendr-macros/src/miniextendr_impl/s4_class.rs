@@ -116,6 +116,17 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
+    // `$` / `$<-` field methods of `s4(r_data_accessors)` (#1848), documented
+    // on the class page wherever the class has one (R CMD check wants an
+    // `\alias{$,Class-method}`).
+    if parsed_impl.r_data_accessors.enabled() {
+        lines.extend(super::field_syntax::s4_field_methods(
+            parsed_impl,
+            !class_has_no_rd,
+            should_export,
+        ));
+    }
+
     // Instance methods as S4 methods
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {

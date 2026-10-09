@@ -503,6 +503,33 @@ marker) and `` `Invisible<T>` / `Visible<T>` mark the return type only ``
 (a marker as a parameter type). See
 [MINIEXTENDR_ATTRIBUTE.md](MINIEXTENDR_ATTRIBUTE.md#return-visibility-markers-and-defaults).
 
+### "`f` defines the `$<-` method of `Class`, which `s3(r_data_accessors)` generates for the `#[r_data]` fields"
+
+`s3(r_data_accessors)` generates `$`, `[[`, `$<-` and `[[<-` methods for the
+class, and `s4(r_data_accessors)` `$` and `$<-`, so an impl method on one of
+those generics would define the class's method a second time. Remove the
+method or the option. To keep your own `$<-` / `[[<-` (a copy-on-modify
+setter, say), use the getters-only form `s3(r_data_accessors = "get")`, which
+generates only the reading methods. A method on another class
+(`s3(generic = "$", class = "other")`) is no collision.
+
+### "the getters-only form `r_data_accessors = "get"` applies to `s3`, `s4` and `env` classes"
+
+R6 active bindings and S7 properties always come with their setters, so
+`r6(r_data_accessors = "get")` and `s7(r_data_accessors = "get")` are
+refused; use the bare `r_data_accessors`. The same family covers `unknown
+r_data_accessors value` (the only value is `"get"`) and `vctrs classes have
+no r_data_accessors` (a vctrs class uses the standalone
+`Type_get_<field>()` / `Type_set_<field>()`).
+
+### "`s3(r_data_accessors)` on `Type` needs the field helpers `#[derive(ExternalPtr)]` emits"
+
+This one is raised when the package is installed, not at compile time: the
+impl block asked for field methods, but the type has no `#[r_data]
+RSidecar` selector or no `pub` `#[r_data]` field, so `#[derive(ExternalPtr)]`
+emitted no field list for them to use. Add the selector and the fields, or
+remove the option.
+
 ## Debugging Tips
 
 1. **Run [`just lint`](https://github.com/A2-ai/miniextendr/blob/main/justfile)** before building: it catches attribute issues earlier than compile errors

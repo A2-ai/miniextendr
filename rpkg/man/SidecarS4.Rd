@@ -11,6 +11,8 @@
 \alias{SidecarS4_set_slot_str}
 \alias{SidecarS4_get_history}
 \alias{SidecarS4_set_history}
+\alias{$,SidecarS4-method}
+\alias{$<-,SidecarS4-method}
 \alias{SidecarS4-s4_history_len}
 \alias{s4_history_len,SidecarS4-method}
 \alias{SidecarS4-s4_record}
@@ -34,6 +36,10 @@ SidecarS4_get_history(x)
 SidecarS4_set_history(x, value)
 
 SidecarS4(slot_int, slot_real, slot_str)
+
+\S4method{$}{SidecarS4}(x, name)
+
+\S4method{$}{SidecarS4}(x, name) <- value
 }
 \arguments{
 \item{x}{The SidecarS4 external pointer}
@@ -45,6 +51,8 @@ SidecarS4(slot_int, slot_real, slot_str)
 \item{slot_real}{Numeric sidecar field.}
 
 \item{slot_str}{Character sidecar field.}
+
+\item{name}{A field name.}
 }
 \value{
 The value of the \code{slot_int} field
@@ -67,7 +75,8 @@ The SidecarS4 pointer (invisibly)
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS4}.
 
 S4 class registration for SidecarS4: the methods take the handle, which
-is how a method reads a \code{Sidecar} value.
+is how a method reads a \code{Sidecar} value. With \code{s4(r_data_accessors)},
+\code{o$history} reads a field and \code{o$history <- value} writes it.
 
 Create a SidecarS4 with an empty history.
 

@@ -1194,6 +1194,25 @@ impl MyClass { /* ... */ }
 impl MyClass { /* ... */ }
 ```
 
+### S3, S4 and env Options
+
+```rust
+#[miniextendr(s3(r_data_accessors))]          // or s4(...), env(...)
+impl MyClass { /* ... */ }
+
+#[miniextendr(s3(r_data_accessors = "get"))]  // reading methods only
+impl MyClass { /* ... */ }
+```
+
+`r_data_accessors` gives the class `$` / `[[` methods that read the `pub`
+`#[r_data]` fields of the type and `$<-` / `[[<-` methods that write them in
+place (S4: `$` and `$<-` only). `r_data_accessors = "get"` generates the
+reading methods only, for a class that keeps its own `$<-`. The type needs an
+`#[r_data] _r: RSidecar` selector and at least one `pub` `#[r_data]` field.
+The impl block is refused when one of its own methods is a generated method
+(`s3(generic = "$<-")` next to the setters, for example). The R behaviour
+is in `CLASS_SYSTEMS.md`, "Field syntax on S3, S4 and env classes".
+
 ### vctrs-Specific Options
 
 ```rust

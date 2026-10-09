@@ -7,6 +7,10 @@
 \alias{SidecarS3_get_tags}
 \alias{SidecarS3_set_tags}
 \alias{new_sidecars3}
+\alias{$.SidecarS3}
+\alias{[[.SidecarS3}
+\alias{$<-.SidecarS3}
+\alias{[[<-.SidecarS3}
 \alias{tag_count.SidecarS3}
 \alias{add_tag.SidecarS3}
 \title{SidecarS3 Sidecar Accessors}
@@ -21,6 +25,14 @@ SidecarS3_set_tags(x, value)
 
 new_sidecars3(data)
 
+\method{$}{SidecarS3}(x, name)
+
+\method{[[}{SidecarS3}(x, i, ...)
+
+\method{$}{SidecarS3}(x, name) <- value
+
+\method{[[}{SidecarS3}(x, i, ...) <- value
+
 \method{tag_count}{SidecarS3}(x, ...)
 
 \method{add_tag}{SidecarS3}(x, tag, ...)
@@ -33,6 +45,10 @@ SidecarS3
 \item{value}{The new value to set}
 
 \item{data}{Numeric sidecar field.}
+
+\item{name}{A field name.}
+
+\item{i}{A field name; any other index goes to the object's own \code{[[}.}
 
 \item{...}{Additional arguments.}
 
@@ -51,7 +67,8 @@ The SidecarS3 pointer (invisibly)
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS3}.
 
 S3 class registration for SidecarS3: the methods take the handle, which
-is how a method reads a \code{Sidecar} value.
+is how a method reads a \code{Sidecar} value. With \code{s3(r_data_accessors)},
+\code{x$tags} / \code{x[["tags"]]} read a field and \code{x$tags <- value} writes it.
 
 Create a SidecarS3 with no tags.
 

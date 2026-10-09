@@ -1,0 +1,5 @@
+error: the getters-only form `r_data_accessors = "get"` applies to `s3`, `s4` and `env` classes; R6 active bindings and S7 properties take the bare `r_data_accessors`
+  --> tests/ui/impl_r6_r_data_accessors_get.rs:16:18
+   |
+16 | #[miniextendr(r6(r_data_accessors = "get"))]
+   |                  ^^^^^^^^^^^^^^^^

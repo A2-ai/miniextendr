@@ -15,7 +15,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         r6_lock_class: None,
         s7_parent: None,
         s7_abstract: false,
-        r_data_accessors: false,
+        r_data_accessors: RDataAccessors::Off,
         strict: false,
         // The impl keeps the checks, whatever the `no-preconditions-default`
         // feature of this build says, so the snapshots are the same under both.
@@ -4615,14 +4615,14 @@ fn parse_s7_parent_and_abstract() {
 fn parse_r6_with_r_data_accessors() {
     let attrs: ImplAttrs = syn::parse_str("r6(r_data_accessors)").unwrap();
     assert_eq!(attrs.class_system, ClassSystem::R6);
-    assert!(attrs.r_data_accessors);
+    assert_eq!(attrs.r_data_accessors, RDataAccessors::GetSet);
 }
 
 #[test]
 fn parse_r6_with_r_data_accessors_and_options() {
     let attrs: ImplAttrs = syn::parse_str("r6(cloneable, lock_class, r_data_accessors)").unwrap();
     assert_eq!(attrs.class_system, ClassSystem::R6);
-    assert!(attrs.r_data_accessors);
+    assert_eq!(attrs.r_data_accessors, RDataAccessors::GetSet);
     assert_eq!(attrs.r6_cloneable, Some(true));
     assert_eq!(attrs.r6_lock_class, Some(true));
 }
@@ -4631,14 +4631,14 @@ fn parse_r6_with_r_data_accessors_and_options() {
 fn parse_s7_with_r_data_accessors() {
     let attrs: ImplAttrs = syn::parse_str("s7(r_data_accessors)").unwrap();
     assert_eq!(attrs.class_system, ClassSystem::S7);
-    assert!(attrs.r_data_accessors);
+    assert_eq!(attrs.r_data_accessors, RDataAccessors::GetSet);
 }
 
 #[test]
 fn parse_r6_without_r_data_accessors() {
     let attrs: ImplAttrs = syn::parse_str("r6(cloneable)").unwrap();
     assert_eq!(attrs.class_system, ClassSystem::R6);
-    assert!(!attrs.r_data_accessors);
+    assert_eq!(attrs.r_data_accessors, RDataAccessors::Off);
 }
 // endregion
 
@@ -4653,7 +4653,7 @@ fn r6_wrapper_r_data_accessors() {
     };
 
     let mut attrs = default_impl_attrs(ClassSystem::R6);
-    attrs.r_data_accessors = true;
+    attrs.r_data_accessors = RDataAccessors::GetSet;
     let parsed = ParsedImpl::parse(attrs, code).unwrap();
     let wrapper = generate_r6_r_wrapper(&parsed);
 
@@ -4697,7 +4697,7 @@ fn s7_wrapper_r_data_accessors() {
     };
 
     let mut attrs = default_impl_attrs(ClassSystem::S7);
-    attrs.r_data_accessors = true;
+    attrs.r_data_accessors = RDataAccessors::GetSet;
     let parsed = ParsedImpl::parse(attrs, code).unwrap();
     let wrapper = generate_s7_r_wrapper(&parsed);
 
@@ -5256,7 +5256,7 @@ fn snapshot_s7_sidecar_only_props() {
         }
     };
     let mut attrs = default_impl_attrs(ClassSystem::S7);
-    attrs.r_data_accessors = true;
+    attrs.r_data_accessors = RDataAccessors::GetSet;
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
 }
@@ -5275,7 +5275,7 @@ fn snapshot_s7_sidecar_and_impl_props() {
         }
     };
     let mut attrs = default_impl_attrs(ClassSystem::S7);
-    attrs.r_data_accessors = true;
+    attrs.r_data_accessors = RDataAccessors::GetSet;
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     insta::assert_snapshot!(generate_s7_r_wrapper(&parsed));
 }
@@ -7218,6 +7218,303 @@ fn r6_method_takes_nargs() {
     assert!(wrapper.contains("\"pick\", function(i) {"), "{wrapper}");
     assert!(wrapper.contains("private$.ptr, i, nargs())"), "{wrapper}");
     assert!(!wrapper.contains("@param n "), "{wrapper}");
+}
+
+// endregion
+
+// region: field syntax of `r_data_accessors` on S3, S4 and env (#1848)
+
+fn parse_attrs_err(attrs: &str) -> String {
+    syn::parse_str::<ImplAttrs>(attrs)
+        .expect_err("expected a parse error")
+        .to_string()
+}
+
+fn field_syntax_impl(class_system: ClassSystem, mode: RDataAccessors) -> ParsedImpl {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            pub fn size(&self) -> i32 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(class_system);
+    attrs.r_data_accessors = mode;
+    ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl")
+}
+
+#[test]
+fn parse_field_syntax_options() {
+    for (attrs, system, mode) in [
+        (
+            "s3(r_data_accessors)",
+            ClassSystem::S3,
+            RDataAccessors::GetSet,
+        ),
+        (
+            "s4(r_data_accessors)",
+            ClassSystem::S4,
+            RDataAccessors::GetSet,
+        ),
+        (
+            "env(r_data_accessors)",
+            ClassSystem::Env,
+            RDataAccessors::GetSet,
+        ),
+        (
+            "s3(r_data_accessors = \"get\")",
+            ClassSystem::S3,
+            RDataAccessors::GetOnly,
+        ),
+        (
+            "s4(r_data_accessors = \"get\"), class = \"Motor\"",
+            ClassSystem::S4,
+            RDataAccessors::GetOnly,
+        ),
+        (
+            "env(r_data_accessors = \"get\",)",
+            ClassSystem::Env,
+            RDataAccessors::GetOnly,
+        ),
+        ("s3", ClassSystem::S3, RDataAccessors::Off),
+    ] {
+        let parsed: ImplAttrs = syn::parse_str(attrs).unwrap();
+        assert_eq!(parsed.class_system, system, "{attrs}");
+        assert_eq!(parsed.r_data_accessors, mode, "{attrs}");
+    }
+}
+
+#[test]
+fn parse_field_syntax_options_refusals() {
+    let err = parse_attrs_err("s3(r_data)");
+    assert!(err.contains("unknown s3 option: r_data"), "{err}");
+    let err = parse_attrs_err("env(r_data_accessors = \"set\")");
+    assert!(
+        err.contains("unknown `r_data_accessors` value \"set\""),
+        "{err}"
+    );
+    for attrs in [
+        "r6(r_data_accessors = \"get\")",
+        "s7(r_data_accessors = \"get\")",
+    ] {
+        let err = parse_attrs_err(attrs);
+        assert!(
+            err.contains("applies to `s3`, `s4` and `env` classes"),
+            "{attrs}: {err}"
+        );
+    }
+    let err = parse_attrs_err("vctrs(r_data_accessors)");
+    assert!(
+        err.contains("vctrs classes have no `r_data_accessors`"),
+        "{err}"
+    );
+}
+
+/// Without the option an S3 / S4 class gets no field methods and an env
+/// class's `$` keeps only its method lookup.
+#[test]
+fn field_syntax_is_opt_in() {
+    let s3 = generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::Off));
+    assert!(!s3.contains("$.Engine"), "{s3}");
+    assert!(!s3.contains(".rdata_"), "{s3}");
+    let s4 = generate_s4_r_wrapper(&field_syntax_impl(ClassSystem::S4, RDataAccessors::Off));
+    assert!(!s4.contains(".rdata_"), "{s4}");
+    let env = generate_env_r_wrapper(&field_syntax_impl(ClassSystem::Env, RDataAccessors::Off));
+    assert!(!env.contains(".rdata_"), "{env}");
+    assert!(!env.contains("`$<-.Engine`"), "{env}");
+}
+
+#[test]
+fn s3_field_methods() {
+    let wrapper =
+        generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::GetSet));
+    // R's formals, `value` last (#1853).
+    assert_eq!(s3_method_formals(&wrapper, "$.Engine"), "x, name");
+    assert_eq!(s3_method_formals(&wrapper, "[[.Engine"), "x, i, ...");
+    assert_eq!(s3_method_formals(&wrapper, "$<-.Engine"), "x, name, value");
+    assert_eq!(
+        s3_method_formals(&wrapper, "[[<-.Engine"),
+        "x, i, ..., value"
+    );
+    // Conditions report the generic's call: the method frame is the fallback,
+    // in the four field methods and the instance method `size`.
+    assert_eq!(
+        wrapper
+            .matches(".miniextendr_raise_condition(.val, environment())")
+            .count(),
+        5,
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("if (!is.character(get0(\".rdata_fields_Engine\""),
+        "{wrapper}"
+    );
+    insta::assert_snapshot!(wrapper);
+}
+
+/// The getters-only form generates `$` / `[[` and no `$<-` / `[[<-`.
+#[test]
+fn s3_field_methods_getters_only() {
+    let wrapper =
+        generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::GetOnly));
+    assert_eq!(s3_method_formals(&wrapper, "$.Engine"), "x, name");
+    assert_eq!(s3_method_formals(&wrapper, "[[.Engine"), "x, i, ...");
+    assert!(!wrapper.contains("`$<-.Engine`"), "{wrapper}");
+    assert!(!wrapper.contains("`[[<-.Engine`"), "{wrapper}");
+    assert!(!wrapper.contains(".rdata_set_Engine"), "{wrapper}");
+}
+
+/// The helpers are named by the Rust type, the methods by the R class.
+#[test]
+fn s3_field_methods_under_a_class_rename() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetSet;
+    attrs.class_name = Some("Motor".to_string());
+    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    assert!(
+        wrapper.contains("`$.Motor` <- function(x, name) {"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("#' @method $<- Motor"), "{wrapper}");
+    assert!(wrapper.contains(".rdata_get_Engine(x, name)"), "{wrapper}");
+    // The derive documents `x` / `value` on the `Engine` page, not `Motor`'s.
+    assert!(
+        wrapper.contains("#' @param value The new value of the field."),
+        "{wrapper}"
+    );
+}
+
+#[test]
+fn s4_field_methods() {
+    let wrapper =
+        generate_s4_r_wrapper(&field_syntax_impl(ClassSystem::S4, RDataAccessors::GetSet));
+    assert!(
+        wrapper.contains("methods::setMethod(\"$\", \"Engine\", function(x, name) {"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("methods::setMethod(\"$<-\", \"Engine\", function(x, name, value) {"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(".rdata_get_Engine(x@ptr, name)"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("#' @exportMethod $<-"), "{wrapper}");
+    insta::assert_snapshot!(wrapper);
+
+    let getters =
+        generate_s4_r_wrapper(&field_syntax_impl(ClassSystem::S4, RDataAccessors::GetOnly));
+    assert!(getters.contains("methods::setMethod(\"$\""), "{getters}");
+    assert!(!getters.contains("methods::setMethod(\"$<-\""), "{getters}");
+}
+
+#[test]
+fn env_field_methods() {
+    let wrapper =
+        generate_env_r_wrapper(&field_syntax_impl(ClassSystem::Env, RDataAccessors::GetSet));
+    // The field branch comes before the method lookup.
+    let branch = wrapper
+        .find(".rdata_get_Engine(self, name)")
+        .expect("field branch");
+    let lookup = wrapper
+        .find("obj <- Engine[[name]]")
+        .expect("method lookup");
+    assert!(branch < lookup, "{wrapper}");
+    assert!(
+        wrapper.contains("`$<-.Engine` <- function(x, name, value) {"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("`[[<-.Engine` <- `$<-.Engine`"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("#' @param name A method or field name."),
+        "{wrapper}"
+    );
+    insta::assert_snapshot!(wrapper);
+
+    let getters = generate_env_r_wrapper(&field_syntax_impl(
+        ClassSystem::Env,
+        RDataAccessors::GetOnly,
+    ));
+    assert!(
+        getters.contains(".rdata_get_Engine(self, name)"),
+        "{getters}"
+    );
+    assert!(!getters.contains("`$<-.Engine`"), "{getters}");
+}
+
+/// A method on a generic the field methods define is refused; in the
+/// getters-only form a `$<-` / `[[<-` method is the point.
+#[test]
+fn field_methods_collide_with_impl_methods() {
+    let dollar_assign: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "$<-"))]
+            pub fn assign(&mut self, name: &str, value: i32) {}
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetSet;
+    let err = ParsedImpl::parse(attrs, dollar_assign.clone())
+        .expect_err("a collision")
+        .to_string();
+    assert!(
+        err.contains("defines the `$<-` method of `Engine`"),
+        "{err}"
+    );
+    assert!(err.contains("s3(r_data_accessors = \"get\")"), "{err}");
+
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    assert!(ParsedImpl::parse(attrs, dollar_assign).is_ok());
+
+    let subset: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "[["))]
+            pub fn pick(&self, i: SEXP) -> SEXP { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    let err = ParsedImpl::parse(attrs, subset)
+        .expect_err("a collision")
+        .to_string();
+    assert!(err.contains("defines the `[[` method of `Engine`"), "{err}");
+
+    // Another class's method (`class = "..."`) is no collision.
+    let other_class: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s3(generic = "$", class = "other"))]
+            pub fn other_dollar(&self, name: &str) -> i32 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetSet;
+    assert!(ParsedImpl::parse(attrs, other_class).is_ok());
+
+    let s4: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s4(generic = "$"))]
+            pub fn dollar(&self, name: &str) -> i32 { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S4);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    let err = ParsedImpl::parse(attrs, s4)
+        .expect_err("a collision")
+        .to_string();
+    assert!(err.contains("`s4(r_data_accessors)`"), "{err}");
 }
 
 // endregion

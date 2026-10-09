@@ -659,7 +659,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
-    if parsed_impl.r_data_accessors {
+    if parsed_impl.r_data_accessors.enabled() {
         let type_name = type_ident.to_string();
         lines.push(format!(
             ".rdata_active_bindings_{}({})",

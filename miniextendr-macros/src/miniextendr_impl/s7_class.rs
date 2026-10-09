@@ -749,7 +749,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Emitted via a write-time placeholder that MX_S7_SIDECAR_PROPS resolves.
         // The placeholder is replaced in `write_r_wrappers_to_file` with one
         // `#' @prop field doc` line per registered sidecar field.
-        if parsed_impl.r_data_accessors {
+        if parsed_impl.r_data_accessors.enabled() {
             let type_name = type_ident.to_string();
             lines.push(format!(".__MX_S7_SIDECAR_PROP_DOCS_{type_name}__"));
         }
@@ -886,7 +886,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    if parsed_impl.r_data_accessors {
+    if parsed_impl.r_data_accessors.enabled() {
         lines.push("  properties = c(list(".to_string());
     } else {
         lines.push("  properties = list(".to_string());
@@ -894,7 +894,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(prop_items.join(",\n"));
 
     // Close the properties list (or merge with sidecar properties)
-    if parsed_impl.r_data_accessors {
+    if parsed_impl.r_data_accessors.enabled() {
         let type_name = type_ident.to_string();
         lines.push(format!("  ), .rdata_properties_{}),", type_name));
     } else {

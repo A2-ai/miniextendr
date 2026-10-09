@@ -323,6 +323,72 @@ impl std::str::FromStr for ClassSystem {
     }
 }
 
+/// What the impl option `r_data_accessors` asks for: the class-level form of
+/// the `pub` `#[r_data]` fields of `#[derive(ExternalPtr)]`, next to the
+/// standalone `Type_get_f()` / `Type_set_f()` every class gets.
+///
+/// R6 gets active bindings, S7 properties, and S3, S4 and env classes `$` /
+/// `[[` field methods (#1848, `field_syntax.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RDataAccessors {
+    /// No option: only the standalone accessors.
+    #[default]
+    Off,
+    /// `r_data_accessors`: a getter and a setter per field.
+    GetSet,
+    /// `r_data_accessors = "get"` (S3, S4, env): `$` / `[[` read the fields
+    /// and no `$<-` / `[[<-` is generated, for a class whose own replacement
+    /// methods write them (for example copy-on-modify setters that return a
+    /// new object).
+    GetOnly,
+}
+
+impl RDataAccessors {
+    /// Whether the class wires its fields in at all.
+    pub fn enabled(self) -> bool {
+        self != RDataAccessors::Off
+    }
+
+    /// Whether the class gets field setters (`$<-` / `[[<-`).
+    pub fn setters(self) -> bool {
+        self == RDataAccessors::GetSet
+    }
+}
+
+/// Parses an `r_data_accessors` key inside `s3(...)` / `s4(...)` / `env(...)`
+/// / `r6(...)` / `s7(...)`, after the key: nothing, or `= "get"` (S3, S4 and
+/// env only).
+fn parse_r_data_accessors_value(
+    content: syn::parse::ParseStream,
+    key: &syn::Ident,
+    system: ClassSystem,
+) -> syn::Result<RDataAccessors> {
+    if !content.peek(syn::Token![=]) {
+        return Ok(RDataAccessors::GetSet);
+    }
+    let _: syn::Token![=] = content.parse()?;
+    let value: syn::LitStr = content.parse()?;
+    if !matches!(system, ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env) {
+        return Err(syn::Error::new(
+            key.span(),
+            "the getters-only form `r_data_accessors = \"get\"` applies to `s3`, `s4` and \
+             `env` classes; R6 active bindings and S7 properties take the bare \
+             `r_data_accessors`",
+        ));
+    }
+    if value.value() != "get" {
+        return Err(syn::Error::new(
+            value.span(),
+            format!(
+                "unknown `r_data_accessors` value \"{}\"; expected `r_data_accessors` (getters \
+                 and setters) or `r_data_accessors = \"get\"` (getters only)",
+                value.value()
+            ),
+        ));
+    }
+    Ok(RDataAccessors::GetOnly)
+}
+
 /// Kind of vctrs class being created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VctrsKind {
@@ -770,10 +836,12 @@ pub struct ParsedImpl {
     /// When true, marks this as an abstract S7 class that cannot be instantiated.
     /// Propagated from [`ImplAttrs::s7_abstract`].
     pub s7_abstract: bool,
-    /// When true, auto-include sidecar `#[r_data]` field accessors in the class definition.
+    /// The class-level form of the sidecar `#[r_data]` fields
+    /// (`r_data_accessors`, see [`RDataAccessors`]).
     /// For R6: active bindings are added via `$set("active", ...)` after class creation.
     /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
-    pub r_data_accessors: bool,
+    /// For S3, S4 and env: `$` / `[[` field methods (`field_syntax.rs`, #1848).
+    pub r_data_accessors: RDataAccessors,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
     /// The impl block's `preconditions` / `no_preconditions`, inherited by
@@ -843,10 +911,12 @@ pub struct ImplAttrs {
     pub s7_abstract: bool,
     // endregion
     // region: Sidecar integration
-    /// When true, auto-include `#[r_data]` field accessors in the class definition.
+    /// The class-level form of the `#[r_data]` field accessors
+    /// (`r6(r_data_accessors)`, `s3(r_data_accessors = "get")`, ...).
     /// For R6: active bindings via `$set("active", ...)` post-creation.
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
-    pub r_data_accessors: bool,
+    /// For S3, S4 and env: `$` / `[[` field methods (#1848).
+    pub r_data_accessors: RDataAccessors,
     // endregion
     // region: Strict conversion mode
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
@@ -879,8 +949,8 @@ pub struct ImplAttrs {
 
 /// Every impl-block option, for the "unknown impl block option" errors of the
 /// bare and the `key = value` forms.
-const IMPL_OPTIONS_HELP: &str = "env, r6, r6(...), s3, s4, s7, s7(...), vctrs, vctrs(...) \
-     (class system), class = \"...\" (R class name), label = \"...\" (multi-impl label), \
+const IMPL_OPTIONS_HELP: &str = "env, env(...), r6, r6(...), s3, s3(...), s4, s4(...), s7, \
+     s7(...), vctrs, vctrs(...) (class system), class = \"...\" (R class name), label = \"...\" (multi-impl label), \
      blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport";
 
 impl syn::parse::Parse for ImplAttrs {
@@ -904,7 +974,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut r6_lock_class = None;
         let mut s7_parent = None;
         let mut s7_abstract = false;
-        let mut r_data_accessors = false;
+        let mut r_data_accessors = RDataAccessors::Off;
         let mut strict: Option<bool> = None;
         let mut preconditions: Option<bool> = None;
         let mut internal = false;
@@ -970,6 +1040,15 @@ impl syn::parse::Parse for ImplAttrs {
 
                     while !content.is_empty() {
                         let key: syn::Ident = content.parse()?;
+                        if key == "r_data_accessors" {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "vctrs classes have no `r_data_accessors`: a vctr is an R \
+                                 vector with no external pointer, and vctrs keeps `$` on a \
+                                 record for its own fields. Use the standalone \
+                                 `Type_get_<field>()` / `Type_set_<field>()`",
+                            ));
+                        }
                         let _: syn::Token![=] = content.parse()?;
                         let key_str = key.to_string();
 
@@ -1080,7 +1159,8 @@ impl syn::parse::Parse for ImplAttrs {
                                 }
                             }
                             "r_data_accessors" => {
-                                r_data_accessors = true;
+                                r_data_accessors =
+                                    parse_r_data_accessors_value(&content, &key, ClassSystem::R6)?;
                             }
                             _ => {
                                 return Err(syn::Error::new(
@@ -1140,7 +1220,8 @@ impl syn::parse::Parse for ImplAttrs {
                                 }
                             }
                             "r_data_accessors" => {
-                                r_data_accessors = true;
+                                r_data_accessors =
+                                    parse_r_data_accessors_value(&content, &key, ClassSystem::S7)?;
                             }
                             _ => {
                                 return Err(syn::Error::new(
@@ -1205,6 +1286,30 @@ impl syn::parse::Parse for ImplAttrs {
                     ident.span(),
                 ));
                 class_system = parsed_system;
+
+                // `s3(...)`, `s4(...)`, `env(...)`: the field syntax option.
+                if input.peek(syn::token::Paren) {
+                    let content;
+                    syn::parenthesized!(content in input);
+                    while !content.is_empty() {
+                        let key: syn::Ident = content.parse()?;
+                        if key != "r_data_accessors" {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                format!(
+                                    "unknown {ident_str} option: {key} (expected \
+                                     r_data_accessors, or r_data_accessors = \"get\" for \
+                                     getters only)"
+                                ),
+                            ));
+                        }
+                        r_data_accessors =
+                            parse_r_data_accessors_value(&content, &key, parsed_system)?;
+                        if content.peek(syn::Token![,]) {
+                            let _: syn::Token![,] = content.parse()?;
+                        }
+                    }
+                }
             }
 
             // Consume trailing comma if present
@@ -3014,6 +3119,7 @@ impl ParsedImpl {
             class_param_names,
         };
         parsed.reject_unsupported_describe_in()?;
+        field_syntax::check_collisions(&parsed)?;
         Ok(parsed)
     }
 
@@ -3787,6 +3893,8 @@ fn ty_is_self_or_named(ty: &syn::Type, type_ident: &syn::Ident) -> bool {
 
 /// Environment-based class wrapper generator (`obj$method()` dispatch).
 mod env_class;
+/// `$` / `[[` field methods of `r_data_accessors` for S3, S4 and env classes (#1848).
+mod field_syntax;
 /// R6 class wrapper generator (`R6Class` with `$new()`, active bindings, private methods).
 mod r6_class;
 /// S3 class wrapper generator (`structure()` + `generic.Class` dispatch).

@@ -18,7 +18,10 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::fmt;
 
-use super::{ExternalPtr, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored};
+use super::{
+    ExternalPtr, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored,
+    unwrap_class_handle,
+};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
@@ -47,9 +50,10 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// `Self::keys(self)` / `Self::set_keys(self, v)`; other Rust code writes
 /// `Engine::keys(&ptr)`. The R side keeps its own accessors whatever the
 /// option: for a `pub` field, `Type_get_keys(x)` / `Type_set_keys(x, value)`,
-/// an R6 active binding (`r6(r_data_accessors)`) or an S7 property
-/// (`s7(r_data_accessors)`). The R setter validates the new value with
-/// `TryFromSexp::<T>` and stores the value R gave.
+/// an R6 active binding (`r6(r_data_accessors)`), an S7 property
+/// (`s7(r_data_accessors)`), or `x$keys` / `x$keys <- value` on an S3, S4 or
+/// env class (`s3(r_data_accessors)` & co.). The R setter validates the new
+/// value with `TryFromSexp::<T>` and stores the value R gave.
 ///
 /// ```ignore
 /// #[derive(ExternalPtr)]
@@ -135,6 +139,23 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///
 /// Use the accessors on R's main thread only. Off the main thread an
 /// accessor panics with a clear message before it touches R.
+///
+/// # A save stores the values by position
+///
+/// A saved object (`saveRDS()`, `serialize()`) stores its sidecar values by
+/// position: one slot per `Sidecar` field, in the order the fields appear in
+/// the struct, with no field names. After a reload, the R accessors and the
+/// generated `$` getters read each field from its position. So reordering,
+/// adding, removing or retyping `Sidecar` fields changes how an old save is
+/// read, and within one version of the crate nothing detects it: a field can
+/// read another field's value.
+///
+/// Bump the crate's version (the `version` in its `Cargo.toml`, which the
+/// stored type ID records) whenever the `Sidecar` fields change. A save from
+/// another version is then refused with the classed
+/// `miniextendr_restored_other_version` error (#1872). `#[repr(C)]` doesn't
+/// help: it fixes the struct's memory layout, which a save never stores, and
+/// the slot positions follow the source order either way.
 ///
 /// # Methods that need sidecar values take the handle
 ///
@@ -423,8 +444,39 @@ fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
     name == id
 }
 
-/// The `prot` list of `x`, after checking that `x` is an external pointer to
-/// a `T`, and the live `T` when `x` still has an address. Allocates nothing.
+/// The external pointer an R accessor's receiver `x` carries: `x` itself, or
+/// the pointer an R6 / S4 / S7 handle, an environment or a list holds in
+/// `.ptr`, the shapes an instance method's receiver takes
+/// ([`unwrap_class_handle`]). So `Type_get_f(x)` and the `$` / `[[` field
+/// methods of `r_data_accessors` read a list that carries the handle (#1848).
+/// A bare pointer costs one `TYPEOF` compare; an S4 receiver reads its `ptr`
+/// slot through `methods::slot()`, which allocates. The pointer is reachable
+/// from `x`, which the caller's `.Call()` frame roots.
+///
+/// # Panics
+///
+/// When `x` carries no external pointer.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`.
+unsafe fn sidecar_receiver<T: TypedExternal>(x: SEXP) -> SEXP {
+    if x.type_of() == SEXPTYPE::EXTPTRSXP {
+        return x;
+    }
+    match unsafe { unwrap_class_handle(x) } {
+        Some(ptr) => ptr,
+        None => panic!(
+            "expected ExternalPtr<{}>, got a non-external-pointer object",
+            T::TYPE_NAME
+        ),
+    }
+}
+
+/// The `prot` list of the external pointer `x` carries
+/// ([`sidecar_receiver`]), after checking that it points to a `T`, and the
+/// live `T` when it still has an address. Allocates nothing for a pointer, a
+/// list or an environment receiver.
 ///
 /// A live pointer is checked by `Any::downcast`. A pointer whose address is
 /// NULL (restored from a saved session by `readRDS()` / `unserialize()`)
@@ -435,18 +487,13 @@ fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
 ///
 /// # Panics
 ///
-/// When `x` is not an external pointer to a `T`.
+/// When `x` carries no external pointer to a `T`.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `x`.
 unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
-    if x.type_of() != SEXPTYPE::EXTPTRSXP {
-        panic!(
-            "expected ExternalPtr<{}>, got a non-external-pointer object",
-            T::TYPE_NAME
-        );
-    }
+    let x = unsafe { sidecar_receiver::<T>(x) };
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
@@ -474,15 +521,15 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
     (prot, live)
 }
 
-/// The live `T` of the external pointer `x`, for the R getters of a struct
-/// field (a field that is not a `Sidecar`). A pointer without an address is
+/// The live `T` of the external pointer `x` carries ([`sidecar_receiver`]),
+/// for the R getters of a struct field (a field that is not a `Sidecar`). A pointer without an address is
 /// refused: with the classed restored-object errors when `T` built it
 /// ([`refuse_restored`]), else with `expected ExternalPtr<T>, got a null
 /// external pointer`.
 ///
 /// # Panics
 ///
-/// When `x` is not a live external pointer to a `T`.
+/// When `x` carries no live external pointer to a `T`.
 ///
 /// # Safety
 ///
@@ -495,12 +542,12 @@ pub unsafe fn sidecar_r_struct<'a, T: TypedExternal>(x: SEXP) -> &'a T {
     unsafe { &*sidecar_r_struct_ptr::<T>(x) }
 }
 
-/// The live `T` of the external pointer `x`, mutably, for the R setters of a
-/// struct field; see [`sidecar_r_struct`].
+/// The live `T` of the external pointer `x` carries, mutably, for the R
+/// setters of a struct field; see [`sidecar_r_struct`].
 ///
 /// # Panics
 ///
-/// When `x` is not a live external pointer to a `T`.
+/// When `x` carries no live external pointer to a `T`.
 ///
 /// # Safety
 ///
@@ -516,14 +563,10 @@ pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> &'a mut T {
 }
 
 /// The body of [`sidecar_r_struct`] and [`sidecar_r_struct_mut`]: the
-/// struct's address with mutable provenance.
+/// address of the struct behind the pointer `x` carries
+/// ([`sidecar_receiver`]), with mutable provenance.
 unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
-    if x.type_of() != SEXPTYPE::EXTPTRSXP {
-        panic!(
-            "expected ExternalPtr<{}>, got a non-external-pointer object",
-            T::TYPE_NAME
-        );
-    }
+    let x = unsafe { sidecar_receiver::<T>(x) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
@@ -540,12 +583,12 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
     }
 }
 
-/// Checks that `x` is an external pointer to a `T`, live or read back by
-/// `readRDS()`, before a setter validates its value.
+/// Checks that `x` carries an external pointer to a `T` ([`sidecar_receiver`]),
+/// live or read back by `readRDS()`, before a setter validates its value.
 ///
 /// # Panics
 ///
-/// When `x` is not an external pointer to a `T`.
+/// When `x` carries no external pointer to a `T`.
 ///
 /// # Safety
 ///
@@ -555,7 +598,8 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
     let _ = unsafe { checked_prot::<T>(x) };
 }
 
-/// Reads `T`'s `Sidecar` field `index` from the external pointer `x`.
+/// Reads `T`'s `Sidecar` field `index` from the external pointer `x` carries
+/// ([`sidecar_receiver`]).
 ///
 /// Called by the R getters `#[derive(ExternalPtr)]` generates. A live
 /// struct's pending value for the field is flushed into the slot first; a
@@ -564,7 +608,7 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 ///
 /// # Panics
 ///
-/// When `x` is not an external pointer to a `T`.
+/// When `x` carries no external pointer to a `T`.
 ///
 /// # Safety
 ///
@@ -583,16 +627,18 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
 }
 
 /// Stores `value`, which the caller validated with `TryFromSexp::<T>`, in
-/// `T`'s `Sidecar` field `index` of the external pointer `x`.
+/// `T`'s `Sidecar` field `index` of the external pointer `x` carries
+/// ([`sidecar_receiver`]).
 ///
 /// Called by the R setters `#[derive(ExternalPtr)]` generates. A live
 /// struct's pending value for the field is dropped, since this write
-/// supersedes it. Allocates nothing, so `value` needs no protection across
-/// the call.
+/// supersedes it. The store allocates nothing; reading an S4 receiver's slot
+/// does, and `value`, an argument of the setter's `.Call()`, is rooted by
+/// that call.
 ///
 /// # Panics
 ///
-/// When `x` is not an external pointer to a `T`.
+/// When `x` carries no external pointer to a `T`.
 ///
 /// # Safety
 ///

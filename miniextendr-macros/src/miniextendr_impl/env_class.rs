@@ -27,6 +27,10 @@ use super::ParsedImpl;
 ///   in the class environment, binding `self` for instance methods, and supporting
 ///   trait namespace environments (nested envs with `.__mx_instance__` attributes)
 /// - `[[.ClassName` alias: delegates to `$.ClassName`
+/// - With `env(r_data_accessors)`: a field branch at the top of `$.ClassName`
+///   (a `#[r_data]` field wins over a method of the same name), and, unless
+///   the getters-only `r_data_accessors = "get"`, `$<-.ClassName` with its
+///   `[[<-.ClassName` alias (`field_syntax.rs`, #1848)
 ///
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
@@ -188,6 +192,16 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // skips the operator-name quoting and produces invalid NAMESPACE entries).
     // For internal/noexport classes the @rdname target is dropped so the
     // helpers don't bleed into the user-visible Rd page.
+    // `env(r_data_accessors)` (#1848): `$` / `[[` read a field before the
+    // method lookup, and `$<-` / `[[<-` write one.
+    let fields = parsed_impl.r_data_accessors.enabled();
+    if fields {
+        lines.push(format!(
+            "# Field syntax for the `#[r_data]` fields of {type_ident} (`env(r_data_accessors)`)."
+        ));
+        lines.push(super::field_syntax::env_load_check(parsed_impl));
+        lines.push(String::new());
+    }
     if class_has_no_rd {
         lines.push("#' @noRd".to_string());
         lines.push("#' @export".to_string());
@@ -196,10 +210,17 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     } else {
         lines.push(format!("#' @rdname {}", class_name));
         lines.push("#' @param self The object instance.".to_string());
-        lines.push("#' @param name Method name for dispatch.".to_string());
+        lines.push(if fields {
+            "#' @param name A method or field name.".to_string()
+        } else {
+            "#' @param name Method name for dispatch.".to_string()
+        });
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
+    if fields {
+        lines.extend(super::field_syntax::env_field_branch(parsed_impl));
+    }
     lines.push(format!("  obj <- {}[[name]]", class_name));
     lines.push("  if (is.environment(obj)) {".to_string());
     lines.push("    # Trait namespace - wrap instance methods to prepend self".to_string());
@@ -255,6 +276,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
+    if fields && parsed_impl.r_data_accessors.setters() {
+        lines.extend(super::field_syntax::env_replacement_methods(
+            parsed_impl,
+            !class_has_no_rd && should_export,
+        ));
+    }
 
     lines.join("\n")
 }

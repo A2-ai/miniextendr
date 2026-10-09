@@ -12,8 +12,12 @@
 \alias{SidecarEnv_set_name}
 \alias{SidecarEnv_get_raw_slot}
 \alias{SidecarEnv_set_raw_slot}
+\alias{SidecarEnv$new}
+\alias{SidecarEnv$double_count}
 \alias{$.SidecarEnv}
 \alias{[[.SidecarEnv}
+\alias{$<-.SidecarEnv}
+\alias{[[<-.SidecarEnv}
 \title{SidecarEnv Sidecar Accessors}
 \usage{
 SidecarEnv_get_count(x)
@@ -41,6 +45,10 @@ SidecarEnv
 \method{$}{SidecarEnv}(self, name)
 
 \method{[[}{SidecarEnv}(self, name)
+
+\method{$}{SidecarEnv}(x, name) <- value
+
+\method{[[}{SidecarEnv}(x, name) <- value
 }
 \arguments{
 \item{x}{The SidecarEnv external pointer}
@@ -49,7 +57,7 @@ SidecarEnv
 
 \item{self}{The object instance.}
 
-\item{name}{Method name for dispatch.}
+\item{name}{A method or field name.}
 }
 \value{
 The value of the \code{count} field
@@ -75,5 +83,18 @@ The SidecarEnv pointer (invisibly)
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarEnv}.
 
-Env class registration for SidecarEnv (enables R sidecar accessors).
+Env class registration for SidecarEnv: with \code{env(r_data_accessors)},
+\code{obj$count} / \code{obj[["count"]]} read a field and \code{obj$count <- value}
+writes it, next to the methods \code{obj$method()} reaches.
+
+Create a SidecarEnv with a \code{NULL} \code{raw_slot}.
+
+\describe{
+\item{\code{count}}{Integer sidecar field.}
+\item{\code{score}}{Numeric sidecar field.}
+\item{\code{flag}}{Logical sidecar field.}
+\item{\code{name}}{Character sidecar field.}
+}
+
+Doubles \code{count} (a method next to the fields).
 }
