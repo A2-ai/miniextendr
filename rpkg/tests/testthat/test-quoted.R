@@ -1,5 +1,6 @@
 # Arguments passed unevaluated (`Quoted`, `Quosure`) and R code evaluated from
-# Rust in the caller's R context (`eval_with_handlers`, #1835):
+# Rust in the caller's R context (`eval_with_handlers`, #1835; with an R error
+# returned as `Err`, `try_eval_with_handlers`, #1893):
 # src/rust/quoted_tests.rs.
 #
 # Each evaluating fixture holds a Rust value whose destructor counts its runs
@@ -515,6 +516,184 @@ test_that("with_r_thread from a worker body keeps the caller's handlers", {
 
 # endregion
 
+# region: an R error returned as Err, the caller's handlers kept (try_eval_with_handlers, #1893)
+
+warns <- function() {
+  warning("from the call")
+  "value"
+}
+
+test_that("try_eval_with_handlers: withCallingHandlers() and tryCatch() see a warning", {
+  seen <- 0L
+  res <- withCallingHandlers(
+    miniextendr:::quoted_try_call(warns),
+    warning = function(w) {
+      seen <<- seen + 1L
+      expect_identical(conditionMessage(w), "from the call")
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(res, list(value = "value"))
+  expect_identical(seen, 1L)
+
+  # tryCatch()'s exiting handler leaves through the Rust frames.
+  before <- drops()
+  w <- tryCatch(miniextendr:::quoted_try_call(warns), warning = identity)
+  expect_s3_class(w, "simpleWarning")
+  expect_identical(conditionMessage(w), "from the call")
+  expect_identical(drops() - before, 1L)
+
+  # Not handled: R's default handler reports it, as for R code.
+  expect_warning(res <- miniextendr:::quoted_try_call(warns), "from the call")
+  expect_identical(res, list(value = "value"))
+})
+
+test_that("try_eval_with_handlers: suppressWarnings() and suppressMessages() silence the call", {
+  expect_no_warning(
+    expect_identical(suppressWarnings(miniextendr:::quoted_try_call(warns)), list(value = "value"))
+  )
+  says <- function() {
+    message("hello")
+    1L
+  }
+  expect_no_message(
+    expect_identical(suppressMessages(miniextendr:::quoted_try_call(says)), list(value = 1L))
+  )
+})
+
+test_that("try_eval_with_handlers: a message reaches withCallingHandlers()", {
+  heard <- character()
+  res <- withCallingHandlers(
+    miniextendr:::quoted_try_call(function() {
+      message("hello")
+      1L
+    }),
+    message = function(m) {
+      heard <<- c(heard, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_identical(res, list(value = 1L))
+  expect_identical(heard, "hello\n")
+})
+
+test_that("try_eval_with_handlers: an R error comes back as Err, with its classes and call", {
+  check_input <- function(x) {
+    stop(errorCondition("bad input", class = "my_input_error", call = sys.call()))
+  }
+  before <- drops()
+  res <- miniextendr:::quoted_try_call(function() check_input(1L))
+  expect_identical(res$message, "bad input")
+  expect_identical(res$classes, c("my_input_error", "error", "condition"))
+  expect_identical(res$specific_classes, "my_input_error")
+  expect_identical(res$call, quote(check_input(1L)))
+  expect_s3_class(res$condition, c("my_input_error", "error", "condition"), exact = TRUE)
+  expect_identical(drops() - before, 1L)
+
+  # The error is caught at the evaluation: the caller's error handlers don't
+  # see it.
+  seen <- 0L
+  res <- withCallingHandlers(
+    miniextendr:::quoted_try_call(function() stop("inner")),
+    error = function(e) seen <<- seen + 1L
+  )
+  expect_identical(res$message, "inner")
+  expect_identical(res$classes, c("simpleError", "error", "condition"))
+  expect_identical(seen, 0L)
+})
+
+test_that("try_eval_with_handlers: re-raised with reraise_class, the warning still seen", {
+  # A method forwarding to base R: the warning reaches the caller's handler,
+  # the error is raised again under the package's class.
+  f <- function() {
+    warning("'drop' argument will be ignored")
+    stop(errorCondition("undefined columns selected", class = "vctrs_error_x"))
+  }
+  seen <- 0L
+  e <- tryCatch(
+    withCallingHandlers(
+      miniextendr:::quoted_try_call_reraise(f),
+      warning = function(w) {
+        seen <<- seen + 1L
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = identity
+  )
+  expect_identical(seen, 1L)
+  expect_identical(conditionMessage(e), "undefined columns selected")
+  expect_identical(
+    class(e),
+    c("mx_reraised", "vctrs_error_x", "rust_error", "simpleError", "error", "condition")
+  )
+  expect_identical(miniextendr:::quoted_try_call_reraise(function() 42L), 42L)
+
+  # The same through base R's `[.data.frame`.
+  df <- data.frame(a = 1:2, b = 3:4)
+  expect_no_warning(
+    out <- suppressWarnings(miniextendr:::quoted_try_call_reraise(function() df[1, drop = FALSE]))
+  )
+  expect_identical(out, df[1])
+  expect_identical(
+    tryCatch(
+      miniextendr:::quoted_try_call_reraise(function() df[1, drop = FALSE]),
+      warning = function(w) "caught"
+    ),
+    "caught"
+  )
+  e <- tryCatch(miniextendr:::quoted_try_call_reraise(function() df[, "zz"]), error = identity)
+  expect_s3_class(e, "mx_reraised")
+  expect_identical(conditionMessage(e), "undefined columns selected")
+})
+
+test_that("try_eval_with_handlers: a restart and a handler's own error leave through the Rust frames", {
+  before <- drops()
+  out <- withRestarts(
+    miniextendr:::quoted_try_call(function() invokeRestart("mx_restart", 5)),
+    mx_restart = function(v) v * 2
+  )
+  expect_identical(out, 10)
+  expect_identical(drops() - before, 1L)
+
+  # An error the caller's warning handler raises is the caller's, not the
+  # evaluation's: it reaches the caller's tryCatch() as raised.
+  before <- drops()
+  e <- tryCatch(
+    withCallingHandlers(
+      miniextendr:::quoted_try_call(warns),
+      warning = function(w) stop("from the handler")
+    ),
+    error = identity
+  )
+  expect_identical(conditionMessage(e), "from the handler")
+  expect_identical(class(e), c("simpleError", "error", "condition"))
+  expect_identical(drops() - before, 1L)
+})
+
+test_that("try_eval_with_handlers (free function) on a Quoted expression", {
+  x <- 1L
+  expect_identical(miniextendr:::quoted_try_eval(x + 1L), list(value = 2L))
+  # A stop() at the top of the expression has no call: R would give it the
+  # call of the tryCatch() frame the evaluation runs in.
+  res <- miniextendr:::quoted_try_eval(stop("top"))
+  expect_identical(res$message, "top")
+  expect_null(res$call)
+  w <- tryCatch(miniextendr:::quoted_try_eval(warning("exit")), warning = identity)
+  expect_identical(conditionMessage(w), "exit")
+})
+
+test_that("try_eval_with_handlers: repeated errors and exits leave the session usable", {
+  before <- drops()
+  for (i in seq_len(200L)) {
+    miniextendr:::quoted_try_call(function() stop("again"))
+    tryCatch(miniextendr:::quoted_try_call(warns), warning = identity)
+  }
+  expect_identical(drops() - before, 400L)
+  expect_identical(miniextendr:::quoted_try_call(function() 1 + 1), list(value = 2))
+})
+
+# endregion
+
 # region: GC stress
 
 test_that("unevaluated arguments and R exits survive gctorture", {
@@ -552,6 +731,35 @@ test_that("unevaluated arguments and R exits survive gctorture", {
         identical(n, "x") && identical(miniextendr:::gc_stress_quoted(), 66L) &&
         identical(r, i * 2L) && isTRUE(abandoned) && isTRUE(elsewhere) &&
         isTRUE(stashed) && grepl("resumed outside the call", stray, fixed = TRUE)) {
+      ok <- ok + 1L
+    }
+  }
+  gctorture(FALSE)
+  expect_identical(ok, 5L)
+})
+
+test_that("try_eval_with_handlers survives gctorture", {
+  skip_gc_stress_if_disabled()
+  muffled <- function() {
+    warning("muffled")
+    "value"
+  }
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  ok <- 0L
+  for (i in seq_len(5L)) {
+    e <- miniextendr:::quoted_try_call(function() stop(errorCondition("gc", class = "mx_gc")))
+    w <- tryCatch(miniextendr:::quoted_try_call(muffled), warning = identity)
+    v <- withCallingHandlers(
+      miniextendr:::quoted_try_call(muffled),
+      warning = function(w) invokeRestart("muffleWarning")
+    )
+    r <- tryCatch(miniextendr:::quoted_try_call_reraise(function() stop("gc")), error = identity)
+    top <- miniextendr:::quoted_try_eval(stop("top"))
+    if (identical(e$message, "gc") && identical(e$classes, c("mx_gc", "error", "condition")) &&
+        inherits(w, "warning") && identical(v, list(value = "value")) &&
+        inherits(r, "mx_reraised") && identical(conditionMessage(r), "gc") &&
+        identical(top$message, "top") && is.null(top$call)) {
       ok <- ok + 1L
     }
   }

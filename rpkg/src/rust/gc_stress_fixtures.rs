@@ -4654,6 +4654,80 @@ pub fn gc_stress_eval_error() -> Vec<String> {
     out
 }
 
+/// Drive `RCall::try_eval_with_handlers` (#1893) under GC pressure: a value,
+/// then an R error held as an `REvalError` across allocations.
+///
+/// The evaluation holds its slot across R's `tryCatch()` (which allocates),
+/// the caught condition across the `conditionMessage()` and `conditionCall()`
+/// calls, and the error then lives across a loop that allocates. The
+/// erroring call first signals a warning that a handler in the evaluated code
+/// muffles, so the warning walks the handler stack through the evaluation's
+/// `tryCatch()` and the fixture stays quiet. Returns the value, the message,
+/// the classes and the call's function name: `"alpha-beta"`, `"held"`,
+/// `"gc_held_error"`, `"error"`, `"condition"`, `"thrower"`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_try_eval_with_handlers() -> Vec<String> {
+    use miniextendr_api::expression::{RCall, r_eval_str};
+
+    // SAFETY: main thread (#[miniextendr] body); `RCall` roots its arguments
+    // and the value is read before the next allocation.
+    let value = unsafe {
+        let value = RCall::new("paste")
+            .arg(SEXP::scalar_string_from_str("alpha"))
+            .arg(SEXP::scalar_string_from_str("beta"))
+            .named_arg("sep", SEXP::scalar_string_from_str("-"))
+            .try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+            .expect("paste() evaluates");
+        value.string_elt_str(0).unwrap_or_default().to_owned()
+    };
+
+    // SAFETY: main thread; `thrower` is rooted while the call is built, and
+    // the error roots what it holds.
+    let error = unsafe {
+        let thrower = OwnedProtect::new(
+            r_eval_str(
+                r#"function() withCallingHandlers({
+                    warning("muffled")
+                    stop(errorCondition("held", class = "gc_held_error", call = quote(thrower())))
+                }, warning = function(w) invokeRestart("muffleWarning"))"#,
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .expect("the closure evaluates"),
+        );
+        let call = RCall::from_sexp(thrower.get());
+        call.try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+            .expect_err("thrower() raises")
+    };
+
+    // Allocate while only the error holds the condition and its call.
+    for i in 0..50 {
+        let text = unsafe { OwnedProtect::new(SEXP::scalar_string_from_str(&format!("x{i}"))) };
+        let _list = unsafe { OwnedProtect::new(SEXP::alloc_list(8)) };
+        assert!(text.get().string_elt_str(0).is_some());
+    }
+
+    let call_name = error.call().map_or_else(
+        || "<no call>".to_owned(),
+        |call| {
+            // SAFETY: `call` is a LANGSXP rooted by `error`.
+            let head = unsafe { miniextendr_api::sys::CAR(call) };
+            if head.type_of() == SEXPTYPE::SYMSXP {
+                head.printname()
+                    .r_char_str()
+                    .map_or_else(String::new, ToOwned::to_owned)
+            } else {
+                "<not a symbol>".to_owned()
+            }
+        },
+    );
+    let mut out = vec![value, error.message().to_owned()];
+    out.extend(error.classes().iter().cloned());
+    out.push(call_name);
+    out
+}
+
 // endregion
 
 // region: RValue (#1050)

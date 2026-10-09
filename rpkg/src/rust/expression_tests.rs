@@ -86,7 +86,7 @@ pub fn expr_catch_error_str(code: &str) -> SEXP {
 }
 
 /// `list(value = <value>)`, or the error's parts as an R list.
-fn caught_parts(result: Result<SEXP, REvalError>) -> SEXP {
+pub(crate) fn caught_parts(result: Result<SEXP, REvalError>) -> SEXP {
     // SAFETY: R's main thread; every part is protected (or rooted by `error`)
     // before the next allocation.
     unsafe {

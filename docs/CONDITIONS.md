@@ -25,8 +25,8 @@ leading `call = none`, which raises the condition without a call, like R's
 (hand-written or [derived](#deriving-rconditionerror)), or, for error enums
 that already derive `serde::Serialize`, through
 [the serde shape](#deriving-the-classes-from-a-serde-error-type). An R error
-caught by `RCall::eval` or `r_eval_str` (an `REvalError`) is raised again the
-same ways, keeping R's message and classes (see
+caught by `RCall::eval`, `r_eval_str` or `try_eval_with_handlers` (an
+`REvalError`) is raised again the same ways, keeping R's message and classes (see
 [Raising a caught R error as your own](#raising-a-caught-r-error-as-your-own)).
 
 A fifth macro, `arg_error!(param = "x", …)`, raises the condition of the
@@ -729,7 +729,11 @@ must be skipped or renamed.
 ## Raising a caught R error as your own
 
 `RCall::eval`, `eval_base` and `r_eval_str` catch an R error as
-`expression::REvalError`, which holds R's condition: `message()` (R's
+`expression::REvalError`, and so do `RCall::try_eval_with_handlers` and
+`expression::try_eval_with_handlers`, which leave the call's warnings and
+messages to the caller's handlers
+([QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#an-r-error-returned-as-err)).
+`REvalError` holds R's condition: `message()` (R's
 `conditionMessage()`, without the `Error in <call> :` prefix and the `Calls:`
 line R prints), `call()`, `classes()` and the condition object
 ([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)). Three ways raise it

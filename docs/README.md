@@ -48,7 +48,8 @@ framework.
   `REnv` for calling R from Rust
 - **[Unevaluated Arguments](QUOTED_ARGUMENTS.md)** -- `Quoted` / `Quosure`
   parameters (`subset()`-style and tidy-evaluation arguments) and
-  `eval_with_handlers`, evaluation that keeps the caller's condition handlers
+  `eval_with_handlers` / `try_eval_with_handlers`, evaluation that keeps the
+  caller's condition handlers (the second returns an R error as `Err`)
 - **[Error Handling](ERROR_HANDLING.md)** -- Panics, R errors, `Result<T>`,
   tagged-condition transport, backtrace control
 - **[ExternalPtr](EXTERNALPTR.md)** -- Box-like owned pointer wrapping R's
