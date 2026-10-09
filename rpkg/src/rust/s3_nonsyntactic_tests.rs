@@ -7,7 +7,7 @@
 //! generated wrapper names are not syntactic R (`[.mx_bag`), so the wrappers
 //! file has to backtick-quote them or it does not parse.
 
-use miniextendr_api::miniextendr;
+use miniextendr_api::{NArgs, miniextendr};
 
 // region: standalone S3 methods on operator generics (#1475)
 
@@ -61,9 +61,18 @@ impl MxBagHandle {
         Self { values }
     }
 
-    /// Element at 1-based position `i`.
+    /// Element at 1-based position `i`. A handle has one dimension, so
+    /// `h[[i, ]]` and `h[[i, j]]` are refused.
+    // The method's `...` takes the extra subscript and never evaluates it, so
+    // only the argument count (`NArgs`, #1860) tells the forms apart.
     #[miniextendr(s3(generic = "[["))]
-    pub fn at(&self, i: i32) -> Result<f64, String> {
+    pub fn at(&self, i: i32, nargs: NArgs) -> Result<f64, String> {
+        if nargs.get() != 2 {
+            return Err(format!(
+                "a bag handle takes one subscript, h[[i]], not {}",
+                nargs.get() - 1
+            ));
+        }
         usize::try_from(i)
             .ok()
             .and_then(|k| k.checked_sub(1))

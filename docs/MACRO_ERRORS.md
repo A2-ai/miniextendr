@@ -373,6 +373,18 @@ keep or drop `` and `` `Quoted` parameters are supported on
 standalone #[miniextendr] functions only `` (a class or trait method's wrapper
 forces its arguments). See [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#restrictions).
 
+### "per-parameter options (...) do not apply to the `NArgs` parameter `n`"
+
+An `NArgs` parameter is no R argument: the generated wrapper passes `nargs()`
+in its place (#1860). A `default`, a coercion or a check on it, written on the
+parameter or named by a method's `defaults(n = ...)` / `no_na(n)` / ..., has
+no formal to act on. Drop the option. The same family covers `a #[miniextendr]
+function takes at most one NArgs parameter` (both would receive the same
+count) and `` `NArgs` on an `extern "C-unwind"` function `` (an extern
+function has no generated R wrapper to pass `nargs()`; drop the `extern`, or
+take a `SEXP` and pass the count from your own R code). See
+[S3_METHODS.md](S3_METHODS.md#subscript-forms-and-the-argument-count).
+
 ### "Cargo.toml: [package.metadata.miniextendr] `call_attribution` must be one of ..."
 
 The crate-wide default takes the same three values as the attribute, as a

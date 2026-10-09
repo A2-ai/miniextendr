@@ -1,0 +1,5 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to the `NArgs` parameter `n`: it is no R argument, the generated wrapper fills it with `nargs()`
+  --> tests/ui/impl_nargs_default.rs:20:26
+   |
+20 |     fn at(&self, i: i32, n: miniextendr_api::NArgs) -> f64 {
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -274,6 +274,27 @@ pub(crate) fn call_marker(ty: &syn::Type) -> Option<crate::r_wrapper_builder::Ca
 
 // endregion
 
+// region: argument-count marker (#1860)
+
+/// Detect the argument-count marker parameter type, `NArgs`: matched on the
+/// last path segment like [`call_marker`], with no generic arguments.
+/// References and wrappers (`&NArgs`, `Option<NArgs>`) are not the marker.
+///
+/// The parameter is no R formal: the R wrapper passes `nargs()` at its
+/// position in the `.Call()` (`RArgumentBuilder::build_call_args_vec`), and the
+/// C wrapper converts it like any parameter (`TryFromSexp for NArgs`).
+pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
+    let syn::Type::Path(p) = ty else {
+        return false;
+    };
+    p.path
+        .segments
+        .last()
+        .is_some_and(|seg| seg.ident == "NArgs" && seg.arguments.is_none())
+}
+
+// endregion
+
 // region: unevaluated-argument markers (#1835)
 
 /// Which unevaluated-argument marker a parameter takes.
@@ -727,8 +748,8 @@ mod tests {
     use super::{
         ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name,
         choice_layers, erase_lifetimes, is_main_thread_bound_input, is_main_thread_bound_return,
-        match_arg_choices_ty, mentions_unevaluated_marker, peel_param_markers, r_value_noun,
-        type_display, unevaluated_param, visibility_marker_error,
+        is_nargs_marker, match_arg_choices_ty, mentions_unevaluated_marker, peel_param_markers,
+        r_value_noun, type_display, unevaluated_param, visibility_marker_error,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -859,6 +880,21 @@ mod tests {
         assert!(is_main_thread_bound_input(&ty(
             "miniextendr_api::CallerCall"
         )));
+    }
+
+    #[test]
+    fn nargs_marker_matches_the_bare_type_only() {
+        assert!(is_nargs_marker(&ty("NArgs")));
+        assert!(is_nargs_marker(&ty("miniextendr_api::NArgs")));
+        assert!(is_nargs_marker(&ty("::miniextendr_api::nargs::NArgs")));
+        // Not the marker: generics, references, wrappers, other types.
+        assert!(!is_nargs_marker(&ty("NArgs<i32>")));
+        assert!(!is_nargs_marker(&ty("&NArgs")));
+        assert!(!is_nargs_marker(&ty("Option<NArgs>")));
+        assert!(!is_nargs_marker(&ty("Missing<NArgs>")));
+        assert!(!is_nargs_marker(&ty("Nargs")));
+        // A plain count: it does not pin the main thread.
+        assert!(!is_main_thread_bound_input(&ty("NArgs")));
     }
 
     /// The inner type a parameter converts as, and the markers peeled off it.

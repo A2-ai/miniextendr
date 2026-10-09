@@ -1,0 +1,5 @@
+error: a `#[miniextendr]` function takes at most one `NArgs` parameter: `n` already receives `nargs()`, and `again` would receive the same count
+ --> tests/ui/fn_nargs_twice.rs:9:57
+  |
+9 | pub fn counted_twice(x: i32, n: miniextendr_api::NArgs, again: miniextendr_api::NArgs) -> i32 {
+  |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

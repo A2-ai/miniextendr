@@ -25,6 +25,16 @@ test_that("impl-block generic override to `[[` produces a working method (#1475)
   expect_error(h[[5L]], "out of range")
 })
 
+test_that("the impl-block `[[` refuses h[[i, ]] through its argument count (#1860)", {
+  h <- new_mxbaghandle(c(10, 20))
+  # The extra subscript lands in the method's `...`, which it never
+  # evaluates; `NArgs` tells the forms apart.
+  expect_error(h[[2L, ]], "takes one subscript, h\\[\\[i\\]\\], not 2")
+  expect_error(h[[2L, 1L]], "takes one subscript")
+  expect_equal(h[[2L]], 20)
+  expect_identical(lapply(seq_len(size(h)), function(k) h[[k]]), list(10, 20))
+})
+
 test_that("@describeIn keeps its continuation lines and lands on the destination page (#1476)", {
   rd_db <- tryCatch(tools::Rd_db("miniextendr"), error = function(e) NULL)
   skip_if(is.null(rd_db), "tools::Rd_db('miniextendr') unavailable — package not installed")
