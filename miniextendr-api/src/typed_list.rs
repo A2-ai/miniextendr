@@ -133,7 +133,7 @@ pub enum TypeSpec {
     /// Complex vector.
     Complex(Option<usize>),
     /// List (`VECSXP`), or `NULL`. A pairlist is refused, as
-    /// [`List`](crate::List) refuses one.
+    /// [`List`] refuses one.
     List(Option<usize>),
     /// Object inheriting from a specific class.
     /// Uses `Rf_inherits` semantics (checks class attribute).

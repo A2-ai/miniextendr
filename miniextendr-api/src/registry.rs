@@ -1949,7 +1949,7 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 /// The marker class it replaces is the one `arg_error!` writes (#1740). A
 /// frame in the call slot or as the default (a generated S3 method passes
 /// `environment()`, #1851) is resolved to the generic's call with an inline
-/// copy of [`FRAME_CALL_HELPER_FN`], since the base-namespace copy of this
+/// copy of [`frame_call_helper_fn!`], since the base-namespace copy of this
 /// helper cannot see the preamble's `.miniextendr_frame_call`.
 pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
     r#"function(.val, .call_default) {
