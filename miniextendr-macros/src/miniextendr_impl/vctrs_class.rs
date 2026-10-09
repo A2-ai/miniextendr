@@ -243,8 +243,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     ));
     lines.push(String::new());
 
-    // Instance methods as S3 generics + methods
+    // Instance methods as S3 generics + methods. Their conditions report the
+    // generic's call, resolved from the method frame on a raise (#1851).
     for ctx in parsed_impl.instance_method_contexts() {
+        let ctx = ctx.with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
         lines.push(ctx.source_comment(type_ident));
         // vctrs protocol override: use the protocol name as the S3 generic
         let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
@@ -319,6 +321,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_raise_default(ctx.call_attribution.raise_default())
             .with_strategy(strategy)
             .with_invisible(ctx.method.is_invisible())
             .with_class_name(class_name.clone())

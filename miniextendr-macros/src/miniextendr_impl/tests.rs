@@ -178,7 +178,7 @@ fn s3_user_dots_suppress_duplicate_dispatch_dots() {
         )
     );
     assert!(wrapper.contains(
-        ".Call(C_miniextendr_macros_S3DotsThing__collect, .call = sys.call(), x, list(...))"
+        ".Call(C_miniextendr_macros_S3DotsThing__collect, .call = environment(), x, list(...))"
     ));
     assert!(!wrapper.contains("function(x, ..., ...)"));
 }
@@ -1432,12 +1432,13 @@ fn s3_wrapper_full_snapshot() {
     // Verify S3 methods
     assert!(wrapper.contains("#' @method get Counter"));
     assert!(wrapper.contains("get.Counter <- function(x, ...)"));
-    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = sys.call(), x)"));
+    assert!(wrapper.contains(".Call(C_miniextendr_macros_Counter__get, .call = environment(), x)"));
 
     assert!(wrapper.contains("#' @method increment Counter"));
     assert!(wrapper.contains("increment.Counter <- function(x, ...)"));
     assert!(
-        wrapper.contains(".Call(C_miniextendr_macros_Counter__increment, .call = sys.call(), x)")
+        wrapper
+            .contains(".Call(C_miniextendr_macros_Counter__increment, .call = environment(), x)")
     );
 
     // Verify static methods with prefix
@@ -7169,6 +7170,54 @@ fn s3_replacement_method_keeps_value_last() {
     );
     assert_eq!(s3_method_formals(&wrapper, "[<-.Slots"), "x, i, ..., value");
     assert_eq!(s3_method_formals(&wrapper, "[[.Slots"), "x, i, ...");
+}
+
+// endregion
+
+// region: the argument-count marker on methods (#1860)
+
+/// `NArgs` on impl-block methods: no formal, `nargs()` in the `.Call()` at its
+/// position, no `@param` filler, and `value` stays the last formal of a
+/// replacement method with a trailing `NArgs`. A method without it keeps its
+/// wrapper (`snapshot_s3_basic` is unchanged).
+#[test]
+fn snapshot_s3_nargs() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Bag {
+            pub fn new(values: Vec<f64>) -> Self { unimplemented!() }
+            /// Element `i`; refuses `h[[i, ]]`.
+            #[miniextendr(s3(generic = "[["))]
+            pub fn at(&self, i: i32, nargs: NArgs) -> f64 { unimplemented!() }
+            /// Replace element `i`.
+            #[miniextendr(s3(generic = "[[<-"))]
+            pub fn set_at(&mut self, i: i32, value: f64, _nargs: miniextendr_api::NArgs) {
+                unimplemented!()
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S3, item_impl);
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert_eq!(s3_method_formals(&wrapper, "[[.Bag"), "x, i, ...");
+    assert_eq!(s3_method_formals(&wrapper, "[[<-.Bag"), "x, i, ..., value");
+    assert!(!wrapper.contains("@param nargs"), "{wrapper}");
+    insta::assert_snapshot!(wrapper);
+}
+
+/// An R6 method's count is its own call's, without the object: `nargs()` in
+/// the method body, no formal.
+#[test]
+fn r6_method_takes_nargs() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Bag {
+            pub fn new(values: Vec<f64>) -> Self { unimplemented!() }
+            pub fn pick(&self, i: i32, n: NArgs) -> f64 { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert!(wrapper.contains("\"pick\", function(i) {"), "{wrapper}");
+    assert!(wrapper.contains("private$.ptr, i, nargs())"), "{wrapper}");
+    assert!(!wrapper.contains("@param n "), "{wrapper}");
 }
 
 // endregion

@@ -1,0 +1,5 @@
+error: `NArgs` on an `extern "C-unwind"` function: the generated R wrapper passes `nargs()` for it, and an extern function has none (`.Call()` reaches it directly). Drop the `extern "C-unwind"` to let the macro generate the wrapper, or take a `SEXP` and pass the count yourself
+  --> tests/ui/extern_fn_nargs.rs:12:8
+   |
+12 |     n: miniextendr_api::NArgs,
+   |        ^^^^^^^^^^^^^^^^^^^^^^

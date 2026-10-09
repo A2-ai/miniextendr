@@ -324,11 +324,25 @@ method can't take a formal its generic lacks) and on an `extern "C-unwind"`
 function, which has no call slot. See
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#an-exported-function-call-arg).
 
-### "`call = ...` accepts `wrapper` (the call as written, the default) or `caller` (...)"
+### "`call = ...` accepts `wrapper` (the call as written, the default), `caller` (...) or `none` (...)"
 
-`call = parent`, `call = self` & co. name no attribution. The two values are
-`wrapper` (the default) and `caller`, as a path or a string; see
+`call = parent`, `call = self` & co. name no attribution. The three values are
+`wrapper` (the default), `caller` and `none`, as a path or a string; see
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#choosing-the-attribution-marker-attribute-crate-default).
+
+### "`call = none` passes no call, so a `Call` parameter has nothing to receive"
+
+`#[miniextendr(call = none)]` makes every condition of the function call-less
+(`.call = FALSE`), and a `Call` / `CallerCall` parameter is bound from the
+call the wrapper passes. Drop the parameter, or drop the option and use
+`call = wrapper` / `call = caller` to choose the call it receives. See
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#no-call-at-all-none).
+
+### "`call_arg` cannot be combined with `call = none`"
+
+`call_arg` gives the wrapper a `.call` formal naming the call its conditions
+report, and `call = none` reports none. Keep one of them. `call = none` is
+also refused on an `extern "C-unwind"` function, which has no call slot.
 
 ### "the `Call` parameter selects `wrapper` attribution but the attribute selects `caller`"
 
@@ -359,12 +373,24 @@ keep or drop `` and `` `Quoted` parameters are supported on
 standalone #[miniextendr] functions only `` (a class or trait method's wrapper
 forces its arguments). See [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#restrictions).
 
+### "per-parameter options (...) do not apply to the `NArgs` parameter `n`"
+
+An `NArgs` parameter is no R argument: the generated wrapper passes `nargs()`
+in its place (#1860). A `default`, a coercion or a check on it, written on the
+parameter or named by a method's `defaults(n = ...)` / `no_na(n)` / ..., has
+no formal to act on. Drop the option. The same family covers `a #[miniextendr]
+function takes at most one NArgs parameter` (both would receive the same
+count) and `` `NArgs` on an `extern "C-unwind"` function `` (an extern
+function has no generated R wrapper to pass `nargs()`; drop the `extern`, or
+take a `SEXP` and pass the count from your own R code). See
+[S3_METHODS.md](S3_METHODS.md#subscript-forms-and-the-argument-count).
+
 ### "Cargo.toml: [package.metadata.miniextendr] `call_attribution` must be one of ..."
 
-The crate-wide default takes the same two values as the attribute, as a
-string: `call_attribution = "wrapper"` or `"caller"`, set once. A
+The crate-wide default takes the same three values as the attribute, as a
+string: `call_attribution = "wrapper"`, `"caller"` or `"none"`, set once. A
 `"caller"` default applies to `noexport` / `internal` free functions only;
-exported functions keep `wrapper`.
+exported functions keep `wrapper`. `"none"` applies to every free function.
 
 ### "the `Checked` parameter `n` keeps the R-side type checks but `no_preconditions(n)` drops them"
 

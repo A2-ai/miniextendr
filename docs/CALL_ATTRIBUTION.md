@@ -360,12 +360,15 @@ call_arg_verb(-1L)
 # Error in call_arg_verb(-1L) : x must be non-negative, got -1
 ```
 
-**From an S3 method, pass the generic's call.** Under `UseMethod()`
-dispatch a method's own frame call names the method: `environment()` from
-`update.thing()` reports `update.thing(object, ...)`, not the
-`update(a, dose = 1)` the user wrote. The generic's frame sits just below the
-method's, so the method passes `sys.call(-1L)`, a call object. Through
-`do.call()` that needs `quote = TRUE` (see "Pass a frame, not a call" above):
+**From a hand-written S3 method, pass the generic's call.** Under
+`UseMethod()` dispatch a method's own frame call names the method:
+`environment()` from a hand-written `update.thing()` reports
+`update.thing(object, ...)`, not the `update(a, dose = 1)` the user wrote (a
+method generated from Rust rewrites that itself, see
+[S3 methods: the generic call](#s3-methods-the-generic-call)). The
+generic's frame sits just below the method's, so the method passes
+`sys.call(-1L)`, a call object. Through `do.call()` that needs `quote = TRUE`
+(see "Pass a frame, not a call" above):
 
 ```r
 update.thing <- function(object, ...) {
@@ -409,19 +412,137 @@ Fixtures: `call_arg_verb`, `call_arg_topic` / `call_arg_joined` (a page the
 `.call` function joins) and `call_arg_marker_impl` in
 `rpkg/src/rust/call_attribution_demo.rs`, verified by `test-call-arg.R`.
 
+## S3 methods: the generic call
+
+Under `UseMethod()` dispatch R gives the method frame the dispatched call:
+`sys.call()` inside `summary.mx_rec()` is `summary.mx_rec(x)` when the user
+wrote `summary(x)`, and a replacement method sees the temporary R assigns
+through, `` `$<-.mx_rec`(`*tmp*`, f, value = <the new value>) `` for
+`x$f <- v`. Neither is a call the user wrote, and the second carries the
+whole new value: for `x$f$col <- big`, R hands the outer method the
+evaluated inner value inlined, and `conditionCall(e)` deparses to as many
+lines as the value takes.
+
+A generated S3 method, a standalone `s3(generic = ..., class = ...)` function
+or a method of a `#[miniextendr(s3)]` impl block, reports the generic's call
+instead (#1851):
+
+| The user wrote | The method frame's call | Reported |
+|---|---|---|
+| `summary(x, extra = 1)` | `summary.mx_rec(x, extra = 1)` | `summary(x, extra = 1)` |
+| `lapply(xs, summary)` | `summary.mx_rec(X[[i]], ...)` | `summary(X[[i]], ...)` |
+| `x + 1` (the `Ops` group generic) | `Ops.mx_rec(x, 1)` | `x + 1` |
+| `x[5]`, `x$nope`, `t[[5L]]` | `` `[.mx_rec`(x, 5) ``, … | `x[5]`, `x$nope`, `t[[5L]]` |
+| `x$f <- v`, `x$f$col[1] <- v` | `` `$<-.mx_rec`(`*tmp*`, f, value = …) `` | `x$f <- value` |
+| `x[["f"]] <- v`, `x["f"] <- list(v)` | `` `[[<-.mx_rec`(`*tmp*`, "f", value = …) ``, … | `x[["f"]] <- value`, `x["f"] <- value` |
+| `names(x) <- v` | `` `names<-.mx_rec`(`*tmp*`, value = …) `` | `names(x) <- value` |
+| `summary.mx_rec(x)`, called directly | `summary.mx_rec(x)` | `summary.mx_rec(x)` |
+
+The rule: when `.Generic` is bound in the method frame, which R does under
+`UseMethod()`, `NextMethod()`, internal dispatch (`[`, `$<-`, …) and the group
+generics, the call's function becomes `as.name(.Generic)`, so an `Ops` method
+reports the operator. A receiver spelled `*tmp*` becomes the method's first
+formal (`x`). For a replacement generic (`.Generic` ends in `<-`) the call is
+`call("<-", <lhs>, quote(value))`, where `<lhs>` is the frame's call with the
+`<-` dropped from its head and the `value` argument removed: compact, never
+holding the value, and the shape `stop()` reports from inside a hand-written
+`function(x, value)`. Without `.Generic`, a direct call of the method by
+name, the frame's call is reported as is.
+
+Every condition the method raises reads this call: an `Err` or panic from the
+body, a warning or message deferred from Rust, the R-side argument checks
+(`'i' must be numeric` for `x["a"]` reports `x["a"]`) and a failed Rust
+conversion. A `Call` parameter on the method receives it.
+
+**Cost.** The rewrite is lazy. The wrapper passes `.call = environment()`, the
+method frame, into `.Call()` and to its guards, and the helper that raises a
+condition resolves the frame to the call then (`.miniextendr_frame_call()`,
+defined at the top of the generated wrappers file and inlined into the raise
+helper's copy for deferred conditions). On the success path the only change
+from `.call = sys.call()` is `environment()` for `sys.call()`, two builtins
+of the same cost. A method with a `Call` parameter resolves the call in a
+prelude instead (`.mx_call <- .miniextendr_frame_call(environment())`),
+because the body wants the call object; that walk over `sys.frames()` costs
+on the order of ten microseconds per call, which is why it is not the
+default.
+
+`call = caller` and `call_arg` stay refused on an S3 method (its conditions
+name the generic's call, and it can't take a formal its generic lacks);
+`call = none` applies ([next section](#no-call-at-all-none)). Fixtures:
+`rpkg/src/rust/s3_call_tests.rs`, verified by `test-s3-call.R`.
+
+## No call at all: `none`
+
+`#[miniextendr(call = none)]` makes a function's conditions carry no call at
+all, however the function was reached: `conditionCall(e)` is `NULL` and an
+error prints as `Error: <message>`. It is the function-level form of the
+per-condition opt-out
+([Conditions without a call](CONDITIONS.md#conditions-without-a-call)), for
+a function whose conditions are about the data, never about the call
+(#1851):
+
+```rust
+#[miniextendr(call = none)]
+pub fn no_call_verb(x: i32, #[miniextendr(match_arg)] mode: Mode) -> Result<i32, String> { … }
+```
+
+```r
+no_call_verb <- function(x, mode = c("Fast", "Safe", "Debug")) {
+  if (!isTRUE(is.integer(x))) .miniextendr_arg_error("x", "must be integer", NULL)
+  if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1", NULL)
+  mode <- .miniextendr_match_arg(mode, c("Fast", "Safe", "Debug"), "mode", NULL)
+  .val <- .Call(C_mypkg_no_call_verb, .call = FALSE, x, mode)
+  if (inherits(.val, "rust_condition_value") && ...) return(.miniextendr_raise_condition(.val, NULL))
+  .val
+}
+```
+
+```r
+no_call_verb(-1L, "Fast")
+# Error: x must be non-negative, got -1
+no_call_verb(1.5, "Fast")
+# Error: 'x' must be integer
+no_call_verb(0L, "Fast")
+# Warning message:
+# x is zero
+```
+
+Every condition drops the call: an `Err` or panic from the body, a classed
+`error!`, a warning or message deferred from Rust, and the argument errors
+too, both the R-side checks (type and length guards, `no_na`, `inherits`,
+`not_inherits`, `match_arg` / `choices`) and a failed Rust conversion. The
+per-condition opt-out leaves argument errors alone; the function-level one
+is the whole function's decision. `.call = FALSE` is the marker of a
+call-less condition that the transport already carries, so the Rust side
+needs nothing new.
+
+- It applies to standalone functions, S3 methods included. Class and trait
+  methods have no `call = ...` option (#1868).
+- It has no marker: a `Call` / `CallerCall` parameter would have nothing to
+  receive, so one next to `call = none` is a compile error, as are `call_arg`
+  (`.call` names the call to report) and an `extern "C-unwind"` function
+  (no call slot).
+- `[package.metadata.miniextendr] call_attribution = "none"` makes it the
+  default for every free function of the crate, exported or not; a per-item
+  `call = wrapper` (or a `Call` parameter) restores the call on one.
+
+Fixture pair: `no_call_verb` / `with_call_verb` and the `format` method of
+`mx_rec` in `rpkg/src/rust/s3_call_tests.rs`, verified by `test-s3-call.R`.
+
 ## Choosing the attribution: marker, attribute, crate default
 
-A standalone `#[miniextendr]` function picks one of two attributions, in
-three equivalent spellings (#1566). Most specific wins:
+A standalone `#[miniextendr]` function picks one of three attributions, in
+up to three equivalent spellings (#1566). Most specific wins:
 
-| Spelling | `wrapper` | `caller` |
-|----------|-----------|----------|
-| **Marker parameter** (`miniextendr_api::{Call, CallerCall}`) | `call: Call` | `call: CallerCall` |
-| **Attribute** | `call = wrapper` | `call = caller` |
-| **Crate default** (`Cargo.toml`) | `call_attribution = "wrapper"` | `call_attribution = "caller"` |
+| Spelling | `wrapper` | `caller` | `none` |
+|----------|-----------|----------|--------|
+| **Marker parameter** (`miniextendr_api::{Call, CallerCall}`) | `call: Call` | `call: CallerCall` | none (there is no call to receive) |
+| **Attribute** | `call = wrapper` | `call = caller` | `call = none` |
+| **Crate default** (`Cargo.toml`) | `call_attribution = "wrapper"` | `call_attribution = "caller"` | `call_attribution = "none"` |
 
 Below those, `wrapper`. The attribute accepts the path and string forms
-(`call = caller`, `call = "caller"`). The attribution is independent of
+(`call = caller`, `call = "caller"`). On an S3 method `wrapper` reports the
+generic's call ([above](#s3-methods-the-generic-call)). The attribution is independent of
 `no_preconditions`: a wrapper without its R-side checks still passes the call,
 and `no_preconditions, call = caller` or a `Call` parameter under
 `no_preconditions` work as without it.
@@ -462,16 +583,17 @@ apply to it.
 
 A crate default of `"caller"` applies to `noexport` / `internal` free
 functions only: an exported function's caller is arbitrary user code, so it
-keeps `wrapper`. `"wrapper"` applies to every standalone function. A per-item
-spelling beats the crate default; a `call = wrapper` on one entry point
-restores the wrapper's own call under a `"caller"` default. Class and trait
-methods are untouched by all three spellings (a marker on a method is a
-compile error) and always report their own call.
+keeps `wrapper`. `"wrapper"` and `"none"` apply to every standalone function.
+A per-item spelling beats the crate default; a `call = wrapper` on one entry
+point restores the wrapper's own call under a `"caller"` or `"none"` default.
+Class and trait methods are untouched by all three spellings (a marker on a
+method is a compile error) and always report their own call.
 
 Two spellings on one function must agree. A `Call` parameter with
-`call = caller`, two markers, a `CallerCall` on an exported function,
-per-parameter options on a marker and `call = parent` are all compile errors
-listed in [MACRO_ERRORS.md](MACRO_ERRORS.md#common-proc-macro-errors).
+`call = caller`, any marker with `call = none`, two markers, a `CallerCall`
+on an exported function, per-parameter options on a marker and
+`call = parent` are all compile errors listed in
+[MACRO_ERRORS.md](MACRO_ERRORS.md#common-proc-macro-errors).
 Fixtures: `call_marker_wrapper_impl` / `call_marker_caller_impl` /
 `call_marker_checked_impl` in
 `rpkg/src/rust/call_attribution_demo.rs` (verified by `test-call-attribution.R`),
@@ -480,7 +602,7 @@ and the crate default in `tests/cross-package/producer.pkg`
 
 ## Where this is emitted
 
-Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (or `.call = NULL` for the lambda frames below, `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller` and `call_arg`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
+Every `.Call()` inside generated R wrappers puts the call slot first. Class and trait methods go through `DotCallBuilder` in `miniextendr-macros/src/r_wrapper_builder.rs`, which prepends `.call = sys.call()` (`.call = environment()` for an S3 class's methods, `with_call_attribution(CallAttribution::Generic)`; `.call = NULL` for the lambda frames below, `null_call_attribution()`). Standalone functions take the argument from `CallAttribution::dot_call_arg()` in the same file: `.call = sys.call()` for `wrapper`, `.call = .mx_call` for `caller`, `call_arg` and an S3 method with a `Call` parameter, `.call = environment()` for an S3 method (`for_s3_method`, resolved to the generic's call by `.miniextendr_frame_call()` when a condition is raised) and `.call = FALSE` for `none`. The C wrapper builder in `miniextendr-macros/src/c_wrapper_builder.rs` always declares `__miniextendr_call: SEXP` as the first parameter, so the convention is symmetric.
 
 It applies uniformly to:
 

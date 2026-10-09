@@ -1744,11 +1744,87 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 }
 "#;
 
+/// R source of `.miniextendr_frame_call` as a bare `function(env)`
+/// expression: the call a generated S3 method's conditions report, resolved
+/// from the method's frame (#1851).
+///
+/// A generated S3 method passes `environment()` as its `.call` and as the
+/// raise fallback (`CallAttribution::Generic` in the macros), so the success
+/// path pays no more than for `sys.call()`, and the frame becomes a call only
+/// when a condition is raised. Three consumers: [`write_r_wrappers_to_file`]
+/// binds the expression under that name in the preamble ([`FRAME_CALL_HELPER`])
+/// for the R-side checks (`.miniextendr_arg_error`) and for a method with a
+/// `Call` parameter, which resolves it up front; [`RAISE_CONDITION_HELPER_FN`]
+/// inlines it, because the copy of that helper which signals deferred
+/// conditions runs in the base namespace, where the preamble's binding is not
+/// visible.
+///
+/// The frame is looked up among the live frames (`sys.frames()`), newest
+/// first, so the helper works from the method itself, from the raise helper
+/// the method calls, and from the deferred-condition path, which R runs from
+/// C while the method's `.Call()` is still on the stack (a `.Call` context
+/// is not a function frame, so the frame numbers line up). `.Generic` is
+/// bound in the frame of a method R dispatched (`UseMethod()`, an internal
+/// generic such as `[[`, `NextMethod()`, a group generic such as `Ops`) and
+/// not in a method called by name, so a direct call keeps the method's name.
+/// For a replacement generic R's call is
+/// `` `$<-.cls`(`*tmp*`, name, value = <value>) ``: the result is the
+/// assignment as written, `x$name <- value`, which never deparses the value.
+/// No comment inside: the text is inlined into another function. A macro,
+/// not a `const`, because `concat!` takes literals only.
+macro_rules! frame_call_helper_fn {
+    () => {
+        r#"function(env) {
+  frames <- sys.frames()
+  i <- length(frames)
+  while (i > 0L && !identical(frames[[i]], env)) i <- i - 1L
+  if (i == 0L) return(NULL)
+  call <- sys.call(i)
+  generic <- env[[".Generic"]]
+  if (!is.character(generic) || length(generic) != 1L) return(call)
+  if (length(call) > 1L && identical(call[[2L]], quote(`*tmp*`))) {
+    call[[2L]] <- as.name(names(formals(sys.function(i)))[[1L]])
+  }
+  if (!endsWith(generic, "<-")) {
+    call[[1L]] <- as.name(generic)
+    return(call)
+  }
+  call$value <- NULL
+  call[[1L]] <- as.name(substr(generic, 1L, nchar(generic) - 2L))
+  call("<-", call, quote(value))
+}"#
+    };
+}
+
+/// The preamble's `.miniextendr_frame_call` binding of
+/// [`frame_call_helper_fn!`], with its comment block, as written by
+/// [`write_r_wrappers_to_file`].
+#[cfg(not(target_arch = "wasm32"))]
+const FRAME_CALL_HELPER: &str = concat!(
+    r#"# Internal helper: the call a generated S3 method's conditions report, from
+# the method's frame (`environment()`, which the method passes as `.call`).
+# Under R's dispatch the method's own call names the method,
+# `summary.cls(x, a = 1)`, and `.Generic` is bound in its frame; the result
+# names the generic the user called instead: `summary(x, a = 1)`, `x[i]`,
+# `x + 1` for an `Ops` method. For a replacement generic (`$<-`, `[[<-`, `[<-`,
+# `names<-`, ...), which R calls as `` `$<-.cls`(`*tmp*`, name, value = <v>) ``,
+# the result is the assignment as written, `x$name <- value`, with the
+# method's first formal as the receiver and the symbol `value` in place of the
+# value, so a large value is never deparsed into the call. A method called
+# directly by name has no `.Generic` and keeps its own call. The frame is
+# looked up among the live frames, so the helper serves the method's own
+# checks, the raise helper and the conditions deferred while the method's
+# `.Call()` runs; a frame that is no longer live gives NULL.
+.miniextendr_frame_call <- "#,
+    frame_call_helper_fn!(),
+    "\n"
+);
+
 /// R source of the argument-check helpers of the wrappers preamble,
 /// `.miniextendr_arg_error`, `.miniextendr_match_arg_several` and
 /// `.miniextendr_match_arg`, with their comment blocks, as written by
 /// [`write_r_wrappers_to_file`] (they read `.miniextendr_conversion_error_class`,
-/// bound after them).
+/// bound after them, and `.miniextendr_frame_call`, bound before).
 ///
 /// `.miniextendr_match_arg`'s messages are the ones
 /// [`crate::match_arg::match_arg_param`] and the generated conversion of a
@@ -1759,7 +1835,8 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 ///
 /// History, kept here because the R comments ship in every package and cite
 /// no PR numbers (#1832): `.miniextendr_arg_error` is #1591, the `call`
-/// argument a `call = caller` wrapper passes is #1548, the strict
+/// argument a `call = caller` wrapper passes is #1548, the frame an S3 method
+/// passes there and the `NULL` of `call = none` are #1851, the strict
 /// `several_ok` match is #1472, reading a factor as its labels is #1552, and
 /// the `aliases` argument ([`match_arg_aliases_arg`]) is #1843.
 #[cfg(not(target_arch = "wasm32"))]
@@ -1775,9 +1852,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 # author's own `message` (`inherits(..., message = )` / `no_na(message = )`),
 # used as given. `call` defaults to the wrapper's own call, as `stopifnot()`
 # reported it; a `call = caller` wrapper passes `.mx_call`, by name
-# next to a named `message`. Only a failing check calls this: the passing path
-# is one `isTRUE()` test per check.
+# next to a named `message`; an S3 method passes its frame, resolved here to
+# the generic's call (`.miniextendr_frame_call`); a `call = none` wrapper
+# passes NULL. Only a failing check calls this: the passing path is one
+# `isTRUE()` test per check.
 .miniextendr_arg_error <- function(param, what, call = sys.call(-1L), message = sprintf("'%s' %s", param, what)) {
+  if (is.environment(call)) call <- .miniextendr_frame_call(call)
   stop(structure(
     list(message = message, call = call, kind = "conversion", param = param),
     class = c(.miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")
@@ -1866,13 +1946,26 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 /// re-raises the tagged Rust condition value as the matching R condition:
 /// `stop()` for the error kinds, `warning()` / `message()` /
 /// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
-/// The marker class it replaces is the one `arg_error!` writes (#1740).
-pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_default) {
+/// The marker class it replaces is the one `arg_error!` writes (#1740). A
+/// frame in the call slot or as the default (a generated S3 method passes
+/// `environment()`, #1851) is resolved to the generic's call with an inline
+/// copy of [`FRAME_CALL_HELPER_FN`], since the base-namespace copy of this
+/// helper cannot see the preamble's `.miniextendr_frame_call`.
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
+    r#"function(.val, .call_default) {
   .msg <- .val$error
   # `.val$call` is the call the Rust side captured, NULL to use the wrapper's
   # call, or FALSE for a condition raised without one (`call = none`, R's
   # `call. = FALSE`), which is signalled with `call = NULL`.
   .call <- if (isFALSE(.val$call)) NULL else if (is.null(.val$call)) .call_default else .val$call
+  # A generated S3 method passes its frame instead of a call, so that the
+  # generic's call (`summary(x)` for `summary.cls(x)`, the assignment for a
+  # replacement method) is built only now, when a condition is raised. The
+  # resolver is `.miniextendr_frame_call`, inlined: the copy of this helper
+  # that signals deferred conditions runs in the base namespace.
+  if (is.environment(.call)) .call <- ("#,
+    frame_call_helper_fn!(),
+    r#")(.call)
   .class <- .val$class
   # `arg_error!` writes the class ".miniextendr_conversion_error_class"
   # where the crate's `conversion_error_class` belongs: only the generated R
@@ -1918,7 +2011,8 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = r#"function(.val, .call_defau
       class = c(.class, "rust_error", "simpleError", "error", "condition")))
   )
   invisible(NULL)
-}"#;
+}"#
+);
 
 /// The `.miniextendr_conversion_error_class` binding that closes the wrappers
 /// preamble: the classes `.miniextendr_arg_error` puts on every R-side
@@ -1969,12 +2063,13 @@ const WRAPPERS_PREAMBLE_HEADER: &str =
 # Generated wrappers call this whenever `.Call()` returns a `rust_condition_value`.
 # `.call_default` is the wrapper's `sys.call()` (or its `.mx_call`, the
 # caller's call as written, for `#[miniextendr(noexport, call = caller)]` entry
-# points, which honours a `.call` a helper passed on), used as the fallback
-# when the Rust panic payload didn't carry a captured call (e.g. lambda
-# contexts that pass `.call = NULL` to `.Call`). For error/panic kinds
-# `stop()` longjmps; for warning/message/condition the helper signals and
-# returns invisible(NULL), which the wrapper's surrounding `return(...)`
-# propagates as its result.
+# points, which honours a `.call` a helper passed on; an S3 method's frame,
+# `environment()`, resolved to the generic's call here; NULL for a
+# `call = none` wrapper), used as the fallback when the Rust panic payload
+# didn't carry a captured call (e.g. lambda contexts that pass `.call = NULL`
+# to `.Call`). For error/panic kinds `stop()` longjmps; for
+# warning/message/condition the helper signals and returns invisible(NULL),
+# which the wrapper's surrounding `return(...)` propagates as its result.
 ";
 
 /// Write all R wrapper entries to a file.
@@ -1993,6 +2088,8 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str(RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
     content.push_str(CALLER_CALL_HELPER);
+    content.push('\n');
+    content.push_str(FRAME_CALL_HELPER);
     content.push('\n');
     content.push_str(ARG_CHECK_HELPERS);
     content.push('\n');
@@ -3869,6 +3966,7 @@ mod tests {
             ("WRAPPERS_PREAMBLE_HEADER", WRAPPERS_PREAMBLE_HEADER),
             ("RAISE_CONDITION_HELPER_FN", RAISE_CONDITION_HELPER_FN),
             ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
+            ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
             ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
             ("the conversion_error_class binding", binding.as_str()),
         ] {
@@ -3907,6 +4005,35 @@ mod tests {
         // a matched one.
         assert!(!CALLER_CALL_HELPER.contains("match.call"));
         assert!(CALLER_CALL_HELPER.ends_with("}\n"));
+    }
+
+    /// The preamble's frame-call helper (#1851) binds the bare
+    /// `frame_call_helper_fn!()` expression, the same text the raise helper
+    /// inlines for its base-namespace copy, and `.miniextendr_arg_error`
+    /// resolves a frame with it before raising.
+    #[test]
+    fn frame_call_helper_is_shared_by_the_raise_helper_and_the_checks() {
+        let fn_text = frame_call_helper_fn!();
+        let defs: Vec<&str> = FRAME_CALL_HELPER
+            .lines()
+            .filter_map(parse_top_level_fn_def_name)
+            .collect();
+        assert_eq!(defs, [".miniextendr_frame_call"]);
+        assert!(FRAME_CALL_HELPER.ends_with(&format!(".miniextendr_frame_call <- {fn_text}\n")));
+        assert!(RAISE_CONDITION_HELPER_FN.contains(&format!(
+            "if (is.environment(.call)) .call <- ({fn_text})(.call)\n"
+        )));
+        // No comment inside the shared text: it is inlined into the raise
+        // helper, whose own comments sit outside it.
+        assert!(!fn_text.contains('#'));
+        // The generic's call replaces the method's; a replacement generic's
+        // call is the assignment, with the value as the symbol `value`.
+        assert!(fn_text.contains("generic <- env[[\".Generic\"]]"));
+        assert!(fn_text.contains("call(\"<-\", call, quote(value))"));
+        assert!(
+            ARG_CHECK_HELPERS
+                .contains("  if (is.environment(call)) call <- .miniextendr_frame_call(call)\n")
+        );
     }
 
     /// The preamble's class binding (#1591): the crate classes as an R

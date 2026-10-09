@@ -772,6 +772,9 @@ pub use visibility::{Invisible, Visible};
 /// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.
 pub mod call_marker;
 pub use call_marker::{Call, CallerCall};
+/// The argument-count marker (`NArgs`) for `#[miniextendr]` parameters.
+pub mod nargs;
+pub use nargs::NArgs;
 /// Unevaluated-argument markers (`Quoted` / `Quosure`) for `#[miniextendr]` parameters.
 pub mod quoted;
 pub use quoted::{Quosure, Quoted};

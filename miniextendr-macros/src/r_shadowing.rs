@@ -69,6 +69,8 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "local",
     "missing",
     "names",
+    // The argument count an `NArgs` parameter receives (#1860).
+    "nargs",
     "paste0",
     "quote",
     "return",

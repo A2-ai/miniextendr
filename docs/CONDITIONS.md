@@ -51,7 +51,12 @@ SEXP and dispatches to the appropriate R signal function.
 The `class` slot carries the optional user-supplied class. When non-NULL it is
 prepended to the standard layered vector. The `data` slot carries the optional
 named-list payload; the R helper splices its fields into the condition object
-alongside `message` / `call` / `kind`.
+alongside `message` / `call` / `kind`. The `call` is the one the wrapper
+passed to `.Call()`: its own call as written; for an S3 method the generic's
+call, `summary(x)` for a method R called as `summary.mx_rec(x)` and
+`x$f <- value` for a replacement method; and no call at all under
+`#[miniextendr(call = none)]` (see
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#s3-methods-the-generic-call)).
 
 Deferred conditions take a shorter route: `defer_warning` & co. push the same
 payload onto a queue instead of panicking, and the generated C wrapper drains
@@ -874,10 +879,55 @@ is `NULL`), so `message!` has no `call =` form (it is a compile error), and
 `defer_message!(call = none, …)` is accepted for the shared grammar and changes
 nothing.
 
-**Argument-conversion errors** always keep the call. They are about an argument
-of the call, and the R-side argument checks they mirror name the call too, so
+**Argument-conversion errors** keep the call. They are about an argument of
+the call, and the R-side argument checks they mirror name the call too, so
 `#[condition(call = none)]` on a type used as a `TryFromSexp::Error` has no
-effect on a failed conversion.
+effect on a failed conversion. The one exception is a function that reports
+no call at all, below.
+
+### A function without a call: `call = none`
+
+The per-condition opt-out is a decision per `warning!` or per variant. A
+function whose conditions are all about the data makes it once:
+`#[miniextendr(call = none)]` drops the call from every condition the
+function raises, however it was reached, the argument errors included
+(#1851):
+
+```rust
+#[miniextendr(call = none)]
+pub fn no_call_verb(x: i32, #[miniextendr(match_arg)] mode: Mode) -> Result<i32, String> {
+    if x < 0 {
+        return Err(format!("x must be non-negative, got {x}"));
+    }
+    if x == 0 {
+        defer_warning!("x is zero");
+    }
+    Ok(x)
+}
+```
+
+```r
+no_call_verb(-1L, "Fast")
+# Error: x must be non-negative, got -1
+no_call_verb(1.5, "Fast")
+# Error: 'x' must be integer
+no_call_verb(0L, "Fast")
+# Warning message:
+# x is zero
+```
+
+The wrapper passes `.call = FALSE`, the marker above, into `.Call()`, so an
+`Err`, a panic, a classed `error!` and a deferred warning or message all
+arrive call-less through the transport that already exists, and it hands
+`NULL` to its own checks (type and length guards, `no_na`, `inherits`,
+`not_inherits`, `match_arg` / `choices`), which a failed Rust conversion
+shares. The option applies to standalone functions, S3 methods
+(`s3(generic = ..., class = ...)`) included; it has no marker type, so a
+`Call` / `CallerCall` parameter next to it is a compile error, as are
+`call_arg` and an `extern "C-unwind"` function. A crate default,
+`call_attribution = "none"` in `Cargo.toml`, applies it to every free
+function, and a per-item `call = wrapper` restores the call on one. Details:
+[CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#no-call-at-all-none).
 
 ## Argument errors from a body
 
@@ -922,7 +972,8 @@ key the vector starts at `rust_error`.) The condition is the one the wrapper's
 own check raises: same classes, same fields (`message`, `call`, `kind`,
 `param`) and the same call, which is the wrapper's call as written or, under
 `#[miniextendr(call = caller)]`, its caller's (under `call_arg`, the call
-passed as `.call`). One handler
+passed as `.call`; for an S3 method, the generic's call; under
+`call = none`, no call). One handler
 (`tryCatch(pkg_error_argument = …)`) therefore catches the wrapper's checks and
 the body's alike.
 

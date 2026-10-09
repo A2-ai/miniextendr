@@ -930,7 +930,9 @@ pub fn miniextendr(
         let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
             continue;
         };
-        let marker = kind.marker_name();
+        let marker = kind
+            .marker_name()
+            .expect("a marker type selects an attribution that has a marker");
         if let Some((first, _)) = &call_marker {
             return syn::Error::new_spanned(
                 pt,
@@ -972,6 +974,17 @@ pub fn miniextendr(
                  already takes `.call`, where NULL means the caller's call. Keep the \
                  `CallerCall` parameter, or make it `Call` so that NULL means this function's \
                  own call.",
+            )
+            .into_compile_error()
+            .into();
+        }
+        if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::NoCall) {
+            return syn::Error::new_spanned(
+                pt,
+                format!(
+                    "`call = none` passes no call, so a `{marker}` parameter has nothing to \
+                     receive; drop the parameter or the option"
+                ),
             )
             .into_compile_error()
             .into();
@@ -1055,6 +1068,16 @@ pub fn miniextendr(
         // `Checked<Quoted>` / `Unchecked<..>` is refused at parse time
         // (`MiniextendrFunctionParsed::parse`): no R-side type check to select.
         unevaluated_r_names.push(r_wrapper_builder::normalize_r_arg_string(&rust_name));
+    }
+    // The argument-count marker (#1860): an `NArgs` parameter is no R formal;
+    // the wrapper passes `nargs()` at its position and the C wrapper converts
+    // it like any argument, so it stays in `inputs`. `RArgumentBuilder`,
+    // `r_formal_names`, the preconditions, the `@param` fillers and the
+    // replacement-generic check each skip it.
+    if let Err(err) =
+        miniextendr_fn::check_nargs_params(all_inputs, |name| parsed.has_param_attrs(name))
+    {
+        return err.into_compile_error().into();
     }
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
@@ -1449,19 +1472,28 @@ pub fn miniextendr(
     };
 
     // Prepend the `.call` parameter if using the internal C wrapper. Marker
-    // (`Call` / `CallerCall`) > attribute (`call = wrapper | caller`) > crate
-    // default (`call_attribution = "..."`, where `caller` applies to
+    // (`Call` / `CallerCall`) > attribute (`call = wrapper | caller | none`)
+    // > crate default (`call_attribution = "..."`, where `caller` applies to
     // `noexport` / `internal` entry points only) > `wrapper` (#1566). Every
     // form passes the call as written: `sys.call()` for `wrapper`, the
-    // caller's `sys.call()` for `caller`. `caller` also gives the wrapper a
-    // trailing `.call = NULL` formal (#1613, S3 methods excluded; see
-    // `call_formal` below), as does `call_arg`. Attribution is independent of
-    // the preconditions.
+    // caller's `sys.call()` for `caller`; `none` passes `FALSE`, the "no
+    // call" marker, so every condition has a NULL call (#1851). `caller`
+    // also gives the wrapper a trailing `.call = NULL` formal (#1613, S3
+    // methods excluded; see `call_formal` below), as does `call_arg`.
+    // Attribution is independent of the preconditions.
     //
     // `call_arg` (#1834) turns `wrapper` into `Argument`: the same trailing
     // formal, whose `NULL` is the wrapper's own call. It is an explicit
     // choice, so the crate default doesn't apply with it (the parser and the
-    // marker loop above refuse it with `caller`).
+    // marker loop above refuse it with `caller` and `none`).
+    //
+    // An S3 method's `wrapper` attribution is `Generic` (#1851): the slot
+    // takes the method's frame, `environment()`, and the raise helper turns
+    // it into the generic's call (`summary(x)` for `summary.cls(x)`, the
+    // assignment for a replacement method) only when a condition is raised.
+    // With a `Call` parameter the frame is resolved up front instead
+    // (`GenericEager`), since the body receives the slot.
+    let is_s3_method = s3_generic.is_some() || s3_class.is_some();
     let call_attribution = r_wrapper_builder::CallAttribution::resolve(
         call_marker.as_ref().map(|(_, kind)| *kind),
         call_attribution_attr,
@@ -1469,14 +1501,26 @@ pub fn miniextendr(
         noexport || internal,
     )
     .with_call_arg(call_arg);
+    let call_attribution = if is_s3_method {
+        call_attribution.for_s3_method(call_marker.is_some())
+    } else {
+        call_attribution
+    };
     if uses_internal_c_wrapper {
         r_call_args_strs.insert(0, call_attribution.dot_call_arg().to_string());
-    } else if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::Caller) || call_arg
+    } else if matches!(
+        call_attribution_attr,
+        Some(
+            r_wrapper_builder::CallAttribution::Caller | r_wrapper_builder::CallAttribution::NoCall
+        )
+    ) || call_arg
     {
         // `extern "C-unwind"` fns have no generated call slot to redirect (a
         // `CallerCall` parameter already fails the extern signature check).
         let option = if call_arg {
             "`call_arg`"
+        } else if call_attribution_attr == Some(r_wrapper_builder::CallAttribution::NoCall) {
+            "`call = none`"
         } else {
             "`call = caller`"
         };
@@ -1518,8 +1562,7 @@ pub fn miniextendr(
             call_attribution.raise_default(),
         )
     };
-    // Determine R function name and S3-specific comments
-    let is_s3_method = s3_generic.is_some() || s3_class.is_some();
+    // Determine R function name and S3-specific comments.
     // The trailing `.call = NULL` formal of a `caller` wrapper (#1613) or a
     // `call_arg` one (#1834): a hand-written helper between the public
     // function and the entry point, or an R function composing the function,

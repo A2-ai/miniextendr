@@ -130,6 +130,10 @@ pub(super) struct TraitMethodContext<'a> {
     /// the crate default and the feature folded in), below the method's own
     /// and each parameter's.
     pub(super) impl_preconditions: Option<bool>,
+    /// The call the method's conditions report, as on
+    /// `MethodContext::call_attribution`: the method's own `sys.call()` by
+    /// default, `CallAttribution::Generic` for the S3 generator (#1851).
+    pub(super) call_attribution: crate::r_wrapper_builder::CallAttribution,
 }
 
 impl<'a> TraitMethodContext<'a> {
@@ -159,6 +163,7 @@ impl<'a> TraitMethodContext<'a> {
             params,
             args,
             impl_preconditions: None,
+            call_attribution: crate::r_wrapper_builder::CallAttribution::Wrapper,
         }
     }
 
@@ -166,6 +171,16 @@ impl<'a> TraitMethodContext<'a> {
     /// twin of `MethodContext::with_impl_preconditions`.
     pub(super) fn with_impl_preconditions(mut self, impl_preconditions: Option<bool>) -> Self {
         self.impl_preconditions = impl_preconditions;
+        self
+    }
+
+    /// Set the call the method's conditions report; the twin of
+    /// `MethodContext::with_call_attribution`.
+    pub(super) fn with_call_attribution(
+        mut self,
+        call_attribution: crate::r_wrapper_builder::CallAttribution,
+    ) -> Self {
+        self.call_attribution = call_attribution;
         self
     }
 
@@ -211,16 +226,19 @@ impl<'a> TraitMethodContext<'a> {
     /// per class system (`class(.val) <-` / `structure()` / `methods::new()` /
     /// `Class(.ptr=)` / `Class$new(.ptr=)`).
     pub(super) fn method_body_lines(&self, call: &str, class_system: ClassSystem) -> Vec<String> {
+        let raise_default = self.call_attribution.raise_default();
         if let Some(wrap) = &self.method.return_wrap {
             return crate::MethodReturnBuilder::new(call.to_owned())
+                .with_raise_default(raise_default)
                 .with_class_name(self.type_ident.to_string())
                 .with_explicit_wrap(wrap.clone())
                 .build();
         }
         if !self.returns_self() {
-            return trait_method_body_lines(call, "  ");
+            return trait_method_body_lines(call, "  ", raise_default);
         }
         let builder = crate::MethodReturnBuilder::new(call.to_string())
+            .with_raise_default(raise_default)
             .with_strategy(crate::ReturnStrategy::ReturnSelf)
             .with_class_name(self.type_ident.to_string())
             .with_indent(2);
@@ -254,6 +272,7 @@ impl<'a> TraitMethodContext<'a> {
     /// directly to `with_self` never touches the other arguments.
     pub(super) fn instance_call(&self, self_expr: &str) -> String {
         crate::r_wrapper_builder::DotCallBuilder::new(&self.c_ident)
+            .with_call_attribution(self.call_attribution)
             .with_self(self_expr)
             .with_args_str(&self.args)
             .build()
@@ -273,6 +292,7 @@ impl<'a> TraitMethodContext<'a> {
             &self.method.sig.inputs,
             &self.method.per_param,
             &self.c_ident,
+            self.call_attribution,
         )
     }
 
@@ -289,6 +309,7 @@ impl<'a> TraitMethodContext<'a> {
             self.method.coerce,
             self.method.preconditions,
             self.impl_preconditions,
+            self.call_attribution.r_check_call(),
         )
     }
 

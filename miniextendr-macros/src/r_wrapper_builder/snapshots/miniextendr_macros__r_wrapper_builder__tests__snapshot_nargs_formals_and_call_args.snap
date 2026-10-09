@@ -1,0 +1,20 @@
+---
+source: miniextendr-macros/src/r_wrapper_builder/tests.rs
+assertion_line: 523
+expression: output
+---
+# NArgs first
+formals: x, i
+call_args: nargs(), x, if (missing(i)) quote(expr=) else i
+
+# NArgs between (with dots and a defaulted formal)
+formals: x, i, j, ..., drop
+call_args: x, if (missing(i)) quote(expr=) else i, if (missing(j)) quote(expr=) else j, nargs(), list(...), if (missing(drop)) quote(expr=) else drop
+
+# NArgs last (replacement method, value before it)
+formals: x, i, j, value
+call_args: x, if (missing(i)) quote(expr=) else i, if (missing(j)) quote(expr=) else j, value, nargs()
+
+# NArgs on a method (receiver skipped)
+formals: i
+call_args: i, nargs()

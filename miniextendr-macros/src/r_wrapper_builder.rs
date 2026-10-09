@@ -123,8 +123,8 @@ pub(crate) fn check_r_formals(
 
 /// The R formal each parameter of a signature becomes, with the parameter's
 /// ident: [`normalize_r_arg_string`] of its name. The `&Dots` parameter
-/// becomes `...` wherever it sits and is skipped, as are receivers and
-/// non-ident patterns.
+/// becomes `...` wherever it sits and is skipped, as are receivers,
+/// non-ident patterns and an `NArgs` parameter, which is no formal (#1860).
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
 /// ([`formal_names`](crate::r_shadowing::formal_names)) qualifies the calls
@@ -137,7 +137,7 @@ pub(crate) fn r_formal_names(
         let syn::FnArg::Typed(pat_type) = input else {
             return None;
         };
-        if Some(idx) == dots_index {
+        if Some(idx) == dots_index || crate::type_inspect::is_nargs_marker(&pat_type.ty) {
             return None;
         }
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
@@ -172,6 +172,8 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 /// - Unit type defaults (`()` → `= NULL`)
 /// - Dots: the `&Dots` parameter is `...` in the formals and `list(...)` in
 ///   the call arguments, at its own position in the signature
+/// - The argument count: an `NArgs` parameter is no formal and `nargs()` in
+///   the call arguments, at its own position (#1860)
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
     /// The function's input parameters from the parsed Rust signature.
@@ -243,6 +245,12 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
+            // The argument count (#1860) is no formal: the call arguments pass
+            // `nargs()` in its place.
+            if crate::type_inspect::is_nargs_marker(&pat_type.ty) {
+                continue;
+            }
+
             // Extract and normalize argument name
             let arg_ident = match pat_type.pat.as_ref() {
                 syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
@@ -300,6 +308,15 @@ impl<'a> RArgumentBuilder<'a> {
             // the argument is always `list(...)`.
             if Some(idx) == self.dots_index {
                 call_args.push("list(...)".to_string());
+                continue;
+            }
+
+            // The argument count (#1860): the wrapper's own `nargs()`, which
+            // the C wrapper converts like any argument. `.Call()` evaluates
+            // its arguments in the wrapper's frame, so `nargs()` counts the
+            // wrapper's call as typed.
+            if crate::type_inspect::is_nargs_marker(&pat_type.ty) {
+                call_args.push("nargs()".to_string());
                 continue;
             }
 
@@ -440,49 +457,113 @@ pub enum CallAttribution {
     /// attribution plus the formal, so a `Call` marker reads the resolved
     /// call.
     Argument,
+    /// `.call = FALSE`: no call at all (#1851). Selected by
+    /// `#[miniextendr(call = none)]` on a standalone function (an S3 method
+    /// included) or by the crate default `call_attribution = "none"`, which
+    /// applies to every standalone function. Every condition the wrapper
+    /// raises then has a `NULL` `conditionCall()`, like R's `call. = FALSE`:
+    /// the R-side checks and the `match_arg` helpers are passed `NULL`, the
+    /// slot carries `FALSE`, the marker the raise helper already reads as "no
+    /// call" (what `call = none` on a condition macro writes, see
+    /// `ConditionCall::None`), and the raise fallback is `NULL`. There is no
+    /// marker spelling: a `Call` / `CallerCall` parameter receives the call,
+    /// and this attribution has none, so either one is a compile error with
+    /// it, as is `call_arg` (whose `.call` would have nothing to replace).
+    NoCall,
+    /// `.call = environment()`: the wrapper's own frame, turned into a call
+    /// only when a condition is raised (#1851). The attribution of every
+    /// generated S3 method that would otherwise be `wrapper`: a standalone
+    /// `s3(...)` function, an impl-block or trait `s3` / `vctrs` method
+    /// ([`CallAttribution::for_s3_method`]). The raise helper and
+    /// `.miniextendr_arg_error` resolve the frame with
+    /// `.miniextendr_frame_call` (`miniextendr-api/src/registry.rs`), which
+    /// names the generic the user called when R dispatched the method
+    /// (`.Generic` is bound in the frame: `summary(x, a = 1)` for
+    /// `summary.cls(x, a = 1)`, `x[i]` for `` `[.cls`(x, i) ``) and writes a
+    /// replacement generic's call as the assignment, `x$name <- value`,
+    /// without the value R passed. A direct call of the method keeps the
+    /// method's name. The success path evaluates `environment()` instead of
+    /// `sys.call()`, the same cost; the rewrite runs only on a raise.
+    Generic,
+    /// `.call = .mx_call`, where the wrapper body first binds
+    /// `.mx_call <- .miniextendr_frame_call(environment())`: the
+    /// [`CallAttribution::Generic`] call resolved before the `.Call()`, for an
+    /// S3 method with a `Call` parameter, whose C wrapper binds it from the
+    /// slot and so needs a call object there (#1851). Costs the frame scan on
+    /// every call, so only the marker selects it.
+    GenericEager,
 }
 
 impl CallAttribution {
-    /// The spelling shared by the attribute (`call = wrapper | caller`) and
-    /// the crate default (`call_attribution = "wrapper" | "caller"`).
+    /// The spelling shared by the attribute (`call = wrapper | caller | none`)
+    /// and the crate default (`call_attribution = "wrapper" | "caller" |
+    /// "none"`).
     pub fn parse_name(name: &str) -> Option<Self> {
         match name {
             "wrapper" => Some(CallAttribution::Wrapper),
             "caller" => Some(CallAttribution::Caller),
+            "none" => Some(CallAttribution::NoCall),
             _ => None,
         }
     }
 
     /// The attribute spelling of this attribution. [`CallAttribution::Argument`]
-    /// is `wrapper` attribution with the `call_arg` option, so it shares
-    /// `wrapper`'s spelling.
+    /// is `wrapper` attribution with the `call_arg` option, and the two S3
+    /// forms are `wrapper` attribution on a dispatched method, so all three
+    /// share `wrapper`'s spelling.
     pub fn name(self) -> &'static str {
         match self {
-            CallAttribution::Wrapper | CallAttribution::Argument => "wrapper",
+            CallAttribution::Wrapper
+            | CallAttribution::Argument
+            | CallAttribution::Generic
+            | CallAttribution::GenericEager => "wrapper",
             CallAttribution::Caller => "caller",
+            CallAttribution::NoCall => "none",
         }
     }
 
     /// The parameter marker type that selects this attribution (#1566): `Call`
-    /// for `wrapper`, `CallerCall` for `caller`.
-    pub fn marker_name(self) -> &'static str {
+    /// for `wrapper`, `CallerCall` for `caller`. `none` has no marker: a
+    /// marker receives the call, and `none` passes none.
+    pub fn marker_name(self) -> Option<&'static str> {
         match self {
-            CallAttribution::Wrapper | CallAttribution::Argument => "Call",
-            CallAttribution::Caller => "CallerCall",
+            CallAttribution::Wrapper
+            | CallAttribution::Argument
+            | CallAttribution::Generic
+            | CallAttribution::GenericEager => Some("Call"),
+            CallAttribution::Caller => Some("CallerCall"),
+            CallAttribution::NoCall => None,
+        }
+    }
+
+    /// The attribution of a generated S3 method (#1851): `wrapper` becomes
+    /// [`CallAttribution::Generic`], or [`CallAttribution::GenericEager`] when
+    /// the method takes a `Call` parameter (`has_call_marker`), which needs
+    /// the call resolved before the `.Call()`. `caller` and `none` are
+    /// explicit choices and stay; `Argument` never reaches an S3 method
+    /// (`call_arg` is refused on them).
+    pub fn for_s3_method(self, has_call_marker: bool) -> Self {
+        match self {
+            CallAttribution::Wrapper if has_call_marker => CallAttribution::GenericEager,
+            CallAttribution::Wrapper => CallAttribution::Generic,
+            other => other,
         }
     }
 
     /// Resolve a standalone function's attribution from its three spellings
     /// (#1566), most specific first: the `Call` / `CallerCall` parameter
-    /// marker, the `call = wrapper | caller` attribute, the crate's
+    /// marker, the `call = wrapper | caller | none` attribute, the crate's
     /// `[package.metadata.miniextendr] call_attribution` default and finally
     /// the framework default, `wrapper`. A crate default of `caller` applies
     /// to internal entry points (`noexport` / `internal`) only; an exported
-    /// function's caller is arbitrary user code, so it keeps `wrapper`. The
-    /// explicit spellings are validated before this runs (a `caller` marker
-    /// or attribute on an exported function is a compile error, not a
-    /// fallback). Class and trait methods always use `wrapper`, except the
-    /// R6 / S7 lambda frames ([`DotCallBuilder::null_call_attribution`]).
+    /// function's caller is arbitrary user code, so it keeps `wrapper`. A
+    /// crate default of `none` applies to every standalone function, like
+    /// `wrapper` (#1851). The explicit spellings are validated before this
+    /// runs (a `caller` marker or attribute on an exported function is a
+    /// compile error, not a fallback). Class and trait methods always use
+    /// `wrapper`, except the R6 / S7 lambda frames
+    /// ([`DotCallBuilder::null_call_attribution`]) and the S3 methods
+    /// ([`CallAttribution::for_s3_method`]).
     pub fn resolve(
         marker: Option<Self>,
         attribute: Option<Self>,
@@ -510,24 +591,49 @@ impl CallAttribution {
         }
     }
 
+    /// The expression the `.Call()` line passes as `.call`: the call as
+    /// written, the frame it is read from on a raise, or `FALSE` for none.
+    pub fn dot_call_expr(self) -> &'static str {
+        match self {
+            CallAttribution::Wrapper => "sys.call()",
+            CallAttribution::Caller | CallAttribution::Argument | CallAttribution::GenericEager => {
+                ".mx_call"
+            }
+            CallAttribution::NoCall => "FALSE",
+            CallAttribution::Generic => "environment()",
+        }
+    }
+
     /// The `.call = ...` argument for the `.Call()` line.
     pub fn dot_call_arg(self) -> &'static str {
         match self {
             CallAttribution::Wrapper => ".call = sys.call()",
-            CallAttribution::Caller | CallAttribution::Argument => ".call = .mx_call",
+            CallAttribution::Caller | CallAttribution::Argument | CallAttribution::GenericEager => {
+                ".call = .mx_call"
+            }
+            CallAttribution::NoCall => ".call = FALSE",
+            CallAttribution::Generic => ".call = environment()",
         }
     }
 
-    /// The fallback call handed to `.miniextendr_raise_condition`.
+    /// The fallback call handed to `.miniextendr_raise_condition`: the same
+    /// value as the slot, except that `none` passes `NULL` (the helper reads
+    /// `FALSE` in the slot as "no call" and would read it here too; `NULL` is
+    /// the plainer spelling).
     pub fn raise_default(self) -> &'static str {
         match self {
-            CallAttribution::Caller | CallAttribution::Argument => ".mx_call",
+            CallAttribution::Caller | CallAttribution::Argument | CallAttribution::GenericEager => {
+                ".mx_call"
+            }
             CallAttribution::Wrapper => "sys.call()",
+            CallAttribution::NoCall => "NULL",
+            CallAttribution::Generic => "environment()",
         }
     }
 
     /// The statement the wrapper body needs before anything else: empty for
-    /// [`CallAttribution::Wrapper`]; the others bind `.mx_call`. It is the
+    /// [`CallAttribution::Wrapper`], [`CallAttribution::NoCall`] and
+    /// [`CallAttribution::Generic`]; the others bind `.mx_call`. It is the
     /// first part of the wrapper prelude, ahead of the R-side checks
     /// (preconditions, `match.arg`), so that those checks can attribute their
     /// failures to the caller too (#1548). `call_formal` says whether the
@@ -536,7 +642,8 @@ impl CallAttribution {
     /// [`CallAttribution::Argument`] a `NULL` `.call` is the wrapper's own
     /// call, read inline so that a call without `.call` costs one `is.null()`
     /// (#1834); the wrapper always has the formal there, since the option is
-    /// refused on S3 methods.
+    /// refused on S3 methods. [`CallAttribution::GenericEager`] resolves the
+    /// method frame's call up front (#1851).
     pub fn prelude(self, call_formal: bool) -> String {
         match self {
             CallAttribution::Caller if call_formal => {
@@ -546,7 +653,12 @@ impl CallAttribution {
             CallAttribution::Argument => ".mx_call <- if (is.null(.call)) sys.call() else \
                  .miniextendr_caller_call(.call, own = TRUE)"
                 .to_string(),
-            CallAttribution::Wrapper => String::new(),
+            CallAttribution::GenericEager => {
+                ".mx_call <- .miniextendr_frame_call(environment())".to_string()
+            }
+            CallAttribution::Wrapper | CallAttribution::NoCall | CallAttribution::Generic => {
+                String::new()
+            }
         }
     }
 
@@ -563,7 +675,10 @@ impl CallAttribution {
     pub fn formal(self) -> Option<&'static str> {
         match self {
             CallAttribution::Caller | CallAttribution::Argument => Some(".call = NULL"),
-            CallAttribution::Wrapper => None,
+            CallAttribution::Wrapper
+            | CallAttribution::NoCall
+            | CallAttribution::Generic
+            | CallAttribution::GenericEager => None,
         }
     }
 
@@ -583,16 +698,25 @@ impl CallAttribution {
                  this call, a frame such as environment() for the call of the function \
                  owning that frame, or a call object. Pass it by name.",
             ),
-            CallAttribution::Wrapper => None,
+            CallAttribution::Wrapper
+            | CallAttribution::NoCall
+            | CallAttribution::Generic
+            | CallAttribution::GenericEager => None,
         }
     }
 
     /// The call an R-side check raised in the wrapper body should carry:
-    /// `.mx_call` when the prelude binds it, otherwise `None` (the check
-    /// keeps its own attribution, which is the wrapper's frame).
+    /// `.mx_call` when the prelude binds it, `NULL` for `none`, the frame
+    /// (`environment()`, which `.miniextendr_arg_error` resolves) for an S3
+    /// method, otherwise `None` (the check keeps its own attribution, which
+    /// is the wrapper's frame).
     pub fn r_check_call(self) -> Option<&'static str> {
         match self {
-            CallAttribution::Caller | CallAttribution::Argument => Some(".mx_call"),
+            CallAttribution::Caller | CallAttribution::Argument | CallAttribution::GenericEager => {
+                Some(".mx_call")
+            }
+            CallAttribution::NoCall => Some("NULL"),
+            CallAttribution::Generic => Some("environment()"),
             CallAttribution::Wrapper => None,
         }
     }
@@ -758,6 +882,15 @@ impl DotCallBuilder {
     /// gives `NULL`) surfaces the nearest meaningful frame instead.
     pub fn null_call_attribution(mut self) -> Self {
         self.call_expr = Some("NULL".to_string());
+        self
+    }
+
+    /// Pass the `.call` of `attribution` ([`CallAttribution::dot_call_expr`]):
+    /// `environment()` for a generated S3 method
+    /// ([`CallAttribution::Generic`], #1851), which the raise helper turns into
+    /// the generic's call when a condition is raised.
+    pub fn with_call_attribution(mut self, attribution: CallAttribution) -> Self {
+        self.call_expr = Some(attribution.dot_call_expr().to_string());
         self
     }
 

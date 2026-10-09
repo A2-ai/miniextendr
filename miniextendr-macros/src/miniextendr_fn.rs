@@ -1794,6 +1794,12 @@ pub(crate) fn finalize_method_param_attrs(
             ),
         ));
     }
+    // An `NArgs` parameter (#1860) takes no option: the method-level forms
+    // name it like any parameter, and the wrapper, which never makes it a
+    // formal, would silently drop them.
+    check_nargs_params(inputs, |name| {
+        per_param.contains_key(name) || defaults.contains_key(name)
+    })?;
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -1938,6 +1944,17 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                          the inner type",
                         marker.name()
                     ),
+                ));
+            }
+            // `NArgs` (#1860) is filled by the generated R wrapper, which an
+            // extern function does not have.
+            if is_extern && crate::type_inspect::is_nargs_marker(&inner_ty) {
+                return Err(syn::Error::new_spanned(
+                    &pat_type.ty,
+                    "`NArgs` on an `extern \"C-unwind\"` function: the generated R wrapper \
+                     passes `nargs()` for it, and an extern function has none (`.Call()` reaches \
+                     it directly). Drop the `extern \"C-unwind\"` to let the macro generate the \
+                     wrapper, or take a `SEXP` and pass the count yourself",
                 ));
             }
 
@@ -2426,14 +2443,17 @@ const FN_NESTED_OPTIONS_HELP: &str =
 ///   below the function come the crate's `[package.metadata.miniextendr]
 ///   preconditions = true | false` and then the `no-preconditions-default`
 ///   feature (`crate::r_preconditions::resolve_type_checks`).
-/// - `call = wrapper | caller`: which call the wrapper attributes conditions
-///   to (#1566), always as written. `wrapper` (the framework default) passes
-///   `.call = sys.call()`; `caller` binds the caller's call first and passes
-///   that (internal entry points behind a hand-written R function; needs
-///   `noexport` / `internal`). A `Call` / `CallerCall` parameter is the
-///   marker spelling of `wrapper` / `caller`, and
-///   `[package.metadata.miniextendr] call_attribution` the crate default; see
-///   `CallAttribution::resolve`.
+/// - `call = wrapper | caller | none`: which call the wrapper attributes
+///   conditions to (#1566), always as written. `wrapper` (the framework
+///   default) passes `.call = sys.call()`; `caller` binds the caller's call
+///   first and passes that (internal entry points behind a hand-written R
+///   function; needs `noexport` / `internal`); `none` passes no call, so
+///   every condition, the argument errors included, has a NULL call (#1851;
+///   not with a `Call` / `CallerCall` parameter or `call_arg`). A `Call` /
+///   `CallerCall` parameter is the marker spelling of `wrapper` / `caller`,
+///   and `[package.metadata.miniextendr] call_attribution` the crate default;
+///   see `CallAttribution::resolve`. On an S3 method `wrapper` reports the
+///   generic's call (`CallAttribution::for_s3_method`).
 /// - `call_arg`: the wrapper takes a trailing `.call = NULL` formal (#1834),
 ///   exported or not. `NULL` is the wrapper's own call; an R function
 ///   composing the function passes `.call = environment()` (or a call
@@ -2480,7 +2500,7 @@ pub(crate) struct MiniextendrFnAttrs {
     /// (`crate::r_preconditions::resolve_type_checks`).
     pub(crate) preconditions: Option<bool>,
     /// The attribution the attribute asked for, if any (#1566):
-    /// `call = wrapper | caller`. `None` here means the attribute said
+    /// `call = wrapper | caller | none`. `None` here means the attribute said
     /// nothing; the codegen then falls back to a `Call` / `CallerCall`
     /// parameter marker, the crate default and finally `wrapper`
     /// (`crate::r_wrapper_builder::CallAttribution::resolve`).
@@ -2881,6 +2901,55 @@ pub(crate) fn parse_serde_error_nested(
     Err(meta.error(SERDE_ERROR_BARE_HELP))
 }
 
+/// Check the `NArgs` parameters of a signature (#1860): at most one, and none
+/// that a per-parameter option names (`has_options`, keyed by Rust name). The
+/// parameter is no R argument (the wrapper fills it with `nargs()`), so an
+/// option would have nothing to act on.
+///
+/// Shared by standalone functions (`lib.rs`) and impl / trait methods
+/// ([`finalize_method_param_attrs`]). Both errors point at the parameter,
+/// also for a method, whose options are written on the method.
+pub(crate) fn check_nargs_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    has_options: impl Fn(&str) -> bool,
+) -> syn::Result<()> {
+    let mut first: Option<&syn::Ident> = None;
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        if !crate::type_inspect::is_nargs_marker(&pt.ty) {
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let ident = &pat_ident.ident;
+        if let Some(first) = first {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "a `#[miniextendr]` function takes at most one `NArgs` parameter: `{first}` \
+                     already receives `nargs()`, and `{ident}` would receive the same count"
+                ),
+            ));
+        }
+        if has_options(&crate::naming::ident_name(ident)) {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
+                     `preconditions`) do not apply to the `NArgs` parameter `{ident}`: it is no \
+                     R argument, the generated wrapper fills it with `nargs()`"
+                ),
+            ));
+        }
+        first = Some(ident);
+    }
+    Ok(())
+}
+
 /// Check that an S3 method for a replacement generic takes the new value last,
 /// as `value`.
 ///
@@ -2889,9 +2958,10 @@ pub(crate) fn parse_serde_error_nested(
 /// (`x$f <- v` runs `` `$<-`(x, "f", value = v) ``), and `R CMD check`
 /// (`tools::checkReplaceFuns()`) requires the last formal of every replacement
 /// function, registered S3 methods included, to be `value`. The last
-/// non-receiver parameter of `inputs` must therefore become the R formal
-/// `value` (`_value` does too); a trailing `&Dots` is `...`, so it can't be
-/// last. Any other generic passes. `fallback` spans the error when there is no
+/// non-receiver parameter of `inputs` that is an R formal (an `NArgs`
+/// parameter is none, #1860) must therefore become the R formal `value`
+/// (`_value` does too); a trailing `&Dots` is `...`, so it can't be last. Any
+/// other generic passes. `fallback` spans the error when there is no
 /// parameter to point at.
 ///
 /// Used by standalone `s3(generic = ..., class = ...)` functions (`lib.rs`,
@@ -2907,13 +2977,17 @@ pub(crate) fn check_replacement_value_param(
     if !generic.ends_with("<-") {
         return Ok(());
     }
+    // The last R formal: an `NArgs` parameter is none (#1860), so `value`
+    // may come before it.
     let last = inputs
         .iter()
         .enumerate()
         .rev()
         .find_map(|(idx, arg)| match arg {
-            syn::FnArg::Typed(pat_type) => Some((idx, pat_type)),
-            syn::FnArg::Receiver(_) => None,
+            syn::FnArg::Typed(pat_type) if !crate::type_inspect::is_nargs_marker(&pat_type.ty) => {
+                Some((idx, pat_type))
+            }
+            _ => None,
         });
     let found = match last {
         Some((idx, _)) if Some(idx) == dots_index(inputs) => "the last R argument is `...`".into(),
@@ -3235,8 +3309,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             return Err(syn::Error::new_spanned(
                                 &nv.value,
                                 "`call = ...` accepts `wrapper` (the call as written, the \
-                                 default) or `caller` (attribute conditions to the wrapper's \
-                                 caller)",
+                                 default), `caller` (attribute conditions to the wrapper's \
+                                 caller) or `none` (conditions carry no call)",
                             ));
                         };
                         if call_attr.is_some() {
@@ -3269,7 +3343,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "unknown `#[miniextendr]` key-value option `{}`. \
                                  Key-value options are: `prefer = \"...\"`, `dots = typed_list!(...)`, \
                                  `lifecycle = \"...\"`, `doc = \"...\"`, `c_symbol = \"...\"`, \
-                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller`, `r_entry = \"...\"`, \
+                                 `r_name = \"...\"`, `postfix = \"...\"`, `call = wrapper | caller | none`, `r_entry = \"...\"`, \
                                  `r_post_checks = \"...\"`, \
                                  `r_on_exit = \"...\"`",
                                 key_name,
@@ -3432,6 +3506,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 "`call_arg` cannot be combined with `call = caller`: a `caller` wrapper already \
                  takes `.call`, where NULL means the caller's call. Keep `call = caller`, or drop \
                  it so that NULL means this function's own call.",
+            ));
+        }
+        // `call = none` (#1851) passes no call, so there is nothing for a
+        // `.call` argument to replace.
+        if call_arg && call_attr == Some(CallAttribution::NoCall) {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`call_arg` cannot be combined with `call = none`: `.call` names the call the \
+                 conditions report, and `none` reports none. Keep one of them.",
             ));
         }
         if call_arg && (s3_generic.is_some() || s3_class.is_some()) {

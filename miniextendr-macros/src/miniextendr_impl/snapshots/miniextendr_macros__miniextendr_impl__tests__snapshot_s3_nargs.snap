@@ -1,0 +1,60 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+assertion_line: 7203
+expression: wrapper
+---
+# Bag::new (1:1)
+#' @title Bag S3 Class
+#' @name Bag
+#' @rdname Bag
+#' @param values (undocumented)
+#' @export
+new_bag <- function(values) {
+  if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+  .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  structure(.val, class = "Bag")
+}
+
+# Bag::at (1:1)
+#' @description Element `i`; refuses `h[[i, ]]`.
+#' @param i (undocumented)
+#' @name [[.Bag
+#' @rdname Bag
+#' @method [[ Bag
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+`[[.Bag` <- function(x, i, ...) {
+  if (!isTRUE(is.integer(i))) .miniextendr_arg_error("i", "must be integer", environment())
+  if (!isTRUE(length(i) == 1L)) .miniextendr_arg_error("i", "must have length 1", environment())
+  .val <- .Call(C_miniextendr_macros_Bag__at, .call = environment(), x, i, nargs())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+# Bag::set_at (1:1)
+#' @description Replace element `i`.
+#' @param i (undocumented)
+#' @param value (undocumented)
+#' @name [[<-.Bag
+#' @rdname Bag
+#' @method [[<- Bag
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+`[[<-.Bag` <- function(x, i, ..., value) {
+  if (!isTRUE(is.integer(i))) .miniextendr_arg_error("i", "must be integer", environment())
+  if (!isTRUE(length(i) == 1L)) .miniextendr_arg_error("i", "must have length 1", environment())
+  if (!isTRUE(is.double(value))) .miniextendr_arg_error("value", "must be double", environment())
+  if (!isTRUE(length(value) == 1L)) .miniextendr_arg_error("value", "must have length 1", environment())
+  .val <- .Call(C_miniextendr_macros_Bag__set_at, .call = environment(), x, i, value, nargs())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  x
+}
+
+#' @rdname Bag
+#' @export
+Bag <- new.env(parent = emptyenv())
+
+Bag$new <- new_bag

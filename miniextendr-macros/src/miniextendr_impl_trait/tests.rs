@@ -776,8 +776,8 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
         result
     );
     assert!(
-        result.contains(".miniextendr_arg_error(\"amount\", \"must be integer\")"),
-        "precondition message should mention the param, got:\n{}",
+        result.contains(".miniextendr_arg_error(\"amount\", \"must be integer\", environment())"),
+        "precondition message should mention the param and the S3 frame, got:\n{}",
         result
     );
 }
@@ -856,7 +856,9 @@ fn test_bug2_choices_prelude_emitted_for_trait_method() {
         result
     );
     assert!(
-        result.contains("mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\")"),
+        result.contains(
+            "mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\", environment())"
+        ),
         "choices param should get a .miniextendr_match_arg() prelude line, got:\n{}",
         result
     );
@@ -935,8 +937,8 @@ fn test_trait_method_choices_no_default() {
     .unwrap();
     for line in [
         "function(x, mode, tags, ...)",
-        "if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\")",
-        "tags <- .miniextendr_match_arg_several(tags, c(\"a\", \"b\"), \"tags\")",
+        "if (!missing(mode)) mode <- .miniextendr_match_arg(mode, c(\"fast\", \"slow\"), \"mode\", environment())",
+        "tags <- .miniextendr_match_arg_several(tags, c(\"a\", \"b\"), \"tags\", environment())",
     ] {
         assert!(result.contains(line), "missing `{line}` in:\n{result}");
     }
@@ -998,8 +1000,8 @@ fn test_trait_method_checks_take_custom_messages() {
     )
     .unwrap();
     for guard in [
-        "if (!isTRUE(!anyNA(x_factor))) .miniextendr_arg_error(\"x_factor\", message = \"`x_factor` must be a number, not NA\")",
-        "if (!isTRUE(inherits(model, \"pkg_model\"))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`\")",
+        "if (!isTRUE(!anyNA(x_factor))) .miniextendr_arg_error(\"x_factor\", message = \"`x_factor` must be a number, not NA\", call = environment())",
+        "if (!isTRUE(inherits(model, \"pkg_model\"))) .miniextendr_arg_error(\"model\", message = \"`model` must be a `pkg_model`\", call = environment())",
     ] {
         assert!(result.contains(guard), "missing `{guard}` in:\n{result}");
     }
@@ -1045,8 +1047,8 @@ fn test_trait_method_not_inherits() {
     )
     .unwrap();
     for guard in [
-        "if (!isTRUE(!inherits(tau, c(\"difftime\", \"Date\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` is a time\")",
-        "if (!isTRUE(!inherits(model, \"pkg_old\"))) .miniextendr_arg_error(\"model\", \"must not inherit from 'pkg_old'\")",
+        "if (!isTRUE(!inherits(tau, c(\"difftime\", \"Date\")))) .miniextendr_arg_error(\"tau\", message = \"`tau` is a time\", call = environment())",
+        "if (!isTRUE(!inherits(model, \"pkg_old\"))) .miniextendr_arg_error(\"model\", \"must not inherit from 'pkg_old'\", environment())",
     ] {
         assert!(result.contains(guard), "missing `{guard}` in:\n{result}");
     }

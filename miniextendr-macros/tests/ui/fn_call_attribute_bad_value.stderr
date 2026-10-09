@@ -1,4 +1,4 @@
-error: `call = ...` accepts `wrapper` (the call as written, the default) or `caller` (attribute conditions to the wrapper's caller)
+error: `call = ...` accepts `wrapper` (the call as written, the default), `caller` (attribute conditions to the wrapper's caller) or `none` (conditions carry no call)
  --> tests/ui/fn_call_attribute_bad_value.rs:7:22
   |
 7 | #[miniextendr(call = parent)]

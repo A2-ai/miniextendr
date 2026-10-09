@@ -603,12 +603,15 @@ fn generate_trait_s3_r_wrapper(
     let instance_methods: Vec<_> = methods.iter().filter(|m| m.has_self).collect();
     let static_methods: Vec<_> = methods.iter().filter(|m| !m.has_self).collect();
 
-    // Generate S3 generics + methods for instance methods
+    // Generate S3 generics + methods for instance methods. Their conditions
+    // report the generic's call, resolved from the method frame on a raise
+    // (#1851).
     for method in &instance_methods {
         let generic_name = method.r_method_name();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
         let ctx = TraitMethodContext::new(method, type_ident, trait_name)
-            .with_impl_preconditions(impl_preconditions);
+            .with_impl_preconditions(impl_preconditions)
+            .with_call_attribution(crate::r_wrapper_builder::CallAttribution::Generic);
 
         // S3 generic roxygen (only create if doesn't exist). The type-qualified
         // @name avoids duplicate aliases across types, but it is also the S3

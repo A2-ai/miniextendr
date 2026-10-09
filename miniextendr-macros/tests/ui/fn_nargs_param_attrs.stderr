@@ -1,0 +1,5 @@
+error: per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, `preconditions`) do not apply to the `NArgs` parameter `n`: it is no R argument, the generated wrapper fills it with `nargs()`
+ --> tests/ui/fn_nargs_param_attrs.rs:9:55
+  |
+9 | pub fn counted(x: i32, #[miniextendr(default = "2L")] n: miniextendr_api::NArgs) -> i32 {
+  |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
