@@ -17,7 +17,7 @@
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
-use crate::SEXPTYPE::{LISTSXP, NILSXP, STRSXP, VECSXP};
+use crate::SEXPTYPE::{NILSXP, STRSXP, VECSXP};
 use crate::from_r::{
     ElementCheck, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, map_vecsxp_batched,
     no_element_check,
@@ -63,8 +63,8 @@ impl List {
     ///
     /// # Safety
     ///
-    /// Caller must ensure `sexp` is a valid list object (typically a `VECSXP` or
-    /// a pairlist coerced to `VECSXP`) whose lifetime remains managed by R.
+    /// Caller must ensure `sexp` is a valid list (`VECSXP`) that stays rooted
+    /// while the `List` is used: `List` is a `Copy` view and roots nothing.
     #[inline]
     pub const unsafe fn from_raw(sexp: SEXP) -> Self {
         List(sexp)
@@ -1379,25 +1379,23 @@ impl IntoR for Vec<Option<List>> {
 
 /// A `List` reads any R list, whatever its names.
 ///
-/// Accepts a `VECSXP`, and a pairlist (`LISTSXP`) coerced to one; anything
-/// else is a [`SexpTypeError`]. Names are not checked: R allows a name to
-/// appear more than once (`list(a = 1, a = 2)`), and so does `List`. A
-/// function that needs unique names checks with
-/// [`List::first_duplicate_name`].
+/// Accepts a `VECSXP` only; anything else is a [`SexpTypeError`]. A pairlist
+/// (`LISTSXP`, such as `formals(f)` or `pairlist(...)`) is refused, not
+/// coerced (#1866): the coerced copy would be a new object that nothing
+/// roots, since `List` is a `Copy` view, so the first allocation in the
+/// function could free it. The caller converts with `as.list()`, and the
+/// argument error says so.
+///
+/// Names are not checked: R allows a name to appear more than once
+/// (`list(a = 1, a = 2)`), and so does `List`. A function that needs unique
+/// names checks with [`List::first_duplicate_name`].
 impl TryFromSexp for List {
     type Error = SexpTypeError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
-
-        // Accept VECSXP (generic list) directly
-        // Also accept LISTSXP (pairlist) by coercing to VECSXP
-        // Note: Rf_isList() only returns true for LISTSXP/NILSXP, not VECSXP
         if actual == VECSXP {
             Ok(List(sexp))
-        } else if actual == LISTSXP {
-            // Accept pairlists by coercing to a VECSXP list.
-            Ok(List(sexp.coerce(VECSXP)))
         } else {
             Err(SexpTypeError {
                 expected: VECSXP,
@@ -1418,8 +1416,8 @@ impl TryFromSexp for Option<List> {
     }
 }
 
-/// One element of a list of lists: a `VECSXP`. A pairlist element is refused
-/// rather than coerced, because the coerced copy would be a new object that
+/// One element of a list of lists: a `VECSXP`. A pairlist element is refused,
+/// as `List` refuses a pairlist: a coerced copy would be a new object that
 /// nothing roots while the rest of the list is read.
 fn list_element(elem: SEXP) -> Result<List, SexpError> {
     let actual = elem.type_of();
@@ -1438,9 +1436,8 @@ fn list_element(elem: SEXP) -> Result<List, SexpError> {
 /// by element (#1837).
 ///
 /// The argument must be a list (`VECSXP`), and each element a list too. A
-/// pairlist is refused, at either level: a `List` argument coerces one, but
-/// the coerced copy of an element would be an object nothing roots while the
-/// rest of the list is read. Every element that fails is reported in one
+/// pairlist is refused at either level, as for a `List` argument (#1866).
+/// Every element that fails is reported in one
 /// error, with its position as R counts it: `expected list, got numeric
 /// (elements 2, 3)`. The elements stay rooted by the argument list.
 ///

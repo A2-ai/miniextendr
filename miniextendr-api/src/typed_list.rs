@@ -132,7 +132,8 @@ pub enum TypeSpec {
     Raw(Option<usize>),
     /// Complex vector.
     Complex(Option<usize>),
-    /// List (VECSXP or pairlist).
+    /// List (`VECSXP`), or `NULL`. A pairlist is refused, as
+    /// [`List`](crate::List) refuses one.
     List(Option<usize>),
     /// Object inheriting from a specific class.
     /// Uses `Rf_inherits` semantics (checks class attribute).
@@ -530,7 +531,9 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::List(len) => {
-            let is_list = elem.is_pair_list() || actual_type == SEXPTYPE::VECSXP;
+            // A pairlist is refused, as `List` refuses one (#1866); `NULL`
+            // passes, as it always has.
+            let is_list = matches!(actual_type, SEXPTYPE::VECSXP | SEXPTYPE::NILSXP);
             if !is_list {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),

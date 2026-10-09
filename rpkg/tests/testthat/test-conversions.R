@@ -707,10 +707,16 @@ test_that("first_duplicate_name skips NA and empty names", {
   expect_identical(conv_list_names_report(x), list(len = 5L, dup = "a"))
 })
 
-test_that("a pairlist with repeated names converts to List", {
+test_that("a pairlist with repeated names converts to List through as.list()", {
   expect_identical(
-    conv_list_names_report(pairlist(a = 1, a = 2)),
+    conv_list_names_report(as.list(pairlist(a = 1, a = 2))),
     list(len = 2L, dup = "a")
+  )
+  # The pairlist itself is refused (#1866).
+  expect_error(
+    conv_list_names_report(pairlist(a = 1, a = 2)),
+    "'lst' must be a list: got pairlist, convert it with as.list()",
+    fixed = TRUE
   )
 })
 

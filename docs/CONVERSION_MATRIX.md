@@ -131,6 +131,8 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
 | `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
+| `List` / `NamedList` / `ListMut` | VECSXP only | A view of the argument list, no copy. A pairlist (`formals(f)`, `pairlist(...)`) is refused with a type error, `got pairlist, convert it with as.list()`: R's `is.list()` is `TRUE` for it, but a coerced copy would be a new object nothing roots (#1866). Call `as.list()` on the R side |
+| `Option<List>` / `Option<NamedList>` | VECSXP or NULL | NULL -> None; anything else as for `List` |
 | `Vec<List>` | VECSXP only | Each element must be a list (VECSXP; a pairlist is refused, not coerced); all failing elements reported in one batched error |
 | `Vec<Option<List>>` | VECSXP only | NULL element -> None; any other element as for `Vec<List>` |
 

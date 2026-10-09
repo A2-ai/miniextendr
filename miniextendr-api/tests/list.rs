@@ -206,15 +206,41 @@ fn list_accepts_repeated_names() {
         let (_g, list) = r_list("list(a = 1, a = 2)");
         assert_eq!(list.len(), 2);
 
-        // A pairlist with a repeated name converts too.
-        let (_g, list) = r_list("pairlist(a = 1, a = 2)");
-        assert_eq!(list.len(), 2);
-
         // A non-list is still a type error.
         let sexp = miniextendr_api::r_str!("1:3").unwrap();
         let err = List::try_from_sexp(sexp).unwrap_err();
         assert_eq!(err.expected, miniextendr_api::SEXPTYPE::VECSXP);
         assert_eq!(err.actual, miniextendr_api::SEXPTYPE::INTSXP);
+    });
+}
+
+/// A pairlist is refused, not coerced (#1866): the coerced copy would be an
+/// object nothing roots. `Option<List>` and `NamedList` read through `List`
+/// and refuse it the same way.
+#[test]
+fn list_refuses_pairlist() {
+    use miniextendr_api::SEXPTYPE::{LISTSXP, VECSXP};
+
+    r_test_utils::with_r_thread(|| {
+        for code in ["pairlist(a = 1, a = 2)", "formals(function(a, b) NULL)"] {
+            let sexp = miniextendr_api::r_str!(code).expect("R code evaluates");
+            let guard = unsafe { OwnedProtect::new(sexp) };
+
+            let err = List::try_from_sexp(guard.get()).unwrap_err();
+            assert_eq!((err.expected, err.actual), (VECSXP, LISTSXP), "{code}");
+
+            for err in [
+                <Option<List>>::try_from_sexp(guard.get()).err(),
+                NamedList::try_from_sexp(guard.get()).err(),
+            ] {
+                match err {
+                    Some(SexpError::Type(e)) => {
+                        assert_eq!((e.expected, e.actual), (VECSXP, LISTSXP), "{code}")
+                    }
+                    other => panic!("{code}: expected a type error, got {other:?}"),
+                }
+            }
+        }
     });
 }
 

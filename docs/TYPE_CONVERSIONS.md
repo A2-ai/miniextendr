@@ -579,10 +579,18 @@ pub fn list_length(x: List) -> i32 {
 }
 ```
 
-A `List` argument takes any R list (or pairlist), whatever its names. R lets a
-name appear more than once (`list(a = 1, a = 2)`), and so does `List`;
-`get_named` returns the first element with the name, as `x[["a"]]` does. A
-function that needs unique names checks for them itself, with its own message:
+A `List` argument takes any R list, whatever its names. It refuses a pairlist
+(`formals(f)`, `pairlist(...)`) with a type error, `'x' must be a list: got
+pairlist, convert it with as.list()`, though R's `is.list()` is `TRUE` for one:
+`List` is a view with no root of its own, and a coerced copy would be an object
+nothing roots, which the function's first allocation could free (#1866). The
+same holds for `Option<List>`, `NamedList` and `ListMut`. Call `as.list()` on
+the R side.
+
+R lets a name appear more than once (`list(a = 1, a = 2)`), and so does
+`List`; `get_named` returns the first element with the name, as `x[["a"]]`
+does. A function that needs unique names checks for them itself, with its own
+message:
 
 ```rust
 #[miniextendr]

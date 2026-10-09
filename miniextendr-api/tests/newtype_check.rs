@@ -467,8 +467,8 @@ fn vec_of_list_reads_lists_only() {
             match value {
                 Err(SexpError::InvalidValue(message)) => assert_eq!(
                     message,
-                    "expected list, got numeric (element 2); expected list, got pairlist \
-                     (element 3); expected list, got NULL (element 4)"
+                    "expected list, got numeric (element 2); expected list, got pairlist, \
+                     convert it with as.list() (element 3); expected list, got NULL (element 4)"
                 ),
                 other => panic!("expected the batched type errors, got {other:?}"),
             }
