@@ -353,8 +353,8 @@ conditionMessage(e)
   conversion error.
 - **The argument.** It must be a list (`VECSXP`), else the error is a type
   error (`expected list, got integer`) and no element is checked. Each
-  element must be a list too; a pairlist is refused, where a `List` argument
-  would coerce it, because the coerced copy would be an object nothing roots
+  element must be a list too; a pairlist is refused, as a `List` argument
+  refuses one (#1866), because a coerced copy would be an object nothing roots
   while the rest of the list is read.
 - **Newtypes of newtypes.** `struct Fit(Model)` checks each element as a
   `Fit`, outer check first, as its scalar does.

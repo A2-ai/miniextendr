@@ -102,8 +102,8 @@ impl Dots {
 
     /// Convert to a [`List`], checking that the underlying SEXP is a list.
     ///
-    /// Accepts a list (`VECSXP`), and a pairlist coerced to one, as
-    /// `TryFromSexp for List` does. Use this when `inner` may not come from a
+    /// Accepts a list (`VECSXP`) only, as `TryFromSexp for List` does; a
+    /// pairlist is refused (#1866). Use this when `inner` may not come from a
     /// generated wrapper's `list(...)`.
     ///
     /// Names are not checked: R lets the caller repeat a name in `...`
@@ -113,7 +113,7 @@ impl Dots {
     ///
     /// # Errors
     ///
-    /// Returns [`SexpTypeError`] if the SEXP is neither a list nor a pairlist.
+    /// Returns [`SexpTypeError`] if the SEXP is not a list.
     ///
     /// # Example
     /// ```ignore

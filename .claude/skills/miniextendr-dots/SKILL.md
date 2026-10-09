@@ -83,7 +83,7 @@ Type specifiers:
 | `character()` | Character vector |
 | `raw()` | Raw vector |
 | `complex()` | Complex vector |
-| `list()` | List (VECSXP or pairlist) |
+| `list()` | List (VECSXP) or `NULL`; a pairlist is refused, as `List` refuses one |
 | `"data.frame"` | Object with that class |
 | `"my_class"` | Any class name as a string literal |
 
@@ -153,7 +153,7 @@ error type. So `let x: Vec<f64> = dots_typed.get("x")?` (above) compiles for a
 
 ### R wrapper generation
 
-When `#[miniextendr]` sees `...` in the Rust signature, the generated R wrapper function includes `...` in its formals. The `.Call` invocation collects dots into a named list and passes it as the dots argument to the C wrapper. `TryFromSexp` converts the incoming pairlist to the `Dots` type.
+When `#[miniextendr]` sees `...` in the Rust signature, the generated R wrapper function includes `...` in its formals. The `.Call` invocation collects dots with `list(...)` (a list, `VECSXP`, not a pairlist) and passes it as the dots argument to the C wrapper, which wraps it as the `Dots` value.
 
 ### Manual validation
 

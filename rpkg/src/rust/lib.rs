@@ -241,6 +241,7 @@ mod lbfgsb_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
 mod list_newtype_vec_tests;
+mod list_pairlist_tests;
 #[cfg(feature = "log")]
 mod log_tests;
 mod macro_equivalence;

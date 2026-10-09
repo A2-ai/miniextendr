@@ -380,13 +380,22 @@ impl SexpTypeError {
     /// (nothing before the reason says what the value should be). The type
     /// names are [`sexptype_name`](crate::typed_list::sexptype_name)'s
     /// (`numeric` for a double, `list`, `NULL`, ...), not SEXPTYPE names.
+    ///
+    /// A pairlist where a list was expected says how to fix it: `got
+    /// pairlist, convert it with as.list()`. R's `is.list()` is `TRUE` for a
+    /// pairlist, but a list conversion refuses one (#1866).
     pub(crate) fn r_reason(&self, expected_known: bool) -> String {
         let got = crate::typed_list::sexptype_name(self.actual);
+        let hint = if self.expected == SEXPTYPE::VECSXP && self.actual == SEXPTYPE::LISTSXP {
+            ", convert it with as.list()"
+        } else {
+            ""
+        };
         if expected_known {
-            format!("got {got}")
+            format!("got {got}{hint}")
         } else {
             format!(
-                "expected {}, got {got}",
+                "expected {}, got {got}{hint}",
                 crate::typed_list::sexptype_name(self.expected)
             )
         }

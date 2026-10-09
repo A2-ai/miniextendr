@@ -106,7 +106,7 @@ test_that("Vec<List> reads a list of lists and reports every non-list", {
     paste0(
       "invalid 'x' argument: expected list, got numeric (element 2); ",
       "expected list, got character (element 3); ",
-      "expected list, got pairlist (element 4)"
+      "expected list, got pairlist, convert it with as.list() (element 4)"
     )
   )
   expect_identical(e$param, "x")
