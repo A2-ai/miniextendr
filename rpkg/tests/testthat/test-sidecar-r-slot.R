@@ -33,11 +33,12 @@ test_that("sidecar values travel with saveRDS(), struct fields do not", {
   back <- readRDS(path)
 
   expect_identical(SidecarEnv_get_raw_slot(back), list(a = 1, b = "two"))
+  # A struct field needs the Rust value: see test-sidecar-reload.R.
   expect_error(
     SidecarEnv_get_count(back),
-    "got a null external pointer",
+    "restored from a saved session and has no Rust value",
     fixed = TRUE,
-    class = "rust_error"
+    class = "miniextendr_restored_no_value"
   )
   SidecarEnv_set_raw_slot(back, 1:2)
   expect_identical(SidecarEnv_get_raw_slot(back), 1:2)

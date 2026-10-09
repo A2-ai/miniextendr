@@ -1210,26 +1210,26 @@ pub(super) fn generate_trait_method_c_wrapper(
                 let mut self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                 };
-                let self_ref = self_ptr.downcast_mut::<#type_ident>()
-                    .unwrap_or_else(|| panic!(
-                        "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
-                         This can happen if you pass an object of a different type to a trait method.",
+                let self_ref = match self_ptr.downcast_mut::<#type_ident>() {
+                    Some(self_ref) => self_ref,
+                    None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                        &self_ptr,
                         #trait_method_name,
-                        stringify!(#type_ident)
-                    ));
+                    ),
+                };
             }
         } else {
             quote::quote! {
                 let self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                 };
-                let self_ref = self_ptr.downcast_ref::<#type_ident>()
-                    .unwrap_or_else(|| panic!(
-                        "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
-                         This can happen if you pass an object of a different type to a trait method.",
+                let self_ref = match self_ptr.downcast_ref::<#type_ident>() {
+                    Some(self_ref) => self_ref,
+                    None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                        &self_ptr,
                         #trait_method_name,
-                        stringify!(#type_ident)
-                    ));
+                    ),
+                };
             }
         };
 

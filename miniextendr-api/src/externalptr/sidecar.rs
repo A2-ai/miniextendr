@@ -17,7 +17,7 @@ use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::ptr;
 
-use super::{PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal};
+use super::{PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
@@ -446,8 +446,11 @@ fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
 /// a `T`, and the live `T` when `x` still has an address. Allocates nothing.
 ///
 /// A live pointer is checked by `Any::downcast`. A pointer whose address is
-/// NULL (finalized, or read back by `readRDS`) still holds its sidecar
-/// values, so it is accepted when its stored type ID is `T`'s.
+/// NULL (restored from a saved session by `readRDS()` / `unserialize()`)
+/// still holds its sidecar values, so it is accepted when its stored type ID
+/// is `T`'s; one another version of the crate saved is refused with the
+/// classed [`RESTORED_OTHER_VERSION_CLASS`](super::RESTORED_OTHER_VERSION_CLASS)
+/// error.
 ///
 /// # Panics
 ///
@@ -470,6 +473,8 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
             && prot.len() > 0
             && is_type_id_symbol::<T>(prot.vector_elt(PROT_TYPE_ID_INDEX)))
         {
+            // Another version's save raises its own error here.
+            unsafe { refuse_restored::<T>(x) };
             panic!("expected ExternalPtr<{}>", T::TYPE_NAME);
         }
         None
@@ -486,6 +491,72 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP) -> (SEXP, Option<&'a T>) {
         );
     }
     (prot, live)
+}
+
+/// The live `T` of the external pointer `x`, for the R getters of a struct
+/// field (a field that is not a `Sidecar`). A pointer without an address is
+/// refused: with the classed restored-object errors when `T` built it
+/// ([`refuse_restored`]), else with `expected ExternalPtr<T>, got a null
+/// external pointer`.
+///
+/// # Panics
+///
+/// When `x` is not a live external pointer to a `T`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`; the reference is
+/// valid while `x` keeps its value.
+#[doc(hidden)]
+pub unsafe fn sidecar_r_struct<'a, T: TypedExternal>(x: SEXP) -> &'a T {
+    // SAFETY: the caller's contract; `downcast_ref` reads through a shared
+    // reference.
+    unsafe { &*sidecar_r_struct_ptr::<T>(x) }
+}
+
+/// The live `T` of the external pointer `x`, mutably, for the R setters of a
+/// struct field; see [`sidecar_r_struct`].
+///
+/// # Panics
+///
+/// When `x` is not a live external pointer to a `T`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`; the reference is
+/// valid while `x` keeps its value, and nothing else may read or write the
+/// struct meanwhile.
+#[doc(hidden)]
+#[allow(clippy::mut_from_ref)]
+pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> &'a mut T {
+    // SAFETY: the caller's contract; the pointer has mutable provenance
+    // (`downcast_mut`).
+    unsafe { &mut *sidecar_r_struct_ptr::<T>(x) }
+}
+
+/// The body of [`sidecar_r_struct`] and [`sidecar_r_struct_mut`]: the
+/// struct's address with mutable provenance.
+unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
+    if x.type_of() != SEXPTYPE::EXTPTRSXP {
+        panic!(
+            "expected ExternalPtr<{}>, got a non-external-pointer object",
+            T::TYPE_NAME
+        );
+    }
+    let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
+    if any_raw.is_null() {
+        // A save by this or another version raises its own error here.
+        unsafe { refuse_restored::<T>(x) };
+        panic!(
+            "expected ExternalPtr<{}>, got a null external pointer",
+            T::TYPE_NAME
+        );
+    }
+    let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
+    match any_box.downcast_mut::<T>() {
+        Some(value) => std::ptr::from_mut(value),
+        None => panic!("expected ExternalPtr<{}>", T::TYPE_NAME),
+    }
 }
 
 /// Checks that `x` is an external pointer to a `T`, live or read back by

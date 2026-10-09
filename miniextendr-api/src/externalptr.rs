@@ -167,13 +167,16 @@ use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
+use crate::RValue;
+use crate::condition::{ConditionCall, RCondition};
 use crate::gc_protect::ProtectScope;
 use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, Rf_allocVector, Rf_allocVector_unchecked, Rf_install,
-    Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
+    R_RegisterCFinalizerEx_unchecked, R_SetExternalPtrProtected, R_SetExternalPtrTag,
+    Rf_allocVector, Rf_allocVector_unchecked, Rf_install, Rf_install_unchecked, Rf_protect,
+    Rf_protect_unchecked, Rf_unprotect, Rf_unprotect_unchecked,
 };
 use crate::{R_xlen_t, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -286,6 +289,230 @@ fn symbol_name(sym: SEXP) -> &'static str {
             .expect("R SYMSXP PRINTNAME is not valid UTF-8")
     }
 }
+
+/// The type-ID symbol an `ExternalPtr`-built pointer keeps in `prot[0]`, or
+/// `None` when `sexp`'s `prot` is not the list `ExternalPtr` builds (R's
+/// `new("externalptr")`, a pointer `into_inner` cleared, another library's).
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+#[inline]
+unsafe fn stored_type_id_symbol(sexp: SEXP) -> Option<SEXP> {
+    let prot = unsafe { R_ExternalPtrProtected(sexp) };
+    if prot.is_null_or_nil()
+        || prot.type_of() != SEXPTYPE::VECSXP
+        || prot.len() < PROT_VEC_LEN as usize
+    {
+        return None;
+    }
+    let sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
+    (sym.type_of() == SEXPTYPE::SYMSXP).then_some(sym)
+}
+
+/// `T`'s type ID as text (`TYPE_ID_CSTR` without its NUL).
+fn type_id_str<T: TypedExternal>() -> &'static str {
+    let id = T::TYPE_ID_CSTR
+        .strip_suffix(b"\0")
+        .unwrap_or(T::TYPE_ID_CSTR);
+    std::str::from_utf8(id).expect("TYPE_ID_CSTR is not valid UTF-8")
+}
+
+/// Splits a type ID of the derive's form, `crate@version::module::Type`,
+/// into `(crate, version, module::Type)`; a hand-written ID without a
+/// version is `(None, None, id)`.
+fn split_type_id(id: &str) -> (Option<&str>, Option<&str>, &str) {
+    let Some((crate_name, rest)) = id.split_once('@') else {
+        return (None, None, id);
+    };
+    match rest.split_once("::") {
+        Some((version, path)) => (Some(crate_name), Some(version), path),
+        None => (None, None, id),
+    }
+}
+
+// region: A pointer without an address
+
+/// The condition class every error about a pointer restored from a saved
+/// session carries, after its specific class.
+pub const RESTORED_CLASS: &str = "miniextendr_restored";
+
+/// The class of the error for a pointer this version of the crate saved: it
+/// came back from `readRDS()` / `unserialize()` without its Rust value.
+pub const RESTORED_NO_VALUE_CLASS: &str = "miniextendr_restored_no_value";
+
+/// The class of the error for a pointer another version of the crate saved;
+/// the condition carries `saved_version` and `current_version`.
+pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_version";
+
+/// What a pointer without an address is, as far as `T` is concerned
+/// ([`classify_null_address`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NullAddress {
+    /// Not built by `ExternalPtr`: R's `new("externalptr")`, a pointer
+    /// `into_inner` cleared, another library's pointer.
+    Foreign,
+    /// Built for `T` by this version of its crate: restored from a saved
+    /// session, so the Rust value is gone.
+    Restored,
+    /// Built for `T` by another version of its crate.
+    OtherVersion {
+        /// The crate's name.
+        crate_name: &'static str,
+        /// The version that saved the pointer.
+        saved: &'static str,
+        /// This version.
+        current: &'static str,
+    },
+    /// Built for another type.
+    OtherType {
+        /// The stored type ID.
+        found: &'static str,
+    },
+}
+
+/// Reads `prot[0]` of a pointer without an address and says what it is for
+/// `T`. Symbol names live for the session, so the borrowed parts are
+/// `'static`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+pub(crate) unsafe fn classify_null_address<T: TypedExternal>(sexp: SEXP) -> NullAddress {
+    let Some(sym) = (unsafe { stored_type_id_symbol(sexp) }) else {
+        return NullAddress::Foreign;
+    };
+    let found = symbol_name(sym);
+    let own = type_id_str::<T>();
+    if found == own {
+        return NullAddress::Restored;
+    }
+    match (split_type_id(found), split_type_id(own)) {
+        ((Some(crate_name), Some(saved), path), (Some(own_crate), Some(current), own_path))
+            if crate_name == own_crate && path == own_path =>
+        {
+            NullAddress::OtherVersion {
+                crate_name,
+                saved,
+                current,
+            }
+        }
+        _ => NullAddress::OtherType { found },
+    }
+}
+
+/// The message of the [`RESTORED_NO_VALUE_CLASS`] error.
+pub(crate) fn restored_no_value_message(type_name: &str) -> String {
+    format!(
+        "this `{type_name}` object was restored from a saved session and has no Rust value; \
+         re-create it"
+    )
+}
+
+/// The message of the [`RESTORED_OTHER_VERSION_CLASS`] error.
+pub(crate) fn restored_other_version_message(
+    type_name: &str,
+    crate_name: &str,
+    saved: &str,
+    current: &str,
+) -> String {
+    format!(
+        "this `{type_name}` object was saved by {crate_name} {saved} and can't be read by \
+         {crate_name} {current}; re-create it"
+    )
+}
+
+/// Raises the error for a pointer without an address when it was built for
+/// `T` (by this version: [`RESTORED_NO_VALUE_CLASS`]; by another:
+/// [`RESTORED_OTHER_VERSION_CLASS`]), and returns the other cases for the
+/// caller to word as it did before. The condition is raised through the
+/// panic transport (`panic_any`), like `error!`.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP` whose
+/// address is NULL.
+#[cold]
+pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP) -> NullAddress {
+    let kind = unsafe { classify_null_address::<T>(sexp) };
+    let (message, class, data) = match kind {
+        NullAddress::Restored => (
+            restored_no_value_message(T::TYPE_NAME),
+            RESTORED_NO_VALUE_CLASS,
+            None,
+        ),
+        NullAddress::OtherVersion {
+            crate_name,
+            saved,
+            current,
+        } => (
+            restored_other_version_message(T::TYPE_NAME, crate_name, saved, current),
+            RESTORED_OTHER_VERSION_CLASS,
+            Some(vec![
+                (String::from("saved_version"), RValue::from(saved)),
+                (String::from("current_version"), RValue::from(current)),
+            ]),
+        ),
+        NullAddress::Foreign | NullAddress::OtherType { .. } => return kind,
+    };
+    std::panic::panic_any(RCondition::Error {
+        message,
+        class: vec![class.to_owned(), RESTORED_CLASS.to_owned()],
+        data,
+        call: ConditionCall::Inherit,
+    })
+}
+
+/// Empties the pointer a value was moved out of (`into_raw` / `into_inner`):
+/// the address, so the finalizer is a no-op, and the tag and protection list
+/// too, so the pointer reads as empty (the plain `null external pointer`
+/// messages) rather than as one restored from a saved session, which keeps
+/// its `prot` (#1872). `R_ClearExternalPtr` only nulls the address.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+unsafe fn clear_moved_out(sexp: SEXP) {
+    unsafe { R_ClearExternalPtr(sexp) };
+    unsafe { R_SetExternalPtrTag(sexp, SEXP::nil()) };
+    unsafe { R_SetExternalPtrProtected(sexp, SEXP::nil()) };
+}
+
+/// Rewrites the version in the type ID a restored pointer keeps in `prot[0]`
+/// (`crate@version::module::Type`), so the pointer reads as a save by
+/// `version` of its crate. For tests of the other-version refusal; the
+/// pointer must have no address (restored by `readRDS()` / `unserialize()`),
+/// since a live one is checked by `Any::downcast`, not by the ID.
+///
+/// # Panics
+///
+/// When `sexp` is not a restored `ExternalPtr`-built pointer with a
+/// versioned type ID.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `EXTPTRSXP`.
+#[doc(hidden)]
+pub unsafe fn rewrite_stored_version_for_tests(sexp: SEXP, version: &str) {
+    assert!(
+        unsafe { R_ExternalPtrAddr(sexp) }.is_null(),
+        "the pointer still has its Rust value: save and restore it first"
+    );
+    let sym = unsafe { stored_type_id_symbol(sexp) }.expect("an `ExternalPtr`-built pointer");
+    let (crate_name, path) = match split_type_id(symbol_name(sym)) {
+        (Some(crate_name), Some(_), path) => (crate_name, path),
+        _ => panic!("the stored type ID has no version"),
+    };
+    let rewritten = std::ffi::CString::new(format!("{crate_name}@{version}::{path}"))
+        .expect("a type ID has no NUL");
+    // `Rf_install` interns the symbol for the session; the list keeps it.
+    let prot = unsafe { R_ExternalPtrProtected(sexp) };
+    prot.set_vector_elt(PROT_TYPE_ID_INDEX, unsafe {
+        Rf_install(rewritten.as_ptr())
+    });
+}
+
+// endregion
 
 // region: TypedExternalPtr Trait
 
@@ -536,6 +763,26 @@ pub fn resolve_receiver<T: TypedExternal>(sexp: SEXP) -> SEXP {
     match unsafe { unwrap_class_handle(sexp) } {
         Some(inner) => inner,
         None => receiver_not_a_handle::<T>(sexp),
+    }
+}
+
+/// The typed handle of an instance-method receiver, for `self: &ExternalPtr<Self>`
+/// / `&mut ExternalPtr<Self>` / `ExternalPtr<Self>` receivers: [`resolve_receiver`]
+/// then [`ExternalPtr::wrap_sexp`], failing like the erased receivers do
+/// ([`handle_downcast_failed`]: consumed, restored from a saved session, or a
+/// type mismatch). Runs on R's main thread (the generated prelude).
+#[inline]
+pub fn wrap_receiver<T: TypedExternal>(sexp: SEXP) -> ExternalPtr<T> {
+    let ptr = resolve_receiver::<T>(sexp);
+    // SAFETY: `ptr` is a valid EXTPTRSXP the call's frame roots; on R's main
+    // thread. The handle borrows it for the method's duration, like the
+    // erased receivers.
+    match unsafe { ExternalPtr::<T>::wrap_sexp(ptr) } {
+        Some(handle) => handle,
+        None => {
+            let erased = unsafe { ErasedExternalPtr::from_sexp(ptr) };
+            handle_downcast_failed::<T>(&erased)
+        }
     }
 }
 
@@ -1078,6 +1325,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// The caller is responsible for the memory, and the finalizer is
     /// effectively orphaned (will do nothing since we clear the pointer).
+    /// The R object is emptied: address, tag and protection list (the
+    /// [`Sidecar<T>`] values travel with the struct as pending values), so
+    /// its accessors report a null external pointer, not an object restored
+    /// from a saved session.
     ///
     /// Equivalent to `Box::into_raw`.
     #[inline]
@@ -1101,7 +1352,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
 
         // Clear the external pointer so the finalizer becomes a no-op
-        unsafe { R_ClearExternalPtr(this.sexp) };
+        unsafe { clear_moved_out(this.sexp) };
 
         if !any_raw.is_null() {
             // Reconstruct outer box → extract inner → leak inner (prevents T drop)
@@ -1142,7 +1393,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Consumes the ExternalPtr, returning the wrapped value.
     ///
     /// Uses `Box<dyn Any>::downcast` to recover the concrete `Box<T>`,
-    /// then moves the value out.
+    /// then moves the value out. The R object is emptied like by
+    /// [`into_raw`](Self::into_raw): its accessors report a null external
+    /// pointer afterwards, and the [`Sidecar<T>`] values travel with the
+    /// struct, so wrapping it again keeps them.
     ///
     /// Equivalent to `*boxed` (deref move) or `Box::into_inner`.
     #[inline]
@@ -1161,7 +1415,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let any_raw = unsafe { R_ExternalPtrAddr(this.sexp) as *mut Box<dyn Any> };
 
         // Clear so finalizer is no-op
-        unsafe { R_ClearExternalPtr(this.sexp) };
+        unsafe { clear_moved_out(this.sexp) };
         mem::forget(this);
 
         assert!(!any_raw.is_null(), "ExternalPtr is null or cleared");
@@ -1525,7 +1779,27 @@ impl<T: TypedExternal> ExternalPtr<T> {
         );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
-            return Err(TypeMismatchError::NullPointer);
+            // SAFETY: on R's main thread with a valid EXTPTRSXP.
+            return Err(match unsafe { classify_null_address::<T>(sexp) } {
+                NullAddress::Foreign => TypeMismatchError::NullPointer,
+                NullAddress::Restored => TypeMismatchError::Restored {
+                    type_name: T::TYPE_NAME,
+                },
+                NullAddress::OtherVersion {
+                    crate_name,
+                    saved,
+                    current,
+                } => TypeMismatchError::OtherVersion {
+                    type_name: T::TYPE_NAME,
+                    crate_name,
+                    saved,
+                    current,
+                },
+                NullAddress::OtherType { found } => TypeMismatchError::Mismatch {
+                    expected: T::TYPE_NAME,
+                    found,
+                },
+            });
         }
 
         if is_type_erased::<T>() {
@@ -1540,23 +1814,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 NonNull::new_unchecked(ptr::from_mut(concrete))
             })),
             None => {
-                // Try to get the stored type name from R symbol for error reporting
-                let found = unsafe {
-                    let prot = R_ExternalPtrProtected(sexp);
-                    if !prot.is_null_or_nil()
-                        && prot.type_of() == SEXPTYPE::VECSXP
-                        && prot.len() >= PROT_VEC_LEN as usize
-                    {
-                        let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
-                        if stored_sym.type_of() == SEXPTYPE::SYMSXP {
-                            symbol_name(stored_sym)
-                        } else {
-                            "<unknown>"
-                        }
-                    } else {
-                        "<unknown>"
-                    }
-                };
+                // The stored type ID, for the diagnostic.
+                let found = unsafe { stored_type_id_symbol(sexp) }.map_or("<unknown>", symbol_name);
                 Err(TypeMismatchError::Mismatch {
                     expected: T::TYPE_NAME,
                     found,
@@ -1581,11 +1840,15 @@ impl<T: TypedExternal> ExternalPtr<T> {
             sexp.type_of()
         );
         let any_raw = unsafe { R_ExternalPtrAddr(sexp) as *mut Box<dyn Any> };
-        debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
 
         let cached_ptr = if is_type_erased::<T>() {
-            unsafe { NonNull::new_unchecked(any_raw.cast::<T>()) }
+            // A type-erased handle never reads through `cached_ptr` (its
+            // methods read the address afresh), so a pointer without an
+            // address (restored from a saved session, or cleared) is accepted
+            // here: the downcast that follows refuses it with a clear error.
+            NonNull::new(any_raw.cast::<T>()).unwrap_or(NonNull::dangling())
         } else {
+            debug_assert!(!any_raw.is_null(), "from_sexp_unchecked: null pointer");
             let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
             let concrete: &mut T = unsafe { any_box.downcast_mut::<T>().unwrap_unchecked() };
             unsafe { NonNull::new_unchecked(ptr::from_mut(concrete)) }
@@ -1608,20 +1871,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Returns `None` if the prot slot doesn't contain a valid type symbol.
     #[inline]
     pub fn stored_type_name(&self) -> Option<&'static str> {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return None;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return None;
-            }
-            let stored_sym = prot.vector_elt(PROT_TYPE_ID_INDEX);
-            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
-                return None;
-            }
-            Some(symbol_name(stored_sym))
-        }
+        // SAFETY: `self.sexp` is a valid EXTPTRSXP; on R's main thread.
+        unsafe { stored_type_id_symbol(self.sexp) }.map(symbol_name)
     }
     // endregion
 }
@@ -1727,10 +1978,39 @@ pub fn clone_for_consuming<T: ConsumingFallible>(value: &T) -> T {
 }
 
 /// Panic with the right message when a handle's stored value is not a `T`:
-/// "consumed" if a previous `self`-by-value step failed, type mismatch
-/// otherwise. Used by generated method preludes instead of a bare `expect`.
+/// "consumed" if a previous `self`-by-value step failed; the classed
+/// [`RESTORED_NO_VALUE_CLASS`] / [`RESTORED_OTHER_VERSION_CLASS`] error for a
+/// pointer built for `T` that came back from a saved session without its
+/// value; type mismatch otherwise. Used by generated method preludes instead
+/// of a bare `expect`.
 #[cold]
 pub fn handle_downcast_failed<T: TypedExternal>(ptr: &ExternalPtr<()>) -> ! {
+    refuse_consumed_or_restored::<T>(ptr);
+    panic!(
+        "expected ExternalPtr<{}>, found `{}`",
+        ExternalPtr::<T>::type_name(),
+        ptr.stored_type_name().unwrap_or("<unknown>")
+    );
+}
+
+/// [`handle_downcast_failed`] for a trait-impl method receiver: the same
+/// consumed / restored errors, and a mismatch message naming the trait
+/// method (`Trait::method()`).
+#[cold]
+pub fn handle_downcast_failed_in<T: TypedExternal>(ptr: &ExternalPtr<()>, trait_method: &str) -> ! {
+    refuse_consumed_or_restored::<T>(ptr);
+    panic!(
+        "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
+         This can happen if you pass an object of a different type to a trait method.",
+        trait_method,
+        ExternalPtr::<T>::type_name()
+    );
+}
+
+/// The errors a receiver prelude raises before a type mismatch: "consumed"
+/// for a slot a failed `self`-by-value step left, the classed restored-object
+/// errors for a pointer built for `T` without an address.
+fn refuse_consumed_or_restored<T: TypedExternal>(ptr: &ExternalPtr<()>) {
     if ptr.is_consumed() {
         panic!(
             "this `{}` object was consumed by a `self`-by-value method that did not return \
@@ -1738,11 +2018,11 @@ pub fn handle_downcast_failed<T: TypedExternal>(ptr: &ExternalPtr<()>) -> ! {
             ExternalPtr::<T>::type_name()
         );
     }
-    panic!(
-        "expected ExternalPtr<{}>, found `{}`",
-        ExternalPtr::<T>::type_name(),
-        ptr.stored_type_name().unwrap_or("<unknown>")
-    );
+    if ptr.has_null_address() {
+        // SAFETY: `ptr.sexp` is a valid EXTPTRSXP without an address; on R's
+        // main thread (the generated prelude).
+        unsafe { refuse_restored::<T>(ptr.sexp) };
+    }
 }
 
 impl ExternalPtr<()> {
@@ -1754,6 +2034,13 @@ impl ExternalPtr<()> {
         }
         let any_box: &Box<dyn Any> = unsafe { &*any_raw };
         any_box.is::<ConsumedSlot>()
+    }
+
+    /// Whether the pointer has no address: restored from a saved session
+    /// (`readRDS()` / `unserialize()`), cleared by `into_inner`, or never
+    /// given one (R's `new("externalptr")`).
+    pub fn has_null_address(&self) -> bool {
+        unsafe { R_ExternalPtrAddr(self.sexp) }.is_null()
     }
 
     /// Move the stored `T` out of the handle, leaving [`ConsumedSlot`] behind.
@@ -1818,7 +2105,8 @@ impl ExternalPtr<()> {
 /// interned symbol table, which persists for the R session lifetime.
 #[derive(Debug, Clone)]
 pub enum TypeMismatchError {
-    /// The external pointer's address was null.
+    /// The external pointer's address was null, and it was not built by
+    /// `ExternalPtr` (R's `new("externalptr")`, a cleared pointer).
     NullPointer,
     /// The prot slot didn't contain a valid type symbol.
     InvalidTypeId,
@@ -1829,6 +2117,36 @@ pub enum TypeMismatchError {
         /// Actual stored Rust type name found in pointer metadata.
         found: &'static str,
     },
+    /// A pointer this version of the crate built, restored from a saved
+    /// session without its Rust value ([`RESTORED_NO_VALUE_CLASS`]).
+    Restored {
+        /// The type's name.
+        type_name: &'static str,
+    },
+    /// A pointer another version of the crate saved
+    /// ([`RESTORED_OTHER_VERSION_CLASS`]).
+    OtherVersion {
+        /// The type's name.
+        type_name: &'static str,
+        /// The crate's name.
+        crate_name: &'static str,
+        /// The version that saved the pointer.
+        saved: &'static str,
+        /// This version.
+        current: &'static str,
+    },
+}
+
+impl TypeMismatchError {
+    /// The condition classes of the error about a restored pointer (most
+    /// specific first), `None` for the other variants.
+    pub fn restored_classes(&self) -> Option<[&'static str; 2]> {
+        match self {
+            Self::Restored { .. } => Some([RESTORED_NO_VALUE_CLASS, RESTORED_CLASS]),
+            Self::OtherVersion { .. } => Some([RESTORED_OTHER_VERSION_CLASS, RESTORED_CLASS]),
+            Self::NullPointer | Self::InvalidTypeId | Self::Mismatch { .. } => None,
+        }
+    }
 }
 
 impl fmt::Display for TypeMismatchError {
@@ -1843,6 +2161,15 @@ impl fmt::Display for TypeMismatchError {
                     expected, found
                 )
             }
+            Self::Restored { type_name } => f.write_str(&restored_no_value_message(type_name)),
+            Self::OtherVersion {
+                type_name,
+                crate_name,
+                saved,
+                current,
+            } => f.write_str(&restored_other_version_message(
+                type_name, crate_name, saved, current,
+            )),
         }
     }
 }

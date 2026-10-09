@@ -8,7 +8,7 @@ use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr, RSidecar, Sid
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
-use miniextendr_api::{List, TryFromSexp};
+use miniextendr_api::{List, SEXPTYPE, SexpExt, TryFromSexp};
 
 // region: Env (default) - standalone functions: Type_get_field(), Type_set_field()
 
@@ -639,6 +639,24 @@ impl SidecarNest {
     pub fn set_inner_keys(&mut self, keys: Vec<i32>) {
         self.inner.set_keys(keys);
     }
+}
+
+/// Rewrites the version in the type ID a restored pointer keeps in
+/// `prot[0]` (`crate@version::module::Type`), so the pointer reads as a
+/// save by `version` of this package. `x` must be an external pointer
+/// without an address (after `readRDS()` / `unserialize()`), as a saved
+/// pointer comes back; the type ID is left as it is for a live one.
+/// @param x A restored external pointer.
+/// @param version The version to write, e.g. `"0.0.1"`.
+#[miniextendr(noexport)]
+pub fn sidecar_rewrite_saved_version(x: SEXP, version: String) {
+    assert_eq!(
+        x.type_of(),
+        SEXPTYPE::EXTPTRSXP,
+        "`x` is an external pointer"
+    );
+    // SAFETY: on R's main thread (a `#[miniextendr]` fn); `x` is an EXTPTRSXP.
+    unsafe { miniextendr_api::externalptr::rewrite_stored_version_for_tests(x, &version) };
 }
 
 /// Allocate garbage so a GC runs between the writes and the reads.
