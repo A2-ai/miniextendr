@@ -1,0 +1,5 @@
+error: `with_level` defines the `$<-` method of `Gauge`, which `s3(r_data_accessors)` generates for the `#[r_data]` fields: the class would get two `$<-` methods. Remove the method or the option. To write the fields with your own replacement methods, use the getters-only form `s3(r_data_accessors = "get")`, which generates no `$<-` / `[[<-`.
+  --> tests/ui/impl_s3_r_data_accessors_collision.rs:24:12
+   |
+24 |     pub fn with_level(
+   |            ^^^^^^^^^^

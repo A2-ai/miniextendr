@@ -352,10 +352,56 @@ Each public field gets `Type_get_<field>(x)` and `Type_set_<field>(x, value)`;
 a `Sidecar<T>` field holds a value, such as a data frame in a
 `Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so
 every method that takes the handle (`self: &ExternalPtr<Self>`) sees them and
-nothing has to be re-wrapped. An S3 class gets no `$` / `$<-` methods for them. The
-walkthrough and the per-class-system accessor table are in `CLASS_SYSTEMS.md`,
-"Direct Field Access via Sidecar". The sidecar is the supported answer for
-state the package owns; the shape below is for interop.
+nothing has to be re-wrapped. With `#[miniextendr(s3(r_data_accessors))]` on
+the impl, the class also gets `$` / `[[` methods that read the fields and
+`$<-` / `[[<-` methods that write them:
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3)]
+pub struct Engine {
+    #[r_data]
+    _r: RSidecar,
+    #[r_data]
+    pub rate: f64,
+    #[r_data]
+    pub keys: Sidecar<Vec<String>>,
+}
+
+#[miniextendr(s3(r_data_accessors))]
+impl Engine {
+    pub fn new(rate: f64) -> Self {
+        Engine { _r: RSidecar, rate, keys: Sidecar::new(Vec::new()) }
+    }
+}
+```
+
+```r
+e <- new_engine(0.5)
+e$rate                 # 0.5
+e$keys <- c("a", "b")  # validated as Vec<String>, stored in the pointer
+e[["keys"]][2] <- "z"  # read, edit, write back
+e$speed                # error of class `miniextendr_no_field`, naming the fields
+e$rate <- "fast"       # the setter's argument error, call `e$rate <- value`
+```
+
+A write changes the object in place: the field lives behind the pointer, and
+every copy of the R object shares the pointer, so `f <- e; f$rate <- 1` also
+changes `e$rate`. That is R6 or environment semantics, not list semantics. A
+class whose `$<-` must copy takes the getters-only form,
+`s3(r_data_accessors = "get")`, and writes its own replacement method
+(`#[miniextendr(s3(generic = "$<-"))]`, see "Replacement and extraction
+generics" below), which returns a new object. The impl block is refused at
+compile time when one of its methods is a `$` / `[[` / `$<-` / `[[<-` method
+the option generates.
+
+On the bare classed pointer, a name that is not a field is an error. On a list
+or an environment that carries the handle in `.ptr` (the interop shape below),
+it goes to R's own `$` / `[[`, partial matching included, so the object keeps
+its other elements; a numeric index always does. The walkthrough and the
+per-class-system accessor table are in `CLASS_SYSTEMS.md`, "Direct Field
+Access via Sidecar". The sidecar is the supported answer for state the
+package owns; the shape below is for interop.
 
 ### Interop: an existing list shape carrying the handle
 

@@ -1,4 +1,4 @@
-error: unknown impl block option `bogus`; expected one of: env, r6, r6(...), s3, s4, s7, s7(...), vctrs, vctrs(...) (class system), class = "..." (R class name), label = "..." (multi-impl label), blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport
+error: unknown impl block option `bogus`; expected one of: env, env(...), r6, r6(...), s3, s3(...), s4, s4(...), s7, s7(...), vctrs, vctrs(...) (class system), class = "..." (R class name), label = "..." (multi-impl label), blanket, strict, no_strict, preconditions, no_preconditions, internal, noexport
  --> tests/ui/impl_unknown_option.rs:7:20
   |
 7 | #[miniextendr(env, bogus = "x")]

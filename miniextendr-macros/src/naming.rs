@@ -155,6 +155,33 @@ pub(crate) fn sidecar_setter_c_name(type_name: &str, field_name: &str) -> String
     format!("C_{prefix}__mx_rdata_set_{type_name}_{field_name}")
 }
 
+/// The R helpers `#[derive(ExternalPtr)]` emits for a type's sidecar fields
+/// and the `$` / `[[` field methods of `r_data_accessors` call (#1848).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RDataHelper {
+    /// `.rdata_fields_<Type>`: the field names, a character vector.
+    Fields,
+    /// `.rdata_get_<Type>(x, name)`: the field's getter `.Call()`.
+    Get,
+    /// `.rdata_set_<Type>(x, name, value)`: the field's setter `.Call()`.
+    Set,
+    /// `.rdata_no_field_<Type>(name, env)`: the `miniextendr_no_field` error.
+    NoField,
+}
+
+/// `.rdata_<helper>_<Type>`: the R name of a sidecar field helper, named by
+/// the Rust type (not an impl's `class = "..."`), since the derive only knows
+/// the type.
+pub(crate) fn rdata_helper_name(helper: RDataHelper, type_name: &str) -> String {
+    let helper = match helper {
+        RDataHelper::Fields => "fields",
+        RDataHelper::Get => "get",
+        RDataHelper::Set => "set",
+        RDataHelper::NoField => "no_field",
+    };
+    format!(".rdata_{helper}_{type_name}")
+}
+
 /// `__mx_altrep_reg_<crate>_<Ident>` — ALTREP class registration fn.
 pub(crate) fn altrep_reg_fn_ident(ident: &syn::Ident) -> syn::Ident {
     let prefix = crate_prefix();

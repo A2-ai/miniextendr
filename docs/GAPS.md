@@ -271,7 +271,8 @@ r$area          # Active binding: 12 (no parentheses!)
 **Status:** Solved via sidecar pattern
 **Resolution:** `#[r_data]` fields next to an `#[r_data] _r: RSidecar` selector
 get generated accessors in every class system; `r_data_accessors` on the impl
-turns them into R6 active bindings or S7 properties.
+turns them into R6 active bindings, S7 properties, or `$` / `[[` methods on S3,
+S4 and env classes.
 
 **Working example (R6):**
 ```rust
@@ -314,7 +315,9 @@ cfg$extra <- data.frame(a = 1:3)
 **Class system support for sidecar field access:**
 - **R6**: Active bindings (`obj$field` for get, `obj$field <- value` for set) with `r6(r_data_accessors)`
 - **S7**: Properties (`obj@field`) with `s7(r_data_accessors)`
-- **Env, S3, S4, vctrs**: Standalone functions (`Type_get_field()` / `Type_set_field()`)
+- **S3, env**: `obj$field`, `obj[["field"]]` and their assignments with `s3(r_data_accessors)` / `env(r_data_accessors)`
+- **S4**: `obj$field` and `obj$field <- value` with `s4(r_data_accessors)`
+- **vctrs**, and any class without the option: Standalone functions (`Type_get_field()` / `Type_set_field()`)
 
 See `EXTERNALPTR.md`, "RSidecar (R Data Fields)", for the field types and
 what survives `saveRDS()`.

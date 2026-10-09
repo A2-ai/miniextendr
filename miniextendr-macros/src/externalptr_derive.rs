@@ -41,17 +41,23 @@
 //! ### With R Sidecar Slots and Class System
 //!
 //! The `#[r_data]` attribute marks fields that get R accessors. Every public
-//! slot gets the standalone `Type_get_field(x)` / `Type_set_field(x, value)`.
-//! Use `#[externalptr(...)]` to name the class system; for R6 and S7 the impl's
-//! `r_data_accessors` option also wires the slots into the class:
+//! slot gets the standalone `Type_get_field(x)` / `Type_set_field(x, value)`,
+//! which take the pointer or any object carrying it in `.ptr` (a list, an
+//! environment, an R6 / S4 / S7 handle). `#[externalptr(...)]` names the class
+//! system; the impl's `r_data_accessors` option also wires the slots into the
+//! class:
 //!
 //! | Class System | Attribute | R Accessors |
 //! |--------------|-----------|-------------|
-//! | Environment | `#[externalptr(env)]` (default) | `Type_get_field()`, `Type_set_field()` |
+//! | Environment | `#[externalptr(env)]` (default) + `#[miniextendr(env(r_data_accessors))]` | `obj$field` / `obj[["field"]]` next to the methods, `obj$field <- value` |
 //! | R6 | `#[externalptr(r6)]` + `#[miniextendr(r6(r_data_accessors))]` | Active bindings, `obj$field` / `obj$field <- value` |
-//! | S3 | `#[externalptr(s3)]` | `Type_get_field()`, `Type_set_field()` |
-//! | S4 | `#[externalptr(s4)]` | `Type_get_field()`, `Type_set_field()` |
+//! | S3 | `#[externalptr(s3)]` + `#[miniextendr(s3(r_data_accessors))]` | `$` / `[[` / `$<-` / `[[<-` methods |
+//! | S4 | `#[externalptr(s4)]` + `#[miniextendr(s4(r_data_accessors))]` | `$` / `$<-` methods |
 //! | S7 | `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | Properties, `obj@field` / `obj@field <- value` |
+//!
+//! For S3, S4 and env, `r_data_accessors = "get"` generates the getters only.
+//! The `$` / `[[` methods share the helpers [`generate_field_syntax_helpers`]
+//! emits for every type with R accessors (#1848).
 //!
 //! Standalone setters and R6 active-binding setters return the receiver invisibly
 //! by default. `#[r_data(setter = "visible")]` exposes that return value;
@@ -617,10 +623,12 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 /// - `Conversion`: clones the struct field and calls `IntoR::into_sexp`.
 ///
 /// The body runs inside `with_r_unwind_protect` (see the emission site in
-/// [`generate_sidecar_accessors`]); a non-external-pointer argument, a null
-/// pointer address, or a wrong stored type panics with the same
-/// `expected ExternalPtr<T>` message the main class-method path uses. The
-/// panic is transported as a tagged condition and re-raised by the R wrapper.
+/// [`generate_sidecar_accessors`]). The receiver is the pointer or an object
+/// carrying it in `.ptr`, as for an instance method; an argument carrying no
+/// pointer, a null pointer address, or a wrong stored type panics with the
+/// same `expected ExternalPtr<T>` message the main class-method path uses.
+/// The panic is transported as a tagged condition and re-raised by the R
+/// wrapper.
 fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenStream {
     let field_name = &slot.name;
 
@@ -1091,6 +1099,74 @@ fn generate_class_integration_r_code(
     }
 }
 
+/// Generate the R helpers the `$` / `[[` field methods of `r_data_accessors`
+/// share on S3, S4 and env classes (#1848): the field names, a getter and a
+/// setter `switch()` over the fields' `.Call()`s, and the classed
+/// `miniextendr_no_field` error naming the fields.
+///
+/// Emitted for every type with R accessors, whatever `#[externalptr(...)]`
+/// names, so the impl's option never depends on the derive attribute. The
+/// helpers are named by the Rust type ([`crate::naming::rdata_helper_name`]).
+/// The accessors return a failed conversion or a panic as a tagged condition
+/// value with no call; the calling method raises it with its own frame as
+/// the fallback, so the condition reports `x$keys <- value`.
+fn generate_field_syntax_helpers(type_name: &str, pub_slots: &[&SidecarSlot]) -> String {
+    use crate::naming::{RDataHelper, rdata_helper_name};
+
+    let fields: Vec<String> = pub_slots
+        .iter()
+        .map(|slot| crate::naming::ident_name(&slot.name))
+        .collect();
+    let names = fields
+        .iter()
+        .map(|f| format!("\"{f}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let listed = fields
+        .iter()
+        .map(|f| format!("`{f}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    // `switch()` arm labels are R symbols: a raw identifier such as `r#for`
+    // becomes the reserved word `for`, which needs backticks.
+    let arms = |setter: bool| {
+        fields
+            .iter()
+            .map(|f| {
+                let call = if setter {
+                    format!(
+                        ".Call({}, x, value)",
+                        crate::naming::sidecar_setter_c_name(type_name, f)
+                    )
+                } else {
+                    format!(
+                        ".Call({}, x)",
+                        crate::naming::sidecar_getter_c_name(type_name, f)
+                    )
+                };
+                format!("  {} = {call}", crate::naming::r_def_name(f))
+            })
+            .collect::<Vec<_>>()
+            .join(",\n")
+    };
+    format!(
+        "\n# Field syntax helpers for {type_name} sidecar fields, shared by the `$` / `[[`\n\
+         # methods `r_data_accessors` generates on S3, S4 and env classes.\n\
+         {fields_var} <- c({names})\n\
+         {get_fn} <- function(x, name) switch(name,\n{get_arms})\n\
+         {set_fn} <- function(x, name, value) switch(name,\n{set_arms})\n\
+         {no_field_fn} <- function(name, env) stop(errorCondition(\n\
+         \x20 sprintf(\"`%s` is not a field of `{type_name}`; its fields are {listed}\", name),\n\
+         \x20 class = \"miniextendr_no_field\", call = .miniextendr_frame_call(env)))\n",
+        fields_var = rdata_helper_name(RDataHelper::Fields, type_name),
+        get_fn = rdata_helper_name(RDataHelper::Get, type_name),
+        set_fn = rdata_helper_name(RDataHelper::Set, type_name),
+        no_field_fn = rdata_helper_name(RDataHelper::NoField, type_name),
+        get_arms = arms(false),
+        set_arms = arms(true),
+    )
+}
+
 /// Generate sidecar accessor constants and `extern "C-unwind"` functions.
 ///
 /// For each public `#[r_data]` field, generates:
@@ -1099,6 +1175,8 @@ fn generate_class_integration_r_code(
 /// - `R_CallMethodDef` entries for routine registration
 /// - R wrapper function code (roxygen-documented)
 /// - Class-integration code for R6 / S7 (active bindings / properties)
+/// - The helpers of the S3 / S4 / env field methods
+///   ([`generate_field_syntax_helpers`])
 ///
 /// The generated constants are:
 /// - `RDATA_CALL_DEFS_{TYPE}`: slice of `R_CallMethodDef` for registration
@@ -1313,6 +1391,9 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         &name_str,
         &pub_slots,
     ));
+    // The helpers of the S3 / S4 / env field methods (#1848), for every class
+    // system: the impl's `r_data_accessors` decides whether they are used.
+    r_wrappers.push_str(&generate_field_syntax_helpers(&name_str, &pub_slots));
 
     let const_name_wrappers = Ident::new(
         &format!("R_WRAPPERS_RDATA_{}", name_upper),
@@ -2077,6 +2158,67 @@ mod tests {
 
     /// A struct without `Sidecar` fields keeps the trait's default count and
     /// hook, and gets no accessors.
+    /// The helpers of the S3 / S4 / env field methods (#1848): the field
+    /// names, getter and setter `switch()`es over the accessors' C symbols
+    /// (a raw identifier's R name backtick-quoted), and the classed error.
+    #[test]
+    fn field_syntax_helpers_switch_over_the_accessors() {
+        let slot = |name: &str| super::SidecarSlot {
+            name: syn::parse_str(name).unwrap(),
+            ty: syn::parse_quote!(i32),
+            vis: syn::parse_quote!(pub),
+            is_public: true,
+            kind: super::SlotKind::ScalarInt,
+            access: super::SidecarAccess::default(),
+            prop_doc: None,
+            setter_invisible: None,
+        };
+        let (keys, reserved) = (slot("keys"), slot("r#for"));
+        let out = super::generate_field_syntax_helpers("Engine", &[&keys, &reserved]);
+        assert!(
+            out.contains(".rdata_fields_Engine <- c(\"keys\", \"for\")\n"),
+            "{out}"
+        );
+        let getter = crate::naming::sidecar_getter_c_name("Engine", "keys");
+        let setter = crate::naming::sidecar_setter_c_name("Engine", "for");
+        assert!(
+            out.contains(&format!(
+                ".rdata_get_Engine <- function(x, name) switch(name,\n  keys = .Call({getter}, x),"
+            )),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("  `for` = .Call({setter}, x, value))\n")),
+            "{out}"
+        );
+        assert!(
+            out.contains("is not a field of `Engine`; its fields are `keys`, `for`"),
+            "{out}"
+        );
+        assert!(
+            out.contains("class = \"miniextendr_no_field\", call = .miniextendr_frame_call(env)"),
+            "{out}"
+        );
+    }
+
+    /// The helpers come with the R accessors, whatever the class system; a
+    /// type without them gets none.
+    #[test]
+    fn field_syntax_helpers_follow_the_r_accessors() {
+        for attr in ["", "#[externalptr(r6)]", "#[externalptr(s3)]"] {
+            let input: syn::DeriveInput = syn::parse_str(&format!(
+                "{attr} struct Engine {{ #[r_data] _r: RSidecar, #[r_data] pub count: i32 }}"
+            ))
+            .unwrap();
+            let out = super::derive_external_ptr(input, true).unwrap().to_string();
+            assert!(out.contains(".rdata_fields_Engine"), "{attr}: {out}");
+        }
+        let input: syn::DeriveInput =
+            syn::parse_str("struct Engine { #[r_data] pub count: i32 }").unwrap();
+        let out = super::derive_external_ptr(input, true).unwrap().to_string();
+        assert!(!out.contains(".rdata_"), "{out}");
+    }
+
     #[test]
     fn no_sidecar_fields_emit_no_count_or_hook() {
         let input: syn::DeriveInput =

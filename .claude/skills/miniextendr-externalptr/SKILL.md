@@ -235,14 +235,18 @@ The `#[externalptr(...)]` attribute selects the R class system:
 
 | Attribute | Class system | Sidecar R accessor form |
 |-----------|-------------|------------------------|
-| `#[externalptr(env)]` (default) | Environment | `Type_get_field()`, `Type_set_field()` |
+| `#[externalptr(env)]` (default) + `#[miniextendr(env(r_data_accessors))]` | Environment | `obj$field`, `obj[["field"]]` and their assignments, in `$.Class` before the methods |
 | `#[externalptr(r6)]` + `#[miniextendr(r6(r_data_accessors))]` | R6 | Active bindings in R6Class |
-| `#[externalptr(s3)]` | S3 | `Type_get_field()`, `Type_set_field()` (no `$` / `$<-` methods) |
-| `#[externalptr(s4)]` | S4 | `Type_get_field()`, `Type_set_field()` |
+| `#[externalptr(s3)]` + `#[miniextendr(s3(r_data_accessors))]` | S3 | `$` / `[[` / `$<-` / `[[<-` methods; other names fall through on a list or env object |
+| `#[externalptr(s4)]` + `#[miniextendr(s4(r_data_accessors))]` | S4 | `setMethod("$")` / `setMethod("$<-")` |
 | `#[externalptr(s7)]` + `#[miniextendr(s7(r_data_accessors))]` | S7 | Properties via `new_property()` |
 
-Every class system also gets the standalone `Type_get_field()` /
-`Type_set_field()`; there is no `r_data_accessors!` macro.
+On S3, S4 and env, `r_data_accessors = "get"` generates the reading methods
+only (for a class with its own copy-on-modify `$<-`); the default setters
+write in place, so every copy of the object sees the write. Every class
+system also gets the standalone `Type_get_field()` / `Type_set_field()`, which
+take the pointer or any object carrying it; there is no `r_data_accessors!`
+macro.
 
 ## Decision trees
 

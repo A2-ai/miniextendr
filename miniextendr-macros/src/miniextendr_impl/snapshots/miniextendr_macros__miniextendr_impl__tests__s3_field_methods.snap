@@ -1,0 +1,124 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+# Engine::new (1:1)
+#' @title Engine S3 Class
+#' @name Engine
+#' @rdname Engine
+#' @param n (undocumented)
+#' @export
+new_engine <- function(n) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Engine__new, .call = sys.call(), n)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  structure(.val, class = "Engine")
+}
+
+# Field syntax for the `#[r_data]` fields of Engine (`s3(r_data_accessors)`).
+if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), inherits = FALSE))) stop("`s3(r_data_accessors)` on `Engine` needs the field helpers `#[derive(ExternalPtr)]` emits for a type with an `#[r_data]` `RSidecar` selector and a `pub` `#[r_data]` field", call. = FALSE)
+
+#' @rdname Engine
+#' @param name A field name.
+#' @method $ Engine
+#' @export
+`$.Engine` <- function(x, name) {
+  if (is.na(match(name, .rdata_fields_Engine))) {
+    if (typeof(x) == "externalptr") .rdata_no_field_Engine(name, environment())
+    return(NextMethod())
+  }
+  .val <- .rdata_get_Engine(x, name)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+#' @rdname Engine
+#' @param i A field name; any other index goes to the object's own `[[`.
+#' @param ... Additional arguments.
+#' @method [[ Engine
+#' @export
+`[[.Engine` <- function(x, i, ...) {
+  if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
+    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) .rdata_no_field_Engine(i, environment())
+    return(NextMethod())
+  }
+  .val <- .rdata_get_Engine(x, i)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+#' @rdname Engine
+#' @param name A field name.
+#' @method $<- Engine
+#' @export
+`$<-.Engine` <- function(x, name, value) {
+  if (is.na(match(name, .rdata_fields_Engine))) {
+    if (typeof(x) == "externalptr") .rdata_no_field_Engine(name, environment())
+    return(NextMethod())
+  }
+  .val <- .rdata_set_Engine(x, name, value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  x
+}
+
+#' @rdname Engine
+#' @param i A field name; any other index goes to the object's own `[[`.
+#' @param ... Additional arguments.
+#' @method [[<- Engine
+#' @export
+`[[<-.Engine` <- function(x, i, ..., value) {
+  if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
+    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) .rdata_no_field_Engine(i, environment())
+    return(NextMethod())
+  }
+  .val <- .rdata_set_Engine(x, i, value)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  x
+}
+
+# Engine::size (1:1)
+#' @title S3 generic for `size`
+#' @description S3 generic for `size`
+#' @name size.Engine
+#' @rdname Engine
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export size
+if (!base::exists("size", mode = "function")) {
+  size <- function(x, ...) UseMethod("size")
+} else if (local({ .mx_gen <- base::get("size", mode = "function"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("size") || inherits(.mx_gen, "S7_generic")) })) {
+  # `size` is a plain closure that UseMethod dispatch will never consult.
+  # Shadow it with a package-local generic. The default method delegating to
+  # the masked closure is registered via registerS3method() so it lives ONLY
+  # in the namespace's S3 methods table: a literal `size.default` binding
+  # would trip roxygen2's dynamic S3 scan (warn_missing_s3_exports), and a
+  # static NAMESPACE S3method(size, default) would break package load
+  # whenever this branch does not fire.
+  .mx_shadow_default <- local({
+    .mx_masked <- base::get("size", mode = "function")
+    function(x, ...) .mx_masked(x, ...)
+  })
+  size <- function(x, ...) UseMethod("size")
+  base::registerS3method("size", "default", .mx_shadow_default, envir = base::environment())
+  base::rm(.mx_shadow_default)
+}
+# else: existing usable generic (primitive/S3/S4/S7) — reuse as-is.
+
+#' @name size.Engine
+#' @rdname Engine
+#' @method size Engine
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+size.Engine <- function(x, ...) {
+  .val <- .Call(C_miniextendr_macros_Engine__size, .call = environment(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+#' @rdname Engine
+#' @export
+Engine <- new.env(parent = emptyenv())
+
+Engine$new <- new_engine

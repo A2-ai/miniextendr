@@ -1252,9 +1252,13 @@ the class system.
    Rust-only.
 2. Each `pub` `#[r_data]` field gets `Type_get_<field>(x)` /
    `Type_set_<field>(x, value)`.
-3. For R6 and S7, `r_data_accessors` on the impl also wires the fields into
-   the class: `#[miniextendr(r6(r_data_accessors))]` or
-   `#[miniextendr(s7(r_data_accessors))]`.
+3. `r_data_accessors` on the impl also wires the fields into the class:
+   `#[miniextendr(r6(r_data_accessors))]` makes them active bindings,
+   `#[miniextendr(s7(r_data_accessors))]` S7 properties, and
+   `s3(r_data_accessors)`, `s4(r_data_accessors)` or `env(r_data_accessors)`
+   `$` / `[[` methods that read them and `$<-` / `[[<-` methods that write
+   them. On S3, S4 and env, `r_data_accessors = "get"` generates the reading
+   methods only.
 
 ### Rust Code
 
@@ -1306,9 +1310,48 @@ Fields)".
 |--------|-----|-----|
 | **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` |
 | **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` |
-| **Env, S3, S4, vctrs** (and R6/S7 without the option) | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` |
+| **S3** with `s3(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` |
+| **S4** with `s4(r_data_accessors)` | `obj$name` | `obj$name <- "new"` |
+| **Env** with `env(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` |
+| **S3, S4, env** with `r_data_accessors = "get"` | as above | `MyConfig_set_name(x, "new")`, or the class's own `$<-` |
+| **vctrs**, and any class without the option | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` |
 
-The standalone functions take the external pointer itself.
+The standalone functions take the external pointer, or any object that
+carries it: an environment or list with a `.ptr` element, an R6 object, an
+S4 object with a `ptr` slot, or an object with a `.ptr` attribute (an S7
+object's `.ptr` property).
+
+#### Field syntax on S3, S4 and env classes
+
+The generated methods call the same accessors as the standalone functions, so
+a value is converted, checked and stored the same way, and a failed
+conversion raises the setter's argument error with the call as written
+(`x$score <- value`). They differ from list fields in two ways:
+
+- **A write changes the object in place.** The field lives in the Rust value
+  or the pointer's protection list, and every copy of the R object shares the
+  pointer, so `y <- x; y$score <- 2` also changes `x$score`. That is the
+  semantics of an R6 or env object, not of a list. A class that needs a
+  copy-on-modify `$<-` takes `r_data_accessors = "get"` and writes its own
+  `$<-` method that returns a new object.
+- **A name that is not a field** goes to R's own `$` / `[[` when the object
+  is a list or an environment (an S3 list carrying the handle in `.ptr` keeps
+  its other elements, partial matching included), and raises a
+  `miniextendr_no_field` error naming the fields when the object is the bare
+  classed pointer or an S4 object. A numeric index always goes to R's own
+  `[[`. On an env class, `$` looks the name up among the fields first, then
+  among the methods.
+
+| | `$` | `[[` | `$<-` | `[[<-` |
+|-|-----|------|-------|--------|
+| S3 | `$.Class` | `[[.Class` | `$<-.Class` | `[[<-.Class` |
+| S4 | `setMethod("$")` | (none) | `setMethod("$<-")` | (none) |
+| env | `$.Class` (fields, then methods) | `[[.Class` (same) | `$<-.Class` | `[[<-.Class` |
+
+The class can't define these methods itself next to the option: the impl
+block is refused at compile time when one of its methods is the `$` / `[[`
+/ `$<-` / `[[<-` method the option generates. A class that writes its own
+`$<-` takes `r_data_accessors = "get"`.
 
 ### When to Use Sidecar vs Manual Getters
 

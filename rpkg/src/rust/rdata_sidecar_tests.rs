@@ -47,9 +47,33 @@ pub struct SidecarEnv {
     pub raw_slot: Sidecar<SEXP>,
 }
 
-/// Env class registration for SidecarEnv (enables R sidecar accessors).
-#[miniextendr(env)]
-impl SidecarEnv {}
+/// Env class registration for SidecarEnv: with `env(r_data_accessors)`,
+/// `obj$count` / `obj[["count"]]` read a field and `obj$count <- value`
+/// writes it, next to the methods `obj$method()` reaches.
+#[miniextendr(env(r_data_accessors))]
+impl SidecarEnv {
+    /// Create a SidecarEnv with a `NULL` `raw_slot`.
+    /// @param count Integer sidecar field.
+    /// @param score Numeric sidecar field.
+    /// @param flag Logical sidecar field.
+    /// @param name Character sidecar field.
+    pub fn new(count: i32, score: f64, flag: bool, name: String) -> Self {
+        SidecarEnv {
+            _internal_value: 999,
+            _r: RSidecar,
+            count,
+            score,
+            flag,
+            name,
+            raw_slot: Sidecar::new(SEXP::nil()),
+        }
+    }
+
+    /// Doubles `count` (a method next to the fields).
+    pub fn double_count(&mut self) {
+        self.count *= 2;
+    }
+}
 
 /// Test creating a SidecarEnv with all sidecar field types.
 /// @param count Integer sidecar field.
@@ -63,15 +87,7 @@ pub fn rdata_sidecar_env_new(
     flag: bool,
     name: String,
 ) -> ExternalPtr<SidecarEnv> {
-    ExternalPtr::new(SidecarEnv {
-        _internal_value: 999,
-        _r: RSidecar,
-        count,
-        score,
-        flag,
-        name,
-        raw_slot: Sidecar::new(SEXP::nil()),
-    })
+    ExternalPtr::new(SidecarEnv::new(count, score, flag, name))
 }
 // endregion
 
@@ -148,8 +164,9 @@ pub struct SidecarS3 {
 }
 
 /// S3 class registration for SidecarS3: the methods take the handle, which
-/// is how a method reads a `Sidecar` value.
-#[miniextendr(s3)]
+/// is how a method reads a `Sidecar` value. With `s3(r_data_accessors)`,
+/// `x$tags` / `x[["tags"]]` read a field and `x$tags <- value` writes it.
+#[miniextendr(s3(r_data_accessors))]
 impl SidecarS3 {
     /// Create a SidecarS3 with no tags.
     /// @param data Numeric sidecar field.
@@ -183,6 +200,55 @@ pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
 }
 // endregion
 
+// region: S3, getters only: the class writes its fields with its own `$<-`
+
+/// An S3 class whose fields `$` / `[[` read (`s3(r_data_accessors = "get")`)
+/// and whose own `$<-` is copy-on-modify: it returns a new object, so a copy
+/// made before the assignment keeps its value.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(s3)]
+pub struct SidecarS3Get {
+    #[r_data]
+    _r: RSidecar,
+
+    #[r_data]
+    pub level: i32,
+
+    /// Notes kept in the pointer's protection list.
+    #[r_data]
+    pub notes: Sidecar<Vec<String>>,
+}
+
+/// S3 class registration for SidecarS3Get: generated getters, and a
+/// hand-written copy-on-modify `$<-`.
+#[miniextendr(s3(r_data_accessors = "get"))]
+impl SidecarS3Get {
+    /// Create a SidecarS3Get with no notes.
+    /// @param level Integer sidecar field.
+    pub fn new(level: i32) -> Self {
+        SidecarS3Get {
+            _r: RSidecar,
+            level,
+            notes: Sidecar::new(vec![]),
+        }
+    }
+
+    /// Copy-on-modify `$<-`: a new object with `level` set to `value`, the
+    /// notes copied; the receiver keeps its value.
+    /// @param name A field name; `$<-` sets only `level`.
+    /// @param value The new value of the field.
+    #[miniextendr(s3(generic = "$<-"))]
+    pub fn with_level(self: &ExternalPtr<Self>, name: &str, value: i32) -> Self {
+        assert!(name == "level", "only `level` can be set, not `{name}`");
+        SidecarS3Get {
+            _r: RSidecar,
+            level: value,
+            notes: Sidecar::new(Self::notes(self)),
+        }
+    }
+}
+// endregion
+
 // region: S4 - standalone accessors: SidecarS4_get_slot_int(x), ...
 
 /// Demonstrates S4 class system.
@@ -209,8 +275,9 @@ pub struct SidecarS4 {
 }
 
 /// S4 class registration for SidecarS4: the methods take the handle, which
-/// is how a method reads a `Sidecar` value.
-#[miniextendr(s4)]
+/// is how a method reads a `Sidecar` value. With `s4(r_data_accessors)`,
+/// `o$history` reads a field and `o$history <- value` writes it.
+#[miniextendr(s4(r_data_accessors))]
 impl SidecarS4 {
     /// Create a SidecarS4 with an empty history.
     /// @param slot_int Integer sidecar field.

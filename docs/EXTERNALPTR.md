@@ -447,10 +447,13 @@ pub struct MyType {
 
 Only `pub` fields with `#[r_data]` get R wrapper functions. With
 `#[miniextendr(r6(r_data_accessors))]` on the impl they are also R6 active
-bindings (`obj$count`, `obj$count <- 2L`), and with `s7(r_data_accessors)` S7
-properties (`obj@count`). The other class systems get only the
-`MyType_get_*()` / `MyType_set_*()` functions. See `CLASS_SYSTEMS.md`,
-"Direct Field Access via Sidecar".
+bindings (`obj$count`, `obj$count <- 2L`), with `s7(r_data_accessors)` S7
+properties (`obj@count`), and with `s3(r_data_accessors)`,
+`s4(r_data_accessors)` or `env(r_data_accessors)` `$` / `[[` methods that read
+them and `$<-` / `[[<-` methods that write them in place
+(`r_data_accessors = "get"` for the reading methods only). vctrs classes get
+only the `MyType_get_*()` / `MyType_set_*()` functions. See
+`CLASS_SYSTEMS.md`, "Direct Field Access via Sidecar".
 
 | Field type | Where the value lives | Getter | Setter |
 |---|---|---|---|
@@ -559,6 +562,27 @@ The type's name is provisional (#1857).
 The `Sidecar` values are what a save keeps: `saveRDS()` writes them with
 the pointer and the struct's other fields are lost ("Serialization" below).
 They are also shared by every R name bound to the pointer ("Copies" below).
+
+#### A save stores `Sidecar` values by position
+
+A saved object (`saveRDS()`, `serialize()`) stores its `Sidecar` values by
+position: one slot per `Sidecar` field, in the order the fields appear in the
+struct. After a reload, the R accessors (`Type_get_f()`, the R6 / S7 fields
+and the `$` getters of `s3(r_data_accessors)` & co.) read each field from its
+position. No field names are stored.
+
+So reordering, adding, removing or retyping `Sidecar` fields changes how an
+old save is read. Within one version of the crate nothing detects it: a field
+can read another field's value, or fail with an error that has nothing to do
+with the change.
+
+Bump the crate's version (`version` in the package's `src/rust/Cargo.toml`,
+which the type ID in `prot[0]` records) whenever the `Sidecar` fields change.
+A save from another version is then refused with the
+`miniextendr_restored_other_version` error ("Serialization" below, #1872).
+
+`#[repr(C)]` doesn't help. It fixes the Rust struct's memory layout, which a
+save never stores; the slot positions follow the source order either way.
 
 ### Copies
 

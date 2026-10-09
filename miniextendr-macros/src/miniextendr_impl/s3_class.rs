@@ -95,6 +95,17 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
+    // `$` / `[[` field methods of `s3(r_data_accessors)` (#1848), ahead of the
+    // instance methods: on a shared page roxygen2 keeps the last `@param` of
+    // a name, so a method's own text for `name` or `value` wins.
+    if parsed_impl.r_data_accessors.enabled() {
+        lines.extend(super::field_syntax::s3_field_methods(
+            parsed_impl,
+            !class_has_no_rd && should_export,
+            should_register_s3method,
+        ));
+    }
+
     // Instance methods as S3 generics + methods. Their conditions report the
     // generic's call, resolved from the method frame on a raise (#1851).
     for ctx in parsed_impl.instance_method_contexts() {
