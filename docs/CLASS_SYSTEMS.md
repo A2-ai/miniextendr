@@ -1284,8 +1284,8 @@ impl MyConfig {
         MyConfig { cache: vec![], _r: RSidecar, name, score, table: Sidecar::new(SEXP::nil()) }
     }
 
-    pub fn has_table(&self) -> bool {
-        !self.table().is_null()
+    pub fn has_table(self: &ExternalPtr<Self>) -> bool {
+        !Self::table(self).is_null()
     }
 }
 ```
@@ -1293,8 +1293,10 @@ impl MyConfig {
 `name` and `score` live in the Rust struct: each read converts the Rust value
 to R, and each write converts into Rust or raises an error. `table` is a
 `Sidecar<T>`: its value lives in the external pointer's protection list, which
-roots it, and Rust reads and writes it through the `table()` / `set_table()`
-accessors the derive generates. The field types, the `Sidecar<T>` lifecycle
+roots it, and Rust reads and writes it through the `MyConfig::table(&ptr)` /
+`MyConfig::set_table(&mut ptr, v)` accessors the derive generates, so a method
+that needs it takes the handle as its receiver (`self: &ExternalPtr<Self>`,
+as `has_table` does). The field types, the `Sidecar<T>` lifecycle
 and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R Data
 Fields)".
 

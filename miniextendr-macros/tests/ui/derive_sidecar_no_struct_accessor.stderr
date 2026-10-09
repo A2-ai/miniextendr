@@ -1,0 +1,26 @@
+error[E0599]: no method named `keys` found for reference `&Engine` in the current scope
+  --> tests/ui/derive_sidecar_no_struct_accessor.rs:15:12
+   |
+15 |     engine.keys().len()
+   |            ^^^^
+   |            |
+   |            this is an associated function, not a method
+   |            field, not a method
+   |
+   = note: found the following associated functions; to be used as methods, functions must have a `self` parameter
+note: the candidate is defined in an impl for the type `Engine`
+  --> tests/ui/derive_sidecar_no_struct_accessor.rs:8:10
+   |
+ 8 | #[derive(ExternalPtr)]
+   |          ^^^^^^^^^^^
+   = note: this error originates in the derive macro `ExternalPtr` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: use associated function syntax instead
+   |
+15 -     engine.keys().len()
+15 +     Engine::keys().len()
+   |
+help: remove the arguments
+   |
+15 -     engine.keys().len()
+15 +     engine.keys.len()
+   |

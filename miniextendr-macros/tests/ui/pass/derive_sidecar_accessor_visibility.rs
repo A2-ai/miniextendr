@@ -1,9 +1,10 @@
 //! Compile-pass test: `#[derive(ExternalPtr)]` gives a `Sidecar<T>` field
-//! typed accessors with the field's own visibility (#1855). A `pub(crate)`
-//! field's accessors are callable from another module of the crate, a
-//! `pub(super)` field's from the parent module, and `#[r_data(ref)]` /
-//! `#[r_data(mut)]` select the getter or the setter. Nothing here touches the
-//! R runtime: the accessors are only named, never called.
+//! typed accessors with the field's own visibility (#1855). They are
+//! associated functions taking the `ExternalPtr` handle (#1856). A
+//! `pub(crate)` field's accessors are callable from another module of the
+//! crate, a `pub(super)` field's from the parent module, and `#[r_data(ref)]`
+//! / `#[r_data(mut)]` select the getter or the setter. Nothing here touches
+//! the R runtime: the accessors are only named, never called.
 
 #![allow(dead_code)]
 
@@ -26,7 +27,7 @@ mod engine {
         /// Setter only, crate-visible.
         #[r_data(mut)]
         pub(crate) note: Sidecar<String>,
-        /// Both accessors (a bare `#[r_data]`), private: used by `new`.
+        /// Both accessors (a bare `#[r_data]`), private: used by `forget`.
         #[r_data]
         cache: Sidecar<Option<miniextendr_api::List>>,
     }
@@ -53,22 +54,22 @@ mod engine {
             }
         }
 
-        pub fn forget(&mut self) {
-            self.set_cache(None);
-            let _cached = self.cache();
+        pub fn forget(ptr: &mut ExternalPtr<Self>) {
+            Self::set_cache(ptr, None);
+            let _cached = Self::cache(ptr);
         }
 
-        pub fn inner_total(inner: &nested::Inner) -> f64 {
-            inner.weights().iter().sum()
+        pub fn inner_total(inner: &ExternalPtr<nested::Inner>) -> f64 {
+            nested::Inner::weights(inner).iter().sum()
         }
     }
 }
 
-fn use_from_another_module(engine: &mut engine::Engine) {
-    let keys: Vec<i32> = engine.keys();
-    engine.set_keys(keys);
-    let _labels: Vec<String> = engine.labels();
-    engine.set_note(String::from("seen"));
+fn use_from_another_module(engine: &mut ExternalPtr<engine::Engine>) {
+    let keys: Vec<i32> = engine::Engine::keys(engine);
+    engine::Engine::set_keys(engine, keys);
+    let _labels: Vec<String> = engine::Engine::labels(engine);
+    engine::Engine::set_note(engine, String::from("seen"));
 }
 
 fn wrapped(engine: engine::Engine) -> ExternalPtr<engine::Engine> {

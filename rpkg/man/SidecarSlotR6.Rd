@@ -109,7 +109,7 @@ R6 class with typed \verb{Sidecar<T>} fields.
 \if{html}{\out{<a id="method-SidecarSlotR6-key_count"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-key_count}{}}}
 \subsection{\code{SidecarSlotR6$key_count()}}{
-  Length of \code{keys}, read from Rust through \verb{&self}.
+  Length of \code{keys}, read from Rust through the handle.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$key_count()}
@@ -152,7 +152,7 @@ R6 class with typed \verb{Sidecar<T>} fields.
 \if{html}{\out{<a id="method-SidecarSlotR6-push_key"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-push_key}{}}}
 \subsection{\code{SidecarSlotR6$push_key()}}{
-  Appends \code{key} to \code{keys} from Rust, through \verb{&mut self}.
+  Appends \code{key} to \code{keys} from Rust, through the mutable handle.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$push_key(key)}
@@ -215,8 +215,9 @@ run on R's main thread only. Returns the panic message.
 \if{html}{\out{<a id="method-SidecarSlotR6-duplicate"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-duplicate}{}}}
 \subsection{\code{SidecarSlotR6$duplicate()}}{
-  A copy of this value in a new external pointer: the sidecar values are
-copied by the struct's \code{Clone}, and the two pointers are independent.
+  A copy of this object in a new external pointer: \code{ExternalPtr::clone}
+copies the struct and shares the sidecar values as R objects, so a
+write to a field on either side replaces that side's slot only.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$duplicate()}
@@ -248,8 +249,9 @@ Both sides see the new values at their next access.
 \if{html}{\out{<a id="method-SidecarSlotR6-rebuilt"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarSlotR6-rebuilt}{}}}
 \subsection{\code{SidecarSlotR6$rebuilt()}}{
-  Rebuilds the value by value (\code{self -> Self}): \code{keys} gain \code{extra}, the
-other sidecar values travel with the struct.
+  Rebuilds the value by value (\code{self -> Self}): \code{n} grows by \code{extra} and
+the private \code{cache} is set to \code{list(extra)}; \code{keys}, \code{label} and
+\code{note} stay in the pointer across the call.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarSlotR6$rebuilt(extra)}
@@ -258,7 +260,7 @@ other sidecar values travel with the struct.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{extra}}{A key appended to \code{keys}.}
+      \item{\code{extra}}{Added to \code{n} and kept in the cache.}
     }
     \if{html}{\out{</div>}}
   }

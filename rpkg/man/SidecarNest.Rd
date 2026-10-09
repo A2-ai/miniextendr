@@ -23,7 +23,7 @@ The SidecarNest pointer (invisibly)
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarNest}.
 
-R6 class nesting a \code{SidecarSlotR6} as a plain field.
+R6 class nesting a \code{SidecarSlotR6} handle as a plain field.
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
@@ -44,7 +44,7 @@ R6 class nesting a \code{SidecarSlotR6} as a plain field.
 \if{html}{\out{<a id="method-SidecarNest-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarNest-initialize}{}}}
 \subsection{\code{SidecarNest$new()}}{
-  Create a SidecarNest whose inner struct has \code{n} keys.
+  Create a SidecarNest whose inner object has \code{n} keys.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarNest$new(n, .ptr = NULL)}
@@ -64,7 +64,7 @@ R6 class nesting a \code{SidecarSlotR6} as a plain field.
 \if{html}{\out{<a id="method-SidecarNest-inner_keys"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarNest-inner_keys}{}}}
 \subsection{\code{SidecarNest$inner_keys()}}{
-  The inner struct's \code{keys}, from its own value.
+  The inner object's \code{keys}, through its handle.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarNest$inner_keys()}
@@ -76,7 +76,7 @@ R6 class nesting a \code{SidecarSlotR6} as a plain field.
 \if{html}{\out{<a id="method-SidecarNest-set_inner_keys"></a>}}
 \if{latex}{\out{\hypertarget{method-SidecarNest-set_inner_keys}{}}}
 \subsection{\code{SidecarNest$set_inner_keys()}}{
-  Writes the inner struct's \code{keys}.
+  Writes the inner object's \code{keys} through its handle.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{SidecarNest$set_inner_keys(keys)}

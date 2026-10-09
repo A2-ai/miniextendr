@@ -11,5 +11,5 @@ sidecar_rewrap(ptr)
 }
 \description{
 Moves the value out of \code{ptr} (whose R object is cleared) and wraps it
-again: the sidecar values travel with it.
+again: the sidecar values of \code{ptr} travel with it.
 }

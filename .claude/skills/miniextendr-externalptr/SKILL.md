@@ -158,15 +158,19 @@ Three field tiers are supported in sidecar slots:
 - `Sidecar<T>` — a typed value kept in the external pointer's `prot` list
   (after the type ID and the user slot), so the pointer roots it and
   `saveRDS()` writes it. The derive generates Rust accessors with the field's
-  visibility: `#[r_data(ref)]` → `fn f(&self) -> T`, `#[r_data(mut)]` →
-  `fn set_f(&mut self, value: T)`, `#[r_data(ref, mut)]` or a bare
-  `#[r_data]` → both. The struct holds only a back-reference (pointer, own
-  address, slot index), which the handle rewrites whenever it hands the struct
-  out (`Deref`, `as_ref`, every method receiver, the R accessors); a value
-  passed to `Sidecar::new` is pending until the struct is wrapped or next
-  accessed. Main thread only. A bare `SEXP` field is a compile error: the
-  struct can't root it (#1846). Moving the struct out through `&mut` is the
-  open hole #1856; the name is provisional (#1857).
+  visibility, as associated functions taking the handle (#1856):
+  `#[r_data(ref)]` → `fn f(ptr: &ExternalPtr<Self>) -> T`, `#[r_data(mut)]`
+  → `fn set_f(ptr: &mut ExternalPtr<Self>, value: T)`, `#[r_data(ref, mut)]`
+  or a bare `#[r_data]` → both. A method that needs the value takes the
+  handle (`self: &ExternalPtr<Self>`) and calls `Self::f(self)`; the struct
+  holds nothing that points back at its pointer, so a plain `&self` method, a
+  trait impl and an ALTREP callback can't reach the values (#1880). A value
+  passed to
+  `Sidecar::new` is pending until the struct is wrapped or the field is next
+  accessed; `into_inner` reads the slots back as pending values, and
+  `ExternalPtr::clone` shares the slot values as R objects. Main thread only.
+  A bare `SEXP` field is a compile error: the struct can't root it (#1846).
+  The name is provisional (#1857).
 - Scalars (`i32`, `f64`, `bool`, `u8`) — struct fields, returned as a fresh
   length-1 vector and written with `Rf_as*`.
 - Conversion types — struct fields, `IntoR` / `TryFromSexp` on every access.

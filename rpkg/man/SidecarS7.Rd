@@ -8,6 +8,14 @@
 \alias{SidecarS7_set_prop_flag}
 \alias{SidecarS7_get_prop_name}
 \alias{SidecarS7_set_prop_name}
+\alias{SidecarS7_get_scores}
+\alias{SidecarS7_set_scores}
+\alias{SidecarS7-score_total}
+\alias{SidecarS7$score_total}
+\alias{SidecarS7_score_total}
+\alias{SidecarS7-add_score}
+\alias{SidecarS7$add_score}
+\alias{SidecarS7_add_score}
 \title{SidecarS7 Sidecar Accessors}
 \usage{
 SidecarS7_get_prop_int(x)
@@ -22,7 +30,15 @@ SidecarS7_get_prop_name(x)
 
 SidecarS7_set_prop_name(x, value)
 
+SidecarS7_get_scores(x)
+
+SidecarS7_set_scores(x, value)
+
 SidecarS7(prop_int, prop_flag, prop_name, .ptr = NULL)
+
+SidecarS7_score_total(self, ...)
+
+SidecarS7_add_score(self, score, ...)
 }
 \arguments{
 \item{x}{The SidecarS7 external pointer}
@@ -36,6 +52,12 @@ SidecarS7(prop_int, prop_flag, prop_name, .ptr = NULL)
 \item{prop_name}{Character sidecar field.}
 
 \item{.ptr}{Internal pointer (used by static methods, not for direct use).}
+
+\item{self}{A \code{SidecarS7} object.}
+
+\item{...}{Additional arguments; ignored by the fast-path shortcut.}
+
+\item{score}{The score to append.}
 }
 \value{
 The value of the \code{prop_int} field
@@ -49,15 +71,37 @@ The SidecarS7 pointer (invisibly)
 The value of the \code{prop_name} field
 
 The SidecarS7 pointer (invisibly)
+
+The value of the \code{scores} field
+
+The SidecarS7 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS7}.
 
 S7 class registration for SidecarS7 with property-based sidecar accessors.
+
+Sum of \code{scores}, read through the handle.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
+
+Appends \code{score} to \code{scores} through the handle.
+
+Calls the underlying Rust routine directly, bypassing \code{S7::S7_dispatch()}
+(the class walk + method-table lookup). Use in hot loops where the
+per-call dispatch overhead matters. \strong{Footgun:} this shortcut does not
+perform subclass dispatch: a method override defined on a child class
+will \emph{not} be honoured. Use the generic when subclassing is possible.
 }
 \section{Additional properties}{
 
 \describe{
+\item{\code{@scores}}{Scores kept in the pointer's protection list.}
+
 \item{\code{@prop_int}}{An integer sidecar property.}
 
 \item{\code{@prop_flag}}{A logical sidecar property.}
