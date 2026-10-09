@@ -220,6 +220,12 @@ impl MyType {
     pub fn set_via_ptr(self: &mut ExternalPtr<Self>, v: i32) {
         self.value = v;  // DerefMut to &mut MyType
     }
+
+    // A Sidecar<T> field (`#[r_data] keys: Sidecar<Vec<i32>>`) is read
+    // and written through the handle
+    pub fn key_count(self: &ExternalPtr<Self>) -> usize {
+        Self::keys(self).len()
+    }
 }
 ```
 
@@ -229,6 +235,12 @@ etc. The macro rewrites `self` to an internal binding so the pattern
 compiles on stable Rust (no `arbitrary_self_types` required), and the
 generated C wrapper uses typed `ExternalPtr::<T>::wrap_sexp()` rather than
 an erased downcast.
+
+It is also the form for a method that needs a `Sidecar<T>` field's value:
+the accessors the derive generates are associated functions that take the
+handle (`Self::keys(self)`, `Self::set_keys(self, v)`), since the struct
+holds nothing that points back at its pointer. See "`Sidecar<T>`: values the
+pointer roots" below.
 
 Allowed forms: `self: &ExternalPtr<Self>`, `self: &mut ExternalPtr<Self>`.
 Consuming receivers (`self: ExternalPtr<Self>`) are not supported. R owns
@@ -457,20 +469,22 @@ the struct still pointed at it (#1846). Keep R values in a `Sidecar<SEXP>`.
 
 A `Sidecar<T>` field's value lives in the pointer's `prot` list ("SEXP Layout"
 below), which roots it as long as the pointer is reachable. Rust reads and
-writes it through accessors the derive generates on the struct, with the
-field's visibility; the `#[r_data(...)]` option selects them:
+writes it through the pointer: the derive generates associated functions on
+the struct that take the `ExternalPtr` handle, with the field's visibility;
+the `#[r_data(...)]` option selects them:
 
 | `#[r_data(...)]` | Rust accessors |
 |---|---|
-| `ref` | `fn keys(&self) -> T` |
-| `mut` | `fn set_keys(&mut self, value: T)` |
+| `ref` | `fn keys(ptr: &ExternalPtr<Self>) -> T` |
+| `mut` | `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` |
 | `ref, mut`, or a bare `#[r_data]` | both |
 
-`T` is any `IntoR + TryFromSexp` type; the getter also needs `T: Clone`.
-Rust code sees no `SEXP`s or slot indices: a plain constructor fills the
-field with `Sidecar::new(v)` (or `Sidecar::default()`, which is
-`Sidecar::new(T::default())`), and a method reads it with `self.keys()` and
-writes it with `self.set_keys(v)`:
+`T` is any `IntoR + TryFromSexp` type. Rust code sees no `SEXP`s or slot
+indices: a plain constructor fills the field with `Sidecar::new(v)` (or
+`Sidecar::default()`, which is `Sidecar::new(T::default())`), and a method
+that needs the value takes the handle as its receiver ("ExternalPtr as a Self
+Receiver" above), reads it with `Self::keys(self)` and writes it with
+`Self::set_keys(self, v)`:
 
 ```rust
 #[miniextendr(r6(r_data_accessors))]
@@ -485,59 +499,62 @@ impl MyType {
         }
     }
 
-    pub fn n_keys(&self) -> usize {
-        self.keys().len()
+    pub fn n_keys(self: &ExternalPtr<Self>) -> usize {
+        Self::keys(self).len()
     }
 
-    pub fn push_key(&mut self, key: i32) {
-        let mut keys = self.keys();
+    pub fn push_key(self: &mut ExternalPtr<Self>, key: i32) {
+        let mut keys = Self::keys(self);
         keys.push(key);
-        self.set_keys(keys);
+        Self::set_keys(self, keys);
     }
 }
 ```
 
+Any other Rust code with a handle makes the same calls: `MyType::keys(&ptr)`,
+`MyType::set_keys(&mut ptr, v)`.
+
+The struct holds nothing that points back at its pointer, so a `&MyType`
+cannot reach the values. A method with a plain `&self` / `&mut self`
+receiver sees the other fields only; so do a trait impl (`impl Trait for
+MyType`, `RDisplay`, the cross-package trait ABI) and an ALTREP callback,
+which receive the struct, not the handle (#1880). Give such a
+method a handle receiver, or pass the value in.
+
 How the value moves:
 
-- `Sidecar::new(v)` holds `v` as a *pending* value in the struct.
-  `ExternalPtr::new` moves every pending value into the pointer's `prot` list
-  and writes a back-reference (the pointer, the field's own address, its slot
-  index) into each `Sidecar` field. From then on the value lives in R only.
-- The handle rewrites the back-reference whenever it hands the struct out:
-  `Deref` / `DerefMut`, `as_ref` / `as_mut`, the receiver of a
-  `#[miniextendr]` method (inherent, trait impl or ALTREP), the R accessors.
-  A back-reference is trusted only when the recorded address is the field's
-  current address, so a struct that moved (`mem::swap(&mut *a, &mut *b)`, a
-  struct nested as a plain field of another wrapped struct, a value on the
-  stack) works on its own pending value until the handle attaches it again.
-  After a swap the sidecar values stay with each pointer.
-- Every accessor, Rust or R, first moves a pending value into the `prot`
-  list. So `*ptr = MyType::new(..)` through `DerefMut` takes effect at the
-  next access from either side; a `saveRDS()` before any access writes the
-  old slot values.
-- `ExternalPtr::into_inner` converts each slot back into a pending value, so
-  wrapping the value again keeps the values. A `self -> Self` method writes
-  its result back into the same pointer, values included.
-- `Clone` reads the slot and gives a detached `Sidecar` holding that value, so
-  `#[derive(Clone)]` on the struct copies the sidecar values, through
-  `ExternalPtr::clone` or directly, and the two pointers are independent.
+- `Sidecar::new(v)` holds `v` as a *pending* value in the struct. Wrapping
+  the struct (`ExternalPtr::new` and the other constructors) moves every
+  pending value into the pointer's `prot` list. From then on the value lives
+  in R only and the field is empty.
+- Every accessor, Rust or R, first moves a pending value of its field into
+  the `prot` list. So `*ptr = MyType::new(..)` through `DerefMut` takes
+  effect at the next access from either side; a `saveRDS()` before any access
+  writes the old slot values.
+- `mem::swap(&mut *a, &mut *b)` and `*ptr = value` are plain moves of the
+  struct: the sidecar values stay with each pointer.
+- `ExternalPtr::into_inner` / `into_raw` read each slot back into its field
+  as a pending value, so wrapping the value again keeps the values, straight
+  after a swap included. A `self -> Self` method runs with the values left in
+  the pointer; its result is written back into the same pointer, and a field
+  it filled with `Sidecar::new` replaces that slot.
+- `ExternalPtr::clone` and `clone_from` copy the struct and share the slot
+  values as R objects, which are immutable: a later write to a field on
+  either side replaces that side's slot only. `MyType::clone()` on the bare
+  struct copies pending values only.
 - A private `Sidecar<T>` gets private accessors and no R accessor. That is how
   Rust keeps an R value (`Sidecar<Option<List>>`, `Sidecar<SEXP>`) alive for
   as long as the object. A `Sidecar<SEXP>` getter returns a view the slot
   roots until the next write to that field; a pending `SEXP` passed to
   `Sidecar::new` is not rooted until the struct is wrapped.
-- The accessors run on R's main thread only. Off it (a thread the package
-  spawned) an accessor on an attached field panics with a message naming the
+- The accessors run on R's main thread only. Off it (a `worker` method, a
+  thread the package spawned) an accessor panics with a message naming the
   field and the type.
 - A conversion failure in a getter (the slot holds an R value that does not
   convert to `T`) is a panic naming the field and the type; the framework
   turns it into an R error.
 
-Don't move a sidecar struct out of its pointer through `&mut` (`mem::replace`,
-`mem::take`, `mem::swap` with a local): the moved struct keeps its
-back-reference, and if the pointer is later freed and the struct lands at that
-same address again, its next accessor reads a freed R object (#1856). Use
-`ExternalPtr::into_inner`. The type's name is provisional (#1857).
+The type's name is provisional (#1857).
 
 The `Sidecar` values are what a save keeps: `saveRDS()` writes them with
 the pointer and the struct's other fields are lost ("Serialization" below).

@@ -7,17 +7,18 @@
 //! is wrapped. Its value lives in the external pointer's protection list,
 //! after the type ID and the user slot, so the pointer roots it for as long as
 //! the pointer is reachable, and `saveRDS()` writes it with the pointer. The
-//! struct keeps only a back-reference to that slot.
+//! struct holds nothing that points back at its pointer: the value is read
+//! and written through the `ExternalPtr<T>` handle, which keeps the pointer
+//! alive for as long as it exists (#1856).
 //!
 //! The type is named in one place (this module) and re-exported from
 //! [`crate::externalptr`]; its final name is #1857.
 
 use std::any::Any;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::fmt;
-use std::ptr;
 
-use super::{PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored};
+use super::{ExternalPtr, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
@@ -29,23 +30,26 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 /// protection list, typed as `T` on the Rust side.
 ///
 /// Declare it as `#[r_data] pub keys: Sidecar<Vec<i32>>` on a
-/// `#[derive(ExternalPtr)]` struct. The derive generates accessors on the
-/// struct, with the field's visibility:
+/// `#[derive(ExternalPtr)]` struct. The derive generates accessors as
+/// associated functions of the struct, with the field's visibility. They take
+/// the `ExternalPtr` handle, which keeps the pointer alive, not the struct:
 ///
 /// | `#[r_data(...)]` | Rust accessors |
 /// |---|---|
-/// | `ref` | `fn keys(&self) -> T` |
-/// | `mut` | `fn set_keys(&mut self, value: T)` |
+/// | `ref` | `fn keys(ptr: &ExternalPtr<Self>) -> T` |
+/// | `mut` | `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` |
 /// | `ref, mut`, or a bare `#[r_data]` | both |
 ///
 /// Rust code sees no `SEXP`s, slot indices or other R plumbing: a plain
-/// `fn new() -> Self` constructor fills the field with [`Sidecar::new`], a
-/// method reads it with `self.keys()` and writes it with `self.set_keys(v)`.
-/// The R side keeps its own accessors whatever the option: for a `pub` field,
-/// `Type_get_keys(x)` / `Type_set_keys(x, value)`, an R6 active binding
-/// (`r6(r_data_accessors)`) or an S7 property (`s7(r_data_accessors)`). The
-/// R setter validates the new value with `TryFromSexp::<T>` and stores the
-/// value R gave.
+/// `fn new() -> Self` constructor fills the field with [`Sidecar::new`], and
+/// a method that needs the value takes the handle as its receiver
+/// (`self: &ExternalPtr<Self>` / `self: &mut ExternalPtr<Self>`) and calls
+/// `Self::keys(self)` / `Self::set_keys(self, v)`; other Rust code writes
+/// `Engine::keys(&ptr)`. The R side keeps its own accessors whatever the
+/// option: for a `pub` field, `Type_get_keys(x)` / `Type_set_keys(x, value)`,
+/// an R6 active binding (`r6(r_data_accessors)`) or an S7 property
+/// (`s7(r_data_accessors)`). The R setter validates the new value with
+/// `TryFromSexp::<T>` and stores the value R gave.
 ///
 /// ```ignore
 /// #[derive(ExternalPtr)]
@@ -69,16 +73,20 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///             cache: Sidecar::default(),
 ///         }
 ///     }
-///     pub fn key_count(&self) -> usize { self.keys().len() }
-///     pub fn remember(&mut self, value: List) { self.set_cache(Some(value)) }
+///     pub fn key_count(self: &ExternalPtr<Self>) -> usize { Self::keys(self).len() }
+///     pub fn remember(self: &mut ExternalPtr<Self>, value: List) { Self::set_cache(self, Some(value)) }
 /// }
+///
+/// // From any other Rust code holding the handle:
+/// let mut ptr = ExternalPtr::new(Engine::new(3));
+/// Engine::set_keys(&mut ptr, vec![9]);
+/// assert_eq!(Engine::keys(&ptr), vec![9]);
 /// ```
 ///
 /// # Values
 ///
-/// - `T: IntoR + TryFromSexp`. The getter also needs `T: Clone`, for a field
-///   that is not attached to a pointer (below), and `T::Error: Display`, for
-///   its panic message.
+/// - `T: IntoR + TryFromSexp`, with `T::Error: Display` for the getter's panic
+///   message.
 /// - A getter converts the slot with `TryFromSexp`, so a converting type
 ///   (`Vec<i32>`, `String`) copies on every read. A conversion failure is a
 ///   panic naming the field and the type; the framework turns it into an R
@@ -94,61 +102,57 @@ use crate::{R_xlen_t, SEXP, SEXPTYPE, SexpExt};
 ///
 /// - **Pending.** [`Sidecar::new(v)`](Sidecar::new) and [`Default`]
 ///   (`Sidecar::new(T::default())`) hold `v` as a pending value in the
-///   struct.
-/// - **Attached.** `ExternalPtr::new` moves every pending value into the
-///   pointer's protection list and writes the back-reference into every
-///   `Sidecar` field. From then on the value lives in R; the field is a
-///   back-reference. The handle rewrites the back-reference whenever it hands
-///   the struct out (`Deref`, `DerefMut`, `as_ref`, `as_mut`, the receiver
-///   of a `#[miniextendr]` method, the R accessors), so a struct swapped
-///   between two pointers reads its own pointer's values again at the next
-///   access through the handle.
-/// - **Flush on every access.** The Rust getter and setter, and the R getter
-///   and setter, first move a pending value into the protection list. So
+///   struct. That is the only state a `Sidecar` has: before the struct is
+///   wrapped, after `*ptr = Engine::new(..)`, after `ExternalPtr::into_inner`.
+/// - **Flushed when wrapped.** `ExternalPtr::new` moves every pending value
+///   into the pointer's protection list. From then on the value lives in R
+///   only, and the field is empty.
+/// - **Flushed on every access to the field.** The handle getter and setter,
+///   and the R getter and setter, first move that field's pending value into
+///   its slot (the setters drop it: the write supersedes it). So
 ///   `*ptr = Engine::new(..)` or `ptr.keys = Sidecar::new(v)` through
 ///   `DerefMut` takes effect at the next access from either side. A
 ///   `saveRDS()` before any access writes the old slot value.
-/// - **Detached.** A field whose recorded address is not its current address
-///   works on its own pending value: a value on the stack, a struct moved
-///   out of its pointer, a struct nested as a field of another wrapped
-///   struct. `ExternalPtr::into_inner` converts each slot back into a pending
-///   value first, so wrapping the value again keeps the values.
-/// - **Clone** (for `T: Clone`) reads an attached slot and returns a detached
-///   `Sidecar` holding that value. `#[derive(Clone)]` on the struct therefore
-///   copies the sidecar values, through `ExternalPtr::clone` or directly, and
-///   the two pointers are independent afterwards.
-/// - **`mem::swap(&mut *a, &mut *b)`** swaps the Rust fields; the sidecar
-///   values stay with each pointer, because they live in its protection list.
+/// - **Loaded when the value leaves its pointer.** `ExternalPtr::into_inner`
+///   and `into_raw` read each slot of the pointer being consumed back into its
+///   field as a pending value (unless one is pending already), so wrapping
+///   the value again keeps the values.
+/// - **A `self -> Self` method** leaves the values in the pointer across the
+///   call; the write-back flushes only what the method set with
+///   `Sidecar::new`. `Self { n: .., ..self }` keeps the values,
+///   `Self::new(..)` replaces them.
+/// - **Clone.** `Sidecar::clone` (for `T: Clone`) copies the pending value,
+///   which is none once the struct is wrapped. `ExternalPtr::clone` and
+///   `clone_from` copy the slot values as R objects, so the two pointers
+///   share them until one side writes the field: every write replaces the
+///   slot, and R copies a shared value before modifying it in place. A struct
+///   cloned outside its handle carries no sidecar values; clone the handle.
+/// - **`*ptr = new` and `mem::swap(&mut *a, &mut *b)`** are plain Rust
+///   moves. The sidecar values stay in each pointer's protection list; only
+///   pending values travel with the struct.
 /// - **After `readRDS()`** there is no Rust value. The R accessors read the
 ///   protection list directly, checked by the type ID stored with it.
 ///
 /// Use the accessors on R's main thread only. Off the main thread an
-/// accessor on an attached field panics with a clear message.
+/// accessor panics with a clear message before it touches R.
 ///
-/// # A struct moved out through `&mut` (#1856)
+/// # Methods that need sidecar values take the handle
 ///
-/// Don't move a sidecar struct out of its pointer through `&mut`
-/// (`mem::replace`, `mem::take`, `mem::swap` with a local). The moved struct
-/// keeps its back-reference; if the pointer is later freed and the struct
-/// lands at that same address again, its next accessor call reads a freed R
-/// object. Use `ExternalPtr::into_inner`, which detaches the struct and keeps
-/// its values.
+/// A `&self` / `&mut self` method sees the struct, which holds no reference
+/// to its pointer, so it can't reach the values. Take the handle instead:
+/// `self: &ExternalPtr<Self>` to read, `self: &mut ExternalPtr<Self>` to
+/// write (`Deref` still gives the struct fields). The same holds for a
+/// struct moved out of its pointer through `&mut` (`mem::replace`,
+/// `mem::take`): it carries nothing to follow, so nothing can read a freed R
+/// object (#1856). A trait-impl method (`impl Trait for Type`) and an ALTREP
+/// callback receive only the struct, so they can't read sidecar values
+/// (#1880).
 ///
 /// A plain `SEXP` field under `#[r_data]` is a compile error: nothing would
 /// root it. Use `Sidecar<SEXP>`.
 pub struct Sidecar<T> {
-    /// The value the field holds while it is not attached to a pointer.
+    /// The value the field holds while it is not in a pointer's slot.
     pending: RefCell<Option<T>>,
-    /// The owning `EXTPTRSXP`, as an integer (`0` when detached).
-    owner: Cell<usize>,
-    /// The field's own address when the back-reference was written.
-    addr: Cell<usize>,
-    /// The field's position among the type's `Sidecar` fields.
-    index: Cell<usize>,
-    /// The field's name, for diagnostics.
-    name: Cell<&'static str>,
-    /// The owning type's R-visible name, for diagnostics.
-    owner_type: Cell<&'static str>,
 }
 
 impl<T> Sidecar<T> {
@@ -157,142 +161,50 @@ impl<T> Sidecar<T> {
     pub fn new(value: T) -> Self {
         Self {
             pending: RefCell::new(Some(value)),
-            owner: Cell::new(0),
-            addr: Cell::new(0),
-            index: Cell::new(0),
-            name: Cell::new(""),
-            owner_type: Cell::new(""),
         }
     }
 
-    /// The owning pointer when the back-reference is trusted: it was written
-    /// for this very address.
-    #[inline]
-    fn attached(&self) -> Option<SEXP> {
-        let owner = self.owner.get();
-        if owner == 0 || self.addr.get() != ptr::from_ref(self).addr() {
-            return None;
-        }
-        Some(SEXP(ptr::with_exposed_provenance_mut(owner)))
-    }
-
-    /// The protection-list position of this field.
-    #[inline]
-    fn prot_index(&self) -> R_xlen_t {
-        prot_index(self.index.get())
-    }
-
-    /// Panics unless this is R's main thread. No R API: the message uses the
-    /// names recorded at attach time.
-    fn assert_main_thread(&self) {
-        if !crate::worker::is_r_main_thread() {
-            panic!(
-                "sidecar field `{}` of `{}`: its accessors run on R's main thread only; \
-                 this call came from another thread (a `worker` method, or a thread the \
-                 package spawned)",
-                self.name.get(),
-                self.owner_type.get(),
-            );
-        }
+    /// Drops a pending value, which a write to the slot supersedes.
+    fn discard_pending(&self) {
+        *self.pending.borrow_mut() = None;
     }
 }
 
-impl<T: IntoR + TryFromSexp> Sidecar<T>
-where
-    <T as TryFromSexp>::Error: fmt::Display,
-{
-    /// Moves a pending value into the slot of the attached pointer `owner`.
+impl<T: IntoR> Sidecar<T> {
+    /// Moves a pending value into slot `index` of `prot`, if there is one.
     ///
     /// On R's main thread. `set_vector_elt` allocates nothing, so the value
     /// fresh from `into_sexp()` needs no protection.
-    fn flush_into(&self, owner: SEXP) {
+    fn flush_into(&self, prot: SEXP, index: usize) {
         let Some(value) = self.pending.borrow_mut().take() else {
             return;
         };
-        // SAFETY: on R's main thread; `owner` is a live EXTPTRSXP built by
-        // `ExternalPtr`, whose `prot` list has this field's slot.
-        let prot = unsafe { R_ExternalPtrProtected(owner) };
-        prot.set_vector_elt(self.prot_index(), value.into_sexp());
-    }
-
-    /// The slot value of the attached pointer `owner`, converted to `T`.
-    fn convert_slot(&self, owner: SEXP) -> T {
-        // SAFETY: on R's main thread; `owner` is a live EXTPTRSXP built by
-        // `ExternalPtr`.
-        let prot = unsafe { R_ExternalPtrProtected(owner) };
-        let slot = prot.vector_elt(self.prot_index());
-        match T::try_from_sexp(slot) {
-            Ok(value) => value,
-            Err(err) => panic!(
-                "sidecar field `{}` of `{}` holds an R value that does not convert to `{}`: {err}",
-                self.name.get(),
-                self.owner_type.get(),
-                std::any::type_name::<T>(),
-            ),
-        }
-    }
-
-    /// The field's value: the converted slot of an attached field (after
-    /// flushing a pending value), or a clone of a detached field's pending
-    /// value.
-    ///
-    /// Called by the getter `#[derive(ExternalPtr)]` generates.
-    #[doc(hidden)]
-    pub fn __mx_get(&self) -> T
-    where
-        T: Clone,
-    {
-        match self.attached() {
-            Some(owner) => {
-                self.assert_main_thread();
-                self.flush_into(owner);
-                self.convert_slot(owner)
-            }
-            None => self
-                .pending
-                .borrow()
-                .clone()
-                .unwrap_or_else(|| self.detached_without_value()),
-        }
-    }
-
-    /// Stores `value`: in the slot of an attached field (discarding a pending
-    /// value, which it supersedes), or as a detached field's pending value.
-    ///
-    /// Called by the setter `#[derive(ExternalPtr)]` generates.
-    #[doc(hidden)]
-    pub fn __mx_set(&mut self, value: T) {
-        match self.attached() {
-            Some(owner) => {
-                self.assert_main_thread();
-                *self.pending.get_mut() = None;
-                // SAFETY: on R's main thread; `owner` is a live EXTPTRSXP built
-                // by `ExternalPtr`. Storing allocates nothing.
-                let prot = unsafe { R_ExternalPtrProtected(owner) };
-                prot.set_vector_elt(self.prot_index(), value.into_sexp());
-            }
-            None => *self.pending.get_mut() = Some(value),
-        }
-    }
-
-    #[cold]
-    fn detached_without_value(&self) -> T {
-        panic!(
-            "sidecar field `{}` is detached from its external pointer and holds no value; \
-             access it through its `ExternalPtr` handle, which reattaches it",
-            self.name.get(),
-        )
+        prot.set_vector_elt(prot_index(index), value.into_sexp());
     }
 }
 
-impl<T: Clone + IntoR + TryFromSexp> Clone for Sidecar<T>
+impl<T: TryFromSexp> Sidecar<T>
 where
     <T as TryFromSexp>::Error: fmt::Display,
 {
-    /// A detached `Sidecar` holding this field's value: the converted slot
-    /// of an attached field, or a clone of a detached field's pending value.
+    /// Reads slot `index` of `prot` back into the field as its pending value,
+    /// unless one is pending already. On R's main thread.
+    fn load_from(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str) {
+        if self.pending.borrow().is_some() {
+            return;
+        }
+        let value = convert_slot::<T>(prot, index, name, owner_type);
+        *self.pending.borrow_mut() = Some(value);
+    }
+}
+
+impl<T: Clone> Clone for Sidecar<T> {
+    /// A `Sidecar` holding a copy of this field's pending value, if any. The
+    /// value in a pointer's slot is not copied: clone the `ExternalPtr`.
     fn clone(&self) -> Self {
-        Self::new(self.__mx_get())
+        Self {
+            pending: RefCell::new(self.pending.borrow().clone()),
+        }
     }
 }
 
@@ -305,36 +217,54 @@ impl<T: Default> Default for Sidecar<T> {
 
 impl<T> fmt::Debug for Sidecar<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = f.debug_struct("Sidecar");
-        s.field("field", &self.name.get());
-        match self.attached() {
-            Some(_) => s.field("slot", &self.index.get()),
-            None => s.field("pending", &self.pending.borrow().is_some()),
-        };
-        s.finish()
+        f.debug_struct("Sidecar")
+            .field("pending", &self.pending.borrow().is_some())
+            .finish()
+    }
+}
+
+/// Slot `index` of `prot`, converted to `T`.
+fn convert_slot<T: TryFromSexp>(prot: SEXP, index: usize, name: &str, owner_type: &str) -> T
+where
+    <T as TryFromSexp>::Error: fmt::Display,
+{
+    let slot = prot.vector_elt(prot_index(index));
+    match T::try_from_sexp(slot) {
+        Ok(value) => value,
+        Err(err) => panic!(
+            "sidecar field `{name}` of `{owner_type}` holds an R value that does not convert to `{}`: {err}",
+            std::any::type_name::<T>(),
+        ),
+    }
+}
+
+/// Panics unless this is R's main thread. No R API: the message names the
+/// field and the owning type.
+fn assert_main_thread(name: &str, owner_type: &str) {
+    if !crate::worker::is_r_main_thread() {
+        panic!(
+            "sidecar field `{name}` of `{owner_type}`: its accessors run on R's main thread only; \
+             this call came from another thread (a `worker` method, or a thread the \
+             package spawned)",
+        );
     }
 }
 
 // endregion
 
-// region: The back-reference, written by the handle
+// region: The handle's view of the fields
 
 /// A `Sidecar<T>` field, as the handle sees it through the
-/// `TypedExternal::__mx_visit_sidecars` hook the derive emits.
+/// `TypedExternal::__mx_visit_sidecars` hook the derive emits. Every method
+/// runs on R's main thread.
 #[doc(hidden)]
 pub trait SidecarField {
-    /// Writes the back-reference: the owning pointer, this field's current
-    /// address, its slot index, its name and the owning type's name. No R
-    /// API: safe on any thread.
-    fn __mx_attach(&self, owner: SEXP, index: usize, name: &'static str, owner_type: &'static str);
-    /// Moves a pending value into the slot of an attached field. On R's main
-    /// thread.
-    fn __mx_flush(&self);
-    /// Converts the slot of an attached field back into a pending value
-    /// (unless one is pending already), then clears the back-reference. On
-    /// R's main thread.
-    fn __mx_detach(&self);
-    /// Drops a pending value, which a write from R supersedes.
+    /// Moves a pending value into slot `index` of `prot`.
+    fn __mx_flush(&self, prot: SEXP, index: usize);
+    /// Reads slot `index` of `prot` back into the field as its pending value,
+    /// unless one is pending already.
+    fn __mx_load(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str);
+    /// Drops a pending value, which a write to the slot supersedes.
     fn __mx_discard_pending(&self);
 }
 
@@ -342,66 +272,43 @@ impl<T: IntoR + TryFromSexp> SidecarField for Sidecar<T>
 where
     <T as TryFromSexp>::Error: fmt::Display,
 {
-    #[inline]
-    fn __mx_attach(&self, owner: SEXP, index: usize, name: &'static str, owner_type: &'static str) {
-        self.owner.set(owner.0.expose_provenance());
-        self.addr.set(ptr::from_ref(self).addr());
-        self.index.set(index);
-        self.name.set(name);
-        self.owner_type.set(owner_type);
+    fn __mx_flush(&self, prot: SEXP, index: usize) {
+        self.flush_into(prot, index);
     }
 
-    fn __mx_flush(&self) {
-        if let Some(owner) = self.attached() {
-            self.flush_into(owner);
-        }
-    }
-
-    fn __mx_detach(&self) {
-        let Some(owner) = self.attached() else {
-            return;
-        };
-        if self.pending.borrow().is_none() {
-            let value = self.convert_slot(owner);
-            *self.pending.borrow_mut() = Some(value);
-        }
-        self.owner.set(0);
+    fn __mx_load(&self, prot: SEXP, index: usize, name: &'static str, owner_type: &'static str) {
+        self.load_from(prot, index, name, owner_type);
     }
 
     fn __mx_discard_pending(&self) {
-        *self.pending.borrow_mut() = None;
+        self.discard_pending();
     }
 }
 
-/// Writes the back-reference into every `Sidecar` field of `value`, wrapped
-/// in the external pointer `owner`. No R API: safe on any thread.
-#[doc(hidden)]
-#[inline]
-pub fn attach_sidecars<T: TypedExternal>(value: &T, owner: SEXP) {
+/// Moves every pending value of `value`'s `Sidecar` fields into its slot of
+/// `prot`, the protection list of the pointer holding `value`. On R's main
+/// thread.
+pub(crate) fn flush_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
+    value.__mx_visit_sidecars(&mut |index, _, field| field.__mx_flush(prot, index));
+}
+
+/// Reads every slot of `prot`, the protection list of the pointer `value` is
+/// leaving, back into its `Sidecar` field as a pending value (unless one is
+/// pending already). On R's main thread.
+pub(crate) fn load_sidecars<T: TypedExternal>(value: &T, prot: SEXP) {
     value.__mx_visit_sidecars(&mut |index, name, field| {
-        field.__mx_attach(owner, index, name, T::TYPE_NAME);
+        field.__mx_load(prot, index, name, T::TYPE_NAME);
     });
 }
 
-/// Moves every pending value of `value`'s `Sidecar` fields into the
-/// protection list. The fields must be attached. On R's main thread.
-#[doc(hidden)]
-#[inline]
-pub fn flush_sidecars<T: TypedExternal>(value: &T) {
-    value.__mx_visit_sidecars(&mut |_, _, field| field.__mx_flush());
+/// Drops every pending value of `value`'s `Sidecar` fields.
+pub(crate) fn discard_pending_sidecars<T: TypedExternal>(value: &T) {
+    value.__mx_visit_sidecars(&mut |_, _, field| field.__mx_discard_pending());
 }
 
-/// Converts every slot of `value`'s attached `Sidecar` fields back into a
-/// pending value and clears the back-references, before the value leaves its
-/// pointer. On R's main thread.
-#[doc(hidden)]
-#[inline]
-pub fn detach_sidecars<T: TypedExternal>(value: &T) {
-    value.__mx_visit_sidecars(&mut |_, _, field| field.__mx_detach());
-}
-
-/// Attaches and flushes a freshly wrapped value: the three construction sites
-/// and `restore_after_consuming` call this once the `EXTPTRSXP` exists.
+/// Flushes a freshly wrapped value's pending values into its pointer's
+/// protection list: the three construction sites and
+/// `restore_after_consuming` call this once the `EXTPTRSXP` exists.
 ///
 /// # Safety
 ///
@@ -411,8 +318,82 @@ pub(super) unsafe fn init_sidecars<T: TypedExternal>(any_raw: *mut Box<dyn Any>,
     let value: &T = unsafe { &*any_raw }
         .downcast_ref::<T>()
         .expect("ExternalPtr stores a T at construction");
-    attach_sidecars(value, owner);
-    flush_sidecars(value);
+    let prot = unsafe { R_ExternalPtrProtected(owner) };
+    flush_sidecars(value, prot);
+}
+
+/// Copies every `Sidecar` slot of the pointer `source` into the pointer
+/// `target`: the two share the R values until one side writes a field.
+///
+/// # Safety
+///
+/// On R's main thread; both must be live `EXTPTRSXP`s built by `ExternalPtr`
+/// for a `T`. `set_vector_elt` allocates nothing.
+pub(super) unsafe fn copy_sidecar_slots<T: TypedExternal>(source: SEXP, target: SEXP) {
+    let from = unsafe { R_ExternalPtrProtected(source) };
+    let to = unsafe { R_ExternalPtrProtected(target) };
+    for index in 0..T::R_SLOT_COUNT {
+        let at = prot_index(index);
+        to.set_vector_elt(at, from.vector_elt(at));
+    }
+}
+
+/// Reads `T`'s `Sidecar` field `index` of the object `ptr` holds, after
+/// moving the field's pending value into the slot.
+///
+/// Called by the getters `#[derive(ExternalPtr)]` generates
+/// (`T::field(&ptr)`); `field` selects the struct's `Sidecar` field.
+///
+/// # Panics
+///
+/// Off R's main thread, naming the field, before touching R; or when the
+/// slot does not convert to `T`.
+#[doc(hidden)]
+pub fn sidecar_get<O, T>(
+    ptr: &ExternalPtr<O>,
+    index: usize,
+    name: &'static str,
+    field: fn(&O) -> &Sidecar<T>,
+) -> T
+where
+    O: TypedExternal,
+    T: IntoR + TryFromSexp,
+    <T as TryFromSexp>::Error: fmt::Display,
+{
+    assert_main_thread(name, O::TYPE_NAME);
+    // SAFETY: on R's main thread; the handle's EXTPTRSXP is live and was
+    // built by `ExternalPtr` for an `O`, so its `prot` list has the slot.
+    let prot = unsafe { R_ExternalPtrProtected(ptr.as_sexp()) };
+    field(ptr).flush_into(prot, index);
+    convert_slot::<T>(prot, index, name, O::TYPE_NAME)
+}
+
+/// Stores `value` in `T`'s `Sidecar` field `index` of the object `ptr` holds,
+/// dropping the field's pending value, which this write supersedes.
+///
+/// Called by the setters `#[derive(ExternalPtr)]` generates
+/// (`T::set_field(&mut ptr, value)`); `field` selects the struct's `Sidecar`
+/// field.
+///
+/// # Panics
+///
+/// Off R's main thread, naming the field, before touching R.
+#[doc(hidden)]
+pub fn sidecar_set<O, T>(
+    ptr: &mut ExternalPtr<O>,
+    index: usize,
+    name: &'static str,
+    field: fn(&O) -> &Sidecar<T>,
+    value: T,
+) where
+    O: TypedExternal,
+    T: IntoR,
+{
+    assert_main_thread(name, O::TYPE_NAME);
+    // SAFETY: as in `sidecar_get`. Storing allocates nothing.
+    let prot = unsafe { R_ExternalPtrProtected(ptr.as_sexp()) };
+    field(ptr).discard_pending();
+    prot.set_vector_elt(prot_index(index), value.into_sexp());
 }
 
 // endregion
@@ -576,9 +557,10 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 
 /// Reads `T`'s `Sidecar` field `index` from the external pointer `x`.
 ///
-/// Called by the R getters `#[derive(ExternalPtr)]` generates. A live struct
-/// is reattached and its pending value for the field flushed first; a pointer
-/// without an address (after `readRDS()`) reads its protection list as is.
+/// Called by the R getters `#[derive(ExternalPtr)]` generates. A live
+/// struct's pending value for the field is flushed into the slot first; a
+/// pointer without an address (after `readRDS()`) reads its protection list
+/// as is.
 ///
 /// # Panics
 ///
@@ -591,10 +573,9 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP) {
 pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
     let (prot, live) = unsafe { checked_prot::<T>(x) };
     if let Some(value) = live {
-        value.__mx_visit_sidecars(&mut |i, name, field| {
-            field.__mx_attach(x, i, name, T::TYPE_NAME);
+        value.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {
-                field.__mx_flush();
+                field.__mx_flush(prot, i);
             }
         });
     }
@@ -604,10 +585,10 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
 /// Stores `value`, which the caller validated with `TryFromSexp::<T>`, in
 /// `T`'s `Sidecar` field `index` of the external pointer `x`.
 ///
-/// Called by the R setters `#[derive(ExternalPtr)]` generates. A live struct
-/// is reattached and its pending value for the field dropped, since this
-/// write supersedes it. Allocates nothing, so `value` needs no protection
-/// across the call.
+/// Called by the R setters `#[derive(ExternalPtr)]` generates. A live
+/// struct's pending value for the field is dropped, since this write
+/// supersedes it. Allocates nothing, so `value` needs no protection across
+/// the call.
 ///
 /// # Panics
 ///
@@ -620,8 +601,7 @@ pub unsafe fn sidecar_r_get<T: TypedExternal>(x: SEXP, index: usize) -> SEXP {
 pub unsafe fn sidecar_r_set<T: TypedExternal>(x: SEXP, index: usize, value: SEXP) {
     let (prot, live) = unsafe { checked_prot::<T>(x) };
     if let Some(data) = live {
-        data.__mx_visit_sidecars(&mut |i, name, field| {
-            field.__mx_attach(x, i, name, T::TYPE_NAME);
+        data.__mx_visit_sidecars(&mut |i, _, field| {
             if i == index {
                 field.__mx_discard_pending();
             }

@@ -35,8 +35,8 @@ rust_value_paths <- list(
   `struct-field accessor` = function(obj) obj$n,
   `standalone struct-field getter` = function(obj) SidecarSlotR6_get_n(ptr_of(obj)),
   `standalone struct-field setter` = function(obj) SidecarSlotR6_set_n(ptr_of(obj), 2L),
-  `ExternalPtr<T> argument` = function(obj) sidecar_keys_via_deref(ptr_of(obj)),
-  `ExternalPtr<T> argument, R6 handle` = function(obj) sidecar_keys_via_deref(obj)
+  `ExternalPtr<T> argument` = function(obj) sidecar_keys_via_handle(ptr_of(obj)),
+  `ExternalPtr<T> argument, R6 handle` = function(obj) sidecar_keys_via_handle(obj)
 )
 
 for (reload_name in c("saveRDS / readRDS", "serialize / unserialize")) {
@@ -148,7 +148,7 @@ test_that("a pointer miniextendr did not build keeps the plain messages", {
   obj$.__enclos_env__$private$.ptr <- foreign
   err <- expect_error(obj$key_count(), "expected ExternalPtr<SidecarSlotR6>, found `<unknown>`", fixed = TRUE)
   expect_false(inherits(err, "miniextendr_restored"))
-  expect_error(sidecar_keys_via_deref(foreign), "external pointer is null", fixed = TRUE)
+  expect_error(sidecar_keys_via_handle(foreign), "external pointer is null", fixed = TRUE)
 
   # A restored pointer of another type is a type mismatch, not a restored
   # `SidecarSlotR6`.
@@ -157,7 +157,7 @@ test_that("a pointer miniextendr did not build keeps the plain messages", {
   obj$.__enclos_env__$private$.ptr <- other
   err <- expect_error(obj$key_count(), "expected ExternalPtr<SidecarSlotR6>, found `", fixed = TRUE)
   expect_false(inherits(err, "miniextendr_restored"))
-  expect_error(sidecar_keys_via_deref(other), "type mismatch: expected `SidecarSlotR6`", fixed = TRUE)
+  expect_error(sidecar_keys_via_handle(other), "type mismatch: expected `SidecarSlotR6`", fixed = TRUE)
 })
 
 test_that("a copy of the R object shares the one Rust value", {

@@ -63,13 +63,16 @@
 //!
 //! 1. **Rooted values** (`Sidecar<T>`) - kept in the external pointer's
 //!    protection list, which roots them and serializes them with the
-//!    pointer. The derive generates typed accessors on the struct, with the
-//!    field's visibility: `#[r_data(ref)]` a getter `fn f(&self) -> T`,
-//!    `#[r_data(mut)]` a setter `fn set_f(&mut self, value: T)`,
-//!    `#[r_data(ref, mut)]` or a bare `#[r_data]` both. The struct keeps a
-//!    back-reference to the slot, which the handle writes whenever it hands
-//!    the struct out; see `miniextendr_api::externalptr::Sidecar`. A bare
-//!    `SEXP` field is refused: the struct can't root it.
+//!    pointer. The derive generates typed accessors as associated functions
+//!    of the struct, with the field's visibility, taking the `ExternalPtr`
+//!    handle (the struct holds nothing that points back at its pointer):
+//!    `#[r_data(ref)]` a getter `fn f(ptr: &ExternalPtr<Self>) -> T`,
+//!    `#[r_data(mut)]` a setter `fn set_f(ptr: &mut ExternalPtr<Self>, value: T)`,
+//!    `#[r_data(ref, mut)]` or a bare `#[r_data]` both. A method that needs
+//!    the values takes the handle as its receiver (`self: &ExternalPtr<Self>`
+//!    / `self: &mut ExternalPtr<Self>`) and calls `Self::f(self)`; see
+//!    `miniextendr_api::externalptr::Sidecar`. A bare `SEXP` field is
+//!    refused: the struct can't root it.
 //! 2. **Scalars** (`i32`, `f64`, `bool`, `u8`) - struct fields, returned as a
 //!    length-1 vector and written with `Rf_as*`
 //! 3. **Conversion types** (anything else) - struct fields, converted with the
@@ -104,7 +107,7 @@
 //!     r: RSidecar,  // Selector - enables R accessors for this type
 //!
 //!     #[r_data(ref, mut)]
-//!     pub keys: Sidecar<Vec<i32>>,  // In the protection list; `self.keys()` / `self.set_keys(v)`
+//!     pub keys: Sidecar<Vec<i32>>,  // In the protection list; `MyType::keys(&ptr)` / `MyType::set_keys(&mut ptr, v)`
 //!
 //!     #[r_data]
 //!     pub count: i32,  // Scalar struct field
@@ -117,6 +120,9 @@
 //! impl MyType {
 //!     pub fn new(n: i32) -> Self {
 //!         MyType { x: 0, r: RSidecar, keys: Sidecar::new((1..=n).collect()), count: n, name: String::new() }
+//!     }
+//!     pub fn key_count(self: &ExternalPtr<Self>) -> usize {
+//!         Self::keys(self).len()
 //!     }
 //! }
 //! // Generates: active bindings `keys`, `count`, `name` in the R6Class
@@ -604,9 +610,8 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
 /// Reads the slot and returns it as an R SEXP. The strategy depends on the
 /// slot kind:
 /// - `Sidecar`: returns the value from the external pointer's protection list,
-///   after reattaching a live struct and flushing its pending value for the
-///   field. It needs no live address, so it also reads a pointer that
-///   `readRDS` brought back.
+///   after flushing a live struct's pending value for the field. It needs no
+///   live address, so it also reads a pointer that `readRDS` brought back.
 /// - Scalar kinds: reads the struct field (accessed via the external pointer
 ///   address) and wraps it with `Rf_Scalar*`.
 /// - `Conversion`: clones the struct field and calls `IntoR::into_sexp`.
@@ -694,8 +699,8 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 /// slot kind:
 /// - `Sidecar`: validates `value` with `TryFromSexp::<T>` (a failure raises
 ///   the conversion error) and stores it in the external pointer's protection
-///   list, which roots it; a live struct is reattached and its pending value
-///   for the field dropped.
+///   list, which roots it; a live struct's pending value for the field is
+///   dropped.
 /// - Scalar kinds: writes the struct field, using `Rf_as*` or coercion for
 ///   single-element extraction;
 ///   an input that doesn't reduce to a single non-NA scalar raises a
@@ -1390,8 +1395,8 @@ fn sidecar_slots(info: &SidecarInfo) -> impl Iterator<Item = (usize, &SidecarSlo
 ///   using `CARGO_PKG_NAME`, `CARGO_PKG_VERSION`, and `module_path!()`.
 /// - `R_SLOT_COUNT`: the number of `Sidecar<T>` fields, when there are any,
 ///   with the `__mx_visit_sidecars` hook that hands each of them, with its
-///   slot index and name, to the handle (which writes their back-references,
-///   flushes their pending values and detaches them).
+///   slot index and name, to the handle (which flushes their pending values
+///   into the slots and loads the slots back into them).
 ///
 /// Supports generic structs (generics are forwarded to the impl).
 fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStream {
@@ -1443,17 +1448,19 @@ fn generate_typed_external(input: &DeriveInput, info: &SidecarInfo) -> TokenStre
     }
 }
 
-/// Generate the Rust accessors of each `Sidecar<T>` field, as inherent
-/// methods with the field's visibility: `fn keys(&self) -> T` for
-/// `#[r_data(ref)]`, `fn set_keys(&mut self, value: T)` for `#[r_data(mut)]`,
-/// both for `#[r_data(ref, mut)]` or a bare `#[r_data]`.
+/// Generate the Rust accessors of each `Sidecar<T>` field, as associated
+/// functions of the struct taking the `ExternalPtr` handle, with the field's
+/// visibility: `fn keys(ptr: &ExternalPtr<Self>) -> T` for `#[r_data(ref)]`,
+/// `fn set_keys(ptr: &mut ExternalPtr<Self>, value: T)` for `#[r_data(mut)]`,
+/// both for `#[r_data(ref, mut)]` or a bare `#[r_data]`. The struct holds no
+/// reference to its pointer, so there is no accessor on `&self` (#1856).
 ///
 /// A non-`pub` accessor is `#[allow(dead_code)]`: it is generated whether or
 /// not the crate calls it. The accessors (and the `TypedExternal` hook) read
 /// the fields, so rustc sees them used.
 fn generate_sidecar_rust_accessors(input: &DeriveInput, info: &SidecarInfo) -> TokenStream {
     let methods: Vec<TokenStream> = sidecar_slots(info)
-        .flat_map(|(_, slot)| {
+        .flat_map(|(index, slot)| {
             let inner = sidecar_inner_type(&slot.ty).expect("a Sidecar slot has an inner type");
             let field = &slot.name;
             let field_name = crate::naming::ident_name(field);
@@ -1463,31 +1470,35 @@ fn generate_sidecar_rust_accessors(input: &DeriveInput, info: &SidecarInfo) -> T
             let mut methods = Vec::with_capacity(2);
             if slot.access.get {
                 let doc = format!(
-                    "The value of the `{field_name}` sidecar field: the R value the external \
-                     pointer keeps, converted to its Rust type (a copy for a converting type), \
-                     after flushing a pending value; or the pending value of a field not \
-                     attached to a pointer. On R's main thread."
+                    "The value of the `{field_name}` sidecar field of the object `ptr` holds: \
+                     the R value the external pointer keeps, converted to its Rust type (a copy \
+                     for a converting type), after moving a pending value into the pointer. On \
+                     R's main thread."
                 );
                 methods.push(quote::quote! {
                     #[doc = #doc]
                     #allow
-                    #vis fn #field(&self) -> #inner {
-                        self.#field.__mx_get()
+                    #vis fn #field(ptr: &::miniextendr_api::externalptr::ExternalPtr<Self>) -> #inner {
+                        ::miniextendr_api::externalptr::sidecar_get::<Self, #inner>(
+                            ptr, #index, #field_name, |this: &Self| &this.#field,
+                        )
                     }
                 });
             }
             if slot.access.set {
                 let setter = quote::format_ident!("set_{}", field_name);
                 let doc = format!(
-                    "Stores `value` in the `{field_name}` sidecar field: in the external \
-                     pointer's protection list when attached to one, else as the pending value \
-                     the next wrap moves there. On R's main thread."
+                    "Stores `value` in the `{field_name}` sidecar field of the object `ptr` \
+                     holds: in the external pointer's protection list, dropping a pending value. \
+                     On R's main thread."
                 );
                 methods.push(quote::quote! {
                     #[doc = #doc]
                     #allow
-                    #vis fn #setter(&mut self, value: #inner) {
-                        self.#field.__mx_set(value)
+                    #vis fn #setter(ptr: &mut ::miniextendr_api::externalptr::ExternalPtr<Self>, value: #inner) {
+                        ::miniextendr_api::externalptr::sidecar_set::<Self, #inner>(
+                            ptr, #index, #field_name, |this: &Self| &this.#field, value,
+                        )
                     }
                 });
             }
@@ -1888,9 +1899,9 @@ mod tests {
 
     /// `Sidecar` fields count among themselves: the scalars and conversion
     /// fields between them take no protection-list position. The derive
-    /// emits the count, the visitor hook, and typed accessors with each
-    /// field's visibility; the R accessors read and write the protection
-    /// list by index.
+    /// emits the count, the visitor hook, and typed accessors on the handle
+    /// with each field's visibility; the R accessors read and write the
+    /// protection list by index.
     #[test]
     fn sidecar_fields_number_their_own_positions() {
         let input: syn::DeriveInput = syn::parse_str(
@@ -1928,26 +1939,36 @@ mod tests {
             out.contains("visit (0usize , \"keys\" , & self . keys) ; visit (1usize , \"steps\" , & self . steps) ;"),
             "{out}"
         );
+        // The accessors are associated functions taking the handle, not
+        // methods on the struct (#1856).
         assert!(
-            out.contains("pub fn keys (& self) -> Vec < i32 > { self . keys . __mx_get () }"),
-            "{out}"
-        );
-        assert!(
-            out.contains("pub fn set_keys (& mut self , value : Vec < i32 >) { self . keys . __mx_set (value) }"),
-            "{out}"
-        );
-        // A private field gets private accessors (allowed to be unused) and
-        // no R accessor.
-        assert!(
-            out.contains("# [allow (dead_code)] fn steps (& self) -> Option < List >"),
+            out.contains(
+                "pub fn keys (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Vec < i32 > { :: miniextendr_api :: externalptr :: sidecar_get :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys ,) }"
+            ),
             "{out}"
         );
         assert!(
             out.contains(
-                "# [allow (dead_code)] fn set_steps (& mut self , value : Option < List >)"
+                "pub fn set_keys (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : Vec < i32 >) { :: miniextendr_api :: externalptr :: sidecar_set :: < Self , Vec < i32 > > (ptr , 0usize , \"keys\" , | this : & Self | & this . keys , value ,) }"
             ),
             "{out}"
         );
+        assert!(!out.contains("fn keys (& self)"), "{out}");
+        // A private field gets private accessors (allowed to be unused) and
+        // no R accessor.
+        assert!(
+            out.contains(
+                "# [allow (dead_code)] fn steps (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Option < List >"
+            ),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "# [allow (dead_code)] fn set_steps (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : Option < List >)"
+            ),
+            "{out}"
+        );
+        assert!(out.contains("(ptr , 1usize , \"steps\" ,"), "{out}");
         assert!(!out.contains("get_steps"), "{out}");
 
         // The R accessors read and write the protection list, not the struct.
@@ -2001,11 +2022,16 @@ mod tests {
             }
         );
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
-        assert!(out.contains("pub fn keys (& self) -> Vec < i32 >"), "{out}");
+        assert!(
+            out.contains(
+                "pub fn keys (ptr : & :: miniextendr_api :: externalptr :: ExternalPtr < Self >) -> Vec < i32 >"
+            ),
+            "{out}"
+        );
         assert!(!out.contains("fn set_keys"), "{out}");
         assert!(
             out.contains(
-                "# [allow (dead_code)] pub (crate) fn set_note (& mut self , value : String)"
+                "# [allow (dead_code)] pub (crate) fn set_note (ptr : & mut :: miniextendr_api :: externalptr :: ExternalPtr < Self > , value : String)"
             ),
             "{out}"
         );
@@ -2059,7 +2085,7 @@ mod tests {
         let out = super::derive_external_ptr(input, true).unwrap().to_string();
         assert!(!out.contains("R_SLOT_COUNT"), "{out}");
         assert!(!out.contains("__mx_visit_sidecars"), "{out}");
-        assert!(!out.contains("__mx_get"), "{out}");
+        assert!(!out.contains("sidecar_get"), "{out}");
     }
 
     /// A bare `SEXP` under `#[r_data]` is refused: nothing would root it.

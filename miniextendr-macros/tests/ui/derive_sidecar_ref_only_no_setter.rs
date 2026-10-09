@@ -9,10 +9,14 @@ struct Engine {
     pub keys: Sidecar<Vec<i32>>,
 }
 
+fn edit(engine: &mut ExternalPtr<Engine>) {
+    let _keys: Vec<i32> = Engine::keys(engine);
+    Engine::set_keys(engine, vec![3]);
+}
+
 fn main() {
-    let mut engine = Engine {
+    let _ = Engine {
         keys: Sidecar::new(vec![1, 2]),
     };
-    let _keys: Vec<i32> = engine.keys();
-    engine.set_keys(vec![3]);
+    let _ = edit;
 }

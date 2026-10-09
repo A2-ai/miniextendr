@@ -350,8 +350,9 @@ value, declare them as sidecar fields: `#[r_data]` fields on the
 `#[derive(ExternalPtr)]` struct, next to an `#[r_data] _r: RSidecar` selector.
 Each public field gets `Type_get_<field>(x)` and `Type_set_<field>(x, value)`;
 a `Sidecar<T>` field holds a value, such as a data frame in a
-`Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so every method sees them and nothing
-has to be re-wrapped. An S3 class gets no `$` / `$<-` methods for them. The
+`Sidecar<SEXP>`, that the pointer roots. The fields live with the handle, so
+every method that takes the handle (`self: &ExternalPtr<Self>`) sees them and
+nothing has to be re-wrapped. An S3 class gets no `$` / `$<-` methods for them. The
 walkthrough and the per-class-system accessor table are in `CLASS_SYSTEMS.md`,
 "Direct Field Access via Sidecar". The sidecar is the supported answer for
 state the package owns; the shape below is for interop.

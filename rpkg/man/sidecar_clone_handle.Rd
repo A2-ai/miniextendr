@@ -10,5 +10,5 @@ sidecar_clone_handle(ptr)
 \item{ptr}{A \code{SidecarSlotR6} pointer.}
 }
 \description{
-Clones the handle: a new pointer with its own copies of the sidecar values.
+Clones the handle: a new pointer sharing the sidecar values as R objects.
 }

@@ -58,6 +58,18 @@ NULL
 #' @name relabel
 NULL
 
+#' Count the tags of an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name tag_count
+NULL
+
+#' Add a tag to an object
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name add_tag
+NULL
+
 #' Number of values held by an object
 #' @param x An object.
 #' @param ... Additional arguments.

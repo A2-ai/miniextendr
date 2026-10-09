@@ -1,13 +1,15 @@
-# Typed `Sidecar<T>` fields (#1846, #1855).
+# Typed `Sidecar<T>` fields (#1846, #1855, #1856).
 #
 # An `#[r_data] pub f: Sidecar<T>` field keeps its value in the external
 # pointer's protection list, after the type ID and the user slot. The pointer
 # roots the value while it is reachable, and `saveRDS()` writes it with the
 # pointer. Rust reads and writes it through the typed accessors the derive
-# generates (`self.f()` / `self.set_f(v)`); the struct holds only a
-# back-reference, which the handle rewrites whenever it hands the struct out.
+# generates, associated functions taking the handle (`Type::f(&ptr)` /
+# `Type::set_f(&mut ptr, v)`); a method that needs the value takes the handle
+# as its receiver. The struct holds nothing that points back at its pointer.
 # Fixtures: `SidecarEnv` (`raw_slot: Sidecar<SEXP>`), `SidecarRawSexp`, the R6
-# `SidecarSlotR6` and `SidecarNest` in `src/rust/rdata_sidecar_tests.rs`.
+# `SidecarSlotR6` and `SidecarNest`, and the S3 / S4 / S7 `SidecarS3` /
+# `SidecarS4` / `SidecarS7` in `src/rust/rdata_sidecar_tests.rs`.
 
 test_that("a sidecar value R no longer references survives a full GC", {
   obj <- rdata_sidecar_env_new(count = 1L, score = 1, flag = TRUE, name = "x")
@@ -165,16 +167,18 @@ test_that("replacing the value through DerefMut takes effect on both sides", {
   expect_null(obj$recall())
 })
 
-test_that("a by-value self method writes the value and its sidecar values back", {
+test_that("a by-value self method leaves the slots in the pointer and flushes what it set", {
   obj <- SidecarSlotR6$new(3L)
   obj$remember(list(kept = TRUE))
   obj$label <- "before"
   obj$rebuilt(9L)
   gc(full = TRUE)
-  expect_identical(obj$keys, c(1:3, 9L))
-  expect_identical(obj$n, 4L)
+  # `..self` kept the fields: their slots were never touched.
+  expect_identical(obj$keys, 1:3)
   expect_identical(obj$label, "before")
-  expect_identical(obj$recall(), list(kept = TRUE))
+  # The struct field it changed, and the field it filled with `Sidecar::new`.
+  expect_identical(obj$n, 12L)
+  expect_identical(obj$recall(), list(9L))
 })
 
 test_that("mem::swap between two pointers leaves the sidecar values with each pointer", {
@@ -194,6 +198,18 @@ test_that("mem::swap between two pointers leaves the sidecar values with each po
   expect_null(b$recall())
 })
 
+test_that("into_inner right after a swap takes the pointer's own values along", {
+  a <- SidecarSlotR6$new(2L)
+  b <- SidecarSlotR6$new(4L)
+  sidecar_swap(a, b)
+  # Nothing in between: the struct `a` holds came from `b`, the values are `a`'s.
+  moved <- sidecar_rewrap(a$.__enclos_env__$private$.ptr)
+  expect_identical(SidecarSlotR6_get_keys(moved), 1:2)
+  expect_identical(SidecarSlotR6_get_n(moved), 4L)
+  expect_identical(b$keys, 1:4)
+  expect_identical(b$n, 2L)
+})
+
 test_that("into_inner, then wrapping again, keeps the values", {
   a <- SidecarSlotR6$new(3L)
   a$remember(list(1))
@@ -201,16 +217,16 @@ test_that("into_inner, then wrapping again, keeps the values", {
   b <- sidecar_rewrap(a$.__enclos_env__$private$.ptr)
   expect_identical(SidecarSlotR6_get_keys(b), 1:3)
   expect_identical(SidecarSlotR6_get_label(b), "moved")
-  expect_identical(sidecar_keys_via_deref(b), 1:3)
+  expect_identical(sidecar_keys_via_handle(b), 1:3)
   # The moved-out pointer has no value any more.
   expect_error(a$n, "null external pointer", fixed = TRUE)
 })
 
-test_that("a clone copies the sidecar values and the pointers are independent", {
+test_that("a clone shares the sidecar values and a write replaces one side's slot only", {
   obj <- SidecarSlotR6$new(4L)
   obj$remember(list("kept"))
 
-  # The struct's own `Clone`.
+  # `ExternalPtr::clone` through a handle-receiver method.
   copy <- obj$duplicate()
   expect_identical(SidecarSlotR6_get_keys(copy), 1:4)
   expect_identical(SidecarSlotR6_get_n(copy), 4L)
@@ -220,15 +236,27 @@ test_that("a clone copies the sidecar values and the pointers are independent", 
   obj$keys <- 7L
   expect_identical(SidecarSlotR6_get_keys(copy), 99L)
 
-  # `ExternalPtr::clone`.
+  # `ExternalPtr::clone` on an argument.
   twin <- sidecar_clone_handle(obj$.__enclos_env__$private$.ptr)
   expect_identical(SidecarSlotR6_get_keys(twin), 7L)
   SidecarSlotR6_set_keys(twin, 1:2)
   expect_identical(obj$keys, 7L)
-  expect_identical(sidecar_keys_via_deref(twin), 1:2)
+  expect_identical(sidecar_keys_via_handle(twin), 1:2)
+
+  # `ExternalPtr::clone_from`: the target takes the source's values in place.
+  target <- SidecarSlotR6$new(1L)
+  target$remember(list("mine"))
+  sidecar_clone_from(target$.__enclos_env__$private$.ptr, obj$.__enclos_env__$private$.ptr)
+  gc(full = TRUE)
+  expect_identical(target$keys, 7L)
+  expect_identical(target$n, 4L)
+  expect_identical(target$recall(), list("kept"))
+  target$keys <- 5L
+  expect_identical(obj$keys, 7L)
+  expect_identical(target$keys, 5L)
 })
 
-test_that("a struct nested inside another wrapped struct works on its own values", {
+test_that("a struct nested by its handle inside another wrapped struct works on its own values", {
   nest <- SidecarNest$new(3L)
   expect_identical(nest$inner_keys(), 1:3)
   nest$set_inner_keys(7:9)
@@ -239,13 +267,49 @@ test_that("a struct nested inside another wrapped struct works on its own values
   expect_identical(nest$tag, "renamed")
 })
 
-test_that("the trait-impl receiver path reads the sidecar fields", {
+test_that("a trait-impl method sees the struct fields only", {
   obj <- SidecarSlotR6$new(2L)
   obj$label <- "shown"
-  expect_identical(
-    SidecarSlotR6$RDisplay$as_r_string(obj),
-    "keys=[1, 2] label=shown"
-  )
+  expect_identical(SidecarSlotR6$RDisplay$as_r_string(obj), "n=2")
+})
+
+test_that("an S3 method that takes the handle reads and writes a sidecar value", {
+  obj <- SidecarS3$new(1.5)
+  expect_identical(tag_count(obj), 0L)
+  add_tag(obj, "a")
+  add_tag(obj, "b")
+  gc(full = TRUE)
+  expect_identical(tag_count(obj), 2L)
+  expect_identical(SidecarS3_get_tags(obj), c("a", "b"))
+  SidecarS3_set_tags(obj, "z")
+  expect_identical(tag_count(obj), 1L)
+  expect_identical(SidecarS3_get_data(obj), 1.5)
+})
+
+test_that("an S4 method that takes the handle reads and writes a sidecar value", {
+  obj <- SidecarS4(slot_int = 1L, slot_real = 2.5, slot_str = "s")
+  expect_identical(s4_history_len(obj), 0L)
+  s4_record(obj, 1.5)
+  s4_record(obj, 2.5)
+  gc(full = TRUE)
+  expect_identical(s4_history_len(obj), 2L)
+  expect_identical(SidecarS4_get_history(obj@ptr), c(1.5, 2.5))
+  SidecarS4_set_history(obj@ptr, 9)
+  expect_identical(s4_history_len(obj), 1L)
+  expect_identical(SidecarS4_get_slot_str(obj@ptr), "s")
+})
+
+test_that("an S7 method that takes the handle reads and writes a sidecar property", {
+  obj <- SidecarS7(prop_int = 1L, prop_flag = TRUE, prop_name = "s")
+  expect_identical(score_total(obj), 0)
+  add_score(obj, 1.5)
+  add_score(obj, 2.5)
+  gc(full = TRUE)
+  expect_identical(score_total(obj), 4)
+  expect_identical(obj@scores, c(1.5, 2.5))
+  obj@scores <- 10
+  expect_identical(SidecarS7_score_total(obj), 10)
+  expect_identical(obj@prop_name, "s")
 })
 
 test_that("a sidecar accessor off R's main thread is a clear error", {

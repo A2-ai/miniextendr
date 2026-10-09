@@ -554,8 +554,8 @@ pub trait TypedExternal: 'static {
     const R_SLOT_COUNT: usize = 0;
 
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
-    /// name, so the handle can write the field's back-reference, flush its
-    /// pending value or detach it.
+    /// name, so the handle can flush the field's pending value into its slot
+    /// or load the slot back into the field.
     ///
     /// `#[derive(ExternalPtr)]` emits the body for a type with `Sidecar`
     /// fields; the default visits nothing, so other types pay nothing.
@@ -1076,8 +1076,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Non-generic finalizer — Box<dyn Any> vtable handles the concrete drop
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_any), Rboolean::TRUE) };
 
-        // Attach the value's `Sidecar` fields to the new pointer and move their
-        // pending values into `prot`, which is protected.
+        // Move the value's pending `Sidecar` values into `prot`, which is
+        // protected.
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
@@ -1124,7 +1124,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE);
         };
 
-        // Attach and flush the value's `Sidecar` fields (see `create_extptr_sexp`).
+        // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
@@ -1245,7 +1245,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { Rf_protect_unchecked(sexp) };
         unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_any), Rboolean::TRUE) };
 
-        // Attach and flush the value's `Sidecar` fields (see `create_extptr_sexp`).
+        // Flush the value's pending `Sidecar` values (see `create_extptr_sexp`).
         if T::R_SLOT_COUNT > 0 {
             unsafe { init_sidecars::<T>(any_raw, sexp) };
         }
@@ -1325,21 +1325,24 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// The caller is responsible for the memory, and the finalizer is
     /// effectively orphaned (will do nothing since we clear the pointer).
-    /// The R object is emptied: address, tag and protection list (the
-    /// [`Sidecar<T>`] values travel with the struct as pending values), so
-    /// its accessors report a null external pointer, not an object restored
-    /// from a saved session.
+    /// The R object is emptied: address, tag and protection list (each
+    /// [`Sidecar<T>`] slot is read back into its field as a pending value
+    /// first, so the values travel with the struct), so its accessors report
+    /// a null external pointer, not an object restored from a saved session.
     ///
     /// Equivalent to `Box::into_raw`.
     #[inline]
     pub fn into_raw(this: Self) -> *mut T {
         let ptr = this.cached_ptr.as_ptr();
 
-        // The value leaves its pointer: move the sidecar values back into the
-        // struct as pending values and clear the back-references.
+        // The value leaves its pointer: read its slots back into the struct
+        // as pending values, slot `i` into field `i`.
         if T::R_SLOT_COUNT > 0 {
-            // SAFETY: `cached_ptr` is valid for the handle's lifetime.
-            detach_sidecars(unsafe { this.cached_ptr.as_ref() });
+            // SAFETY: `cached_ptr` is valid for the handle's lifetime; `sexp`
+            // is the live pointer this handle holds (`into_raw` is
+            // main-thread-contract, see below).
+            let prot = unsafe { R_ExternalPtrProtected(this.sexp) };
+            load_sidecars(unsafe { this.cached_ptr.as_ref() }, prot);
         }
 
         // Ownership of the R object leaves this handle: drop our GC root before
@@ -1395,18 +1398,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Uses `Box<dyn Any>::downcast` to recover the concrete `Box<T>`,
     /// then moves the value out. The R object is emptied like by
     /// [`into_raw`](Self::into_raw): its accessors report a null external
-    /// pointer afterwards, and the [`Sidecar<T>`] values travel with the
-    /// struct, so wrapping it again keeps them.
+    /// pointer afterwards, and each [`Sidecar<T>`] slot is read back into its
+    /// field as a pending value, so wrapping the value again keeps the
+    /// values.
     ///
     /// Equivalent to `*boxed` (deref move) or `Box::into_inner`.
     #[inline]
     pub fn into_inner(this: Self) -> T {
-        // The value leaves its pointer: move the sidecar values back into the
-        // struct as pending values and clear the back-references, so wrapping
-        // it again keeps them.
+        // The value leaves its pointer: read its slots back into the struct
+        // as pending values, slot `i` into field `i`, so wrapping it again
+        // keeps them.
         if T::R_SLOT_COUNT > 0 {
-            // SAFETY: `cached_ptr` is valid for the handle's lifetime.
-            detach_sidecars(unsafe { this.cached_ptr.as_ref() });
+            // SAFETY: `cached_ptr` is valid for the handle's lifetime; `sexp`
+            // is the live pointer this handle holds.
+            let prot = unsafe { R_ExternalPtrProtected(this.sexp) };
+            load_sidecars(unsafe { this.cached_ptr.as_ref() }, prot);
         }
 
         // Ownership leaves this handle: drop our GC root before `mem::forget`.
@@ -1479,27 +1485,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Returns a reference to the underlying value.
     ///
     /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access. Writes the value's
-    /// [`Sidecar<T>`] back-references first (a no-op for other types).
+    /// `R_ExternalPtrAddr` FFI call on every access.
     #[inline]
     pub fn as_ref(&self) -> Option<&T> {
         // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
-        let value = unsafe { self.cached_ptr.as_ref() };
-        attach_sidecars(value, self.sexp);
-        Some(value)
+        Some(unsafe { self.cached_ptr.as_ref() })
     }
 
     /// Returns a mutable reference to the underlying value.
     ///
     /// Uses the cached pointer set at construction time, avoiding the
-    /// `R_ExternalPtrAddr` FFI call on every access. Writes the value's
-    /// [`Sidecar<T>`] back-references first (a no-op for other types).
+    /// `R_ExternalPtrAddr` FFI call on every access.
     #[inline]
     pub fn as_mut(&mut self) -> Option<&mut T> {
         // SAFETY: cached_ptr is always valid for the lifetime of ExternalPtr
-        let value = unsafe { self.cached_ptr.as_mut() };
-        attach_sidecars(&*value, self.sexp);
-        Some(value)
+        Some(unsafe { self.cached_ptr.as_mut() })
     }
 
     /// Returns the raw pointer without consuming the ExternalPtr.
@@ -1907,8 +1907,7 @@ impl ExternalPtr<()> {
     ///
     /// Uses `Any::downcast_ref` for authoritative runtime type checking. This
     /// is where every generated method receiver (inherent and trait-impl) and
-    /// the ALTREP `data1` helpers get the struct, so it writes the value's
-    /// [`Sidecar<T>`] back-references (a no-op for other types).
+    /// the ALTREP `data1` helpers get the struct.
     #[inline]
     pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
@@ -1916,16 +1915,12 @@ impl ExternalPtr<()> {
             return None;
         }
         let any_box: &Box<dyn Any> = unsafe { &*any_raw };
-        let value = any_box.downcast_ref::<T>()?;
-        attach_sidecars(value, self.sexp);
-        Some(value)
+        any_box.downcast_ref::<T>()
     }
 
     /// Downcast to a mutable reference of the stored type if it matches `T`.
     ///
-    /// Uses `Any::downcast_mut` for authoritative runtime type checking, and
-    /// writes the value's [`Sidecar<T>`] back-references like
-    /// [`downcast_ref`](Self::downcast_ref).
+    /// Uses `Any::downcast_mut` for authoritative runtime type checking.
     #[inline]
     pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
@@ -1933,9 +1928,7 @@ impl ExternalPtr<()> {
             return None;
         }
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        let value = any_box.downcast_mut::<T>()?;
-        attach_sidecars(&*value, self.sexp);
-        Some(value)
+        any_box.downcast_mut::<T>()
     }
 }
 
@@ -2049,33 +2042,34 @@ impl ExternalPtr<()> {
     /// already consumed); the slot is untouched in that case. The outer
     /// `Box<Box<dyn Any>>` cell stays allocated, so the finaliser and every
     /// other accessor keep working on the marker. The value's [`Sidecar<T>`]
-    /// fields are detached first (their slot values become pending values),
-    /// so the moved value reads them. Runs on R's main thread (the generated
-    /// receiver prelude).
+    /// slots stay in the pointer's `prot` list across the method: a
+    /// `self -> Self` result that keeps the fields (`Self { n, ..self }`)
+    /// keeps the values, one built afresh (`Self::new(..)`) replaces them at
+    /// the write-back. Runs on R's main thread (the generated receiver
+    /// prelude).
     pub fn take_for_consuming<T: TypedExternal>(&mut self) -> Option<T> {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
         if any_raw.is_null() {
             return None;
         }
         let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
-        let value = any_box.downcast_ref::<T>()?;
-        if T::R_SLOT_COUNT > 0 {
-            attach_sidecars(value, self.sexp);
-            detach_sidecars(value);
+        if !any_box.is::<T>() {
+            return None;
         }
         let taken = std::mem::replace(any_box, Box::new(ConsumedSlot));
-        let boxed: Box<T> = taken.downcast::<T>().expect("checked downcast_ref above");
+        let boxed: Box<T> = taken.downcast::<T>().expect("checked `is` above");
         Some(*boxed)
     }
 
     /// Put a value back into a slot emptied by [`Self::take_for_consuming`]
     /// (the write-back half of `self -> Self`). Replaces whatever the slot
     /// holds; the `TypedExternal` tag in the `prot` slot is unchanged because
-    /// the type is the same. The value lands in a new box, so its
-    /// [`Sidecar<T>`] fields get their back-references written again and
-    /// their pending values flushed into `prot`, on R's main thread (a
-    /// `worker` method's write-back runs on the worker, so the flush is
-    /// routed through [`with_r_thread`](crate::worker::with_r_thread)).
+    /// the type is the same. The pending values of the value's
+    /// [`Sidecar<T>`] fields (what the method set with `Sidecar::new`) are
+    /// flushed into `prot`, on R's main thread (a `worker` method's
+    /// write-back runs on the worker, so the flush is routed through
+    /// [`with_r_thread`](crate::worker::with_r_thread)); the other slots keep
+    /// their values.
     pub fn restore_after_consuming<T: TypedExternal>(&mut self, value: T) {
         let any_raw = unsafe { R_ExternalPtrAddr(self.sexp) as *mut Box<dyn Any> };
         assert!(
@@ -2278,18 +2272,56 @@ impl<T: TypedExternal + Clone> Clone for ExternalPtr<T> {
     /// Deep clones the inner value into a new ExternalPtr.
     ///
     /// This creates a completely independent ExternalPtr with its own
-    /// heap allocation and finalizer. A [`Sidecar<T>`] field clones as a
-    /// detached field holding its slot's value, which the new pointer then
-    /// moves into its own `prot` list, so the two pointers are independent.
+    /// heap allocation and finalizer. The [`Sidecar<T>`] slots are copied as
+    /// R objects (after flushing the source's pending values), so the two
+    /// pointers share those values until one side writes a field: every
+    /// write replaces the slot, and R copies a shared value before modifying
+    /// it in place. For a type with `Sidecar` fields this runs on R's main
+    /// thread only.
     #[inline]
     fn clone(&self) -> Self {
-        Self::new((**self).clone())
+        if T::R_SLOT_COUNT == 0 {
+            return Self::new((**self).clone());
+        }
+        assert_sidecar_clone_on_main_thread::<T>();
+        // SAFETY: on R's main thread; `self.sexp` is the live pointer this
+        // handle holds, built by `ExternalPtr` for a `T`.
+        let prot = unsafe { R_ExternalPtrProtected(self.sexp) };
+        flush_sidecars(&**self, prot);
+        let new = Self::new((**self).clone());
+        // SAFETY: both pointers are live and built for a `T`.
+        unsafe { copy_sidecar_slots::<T>(self.sexp, new.sexp) };
+        new
     }
 
+    /// Clones `source`'s value into this pointer's value in place. The
+    /// [`Sidecar<T>`] slots are copied as R objects like in
+    /// [`clone`](Self::clone), replacing this pointer's slot values and its
+    /// pending values.
     #[inline]
     fn clone_from(&mut self, source: &Self) {
+        if T::R_SLOT_COUNT == 0 {
+            (**self).clone_from(&**source);
+            return;
+        }
+        assert_sidecar_clone_on_main_thread::<T>();
+        // SAFETY: as in `clone`.
+        let source_prot = unsafe { R_ExternalPtrProtected(source.sexp) };
+        flush_sidecars(&**source, source_prot);
         (**self).clone_from(&**source);
+        discard_pending_sidecars(&**self);
+        // SAFETY: both pointers are live and built for a `T`.
+        unsafe { copy_sidecar_slots::<T>(source.sexp, self.sexp) };
     }
+}
+
+/// `ExternalPtr<T>` is `Send`, and copying `Sidecar` slots is R API.
+fn assert_sidecar_clone_on_main_thread<T: TypedExternal>() {
+    assert!(
+        crate::worker::is_r_main_thread(),
+        "cloning an `ExternalPtr<{}>` copies its sidecar slots, which runs on R's main thread only",
+        T::TYPE_NAME
+    );
 }
 
 impl<T: TypedExternal + Default> Default for ExternalPtr<T> {

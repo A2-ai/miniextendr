@@ -162,7 +162,7 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 ///     r: RSidecar,
 ///
 ///     /// Rooted value - MyType_get_keys() / MyType_set_keys(), and
-///     /// `self.keys()` / `self.set_keys(v)` in Rust
+///     /// `MyType::keys(&ptr)` / `MyType::set_keys(&mut ptr, v)` in Rust
 ///     #[r_data]
 ///     pub keys: Sidecar<Vec<i32>>,
 ///

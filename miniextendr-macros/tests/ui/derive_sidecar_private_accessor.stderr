@@ -1,8 +1,8 @@
-error[E0624]: method `keys` is private
-  --> tests/ui/derive_sidecar_private_accessor.rs:32:34
+error[E0624]: associated function `keys` is private
+  --> tests/ui/derive_sidecar_private_accessor.rs:31:42
    |
 10 |     #[derive(ExternalPtr)]
-   |              ----------- private method defined here
+   |              ----------- private associated function defined here
 ...
-32 |     let _keys: Vec<i32> = engine.keys();
-   |                                  ^^^^ private method
+31 |     let _keys: Vec<i32> = inner::Engine::keys(engine);
+   |                                          ^^^^ private associated function

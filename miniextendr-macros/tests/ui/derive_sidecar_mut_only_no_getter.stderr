@@ -1,15 +1,13 @@
-error[E0599]: no method named `keys` found for struct `Engine` in the current scope
-  --> tests/ui/derive_sidecar_mut_only_no_getter.rs:17:34
+error[E0599]: no associated function or constant named `keys` found for struct `Engine` in the current scope
+  --> tests/ui/derive_sidecar_mut_only_no_getter.rs:14:35
    |
  7 | struct Engine {
-   | ------------- method `keys` not found for this struct
+   | ------------- associated function or constant `keys` not found for this struct
 ...
-17 |     let _keys: Vec<i32> = engine.keys();
-   |                                  ^^^^-- help: remove the arguments
-   |                                  |
-   |                                  field, not a method
+14 |     let _keys: Vec<i32> = Engine::keys(engine);
+   |                                   ^^^^ associated function or constant not found in `Engine`
    |
-help: there is a method `set_keys` with a similar name, but with different arguments
+help: there is an associated function `set_keys` with a similar name
   --> tests/ui/derive_sidecar_mut_only_no_getter.rs:6:10
    |
  6 | #[derive(ExternalPtr)]

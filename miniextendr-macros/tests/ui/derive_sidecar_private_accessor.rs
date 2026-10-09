@@ -20,14 +20,18 @@ mod inner {
             }
         }
 
-        pub fn key_count(&self) -> usize {
-            self.keys().len()
+        pub fn key_count(ptr: &ExternalPtr<Self>) -> usize {
+            Self::keys(ptr).len()
         }
     }
 }
 
+fn read(engine: &ExternalPtr<inner::Engine>) {
+    let _count = inner::Engine::key_count(engine);
+    let _keys: Vec<i32> = inner::Engine::keys(engine);
+}
+
 fn main() {
-    let engine = inner::Engine::new();
-    let _count = engine.key_count();
-    let _keys: Vec<i32> = engine.keys();
+    let _ = inner::Engine::new();
+    let _ = read;
 }

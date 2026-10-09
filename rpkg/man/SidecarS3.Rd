@@ -4,24 +4,62 @@
 \alias{SidecarS3}
 \alias{SidecarS3_get_data}
 \alias{SidecarS3_set_data}
+\alias{SidecarS3_get_tags}
+\alias{SidecarS3_set_tags}
+\alias{new_sidecars3}
+\alias{tag_count.SidecarS3}
+\alias{add_tag.SidecarS3}
 \title{SidecarS3 Sidecar Accessors}
 \usage{
 SidecarS3_get_data(x)
 
 SidecarS3_set_data(x, value)
 
+SidecarS3_get_tags(x)
+
+SidecarS3_set_tags(x, value)
+
+new_sidecars3(data)
+
+\method{tag_count}{SidecarS3}(x, ...)
+
+\method{add_tag}{SidecarS3}(x, tag, ...)
+
 SidecarS3
 }
 \arguments{
-\item{x}{The SidecarS3 external pointer}
+\item{x}{An object.}
 
 \item{value}{The new value to set}
+
+\item{data}{Numeric sidecar field.}
+
+\item{...}{Additional arguments.}
+
+\item{tag}{The tag to append.}
 }
 \value{
 The value of the \code{data} field
 
 The SidecarS3 pointer (invisibly)
+
+The value of the \code{tags} field
+
+The SidecarS3 pointer (invisibly)
 }
 \description{
 Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS3}.
+
+S3 class registration for SidecarS3: the methods take the handle, which
+is how a method reads a \code{Sidecar} value.
+
+Create a SidecarS3 with no tags.
+
+S3 generic for \code{tag_count}
+
+Number of \code{tags}, read through the handle.
+
+S3 generic for \code{add_tag}
+
+Appends \code{tag} to \code{tags} through the handle.
 }
