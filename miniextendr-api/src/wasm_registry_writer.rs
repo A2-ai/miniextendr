@@ -4,7 +4,7 @@
 //! On native installs, `tools/write-wrappers.R` loads the linked package `.so`, which runs
 //! [`crate::wasm_registry_writer::write_wasm_registry_to_file`] to emit
 //! Rust source listing every `MX_CALL_DEFS` / `MX_ALTREP_REGISTRATIONS` /
-//! `MX_TRAIT_DISPATCH` entry as `extern "C" {}` declarations + ordinary
+//! `MX_TRAIT_DISPATCH` entry as `extern "C-unwind" {}` declarations + ordinary
 //! `&[T]` static slices, plus the crate's `MX_CONVERSION_ERROR_CLASS` classes.
 //! On `wasm32-*` targets, the user crate compiles that
 //! file in place of the linkme distributed_slices (`miniextendr_init!` emits
@@ -35,7 +35,8 @@ use std::fmt::Write as _;
 //
 // 2: `MX_CONVERSION_ERROR_CLASS_WASM`, which `miniextendr_init!` passes to
 //    `install_wasm_runtime_slices` (#1768).
-const GENERATOR_VERSION: u32 = 2;
+// 3: ALTREP registration function pointers use the C-unwind ABI.
+const GENERATOR_VERSION: u32 = 3;
 
 /// Pre-extracted, host-side view of one `R_CallMethodDef`.
 ///
@@ -66,7 +67,7 @@ pub struct TraitDispatchRow {
 /// // header (auto-generated marker, generator-version, content-hash)
 /// use ...;
 /// unsafe extern "C-unwind" { fn <wrapper>(...); ... }
-/// unsafe extern "C" { fn <altrep_reg>(); ... static <vtable>: u8; ... }
+/// unsafe extern "C-unwind" { fn <altrep_reg>(); ... static <vtable>: u8; ... }
 /// pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[ ... ];
 /// pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[ ... ];
 /// pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry] = &[ ... ];
@@ -153,7 +154,7 @@ fn format_body(
     writeln!(&mut out).unwrap();
 
     format_extern_unwind_block(&mut out, call_defs);
-    format_extern_c_block(&mut out, altrep_regs, trait_dispatches);
+    format_extern_registration_block(&mut out, altrep_regs, trait_dispatches);
     format_call_defs_slice(&mut out, call_defs);
     format_altrep_regs_slice(&mut out, altrep_regs);
     format_trait_dispatch_slice(&mut out, trait_dispatches);
@@ -172,17 +173,16 @@ fn format_extern_unwind_block(out: &mut String, call_defs: &[&CallDefRow]) {
     writeln!(out).unwrap();
 }
 
-fn format_extern_c_block(
+fn format_extern_registration_block(
     out: &mut String,
     altrep_regs: &[&AltrepRegRow],
     trait_dispatches: &[&TraitDispatchRow],
 ) {
-    writeln!(out, "unsafe extern \"C\" {{").unwrap();
+    writeln!(out, "unsafe extern \"C-unwind\" {{").unwrap();
     // ALTREP register fns get the 2024-edition `safe` qualifier so the fn
-    // type stays `extern "C" fn()` (not `unsafe extern "C" fn()`), allowing
-    // direct assignment to `AltrepRegistration.register`. Semantically the
-    // register fns are safe to call from anywhere — they wrap a OnceLock
-    // init and don't take SEXP arguments.
+    // type stays `extern "C-unwind" fn()` (not `unsafe extern "C-unwind" fn()`), allowing
+    // direct assignment to `AltrepRegistration.register`. The dispatcher
+    // calls them on R's main thread inside the package-init unwind boundary.
     for row in altrep_regs {
         writeln!(out, "    pub safe fn {}();", row.symbol).unwrap();
     }
@@ -504,7 +504,7 @@ mod tests {
         // declaration parses (extern fn decls require parameter bindings).
         assert!(out.contains("pub fn miniextendr_my_fn() -> SEXP;"));
         assert!(out.contains("pub fn miniextendr_other(_: SEXP, _: SEXP, _: SEXP) -> SEXP;"));
-        // altrep registrations + vtables in the C block
+        // ALTREP registrations + vtables in the registration block
         assert!(out.contains("pub safe fn __mx_altrep_reg_MyType();"));
         assert!(out.contains("pub static __VTABLE_COUNTER_FOR_MYTYPE: u8;"));
     }
@@ -661,12 +661,12 @@ mod tests {
     }
 
     #[test]
-    fn altrep_register_decls_use_safe_keyword() {
+    fn altrep_register_decls_use_safe_unwind_abi() {
         let (a, b, c) = sample_inputs();
         let out = format_wasm_registry(&a, &b, &c, CLASSES);
         assert!(
-            out.contains("pub safe fn __mx_altrep_reg_MyType()"),
-            "expected `safe fn` so the fn type matches AltrepRegistration.register; got:\n{out}"
+            out.contains("unsafe extern \"C-unwind\" {\n    pub safe fn __mx_altrep_reg_MyType();"),
+            "expected `safe extern C-unwind` to match AltrepRegistration.register; got:\n{out}"
         );
     }
 

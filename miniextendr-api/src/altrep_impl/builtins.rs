@@ -81,7 +81,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -101,7 +101,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -121,7 +121,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -141,7 +141,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altraw_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -161,7 +161,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altstring_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -181,7 +181,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -209,7 +209,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altinteger_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -229,7 +229,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altreal_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -249,7 +249,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altlogical_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -269,7 +269,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altraw_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -289,7 +289,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altstring_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
@@ -309,7 +309,7 @@ macro_rules! impl_builtin_altrep_family {
         $crate::impl_altcomplex_from_data!($ty, serialize);
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub extern "C" fn $reg_fn() {
+        pub extern "C-unwind" fn $reg_fn() {
             <$ty as $crate::altrep::RegisterAltrep>::get_or_init_class();
         }
         #[cfg_attr(
