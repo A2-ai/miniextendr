@@ -60,11 +60,9 @@ where
     ///
     /// # Length Mismatch
     ///
-    /// If the iterator produces a different number of elements than `len`:
-    /// - Fewer elements: Missing indices return `None`/NA/default values
-    /// - More elements: Extra elements are ignored (truncated to `len`)
-    ///
-    /// A warning is printed to stderr when a mismatch is detected.
+    /// [`get_element`](Self::get_element) returns `None` for a missing index.
+    /// [`materialize_all`](Self::materialize_all) requires the complete declared
+    /// prefix and panics if the source ends early. Neither reads past `len`.
     pub fn new(iter: I, len: usize) -> Self {
         Self {
             len,
@@ -106,13 +104,16 @@ where
 
         // Need to advance iterator to index i
         let mut iter_opt = self.iter.borrow_mut();
-        {
-            let iter = iter_opt.as_mut()?;
-
-            // Fill cache up to and including index i. `?` returns None if the
-            // iterator is exhausted before reaching the expected length.
-            while cache.len() <= i {
-                cache.push(iter.next()?);
+        // Fill cache up to and including index i. A source that ends early is
+        // dropped at once: a non-fused iterator could otherwise yield again on
+        // a later call, giving an index that read as missing a value.
+        while cache.len() <= i {
+            match iter_opt.as_mut()?.next() {
+                Some(value) => cache.push(value),
+                None => {
+                    iter_opt.take();
+                    return None;
+                }
             }
         }
 
@@ -133,59 +134,42 @@ where
         Some(value)
     }
 
-    /// Materialize all remaining elements from the iterator.
+    /// Materialize exactly the declared prefix, including already cached elements.
     ///
-    /// After this call, all elements are guaranteed to be in memory and
-    /// `as_materialized()` will return `Some`.
+    /// Does not request an element beyond `len`, including when `len` is zero
+    /// or the source is infinite. On success, [`Self::as_materialized`] returns
+    /// a slice whose length is exactly [`Self::len`].
     ///
-    /// # Length Mismatch Handling
+    /// # Panics
     ///
-    /// If the iterator produces fewer elements than declared `len`, the missing
-    /// elements are left uninitialized in the cache (callers should handle this
-    /// via bounds checking). If the iterator produces more elements than declared,
-    /// extra elements are silently ignored (truncated to `len`).
-    ///
-    /// A warning is printed to stderr if a length mismatch is detected.
+    /// If the source ends before the declared length. The partial prefix stays
+    /// cached, but is never published as a complete buffer. A failed attempt
+    /// drops the iterator; another attempt cannot resume an exhausted source.
     pub fn materialize_all(&self) -> &[T] {
-        // Already materialized?
         if let Some(vec) = self.materialized.get() {
             return vec;
         }
 
-        // Consume iterator and move cache to materialized storage
         let mut cache = self.cache.borrow_mut();
         let mut iter_opt = self.iter.borrow_mut();
-
-        if let Some(iter) = iter_opt.take() {
-            // Drain remaining elements (up to self.len to avoid memory issues)
-            for elem in iter {
-                if cache.len() >= self.len {
-                    // Iterator produced more than expected - truncate and warn
-                    eprintln!(
-                        "[miniextendr warning] iterator ALTREP: iterator produced more elements than declared length ({}), truncating",
-                        self.len
-                    );
+        if let Some(mut iter) = iter_opt.take() {
+            while cache.len() < self.len {
+                let Some(value) = iter.next() else {
                     break;
-                }
-                cache.push(elem);
-            }
-
-            // Check if iterator exhausted early
-            if cache.len() < self.len {
-                eprintln!(
-                    "[miniextendr warning] iterator ALTREP: iterator produced {} elements, expected {} - accessing missing indices will return NA/default",
-                    cache.len(),
-                    self.len
-                );
+                };
+                cache.push(value);
             }
         }
+        assert!(
+            cache.len() == self.len,
+            "ALTREP iterator ended before element {} of its declared length {}",
+            cache.len() + 1,
+            self.len
+        );
 
-        // Move cache to materialized (take ownership)
         let vec = std::mem::take(&mut *cache);
         drop(cache);
         drop(iter_opt);
-
-        // Store in OnceLock and return reference
         self.materialized.get_or_init(|| vec)
     }
 
@@ -419,5 +403,64 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IterState;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn materialization_never_probes_past_the_declared_prefix() {
+        for len in [0, 3] {
+            let source = (0..len)
+                .map(|i| i.to_string())
+                .chain(std::iter::once_with(|| panic!("read beyond the prefix")));
+            let state = IterState::new(source, len);
+            let expected: Vec<_> = (0..len).map(|i| i.to_string()).collect();
+            assert_eq!(state.materialize_all(), expected);
+            assert_eq!(state.materialize_all(), expected);
+        }
+    }
+
+    #[test]
+    fn materialization_continues_after_a_cached_prefix() {
+        let source = (0..4).chain(std::iter::once_with(|| panic!("read beyond the prefix")));
+        let state = IterState::new(source, 4);
+        assert_eq!(state.get_element(1), Some(1));
+        assert_eq!(state.materialize_all(), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn an_exhausted_source_is_never_polled_again() {
+        // Yields 0, then None, then 1 if polled again (not fused).
+        struct Flaky(u8);
+        impl Iterator for Flaky {
+            type Item = i32;
+            fn next(&mut self) -> Option<i32> {
+                self.0 += 1;
+                match self.0 {
+                    1 => Some(0),
+                    3 => Some(1),
+                    _ => None,
+                }
+            }
+        }
+        let state = IterState::new(Flaky(0), 2);
+        assert_eq!(state.get_element(1), None);
+        assert_eq!(state.get_element(1), None);
+        assert_eq!(state.get_element(0), Some(0));
+    }
+
+    #[test]
+    fn early_exhaustion_never_publishes_a_partial_buffer() {
+        let state = IterState::new(0..2, 3);
+        for _ in 0..2 {
+            assert!(catch_unwind(AssertUnwindSafe(|| state.materialize_all())).is_err());
+            assert!(state.as_materialized().is_none());
+            assert_eq!(state.get_element(0), Some(0));
+            assert_eq!(state.get_element(2), None);
+        }
     }
 }
