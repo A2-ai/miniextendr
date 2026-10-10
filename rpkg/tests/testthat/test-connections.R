@@ -169,6 +169,87 @@ test_that("rust_write_to_stderr captured by sink(type='message')", {
 })
 
 # =============================================================================
+# Reading R's console input through RStdin — issue #1912
+# =============================================================================
+
+# Evaluate `call` (R code, as text) in a child R whose console input goes on
+# with `input` (exact bytes), and return the call's value.
+#
+# Under Rscript, R's stdin() is the script, not the process's standard input,
+# so `input` follows the code in the script. The code line ends with q(), so
+# input the call leaves unread is never parsed as R.
+console_input_child <- function(call, input) {
+  script <- withr::local_tempfile(fileext = ".R")
+  code <- sprintf("dput(%s); q(save = \"no\")\n", call)
+  writeBin(charToRaw(paste0(code, input)), script)
+  out <- callr::rscript(script, libpath = .libPaths(), show = FALSE)
+  eval(parse(text = out$stdout))
+}
+
+test_that("RStdin reads R's console input one line per read", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_read_chunks(64L)", "hello\nworld\n"),
+    c("hello\n", "world\n")
+  )
+})
+
+test_that("RStdin ends every line with \\n, a last line without one too", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_read_chunks(64L)", "crlf\r\ncr\rlast"),
+    c("crlf\n", "cr\n", "last\n")
+  )
+})
+
+test_that("RStdin reads nothing from empty input", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_read_chunks(64L)", ""),
+    character(0)
+  )
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_lines(5L)", ""),
+    character(0)
+  )
+})
+
+test_that("RStdin reads a line longer than the buffer in pieces", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_read_chunks(3L)", "hello\nhi\n"),
+    c("hel", "lo\n", "hi\n")
+  )
+})
+
+test_that("RStdin::lines() returns the lines without their terminators", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_lines(10L)", "one\ntwo\r\nthree"),
+    c("one", "two", "three")
+  )
+  # take(2) leaves the third line unread.
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_lines(2L)", "a\nb\nc\n"),
+    c("a", "b")
+  )
+})
+
+test_that("Read and BufRead on separate RStdin handles read one stream", {
+  skip_on_cran()
+  skip_if_not_installed("callr")
+  expect_identical(
+    console_input_child("miniextendr::rust_stdin_read_then_lines(2L)", "hello\nworld\nrest\n"),
+    c("he", "llo\n", "world\n")
+  )
+})
+
+# =============================================================================
 # Null connection — issue #176
 # =============================================================================
 

@@ -426,6 +426,74 @@ pub fn rust_write_to_stderr(message: String) {
     writeln!(e, "{message}").expect("write to RStderr failed");
 }
 
+/// Read R's console input with `std::io::Read` on `RStdin`, until the end of
+/// the input.
+///
+/// Each read fills a `size`-byte buffer and becomes one element of the
+/// result, so the result shows where the reads stopped. The tests feed the
+/// input to a child R's console (issue #1912).
+/// @param size Buffer size in bytes.
+/// @return Character vector with one element per read.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_stdin_read_chunks(size: usize) -> Vec<String> {
+    use miniextendr_api::connection::RStdin;
+    use std::io::Read;
+    let mut buf = vec![0u8; size];
+    let mut chunks = Vec::new();
+    loop {
+        let n = RStdin.read(&mut buf).expect("read from RStdin failed");
+        if n == 0 {
+            break;
+        }
+        chunks.push(String::from_utf8_lossy(&buf[..n]).into_owned());
+    }
+    chunks
+}
+
+/// Read up to `n` lines of R's console input with `RStdin::lines()`.
+///
+/// @param n Maximum number of lines.
+/// @return Character vector of the lines, without their line terminators.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_stdin_lines(n: usize) -> Vec<String> {
+    use miniextendr_api::connection::RStdin;
+    RStdin
+        .lines()
+        .take(n)
+        .collect::<std::io::Result<_>>()
+        .expect("read from RStdin failed")
+}
+
+/// Read `size` bytes of R's console input with `std::io::Read`, then the
+/// rest of that line and the next line with `BufRead::read_line`.
+///
+/// Each step goes through a new `RStdin` handle, so the result shows that
+/// they all read one stream.
+/// @param size Buffer size in bytes for the first read.
+/// @return Character vector: the first read, the rest of its line (through
+///   `RStdin::lock()`), the next line (through `RStdin::read_line()`).
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_stdin_read_then_lines(size: usize) -> Vec<String> {
+    use miniextendr_api::connection::RStdin;
+    use std::io::{BufRead, Read};
+    let mut buf = vec![0u8; size];
+    let n = RStdin.read(&mut buf).expect("read from RStdin failed");
+    let first = String::from_utf8_lossy(&buf[..n]).into_owned();
+    let mut rest = String::new();
+    RStdin
+        .lock()
+        .read_line(&mut rest)
+        .expect("read_line through RStdinLock failed");
+    let mut next = String::new();
+    RStdin
+        .read_line(&mut next)
+        .expect("RStdin::read_line failed");
+    vec![first, rest, next]
+}
+
 /// Open a null device connection from Rust and return it to R.
 ///
 /// The no-arg signature makes this eligible for the gctorture GC sweep.

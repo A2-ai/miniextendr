@@ -24,6 +24,7 @@ miniextendr-api = { version = "0.1", features = ["connections"] }
 - [Trampoline Architecture](#trampoline-architecture)
 - [Complete Examples](#complete-examples)
 - [Helper Functions](#helper-functions)
+- [Standard Streams](#standard-streams)
 - [Limitations](#limitations)
 
 ## Quick Start
@@ -652,6 +653,62 @@ let written = unsafe { write_connection(handle, data) };
 ```
 
 These are thin wrappers around `R_GetConnection`, `R_ReadConnection`, and `R_WriteConnection`.
+
+## Standard Streams
+
+`RStdin`, `RStdout` and `RStderr` are zero-sized handles for R's terminal
+connections `stdin()`, `stdout()` and `stderr()`. They convert to and from
+those connection objects, so a `#[miniextendr]` function can take or return
+one.
+
+`RStdout` and `RStderr` implement `std::io::Write` through R's console
+(`Rprintf` / `REprintf`), so `sink()` and `capture.output()` see what they
+write.
+
+`RStdin` reads R's console input, the way R does: one line at a time with
+`readLines(stdin(), n = 1L, warn = FALSE)`. R's terminal `stdin()` has no
+`read` callback, so `R_ReadConnection` can't read it. The API follows
+`std::io::Stdin`:
+
+- `RStdin` implements `std::io::Read`. Every handle reads the same stream
+  through one line buffer.
+- `RStdin.lock()` returns an `RStdinLock`, which implements `std::io::BufRead`
+  (`fill_buf()` is the unread rest of the current line) and `Read`.
+- `RStdin.read_line(&mut s)` and `RStdin.lines()` are shortcuts through a lock.
+
+```rust
+use miniextendr_api::connection::RStdin;
+
+#[miniextendr]
+pub fn read_numbers(n: usize) -> Vec<f64> {
+    RStdin
+        .lines()
+        .take(n)
+        .map(|line| line.expect("read from stdin").trim().parse().expect("a number"))
+        .collect()
+}
+```
+
+What a read returns:
+
+- Every line ends in `"\n"`. `readLines()` drops the terminator (`"\n"`,
+  `"\r\n"` or `"\r"`), and `RStdin` adds `"\n"`, also to a last line that had
+  none.
+- The bytes are the ones `readLines()` returns, in the native encoding.
+- At the end of the input, `read()` returns `Ok(0)`.
+- Rust holds at most one line. An R-side read of `stdin()` while part of a
+  line is still unread in Rust gets the next line.
+
+**`stdin()` is R's console, not always the process's standard input.** In an
+interactive session it is what the user types. Under `Rscript` or
+`R --file`, it is the script being run: a read gets the lines after the code
+being evaluated, and input piped into `Rscript` never reaches it. For the
+process's standard input, open R's `file("stdin")` and read that connection.
+
+**R's main thread only.** Off it, a read that needs a new line returns an
+`io::Error`. A second `RStdinLock` on one thread panics ("RStdin is already
+locked on this thread"), including a read through another `RStdin` handle
+while a lock is held.
 
 ## Limitations
 
