@@ -23,6 +23,10 @@ use crate::into_r::IntoR;
 /// Marker type to opt-in to ALTREP representation for types that have both
 /// eager-copy and ALTREP implementations.
 ///
+/// The marker supports unsized views such as `&Altrep<[i32]>`. Converting a
+/// value into R still requires a sized owner with registered callbacks; use
+/// `Altrep<Box<[i32]>>` for a dynamically sized owned slice.
+///
 /// # Motivation
 ///
 /// Types like `Vec<i32>` have two possible conversions to R:
@@ -90,7 +94,7 @@ pub type Lazy<T> = Altrep<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct Altrep<T>(pub T);
+pub struct Altrep<T: ?Sized>(pub T);
 
 impl<T> Altrep<T> {
     /// Create a new ALTREP marker wrapper.
@@ -132,7 +136,7 @@ impl<T> From<T> for Altrep<T> {
     }
 }
 
-impl<T> std::ops::Deref for Altrep<T> {
+impl<T: ?Sized> std::ops::Deref for Altrep<T> {
     type Target = T;
 
     #[inline]
@@ -141,7 +145,7 @@ impl<T> std::ops::Deref for Altrep<T> {
     }
 }
 
-impl<T> std::ops::DerefMut for Altrep<T> {
+impl<T: ?Sized> std::ops::DerefMut for Altrep<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -206,3 +210,17 @@ impl IntoR for crate::altrep_sexp::AltrepSexp {
     }
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::Altrep;
+
+    #[test]
+    fn array_marker_coerces_to_mutable_slice_view() {
+        let mut array = Altrep([1, 2, 3]);
+        let slice: &mut Altrep<[i32]> = &mut array;
+        slice[1] = 9;
+        assert_eq!(&**slice, &[1, 9, 3]);
+        assert_eq!(array.into_inner(), [1, 9, 3]);
+    }
+}
