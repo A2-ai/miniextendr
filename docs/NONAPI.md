@@ -262,6 +262,7 @@ API:
   on the newer side.
 
 To add a version, append it to `R_VERSION_CFGS` in `miniextendr-api/build.rs`.
-Test both sides: CI runs `R CMD check` on R 4.4, oldrel-1 and release, and the
-lint job compiles the newest side.
+Test both sides: CI runs `R CMD check` on R 4.4 and release on every PR, and
+on oldrel too on main or when the PR carries the `oldrel` label (add it to a
+PR that touches these cfgs). The lint job compiles the newest side.
 
