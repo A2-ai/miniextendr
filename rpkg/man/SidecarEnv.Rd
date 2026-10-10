@@ -2,16 +2,6 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SidecarEnv}
 \alias{SidecarEnv}
-\alias{SidecarEnv_get_count}
-\alias{SidecarEnv_set_count}
-\alias{SidecarEnv_get_score}
-\alias{SidecarEnv_set_score}
-\alias{SidecarEnv_get_flag}
-\alias{SidecarEnv_set_flag}
-\alias{SidecarEnv_get_name}
-\alias{SidecarEnv_set_name}
-\alias{SidecarEnv_get_raw_slot}
-\alias{SidecarEnv_set_raw_slot}
 \alias{SidecarEnv$new}
 \alias{SidecarEnv$double_count}
 \alias{$.SidecarEnv}
@@ -19,28 +9,8 @@
 \alias{.DollarNames.SidecarEnv}
 \alias{$<-.SidecarEnv}
 \alias{[[<-.SidecarEnv}
-\title{SidecarEnv Sidecar Accessors}
+\title{SidecarEnv Class}
 \usage{
-SidecarEnv_get_count(x)
-
-SidecarEnv_set_count(x, value)
-
-SidecarEnv_get_score(x)
-
-SidecarEnv_set_score(x, value)
-
-SidecarEnv_get_flag(x)
-
-SidecarEnv_set_flag(x, value)
-
-SidecarEnv_get_name(x)
-
-SidecarEnv_set_name(x, value)
-
-SidecarEnv_get_raw_slot(x)
-
-SidecarEnv_set_raw_slot(x, value)
-
 SidecarEnv
 
 \method{$}{SidecarEnv}(self, name)
@@ -54,40 +24,15 @@ SidecarEnv
 \method{[[}{SidecarEnv}(x, name) <- value
 }
 \arguments{
-\item{x}{The SidecarEnv external pointer}
-
-\item{value}{The new value to set}
-
 \item{self}{The object instance.}
 
-\item{name}{A method or field name.}
+\item{x}{An object.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
-}
-\value{
-The value of the \code{count} field
 
-The SidecarEnv pointer (invisibly)
-
-The value of the \code{score} field
-
-The SidecarEnv pointer (visibly)
-
-The value of the \code{flag} field
-
-The SidecarEnv pointer (invisibly)
-
-The value of the \code{name} field
-
-The SidecarEnv pointer (invisibly)
-
-The value of the \code{raw_slot} field
-
-The SidecarEnv pointer (invisibly)
+\item{value}{The new value of the field.}
 }
 \description{
-Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarEnv}.
-
 Env class registration for SidecarEnv: with \code{env(r_data_accessors)},
 \code{obj$count} / \code{obj[["count"]]} read a field and \code{obj$count <- value}
 writes it, next to the methods \code{obj$method()} reaches.

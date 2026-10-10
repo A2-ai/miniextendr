@@ -136,15 +136,14 @@ test_that("S3: `[[` on the pointer takes a position in the field order, as a lis
   expect_identical(conditionMessage(e), "subscript out of bounds")
   expect_equal(conditionCall(e), quote(x[[9]]))
   expect_equal(conditionCall(caught(x[[3L]])), quote(x[[3L]]))
-  # `0` and a negative position raise as they do on a list.
-  e <- caught(x[[0]])
-  expect_match(conditionMessage(e), "attempt to select less than one element", fixed = TRUE)
-  expect_equal(conditionCall(e), quote(x[[0]]))
-  expect_identical(x[[-1]], "t") # a two-element list's `[[-1]]` is its second element
-  h <- new_handmade_rec(1L)
-  e <- caught(h[[-1]])
-  expect_match(conditionMessage(e), "invalid negative subscript", fixed = TRUE)
-  expect_equal(conditionCall(e), quote(h[[-1]]))
+  # `0` and a negative position pick no field either (#1899): unlike a list,
+  # whose `[[-1]]` drops an element, they raise the same error.
+  for (read in alist(x[[0]], x[[-1]], x[[0.5]], x[[FALSE]])) {
+    e <- caught(eval(read))
+    expect_s3_class(e, "subscriptOutOfBoundsError")
+    expect_identical(conditionMessage(e), "subscript out of bounds", label = deparse(read))
+    expect_equal(conditionCall(e), read)
+  }
   # Any other index goes to R's own `[[`, which can't subset a pointer.
   expect_error(x[[c(1, 2)]], "not subsettable")
   expect_error(x[[c("data", "tags")]], "not subsettable")
@@ -344,7 +343,8 @@ test_that("an S3 impl with `class = ...` and no constructor gets the readers for
   expect_null(h$extra)
   expect_identical(names(h), c("id", "ids", "label", "extra"))
   expect_identical(utils::.DollarNames(h, "^i"), c("id", "ids"))
-  # Getters only: no generated `$<-`, and the standalone setters still write.
+  # Getters only: no generated `$<-`; the standalone setter is internal and
+  # still writes.
   expect_false(exists("$<-.handmade_rec", envir = asNamespace("miniextendr")))
   SidecarHandmade_set_extra(h, "kept")
   expect_identical(h$extra, "kept")
@@ -353,6 +353,66 @@ test_that("an S3 impl with `class = ...` and no constructor gets the readers for
   p <- rdata_sidecar_handmade_new(1L)
   expect_null(attr(p, "class"))
   expect_error(p$id, "not subsettable")
+})
+
+test_that("the readers' own errors carry the type's `field_error` classes in front (#1899)", {
+  h <- new_handmade_rec(2L)
+  classes <- c("handmade_error_field", "handmade_error")
+  in_front <- function(e, also, label) {
+    expect_identical(class(e)[seq_along(classes)], classes, label = label)
+    expect_s3_class(e, also)
+  }
+  # A position that picks no field: R's own class stays behind them.
+  for (read in alist(h[[5]], h[[0]], h[[-1]])) {
+    e <- caught(eval(read))
+    in_front(e, "subscriptOutOfBoundsError", deparse(read))
+    expect_equal(conditionCall(e), read)
+  }
+  # A pointer of another type under the class.
+  other <- structure(rdata_sidecar_s3_new(1.5), class = "handmade_rec")
+  e <- caught(other$id)
+  in_front(e, "rust_error", "type mismatch")
+  expect_match(conditionMessage(e), "SidecarHandmade", fixed = TRUE)
+  # A receiver of the class with no pointer, e.g. an older list format: the
+  # restored classes too, the shared parent class after both specific ones.
+  old <- structure(list(id = 1L), class = "handmade_rec")
+  for (read in alist(old$id, old[["ids"]], old$label)) {
+    e <- caught(eval(read))
+    expect_identical(
+      class(e)[1:4],
+      c("handmade_error_saved", "handmade_error_field", "handmade_error", "miniextendr_no_handle"),
+      label = deparse(read)
+    )
+    expect_identical(
+      conditionMessage(e),
+      "expected ExternalPtr<SidecarHandmade>, got a non-external-pointer object",
+      label = deparse(read)
+    )
+  }
+  # A type without the option keeps the plain errors.
+  e <- caught(new_sidecars3(1.5)[[9]])
+  expect_identical(class(e)[1], "subscriptOutOfBoundsError")
+  e <- caught(structure(list(data = 1), class = "SidecarS3")$data)
+  expect_identical(class(e)[1], "miniextendr_no_handle")
+})
+
+test_that("a class with field syntax keeps its standalone accessors internal (#1900)", {
+  exports <- getNamespaceExports("miniextendr")
+  ns <- asNamespace("miniextendr")
+  # Field syntax: `$` / `[[` are the R API, the accessors are internal.
+  for (fn in c(
+    "SidecarHandmade_get_id", "SidecarHandmade_set_extra",
+    "SidecarS3_get_tags", "SidecarS3_set_tags",
+    "SidecarS4_get_history", "SidecarEnv_get_name",
+    "SidecarComputed_get_keys"
+  )) {
+    expect_false(fn %in% exports, label = fn)
+    expect_true(exists(fn, envir = ns, inherits = FALSE), label = fn)
+  }
+  # No field syntax (R6, S7, plain S3): the accessors stay exported.
+  for (fn in c("SidecarR6_get_value", "SidecarS7_get_prop_int", "SidecarVctrs_get_vec_label")) {
+    expect_true(fn %in% exports, label = fn)
+  }
 })
 
 # endregion
@@ -639,6 +699,32 @@ test_that("restored: the field methods refuse the pointer; the standalone access
   expect_identical(names(back), c("data", "tags"))
   expect_identical(utils::.DollarNames(back), c("data", "tags"))
   expect_s3_class(caught(back$nope <- 1), "miniextendr_no_field")
+})
+
+test_that("restored: under `refuse = \"every_read\"` names(), an unknown name and the completions refuse too (#1901)", {
+  h <- new_handmade_rec(2L)
+  back <- reload(h)
+  message <- "this handmade_rec was saved; build a new one with new_handmade_rec()"
+  classes <- c(
+    "handmade_error_saved", "handmade_error",
+    "miniextendr_restored_no_value", "miniextendr_restored"
+  )
+  for (read in alist(
+    back$id, back[["ids"]], back[[1]], back$nope, back$i, back[["nope"]], back[[NA]],
+    names(back), as.list(back)
+  )) {
+    e <- caught(eval(read))
+    expect_identical(conditionMessage(e), message, label = deparse(read))
+    expect_restored_classes(e, classes, deparse(read))
+    expect_equal(conditionCall(e), read)
+  }
+  # The completions serve the console: they list nothing instead of raising.
+  expect_identical(utils::.DollarNames(back), character(0))
+  expect_identical(utils::.DollarNames(back, "^i"), character(0))
+  # A live object answers as before.
+  expect_null(h$nope)
+  expect_identical(names(h), c("id", "ids", "label", "extra"))
+  expect_identical(utils::.DollarNames(h, "^i"), c("id", "ids"))
 })
 
 test_that("restored: the S4 and env field methods refuse too", {

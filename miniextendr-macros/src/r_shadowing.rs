@@ -55,6 +55,9 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "anyNA",
     "attr",
     "c",
+    // The empty completion of a restored pointer under
+    // `restored(refuse = "every_read")` (#1901).
+    "character",
     "class",
     "double",
     "emptyenv",

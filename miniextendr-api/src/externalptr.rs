@@ -345,6 +345,13 @@ pub const RESTORED_NO_VALUE_CLASS: &str = "miniextendr_restored_no_value";
 /// the condition carries `saved_version` and `current_version`.
 pub const RESTORED_OTHER_VERSION_CLASS: &str = "miniextendr_restored_other_version";
 
+/// The class of the error for a receiver of a type's R accessors that carries
+/// no external pointer: neither a pointer nor an object holding one in
+/// `.ptr`, such as an object of the class an earlier release of a package
+/// wrote to disk (#1901). The type's restored and field-error classes go in
+/// front of it.
+pub const NO_HANDLE_CLASS: &str = "miniextendr_no_handle";
+
 /// What a pointer without an address is, as far as `T` is concerned
 /// ([`classify_null_address`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -597,6 +604,20 @@ pub trait TypedExternal: 'static {
     /// `#[externalptr(restored(message = "..."))]`; the default keeps
     /// miniextendr's messages.
     const RESTORED_ERROR_MESSAGE: Option<&'static str> = None;
+
+    /// The package's condition classes for the errors the type's R field
+    /// readers raise themselves (#1899), in front of their own class: a
+    /// refused position (`subscriptOutOfBoundsError`), a name that is not a
+    /// field (`miniextendr_no_field`), a computed field assigned to
+    /// (`miniextendr_read_only_field`), a pointer of another type, and a
+    /// receiver that carries no pointer ([`NO_HANDLE_CLASS`]). The R
+    /// accessors of the type read it for the last two; the derive writes the
+    /// same classes into the R helpers for the others.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(field_error(class = ["pkg_error_config", "pkg_error"]))]`;
+    /// the default adds nothing.
+    const FIELD_ERROR_CLASS: &'static [&'static str] = &[];
 
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
     /// name, so the handle can flush the field's pending value into its slot

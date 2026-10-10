@@ -20,13 +20,20 @@ new_engine <- function(n) {
 if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), inherits = FALSE))) stop("`s3(r_data_accessors)` on `Engine` needs the field helpers `#[derive(ExternalPtr)]` emits for a type with an `#[r_data]` `RSidecar` selector and a `pub` `#[r_data]` field", call. = FALSE)
 
 #' @rdname Engine
+#' @param x An object.
 #' @param name A field name; `$` on the pointer itself also takes a unique prefix of one, as for a list.
 #' @method $ Engine
 #' @export
 `$.Engine` <- function(x, name) {
   if (typeof(x) == "externalptr") {
     i <- pmatch(name, .rdata_fields_Engine)
-    if (is.na(i)) return(NULL)
+    if (is.na(i)) {
+      if (!is.null(.rdata_live_Engine)) {
+        .val <- .rdata_live_Engine(x, TRUE)
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+      }
+      return(NULL)
+    }
     if (.rdata_fields_Engine[[i]] != name) {
       if (isTRUE(getOption("warnPartialMatchDollar"))) warning(simpleWarning(sprintf("partial match of '%s' to '%s'", name, .rdata_fields_Engine[[i]]), .miniextendr_frame_call(environment())))
       name <- .rdata_fields_Engine[[i]]
@@ -40,16 +47,29 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 }
 
 #' @rdname Engine
+#' @param x An object.
 #' @param i A field name; `[[` on the pointer itself also takes a position in the field order. Any other index goes to the object's own `[[` / `[[<-`.
 #' @param ... Additional arguments.
 #' @method [[ Engine
 #' @export
 `[[.Engine` <- function(x, i, ...) {
   if (typeof(x) == "externalptr" && length(i) == 1L && (is.numeric(i) || is.logical(i))) {
-    if (is.na(i)) return(NULL)
-    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment())
+    if (is.na(i)) {
+      if (!is.null(.rdata_live_Engine)) {
+        .val <- .rdata_live_Engine(x, TRUE)
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+      }
+      return(NULL)
+    }
+    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)
   } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
-    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) return(NULL)
+    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) {
+      if (!is.null(.rdata_live_Engine)) {
+        .val <- .rdata_live_Engine(x, TRUE)
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+      }
+      return(NULL)
+    }
     return(NextMethod())
   }
   .val <- .rdata_get_Engine(x, i)
@@ -58,11 +78,20 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 }
 
 #' @rdname Engine
+#' @param x An object.
 #' @method names Engine
 #' @export
-names.Engine <- function(x) if (typeof(x) == "externalptr") .rdata_fields_Engine else NextMethod()
+names.Engine <- function(x) {
+  if (typeof(x) != "externalptr") return(NextMethod())
+  if (!is.null(.rdata_live_Engine)) {
+    .val <- .rdata_live_Engine(x, TRUE)
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  }
+  .rdata_fields_Engine
+}
 
 #' @rdname Engine
+#' @param x An object.
 #' @param ... Additional arguments.
 #' @method as.list Engine
 #' @export
@@ -80,12 +109,18 @@ as.list.Engine <- function(x, ...) {
 }
 
 #' @rdname Engine
+#' @param x An object.
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
-.DollarNames.Engine <- function(x, pattern = "") grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != "externalptr") names(x)), value = TRUE)
+.DollarNames.Engine <- function(x, pattern = "") {
+  if (typeof(x) == "externalptr" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))
+  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != "externalptr") names(x)), value = TRUE)
+}
 
 #' @rdname Engine
+#' @param x An object.
 #' @param name A field name; `$` on the pointer itself also takes a unique prefix of one, as for a list.
+#' @param value The new value of the field.
 #' @method $<- Engine
 #' @export
 `$<-.Engine` <- function(x, name, value) {
@@ -99,8 +134,10 @@ as.list.Engine <- function(x, ...) {
 }
 
 #' @rdname Engine
+#' @param x An object.
 #' @param i A field name; `[[` on the pointer itself also takes a position in the field order. Any other index goes to the object's own `[[` / `[[<-`.
 #' @param ... Additional arguments.
+#' @param value The new value of the field.
 #' @method [[<- Engine
 #' @export
 `[[<-.Engine` <- function(x, i, ..., value) {
