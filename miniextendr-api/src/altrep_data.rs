@@ -45,7 +45,8 @@ mod traits;
 pub(crate) use core::fill_region;
 pub use core::{
     AltrepDataptr, AltrepExtract, AltrepExtractSubset, AltrepLen, AltrepSerialize, InferBase,
-    Logical, Sortedness, materialize_altrep_data2,
+    Logical, Sortedness, materialize_altrep_data2, materialized_altrep_data2,
+    materialized_altrep_region,
 };
 pub use iter::*;
 pub use stream::*;

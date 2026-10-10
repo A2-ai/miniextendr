@@ -1631,9 +1631,9 @@ impl AltrepDataptr<i32> for VecWrapper {
 
 When implementing `dataptr()`:
 
-1. **Pointer Validity**: The returned pointer must remain valid until the next GC or until the ALTREP object is collected
+1. **Pointer Validity**: Keep the allocation valid for callers using the returned pointer. Reallocating or replacing a `Vec` invalidates its old pointers; looking up the new pointer on a later callback does not repair an escaped C pointer.
 
-2. **Lifetime**: Store materialized data in the ALTREP object itself (in the data1 ExternalPtr)
+2. **Lifetime**: Keep the buffer owned by the ALTREP, either in its data1 ExternalPtr or in an R vector rooted through data2. A borrowed `Cow` does not itself keep an R source object alive.
 
 3. **Mutability**: If `writable=true`, the pointer must be mutable. R may modify the data.
 
@@ -1649,6 +1649,26 @@ fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
     self.cached_data.as_mut().map(|v| v.as_mut_ptr())
 }
 ```
+
+### Bridge cache contract
+
+The standard bridge reserves data2 for its R vector cache. Before materialization,
+callbacks read the Rust value in data1. Once an atomic vector is materialized,
+length, element access and region reads use data2, including writes made through
+DATAPTR. Sortedness and NA hints become unknown, and summaries and serialization
+return C NULL so R computes them from the current vector. This is different from
+R's NULL value, which is not the fallback sentinel.
+
+Direct native buffers (`Altrep<Vec<i32>>`, for example) keep their data in the
+Vec instead: fresh callbacks query its current allocation. Rust mutation through
+an explicit backing-data accessor must respect outstanding R/C pointers and R
+aliases. For a materialized class, mutating data1 does not replace the R cache.
+A shared growable container therefore needs an explicit snapshot or mutation
+policy; the ALTREP callbacks alone cannot make reallocation transparent.
+
+Built-in Cow deserialization creates owned slices and strings. The temporary
+serialization state is not retained as a sidecar, so borrowing it would outlive
+its GC root.
 
 ### Example: Controlling Materialization
 
