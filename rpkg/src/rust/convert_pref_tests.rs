@@ -7,6 +7,7 @@
 use miniextendr_api::convert::{AsDataFrame, AsExternalPtr, AsList, AsRNative};
 use miniextendr_api::miniextendr;
 
+#[repr(transparent)]
 #[derive(
     Copy,
     Clone,
@@ -20,6 +21,7 @@ pub struct Hybrid(pub i32);
 #[derive(Debug, miniextendr_api::ExternalPtr, miniextendr_api::IntoList)]
 pub struct PtrList(pub i32);
 
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, miniextendr_api::RNativeType, miniextendr_api::IntoList)]
 pub struct NativeList(pub i32);
 
@@ -134,6 +136,7 @@ pub fn attr_prefer_native(x: i32) -> Hybrid {
 // Struct-level prefer = "native" (#1283): the attribute on the STRUCT
 // (not the fn) selects the type's default IntoR = AsRNative routing.
 #[miniextendr(prefer = "native")]
+#[repr(transparent)]
 #[derive(Copy, Clone, Debug, miniextendr_api::RNativeType)]
 pub struct StructPreferNative(
     // The layout-based RNativeType conversion consumes this field through the

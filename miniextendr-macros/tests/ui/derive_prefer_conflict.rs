@@ -9,6 +9,7 @@
 
 use miniextendr_macros::{IntoList, PreferList, PreferRNativeType, RNativeType};
 
+#[repr(transparent)]
 #[derive(Clone, Copy, IntoList, RNativeType, PreferList, PreferRNativeType)]
 struct Model(i32);
 

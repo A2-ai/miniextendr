@@ -2419,10 +2419,12 @@ pub fn r_ffi_checked(
 /// use miniextendr_api::RNativeType;
 ///
 /// // Tuple struct (most common)
+/// #[repr(transparent)]
 /// #[derive(Clone, Copy, RNativeType)]
 /// struct UserId(i32);
 ///
 /// // Named single-field struct
+/// #[repr(transparent)]
 /// #[derive(Clone, Copy, RNativeType)]
 /// struct Temperature { celsius: f64 }
 /// ```
@@ -2457,6 +2459,7 @@ pub fn r_ffi_checked(
 /// # Requirements
 ///
 /// - Must be a newtype struct (exactly one field, tuple or named)
+/// - Must use `#[repr(transparent)]` so native R buffers have the same layout
 /// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
 /// - Should also derive `Copy` (required by `RNativeType: Copy`)
 #[proc_macro_derive(RNativeType)]
@@ -2495,6 +2498,27 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 .into();
         }
     };
+
+    // RNativeType exposes slices of Self over the inner type's R allocation.
+    // A one-field Rust struct alone does not guarantee the required layout.
+    let transparent = input
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("repr"))
+        .any(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+            .is_ok_and(|reprs| reprs.iter().any(|repr| repr.path().is_ident("transparent")))
+        });
+    if !transparent {
+        return syn::Error::new_spanned(
+            name,
+            "#[derive(RNativeType)] requires #[repr(transparent)] for native R buffer access",
+        )
+        .into_compile_error()
+        .into();
+    }
 
     let expanded = quote::quote! {
         impl #impl_generics ::miniextendr_api::RNativeType for #name #ty_generics #where_clause {
@@ -2853,6 +2877,7 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 /// # Example
 ///
 /// ```ignore
+/// #[repr(transparent)]
 /// #[derive(Copy, Clone, RNativeType, PreferRNativeType)]
 /// struct Meters(f64);
 /// // IntoR produces a numeric scalar, not an ExternalPtr

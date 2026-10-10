@@ -360,13 +360,16 @@ Both tuple structs and single-field named structs are supported:
 use miniextendr_api::RNativeType;
 
 // Tuple struct (most common)
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 struct UserId(i32);
 
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 struct Score(f64);
 
 // Named single-field struct
+#[repr(transparent)]
 #[derive(Clone, Copy, RNativeType)]
 struct Temperature { celsius: f64 }
 ```

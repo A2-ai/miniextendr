@@ -1,0 +1,17 @@
+error: #[derive(RNativeType)] requires #[repr(transparent)] for native R buffer access
+ --> tests/ui/derive_rnative_requires_transparent.rs:4:8
+  |
+4 | struct RustLayout(i32);
+  |        ^^^^^^^^^^
+
+error: #[derive(RNativeType)] requires #[repr(transparent)] for native R buffer access
+ --> tests/ui/derive_rnative_requires_transparent.rs:8:8
+  |
+8 | struct Overaligned(i32);
+  |        ^^^^^^^^^^^
+
+error: #[derive(RNativeType)] requires #[repr(transparent)] for native R buffer access
+  --> tests/ui/derive_rnative_requires_transparent.rs:12:8
+   |
+12 | struct Packed(i32);
+   |        ^^^^^^
