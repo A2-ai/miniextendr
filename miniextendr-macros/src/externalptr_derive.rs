@@ -71,7 +71,8 @@
 //!
 //! For S3, S4 and env, `r_data_accessors = "get"` generates the getters only.
 //! The `$` / `[[` methods share the helpers [`generate_field_syntax_helpers`]
-//! emits for every type with R accessors (#1848).
+//! prepares for every type with R accessors (#1848). The wrapper writer includes
+//! them only when an impl enables S3, S4 or env field syntax.
 //!
 //! Standalone setters and R6 active-binding setters return the receiver invisibly
 //! by default. `#[r_data(setter = "visible")]` exposes that return value;
@@ -1579,8 +1580,10 @@ fn generate_class_integration_r_code(
 /// #1899), and the liveness check of `restored(refuse = "every_read")`
 /// with the flag that gates it (`FALSE` and a stub without it, #1901).
 ///
-/// Emitted for every type with R accessors, whatever `#[externalptr(...)]`
-/// names, so the impl's option never depends on the derive attribute. The
+/// Prepared for every type with R accessors, whatever `#[externalptr(...)]`
+/// names, and bundled with its internal accessor rendering. The writer selects
+/// that rendering only when an impl enables field syntax, so the impl's option
+/// never depends on the derive attribute. The
 /// helpers are named by the Rust type ([`crate::naming::rdata_helper_name`]);
 /// the field names and the `switch()` labels are the fields' R names, in
 /// declared order, computed fields included (#1891, #1883).
@@ -1706,11 +1709,11 @@ fn generate_field_syntax_helpers(
 ///
 /// The generated statics are:
 /// - `__MX_CALL_DEF_RDATA_*`: the `R_CallMethodDef` entries
-/// - `R_WRAPPERS_RDATA_{TYPE}`: the R6 / S7 integration and the field-syntax
-///   helpers
+/// - `R_WRAPPERS_RDATA_{TYPE}`: the R6 / S7 integration, when present
 /// - `R_SIDECAR_ACCESSORS_{TYPE}`: the standalone accessors, exported and
 ///   internal, which the wrapper writer picks between by the class's field
-///   syntax (`registry::SidecarAccessorsEntry`, #1900)
+///   syntax (`registry::SidecarAccessorsEntry`, #1900). Only the internal
+///   rendering includes the field-syntax helpers.
 ///
 /// Returns `Err` if the struct has generic type parameters (`.Call` entrypoints
 /// cannot be generic).
@@ -1741,7 +1744,6 @@ fn generate_sidecar_accessors(
 
     // Generate getter/setter functions and R wrappers for each pub slot
     let mut c_functions = vec![];
-    let mut r_wrappers = String::new();
     // The standalone accessors, in the two renderings the wrapper writer
     // picks between (#1900).
     let mut exported = String::new();
@@ -2003,17 +2005,11 @@ fn generate_sidecar_accessors(
         });
     }
 
-    // Generate class-integrated R code for R6 and S7.
-    // This code is appended after the standalone accessors so that
-    // `r_data_accessors` in the impl block can auto-integrate sidecar fields.
-    r_wrappers.push_str(&generate_class_integration_r_code(
-        info.class_system,
-        &name_str,
-        &pub_slots,
-    ));
-    // The helpers of the S3 / S4 / env field methods (#1848), for every class
-    // system: the impl's `r_data_accessors` decides whether they are used.
-    r_wrappers.push_str(&generate_field_syntax_helpers(
+    // R6 / S7 integration is independent of S3 / S4 / env field syntax.
+    let r_wrappers = generate_class_integration_r_code(info.class_system, &name_str, &pub_slots);
+    // The writer selects this rendering only when an impl enables field
+    // syntax. Other types need their standalone accessors, not these helpers.
+    internal.push_str(&generate_field_syntax_helpers(
         &name_str,
         &pub_slots,
         field_error,
@@ -2071,9 +2067,7 @@ fn generate_sidecar_accessors(
         quote::quote! {}
     };
 
-    Ok(quote::quote! {
-        #(#c_functions)*
-
+    let class_integration_wrappers = (!r_wrappers.is_empty()).then(|| quote::quote! {
         /// Sidecar accessor R wrapper code via distributed slice.
         #[doc = #source_location_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
@@ -2086,6 +2080,12 @@ fn generate_sidecar_accessors(
                 source_line: #source_line_lit,
                 content: #r_wrappers,
             };
+    });
+
+    Ok(quote::quote! {
+        #(#c_functions)*
+
+        #class_integration_wrappers
 
         /// The standalone sidecar accessors, exported and internal, via
         /// distributed slice.

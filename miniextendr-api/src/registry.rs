@@ -374,13 +374,14 @@ unsafe impl Sync for ClassNameEntry {}
 /// internal one for a type whose class has field syntax
 /// ([`ClassNameEntry::field_syntax`]): the class's `$` / `[[` are its R
 /// interface to the fields there, and the setters would write in place
-/// through every copy (#1900). Written with the sidecar fragments.
+/// through every copy (#1900). The internal rendering also carries the field
+/// helpers that those methods call. Written with the sidecar fragments.
 pub struct SidecarAccessorsEntry {
     /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
     pub rust_type: &'static str,
     /// The page and the exported accessors.
     pub exported: &'static str,
-    /// The same accessors with `@noRd` and no export.
+    /// The same accessors with `@noRd` and no export, plus field-syntax helpers.
     pub internal: &'static str,
     /// Source file of the derive (`file!()`), for the fragment order.
     pub source_file: &'static str,
