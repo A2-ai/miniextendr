@@ -192,6 +192,9 @@ pub trait AltLogicalData: AltrepLen {
     fn elt(&self, i: usize) -> Logical;
 
     /// Optional: return a slice if data is contiguous i32 (R's internal format).
+    ///
+    /// When present, the generated element callback reads this storage directly,
+    /// preserving raw nonzero values as well as the NA sentinel.
     fn as_r_slice(&self) -> Option<&[i32]> {
         None
     }

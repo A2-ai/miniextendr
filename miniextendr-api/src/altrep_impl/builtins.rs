@@ -351,6 +351,13 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Vec_f64
 );
 impl_builtin_altrep_family!(
+    Vec<crate::RLogical>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_RLogical
+);
+impl_builtin_altrep_family!(
     Vec<bool>,
     logical,
     materializing,
@@ -448,6 +455,13 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Box_f64
 );
 impl_builtin_altrep_family!(
+    Box<[crate::RLogical]>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Box_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Box_RLogical
+);
+impl_builtin_altrep_family!(
     Box<[bool]>,
     logical,
     materializing,
@@ -478,6 +492,13 @@ impl_builtin_altrep_family!(
 
 // Cow<'static, [T]> — zero-copy borrow from R with copy-on-write dataptr.
 // Borrowed variants expose R's data directly; Owned behaves like Vec.
+impl_builtin_altrep_family!(
+    std::borrow::Cow<'static, [crate::RLogical]>,
+    logical,
+    dataptr,
+    __mx_altrep_reg_builtin_Cow_RLogical,
+    __MX_ALTREP_REG_ENTRY_builtin_Cow_RLogical
+);
 impl_builtin_altrep_family!(
     std::borrow::Cow<'static, [i32]>,
     integer,
@@ -553,6 +574,7 @@ macro_rules! impl_register_altrep_builtin {
 // Vec types - RegisterAltrep only (IntoR exists elsewhere, copies data)
 impl_register_altrep_builtin!(Vec<i32>, "Vec_i32");
 impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
+impl_register_altrep_builtin!(Vec<crate::RLogical>, "Vec_RLogical");
 impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
@@ -567,12 +589,14 @@ impl_register_altrep_builtin!(std::ops::Range<f64>, "Range_f64");
 // Box types - RegisterAltrep only
 impl_register_altrep_builtin!(Box<[i32]>, "Box_i32");
 impl_register_altrep_builtin!(Box<[f64]>, "Box_f64");
+impl_register_altrep_builtin!(Box<[crate::RLogical]>, "Box_RLogical");
 impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
 impl_register_altrep_builtin!(Box<[crate::Rcomplex]>, "Box_Rcomplex");
 
 // Cow types - RegisterAltrep for zero-copy borrow from R
+impl_register_altrep_builtin!(std::borrow::Cow<'static, [crate::RLogical]>, "Cow_RLogical");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [i32]>, "Cow_i32");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [f64]>, "Cow_f64");
 impl_register_altrep_builtin!(std::borrow::Cow<'static, [u8]>, "Cow_u8");
