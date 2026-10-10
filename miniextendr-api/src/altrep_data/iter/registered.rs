@@ -63,12 +63,11 @@ impl<T: Copy> AltrepIterator<T> {
             )
         })
     }
+}
 
+impl<T> AltrepIterator<T> {
     fn materialized(&self) -> &[T] {
-        if !self.state.is_empty() {
-            self.element(self.state.len() - 1);
-        }
-        self.state.as_materialized().unwrap()
+        self.state.materialize_all()
     }
 }
 
