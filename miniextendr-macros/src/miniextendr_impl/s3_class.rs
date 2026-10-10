@@ -22,7 +22,8 @@ use super::ParsedImpl;
 ///   with the ExternalPtr extracted from `x`
 /// - Static methods: regular functions named `<class>_<method>(...)`
 /// - Class environment: `ClassName <- new.env(parent = emptyenv())` for `Class$new()`
-///   syntax and trait namespace compatibility
+///   syntax and trait namespaces, when the impl has a constructor or the class
+///   is named as its Rust type (#1918)
 ///
 /// Custom double-dispatch patterns (e.g., `vec_ptype2.a.b`) are supported via
 /// `#[miniextendr(generic = "...", class = "...")]` attributes.
@@ -99,10 +100,13 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // `as.list` / `.DollarNames`, and the setters; #1848, #1890, #1885),
     // ahead of the instance methods: on a shared page roxygen2 keeps the last
     // `@param` of a name, so a method's own text for `name` or `value` wins.
+    // They are documented whenever the class is: `internal` keeps the class
+    // out of the exports, and its page (`\keyword{internal}`) still documents
+    // the registered methods, as for S4 (#1918).
     if parsed_impl.r_data_accessors.enabled() {
         lines.extend(super::field_syntax::s3_field_methods(
             parsed_impl,
-            !class_has_no_rd && should_export,
+            !class_has_no_rd,
             should_register_s3method,
         ));
     }
@@ -274,29 +278,38 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    // Create class environment for static methods and trait namespace compatibility
-    // Check if class should be exported (reuse should_export already computed above)
+    // The class environment holds `Class$new()` and the trait namespaces
+    // (`Type$Trait`, named by the Rust type, for a trait's static methods and
+    // consts; static methods of the impl are plain functions). Emit it only
+    // when one of them can land in it: an impl with a constructor, or a class
+    // named as its Rust type. An impl that only adds the field readers to a
+    // class the package names and builds itself gets none, so no second
+    // binding of a same-named constructor, export or `\alias` (#1918).
+    let has_class_env =
+        parsed_impl.constructor_context().is_some() || class_name == type_ident.to_string();
     let export_line = if should_export { "#' @export\n" } else { "" };
-    if class_has_no_rd {
-        lines.push(format!(
-            "#' @noRd
+    if has_class_env {
+        if class_has_no_rd {
+            lines.push(format!(
+                "#' @noRd
 {} <- new.env(parent = emptyenv())",
-            class_name
-        ));
-    } else {
-        // On the impl's `@rdname` topic when it names one, after the topic's
-        // own block (#1900).
-        let topic = super::field_syntax::topic(parsed_impl);
-        let order = if topic == class_name {
-            String::new()
+                class_name
+            ));
         } else {
-            format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
-        };
-        lines.push(format!(
-            "#' @rdname {topic}\n{order}{export_line}{class_name} <- new.env(parent = emptyenv())"
-        ));
+            // On the impl's `@rdname` topic when it names one, after the topic's
+            // own block (#1900).
+            let topic = super::field_syntax::topic(parsed_impl);
+            let order = if topic == class_name {
+                String::new()
+            } else {
+                format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
+            };
+            lines.push(format!(
+                "#' @rdname {topic}\n{order}{export_line}{class_name} <- new.env(parent = emptyenv())"
+            ));
+        }
+        lines.push(String::new());
     }
-    lines.push(String::new());
 
     // Add $new binding to class environment (for Class$new() syntax)
     if parsed_impl.constructor_context().is_some() {
