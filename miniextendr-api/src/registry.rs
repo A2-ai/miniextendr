@@ -2025,27 +2025,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
 "#
 );
 
-/// R source of the `.miniextendr_raise_condition` helper as a bare
-/// `function(.val, .call_default)` expression.
-///
-/// Two consumers: [`write_r_wrappers_to_file`] binds it under that name at the
-/// top of the generated wrappers file, and
-/// [`crate::deferred_condition`] evaluates it once (in the base namespace) to
-/// signal queued conditions from Rust without depending on any package
-/// namespace. Keeping one source guarantees identical class layering and
-/// `data` splicing on both paths.
-///
-/// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
-/// re-raises the tagged Rust condition value as the matching R condition:
-/// `stop()` for the error kinds, `warning()` / `message()` /
-/// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
-/// The marker class it replaces is the one `arg_error!` writes (#1740). A
-/// frame in the call slot or as the default (a generated S3 method passes
-/// `environment()`, #1851) is resolved to the generic's call with an inline
-/// copy of [`frame_call_helper_fn!`], since the base-namespace copy of this
-/// helper cannot see the preamble's `.miniextendr_frame_call`.
-pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
-    r#"function(.val, .call_default) {
+/// One condition-transport body for the package and standalone Rust helpers.
+/// The resolver is a package binding or a self-contained function expression.
+macro_rules! raise_condition_helper_fn {
+    ($resolver:expr) => {
+        concat!(
+            r#"function(.val, .call_default) {
   .msg <- .val$error
   # `.val$call` is the call the Rust side captured, NULL to use the wrapper's
   # call, or FALSE for a condition raised without one (`call = none`, R's
@@ -2054,11 +2039,10 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
   # A generated S3 method passes its frame instead of a call, so that the
   # generic's call (`summary(x)` for `summary.cls(x)`, the assignment for a
   # replacement method) is built only now, when a condition is raised. The
-  # resolver is `.miniextendr_frame_call`, inlined: the copy of this helper
-  # that signals deferred conditions runs in the base namespace.
-  if (is.environment(.call)) .call <- ("#,
-    frame_call_helper_fn!(),
-    r#")(.call)
+  # resolver recovers the generic's call from that method frame.
+  if (is.environment(.call)) .call <- "#,
+            $resolver,
+            r#"(.call)
   .class <- .val$class
   # `arg_error!` writes the class ".miniextendr_conversion_error_class"
   # where the crate's `conversion_error_class` belongs: only the generated R
@@ -2105,7 +2089,35 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str = concat!(
   )
   invisible(NULL)
 }"#
-);
+        )
+    };
+}
+
+/// R source of the `.miniextendr_raise_condition` helper as a bare
+/// `function(.val, .call_default)` expression.
+///
+/// [`crate::deferred_condition`] evaluates this self-contained expression
+/// once (in the base namespace) to signal queued conditions from Rust without
+/// depending on any package namespace. [`write_r_wrappers_to_file`] uses the same template with the
+/// package's named frame resolver instead of embedding a second copy.
+/// Keeping one source guarantees identical class layering and `data` splicing.
+///
+/// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
+/// re-raises the tagged Rust condition value as the matching R condition:
+/// `stop()` for the error kinds, `warning()` / `message()` /
+/// `signalCondition()` for the non-fatal ones (returning `invisible(NULL)`).
+/// The marker class it replaces is the one `arg_error!` writes (#1740). A
+/// frame in the call slot or as the default (a generated S3 method passes
+/// `environment()`, #1851) is resolved to the generic's call with an inline
+/// copy of [`frame_call_helper_fn!`], since the base-namespace copy of this
+/// helper cannot see the preamble's `.miniextendr_frame_call`.
+pub(crate) const RAISE_CONDITION_HELPER_FN: &str =
+    raise_condition_helper_fn!(concat!("(", frame_call_helper_fn!(), ")"));
+
+/// The package preamble already binds the resolver; reuse it there.
+#[cfg(not(target_arch = "wasm32"))]
+const WRAPPER_RAISE_CONDITION_HELPER_FN: &str =
+    raise_condition_helper_fn!(".miniextendr_frame_call");
 
 /// The `.miniextendr_conversion_error_class` binding that closes the wrappers
 /// preamble: the classes `.miniextendr_arg_error` puts on every R-side
@@ -2178,7 +2190,7 @@ pub fn write_r_wrappers_to_file(path: &str) {
     // header (marker line + version/fingerprint line) once the body is final.
     let mut content = String::from(WRAPPERS_PREAMBLE_HEADER);
     content.push_str(".miniextendr_raise_condition <- ");
-    content.push_str(RAISE_CONDITION_HELPER_FN);
+    content.push_str(WRAPPER_RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
     content.push_str(CALLER_CALL_HELPER);
     content.push('\n');
@@ -4132,6 +4144,10 @@ mod tests {
         for (name, text) in [
             ("WRAPPERS_PREAMBLE_HEADER", WRAPPERS_PREAMBLE_HEADER),
             ("RAISE_CONDITION_HELPER_FN", RAISE_CONDITION_HELPER_FN),
+            (
+                "WRAPPER_RAISE_CONDITION_HELPER_FN",
+                WRAPPER_RAISE_CONDITION_HELPER_FN,
+            ),
             ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
             ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
             ("FIELD_AT_HELPER", FIELD_AT_HELPER),
@@ -4191,6 +4207,11 @@ mod tests {
         assert!(RAISE_CONDITION_HELPER_FN.contains(&format!(
             "if (is.environment(.call)) .call <- ({fn_text})(.call)\n"
         )));
+        assert!(
+            WRAPPER_RAISE_CONDITION_HELPER_FN
+                .contains("if (is.environment(.call)) .call <- .miniextendr_frame_call(.call)\n")
+        );
+        assert!(!WRAPPER_RAISE_CONDITION_HELPER_FN.contains(fn_text));
         // No comment inside the shared text: it is inlined into the raise
         // helper, whose own comments sit outside it.
         assert!(!fn_text.contains('#'));
