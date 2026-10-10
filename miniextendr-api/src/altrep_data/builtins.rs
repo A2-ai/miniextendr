@@ -991,6 +991,48 @@ impl AltStringData for &[&str] {
 
 // region: Built-in implementations for arrays (owned, fixed-size)
 
+// Native arrays live directly inside their ExternalPtr allocation.
+macro_rules! impl_dataptr_array {
+    ($elem:ty => $storage:ty) => {
+        impl<const N: usize> AltrepDataptr<$storage> for [$elem; N] {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $storage> {
+                Some(self.as_mut_ptr().cast())
+            }
+
+            fn dataptr_or_null(&self) -> Option<*const $storage> {
+                Some(self.as_ptr().cast())
+            }
+        }
+    };
+}
+
+impl_dataptr_array!(i32 => i32);
+impl_dataptr_array!(f64 => f64);
+impl_dataptr_array!(u8 => u8);
+impl_dataptr_array!(Rcomplex => Rcomplex);
+impl_dataptr_array!(RLogical => i32);
+
+impl_len_array!(RLogical);
+
+impl<const N: usize> AltLogicalData for [RLogical; N] {
+    fn elt(&self, i: usize) -> Logical {
+        self[i].into()
+    }
+
+    fn as_r_slice(&self) -> Option<&[i32]> {
+        // RLogical is transparent over i32 and accepts every bit pattern.
+        Some(unsafe { std::slice::from_raw_parts(self.as_ptr().cast(), N) })
+    }
+
+    fn get_region(&self, start: usize, len: usize, out: &mut [i32]) -> usize {
+        super::fill_region(start, len, N, out, |i| self[i].to_i32())
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.contains(&RLogical::NA))
+    }
+}
+
 impl_len_array!(i32);
 
 impl<const N: usize> AltIntegerData for [i32; N] {
@@ -1003,12 +1045,7 @@ impl<const N: usize> AltIntegerData for [i32; N] {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let end = (start + len).min(N);
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
+        super::fill_region(start, len, N, buf, |i| self[i])
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -1028,12 +1065,7 @@ impl<const N: usize> AltRealData for [f64; N] {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let end = (start + len).min(N);
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
+        super::fill_region(start, len, N, buf, |i| self[i])
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -1065,12 +1097,7 @@ impl<const N: usize> AltRawData for [u8; N] {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let end = (start + len).min(N);
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
+        super::fill_region(start, len, N, buf, |i| self[i])
     }
 }
 
@@ -1111,12 +1138,7 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        let end = (start + len).min(N);
-        let actual_len = end.saturating_sub(start);
-        if actual_len > 0 {
-            buf[..actual_len].copy_from_slice(&self[start..end]);
-        }
-        actual_len
+        super::fill_region(start, len, N, buf, |i| self[i])
     }
 }
 // endregion

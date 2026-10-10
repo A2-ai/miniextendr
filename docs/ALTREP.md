@@ -891,6 +891,23 @@ writes, and `Duplicate`, finding a shared owner, would give the new R vector
 the same buffer, so a write to one vector changes the other. An `Arc` doesn't
 make writing to that buffer from another thread safe either.
 
+### `[T; N]` (Owned Fixed-Size Array)
+
+`Altrep([1_i32, 2, 3])` retains the array itself in an external pointer.
+Arrays of `i32`, `f64`, `u8`, `Rcomplex`, `RLogical`, `bool` and
+`String` work for any length, including zero. Native layouts expose that
+array's buffer; bool and string arrays materialize R storage when needed,
+and subsequent callbacks read the materialized values, including R-written NA.
+
+Each element type and length gets a separate class on first conversion.
+These classes use R's default duplicate and serialization behaviour: an
+ordinary R vector with the current values. Serialized data therefore does not
+depend on registering a particular array length in a fresh session.
+
+`Altrep<T>` also allows `T: ?Sized` for borrowed views such as
+`&Altrep<[i32]>`. Returning a value to R still requires an owned backing
+type; `Altrep<Box<[i32]>>` is the dynamically sized owned-slice form.
+
 ### `Box<[T]>` (Immutable Owned Slice)
 
 ```rust
