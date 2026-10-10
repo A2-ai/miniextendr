@@ -159,7 +159,7 @@ this feature flag to make the instability opt-in.
 - `RCustomConnection` builder -- configure and create R connection objects
 - `std::io` adapters (`IoRead`, `IoWrite`, `IoReadWrite`, `IoReadWriteSeek`, `IoBufRead`)
 - `RConnectionIo` builder -- auto-wraps any `std::io` type with zero boilerplate
-- Helper functions: `get_connection()`, `read_connection()`, `write_connection()`
+- Helper functions: `read_connection()` / `write_connection()` on a connection SEXP (every R), `get_connection()` for the raw handle (R >= 4.6)
 
 See [CONNECTIONS.md](CONNECTIONS.md) for the full guide with examples.
 

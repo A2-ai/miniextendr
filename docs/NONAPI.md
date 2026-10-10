@@ -219,8 +219,10 @@ check with an attribute check.
 
 R 4.6 lists these as experimental API (`tools:::funAPI()` gives `eapi`). R
 4.4 and 4.5 export the same symbols and ship the same header, but
-`R CMD check` notes them there as non-API calls, so the `connections`
-feature builds on every supported R and carries that NOTE before 4.6.
+`R CMD check` notes them there as non-API calls. Built against R < 4.6, the
+`connections` feature reaches a connection's state and bytes through R
+functions instead (`CONNECTIONS.md`, "R versions before 4.6"), and only
+`R_new_custom_connection`, which has no R-level alternative, remains.
 
 ### Deprecated/removed
 
@@ -259,7 +261,19 @@ API:
 - **R makes it API.** The entry point exists before that version, but
   `R CMD check` notes it as non-API there. Gate the call on the cfg when the
   older R offers another route to the same result, and keep the entry point
-  on the newer side.
+  on the newer side: `connection/access.rs` reads a connection through
+  `R_GetConnection` under `r_4_6` and through `summary.connection()` /
+  `readBin()` / `writeBin()` before.
+
+Gate a **public** item on a cfg only in the first case. There a missing
+entry point would fail at load, and the gate turns that into a compile error.
+In the second, the entry point works on the older R, so keep the public
+signature the same on every R and switch the implementation inside it:
+packages compile on each user's machine against that user's R, so an item
+that exists only on newer R breaks the install for a user on an older R while
+its author, on a newer one, never sees it. Gate a public item there only when
+the older R has no route to what it returns at all (`get_connection`, the raw
+handle, is R >= 4.6 only).
 
 To add a version, append it to `R_VERSION_CFGS` in `miniextendr-api/build.rs`.
 Test both sides: CI runs `R CMD check` on R 4.4 and release on every PR, and

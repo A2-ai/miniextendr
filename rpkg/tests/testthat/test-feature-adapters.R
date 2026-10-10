@@ -1571,7 +1571,9 @@ test_that("indicatif_rterm_debug snapshot", {
 
 test_that("indicatif_factories_compile snapshot", {
   skip_if_missing_feature("indicatif")
+  before <- showConnections(all = TRUE)
   expect_snapshot(indicatif_factories_compile(), cnd_class = TRUE)
+  expect_identical(showConnections(all = TRUE), before)
 })
 
 test_that("indicatif_hidden_bar snapshot", {
@@ -1645,7 +1647,9 @@ test_that("indicatif routes bytes through a file connection", {
 
 test_that("indicatif routes through RNullConnection without panicking", {
   skip_if_missing_feature("indicatif")
+  before <- showConnections(all = TRUE)
   expect_equal(indicatif_to_null_connection(), "ok")
+  expect_identical(showConnections(all = TRUE), before)
 })
 
 # =============================================================================

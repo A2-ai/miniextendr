@@ -1,15 +1,12 @@
 //! Connection benchmarks (feature-gated).
 //!
-//! `R_new_custom_connection` creates connections in a closed state. We call
-//! the `open` callback after building so that `isopen == TRUE` before any
-//! read/write operations.
+//! `RConnectionIo::build_*` opens the connection it creates, so reads and
+//! writes work on it right away.
 
 #[cfg(feature = "connections")]
 use miniextendr_api::SEXP;
 #[cfg(feature = "connections")]
-use miniextendr_api::connection::{
-    RConnectionIo, Rconn, get_connection, read_connection, write_connection,
-};
+use miniextendr_api::connection::{RConnectionIo, read_connection, write_connection};
 #[cfg(feature = "connections")]
 use miniextendr_bench::raw_ffi;
 #[cfg(feature = "connections")]
@@ -29,17 +26,6 @@ impl Drop for ProtectedConn {
     }
 }
 
-/// Build a connection and open it so read/write operations work.
-#[cfg(feature = "connections")]
-unsafe fn open_connection(sexp: SEXP) {
-    unsafe {
-        let handle = get_connection(sexp).cast::<Rconn>();
-        if let Some(open_fn) = (*handle).open {
-            open_fn(handle);
-        }
-    }
-}
-
 #[cfg(feature = "connections")]
 fn make_connection() -> ProtectedConn {
     let data = vec![0u8; 4096];
@@ -50,7 +36,6 @@ fn make_connection() -> ProtectedConn {
         .build_read_write_seek();
     unsafe {
         raw_ffi::Rf_protect(sexp);
-        open_connection(sexp);
     }
     ProtectedConn { sexp }
 }
@@ -67,7 +52,6 @@ fn make_readable_connection(size: usize) -> ProtectedConn {
         .build_read_write_seek();
     unsafe {
         raw_ffi::Rf_protect(sexp);
-        open_connection(sexp);
     }
     ProtectedConn { sexp }
 }
@@ -94,8 +78,7 @@ fn connection_write(bencher: divan::Bencher) {
     let conn = make_connection();
     let buf = [1u8; 128];
     bencher.bench_local(|| unsafe {
-        let handle = get_connection(conn.sexp);
-        let written = write_connection(handle, &buf);
+        let written = write_connection(conn.sexp, &buf);
         divan::black_box(written);
     });
 }
@@ -113,8 +96,7 @@ fn connection_read(bencher: divan::Bencher, size: usize) {
     let conn = make_readable_connection(size * 10_000);
     let mut buf = vec![0u8; size];
     bencher.bench_local(|| unsafe {
-        let handle = get_connection(conn.sexp);
-        let n = read_connection(handle, &mut buf);
+        let n = read_connection(conn.sexp, &mut buf);
         divan::black_box(n);
     });
 }
@@ -125,8 +107,7 @@ fn connection_write_sized(bencher: divan::Bencher, size: usize) {
     let conn = make_connection();
     let buf = vec![1u8; size];
     bencher.bench_local(|| unsafe {
-        let handle = get_connection(conn.sexp);
-        let written = write_connection(handle, &buf);
+        let written = write_connection(conn.sexp, &buf);
         divan::black_box(written);
     });
 }
@@ -143,10 +124,9 @@ fn connection_burst_write(bencher: divan::Bencher, n_writes: usize) {
     let conn = make_connection();
     let buf = [1u8; 256];
     bencher.bench_local(|| unsafe {
-        let handle = get_connection(conn.sexp);
         let mut total = 0;
         for _ in 0..n_writes {
-            total += write_connection(handle, &buf);
+            total += write_connection(conn.sexp, &buf);
         }
         divan::black_box(total);
     });

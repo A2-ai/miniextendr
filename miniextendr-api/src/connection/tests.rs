@@ -67,14 +67,14 @@ fn test_connection_capabilities_default() {
         can_seek: false,
         is_text: true,
         is_open: true,
-        is_blocking: true,
+        is_blocking: Some(true),
     };
     assert!(caps.can_read);
     assert!(!caps.can_write);
     assert!(!caps.can_seek);
     assert!(caps.is_text);
     assert!(caps.is_open);
-    assert!(caps.is_blocking);
+    assert_eq!(caps.is_blocking, Some(true));
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn test_connection_capabilities_clone_debug() {
         can_seek: false,
         is_text: false,
         is_open: true,
-        is_blocking: false,
+        is_blocking: Some(false),
     };
     let cloned = caps.clone();
     assert_eq!(cloned.can_read, caps.can_read);

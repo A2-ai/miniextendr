@@ -24,7 +24,7 @@ pub fn indicatif_factories_compile() -> bool {
     let _stdout_hz = term_like_stdout_with_hz(80, 5);
     let _stderr_hz = term_like_stderr_with_hz(80, 5);
     let null = RNullConnection::new();
-    let _conn_hz = term_like_connection_with_hz(null, 80, 5);
+    let _conn_hz = term_like_connection_with_hz(null.sexp(), 80, 5);
     true
 }
 
@@ -151,8 +151,8 @@ pub fn indicatif_drive_connection(conn: SEXP, ticks: i32) -> String {
 #[miniextendr]
 pub fn indicatif_to_null_connection() -> String {
     let null = RNullConnection::new();
-    // RNullConnection: IntoR returns the wrapped SEXP (disarming Drop).
-    let target = term_like_connection(null, 40);
+    // Keep the owned handle so it closes after the draw target is dropped.
+    let target = term_like_connection(null.sexp(), 40);
     let pb = ProgressBar::with_draw_target(Some(2), target);
     pb.set_style(ProgressStyle::with_template("{pos}/{len}").unwrap());
     for _ in 0..2 {

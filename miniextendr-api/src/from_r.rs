@@ -2554,71 +2554,24 @@ impl<T: TypedExternal + Send> TryFromSexp for Vec<Option<ExternalPtr<T>>> {
 
 #[cfg(feature = "connections")]
 mod connections_from_r {
-    use std::ffi::CStr;
-
-    use crate::connection::{RNullConnection, RStderr, RStdin, RStdout, Rconn};
+    use crate::SEXP;
+    use crate::connection::access::{self, ConnState};
+    use crate::connection::{RNullConnection, RStderr, RStdin, RStdout};
     use crate::from_r::{SexpError, TryFromSexp};
-    use crate::{Rboolean, SEXP};
-
-    // Read the connection description and class fields from an Rconn handle.
-    //
-    // # Safety
-    // - sexp must be a valid, open R connection SEXP.
-    // - Must be called from the R main thread.
-    unsafe fn conn_description(sexp: SEXP) -> Option<String> {
-        unsafe {
-            let handle = crate::sys::R_GetConnection(sexp);
-            let conn = handle.cast::<Rconn>().cast_const();
-            if (*conn).description.is_null() {
-                None
-            } else {
-                Some(
-                    CStr::from_ptr((*conn).description)
-                        .to_string_lossy()
-                        .into_owned(),
-                )
-            }
-        }
-    }
-
-    unsafe fn conn_class(sexp: SEXP) -> Option<String> {
-        unsafe {
-            let handle = crate::sys::R_GetConnection(sexp);
-            let conn = handle.cast::<Rconn>().cast_const();
-            if (*conn).class.is_null() {
-                None
-            } else {
-                Some(CStr::from_ptr((*conn).class).to_string_lossy().into_owned())
-            }
-        }
-    }
-
-    unsafe fn conn_canwrite(sexp: SEXP) -> bool {
-        unsafe {
-            let handle = crate::sys::R_GetConnection(sexp);
-            let conn = handle.cast::<Rconn>().cast_const();
-            (*conn).canwrite != Rboolean::FALSE
-        }
-    }
-
-    unsafe fn conn_isopen(sexp: SEXP) -> bool {
-        unsafe {
-            let handle = crate::sys::R_GetConnection(sexp);
-            let conn = handle.cast::<Rconn>().cast_const();
-            (*conn).isopen != Rboolean::FALSE
-        }
-    }
 
     // Strict validation: confirm description == expected_desc and class == "terminal".
     unsafe fn validate_terminal(sexp: SEXP, expected_desc: &str) -> Result<(), SexpError> {
-        let desc = unsafe { conn_description(sexp) }.unwrap_or_default();
+        let ConnState {
+            description: desc,
+            class: cls,
+            ..
+        } = unsafe { access::state(sexp) };
         if desc != expected_desc {
             return Err(SexpError::InvalidValue(format!(
                 "expected terminal connection with description {:?}, got {:?}",
                 expected_desc, desc
             )));
         }
-        let cls = unsafe { conn_class(sexp) }.unwrap_or_default();
         if cls != "terminal" {
             return Err(SexpError::InvalidValue(format!(
                 "expected class \"terminal\", got {:?}",
@@ -2677,12 +2630,13 @@ mod connections_from_r {
         type Error = SexpError;
 
         fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-            if !unsafe { conn_isopen(sexp) } {
+            let state = unsafe { access::state(sexp) };
+            if !state.is_open {
                 return Err(SexpError::InvalidValue(
                     "expected an open connection".to_string(),
                 ));
             }
-            if !unsafe { conn_canwrite(sexp) } {
+            if !state.can_write {
                 return Err(SexpError::InvalidValue(
                     "expected a write-capable connection".to_string(),
                 ));
