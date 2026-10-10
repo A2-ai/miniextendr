@@ -1708,7 +1708,7 @@ pub fn miniextendr(
     }
 
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
-    let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
+    let has_export_tag = crate::roxygen::has_export_tag(&roxygen_tags);
     let has_internal_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "keywords internal");
     // `@source` provenance is opt-in per crate (#1552); the `# Generated from
     // Rust fn … (file:line:col)` comment below stays the navigation pointer.
