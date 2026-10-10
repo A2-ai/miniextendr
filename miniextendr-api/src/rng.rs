@@ -59,14 +59,15 @@
 //!
 //! The `#[miniextendr(rng)]` attribute generates code that:
 //!
-//! 1. Calls `GetRNGstate()` at the start
-//! 2. Wraps the function body in `catch_unwind`
-//! 3. Calls `PutRNGstate()` after `catch_unwind` (runs on both success AND panic)
-//! 4. Then handles the result (returns value or re-panics)
+//! 1. Enters an outer `with_r_unwind_protect` guard and calls `GetRNGstate()`
+//! 2. Runs the body under an inner guard, returning tagged conditions on Rust panics
+//! 3. Protects that result while `PutRNGstate()` saves the state
+//! 4. Returns the value or tagged condition for the R wrapper to handle
 //!
-//! This explicit placement ensures `PutRNGstate()` is called before any error
-//! handling, which is robust in the presence of R longjumps when combined with
-//! `with_r_unwind_protect`.
+//! Both RNG calls can raise R errors, so both run inside the outer guard.
+//! Saving runs on successful returns and caught Rust panics. R-origin nonlocal
+//! exits propagate through the guards; they do not run the remaining body or
+//! save step.
 //!
 //! # Usage: Manual Control with [`RngGuard`]
 //!

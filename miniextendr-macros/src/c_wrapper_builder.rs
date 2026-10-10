@@ -570,96 +570,69 @@ impl CWrapperContext {
         let doc = self.generate_doc_comment("main thread");
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
-        // Unwind protection returns tagged condition SEXP on panic; the R-side wrapper raises.
-        let unwind_protect_fn = quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect };
+        let guarded_body = self.protect_wrapper_body(quote! {
+            #alias_guard
+            #pre_call_checks
+            #(#pre_call)*
+            #(#conversion_stmts)*
+            #return_handling
+        });
 
-        if self.rng {
-            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling.
-            // The wrapper always returns a tagged condition SEXP on panic; the R-side wrapper raises.
-            let rng_panic_handler = quote! {
-                unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                    ::miniextendr_api::error_value::kind::PANIC,
-                    ::core::option::Option::None,
-                    Some(__miniextendr_call),
-                ) }
-            };
-            quote! {
-                #[doc = #doc]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
-                    let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
-                    unsafe { ::miniextendr_api::sys::GetRNGstate(); }
-                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                        #unwind_protect_fn(
-                            || {
-                                #alias_guard
-                                #pre_call_checks
-                                #(#pre_call)*
-                                #(#conversion_stmts)*
-                                #return_handling
-                            },
-                            Some(__miniextendr_call),
-                        )
-                    }));
-                    // PutRNGstate can allocate when .Random.seed is shared.
-                    let __miniextendr_rng_scope = unsafe {
-                        ::miniextendr_api::gc_protect::ProtectScope::new()
-                    };
-                    if let Ok(sexp) = &__result {
-                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
-                    }
-                    unsafe { ::miniextendr_api::sys::PutRNGstate(); }
-                    let __miniextendr_value = match __result {
-                        Ok(sexp) => sexp,
-                        Err(payload) => { #rng_panic_handler },
-                    };
-                    unsafe {
-                        ::miniextendr_api::deferred_condition::finish(
-                            __miniextendr_deferred_mark,
-                            __miniextendr_value,
-                            Some(__miniextendr_call),
-                        )
-                    }
+        quote! {
+            #[doc = #doc]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[unsafe(no_mangle)]
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
+                let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
+                let __miniextendr_value = #guarded_body;
+                unsafe {
+                    ::miniextendr_api::deferred_condition::finish(
+                        __miniextendr_deferred_mark,
+                        __miniextendr_value,
+                        Some(__miniextendr_call),
+                    )
                 }
+            }
+        }
+    }
+
+    /// Protect the complete main-thread portion of a wrapper.
+    ///
+    /// With RNG enabled, the inner guard converts Rust panics into values so
+    /// state is saved on both success and panic. The outer guard covers RNG
+    /// loading, result protection, and saving; either RNG call can raise in R.
+    fn protect_wrapper_body(&self, body: TokenStream) -> TokenStream {
+        let guarded_body = quote! {
+            ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                move || { #body },
+                Some(__miniextendr_call),
+            )
+        };
+        if self.rng {
+            quote! {
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    move || {
+                        unsafe { ::miniextendr_api::sys::GetRNGstate_unchecked(); }
+                        let __miniextendr_rng_value = #guarded_body;
+                        let __miniextendr_rng_result = unsafe {
+                            ::miniextendr_api::gc_protect::OwnedProtect::new(__miniextendr_rng_value)
+                        };
+                        unsafe { ::miniextendr_api::sys::PutRNGstate_unchecked(); }
+                        __miniextendr_rng_result.get()
+                    },
+                    Some(__miniextendr_call),
+                )
             }
         } else {
-            // Non-RNG variant: direct call to with_r_unwind_protect
-            quote! {
-                #[doc = #doc]
-                #[doc = #source_loc_doc]
-                #[doc = concat!("Generated from source file `", file!(), "`.")]
-                #[unsafe(no_mangle)]
-                #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
-                    let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
-                    let __miniextendr_value = #unwind_protect_fn(
-                        || {
-                            #alias_guard
-                            #pre_call_checks
-                            #(#pre_call)*
-                            #(#conversion_stmts)*
-                            #return_handling
-                        },
-                        Some(__miniextendr_call),
-                    );
-                    unsafe {
-                        ::miniextendr_api::deferred_condition::finish(
-                            __miniextendr_deferred_mark,
-                            __miniextendr_value,
-                            Some(__miniextendr_call),
-                        )
-                    }
-                }
-            }
+            guarded_body
         }
     }
 
     /// Generates an `extern "C-unwind"` wrapper that dispatches to the worker thread.
     ///
     /// Structure:
-    /// 1. `GetRNGstate()` (if `rng` enabled)
+    /// 1. Protect RNG loading/saving too, if `rng` is enabled
     /// 2. `with_r_unwind_protect` around setup, dispatch, and return conversion
     /// 3. Pre-closure conversions on the main thread (produces owned values)
     /// 4. `run_on_worker` (returns `Result<T, String>`) with a
@@ -708,24 +681,39 @@ impl CWrapperContext {
         let doc = self.generate_doc_comment("worker thread");
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
-        // RNG state management: GetRNGstate at start, PutRNGstate before returning/error handling
-        let (rng_get, rng_put) = if self.rng {
-            (
-                quote! { unsafe { ::miniextendr_api::sys::GetRNGstate(); } },
-                quote! {
-                    // Keep values and tagged conditions alive through RNG cleanup.
-                    let __miniextendr_rng_scope = unsafe {
-                        ::miniextendr_api::gc_protect::ProtectScope::new()
-                    };
-                    unsafe { __miniextendr_rng_scope.protect(__miniextendr_value); }
-                    unsafe { ::miniextendr_api::sys::PutRNGstate(); }
-                },
-            )
-        } else {
-            (TokenStream::new(), TokenStream::new())
-        };
+        let guarded_body = self.protect_wrapper_body(quote! {
+            #alias_guard
+            #pre_call_checks
+            #(#pre_call)*
+            #(#pre_closure_stmts)*
 
-        // run_on_worker returns Result; Err → tagged error value.
+            // `catch_condition` returns an `error!()` / `warning!()` / ...
+            // raised on the worker as a value (its payload is `Send`), so
+            // it is raised here with its class, data and call choice;
+            // only generic panics come back as the message `Err`.
+            match ::miniextendr_api::worker::run_on_worker(move || {
+                ::miniextendr_api::condition::catch_condition(move || {
+                    #(#in_closure_stmts)*
+                    #worker_body
+                })
+            }) {
+                Ok(Ok(__miniextendr_result)) => {
+                    #return_conversion
+                }
+                Ok(Err(__miniextendr_condition)) => unsafe {
+                    ::miniextendr_api::error_value::rust_condition_value(
+                        __miniextendr_condition,
+                        Some(__miniextendr_call),
+                    )
+                },
+                Err(__panic_msg) => {
+                    unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
+                        &__panic_msg, ::miniextendr_api::error_value::kind::PANIC, ::core::option::Option::None, Some(__miniextendr_call),
+                    ) }
+                }
+            }
+        });
+
         quote! {
             #worker_feature_check
 
@@ -735,40 +723,7 @@ impl CWrapperContext {
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
-                #rng_get
-                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(move || {
-                    #alias_guard
-                    #pre_call_checks
-                    #(#pre_call)*
-                    #(#pre_closure_stmts)*
-
-                    // `catch_condition` returns an `error!()` / `warning!()` / ...
-                    // raised on the worker as a value (its payload is `Send`), so
-                    // it is raised here with its class, data and call choice;
-                    // only generic panics come back as the message `Err`.
-                    match ::miniextendr_api::worker::run_on_worker(move || {
-                        ::miniextendr_api::condition::catch_condition(move || {
-                            #(#in_closure_stmts)*
-                            #worker_body
-                        })
-                    }) {
-                        Ok(Ok(__miniextendr_result)) => {
-                            #return_conversion
-                        }
-                        Ok(Err(__miniextendr_condition)) => unsafe {
-                            ::miniextendr_api::error_value::rust_condition_value(
-                                __miniextendr_condition,
-                                Some(__miniextendr_call),
-                            )
-                        },
-                        Err(__panic_msg) => {
-                            unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                                &__panic_msg, ::miniextendr_api::error_value::kind::PANIC, ::core::option::Option::None, Some(__miniextendr_call),
-                            ) }
-                        }
-                    }
-                }, Some(__miniextendr_call));
-                #rng_put
+                let __miniextendr_value = #guarded_body;
                 unsafe {
                     ::miniextendr_api::deferred_condition::finish(
                         __miniextendr_deferred_mark,
