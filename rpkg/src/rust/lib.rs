@@ -276,6 +276,7 @@ mod optional_input_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
 mod own_page_docs;
+mod owned_str_tests;
 #[cfg(feature = "worker-thread")]
 mod panic_location_tests;
 mod panic_telemetry_tests;

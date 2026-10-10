@@ -654,3 +654,60 @@ impl_register_altrep_builtin!(
 );
 
 // endregion
+
+// region: Vectors of owned unsized strings
+
+impl_builtin_altrep_family!(
+    Vec<Box<str>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Box_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Box_str
+);
+impl_register_altrep_builtin!(Vec<Box<str>>, "Vec_Box_str");
+
+impl_builtin_altrep_family!(
+    Vec<Option<Box<str>>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Option_Box_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Box_str
+);
+impl_register_altrep_builtin!(Vec<Option<Box<str>>>, "Vec_Option_Box_str");
+
+impl_builtin_altrep_family!(
+    Vec<std::rc::Rc<str>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Rc_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Rc_str
+);
+impl_register_altrep_builtin!(Vec<std::rc::Rc<str>>, "Vec_Rc_str");
+
+impl_builtin_altrep_family!(
+    Vec<Option<std::rc::Rc<str>>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Option_Rc_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Rc_str
+);
+impl_register_altrep_builtin!(Vec<Option<std::rc::Rc<str>>>, "Vec_Option_Rc_str");
+
+impl_builtin_altrep_family!(
+    Vec<std::sync::Arc<str>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Arc_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Arc_str
+);
+impl_register_altrep_builtin!(Vec<std::sync::Arc<str>>, "Vec_Arc_str");
+
+impl_builtin_altrep_family!(
+    Vec<Option<std::sync::Arc<str>>>,
+    string,
+    dataptr,
+    __mx_altrep_reg_builtin_Vec_Option_Arc_str,
+    __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Arc_str
+);
+impl_register_altrep_builtin!(Vec<Option<std::sync::Arc<str>>>, "Vec_Option_Arc_str");
+// endregion
