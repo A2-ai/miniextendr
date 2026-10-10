@@ -468,7 +468,7 @@ macro_rules! __impl_altvec_extract_subset {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(data, indices)
-                    .unwrap_or($crate::SEXP::nil())
+                    .unwrap_or($crate::SEXP::null())
             }
         }
     };
