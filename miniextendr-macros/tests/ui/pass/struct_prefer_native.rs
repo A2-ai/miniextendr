@@ -8,6 +8,7 @@
 use miniextendr_macros::miniextendr;
 
 #[miniextendr(prefer = "native")]
+#[repr(transparent)]
 #[derive(Copy, Clone, miniextendr_api::RNativeType)]
 pub struct Wrapped(pub i32);
 
