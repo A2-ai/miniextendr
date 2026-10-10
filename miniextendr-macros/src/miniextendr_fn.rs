@@ -92,9 +92,52 @@ fn type_ends_with(ty: &syn::Type, name: &str) -> bool {
     }
 }
 
-/// Check if a type is `Dots` or `&Dots` (the variadic `...` parameter type).
+/// Which `...` parameter type a parameter takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DotsKind {
+    /// `&Dots`: the wrapper passes `list(...)`, every element forced.
+    Forced,
+    /// `LazyDots`: the wrapper passes its own frame, `environment()`, and
+    /// nothing is forced (#1892).
+    Lazy,
+}
+
+impl DotsKind {
+    /// The parameter type as written, for diagnostics.
+    pub(crate) fn type_name(self) -> &'static str {
+        match self {
+            Self::Forced => "&Dots",
+            Self::Lazy => "LazyDots",
+        }
+    }
+
+    /// The `.Call()` argument the R wrapper passes for the dots.
+    pub(crate) fn r_call_arg(self) -> &'static str {
+        match self {
+            Self::Forced => "list(...)",
+            Self::Lazy => "environment()",
+        }
+    }
+}
+
+/// The `...` parameter type `ty` is, if any: `Dots` / `&Dots`
+/// ([`DotsKind::Forced`]), or `LazyDots` taken by value ([`DotsKind::Lazy`],
+/// [`crate::type_inspect::is_lazy_dots_marker`]). `&LazyDots` and other
+/// shapes are none; the callers refuse them by name.
+pub(crate) fn dots_kind(ty: &syn::Type) -> Option<DotsKind> {
+    if crate::type_inspect::is_lazy_dots_marker(ty) {
+        Some(DotsKind::Lazy)
+    } else if type_ends_with(ty, "Dots") {
+        Some(DotsKind::Forced)
+    } else {
+        None
+    }
+}
+
+/// Check if a type is a `...` parameter type: `Dots` / `&Dots` or `LazyDots`
+/// (see [`dots_kind`]).
 pub(crate) fn is_dots_type(ty: &syn::Type) -> bool {
-    type_ends_with(ty, "Dots")
+    dots_kind(ty).is_some()
 }
 
 /// Replace Rust variadic syntax (`name: ...` / `_: ...`) with a trailing
@@ -117,9 +160,10 @@ pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<()>
         return Ok(());
     };
     if let Some(syn::FnArg::Typed(existing)) = dots_index(&sig.inputs).map(|idx| &sig.inputs[idx]) {
+        let kind = dots_kind(existing.ty.as_ref()).map_or("&Dots", DotsKind::type_name);
         let existing = match existing.pat.as_ref() {
-            syn::Pat::Ident(pat_ident) => format!("`{}: &Dots`", pat_ident.ident),
-            _ => "a `&Dots` parameter".to_string(),
+            syn::Pat::Ident(pat_ident) => format!("`{}: {kind}`", pat_ident.ident),
+            _ => format!("a `{kind}` parameter"),
         };
         return Err(syn::Error::new(
             variadic.span(),
@@ -160,7 +204,8 @@ pub(crate) fn rewrite_variadic_dots(sig: &mut syn::Signature) -> syn::Result<()>
     Ok(())
 }
 
-/// Position of the first `&Dots` parameter in `inputs` (receiver included, as
+/// Position of the first `...` parameter (`&Dots` or `LazyDots`) in `inputs`
+/// (receiver included, as
 /// [`RArgumentBuilder`](crate::r_wrapper_builder::RArgumentBuilder) counts
 /// them), without validation: for code that runs after [`find_dots_param`]
 /// has accepted the signature.
@@ -175,46 +220,57 @@ pub(crate) fn dots_index(
 /// Find the dots parameter of a signature by type, at any position, and
 /// return its Rust binding.
 ///
-/// The parameter of type `&Dots` is R's `...` at its own position: the R
-/// formals and the `.Call()` arguments follow the Rust signature order, with
-/// `...` / `list(...)` where it sits, and every formal after it is matched by
-/// exact name only, as R does for any formal after `...`.
+/// The parameter of type `&Dots` or `LazyDots` is R's `...` at its own
+/// position: the R formals and the `.Call()` arguments follow the Rust
+/// signature order, with `...` where it sits (`list(...)` or `environment()`
+/// in the call, [`DotsKind::r_call_arg`]), and every formal after it is
+/// matched by exact name only, as R does for any formal after `...`.
 ///
-/// A function takes at most one `...`, so a second `&Dots` parameter is an
-/// error spanned on it. The parameter needs a plain name: the body reads the
-/// dots through it.
+/// A function takes at most one `...`, so a second `&Dots` / `LazyDots`
+/// parameter is an error spanned on it. The parameter needs a plain name: the
+/// body reads the dots through it.
 pub(crate) fn find_dots_param(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
 ) -> syn::Result<Option<syn::Ident>> {
     use syn::spanned::Spanned;
 
-    let mut found: Option<syn::Ident> = None;
+    let mut found: Option<(syn::Ident, DotsKind)> = None;
     for arg in inputs {
         let syn::FnArg::Typed(pat_type) = arg else {
             continue;
         };
-        if !is_dots_type(pat_type.ty.as_ref()) {
+        let Some(kind) = dots_kind(pat_type.ty.as_ref()) else {
             continue;
-        }
+        };
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
             return Err(syn::Error::new(
                 pat_type.pat.span(),
-                "the `...` parameter needs a plain name, for example `rest: &Dots`",
+                format!(
+                    "the `...` parameter needs a plain name, for example `rest: {}`",
+                    kind.type_name()
+                ),
             ));
         };
         let ident = &pat_ident.ident;
-        if let Some(first) = &found {
-            return Err(syn::Error::new(
-                ident.span(),
+        if let Some((first, first_kind)) = &found {
+            let msg = if (*first_kind, kind) == (DotsKind::Forced, DotsKind::Forced) {
                 format!(
                     "a function takes at most one `...`: `{first}` and `{ident}` both have type \
                      `&Dots`; keep one"
-                ),
-            ));
+                )
+            } else {
+                format!(
+                    "a function takes at most one `...`: `{first}` (`{}`) and `{ident}` (`{}`) \
+                     are both R's `...`; keep one",
+                    first_kind.type_name(),
+                    kind.type_name()
+                )
+            };
+            return Err(syn::Error::new(ident.span(), msg));
         }
-        found = Some(ident.clone());
+        found = Some((ident.clone(), kind));
     }
-    Ok(found)
+    Ok(found.map(|(ident, _)| ident))
 }
 
 /// Check if a type is `Missing<T>`.
@@ -297,6 +353,13 @@ pub(crate) fn validate_param_type(ty: &syn::Type, span: proc_macro2::Span) -> sy
             return Err(syn::Error::new(
                 span,
                 "Missing<T> cannot be nested; use Missing<T> with the inner type directly",
+            ));
+        }
+        if crate::type_inspect::is_lazy_dots_marker(inner) {
+            return Err(syn::Error::new(
+                span,
+                "`Missing<LazyDots>` is not a parameter type: the dots are always present \
+                 (`len()` is 0 when the call passes none); take `LazyDots`",
             ));
         }
         if is_dots_type(inner) {
@@ -1800,6 +1863,10 @@ pub(crate) fn finalize_method_param_attrs(
     check_nargs_params(inputs, |name| {
         per_param.contains_key(name) || defaults.contains_key(name)
     })?;
+    // Nor does a `LazyDots` parameter (#1892), R's `...` passed unforced.
+    check_lazy_dots_params(inputs, |name| {
+        per_param.contains_key(name) || defaults.contains_key(name)
+    })?;
     for arg in inputs {
         let syn::FnArg::Typed(pt) = arg else {
             continue;
@@ -2948,6 +3015,102 @@ pub(crate) fn check_nargs_params(
         first = Some(ident);
     }
     Ok(())
+}
+
+/// Check the `LazyDots` parameters of a signature (#1892): `LazyDots` is the
+/// parameter's whole type, taken by value (`&LazyDots`, `Option<LazyDots>`,
+/// `Vec<LazyDots>` are refused; `Missing<LazyDots>` is refused by
+/// [`validate_param_type`]), and no per-parameter option names it
+/// (`has_options`, keyed by Rust name): the wrapper passes its frame, and
+/// every option would force the dots or has nothing to act on.
+///
+/// Shared by standalone functions (`lib.rs`) and impl methods
+/// ([`finalize_method_param_attrs`]). A function takes at most one `...`
+/// either way ([`find_dots_param`]).
+pub(crate) fn check_lazy_dots_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    has_options: impl Fn(&str) -> bool,
+) -> syn::Result<()> {
+    for arg in inputs {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        if !crate::type_inspect::is_lazy_dots_marker(&pt.ty) {
+            if crate::type_inspect::mentions_lazy_dots(&pt.ty)
+                && get_missing_inner_type(&pt.ty).is_none()
+            {
+                return Err(syn::Error::new_spanned(
+                    &pt.ty,
+                    "`LazyDots` must be the parameter's whole type, taken by value \
+                     (`rest: LazyDots`): the wrapper passes the dots unforced only for that \
+                     shape, and they are always present",
+                ));
+            }
+            continue;
+        }
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        let ident = &pat_ident.ident;
+        if has_options(&crate::naming::ident_name(ident)) {
+            return Err(syn::Error::new_spanned(
+                pt,
+                format!(
+                    "per-parameter options (`coerce`, `match_arg`, `choices`, `several_ok`, \
+                     `default`, `no_default`, `no_na`, `inherits`, `not_inherits`, \
+                     `preconditions`) do not apply to the `LazyDots` parameter `{ident}`: it is \
+                     R's `...`, which the wrapper passes unforced"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Refuse a `LazyDots` parameter on a trait method (#1892), in any shape:
+/// the trait declaration (`#[miniextendr_trait]`) and a trait impl. A trait
+/// method's arguments cross the vtable as values its shim converts with
+/// `TryFromSexp`, as for `&Dots`, which trait methods don't take either;
+/// `LazyDots` is the generated wrapper's frame, which has no such value.
+pub(crate) fn refuse_lazy_dots_in_trait_method(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> syn::Result<()> {
+    for arg in inputs {
+        if let syn::FnArg::Typed(pt) = arg
+            && crate::type_inspect::mentions_lazy_dots(&pt.ty)
+        {
+            return Err(syn::Error::new_spanned(
+                &pt.ty,
+                "a trait method cannot take `LazyDots`: its arguments cross the trait ABI as \
+                 converted values, and `LazyDots` is the generated wrapper's frame. Take it on \
+                 an inherent impl method or a standalone function",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The error for `dots = typed_list!(..)` on a function whose `...` is a
+/// `LazyDots` parameter (#1892): `typed_list!` validates the forced
+/// `list(...)` of a `&Dots` parameter, and `LazyDots` forces nothing. `None`
+/// when the dots are `&Dots` (or absent). `span` is the attribute's, else the
+/// parameter's.
+pub(crate) fn typed_list_on_lazy_dots(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    span: Option<proc_macro2::Span>,
+) -> Option<syn::Error> {
+    use syn::spanned::Spanned;
+
+    let pt = inputs.iter().find_map(|arg| match arg {
+        syn::FnArg::Typed(pt) if crate::type_inspect::is_lazy_dots_marker(&pt.ty) => Some(pt),
+        _ => None,
+    })?;
+    Some(syn::Error::new(
+        span.unwrap_or_else(|| pt.span()),
+        "`dots = typed_list!(..)` validates the forced `list(...)` of a `&Dots` parameter; a \
+         `LazyDots` parameter passes the dots unforced. Take `&Dots` (or `name: ...`) to \
+         validate them, or read the `LazyDots` elements yourself",
+    ))
 }
 
 /// Check that an S3 method for a replacement generic takes the new value last,

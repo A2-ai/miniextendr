@@ -1116,7 +1116,8 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
         "List" | "ListMut" => Some(RTypeCheck::List),
 
         // Skip types: SEXP, Dots, Missing, ExternalPtr, RLogical, etc.
-        "SEXP" | "Dots" | "Missing" | "ExternalPtr" | "OwnedProtect" => None,
+        // `LazyDots` is `...`, passed as the wrapper's frame (#1892).
+        "SEXP" | "Dots" | "LazyDots" | "Missing" | "ExternalPtr" | "OwnedProtect" => None,
 
         // Unknown type → skip (let Rust side validate)
         _ => None,
@@ -1260,12 +1261,12 @@ impl PreconditionOutput {
 /// Returns `true` for types that should never get a fallback precheck.
 ///
 /// These types are either handled specially by the FFI layer (`SEXP`),
-/// consumed by the macro infrastructure (`Dots`, `Missing`), or managed
-/// internally (`ExternalPtr`, `OwnedProtect`).
+/// consumed by the macro infrastructure (`Dots`, `LazyDots`, `Missing`), or
+/// managed internally (`ExternalPtr`, `OwnedProtect`).
 fn is_skip_type(ident: &str) -> bool {
     matches!(
         ident,
-        "SEXP" | "Dots" | "Missing" | "ExternalPtr" | "OwnedProtect"
+        "SEXP" | "Dots" | "LazyDots" | "Missing" | "ExternalPtr" | "OwnedProtect"
     )
 }
 
@@ -1322,8 +1323,11 @@ pub fn build_precondition_checks(
         };
 
         // `NArgs` is no R formal: the wrapper passes `nargs()`, which no
-        // check needs to look at (#1860).
-        if crate::type_inspect::is_nargs_marker(&pt.ty) {
+        // check needs to look at (#1860). Nor is a `LazyDots` parameter's name:
+        // its formal is `...`, passed unforced as the wrapper's frame (#1892).
+        if crate::type_inspect::is_nargs_marker(&pt.ty)
+            || crate::type_inspect::is_lazy_dots_marker(&pt.ty)
+        {
             continue;
         }
 

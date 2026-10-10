@@ -130,6 +130,18 @@ NULL
 #' @name dots_pos_s3_collect
 NULL
 
+#' Describe the unforced dots via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name lazy_s3_report
+NULL
+
+#' Sum the dots that are not empty via S3 dispatch
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @name lazy_s3_sum
+NULL
+
 #' Draw with one parameter's R-side checks kept, via S3 dispatch
 #' @param x An object.
 #' @param ... Additional arguments.

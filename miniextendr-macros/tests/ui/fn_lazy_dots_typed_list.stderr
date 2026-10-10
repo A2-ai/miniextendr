@@ -1,0 +1,13 @@
+error: `dots = typed_list!(..)` validates the forced `list(...)` of a `&Dots` parameter; a `LazyDots` parameter passes the dots unforced. Take `&Dots` (or `name: ...`) to validate them, or read the `LazyDots` elements yourself
+ --> tests/ui/fn_lazy_dots_typed_list.rs:8:15
+  |
+8 | #[miniextendr(dots = typed_list!(x => numeric()))]
+  |               ^^^^
+
+warning: unused import: `LazyDots`
+ --> tests/ui/fn_lazy_dots_typed_list.rs:6:23
+  |
+6 | use miniextendr_api::{LazyDots, miniextendr};
+  |                       ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

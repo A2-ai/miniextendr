@@ -554,6 +554,8 @@ pub(super) fn extract_methods(
                     (false, false)
                 }
             });
+            // The unforced dots are no trait-method parameter (#1892).
+            crate::miniextendr_fn::refuse_lazy_dots_in_trait_method(&method.sig.inputs)?;
             let mut attrs = parse_trait_method_attrs(&method.attrs)?;
             // Every parameter `choices(...)` / `inherits(...)` /
             // `not_inherits(...)` / `no_na(...)` name must exist, as on

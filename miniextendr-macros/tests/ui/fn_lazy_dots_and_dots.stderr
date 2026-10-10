@@ -1,0 +1,19 @@
+error: a function takes at most one `...`: `forced` (`&Dots`) and `lazy` (`LazyDots`) are both R's `...`; keep one
+ --> tests/ui/fn_lazy_dots_and_dots.rs:9:32
+  |
+9 | pub fn two_dots(forced: &Dots, lazy: LazyDots) -> i32 {
+  |                                ^^^^
+
+warning: unused import: `miniextendr_api::dots::Dots`
+ --> tests/ui/fn_lazy_dots_and_dots.rs:5:5
+  |
+5 | use miniextendr_api::dots::Dots;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `LazyDots`
+ --> tests/ui/fn_lazy_dots_and_dots.rs:6:23
+  |
+6 | use miniextendr_api::{LazyDots, miniextendr};
+  |                       ^^^^^^^^

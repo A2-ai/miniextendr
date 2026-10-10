@@ -356,6 +356,15 @@ fn validate_extern_signature(
                         .is_some_and(|seg| seg.ident == "SEXP"),
                     _ => false,
                 };
+                if !is_sexp && crate::type_inspect::is_lazy_dots_marker(&pat_type.ty) {
+                    return Err(syn::Error::new_spanned(
+                        &pat_type.ty,
+                        "extern functions cannot take `LazyDots`: it is the generated R \
+                         wrapper's frame (`environment()`), and `.Call()` reaches an extern \
+                         function directly. Drop the `extern \"C-unwind\"` to let the macro \
+                         generate the wrapper",
+                    ));
+                }
                 if !is_sexp {
                     let is_dots_type = if let syn::Type::Reference(type_ref) = pat_type.ty.as_ref()
                     {
@@ -1079,6 +1088,14 @@ pub fn miniextendr(
     {
         return err.into_compile_error().into();
     }
+    // The unforced dots (#1892): a `LazyDots` parameter is R's `...`, which
+    // the wrapper passes as its frame; it takes no per-parameter option, and
+    // any other shape (`&LazyDots`, `Option<..>`) is refused.
+    if let Err(err) =
+        miniextendr_fn::check_lazy_dots_params(all_inputs, |name| parsed.has_param_attrs(name))
+    {
+        return err.into_compile_error().into();
+    }
     let r_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = all_inputs
         .iter()
         .filter(|arg| match arg {
@@ -1137,6 +1154,11 @@ pub fn miniextendr(
             dots_span.unwrap_or_else(proc_macro2::Span::call_site),
             "#[miniextendr(dots = typed_list!(...))] requires a `...` or `&Dots` parameter in the function signature",
         );
+        return err.into_compile_error().into();
+    }
+    if dots_spec.is_some()
+        && let Some(err) = miniextendr_fn::typed_list_on_lazy_dots(all_inputs, dots_span)
+    {
         return err.into_compile_error().into();
     }
 

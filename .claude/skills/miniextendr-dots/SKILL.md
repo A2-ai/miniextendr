@@ -1,6 +1,6 @@
 ---
 name: miniextendr-dots
-description: "Use when the user asks about handling R's ... (dots/variadic) arguments in Rust, the Dots type, the typed_list! macro, #[miniextendr(dots = typed_list!(...))] attribute sugar, custom dots binding names with name: ..., formals after ... (a &Dots parameter at any position), optional vs required fields in typed lists, or TypedList accessors."
+description: "Use when the user asks about handling R's ... (dots/variadic) arguments in Rust, the Dots type, LazyDots (dots passed unforced: empty arguments, refusing extra arguments before evaluating them), the typed_list! macro, #[miniextendr(dots = typed_list!(...))] attribute sugar, custom dots binding names with name: ..., formals after ... (a &Dots parameter at any position), optional vs required fields in typed lists, or TypedList accessors."
 ---
 
 # miniextendr Dots and `typed_list!`
@@ -14,6 +14,7 @@ R's `...` (dots) passes an untyped sequence of named or unnamed arguments throug
 - "How do I use `typed_list!`?"
 - "What is `name: ...` syntax?"
 - "Can a parameter come after `...`?"
+- "How do I see `f(a = )` / `x[1, , , ]`, or refuse extra arguments without evaluating them?" (`LazyDots`)
 - "How do I make a dots field optional?"
 - "What does `#[miniextendr(dots = typed_list!(...))]` do?"
 - "What error does a mismatched typed list produce?"
@@ -58,6 +59,21 @@ pub fn write_all(x: i32, rest: &Dots, #[miniextendr(default = "FALSE")] overwrit
 ```
 
 R matches a formal after `...` by its exact name only (`write_all(1L, over = TRUE)` puts `over` in the dots). One `...` per function: a second `&Dots`, or `...` next to an explicit `&Dots`, is a compile error. Methods follow the same rule in every class system; on a `call = caller` wrapper `.call` stays last.
+
+### Dots left unforced: `LazyDots`
+
+`&Dots` gets `list(...)`, forced before the body runs (an empty element stops the call with "argument is missing"). A parameter typed `LazyDots` (taken by value) is R's `...` too, but the wrapper passes `environment()` instead and evaluates nothing (#1892):
+
+| Method | R equivalent | Forces |
+|--------|--------------|--------|
+| `len()` / `is_empty()` | `...length()` | nothing |
+| `names()` | `...names()` (`None` unnamed) | nothing |
+| `is_missing_arg(i)` | element of `substitute(list(...))` is the empty argument | nothing |
+| `expr(i)` | element of `substitute(list(...))` | nothing |
+| `force(i)` | `..k` via `eval_with_handlers` | element `i` |
+| `try_force(i)` | `..k` via `try_eval_with_handlers` (R error → `Err(REvalError)`) | element `i` |
+
+0-based indices (an index past the end panics before anything is forced). Only a literally empty slot is `is_missing_arg`; an element forwarded from a missing argument is a promise (present), and forcing it raises R's missing-argument error. Each element is forced in its own environment, also through forwarded dots. Accepted on standalone fns, `s3(...)` fns and impl methods of env/R6/S3/S4/S7/vctrs; refused on trait methods and `extern`; no per-parameter options, no `typed_list!`, no `&LazyDots` / `Option` / `Missing`, never next to `&Dots`. Main thread only. Docs: `docs/DOTS_TYPED_LIST.md#dots-left-unforced-lazydots`; fixtures `rpkg/src/rust/lazy_dots_tests.rs`.
 
 ### `typed_list!` macro
 
@@ -153,7 +169,7 @@ error type. So `let x: Vec<f64> = dots_typed.get("x")?` (above) compiles for a
 
 ### R wrapper generation
 
-When `#[miniextendr]` sees `...` in the Rust signature, the generated R wrapper function includes `...` in its formals. The `.Call` invocation collects dots with `list(...)` (a list, `VECSXP`, not a pairlist) and passes it as the dots argument to the C wrapper, which wraps it as the `Dots` value.
+When `#[miniextendr]` sees `...` in the Rust signature, the generated R wrapper function includes `...` in its formals. The `.Call` invocation collects dots with `list(...)` (a list, `VECSXP`, not a pairlist) and passes it as the dots argument to the C wrapper, which wraps it as the `Dots` value. For a `LazyDots` parameter it passes `environment()` (the wrapper's frame, with `...` still unforced) instead.
 
 ### Manual validation
 
@@ -196,10 +212,16 @@ pub fn configure_model(dots: ...) -> String {
 - Use `name: ...` (or `name: &Dots`) when the body reads them, e.g. `options: ...`.
 - Use an explicit `name: &Dots` parameter when a formal must follow the dots.
 
+### `&Dots` or `LazyDots`?
+
+- `&Dots` when every element should be evaluated anyway (a list of values, `typed_list!` validation).
+- `LazyDots` when the body must see empty arguments (`update(x, select = )`, `x[1, , , ]`), refuse extra arguments before they are evaluated (`subset(x, TRUE, select = ID)`), read what was written (`expr(i)`), or force only some elements.
+
 ## Key files
 
 - `docs/DOTS_TYPED_LIST.md` — full documentation with examples.
 - `miniextendr-api/src/dots.rs` — `Dots` type, `TypedList`, `TypedListSpec`, `TypedListError`.
+- `miniextendr-api/src/lazy_dots.rs` — `LazyDots`.
 - `miniextendr-macros/src/typed_list.rs` — `typed_list!` macro implementation.
 
 ## Common pitfalls

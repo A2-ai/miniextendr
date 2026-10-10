@@ -1,0 +1,66 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+# Bag::new (1:1)
+#' @title Bag S3 Class
+#' @name Bag
+#' @rdname Bag
+#' @param values (undocumented)
+#' @export
+new_bag <- function(values) {
+  if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+  .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  structure(.val, class = "Bag")
+}
+
+# Bag::extra (1:1)
+#' @title S3 generic for `extra`
+#' @description S3 generic for `extra`
+#' @name extra.Bag
+#' @rdname Bag
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export extra
+if (!base::exists("extra", mode = "function")) {
+  extra <- function(x, ...) UseMethod("extra")
+} else if (local({ .mx_gen <- base::get("extra", mode = "function"); !(is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("extra") || inherits(.mx_gen, "S7_generic")) })) {
+  # `extra` is a plain closure that UseMethod dispatch will never consult.
+  # Shadow it with a package-local generic. The default method delegating to
+  # the masked closure is registered via registerS3method() so it lives ONLY
+  # in the namespace's S3 methods table: a literal `extra.default` binding
+  # would trip roxygen2's dynamic S3 scan (warn_missing_s3_exports), and a
+  # static NAMESPACE S3method(extra, default) would break package load
+  # whenever this branch does not fire.
+  .mx_shadow_default <- local({
+    .mx_masked <- base::get("extra", mode = "function")
+    function(x, ...) .mx_masked(x, ...)
+  })
+  extra <- function(x, ...) UseMethod("extra")
+  base::registerS3method("extra", "default", .mx_shadow_default, envir = base::environment())
+  base::rm(.mx_shadow_default)
+}
+# else: existing usable generic (primitive/S3/S4/S7) — reuse as-is.
+
+#' @description Count the extra arguments.
+#' @param n (undocumented)
+#' @name extra.Bag
+#' @rdname Bag
+#' @method extra Bag
+#' @param x An object.
+#' @param ... Additional arguments.
+#' @export
+extra.Bag <- function(x, n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer", environment())
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1", environment())
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = environment(), x, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+  .val
+}
+
+#' @rdname Bag
+#' @export
+Bag <- new.env(parent = emptyenv())
+
+Bag$new <- new_bag

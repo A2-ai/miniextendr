@@ -122,8 +122,8 @@ pub(crate) fn check_r_formals(
 }
 
 /// The R formal each parameter of a signature becomes, with the parameter's
-/// ident: [`normalize_r_arg_string`] of its name. The `&Dots` parameter
-/// becomes `...` wherever it sits and is skipped, as are receivers,
+/// ident: [`normalize_r_arg_string`] of its name. The `&Dots` / `LazyDots`
+/// parameter becomes `...` wherever it sits and is skipped, as are receivers,
 /// non-ident patterns and an `NArgs` parameter, which is no formal (#1860).
 ///
 /// [`check_r_formals`] checks these names, and the shadowing pass
@@ -171,17 +171,21 @@ pub(crate) fn split_choice_list(raw: &str) -> Vec<String> {
 /// - Underscore normalization (`_x` → `x`)
 /// - Unit type defaults (`()` → `= NULL`)
 /// - Dots: the `&Dots` parameter is `...` in the formals and `list(...)` in
-///   the call arguments, at its own position in the signature
+///   the call arguments, at its own position in the signature; a `LazyDots`
+///   parameter is `...` too, and `environment()` in the call arguments, which
+///   passes the dots unforced (#1892)
 /// - The argument count: an `NArgs` parameter is no formal and `nargs()` in
 ///   the call arguments, at its own position (#1860)
 /// - Consistent formatting across function and method wrappers
 pub struct RArgumentBuilder<'a> {
     /// The function's input parameters from the parsed Rust signature.
     inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    /// Position of the `&Dots` parameter in `inputs` (receiver included, the
-    /// way both build loops count). Its Rust name never reaches R: the formal
-    /// is always plain `...`.
+    /// Position of the `&Dots` / `LazyDots` parameter in `inputs` (receiver
+    /// included, the way both build loops count). Its Rust name never reaches
+    /// R: the formal is always plain `...`.
     dots_index: Option<usize>,
+    /// Which `...` type it is: what the call arguments pass at its position.
+    dots_kind: Option<crate::miniextendr_fn::DotsKind>,
     /// If true, skip the first parameter (used for `self`/`&self` in method wrappers,
     /// since the self argument is handled separately by [`DotCallBuilder::with_self`]).
     skip_first: bool,
@@ -194,9 +198,15 @@ pub struct RArgumentBuilder<'a> {
 impl<'a> RArgumentBuilder<'a> {
     /// Create a new builder for the given function inputs.
     pub fn new(inputs: &'a syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>) -> Self {
+        let dots_index = crate::miniextendr_fn::dots_index(inputs);
+        let dots_kind = dots_index.and_then(|idx| match &inputs[idx] {
+            syn::FnArg::Typed(pt) => crate::miniextendr_fn::dots_kind(pt.ty.as_ref()),
+            syn::FnArg::Receiver(_) => None,
+        });
         Self {
             inputs,
-            dots_index: crate::miniextendr_fn::dots_index(inputs),
+            dots_index,
+            dots_kind,
             skip_first: false,
             defaults: std::collections::HashMap::new(),
         }
@@ -282,15 +292,19 @@ impl<'a> RArgumentBuilder<'a> {
     /// Build R call arguments string (for `.Call()` invocation).
     ///
     /// # Returns
-    /// Comma-separated argument list, e.g., `"x, y, list(...)"`
+    /// Comma-separated argument list, e.g., `"x, y, list(...)"` (or
+    /// `"x, y, environment()"` for a `LazyDots` parameter)
     pub fn build_call_args(&self) -> String {
         self.build_call_args_vec().join(", ")
     }
 
     /// Build R call arguments as a `Vec<String>`.
     ///
-    /// Each element is a single argument expression. Dots parameters become
-    /// `"list(...)"` to capture variadic args as an R list for the `.Call()` interface.
+    /// Each element is a single argument expression. A `&Dots` parameter
+    /// becomes `"list(...)"`, which captures the variadic args as an R list for
+    /// the `.Call()` interface; a `LazyDots` parameter becomes
+    /// `"environment()"`, the wrapper's own frame, whose `...` binding holds
+    /// the dots unforced (#1892).
     pub fn build_call_args_vec(&self) -> Vec<String> {
         let mut call_args = Vec::new();
 
@@ -305,9 +319,15 @@ impl<'a> RArgumentBuilder<'a> {
             };
 
             // The dots, at their own position: the formal is plain `...`, so
-            // the argument is always `list(...)`.
+            // the argument is `list(...)` for `&Dots` and `environment()` for
+            // `LazyDots` (#1892). `.Call()` evaluates its arguments in the
+            // wrapper's frame, so `environment()` is that frame, and nothing in
+            // `...` is forced on the way in.
             if Some(idx) == self.dots_index {
-                call_args.push("list(...)".to_string());
+                let kind = self
+                    .dots_kind
+                    .unwrap_or(crate::miniextendr_fn::DotsKind::Forced);
+                call_args.push(kind.r_call_arg().to_string());
                 continue;
             }
 
@@ -382,7 +402,8 @@ pub(crate) fn build_r_formals_from_sig(
 /// Build R `.Call()` arguments from a Rust function signature.
 ///
 /// Automatically skips `self`/`&self` receivers (those are passed separately
-/// via [`DotCallBuilder::with_self`]). Dots become `list(...)`.
+/// via [`DotCallBuilder::with_self`]). `&Dots` becomes `list(...)`, `LazyDots`
+/// `environment()`.
 ///
 /// Returns a comma-separated string of R call arguments, e.g., `"x, y, list(...)"`.
 pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {

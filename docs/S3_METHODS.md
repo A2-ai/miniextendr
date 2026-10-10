@@ -672,6 +672,51 @@ runs as if `h[[i]]` had been typed; an `NArgs` parameter tells the forms apart
 (`MxBagHandle::at` in `rpkg/src/rust/s3_nonsyntactic_tests.rs` refuses
 `h[[i, ]]` this way).
 
+**Take `LazyDots` to read the subscripts past `j`.** A class subscripted
+like an array with more than two dimensions gets the rest of `x[1, , , ]` in
+`...`, and two of them are empty. A `&Dots` parameter's wrapper evaluates
+`list(...)`, which stops on the first empty one with `argument is missing,
+with no default`. A parameter of type `miniextendr_api::LazyDots` takes the
+dots unforced (#1892): the wrapper passes its frame, `environment()`, where
+`&Dots` passes `list(...)`, so the method sees which elements are empty and
+forces the others:
+
+```rust
+use miniextendr_api::{LazyDots, Missing, NArgs, SEXP, miniextendr};
+
+#[miniextendr(s3(generic = "[", class = "mx_lazy_grid"))]
+pub fn mx_lazy_grid_subset(
+    x: SEXP,
+    i: Missing<SEXP>,
+    j: Missing<SEXP>,
+    rest: LazyDots,
+    drop: Missing<SEXP>,
+    nargs: NArgs,
+) -> String {
+    for k in 0..rest.len() {
+        if rest.is_missing_arg(k) {
+            /* an empty subscript: every index of that dimension */
+        } else {
+            let index = rest.force(k);
+            /* ... */
+        }
+    }
+    /* ... */
+}
+```
+
+The method is `` `[.mx_lazy_grid` <- function(x, i, j, ..., drop) ``, base
+`[`'s order, so `drop` is matched by name only. For `x[1, , , ]` it gets
+`nargs() == 5`, `i` present, `j` absent and two empty elements in `...`;
+`x[1, , , 2, ]` gives three, the middle one `2`. The same parameter lets any
+method refuse extra arguments before they are evaluated: the
+`subset.mx_lazy` fixture turns `subset(x, TRUE, select = ID)` into its own
+classed error naming `select`, where `list(...)` would have failed on
+`object 'ID' not found`. See
+[DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots) for the
+methods and where the type is accepted; `rpkg/src/rust/lazy_dots_tests.rs`
+has the fixtures.
+
 **Forwarding to `[.data.frame`.** A class built on a data frame can hand
 every form on as typed: build the call with an empty argument
 (`SEXP::missing_arg()`) for each absent subscript within the slot count, add

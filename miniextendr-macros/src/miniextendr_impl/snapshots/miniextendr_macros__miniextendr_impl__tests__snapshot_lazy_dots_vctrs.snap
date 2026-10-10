@@ -1,0 +1,67 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+# Percent::new (1:1)
+#' @title Percent vctrs S3 Class
+#' @name Percent
+#' @rdname Percent
+#' @param x (undocumented)
+#' @importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr
+#' @export
+new_percent <- function(x) {
+  if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
+  if (!isTRUE(length(x) == 1L)) .miniextendr_arg_error("x", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Percent__new, .call = sys.call(), x)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  data <- .val
+  vctrs::new_vctr(data, class = "Percent", inherit_base_type = FALSE)
+}
+
+#' @rdname Percent
+#' @method vec_ptype_abbr Percent
+#' @export
+vec_ptype_abbr.Percent <- function(x, ...) "pct"
+
+#' @rdname Percent
+#' @method vec_ptype2 Percent.Percent
+#' @param x A Percent vector.
+#' @param y A Percent vector.
+#' @param ... Additional arguments (unused).
+#' @export
+vec_ptype2.Percent.Percent <- function(x, y, ...) vctrs::new_vctr(double(), class = "Percent", inherit_base_type = FALSE)
+
+#' @rdname Percent
+#' @method vec_cast Percent.Percent
+#' @param x A Percent vector to cast.
+#' @param to A Percent prototype.
+#' @param ... Additional arguments (unused).
+#' @export
+vec_cast.Percent.Percent <- function(x, to, ...) x
+
+# Percent::extra (1:1)
+#' @description Count the extra arguments.
+#' @param x (undocumented)
+#' @name percent_extra
+#' @rdname Percent
+#' @export
+percent_extra <- function(x, ...) {
+  if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
+  .val <- .Call(C_miniextendr_macros_Percent__extra, .call = sys.call(), x, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+# Percent::format_percent (1:1)
+#' @description Format, reporting the extra arguments.
+#' @param x (undocumented)
+#' @name format.Percent
+#' @rdname Percent
+#' @method format Percent
+#' @export
+format.Percent <- function(x, ...) {
+  if (!isTRUE(is.double(x))) .miniextendr_arg_error("x", "must be double")
+  .val <- .Call(C_miniextendr_macros_Percent__format_percent, .call = sys.call(), x, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}

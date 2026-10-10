@@ -236,6 +236,7 @@ mod into_r_error_tests;
 mod jiff_adapter_tests;
 #[cfg(feature = "serde_json")]
 mod json_string_tests;
+mod lazy_dots_tests;
 mod lazy_tests;
 mod lbfgsb_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration

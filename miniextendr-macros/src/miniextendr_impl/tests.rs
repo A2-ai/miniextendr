@@ -7695,3 +7695,158 @@ fn field_methods_collide_with_impl_methods() {
 }
 
 // endregion
+
+// region: Unforced dots (`LazyDots`, #1892)
+
+/// An impl block whose instance method takes `LazyDots` after a named formal.
+fn lazy_dots_impl() -> syn::ItemImpl {
+    syn::parse_quote! {
+        impl Bag {
+            pub fn new(values: Vec<f64>) -> Self { unimplemented!() }
+            /// Count the extra arguments.
+            pub fn extra(&self, n: i32, rest: LazyDots) -> i32 { unimplemented!() }
+        }
+    }
+}
+
+/// The method's `.Call()` passes `environment()` at the position of `...`,
+/// never `list(...)`, and `has_dots` holds, so no second dispatch `...`.
+fn assert_lazy_dots_wrapper(parsed: &ParsedImpl, wrapper: &str) {
+    let method = parsed
+        .methods
+        .iter()
+        .find(|m| m.ident == "extra")
+        .expect("the `extra` method");
+    assert!(method.has_dots);
+    assert!(wrapper.contains("n, environment())"), "{wrapper}");
+    assert!(!wrapper.contains("list(...)"), "{wrapper}");
+    assert!(!wrapper.contains("..., ..."), "{wrapper}");
+}
+
+#[test]
+fn snapshot_lazy_dots_env() {
+    let parsed = parse_impl(ClassSystem::Env, lazy_dots_impl());
+    let wrapper = generate_env_r_wrapper(&parsed);
+    assert_lazy_dots_wrapper(&parsed, &wrapper);
+    insta::assert_snapshot!(wrapper);
+}
+
+#[test]
+fn snapshot_lazy_dots_r6() {
+    let parsed = parse_impl(ClassSystem::R6, lazy_dots_impl());
+    let wrapper = generate_r6_r_wrapper(&parsed);
+    assert_lazy_dots_wrapper(&parsed, &wrapper);
+    insta::assert_snapshot!(wrapper);
+}
+
+#[test]
+fn snapshot_lazy_dots_s3() {
+    let parsed = parse_impl(ClassSystem::S3, lazy_dots_impl());
+    let wrapper = generate_s3_r_wrapper(&parsed);
+    assert_lazy_dots_wrapper(&parsed, &wrapper);
+    assert_eq!(s3_method_formals(&wrapper, "extra.Bag"), "x, n, ...");
+    insta::assert_snapshot!(wrapper);
+}
+
+#[test]
+fn snapshot_lazy_dots_s4() {
+    let parsed = parse_impl(ClassSystem::S4, lazy_dots_impl());
+    let wrapper = generate_s4_r_wrapper(&parsed);
+    assert_lazy_dots_wrapper(&parsed, &wrapper);
+    insta::assert_snapshot!(wrapper);
+}
+
+#[test]
+fn snapshot_lazy_dots_s7() {
+    let parsed = parse_impl(ClassSystem::S7, lazy_dots_impl());
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert_lazy_dots_wrapper(&parsed, &wrapper);
+    insta::assert_snapshot!(wrapper);
+}
+
+/// vctrs methods are static (MXL120): a plain static helper and a `format()`
+/// protocol method, each with `LazyDots`.
+#[test]
+fn snapshot_lazy_dots_vctrs() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Percent {
+            pub fn new(x: f64) -> Vec<f64> { unimplemented!() }
+            /// Count the extra arguments.
+            pub fn extra(x: Vec<f64>, rest: LazyDots) -> i32 { unimplemented!() }
+            /// Format, reporting the extra arguments.
+            #[miniextendr(vctrs(format))]
+            pub fn format_percent(x: Vec<f64>, rest: LazyDots) -> Vec<String> { unimplemented!() }
+        }
+    };
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: Some("pct".to_string()),
+    };
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+    for method in ["extra", "format_percent"] {
+        let method = parsed
+            .methods
+            .iter()
+            .find(|m| m.ident == method)
+            .expect("method");
+        assert!(method.has_dots);
+    }
+    assert!(wrapper.contains("x, environment())"), "{wrapper}");
+    assert!(!wrapper.contains("list(...)"), "{wrapper}");
+    assert_eq!(s3_method_formals(&wrapper, "format.Percent"), "x, ...");
+    insta::assert_snapshot!(wrapper);
+}
+
+/// `dots = typed_list!(..)` validates a forced list: refused on a `LazyDots`
+/// method; a per-parameter option or a default on it is refused too.
+#[test]
+fn lazy_dots_method_refusals() {
+    let parse_err = |item_impl: syn::ItemImpl| {
+        ParsedImpl::parse(default_impl_attrs(ClassSystem::R6), item_impl)
+            .expect_err("refused")
+            .to_string()
+    };
+    let msg = parse_err(syn::parse_quote! {
+        impl Bag {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(dots = typed_list!(x => numeric()))]
+            pub fn extra(&self, rest: LazyDots) -> i32 { unimplemented!() }
+        }
+    });
+    assert!(
+        msg.starts_with("`dots = typed_list!(..)` validates the forced"),
+        "{msg}"
+    );
+    let msg = parse_err(syn::parse_quote! {
+        impl Bag {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(no_na(rest))]
+            pub fn extra(&self, rest: LazyDots) -> i32 { unimplemented!() }
+        }
+    });
+    assert!(msg.contains("the `LazyDots` parameter `rest`"), "{msg}");
+    let msg = parse_err(syn::parse_quote! {
+        impl Bag {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(defaults(rest = "1"))]
+            pub fn extra(&self, rest: LazyDots) -> i32 { unimplemented!() }
+        }
+    });
+    assert!(msg.contains("cannot have a default value"), "{msg}");
+    let msg = parse_err(syn::parse_quote! {
+        impl Bag {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn extra(&self, rest: &LazyDots) -> i32 { unimplemented!() }
+        }
+    });
+    assert!(
+        msg.starts_with("`LazyDots` must be the parameter's whole type"),
+        "{msg}"
+    );
+}
+
+// endregion

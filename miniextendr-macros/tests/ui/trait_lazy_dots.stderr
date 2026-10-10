@@ -1,0 +1,13 @@
+error: a trait method cannot take `LazyDots`: its arguments cross the trait ABI as converted values, and `LazyDots` is the generated wrapper's frame. Take it on an inherent impl method or a standalone function
+  --> tests/ui/trait_lazy_dots.rs:10:28
+   |
+10 |     fn report(&self, rest: LazyDots) -> i32;
+   |                            ^^^^^^^^
+
+warning: unused import: `LazyDots`
+ --> tests/ui/trait_lazy_dots.rs:6:23
+  |
+6 | use miniextendr_api::{LazyDots, miniextendr};
+  |                       ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

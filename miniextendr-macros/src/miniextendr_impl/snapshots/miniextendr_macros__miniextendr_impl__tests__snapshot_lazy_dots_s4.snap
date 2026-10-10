@@ -1,0 +1,38 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+#' @title Bag S4 Class
+#' @name Bag
+#' @rdname Bag
+#' @importFrom methods setClass setGeneric setMethod new
+#' @slot ptr External pointer to Rust `Bag` struct
+methods::setClass("Bag", slots = c(ptr = "externalptr"))
+
+# Bag::new (1:1)
+#' @param values (undocumented)
+#' @name Bag
+#' @rdname Bag
+#' @export
+Bag <- function(values) {
+  if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+  .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  methods::new("Bag", ptr = .val)
+}
+
+.__MX_GENERIC_DOC__(kind="S4", generic="s4_extra", class="Bag", export=true)
+# Bag::extra (1:1)
+#' @description Count the extra arguments.
+#' @name Bag-s4_extra
+#' @rdname Bag
+#' @aliases s4_extra,Bag-method
+if (!exists("s4_extra", where = topenv(environment()), inherits = FALSE)) methods::setGeneric("s4_extra", function(x, ...) standardGeneric("s4_extra"))
+#' @exportMethod s4_extra
+methods::setMethod("s4_extra", "Bag", function(x, n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), x@ptr, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

@@ -18,6 +18,14 @@ Either may be wrapped in `Missing<..>` for an optional argument. Evaluating R
 code from Rust in the caller's R context is also available on its own, for
 calls built in Rust: [`eval_with_handlers`](#handler-keeping-evaluation).
 
+R's `...` has its own unevaluated form: a `LazyDots` parameter passes the
+wrapper's frame instead of `list(...)`, so the body reads the expressions
+(`expr(i)`), sees the empty elements and forces the elements it wants, each
+in its own environment (#1892). Unlike the markers above it is accepted on
+class methods too, since a promise keeps its environment when a method
+forwards it. See
+[DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
+
 ## `Quoted`
 
 ```rust
@@ -196,9 +204,11 @@ or sent to another thread. A written lifetime (`Quoted<'a>`) is accepted.
 
 ## Handler-keeping evaluation
 
-`Quoted::eval()`, `eval_in()` and `Quosure::eval_tidy()` evaluate through
+`Quoted::eval()`, `eval_in()`, `Quosure::eval_tidy()` and `LazyDots::force()`
+evaluate through
 `miniextendr_api::expression::eval_with_handlers(expr, env)`, which is also
-public for any expression or call built in Rust. It differs from
+public for any expression or call built in Rust (`LazyDots::try_force()`
+goes through `try_eval_with_handlers`). It differs from
 `RCall::eval` / `r_eval_str`, and `try_eval_with_handlers` combines the two:
 
 | | `RCall::eval`, `r_eval_str` | `eval_with_handlers`, `RCall::eval_with_handlers` | `try_eval_with_handlers`, `RCall::try_eval_with_handlers` |
@@ -309,6 +319,7 @@ tidyselect blocks skip when those packages are not installed.
 ## See also
 
 - [EXPRESSION_EVAL.md](EXPRESSION_EVAL.md) -- `RCall`, `RSymbol`, `REnv`
+- [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots) -- `LazyDots`, R's `...` left unforced
 - [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md) -- the `Call` marker
 - [CONDITIONS.md](CONDITIONS.md) -- the argument-error condition
 - [MACRO_ERRORS.md](MACRO_ERRORS.md) -- the compile errors

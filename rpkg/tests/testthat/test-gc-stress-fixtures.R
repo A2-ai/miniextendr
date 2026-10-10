@@ -491,6 +491,44 @@ test_that("gc_stress_try_eval_with_handlers keeps the caught condition rooted un
 
 # endregion
 
+# region: unforced dots (LazyDots, #1892) -------------------------------------
+
+test_that("gc_stress_lazy_dots keeps the dots' expressions rooted under gctorture (#1892)", {
+  expected <- c(
+    "5", "first,a,,,bad", "false,false,true,false,false",
+    "y,call:+,,call:paste0,call:stop", "10", "3", "b2", "held",
+    'argument "..3" is missing, with no default'
+  )
+  expect_identical(miniextendr:::gc_stress_lazy_dots(), expected)
+
+  skip_gc_stress_if_disabled()
+  # Load the package first, then enable gctorture — see docs/GCTORTURE_TESTING.md.
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+
+  ok <- 0L
+  fail <- character(0L)
+  for (i in seq_len(10L)) {
+    res <- tryCatch(
+      {
+        stopifnot(identical(miniextendr:::gc_stress_lazy_dots(), expected))
+        "ok"
+      },
+      error = function(e) conditionMessage(e)
+    )
+    if (identical(res, "ok")) {
+      ok <- ok + 1L
+    } else {
+      fail <- c(fail, sprintf("iteration %d: %s", i, res))
+    }
+  }
+  gctorture(FALSE)
+
+  expect_equal(ok, 10L, info = paste("failures:", paste(fail, collapse = "; ")))
+})
+
+# endregion
+
 # region: trait View argument rooting -----------------------------------------
 
 # The View behind a `#[miniextendr]` trait converts each argument to a SEXP
