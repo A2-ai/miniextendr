@@ -446,7 +446,7 @@ ls rpkg/tests/testthat/test-*.R
 | Platform | R Version | Status |
 |----------|-----------|--------|
 | Linux | release | Required |
-| Linux | oldrel-1 | Required |
+| Linux | oldrel | Required |
 | macOS arm64 | release | Required |
 | macOS x86_64 | release | Required |
 | Windows (GNU) | release | Non-blocking until stabilized |

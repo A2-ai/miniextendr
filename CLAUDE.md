@@ -320,7 +320,11 @@ sweep set the variable; `r-stress-tests` is **opt-in on PRs via the
 `docs/GCTORTURE_TESTING.md` → "How CI runs the gctorture tests"). Label any PR
 that adds SEXP storage. The webR workflow is opt-in the same way via the
 `webr` label, and the Windows R CMD check via the `windows` label (non-gating;
-label-only while Windows support is deferred, #1654).
+label-only while Windows support is deferred, #1654). PRs check R 4.4 and
+release; a label named after an R version alias (`oldrel`, `devel`, `next`,
+spelled as rig and `setup-r` spell them) adds that Linux R CMD check leg, so
+it tracks R's yearly releases. Label a PR that touches R-version cfgs
+(`r_4_5`, `r_4_6`) `oldrel`. The leg still needs an R-path change to run.
 
 **Convention: ship a no-arg fixture with new SEXP-storage features.** The fast
 gctorture sweep over `rpkg/`'s exports only exercises functions callable with

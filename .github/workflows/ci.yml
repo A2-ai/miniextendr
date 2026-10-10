@@ -4,9 +4,10 @@ on:
   pull_request:
     # `labeled` / `unlabeled` let the opt-in jobs react to PR labels without a
     # new push: `run-e2e` (r-roundtrip-e2e), `heap-check` (the MALLOC_CHECK_
-    # rounds in r-tests), `gc-stress` (r-stress-tests) and `windows`
-    # (r-check-windows). The default activity types
-    # (opened/synchronize/reopened) cover everything else.
+    # rounds in r-tests), `gc-stress` (r-stress-tests), `windows`
+    # (r-check-windows), and the R version aliases `oldrel`, `devel` and
+    # `next` (an extra r-check-linux leg; see the `changes` job). The default
+    # activity types (opened/synchronize/reopened) cover everything else.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
@@ -163,7 +164,47 @@ jobs:
       rust: ${{ steps.filter.outputs.rust || 'true' }}
       r: ${{ steps.filter.outputs.r || 'true' }}
       docs: ${{ steps.filter.outputs.docs || 'true' }}
+      r_check_matrix: ${{ steps.r-check-matrix.outputs.matrix }}
     steps:
+      # The R versions r-check-linux checks. Every run checks the minimum
+      # supported R (4.4) and the current release. Pushes, the weekly schedule
+      # and manual runs add oldrel and devel. On a PR, a label named after an
+      # R version alias adds that leg: `oldrel` or `oldrel/N`, `devel`, `next`.
+      # rig and r-lib/actions/setup-r spell the aliases the same way, so the
+      # label is passed to setup-r as is, and it follows R's yearly releases
+      # without edits here. `full-ci` adds the legs a main push runs.
+      - name: R CMD check matrix
+        id: r-check-matrix
+        env:
+          EVENT: ${{ github.event_name }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          versions=()
+          if [ "$EVENT" != pull_request ]; then
+            versions+=(oldrel devel)
+          fi
+          IFS=',' read -ra labels <<< "$LABELS"
+          for label in "${labels[@]}"; do
+            if [ "$label" = full-ci ]; then
+              versions+=(oldrel devel)
+            elif [ "$label" = oldrel/1 ]; then
+              versions+=(oldrel)
+            elif [[ "$label" =~ ^(devel|next|oldrel(/[1-9][0-9]*)?)$ ]]; then
+              versions+=("$label")
+            fi
+          done
+          legs='{"r":"4.4"},{"r":"release"}'
+          seen=' '
+          for r in "${versions[@]}"; do
+            case "$seen" in *" $r "*) continue ;; esac
+            seen="$seen$r "
+            case "$r" in
+              # Pre-release R: report, but don't block the PR.
+              devel|next) legs="$legs,{\"r\":\"$r\",\"allow_failure\":true}" ;;
+              *) legs="$legs,{\"r\":\"$r\"}" ;;
+            esac
+          done
+          echo "matrix=[$legs]" | tee -a "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         if: github.event_name == 'push' && github.ref_type == 'branch'
       - name: Determine changed paths
@@ -738,12 +779,12 @@ jobs:
     if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
-      # Check the fixed minimum and current release on every PR. Additional
-      # R versions also run on main, the weekly schedule, and manual runs.
+      # The `changes` job picks the R versions: the fixed minimum and the
+      # current release on every PR, plus oldrel and devel on main, the weekly
+      # schedule and manual runs, and any R version alias label on a PR.
       matrix:
-        include: ${{ github.event_name == 'pull_request'
-          && fromJSON('[{"r":"4.4"},{"r":"release"}]')
-          || fromJSON('[{"r":"4.4"},{"r":"release"},{"r":"devel","allow_failure":true},{"r":"oldrel-1"}]') }}
+        include: ${{ fromJSON(needs.changes.outputs.r_check_matrix
+          || '[{"r":"4.4"},{"r":"release"},{"r":"oldrel"},{"r":"devel","allow_failure":true}]') }}
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
