@@ -1,4 +1,4 @@
-error: unknown `externalptr` option 'flutter'; expected a class system (env, r6, s3, s4, s7, vctrs) or `restored(class = ..., message = ...)`
+error: unknown `externalptr` option 'flutter'; expected a class system (env, r6, s3, s4, s7, vctrs), `restored(class = ..., message = ..., refuse = ...)` or `field_error(class = ...)`
  --> tests/ui/derive_externalptr_unknown_class_system.rs:6:15
   |
 6 | #[externalptr(flutter)]

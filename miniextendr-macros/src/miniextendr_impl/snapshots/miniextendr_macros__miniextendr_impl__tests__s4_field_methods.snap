@@ -26,22 +26,35 @@ Engine <- function(n) {
 if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), inherits = FALSE))) stop("`s4(r_data_accessors)` on `Engine` needs the field helpers `#[derive(ExternalPtr)]` emits for a type with an `#[r_data]` `RSidecar` selector and a `pub` `#[r_data]` field", call. = FALSE)
 
 #' @rdname Engine
+#' @param x An object.
 #' @param name A field name.
 #' @exportMethod $
 methods::setMethod("$", "Engine", function(x, name) {
-  if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment())
+  if (is.na(match(name, .rdata_fields_Engine))) {
+    if (!is.null(.rdata_live_Engine)) {
+      .val <- .rdata_live_Engine(x@ptr, TRUE)
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+    }
+    .rdata_no_field_Engine(name, environment())
+  }
   .val <- .rdata_get_Engine(x@ptr, name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   .val
 })
 
 #' @rdname Engine
+#' @param x An object.
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
-.DollarNames.Engine <- function(x, pattern = "") grep(pattern, .rdata_fields_Engine, value = TRUE)
+.DollarNames.Engine <- function(x, pattern = "") {
+  if (typeof(x@ptr) == "externalptr" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))
+  grep(pattern, .rdata_fields_Engine, value = TRUE)
+}
 
 #' @rdname Engine
+#' @param x An object.
 #' @param name A field name.
+#' @param value The new value of the field.
 #' @exportMethod $<-
 methods::setMethod("$<-", "Engine", function(x, name, value) {
   if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment())

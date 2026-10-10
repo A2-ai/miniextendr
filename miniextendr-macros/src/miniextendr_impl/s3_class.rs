@@ -284,10 +284,16 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name
         ));
     } else {
+        // On the impl's `@rdname` topic when it names one, after the topic's
+        // own block (#1900).
+        let topic = super::field_syntax::topic(parsed_impl);
+        let order = if topic == class_name {
+            String::new()
+        } else {
+            format!("#' {}\n", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS)
+        };
         lines.push(format!(
-            "#' @rdname {}
-{}{} <- new.env(parent = emptyenv())",
-            class_name, export_line, class_name
+            "#' @rdname {topic}\n{order}{export_line}{class_name} <- new.env(parent = emptyenv())"
         ));
     }
     lines.push(String::new());

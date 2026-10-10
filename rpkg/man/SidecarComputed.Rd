@@ -2,15 +2,6 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SidecarComputed}
 \alias{SidecarComputed}
-\alias{SidecarComputed_get_doubled}
-\alias{SidecarComputed_get_keys}
-\alias{SidecarComputed_set_keys}
-\alias{SidecarComputed_get_nothing}
-\alias{SidecarComputed_get_base}
-\alias{SidecarComputed_set_base}
-\alias{SidecarComputed_get_boom}
-\alias{SidecarComputed_get_table}
-\alias{SidecarComputed_set_table}
 \alias{new_sidecarcomputed}
 \alias{$.SidecarComputed}
 \alias{[[.SidecarComputed}
@@ -20,26 +11,8 @@
 \alias{$<-.SidecarComputed}
 \alias{[[<-.SidecarComputed}
 \alias{key_count.SidecarComputed}
-\title{SidecarComputed Sidecar Accessors}
+\title{SidecarComputed S3 Class}
 \usage{
-SidecarComputed_get_doubled(x)
-
-SidecarComputed_get_keys(x)
-
-SidecarComputed_set_keys(x, value)
-
-SidecarComputed_get_nothing(x)
-
-SidecarComputed_get_base(x)
-
-SidecarComputed_set_base(x, value)
-
-SidecarComputed_get_boom(x)
-
-SidecarComputed_get_table(x)
-
-SidecarComputed_set_table(x, value)
-
 new_sidecarcomputed(base)
 
 \method{$}{SidecarComputed}(x, name)
@@ -61,11 +34,9 @@ new_sidecarcomputed(base)
 SidecarComputed
 }
 \arguments{
-\item{x}{An object.}
-
-\item{value}{The new value to set}
-
 \item{base}{The base value.}
+
+\item{x}{An object.}
 
 \item{name}{A field name; \code{$} on the pointer itself also takes a unique prefix of one, as for a list.}
 
@@ -74,29 +45,10 @@ SidecarComputed
 \item{...}{Additional arguments.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
-}
-\value{
-The value of the \code{doubled} field
 
-The value of the \code{keys} field
-
-The SidecarComputed pointer (invisibly)
-
-The value of the \code{nothing} field
-
-The value of the \code{base} field
-
-The SidecarComputed pointer (invisibly)
-
-The value of the \code{boom} field
-
-The value of the \code{table} field
-
-The SidecarComputed pointer (invisibly)
+\item{value}{The new value of the field.}
 }
 \description{
-Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarComputed}.
-
 S3 class registration for SidecarComputed: the generated \code{$} / \code{[[} /
 \verb{$<-} / \verb{[[<-} read and write the fields, and \code{key_count()} takes the
 handle (the path a restored pointer refuses with the package's classes).

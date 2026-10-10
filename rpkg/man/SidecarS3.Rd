@@ -2,10 +2,6 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SidecarS3}
 \alias{SidecarS3}
-\alias{SidecarS3_get_data}
-\alias{SidecarS3_set_data}
-\alias{SidecarS3_get_tags}
-\alias{SidecarS3_set_tags}
 \alias{new_sidecars3}
 \alias{$.SidecarS3}
 \alias{[[.SidecarS3}
@@ -16,16 +12,8 @@
 \alias{[[<-.SidecarS3}
 \alias{tag_count.SidecarS3}
 \alias{add_tag.SidecarS3}
-\title{SidecarS3 Sidecar Accessors}
+\title{SidecarS3 S3 Class}
 \usage{
-SidecarS3_get_data(x)
-
-SidecarS3_set_data(x, value)
-
-SidecarS3_get_tags(x)
-
-SidecarS3_set_tags(x, value)
-
 new_sidecars3(data)
 
 \method{$}{SidecarS3}(x, name)
@@ -49,11 +37,9 @@ new_sidecars3(data)
 SidecarS3
 }
 \arguments{
-\item{x}{An object.}
-
-\item{value}{The new value to set}
-
 \item{data}{Numeric sidecar field.}
+
+\item{x}{An object.}
 
 \item{name}{A field name; \code{$} on the pointer itself also takes a unique prefix of one, as for a list.}
 
@@ -63,20 +49,11 @@ SidecarS3
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
 
+\item{value}{The new value of the field.}
+
 \item{tag}{The tag to append.}
 }
-\value{
-The value of the \code{data} field
-
-The SidecarS3 pointer (invisibly)
-
-The value of the \code{tags} field
-
-The SidecarS3 pointer (invisibly)
-}
 \description{
-Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS3}.
-
 S3 class registration for SidecarS3: the methods take the handle, which
 is how a method reads a \code{Sidecar} value. With \code{s3(r_data_accessors)},
 \code{x$tags} / \code{x[["tags"]]} read a field and \code{x$tags <- value} writes it.

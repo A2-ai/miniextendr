@@ -209,13 +209,21 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     } else if !should_export {
         lines.push("#' @export".to_string());
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
-        lines.push("#' @param self The object instance.".to_string());
-        lines.push(if fields {
-            "#' @param name A method or field name.".to_string()
-        } else {
-            "#' @param name Method name for dispatch.".to_string()
-        });
+        // The class's topic: the impl's own `@rdname`, else the class page.
+        lines.extend(super::field_syntax::page_lines(
+            parsed_impl,
+            &[
+                ("self", "The object instance."),
+                (
+                    "name",
+                    if fields {
+                        "A method or field name."
+                    } else {
+                        "Method name for dispatch."
+                    },
+                ),
+            ],
+        ));
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
@@ -261,6 +269,9 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        }".to_string());
     lines.push("      }".to_string());
     lines.push("    }".to_string());
+    if fields {
+        lines.extend(super::field_syntax::env_unknown_name_check(parsed_impl));
+    }
     lines.push("    NULL".to_string());
     lines.push("  } else {".to_string());
     lines.push("    environment(obj) <- environment()".to_string());
@@ -273,7 +284,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     } else if !should_export {
         lines.push("#' @export".to_string());
     } else {
-        lines.push(format!("#' @rdname {}", class_name));
+        lines.extend(super::field_syntax::page_lines(parsed_impl, &[]));
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));

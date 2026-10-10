@@ -19,9 +19,10 @@ use std::cell::RefCell;
 use std::fmt;
 
 use super::{
-    ExternalPtr, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored,
+    ExternalPtr, NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored,
     unwrap_class_handle,
 };
+use crate::condition::{ConditionCall, RCondition};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
@@ -460,7 +461,8 @@ fn is_type_id_symbol<T: TypedExternal>(sym: SEXP) -> bool {
 ///
 /// # Panics
 ///
-/// When `x` carries no external pointer.
+/// When `x` carries no external pointer, with the classed
+/// [`NO_HANDLE_CLASS`] error ([`refuse_no_handle`]).
 ///
 /// # Safety
 ///
@@ -471,11 +473,68 @@ unsafe fn sidecar_receiver<T: TypedExternal>(x: SEXP) -> SEXP {
     }
     match unsafe { unwrap_class_handle(x) } {
         Some(ptr) => ptr,
-        None => panic!(
+        None => refuse_no_handle::<T>(),
+    }
+}
+
+/// Raises the error for a receiver that carries no external pointer (#1901):
+/// [`NO_HANDLE_CLASS`], with the type's restored classes
+/// ([`TypedExternal::RESTORED_ERROR_CLASS`]) and field-error classes
+/// ([`TypedExternal::FIELD_ERROR_CLASS`], #1899) in front. Such a receiver is
+/// often an object of the class an earlier release wrote to disk, which a
+/// package refuses as it refuses a restored pointer.
+#[cold]
+fn refuse_no_handle<T: TypedExternal>() -> ! {
+    let class = no_handle_classes(T::RESTORED_ERROR_CLASS, T::FIELD_ERROR_CLASS);
+    std::panic::panic_any(RCondition::Error {
+        message: format!(
             "expected ExternalPtr<{}>, got a non-external-pointer object",
             T::TYPE_NAME
         ),
+        class,
+        data: None,
+        call: ConditionCall::Inherit,
+    })
+}
+
+/// The classes of [`refuse_no_handle`]: `restored`, then `field_error`, then
+/// [`NO_HANDLE_CLASS`], each class once at its last place. The two lists
+/// usually end in the package's one parent class (`["pkg_saved",
+/// "pkg_error"]` and `["pkg_field", "pkg_error"]`), which then follows both
+/// specific classes, as a class vector goes from specific to general.
+fn no_handle_classes(restored: &[&str], field_error: &[&str]) -> Vec<String> {
+    let all: Vec<&str> = restored
+        .iter()
+        .chain(field_error)
+        .chain(&[NO_HANDLE_CLASS])
+        .copied()
+        .collect();
+    all.iter()
+        .enumerate()
+        .filter(|&(i, c)| !all[i + 1..].contains(c))
+        .map(|(_, c)| (*c).to_owned())
+        .collect()
+}
+
+/// Raises the error for a receiver whose pointer is not a `T` (a pointer of
+/// another type, or one without an address that `T` did not build):
+/// `message`, with the type's field-error classes
+/// ([`TypedExternal::FIELD_ERROR_CLASS`], #1899) in front. A type without
+/// them gets the plain panic.
+#[cold]
+fn refuse_other_type<T: TypedExternal>(message: String) -> ! {
+    if T::FIELD_ERROR_CLASS.is_empty() {
+        panic!("{message}");
     }
+    std::panic::panic_any(RCondition::Error {
+        message,
+        class: T::FIELD_ERROR_CLASS
+            .iter()
+            .map(|c| (*c).to_owned())
+            .collect(),
+        data: None,
+        call: ConditionCall::Inherit,
+    })
 }
 
 /// Reads the `require_live` flag the R accessors' `.Call()`s pass: `TRUE`
@@ -524,13 +583,13 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP, require_live: bool) -> (SE
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
             unsafe { refuse_restored::<T>(x) };
-            panic!("expected ExternalPtr<{}>", T::TYPE_NAME);
+            refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME));
         }
         None
     } else {
         match unsafe { &*any_raw }.downcast_ref::<T>() {
             Some(value) => Some(value),
-            None => panic!("expected ExternalPtr<{}>", T::TYPE_NAME),
+            None => refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME)),
         }
     };
     if !usize::try_from(prot_index(T::R_SLOT_COUNT)).is_ok_and(|len| len <= prot.len()) {
@@ -592,15 +651,15 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
         unsafe { refuse_restored::<T>(x) };
-        panic!(
+        refuse_other_type::<T>(format!(
             "expected ExternalPtr<{}>, got a null external pointer",
             T::TYPE_NAME
-        );
+        ));
     }
     let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
     match any_box.downcast_mut::<T>() {
         Some(value) => std::ptr::from_mut(value),
-        None => panic!("expected ExternalPtr<{}>", T::TYPE_NAME),
+        None => refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME)),
     }
 }
 
@@ -618,6 +677,29 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
 #[doc(hidden)]
 pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
     let _ = unsafe { checked_prot::<T>(x, require_live) };
+}
+
+/// Whether the bare pointer `x` still has its Rust value, for the field
+/// methods of a type with `#[externalptr(restored(refuse = "every_read"))]`
+/// (#1901), which ask before a read that never reaches an accessor
+/// (`names()`, a name that is not a field).
+///
+/// With `raise`, a pointer without one is refused as the accessors refuse it
+/// ([`checked_prot`] with `require_live`: the type's restored error, or the
+/// other-type error) and a live pointer of another type is refused too, so
+/// the result is always `true`. Without it (`.DollarNames()`, which serves
+/// completion and never raises) the answer is whether `x` has an address.
+///
+/// # Safety
+///
+/// Must be called from R's main thread with a valid `x`.
+#[doc(hidden)]
+pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
+    if raise {
+        let _ = unsafe { checked_prot::<T>(x, true) };
+        return true;
+    }
+    x.type_of() == SEXPTYPE::EXTPTRSXP && !unsafe { R_ExternalPtrAddr(x) }.is_null()
 }
 
 /// Reads `T`'s `Sidecar` field `index` from the external pointer `x` carries
@@ -684,3 +766,27 @@ pub unsafe fn sidecar_r_set<T: TypedExternal>(
 }
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::no_handle_classes;
+
+    /// A parent class both lists share follows both specific classes.
+    #[test]
+    fn no_handle_classes_keep_each_class_at_its_last_place() {
+        assert_eq!(
+            no_handle_classes(&["pkg_saved", "pkg_error"], &["pkg_field", "pkg_error"]),
+            [
+                "pkg_saved",
+                "pkg_field",
+                "pkg_error",
+                "miniextendr_no_handle"
+            ]
+        );
+        assert_eq!(no_handle_classes(&[], &[]), ["miniextendr_no_handle"]);
+        assert_eq!(
+            no_handle_classes(&["pkg_error"], &[]),
+            ["pkg_error", "miniextendr_no_handle"]
+        );
+    }
+}

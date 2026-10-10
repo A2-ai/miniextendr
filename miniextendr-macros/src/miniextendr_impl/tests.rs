@@ -7337,12 +7337,13 @@ fn s3_field_methods() {
     );
     assert_eq!(s3_method_formals(&wrapper, "as.list.Engine"), "x, ...");
     // Conditions report the generic's call: the method frame is the fallback,
-    // in `$`, `[[`, `as.list`, the two setters and the instance method `size`.
+    // in `$`, `[[`, `as.list`, the two setters, the instance method `size`,
+    // and the liveness checks of `$`, `[[` (two) and `names` (#1901).
     assert_eq!(
         wrapper
             .matches(".miniextendr_raise_condition(.val, environment())")
             .count(),
-        6,
+        10,
         "{wrapper}"
     );
     assert!(
@@ -7361,7 +7362,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     let dollar = crate::naming::r_def_name(&format!("$.{class}"));
     assert!(
         wrapper.contains(&format!(
-            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) return(NULL)\n"
+            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) {{\n      if (!is.null(.rdata_live_Engine)) {{\n        .val <- .rdata_live_Engine(x, TRUE)\n"
         )),
         "{wrapper}"
     );
@@ -7371,11 +7372,11 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper
-            .contains("    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment())\n"),
+            .contains("    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n"),
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) return(NULL)\n"),
+        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {\n      if (!is.null(.rdata_live_Engine)) {\n"),
         "{wrapper}"
     );
     // No `miniextendr_no_field` on a read any more.
@@ -7386,7 +7387,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) if (typeof(x) == \"externalptr\") .rdata_fields_Engine else NextMethod()\n"
+            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) {{\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (!is.null(.rdata_live_Engine)) {{\n    .val <- .rdata_live_Engine(x, TRUE)\n"
         )),
         "{wrapper}"
     );
@@ -7402,7 +7403,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n"
+            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") {{\n  if (typeof(x) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n}}\n"
         )),
         "{wrapper}"
     );
@@ -7442,8 +7443,7 @@ fn s3_field_methods_without_a_constructor() {
     assert_eq!(s3_method_formals(&wrapper, "[[.engine_rec"), "x, i, ...");
     assert_s3_readers(&wrapper, "engine_rec");
     assert!(!wrapper.contains("`$<-.engine_rec`"), "{wrapper}");
-    // The derive documents `x` on the `Engine` page, so the methods document
-    // it on `engine_rec`'s.
+    // The methods document `x` on the class page.
     assert!(
         wrapper.contains("#' @rdname engine_rec\n#' @param x An object.\n#' @param name"),
         "{wrapper}"
@@ -7472,11 +7472,60 @@ fn s3_field_methods_under_a_class_rename() {
     );
     assert!(wrapper.contains("#' @method $<- Motor"), "{wrapper}");
     assert!(wrapper.contains(".rdata_get_Engine(x, name)"), "{wrapper}");
-    // The derive documents `x` / `value` on the `Engine` page, not `Motor`'s.
+    // The methods document `x` / `value` on the class page.
     assert!(
         wrapper.contains("#' @param value The new value of the field."),
         "{wrapper}"
     );
+}
+
+/// An impl-level `@rdname` puts the field methods on the author's topic
+/// (#1900): no generated `@param` lines, and `@order NaN` so the topic's own
+/// block names the page. S4 and env classes follow it too.
+#[test]
+fn field_methods_follow_the_impl_rdname() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        /// @rdname engine_api
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+        }
+    };
+    for (system, generate) in [
+        (
+            ClassSystem::S3,
+            generate_s3_r_wrapper as fn(&ParsedImpl) -> String,
+        ),
+        (ClassSystem::S4, generate_s4_r_wrapper),
+        (ClassSystem::Env, generate_env_r_wrapper),
+    ] {
+        let mut attrs = default_impl_attrs(system);
+        attrs.r_data_accessors = RDataAccessors::GetSet;
+        let wrapper = generate(&ParsedImpl::parse(attrs, item_impl.clone()).unwrap());
+        let mut methods = 0;
+        for definition in [
+            "`$.Engine` <- function",
+            "methods::setMethod(\"$\", \"Engine\"",
+            ".DollarNames.Engine <- function",
+            "`$<-.Engine` <- function",
+            "methods::setMethod(\"$<-\", \"Engine\"",
+        ] {
+            let Some(at) = wrapper.find(definition) else {
+                continue;
+            };
+            methods += 1;
+            let block = &wrapper[wrapper[..at].rfind("\n\n").unwrap_or(0)..at];
+            let block = &block[block.find("#' @rdname").expect("page tag")..];
+            assert!(
+                block.starts_with("#' @rdname engine_api\n#' @order NaN\n"),
+                "{system:?} {definition}: {block}"
+            );
+            assert!(
+                !block.contains("@param"),
+                "{system:?} {definition}: {block}"
+            );
+        }
+        assert!(methods >= 2, "{system:?}: {wrapper}");
+    }
 }
 
 #[test]
@@ -7498,7 +7547,7 @@ fn s4_field_methods() {
     assert!(wrapper.contains("#' @exportMethod $<-"), "{wrapper}");
     // `.DollarNames` is an S3 method on the S4 class, registered with the
     // qualified generic; it lists the fields only (an S4 object is no list).
-    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") grep(pattern, .rdata_fields_Engine, value = TRUE)\n";
+    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x@ptr) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))\n  grep(pattern, .rdata_fields_Engine, value = TRUE)\n}\n";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
     insta::assert_snapshot!(wrapper);
@@ -7537,7 +7586,7 @@ fn env_field_methods() {
     // `.DollarNames` lists the fields, then the class's methods, since `$`
     // reaches both; it follows the `[[` alias (and ends the wrapper in the
     // getters-only form, so no trailing newline is expected).
-    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)";
+    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 
