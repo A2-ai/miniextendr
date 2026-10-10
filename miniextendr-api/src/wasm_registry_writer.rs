@@ -11,9 +11,9 @@
 //! the wasm32-gated `mod __miniextendr_wasm_registry;` that includes it).
 //!
 //! The writer is intentionally pure-text-formatting — no `syn`, no
-//! `proc-macro2`, no template engine. Output is small, append-only, and
-//! byte-deterministic from the live distributed slices: the same source
-//! always regenerates the same file. The generated `wasm_registry.rs` is
+//! `proc-macro2`, no template engine. Registration rows are sorted so linker
+//! table order does not affect the output; conversion-error classes retain
+//! their dispatch precedence. The generated `wasm_registry.rs` is
 //! **gitignored** (regenerated on every host `R CMD INSTALL`); determinism is
 //! what lets `just r-cmd-build` reproduce it into the tarball and lets CI
 //! assert a non-stub snapshot rather than git-diffing a committed copy.
@@ -84,10 +84,28 @@ pub fn format_wasm_registry(
     trait_dispatches: &[TraitDispatchRow],
     conversion_error_class: &[&str],
 ) -> String {
+    // Linkme does not promise a stable order across linking configurations.
+    // Sort borrowed rows without cloning their owned symbol names. Condition
+    // classes are deliberately not sorted: R dispatch uses their input order.
+    let mut call_defs: Vec<_> = call_defs.iter().collect();
+    call_defs.sort_unstable_by(|a, b| (&a.name, a.num_args).cmp(&(&b.name, b.num_args)));
+    let mut altrep_regs: Vec<_> = altrep_regs.iter().collect();
+    altrep_regs.sort_unstable_by(|a, b| a.symbol.cmp(&b.symbol));
+    let mut trait_dispatches: Vec<_> = trait_dispatches.iter().collect();
+    trait_dispatches.sort_unstable_by_key(|row| {
+        (
+            &row.vtable_symbol,
+            row.concrete_tag.lo,
+            row.concrete_tag.hi,
+            row.trait_tag.lo,
+            row.trait_tag.hi,
+        )
+    });
+
     let body = format_body(
-        call_defs,
-        altrep_regs,
-        trait_dispatches,
+        &call_defs,
+        &altrep_regs,
+        &trait_dispatches,
         conversion_error_class,
     );
     let content_hash = fnv1a_64(body.as_bytes());
@@ -114,9 +132,9 @@ pub fn format_wasm_registry(
 }
 
 fn format_body(
-    call_defs: &[CallDefRow],
-    altrep_regs: &[AltrepRegRow],
-    trait_dispatches: &[TraitDispatchRow],
+    call_defs: &[&CallDefRow],
+    altrep_regs: &[&AltrepRegRow],
+    trait_dispatches: &[&TraitDispatchRow],
     conversion_error_class: &[&str],
 ) -> String {
     let mut out = String::new();
@@ -144,7 +162,7 @@ fn format_body(
     out
 }
 
-fn format_extern_unwind_block(out: &mut String, call_defs: &[CallDefRow]) {
+fn format_extern_unwind_block(out: &mut String, call_defs: &[&CallDefRow]) {
     writeln!(out, "unsafe extern \"C-unwind\" {{").unwrap();
     for row in call_defs {
         let params = sexp_param_list(row.num_args);
@@ -156,8 +174,8 @@ fn format_extern_unwind_block(out: &mut String, call_defs: &[CallDefRow]) {
 
 fn format_extern_c_block(
     out: &mut String,
-    altrep_regs: &[AltrepRegRow],
-    trait_dispatches: &[TraitDispatchRow],
+    altrep_regs: &[&AltrepRegRow],
+    trait_dispatches: &[&TraitDispatchRow],
 ) {
     writeln!(out, "unsafe extern \"C\" {{").unwrap();
     // ALTREP register fns get the 2024-edition `safe` qualifier so the fn
@@ -178,7 +196,7 @@ fn format_extern_c_block(
     writeln!(out).unwrap();
 }
 
-fn format_call_defs_slice(out: &mut String, call_defs: &[CallDefRow]) {
+fn format_call_defs_slice(out: &mut String, call_defs: &[&CallDefRow]) {
     writeln!(out, "pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[").unwrap();
     for row in call_defs {
         // The transmute target signature here is positional-only — Rust's
@@ -201,7 +219,7 @@ fn format_call_defs_slice(out: &mut String, call_defs: &[CallDefRow]) {
     writeln!(out).unwrap();
 }
 
-fn format_altrep_regs_slice(out: &mut String, altrep_regs: &[AltrepRegRow]) {
+fn format_altrep_regs_slice(out: &mut String, altrep_regs: &[&AltrepRegRow]) {
     writeln!(
         out,
         "pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &["
@@ -217,7 +235,7 @@ fn format_altrep_regs_slice(out: &mut String, altrep_regs: &[AltrepRegRow]) {
     writeln!(out).unwrap();
 }
 
-fn format_trait_dispatch_slice(out: &mut String, trait_dispatches: &[TraitDispatchRow]) {
+fn format_trait_dispatch_slice(out: &mut String, trait_dispatches: &[&TraitDispatchRow]) {
     writeln!(
         out,
         "pub static MX_TRAIT_DISPATCH_WASM: &[TraitDispatchEntry] = &["
@@ -429,6 +447,40 @@ mod tests {
         let first = format_wasm_registry(&a, &b, &c, CLASSES);
         let second = format_wasm_registry(&a, &b, &c, CLASSES);
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn registration_order_does_not_change_snapshot() {
+        let (mut calls, mut altreps, mut dispatches) = sample_inputs();
+        altreps.push(AltrepRegRow {
+            symbol: "__mx_altrep_reg_AnotherType".into(),
+        });
+        dispatches.push(TraitDispatchRow {
+            concrete_tag: mx_tag::new(1, 2),
+            trait_tag: mx_tag::new(3, 4),
+            vtable_symbol: "__VTABLE_ANOTHER".into(),
+        });
+        let expected = format_wasm_registry(&calls, &altreps, &dispatches, CLASSES);
+        calls.reverse();
+        altreps.reverse();
+        dispatches.reverse();
+        assert_eq!(
+            expected,
+            format_wasm_registry(&calls, &altreps, &dispatches, CLASSES)
+        );
+    }
+
+    #[test]
+    fn conversion_error_class_precedence_is_preserved() {
+        let (calls, altreps, dispatches) = sample_inputs();
+        let forward = format_wasm_registry(&calls, &altreps, &dispatches, CLASSES);
+        let reversed =
+            format_wasm_registry(&calls, &altreps, &dispatches, &[CLASSES[1], CLASSES[0]]);
+        assert_ne!(forward, reversed);
+        assert!(
+            forward.find("\"pkg_error_argument\"").unwrap()
+                < forward.find("\"pkg_error\"").unwrap()
+        );
     }
 
     #[test]
