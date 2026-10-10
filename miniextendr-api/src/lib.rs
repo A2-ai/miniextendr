@@ -337,7 +337,6 @@ pub use altrep_data::{
     AltStringData,
     AltrepDataptr,
     AltrepExtract,
-    AltrepIterator,
     AltrepLen,
     // Iterator-backed ALTREP types (R-native)
     IterComplexData,

@@ -72,21 +72,6 @@ where
         }
     }
 
-    /// Restore a completed prefix without retaining or rerunning an iterator.
-    pub(crate) fn from_materialized(values: Vec<T>) -> Self {
-        Self {
-            len: values.len(),
-            iter: RefCell::new(None),
-            cache: RefCell::new(Vec::new()),
-            materialized: OnceLock::from(values),
-        }
-    }
-
-    /// Borrow a completed buffer through a mutable path for writable pointers.
-    pub(crate) fn as_materialized_mut(&mut self) -> Option<&mut [T]> {
-        self.materialized.get_mut().map(Vec::as_mut_slice)
-    }
-
     /// Ensure the element at index `i` is in the cache and return it by value.
     ///
     /// Advances the iterator as needed. Only works for `Copy` types.

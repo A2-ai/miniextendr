@@ -3,15 +3,7 @@
 //! Provides lazy backing data for ALTREP vectors from Rust iterators. Elements
 //! are generated on-demand and cached for repeat access.
 //!
-//! ## Registered native iterator container
-//!
-//! `Altrep::from_exact_iter(iter)` and `Altrep::from_iter_with_len(iter, len)`
-//! return a registered [`AltrepIterator`] for `i32`, `f64`, `u8` and
-//! `Rcomplex`. These retain the complete prefix for repeatable random access.
-//! A short source is an error; elements beyond the declared length are never
-//! requested. See [`crate::Altrep::from_exact_iter`].
-//!
-//! ## Custom data adaptors
+//! ## Data adaptors, not R-facing vectors
 //!
 //! The `*Data` types in these submodules implement only the data-level traits
 //! ([`AltrepLen`](crate::altrep_data::AltrepLen) + the matching `Alt*Data`
@@ -29,7 +21,7 @@
 //! #[derive(miniextendr_api::AltrepInteger)]
 //! #[altrep(class = "MyLazyInts", manual)]
 //! struct MyLazyInts {
-//!     inner: IterIntData<Box<dyn Iterator<Item = i32>>>,
+//!     inner: IterIntData<std::ops::Range<i32>>,
 //! }
 //!
 //! impl AltrepLen for MyLazyInts {
@@ -45,6 +37,11 @@
 //! }
 //! ```
 //!
+//! Keep the concrete iterator type when its specialized operations or state
+//! matter to the class. The class chooses duplication and serialization policy:
+//! serializing cached values restores a snapshot, while restoring a lazy source
+//! requires a representation of that source's state.
+//!
 //! ## Submodules
 //!
 //! - [`state`]: Core `IterState<I, T>` + standard data adaptors (Int, Real, Logical, Raw)
@@ -54,13 +51,11 @@
 //! - [`windowed`]: Sliding-window iterators (`WindowedIterState`)
 
 mod coerce;
-mod registered;
 mod sparse;
 mod state;
 mod windowed;
 
 pub use coerce::*;
-pub use registered::AltrepIterator;
 pub use sparse::*;
 pub use state::*;
 pub use windowed::*;

@@ -1,5 +1,5 @@
 //! Built-in ALTREP class instantiations for `Vec<T>`, `Box<[T]>`, `Cow<T>`,
-//! `Range<T>`, `VecDeque<T>` and `AltrepIterator<T>`.
+//! `Range<T>` and `VecDeque<T>`.
 //!
 //! This file contains two crate-private declarative macros that are *not*
 //! `#[macro_export]`ed: `impl_builtin_altrep_family!` (emits the family impl
@@ -625,55 +625,6 @@ impl_builtin_altrep_family!(
 impl_register_altrep_builtin!(
     std::collections::VecDeque<crate::Rcomplex>,
     "VecDeque_Rcomplex"
-);
-
-// endregion
-
-// region: Registered native iterator classes
-
-impl_builtin_altrep_family!(
-    crate::altrep_data::AltrepIterator<i32>,
-    integer,
-    dataptr,
-    __mx_altrep_reg_builtin_AltrepIterator_i32,
-    __MX_ALTREP_REG_ENTRY_builtin_AltrepIterator_i32
-);
-impl_register_altrep_builtin!(
-    crate::altrep_data::AltrepIterator<i32>,
-    "AltrepIterator_i32"
-);
-
-impl_builtin_altrep_family!(
-    crate::altrep_data::AltrepIterator<f64>,
-    real,
-    dataptr,
-    __mx_altrep_reg_builtin_AltrepIterator_f64,
-    __MX_ALTREP_REG_ENTRY_builtin_AltrepIterator_f64
-);
-impl_register_altrep_builtin!(
-    crate::altrep_data::AltrepIterator<f64>,
-    "AltrepIterator_f64"
-);
-
-impl_builtin_altrep_family!(
-    crate::altrep_data::AltrepIterator<u8>,
-    raw,
-    dataptr,
-    __mx_altrep_reg_builtin_AltrepIterator_u8,
-    __MX_ALTREP_REG_ENTRY_builtin_AltrepIterator_u8
-);
-impl_register_altrep_builtin!(crate::altrep_data::AltrepIterator<u8>, "AltrepIterator_u8");
-
-impl_builtin_altrep_family!(
-    crate::altrep_data::AltrepIterator<crate::Rcomplex>,
-    complex,
-    dataptr,
-    __mx_altrep_reg_builtin_AltrepIterator_Rcomplex,
-    __MX_ALTREP_REG_ENTRY_builtin_AltrepIterator_Rcomplex
-);
-impl_register_altrep_builtin!(
-    crate::altrep_data::AltrepIterator<crate::Rcomplex>,
-    "AltrepIterator_Rcomplex"
 );
 
 // endregion
