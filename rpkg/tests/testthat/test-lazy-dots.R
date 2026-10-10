@@ -121,12 +121,13 @@ test_that("forcing an empty element raises R's missing-argument error", {
   e <- tryCatch(miniextendr:::lazy_dots_force(1, , 3), error = identity)
   expect_s3_class(e, "error")
   expect_identical(conditionMessage(e), 'argument "..2" is missing, with no default')
-  if (getRversion() >= "4.6.0") {
+  # R 4.5.0 classes missing-argument errors (`missingArgError`).
+  if (getRversion() >= "4.5.0") {
     expect_s3_class(e, "missingArgError")
   } else {
     expect_s3_class(e, "simpleError")
   }
-  # The call is the generated function's own (checked on R 4.4.3 and 4.6.1).
+  # The call is the generated function's own (checked on R 4.4.3, 4.5.3 and 4.6.1).
   expect_equal(conditionCall(e), quote(miniextendr:::lazy_dots_force(1, , 3)))
   f <- compiler::cmpfun(function() miniextendr:::lazy_dots_force(1, , 3))
   expect_equal(conditionCall(tryCatch(f(), error = identity)), quote(miniextendr:::lazy_dots_force(1, , 3)))

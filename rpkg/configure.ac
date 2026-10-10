@@ -130,7 +130,7 @@ if test -f "$abs_top_srcdir/inst/vendor.tar.xz" \
   It removes the archive and, if vendoring rewrote src/rust/Cargo.toml
   (cargo revendor --freeze), restores it from src/rust/.Cargo.toml.prefreeze.
   src/rust/Cargo.lock is left as is: cargo re-resolves it on the next
-  source build (or restore it with git). Without a snapshot, restore the
+  build from source (or restore it with git). Without a snapshot, restore the
   original dependency paths and patch entries by hand (git diff).
 
   Removing inst/vendor.tar.xz alone does not repair a frozen manifest.

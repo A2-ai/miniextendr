@@ -620,11 +620,12 @@ unsafe extern "C-unwind" {
 
     /// Non-zero if `x` has any attributes (`ATTRIB(x) != R_NilValue`).
     ///
-    /// The API replacement for testing `ATTRIB`. Calling this entry point
-    /// requires R >= 4.5.0: R 4.4's libR does not export it, so a package
-    /// that references it fails to load there. `SexpExt::has_attributes`
-    /// works on R 4.4 as well. Unlike `attributes()`, it ignores the tag
-    /// names of a pairlist.
+    /// The API replacement for testing `ATTRIB`. R 4.5.0 added it: R 4.4's
+    /// libR does not export it, so a package that references it fails to
+    /// load there, and it is declared only when building against R >= 4.5
+    /// (`r_4_5`, #1905). `SexpExt::has_attributes` works on R 4.4 as well.
+    /// Unlike `attributes()`, it ignores the tag names of a pairlist.
+    #[cfg(r_4_5)]
     #[doc(alias = "NO_ATTRIB")]
     pub fn ANY_ATTRIB(x: SEXP) -> ::std::os::raw::c_int;
 
@@ -929,10 +930,12 @@ unsafe extern "C-unwind" {
     // Environment operations
     /// Single-frame (`inherits = FALSE`) or inherited variable lookup with an
     /// `ifnotfound` default — the API-blessed replacement for
-    /// `Rf_findVarInFrame`. Calling this entry point requires R >= 4.5.0;
-    /// for R 4.4, evaluate `base::get0()` instead.
+    /// `Rf_findVarInFrame`. R 4.5.0 added it, so it is declared only when
+    /// building against R >= 4.5 (`r_4_5`, #1905); for R 4.4, evaluate
+    /// `base::get0()` instead.
     /// **Longjmps** if `rho` is not an environment or
     /// the binding is `R_MissingArg`; forces promises.
+    #[cfg(r_4_5)]
     #[doc(alias = "getVarEx")]
     pub fn R_getVarEx(sym: SEXP, rho: SEXP, inherits: Rboolean, ifnotfound: SEXP) -> SEXP;
     #[doc(alias = "defineVar")]
