@@ -2,6 +2,12 @@
 //!
 //! Provides adapter types that wrap `std::io::{Read, Write, Seek}` implementations
 //! and expose them as R connections via [`RConnectionImpl`].
+//!
+//! Boxed trait objects work through the same adapters:
+//! `RConnectionIo<Box<dyn Read>>`, `RConnectionIo<Box<dyn BufRead>>` and
+//! `RConnectionIo<Box<dyn Write>>` own the stream and retain its vtable.
+//! The boxed owner is sized; the connection state need not become unsized.
+//! Streams must be `'static` because R controls the connection's lifetime.
 
 use crate::SEXP;
 
