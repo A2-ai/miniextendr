@@ -7362,7 +7362,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     let dollar = crate::naming::r_def_name(&format!("$.{class}"));
     assert!(
         wrapper.contains(&format!(
-            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) {{\n      if (!is.null(.rdata_live_Engine)) {{\n        .val <- .rdata_live_Engine(x, TRUE)\n"
+            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) {{\n      if (.rdata_every_read_Engine) {{\n        .val <- .rdata_live_Engine(x, TRUE)\n"
         )),
         "{wrapper}"
     );
@@ -7376,7 +7376,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {\n      if (!is.null(.rdata_live_Engine)) {\n"),
+        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {\n      if (.rdata_every_read_Engine) {\n"),
         "{wrapper}"
     );
     // No `miniextendr_no_field` on a read any more.
@@ -7387,7 +7387,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) {{\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (!is.null(.rdata_live_Engine)) {{\n    .val <- .rdata_live_Engine(x, TRUE)\n"
+            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) {{\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (.rdata_every_read_Engine) {{\n    .val <- .rdata_live_Engine(x, TRUE)\n"
         )),
         "{wrapper}"
     );
@@ -7403,7 +7403,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") {{\n  if (typeof(x) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n}}\n"
+            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") {{\n  if (typeof(x) == \"externalptr\" && .rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n}}\n"
         )),
         "{wrapper}"
     );
@@ -7547,7 +7547,7 @@ fn s4_field_methods() {
     assert!(wrapper.contains("#' @exportMethod $<-"), "{wrapper}");
     // `.DollarNames` is an S3 method on the S4 class, registered with the
     // qualified generic; it lists the fields only (an S4 object is no list).
-    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x@ptr) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))\n  grep(pattern, .rdata_fields_Engine, value = TRUE)\n}\n";
+    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x@ptr) == \"externalptr\" && .rdata_every_read_Engine && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))\n  grep(pattern, .rdata_fields_Engine, value = TRUE)\n}\n";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
     insta::assert_snapshot!(wrapper);
@@ -7586,7 +7586,7 @@ fn env_field_methods() {
     // `.DollarNames` lists the fields, then the class's methods, since `$`
     // reaches both; it follows the `[[` alias (and ends the wrapper in the
     // getters-only form, so no trailing newline is expected).
-    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x) == \"externalptr\" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
+    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param x An object.\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") {\n  if (typeof(x) == \"externalptr\" && .rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))\n  grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)\n}";
     assert!(wrapper.contains(dollar_names), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 

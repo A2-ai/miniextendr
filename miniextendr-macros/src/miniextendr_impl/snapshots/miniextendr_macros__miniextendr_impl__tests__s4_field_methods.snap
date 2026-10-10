@@ -31,7 +31,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @exportMethod $
 methods::setMethod("$", "Engine", function(x, name) {
   if (is.na(match(name, .rdata_fields_Engine))) {
-    if (!is.null(.rdata_live_Engine)) {
+    if (.rdata_every_read_Engine) {
       .val <- .rdata_live_Engine(x@ptr, TRUE)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
     }
@@ -47,7 +47,7 @@ methods::setMethod("$", "Engine", function(x, name) {
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
 .DollarNames.Engine <- function(x, pattern = "") {
-  if (typeof(x@ptr) == "externalptr" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))
+  if (typeof(x@ptr) == "externalptr" && .rdata_every_read_Engine && !.rdata_live_Engine(x@ptr, FALSE)) return(character(0))
   grep(pattern, .rdata_fields_Engine, value = TRUE)
 }
 

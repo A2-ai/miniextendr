@@ -178,8 +178,14 @@ pub(crate) enum RDataHelper {
     /// front of their own errors, `#[externalptr(field_error(class = ...))]`
     /// (#1899); `NULL` without them.
     ErrorClass,
+    /// `.rdata_every_read_<Type>`: `TRUE` for a type with
+    /// `restored(refuse = "every_read")` (#1901), else `FALSE`; it gates the
+    /// field methods' calls of [`RDataHelper::Live`].
+    EveryRead,
     /// `.rdata_live_<Type>(x, raise)`: the liveness check of a type with
-    /// `restored(refuse = "every_read")` (#1901); `NULL` for other types.
+    /// `restored(refuse = "every_read")` (#1901). Other types get a stub that
+    /// is never called (gated by [`RDataHelper::EveryRead`]), so a binding
+    /// the methods call is always a function, as `R CMD check` expects.
     Live,
 }
 
@@ -193,6 +199,7 @@ pub(crate) fn rdata_helper_name(helper: RDataHelper, type_name: &str) -> String 
         RDataHelper::Set => "set",
         RDataHelper::NoField => "no_field",
         RDataHelper::ErrorClass => "error_class",
+        RDataHelper::EveryRead => "every_read",
         RDataHelper::Live => "live",
     };
     format!(".rdata_{helper}_{type_name}")

@@ -77,7 +77,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
         }
       }
     }
-    if (!is.null(.rdata_live_Engine)) {
+    if (.rdata_every_read_Engine) {
       .val <- .rdata_live_Engine(self, TRUE)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
     }
@@ -95,7 +95,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
 .DollarNames.Engine <- function(x, pattern = "") {
-  if (typeof(x) == "externalptr" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))
+  if (typeof(x) == "externalptr" && .rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))
   grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)
 }
 #' @rdname Engine

@@ -1577,7 +1577,7 @@ fn generate_class_integration_r_code(
 /// `miniextendr_no_field` error naming the fields, the classes the methods
 /// put in front of their own errors (`field_error`, `NULL` without them,
 /// #1899), and the liveness check of `restored(refuse = "every_read")`
-/// (`NULL` without it, #1901).
+/// with the flag that gates it (`FALSE` and a stub without it, #1901).
 ///
 /// Emitted for every type with R accessors, whatever `#[externalptr(...)]`
 /// names, so the impl's option never depends on the derive attribute. The
@@ -1654,14 +1654,18 @@ fn generate_field_syntax_helpers(
                 .join(", ")
         )
     };
+    // Without the option the methods never call the check (the flag is
+    // `FALSE`), but they name it, and `R CMD check` notes a call to a binding
+    // that is no function.
     let live = if every_read {
         format!(
             "function(x, raise) .Call({}, x, raise)",
             crate::naming::sidecar_live_c_name(type_name)
         )
     } else {
-        "NULL".to_string()
+        "function(x, raise) TRUE".to_string()
     };
+    let every_read = if every_read { "TRUE" } else { "FALSE" };
     format!(
         "\n# Field syntax helpers for {type_name} sidecar fields, shared by the `$` / `[[`\n\
          # methods `r_data_accessors` generates on S3, S4 and env classes. The `TRUE`\n\
@@ -1673,11 +1677,13 @@ fn generate_field_syntax_helpers(
          {no_field_fn} <- function(name, env) stop(errorCondition(\n\
          \x20 sprintf(\"`%s` is not a field of `{type_name}`; its fields are {listed}\", name),\n\
          \x20 class = c({error_class_var}, \"miniextendr_no_field\"), call = .miniextendr_frame_call(env)))\n\
+         {every_read_var} <- {every_read}\n\
          {live_fn} <- {live}\n",
         fields_var = rdata_helper_name(RDataHelper::Fields, type_name),
         get_fn = rdata_helper_name(RDataHelper::Get, type_name),
         set_fn = rdata_helper_name(RDataHelper::Set, type_name),
         no_field_fn = rdata_helper_name(RDataHelper::NoField, type_name),
+        every_read_var = rdata_helper_name(RDataHelper::EveryRead, type_name),
         live_fn = rdata_helper_name(RDataHelper::Live, type_name),
         get_arms = arms(false),
         set_arms = arms(true),
@@ -3049,6 +3055,7 @@ mod tests {
             )),
             "{out}"
         );
+        assert!(out.contains(".rdata_every_read_Engine <- TRUE"), "{out}");
 
         let out = super::derive_external_ptr(
             syn::parse_str(
@@ -3062,7 +3069,11 @@ mod tests {
         assert!(!out.contains("FIELD_ERROR_CLASS"), "{out}");
         assert!(!out.contains("mx_rdata_live_"), "{out}");
         assert!(out.contains(".rdata_error_class_Engine <- NULL"), "{out}");
-        assert!(out.contains(".rdata_live_Engine <- NULL"), "{out}");
+        assert!(out.contains(".rdata_every_read_Engine <- FALSE"), "{out}");
+        assert!(
+            out.contains(".rdata_live_Engine <- function(x, raise) TRUE"),
+            "{out}"
+        );
     }
 
     /// The standalone accessors go to a `SidecarAccessorsEntry` in two

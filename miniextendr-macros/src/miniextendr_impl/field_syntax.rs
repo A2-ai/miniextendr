@@ -48,8 +48,11 @@ struct Helpers {
     /// The classes in front of the methods' own errors (#1899), `NULL`
     /// without `field_error(...)`.
     error_class: String,
-    /// The liveness check of `restored(refuse = "every_read")` (#1901),
-    /// `NULL` without it.
+    /// `TRUE` under `restored(refuse = "every_read")` (#1901): it gates the
+    /// calls of `live`.
+    every_read: String,
+    /// The liveness check of `restored(refuse = "every_read")` (#1901), a
+    /// stub that is never called without it.
     live: String,
 }
 
@@ -62,6 +65,7 @@ impl Helpers {
             set: rdata_helper_name(RDataHelper::Set, &type_name),
             no_field: rdata_helper_name(RDataHelper::NoField, &type_name),
             error_class: rdata_helper_name(RDataHelper::ErrorClass, &type_name),
+            every_read: rdata_helper_name(RDataHelper::EveryRead, &type_name),
             live: rdata_helper_name(RDataHelper::Live, &type_name),
         }
     }
@@ -69,9 +73,9 @@ impl Helpers {
     /// Under `restored(refuse = "every_read")` (#1901), the check a read
     /// that reaches no accessor makes first on the bare pointer `receiver`:
     /// a pointer without its Rust value raises the type's restored error. A
-    /// type without the option has no check (`NULL`).
+    /// type without the option skips it (its flag is `FALSE`).
     fn live_check(&self, receiver: &str, indent: &str) -> Vec<String> {
-        let mut lines = vec![format!("{indent}if (!is.null({})) {{", self.live)];
+        let mut lines = vec![format!("{indent}if ({}) {{", self.every_read)];
         lines.push(format!("{indent}  .val <- {}({receiver}, TRUE)", self.live));
         lines.extend(guard(&format!("{indent}  ")));
         lines.push(format!("{indent}}}"));
@@ -83,7 +87,8 @@ impl Helpers {
     /// `.DollarNames()` serves completion, so it never raises.
     fn dollar_names_guard(&self, receiver: &str) -> String {
         format!(
-            "  if (typeof({receiver}) == \"externalptr\" && !is.null({live}) && !{live}({receiver}, FALSE)) return(character(0))",
+            "  if (typeof({receiver}) == \"externalptr\" && {every_read} && !{live}({receiver}, FALSE)) return(character(0))",
+            every_read = self.every_read,
             live = self.live
         )
     }
@@ -143,11 +148,14 @@ fn load_check(parsed_impl: &ParsedImpl, system: &str) -> String {
 /// The `@param` lines of the field methods on the class page, without the
 /// names the constructor documents there: roxygen2 keeps the last `@param`
 /// of a name on a page, and these blocks must not replace the constructor's
-/// text. (The type's standalone accessors, which documented `x` / `value` on
-/// the page named after the type, are internal under field syntax, #1900.)
+/// text. An env class's `Class$new()` lists its arguments in a `\describe{}`
+/// list, not as `@param` lines, so it takes nothing away. (The type's
+/// standalone accessors, which documented `x` / `value` on the page named
+/// after the type, are internal under field syntax, #1900.)
 fn param_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String> {
     let documented: Vec<String> = parsed_impl
         .constructor()
+        .filter(|_| parsed_impl.class_system != ClassSystem::Env)
         .map(|ctor| {
             crate::r_wrapper_builder::r_formal_names(&ctor.sig.inputs)
                 .map(|(name, _)| name)

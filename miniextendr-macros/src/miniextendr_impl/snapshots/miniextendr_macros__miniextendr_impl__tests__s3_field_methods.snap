@@ -28,7 +28,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
   if (typeof(x) == "externalptr") {
     i <- pmatch(name, .rdata_fields_Engine)
     if (is.na(i)) {
-      if (!is.null(.rdata_live_Engine)) {
+      if (.rdata_every_read_Engine) {
         .val <- .rdata_live_Engine(x, TRUE)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
       }
@@ -55,7 +55,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 `[[.Engine` <- function(x, i, ...) {
   if (typeof(x) == "externalptr" && length(i) == 1L && (is.numeric(i) || is.logical(i))) {
     if (is.na(i)) {
-      if (!is.null(.rdata_live_Engine)) {
+      if (.rdata_every_read_Engine) {
         .val <- .rdata_live_Engine(x, TRUE)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
       }
@@ -64,7 +64,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
     i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)
   } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
     if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) {
-      if (!is.null(.rdata_live_Engine)) {
+      if (.rdata_every_read_Engine) {
         .val <- .rdata_live_Engine(x, TRUE)
         if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
       }
@@ -83,7 +83,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @export
 names.Engine <- function(x) {
   if (typeof(x) != "externalptr") return(NextMethod())
-  if (!is.null(.rdata_live_Engine)) {
+  if (.rdata_every_read_Engine) {
     .val <- .rdata_live_Engine(x, TRUE)
     if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   }
@@ -113,7 +113,7 @@ as.list.Engine <- function(x, ...) {
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
 .DollarNames.Engine <- function(x, pattern = "") {
-  if (typeof(x) == "externalptr" && !is.null(.rdata_live_Engine) && !.rdata_live_Engine(x, FALSE)) return(character(0))
+  if (typeof(x) == "externalptr" && .rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))
   grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != "externalptr") names(x)), value = TRUE)
 }
 

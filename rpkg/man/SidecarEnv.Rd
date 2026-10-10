@@ -26,6 +26,8 @@ SidecarEnv
 \arguments{
 \item{self}{The object instance.}
 
+\item{name}{A method or field name.}
+
 \item{x}{An object.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
