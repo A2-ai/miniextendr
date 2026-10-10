@@ -1751,13 +1751,14 @@ revendor-timings:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Cleaning..."
-    cd cargo-revendor && cargo clean 2>/dev/null || true
+    cargo clean --manifest-path cargo-revendor/Cargo.toml
     echo "Building with --timings..."
-    cd cargo-revendor && cargo build --timings 2>&1 | tail -3
+    cargo build --manifest-path cargo-revendor/Cargo.toml --timings
+    target="$(cargo metadata --manifest-path cargo-revendor/Cargo.toml --format-version 1 --no-deps | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')"
     echo ""
     python3 -c "
-    import re, json
-    html = open('cargo-revendor/target/cargo-timings/cargo-timing.html').read()
+    import re, json, sys
+    html = open(sys.argv[1]).read()
     m = re.search(r'UNIT_DATA\s*=\s*(\[.+?\]);\s', html, re.DOTALL)
     if not m:
         print('Could not parse timing data')
@@ -1772,7 +1773,7 @@ revendor-timings:
     print('-' * 50)
     for d in data[:15]:
         print(f'  {d.get(\"duration\", 0):5.1f}s  {d.get(\"name\", \"?\")} {d.get(\"version\", \"\")}')
-    "
+    " "$target/cargo-timings/cargo-timing.html"
 
 # Run cargo-revendor tests (offline only)
 revendor-test:
