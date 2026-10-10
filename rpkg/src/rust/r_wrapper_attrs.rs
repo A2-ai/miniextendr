@@ -1,5 +1,8 @@
 //! Tests for `r_name`, `r_entry`, `r_post_checks`, and `r_on_exit` attributes.
 
+use miniextendr_api::dataframe::BuiltDataFrame;
+use miniextendr_api::dots::Dots;
+use miniextendr_api::list::NamedList;
 use miniextendr_api::{ExternalPtr, miniextendr};
 
 // region: Standalone function: r_name
@@ -11,6 +14,23 @@ use miniextendr_api::{ExternalPtr, miniextendr};
 #[miniextendr(r_name = "is.widget")]
 pub fn is_widget(x: i32) -> bool {
     x > 0
+}
+// endregion
+
+// region: Standalone function: delayed S3 registration (#1944)
+
+/// Columns of an `mx_delayed_rows` list as a data frame.
+///
+/// Registered only through `@exportS3Method tibble::as_tibble`: tibble is in
+/// Suggests, so the package must load without it. An automatic bare `@export`
+/// next to the delayed registration used to make loading fail (#1944).
+///
+/// @param x An `mx_delayed_rows` list of equal-length columns.
+/// @param ... Unused.
+/// @exportS3Method tibble::as_tibble
+#[miniextendr(r_name = "as_tibble.mx_delayed_rows")]
+pub fn as_tibble_mx_delayed_rows(x: NamedList, _dots: &Dots) -> BuiltDataFrame {
+    x.as_data_frame().unwrap_or_else(|e| panic!("{e}"))
 }
 // endregion
 
