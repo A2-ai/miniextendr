@@ -309,14 +309,22 @@ pub unsafe fn materialize_altrep_data2<T: crate::RNativeType>(x: SEXP) -> *mut c
 }
 
 /// Trait for ALTREP types that support serialization.
-pub trait AltrepSerialize: Sized {
+pub trait AltrepSerialize {
     /// Convert the ALTREP data to a serializable R object.
     fn serialized_state(&self) -> SEXP;
 
     /// Reconstruct the ALTREP data from a serialized state.
     ///
     /// Return `None` if the state is invalid or cannot be deserialized.
-    fn unserialize(state: SEXP) -> Option<Self>;
+    /// The default declines reconstruction, allowing unsized views to implement
+    /// the save side alone. Owned backends enabling the ALTREP unserialize
+    /// callback should override this method.
+    fn unserialize(_state: SEXP) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
 }
 
 /// Trait for ALTREP types that can provide optimized subsetting.
@@ -335,7 +343,9 @@ pub trait AltrepExtractSubset {
 ///
 /// The default implementation (for types that implement `TypedExternal`) extracts
 /// via `ExternalPtr<T>` downcast from data1. Power users who want native SEXP
-/// storage can implement this trait manually.
+/// storage can implement this trait manually, including unsized views. Only
+/// the default ExternalPtr storage requires a sized owner; reference extraction
+/// itself does not.
 ///
 /// # Safety
 ///
@@ -350,7 +360,7 @@ pub trait AltrepExtractSubset {
 /// data type. The panic is caught by the ALTREP guard (`RustUnwind` or `RUnwind`)
 /// and converted to an R error. Using `AltrepGuard::Unsafe` with a type that
 /// can fail extraction is unsound.
-pub trait AltrepExtract: Sized {
+pub trait AltrepExtract {
     /// Extract a shared reference from the ALTREP data1 slot.
     ///
     /// # Safety
