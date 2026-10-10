@@ -213,9 +213,15 @@ impl ConditionCall {
 
 // endregion
 
-// region: RCondition enum — internal panic payload
+// region: RCondition enum — structured condition payload
 
-/// Internal panic payload for structured R conditions.
+/// Owned payload for structured R conditions.
+///
+/// `#[derive(RCondition)]` gives a struct or enum a conversion into this
+/// payload. Its `#[condition(kind = warning)]` (or `error` / `message` /
+/// `condition`) chooses the signal; an enum variant can override the kind.
+/// Convert with `RCondition::from(value)`, then call [`defer`](Self::defer)
+/// to accompany a return value, or [`raise`](Self::raise) to leave Rust.
 ///
 /// Raised by the `error!()`, `warning!()`, `message!()`, and `condition!()`
 /// macros via `std::panic::panic_any`. Caught by `with_r_unwind_protect`
@@ -224,30 +230,34 @@ impl ConditionCall {
 /// ([`crate::deferred_condition`]) queues the same payloads instead of
 /// panicking, so the call still returns its value.
 ///
-/// This type is `#[doc(hidden)]` because users interact with the macros,
-/// not the enum directly.
-///
 /// Every variant carries the same four parts: the message, the user classes
 /// (prepended to the `rust_*` layering, empty for none), the optional `data`
 /// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
 /// the payload can be queued from a worker thread. Each variant is one kind
 /// of the tagged condition value ([`crate::error_value::kind`]).
-#[doc(hidden)]
 #[derive(Debug)]
 pub enum RCondition {
     /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
     /// `Result<T, E>` Err arm once reconstructed across a package boundary.
     Error {
+        /// Human-readable condition message.
         message: String,
+        /// User classes, most specific first, before the framework's classes.
         class: Vec<String>,
+        /// Named fields attached to the R condition.
         data: Option<ConditionData>,
+        /// Call attribution policy; messages always omit the call.
         call: ConditionCall,
     },
     /// Raised by `warning!(...)` / `warning!(class = "...", ...)`.
     Warning {
+        /// Human-readable condition message.
         message: String,
+        /// User classes, most specific first, before the framework's classes.
         class: Vec<String>,
+        /// Named fields attached to the R condition.
         data: Option<ConditionData>,
+        /// Call attribution policy; messages always omit the call.
         call: ConditionCall,
     },
     /// Raised by `message!(...)`, and queued by [`crate::defer_message()`]. Only
@@ -255,16 +265,24 @@ pub enum RCondition {
     /// the R helper layers it in front of `rust_message` like the other kinds.
     /// A message never reports a call, whatever `call` says.
     Message {
+        /// Human-readable condition message.
         message: String,
+        /// User classes, most specific first, before the framework's classes.
         class: Vec<String>,
+        /// Named fields attached to the R condition.
         data: Option<ConditionData>,
+        /// Call attribution policy; messages always omit the call.
         call: ConditionCall,
     },
     /// Raised by `condition!(...)` / `condition!(class = "...", ...)`.
     Condition {
+        /// Human-readable condition message.
         message: String,
+        /// User classes, most specific first, before the framework's classes.
         class: Vec<String>,
+        /// Named fields attached to the R condition.
         data: Option<ConditionData>,
+        /// Call attribution policy; messages always omit the call.
         call: ConditionCall,
     },
     /// An argument error, `kind = "conversion"`: raised by
@@ -272,14 +290,36 @@ pub enum RCondition {
     /// [`RCondition::arg_error`]), and a failed argument conversion once
     /// reconstructed across a package boundary.
     Conversion {
+        /// Human-readable condition message.
         message: String,
+        /// User classes, most specific first, before the framework's classes.
         class: Vec<String>,
+        /// Named fields attached to the R condition.
         data: Option<ConditionData>,
+        /// Call attribution policy; messages always omit the call.
         call: ConditionCall,
     },
 }
 
 impl RCondition {
+    /// Leave the current Rust body with this condition.
+    ///
+    /// The enclosing miniextendr guard forwards it to R with its kind and
+    /// metadata intact. Like `warning!`, raising a warning still exits Rust:
+    /// muffling it in R does not resume this Rust body. Use [`defer`](Self::defer)
+    /// to keep computing and return a value.
+    pub fn raise(self) -> ! {
+        std::panic::panic_any(self)
+    }
+
+    /// Queue this condition until the current guarded call returns.
+    ///
+    /// Preserves its declared kind, classes, fields and call policy, including
+    /// for a mixed-kind enum. Errors queued here stop R at that boundary.
+    pub fn defer(self) {
+        crate::deferred_condition::defer(self);
+    }
+
     /// Split into the kind (one of [`crate::error_value::kind`]) and the
     /// [`ErrParts`] (message, class, data, call choice) that
     /// [`crate::error_value::condition_parts_value`] builds the tagged value
@@ -1435,6 +1475,10 @@ pub trait RConditionError {
 /// the derive together.
 #[doc(inline)]
 pub use miniextendr_macros::RConditionError;
+
+/// Derive a conversion into [`RCondition`](enum@RCondition) with a declared signal kind.
+#[doc(inline)]
+pub use miniextendr_macros::RCondition;
 
 /// A ready-made classed error value for `Result<T, RError>` returns.
 ///

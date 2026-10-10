@@ -3035,6 +3035,25 @@ pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         .into()
 }
 
+/// Derive a typed R condition payload for a struct or enum.
+///
+/// Generates the same metadata as `RConditionError` plus `From<Self>` for
+/// `miniextendr_api::RCondition`. Use `#[condition(kind = warning)]` on a
+/// struct or enum, and override the kind on individual variants. The kinds
+/// are `error`, `warning`, `message` and `condition` (the default).
+///
+/// Convert with `RCondition::from(payload)`, then `.defer()` to keep computing
+/// or `.raise()` to leave the current Rust body. Classes, message, fields and
+/// call policy use the same attributes as `RConditionError`. Do not derive
+/// both: this derive already generates that metadata implementation.
+#[proc_macro_derive(RCondition, attributes(condition))]
+pub fn derive_r_condition(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    condition_derive::derive_r_condition(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
 /// Derive `RConditionError` for an error or warning payload type: the R class
 /// vector, the message and the `data` fields handlers read as `e$<name>`.
 ///

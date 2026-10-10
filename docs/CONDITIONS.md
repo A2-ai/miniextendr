@@ -612,6 +612,52 @@ The same derive serves
 [deferred conditions](#deferred-conditions-a-warning-and-a-value) and
 `Result<T, E>` returns.
 
+### Typed warnings, messages and mixed condition enums
+
+`#[derive(RCondition)]` uses the same class, message, field and call attributes
+and adds a conversion into an owned `RCondition`. A `kind` on the type sets
+its default; an enum variant can override it. The choices are `warning`,
+`message`, `error` and `condition` (the default).
+
+```rust
+use miniextendr_api::RCondition;
+
+#[derive(RCondition)]
+#[condition(kind = warning, class = "pkg_warning", message = "dropped {n} rows")]
+struct DroppedRows {
+    n: i32,
+}
+
+// Queue a warning and keep computing the return value.
+RCondition::from(DroppedRows { n: 2 }).defer();
+
+#[derive(RCondition)]
+#[condition(kind = warning, class = "pkg_diagnostic")]
+enum Diagnostic {
+    #[condition(message = "dropped {n} rows")]
+    Dropped { n: i32 },
+    #[condition(kind = message, message = "finished {n} rows")]
+    Finished { n: i32 },
+    #[condition(kind = error, message = "input is empty", call = none)]
+    Empty,
+}
+
+RCondition::from(Diagnostic::Finished { n: 10 }).defer();
+```
+
+`.defer()` queues the declared kind until the current guarded call returns.
+`.raise()` uses `panic_any(RCondition)` to leave the Rust body immediately;
+muffling a warning in R does not resume that body. Both routes preserve the
+classes, fields and call policy. Plain `panic_any(DroppedRows { n: 2 })`
+does not perform this conversion; convert into `RCondition` first.
+
+The derive also generates `RConditionError` metadata, so do not derive both.
+Existing `Result<T, E>` and `defer_warning` / `defer_message` /
+`defer_condition` functions still choose their own kind; use the explicit
+conversion when the payload's declared kind should decide. As with
+`RConditionError`, named, tuple and unit shapes are supported, and generic
+types are rejected.
+
 ### Deriving the classes from a serde error type
 
 When the error type already derives `serde::Serialize` (for logging, JSON
