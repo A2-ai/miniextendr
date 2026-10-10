@@ -519,6 +519,47 @@ pub fn rust_write_to_null(message: String) {
     writeln!(n, "{message}").expect("write to RNullConnection failed");
 }
 
+/// Write a line to a connection the R caller passes in.
+///
+/// The `RNullConnection` handle borrows `con`: dropping it at the end of the
+/// call leaves the connection open, so the caller can keep writing to it.
+/// @param con An open, write-capable connection, such as `file(path, "w")`.
+/// @param text Line to write.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_null_conn_write(con: miniextendr_api::connection::RNullConnection, text: String) {
+    use std::io::Write;
+    let mut con = con;
+    writeln!(con, "{text}").expect("write to borrowed connection failed");
+}
+
+/// Close a borrowed `RNullConnection` handle, then write through it.
+///
+/// `close()` on a borrowed handle stops the handle and leaves the caller's
+/// connection open.
+/// @param con An open, write-capable connection, such as `file(path, "w")`.
+/// @return `TRUE` when the handle refused the write after `close()`.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_null_conn_close_then_write(con: miniextendr_api::connection::RNullConnection) -> bool {
+    use std::io::Write;
+    let mut con = con;
+    con.close();
+    con.write_all(b"after close\n").is_err()
+}
+
+/// Open a null connection, then panic while it is still open.
+///
+/// The panic's unwind drops the handle, which closes its connection; the
+/// panic itself reaches R as an error.
+/// @param message Panic message.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_null_conn_panic_while_open(message: String) {
+    let _null = miniextendr_api::connection::RNullConnection::new();
+    panic!("{message}");
+}
+
 // endregion
 
 // region: txtProgressBar fixtures — issue #177
@@ -587,6 +628,35 @@ pub fn rust_run_progress_explicit_close(n: i32) -> bool {
         pb.set(i as f64).ok();
     }
     pb.close().is_ok() // explicit close path — Drop is no-op after this
+}
+
+/// Set a progress bar the R caller passes in, and read the value back.
+///
+/// The `RTxtProgressBar` handle borrows `pb`: dropping it at the end of the
+/// call leaves the bar open, so the caller can keep updating it.
+/// @param pb A `utils::txtProgressBar()` object.
+/// @param value Value to set.
+/// @return The bar's value after the update.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_txt_progress_bar_set(
+    pb: miniextendr_api::txt_progress_bar::RTxtProgressBar,
+    value: f64,
+) -> f64 {
+    pb.set(value).expect("setTxtProgressBar() failed");
+    pb.get().expect("getTxtProgressBar() failed")
+}
+
+/// Explicitly close a borrowed `RTxtProgressBar` handle.
+///
+/// `close()` on a borrowed handle gives up the handle and leaves the caller's
+/// bar open.
+/// @param pb A `utils::txtProgressBar()` object.
+/// @return `TRUE` when `close()` succeeded.
+#[cfg(feature = "connections")]
+#[miniextendr]
+pub fn rust_txt_progress_bar_close(pb: miniextendr_api::txt_progress_bar::RTxtProgressBar) -> bool {
+    pb.close().is_ok()
 }
 
 // endregion

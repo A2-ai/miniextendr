@@ -280,6 +280,46 @@ test_that("rust_get_null_connection double-close is safe", {
   succeed()
 })
 
+test_that("an owned RNullConnection closes its own connection on drop (#1917)", {
+  before <- nrow(showConnections(all = TRUE))
+  rust_write_to_null("discarded")
+  expect_equal(nrow(showConnections(all = TRUE)), before)
+})
+
+test_that("a panic with an open RNullConnection is an R error, and the handle closes (#1917)", {
+  before <- nrow(showConnections(all = TRUE))
+  expect_error(rust_null_conn_panic_while_open("boom-while-open"), "boom-while-open")
+  expect_equal(nrow(showConnections(all = TRUE)), before)
+})
+
+test_that("a connection passed in as RNullConnection stays open after the call (#1917)", {
+  tmp <- tempfile()
+  con <- file(tmp, "w")
+  on.exit({
+    try(close(con), silent = TRUE)
+    unlink(tmp)
+  })
+  rust_null_conn_write(con, "from-rust")
+  expect_true(isOpen(con))
+  expect_no_error(writeLines("after", con))
+  close(con)
+  expect_equal(readLines(tmp), c("from-rust", "after"))
+})
+
+test_that("close() on a borrowed RNullConnection leaves the R connection open (#1917)", {
+  tmp <- tempfile()
+  con <- file(tmp, "w")
+  on.exit({
+    try(close(con), silent = TRUE)
+    unlink(tmp)
+  })
+  expect_true(rust_null_conn_close_then_write(con))
+  expect_true(isOpen(con))
+  writeLines("after", con)
+  close(con)
+  expect_equal(readLines(tmp), "after")
+})
+
 # =============================================================================
 # txtProgressBar (PR B / #177)
 # =============================================================================
@@ -288,6 +328,8 @@ test_that("rust_run_progress emits a style-3 progress bar", {
   out <- capture.output(rust_run_progress(5L))
   # style 3 looks like: |====      | 80% or |==========| 100%
   expect_true(any(grepl("\\|.+\\|.+%", out)))
+  # set() advances the bar past its initial 0% draw (#1917).
+  expect_true(any(grepl("100%", out, fixed = TRUE)))
 })
 
 test_that("rust_run_progress_to_stderr captures via sink(message)", {
@@ -311,4 +353,27 @@ test_that("RTxtProgressBar explicit close() succeeds and Drop is no-op", {
 
 test_that("gc_stress_txt_progress_bar does not segfault", {
   expect_no_error(miniextendr:::gc_stress_txt_progress_bar())
+})
+
+test_that("a txtProgressBar passed in as RTxtProgressBar stays open after the call (#1917)", {
+  buf <- character(0)
+  tc <- textConnection("buf", "w", local = TRUE)
+  on.exit(close(tc))
+  pb <- txtProgressBar(min = 0, max = 10, style = 3, file = tc)
+  expect_equal(rust_txt_progress_bar_set(pb, 4), 4)
+  expect_false(environment(pb$kill)$.killed)
+  setTxtProgressBar(pb, 7)
+  expect_equal(getTxtProgressBar(pb), 7)
+  close(pb)
+  expect_true(environment(pb$kill)$.killed)
+})
+
+test_that("close() on a borrowed RTxtProgressBar leaves the bar open (#1917)", {
+  buf <- character(0)
+  tc <- textConnection("buf", "w", local = TRUE)
+  on.exit(close(tc))
+  pb <- txtProgressBar(min = 0, max = 10, style = 3, file = tc)
+  expect_true(rust_txt_progress_bar_close(pb))
+  expect_false(environment(pb$kill)$.killed)
+  close(pb)
 })

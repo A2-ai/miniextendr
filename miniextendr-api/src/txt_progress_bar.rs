@@ -2,10 +2,11 @@
 //!
 //! [`RTxtProgressBar`] constructs and drives R's built-in text progress bar
 //! entirely from Rust. The bar is created via `utils::txtProgressBar()` and
-//! pinned on R's precious list for the lifetime of the struct. It
-//! auto-closes on [`Drop`] (calls `pb$kill()` through
+//! pinned on R's precious list for the lifetime of the struct. A bar the
+//! handle built auto-closes on [`Drop`] (calls `pb$kill()` through
 //! [`RCall::eval`](crate::expression::RCall::eval), which catches an R error,
-//! so that the close path cannot unwind through a Rust destructor stack).
+//! so that the close path cannot unwind through a Rust destructor stack). A bar
+//! passed in from R is borrowed: the handle drives it but never closes it.
 //!
 //! # Feature gate
 //!
@@ -33,11 +34,18 @@ use crate::{SEXP, SexpExt};
 
 // region: RTxtProgressBar struct
 
-/// A Rust-owned handle to an R `utils::txtProgressBar`.
+/// A Rust handle to an R `utils::txtProgressBar`.
 ///
-/// Constructed via [`RTxtProgressBar::builder`] → [`RTxtProgressBarBuilder::build`].
-/// The bar is auto-closed when the struct is dropped; call [`RTxtProgressBar::close`]
-/// to close it explicitly before that.
+/// A handle closes only a bar it built:
+///
+/// - **Owned**: constructed via [`RTxtProgressBar::builder`] →
+///   [`RTxtProgressBarBuilder::build`]. The bar is auto-closed when the struct
+///   is dropped; call [`RTxtProgressBar::close`] to close it explicitly before
+///   that.
+/// - **Borrowed**: a `#[miniextendr]` parameter of this type takes a bar the R
+///   caller created. The caller owns it: neither `Drop` nor
+///   [`RTxtProgressBar::close`] closes it, so the caller can keep updating it
+///   and closes it themselves.
 ///
 /// `RTxtProgressBar` is intentionally `!Send + !Sync`: R's runtime is
 /// single-threaded and the underlying SEXP must only be touched from the R
@@ -50,6 +58,9 @@ pub struct RTxtProgressBar {
     sexp: SEXP,
     /// Whether the bar is still open. Guards `Drop` against double-close.
     open: bool,
+    /// Whether this handle built the bar and so closes it. `false` for a bar
+    /// borrowed from R.
+    owned: bool,
     /// Makes `RTxtProgressBar` `!Send + !Sync` without a runtime cost.
     _not_send: PhantomData<*const ()>,
 }
@@ -58,6 +69,7 @@ impl std::fmt::Debug for RTxtProgressBar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RTxtProgressBar")
             .field("open", &self.open)
+            .field("owned", &self.owned)
             .finish_non_exhaustive()
     }
 }
@@ -84,11 +96,13 @@ impl RTxtProgressBar {
         self.sexp
     }
 
-    /// Construct from a SEXP that has **already been added to R's precious list**.
+    /// Borrow a bar the R caller owns, from a SEXP that has **already been
+    /// added to R's precious list**.
     ///
     /// Used by `TryFromSexp for RTxtProgressBar`, which calls
     /// `R_PreserveObject` before handing the SEXP to this constructor.
-    /// The `Drop` impl will call `R_ReleaseObject` exactly once.
+    /// The handle never closes the bar: `Drop` only calls `R_ReleaseObject`,
+    /// exactly once.
     ///
     /// # Safety
     ///
@@ -98,6 +112,7 @@ impl RTxtProgressBar {
         RTxtProgressBar {
             sexp,
             open: true,
+            owned: false,
             _not_send: PhantomData,
         }
     }
@@ -135,8 +150,13 @@ impl RTxtProgressBar {
 
     /// Explicitly close the progress bar and disarm the `Drop` guard.
     ///
-    /// Equivalent to `close(pb)` in R. The handle is consumed — the `Drop`
-    /// impl becomes a no-op.
+    /// The handle is consumed — the `Drop` impl becomes a no-op.
+    ///
+    /// - On an **owned** bar (built by [`RTxtProgressBar::builder`]) this is
+    ///   `close(pb)` in R.
+    /// - On a **borrowed** bar (passed in from R) the bar stays open: the R
+    ///   caller owns it and closes it. Only this handle is given up, and the
+    ///   result is always `Ok(())`.
     ///
     /// # Errors
     ///
@@ -144,7 +164,11 @@ impl RTxtProgressBar {
     /// release still happens regardless.
     pub fn close(mut self) -> Result<(), String> {
         self.open = false;
-        let result = unsafe { close_txt_progress_bar_inner(self.sexp) };
+        let result = if self.owned {
+            unsafe { close_txt_progress_bar_inner(self.sexp) }
+        } else {
+            Ok(())
+        };
         // Release from precious list; transfer ownership back to R's GC.
         unsafe { R_ReleaseObject(self.sexp) };
         std::mem::forget(self); // Skip `Drop` — already cleaned up.
@@ -157,13 +181,18 @@ impl Drop for RTxtProgressBar {
         if self.open {
             self.open = false;
             let sexp = self.sexp;
+            let owned = self.owned;
             // Use drop_catching_panic so a panic inside the R call aborts
             // rather than unwinding through the destructor (UB).
             crate::externalptr::drop_catching_panic(|| {
                 unsafe {
-                    // Call pb$kill() — the R-internal blank-and-close path.
-                    // Errors are silently swallowed; we cannot propagate from Drop.
-                    kill_txt_progress_bar_inner(sexp);
+                    // Call pb$kill() — the R-internal blank-and-close path — on
+                    // a bar this handle built only; a borrowed bar belongs to
+                    // the R caller. Errors are silently swallowed; we cannot
+                    // propagate from Drop.
+                    if owned {
+                        kill_txt_progress_bar_inner(sexp);
+                    }
                     R_ReleaseObject(sexp);
                 }
             });
@@ -331,9 +360,23 @@ unsafe fn build_inner(opts: RTxtProgressBarBuilder) -> RTxtProgressBar {
         RTxtProgressBar {
             sexp,
             open: true,
+            owned: true,
             _not_send: PhantomData,
         }
     }
+}
+
+// The utils namespace, where `setTxtProgressBar()` / `getTxtProgressBar()`
+// live. Not the base environment: its enclosure is the empty environment, so
+// utils functions are not visible from there. A namespace is rooted by R's
+// namespace registry.
+//
+// # Safety
+// Must be called from the R main thread.
+unsafe fn utils_namespace() -> Result<SEXP, String> {
+    unsafe { crate::expression::REnv::package_namespace("utils") }
+        .map(|ns| ns.as_sexp())
+        .map_err(|e| e.to_string())
 }
 
 // Call setTxtProgressBar(pb, value) in the utils namespace.
@@ -345,17 +388,19 @@ unsafe fn set_txt_progress_bar_inner(sexp: SEXP, value: f64) -> Result<(), Strin
     use crate::expression::RCall;
 
     unsafe {
+        let utils_ns = utils_namespace()?;
         let val_sexp = OwnedProtect::new(SEXP::scalar_real(value));
         RCall::new("setTxtProgressBar")
             .arg(sexp)
             .arg(val_sexp.get())
-            .eval_base()
+            .eval(utils_ns)
             .map(|_| ())
             .map_err(|e| e.to_string())
     }
 }
 
-// Call getTxtProgressBar(pb) and return the numeric result.
+// Call getTxtProgressBar(pb) in the utils namespace and return the numeric
+// result.
 //
 // # Safety
 // Must be called from the R main thread.
@@ -363,9 +408,10 @@ unsafe fn get_txt_progress_bar_inner(sexp: SEXP) -> Result<f64, String> {
     use crate::expression::RCall;
 
     unsafe {
+        let utils_ns = utils_namespace()?;
         let result = RCall::new("getTxtProgressBar")
             .arg(sexp)
-            .eval_base()
+            .eval(utils_ns)
             .map_err(|e| e.to_string())?;
         // getTxtProgressBar returns a numeric(1); unwrap NA as 0.0.
         Ok(result.as_real().unwrap_or(0.0))
