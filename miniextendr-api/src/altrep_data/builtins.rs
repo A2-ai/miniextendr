@@ -102,6 +102,9 @@ macro_rules! impl_dataptr_boxed {
 /// even if the Rust package isn't loaded when unserializing.
 macro_rules! impl_serialize {
     ($ty:ty) => {
+        impl_serialize!($ty, $ty, std::convert::identity);
+    };
+    ($ty:ty, $owned:ty, $wrap:expr) => {
         impl AltrepSerialize for $ty {
             fn serialized_state(&self) -> SEXP {
                 use crate::into_r::IntoR;
@@ -110,7 +113,7 @@ macro_rules! impl_serialize {
 
             fn unserialize(state: SEXP) -> Option<Self> {
                 use crate::from_r::TryFromSexp;
-                <$ty>::try_from_sexp(state).ok()
+                <$owned>::try_from_sexp(state).ok().map($wrap)
             }
         }
     };
@@ -411,10 +414,19 @@ impl_serialize!(Vec<bool>);
 impl_serialize!(Vec<String>);
 impl_serialize!(Vec<Option<String>>);
 impl_serialize!(Vec<Rcomplex>);
-// Cow string vectors: serialize hits R's CHARSXP cache (no string data copy),
-// unserialize borrows via charsxp_to_cow (zero-copy for UTF-8).
-impl_serialize!(Vec<std::borrow::Cow<'static, str>>);
-impl_serialize!(Vec<Option<std::borrow::Cow<'static, str>>>);
+// The ALTREP outlives R's temporary serialization state. Its Rust backing
+// must own the decoded strings; no sidecar roots the original CHARSXPs.
+impl_serialize!(Vec<Cow<'static, str>>, Vec<String>, |values| {
+    values.into_iter().map(Cow::Owned).collect()
+});
+impl_serialize!(
+    Vec<Option<Cow<'static, str>>>,
+    Vec<Option<String>>,
+    |values| values
+        .into_iter()
+        .map(|value| value.map(Cow::Owned))
+        .collect()
+);
 // endregion
 
 // region: AltrepSerialize implementations for Box<[T]>
@@ -1184,41 +1196,27 @@ macro_rules! impl_dataptr_cow {
     };
 }
 
-macro_rules! impl_serialize_cow {
-    ($elem:ty) => {
-        impl AltrepSerialize for Cow<'static, [$elem]> {
-            fn serialized_state(&self) -> SEXP {
-                use crate::into_r::IntoR;
-                self.clone().into_sexp()
-            }
-
-            fn unserialize(state: SEXP) -> Option<Self> {
-                use crate::from_r::TryFromSexp;
-                Cow::<'static, [$elem]>::try_from_sexp(state).ok()
-            }
-        }
-    };
-}
-
+// A restored ALTREP must not borrow the temporary state SEXP: data1 owns
+// only the Rust value, and data2 is reserved for materialization.
 impl_len_cow!(i32);
 impl_altinteger_slice!(Cow<'static, [i32]>);
 impl_dataptr_cow!(i32);
-impl_serialize_cow!(i32);
+impl_serialize!(Cow<'static, [i32]>, Vec<i32>, Cow::Owned);
 
 impl_len_cow!(f64);
 impl_altreal_slice!(Cow<'static, [f64]>);
 impl_dataptr_cow!(f64);
-impl_serialize_cow!(f64);
+impl_serialize!(Cow<'static, [f64]>, Vec<f64>, Cow::Owned);
 
 impl_len_cow!(u8);
 impl_altraw_slice!(Cow<'static, [u8]>);
 impl_dataptr_cow!(u8);
-impl_serialize_cow!(u8);
+impl_serialize!(Cow<'static, [u8]>, Vec<u8>, Cow::Owned);
 
 impl_len_cow!(Rcomplex);
 impl_altcomplex_slice!(Cow<'static, [Rcomplex]>);
 impl_dataptr_cow!(Rcomplex);
-impl_serialize_cow!(Rcomplex);
+impl_serialize!(Cow<'static, [Rcomplex]>, Vec<Rcomplex>, Cow::Owned);
 // endregion
 
 // region: Low-level ALTREP trait implementations

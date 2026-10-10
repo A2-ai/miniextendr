@@ -380,7 +380,7 @@ impl_builtin_altrep_family!(
 );
 // Cow string vectors — zero-copy from R, ALTREP output without copying back.
 // Serialize: Rf_mkCharLenCE hits R's CHARSXP cache (no string data copy for borrowed).
-// Unserialize: TryFromSexp uses charsxp_to_cow (zero-copy borrow for UTF-8).
+// Unserialize: owns the decoded strings so the temporary R state can be collected.
 impl_builtin_altrep_family!(
     Vec<std::borrow::Cow<'static, str>>,
     string,
