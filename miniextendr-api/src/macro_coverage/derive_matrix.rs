@@ -44,6 +44,7 @@ pub struct CovPreferList {
 }
 
 // RNativeType + PreferRNativeType (newtype over native R scalar)
+#[repr(transparent)]
 #[derive(miniextendr_api::RNativeType, miniextendr_api::PreferRNativeType, Clone, Copy)]
 pub struct CovPreferNative(pub i32);
 

@@ -445,6 +445,7 @@ impl<T: IntoExternalPtr> IntoR for AsExternalPtr<T> {
 /// # Example
 ///
 /// ```ignore
+/// #[repr(transparent)]
 /// #[derive(Clone, Copy, RNativeType)]
 /// struct Meters(f64);
 ///

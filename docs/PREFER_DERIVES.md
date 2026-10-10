@@ -96,6 +96,7 @@ pub fn create_engine() -> Engine {
 Return struct as a native R scalar (for newtype wrappers):
 
 ```rust
+#[repr(transparent)]
 #[derive(RNativeType, PreferRNativeType)]
 pub struct Meters(f64);
 
