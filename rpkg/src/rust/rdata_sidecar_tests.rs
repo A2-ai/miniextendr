@@ -350,8 +350,21 @@ pub fn sidecar_computed_keys(ptr: ExternalPtr<SidecarComputed>) -> Vec<i32> {
 /// names the R class, and `new_handmade_rec()` (`R/sidecar_handmade.R`)
 /// classes the pointer `rdata_sidecar_handmade_new()` returns by hand. `id`
 /// is a prefix of `ids`, so `x$id` tests that an exact name beats a prefix.
+///
+/// The package raises every error under its own classes: the readers' own
+/// errors get `field_error(class)` in front (#1899), and a restored pointer
+/// is refused on every read, `names()` and an unknown name included, with
+/// the package's classes and message (`refuse = "every_read"`, #1901).
 #[derive(miniextendr_api::ExternalPtr, Debug)]
-#[externalptr(s3)]
+#[externalptr(
+    s3,
+    field_error(class = ["handmade_error_field", "handmade_error"]),
+    restored(
+        class = ["handmade_error_saved", "handmade_error"],
+        message = "this handmade_rec was saved; build a new one with new_handmade_rec()",
+        refuse = "every_read"
+    )
+)]
 pub struct SidecarHandmade {
     #[r_data]
     _r: RSidecar,

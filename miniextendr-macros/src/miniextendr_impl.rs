@@ -4606,6 +4606,14 @@ pub fn expand_impl(
     // `R_WRAPPERS_IMPL_<TYPE>` too — so no per-block counter is needed here.
     let r_class_name_str = parsed.class_name();
     let class_system_str = parsed.class_system.to_ident().to_string();
+    // `$` / `[[` field syntax (`s3/s4/env(r_data_accessors)`): the wrapper
+    // writer then keeps the type's standalone sidecar accessors internal
+    // (#1900). R6 bindings and S7 properties leave them exported.
+    let field_syntax = parsed.r_data_accessors.enabled()
+        && matches!(
+            parsed.class_system,
+            ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env
+        );
     let class_names_const = {
         let type_lower = type_ident.to_string().to_lowercase();
         let name = match parsed.label() {
@@ -4671,6 +4679,7 @@ pub fn expand_impl(
                 rust_type: stringify!(#type_ident),
                 r_class_name: #r_class_name_str,
                 class_system: #class_system_str,
+                field_syntax: #field_syntax,
             };
     };
 

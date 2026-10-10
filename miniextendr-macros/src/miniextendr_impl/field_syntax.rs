@@ -45,6 +45,15 @@ struct Helpers {
     get: String,
     set: String,
     no_field: String,
+    /// The classes in front of the methods' own errors (#1899), `NULL`
+    /// without `field_error(...)`.
+    error_class: String,
+    /// `TRUE` under `restored(refuse = "every_read")` (#1901): it gates the
+    /// calls of `live`.
+    every_read: String,
+    /// The liveness check of `restored(refuse = "every_read")` (#1901), a
+    /// stub that is never called without it.
+    live: String,
 }
 
 impl Helpers {
@@ -55,7 +64,33 @@ impl Helpers {
             get: rdata_helper_name(RDataHelper::Get, &type_name),
             set: rdata_helper_name(RDataHelper::Set, &type_name),
             no_field: rdata_helper_name(RDataHelper::NoField, &type_name),
+            error_class: rdata_helper_name(RDataHelper::ErrorClass, &type_name),
+            every_read: rdata_helper_name(RDataHelper::EveryRead, &type_name),
+            live: rdata_helper_name(RDataHelper::Live, &type_name),
         }
+    }
+
+    /// Under `restored(refuse = "every_read")` (#1901), the check a read
+    /// that reaches no accessor makes first on the bare pointer `receiver`:
+    /// a pointer without its Rust value raises the type's restored error. A
+    /// type without the option skips it (its flag is `FALSE`).
+    fn live_check(&self, receiver: &str, indent: &str) -> Vec<String> {
+        let mut lines = vec![format!("{indent}if ({}) {{", self.every_read)];
+        lines.push(format!("{indent}  .val <- {}({receiver}, TRUE)", self.live));
+        lines.extend(guard(&format!("{indent}  ")));
+        lines.push(format!("{indent}}}"));
+        lines
+    }
+
+    /// The `.DollarNames()` guard: under `restored(refuse = "every_read")`
+    /// a bare pointer without its Rust value completes to nothing (#1901).
+    /// `.DollarNames()` serves completion, so it never raises.
+    fn dollar_names_guard(&self, receiver: &str) -> String {
+        format!(
+            "  if (typeof({receiver}) == \"externalptr\" && {every_read} && !{live}({receiver}, FALSE)) return(character(0))",
+            every_read = self.every_read,
+            live = self.live
+        )
     }
 }
 
@@ -63,6 +98,29 @@ impl Helpers {
 /// the raise fallback, resolved to the generic's call (#1851).
 fn guard(indent: &str) -> Vec<String> {
     crate::method_return_builder::condition_check_lines_with_default(indent, "environment()")
+}
+
+/// The help topic of the field methods (and of the S3 class environment):
+/// the impl block's own `@rdname`, else the class page (#1900).
+pub(super) fn topic(parsed_impl: &ParsedImpl) -> String {
+    crate::roxygen::rdname_value(&parsed_impl.doc_tags)
+        .map_or_else(|| parsed_impl.class_name(), str::to_owned)
+}
+
+/// The page lines of a field method's block: `@rdname` its topic
+/// ([`topic`]) with the `@param` lines of `params` the page needs, or, on a
+/// topic the author names with the impl's `@rdname`, `@order NaN` and no
+/// `@param` lines: the topic's own block documents the arguments, and a
+/// later block's `@param` would replace its text (#1590).
+pub(super) fn page_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String> {
+    let topic = topic(parsed_impl);
+    let mut lines = vec![format!("#' @rdname {topic}")];
+    if topic == parsed_impl.class_name() {
+        lines.extend(param_lines(parsed_impl, params));
+    } else {
+        lines.push(format!("#' {}", crate::roxygen::ORDER_AFTER_TOPIC_BLOCKS));
+    }
+    lines
 }
 
 /// The test of a `[[` / `[[<-` index (or env's `$` / `[[` name): a field
@@ -88,23 +146,22 @@ fn load_check(parsed_impl: &ParsedImpl, system: &str) -> String {
 }
 
 /// The `@param` lines of the field methods on the class page, without the
-/// names another block documents there: roxygen2 keeps the last `@param` of
-/// a name on a page, and these blocks must not replace the constructor's
-/// text, nor the `x` / `value` of the standalone `Type_get_f(x)` /
-/// `Type_set_f(x, value)`, which the derive documents on the page named after
-/// the type (the class page unless `class = "..."` renames the class).
+/// names the constructor documents there: roxygen2 keeps the last `@param`
+/// of a name on a page, and these blocks must not replace the constructor's
+/// text. An env class's `Class$new()` lists its arguments in a `\describe{}`
+/// list, not as `@param` lines, so it takes nothing away. (The type's
+/// standalone accessors, which documented `x` / `value` on the page named
+/// after the type, are internal under field syntax, #1900.)
 fn param_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String> {
-    let mut documented: Vec<String> = parsed_impl
+    let documented: Vec<String> = parsed_impl
         .constructor()
+        .filter(|_| parsed_impl.class_system != ClassSystem::Env)
         .map(|ctor| {
             crate::r_wrapper_builder::r_formal_names(&ctor.sig.inputs)
                 .map(|(name, _)| name)
                 .collect()
         })
         .unwrap_or_default();
-    if parsed_impl.type_ident == parsed_impl.class_name() {
-        documented.extend(["x".to_string(), "value".to_string()]);
-    }
     params
         .iter()
         .filter(|(name, _)| !documented.iter().any(|f| f == name))
@@ -113,8 +170,8 @@ fn param_lines(parsed_impl: &ParsedImpl, params: &[(&str, &str)]) -> Vec<String>
 }
 
 /// The roxygen block of an S3 or env field method `<generic>.<Class>`: on the
-/// class page for an exported class with a page, else no page. The method is
-/// registered (`S3method()`) when `register` is set.
+/// class's topic ([`page_lines`]) for an exported class with a page, else no
+/// page. The method is registered (`S3method()`) when `register` is set.
 fn s3_method_doc(
     lines: &mut Vec<String>,
     parsed_impl: &ParsedImpl,
@@ -125,8 +182,7 @@ fn s3_method_doc(
 ) {
     let class_name = parsed_impl.class_name();
     if on_page {
-        lines.push(format!("#' @rdname {class_name}"));
-        lines.extend(param_lines(parsed_impl, params));
+        lines.extend(page_lines(parsed_impl, params));
     } else {
         lines.push("#' @noRd".to_string());
     }
@@ -136,10 +192,10 @@ fn s3_method_doc(
     }
 }
 
-/// The roxygen block of a `.DollarNames.<Class>` method: on the class page
-/// for an exported class with a page, else no page, and registered with
-/// `@exportS3Method utils::.DollarNames` when `register` is set (see the
-/// module docs for why not `@method` + `@export`).
+/// The roxygen block of a `.DollarNames.<Class>` method: on the class's
+/// topic ([`page_lines`]) for an exported class with a page, else no page,
+/// and registered with `@exportS3Method utils::.DollarNames` when `register`
+/// is set (see the module docs for why not `@method` + `@export`).
 fn dollar_names_doc(
     lines: &mut Vec<String>,
     parsed_impl: &ParsedImpl,
@@ -147,8 +203,7 @@ fn dollar_names_doc(
     register: bool,
 ) {
     if on_page {
-        lines.push(format!("#' @rdname {}", parsed_impl.class_name()));
-        lines.extend(param_lines(
+        lines.extend(page_lines(
             parsed_impl,
             &[
                 ("x", "An object."),
@@ -214,7 +269,10 @@ pub(super) fn s3_field_methods(
     lines.push(format!("{} <- function(x, name) {{", def("$")));
     lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
     lines.push(format!("    i <- pmatch(name, {})", h.fields));
-    lines.push("    if (is.na(i)) return(NULL)".to_string());
+    lines.push("    if (is.na(i)) {".to_string());
+    lines.extend(h.live_check("x", "      "));
+    lines.push("      return(NULL)".to_string());
+    lines.push("    }".to_string());
     lines.push(format!("    if ({}[[i]] != name) {{", h.fields));
     lines.push(format!(
         "      if (isTRUE(getOption(\"warnPartialMatchDollar\"))) warning(simpleWarning(sprintf(\"partial match of '%s' to '%s'\", name, {}[[i]]), .miniextendr_frame_call(environment())))",
@@ -253,19 +311,24 @@ pub(super) fn s3_field_methods(
         "  if (typeof(x) == \"externalptr\" && length(i) == 1L && (is.numeric(i) || is.logical(i))) {"
             .to_string(),
     );
-    lines.push("    if (is.na(i)) return(NULL)".to_string());
+    lines.push("    if (is.na(i)) {".to_string());
+    lines.extend(h.live_check("x", "      "));
+    lines.push("      return(NULL)".to_string());
+    lines.push("    }".to_string());
     lines.push(format!(
-        "    i <- .miniextendr_field_at({}, i, environment())",
-        h.fields
+        "    i <- .miniextendr_field_at({}, i, environment(), {})",
+        h.fields, h.error_class
     ));
     lines.push(format!(
         "  }} else if ({}) {{",
         not_a_field_name("i", &h.fields)
     ));
     lines.push(
-        "    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) return(NULL)"
-            .to_string(),
+        "    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {".to_string(),
     );
+    lines.extend(h.live_check("x", "      "));
+    lines.push("      return(NULL)".to_string());
+    lines.push("    }".to_string());
     lines.push("    return(NextMethod())".to_string());
     lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x, i)", h.get));
@@ -283,11 +346,11 @@ pub(super) fn s3_field_methods(
     // and keeps a NULL field (`out[k] <- list(NULL)`; `out[[k]] <- NULL`
     // would drop it).
     s3_method_doc(&mut lines, parsed_impl, "names", on_page, register, &[x]);
-    lines.push(format!(
-        "{} <- function(x) if (typeof(x) == \"externalptr\") {} else NextMethod()",
-        def("names"),
-        h.fields
-    ));
+    lines.push(format!("{} <- function(x) {{", def("names")));
+    lines.push("  if (typeof(x) != \"externalptr\") return(NextMethod())".to_string());
+    lines.extend(h.live_check("x", "  "));
+    lines.push(format!("  {}", h.fields));
+    lines.push("}".to_string());
     lines.push(String::new());
 
     s3_method_doc(
@@ -313,13 +376,20 @@ pub(super) fn s3_field_methods(
     lines.push(String::new());
 
     // `.DollarNames()` (#1885): the fields, then a list's or environment's
-    // own names. It reads only names, so it never raises.
+    // own names. It reads only names, so it never raises; under
+    // `restored(refuse = "every_read")` a restored pointer completes to
+    // nothing (#1901).
     dollar_names_doc(&mut lines, parsed_impl, on_page, register);
     lines.push(format!(
-        "{} <- function(x, pattern = \"\") grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
-        def(".DollarNames"),
+        "{} <- function(x, pattern = \"\") {{",
+        def(".DollarNames")
+    ));
+    lines.push(h.dollar_names_guard("x"));
+    lines.push(format!(
+        "  grep(pattern, c({}, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)",
         h.fields
     ));
+    lines.push("}".to_string());
     lines.push(String::new());
 
     if !parsed_impl.r_data_accessors.setters() {
@@ -396,8 +466,7 @@ pub(super) fn s4_field_methods(
     ];
     let doc = |lines: &mut Vec<String>, generic: &str, params: &[(&str, &str)]| {
         if on_page {
-            lines.push(format!("#' @rdname {class_name}"));
-            lines.extend(param_lines(parsed_impl, params));
+            lines.extend(page_lines(parsed_impl, params));
         } else {
             lines.push("#' @noRd".to_string());
         }
@@ -413,10 +482,10 @@ pub(super) fn s4_field_methods(
     lines.push(format!(
         "methods::setMethod(\"$\", \"{class_name}\", function(x, name) {{"
     ));
-    lines.push(format!(
-        "  if (is.na(match(name, {}))) {}(name, environment())",
-        h.fields, h.no_field
-    ));
+    lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
+    lines.extend(h.live_check("x@ptr", "    "));
+    lines.push(format!("    {}(name, environment())", h.no_field));
+    lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x@ptr, name)", h.get));
     lines.extend(guard("  "));
     lines.push("  .val".to_string());
@@ -425,10 +494,12 @@ pub(super) fn s4_field_methods(
 
     dollar_names_doc(&mut lines, parsed_impl, on_page, !parsed_impl.noexport);
     lines.push(format!(
-        "{} <- function(x, pattern = \"\") grep(pattern, {}, value = TRUE)",
-        crate::naming::r_def_name(&format!(".DollarNames.{class_name}")),
-        h.fields
+        "{} <- function(x, pattern = \"\") {{",
+        crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
+    lines.push(h.dollar_names_guard("x@ptr"));
+    lines.push(format!("  grep(pattern, {}, value = TRUE)", h.fields));
+    lines.push("}".to_string());
     lines.push(String::new());
 
     if parsed_impl.r_data_accessors.setters() {
@@ -466,6 +537,14 @@ pub(super) fn env_field_branch(parsed_impl: &ParsedImpl) -> Vec<String> {
     lines
 }
 
+/// The check in an env class's `$.Class` before it returns `NULL` for a name
+/// that is neither a field nor a method: under `restored(refuse =
+/// "every_read")` a pointer without its Rust value raises the type's
+/// restored error there (#1901).
+pub(super) fn env_unknown_name_check(parsed_impl: &ParsedImpl) -> Vec<String> {
+    Helpers::new(parsed_impl).live_check("self", "    ")
+}
+
 /// The load check of an env class with `env(r_data_accessors)`.
 pub(super) fn env_load_check(parsed_impl: &ParsedImpl) -> String {
     load_check(parsed_impl, "env")
@@ -481,11 +560,15 @@ pub(super) fn env_dollar_names(parsed_impl: &ParsedImpl, on_page: bool) -> Vec<S
     let mut lines = Vec::new();
     dollar_names_doc(&mut lines, parsed_impl, on_page, true);
     lines.push(format!(
-        "{} <- function(x, pattern = \"\") grep(pattern, c({}, ls({})), value = TRUE)",
-        crate::naming::r_def_name(&format!(".DollarNames.{class_name}")),
-        h.fields,
-        class_name
+        "{} <- function(x, pattern = \"\") {{",
+        crate::naming::r_def_name(&format!(".DollarNames.{class_name}"))
     ));
+    lines.push(h.dollar_names_guard("x"));
+    lines.push(format!(
+        "  grep(pattern, c({}, ls({})), value = TRUE)",
+        h.fields, class_name
+    ));
+    lines.push("}".to_string());
     lines
 }
 

@@ -456,9 +456,11 @@ properties (`obj@count`), and with `s3(r_data_accessors)`,
 them (on an S3 bare pointer as a list's do: a unique prefix, a position,
 `NULL` for an unknown name), `$<-` / `[[<-` methods that write them in place
 and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
-class (`r_data_accessors = "get"` for the readers only). vctrs classes get
-only the `MyType_get_*()` / `MyType_set_*()` functions. See
-`CLASS_SYSTEMS.md`, "Direct Field Access via Sidecar".
+class (`r_data_accessors = "get"` for the readers only). Under that S3, S4
+or env field syntax the `MyType_get_*()` / `MyType_set_*()` functions are
+internal, for the package's own R code; otherwise they are exported. vctrs
+classes get only those functions. See `CLASS_SYSTEMS.md`, "Direct Field
+Access via Sidecar".
 
 | Field type | Where the value lives | Getter | Setter |
 |---|---|---|---|
@@ -649,7 +651,16 @@ fields included: a reloaded object is refused, not recovered
 - `#[externalptr(restored(class = ["pkg_saved", "pkg_error"], message =
   "..."))]` on the type puts the package's classes, in order, in front of
   those (which stay) and replaces the message, in both cases and on every
-  path above; `e$saved_version` / `e$current_version` stay.
+  path above; `e$saved_version` / `e$current_version` stay. Its
+  `refuse = "every_read"` makes the field methods refuse the reads that
+  never reach an accessor too (`names()`, an unknown name), with
+  `.DollarNames()` returning `character(0)` (`CLASS_SYSTEMS.md`, "A
+  restored pointer").
+- A receiver of the class that carries no pointer at all (a list without
+  `.ptr`, e.g. an older format of the same class) raises
+  `miniextendr_no_handle` (`expected ExternalPtr<MyType>, got a
+  non-external-pointer object`) from every R accessor, behind the type's
+  `field_error(class = ...)` and `restored(class = ...)` classes.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.

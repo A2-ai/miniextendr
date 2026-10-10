@@ -103,6 +103,14 @@ pub static MX_CLASS_NAMES: [ClassNameEntry];
 #[distributed_slice]
 pub static MX_S7_SIDECAR_PROPS: [SidecarPropEntry];
 
+/// The standalone sidecar accessors of each `#[derive(ExternalPtr)]` type
+/// with public `#[r_data]` fields. **Host-only.** [`collect_r_wrappers`]
+/// writes each as exported or internal, from the type's
+/// [`ClassNameEntry::field_syntax`] (#1900).
+#[cfg(not(target_arch = "wasm32"))]
+#[distributed_slice]
+pub static MX_SIDECAR_ACCESSORS: [SidecarAccessorsEntry];
+
 /// The package crate's `conversion_error_class`. **Host-only.**
 ///
 /// `miniextendr_init!` emits one entry, with the classes it reads from the
@@ -347,10 +355,41 @@ pub struct ClassNameEntry {
     pub r_class_name: &'static str,
     /// Class system tag: `"env"` | `"r6"` | `"s3"` | `"s4"` | `"s7"` | `"vctrs"`.
     pub class_system: &'static str,
+    /// The impl block gives the class `$` / `[[` field syntax for the type's
+    /// `#[r_data]` fields (`s3(r_data_accessors)`, `s4(...)`, `env(...)`).
+    /// The type's standalone `Type_get_f()` / `Type_set_f()` are then
+    /// written without an export or a page ([`SidecarAccessorsEntry`],
+    /// #1900). Labeled impl blocks of one type may differ here: one that
+    /// opts in is enough.
+    pub field_syntax: bool,
 }
 
-// SAFETY: All fields are &'static str — immutable and valid for program lifetime.
+// SAFETY: &'static str fields and a bool — immutable and valid for program lifetime.
 unsafe impl Sync for ClassNameEntry {}
+
+/// The standalone R accessors `#[derive(ExternalPtr)]` generates for a
+/// type's public `#[r_data]` fields, `Type_get_f(x)` / `Type_set_f(x,
+/// value)`, in two renderings: exported on a "Type Sidecar Accessors" page,
+/// or internal (`@noRd`, no export). [`collect_r_wrappers`] writes the
+/// internal one for a type whose class has field syntax
+/// ([`ClassNameEntry::field_syntax`]): the class's `$` / `[[` are its R
+/// interface to the fields there, and the setters would write in place
+/// through every copy (#1900). Written with the sidecar fragments.
+pub struct SidecarAccessorsEntry {
+    /// Rust type identifier, matched against [`ClassNameEntry::rust_type`].
+    pub rust_type: &'static str,
+    /// The page and the exported accessors.
+    pub exported: &'static str,
+    /// The same accessors with `@noRd` and no export.
+    pub internal: &'static str,
+    /// Source file of the derive (`file!()`), for the fragment order.
+    pub source_file: &'static str,
+    /// Line of the derived type in `source_file`.
+    pub source_line: u32,
+}
+
+// SAFETY: &'static str fields and a u32 — immutable and valid for program lifetime.
+unsafe impl Sync for SidecarAccessorsEntry {}
 
 /// Build the `rust_type → ClassNameEntry` lookup used by every placeholder
 /// resolver in `write_r_wrappers_to_file`.
@@ -361,7 +400,8 @@ unsafe impl Sync for ClassNameEntry {}
 /// `rust_type`, different `r_class_name` or `class_system` — e.g. two labeled
 /// blocks with disagreeing `class = "..."` overrides) panic: silently keeping
 /// whichever entry linkme ordered last would resolve `.__MX_CLASS_REF_*__`
-/// placeholders nondeterministically.
+/// placeholders nondeterministically. `field_syntax` may differ between the
+/// blocks ([`sidecar_accessor_fragments`] reads every entry).
 ///
 /// Host-only like `MX_CLASS_NAMES` itself — the consumers all live in the
 /// wrapper-writing path, which never runs on wasm32.
@@ -572,6 +612,34 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
     }
 }
 
+/// The standalone sidecar accessors as sidecar fragments: each type's
+/// internal rendering when one of its impl blocks gives its class field
+/// syntax, else the exported one (#1900).
+#[cfg(not(target_arch = "wasm32"))]
+fn sidecar_accessor_fragments(
+    accessors: &[SidecarAccessorsEntry],
+    classes: &[ClassNameEntry],
+) -> Vec<RWrapperEntry> {
+    accessors
+        .iter()
+        .map(|entry| {
+            let field_syntax = classes
+                .iter()
+                .any(|class| class.rust_type == entry.rust_type && class.field_syntax);
+            RWrapperEntry {
+                priority: RWrapperPriority::Sidecar,
+                content: if field_syntax {
+                    entry.internal
+                } else {
+                    entry.exported
+                },
+                source_file: entry.source_file,
+                source_line: entry.source_line,
+            }
+        })
+        .collect()
+}
+
 /// Collect all R wrapper entries, sorted and deduplicated.
 ///
 /// Entries are ordered by `sort_wrapper_entries`: priority first, then source
@@ -582,7 +650,8 @@ pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn collect_r_wrappers() -> Vec<std::borrow::Cow<'static, str>> {
-    let mut entries: Vec<&RWrapperEntry> = MX_R_WRAPPERS.iter().collect();
+    let accessors = sidecar_accessor_fragments(&MX_SIDECAR_ACCESSORS, &MX_CLASS_NAMES);
+    let mut entries: Vec<&RWrapperEntry> = MX_R_WRAPPERS.iter().chain(&accessors).collect();
     sort_wrapper_entries(&mut entries);
 
     let mut seen = std::collections::HashSet::<&str>::new();
@@ -1825,18 +1894,22 @@ const FRAME_CALL_HELPER: &str = concat!(
 /// field a position picks in the generated `[[.Class` of an S3 class with
 /// `s3(r_data_accessors)`, on the bare classed pointer (#1891). The method
 /// checks for `NA` first (a list's `[[NA]]` is `NULL`, a character vector's
-/// is `NA`), then lets R's own `[[` on the field-name vector pick the field,
-/// so the position is truncated, a logical is taken, and `0` or a negative
-/// position raise the errors a list raises; only the call is the generic's.
+/// is `NA`). A position is truncated and a logical is taken, as by a list's
+/// `[[`; every position that picks no field (past the last one, `0`, a
+/// negative one) raises `subscriptOutOfBoundsError` with the type's
+/// field-error classes in front (`class`, the derive's
+/// `.rdata_error_class_<Type>`, #1899), on the generic's call.
 #[cfg(not(target_arch = "wasm32"))]
 const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks on a bare classed pointer, as
-# `[[` picks a list element: `2.9` is the second field, `TRUE` the first, a
-# position past the last field raises `subscriptOutOfBoundsError`, and `0`
-# or a negative position raises R's own error. Either error reports the
-# generic's call, `x[[9]]`, resolved from the method's frame (`env`).
-.miniextendr_field_at <- function(fields, i, env) {
-  if (trunc(i) > length(fields)) stop(errorCondition("subscript out of bounds", class = "subscriptOutOfBoundsError", call = .miniextendr_frame_call(env)))
-  tryCatch(fields[[i]], error = function(e) stop(simpleError(conditionMessage(e), .miniextendr_frame_call(env))))
+# `[[` picks a list element: `2.9` is the second field, `TRUE` the first. A
+# position that picks no field (past the last one, `0`, a negative one)
+# raises `subscriptOutOfBoundsError`, with the type's own classes (`class`)
+# in front, reporting the generic's call, `x[[9]]`, resolved from the
+# method's frame (`env`).
+.miniextendr_field_at <- function(fields, i, env, class = NULL) {
+  k <- trunc(i)
+  if (k < 1 || k > length(fields)) stop(errorCondition("subscript out of bounds", class = c(class, "subscriptOutOfBoundsError"), call = .miniextendr_frame_call(env)))
+  fields[[k]]
 }
 "#;
 
@@ -2863,11 +2936,13 @@ mod tests {
                 rust_type: "Foo",
                 r_class_name: "Foo",
                 class_system: "env",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "Foo",
                 r_class_name: "Foo",
                 class_system: "env",
+                field_syntax: false,
             },
         ];
         let index = build_class_name_index(entries.iter());
@@ -2886,14 +2961,63 @@ mod tests {
                 rust_type: "Foo",
                 r_class_name: "Foo",
                 class_system: "env",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "Foo",
                 r_class_name: "FooOverride",
                 class_system: "env",
+                field_syntax: false,
             },
         ];
         let _ = build_class_name_index(entries.iter());
+    }
+
+    /// A type's standalone sidecar accessors are written internal when one of
+    /// its impl blocks (labeled blocks may differ) gives the class field
+    /// syntax, exported otherwise (#1900).
+    #[test]
+    fn sidecar_accessors_follow_the_field_syntax() {
+        let accessors = [
+            SidecarAccessorsEntry {
+                rust_type: "Fields",
+                exported: "exported Fields",
+                internal: "internal Fields",
+                source_file: "lib.rs",
+                source_line: 1,
+            },
+            SidecarAccessorsEntry {
+                rust_type: "Plain",
+                exported: "exported Plain",
+                internal: "internal Plain",
+                source_file: "lib.rs",
+                source_line: 2,
+            },
+        ];
+        let class = |rust_type, field_syntax| ClassNameEntry {
+            rust_type,
+            r_class_name: rust_type,
+            class_system: "s3",
+            field_syntax,
+        };
+        let classes = [
+            class("Fields", false),
+            class("Fields", true),
+            class("Plain", false),
+        ];
+        let fragments = sidecar_accessor_fragments(&accessors, &classes);
+        let contents: Vec<_> = fragments.iter().map(|f| f.content).collect();
+        assert_eq!(contents, ["internal Fields", "exported Plain"]);
+        assert!(
+            fragments
+                .iter()
+                .all(|f| f.priority == RWrapperPriority::Sidecar)
+        );
+        // A type no impl block registers keeps its exported accessors.
+        assert_eq!(
+            sidecar_accessor_fragments(&accessors, &[])[0].content,
+            "exported Fields"
+        );
     }
 
     /// Run the production scalar cross-class return wrapper resolver over
@@ -2918,11 +3042,13 @@ mod tests {
                 rust_type: "S7Shape",
                 r_class_name: "Shape",
                 class_system: "s7",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "S7Circle",
                 r_class_name: "S7Circle",
                 class_system: "s7",
+                field_syntax: false,
             },
         ];
 
@@ -2941,11 +3067,13 @@ mod tests {
                 rust_type: "Point2D",
                 r_class_name: "Point2D",
                 class_system: "s7",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "Point3D",
                 r_class_name: "Point3D",
                 class_system: "s7",
+                field_syntax: false,
             },
         ];
 
@@ -2983,6 +3111,7 @@ mod tests {
             rust_type: "MyClass",
             r_class_name: "MyClass",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "inherit = .__MX_CLASS_REF_MyClass__";
         let output = resolve_class_refs(input, &entries);
@@ -2998,6 +3127,7 @@ mod tests {
             rust_type: "S7PropInner",
             r_class_name: "S7PropInner",
             class_system: "s7",
+            field_syntax: false,
         }];
         let input = "class = .__MX_CLASS_REF_OR_ANY_S7PropInner__";
         let output = resolve_class_refs(input, &entries);
@@ -3022,6 +3152,7 @@ mod tests {
             rust_type: "R6Counter",
             r_class_name: "R6Counter",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "class = .__MX_CLASS_REF_OR_ANY_R6Counter__";
         let output = resolve_class_refs(input, &entries);
@@ -3048,6 +3179,7 @@ mod tests {
                 rust_type: "Parent",
                 r_class_name: "Parent",
                 class_system: "s7",
+                field_syntax: false,
             },
             // PropInner deliberately missing → should resolve to class_any.
         ];
@@ -3063,6 +3195,7 @@ mod tests {
             rust_type: "R6Board",
             r_class_name: "R6Board",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "return(.__MX_WRAP_RETURN_R6Board__(.val))";
         let output = resolve_return_wrappers(input, &entries);
@@ -3075,6 +3208,7 @@ mod tests {
             rust_type: "S7Board",
             r_class_name: "PrettyBoard",
             class_system: "s7",
+            field_syntax: false,
         }];
         let input = ".__MX_WRAP_RETURN_S7Board__(.val)";
         let output = resolve_return_wrappers(input, &entries);
@@ -3087,6 +3221,7 @@ mod tests {
             rust_type: "S4Board",
             r_class_name: "S4Board",
             class_system: "s4",
+            field_syntax: false,
         }];
         let input = ".__MX_WRAP_RETURN_S4Board__(.val)";
         let output = resolve_return_wrappers(input, &entries);
@@ -3100,11 +3235,13 @@ mod tests {
                 rust_type: "S3Board",
                 r_class_name: "S3Board",
                 class_system: "s3",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "EnvBoard",
                 r_class_name: "EnvBoard",
                 class_system: "env",
+                field_syntax: false,
             },
         ];
         let input =
@@ -3138,6 +3275,7 @@ mod tests {
             rust_type: "R6Board",
             r_class_name: "R6Board",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "a <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
         let output = resolve_return_wrappers(input, &entries);
@@ -3150,6 +3288,7 @@ mod tests {
             rust_type: "R6Board",
             r_class_name: "R6Board",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "a <- .__MX_WRAP_RETURN_R6Board__(.val)";
         let output = resolve_list_wrappers(input, &entries);
@@ -3164,6 +3303,7 @@ mod tests {
             rust_type: "R6Board",
             r_class_name: "R6Board",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input =
             "a <- .__MX_WRAP_RETURN_R6Board__(.val)\nb <- .__MX_WRAP_LIST_RETURN_R6Board__(.val)";
@@ -3182,6 +3322,7 @@ mod tests {
             rust_type: "R6Board",
             r_class_name: "R6Board",
             class_system: "r6",
+            field_syntax: false,
         }];
         let input = "return(.__MX_WRAP_LIST_RETURN_R6Board__(.val))";
         let output = resolve_list_wrappers(input, &entries);
@@ -3197,6 +3338,7 @@ mod tests {
             rust_type: "S7Board",
             r_class_name: "PrettyBoard",
             class_system: "s7",
+            field_syntax: false,
         }];
         let input = ".__MX_WRAP_LIST_RETURN_S7Board__(.val)";
         let output = resolve_list_wrappers(input, &entries);
@@ -3212,6 +3354,7 @@ mod tests {
             rust_type: "S4Board",
             r_class_name: "S4Board",
             class_system: "s4",
+            field_syntax: false,
         }];
         let input = ".__MX_WRAP_LIST_RETURN_S4Board__(.val)";
         let output = resolve_list_wrappers(input, &entries);
@@ -3228,11 +3371,13 @@ mod tests {
                 rust_type: "S3Board",
                 r_class_name: "S3Board",
                 class_system: "s3",
+                field_syntax: false,
             },
             ClassNameEntry {
                 rust_type: "EnvBoard",
                 r_class_name: "EnvBoard",
                 class_system: "env",
+                field_syntax: false,
             },
         ];
         let input = "a <- .__MX_WRAP_LIST_RETURN_S3Board__(.val)\nb <- .__MX_WRAP_LIST_RETURN_EnvBoard__(.ptr)";
@@ -4060,10 +4205,11 @@ mod tests {
     }
 
     /// The preamble's field-position helper (#1891) is the one definition in
-    /// its block. Past the last field it raises R's own
-    /// `subscriptOutOfBoundsError` class, every other position goes through
-    /// R's `[[` on the field-name vector, and both errors report the
-    /// generic's call resolved from the method's frame.
+    /// its block. A position is truncated as `[[` truncates it on a list; one
+    /// that picks no field (past the last, `0`, negative) raises R's own
+    /// `subscriptOutOfBoundsError` with the type's `field_error` classes in
+    /// front (#1899), reporting the generic's call resolved from the method's
+    /// frame.
     #[test]
     fn field_at_helper_picks_a_field_as_a_list_does() {
         let defs: Vec<&str> = FIELD_AT_HELPER
@@ -4071,15 +4217,15 @@ mod tests {
             .filter_map(parse_top_level_fn_def_name)
             .collect();
         assert_eq!(defs, [".miniextendr_field_at"]);
-        assert!(FIELD_AT_HELPER.contains(".miniextendr_field_at <- function(fields, i, env) {"));
+        assert!(
+            FIELD_AT_HELPER
+                .contains(".miniextendr_field_at <- function(fields, i, env, class = NULL) {")
+        );
         assert!(FIELD_AT_HELPER.contains(
-            "if (trunc(i) > length(fields)) stop(errorCondition(\"subscript out of bounds\", \
-             class = \"subscriptOutOfBoundsError\", call = .miniextendr_frame_call(env)))"
+            "if (k < 1 || k > length(fields)) stop(errorCondition(\"subscript out of bounds\", \
+             class = c(class, \"subscriptOutOfBoundsError\"), call = .miniextendr_frame_call(env)))"
         ));
-        assert!(FIELD_AT_HELPER.contains(
-            "tryCatch(fields[[i]], error = function(e) stop(simpleError(conditionMessage(e), \
-             .miniextendr_frame_call(env))))"
-        ));
+        assert!(FIELD_AT_HELPER.contains("  fields[[k]]\n"));
         assert!(FIELD_AT_HELPER.starts_with("# Internal helper"));
         assert!(FIELD_AT_HELPER.ends_with("}\n"));
     }
@@ -4288,6 +4434,7 @@ mod tests {
                 rust_type: "Shape",
                 r_class_name: "Shape",
                 class_system: "s7",
+                field_syntax: false,
             }],
         );
         assert!(detect_duplicate_wrapper_defs(content, &map).is_ok());
@@ -4312,6 +4459,7 @@ mod tests {
                 rust_type: "Shape",
                 r_class_name: "Shape",
                 class_system: "s7",
+                field_syntax: false,
             }],
         );
         let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
@@ -4340,6 +4488,7 @@ mod tests {
                 rust_type: "S7Shape",
                 r_class_name: "Shape",
                 class_system: "s7",
+                field_syntax: false,
             }],
         );
         let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();

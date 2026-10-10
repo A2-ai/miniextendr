@@ -2,10 +2,6 @@
 % Please edit documentation in R/miniextendr-wrappers.R
 \name{SidecarS3Get}
 \alias{SidecarS3Get}
-\alias{SidecarS3Get_get_level}
-\alias{SidecarS3Get_set_level}
-\alias{SidecarS3Get_get_notes}
-\alias{SidecarS3Get_set_notes}
 \alias{new_sidecars3get}
 \alias{$.SidecarS3Get}
 \alias{[[.SidecarS3Get}
@@ -13,16 +9,8 @@
 \alias{as.list.SidecarS3Get}
 \alias{.DollarNames.SidecarS3Get}
 \alias{$<-.SidecarS3Get}
-\title{SidecarS3Get Sidecar Accessors}
+\title{SidecarS3Get S3 Class}
 \usage{
-SidecarS3Get_get_level(x)
-
-SidecarS3Get_set_level(x, value)
-
-SidecarS3Get_get_notes(x)
-
-SidecarS3Get_set_notes(x, value)
-
 new_sidecars3get(level)
 
 \method{$}{SidecarS3Get}(x, name)
@@ -40,11 +28,9 @@ new_sidecars3get(level)
 SidecarS3Get
 }
 \arguments{
-\item{x}{An object.}
-
-\item{value}{The new value of the field.}
-
 \item{level}{Integer sidecar field.}
+
+\item{x}{An object.}
 
 \item{name}{A field name; \verb{$<-} sets only \code{level}.}
 
@@ -53,19 +39,10 @@ SidecarS3Get
 \item{...}{Additional arguments.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
-}
-\value{
-The value of the \code{level} field
 
-The SidecarS3Get pointer (invisibly)
-
-The value of the \code{notes} field
-
-The SidecarS3Get pointer (invisibly)
+\item{value}{The new value of the field.}
 }
 \description{
-Getter and setter functions for \verb{#[r_data]} fields on \code{SidecarS3Get}.
-
 S3 class registration for SidecarS3Get: generated getters, and a
 hand-written copy-on-modify \verb{$<-}.
 

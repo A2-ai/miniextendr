@@ -155,6 +155,13 @@ pub(crate) fn sidecar_setter_c_name(type_name: &str, field_name: &str) -> String
     format!("C_{prefix}__mx_rdata_set_{type_name}_{field_name}")
 }
 
+/// `C_<crate>__mx_rdata_live_<Type>` — the liveness check of a type with
+/// `#[externalptr(restored(refuse = "every_read"))]` (#1901).
+pub(crate) fn sidecar_live_c_name(type_name: &str) -> String {
+    let prefix = crate_prefix();
+    format!("C_{prefix}__mx_rdata_live_{type_name}")
+}
+
 /// The R helpers `#[derive(ExternalPtr)]` emits for a type's sidecar fields
 /// and the `$` / `[[` field methods of `r_data_accessors` call (#1848).
 #[derive(Debug, Clone, Copy)]
@@ -167,6 +174,19 @@ pub(crate) enum RDataHelper {
     Set,
     /// `.rdata_no_field_<Type>(name, env)`: the `miniextendr_no_field` error.
     NoField,
+    /// `.rdata_error_class_<Type>`: the classes the field methods put in
+    /// front of their own errors, `#[externalptr(field_error(class = ...))]`
+    /// (#1899); `NULL` without them.
+    ErrorClass,
+    /// `.rdata_every_read_<Type>`: `TRUE` for a type with
+    /// `restored(refuse = "every_read")` (#1901), else `FALSE`; it gates the
+    /// field methods' calls of [`RDataHelper::Live`].
+    EveryRead,
+    /// `.rdata_live_<Type>(x, raise)`: the liveness check of a type with
+    /// `restored(refuse = "every_read")` (#1901). Other types get a stub that
+    /// is never called (gated by [`RDataHelper::EveryRead`]), so a binding
+    /// the methods call is always a function, as `R CMD check` expects.
+    Live,
 }
 
 /// `.rdata_<helper>_<Type>`: the R name of a sidecar field helper, named by
@@ -178,6 +198,9 @@ pub(crate) fn rdata_helper_name(helper: RDataHelper, type_name: &str) -> String 
         RDataHelper::Get => "get",
         RDataHelper::Set => "set",
         RDataHelper::NoField => "no_field",
+        RDataHelper::ErrorClass => "error_class",
+        RDataHelper::EveryRead => "every_read",
+        RDataHelper::Live => "live",
     };
     format!(".rdata_{helper}_{type_name}")
 }
