@@ -483,14 +483,14 @@ test-ui *cargo_flags:
         if ! rustup toolchain list 2>/dev/null | grep -q "^${ver}-"; then
             if ! rustup toolchain install "${ver}" --profile minimal --no-self-update; then
                 echo "!! test-ui: could not install toolchain '${ver}' (offline?)."
-                echo "!! UI snapshots will NOT match CI on a rust-src toolchain; skipping the trybuild suite."
+                echo "!! UI snapshots will NOT match CI on a rust-src toolchain; the trybuild suite did not run."
                 echo "!! To run it later: rustup toolchain install ${ver} --profile minimal && just test-ui"
-                exit 0
+                exit 1
             fi
         fi
         if rustup component list --toolchain "${ver}" --installed 2>/dev/null | grep -q '^rust-src'; then
-            echo "!! test-ui: toolchain '${ver}' unexpectedly carries rust-src; cannot isolate. Skipping (CI remains authoritative)."
-            exit 0
+            echo "!! test-ui: toolchain '${ver}' unexpectedly carries rust-src; cannot isolate. The trybuild suite did not run."
+            exit 1
         fi
         run_ui "${ver}"
     else
