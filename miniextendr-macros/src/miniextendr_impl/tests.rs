@@ -7448,8 +7448,46 @@ fn s3_field_methods_without_a_constructor() {
         wrapper.contains("#' @rdname engine_rec\n#' @param x An object.\n#' @param name"),
         "{wrapper}"
     );
+    // No class environment: nothing lands in it, and it would bind a
+    // same-named constructor of the package a second time (#1918).
+    assert!(!wrapper.contains("engine_rec <- new.env("), "{wrapper}");
+}
+
+/// A readers-only impl of a class named as its Rust type keeps the class
+/// environment: a trait impl's static methods and consts land in `Type$Trait`.
+#[test]
+fn s3_field_methods_without_a_constructor_keep_the_type_env() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {}
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
     assert!(
-        wrapper.contains("engine_rec <- new.env(parent = emptyenv())"),
+        wrapper.contains("Engine <- new.env(parent = emptyenv())"),
+        "{wrapper}"
+    );
+}
+
+/// `internal` keeps the readers on the class's page (`\keyword{internal}`),
+/// as for S4: only the exports change (#1918).
+#[test]
+fn s3_field_methods_internal_stay_documented() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {}
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    attrs.class_name = Some("engine_rec".to_string());
+    attrs.internal = true;
+    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    assert!(
+        !wrapper.contains("#' @noRd\n#' @method $ engine_rec"),
+        "{wrapper}"
+    );
+    assert!(wrapper.contains("#' @rdname engine_rec\n"), "{wrapper}");
+    assert!(
+        wrapper.contains("#' @method $ engine_rec\n#' @export"),
         "{wrapper}"
     );
 }
