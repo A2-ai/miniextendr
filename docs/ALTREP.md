@@ -1800,6 +1800,30 @@ impl OptionallyMaterialized {
 
 ---
 
+## Native logical containers
+
+`Altrep<Vec<RLogical>>`, `Altrep<Box<[RLogical]>>` and
+`Altrep<Cow<'static, [RLogical]>>` expose their existing native logical
+storage. `RLogical` has R's `i32` layout and represents FALSE, TRUE and NA:
+
+```rust,ignore
+use miniextendr_api::{Altrep, RLogical};
+
+let values = Altrep(vec![RLogical::FALSE, RLogical::NA, RLogical::TRUE]);
+```
+
+Element reads, region reads and pointer access use the same storage, including
+raw nonzero logical values. Writes are visible to later reads and serialization.
+`Cow::Borrowed` stays borrowed during read-only access and detaches on the first
+writable pointer request. Deserialization always restores owned storage.
+
+Use a truly static slice for borrowed storage, or ensure an R-backed borrow stays
+rooted for the entire ALTREP lifetime. The `Cow` itself does not root an R owner.
+
+These classes retain the existing built-in duplication policy: R may materialize
+a regular vector when duplicating. Rust structural mutations must reacquire the
+current buffer; they cannot keep previously exposed pointers valid after growth.
+
 ## Iterator-Backed ALTREP
 
 miniextendr provides two iterator-backed ALTREP variants.
