@@ -52,7 +52,8 @@ use super::ListMut;
 pub struct ListAccumulator<'a> {
     /// The current list container (protected via ReprotectSlot).
     list: ReprotectSlot<'a>,
-    /// Temporary slot for element conversion and list growth.
+    /// The element being pushed, rooted from its conversion until it is in
+    /// `list` (#1907): across [`grow`](Self::grow), which allocates.
     temp: ReprotectSlot<'a>,
     /// Number of elements currently in the list.
     len: usize,
@@ -62,6 +63,9 @@ pub struct ListAccumulator<'a> {
     scope: &'a ProtectScope,
     /// Per-element names (None = unnamed, Some = named).
     names: Vec<Option<String>>,
+    /// Whether the result always carries `names`, even when empty
+    /// ([`named`](Self::named)).
+    named: bool,
 }
 
 impl<'a> ListAccumulator<'a> {
@@ -73,6 +77,24 @@ impl<'a> ListAccumulator<'a> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn new(scope: &'a ProtectScope, initial_cap: usize) -> Self {
+        unsafe { Self::with_names(scope, initial_cap, false) }
+    }
+
+    /// Create an accumulator for a named list: the result always has
+    /// `names`, `""` for an element pushed without one, and `character(0)`
+    /// when nothing was pushed, as `List::from_raw_pairs(vec![])` gives
+    /// (#1907). So an empty named list can still become a zero-column data
+    /// frame. An accumulator from [`new`](Self::new) has `names` only once
+    /// something was pushed with [`push_named`](Self::push_named).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn named(scope: &'a ProtectScope, initial_cap: usize) -> Self {
+        unsafe { Self::with_names(scope, initial_cap, true) }
+    }
+
+    unsafe fn with_names(scope: &'a ProtectScope, initial_cap: usize, named: bool) -> Self {
         let cap = initial_cap.max(1); // At least 1 to avoid edge cases
         let cap_isize: isize = cap.try_into().expect("capacity exceeds isize::MAX");
         let list_sexp = unsafe { sys::Rf_allocVector(VECSXP, cap_isize) };
@@ -86,6 +108,7 @@ impl<'a> ListAccumulator<'a> {
             cap,
             scope,
             names: Vec::new(),
+            named,
         }
     }
 
@@ -98,20 +121,10 @@ impl<'a> ListAccumulator<'a> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn push<T: IntoR>(&mut self, value: T) {
-        // Grow if needed
-        if self.len >= self.cap {
-            unsafe { self.grow() };
-        }
-
-        // Convert value using temp slot for protection during conversion
+        // Convert into the temp slot first: a `SEXP` value converts to
+        // itself, and the growth below allocates.
         let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
-
-        // Insert into list (list and temp are both protected)
-        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
-        self.list.get().set_vector_elt(len_isize, sexp);
-
-        self.names.push(None);
-        self.len += 1;
+        unsafe { self.insert(sexp, None) };
     }
 
     /// Push a raw SEXP onto the accumulator.
@@ -119,22 +132,14 @@ impl<'a> ListAccumulator<'a> {
     /// # Safety
     ///
     /// - Must be called from the R main thread
-    /// - `sexp` must be a valid SEXP (it will be temporarily protected)
+    /// - `sexp` must be a valid SEXP. It need not be rooted: the accumulator
+    ///   roots it before anything allocates, so a freshly allocated value
+    ///   (`acc.push_sexp(Rf_allocVector(...))`) is safe.
     pub unsafe fn push_sexp(&mut self, sexp: SEXP) {
-        // Grow if needed
-        if self.len >= self.cap {
-            unsafe { self.grow() };
-        }
-
-        // Protect the sexp during insertion using temp slot
-        let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         unsafe {
             self.temp.set(sexp);
-            self.list.get().set_vector_elt(len_isize, sexp);
+            self.insert(sexp, None);
         }
-
-        self.names.push(None);
-        self.len += 1;
     }
 
     /// Push a named value onto the accumulator.
@@ -143,17 +148,23 @@ impl<'a> ListAccumulator<'a> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn push_named<T: IntoR>(&mut self, name: &str, value: T) {
-        // Grow if needed
+        let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
+        unsafe { self.insert(sexp, Some(name.to_string())) };
+    }
+
+    /// Store `sexp`, already rooted in the temp slot, as the next element,
+    /// growing the list first when it is full.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread, with `sexp` in `self.temp`.
+    unsafe fn insert(&mut self, sexp: SEXP, name: Option<String>) {
         if self.len >= self.cap {
             unsafe { self.grow() };
         }
-
-        let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
-
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");
         self.list.get().set_vector_elt(len_isize, sexp);
-
-        self.names.push(Some(name.to_string()));
+        self.names.push(name);
         self.len += 1;
     }
 
@@ -198,6 +209,10 @@ impl<'a> ListAccumulator<'a> {
 
     /// Grow the internal list by 2x.
     ///
+    /// The new list is rooted by a local [`OwnedProtect`] until it replaces
+    /// the old one, so the temp slot keeps the element being pushed (#1907).
+    /// The protect is balanced here, so the stack use stays O(1).
+    ///
     /// # Safety
     ///
     /// Must be called from the R main thread.
@@ -205,13 +220,9 @@ impl<'a> ListAccumulator<'a> {
         let new_cap = self.cap.saturating_mul(2).max(4);
         let new_cap_isize: isize = new_cap.try_into().expect("new capacity exceeds isize::MAX");
 
-        // Allocate new list via temp slot (safe pattern)
         let old_list = self.list.get();
-        unsafe {
-            self.temp
-                .set_with(|| sys::Rf_allocVector(VECSXP, new_cap_isize));
-        }
-        let new_list = self.temp.get();
+        let rooted = unsafe { OwnedProtect::new(sys::Rf_allocVector(VECSXP, new_cap_isize)) };
+        let new_list = rooted.get();
 
         // Copy existing elements
         for i in 0..self.len {
@@ -251,7 +262,7 @@ impl<'a> ListAccumulator<'a> {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn into_root(self) -> Root<'a> {
-        let has_names = self.names.iter().any(|n| n.is_some());
+        let has_names = self.named || self.names.iter().any(|n| n.is_some());
 
         // If len < cap, we need to shrink the list
         let len_isize: isize = self.len.try_into().expect("list length exceeds isize::MAX");

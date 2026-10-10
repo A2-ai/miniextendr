@@ -5213,3 +5213,38 @@ pub fn gc_stress_lazy_dots() -> Vec<String> {
 }
 
 // endregion
+
+// region: ListAccumulator (#1907)
+
+/// Push fresh, unrooted SEXPs into a `ListAccumulator` that grows on every
+/// push (capacity 1, then doubling), through `push_sexp`, `push` and
+/// `push_named`. Under `gctorture(TRUE)` each growth collects: a value not
+/// rooted before the growth would be freed and read back as garbage.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_list_accumulator() -> SEXP {
+    use miniextendr_api::{ListAccumulator, ProtectScope};
+    unsafe {
+        let scope = ProtectScope::new();
+        let mut acc = ListAccumulator::named(&scope, 1);
+        for i in 0..12_i32 {
+            let n = isize::try_from(i + 1).expect("small length");
+            let fresh = miniextendr_api::sys::Rf_allocVector(SEXPTYPE::INTSXP, n);
+            match i % 3 {
+                0 => acc.push_sexp(fresh),
+                1 => acc.push(fresh),
+                _ => acc.push_named(&format!("v{i}"), fresh),
+            }
+        }
+        let list = acc.into_root().get();
+        for i in 0..12_isize {
+            let elt = list.vector_elt(i);
+            assert_eq!(elt.type_of(), SEXPTYPE::INTSXP, "element {i} was collected");
+            assert_eq!(elt.xlength(), i + 1, "element {i} was collected");
+        }
+        list
+    }
+}
+
+// endregion

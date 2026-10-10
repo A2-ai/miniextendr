@@ -45,6 +45,27 @@ test_that("gc_stress_named_df_list_builder returns correct structure", {
 
 # endregion
 
+# region: ListAccumulator (#1907) ---------------------------------------------
+
+test_that("gc_stress_list_accumulator keeps every pushed value under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  res <- miniextendr:::gc_stress_list_accumulator()
+  gctorture(FALSE)
+  expect_identical(lengths(res, use.names = FALSE), 1:12)
+})
+
+test_that("gc_stress_list_accumulator names every element of a named accumulator", {
+  res <- miniextendr:::gc_stress_list_accumulator()
+  expect_identical(
+    names(res),
+    c("", "", "v2", "", "", "v5", "", "", "v8", "", "", "v11")
+  )
+})
+
+# endregion
+
 # region: enum DataFrameRow split partitions (#1748) --------------------------
 
 # Each fixture checks its partitions in Rust and panics on a mismatch; these

@@ -403,6 +403,12 @@ for item in items {
 }
 ```
 
+A pushed value is rooted before the list grows, so `acc.push_sexp(fresh)` is
+safe for a value nothing else roots yet (#1907).
+`ListAccumulator::named(&scope, n)` always sets `names`: `""` for an element
+pushed without one, and `character(0)` when nothing was pushed, so an empty
+named list can still become a zero-column data frame.
+
 ### String Vectors (STRSXP)
 
 **Complex**: Each `mkChar` allocates. Use `StrVecBuilder`.
