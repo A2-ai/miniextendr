@@ -466,94 +466,14 @@ impl_serialize!(
 
 // region: AltrepSerialize implementations for Box<[T]>
 
-impl_serialize!(Box<[RLogical]>, Vec<RLogical>, Vec::into_boxed_slice);
-
-// Box<[T]> types don't have direct TryFromSexp implementations, so we manually
-// implement serialization by converting to Vec and back.
-
-impl AltrepSerialize for Box<[i32]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<i32>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[f64]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<f64>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[u8]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<u8>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[bool]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<bool>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[String]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<String>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[Rcomplex]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<Rcomplex>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
+// Box<[T]>'s IntoR and TryFromSexp already delegate to Vec<T>.
+impl_serialize!(Box<[i32]>);
+impl_serialize!(Box<[f64]>);
+impl_serialize!(Box<[u8]>);
+impl_serialize!(Box<[bool]>);
+impl_serialize!(Box<[RLogical]>);
+impl_serialize!(Box<[String]>);
+impl_serialize!(Box<[Rcomplex]>);
 // endregion
 
 // region: Built-in implementations for Vec<T>
