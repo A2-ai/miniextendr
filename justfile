@@ -1088,7 +1088,7 @@ test-r-build: configure
     # Build tarball
     R CMD build --compression=none rpkg
     # Determine tarball name (.tar or .tar.gz)
-    tarball="${pkg}_${ver}.tar"
+    tarball="$(pwd)/${pkg}_${ver}.tar"
     [[ -f "$tarball" ]] || tarball="${tarball}.gz"
     # Extract for inspection
     out_dir="rpkg_build/${pkg}_${ver}"
