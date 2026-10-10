@@ -570,7 +570,25 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    just expand-rpkg {{cargo_flags}}
+
+# Expand rpkg against this checkout, including feature-gated derive fixtures.
+# Match clippy-rpkg's Git-source overrides; restore the exact pre-run lockfile
+# so inspecting generated code preserves unstaged dependency changes too.
+[script("bash")]
+expand-rpkg *cargo_flags:
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    lock="$root/rpkg/src/rust/Cargo.lock"
+    lock_backup="$(mktemp)"
+    cp -p "$lock" "$lock_backup"
+    trap 'mv "$lock_backup" "$lock"' EXIT
+    cd "$root/rpkg/src/rust"
+    CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo expand --lib \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" \
+        --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" \
+        {{cargo_flags}}
 
 # Run ./configure
 #
