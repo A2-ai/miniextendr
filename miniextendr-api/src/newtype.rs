@@ -33,7 +33,7 @@
 //! list of R objects keeps a class on each element. So the `Vec` blankets
 //! don't run the check themselves: they pass `T::check_sexp` to the inner
 //! container's hidden
-//! [`TryFromSexp::__mx_try_from_sexp_with_check`](crate::TryFromSexp::__mx_try_from_sexp_with_check)
+//! [`TryFromSexp::__mx_try_from_sexp_with_check`]
 //! (#1837). Its default runs the check once on the whole input, which every
 //! atomic inner container keeps. `Vec<List>` and `Vec<Option<List>>` override
 //! it to run the check on each element (but `NULL`) and to report every
@@ -79,7 +79,7 @@
 //!
 //! Every container's error is [`SexpError`]: the inner container's error
 //! converts into it, and so does a check's refusal
-//! ([`SexpError::Condition`](crate::from_r::SexpError::Condition), carrying
+//! ([`SexpError::Condition`], carrying
 //! its own classes). The inner containers that exist are all `miniextendr-api`
 //! impls (the orphan rule keeps the rest out), and each one's error is a
 //! `SexpError` or converts into one.

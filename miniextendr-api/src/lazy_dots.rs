@@ -68,12 +68,12 @@
 //! # Conditions
 //!
 //! [`force`](LazyDots::force) evaluates through
-//! [`eval_with_handlers`](crate::expression::eval_with_handlers): the caller's
+//! [`eval_with_handlers`]: the caller's
 //! `withCallingHandlers()` / `suppressWarnings()` see what forcing signals,
 //! and an error, or the exit of a `tryCatch()` handler, unwinds through the
 //! Rust frames (running their destructors) and carries on in R as the
 //! original condition. [`try_force`](LazyDots::try_force) evaluates through
-//! [`try_eval_with_handlers`](crate::expression::try_eval_with_handlers):
+//! [`try_eval_with_handlers`]:
 //! warnings and messages still reach the caller's handlers, and an R error
 //! comes back as `Err(`[`REvalError`]`)` for the body to handle. The calls
 //! behind `len`, `names`, `is_missing_arg` and `expr` evaluate through
@@ -289,7 +289,7 @@ impl<'a> LazyDots<'a> {
     /// constant comes back as it is.
     ///
     /// Evaluated with
-    /// [`eval_with_handlers`](crate::expression::eval_with_handlers): the
+    /// [`eval_with_handlers`]: the
     /// caller's handlers see what forcing signals, and an R error unwinds as
     /// the original condition. An empty element raises
     /// `argument "..k" is missing, with no default`; check
@@ -313,7 +313,7 @@ impl<'a> LazyDots<'a> {
     /// `Err(`[`REvalError`]`)` instead of unwinding.
     ///
     /// Evaluated with
-    /// [`try_eval_with_handlers`](crate::expression::try_eval_with_handlers):
+    /// [`try_eval_with_handlers`]:
     /// warnings and messages still reach the caller's handlers, and any other
     /// exit (a `tryCatch()` handler's, a restart) unwinds as under
     /// [`Self::force`]. An empty element is an `Err` with R's
