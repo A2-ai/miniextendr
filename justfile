@@ -337,7 +337,7 @@ doc-all out="site/public/rustdoc": configure-all
     set -euo pipefail
     root="$(pwd)"
     out="{{out}}"; case "$out" in /*) ;; *) out="$root/$out" ;; esac
-    flags="-Zunstable-options --enable-index-page --generate-link-to-definition"
+    flags="-Zunstable-options --enable-index-page --generate-link-to-definition --generate-macro-expansion"
     # Both passes must write into one doc/ tree for the crate index to cover every crate, so the
     # workspace's target directory (wherever cargo resolves it) is reused for the rpkg crate.
     target="$(cargo metadata --format-version 1 --no-deps | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')"
