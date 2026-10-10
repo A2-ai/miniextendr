@@ -660,7 +660,7 @@ impl CWrapperContext {
     ///
     /// Structure:
     /// 1. `GetRNGstate()` (if `rng` enabled)
-    /// 2. `catch_unwind` around the entire body
+    /// 2. `with_r_unwind_protect` around setup, dispatch, and return conversion
     /// 3. Pre-closure conversions on the main thread (produces owned values)
     /// 4. `run_on_worker` (returns `Result<T, String>`) with a
     ///    `move` closure containing in-closure conversions and the call expression,
@@ -669,7 +669,7 @@ impl CWrapperContext {
     ///    main thread with its class, data and call choice
     /// 5. Return conversion back on the main thread via `with_r_unwind_protect`
     /// 6. `PutRNGstate()` (if `rng` enabled)
-    /// 7. Panic handling: either tagged error value or `Rf_errorcall`
+    /// 7. Rust panics become tagged conditions; R exits continue through the guard
     /// 8. Conditions queued with `defer_warning` & co. during the call are
     ///    signalled (`deferred_condition::finish`) before the SEXP reaches R
     fn generate_worker_thread_wrapper(&self) -> TokenStream {
@@ -717,36 +717,12 @@ impl CWrapperContext {
                     let __miniextendr_rng_scope = unsafe {
                         ::miniextendr_api::gc_protect::ProtectScope::new()
                     };
-                    if let Ok(sexp) = &__miniextendr_panic_result {
-                        unsafe { __miniextendr_rng_scope.protect(*sexp); }
-                    }
+                    unsafe { __miniextendr_rng_scope.protect(__miniextendr_value); }
                     unsafe { ::miniextendr_api::sys::PutRNGstate(); }
                 },
             )
         } else {
             (TokenStream::new(), TokenStream::new())
-        };
-
-        // Panic error handling: return tagged error value (the only mode).
-        //
-        // #1245 Gap 2 (not fixed here): this block is reused below for the
-        // OUTER `Err(payload) => #panic_error_handling` arm — the defensive
-        // case where the whole worker-dispatch closure panics directly
-        // (rather than `run_on_worker` returning `Err`, which is handled
-        // separately just above and already carries a location-folded
-        // message per #1245 Gap 1). This site stringifies via
-        // `panic_payload_to_string` (no location fold), so a panic reaching
-        // it loses its `(at file:line)` suffix. Near-no-op in practice — the
-        // panics that actually reach it are framework-internal (e.g.
-        // re-entrant `run_on_worker`), not user code. Fixing it properly
-        // would need `panic_message_with_location` made `pub`.
-        let panic_error_handling = quote! {
-            unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                &::miniextendr_api::unwind_protect::panic_payload_to_string(&*payload),
-                ::miniextendr_api::error_value::kind::PANIC,
-                ::core::option::Option::None,
-                Some(__miniextendr_call),
-            ) }
         };
 
         // run_on_worker returns Result; Err → tagged error value.
@@ -760,7 +736,7 @@ impl CWrapperContext {
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_params),*) -> ::miniextendr_api::SEXP {
                 let __miniextendr_deferred_mark = ::miniextendr_api::deferred_condition::mark();
                 #rng_get
-                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                let __miniextendr_value = ::miniextendr_api::unwind_protect::with_r_unwind_protect(move || {
                     #alias_guard
                     #pre_call_checks
                     #(#pre_call)*
@@ -791,14 +767,8 @@ impl CWrapperContext {
                             ) }
                         }
                     }
-                }));
+                }, Some(__miniextendr_call));
                 #rng_put
-                let __miniextendr_value = match __miniextendr_panic_result {
-                    Ok(sexp) => sexp,
-                    Err(payload) => {
-                        #panic_error_handling
-                    },
-                };
                 unsafe {
                     ::miniextendr_api::deferred_condition::finish(
                         __miniextendr_deferred_mark,
