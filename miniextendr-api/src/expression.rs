@@ -10,7 +10,7 @@
 //! | [`RSymbol`] | Interned R symbol (SYMSXP) |
 //! | [`RCall`] | Builder for R function calls (LANGSXP) |
 //! | [`REnv`] | Well-known R environments |
-//! | [`REvalError`] | An R error caught by [`RCall::eval`] / [`r_eval_str`] |
+//! | [`REvalError`] | An R error caught by [`RCall::eval`] / [`r_eval_str`] / [`try_eval_with_handlers`] |
 //!
 //! # Example
 //!
@@ -431,7 +431,10 @@ impl RCall {
     /// comes back as `Err` holding R's condition (its message, call, classes
     /// and the object itself) instead of jumping through the Rust frames.
     /// Use [`eval_with_handlers`](Self::eval_with_handlers) for a call whose
-    /// conditions the user should see as raised.
+    /// conditions the user should see as raised, and
+    /// [`try_eval_with_handlers`](Self::try_eval_with_handlers) for one whose
+    /// warnings and messages the user should see but whose error the Rust
+    /// code handles.
     ///
     /// ```ignore
     /// match RCall::new("print").arg(df).named_arg("na.print", one).eval_base() {
@@ -488,7 +491,10 @@ impl RCall {
     ///
     /// A column that does not exist raises tidyselect's own error (class
     /// `vctrs_error_subscript_oob`, with its call), which unwinds through the
-    /// Rust frames and reaches the user's `tryCatch()` as it was raised.
+    /// Rust frames and reaches the user's `tryCatch()` as it was raised. To
+    /// get the error back as `Err(REvalError)` instead, while the user's
+    /// handlers still see warnings and messages, use
+    /// [`try_eval_with_handlers`](Self::try_eval_with_handlers).
     ///
     /// # Safety
     ///
@@ -498,6 +504,44 @@ impl RCall {
         unsafe {
             let call = OwnedProtect::new(self.build());
             eval_with_handlers(call.get(), env)
+        }
+    }
+
+    /// Evaluate the call in `env` in the caller's R context, keeping R's
+    /// condition handlers, with an R error returned as `Err`: see
+    /// [`try_eval_with_handlers`].
+    ///
+    /// Use it for a call that forwards the user's arguments to an R function
+    /// and raises the function's errors as the package's own: the user's
+    /// `withCallingHandlers()`, `suppressWarnings()` and
+    /// `tryCatch(warning = )` see the function's warnings and messages, and
+    /// an R error comes back as [`REvalError`]. A `[` method of a data-frame
+    /// subclass, say:
+    ///
+    /// ```ignore
+    /// let out = unsafe {
+    ///     RCall::new("[")
+    ///         .arg(frame)
+    ///         .arg(i)
+    ///         .named_arg("drop", drop)
+    ///         .try_eval_with_handlers(R_BaseEnv)
+    /// }
+    /// .unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+    /// ```
+    ///
+    /// `x[1, drop = FALSE]` warns that `drop` is ignored; the user's
+    /// `suppressWarnings()` silences it. A column that does not exist
+    /// ("undefined columns selected") comes back as `Err` and is raised again
+    /// under `pkg_subset_error`.
+    ///
+    /// # Safety
+    ///
+    /// As [`try_eval_with_handlers`]: R's main thread, inside a miniextendr
+    /// boundary, `env` an environment. The value is unprotected.
+    pub unsafe fn try_eval_with_handlers(&self, env: SEXP) -> Result<SEXP, REvalError> {
+        unsafe {
+            let call = OwnedProtect::new(self.build());
+            try_eval_with_handlers(call.get(), env)
         }
     }
 
@@ -618,17 +662,17 @@ unsafe fn quote(value: SEXP) -> SEXP {
     }
 }
 
-// region: eval_with_handlers (evaluation in the caller's R context)
+// region: eval_with_handlers, try_eval_with_handlers (evaluation in the caller's R context)
 
 /// Evaluate `expr` in `env` in the caller's R context, the way R code calling
 /// `eval(expr, env)` does.
 ///
-/// | | [`RCall::eval`], [`r_eval_str`] | `eval_with_handlers` |
-/// |---|---|---|
-/// | R entry point | `R_tryCatchError` inside `R_ToplevelExec` | `Rf_eval` in its own `R_UnwindProtect` |
-/// | caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition |
-/// | R error | `Err(`[`REvalError`]`)`: R's condition, with its message (no `Error in` prefix, no `Calls:` line), call and classes; the Rust code decides what to raise | unwinds as the R condition, class and call kept |
-/// | caller's `tryCatch(warning = )`, restarts, interrupts | not seen (an interrupt ends the evaluation with an `Err`) | exit through the Rust frames |
+/// | | [`RCall::eval`], [`r_eval_str`] | `eval_with_handlers` | [`try_eval_with_handlers`] |
+/// |---|---|---|---|
+/// | R entry point | `R_tryCatchError` inside `R_ToplevelExec` | `Rf_eval` in its own `R_UnwindProtect` | `R_tryCatchError` in its own `R_UnwindProtect` |
+/// | caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition | see every warning, message and condition except an error |
+/// | R error | `Err(`[`REvalError`]`)`: R's condition, with its message (no `Error in` prefix, no `Calls:` line), call and classes; the Rust code decides what to raise | unwinds as the R condition, class and call kept | `Err(`[`REvalError`]`)`, as from [`RCall::eval`] |
+/// | caller's `tryCatch(warning = )`, restarts, interrupts | not seen (an interrupt ends the evaluation with an `Err`) | exit through the Rust frames | exit through the Rust frames |
 ///
 /// An R error, or any other exit from the evaluation (an exiting handler of
 /// the caller's `tryCatch()`, `invokeRestart()`, an interrupt), stops at this
@@ -644,7 +688,9 @@ unsafe fn quote(value: SEXP) -> SEXP {
 /// a package whose conditions are part of its interface. Keep [`RCall::eval`]
 /// for internal calls whose failure the Rust code handles itself, for
 /// instance by raising its own condition with the caught message
-/// ([`REvalError::reraise_class`]).
+/// ([`REvalError::reraise_class`]). [`try_eval_with_handlers`] combines the
+/// two: the caller's handlers see warnings and messages, and an R error comes
+/// back as `Err` for the Rust code to raise.
 ///
 /// The unwind must reach a miniextendr boundary. Don't catch it with
 /// `std::panic::catch_unwind` in between, or the R exit is abandoned (R
@@ -669,6 +715,61 @@ unsafe fn quote(value: SEXP) -> SEXP {
 /// The value, **unprotected**: protect it before the next allocation.
 pub unsafe fn eval_with_handlers(expr: SEXP, env: SEXP) -> SEXP {
     unsafe { crate::unwind_protect::eval_unwinding(expr, env) }
+}
+
+/// Evaluate `expr` in `env` in the caller's R context, as
+/// [`eval_with_handlers`] does, but return an R error as `Err` instead of
+/// letting it unwind.
+///
+/// The caller's `withCallingHandlers()`, `suppressWarnings()` and
+/// `suppressMessages()` see the evaluation's warnings, messages and other
+/// conditions; one they muffle returns here and the evaluation goes on. A
+/// condition of class `error` is caught at the evaluation, by an exiting
+/// handler (`R_tryCatchError`), and comes back as `Err(`[`REvalError`]`)`
+/// built as [`RCall::eval`] builds it: R's condition, with its message (no
+/// `Error in` prefix, no `Calls:` line), call and classes. The Rust code
+/// decides what to raise ([`REvalError::reraise_class`]).
+///
+/// Any other exit (an exiting handler of the caller's `tryCatch()`, such as
+/// `tryCatch(warning = )`, `invokeRestart()`, an interrupt) leaves as under
+/// [`eval_with_handlers`]: it stops at this function's own `R_UnwindProtect`
+/// frame and goes on as a Rust unwind, the frames up to the `#[miniextendr]`
+/// boundary drop their values, and the boundary hands the exit back to R.
+///
+/// The error handler is the innermost one, so a handler of the caller's for
+/// errors (`withCallingHandlers(error = )`, `tryCatch(error = )`) does not see
+/// an error the evaluation raises. An error raised by a handler of the
+/// caller's, as in `withCallingHandlers(warning = function(w) stop("no"))`,
+/// is not the evaluation's: R runs that handler outside the evaluation's
+/// handlers, so the error unwinds to the caller as raised.
+///
+/// The evaluation runs inside R's `tryCatch()`, as under [`RCall::eval`]: an
+/// error raised at the top of `expr` (`stop()` called directly, not from a
+/// function) has no [`call`](REvalError::call), and code at the top of `expr`
+/// that inspects the call stack (`sys.call()`) sees the `tryCatch()` frames.
+///
+/// The rules of [`eval_with_handlers`] for the unwind hold here too: don't
+/// catch it with `std::panic::catch_unwind` on its way to the boundary, and
+/// don't call this from a `Drop` implementation.
+///
+/// # Safety
+///
+/// As [`eval_with_handlers`]:
+///
+/// - R's main thread, inside a miniextendr boundary: a `#[miniextendr]`
+///   function body, a [`with_r_unwind_protect`](crate::unwind_protect::with_r_unwind_protect)
+///   closure, an ALTREP callback with the `r_unwind` or `rust_unwind` guard
+///   (not `unsafe`, which catches nothing), a connection callback, a
+///   [`with_r_thread`](crate::worker::with_r_thread) closure.
+/// - `expr` and `env` stay rooted for the call; `env` is an environment.
+///
+/// # Returns
+///
+/// - `Ok(SEXP)` with the value, **unprotected**: protect it before the next
+///   allocation.
+/// - `Err(REvalError)` with R's error condition.
+pub unsafe fn try_eval_with_handlers(expr: SEXP, env: SEXP) -> Result<SEXP, REvalError> {
+    unsafe { into_result(try_eval_unwinding(expr, env)) }
 }
 
 // endregion
@@ -790,9 +891,10 @@ const BASE_ERROR_CLASSES: [&str; 4] = ["rust_error", "simpleError", "error", "co
 const EXIT_MESSAGE: &str =
     "R evaluation was interrupted (it jumped to the top level without an error condition)";
 
-/// An R error caught by [`RCall::eval`] / [`RCall::eval_base`], [`r_eval_str`]
-/// and the helpers built on them ([`REnv::package_namespace`],
-/// [`RCall::namespaced`], [`dollar_extract`]).
+/// An R error caught by [`RCall::eval`] / [`RCall::eval_base`], [`r_eval_str`],
+/// the helpers built on them ([`REnv::package_namespace`],
+/// [`RCall::namespaced`], [`dollar_extract`]), and [`try_eval_with_handlers`] /
+/// [`RCall::try_eval_with_handlers`].
 ///
 /// It holds R's condition object, rooted while this value lives, and what R
 /// reports about it:
@@ -805,9 +907,9 @@ const EXIT_MESSAGE: &str =
 /// - [`condition`](Self::condition): the condition object itself.
 ///
 /// `Display` writes the message alone. Every value holds a condition: a parse
-/// failure in [`r_eval_str`] and an evaluation that jumps to the top level
-/// without an error (an interrupt) come back as a `simpleError` built for
-/// them, with no call.
+/// failure in [`r_eval_str`] and an evaluation under [`RCall::eval`] that
+/// jumps to the top level without an error (an interrupt) come back as a
+/// `simpleError` built for them, with no call.
 ///
 /// # Raising your own condition with it
 ///
@@ -1123,18 +1225,18 @@ fn is_try_catch_frame_call(call: SEXP) -> bool {
 
 // region: try_eval (evaluation with R errors caught)
 
-/// How [`try_eval_raw`] ended. The SEXPs are unprotected.
+/// How an evaluation with R errors caught ended. The SEXPs are unprotected.
 enum Caught {
     /// The expression's value.
     Value(SEXP),
     /// The `error` condition the evaluation raised.
     Error(SEXP),
     /// A jump to the top level without an error condition: an interrupt, an
-    /// `abort` restart.
+    /// `abort` restart. Only [`try_eval_raw`] stops those.
     Exit,
 }
 
-/// What [`try_eval_raw`] shares with its callbacks.
+/// What [`catch_error`] shares with its callbacks.
 struct TryEvalData {
     expr: SEXP,
     env: SEXP,
@@ -1146,33 +1248,39 @@ struct TryEvalData {
     caught: bool,
 }
 
-/// Evaluate `expr` in `env`, hidden from the caller's handlers and restarts
-/// (a new top-level context, `R_ToplevelExec`), with `error` conditions
-/// caught (`R_tryCatchError`).
-///
-/// `R_tryCatchError` alone is not enough: it runs R's `tryCatch()`, so the
-/// caller's calling handlers would see the evaluation's warnings, and an
-/// exiting handler or restart of the caller would jump through the Rust
-/// frames. `R_ToplevelExec` gives the isolation `R_tryEval` gives, and stops
-/// any jump that is not an error.
-///
-/// # Safety
-///
-/// R's main thread (the checked FFI routes a worker's call there); `expr`
-/// and `env` rooted.
-unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
-    /// `R_ToplevelExec`'s callback. A jump out of it crosses no Rust frame
-    /// holding anything to drop.
-    unsafe extern "C-unwind" fn toplevel(data: *mut c_void) {
-        let data = data.cast::<TryEvalData>();
-        unsafe {
-            let value = sys::R_tryCatchError(Some(body), data.cast(), Some(handler), data.cast());
-            if !(*data).caught {
-                (*data).slot.set_vector_elt(0, value);
-            }
+impl TryEvalData {
+    /// The evaluation of `expr` in `env`; `slot` is a protected list of one.
+    fn new(expr: SEXP, env: SEXP, slot: SEXP) -> Self {
+        TryEvalData {
+            expr,
+            env,
+            slot,
+            caught: false,
         }
     }
 
+    /// How [`catch_error`] ended, once it has returned. The SEXP is rooted by
+    /// the slot.
+    fn outcome(&self) -> Caught {
+        let value = self.slot.vector_elt(0);
+        if self.caught {
+            Caught::Error(value)
+        } else {
+            Caught::Value(value)
+        }
+    }
+}
+
+/// Evaluate a [`TryEvalData`]'s `expr` in its `env` with `error` conditions
+/// caught (`R_tryCatchError`), and store the value, or the caught condition,
+/// in its slot. Returns `R_tryCatchError`'s value: the expression's, or
+/// `NULL` after an error ([`TryEvalData::outcome`] tells them apart).
+///
+/// `R_tryCatchError` runs R's `tryCatch()`, so the caller's calling handlers
+/// see the evaluation's other conditions, and any jump that is not an error
+/// (an exiting handler or restart of the caller's) passes through. A jump out
+/// of here crosses no Rust frame holding anything to drop.
+unsafe extern "C-unwind" fn catch_error(data: *mut c_void) -> SEXP {
     /// `R_tryCatchError`'s body. An R error jumps from here to the
     /// `tryCatch()` frame, over no Rust frame holding anything to drop.
     unsafe extern "C-unwind" fn body(data: *mut c_void) -> SEXP {
@@ -1191,23 +1299,85 @@ unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
         SEXP::nil()
     }
 
+    let data = data.cast::<TryEvalData>();
+    unsafe {
+        let value = sys::R_tryCatchError(Some(body), data.cast(), Some(handler), data.cast());
+        if !(*data).caught {
+            (*data).slot.set_vector_elt(0, value);
+        }
+        value
+    }
+}
+
+/// Evaluate `expr` in `env`, hidden from the caller's handlers and restarts
+/// (a new top-level context, `R_ToplevelExec`), with `error` conditions
+/// caught ([`catch_error`]).
+///
+/// `R_tryCatchError` alone is not enough here: the caller's calling handlers
+/// would see the evaluation's warnings, and an exiting handler or restart of
+/// the caller would jump through the Rust frames. `R_ToplevelExec` gives the
+/// isolation `R_tryEval` gives, and stops any jump that is not an error.
+///
+/// # Safety
+///
+/// R's main thread (the checked FFI routes a worker's call there); `expr`
+/// and `env` rooted.
+unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
+    /// `R_ToplevelExec`'s callback. A jump out of it crosses no Rust frame
+    /// holding anything to drop.
+    unsafe extern "C-unwind" fn toplevel(data: *mut c_void) {
+        unsafe { catch_error(data) };
+    }
+
     unsafe {
         let slot = OwnedProtect::new(SEXP::alloc_list(1));
-        let mut data = TryEvalData {
-            expr,
-            env,
-            slot: slot.get(),
-            caught: false,
-        };
+        let mut data = TryEvalData::new(expr, env, slot.get());
         let completed = sys::R_ToplevelExec(Some(toplevel), (&raw mut data).cast());
         if completed == crate::sexp_types::Rboolean::FALSE {
             return Caught::Exit;
         }
-        let value = slot.get().vector_elt(0);
-        if data.caught {
-            Caught::Error(value)
-        } else {
-            Caught::Value(value)
+        data.outcome()
+    }
+}
+
+/// Evaluate `expr` in `env` in the caller's R context, with `error`
+/// conditions caught ([`catch_error`]): the caller's handlers and restarts
+/// stay in place, and any other R exit leaves as a Rust unwind
+/// ([`call_unwinding`](crate::unwind_protect::call_unwinding)). Never
+/// [`Caught::Exit`].
+///
+/// The slot is protected before the evaluation and holds the caught condition
+/// until the caller roots it. An exit jumps to `R_UnwindProtect`'s frame,
+/// which resets the protect stack to its level when the frame was entered, so
+/// the slot's protection is still the top one when the unwind drops it.
+///
+/// # Safety
+///
+/// As [`try_eval_with_handlers`].
+unsafe fn try_eval_unwinding(expr: SEXP, env: SEXP) -> Caught {
+    unsafe {
+        let slot = OwnedProtect::new(SEXP::alloc_list(1));
+        let mut data = TryEvalData::new(expr, env, slot.get());
+        crate::unwind_protect::call_unwinding(catch_error, (&raw mut data).cast());
+        data.outcome()
+    }
+}
+
+/// An evaluation's outcome with a caught error as an [`REvalError`]. The
+/// value is unprotected.
+///
+/// # Safety
+///
+/// R's main thread, right after the evaluation: nothing has allocated since.
+unsafe fn into_result(caught: Caught) -> Result<SEXP, REvalError> {
+    unsafe {
+        match caught {
+            Caught::Value(value) => Ok(value),
+            Caught::Error(cond) => {
+                let cond = OwnedProtect::new(cond);
+                Err(REvalError::from_condition(cond.get()))
+            }
+            Caught::Exit => Err(REvalError::simple_error(EXIT_MESSAGE)),
         }
     }
 }
@@ -1219,16 +1389,7 @@ unsafe fn try_eval_raw(expr: SEXP, env: SEXP) -> Caught {
 ///
 /// As [`try_eval_raw`].
 unsafe fn try_eval(expr: SEXP, env: SEXP) -> Result<SEXP, REvalError> {
-    unsafe {
-        match try_eval_raw(expr, env) {
-            Caught::Value(value) => Ok(value),
-            Caught::Error(cond) => {
-                let cond = OwnedProtect::new(cond);
-                Err(REvalError::from_condition(cond.get()))
-            }
-            Caught::Exit => Err(REvalError::simple_error(EXIT_MESSAGE)),
-        }
-    }
+    unsafe { into_result(try_eval_raw(expr, env)) }
 }
 
 // endregion

@@ -9,10 +9,12 @@ Safe wrappers for building and evaluating R function calls from Rust.
 | `RSymbol` | Interned R symbol (SYMSXP) -- never GC'd |
 | `RCall` | Builder for R function calls (LANGSXP) |
 | `REnv` | Well-known R environments (Global, Base, Empty) |
-| `REvalError` | An R error caught by `RCall::eval` / `r_eval_str`: R's condition |
+| `REvalError` | An R error caught by `RCall::eval` / `r_eval_str` / `try_eval_with_handlers`: R's condition |
 
 Plus free functions: `r_eval_str` / `r_eval_str_global` (parse + evaluate a
-string of R source) and `dollar_extract` (the R `$` operator).
+string of R source), `dollar_extract` (the R `$` operator), and
+`eval_with_handlers` / `try_eval_with_handlers` (evaluate in the caller's R
+context, see [Handler-keeping evaluation](#handler-keeping-evaluation)).
 
 ## Quick Example
 
@@ -104,7 +106,9 @@ The call runs in a new top-level context (`R_ToplevelExec`, as under
 handlers and restarts: a warning goes to R's default handler rather than to
 the caller's `withCallingHandlers()`, and an interrupt ends the evaluation
 with an `Err`. For user code, or a call whose conditions the user should see
-as raised, use [`eval_with_handlers`](#handler-keeping-evaluation) instead.
+as raised, use [`eval_with_handlers`](#handler-keeping-evaluation) instead;
+for a call whose warnings and messages the user should see but whose error the
+Rust code raises itself, `try_eval_with_handlers`.
 
 Two details follow from the `tryCatch()` underneath:
 
@@ -227,8 +231,26 @@ unsafe {
 }
 ```
 
-It must run inside a miniextendr boundary on the main thread, and the unwind
-it starts must not be caught with `catch_unwind` on the way. Details:
+`try_eval_with_handlers(expr, env)` and `RCall::try_eval_with_handlers(env)`
+do the same, except that an R error is caught at the evaluation and comes back
+as `Err(REvalError)`, as from `RCall::eval`: the caller's handlers see
+warnings and messages, and the Rust code decides what to raise for an error
+(`e.reraise_class(...)`). Other exits (`tryCatch(warning = )`, restarts) still
+leave through the Rust frames.
+
+```rust
+let out = unsafe {
+    RCall::new("[")
+        .arg(frame)
+        .arg(i)
+        .named_arg("drop", drop)
+        .try_eval_with_handlers(R_BaseEnv)
+}
+.unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+```
+
+Both must run inside a miniextendr boundary on the main thread, and the unwind
+they start must not be caught with `catch_unwind` on the way. Details:
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#handler-keeping-evaluation).
 
 ## Safety Requirements

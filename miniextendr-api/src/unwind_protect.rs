@@ -287,7 +287,7 @@ impl Drop for Boundary {
     }
 }
 
-/// An R non-local exit that [`eval_unwinding`] carries out of its `Rf_eval`
+/// An R non-local exit that [`call_unwinding`] carries out of its callback
 /// as a Rust unwind: an error, a condition caught by an exiting handler set up
 /// outside the call (`tryCatch(warning = )`), a restart, an interrupt.
 ///
@@ -372,7 +372,7 @@ impl Drop for RUnwind {
 }
 
 /// Tokens of R exits dropped off R's main thread, where `R_ReleaseObject`
-/// would race R. [`eval_unwinding`] releases them on the main thread.
+/// would race R. [`call_unwinding`] releases them on the main thread.
 static ABANDONED_OFF_MAIN: std::sync::Mutex<Vec<SEXP>> = std::sync::Mutex::new(Vec::new());
 
 /// Whether [`ABANDONED_OFF_MAIN`] may hold a token: the evaluation's fast path.
@@ -425,35 +425,63 @@ pub(crate) unsafe fn resume_if_r_unwind(
 /// Evaluate `expr` in `env` with `Rf_eval`, in the caller's R context: the
 /// condition handlers and restarts established around the `.Call()` stay in
 /// place, unlike under `R_tryEval`, whose `R_ToplevelExec` empties the handler
-/// and restart stacks for the duration.
-///
-/// The `Rf_eval` runs in its own `R_UnwindProtect`, so an R exit stops at that
-/// frame, never jumping over a Rust frame. Its cleanup turns the exit into a
-/// Rust unwind ([`RUnwind`]); the boundary resumes it.
+/// and restart stacks for the duration. An R exit leaves as [`RUnwind`]
+/// ([`call_unwinding`]).
 ///
 /// # Safety
 ///
-/// R's main thread, inside a miniextendr boundary (a `#[miniextendr]` body, a
-/// `with_r_unwind_protect*` closure, a guarded callback). `expr` and `env` are
-/// rooted for the call, `env` an environment. The result is unprotected.
+/// As [`call_unwinding`]; `expr` and `env` are rooted for the call, `env` an
+/// environment. The result is unprotected.
 pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
     struct EvalData {
         expr: SEXP,
         env: SEXP,
+    }
+
+    unsafe extern "C-unwind" fn eval(data: *mut c_void) -> SEXP {
+        let data = unsafe { &*data.cast::<EvalData>() };
+        unsafe { sys::Rf_eval(data.expr, data.env) }
+    }
+
+    let mut data = EvalData { expr, env };
+    unsafe { call_unwinding(eval, (&raw mut data).cast()) }
+}
+
+/// Call `fun(data)` in its own `R_UnwindProtect`, in the caller's R context,
+/// and return its value.
+///
+/// An R exit from `fun` (an error, an exiting handler of the caller's
+/// `tryCatch()`, a restart, an interrupt) stops at that frame, never jumping
+/// over a Rust frame. Its cleanup turns the exit into a Rust unwind
+/// ([`RUnwind`]); the boundary resumes it.
+///
+/// # Safety
+///
+/// R's main thread, inside a miniextendr boundary (a `#[miniextendr]` body, a
+/// `with_r_unwind_protect*` closure, a guarded callback). `fun` holds nothing
+/// to drop across an R jump (it is called from C), and what `data` points to
+/// outlives the call. The result is unprotected.
+pub(crate) unsafe fn call_unwinding(
+    fun: unsafe extern "C-unwind" fn(*mut c_void) -> SEXP,
+    data: *mut c_void,
+) -> SEXP {
+    struct CallData {
+        fun: unsafe extern "C-unwind" fn(*mut c_void) -> SEXP,
+        data: *mut c_void,
         token: SEXP,
         boundary: u64,
     }
 
     unsafe extern "C-unwind" fn trampoline(data: *mut c_void) -> SEXP {
-        let data = unsafe { &*data.cast::<EvalData>() };
+        let data = unsafe { &*data.cast::<CallData>() };
         // An R exit from here jumps to `R_UnwindProtect`, over no Rust frame
         // that holds anything to drop.
-        unsafe { sys::Rf_eval(data.expr, data.env) }
+        unsafe { (data.fun)(data.data) }
     }
 
     unsafe extern "C-unwind" fn cleanup(data: *mut c_void, jump: Rboolean) {
         if jump != Rboolean::FALSE {
-            let data = unsafe { &*data.cast::<EvalData>() };
+            let data = unsafe { &*data.cast::<CallData>() };
             // A boundary the R code entered and an R jump left skipped its
             // `leave`; this evaluation's boundary is the innermost again.
             BOUNDARY.with(|current| current.set(data.boundary));
@@ -472,9 +500,9 @@ pub(crate) unsafe fn eval_unwinding(expr: SEXP, env: SEXP) -> SEXP {
         let token = sys::R_MakeUnwindCont();
         sys::R_PreserveObject(token);
         let boundary = BOUNDARY.with(Cell::get);
-        let mut data = EvalData {
-            expr,
-            env,
+        let mut data = CallData {
+            fun,
+            data,
             token,
             boundary,
         };
@@ -592,7 +620,7 @@ where
                     // Drain worker-thread log records before returning the panic
                     // payload to the caller (which will convert it to an R error).
                     drain_log_queue_if_available();
-                    // An R exit carried out of `eval_unwinding` (#1835): the Rust
+                    // An R exit carried out of `call_unwinding` (#1835): the Rust
                     // frames it crossed have dropped their values; continue it.
                     let payload = resume_if_r_unwind(payload, deferred_mark, &boundary);
                     Err(payload)

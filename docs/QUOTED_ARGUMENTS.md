@@ -199,14 +199,14 @@ or sent to another thread. A written lifetime (`Quoted<'a>`) is accepted.
 `Quoted::eval()`, `eval_in()` and `Quosure::eval_tidy()` evaluate through
 `miniextendr_api::expression::eval_with_handlers(expr, env)`, which is also
 public for any expression or call built in Rust. It differs from
-`RCall::eval` / `r_eval_str`:
+`RCall::eval` / `r_eval_str`, and `try_eval_with_handlers` combines the two:
 
-| | `RCall::eval`, `r_eval_str` | `eval_with_handlers`, `RCall::eval_with_handlers` |
-|---|---|---|
-| R entry point | `R_tryCatchError` inside `R_ToplevelExec` | `Rf_eval` in its own `R_UnwindProtect` |
-| caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition |
-| R error | `Err(REvalError)`: R's condition, with its message (no `Error in` prefix, no `Calls:` line), call and classes; the Rust code decides what to raise | reaches the caller's `tryCatch()` as raised: class, call, fields |
-| caller's `tryCatch(warning = )`, restarts | not seen | exit through the Rust frames |
+| | `RCall::eval`, `r_eval_str` | `eval_with_handlers`, `RCall::eval_with_handlers` | `try_eval_with_handlers`, `RCall::try_eval_with_handlers` |
+|---|---|---|---|
+| R entry point | `R_tryCatchError` inside `R_ToplevelExec` | `Rf_eval` in its own `R_UnwindProtect` | `R_tryCatchError` in its own `R_UnwindProtect` |
+| caller's `withCallingHandlers()`, `suppressWarnings()` | not seen (`R_ToplevelExec` empties the handler and restart stacks) | see every warning, message and condition | see every warning, message and condition except an error |
+| R error | `Err(REvalError)`: R's condition, with its message (no `Error in` prefix, no `Calls:` line), call and classes; the Rust code decides what to raise | reaches the caller's `tryCatch()` as raised: class, call, fields | `Err(REvalError)`, as from `RCall::eval` |
+| caller's `tryCatch(warning = )`, restarts | not seen | exit through the Rust frames | exit through the Rust frames |
 
 An R error, or any other jump out of the evaluation (an exiting handler of
 the caller's `tryCatch()`, `invokeRestart()`, an interrupt), stops at the
@@ -256,11 +256,55 @@ RCall::namespaced("rlang", "warn")?
     .eval_with_handlers(R_BaseEnv);
 ```
 
+### An R error returned as `Err`
+
+`try_eval_with_handlers(expr, env)` and `RCall::try_eval_with_handlers(env)`
+keep the caller's handlers the same way, but catch an R error at the
+evaluation and return it as `Err(REvalError)`, built as `RCall::eval` builds
+it. It suits a method that forwards the user's arguments to an R function and
+raises the function's errors under the package's own class: the user's
+`suppressWarnings()` and `tryCatch(warning = )` still see the function's
+warnings.
+
+```rust
+// a `[` method of a data-frame subclass, forwarding to `[.data.frame`
+let out = unsafe {
+    RCall::new("[")
+        .arg(frame)
+        .arg(i)
+        .named_arg("drop", drop)
+        .try_eval_with_handlers(R_BaseEnv)
+}
+.unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+```
+
+```r
+x <- suppressWarnings(s[1, drop = FALSE])   # "'drop' argument will be ignored" silenced
+tryCatch(s["zz"], pkg_subset_error = function(e) conditionMessage(e))
+#> [1] "undefined columns selected"
+```
+
+Only a condition of class `error` is caught. A warning, message or other
+condition reaches the caller's handlers, and an exit other than an error (the
+caller's `tryCatch(warning = )`, `invokeRestart()`, an interrupt) leaves
+through the Rust frames as under `eval_with_handlers`, so the two rules above
+apply to it too. Because the error handler is the innermost one, the caller's
+own error handlers (`withCallingHandlers(error = )`) don't see an error the
+evaluation raises. An error raised by a handler of the caller's, as in
+`withCallingHandlers(warning = function(w) stop("no warnings"))`, is the
+caller's: R runs that handler outside the evaluation's handlers, so the error
+reaches the caller's `tryCatch()` as raised. As under `RCall::eval`, the
+evaluation runs inside R's `tryCatch()`, so a `stop()` at the top of the
+expression has no `call()`
+([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)).
+
 ## Tests
 
-`rpkg/src/rust/quoted_tests.rs` (fixtures, including the `subset()` method
-and `gc_stress_quoted()`) and `rpkg/tests/testthat/test-quoted.R`; the rlang
-and tidyselect blocks skip when those packages are not installed.
+`rpkg/src/rust/quoted_tests.rs` (fixtures, including the `subset()` method,
+the `quoted_try_*` fixtures of `try_eval_with_handlers` and
+`gc_stress_quoted()`) and `rpkg/tests/testthat/test-quoted.R`; the rlang and
+tidyselect blocks skip when those packages are not installed.
+`gc_stress_try_eval_with_handlers()` is in `rpkg/src/rust/gc_stress_fixtures.rs`.
 
 ## See also
 

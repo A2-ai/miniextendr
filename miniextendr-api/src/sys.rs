@@ -966,8 +966,10 @@ unsafe extern "C-unwind" {
         check: Rboolean,
     ) -> SEXP;
     pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
-    // Kept pub(crate): the safe entry is `RCall::eval` / `r_eval_str`
-    // (expression.rs), which combine the two below.
+    // Kept pub(crate): the safe entries are `RCall::eval` / `r_eval_str`
+    // (expression.rs), which combine the two below, and
+    // `try_eval_with_handlers`, which runs `R_tryCatchError` alone inside its
+    // own `R_UnwindProtect`.
     /// Run `fun(data)` in a new top-level context: the caller's condition
     /// handlers and restarts are hidden from it, and any jump out of it
     /// (an unhandled error, an interrupt, an `abort` restart) stops here.

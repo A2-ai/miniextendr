@@ -1,6 +1,8 @@
 //! Fixtures for arguments passed unevaluated (`Quoted`, `Quosure`) and for
 //! evaluating R code from Rust in the caller's R context
-//! (`eval_with_handlers`, `RCall::eval_with_handlers`) (#1835).
+//! (`eval_with_handlers`, `RCall::eval_with_handlers`) (#1835), with an R
+//! error returned as `Err` (`try_eval_with_handlers`,
+//! `RCall::try_eval_with_handlers`) (#1893).
 //!
 //! Each evaluating fixture holds a [`DropSentinel`] across the evaluation, so
 //! the tests can tell that an R exit (an error, a `tryCatch()` handler) ran
@@ -8,9 +10,11 @@
 
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use miniextendr_api::expression::RCall;
+use miniextendr_api::expression::{RCall, try_eval_with_handlers};
 use miniextendr_api::prelude::{Call, List, OwnedProtect, SEXP, SexpExt};
-use miniextendr_api::{Missing, Quosure, Quoted, SEXPTYPE, miniextendr};
+use miniextendr_api::{Missing, Quosure, Quoted, SEXPTYPE, miniextendr, rust_error};
+
+use crate::expression_tests::caught_parts;
 
 // region: drop sentinel
 
@@ -277,6 +281,46 @@ pub fn quoted_worker_call(pkg: String, fun: String, arg: String) -> String {
             }
         }
     })
+}
+
+// endregion
+
+// region: an R error returned as Err, the caller's handlers kept (#1893)
+
+/// Call `f()` through `RCall::try_eval_with_handlers`: `list(value = <value>)`,
+/// or the caught `REvalError`'s parts,
+/// `list(message, classes, specific_classes, call, condition)`.
+#[miniextendr(noexport)]
+pub fn quoted_try_call(f: SEXP) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: R's main thread, inside the `.Call()`; `f` is the rooted
+    // `.Call()` argument.
+    caught_parts(unsafe {
+        RCall::from_sexp(f).try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv)
+    })
+}
+
+/// Call `f()` through `RCall::try_eval_with_handlers` and, when it raises an
+/// R error, raise the package's own `mx_reraised` error with R's message, the
+/// caught classes kept after it (`REvalError::reraise_class`).
+#[miniextendr(noexport)]
+pub fn quoted_try_call_reraise(f: SEXP) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: as `quoted_try_call`.
+    match unsafe { RCall::from_sexp(f).try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv) } {
+        Ok(value) => value,
+        Err(e) => rust_error!(class = e.reraise_class("mx_reraised"), "{e}"),
+    }
+}
+
+/// Evaluate `expr` in the caller's frame through `try_eval_with_handlers`:
+/// the value or the caught error's parts, as `quoted_try_call()`.
+#[miniextendr(noexport)]
+pub fn quoted_try_eval(expr: Quoted) -> SEXP {
+    let _sentinel = DropSentinel;
+    // SAFETY: R's main thread, inside the `.Call()`; the expression and its
+    // environment are rooted by the `.Call()` argument.
+    caught_parts(unsafe { try_eval_with_handlers(expr.expr(), expr.env()) })
 }
 
 // endregion
