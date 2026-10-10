@@ -906,7 +906,16 @@ depend on registering a particular array length in a fresh session.
 
 `Altrep<T>` also allows `T: ?Sized` for borrowed views such as
 `&Altrep<[i32]>`. Returning a value to R still requires an owned backing
-type; `Altrep<Box<[i32]>>` is the dynamically sized owned-slice form.
+type; both `Altrep<Box<[i32]>>` and `Box<Altrep<[i32]>>` transfer the
+boxed slice without copying its allocation. The latter can be obtained by
+unsizing `Box::new(Altrep([1_i32, 2, 3]))`.
+
+`Altrep::into_boxed_inner` keeps the metadata of a custom trailing DST or a
+trait object too. Such an owner still needs its own ALTREP class and data
+traits. `AltrepExtract` accepts an unsized view. `AltrepSerialize` needs a
+sized type with a working `unserialize`, because a class that saves its state
+must be able to load it again. A type that can't rebuild itself leaves
+serialization to R, which saves an ordinary vector.
 
 ### `Box<[T]>` (Immutable Owned Slice)
 

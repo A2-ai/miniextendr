@@ -25,7 +25,7 @@ use crate::into_r::IntoR;
 ///
 /// The marker supports unsized views such as `&Altrep<[i32]>`. Converting a
 /// value into R still requires a sized owner with registered callbacks; use
-/// `Altrep<Box<[i32]>>` for a dynamically sized owned slice.
+/// `Altrep<Box<[i32]>>` or `Box<Altrep<[i32]>>` for an owned slice.
 ///
 /// # Motivation
 ///
@@ -127,6 +127,35 @@ impl<T> Altrep<T> {
         let sexp = self.into_sexp();
         // Safety: we just created an ALTREP SEXP via R_new_altrep
         unsafe { crate::altrep_sexp::AltrepSexp::from_raw(sexp) }
+    }
+}
+
+impl<T: ?Sized> Altrep<T> {
+    /// Remove a boxed marker without copying or reallocating its contents.
+    ///
+    /// Slice lengths and trait-object metadata are preserved.
+    pub fn into_boxed_inner(self: Box<Self>) -> Box<T> {
+        let raw = Box::into_raw(self);
+        // SAFETY: Altrep is repr(transparent) with exactly one field. The field
+        // has the same allocation layout and metadata as the wrapper. Project
+        // the raw pointer to preserve mutable provenance; transfer ownership once.
+        unsafe { Box::from_raw(core::ptr::addr_of_mut!((*raw).0)) }
+    }
+}
+
+/// A boxed unsized marker uses the same owned backend as `Altrep<Box<T>>`.
+impl<T: ?Sized> IntoR for Box<Altrep<T>>
+where
+    Box<T>: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
+{
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Altrep(self.into_boxed_inner()).try_into_sexp()
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        unsafe { Altrep(self.into_boxed_inner()).try_into_sexp_unchecked() }
     }
 }
 
