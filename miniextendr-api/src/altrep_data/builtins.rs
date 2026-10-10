@@ -13,7 +13,7 @@ use std::borrow::Cow;
 use std::ops::Range;
 
 use crate::from_r::is_na_real;
-use crate::{Rcomplex, SEXP};
+use crate::{RLogical, Rcomplex, SEXP};
 
 use super::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
@@ -69,13 +69,17 @@ macro_rules! impl_len_slice {
 /// Implement AltrepDataptr for Vec<$elem> (types with direct memory access)
 macro_rules! impl_dataptr_vec {
     ($elem:ty) => {
-        impl AltrepDataptr<$elem> for Vec<$elem> {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
-                Some(self.as_mut_ptr())
+        impl_dataptr_vec!($elem => $elem);
+    };
+    // The storage type must have the same layout and valid bit patterns.
+    ($elem:ty => $storage:ty) => {
+        impl AltrepDataptr<$storage> for Vec<$elem> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $storage> {
+                Some(self.as_mut_ptr().cast())
             }
 
-            fn dataptr_or_null(&self) -> Option<*const $elem> {
-                Some(self.as_ptr())
+            fn dataptr_or_null(&self) -> Option<*const $storage> {
+                Some(self.as_ptr().cast())
             }
         }
     };
@@ -84,13 +88,17 @@ macro_rules! impl_dataptr_vec {
 /// Implement AltrepDataptr for Box<[$elem]> (types with direct memory access)
 macro_rules! impl_dataptr_boxed {
     ($elem:ty) => {
-        impl AltrepDataptr<$elem> for Box<[$elem]> {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
-                Some(self.as_mut_ptr())
+        impl_dataptr_boxed!($elem => $elem);
+    };
+    // The storage type must have the same layout and valid bit patterns.
+    ($elem:ty => $storage:ty) => {
+        impl AltrepDataptr<$storage> for Box<[$elem]> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $storage> {
+                Some(self.as_mut_ptr().cast())
             }
 
-            fn dataptr_or_null(&self) -> Option<*const $elem> {
-                Some(self.as_ptr())
+            fn dataptr_or_null(&self) -> Option<*const $storage> {
+                Some(self.as_ptr().cast())
             }
         }
     };
@@ -403,6 +411,32 @@ macro_rules! impl_altlogical_slice {
         }
     };
 }
+/// `AltLogicalData` for R-native logical slices, including NA and raw values.
+macro_rules! impl_altlogical_native_slice {
+    ($ty:ty) => {
+        impl AltLogicalData for $ty {
+            fn elt(&self, i: usize) -> Logical {
+                self[i].into()
+            }
+
+            fn as_r_slice(&self) -> Option<&[i32]> {
+                let values: &[RLogical] = self;
+                // RLogical is repr(transparent) over i32; every bit pattern is valid.
+                Some(unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), values.len()) })
+            }
+
+            fn get_region(&self, start: usize, len: usize, out: &mut [i32]) -> usize {
+                let values: &[RLogical] = self;
+                super::fill_region(start, len, values.len(), out, |i| values[i].to_i32())
+            }
+
+            fn no_na(&self) -> Option<bool> {
+                let values: &[RLogical] = self;
+                Some(!values.contains(&RLogical::NA))
+            }
+        }
+    };
+}
 // endregion
 
 // region: AltrepSerialize implementations for Vec<T>
@@ -411,6 +445,7 @@ impl_serialize!(Vec<i32>);
 impl_serialize!(Vec<f64>);
 impl_serialize!(Vec<u8>);
 impl_serialize!(Vec<bool>);
+impl_serialize!(Vec<RLogical>);
 impl_serialize!(Vec<String>);
 impl_serialize!(Vec<Option<String>>);
 impl_serialize!(Vec<Rcomplex>);
@@ -431,92 +466,14 @@ impl_serialize!(
 
 // region: AltrepSerialize implementations for Box<[T]>
 
-// Box<[T]> types don't have direct TryFromSexp implementations, so we manually
-// implement serialization by converting to Vec and back.
-
-impl AltrepSerialize for Box<[i32]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<i32>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[f64]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<f64>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[u8]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<u8>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[bool]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<bool>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[String]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<String>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
-
-impl AltrepSerialize for Box<[Rcomplex]> {
-    fn serialized_state(&self) -> SEXP {
-        use crate::into_r::IntoR;
-        self.to_vec().into_sexp()
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        use crate::from_r::TryFromSexp;
-        Vec::<Rcomplex>::try_from_sexp(state)
-            .ok()
-            .map(|v| v.into_boxed_slice())
-    }
-}
+// Box<[T]>'s IntoR and TryFromSexp already delegate to Vec<T>.
+impl_serialize!(Box<[i32]>);
+impl_serialize!(Box<[f64]>);
+impl_serialize!(Box<[u8]>);
+impl_serialize!(Box<[bool]>);
+impl_serialize!(Box<[RLogical]>);
+impl_serialize!(Box<[String]>);
+impl_serialize!(Box<[Rcomplex]>);
 // endregion
 
 // region: Built-in implementations for Vec<T>
@@ -591,6 +548,10 @@ impl AltStringData for Vec<Option<std::borrow::Cow<'static, str>>> {
 
 impl_len_vec!(bool);
 impl_altlogical_slice!(Vec<bool>);
+
+impl_len_vec!(RLogical);
+impl_altlogical_native_slice!(Vec<RLogical>);
+impl_dataptr_vec!(RLogical => i32);
 // endregion
 
 // region: Built-in implementations for Box<[T]> (owned slices)
@@ -620,6 +581,10 @@ impl_dataptr_boxed!(u8);
 
 impl_len_boxed!(bool);
 impl_altlogical_slice!(Box<[bool]>);
+
+impl_len_boxed!(RLogical);
+impl_altlogical_native_slice!(Box<[RLogical]>);
+impl_dataptr_boxed!(RLogical => i32);
 
 impl_len_boxed!(String);
 
@@ -1176,21 +1141,25 @@ macro_rules! impl_len_cow {
 
 macro_rules! impl_dataptr_cow {
     ($elem:ty) => {
-        impl AltrepDataptr<$elem> for Cow<'static, [$elem]> {
-            fn dataptr(&mut self, writable: bool) -> Option<*mut $elem> {
+        impl_dataptr_cow!($elem => $elem);
+    };
+    // The storage type must have the same layout and valid bit patterns.
+    ($elem:ty => $storage:ty) => {
+        impl AltrepDataptr<$storage> for Cow<'static, [$elem]> {
+            fn dataptr(&mut self, writable: bool) -> Option<*mut $storage> {
                 if writable {
                     // to_mut() triggers copy-on-write for Borrowed variants.
                     // Only do this when R intends to write through the pointer.
-                    Some(self.to_mut().as_mut_ptr())
+                    Some(self.to_mut().as_mut_ptr().cast())
                 } else {
                     // Read-only access: return the existing pointer without
                     // forcing a copy for Borrowed variants.
-                    Some(self.as_ptr().cast_mut())
+                    Some(self.as_ptr().cast_mut().cast())
                 }
             }
 
-            fn dataptr_or_null(&self) -> Option<*const $elem> {
-                Some(self.as_ptr())
+            fn dataptr_or_null(&self) -> Option<*const $storage> {
+                Some(self.as_ptr().cast())
             }
         }
     };
@@ -1198,6 +1167,11 @@ macro_rules! impl_dataptr_cow {
 
 // A restored ALTREP must not borrow the temporary state SEXP: data1 owns
 // only the Rust value, and data2 is reserved for materialization.
+impl_len_cow!(RLogical);
+impl_altlogical_native_slice!(Cow<'static, [RLogical]>);
+impl_dataptr_cow!(RLogical => i32);
+impl_serialize!(Cow<'static, [RLogical]>, Vec<RLogical>, Cow::Owned);
+
 impl_len_cow!(i32);
 impl_altinteger_slice!(Cow<'static, [i32]>);
 impl_dataptr_cow!(i32);
