@@ -1470,6 +1470,38 @@ pub fn gc_stress_native_sexp_altrep() {
 
     // Force the Dataptr path (exercises `AltVec::dataptr`).
     let _ptr = unsafe { miniextendr_api::sys::DATAPTR_RO(sexp) };
+    gc_stress_shared_slices();
+}
+
+// Reached by the existing no-arg ALTREP fixture sweep, avoiding a second export.
+fn gc_stress_shared_slices() {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    use miniextendr_api::{Altrep, IntoR, OwnedProtect, SexpExt, TryFromSexp};
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    unsafe {
+        let native = OwnedProtect::new(Altrep(Arc::<[i32]>::from([10, 20])).into_sexp());
+        let pointer = <Arc<[i32]> as AltVec>::dataptr(native.get(), true).cast::<i32>();
+        *pointer = 77;
+        let native_copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(native.get()));
+        *pointer = 99;
+        assert_eq!(
+            Vec::<i32>::try_from_sexp(native_copy.get()).unwrap(),
+            [77, 20]
+        );
+
+        let strings = OwnedProtect::new(
+            Altrep(Rc::<[String]>::from(["one".into(), "two".into()])).into_sexp(),
+        );
+        <Rc<[String]> as AltString>::set_elt(strings.get(), 0, miniextendr_api::SEXP::na_string());
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(strings.get()));
+        assert!(copy.get().is_altrep());
+        assert_eq!(
+            Vec::<Option<String>>::try_from_sexp(copy.get()).unwrap(),
+            [None, Some("two".into())]
+        );
+    }
 }
 
 /// Exercise `JiffZonedVec` ALTREP construction and element access under GC pressure.

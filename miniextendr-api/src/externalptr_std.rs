@@ -27,6 +27,13 @@ macro_rules! impl_te {
 /// Implement TypedExternal for a generic type with 'static bounds.
 /// For standard library types, we prefix the ID with "std::" for clarity.
 macro_rules! impl_te_generic {
+    (<$g:ident: ?Sized> $ty:ty, $name:literal) => {
+        impl<$g: ?Sized + 'static> TypedExternal for $ty {
+            const TYPE_NAME: &'static str = $name;
+            const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!("std::", $name, "\0").as_bytes();
+        }
+    };
     (<$($g:ident),+> $ty:ty, $name:literal) => {
         impl<$($g: 'static),+> TypedExternal for $ty {
             const TYPE_NAME: &'static str = $name;
@@ -104,8 +111,8 @@ impl<T: Clone + 'static> TypedExternal for std::borrow::Cow<'static, [T]> {
     const TYPE_ID_CSTR: &'static [u8] = b"std::CowSlice\0";
 }
 
-impl_te_generic!(<T> std::rc::Rc<T>, "Rc");
-impl_te_generic!(<T> std::sync::Arc<T>, "Arc");
+impl_te_generic!(<T: ?Sized> std::rc::Rc<T>, "Rc");
+impl_te_generic!(<T: ?Sized> std::sync::Arc<T>, "Arc");
 impl_te_generic!(<T> std::cell::Cell<T>, "Cell");
 impl_te_generic!(<T> std::cell::RefCell<T>, "RefCell");
 impl_te_generic!(<T> std::cell::UnsafeCell<T>, "UnsafeCell");

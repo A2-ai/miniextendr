@@ -879,6 +879,32 @@ data traits; removing the marker does not erase their concrete storage policy.
 `AltrepExtract` permits an unsized view, while `AltrepSerialize` requires
 `Sized` only for its reconstruction method.
 
+### Shared slices: `Rc<[T]>` and `Arc<[T]>`
+
+`Altrep(Rc::<[i32]>::from(vec![1, 2, 3]))` and its `Arc` equivalent
+retain the concrete shared owner. Supported elements are `i32`, `f64`,
+`u8`, `Rcomplex`, `RLogical`, `bool` and `String`.
+
+Element and region reads can share the original allocation. For native layouts,
+`Dataptr_or_null` only exposes an owner with one strong reference and no weak
+references. A full pointer request calls `make_mut`, even for read-only access:
+once published, the pointer must survive a later writable request. This detaches
+shared owners and disassociates weak handles before publishing any pointer.
+
+`Duplicate` shares owners that are still shared, and copies unique owners that
+might already have exposed a pointer. This deliberately also copies a unique
+owner that has not exposed a pointer; no extra exposure state is kept. R's default
+`DuplicateEX` handles attributes. Native writes update the retained Rust owner.
+
+`bool` and `String` use the regular R data2 buffer when materialized. Duplication
+copies that buffer's current values, including NA, rather than the original Rust
+values. Native owners serialize and restore their registered shared-slice class;
+a materialized R buffer uses ordinary-vector serialization, as other built-ins do.
+
+Unsafe extraction of a shared owner must not create new aliases or weak handles
+after publishing its buffer to R. In particular, an `Arc` does not make concurrent
+mutation of an R-exposed buffer safe.
+
 ### `Box<[T]>` (Immutable Owned Slice)
 
 ```rust

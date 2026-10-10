@@ -109,4 +109,5 @@ pub mod macros;
 
 pub mod arrays;
 pub mod builtins;
+pub mod shared_slices;
 pub mod static_slices;
