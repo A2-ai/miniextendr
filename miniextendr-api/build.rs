@@ -1,8 +1,9 @@
 //! Build script for miniextendr-api
 //!
-//! Sets appropriate stack size linker flags for R-compatible binaries and links
-//! against libR. This affects tests, examples, and cdylib crates that depend on
-//! miniextendr-api.
+//! Sets appropriate stack size linker flags for R-compatible binaries, links
+//! against libR, and emits the R-version cfgs (`r_4_5`, `r_4_6`) of the R it
+//! builds against. The link flags affect tests, examples, and cdylib crates
+//! that depend on miniextendr-api.
 
 use std::env;
 use std::process::Command;
@@ -13,7 +14,9 @@ fn main() {
 
     // Always link to R. This keeps tests/binaries consistent and avoids
     // feature-gated link failures.
-    link_to_r();
+    let r_home = link_to_r();
+
+    emit_r_version_cfgs(r_home.as_deref());
 
     // Ensure rebuild on feature changes
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_NONAPI");
@@ -53,7 +56,55 @@ fn set_stack_size_flags() {
     }
 }
 
-fn link_to_r() {
+/// The R versions that have a cfg: `r_4_5` on R 4.5 and later, `r_4_6` on
+/// R 4.6 and later (cumulative). Code that needs an entry point R added in
+/// that version gates on it and keeps a fallback beside it (#1905): a
+/// package is compiled against the R it installs into, and referencing an
+/// entry point the R lacks fails at load, while one R lists as non-API
+/// makes `R CMD check` NOTE. Add a version here when code needs it.
+const R_VERSION_CFGS: &[(u32, u32)] = &[(4, 5), (4, 6)];
+
+/// Emit `cargo::rustc-cfg=r_<major>_<minor>` for every version in
+/// [`R_VERSION_CFGS`] at or below the R in `r_home`, read from its
+/// `include/Rversion.h`.
+///
+/// Without a readable header (a wasm32 target, which resolves no R here, or
+/// CI's lint job, whose `R_HOME` is an empty directory) every cfg is set:
+/// those builds compile against the newest API.
+fn emit_r_version_cfgs(r_home: Option<&str>) {
+    for (major, minor) in R_VERSION_CFGS {
+        println!("cargo::rustc-check-cfg=cfg(r_{major}_{minor})");
+    }
+    let header = r_home.map(|home| std::path::Path::new(home).join("include/Rversion.h"));
+    if let Some(header) = &header {
+        println!("cargo::rerun-if-changed={}", header.display());
+    }
+    let version = header
+        .and_then(|h| std::fs::read_to_string(h).ok())
+        .and_then(|text| {
+            let define = |name: &str| {
+                text.lines().find_map(|line| {
+                    let rest = line.trim().strip_prefix("#define")?.trim_start();
+                    let value = rest.strip_prefix(name)?;
+                    value
+                        .starts_with(char::is_whitespace)
+                        .then(|| value.trim().trim_matches('"').to_string())
+                })
+            };
+            let major: u32 = define("R_MAJOR")?.parse().ok()?;
+            let minor: u32 = define("R_MINOR")?.split('.').next()?.parse().ok()?;
+            Some((major, minor))
+        });
+    for &(major, minor) in R_VERSION_CFGS {
+        if version.is_none_or(|v| v >= (major, minor)) {
+            println!("cargo::rustc-cfg=r_{major}_{minor}");
+        }
+    }
+}
+
+/// Resolve `R_HOME` and link libR; returns `R_HOME`, or `None` on a wasm32
+/// target, which resolves no R.
+fn link_to_r() -> Option<String> {
     // Skip libR resolution on wasm32 targets (webR / wasm32-unknown-emscripten
     // and friends). cargo check never links and the toolchain doesn't ship a
     // host R, so the rest of this function is pure overhead/breakage there.
@@ -61,7 +112,7 @@ fn link_to_r() {
     // to the build script binary's host arch, not the requested cross-compile
     // target. See issue #482.
     if env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("wasm32") {
-        return;
+        return None;
     }
 
     // Resolve R home directory.
@@ -119,6 +170,8 @@ fn link_to_r() {
     if env::var_os("CARGO_FEATURE_BLAS_LAPACK").is_some() {
         link_blas_lapack(&r_home, &target_os, &r_libdir);
     }
+
+    Some(r_home)
 }
 
 /// Links R's own LAPACK and BLAS for cargo-built targets (`blas-lapack`).

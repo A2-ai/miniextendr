@@ -212,10 +212,15 @@ check with an attribute check.
 - `process_user_Renviron`, `ptr_R_*`
 - `readconsolecfg`, `run_Rmainloop`, `setup_Rmainloop`
 
-### R_ext/Connections.h non-API
+### R_ext/Connections.h non-API (before R 4.6)
 
 - `R_new_custom_connection`, `R_ReadConnection`
 - `R_WriteConnection`, `R_GetConnection`
+
+R 4.6 lists these as experimental API (`tools:::funAPI()` gives `eapi`). R
+4.4 and 4.5 export the same symbols and ship the same header, but
+`R CMD check` notes them there as non-API calls, so the `connections`
+feature builds on every supported R and carries that NOTE before 4.6.
 
 ### Deprecated/removed
 
@@ -234,3 +239,29 @@ pub fn DATAPTR(x: SEXP) -> *mut c_void;
 ```
 
 This allows users to opt-in to non-API usage while keeping the default build CRAN-compatible.
+
+## R-version cfgs
+
+A package is compiled against the R it installs into, so the build knows the
+R version. `miniextendr-api`'s `build.rs` reads `R_MAJOR` / `R_MINOR` from
+`$R_HOME/include/Rversion.h` and sets one cfg per listed version at or below
+it, cumulatively: `r_4_5` on R 4.5 and later, `r_4_6` on R 4.6 and later
+(#1905). A build that finds no header (a wasm32 target, CI's lint job with an
+empty `R_HOME`) sets them all.
+
+Use them for an entry point that a newer R adds, or that a newer R makes
+API:
+
+- **R adds it.** Gate the binding in `sys.rs` on the cfg (`ANY_ATTRIB` and
+  `R_getVarEx` are `#[cfg(r_4_5)]`), and keep a fallback beside every use for
+  the older R. Referencing an entry point the R lacks fails at load, because
+  packages load with `dyn.load(now = TRUE)`.
+- **R makes it API.** The entry point exists before that version, but
+  `R CMD check` notes it as non-API there. Gate the call on the cfg when the
+  older R offers another route to the same result, and keep the entry point
+  on the newer side.
+
+To add a version, append it to `R_VERSION_CFGS` in `miniextendr-api/build.rs`.
+Test both sides: CI runs `R CMD check` on R 4.4, oldrel-1 and release, and the
+lint job compiles the newest side.
+
