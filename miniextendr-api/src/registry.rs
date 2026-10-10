@@ -1820,13 +1820,13 @@ const CALLER_CALL_HELPER: &str = r#"# Internal helper: the call a wrapper with a
 /// A generated S3 method passes `environment()` as its `.call` and as the
 /// raise fallback (`CallAttribution::Generic` in the macros), so the success
 /// path pays no more than for `sys.call()`, and the frame becomes a call only
-/// when a condition is raised. Three consumers: [`write_r_wrappers_to_file`]
-/// binds the expression under that name in the preamble ([`FRAME_CALL_HELPER`])
-/// for the R-side checks (`.miniextendr_arg_error`) and for a method with a
-/// `Call` parameter, which resolves it up front; [`RAISE_CONDITION_HELPER_FN`]
-/// inlines it, because the copy of that helper which signals deferred
-/// conditions runs in the base namespace, where the preamble's binding is not
-/// visible.
+/// when a condition is raised. [`write_r_wrappers_to_file`] binds the
+/// expression under that name in the preamble ([`FRAME_CALL_HELPER`]) for the
+/// package's raise helper, the R-side checks (`.miniextendr_arg_error`) and a
+/// method with a `Call` parameter, which resolves it up front;
+/// [`RAISE_CONDITION_HELPER_FN`] inlines it, because that copy of the raise
+/// helper signals deferred conditions from the base namespace, where the
+/// preamble's binding is not visible.
 ///
 /// The frame is looked up among the live frames (`sys.frames()`), newest
 /// first, so the helper works from the method itself, from the raise helper
@@ -2098,9 +2098,10 @@ macro_rules! raise_condition_helper_fn {
 ///
 /// [`crate::deferred_condition`] evaluates this self-contained expression
 /// once (in the base namespace) to signal queued conditions from Rust without
-/// depending on any package namespace. [`write_r_wrappers_to_file`] uses the same template with the
-/// package's named frame resolver instead of embedding a second copy.
-/// Keeping one source guarantees identical class layering and `data` splicing.
+/// depending on any package namespace. [`write_r_wrappers_to_file`] renders
+/// the same template with the preamble's `.miniextendr_frame_call` binding as
+/// the resolver instead of a second inline copy. Keeping one source
+/// guarantees identical class layering and `data` splicing.
 ///
 /// The helper dispatches on `.val$kind` (see [`crate::error_value::kind`]) and
 /// re-raises the tagged Rust condition value as the matching R condition:
