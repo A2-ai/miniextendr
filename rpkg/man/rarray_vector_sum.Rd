@@ -7,7 +7,7 @@
 rarray_vector_sum(x)
 }
 \arguments{
-\item{x}{(no documentation available)}
+\item{x}{An R vector or matrix accepted by the selected helper.}
 }
 \description{
 Sum all elements of a numeric vector via RVector.
