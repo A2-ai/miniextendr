@@ -879,6 +879,24 @@ data traits; removing the marker does not erase their concrete storage policy.
 `AltrepExtract` permits an unsized view, while `AltrepSerialize` requires
 `Sized` only for its reconstruction method.
 
+A custom trailing DST can follow the same ownership split:
+
+```rust
+struct Tagged<T: ?Sized> {
+    tag: u32,
+    values: T,
+}
+
+let value: Box<Altrep<Tagged<[i32]>>> =
+    Box::new(Altrep(Tagged { tag: 7, values: [1, 2, 3] }));
+```
+
+Implement `TypedExternal`, the data traits and `RegisterAltrep` for
+`Box<Tagged<[i32]>>`. Its callbacks can delegate to the unsized view; an
+`AltrepExtract` implementation on `Tagged<[i32]>` can project through that
+boxed owner. The view must stay within the callback's rooted lifetime.
+See `miniextendr-api/tests/altrep_unsized.rs` for the complete example.
+
 ### Owned unsized strings
 
 `Box<str>`, `Rc<str>` and `Arc<str>` convert to/from character scalars.
