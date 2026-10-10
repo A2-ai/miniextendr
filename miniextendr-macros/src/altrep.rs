@@ -31,6 +31,7 @@
 /// or `#[derive(AltrepInteger)]`) and `InferBase`.
 pub(crate) fn generate_direct_altrep_registration(
     ident: &syn::Ident,
+    visibility: &syn::Visibility,
     generics: &syn::Generics,
     class_name: &str,
 ) -> syn::Result<proc_macro2::TokenStream> {
@@ -191,7 +192,7 @@ pub(crate) fn generate_direct_altrep_registration(
 
         // Ref/Mut accessor types for receiving ALTREP back from R
         #[doc = #ref_doc]
-        pub struct #ref_ident(::miniextendr_api::externalptr::ExternalPtr<#ident #ty_generics>);
+        #visibility struct #ref_ident(::miniextendr_api::externalptr::ExternalPtr<#ident #ty_generics>);
 
         impl ::miniextendr_api::TryFromSexp for #ref_ident {
             type Error = ::miniextendr_api::SexpTypeError;
@@ -225,7 +226,7 @@ pub(crate) fn generate_direct_altrep_registration(
         }
 
         #[doc = #mut_doc]
-        pub struct #mut_ident(::miniextendr_api::externalptr::ExternalPtr<#ident #ty_generics>);
+        #visibility struct #mut_ident(::miniextendr_api::externalptr::ExternalPtr<#ident #ty_generics>);
 
         impl ::miniextendr_api::TryFromSexp for #mut_ident {
             type Error = ::miniextendr_api::SexpTypeError;
@@ -317,5 +318,5 @@ pub fn derive_altrep(input: syn::DeriveInput) -> syn::Result<proc_macro2::TokenS
 
     let class_name = class_name.unwrap_or_else(|| crate::naming::ident_name(ident));
 
-    generate_direct_altrep_registration(ident, &input.generics, &class_name)
+    generate_direct_altrep_registration(ident, &input.vis, &input.generics, &class_name)
 }
