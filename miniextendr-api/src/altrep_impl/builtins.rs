@@ -51,8 +51,8 @@
 //
 // ## Corner cases NOT handled by this macro
 //
-// - `[T; N]` const-generic arrays: use const generics (`impl<const N>`); left in the
-//   "Array implementations" region below.
+// - `[T; N]` const-generic arrays: shared generic family generators and
+//   per-length class registration live in `arrays.rs`.
 // - `&'static [T]` static slices: unique lifetime + writable-assert pattern; left in
 //   the "Static slice implementations" region below.
 
