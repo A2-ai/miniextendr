@@ -514,13 +514,11 @@ fn generate_concrete_vtable_shims(
                 argc: i32,
                 argv: *const ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
-                unsafe {
-                    ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
-                }
                 // with_r_unwind_protect_shim: returns tagged error SEXP on panic
                 // so the View method wrapper can re-panic via repanic_if_rust_error,
                 // allowing rust_* class layering (issue #345).
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
+                    ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
                     #(#arg_extractions)*
                     let result = { #method_call };
                     #result_conversion

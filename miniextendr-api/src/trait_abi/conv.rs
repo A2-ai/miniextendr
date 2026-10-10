@@ -299,21 +299,16 @@ where
 /// * `expected` - Expected number of arguments
 /// * `method_name` - Name of method (for error messages)
 ///
-/// # Safety
+/// # Panics
 ///
-/// Must be called on R's main thread (may call `rf_error`).
-///
-/// # Errors
-///
-/// Calls [`rf_error`] if `argc != expected`.
+/// Panics if `argc != expected`. Generated vtable shims call this inside
+/// `with_r_unwind_protect_shim` so a mismatch uses the tagged-condition
+/// transport and unwinds Rust-owned resources before returning.
 #[inline]
-pub unsafe fn check_arity(argc: i32, expected: i32, method_name: &str) {
-    if argc != expected {
-        unsafe {
-            rf_error(&format!(
-                "{method_name}: expected {expected} arguments, got {argc}"
-            ))
-        };
-    }
+pub fn check_arity(argc: i32, expected: i32, method_name: &str) {
+    assert!(
+        argc == expected,
+        "{method_name}: expected {expected} arguments, got {argc}"
+    );
 }
 // endregion

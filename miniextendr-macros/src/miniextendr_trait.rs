@@ -854,11 +854,6 @@ fn generate_method_shim(
         ) -> ::miniextendr_api::SEXP
         #where_clause
         {
-            // Check arity (before unwind protect - uses r_stop which doesn't return)
-            unsafe {
-                ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
-            }
-
             // Wrap in with_r_unwind_protect_shim: catches Rust panics and returns
             // a tagged error SEXP instead of calling Rf_errorcall directly. The
             // tagged SEXP is returned to the View method wrapper which re-panics
@@ -866,6 +861,7 @@ fn generate_method_shim(
             // `with_r_unwind_protect` guard to produce rust_* class layering
             // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
+                ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
                 // Extract arguments
                 #(#arg_extractions)*
 
