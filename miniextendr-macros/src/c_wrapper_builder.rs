@@ -1090,7 +1090,7 @@ impl CWrapperContext {
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
                         ),
-                        None,
+                        Some(__miniextendr_call),
                     )
                 };
                 (worker, convert)
@@ -1105,7 +1105,7 @@ impl CWrapperContext {
                 let convert = quote! {
                     #unwind_fn(
                         || #conversion,
-                        None,
+                        Some(__miniextendr_call),
                     )
                 };
                 (worker, convert)
@@ -1151,7 +1151,7 @@ impl CWrapperContext {
                 let convert = quote! {
                     {
                         let #result_ident = __miniextendr_result;
-                        #unwind_fn(|| #conversion, None)
+                        #unwind_fn(|| #conversion, Some(__miniextendr_call))
                     }
                 };
                 (worker, convert)
@@ -1167,7 +1167,7 @@ impl CWrapperContext {
                 let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
                     match __miniextendr_result {
-                        Some(#result_ident) => #unwind_fn(|| #conversion, None),
+                        Some(#result_ident) => #unwind_fn(|| #conversion, Some(__miniextendr_call)),
                         None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
                         ) },
@@ -1187,7 +1187,7 @@ impl CWrapperContext {
                             || ::miniextendr_api::into_r::IntoR::into_sexp(
                                 ::miniextendr_api::externalptr::ExternalPtr::new(v)
                             ),
-                            None,
+                            Some(__miniextendr_call),
                         ),
                         None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
@@ -1229,7 +1229,7 @@ impl CWrapperContext {
                     match __miniextendr_result {
                         Ok(#result_ident) => #unwind_fn(
                             || #conversion,
-                            None,
+                            Some(__miniextendr_call),
                         ),
                         Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
                             #err_parts, Some(__miniextendr_call),
@@ -1247,7 +1247,7 @@ impl CWrapperContext {
                 let conversion = self.sexp_conversion_expr(&result_ident, true);
                 let convert = quote! {
                     match __miniextendr_result {
-                        Ok(#result_ident) => #unwind_fn(|| #conversion, None),
+                        Ok(#result_ident) => #unwind_fn(|| #conversion, Some(__miniextendr_call)),
                         Err(()) => ::miniextendr_api::SEXP::nil(),
                     }
                 };
@@ -1264,7 +1264,7 @@ impl CWrapperContext {
                             || ::miniextendr_api::into_r::IntoR::into_sexp(
                                 ::miniextendr_api::externalptr::ExternalPtr::new(v)
                             ),
-                            None,
+                            Some(__miniextendr_call),
                         ),
                         Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
                             #err_parts, Some(__miniextendr_call),
@@ -1281,7 +1281,7 @@ impl CWrapperContext {
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::convert::AsList(__miniextendr_result)
                         ),
-                        None,
+                        Some(__miniextendr_call),
                     )
                 };
                 (worker, convert)
@@ -1294,7 +1294,7 @@ impl CWrapperContext {
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::convert::AsExternalPtr(__miniextendr_result)
                         ),
-                        None,
+                        Some(__miniextendr_call),
                     )
                 };
                 (worker, convert)
@@ -1307,7 +1307,7 @@ impl CWrapperContext {
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::convert::AsRNative(__miniextendr_result)
                         ),
-                        None,
+                        Some(__miniextendr_call),
                     )
                 };
                 (worker, convert)
