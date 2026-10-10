@@ -21,11 +21,15 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # Only PRs cancel their superseded runs. Main-push runs queue instead:
-  # with cancel-on-main, every merge cancelled the previous merge's run, so
-  # on busy days the main-tip guard (heap-check, devel/oldrel legs) never
-  # actually completed (observed 2026-07-10: all recent main runs cancelled).
+  # A PR's runs share its number and a new push cancels the superseded run.
+  # Every other run is grouped by its commit, so each main commit gets a
+  # complete run. With one group per ref, GitHub keeps a single *pending* run
+  # per group: each merge replaced the queued run of the merge before it, and
+  # most main commits never ran (observed 2026-10-10: 33f0d706, 1b00a3db and
+  # 45b9de35 ended "cancelled" without starting). Cancelling in-progress main
+  # runs was dropped for the same reason (observed 2026-07-10: all recent main
+  # runs cancelled). Packages that pin a main commit need that commit checked.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
