@@ -240,6 +240,45 @@ pub trait AltrepDataptr<T> {
     }
 }
 
+/// Return the bridge's R vector cache, if materialization has started.
+///
+/// Bridge-generated classes reserve data2 for a vector of the ALTREP's type.
+/// Once present, it is authoritative: R may have written through DATAPTR.
+/// String caches can be partial, so callers must still use the string Elt
+/// callback to fill missing elements.
+///
+/// # Safety
+/// `x` must be a live ALTREP using the bridge's data2 convention, on R's thread.
+#[doc(hidden)]
+pub unsafe fn materialized_altrep_data2(x: SEXP) -> Option<SEXP> {
+    use crate::SexpExt;
+    use crate::altrep_ext::AltrepSexpExt;
+
+    let data2 = unsafe { AltrepSexpExt::altrep_data2_raw(&x) };
+    (!data2.is_null_ptr() && data2.type_of() == x.type_of()).then_some(data2)
+}
+
+/// Read a region from a materialized atomic vector, without consulting data1.
+///
+/// # Safety
+/// `data2` must be a live plain R vector with element layout `T`, on R's thread.
+#[doc(hidden)]
+pub unsafe fn materialized_altrep_region<T: Copy>(
+    data2: SEXP,
+    start: usize,
+    len: usize,
+    out: &mut [T],
+) -> usize {
+    use crate::SexpExt;
+
+    let n = len.min(out.len()).min(data2.len().saturating_sub(start));
+    if n != 0 {
+        let ptr = unsafe { sys::DATAPTR_RO_unchecked(data2).cast::<T>().add(start) };
+        out[..n].copy_from_slice(unsafe { std::slice::from_raw_parts(ptr, n) });
+    }
+    n
+}
+
 /// Materialize an ALTREP SEXP into a plain R vector in data2.
 ///
 /// Called by `__impl_altvec_dataptr` when the custom `dataptr()` returns `None`.

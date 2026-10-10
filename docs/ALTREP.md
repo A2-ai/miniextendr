@@ -231,6 +231,79 @@ bridge, so you never write the macro call yourself.
 
 ---
 
+## R defaults and the miniextendr bridge
+
+The defaults below were checked against R-devel's
+[`src/main/altrep.c`](https://github.com/r-devel/r-svn/blob/cf22bdfad2161aa9b2f8e79b786b68588936d722/src/main/altrep.c)
+on 2026-10-10. They are the defaults installed by R, before miniextendr registers
+its callbacks.
+
+| Callback / class | R default |
+|---|---|
+| All classes: `Length` | Error: the class must supply a length. |
+| All classes: `Serialized_state`, `Duplicate`, `Coerce` | C null pointer, requesting the caller's ordinary-vector fallback. `Unserialize` itself errors. |
+| All classes: `Inspect` | False, requesting ordinary inspection. |
+| Vector `Dataptr` | Error. R does **not** provide an automatic materializer here. |
+| `Dataptr_or_null`, `Extract_subset` | C null pointer. A declined subset must not return the R `NULL` object. |
+| Integer, real, logical, raw, complex: `Elt` / `Get_region` | `Elt` reads through `DATAPTR`; `Get_region` loops through element access. Supplying a lazy `Elt` avoids forcing a pointer for region access. |
+| Integer, real, logical, string: sortedness / missingness | Unknown sortedness and no guarantee of being NA-free. Raw and complex have no such callbacks. |
+| Integer and real: `Sum`, `Min`, `Max`; logical: `Sum` | C null pointer, requesting ordinary reduction. |
+| String and list: `Elt` / `Set_elt` | Error. Registering an element reader does not install a writer. Lists also have a separate erroring `Dataptr` default. |
+
+Miniextendr's standard atomic bridge installs a materializing `Dataptr`
+callback. When the backing value cannot supply a pointer, the bridge fills an
+R vector and roots it in data2. Subsequent element, region, length, reduction
+and serialization paths must agree with that cache. This is a framework
+contract, not an R default; see [Bridge cache contract](#bridge-cache-contract).
+
+### Containers, ownership, and views
+
+| Rust representation | Suitable R exposure | Required ownership rule |
+|---|---|---|
+| Owned `Vec<T>` / `Box<[T]>`, native element layout | Explicit ALTREP can retain the allocation; ordinary `IntoR` copies. | Once a pointer escapes, keep its allocation valid and preserve R aliasing semantics. |
+| `Cow<[T]>` | Borrow for reads, own on writes through `to_mut()`. | Borrowed storage must remain rooted/alive. Deserialization must own its decoded data unless it explicitly retains the serialized state. |
+| Iterator | A concrete registered ALTREP wrapper over an iterator state, with a declared length and access/cache policy. | R requests random element/region access; define replay, prefix caching or skipping, and serialization behavior. A data-trait implementation alone is not a registered class. |
+| `HashMap<K, V>` | A named list or indexed ALTREP view, with an explicit order snapshot. | Hash buckets are not a contiguous native R buffer. Root R values held by any cached index or sidecar. |
+| `Read` / `Write` / `Seek` | A connection for stream semantics. | Preserve EOF, failure and position semantics; a stream is not inherently a random-access R vector. |
+
+A `Vec` can grow before exposing its buffer, and a later callback can retrieve
+the new pointer from the owning value. A replacement function that re-enters Rust
+can grow the owned buffer; subsequent
+`Length`, `Elt` and `Dataptr` callbacks can then expose the current allocation.
+This requires a coordinated `Duplicate` policy: R can duplicate before invoking
+the setter, and the default duplication may materialize an ordinary R vector.
+A live-view class can deliberately preserve its owner, while a value class can
+duplicate its ALTREP state and detach the storage on write. The latter must keep
+an existing alias unchanged.
+
+Both duplication hooks are available today: implement `Altrep::duplicate` with
+`HAS_DUPLICATE = true`, or `duplicate_ex` with `HAS_DUPLICATE_EX = true`.
+The bridge registers those callbacks conditionally. R's default `DuplicateEX`
+delegates to `Duplicate` and handles attributes on a returned copy; overriding
+`DuplicateEX` means handling those attributes yourself. With a per-family derive,
+`#[altrep(manual, no_lowlevel)]` leaves the low-level policy to your implementation.
+
+R's own wrapper classes coordinate duplication with a data lock once a pointer
+has been exposed (see
+[`wrapper_Duplicate` and `wrapper_Dataptr`](https://github.com/r-devel/r-svn/blob/cf22bdfad2161aa9b2f8e79b786b68588936d722/src/main/altclasses.c#L1439)).
+This is a useful model for ordinary value semantics: preserve the old object's
+buffer and mutate a detached replacement. A live-view class has explicit
+reference semantics and needs a more restrictive pointer/borrow protocol.
+
+An already returned pointer still refers to the old allocation. End Rust borrows
+before the replacement call and reacquire pointers afterwards; do not keep a
+slice or C pointer across a boundary that may resize its owner. Pointer refresh
+at the callback boundary and preservation of outstanding borrows are distinct
+requirements.
+
+Current design follow-ups include composing container duplication and mutation
+policies [#1924](https://github.com/A2-ai/miniextendr/issues/1924), native-newtype
+vector conversion coherence
+[#1684](https://github.com/A2-ai/miniextendr/issues/1684), lifetimes tied to rooted
+R inputs [#1427](https://github.com/A2-ai/miniextendr/issues/1427), and access to
+sidecar handles from ALTREP callbacks
+[#1880](https://github.com/A2-ai/miniextendr/issues/1880).
+
 ## High-Level Data Traits
 
 ### Core Trait: `AltrepLen`
@@ -1631,9 +1704,9 @@ impl AltrepDataptr<i32> for VecWrapper {
 
 When implementing `dataptr()`:
 
-1. **Pointer Validity**: The returned pointer must remain valid until the next GC or until the ALTREP object is collected
+1. **Pointer Validity**: Keep the allocation valid for callers using the returned pointer. Reallocating or replacing a `Vec` invalidates its old pointers; looking up the new pointer on a later callback does not repair an escaped C pointer.
 
-2. **Lifetime**: Store materialized data in the ALTREP object itself (in the data1 ExternalPtr)
+2. **Lifetime**: Keep the buffer owned by the ALTREP, either in its data1 ExternalPtr or in an R vector rooted through data2. A borrowed `Cow` does not itself keep an R source object alive.
 
 3. **Mutability**: If `writable=true`, the pointer must be mutable. R may modify the data.
 
@@ -1649,6 +1722,26 @@ fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
     self.cached_data.as_mut().map(|v| v.as_mut_ptr())
 }
 ```
+
+### Bridge cache contract
+
+The standard bridge reserves data2 for its R vector cache. Before materialization,
+callbacks read the Rust value in data1. Once an atomic vector is materialized,
+length, element access and region reads use data2, including writes made through
+DATAPTR. Sortedness and NA hints become unknown, and summaries and serialization
+return C NULL so R computes them from the current vector. This is different from
+R's NULL value, which is not the fallback sentinel.
+
+Direct native buffers (`Altrep<Vec<i32>>`, for example) keep their data in the
+Vec instead: fresh callbacks query its current allocation. Rust mutation through
+an explicit backing-data accessor must respect outstanding R/C pointers and R
+aliases. For a materialized class, mutating data1 does not replace the R cache.
+A shared growable container therefore needs an explicit snapshot or mutation
+policy; the ALTREP callbacks alone cannot make reallocation transparent.
+
+Built-in Cow deserialization creates owned slices and strings. The temporary
+serialization state is not retained as a sidecar, so borrowing it would outlive
+its GC root.
 
 ### Example: Controlling Materialization
 
