@@ -701,6 +701,7 @@ impl_vec_smart_i64_into_r!(u32, |x: u32| x <= i32::MAX as u32);
 
 mod altrep;
 mod collections;
+mod owned_str;
 mod result;
 
 pub use altrep::*;

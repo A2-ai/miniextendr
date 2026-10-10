@@ -1471,6 +1471,35 @@ pub fn gc_stress_native_sexp_altrep() {
     // Force the Dataptr path (exercises `AltVec::dataptr`).
     let _ptr = unsafe { miniextendr_api::sys::DATAPTR_RO(sexp) };
     gc_stress_shared_slices();
+    gc_stress_owned_str();
+}
+
+// Scalar and lazy character conversions also run in the existing ALTREP sweep.
+fn gc_stress_owned_str() {
+    use miniextendr_api::altrep_traits::AltString;
+    use miniextendr_api::{Altrep, IntoR, OwnedProtect, SEXP, TryFromSexp};
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    macro_rules! check {
+        ($owner:ident) => {{
+            let values = vec![Some($owner::<str>::from("one")), None];
+            let ordinary = unsafe { OwnedProtect::new(values.clone().into_sexp()) };
+            assert_eq!(
+                Vec::<Option<String>>::try_from_sexp(ordinary.get()).unwrap(),
+                [Some("one".into()), None]
+            );
+            let lazy = unsafe { OwnedProtect::new(Altrep(values).into_sexp()) };
+            <Vec<Option<$owner<str>>> as AltString>::set_elt(lazy.get(), 0, SEXP::na_string());
+            assert_eq!(
+                Vec::<Option<String>>::try_from_sexp(lazy.get()).unwrap(),
+                [None, None]
+            );
+        }};
+    }
+    check!(Box);
+    check!(Rc);
+    check!(Arc);
 }
 
 // Reached by the existing no-arg ALTREP fixture sweep, avoiding a second export.

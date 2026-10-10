@@ -68,6 +68,7 @@ use crate::into_r::IntoR;
 /// - `VecDeque<i32>`, `VecDeque<f64>`, `VecDeque<u8>`, `VecDeque<Rcomplex>`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
 /// - `Vec<RLogical>`, `Box<[RLogical]>`, `Cow<'static, [RLogical]>`
+/// - `Vec<Box<str>>` / `Vec<Rc<str>>` / `Vec<Arc<str>>`, also with optional elements
 ///
 /// Opt-in lazy materialization via ALTREP.
 ///
