@@ -1197,10 +1197,31 @@ pub use io_adapters::*;
 
 // region: standard streams — issue #175
 
-/// R's `stdin()` terminal connection (read-only).
+/// R's `stdin()` terminal connection (read-only): R's console input.
 ///
-/// A zero-sized type representing R's standard input stream. Use it as a
-/// `std::io::Read` source when you want Rust code to read from R's stdin.
+/// A zero-sized handle, like [`std::io::Stdin`]: every `RStdin` reads the
+/// same stream through the same line buffer. It implements
+/// [`Read`](std::io::Read). [`lock`](Self::lock) returns an [`RStdinLock`],
+/// which implements [`BufRead`](std::io::BufRead), and
+/// [`read_line`](Self::read_line) / [`lines`](Self::lines) go through one.
+///
+/// Input is read the way R reads it: one line at a time, with
+/// `readLines(stdin(), n = 1L, warn = FALSE)`. R's terminal `stdin()` has
+/// no `read` callback, so `R_ReadConnection` can't read it.
+///
+/// - Every line comes back ending in `"\n"`. `readLines()` drops the line
+///   terminator (`"\n"`, `"\r\n"` or `"\r"`), and `RStdin` adds `"\n"`,
+///   also to a last line that had none.
+/// - The bytes are the ones `readLines()` returns, in the native encoding.
+/// - At the end of the input, a read returns `Ok(0)`.
+/// - R's console is not always the process's standard input. Under
+///   `Rscript` or `R --file`, `stdin()` reads the script being run, from the
+///   line after the code being evaluated. For the process's standard input,
+///   use R's `file("stdin")`.
+/// - Rust holds at most one line. An R-side read of `stdin()` while part of
+///   a line is still unread in Rust gets the next line.
+/// - Input is read on R's main thread only. Off it, a read that needs a new
+///   line returns an [`io::Error`](std::io::Error).
 ///
 /// # Examples
 ///
@@ -1208,9 +1229,14 @@ pub use io_adapters::*;
 /// use miniextendr_api::connection::RStdin;
 /// use std::io::Read;
 ///
-/// let mut stdin = RStdin;
-/// let mut buf = String::new();
-/// stdin.read_to_string(&mut buf).unwrap();
+/// // One line per read, with its "\n".
+/// let mut buf = [0u8; 64];
+/// let n = RStdin.read(&mut buf)?;
+///
+/// // Lines without their "\n".
+/// for line in RStdin.lines() {
+///     let line = line?;
+/// }
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct RStdin;
@@ -1251,29 +1277,175 @@ pub struct RStdout;
 #[derive(Debug, Clone, Copy)]
 pub struct RStderr;
 
-// Helper: get the SEXP for one of R's standard connections by calling
-// base::stdin(), base::stdout(), or base::stderr().
-//
-// # Safety
-// Must be called from the R main thread.
-unsafe fn eval_base_connection(name: &std::ffi::CStr) -> SEXP {
+/// The [`RStdin`] line buffer, locked: [`BufRead`](std::io::BufRead) access
+/// to R's console input.
+///
+/// Returned by [`RStdin::lock`]. It holds the line buffer every `RStdin` on
+/// this thread shares, and gives it back when dropped. `fill_buf()` returns
+/// the unread rest of the current line and reads the next one when that is
+/// used up; it is empty at the end of the input. It also implements
+/// [`Read`](std::io::Read), on top of `fill_buf()` and `consume()`.
+#[derive(Debug)]
+pub struct RStdinLock {
+    line: StdinLine,
+    /// `!Send`: the buffer belongs to the thread that locked it.
+    _not_send: std::marker::PhantomData<*const ()>,
+}
+
+/// The unread rest of the last line [`RStdin`] read.
+#[derive(Debug, Default)]
+struct StdinLine {
+    bytes: Vec<u8>,
+    pos: usize,
+}
+
+impl StdinLine {
+    const fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            pos: 0,
+        }
+    }
+
+    /// The unread rest of the line. Once it is used up, `read_line` appends
+    /// the next line to the emptied buffer (nothing at the end of the input).
+    fn fill_with(
+        &mut self,
+        read_line: impl FnOnce(&mut Vec<u8>) -> std::io::Result<()>,
+    ) -> std::io::Result<&[u8]> {
+        if self.pos == self.bytes.len() {
+            self.bytes.clear();
+            self.pos = 0;
+            read_line(&mut self.bytes)?;
+        }
+        Ok(&self.bytes[self.pos..])
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.pos = self.pos.saturating_add(amt).min(self.bytes.len());
+    }
+}
+
+thread_local! {
+    /// The line buffer every `RStdin` on this thread reads through. `None`
+    /// while an `RStdinLock` holds it.
+    static STDIN_LINE: std::cell::Cell<Option<StdinLine>> =
+        const { std::cell::Cell::new(Some(StdinLine::new())) };
+}
+
+/// Append the next line of R's console input to `line`, with `"\n"` for its
+/// terminator, through `readLines(stdin(), n = 1L, warn = FALSE)`. Appends
+/// nothing at the end of the input (`character(0)`).
+fn read_console_line(line: &mut Vec<u8>) -> std::io::Result<()> {
+    use crate::SexpExt;
     use crate::expression::RCall;
-    unsafe {
-        // RCall::eval catches an R error as Err rather than longjmping.
-        RCall::from_cstr(name)
+
+    if !crate::worker::is_r_main_thread() {
+        return Err(std::io::Error::other(
+            "RStdin can only be read on R's main thread",
+        ));
+    }
+    // SAFETY: R's main thread (checked above). The `stdin()` call is an
+    // argument of the `readLines()` call, which evaluates it. `eval_base`
+    // returns an R error as `Err`.
+    let lines = unsafe {
+        RCall::from_cstr(c"readLines")
+            .arg(RCall::from_cstr(c"stdin").build())
+            .named_arg("n", SEXP::scalar_integer(1))
+            .named_arg("warn", SEXP::scalar_logical(false))
             .eval_base()
-            .unwrap_or_else(|_| panic!("failed to evaluate {}()", name.to_string_lossy()))
+    }
+    .map_err(|e| std::io::Error::other(format!("reading R's stdin() failed: {e}")))?;
+    if !lines.is_empty() {
+        // `lines` is unprotected: copy the bytes out before anything allocates.
+        let text = unsafe { CStr::from_ptr(lines.string_elt(0).r_char()) };
+        line.extend_from_slice(text.to_bytes());
+        line.push(b'\n');
+    }
+    Ok(())
+}
+
+impl RStdin {
+    /// Lock the line buffer every `RStdin` on this thread shares, for
+    /// [`BufRead`](std::io::BufRead) access. Like [`std::io::Stdin::lock`].
+    ///
+    /// Reading through the lock off R's main thread returns an
+    /// [`io::Error`](std::io::Error) as soon as it needs a new line.
+    ///
+    /// # Panics
+    ///
+    /// If an [`RStdinLock`] is already alive on this thread ("RStdin is
+    /// already locked on this thread"). That includes reading through
+    /// another `RStdin` handle while a lock is held.
+    pub fn lock(&self) -> RStdinLock {
+        let line = STDIN_LINE
+            .with(std::cell::Cell::take)
+            .expect("RStdin is already locked on this thread");
+        RStdinLock {
+            line,
+            _not_send: std::marker::PhantomData,
+        }
+    }
+
+    /// Read the next line, with its `"\n"`, into `buf`; see
+    /// [`BufRead::read_line`](std::io::BufRead::read_line). Returns `Ok(0)`
+    /// at the end of the input.
+    ///
+    /// # Panics
+    ///
+    /// Like [`lock`](Self::lock).
+    pub fn read_line(&self, buf: &mut String) -> std::io::Result<usize> {
+        std::io::BufRead::read_line(&mut self.lock(), buf)
+    }
+
+    /// The lines that are left, without their `"\n"`, holding the lock
+    /// until the iterator is dropped; see
+    /// [`BufRead::lines`](std::io::BufRead::lines).
+    ///
+    /// # Panics
+    ///
+    /// Like [`lock`](Self::lock).
+    pub fn lines(self) -> std::io::Lines<RStdinLock> {
+        std::io::BufRead::lines(self.lock())
+    }
+}
+
+impl Drop for RStdinLock {
+    fn drop(&mut self) {
+        let line = std::mem::take(&mut self.line);
+        // During thread teardown the buffer goes away with the thread.
+        let _ = STDIN_LINE.try_with(|slot| slot.set(Some(line)));
+    }
+}
+
+impl std::io::BufRead for RStdinLock {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.line.fill_with(read_console_line)
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.line.consume(amt);
+    }
+}
+
+impl std::io::Read for RStdinLock {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        use std::io::BufRead;
+
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let available = self.fill_buf()?;
+        let n = available.len().min(buf.len());
+        buf[..n].copy_from_slice(&available[..n]);
+        self.consume(n);
+        Ok(n)
     }
 }
 
 impl std::io::Read for RStdin {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        unsafe {
-            let sexp = eval_base_connection(c"stdin");
-            let conn = crate::sys::R_GetConnection(sexp);
-            let n = read_connection(conn, buf);
-            Ok(n)
-        }
+        std::io::Read::read(&mut self.lock(), buf)
     }
 }
 
