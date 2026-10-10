@@ -285,8 +285,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // named as its Rust type. An impl that only adds the field readers to a
     // class the package names and builds itself gets none, so no second
     // binding of a same-named constructor, export or `\alias` (#1918).
-    let has_class_env =
-        parsed_impl.constructor_context().is_some() || class_name == type_ident.to_string();
+    let has_class_env = parsed_impl.constructor_context().is_some() || *type_ident == class_name;
     let export_line = if should_export { "#' @export\n" } else { "" };
     if has_class_env {
         if class_has_no_rd {
