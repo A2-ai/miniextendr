@@ -18,8 +18,10 @@ use crate::altrep_data::{AltIntegerData, AltRealData, AltrepLen, fill_region};
 /// Core state for windowed iterator-backed ALTREP vectors.
 ///
 /// Like [`super::IterState`], but only keeps a sliding window of elements in memory.
-/// Sequential access within the window is O(1). Access outside the window
-/// materializes the entire vector (falling back to full caching).
+/// Access within the window is O(1), and reading past it slides the window
+/// forward. The iterator cannot be rewound, so reading an element that has left
+/// the window is an error. Use [`super::IterState`] when R may read elements
+/// again or out of order.
 ///
 /// This is useful for large iterators where only a small region is accessed
 /// at a time (e.g., streaming data processed in order).
@@ -90,9 +92,13 @@ where
             return None; // iterator exhausted
         }
 
-        // Backward access — must materialize
-        self.materialize_all();
-        self.materialized.get().and_then(|v| v.get(i).copied())
+        // Backward access: the element was discarded when the window moved on.
+        panic!(
+            "windowed iterator ALTREP: element {} left the window, which now starts at element {}; \
+             a windowed vector can only be read forward",
+            i + 1,
+            *self.window_start.borrow() + 1
+        );
     }
 
     /// Advance the iterator to fill a window containing index `i`.
@@ -119,6 +125,10 @@ where
             if iter.next().is_some() {
                 *consumed += 1;
             } else {
+                // The skipped elements are gone too; keep the window adjacent to `consumed`.
+                iter_opt.take();
+                window.clear();
+                *window_start = *consumed;
                 return;
             }
         }
@@ -132,6 +142,8 @@ where
                 window.push(elem);
                 *consumed += 1;
             } else {
+                // Never poll an exhausted iterator again: it need not be fused.
+                iter_opt.take();
                 break;
             }
             // Stop once we've passed index i
@@ -142,59 +154,42 @@ where
     }
 
     /// Materialize all elements.
+    ///
+    /// # Panics
+    ///
+    /// If elements have already left the window, or if the iterator ends before
+    /// the declared length.
     pub fn materialize_all(&self) -> &[T] {
         if let Some(vec) = self.materialized.get() {
             return vec;
         }
 
-        // We can only materialize elements from consumed onward
-        // For backward access, we'd need to restart the iterator
-        // Since iterators are consumed, materialize what we can
         let mut iter_opt = self.iter.borrow_mut();
-        let window = self.window.borrow();
-        let window_start = *self.window_start.borrow();
+        let mut window = self.window.borrow_mut();
+        let mut consumed = self.consumed.borrow_mut();
+        assert!(
+            *consumed == window.len(),
+            "windowed iterator ALTREP: the first {} elements left the window and cannot be read again",
+            *consumed - window.len()
+        );
 
-        let mut result = Vec::with_capacity(self.len);
-
-        // Copy window elements at their correct positions
-        // Start fresh approach: collect remaining from iterator
+        // Nothing was discarded, so the window holds every element read so far.
+        // Grow it in place: on early exhaustion those elements stay readable.
         if let Some(iter) = iter_opt.take() {
-            // We have: window contents at window_start..window_start+window.len()
-            // And: unconsumed elements from consumed onward
-            // Elements before window_start are lost (consumed and discarded)
-
-            // Fill lost positions with default
-            for _ in 0..window_start {
-                // These elements were consumed — can't recover
-                result.push(window.first().copied().unwrap_or_else(|| {
-                    // This shouldn't happen with valid usage
-                    unsafe { std::mem::zeroed() }
-                }));
-            }
-
-            // Copy window
-            result.extend_from_slice(&window);
-
-            // Consume rest
-            for elem in iter {
-                if result.len() >= self.len {
-                    break;
-                }
-                result.push(elem);
-            }
+            window.extend(iter.take(self.len - *consumed));
+            *consumed = window.len();
         }
+        assert!(
+            window.len() == self.len,
+            "ALTREP iterator ended before element {} of its declared length {}",
+            window.len() + 1,
+            self.len
+        );
 
+        let result = std::mem::take(&mut *window);
+        drop(consumed);
         drop(window);
         drop(iter_opt);
-
-        if result.len() < self.len {
-            eprintln!(
-                "[miniextendr warning] windowed iterator ALTREP: could only recover {}/{} elements on materialization",
-                result.len(),
-                self.len
-            );
-        }
-
         self.materialized.get_or_init(|| result)
     }
 
@@ -232,8 +227,8 @@ where
 /// Windowed iterator-backed integer vector data adaptor.
 ///
 /// Like [`super::IterIntData`], but only keeps a sliding window of elements in memory.
-/// Sequential forward access within the window is O(1). Access outside the
-/// window triggers full materialization.
+/// Forward reads are O(1); reading an element that has left the window is an
+/// error (see [`WindowedIterState`]).
 pub struct WindowedIterIntData<I: Iterator<Item = i32>> {
     state: WindowedIterState<I, i32>,
 }
@@ -281,8 +276,8 @@ impl<I: Iterator<Item = i32>> AltIntegerData for WindowedIterIntData<I> {
 /// Windowed iterator-backed real (f64) vector data adaptor.
 ///
 /// Like [`super::IterRealData`], but only keeps a sliding window of elements in memory.
-/// Sequential forward access within the window is O(1). Access outside the
-/// window triggers full materialization.
+/// Forward reads are O(1); reading an element that has left the window is an
+/// error (see [`WindowedIterState`]).
 pub struct WindowedIterRealData<I: Iterator<Item = f64>> {
     state: WindowedIterState<I, f64>,
 }
@@ -326,3 +321,82 @@ impl<I: Iterator<Item = f64>> AltRealData for WindowedIterRealData<I> {
 }
 
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::WindowedIterState;
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    #[test]
+    fn a_read_behind_the_window_is_an_error() {
+        let state = WindowedIterState::new(0..10, 10, 3);
+        assert_eq!(state.get_element(0), Some(0));
+        assert_eq!(state.get_element(5), Some(5));
+        assert!(catch_unwind(AssertUnwindSafe(|| state.get_element(1))).is_err());
+        assert_eq!(state.get_element(4), Some(4));
+        assert_eq!(state.get_element(6), Some(6));
+    }
+
+    #[test]
+    fn materialization_before_the_window_moves_reads_exactly_len() {
+        let source = || (0..4).chain(std::iter::once_with(|| panic!("read beyond the length")));
+        let state = WindowedIterState::new(source(), 4, 2);
+        assert_eq!(state.materialize_all(), [0, 1, 2, 3]);
+
+        let state = WindowedIterState::new(source(), 4, 2);
+        assert_eq!(state.get_element(1), Some(1));
+        assert_eq!(state.materialize_all(), [0, 1, 2, 3]);
+        assert_eq!(state.get_element(3), Some(3));
+    }
+
+    #[test]
+    fn materialization_after_the_window_moves_is_an_error() {
+        let state = WindowedIterState::new(0..6, 6, 2);
+        assert_eq!(state.get_element(4), Some(4));
+        assert!(catch_unwind(AssertUnwindSafe(|| state.materialize_all())).is_err());
+        assert!(state.as_materialized().is_none());
+        assert_eq!(state.get_element(4), Some(4));
+        assert_eq!(state.get_element(5), Some(5));
+    }
+
+    #[test]
+    fn early_exhaustion_never_publishes_a_partial_buffer() {
+        let state = WindowedIterState::new(0..2, 3, 4);
+        for _ in 0..2 {
+            assert!(catch_unwind(AssertUnwindSafe(|| state.materialize_all())).is_err());
+            assert!(state.as_materialized().is_none());
+            assert_eq!(state.get_element(0), Some(0));
+            assert_eq!(state.get_element(1), Some(1));
+            assert_eq!(state.get_element(2), None);
+        }
+    }
+
+    #[test]
+    fn an_exhausted_source_is_never_polled_again() {
+        // Yields 0, then None, then 1 if polled again (not fused).
+        struct Flaky(u8);
+        impl Iterator for Flaky {
+            type Item = i32;
+            fn next(&mut self) -> Option<i32> {
+                self.0 += 1;
+                match self.0 {
+                    1 => Some(0),
+                    3 => Some(1),
+                    _ => None,
+                }
+            }
+        }
+
+        // Exhausted while filling the window.
+        let state = WindowedIterState::new(Flaky(0), 3, 2);
+        assert_eq!(state.get_element(0), Some(0));
+        assert_eq!(state.get_element(1), None);
+        assert_eq!(state.get_element(1), None);
+
+        // Exhausted while skipping to the window.
+        let state = WindowedIterState::new(Flaky(0), 5, 1);
+        assert_eq!(state.get_element(2), None);
+        assert_eq!(state.get_element(2), None);
+        assert!(catch_unwind(AssertUnwindSafe(|| state.get_element(0))).is_err());
+    }
+}
