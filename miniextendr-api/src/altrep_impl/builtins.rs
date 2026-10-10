@@ -609,3 +609,46 @@ impl_register_altrep_builtin!(
     "Vec_Option_Cow_str"
 );
 // endregion
+
+// region: Native VecDeque classes
+
+impl_builtin_altrep_family!(
+    std::collections::VecDeque<i32>,
+    integer,
+    dataptr,
+    __mx_altrep_reg_builtin_VecDeque_i32,
+    __MX_ALTREP_REG_ENTRY_builtin_VecDeque_i32
+);
+impl_register_altrep_builtin!(std::collections::VecDeque<i32>, "VecDeque_i32");
+
+impl_builtin_altrep_family!(
+    std::collections::VecDeque<f64>,
+    real,
+    dataptr,
+    __mx_altrep_reg_builtin_VecDeque_f64,
+    __MX_ALTREP_REG_ENTRY_builtin_VecDeque_f64
+);
+impl_register_altrep_builtin!(std::collections::VecDeque<f64>, "VecDeque_f64");
+
+impl_builtin_altrep_family!(
+    std::collections::VecDeque<u8>,
+    raw,
+    dataptr,
+    __mx_altrep_reg_builtin_VecDeque_u8,
+    __MX_ALTREP_REG_ENTRY_builtin_VecDeque_u8
+);
+impl_register_altrep_builtin!(std::collections::VecDeque<u8>, "VecDeque_u8");
+
+impl_builtin_altrep_family!(
+    std::collections::VecDeque<crate::Rcomplex>,
+    complex,
+    dataptr,
+    __mx_altrep_reg_builtin_VecDeque_Rcomplex,
+    __MX_ALTREP_REG_ENTRY_builtin_VecDeque_Rcomplex
+);
+impl_register_altrep_builtin!(
+    std::collections::VecDeque<crate::Rcomplex>,
+    "VecDeque_Rcomplex"
+);
+
+// endregion

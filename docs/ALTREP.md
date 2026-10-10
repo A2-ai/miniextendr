@@ -1824,6 +1824,33 @@ These classes retain the existing built-in duplication policy: R may materialize
 a regular vector when duplicating. Rust structural mutations must reacquire the
 current buffer; they cannot keep previously exposed pointers valid after growth.
 
+## Ring-buffer containers
+
+`Altrep<VecDeque<T>>` supports `i32`, `f64`, `u8` and `Rcomplex`:
+
+```rust,ignore
+use std::collections::VecDeque;
+use miniextendr_api::{Altrep, miniextendr};
+
+#[miniextendr]
+fn queued_values() -> Altrep<VecDeque<i32>> {
+    Altrep(VecDeque::from(vec![10, 20, 30]))
+}
+```
+
+The deque remains the owner. Element access follows its logical order, and
+region reads copy directly from its two segments without flattening it.
+`Dataptr_or_null` returns a pointer only when all elements occupy one segment.
+A `Dataptr` request calls `make_contiguous()` on the deque and exposes that
+buffer through a mutable reference; it does not convert the deque to a Vec.
+Writes through this pointer are visible to later reads and serialization.
+
+As with the other built-in containers, ordinary R duplication uses R's default
+policy and may materialize the replacement. A custom live-view or copy-on-write
+policy still belongs on an explicit ALTREP class. Structural Rust mutations
+must reacquire the current buffer; previously exposed pointers cannot survive
+arbitrary growth or ring rearrangement.
+
 ## Iterator-Backed ALTREP
 
 miniextendr provides two iterator-backed ALTREP variants.

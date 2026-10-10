@@ -59,6 +59,7 @@ use crate::into_r::IntoR;
 /// Built-in supported types:
 /// - `Vec<i32>`, `Vec<f64>`, `Vec<bool>`, `Vec<u8>`, `Vec<String>`
 /// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
+/// - `VecDeque<i32>`, `VecDeque<f64>`, `VecDeque<u8>`, `VecDeque<Rcomplex>`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
 /// - `Vec<RLogical>`, `Box<[RLogical]>`, `Cow<'static, [RLogical]>`
 ///
