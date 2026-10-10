@@ -95,9 +95,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
     }
 
-    // `$` / `[[` field methods of `s3(r_data_accessors)` (#1848), ahead of the
-    // instance methods: on a shared page roxygen2 keeps the last `@param` of
-    // a name, so a method's own text for `name` or `value` wins.
+    // The field methods of `s3(r_data_accessors)` (`$` / `[[` / `names` /
+    // `as.list` / `.DollarNames`, and the setters; #1848, #1890, #1885),
+    // ahead of the instance methods: on a shared page roxygen2 keeps the last
+    // `@param` of a name, so a method's own text for `name` or `value` wins.
     if parsed_impl.r_data_accessors.enabled() {
         lines.extend(super::field_syntax::s3_field_methods(
             parsed_impl,

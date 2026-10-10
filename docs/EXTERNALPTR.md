@@ -453,8 +453,10 @@ Only `pub` fields with `#[r_data]` get R wrapper functions. With
 bindings (`obj$count`, `obj$count <- 2L`), with `s7(r_data_accessors)` S7
 properties (`obj@count`), and with `s3(r_data_accessors)`,
 `s4(r_data_accessors)` or `env(r_data_accessors)` `$` / `[[` methods that read
-them and `$<-` / `[[<-` methods that write them in place
-(`r_data_accessors = "get"` for the reading methods only). vctrs classes get
+them (on an S3 bare pointer as a list's do: a unique prefix, a position,
+`NULL` for an unknown name), `$<-` / `[[<-` methods that write them in place
+and `.DollarNames()` for completion, plus `names()` / `as.list()` on an S3
+class (`r_data_accessors = "get"` for the readers only). vctrs classes get
 only the `MyType_get_*()` / `MyType_set_*()` functions. See
 `CLASS_SYSTEMS.md`, "Direct Field Access via Sidecar".
 
@@ -629,8 +631,9 @@ error on the restored object, so code can tell the case apart and
 re-create the object: a method (any receiver), an `ExternalPtr<T>`
 argument, the R accessor of a struct or computed field. The `$` / `[[` /
 `$<-` / `[[<-` field methods of `s3(r_data_accessors)`, `s4(...)` and
-`env(...)` raise it for every field, `Sidecar` fields included: a reloaded
-object is refused, not recovered (`CLASS_SYSTEMS.md`, "A restored pointer").
+`env(...)`, and the S3 `as.list()`, raise it for every field, `Sidecar`
+fields included: a reloaded object is refused, not recovered
+(`CLASS_SYSTEMS.md`, "A restored pointer").
 
 - Saved by this version of the package: class
   `miniextendr_restored_no_value`, message ``this `MyType` object was

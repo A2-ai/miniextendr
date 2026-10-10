@@ -9,6 +9,9 @@
 \alias{new_sidecars3}
 \alias{$.SidecarS3}
 \alias{[[.SidecarS3}
+\alias{names.SidecarS3}
+\alias{as.list.SidecarS3}
+\alias{.DollarNames.SidecarS3}
 \alias{$<-.SidecarS3}
 \alias{[[<-.SidecarS3}
 \alias{tag_count.SidecarS3}
@@ -29,6 +32,12 @@ new_sidecars3(data)
 
 \method{[[}{SidecarS3}(x, i, ...)
 
+\method{names}{SidecarS3}(x)
+
+\method{as.list}{SidecarS3}(x, ...)
+
+\method{.DollarNames}{SidecarS3}(x, pattern = "")
+
 \method{$}{SidecarS3}(x, name) <- value
 
 \method{[[}{SidecarS3}(x, i, ...) <- value
@@ -46,11 +55,13 @@ SidecarS3
 
 \item{data}{Numeric sidecar field.}
 
-\item{name}{A field name.}
+\item{name}{A field name; \code{$} on the pointer itself also takes a unique prefix of one, as for a list.}
 
-\item{i}{A field name; any other index goes to the object's own \code{[[}.}
+\item{i}{A field name; \code{[[} on the pointer itself also takes a position in the field order. Any other index goes to the object's own \code{[[} / \verb{[[<-}.}
 
 \item{...}{Additional arguments.}
+
+\item{pattern}{A regular expression; the names matching it are the completions.}
 
 \item{tag}{The tag to append.}
 }

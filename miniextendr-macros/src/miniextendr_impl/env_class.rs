@@ -28,9 +28,10 @@ use super::ParsedImpl;
 ///   trait namespace environments (nested envs with `.__mx_instance__` attributes)
 /// - `[[.ClassName` alias: delegates to `$.ClassName`
 /// - With `env(r_data_accessors)`: a field branch at the top of `$.ClassName`
-///   (a `#[r_data]` field wins over a method of the same name), and, unless
-///   the getters-only `r_data_accessors = "get"`, `$<-.ClassName` with its
-///   `[[<-.ClassName` alias (`field_syntax.rs`, #1848)
+///   (a `#[r_data]` field wins over a method of the same name),
+///   `.DollarNames.ClassName` (the fields, then the methods; #1885), and,
+///   unless the getters-only `r_data_accessors = "get"`, `$<-.ClassName` with
+///   its `[[<-.ClassName` alias (`field_syntax.rs`, #1848)
 ///
 /// Roxygen2 documentation is generated for the class, each method, and the
 /// dispatch methods, with appropriate `@export`/`@keywords internal`/`@noRd` tags.
@@ -276,6 +277,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("#' @export".to_string());
     }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
+    if fields {
+        lines.extend(super::field_syntax::env_dollar_names(
+            parsed_impl,
+            !class_has_no_rd && should_export,
+        ));
+    }
     if fields && parsed_impl.r_data_accessors.setters() {
         lines.extend(super::field_syntax::env_replacement_methods(
             parsed_impl,

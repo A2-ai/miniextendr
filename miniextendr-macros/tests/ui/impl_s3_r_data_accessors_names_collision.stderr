@@ -1,0 +1,5 @@
+error: `field_names` defines the `names` method of `Gauge`, which `s3(r_data_accessors)` generates for the `#[r_data]` fields: the class would get two `names` methods. Remove the method or the option.
+  --> tests/ui/impl_s3_r_data_accessors_names_collision.rs:25:12
+   |
+25 |     pub fn field_names(&self) -> Vec<String> {
+   |            ^^^^^^^^^^^

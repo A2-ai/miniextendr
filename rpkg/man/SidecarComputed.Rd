@@ -14,6 +14,9 @@
 \alias{new_sidecarcomputed}
 \alias{$.SidecarComputed}
 \alias{[[.SidecarComputed}
+\alias{names.SidecarComputed}
+\alias{as.list.SidecarComputed}
+\alias{.DollarNames.SidecarComputed}
 \alias{$<-.SidecarComputed}
 \alias{[[<-.SidecarComputed}
 \alias{key_count.SidecarComputed}
@@ -43,6 +46,12 @@ new_sidecarcomputed(base)
 
 \method{[[}{SidecarComputed}(x, i, ...)
 
+\method{names}{SidecarComputed}(x)
+
+\method{as.list}{SidecarComputed}(x, ...)
+
+\method{.DollarNames}{SidecarComputed}(x, pattern = "")
+
 \method{$}{SidecarComputed}(x, name) <- value
 
 \method{[[}{SidecarComputed}(x, i, ...) <- value
@@ -58,11 +67,13 @@ SidecarComputed
 
 \item{base}{The base value.}
 
-\item{name}{A field name.}
+\item{name}{A field name; \code{$} on the pointer itself also takes a unique prefix of one, as for a list.}
 
-\item{i}{A field name; any other index goes to the object's own \code{[[}.}
+\item{i}{A field name; \code{[[} on the pointer itself also takes a position in the field order. Any other index goes to the object's own \code{[[} / \verb{[[<-}.}
 
 \item{...}{Additional arguments.}
+
+\item{pattern}{A regular expression; the names matching it are the completions.}
 }
 \value{
 The value of the \code{doubled} field

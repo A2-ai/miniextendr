@@ -9,6 +9,9 @@
 \alias{new_sidecars3get}
 \alias{$.SidecarS3Get}
 \alias{[[.SidecarS3Get}
+\alias{names.SidecarS3Get}
+\alias{as.list.SidecarS3Get}
+\alias{.DollarNames.SidecarS3Get}
 \alias{$<-.SidecarS3Get}
 \title{SidecarS3Get Sidecar Accessors}
 \usage{
@@ -26,6 +29,12 @@ new_sidecars3get(level)
 
 \method{[[}{SidecarS3Get}(x, i, ...)
 
+\method{names}{SidecarS3Get}(x)
+
+\method{as.list}{SidecarS3Get}(x, ...)
+
+\method{.DollarNames}{SidecarS3Get}(x, pattern = "")
+
 \method{$}{SidecarS3Get}(x, name, ...) <- value
 
 SidecarS3Get
@@ -39,9 +48,11 @@ SidecarS3Get
 
 \item{name}{A field name; \verb{$<-} sets only \code{level}.}
 
-\item{i}{A field name; any other index goes to the object's own \code{[[}.}
+\item{i}{A field name; \code{[[} on the pointer itself also takes a position in the field order. Any other index goes to the object's own \code{[[} / \verb{[[<-}.}
 
 \item{...}{Additional arguments.}
+
+\item{pattern}{A regular expression; the names matching it are the completions.}
 }
 \value{
 The value of the \code{level} field

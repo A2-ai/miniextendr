@@ -3,15 +3,28 @@
 # and the getters-only `r_data_accessors = "get"`.
 #
 # `$` / `[[` read a field and `$<-` / `[[<-` write it through the same
-# accessors as `Type_get_f()` / `Type_set_f()`. A name that is not a field
-# falls through to R's own `$` / `[[` on a list or an environment receiver,
-# and raises `miniextendr_no_field` on a bare pointer or an S4 object. A
-# condition reports the call as written: `x$data <- value`.
+# accessors as `Type_get_f()` / `Type_set_f()`. On an S3 bare pointer the
+# reads look the fields up as a list's `$` / `[[` do (#1891): a unique prefix
+# through `$`, a position through `[[`, `NULL` for an unknown name; the class
+# also gets `names()`, `as.list()` (#1890) and `.DollarNames()` (#1885), the
+# last also on S4 and env classes. A name that is not a field falls through
+# to R's own `$` / `[[` on a list or an environment receiver; a write to one
+# raises `miniextendr_no_field` on a bare pointer, as `$` does on an S4
+# object. A condition reports the call as written: `x$data <- value`.
 #
-# Fixtures: `SidecarS3`, `SidecarS3Get`, `SidecarS4` and `SidecarEnv` in
-# `src/rust/rdata_sidecar_tests.rs`.
+# Fixtures: `SidecarS3`, `SidecarS3Get`, `SidecarComputed`, `SidecarHandmade`
+# (classed by `new_handmade_rec()` in `R/sidecar_handmade.R`), `SidecarS4`
+# and `SidecarEnv` in `src/rust/rdata_sidecar_tests.rs`.
 
 caught <- function(expr) tryCatch(expr, error = identity)
+
+# An S3 list carrying the handle in `.ptr`, next to elements of its own.
+new_s3_list <- function() {
+  structure(
+    list(.ptr = new_sidecars3(1.5), table = data.frame(a = 1:3), note = "plain"),
+    class = "SidecarS3"
+  )
+}
 
 # region: S3, the classed pointer
 
@@ -73,28 +86,135 @@ test_that("S3: a value that doesn't convert raises the setter's argument error w
   expect_identical(x$data, 1.5)
 })
 
-test_that("S3: a name that is not a field is refused on a bare pointer, naming the fields", {
+test_that("S3: `$` on the pointer reads as a list's does: an exact name, a unique prefix, else NULL", {
   x <- new_sidecars3(1.5)
-  e <- caught(x$nope)
+  x$tags <- c("a", "b")
+  expect_null(x$nope)
+  expect_null(x[["nope"]])
+  # A unique prefix reads the field, as for a list.
+  expect_identical(x$ta, c("a", "b"))
+  expect_identical(x$d, 1.5)
+  # `[[` takes an exact name only.
+  expect_null(x[["ta"]])
+  expect_null(x[[""]])
+  expect_null(x[[NA_character_]])
+  # An exact name beats a prefix; an ambiguous prefix is NULL.
+  h <- new_handmade_rec(3L)
+  expect_identical(h$id, 3L)
+  expect_identical(h$ids, 1:3)
+  expect_null(h$i)
+  expect_identical(h$l, "rec-3")
+})
+
+test_that("S3: a partial match through `$` warns under warnPartialMatchDollar, with the call", {
+  x <- new_sidecars3(1.5)
+  withr::local_options(warnPartialMatchDollar = TRUE)
+  w <- tryCatch(x$ta, warning = identity)
+  expect_s3_class(w, "simpleWarning")
+  expect_identical(conditionMessage(w), "partial match of 'ta' to 'tags'")
+  expect_equal(conditionCall(w), quote(x$ta))
+  expect_identical(suppressWarnings(x$ta), character())
+  # An exact name never warns.
+  expect_no_warning(x$tags)
+  # A list receiver warns through R's own `$`.
+  l <- new_s3_list()
+  expect_warning(l$tab, "partial match of 'tab' to 'table'")
+})
+
+test_that("S3: `[[` on the pointer takes a position in the field order, as a list's does", {
+  x <- new_sidecars3(1.5)
+  x$tags <- "t"
+  expect_identical(x[[1]], 1.5)
+  expect_identical(x[[2L]], "t")
+  expect_identical(x[[2.9]], "t") # truncated, as for a list
+  expect_identical(x[[TRUE]], 1.5) # a list takes a logical as a position
+  expect_null(x[[NA]])
+  expect_null(x[[NA_integer_]])
+  expect_null(x[[NA_real_]])
+  e <- caught(x[[9]])
+  expect_s3_class(e, "subscriptOutOfBoundsError")
+  expect_identical(conditionMessage(e), "subscript out of bounds")
+  expect_equal(conditionCall(e), quote(x[[9]]))
+  expect_equal(conditionCall(caught(x[[3L]])), quote(x[[3L]]))
+  # `0` and a negative position raise as they do on a list.
+  e <- caught(x[[0]])
+  expect_match(conditionMessage(e), "attempt to select less than one element", fixed = TRUE)
+  expect_equal(conditionCall(e), quote(x[[0]]))
+  expect_identical(x[[-1]], "t") # a two-element list's `[[-1]]` is its second element
+  h <- new_handmade_rec(1L)
+  e <- caught(h[[-1]])
+  expect_match(conditionMessage(e), "invalid negative subscript", fixed = TRUE)
+  expect_equal(conditionCall(e), quote(h[[-1]]))
+  # Any other index goes to R's own `[[`, which can't subset a pointer.
+  expect_error(x[[c(1, 2)]], "not subsettable")
+  expect_error(x[[c("data", "tags")]], "not subsettable")
+  expect_error(x[[list(1)]], "not subsettable")
+  expect_error(x[[NULL]], "not subsettable")
+})
+
+test_that("S3: a write to a name that is not a field is refused on a bare pointer, naming the fields", {
+  x <- new_sidecars3(1.5)
+  e <- caught(x$nope <- 1)
   expect_s3_class(e, "miniextendr_no_field")
   expect_identical(
     conditionMessage(e),
     "`nope` is not a field of `SidecarS3`; its fields are `data`, `tags`"
   )
-  expect_equal(conditionCall(e), quote(x$nope))
-  e <- caught(x[["nope"]])
-  expect_s3_class(e, "miniextendr_no_field")
-  expect_equal(conditionCall(e), quote(x[["nope"]]))
-  e <- caught(x$nope <- 1)
-  expect_s3_class(e, "miniextendr_no_field")
   expect_equal(conditionCall(e), quote(x$nope <- value))
   e <- caught(x[["nope"]] <- 1)
   expect_s3_class(e, "miniextendr_no_field")
   expect_equal(conditionCall(e), quote(x[["nope"]] <- value))
-  # No partial matching on a pointer.
-  expect_s3_class(caught(x$ta), "miniextendr_no_field")
-  # A numeric index goes to R's own `[[`, which can't subset a pointer.
-  expect_error(x[[1]], "not subsettable")
+  # No partial matching, and no positions, on a write.
+  expect_s3_class(caught(x$ta <- "a"), "miniextendr_no_field")
+  expect_error(x[[1]] <- 2, "not subsettable")
+  expect_identical(x$tags, character())
+})
+
+test_that("S3: names() and as.list() on the pointer give the fields in declared order", {
+  x <- new_sidecars3(1.5)
+  expect_identical(names(x), c("data", "tags"))
+  expect_identical(as.list(x), list(data = 1.5, tags = character()))
+  x$tags <- c("a", "b")
+  expect_identical(as.list(x), list(data = 1.5, tags = c("a", "b")))
+  # `lapply()` and `vapply()` iterate `as.list()`; `length()` stays a pointer's.
+  expect_identical(lapply(x, class), list(data = "numeric", tags = "character"))
+  expect_identical(vapply(x, length, 1L), c(data = 1L, tags = 2L))
+  expect_length(x, 1L)
+  # Computed fields and R names take their declared place.
+  expect_identical(
+    names(new_sidecarcomputed(1L)),
+    c("doubled", "keys", "nothing", "base", "boom", "table")
+  )
+  h <- new_handmade_rec(2L)
+  expect_identical(names(h), c("id", "ids", "label", "extra"))
+  # A NULL field is kept.
+  expect_identical(as.list(h), list(id = 2L, ids = 1:2, label = "rec-2", extra = NULL))
+  SidecarHandmade_set_extra(h, "set")
+  expect_identical(as.list(h)$extra, "set")
+  # A computed getter's error reaches `as.list()` with the call.
+  x <- new_sidecarcomputed(4L)
+  e <- caught(as.list(x))
+  expect_s3_class(e, "sidecar_computed_boom")
+  expect_equal(conditionCall(e), quote(as.list(x)))
+})
+
+test_that("S3: .DollarNames() completes the fields", {
+  x <- new_sidecars3(1.5)
+  # The completion engine passes an anchored pattern (`x$ta<Tab>` is `^ta`).
+  expect_identical(utils::.DollarNames(x, "^ta"), "tags")
+  expect_identical(utils::.DollarNames(x, "ta"), c("data", "tags"))
+  expect_identical(utils::.DollarNames(x), c("data", "tags"))
+  expect_identical(utils::.DollarNames(x, "^nope"), character())
+  expect_identical(
+    utils::.DollarNames(new_sidecarcomputed(1L), "^b"),
+    c("base", "boom")
+  )
+  # Registered under the qualified generic, so the namespace loads with only
+  # base attached.
+  ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
+  expect_true("S3method(utils::.DollarNames,SidecarS3)" %in% ns)
+  expect_true("S3method(utils::.DollarNames,handmade_rec)" %in% ns)
+  expect_false(any(grepl("^S3method\\(.DollarNames,", ns)))
 })
 
 test_that("S3: a field write is shared by every copy of the object", {
@@ -109,13 +229,6 @@ test_that("S3: a field write is shared by every copy of the object", {
 # endregion
 
 # region: S3, a list carrying the handle in `.ptr`
-
-new_s3_list <- function() {
-  structure(
-    list(.ptr = new_sidecars3(1.5), table = data.frame(a = 1:3), note = "plain"),
-    class = "SidecarS3"
-  )
-}
 
 test_that("S3 list: fields go to Rust, other names to the list", {
   x <- new_s3_list()
@@ -172,6 +285,19 @@ test_that("S3 list: a field write is shared, a list element write is copied", {
   expect_null(y$table)
 })
 
+test_that("S3 list: names() and as.list() are the list's own; .DollarNames() adds its names", {
+  x <- new_s3_list()
+  expect_identical(names(x), c(".ptr", "table", "note"))
+  expect_identical(as.list(x), x)
+  expect_identical(x[[2]], data.frame(a = 1:3))
+  # The fields first, then the list's own names.
+  expect_identical(
+    utils::.DollarNames(x),
+    c("data", "tags", ".ptr", "table", "note")
+  )
+  expect_identical(utils::.DollarNames(x, "^ta"), c("tags", "table"))
+})
+
 # endregion
 
 # region: S3, an environment carrying the handle in `.ptr`
@@ -192,6 +318,41 @@ test_that("S3 environment: fields go to Rust, other bindings to the environment"
   e[["other"]] <- 2
   expect_identical(get("other", envir = e), 2)
   expect_false(exists("tags", envir = e, inherits = FALSE))
+  # `names()` and `as.list()` are the environment's own (`as.list()` through
+  # `as.list.environment()`, which the class attribute would otherwise keep
+  # from a classed environment); `.DollarNames()` lists the fields, then its
+  # bindings.
+  expect_setequal(names(e), c(".ptr", "plain", "other"))
+  expect_setequal(names(as.list(e)), c("plain", "other"))
+  expect_identical(as.list(e)[c("plain", "other")], list(plain = "rebound", other = 2))
+  expect_setequal(names(as.list(e, all.names = TRUE)), c(".ptr", "plain", "other"))
+  expect_setequal(utils::.DollarNames(e), c("data", "tags", ".ptr", "plain", "other"))
+  expect_identical(utils::.DollarNames(e, "^p"), "plain")
+})
+
+# endregion
+
+# region: S3, a class the package builds itself (#1891)
+
+test_that("an S3 impl with `class = ...` and no constructor gets the readers for a pointer classed by hand", {
+  h <- new_handmade_rec(3L)
+  expect_s3_class(h, "handmade_rec")
+  expect_identical(typeof(h), "externalptr")
+  expect_identical(h$id, 3L)
+  expect_identical(h[["ids"]], 1:3)
+  expect_identical(h[[3]], "rec-3")
+  expect_null(h$extra)
+  expect_identical(names(h), c("id", "ids", "label", "extra"))
+  expect_identical(utils::.DollarNames(h, "^i"), c("id", "ids"))
+  # Getters only: no generated `$<-`, and the standalone setters still write.
+  expect_false(exists("$<-.handmade_rec", envir = asNamespace("miniextendr")))
+  SidecarHandmade_set_extra(h, "kept")
+  expect_identical(h$extra, "kept")
+  expect_identical(h$e, "kept")
+  # The pointer without the class has no methods.
+  p <- rdata_sidecar_handmade_new(1L)
+  expect_null(attr(p, "class"))
+  expect_error(p$id, "not subsettable")
 })
 
 # endregion
@@ -203,7 +364,12 @@ test_that("S3 getters only: `$` / `[[` read the fields, the class's own `$<-` wr
   expect_identical(x$level, 2L)
   expect_identical(x[["level"]], 2L)
   expect_identical(x$notes, character())
-  expect_s3_class(caught(x$nope), "miniextendr_no_field")
+  expect_null(x$nope)
+  expect_identical(x$lev, 2L)
+  expect_identical(x[[2]], character())
+  expect_identical(names(x), c("level", "notes"))
+  expect_identical(as.list(x), list(level = 2L, notes = character()))
+  expect_identical(utils::.DollarNames(x, "^n"), "notes")
 
   # The class's copy-on-modify `$<-` returns a new object: a copy keeps its value.
   y <- x
@@ -236,6 +402,14 @@ test_that("S4: `$` and `$<-` reach the fields", {
   expect_identical(s4_history_len(o), 3L)
   s4_record(o, 4)
   expect_identical(o$history, c(1, 2, 3, 4))
+})
+
+test_that("S4: .DollarNames() completes the fields through the S3 method utils dispatches", {
+  o <- SidecarS4(1L, 2.5, "s")
+  expect_identical(utils::.DollarNames(o, "^slot"), c("slot_int", "slot_real", "slot_str"))
+  expect_identical(utils::.DollarNames(o), c("slot_int", "slot_real", "slot_str", "history"))
+  ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
+  expect_true("S3method(utils::.DollarNames,SidecarS4)" %in% ns)
 })
 
 test_that("S4: a name that is not a field, and a failed conversion, report the call", {
@@ -288,6 +462,17 @@ test_that("env: fields and methods both go through `$`", {
   expect_true(is.function(obj$double_count))
   # A name that is neither a field nor a method reads as NULL, as before.
   expect_null(obj$nope)
+})
+
+test_that("env: .DollarNames() completes the fields, then the methods", {
+  obj <- SidecarEnv$new(3L, 1.5, TRUE, "n")
+  completions <- utils::.DollarNames(obj)
+  expect_identical(completions[1:5], c("count", "score", "flag", "name", "raw_slot"))
+  expect_true(all(c("new", "double_count") %in% completions))
+  expect_identical(utils::.DollarNames(obj, "^dou"), "double_count")
+  expect_identical(utils::.DollarNames(obj, "^na"), "name")
+  ns <- readLines(system.file("NAMESPACE", package = "miniextendr"))
+  expect_true("S3method(utils::.DollarNames,SidecarEnv)" %in% ns)
 })
 
 test_that("env: a refused write reports the call; an unknown name is refused", {
@@ -384,7 +569,8 @@ test_that("`name =` gives a field its R name everywhere R sees it", {
   expect_identical(x$table, data.frame(a = 1))
   expect_identical(SidecarComputed_get_table(x), data.frame(a = 1))
   # The Rust identifier is no R name.
-  e <- caught(x$r_keys)
+  expect_null(x$r_keys)
+  e <- caught(x$r_keys <- 1L)
   expect_s3_class(e, "miniextendr_no_field")
   expect_match(
     conditionMessage(e),
@@ -442,8 +628,17 @@ test_that("restored: the field methods refuse the pointer; the standalone access
   e <- caught(back[["tags"]] <- "again")
   expect_s3_class(e, "miniextendr_restored_no_value")
   expect_identical(SidecarS3_get_tags(back), "edited")
-  # A name that is not a field never calls into Rust, so it still answers.
-  expect_s3_class(caught(back$nope), "miniextendr_no_field")
+  # `as.list()` reads every field, so it refuses too.
+  e <- caught(as.list(back))
+  expect_s3_class(e, "miniextendr_restored_no_value")
+  expect_equal(conditionCall(e), quote(as.list(back)))
+  # A read that never calls into Rust still answers: an unknown name, the
+  # names and the completions.
+  expect_null(back$nope)
+  expect_null(back[["nope"]])
+  expect_identical(names(back), c("data", "tags"))
+  expect_identical(utils::.DollarNames(back), c("data", "tags"))
+  expect_s3_class(caught(back$nope <- 1), "miniextendr_no_field")
 })
 
 test_that("restored: the S4 and env field methods refuse too", {
