@@ -87,12 +87,73 @@ write_all(1L, TRUE)                     # a positional extra is a dot too
 
 The same holds for methods in every class system: `fn collect(&self, n: i32, rest: &Dots, flag: bool)` has the R formals `n, ..., flag` (after the receiver for S3, S4 and S7), with no second dispatch `...`.
 
-- A function takes at most one `...`. A second `&Dots` parameter, or Rust `...` next to an explicit `&Dots`, is a compile error.
+- A function takes at most one `...`. A second `&Dots` parameter, Rust `...` next to an explicit `&Dots`, or a `&Dots` next to a [`LazyDots`](#dots-left-unforced-lazydots), is a compile error.
 - Rust `...` with another parameter after it is a compile error that names the `&Dots` spelling, and `miniextendr-lint`'s "failed to parse" warning for that file ends with the same hint.
 - The dots parameter takes no default, `match_arg` or check; `Missing<&Dots>` is refused. The dots are always present.
 - On a `call = caller` or `call_arg` wrapper, `.call` goes last, after the dots and after any formal that follows them: `function(x, ..., overwrite = FALSE, .call = NULL)`.
 - `#[miniextendr(dots = typed_list!(...))]` reads an explicit `&Dots` the same way it reads `...`.
 - A function with dots runs on the R main thread, even under `worker`: the dots are an R list.
+
+## Dots left unforced: `LazyDots`
+
+A `&Dots` parameter receives `list(...)`, which R evaluates before the Rust body runs: every element is forced, and an empty argument (`f(a = )`, the empty positions of `x[1, , , ]`) stops the call with `argument is missing, with no default`. A parameter of type `LazyDots` is R's `...` at its position too, but the wrapper passes its own frame, `environment()`, and evaluates nothing on the way in (#1892). The body counts and names the dots, sees which are empty, reads what was written, and forces the elements it wants, each in its own environment.
+
+```rust
+use miniextendr_api::{LazyDots, Missing, Quoted, SEXP, miniextendr};
+
+/// @export
+#[miniextendr(s3(generic = "subset", class = "mx_lazy"))]
+pub fn mx_lazy_subset(
+    x: SEXP,
+    subset: Missing<Quoted>,
+    rest: LazyDots,
+) -> Result<SEXP, LazyUnsupportedArgs> {
+    if !rest.is_empty() {
+        // Names the extra arguments; none of them is evaluated.
+        return Err(unsupported("subset", &rest));
+    }
+    // ... keep the rows where `subset` is TRUE
+}
+```
+
+```r
+subset.mx_lazy <- function(x, subset, ...) {
+  .Call(C_pkg_mx_lazy_subset, .call = environment(), x,
+        if (missing(subset)) quote(expr=) else list(substitute(subset), parent.frame()),
+        environment())
+  # ...
+}
+```
+
+`subset(x, TRUE, select = ID)` then raises the method's own `mx_lazy_unsupported_args` error naming `select`, where `list(...)` would have stopped on `object 'ID' not found`.
+
+| Method | R equivalent | Forces |
+|---|---|---|
+| `len()` / `is_empty()` | `...length()` | nothing |
+| `names() -> Vec<Option<&str>>` | `...names()`; `None` for an unnamed element | nothing |
+| `is_missing_arg(i) -> bool` | element `i` of `substitute(list(...))` is the empty argument | nothing |
+| `expr(i) -> SEXP` | element `i` of `substitute(list(...))` | nothing |
+| `force(i) -> SEXP` | `..k`, with `k = i + 1` | element `i` |
+| `try_force(i) -> Result<SEXP, REvalError>` | `..k`, an R error returned as `Err` | element `i` |
+
+- **Indices are 0-based**, as in `List::get_index`: element `i` is R's `..k` with `k = i + 1`. An index past the end panics before anything is forced, as slice indexing does.
+- **Forwarded dots.** Each element keeps the environment it was written in, also when another function passed its own dots on (`g <- function(...) f(x, ...)`): `force(i)` forces the element's promise there, and `expr(i)` gives what the caller of `g` wrote.
+- **Empty and missing elements.** `is_missing_arg(i)` is `true` only for a literally empty slot, the element R stores as the missing argument: `f(a = )`, `update(x, select = )`, the empty positions of `x[1, , , ]`. That is what R 4.6's `R_GetDotType()` reports as missing. An element forwarded from a missing argument is not empty: in `g <- function(a) f(1, a)` called as `g()`, element 1 is the promise of `a`, so `is_missing_arg(1)` is `false`, and forcing it raises R's own `argument "a" is missing, with no default`, as `list(...)` would.
+- **Forcing an empty element** raises `argument "..k" is missing, with no default` (classes `evalError`, `missingArgError` from R 4.6, `simpleError` before), with the generated function's own call as its call. A body that accepts empty arguments checks `is_missing_arg(i)` first.
+- **Conditions.** `force(i)` evaluates through `eval_with_handlers` (see [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md)): the caller's `withCallingHandlers()` / `suppressWarnings()` see what forcing signals, and an error, or the exit of a `tryCatch()` handler, unwinds through the Rust frames (running their destructors) and carries on in R as the original condition. `try_force(i)` evaluates through `try_eval_with_handlers`: warnings and messages still reach the caller's handlers, any other exit unwinds as under `force(i)`, and an R error comes back as `Err(REvalError)` for the body to handle (an empty element included).
+- **Caching.** Forced values are not cached in Rust: R stores a promise's value in the promise, so forcing an element twice evaluates it once. The count and the expressions are read once per `LazyDots` value: the first `is_missing_arg` / `expr` call evaluates `substitute(list(...))` in the frame and the value keeps the list, so a loop over the elements copies the expressions once.
+- **R versions.** Every method runs a base R call in the frame (`...length()`, `...names()`, `substitute(list(...))`, `..k`) through `eval_with_handlers`, so the same code runs on R 4.4 and later. It uses neither R 4.6's dots C API nor the non-API promise accessors; #1898 tracks moving to that API, and a per-element `env(i)`, once a build can target R 4.6.
+
+Where it is accepted:
+
+- Standalone functions, `s3(...)` functions, and the impl-block methods of every class system: env, R6, S3, S4 (also through S4's `.local` rewrite), S7 (dispatch and the `<Class>_<method>` shortcut) and vctrs (static methods and protocol methods such as `format()`). The R formals are the same as for `&Dots`; the `.Call()` passes `environment()` at the position of `...`.
+- The parameter is taken by value with the whole type `LazyDots` (optionally `LazyDots<'_>` or a path ending in it). `&LazyDots`, `Option<LazyDots>` and `Missing<LazyDots>` are compile errors: the dots are always present (`len()` is 0 when the call passes none).
+- It takes no per-parameter option (`default`, `coerce`, `match_arg`, `no_na`, ...) and no `dots = typed_list!(...)`, which validates a forced list.
+- Trait methods and `extern "C-unwind"` functions refuse it: a trait method's arguments cross the trait ABI as converted values, and `.Call()` reaches an `extern` function without a generated wrapper.
+- A function with a `LazyDots` parameter runs on the R main thread, even under `worker`, and the value is `!Send`.
+- A function without one keeps its wrapper byte for byte.
+
+`rpkg/src/rust/lazy_dots_tests.rs` has the fixtures (the readers and forcers, `subset.mx_lazy`, `update.mx_lazy`, `` `[.mx_lazy_grid` `` and one class per class system), and `rpkg/tests/testthat/test-lazy-dots.R` tests them.
 
 ## typed_list! Macro
 

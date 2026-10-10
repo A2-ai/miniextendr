@@ -5109,3 +5109,107 @@ pub fn gc_stress_factor_construction() -> SEXP {
 }
 
 // endregion
+
+// region: unforced dots (LazyDots, #1892)
+
+/// Drive `LazyDots` (#1892) under GC pressure: the expressions it reads once
+/// (`substitute(list(...))`, kept by `R_PreserveObject` while their elements
+/// sit in a `Vec<SEXP>`) are held across a loop that allocates, then read,
+/// forced and `try_force`d.
+///
+/// The frame is a closure's own `environment()` whose `...` holds a forwarded
+/// element (`first = y`, from the forwarding frame), a promise, an empty
+/// element, a call and an element that raises. Returns, in order: the count,
+/// the names (`""` for an unnamed element), whether each is empty, each
+/// expression (a symbol's name, `call:<head>` for a call, `""` for the empty
+/// one), the forced values of `first`, `a` and `..4`, then the `try_force`
+/// messages of `bad` and of the empty element.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_lazy_dots() -> Vec<String> {
+    use miniextendr_api::LazyDots;
+    use miniextendr_api::expression::r_eval_str;
+
+    // SAFETY: main thread (#[miniextendr] body); the frame is rooted for the
+    // whole fixture, and it roots every promise in its `...`.
+    let frame = unsafe {
+        OwnedProtect::new(
+            r_eval_str(
+                r#"local({
+                    x <- 2
+                    inner <- function(...) environment()
+                    outer <- function(...) {
+                        y <- 10
+                        inner(first = y, ...)
+                    }
+                    outer(a = x + 1, , paste0("b", x), bad = stop("held"))
+                })"#,
+                miniextendr_api::sys::R_BaseEnv,
+            )
+            .expect("the frame evaluates"),
+        )
+    };
+    let env = frame.get();
+    // SAFETY: `env` is a closure frame with `...` bound, rooted by `frame`.
+    let rest = unsafe { LazyDots::from_wrapper_arg(&env) };
+    let n = rest.len();
+    // Read the expressions once, then allocate while only `rest` roots them.
+    let _ = rest.expr(0);
+    for i in 0..50 {
+        let text = unsafe { OwnedProtect::new(SEXP::scalar_string_from_str(&format!("x{i}"))) };
+        let _list = unsafe { OwnedProtect::new(SEXP::alloc_list(8)) };
+        assert!(text.get().string_elt_str(0).is_some());
+    }
+
+    let symbol_name = |sym: SEXP| {
+        sym.printname()
+            .r_char_str()
+            .map_or_else(String::new, ToOwned::to_owned)
+    };
+    let joined = |parts: Vec<String>| parts.join(",");
+    let mut out = vec![n.to_string()];
+    out.push(joined(
+        rest.names()
+            .into_iter()
+            .map(|name| name.unwrap_or_default().to_owned())
+            .collect(),
+    ));
+    out.push(joined(
+        (0..n).map(|i| rest.is_missing_arg(i).to_string()).collect(),
+    ));
+    out.push(joined(
+        (0..n)
+            .map(|i| {
+                let expr = rest.expr(i);
+                if expr.type_of() == SEXPTYPE::SYMSXP {
+                    symbol_name(expr)
+                } else {
+                    // SAFETY: a LANGSXP rooted by `rest`.
+                    format!(
+                        "call:{}",
+                        symbol_name(unsafe { miniextendr_api::sys::CAR(expr) })
+                    )
+                }
+            })
+            .collect(),
+    ));
+    for i in [0, 1] {
+        out.push(rest.force(i).real_elt(0).to_string());
+    }
+    out.push(
+        rest.force(3)
+            .string_elt_str(0)
+            .unwrap_or_default()
+            .to_owned(),
+    );
+    for i in [4, 2] {
+        out.push(match rest.try_force(i) {
+            Ok(_) => "<no error>".to_owned(),
+            Err(err) => err.message().to_owned(),
+        });
+    }
+    out
+}
+
+// endregion

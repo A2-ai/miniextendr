@@ -207,6 +207,7 @@ impl RustConversionBuilder {
         let ty = pat_type.ty.as_ref();
         if crate::type_inspect::call_marker(ty).is_some()
             || crate::type_inspect::unevaluated_param(ty).is_some()
+            || crate::type_inspect::is_lazy_dots_marker(ty)
         {
             return None;
         }
@@ -483,6 +484,24 @@ impl RustConversionBuilder {
                      functions only; class and trait methods attribute conditions to the wrapper's own call"
                 );
                 let #ident: #ty = <#ty>::from_sexp(__miniextendr_call);
+            };
+            return (vec![stmt], vec![]);
+        }
+
+        // `LazyDots` (#1892): the R wrapper passes its own frame,
+        // `environment()`, at the position of `...`; the marker reads the
+        // dots from it and never goes through `TryFromSexp`. Bound in every
+        // context: each promise carries its own environment, so the frame of
+        // a class method's wrapper serves as well as a standalone function's.
+        if crate::type_inspect::is_lazy_dots_marker(ty) {
+            let span = ty.span();
+            let bound_ty = crate::type_inspect::erase_lifetimes(ty);
+            // SAFETY (of the emitted `unsafe`): on the R main thread inside the
+            // wrapper's with_r_unwind_protect closure; `.Call()` roots the
+            // frame for the call, and the marker borrows the argument.
+            let stmt = quote_spanned! {span=>
+                let #ident: #bound_ty =
+                    unsafe { ::miniextendr_api::LazyDots::from_wrapper_arg(&#sexp_ident) };
             };
             return (vec![stmt], vec![]);
         }

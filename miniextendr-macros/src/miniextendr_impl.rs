@@ -2145,6 +2145,11 @@ impl ParsedMethod {
                      (`...` or a `&Dots` parameter)",
                 )
             })?;
+            if let Some(err) =
+                crate::miniextendr_fn::typed_list_on_lazy_dots(&item.sig.inputs, None)
+            {
+                return Err(err);
+            }
             let stmt = crate::build_dots_validation_stmt(dots_ident, spec);
             item.block.stmts.insert(0, stmt);
         }

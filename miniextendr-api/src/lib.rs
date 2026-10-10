@@ -778,6 +778,9 @@ pub use nargs::NArgs;
 /// Unevaluated-argument markers (`Quoted` / `Quosure`) for `#[miniextendr]` parameters.
 pub mod quoted;
 pub use quoted::{Quosure, Quoted};
+/// The dots left unforced (`LazyDots`), a `#[miniextendr]` parameter type for `...`.
+pub mod lazy_dots;
+pub use lazy_dots::LazyDots;
 /// Precondition markers (`Checked<T>` / `Unchecked<T>`) for `#[miniextendr]` parameters.
 pub mod precondition_marker;
 pub use precondition_marker::{Checked, Unchecked};

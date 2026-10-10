@@ -1050,3 +1050,34 @@ fn test_unevaluated_params_rejected_in_methods() {
     let s = conversion_text(&RustConversionBuilder::new(), "cols: Missing<Quosure>");
     assert!(s.contains("`Quosure` parameters are supported"), "{s}");
 }
+
+/// `LazyDots` (#1892) binds from the frame the R wrapper passed, never through
+/// `TryFromSexp`, in every context (a standalone fn and a class method alike),
+/// with lifetimes erased. No native-borrow query is emitted.
+#[test]
+fn test_lazy_dots_binds_from_the_wrapper_frame_in_every_context() {
+    for builder in [
+        RustConversionBuilder::new(),
+        RustConversionBuilder::new().with_unevaluated_args(),
+    ] {
+        let s = conversion_text(&builder, "rest: LazyDots<'a>");
+        assert_eq!(
+            s,
+            "let rest : LazyDots < '_ > = unsafe { :: miniextendr_api :: LazyDots :: from_wrapper_arg (& arg_0) } ;"
+        );
+        let s = conversion_text(&builder, "_rest: miniextendr_api::LazyDots");
+        assert_eq!(
+            s,
+            "let _rest : miniextendr_api :: LazyDots = unsafe { :: miniextendr_api :: LazyDots :: from_wrapper_arg (& arg_0) } ;"
+        );
+        let syn::FnArg::Typed(pat_type) = parse_param("rest: LazyDots") else {
+            unreachable!()
+        };
+        let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
+        assert!(
+            builder
+                .native_borrow_metadata(&pat_type, &sexp_ident)
+                .is_none()
+        );
+    }
+}

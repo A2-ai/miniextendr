@@ -551,6 +551,33 @@ hands the body a value, and an attribute would compute a count that no
 parameter receives. The subscript forms, the count table and the fixtures:
 [S3_METHODS.md](S3_METHODS.md#subscript-forms-and-the-argument-count).
 
+#### Dots left unforced: `LazyDots`
+
+A parameter of type `miniextendr_api::LazyDots` is R's `...` at its position,
+as `&Dots` is, but the wrapper passes its own frame, `environment()`, where
+`&Dots` passes `list(...)` (#1892). Nothing is evaluated on the way in: the
+body reads the count, the names and the expressions, sees the empty elements
+(`f(a = )`, `x[1, , , ]`) with `is_missing_arg(i)`, and forces the elements
+it wants with `force(i)` / `try_force(i)`, each in its own environment.
+
+```rust
+#[miniextendr(s3(generic = "update", class = "mx_lazy"))]
+pub fn mx_lazy_update(object: SEXP, rest: LazyDots) -> Result<SEXP, LazyUnsupportedArgs> { /* ... */ }
+// update.mx_lazy <- function(object, ...) { ... .Call(..., object, environment()) }
+```
+
+It is matched by the last path segment (`LazyDots`, `LazyDots<'_>`,
+`miniextendr_api::LazyDots`) and taken by value; `&LazyDots`,
+`Option<LazyDots>` and `Missing<LazyDots>` are compile errors. Standalone
+functions, `s3(...)` functions and the impl-block methods of every class
+system (env, R6, S3, S4, S7, vctrs) accept it; trait methods and
+`extern "C-unwind"` functions do not. A function takes at most one `...`
+(`&Dots` or `LazyDots`), per-parameter options and `dots = typed_list!(..)`
+do not apply to it, and it keeps the function on the main thread. A function
+without one keeps its wrapper unchanged. The methods, missing and forwarded
+elements, conditions and the fixtures:
+[DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
+
 #### R-side preconditions: markers and defaults
 
 A generated wrapper checks each argument's R type before the `.Call()`, one

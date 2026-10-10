@@ -325,6 +325,128 @@ fn nargs_parameter_checks() {
     );
 }
 
+/// `LazyDots` (#1892): found as the dots by type at any position, at most one
+/// `...` with `&Dots`, by value only, no per-parameter option (the function
+/// forms and a method's), no `typed_list!`, no trait method.
+#[test]
+fn lazy_dots_parameter_checks() {
+    use crate::miniextendr_fn::{
+        DotsKind, check_lazy_dots_params, dots_index, dots_kind, find_dots_param,
+        refuse_lazy_dots_in_trait_method, typed_list_on_lazy_dots, validate_param_type,
+    };
+    for (sig, ident, index) in [
+        ("x: i32, rest: LazyDots", Some("rest"), Some(1)),
+        ("rest: LazyDots<'_>, x: i32", Some("rest"), Some(0)),
+        (
+            "&self, n: i32, rest: miniextendr_api::LazyDots, flag: bool",
+            Some("rest"),
+            Some(2),
+        ),
+        ("x: i32, rest: &LazyDots", None, None),
+    ] {
+        let inputs = inputs_of(sig);
+        let found = find_dots_param(&inputs).expect(sig);
+        assert_eq!(found.map(|i| i.to_string()).as_deref(), ident, "{sig}");
+        assert_eq!(dots_index(&inputs), index, "{sig}");
+    }
+    let ty = |s: &str| syn::parse_str::<syn::Type>(s).unwrap();
+    assert_eq!(dots_kind(&ty("LazyDots")), Some(DotsKind::Lazy));
+    assert_eq!(dots_kind(&ty("&Dots")), Some(DotsKind::Forced));
+    assert_eq!(dots_kind(&ty("&LazyDots")), None);
+    assert_eq!(dots_kind(&ty("Option<LazyDots>")), None);
+    assert_eq!(DotsKind::Lazy.r_call_arg(), "environment()");
+    assert_eq!(DotsKind::Forced.r_call_arg(), "list(...)");
+
+    // One `...` per function, `&Dots` and `LazyDots` together included; two
+    // `&Dots` keep their message.
+    let msg = find_dots_param(&inputs_of("a: &Dots, b: LazyDots"))
+        .expect_err("two dots")
+        .to_string();
+    assert_eq!(
+        msg,
+        "a function takes at most one `...`: `a` (`&Dots`) and `b` (`LazyDots`) are both R's \
+         `...`; keep one"
+    );
+    let msg = find_dots_param(&inputs_of("a: &Dots, b: &Dots"))
+        .expect_err("two &Dots")
+        .to_string();
+    assert!(msg.ends_with("both have type `&Dots`; keep one"), "{msg}");
+
+    // By value only, and no option.
+    let check = |sig: &str, with_options: &[&str]| {
+        check_lazy_dots_params(&inputs_of(sig), |name| with_options.contains(&name))
+            .map_err(|err| err.to_string())
+    };
+    for sig in [
+        "x: SEXP, rest: LazyDots",
+        "rest: LazyDots<'_>, n: NArgs",
+        "x: SEXP, rest: &Dots",
+        "x: SEXP, rest: Missing<LazyDots>",
+    ] {
+        assert_eq!(check(sig, &[]), Ok(()), "{sig}");
+    }
+    assert_eq!(check("x: SEXP, rest: LazyDots", &["x"]), Ok(()));
+    for sig in [
+        "rest: &LazyDots",
+        "rest: Option<LazyDots>",
+        "rest: Vec<LazyDots<'_>>",
+    ] {
+        let msg = check(sig, &[]).expect_err(sig);
+        assert!(
+            msg.starts_with("`LazyDots` must be the parameter's whole type, taken by value"),
+            "{sig}: {msg}"
+        );
+    }
+    let msg = check("x: SEXP, rest: LazyDots", &["rest"]).expect_err("an option");
+    assert!(
+        msg.contains("do not apply to the `LazyDots` parameter `rest`: it is R's `...`"),
+        "{msg}"
+    );
+    let msg = validate_param_type(&ty("Missing<LazyDots>"), proc_macro2::Span::call_site())
+        .expect_err("Missing<LazyDots>")
+        .to_string();
+    assert!(
+        msg.starts_with("`Missing<LazyDots>` is not a parameter type"),
+        "{msg}"
+    );
+
+    // The method path: `finalize_method_param_attrs` checks the same.
+    let sig: syn::Signature = syn::parse_quote!(fn f(&self, n: i32, rest: LazyDots));
+    let mut per_param = parse_method_checks(quote::quote! { no_na(rest) }).expect("parses");
+    let msg = crate::miniextendr_fn::finalize_method_param_attrs(
+        &mut per_param,
+        &sig.inputs,
+        &[],
+        &std::collections::HashMap::new(),
+        proc_macro2::Span::call_site(),
+    )
+    .expect_err("no_na(rest)")
+    .to_string();
+    assert!(msg.contains("the `LazyDots` parameter `rest`"), "{msg}");
+
+    // `typed_list!` validates a forced list.
+    assert!(typed_list_on_lazy_dots(&inputs_of("rest: &Dots"), None).is_none());
+    let msg = typed_list_on_lazy_dots(&inputs_of("rest: LazyDots"), None)
+        .expect("refused")
+        .to_string();
+    assert!(
+        msg.starts_with("`dots = typed_list!(..)` validates the forced"),
+        "{msg}"
+    );
+
+    // Trait methods, in any shape.
+    assert!(refuse_lazy_dots_in_trait_method(&inputs_of("&self, x: i32")).is_ok());
+    for sig in ["&self, rest: LazyDots", "&self, rest: &LazyDots"] {
+        let msg = refuse_lazy_dots_in_trait_method(&inputs_of(sig))
+            .expect_err(sig)
+            .to_string();
+        assert!(
+            msg.starts_with("a trait method cannot take `LazyDots`"),
+            "{msg}"
+        );
+    }
+}
+
 /// A function takes at most one `...`: two `&Dots` parameters, or Rust `...`
 /// next to an explicit `&Dots`, are compile errors.
 #[test]

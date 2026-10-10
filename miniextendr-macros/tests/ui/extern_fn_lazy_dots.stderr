@@ -1,0 +1,5 @@
+error: extern functions cannot take `LazyDots`: it is the generated R wrapper's frame (`environment()`), and `.Call()` reaches an extern function directly. Drop the `extern "C-unwind"` to let the macro generate the wrapper
+  --> tests/ui/extern_fn_lazy_dots.rs:12:11
+   |
+12 |     rest: miniextendr_api::LazyDots,
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^

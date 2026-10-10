@@ -1,0 +1,47 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+#' @title Bag R6 Class
+#' @name Bag
+#' @rdname Bag
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+Bag <- R6::R6Class("Bag",
+  public = list(
+    # Bag::new (1:1)
+    #' @description Create a new `Bag`.
+    #' @param values (no documentation available)
+    initialize = function(values, .ptr = NULL) {
+      if (is.null(.ptr)) {
+        if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+      }
+      if (!is.null(.ptr)) {
+        private$.ptr <- .ptr
+      } else {
+        .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+        if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+        private$.ptr <- .val
+      }
+    }
+  ),
+  private = list(
+    .ptr = NULL
+  ),
+  lock_objects = TRUE,
+  lock_class = FALSE,
+  cloneable = FALSE
+)
+
+# Bag::extra (1:1)
+#' @description Count the extra arguments.
+#' @param n (no documentation available)
+#' @param ... (no documentation available)
+Bag$set("public", "extra", function(n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), private$.ptr, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+})

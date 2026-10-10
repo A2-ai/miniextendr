@@ -1,0 +1,13 @@
+error: `Missing<LazyDots>` is not a parameter type: the dots are always present (`len()` is 0 when the call passes none); take `LazyDots`
+ --> tests/ui/fn_lazy_dots_missing.rs:9:32
+  |
+9 | pub fn missing_lazy_dots(rest: Missing<LazyDots>) -> i32 {
+  |                                ^^^^^^^
+
+warning: unused imports: `LazyDots` and `Missing`
+ --> tests/ui/fn_lazy_dots_missing.rs:6:23
+  |
+6 | use miniextendr_api::{LazyDots, Missing, miniextendr};
+  |                       ^^^^^^^^  ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default

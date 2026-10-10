@@ -228,7 +228,7 @@ Never commit it or any other build artifact: CI's Generated Files Check (`just c
   - `#[miniextendr]` on 1-field structs is **removed** — use derives
 - **R_UnwindProtect**: runs Rust destructors on R errors
 - **GC**: `OwnedProtect` / `ProtectScope` for RAII protect/unprotect
-- **Dots (`...`)**: `_dots: &Dots`, or `name: ...` for a custom name. See `docs/DOTS_TYPED_LIST.md`.
+- **Dots (`...`)**: `_dots: &Dots`, or `name: ...` for a custom name; `rest: LazyDots` passes them unforced (`environment()` instead of `list(...)`: empty elements, `expr(i)`, `force(i)`, #1892). See `docs/DOTS_TYPED_LIST.md`.
 - **typed_list!**: `#[miniextendr(dots = typed_list!(...))]` validates and creates `dots_typed`
 - **`impl Trait`**: return position only (`-> impl IntoR`). Argument position fails type inference (E0283 across `let` bindings for `TryFromSexp + Trait`).
 - **S4 helpers**: `slot()`/`slot<-()` live in `methods` — resolve via `getNamespace("methods")`, not `R_BaseEnv`.

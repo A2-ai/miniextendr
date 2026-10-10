@@ -1111,3 +1111,71 @@ fn match_arg_statement_several_either_caller() {
          .miniextendr_match_arg_several(modes, .__MX_CHOICES__, \"modes\", .mx_call)"
     );
 }
+
+/// `LazyDots` (#1892) is the formal `...` at its position, like `&Dots`, and
+/// `environment()` in the call arguments, where `&Dots` passes `list(...)`:
+/// first, between the others, last, next to `NArgs` and `Missing` formals
+/// (the `x[1, , , ]` method), and on a method. `&Dots` keeps `list(...)`.
+#[test]
+fn snapshot_lazy_dots_formals_and_call_args() {
+    let mut output = String::new();
+    for (label, sig, skip_first) in [
+        ("LazyDots first", "rest: LazyDots, x: i32", false),
+        (
+            "LazyDots between",
+            "x: i32, rest: LazyDots<'_>, flag: bool",
+            false,
+        ),
+        (
+            "LazyDots last",
+            "x: SEXP, rest: miniextendr_api::LazyDots",
+            false,
+        ),
+        (
+            "the `[` method: Missing formals, LazyDots and NArgs",
+            "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, drop: Missing<SEXP>, rest: LazyDots, nargs: NArgs",
+            false,
+        ),
+        (
+            "`drop` after the dots (base `[`'s `x[i, j, ..., drop]` order)",
+            "x: SEXP, i: Missing<SEXP>, j: Missing<SEXP>, rest: LazyDots, drop: Missing<SEXP>",
+            false,
+        ),
+        (
+            "LazyDots on a method (receiver skipped)",
+            "&self, n: i32, rest: LazyDots",
+            true,
+        ),
+        ("&Dots unchanged", "x: i32, rest: &Dots", false),
+    ] {
+        output.push_str(&format!("# {label}\n"));
+        let inputs = parse_inputs(sig);
+        let mut builder = RArgumentBuilder::new(&inputs);
+        if skip_first {
+            builder = builder.skip_first();
+        }
+        output.push_str(&format!("formals: {}\n", builder.build_formals()));
+        output.push_str(&format!("call_args: {}\n\n", builder.build_call_args()));
+    }
+    insta::assert_snapshot!(output);
+}
+
+/// `LazyDots` is no named formal: `r_formal_names` (the name checks and the
+/// shadowing pass) skips it, so its Rust name never qualifies a call, while a
+/// real formal named `environment` qualifies the dots argument as
+/// `base::environment()`, which still returns the wrapper's frame.
+#[test]
+fn lazy_dots_is_no_named_formal_for_the_name_checks_and_shadowing() {
+    let inputs = parse_inputs("x: SEXP, environment: LazyDots");
+    let names: Vec<String> = r_formal_names(&inputs).map(|(n, _)| n).collect();
+    assert_eq!(names, ["x"]);
+    let inputs = parse_inputs("environment: SEXP, rest: LazyDots");
+    let call_args = RArgumentBuilder::new(&inputs).build_call_args();
+    assert_eq!(call_args, "environment, environment()");
+    let formals = crate::r_shadowing::formal_names([&inputs]);
+    let text = format!(".Call(C_f, .call = environment(), {call_args})");
+    assert_eq!(
+        crate::r_shadowing::qualify_shadowed_calls(&text, &formals),
+        ".Call(C_f, .call = base::environment(), environment, base::environment())"
+    );
+}

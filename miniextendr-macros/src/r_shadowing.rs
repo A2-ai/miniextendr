@@ -4,7 +4,8 @@
 //! precondition guards call `isTRUE()` and `length()`, a choice formal's
 //! default is `c("a", "b")`, a `Missing<T>` argument is forwarded as
 //! `if (missing(x)) quote(expr=) else x`, the check after `.Call()` calls
-//! `inherits()` and `attr()`, and dots are forwarded as `list(...)`. R looks
+//! `inherits()` and `attr()`, and dots are forwarded as `list(...)` (or, for
+//! `LazyDots`, the frame as `environment()`). R looks
 //! up the name of a called function starting in the wrapper's own frame, so a
 //! formal with the same name comes first: forcing it fails when the argument
 //! was omitted, and a function passed there is called in place of the base

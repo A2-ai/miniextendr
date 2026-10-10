@@ -1,0 +1,82 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+#' @title Bag Class
+#' @name Bag
+#' @rdname Bag
+#' @export
+Bag <- new.env(parent = emptyenv())
+
+# Bag::new (1:1)
+#' @name Bag$new
+#' @rdname Bag
+Bag$new <- function(values) {
+  if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+  .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  self <- .val
+  class(self) <- "Bag"
+  self
+}
+
+# Bag::extra (1:1)
+#' @description Count the extra arguments.
+#' @name Bag$extra
+#' @rdname Bag
+Bag$extra <- function(n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), self, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+#' @rdname Bag
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.Bag` <- function(self, name) {
+  obj <- Bag[[name]]
+  if (is.environment(obj)) {
+    # Trait namespace - wrap instance methods to prepend self
+    bound <- new.env(parent = emptyenv())
+    for (method_name in names(obj)) {
+      method <- obj[[method_name]]
+      if (is.function(method)) {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
+      }
+    }
+    bound
+  } else if (is.null(obj)) {
+    # Not found at top level -- search trait namespace environments
+    for (ns_name in names(Bag)) {
+      ns <- Bag[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method -- bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
+  } else {
+    environment(obj) <- environment()
+    obj
+  }
+}
+#' @rdname Bag
+#' @export
+`[[.Bag` <- `$.Bag`

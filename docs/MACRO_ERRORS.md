@@ -145,7 +145,7 @@ unsafe {
 
 ### "a function takes at most one `...`"
 
-The parameter of type `&Dots` is R's `...`, at any position, and an R function has one `...`. Two `&Dots` parameters, or Rust `...` next to an explicit `&Dots`, are refused:
+The parameter of type `&Dots` is R's `...`, at any position, and an R function has one `...`. Two `&Dots` parameters, Rust `...` next to an explicit `&Dots`, or a `&Dots` next to a `LazyDots` (the dots passed unforced), are refused:
 
 ```rust
 // Wrong: two dots parameters
@@ -156,10 +156,18 @@ fn bad(x: i32, a: &Dots, b: &Dots) -> i32 { x }
 #[miniextendr]
 fn also_bad(rest: &Dots, x: i32, more: ...) -> i32 { x }
 
+// Wrong: `&Dots` and `LazyDots` are both the dots; keep one
+#[miniextendr]
+fn mixed(a: &Dots, b: LazyDots) -> i32 { 0 }
+
 // Correct: one dots parameter; `flag` follows it and is matched by name in R
 #[miniextendr]
 fn good(x: i32, rest: &Dots, flag: bool) -> i32 { x }
 ```
+
+### "`LazyDots` must be the parameter's whole type, taken by value"
+
+A `LazyDots` parameter is R's `...`, which the wrapper passes as its own frame; it is always present. `&LazyDots`, `Option<LazyDots>` and `Missing<LazyDots>` are refused (take `rest: LazyDots`), and so are a per-parameter option on it (`default`, `coerce`, `match_arg`, `no_na`, ...), `dots = typed_list!(..)` (which validates the forced `list(...)` of a `&Dots` parameter), a trait method taking it (its arguments cross the trait ABI as converted values) and an `extern "C-unwind"` function taking it (no generated wrapper passes the frame). See [DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#dots-left-unforced-lazydots).
 
 ### "Rust's `...` is only valid as the last parameter"
 

@@ -191,6 +191,8 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     // environment (#1835); `Missing<..>` around them is checked by the caller.
     "Quoted",
     "Quosure",
+    // The unforced dots hold the wrapper's frame and evaluate R code (#1892).
+    "LazyDots",
     "AltrepSexp",
     "RDVector",
     "RDMatrix",
@@ -291,6 +293,58 @@ pub(crate) fn is_nargs_marker(ty: &syn::Type) -> bool {
         .segments
         .last()
         .is_some_and(|seg| seg.ident == "NArgs" && seg.arguments.is_none())
+}
+
+// endregion
+
+// region: unforced dots (#1892)
+
+/// Detect the unforced-dots parameter type, `LazyDots`: matched on the last
+/// path segment like the other markers, bare or with lifetime arguments only
+/// (`LazyDots<'_>`). Only the whole type by value is the parameter; any other
+/// shape (`&LazyDots`, `Option<LazyDots>`, `Missing<LazyDots>`) is refused by
+/// the callers through [`mentions_lazy_dots`].
+///
+/// The parameter is R's `...` at its position: the R wrapper passes
+/// `environment()` there (`RArgumentBuilder::build_call_args_vec`), and the C
+/// wrapper binds it with `LazyDots::from_wrapper_arg`.
+pub(crate) fn is_lazy_dots_marker(ty: &syn::Type) -> bool {
+    let syn::Type::Path(p) = ty else {
+        return false;
+    };
+    p.path.segments.last().is_some_and(|seg| {
+        seg.ident == "LazyDots"
+            && match &seg.arguments {
+                syn::PathArguments::None => true,
+                syn::PathArguments::AngleBracketed(ab) => ab
+                    .args
+                    .iter()
+                    .all(|arg| matches!(arg, syn::GenericArgument::Lifetime(_))),
+                syn::PathArguments::Parenthesized(_) => false,
+            }
+    })
+}
+
+/// Whether `ty` names `LazyDots` anywhere, at any depth.
+pub(crate) fn mentions_lazy_dots(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(p) => p.path.segments.iter().any(|seg| {
+            seg.ident == "LazyDots"
+                || match &seg.arguments {
+                    syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(
+                        |arg| matches!(arg, syn::GenericArgument::Type(t) if mentions_lazy_dots(t)),
+                    ),
+                    _ => false,
+                }
+        }),
+        syn::Type::Reference(r) => mentions_lazy_dots(&r.elem),
+        syn::Type::Paren(p) => mentions_lazy_dots(&p.elem),
+        syn::Type::Group(g) => mentions_lazy_dots(&g.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(mentions_lazy_dots),
+        syn::Type::Array(a) => mentions_lazy_dots(&a.elem),
+        syn::Type::Slice(s) => mentions_lazy_dots(&s.elem),
+        _ => false,
+    }
 }
 
 // endregion
@@ -747,9 +801,10 @@ pub(crate) fn erase_lifetimes(ty: &syn::Type) -> syn::Type {
 mod tests {
     use super::{
         ParamMarker, UnevaluatedKind, UnevaluatedParam, call_marker, choice_layer_name,
-        choice_layers, erase_lifetimes, is_main_thread_bound_input, is_main_thread_bound_return,
-        is_nargs_marker, match_arg_choices_ty, mentions_unevaluated_marker, peel_param_markers,
-        r_value_noun, type_display, unevaluated_param, visibility_marker_error,
+        choice_layers, erase_lifetimes, is_lazy_dots_marker, is_main_thread_bound_input,
+        is_main_thread_bound_return, is_nargs_marker, match_arg_choices_ty, mentions_lazy_dots,
+        mentions_unevaluated_marker, peel_param_markers, r_value_noun, type_display,
+        unevaluated_param, visibility_marker_error,
     };
     use crate::r_wrapper_builder::CallAttribution;
 
@@ -895,6 +950,39 @@ mod tests {
         assert!(!is_nargs_marker(&ty("Nargs")));
         // A plain count: it does not pin the main thread.
         assert!(!is_main_thread_bound_input(&ty("NArgs")));
+    }
+
+    #[test]
+    fn lazy_dots_marker_matches_the_whole_type_by_value_only() {
+        assert!(is_lazy_dots_marker(&ty("LazyDots")));
+        assert!(is_lazy_dots_marker(&ty("LazyDots<'_>")));
+        assert!(is_lazy_dots_marker(&ty("miniextendr_api::LazyDots<'a>")));
+        assert!(is_lazy_dots_marker(&ty(
+            "::miniextendr_api::lazy_dots::LazyDots"
+        )));
+        // Not the parameter: generics, references, wrappers, other types.
+        for other in [
+            "LazyDots<i32>",
+            "&LazyDots",
+            "Option<LazyDots>",
+            "Missing<LazyDots>",
+            "Dots",
+            "&Dots",
+        ] {
+            assert!(!is_lazy_dots_marker(&ty(other)), "{other}");
+        }
+        // The misplaced shapes are recognised, so the macro can refuse them.
+        for misplaced in [
+            "&LazyDots",
+            "Option<LazyDots<'_>>",
+            "Vec<LazyDots>",
+            "Missing<LazyDots>",
+        ] {
+            assert!(mentions_lazy_dots(&ty(misplaced)), "{misplaced}");
+        }
+        assert!(!mentions_lazy_dots(&ty("&Dots")));
+        // It holds the wrapper's frame, so it pins the main thread.
+        assert!(is_main_thread_bound_input(&ty("LazyDots<'_>")));
     }
 
     /// The inner type a parameter converts as, and the markers peeled off it.

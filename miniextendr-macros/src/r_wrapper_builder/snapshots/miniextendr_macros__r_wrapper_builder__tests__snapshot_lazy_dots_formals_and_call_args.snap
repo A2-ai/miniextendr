@@ -1,0 +1,31 @@
+---
+source: miniextendr-macros/src/r_wrapper_builder/tests.rs
+expression: output
+---
+# LazyDots first
+formals: ..., x
+call_args: environment(), x
+
+# LazyDots between
+formals: x, ..., flag
+call_args: x, environment(), flag
+
+# LazyDots last
+formals: x, ...
+call_args: x, environment()
+
+# the `[` method: Missing formals, LazyDots and NArgs
+formals: x, i, j, drop, ...
+call_args: x, if (missing(i)) quote(expr=) else i, if (missing(j)) quote(expr=) else j, if (missing(drop)) quote(expr=) else drop, environment(), nargs()
+
+# `drop` after the dots (base `[`'s `x[i, j, ..., drop]` order)
+formals: x, i, j, ..., drop
+call_args: x, if (missing(i)) quote(expr=) else i, if (missing(j)) quote(expr=) else j, environment(), if (missing(drop)) quote(expr=) else drop
+
+# LazyDots on a method (receiver skipped)
+formals: n, ...
+call_args: n, environment()
+
+# &Dots unchanged
+formals: x, ...
+call_args: x, list(...)

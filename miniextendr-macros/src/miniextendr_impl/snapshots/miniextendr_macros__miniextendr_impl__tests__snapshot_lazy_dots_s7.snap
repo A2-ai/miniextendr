@@ -1,0 +1,81 @@
+---
+source: miniextendr-macros/src/miniextendr_impl/tests.rs
+expression: wrapper
+---
+#' @title Bag S7 Class
+#' @name Bag
+#' @rdname Bag
+#' @importFrom S7 new_class class_any new_object S7_object new_generic method
+#' @export
+#' @param values (undocumented)
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+Bag <- S7::new_class("Bag",
+  properties = list(
+    .ptr = S7::class_any
+  ),
+  constructor = function(values, .ptr = NULL) {
+    if (is.null(.ptr)) {
+      if (!isTRUE(is.double(values))) .miniextendr_arg_error("values", "must be double")
+    }
+    if (!is.null(.ptr)) {
+      S7::new_object(S7::S7_object(), .ptr = .ptr)
+    } else {
+      .val <- .Call(C_miniextendr_macros_Bag__new, .call = sys.call(), values)
+      if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+      S7::new_object(S7::S7_object(), .ptr = .val)
+    }
+  }
+)
+
+.__MX_GENERIC_DOC__(kind="S7", generic="extra", class="Bag", export=true, dispatch="x", no_dots=false)
+# Bag::extra (1:1)
+#' @description Count the extra arguments.
+#' @name Bag-extra
+#' @rdname Bag
+#' @aliases Bag$extra
+#' @rawNamespace export(extra)
+if (!base::exists("extra", mode = "function")) {
+  # No existing binding; define a plain package-local S7 generic.
+  extra <- S7::new_generic("extra", "x", function(x, ...) S7::S7_dispatch())
+} else if (local({ .mx_gen <- base::get("extra", mode = "function"); !(inherits(.mx_gen, "S7_generic") || is.primitive(.mx_gen) || isTRUE(utils::isS3stdGeneric(.mx_gen)) || methods::isGeneric("extra")) })) {
+  # `extra` resolves to a plain (non-generic) function S7 cannot
+  # attach a method to. Define a package-local S7 generic that shadows it,
+  # with a class_any fallback delegating to the masked function so ordinary
+  # (non-S7) calls (e.g. var(1:10)) keep working. S4 generics also take this
+  # path; the fallback preserves their dispatch.
+  extra <- local({
+    .mx_masked <- base::get("extra", mode = "function")
+    .mx_g <- S7::new_generic("extra", "x", function(x, ...) S7::S7_dispatch())
+    S7::method(.mx_g, S7::class_any) <- function(x, ...) .mx_masked(x, ...)
+    .mx_g
+  })
+}
+# else: existing usable generic (S7/primitive/S3/S4) — reuse as-is.
+S7::method(extra, Bag) <- function(x, n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), x@.ptr, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
+
+#' Fast-path shortcut for the `extra` S7 method on `Bag`.
+#'
+#' Calls the underlying Rust routine directly, bypassing `S7::S7_dispatch()`
+#' (the class walk + method-table lookup). Use in hot loops where the
+#' per-call dispatch overhead matters. **Footgun:** this shortcut does not
+#' perform subclass dispatch: a method override defined on a child class
+#' will *not* be honoured. Use the generic when subclassing is possible.
+#' @param self A `Bag` object.
+#' @param ... Additional arguments; ignored by the fast-path shortcut.
+#' @param n (undocumented)
+#' @name Bag_extra
+#' @rdname Bag
+#' @export Bag_extra
+Bag_extra <- function(self, n, ...) {
+  if (!isTRUE(is.integer(n))) .miniextendr_arg_error("n", "must be integer")
+  if (!isTRUE(length(n) == 1L)) .miniextendr_arg_error("n", "must have length 1")
+  .val <- .Call(C_miniextendr_macros_Bag__extra, .call = sys.call(), self@.ptr, n, environment())
+  if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, sys.call()))
+  .val
+}
