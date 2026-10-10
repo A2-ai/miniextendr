@@ -51,7 +51,7 @@ pub static MX_R_WRAPPERS: [RWrapperEntry];
 /// module-level contract, not encoded in the type (same convention as the
 /// `extern "C-unwind" fn` entries in `MX_CALL_DEFS`). The `symbol` string is
 /// consumed by the host-time WASM snapshot writer to emit
-/// `extern "C" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
+/// `extern "C-unwind" { fn <symbol>(); }` declarations in `wasm_registry.rs`.
 #[cfg(not(target_arch = "wasm32"))]
 #[distributed_slice]
 pub static MX_ALTREP_REGISTRATIONS: [AltrepRegistration];
@@ -482,10 +482,10 @@ unsafe impl Send for TraitDispatchEntry {}
 /// See [`MX_ALTREP_REGISTRATIONS`] for context.
 #[repr(C)]
 pub struct AltrepRegistration {
-    /// Registration function called once at `R_init_*`.
-    pub register: extern "C" fn(),
+    /// Registration function called inside the package-init unwind boundary.
+    pub register: extern "C-unwind" fn(),
     /// Symbol name of `register` (e.g. `"__mx_altrep_reg_MyType"`). Consumed by
-    /// the host-time WASM snapshot writer to emit `extern "C" { fn <symbol>(); }`
+    /// the host-time WASM snapshot writer to emit `extern "C-unwind" { fn <symbol>(); }`
     /// declarations in `wasm_registry.rs`.
     pub symbol: &'static str,
 }
@@ -532,7 +532,7 @@ pub unsafe extern "C" fn universal_query(ptr: *mut mx_erased, trait_tag: mx_tag)
 /// Must be called from R's main thread during `R_init_*`.
 /// `dll` must be a valid pointer provided by R.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn miniextendr_register_routines(dll: *mut DllInfo) {
+pub unsafe extern "C-unwind" fn miniextendr_register_routines(dll: *mut DllInfo) {
     // 1. Register ALTREP classes (skip during wrapper generation)
     //
     // During wrapper-gen, the installed shared object is loaded temporarily via

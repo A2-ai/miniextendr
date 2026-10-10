@@ -79,7 +79,7 @@ pub(crate) fn generate_direct_altrep_registration(
         quote::quote! {
             #[doc(hidden)]
             #[unsafe(no_mangle)]
-            pub extern "C" fn #reg_fn_name() {
+            pub extern "C-unwind" fn #reg_fn_name() {
                 <#ident as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class();
             }
 
