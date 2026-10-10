@@ -245,8 +245,8 @@ pub trait AltrepDataptr<T> {
 ///
 /// Bridge-generated classes reserve data2 for a vector of the ALTREP's type.
 /// Once present, it is authoritative: R may have written through DATAPTR.
-/// String caches can be partial, so callers must still use the string Elt
-/// callback to fill missing elements.
+/// String buffers are published only after every element has been filled;
+/// NA entries are values, never cache-miss markers.
 ///
 /// # Safety
 /// `x` must be a live ALTREP using the bridge's data2 convention, on R's thread.

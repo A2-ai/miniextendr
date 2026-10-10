@@ -41,6 +41,47 @@ pub unsafe fn checked_mkchar(s: &str) -> crate::SEXP {
 }
 // endregion
 
+// region: String ALTREP materialization
+
+/// Publish a complete STRSXP as a bridge-generated string ALTREP's data2.
+///
+/// Element reads stay lazy until a pointer or setter needs writable storage.
+/// A partial buffer is never published: NA cannot double as a cache-miss marker,
+/// because R can write NA after materialization.
+///
+/// # Safety
+///
+/// `x` must be a rooted, live ALTSTRING using the bridge's data2 convention.
+/// Must run on R's main thread inside the class's unwind guard.
+#[doc(hidden)]
+pub unsafe fn materialize_altstring_data2<T: crate::altrep_traits::AltString>(
+    x: crate::SEXP,
+) -> crate::SEXP {
+    use crate::SexpExt;
+    use crate::altrep_ext::AltrepSexpExt;
+
+    if let Some(data2) = unsafe { crate::altrep_data::materialized_altrep_data2(x) } {
+        return data2;
+    }
+
+    let n = T::length(x);
+    let buffer = unsafe {
+        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
+            crate::SEXPTYPE::STRSXP,
+            n,
+        ))
+    };
+    // R initializes STRSXP slots to R_BlankString, so the protected vector is
+    // safe for GC while later CHARSXPs are allocated. Keep data2 absent until done.
+    for i in 0..n {
+        let value = T::elt(x, i);
+        buffer.get().set_string_elt(i, value);
+    }
+    unsafe { AltrepSexpExt::set_altrep_data2(&x, buffer.get()) };
+    buffer.get()
+}
+// endregion
+
 // region: Centralized ALTREP buffer access helper
 
 /// Create a mutable slice from an ALTREP `get_region` output buffer pointer.
