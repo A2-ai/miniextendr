@@ -3,7 +3,15 @@
 //! Provides lazy backing data for ALTREP vectors from Rust iterators. Elements
 //! are generated on-demand and cached for repeat access.
 //!
-//! ## Data adaptors, not R-facing vectors
+//! ## Registered native iterator container
+//!
+//! `Altrep::from_exact_iter(iter)` and `Altrep::from_iter_with_len(iter, len)`
+//! return a registered [`AltrepIterator`] for `i32`, `f64`, `u8` and
+//! `Rcomplex`. These retain the complete prefix for repeatable random access.
+//! A short source is an error; elements beyond the declared length are never
+//! requested. See [`crate::Altrep::from_exact_iter`].
+//!
+//! ## Custom data adaptors
 //!
 //! The `*Data` types in these submodules implement only the data-level traits
 //! ([`AltrepLen`](crate::altrep_data::AltrepLen) + the matching `Alt*Data`
@@ -46,11 +54,13 @@
 //! - [`windowed`]: Sliding-window iterators (`WindowedIterState`)
 
 mod coerce;
+mod registered;
 mod sparse;
 mod state;
 mod windowed;
 
 pub use coerce::*;
+pub use registered::AltrepIterator;
 pub use sparse::*;
 pub use state::*;
 pub use windowed::*;

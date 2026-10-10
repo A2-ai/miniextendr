@@ -1829,7 +1829,41 @@ arbitrary growth or ring rearrangement.
 
 ## Iterator-Backed ALTREP
 
-miniextendr provides two iterator-backed ALTREP variants.
+### Registered native iterators
+
+`Altrep::from_exact_iter(iter)` returns a registered ALTREP container for
+`i32`, `f64`, `u8` and `Rcomplex`. It accepts arbitrary iterator and
+closure types without a custom derive or registration:
+
+```rust,ignore
+use miniextendr_api::{Altrep, AltrepIterator, miniextendr};
+
+#[miniextendr]
+fn doubled_values(n: i32) -> Altrep<AltrepIterator<i32>> {
+    Altrep::from_exact_iter((0..n).map(|x| x * 2))
+}
+```
+
+Construction does not advance the iterator. Reading index `i` caches every
+element through `i`, and earlier elements remain available without recomputation.
+The cache stays private while it can grow. Once complete, pointer requests
+expose the Rust-owned buffer through a mutable reference, and writes remain
+visible to element reads and serialization.
+
+For sources without an exact size, `Altrep::from_iter_with_len(iter, len)`
+sets the length explicitly. The source may be infinite: nothing beyond that
+prefix is requested. A source that ends early raises an error when the missing
+element is requested. Serialization completes the prefix and restores an owned
+buffer; it does not recreate the original iterator or its captures.
+
+The iterator must be `'static` and may capture non-`Send` state. Construct
+and convert it on the R thread. R duplication uses the same default policy as
+the other built-in containers and may materialize a regular R vector.
+
+### Custom iterator adaptors
+
+The lower-level adaptors support custom policies, including prefix caching
+and sparse access.
 
 The `*Data` types below are **data adaptors**: they implement only the
 data-level traits (`AltrepLen` + the matching `Alt*Data` trait) and cannot back

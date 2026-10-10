@@ -61,6 +61,8 @@ use crate::into_r::IntoR;
 /// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
 /// - `VecDeque<i32>`, `VecDeque<f64>`, `VecDeque<u8>`, `VecDeque<Rcomplex>`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
+/// - `AltrepIterator<i32>`, `AltrepIterator<f64>`, `AltrepIterator<u8>`,
+///   `AltrepIterator<Rcomplex>` via [`Altrep::from_exact_iter`]
 ///
 /// Opt-in lazy materialization via ALTREP.
 ///
@@ -120,6 +122,37 @@ impl<T> Altrep<T> {
         let sexp = self.into_sexp();
         // Safety: we just created an ALTREP SEXP via R_new_altrep
         unsafe { crate::altrep_sexp::AltrepSexp::from_raw(sexp) }
+    }
+}
+
+impl<T: 'static> Altrep<crate::altrep_data::AltrepIterator<T>> {
+    /// Retain an exact-size iterator as a lazy R vector.
+    ///
+    /// Supports `i32`, `f64`, `u8` and `Rcomplex` without a custom class.
+    /// Construction reads the length but does not advance the iterator.
+    /// Access caches the complete prefix, so revisiting an element never
+    /// recomputes it. A pointer request or serialization completes that prefix.
+    ///
+    /// The iterator may capture non-`Send` state; construct and return this
+    /// wrapper on the R thread.
+    ///
+    /// ```
+    /// use miniextendr_api::{Altrep, AltrepIterator};
+    ///
+    /// let values: Altrep<AltrepIterator<i32>> =
+    ///     Altrep::from_exact_iter((0..100).map(|x| x * 2));
+    /// ```
+    pub fn from_exact_iter(iter: impl ExactSizeIterator<Item = T> + 'static) -> Self {
+        Self(crate::altrep_data::AltrepIterator::from_exact_iter(iter))
+    }
+
+    /// Retain exactly `len` elements of an iterator as a lazy R vector.
+    ///
+    /// Supports the same native types as [`Self::from_exact_iter`]. No element
+    /// beyond `len` is requested, so the source may be infinite. If the source
+    /// ends early, accessing a missing element raises an R error.
+    pub fn from_iter_with_len(iter: impl Iterator<Item = T> + 'static, len: usize) -> Self {
+        Self(crate::altrep_data::AltrepIterator::from_iter(iter, len))
     }
 }
 

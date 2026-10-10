@@ -35,7 +35,7 @@ use crate::altrep_data::{
 /// - **Lazy:** Elements generated on-demand via `elt(i)`
 /// - **Cached:** Once generated, elements stored in cache for repeat access
 /// - **Materializable:** Can be fully materialized for `Dataptr` or serialization
-/// - **Safe:** Uses `RefCell` for interior mutability, protected by R's GC
+/// - **Borrow-checked:** Uses `RefCell` for interior mutability on the R thread
 pub struct IterState<I, T> {
     /// Vector length (from `ExactSizeIterator::len()` or explicit)
     len: usize,
@@ -72,6 +72,21 @@ where
             cache: RefCell::new(Vec::with_capacity(len.min(1024))),
             materialized: OnceLock::new(),
         }
+    }
+
+    /// Restore a completed prefix without retaining or rerunning an iterator.
+    pub(crate) fn from_materialized(values: Vec<T>) -> Self {
+        Self {
+            len: values.len(),
+            iter: RefCell::new(None),
+            cache: RefCell::new(Vec::new()),
+            materialized: OnceLock::from(values),
+        }
+    }
+
+    /// Borrow a completed buffer through a mutable path for writable pointers.
+    pub(crate) fn as_materialized_mut(&mut self) -> Option<&mut [T]> {
+        self.materialized.get_mut().map(Vec::as_mut_slice)
     }
 
     /// Ensure the element at index `i` is in the cache and return it by value.
