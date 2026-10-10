@@ -236,8 +236,15 @@ This injects validation at the start of the function body, over the dots binding
 ```rust
 let dots_typed = __miniextendr_dots
     .typed(typed_list!(...))
-    .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+    .unwrap_or_else(|e| miniextendr_api::arg_error!(
+        param = "...", "dots validation failed: {e}"
+    ));
 ```
+
+Validation failures use the same argument-error condition as wrapper checks:
+`kind = "conversion"`, `param = "..."`, and the package's configured
+`conversion_error_class` ahead of `rust_error`. The message keeps the
+typed-list error's human-readable text.
 
 ### With Optional Fields
 

@@ -404,19 +404,18 @@ fn validate_extern_signature(
 /// at the start of a function body when `#[miniextendr(dots =
 /// typed_list!(...))]` is used.
 ///
-/// Uses `unwrap_or_else(|e| panic!("...: {e}"))` rather than
-/// `Result::expect`, which formats the error with `Debug` instead of
-/// `Display` — for `TypedListError` that leaks PascalCase enum-variant names
-/// (`Missing { name: "x" }`) into the R-visible message instead of the
-/// human-phrased text (`missing required field: "x"`) that the direct
-/// `typed_list!` path already produces via `Display`. See audit A8.
+/// Raises through `arg_error!` so validation keeps the argument-condition
+/// kind, the R parameter name (`...`), and the crate's configured classes.
+/// Display formatting preserves TypedListError's human-readable diagnostics.
 pub(crate) fn build_dots_validation_stmt(
     dots_param: &syn::Ident,
     spec_tokens: &proc_macro2::TokenStream,
 ) -> syn::Stmt {
     syn::parse_quote! {
         let dots_typed = #dots_param.typed(#spec_tokens)
-            .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+            .unwrap_or_else(|e| ::miniextendr_api::arg_error!(
+                param = "...", "dots validation failed: {e}"
+            ));
     }
 }
 
@@ -3290,7 +3289,9 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// `name: ...` / `name: &Dots` parameter):
 /// ```ignore
 /// let dots_typed = __miniextendr_dots.typed(typed_list!(...))
-///     .unwrap_or_else(|e| panic!("dots validation failed: {e}"));
+///     .unwrap_or_else(|e| miniextendr_api::arg_error!(
+///         param = "...", "dots validation failed: {e}"
+///     ));
 /// ```
 ///
 /// See the [`#[miniextendr]`](macro@miniextendr) attribute documentation for more details.
