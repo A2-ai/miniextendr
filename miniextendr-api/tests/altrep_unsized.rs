@@ -99,3 +99,56 @@ fn boxed_trait_object_marker_preserves_the_vtable() {
     let owner = marker.into_boxed_inner();
     assert_eq!(owner.to_string(), "42");
 }
+
+// Registration and ownership stay on the sized Box; its callbacks can expose
+// the custom unsized view without changing ExternalPtr's storage representation.
+impl AltrepLen for Box<Tagged<[i32]>> {
+    fn len(&self) -> usize {
+        AltrepLen::len(&**self)
+    }
+}
+impl miniextendr_api::altrep_data::AltIntegerData for Box<Tagged<[i32]>> {
+    fn elt(&self, i: usize) -> i32 {
+        self.values[i]
+    }
+}
+miniextendr_api::impl_altinteger_from_data!(Box<Tagged<[i32]>>);
+
+impl miniextendr_api::altrep::RegisterAltrep for Box<Tagged<[i32]>> {
+    fn get_or_init_class() -> miniextendr_api::sys::altrep::R_altrep_class_t {
+        use miniextendr_api::altrep_data::InferBase;
+        use std::sync::OnceLock;
+        static CLASS: OnceLock<miniextendr_api::sys::altrep::R_altrep_class_t> = OnceLock::new();
+        *CLASS.get_or_init(|| unsafe {
+            let class = Self::make_class(
+                c"TestTaggedSlice".as_ptr(),
+                miniextendr_api::AltrepPkgName::as_ptr(),
+            );
+            Self::install_methods(class);
+            class
+        })
+    }
+}
+
+#[test]
+fn custom_dst_owner_reaches_r_and_extracts_a_view_with_metadata() {
+    r_test_utils::with_r_thread(|| unsafe {
+        use miniextendr_api::altrep_traits::AltInteger;
+        use miniextendr_api::{Altrep, IntoR, OwnedProtect, SexpExt, TryFromSexp};
+
+        let marker: Box<Altrep<Tagged<[i32]>>> = Box::new(Altrep(Tagged {
+            tag: 11,
+            values: [10, 20, 30],
+        }));
+        let original = marker.values.as_ptr();
+        let x = OwnedProtect::new(marker.into_sexp());
+        assert!(x.get().is_altrep());
+        let view = Tagged::<[i32]>::altrep_extract_ref(x.get());
+        assert_eq!(view.tag, 11);
+        assert_eq!(view.values.as_ptr(), original);
+        assert_eq!(view.values.len(), 3);
+        Tagged::<[i32]>::altrep_extract_mut(x.get()).values[1] = 77;
+        assert_eq!(<Box<Tagged<[i32]>> as AltInteger>::elt(x.get(), 1), 77);
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [10, 77, 30]);
+    });
+}

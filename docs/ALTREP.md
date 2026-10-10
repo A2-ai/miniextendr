@@ -917,6 +917,24 @@ sized type with a working `unserialize`, because a class that saves its state
 must be able to load it again. A type that can't rebuild itself leaves
 serialization to R, which saves an ordinary vector.
 
+A custom trailing DST works the same way:
+
+```rust
+struct Tagged<T: ?Sized> {
+    tag: u32,
+    values: T,
+}
+
+let value: Box<Altrep<Tagged<[i32]>>> =
+    Box::new(Altrep(Tagged { tag: 7, values: [1, 2, 3] }));
+```
+
+The sized `Box<Tagged<[i32]>>` is the owner: it implements `TypedExternal`,
+the data traits and `RegisterAltrep`. An `AltrepExtract` impl on
+`Tagged<[i32]>` gives the callbacks the unsized view, which is valid only
+while the R vector is. `miniextendr-api/tests/altrep_unsized.rs` has the
+whole example.
+
 ### `Box<[T]>` (Immutable Owned Slice)
 
 ```rust
