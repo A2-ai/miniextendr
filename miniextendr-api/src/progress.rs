@@ -48,11 +48,10 @@
 //! connections (out of scope).
 
 use indicatif::{ProgressDrawTarget, TermLike};
-use std::ffi::CStr;
 use std::fmt;
 use std::io;
 
-use crate::connection::{RStderr, RStdout, Rconn};
+use crate::connection::{RStderr, RStdout};
 use crate::into_r::IntoR;
 use crate::sys::{R_PreserveObject, R_ReleaseObject};
 use crate::{SEXP, SexpExt};
@@ -197,8 +196,7 @@ impl RTerm {
                 crate::connection::write_console_to(buf, 1);
             }
             TermKind::Connection => unsafe {
-                let handle = crate::connection::get_connection(self.sexp);
-                let _ = crate::connection::write_connection(handle, buf);
+                crate::connection::access::write(self.sexp, buf);
             },
         }
         Ok(())
@@ -334,26 +332,14 @@ unsafe fn classify_connection(sexp: SEXP) -> TermKind {
     }
 }
 
-// Read the `description` field from a connection SEXP. Returns `None` if the
-// description pointer is null.
+// Read a connection's description; `None` when it has none.
 //
 // # Safety
 // - `sexp` must be a valid R connection SEXP.
 // - Must be called from the R main thread.
 unsafe fn conn_description(sexp: SEXP) -> Option<String> {
-    unsafe {
-        let handle = crate::connection::get_connection(sexp);
-        let conn = handle.cast::<Rconn>().cast_const();
-        if conn.is_null() || (*conn).description.is_null() {
-            None
-        } else {
-            Some(
-                CStr::from_ptr((*conn).description)
-                    .to_string_lossy()
-                    .into_owned(),
-            )
-        }
-    }
+    let description = unsafe { crate::connection::access::state(sexp) }.description;
+    (!description.is_empty()).then_some(description)
 }
 
 // endregion

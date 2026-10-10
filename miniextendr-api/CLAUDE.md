@@ -42,7 +42,7 @@ Runtime crate — FFI, ExternalPtr, ALTREP, worker thread, error/condition trans
 
 ## Features
 - `worker-thread`, `nonapi`, `strict`/`coerce`, `r6`/`s7` (mutually exclusive defaults), plus optional integrations (`rayon`, `serde`, `ndarray`, …). Full list in `Cargo.toml`. CI's `clippy_all` enables a curated subset; `--all-features` fails (r6-default vs s7-default).
-- R-version cfgs, not features: `build.rs` reads `$R_HOME/include/Rversion.h` and sets `r_4_5` / `r_4_6` cumulatively (all of them when no header is readable: wasm32, CI's lint job). Gate a binding R added in a version on its cfg (`ANY_ATTRIB`, `R_getVarEx` are `#[cfg(r_4_5)]`); add versions to `R_VERSION_CFGS`. See `docs/NONAPI.md`, "R-version cfgs" (#1905).
+- R-version cfgs, not features: `build.rs` reads `$R_HOME/include/Rversion.h` and sets `r_4_5` / `r_4_6` cumulatively (all of them when no header is readable: wasm32, CI's lint job). Gate a binding R added in a version on its cfg (`ANY_ATTRIB`, `R_getVarEx` are `#[cfg(r_4_5)]`); add versions to `R_VERSION_CFGS`. When only R's API classification changes (the connection entry points: non-API before 4.6, still exported), keep public signatures identical on every R and switch inside (`connection/access.rs`); a public item gated on a cfg breaks installs on users' older R, unseen by its author. See `docs/NONAPI.md`, "R-version cfgs" (#1905).
 
 ## When changing this crate
 - Add a `#[derive(…)]` or conversion impl? Update in order: `from_r.rs` → `into_r.rs` → `coerce.rs` → serde docs → rpkg fixture + testthat.

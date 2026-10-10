@@ -281,6 +281,34 @@ R's connection C API is explicitly unstable. From R's `R_ext/Connections.h`:
 
 > "We explicitly reserve the right to change the connection implementation without a compatibility layer."
 
+### R versions before 4.6
+
+R 4.6 lists `R_GetConnection`, `R_ReadConnection`, `R_WriteConnection` and
+`R_new_custom_connection` as experimental API. R 4.4 and 4.5 export the same
+entry points, but `R CMD check` notes them there as non-API calls. So a
+package built against R < 4.6 (`miniextendr-api`'s `r_4_6` cfg unset; see
+`NONAPI.md`, "R-version cfgs") reaches an R connection through R functions
+instead (#1905):
+
+- **State** (`ConnectionCapabilities::from_sexp`, `connection_mode`,
+  `connection_description`, `is_binary_mode`, the `RStdout` / `RStderr` /
+  `RNullConnection` conversions): from `summary.connection()` and
+  `isSeekable()`. R has no R-level getter for the blocking flag, so
+  `is_blocking` is `None`.
+- **Bytes** (`read_connection` / `write_connection`, `RNullConnection`, the
+  indicatif connection target): `writeBin()`
+  on a binary connection; `writeChar(useBytes = TRUE)` on a text-mode one,
+  which takes the longest prefix of the bytes that is UTF-8 without a NUL.
+  Reads use `readBin()` / `readChar(useBytes = TRUE)`. Each calls the
+  connection's own `read` / `write` callback, as the C entry points do, and
+  each refuses a connection that is not open.
+- **The raw handle** (`get_connection`, `ConnectionCapabilities::from_handle`)
+  exists only on R >= 4.6. `read_connection` / `write_connection` take the
+  connection SEXP and work on every R.
+- **Custom connections** (`RCustomConnection`, `RConnectionIo`) still need
+  `R_new_custom_connection`, which has no R-level alternative, so a package
+  that uses them carries that one NOTE on R < 4.6.
+
 miniextendr mitigates this with **two layers of defense**:
 
 ### Compile-Time ABI Check
@@ -326,7 +354,7 @@ use miniextendr_api::connection::ConnectionCapabilities;
 
 unsafe {
     let caps = ConnectionCapabilities::from_sexp(conn_sexp);
-    println!("read={}, write={}, seek={}, text={}, open={}, blocking={}",
+    println!("read={}, write={}, seek={}, text={}, open={}, blocking={:?}",
         caps.can_read, caps.can_write, caps.can_seek,
         caps.is_text, caps.is_open, caps.is_blocking);
 }
@@ -341,14 +369,14 @@ unsafe {
 | `can_seek` | `bool` | Connection supports seeking |
 | `is_text` | `bool` | Text mode (`true`) vs binary mode (`false`) |
 | `is_open` | `bool` | Connection is currently open |
-| `is_blocking` | `bool` | Connection uses blocking I/O |
+| `is_blocking` | `Option<bool>` | Connection uses blocking I/O; `None` from `from_sexp` on R < 4.6 |
 
 ### Construction
 
 | Method | Input | Notes |
 |--------|-------|-------|
-| `from_sexp(conn_sexp)` | R connection SEXP | Calls `R_GetConnection` internally |
-| `from_handle(handle)` | `Rconnection` handle | When you already have the handle |
+| `from_sexp(conn_sexp)` | R connection SEXP | `R_GetConnection` on R >= 4.6; `summary()` / `isSeekable()` before |
+| `from_handle(handle)` | `Rconnection` handle | R >= 4.6 only, like `get_connection` |
 
 ### Binary Mode Helper
 
@@ -638,21 +666,27 @@ pub fn uppercase_connection(text: &str) -> SEXP {
 For working with *existing* R connections from Rust (e.g., when a user passes a connection as an argument):
 
 ```rust
-use miniextendr_api::connection::{get_connection, read_connection, write_connection};
-
-// Get a connection handle from an R SEXP
-let handle = unsafe { get_connection(conn_sexp) };
+use miniextendr_api::connection::{read_connection, write_connection};
 
 // Read from it
 let mut buf = [0u8; 1024];
-let n = unsafe { read_connection(handle, &mut buf) };
+let n = unsafe { read_connection(conn_sexp, &mut buf) };
 
-// Write to it
+// Write to it; the count can be short before R 4.6 (see below)
 let data = b"output data\n";
-let written = unsafe { write_connection(handle, data) };
+let written = unsafe { write_connection(conn_sexp, data) };
 ```
 
-These are thin wrappers around `R_GetConnection`, `R_ReadConnection`, and `R_WriteConnection`.
+Both work on every supported R. Built against R >= 4.6 they are
+`R_ReadConnection` / `R_WriteConnection`; before, `readBin()` / `writeBin()`
+or `readChar()` / `writeChar()` (see "R versions before 4.6"), which can write
+less than the whole buffer to a text-mode connection. Both refuse a connection
+that is not open.
+
+`get_connection(conn_sexp)` returns the raw `Rconnection` handle, for reading
+the `Rconn` struct directly (`ConnectionCapabilities::from_handle` takes it).
+It is built only against R >= 4.6: R 4.4 and 4.5 offer no R-level route to
+the handle, and `R CMD check` notes `R_GetConnection` there as non-API.
 
 ## Standard Streams
 

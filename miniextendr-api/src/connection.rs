@@ -214,39 +214,45 @@ pub struct ConnectionCapabilities {
     pub is_text: bool,
     /// Whether the connection is currently open.
     pub is_open: bool,
-    /// Whether the connection is blocking.
-    pub is_blocking: bool,
+    /// Whether the connection is blocking: `None` from
+    /// [`from_sexp`](Self::from_sexp) built against R < 4.6, which has no
+    /// R-level getter for the flag (#1905).
+    pub is_blocking: Option<bool>,
 }
 
 impl ConnectionCapabilities {
     /// Probe the capabilities of a connection from its SEXP.
     ///
-    /// Reads the boolean flags directly from the `Rconn` struct.
+    /// Built against R >= 4.6, reads the flags from the `Rconn` struct;
+    /// before, from `summary()` and `isSeekable()` (#1905).
     ///
     /// # Safety
     ///
     /// - `conn_sexp` must be a valid R connection object
     /// - Must be called from the R main thread
     pub unsafe fn from_sexp(conn_sexp: SEXP) -> Self {
-        let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
-        let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
+            let state = access::state(conn_sexp);
             ConnectionCapabilities {
-                can_read: (*conn).canread != Rboolean::FALSE,
-                can_write: (*conn).canwrite != Rboolean::FALSE,
-                can_seek: (*conn).canseek != Rboolean::FALSE,
-                is_text: (*conn).text != Rboolean::FALSE,
-                is_open: (*conn).isopen != Rboolean::FALSE,
-                is_blocking: (*conn).blocking != Rboolean::FALSE,
+                can_read: state.can_read,
+                can_write: state.can_write,
+                can_seek: access::can_seek(conn_sexp),
+                is_text: state.is_text,
+                is_open: state.is_open,
+                is_blocking: access::is_blocking(conn_sexp),
             }
         }
     }
 
     /// Probe the capabilities of a connection from its handle.
     ///
+    /// Only built against R >= 4.6, like [`get_connection`], the handle's
+    /// source (#1905).
+    ///
     /// # Safety
     ///
-    /// - `handle` must be a valid `Rconnection` obtained from `R_GetConnection`
+    /// - `handle` must be a valid `Rconnection` obtained from [`get_connection`]
+    #[cfg(r_4_6)]
     pub unsafe fn from_handle(handle: Rconnection) -> Self {
         let conn = handle.cast::<Rconn>().cast_const();
         unsafe {
@@ -256,7 +262,7 @@ impl ConnectionCapabilities {
                 can_seek: (*conn).canseek != Rboolean::FALSE,
                 is_text: (*conn).text != Rboolean::FALSE,
                 is_open: (*conn).isopen != Rboolean::FALSE,
-                is_blocking: (*conn).blocking != Rboolean::FALSE,
+                is_blocking: Some((*conn).blocking != Rboolean::FALSE),
             }
         }
     }
@@ -271,12 +277,7 @@ impl ConnectionCapabilities {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
-    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
-    let conn = handle.cast::<Rconn>().cast_const();
-    unsafe {
-        let mode = &(*conn).mode;
-        mode.contains(&(b'b' as c_char))
-    }
+    unsafe { access::state(conn_sexp) }.mode.contains('b')
 }
 
 /// Get the mode string of a connection.
@@ -288,12 +289,7 @@ pub unsafe fn is_binary_mode(conn_sexp: SEXP) -> bool {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
-    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
-    let conn = handle.cast::<Rconn>().cast_const();
-    unsafe {
-        let mode_ptr = (*conn).mode.as_ptr();
-        CStr::from_ptr(mode_ptr).to_string_lossy().into_owned()
-    }
+    unsafe { access::state(conn_sexp) }.mode
 }
 
 /// Get the description string of a connection.
@@ -305,17 +301,7 @@ pub unsafe fn connection_mode(conn_sexp: SEXP) -> String {
 /// - `conn_sexp` must be a valid R connection object
 /// - Must be called from the R main thread
 pub unsafe fn connection_description(conn_sexp: SEXP) -> String {
-    let handle = unsafe { crate::sys::R_GetConnection(conn_sexp) };
-    let conn = handle.cast::<Rconn>().cast_const();
-    unsafe {
-        if (*conn).description.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr((*conn).description)
-                .to_string_lossy()
-                .into_owned()
-        }
-    }
+    unsafe { access::state(conn_sexp) }.description
 }
 // endregion
 
@@ -1127,50 +1113,76 @@ impl RCustomConnection {
 
 // region: Helper functions for working with connections
 
-/// Read data from an R connection.
+/// Read up to `buf.len()` bytes from an R connection; returns the count read.
+///
+/// Built against R >= 4.6 this is `R_ReadConnection`; before, `readBin()` on
+/// a binary connection and `readChar(useBytes = TRUE)` on a text-mode one,
+/// which call the same `read` callback (#1905). R 4.4 and 4.5 export the C
+/// entry point too, but `R CMD check` notes it there as non-API.
 ///
 /// # Safety
 ///
-/// - `conn` must be a valid, open connection handle
-/// - `buf` must be a valid buffer with at least `n` bytes
+/// - `conn` must be an R connection object
+/// - Must be called from the R main thread
+///
+/// # Panics
+///
+/// R errors (or, before R 4.6, panics) when the connection is not open or
+/// cannot read.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use miniextendr_api::connection::{get_connection, read_connection};
+/// use miniextendr_api::connection::read_connection;
 ///
 /// // Given an R connection SEXP:
-/// let conn = unsafe { get_connection(conn_sexp) };
 /// let mut buf = [0u8; 1024];
-/// let n = unsafe { read_connection(conn, &mut buf) };
+/// let n = unsafe { read_connection(conn_sexp, &mut buf) };
 /// let data = &buf[..n];
 /// ```
-#[inline]
-pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
-    unsafe { crate::sys::R_ReadConnection(conn, buf.as_mut_ptr().cast::<c_void>(), buf.len()) }
+#[must_use = "the count of bytes read"]
+pub unsafe fn read_connection(conn: SEXP, buf: &mut [u8]) -> usize {
+    unsafe { access::read(conn, buf) }
 }
 
-/// Write data to an R connection.
+/// Write `buf` to an R connection; returns the count written.
+///
+/// Built against R >= 4.6 this is `R_WriteConnection`, which writes all of
+/// `buf`. Before, `writeBin()` on a binary connection and
+/// `writeChar(useBytes = TRUE)` on a text-mode one (#1905); a text-mode
+/// connection then gets the longest prefix of `buf` that is UTF-8 without a
+/// NUL byte, so the count can be short. Loop on it, or write through
+/// [`std::io::Write::write_all`].
 ///
 /// # Safety
 ///
-/// - `conn` must be a valid, open connection handle
+/// - `conn` must be an R connection object
+/// - Must be called from the R main thread
+///
+/// # Panics
+///
+/// R errors (or, before R 4.6, panics) when the connection is not open or
+/// cannot write.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use miniextendr_api::connection::{get_connection, write_connection};
+/// use miniextendr_api::connection::write_connection;
 ///
-/// let conn = unsafe { get_connection(conn_sexp) };
 /// let data = b"hello, world\n";
-/// let written = unsafe { write_connection(conn, data) };
+/// let written = unsafe { write_connection(conn_sexp, data) };
 /// ```
-#[inline]
-pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
-    unsafe { crate::sys::R_WriteConnection(conn, buf.as_ptr().cast::<c_void>(), buf.len()) }
+#[must_use = "the count of bytes written, which can be short before R 4.6"]
+pub unsafe fn write_connection(conn: SEXP, buf: &[u8]) -> usize {
+    unsafe { access::write(conn, buf) }
 }
 
-/// Get a connection handle from an R connection SEXP.
+/// Get the raw connection handle from an R connection SEXP.
+///
+/// Only built against R >= 4.6 (`r_4_6`), whose `R CMD check` treats
+/// `R_GetConnection` as API; R 4.4 and 4.5 note it as non-API and offer no
+/// R-level route to the handle (#1905). For reading and writing, use
+/// [`read_connection`] / [`write_connection`], which work on every R.
 ///
 /// # Safety
 ///
@@ -1179,19 +1191,19 @@ pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
 /// # Examples
 ///
 /// ```ignore
-/// use miniextendr_api::connection::{get_connection, read_connection};
+/// use miniextendr_api::connection::{Rconn, get_connection};
 ///
-/// // Convert an R connection SEXP to a handle, then read from it
-/// let conn = unsafe { get_connection(conn_sexp) };
-/// let mut buf = [0u8; 256];
-/// let n = unsafe { read_connection(conn, &mut buf) };
+/// let handle = unsafe { get_connection(conn_sexp) };
+/// let conn = handle.cast::<Rconn>();
 /// ```
+#[cfg(r_4_6)]
 #[inline]
 pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
     unsafe { crate::sys::R_GetConnection(sexp) }
 }
 // endregion
 
+pub(crate) mod access;
 mod io_adapters;
 pub use io_adapters::*;
 
@@ -1654,11 +1666,7 @@ impl std::io::Write for RNullConnection {
                 "RNullConnection is closed",
             ));
         }
-        unsafe {
-            let conn = crate::sys::R_GetConnection(self.sexp);
-            let n = write_connection(conn, buf);
-            Ok(n)
-        }
+        Ok(unsafe { access::write(self.sexp, buf) })
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
