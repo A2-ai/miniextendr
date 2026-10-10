@@ -76,7 +76,7 @@
 /// - [`with_r_matrix`][rayon_bridge::with_r_matrix] - Column-wise parallel matrix fill
 /// - [`with_r_array`][rayon_bridge::with_r_array] - Slab-wise parallel array fill
 /// - [`reduce`][rayon_bridge::reduce] - Parallel reductions returning R scalars
-/// - [`RParallelIterator`][rayon_bridge::RParallelIterator] - Adapter trait for R
+/// - [`RParallelIterator`] - Adapter trait for R
 ///
 /// Enable with `features = ["rayon"]`.
 #[cfg(feature = "rayon")]
@@ -101,9 +101,9 @@ pub mod parallel;
 /// Integration with the `rand` crate for R's RNG.
 ///
 /// Provides:
-/// - [`RRng`][rand_impl::RRng] - Wraps R's RNG, implements `rand::Rng`
-/// - [`RDistributions`][rand_impl::RDistributions] - Direct access to R's native distributions
-/// - [`RRngOps`][rand_impl::RRngOps] - Adapter trait for exposing custom RNGs to R
+/// - [`RRng`] - Wraps R's RNG, implements `rand::Rng`
+/// - [`RDistributions`] - Direct access to R's native distributions
+/// - [`RRngOps`] - Adapter trait for exposing custom RNGs to R
 ///
 /// Enable with `features = ["rand"]`.
 #[cfg(feature = "rand")]
@@ -265,9 +265,9 @@ pub use num_complex_impl::{Complex, RComplexOps};
 /// Integration with the `num-traits` crate for generic numeric operations.
 ///
 /// Provides adapter traits for generic numeric types:
-/// - [`RNum`][num_traits_impl::RNum] - Basic numeric operations
-/// - [`RSigned`][num_traits_impl::RSigned] - Signed number operations
-/// - [`RFloat`][num_traits_impl::RFloat] - Floating-point operations
+/// - [`RNum`] - Basic numeric operations
+/// - [`RSigned`] - Signed number operations
+/// - [`RFloat`] - Floating-point operations
 ///
 /// Enable with `features = ["num-traits"]`.
 #[cfg(feature = "num-traits")]
