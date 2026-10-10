@@ -1263,7 +1263,7 @@ the class system.
 ### Rust Code
 
 ```rust
-use miniextendr_api::externalptr::{RSidecar, Sidecar};
+use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
 pub struct MyConfig {
@@ -1278,48 +1278,100 @@ pub struct MyConfig {
     pub name: String,
     #[r_data]
     pub score: f64,
-    #[r_data]
-    pub table: Sidecar<SEXP>, // any R value, e.g. a data frame
+    #[r_data(name = "table")]
+    pub r_table: Sidecar<SEXP>, // any R value, e.g. a data frame; `table` in R
+    #[r_data(get = "Self::cache_size")]
+    pub cache_size: Computed, // read-only, computed from the Rust value
+}
+
+impl MyConfig {
+    fn cache_size(&self) -> i32 {
+        i32::try_from(self.cache.len()).unwrap_or(i32::MAX)
+    }
 }
 
 #[miniextendr(r6(r_data_accessors))]
 impl MyConfig {
     pub fn new(name: String, score: f64) -> Self {
-        MyConfig { cache: vec![], _r: RSidecar, name, score, table: Sidecar::new(SEXP::nil()) }
+        MyConfig {
+            cache: vec![],
+            _r: RSidecar,
+            name,
+            score,
+            r_table: Sidecar::new(SEXP::nil()),
+            cache_size: Computed,
+        }
     }
 
     pub fn has_table(self: &ExternalPtr<Self>) -> bool {
-        !Self::table(self).is_null()
+        !Self::r_table(self).is_null()
     }
 }
 ```
 
 `name` and `score` live in the Rust struct: each read converts the Rust value
-to R, and each write converts into Rust or raises an error. `table` is a
+to R, and each write converts into Rust or raises an error. `r_table` is a
 `Sidecar<T>`: its value lives in the external pointer's protection list, which
-roots it, and Rust reads and writes it through the `MyConfig::table(&ptr)` /
-`MyConfig::set_table(&mut ptr, v)` accessors the derive generates, so a method
-that needs it takes the handle as its receiver (`self: &ExternalPtr<Self>`,
-as `has_table` does). The field types, the `Sidecar<T>` lifecycle
-and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R Data
-Fields)".
+roots it, and Rust reads and writes it through the `MyConfig::r_table(&ptr)` /
+`MyConfig::set_r_table(&mut ptr, v)` accessors the derive generates, so a
+method that needs it takes the handle as its receiver (`self:
+&ExternalPtr<Self>`, as `has_table` does). The field types, the `Sidecar<T>`
+lifecycle and what survives `saveRDS()` are in `EXTERNALPTR.md`, "RSidecar (R
+Data Fields)".
+
+#### R names
+
+`#[r_data(name = "table")]` gives a field its R name. Everything R sees uses
+it: the field list and the `$` / `[[` labels, the R6 active binding or S7
+property, the standalone `MyConfig_get_table()` / `MyConfig_set_table()` and
+the setter's `'table' must be ...` message. The Rust side keeps the Rust
+identifier: `MyConfig::r_table(&ptr)`, and the C symbols. The name must be a
+syntactic R name (`n.rows` is fine, `n rows` and `for` are not), unique among
+the type's R names, and not `.ptr`, which is the element that carries the
+pointer in a list or environment receiver.
+
+#### Computed fields
+
+A `Computed` field is a read-only R field computed from the Rust value by the
+function `get` names, a plain `fn(&Self) -> impl IntoR` (`Self` is the
+struct; a free function of the module works too). It needs no
+`#[miniextendr]`, and the field holds nothing: it is a zero-sized marker that
+gives the computed field its place in the field order, so every struct
+literal writes `cache_size: Computed` once, as it writes `_r: RSidecar`.
+
+Computed fields take part in everything the other fields do, at their
+declared place: the standalone `MyConfig_get_cache_size(x)`, and `x$cache_size`
+/ `x[["cache_size"]]` on S3, S4 and env classes with `r_data_accessors`. They
+have no setter: no `MyConfig_set_cache_size()`, and under the get/set form
+`x$cache_size <- v` raises `miniextendr_read_only_field` (`` `cache_size` of
+`MyConfig` is computed from the Rust value and can't be assigned ``). A
+computed field exists only for R, so it must be `pub`; and it can't be an R6
+active binding or an S7 property, which need a setter (#1888), so it is
+refused under `#[externalptr(r6)]` / `#[externalptr(s7)]` (the example above
+would use S3, S4 or env). The getter's errors are its own: a
+`rust_error!(class = "pkg_error", "...")` in it reaches R with that class and
+the call as written (`x$cache_size`). It takes `&Self`, so it can't read
+`Sidecar` values, which are R fields already; it returns a value, not a
+`Result`.
 
 ### R Behavior by Class System
 
-| System | Get | Set |
-|--------|-----|-----|
-| **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` |
-| **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` |
-| **S3** with `s3(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` |
-| **S4** with `s4(r_data_accessors)` | `obj$name` | `obj$name <- "new"` |
-| **Env** with `env(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` |
-| **S3, S4, env** with `r_data_accessors = "get"` | as above | `MyConfig_set_name(x, "new")`, or the class's own `$<-` |
-| **vctrs**, and any class without the option | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` |
+| System | Get | Set | Computed fields | A restored pointer (`readRDS()`) |
+|--------|-----|-----|-----|-----|
+| **R6** with `r6(r_data_accessors)` | `obj$name` (active binding) | `obj$name <- "new"` | refused at compile time (#1888) | the bindings read and write the save's `Sidecar` values |
+| **S7** with `s7(r_data_accessors)` | `obj@name` (S7 property) | `obj@name <- "new"` | refused at compile time (#1888) | the properties read and write the save's `Sidecar` values |
+| **S3** with `s3(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` | `obj$cache_size`; `obj$cache_size <- v` raises `miniextendr_read_only_field` | the field methods refuse it |
+| **S4** with `s4(r_data_accessors)` | `obj$name` | `obj$name <- "new"` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` | the field methods refuse it |
+| **Env** with `env(r_data_accessors)` | `obj$name`, `obj[["name"]]` | `obj$name <- "new"`, `obj[["name"]] <- "new"` | `obj$cache_size`; the assignment raises `miniextendr_read_only_field` | the field methods refuse it |
+| **S3, S4, env** with `r_data_accessors = "get"` | as above | `MyConfig_set_name(x, "new")`, or the class's own `$<-` | `obj$cache_size`; no generated assignment | the field methods refuse it |
+| **vctrs**, and any class without the option | `MyConfig_get_name(x)` | `MyConfig_set_name(x, "new")` | `MyConfig_get_cache_size(x)` | the standalone accessors read and write the save's `Sidecar` values |
 
 The standalone functions take the external pointer, or any object that
 carries it: an environment or list with a `.ptr` element, an R6 object, an
 S4 object with a `ptr` slot, or an object with a `.ptr` attribute (an S7
-object's `.ptr` property).
+object's `.ptr` property). They exist for every class system, so on an S3,
+S4 or env class they are the way to read a saved object's `Sidecar` values
+(below).
 
 #### Field syntax on S3, S4 and env classes
 
@@ -1353,11 +1405,59 @@ block is refused at compile time when one of its methods is the `$` / `[[`
 / `$<-` / `[[<-` method the option generates. A class that writes its own
 `$<-` takes `r_data_accessors = "get"`.
 
+#### A restored pointer
+
+`saveRDS()` keeps a pointer's `Sidecar` values but not its Rust value
+(`EXTERNALPTR.md`, "Serialization"). The generated field methods refuse a
+pointer `readRDS()` brought back, whatever the field: `x$keys`, `x[["keys"]]`,
+`x$keys <- v` and `x[["keys"]] <- v` on an S3, S4 or env object raise
+`miniextendr_restored_no_value` (a save by this version of the package) or
+`miniextendr_restored_other_version` (a save by another), both with the class
+`miniextendr_restored`. A reloaded object is refused, not recovered; the
+class re-creates it. The standalone `Type_get_f()` / `Type_set_f()`, the R6
+active bindings and the S7 properties keep reading and writing a same-version
+save's `Sidecar` values, as the way to reach a saved object's data. The
+methods pass a `require_live` flag to the same per-field accessor, so a read
+costs no extra `.Call()`. Only a name that is a field reaches Rust: on a
+restored bare pointer an unknown name still gets its usual answer.
+
+A type names its own condition classes and message for every one of its
+restored refusals, the field methods and the methods that take the handle
+alike:
+
+```rust
+#[derive(ExternalPtr)]
+#[externalptr(s3, restored(
+    class = ["pkg_error_saved_object", "pkg_error"],
+    message = "this engine was saved; build a new one with engine()",
+))]
+pub struct Engine { /* ... */ }
+```
+
+The classes go in front of the `miniextendr_restored*` classes, which stay,
+in the given order (one string, or a list); the message replaces
+miniextendr's in both the no-value and the other-version case, and the
+condition's `saved_version` / `current_version` fields stay. The message is
+a static string per type: one type maps to one R class, so the package can
+name it literally.
+
+#### Conditions the generated accessors raise
+
+| Error | Class | Raised by |
+|---|---|---|
+| a restored pointer | `miniextendr_restored_no_value` or `miniextendr_restored_other_version`, both with `miniextendr_restored`, behind the type's `restored(class = ...)` | the field methods; a struct or computed field's standalone getter; a `Sidecar` field's standalone accessors for another version's save |
+| no such field | `miniextendr_no_field` | S4 `$`; `$` / `[[` / `$<-` / `[[<-` on a bare pointer |
+| an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
+| a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
+| a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |
+
 ### When to Use Sidecar vs Manual Getters
 
-- **Use sidecar** when you have multiple fields to expose and want zero-boilerplate accessors.
-- **Use manual getters** when you need computed values, validation, or side effects on access.
-  Manual getters work identically across all class systems and are straightforward to write.
+- **Use sidecar** when you have fields to expose and want zero-boilerplate
+  accessors; a `Computed` field covers a value derived from the Rust value.
+- **Use manual getters** when a read needs arguments, validation of the
+  receiver beyond the type, or side effects. Manual getters work identically
+  across all class systems and are straightforward to write.
 
 ---
 

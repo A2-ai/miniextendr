@@ -116,6 +116,27 @@ test_that("a Rust getter sees an R-side set, and an R getter a Rust-side set", {
   expect_identical(obj$key_count(), 3L)
 })
 
+test_that("a field's R name is the one R sees; the Rust identifier stays in Rust (#1891)", {
+  # `SidecarSlotR6`'s `r_label` is `label` in R: the active binding and the
+  # standalone accessors; `SidecarS7`'s `r_scores` is the property `scores`.
+  obj <- SidecarSlotR6$new(1L)
+  expect_identical(obj$label, "fresh")
+  expect_identical(SidecarSlotR6_get_label(obj$.__enclos_env__$private$.ptr), "fresh")
+  SidecarSlotR6_set_label(obj$.__enclos_env__$private$.ptr, "set")
+  expect_identical(obj$label, "set")
+  expect_identical(obj$label_len(), 3L)
+  expect_false("r_label" %in% names(obj))
+  expect_false(exists("SidecarSlotR6_get_r_label", envir = asNamespace("miniextendr")))
+  expect_identical(miniextendr:::.rdata_fields_SidecarSlotR6, c("keys", "n", "label", "note"))
+
+  s7 <- SidecarS7(prop_int = 1L, prop_flag = TRUE, prop_name = "s")
+  expect_identical(s7@scores, numeric())
+  s7@scores <- c(1, 2)
+  expect_identical(SidecarS7_get_scores(s7), c(1, 2))
+  expect_identical(score_total(s7), 3)
+  expect_false("r_scores" %in% S7::prop_names(s7))
+})
+
 test_that("ref-only and mut-only fields keep both R accessors", {
   obj <- SidecarSlotR6$new(1L)
   # `label` is `ref` in Rust: R still writes it, Rust reads it.

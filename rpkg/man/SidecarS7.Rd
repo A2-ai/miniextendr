@@ -100,9 +100,9 @@ will \emph{not} be honoured. Use the generic when subclassing is possible.
 \section{Additional properties}{
 
 \describe{
-\item{\code{@scores}}{Scores kept in the pointer's protection list.}
-
 \item{\code{@prop_int}}{An integer sidecar property.}
+
+\item{\code{@scores}}{Scores kept in the pointer's protection list.}
 
 \item{\code{@prop_flag}}{A logical sidecar property.}
 

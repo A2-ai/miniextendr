@@ -1,0 +1,35 @@
+error: an R field name can't be empty
+  --> tests/ui/derive_r_data_name_invalid.rs:13:21
+   |
+13 |     #[r_data(name = "")]
+   |                     ^^
+
+error: `.ptr` is the element that carries the pointer in a list or environment receiver, so it can't be an R field name
+  --> tests/ui/derive_r_data_name_invalid.rs:21:21
+   |
+21 |     #[r_data(name = ".ptr")]
+   |                     ^^^^^^
+
+error: `n rows` is not a syntactic R name; an R field name has letters, digits, `.` and `_` only, starts with a letter or a `.` not followed by a digit, and is not a reserved word
+  --> tests/ui/derive_r_data_name_invalid.rs:29:21
+   |
+29 |     #[r_data(name = "n rows")]
+   |                     ^^^^^^^^
+
+error: `for` is not a syntactic R name; an R field name has letters, digits, `.` and `_` only, starts with a letter or a `.` not followed by a digit, and is not a reserved word
+  --> tests/ui/derive_r_data_name_invalid.rs:37:21
+   |
+37 |     #[r_data(name = "for")]
+   |                     ^^^^^
+
+error: the R field name `keys` is already taken by the field `keys`; every `#[r_data]` field of a type needs its own R name (`#[r_data(name = "...")]` renames one)
+  --> tests/ui/derive_r_data_name_invalid.rs:48:9
+   |
+48 |     pub r_keys: Sidecar<Vec<i32>>,
+   |         ^^^^^^
+
+error: `name` applies to a sidecar slot, not the RSidecar selector, which has no R name
+  --> tests/ui/derive_r_data_name_invalid.rs:53:21
+   |
+53 |     #[r_data(name = "r")]
+   |                     ^^^
