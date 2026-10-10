@@ -2121,6 +2121,52 @@ pub(crate) const RAISE_CONDITION_HELPER_FN: &str =
 const WRAPPER_RAISE_CONDITION_HELPER_FN: &str =
     raise_condition_helper_fn!(".miniextendr_frame_call");
 
+/// Shared method lookup for environment classes. Each returned closure gets
+/// its own receiver-binding frame; native symbols resolve through this helper's
+/// package namespace. Field lookup and its condition call stay in the S3 method.
+#[cfg(not(target_arch = "wasm32"))]
+const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class's methods to one receiver.
+# The class's `$` / `[[` methods handle fields before calling this lookup.
+.miniextendr_env_method <- function(self, name, methods) {
+  obj <- methods[[name]]
+  if (is.environment(obj)) {
+    bound <- new.env(parent = emptyenv())
+    for (method_name in names(obj)) {
+      method <- obj[[method_name]]
+      if (is.function(method)) {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
+      }
+    }
+    bound
+  } else if (is.null(obj)) {
+    for (ns_name in names(methods)) {
+      ns <- methods[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
+  } else {
+    environment(obj) <- environment()
+    obj
+  }
+}
+"#;
+
 /// The `.miniextendr_conversion_error_class` binding that closes the wrappers
 /// preamble: the classes `.miniextendr_arg_error` puts on every R-side
 /// argument error, from the [`MX_CONVERSION_ERROR_CLASS`] entry that
@@ -2200,6 +2246,13 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push('\n');
     content.push_str(FIELD_AT_HELPER);
     content.push('\n');
+    if MX_CLASS_NAMES
+        .iter()
+        .any(|class| class.class_system == "env")
+    {
+        content.push_str(ENV_METHOD_HELPER);
+        content.push('\n');
+    }
     content.push_str(ARG_CHECK_HELPERS);
     content.push('\n');
     content.push_str(&conversion_error_class_binding());
@@ -4153,6 +4206,7 @@ mod tests {
             ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
             ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
             ("FIELD_AT_HELPER", FIELD_AT_HELPER),
+            ("ENV_METHOD_HELPER", ENV_METHOD_HELPER),
             ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
             ("the conversion_error_class binding", binding.as_str()),
         ] {
