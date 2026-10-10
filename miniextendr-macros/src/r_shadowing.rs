@@ -60,6 +60,8 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "environment",
     "exists",
     "get0",
+    "getOption",
+    "grep",
     "identical",
     "inherits",
     "invisible",
@@ -68,14 +70,20 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "length",
     "list",
     "local",
+    "ls",
     "match",
     "missing",
     "names",
     // The argument count an `NArgs` parameter receives (#1860).
     "nargs",
     "paste0",
+    // The list lookup of the S3 field methods (#1891).
+    "pmatch",
     "quote",
     "return",
+    "seq_along",
+    "simpleWarning",
+    "sprintf",
     "standardGeneric",
     "stop",
     "structure",
@@ -86,6 +94,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "typeof",
     "unclass",
     "unique",
+    "vector",
     "warning",
 ];
 

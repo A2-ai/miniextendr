@@ -12,6 +12,7 @@
 \alias{SidecarS4_get_history}
 \alias{SidecarS4_set_history}
 \alias{$,SidecarS4-method}
+\alias{.DollarNames.SidecarS4}
 \alias{$<-,SidecarS4-method}
 \alias{SidecarS4-s4_history_len}
 \alias{s4_history_len,SidecarS4-method}
@@ -39,6 +40,8 @@ SidecarS4(slot_int, slot_real, slot_str)
 
 \S4method{$}{SidecarS4}(x, name)
 
+\method{.DollarNames}{SidecarS4}(x, pattern = "")
+
 \S4method{$}{SidecarS4}(x, name) <- value
 }
 \arguments{
@@ -53,6 +56,8 @@ SidecarS4(slot_int, slot_real, slot_str)
 \item{slot_str}{Character sidecar field.}
 
 \item{name}{A field name.}
+
+\item{pattern}{A regular expression; the names matching it are the completions.}
 }
 \value{
 The value of the \code{slot_int} field

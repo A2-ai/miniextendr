@@ -36,6 +36,11 @@ methods::setMethod("$", "Engine", function(x, name) {
 })
 
 #' @rdname Engine
+#' @param pattern A regular expression; the names matching it are the completions.
+#' @exportS3Method utils::.DollarNames
+.DollarNames.Engine <- function(x, pattern = "") grep(pattern, .rdata_fields_Engine, value = TRUE)
+
+#' @rdname Engine
 #' @param name A field name.
 #' @exportMethod $<-
 methods::setMethod("$<-", "Engine", function(x, name, value) {

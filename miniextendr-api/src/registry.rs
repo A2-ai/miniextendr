@@ -1820,6 +1820,26 @@ const FRAME_CALL_HELPER: &str = concat!(
     "\n"
 );
 
+/// R source of the `.miniextendr_field_at` helper, with its comment block,
+/// as written into the wrappers preamble by [`write_r_wrappers_to_file`]: the
+/// field a position picks in the generated `[[.Class` of an S3 class with
+/// `s3(r_data_accessors)`, on the bare classed pointer (#1891). The method
+/// checks for `NA` first (a list's `[[NA]]` is `NULL`, a character vector's
+/// is `NA`), then lets R's own `[[` on the field-name vector pick the field,
+/// so the position is truncated, a logical is taken, and `0` or a negative
+/// position raise the errors a list raises; only the call is the generic's.
+#[cfg(not(target_arch = "wasm32"))]
+const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks on a bare classed pointer, as
+# `[[` picks a list element: `2.9` is the second field, `TRUE` the first, a
+# position past the last field raises `subscriptOutOfBoundsError`, and `0`
+# or a negative position raises R's own error. Either error reports the
+# generic's call, `x[[9]]`, resolved from the method's frame (`env`).
+.miniextendr_field_at <- function(fields, i, env) {
+  if (trunc(i) > length(fields)) stop(errorCondition("subscript out of bounds", class = "subscriptOutOfBoundsError", call = .miniextendr_frame_call(env)))
+  tryCatch(fields[[i]], error = function(e) stop(simpleError(conditionMessage(e), .miniextendr_frame_call(env))))
+}
+"#;
+
 /// R source of the argument-check helpers of the wrappers preamble,
 /// `.miniextendr_arg_error`, `.miniextendr_match_arg_several` and
 /// `.miniextendr_match_arg`, with their comment blocks, as written by
@@ -2090,6 +2110,8 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str(CALLER_CALL_HELPER);
     content.push('\n');
     content.push_str(FRAME_CALL_HELPER);
+    content.push('\n');
+    content.push_str(FIELD_AT_HELPER);
     content.push('\n');
     content.push_str(ARG_CHECK_HELPERS);
     content.push('\n');
@@ -3967,6 +3989,7 @@ mod tests {
             ("RAISE_CONDITION_HELPER_FN", RAISE_CONDITION_HELPER_FN),
             ("CALLER_CALL_HELPER", CALLER_CALL_HELPER),
             ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
+            ("FIELD_AT_HELPER", FIELD_AT_HELPER),
             ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
             ("the conversion_error_class binding", binding.as_str()),
         ] {
@@ -4034,6 +4057,31 @@ mod tests {
             ARG_CHECK_HELPERS
                 .contains("  if (is.environment(call)) call <- .miniextendr_frame_call(call)\n")
         );
+    }
+
+    /// The preamble's field-position helper (#1891) is the one definition in
+    /// its block. Past the last field it raises R's own
+    /// `subscriptOutOfBoundsError` class, every other position goes through
+    /// R's `[[` on the field-name vector, and both errors report the
+    /// generic's call resolved from the method's frame.
+    #[test]
+    fn field_at_helper_picks_a_field_as_a_list_does() {
+        let defs: Vec<&str> = FIELD_AT_HELPER
+            .lines()
+            .filter_map(parse_top_level_fn_def_name)
+            .collect();
+        assert_eq!(defs, [".miniextendr_field_at"]);
+        assert!(FIELD_AT_HELPER.contains(".miniextendr_field_at <- function(fields, i, env) {"));
+        assert!(FIELD_AT_HELPER.contains(
+            "if (trunc(i) > length(fields)) stop(errorCondition(\"subscript out of bounds\", \
+             class = \"subscriptOutOfBoundsError\", call = .miniextendr_frame_call(env)))"
+        ));
+        assert!(FIELD_AT_HELPER.contains(
+            "tryCatch(fields[[i]], error = function(e) stop(simpleError(conditionMessage(e), \
+             .miniextendr_frame_call(env))))"
+        ));
+        assert!(FIELD_AT_HELPER.starts_with("# Internal helper"));
+        assert!(FIELD_AT_HELPER.ends_with("}\n"));
     }
 
     /// The preamble's class binding (#1591): the crate classes as an R

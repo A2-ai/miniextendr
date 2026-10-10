@@ -343,6 +343,62 @@ pub fn sidecar_computed_keys(ptr: ExternalPtr<SidecarComputed>) -> Vec<i32> {
 }
 // endregion
 
+// region: S3, a class the package builds itself (#1891)
+
+/// A list-like S3 class whose objects the package builds in R: the impl
+/// block below has no constructor and no methods, `class = "handmade_rec"`
+/// names the R class, and `new_handmade_rec()` (`R/sidecar_handmade.R`)
+/// classes the pointer `rdata_sidecar_handmade_new()` returns by hand. `id`
+/// is a prefix of `ids`, so `x$id` tests that an exact name beats a prefix.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(s3)]
+pub struct SidecarHandmade {
+    #[r_data]
+    _r: RSidecar,
+
+    /// The id, a struct field.
+    #[r_data]
+    pub id: i32,
+
+    /// `1:id`, kept in the pointer's protection list; `ids` in R.
+    #[r_data(name = "ids")]
+    pub r_ids: Sidecar<Vec<i32>>,
+
+    /// `"rec-<id>"`, computed from the Rust value.
+    #[r_data(get = "Self::label")]
+    pub label: Computed,
+
+    /// Any R value, `NULL` until set; `extra` in R.
+    #[r_data(name = "extra")]
+    pub r_extra: Sidecar<SEXP>,
+}
+
+impl SidecarHandmade {
+    fn label(&self) -> String {
+        format!("rec-{}", self.id)
+    }
+}
+
+/// The readers of `handmade_rec` (`$`, `[[`, `names()`, `as.list()` and
+/// `.DollarNames()`), for a pointer the package classes by hand.
+#[miniextendr(s3(r_data_accessors = "get"), class = "handmade_rec")]
+impl SidecarHandmade {}
+
+/// A `SidecarHandmade` pointer with no class attribute, which
+/// `new_handmade_rec()` classes.
+/// @param id The id; the `ids` are `1:id`.
+#[miniextendr]
+pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
+    ExternalPtr::new(SidecarHandmade {
+        _r: RSidecar,
+        id,
+        r_ids: Sidecar::new((1..=id).collect()),
+        label: Computed,
+        r_extra: Sidecar::new(SEXP::nil()),
+    })
+}
+// endregion
+
 // region: S4 - standalone accessors: SidecarS4_get_slot_int(x), ...
 
 /// Demonstrates S4 class system.

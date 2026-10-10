@@ -16,6 +16,7 @@
 \alias{SidecarEnv$double_count}
 \alias{$.SidecarEnv}
 \alias{[[.SidecarEnv}
+\alias{.DollarNames.SidecarEnv}
 \alias{$<-.SidecarEnv}
 \alias{[[<-.SidecarEnv}
 \title{SidecarEnv Sidecar Accessors}
@@ -46,6 +47,8 @@ SidecarEnv
 
 \method{[[}{SidecarEnv}(self, name)
 
+\method{.DollarNames}{SidecarEnv}(x, pattern = "")
+
 \method{$}{SidecarEnv}(x, name) <- value
 
 \method{[[}{SidecarEnv}(x, name) <- value
@@ -58,6 +61,8 @@ SidecarEnv
 \item{self}{The object instance.}
 
 \item{name}{A method or field name.}
+
+\item{pattern}{A regular expression; the names matching it are the completions.}
 }
 \value{
 The value of the \code{count} field

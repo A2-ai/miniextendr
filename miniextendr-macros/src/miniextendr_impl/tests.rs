@@ -7335,32 +7335,123 @@ fn s3_field_methods() {
         s3_method_formals(&wrapper, "[[<-.Engine"),
         "x, i, ..., value"
     );
+    assert_eq!(s3_method_formals(&wrapper, "as.list.Engine"), "x, ...");
     // Conditions report the generic's call: the method frame is the fallback,
-    // in the four field methods and the instance method `size`.
+    // in `$`, `[[`, `as.list`, the two setters and the instance method `size`.
     assert_eq!(
         wrapper
             .matches(".miniextendr_raise_condition(.val, environment())")
             .count(),
-        5,
+        6,
         "{wrapper}"
     );
     assert!(
         wrapper.contains("if (!is.character(get0(\".rdata_fields_Engine\""),
         "{wrapper}"
     );
+    assert_s3_readers(&wrapper, "Engine");
     insta::assert_snapshot!(wrapper);
 }
 
-/// The getters-only form generates `$` / `[[` and no `$<-` / `[[<-`.
+/// The S3 readers of `s3(r_data_accessors)` (#1891): a list's lookup on the
+/// bare pointer (`pmatch` for `$`, `.miniextendr_field_at` for a `[[`
+/// position, NULL for an unknown name), `names()`, `as.list()` and a
+/// `.DollarNames()` registered with `@exportS3Method utils::.DollarNames`.
+fn assert_s3_readers(wrapper: &str, class: &str) {
+    let dollar = crate::naming::r_def_name(&format!("$.{class}"));
+    assert!(
+        wrapper.contains(&format!(
+            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) return(NULL)\n"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("if (isTRUE(getOption(\"warnPartialMatchDollar\"))) warning(simpleWarning(sprintf(\"partial match of '%s' to '%s'\", name, .rdata_fields_Engine[[i]]), .miniextendr_frame_call(environment())))"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper
+            .contains("    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment())\n"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) return(NULL)\n"),
+        "{wrapper}"
+    );
+    // No `miniextendr_no_field` on a read any more.
+    let reads_end = wrapper.find("`$<-.").unwrap_or(wrapper.len());
+    assert!(
+        !wrapper[..reads_end].contains(".rdata_no_field_Engine"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(&format!(
+            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) if (typeof(x) == \"externalptr\") .rdata_fields_Engine else NextMethod()\n"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(&format!(
+            "as.list.{class} <- function(x, ...) {{\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {{\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("    .out[.k] <- list(.val)\n  }\n  .out\n}\n"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(&format!(
+            "#' @exportS3Method utils::.DollarNames\n.DollarNames.{class} <- function(x, pattern = \"\") grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != \"externalptr\") names(x)), value = TRUE)\n"
+        )),
+        "{wrapper}"
+    );
+    // Never the `@method` + `@export` pair, whose unqualified
+    // `S3method(.DollarNames, Class)` fails to load with only base attached.
+    assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
+}
+
+/// The getters-only form generates the readers (`$`, `[[`, `names`,
+/// `as.list`, `.DollarNames`) and no `$<-` / `[[<-`.
 #[test]
 fn s3_field_methods_getters_only() {
     let wrapper =
         generate_s3_r_wrapper(&field_syntax_impl(ClassSystem::S3, RDataAccessors::GetOnly));
     assert_eq!(s3_method_formals(&wrapper, "$.Engine"), "x, name");
     assert_eq!(s3_method_formals(&wrapper, "[[.Engine"), "x, i, ...");
+    assert_s3_readers(&wrapper, "Engine");
     assert!(!wrapper.contains("`$<-.Engine`"), "{wrapper}");
     assert!(!wrapper.contains("`[[<-.Engine`"), "{wrapper}");
     assert!(!wrapper.contains(".rdata_set_Engine"), "{wrapper}");
+}
+
+/// A package that builds its objects itself: an impl with `class = "..."`
+/// and no constructor (and no methods) still emits the readers, for a
+/// pointer the package classes by hand.
+#[test]
+fn s3_field_methods_without_a_constructor() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {}
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    attrs.class_name = Some("engine_rec".to_string());
+    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    assert!(!wrapper.contains("new_engine_rec"), "{wrapper}");
+    assert_eq!(s3_method_formals(&wrapper, "$.engine_rec"), "x, name");
+    assert_eq!(s3_method_formals(&wrapper, "[[.engine_rec"), "x, i, ...");
+    assert_s3_readers(&wrapper, "engine_rec");
+    assert!(!wrapper.contains("`$<-.engine_rec`"), "{wrapper}");
+    // The derive documents `x` on the `Engine` page, so the methods document
+    // it on `engine_rec`'s.
+    assert!(
+        wrapper.contains("#' @rdname engine_rec\n#' @param x An object.\n#' @param name"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("engine_rec <- new.env(parent = emptyenv())"),
+        "{wrapper}"
+    );
 }
 
 /// The helpers are named by the Rust type, the methods by the R class.
@@ -7405,11 +7496,17 @@ fn s4_field_methods() {
         "{wrapper}"
     );
     assert!(wrapper.contains("#' @exportMethod $<-"), "{wrapper}");
+    // `.DollarNames` is an S3 method on the S4 class, registered with the
+    // qualified generic; it lists the fields only (an S4 object is no list).
+    let dollar_names = "#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") grep(pattern, .rdata_fields_Engine, value = TRUE)\n";
+    assert!(wrapper.contains(dollar_names), "{wrapper}");
+    assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 
     let getters =
         generate_s4_r_wrapper(&field_syntax_impl(ClassSystem::S4, RDataAccessors::GetOnly));
     assert!(getters.contains("methods::setMethod(\"$\""), "{getters}");
+    assert!(getters.contains(dollar_names), "{getters}");
     assert!(!getters.contains("methods::setMethod(\"$<-\""), "{getters}");
 }
 
@@ -7437,6 +7534,11 @@ fn env_field_methods() {
         wrapper.contains("#' @param name A method or field name."),
         "{wrapper}"
     );
+    // `.DollarNames` lists the fields, then the class's methods, since `$`
+    // reaches both; it follows the `[[` alias (and ends the wrapper in the
+    // getters-only form, so no trailing newline is expected).
+    let dollar_names = "`[[.Engine` <- `$.Engine`\n#' @rdname Engine\n#' @param pattern A regular expression; the names matching it are the completions.\n#' @exportS3Method utils::.DollarNames\n.DollarNames.Engine <- function(x, pattern = \"\") grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)";
+    assert!(wrapper.contains(dollar_names), "{wrapper}");
     insta::assert_snapshot!(wrapper);
 
     let getters = generate_env_r_wrapper(&field_syntax_impl(
@@ -7447,6 +7549,7 @@ fn env_field_methods() {
         getters.contains(".rdata_get_Engine(self, name)"),
         "{getters}"
     );
+    assert!(getters.contains(dollar_names), "{getters}");
     assert!(!getters.contains("`$<-.Engine`"), "{getters}");
 }
 
@@ -7490,6 +7593,51 @@ fn field_methods_collide_with_impl_methods() {
         .to_string();
     assert!(err.contains("defines the `[[` method of `Engine`"), "{err}");
 
+    // The readers added by #1891 collide in both forms: `names` (a plain
+    // method name dispatches under it), `as.list` and `.DollarNames`.
+    for (generic, mode) in [
+        ("names", RDataAccessors::GetOnly),
+        ("names", RDataAccessors::GetSet),
+        ("as.list", RDataAccessors::GetOnly),
+        (".DollarNames", RDataAccessors::GetSet),
+    ] {
+        let reader: syn::ItemImpl = syn::parse_quote! {
+            impl Engine {
+                pub fn new(n: i32) -> Self { unimplemented!() }
+                #[miniextendr(s3(generic = #generic))]
+                pub fn reader(&self) -> Vec<String> { unimplemented!() }
+            }
+        };
+        let mut attrs = default_impl_attrs(ClassSystem::S3);
+        attrs.r_data_accessors = mode;
+        let err = ParsedImpl::parse(attrs, reader)
+            .expect_err("a collision")
+            .to_string();
+        assert!(
+            err.contains(&format!("defines the `{generic}` method of `Engine`")),
+            "{generic}: {err}"
+        );
+        assert!(
+            !err.contains("s3(r_data_accessors = \"get\")"),
+            "{generic}: no setter advice for a reader: {err}"
+        );
+    }
+    let plain_names: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            pub fn names(&self) -> Vec<String> { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S3);
+    attrs.r_data_accessors = RDataAccessors::GetOnly;
+    let err = ParsedImpl::parse(attrs, plain_names)
+        .expect_err("a collision")
+        .to_string();
+    assert!(
+        err.contains("defines the `names` method of `Engine`"),
+        "{err}"
+    );
+
     // Another class's method (`class = "..."`) is no collision.
     let other_class: syn::ItemImpl = syn::parse_quote! {
         impl Engine {
@@ -7515,6 +7663,35 @@ fn field_methods_collide_with_impl_methods() {
         .expect_err("a collision")
         .to_string();
     assert!(err.contains("`s4(r_data_accessors)`"), "{err}");
+
+    let s4_dollar_names: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s4(generic = ".DollarNames"))]
+            pub fn completions(&self, pattern: &str) -> Vec<String> { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S4);
+    attrs.r_data_accessors = RDataAccessors::GetSet;
+    let err = ParsedImpl::parse(attrs, s4_dollar_names)
+        .expect_err("a collision")
+        .to_string();
+    assert!(
+        err.contains("defines the `.DollarNames` method of `Engine`"),
+        "{err}"
+    );
+    // `names` is no S4 collision: only `$`, `.DollarNames` and `$<-` are
+    // generated there.
+    let s4_names: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {
+            pub fn new(n: i32) -> Self { unimplemented!() }
+            #[miniextendr(s4(generic = "names"))]
+            pub fn field_names(&self) -> Vec<String> { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S4);
+    attrs.r_data_accessors = RDataAccessors::GetSet;
+    assert!(ParsedImpl::parse(attrs, s4_names).is_ok());
 }
 
 // endregion

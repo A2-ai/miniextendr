@@ -87,6 +87,10 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @export
 `[[.Engine` <- `$.Engine`
 #' @rdname Engine
+#' @param pattern A regular expression; the names matching it are the completions.
+#' @exportS3Method utils::.DollarNames
+.DollarNames.Engine <- function(x, pattern = "") grep(pattern, c(.rdata_fields_Engine, ls(Engine)), value = TRUE)
+#' @rdname Engine
 #' @method $<- Engine
 #' @export
 `$<-.Engine` <- function(x, name, value) {

@@ -20,12 +20,18 @@ new_engine <- function(n) {
 if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), inherits = FALSE))) stop("`s3(r_data_accessors)` on `Engine` needs the field helpers `#[derive(ExternalPtr)]` emits for a type with an `#[r_data]` `RSidecar` selector and a `pub` `#[r_data]` field", call. = FALSE)
 
 #' @rdname Engine
-#' @param name A field name.
+#' @param name A field name; `$` on the pointer itself also takes a unique prefix of one, as for a list.
 #' @method $ Engine
 #' @export
 `$.Engine` <- function(x, name) {
-  if (is.na(match(name, .rdata_fields_Engine))) {
-    if (typeof(x) == "externalptr") .rdata_no_field_Engine(name, environment())
+  if (typeof(x) == "externalptr") {
+    i <- pmatch(name, .rdata_fields_Engine)
+    if (is.na(i)) return(NULL)
+    if (.rdata_fields_Engine[[i]] != name) {
+      if (isTRUE(getOption("warnPartialMatchDollar"))) warning(simpleWarning(sprintf("partial match of '%s' to '%s'", name, .rdata_fields_Engine[[i]]), .miniextendr_frame_call(environment())))
+      name <- .rdata_fields_Engine[[i]]
+    }
+  } else if (is.na(match(name, .rdata_fields_Engine))) {
     return(NextMethod())
   }
   .val <- .rdata_get_Engine(x, name)
@@ -34,13 +40,16 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 }
 
 #' @rdname Engine
-#' @param i A field name; any other index goes to the object's own `[[`.
+#' @param i A field name; `[[` on the pointer itself also takes a position in the field order. Any other index goes to the object's own `[[` / `[[<-`.
 #' @param ... Additional arguments.
 #' @method [[ Engine
 #' @export
 `[[.Engine` <- function(x, i, ...) {
-  if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
-    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) .rdata_no_field_Engine(i, environment())
+  if (typeof(x) == "externalptr" && length(i) == 1L && (is.numeric(i) || is.logical(i))) {
+    if (is.na(i)) return(NULL)
+    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment())
+  } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {
+    if (typeof(x) == "externalptr" && is.character(i) && length(i) == 1L) return(NULL)
     return(NextMethod())
   }
   .val <- .rdata_get_Engine(x, i)
@@ -49,7 +58,34 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 }
 
 #' @rdname Engine
-#' @param name A field name.
+#' @method names Engine
+#' @export
+names.Engine <- function(x) if (typeof(x) == "externalptr") .rdata_fields_Engine else NextMethod()
+
+#' @rdname Engine
+#' @param ... Additional arguments.
+#' @method as.list Engine
+#' @export
+as.list.Engine <- function(x, ...) {
+  if (is.environment(x)) return(as.list.environment(x, ...))
+  if (typeof(x) != "externalptr") return(NextMethod())
+  .out <- vector("list", length(.rdata_fields_Engine))
+  names(.out) <- .rdata_fields_Engine
+  for (.k in seq_along(.rdata_fields_Engine)) {
+    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])
+    if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
+    .out[.k] <- list(.val)
+  }
+  .out
+}
+
+#' @rdname Engine
+#' @param pattern A regular expression; the names matching it are the completions.
+#' @exportS3Method utils::.DollarNames
+.DollarNames.Engine <- function(x, pattern = "") grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != "externalptr") names(x)), value = TRUE)
+
+#' @rdname Engine
+#' @param name A field name; `$` on the pointer itself also takes a unique prefix of one, as for a list.
 #' @method $<- Engine
 #' @export
 `$<-.Engine` <- function(x, name, value) {
@@ -63,7 +99,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 }
 
 #' @rdname Engine
-#' @param i A field name; any other index goes to the object's own `[[`.
+#' @param i A field name; `[[` on the pointer itself also takes a position in the field order. Any other index goes to the object's own `[[` / `[[<-`.
 #' @param ... Additional arguments.
 #' @method [[<- Engine
 #' @export
