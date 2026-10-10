@@ -7606,7 +7606,7 @@ fn env_field_methods() {
         .find(".rdata_get_Engine(self, name)")
         .expect("field branch");
     let lookup = wrapper
-        .find("obj <- Engine[[name]]")
+        .find(".miniextendr_env_method(self, name, Engine)")
         .expect("method lookup");
     assert!(branch < lookup, "{wrapper}");
     assert!(
