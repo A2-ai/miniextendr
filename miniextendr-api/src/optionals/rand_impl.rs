@@ -262,8 +262,7 @@ impl RDistributions for RRng {
 /// Adapter trait for exposing any [`rand::RngExt`] to R.
 ///
 /// This trait provides R-friendly methods for random number generation.
-/// It has a blanket implementation for all types implementing `Rng`,
-/// so any Rust RNG can be exposed to R with no additional code.
+/// Implement it on a concrete class that owns mutable RNG state.
 ///
 /// # Methods
 ///
@@ -315,7 +314,7 @@ impl RDistributions for RRng {
 ///
 /// # Design Note
 ///
-/// Like `RIterator`, this trait does NOT have a blanket impl because
+/// This trait does not have a blanket impl because
 /// `rand::RngExt` methods require `&mut self`, but R's ExternalPtr pattern
 /// provides `&self`. Users must implement manually using interior mutability.
 #[miniextendr]
@@ -438,7 +437,7 @@ pub trait RRngOps {
 ///
 /// # Design Note
 ///
-/// Like `RIterator` and `RRngOps`, this trait does NOT have a blanket impl
+/// Like `RRngOps`, this trait does not have a blanket impl
 /// because sampling requires mutable RNG state, but R's ExternalPtr pattern
 /// provides `&self`. Users must use interior mutability (RefCell, Mutex, etc.).
 #[miniextendr]

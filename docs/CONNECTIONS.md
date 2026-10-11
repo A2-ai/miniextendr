@@ -777,3 +777,57 @@ while a lock is held.
 - [THREADS.md](THREADS.md) -- Thread safety and the worker thread model
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling across the FFI boundary
 - Test fixtures: `rpkg/src/rust/connection_tests.rs`
+
+## Iterator and random streams
+
+`IteratorReader<I>` adapts any `Iterator<Item = u8>` to `std::io::Read`.
+It works with the existing `RConnectionIo` builder. Construction and empty
+reads consume nothing; EOF is permanent. A connection reads sequentially, so it
+does not need ALTREP's finite vector length or cache for repeated indexing.
+
+For raw RNG bytes, `rand` already provides the adapter:
+
+```rust,ignore
+use miniextendr_api::connection::RConnectionIo;
+use miniextendr_api::rand::{RngReader, SeedableRng, rngs::StdRng};
+
+let connection = RConnectionIo::new(RngReader(StdRng::seed_from_u64(42)))
+    .description("random bytes")
+    .build_read();
+```
+
+Enable `connections` and `rand`. This is an unbounded stream; the R caller
+chooses how many bytes to read with `readBin(con, "raw", n)`.
+
+For `rand_distr` samples, use its existing `Distribution::sample_iter` and
+choose the byte encoding explicitly. Enable `connections` and `rand_distr`:
+
+```rust,ignore
+use miniextendr_api::connection::{IteratorReader, RConnectionIo};
+use miniextendr_api::rand::{SeedableRng, rngs::StdRng};
+use miniextendr_api::rand_distr::{Distribution, Normal};
+
+let samples = Normal::new(0.0_f64, 1.0).unwrap()
+    .sample_iter(StdRng::seed_from_u64(42));
+let connection = RConnectionIo::new(
+    IteratorReader::new(samples.flat_map(f64::to_le_bytes)),
+)
+.description("normal samples")
+.build_read();
+```
+
+Read with `readBin(con, "double", n, size = 8L, endian = "little")`. A read
+can stop partway through a sample: `FlatMap` retains the remaining bytes, so
+changing read sizes does not discard or redraw samples. Add `take(n)` to the
+sample iterator before encoding to make a finite stream.
+
+These examples own an independent Rust RNG. `RRng` instead uses R's global
+RNG state; a guard around the function that creates the connection does not
+cover reads performed later. A custom `RConnectionImpl::read` using `RRng`
+must acquire and release R's RNG state inside each guarded read callback.
+Never retain an RNG-state guard for the connection's entire lifetime.
+
+The same distribution iterator can back finite ALTREP data with
+`samples.into_altrep_data(n)`. Its cache gives repeated indices stable values;
+the connection advances on every read. Neither approach needs another
+distribution-specific container or an `itertools` feature.

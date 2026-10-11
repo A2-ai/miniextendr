@@ -1205,7 +1205,9 @@ pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
 
 pub(crate) mod access;
 mod io_adapters;
+mod iterator;
 pub use io_adapters::*;
+pub use iterator::IteratorReader;
 
 // region: standard streams — issue #175
 
