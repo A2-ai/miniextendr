@@ -2827,9 +2827,11 @@ fn sidecar_accessor_names(
 /// occupy the same namespace as functions. Include them so a free function
 /// cannot silently replace a class object (#1677). S4's `setClass()` is not a
 /// binding assignment: its same-named constructor function remains valid.
+/// Guarded S3/S4/S7 generic declarations may repeat across classes, but must
+/// not share their binding with an ordinary function or class object (#1677).
 ///
 /// Returns `Err(message)` naming the offending binding on the first collision
-/// found; `Ok(())` when every recognized top-level definition name is unique.
+/// found; `Ok(())` when names are unique apart from shared generic declarations.
 #[cfg(not(target_arch = "wasm32"))]
 fn detect_duplicate_wrapper_defs(
     content: &str,
@@ -2839,25 +2841,43 @@ fn detect_duplicate_wrapper_defs(
 
     let mut seen: HashMap<&str, &str> = HashMap::new();
 
-    for line in content.lines() {
-        // Method assignments and indented closures are not bare top-level
-        // bindings. Repeated guarded generic declarations stay outside this
-        // scan: several classes may intentionally share one generic.
-        let Some((name, rhs)) = parse_top_level_assignment(line) else {
-            continue;
-        };
-        let kind = if rhs.starts_with("function") {
-            "function"
-        } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
-            .iter()
-            .any(|prefix| rhs.starts_with(prefix))
-        {
-            "class/namespace object"
+    let mut lines = content.lines();
+    while let Some(line) = lines.next() {
+        let (name, kind) = if let Some(name) = parse_guarded_generic(line, lines.clone()) {
+            (name, "guarded generic")
         } else {
-            continue;
+            // Method assignments and indented closures are not bare top-level
+            // bindings. Only the known generic guards above expose nested defs.
+            let Some((name, rhs)) = parse_top_level_assignment(line) else {
+                continue;
+            };
+            let kind = if rhs.starts_with("function") {
+                "function"
+            } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
+                .iter()
+                .any(|prefix| rhs.starts_with(prefix))
+            {
+                "class/namespace object"
+            } else {
+                continue;
+            };
+            (name, kind)
         };
 
         if let Some(previous) = seen.insert(name, kind) {
+            if previous == "guarded generic" && kind == "guarded generic" {
+                // Several classes intentionally dispatch through one generic.
+                continue;
+            }
+            if previous == "guarded generic" || kind == "guarded generic" {
+                return Err(format!(
+                    "miniextendr: wrapper name `{name}` is used by both a guarded generic \
+                     and another generated binding ({previous} and {kind}). Package load \
+                     order would replace one binding or prevent method dispatch. Rename \
+                     the ordinary function with `r_name = \"...\"`, the class with \
+                     `class = \"...\"`, or choose a distinct generic name."
+                ));
+            }
             if previous != "function" || kind != "function" {
                 return Err(format!(
                     "miniextendr: wrapper name `{name}` is defined more than once \
@@ -2893,6 +2913,43 @@ fn detect_duplicate_wrapper_defs(
     }
 
     Ok(())
+}
+
+/// Recognize the generic guards emitted by `r_class_formatter` and the S4/S7
+/// inherent/trait generators. This is a scan of generated forms, not an R parser:
+/// the guard must start at column zero and its first statement must create a
+/// generic. Never scan arbitrary indented assignments inside function bodies.
+/// Documentation markers cannot stand in for this: `noexport` / `@noRd` classes
+/// and trait implementations still declare generics without generic-doc markers.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_guarded_generic<'a>(line: &'a str, mut following: std::str::Lines<'a>) -> Option<&'a str> {
+    if !(line.starts_with("if (!base::exists(\"")
+        || line.starts_with("if (!exists(\"")
+        || line.starts_with("if (!base::inherits(base::get0(\""))
+    {
+        return None;
+    }
+    // S4 emits its complete guard and setGeneric call on one line.
+    if let Some((_, call)) = line.split_once(")) methods::setGeneric(\"") {
+        return call.split_once("\", ").map(|(name, _)| name);
+    }
+    if !line.ends_with(" {") {
+        return None;
+    }
+    // S3 and S7 put the assignment first in the guarded block, optionally
+    // preceded by a generated comment. Their shadow-fallback branch need not
+    // be scanned: it defines the same binding as the first branch.
+    let body = following.find(|line| {
+        let line = line.trim();
+        !line.is_empty() && !line.starts_with('#')
+    })?;
+    let (name, rhs) = parse_top_level_assignment(body.strip_prefix("  ")?)?;
+    // The wrapper's shadowed-formal pass can qualify UseMethod with base::.
+    let s3 = rhs.strip_prefix("function(x, ...) ").is_some_and(|body| {
+        body.strip_prefix("base::").unwrap_or(body) == format!("UseMethod(\"{name}\")")
+    });
+    (s3 || rhs.starts_with("S7::new_generic(") || rhs.starts_with("S7::new_external_generic("))
+        .then_some(name)
 }
 
 /// Parse a top-level `name <- function(...)` definition. Used both by the
@@ -4796,6 +4853,92 @@ mod tests {
             "if (!exists(\"shared\")) {\n",
             "  shared <- function(x) UseMethod(\"shared\")\n",
             "}\n",
+        );
+        assert!(detect_duplicate_wrapper_defs(content, &std::collections::HashMap::new()).is_ok());
+    }
+
+    #[test]
+    fn guarded_generics_cannot_collide_with_plain_bindings() {
+        for generic in [
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- function(x, ...) UseMethod(\"probe\")\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- function(x, ...) base::UseMethod(\"probe\")\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!exists(\"probe\", where = topenv(environment()), inherits = FALSE)) ",
+                "methods::setGeneric(\"probe\", function(x, ...) standardGeneric(\"probe\"))\n",
+            ),
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  # No existing binding; define a plain package-local S7 generic.\n",
+                "  probe <- S7::new_generic(\"probe\", \"x\", function(x, ...) S7::S7_dispatch())\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- S7::new_generic(\"probe\", \"x\", function(x, ...) S7::S7_dispatch())\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!base::inherits(base::get0(\"probe\", inherits = FALSE), \"S7_external_generic\")) {\n",
+                "  probe <- S7::new_external_generic(\"pkg\", \"probe\", \"x\")\n",
+                "}\n",
+            ),
+        ] {
+            // The same generic may be emitted by many inherent/trait impls.
+            let repeated = format!("{generic}{generic}");
+            assert!(
+                detect_duplicate_wrapper_defs(&repeated, &std::collections::HashMap::new()).is_ok(),
+                "{repeated}"
+            );
+            for binding in [
+                "probe <- function(x) .Call(C_probe, x)\n",
+                "probe <- new.env(parent = emptyenv())\n",
+            ] {
+                // Classes precede free functions; trait impls follow them.
+                for content in [format!("{generic}{binding}"), format!("{binding}{generic}")] {
+                    let error =
+                        detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+                            .expect_err("a generated binding must not mask a generic");
+                    assert!(error.contains("`probe`"), "{error}");
+                    assert!(error.contains("guarded generic"), "{error}");
+                    assert!(error.contains("r_name"), "{error}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn guarded_generics_recognize_quoted_operator_names() {
+        let generic = concat!(
+            "if (!base::exists(\"%probe%\", mode = \"function\")) {\n",
+            "  `%probe%` <- function(x, ...) UseMethod(\"%probe%\")\n",
+            "}\n",
+        );
+        let content = format!("{generic}`%probe%` <- function(x, y) .Call(C_probe, x, y)\n");
+        let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+            .expect_err("quoted assignment names must match the generic name");
+        assert!(error.contains("`%probe%`"), "{error}");
+    }
+
+    #[test]
+    fn duplicate_scan_ignores_local_and_non_generic_guards() {
+        let content = concat!(
+            "probe <- function(x) {\n",
+            "  if (!base::exists(\"probe\", mode = \"function\")) {\n",
+            "    probe <- function(x, ...) UseMethod(\"probe\")\n",
+            "  }\n",
+            "}\n",
+            "if (!base::exists(\"cached\", mode = \"function\")) {\n",
+            "  cached <- function(x) x\n",
+            "}\n",
+            "cached <- function(x) .Call(C_cached, x)\n",
         );
         assert!(detect_duplicate_wrapper_defs(content, &std::collections::HashMap::new()).is_ok());
     }
