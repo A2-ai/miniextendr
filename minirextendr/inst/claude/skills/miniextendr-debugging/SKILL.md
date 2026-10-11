@@ -150,7 +150,9 @@ actually meet:
 - **MXL301** — `_unchecked` FFI call outside a known-safe context (ALTREP
   callback, `with_r_unwind_protect`, `with_r_thread`). Use the checked
   variant, or move the call into one of those contexts.
-- **MXL106** — `#[miniextendr]` function that isn't `pub`.
+- **MXL106** — a `#[miniextendr]` function with a `/// @export` tag that
+  isn't `pub`. The two disagree (the tag still exports it): make it `pub fn`,
+  or drop the tag to keep it private.
 - **MXL110** — parameter named after an R reserved word (`if`, `function`,
   `TRUE`, …) — the generated R wrapper would not parse. Rename it.
 
