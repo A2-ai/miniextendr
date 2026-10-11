@@ -2238,6 +2238,36 @@ const WRAPPERS_PREAMBLE_HEADER: &str =
 # which the wrapper's surrounding `return(...)` propagates as its result.
 ";
 
+/// Emit an optional preamble helper only when a collected fragment names it.
+///
+/// A name in a roxygen comment also keeps its helper, which is harmless.
+/// The one dependency between optional helpers is explicit:
+/// `.miniextendr_caller_call` raises through `.miniextendr_arg_error`. The
+/// helpers every preamble has (condition transport, the frame resolver, the
+/// conversion-error class) are written unconditionally.
+#[cfg(not(target_arch = "wasm32"))]
+fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::Cow<'_, str>]) {
+    let uses = |name: &str| fragments.iter().any(|fragment| fragment.contains(name));
+    let caller = uses(".miniextendr_caller_call");
+    for (needed, helper) in [
+        (caller, CALLER_CALL_HELPER),
+        (
+            uses(".miniextendr_field_at") || uses(".miniextendr_field_index_error"),
+            FIELD_AT_HELPER,
+        ),
+        (uses(".miniextendr_env_method"), ENV_METHOD_HELPER),
+        (
+            caller || uses(".miniextendr_arg_error") || uses(".miniextendr_match_arg"),
+            ARG_CHECK_HELPERS,
+        ),
+    ] {
+        if needed {
+            content.push_str(helper);
+            content.push('\n');
+        }
+    }
+}
+
 /// Write all R wrapper entries to a file.
 ///
 /// Called from [`miniextendr_write_wrappers`] (via `dyn.load`/`.Call` of the
@@ -2253,25 +2283,14 @@ pub fn write_r_wrappers_to_file(path: &str) {
     content.push_str(".miniextendr_raise_condition <- ");
     content.push_str(WRAPPER_RAISE_CONDITION_HELPER_FN);
     content.push_str("\n\n");
-    content.push_str(CALLER_CALL_HELPER);
-    content.push('\n');
     content.push_str(FRAME_CALL_HELPER);
     content.push('\n');
-    content.push_str(FIELD_AT_HELPER);
-    content.push('\n');
-    if MX_CLASS_NAMES
-        .iter()
-        .any(|class| class.class_system == "env")
-    {
-        content.push_str(ENV_METHOD_HELPER);
-        content.push('\n');
-    }
-    content.push_str(ARG_CHECK_HELPERS);
-    content.push('\n');
+    let fragments = collect_r_wrappers();
+    append_used_wrapper_helpers(&mut content, &fragments);
     content.push_str(&conversion_error_class_binding());
     content.push_str("\n\n");
 
-    for fragment in collect_r_wrappers() {
+    for fragment in fragments {
         content.push_str(fragment.as_ref());
         content.push_str("\n\n");
     }
@@ -2960,6 +2979,34 @@ pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn optional_preamble_helpers_follow_fragment_dependencies() {
+        use std::borrow::Cow;
+        let render = |fragment: &'static str| {
+            let mut text = String::new();
+            super::append_used_wrapper_helpers(&mut text, &[Cow::Borrowed(fragment)]);
+            text
+        };
+        assert!(render("f <- function() .Call(C_f)").is_empty());
+
+        let caller = render("f <- function() .miniextendr_caller_call()");
+        assert!(caller.contains(".miniextendr_caller_call <- function"));
+        assert!(caller.contains(".miniextendr_arg_error <- function"));
+        assert!(!caller.contains(".miniextendr_field_at <- function"));
+        assert!(!caller.contains(".miniextendr_env_method <- function"));
+
+        let field = render("f <- function(x) .miniextendr_field_at(fields, x, environment())");
+        assert!(field.contains(".miniextendr_field_at <- function"));
+        assert!(!field.contains(".miniextendr_arg_error <- function"));
+        let index = render("f <- function(x) .miniextendr_field_index_error('cls', environment())");
+        assert!(index.contains(".miniextendr_field_index_error <- function"));
+
+        let choices = render("f <- function(x) .miniextendr_match_arg_several(x, choices, 'x')");
+        assert!(choices.contains(".miniextendr_arg_error <- function"));
+        assert!(choices.contains(".miniextendr_match_arg_several <- function"));
+    }
 
     /// Run the class-ref placeholder resolver over `content` using `entries` as the registry.
     ///
