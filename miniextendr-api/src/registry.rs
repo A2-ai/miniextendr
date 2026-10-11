@@ -402,7 +402,9 @@ unsafe impl Sync for SidecarAccessorsEntry {}
 /// blocks with disagreeing `class = "..."` overrides) panic: silently keeping
 /// whichever entry linkme ordered last would resolve `.__MX_CLASS_REF_*__`
 /// placeholders nondeterministically. `field_syntax` may differ between the
-/// blocks ([`sidecar_accessor_fragments`] reads every entry).
+/// blocks ([`sidecar_accessor_fragments`] reads every entry). Distinct Rust
+/// types must also have distinct R class names: otherwise their class bindings
+/// and generated methods overwrite each other when the package loads (#1677).
 ///
 /// Host-only like `MX_CLASS_NAMES` itself — the consumers all live in the
 /// wrapper-writing path, which never runs on wasm32.
@@ -412,6 +414,7 @@ fn build_class_name_index<'a>(
 ) -> std::collections::HashMap<&'a str, &'a ClassNameEntry> {
     use std::collections::hash_map::Entry;
     let mut index = std::collections::HashMap::new();
+    let mut r_class_names = std::collections::HashMap::new();
     for e in entries {
         match index.entry(e.rust_type) {
             Entry::Vacant(slot) => {
@@ -433,6 +436,19 @@ fn build_class_name_index<'a>(
                     );
                 }
             }
+        }
+        if let Some(prev) = r_class_names.insert(e.r_class_name, e) {
+            assert!(
+                prev.rust_type == e.rust_type,
+                "R class `{}` is registered for both Rust type `{}` ({}) and `{}` ({}). \
+                 Distinct Rust types must use distinct R class names; change one \
+                 `class = \"...\"` override to avoid overwriting its class and methods.",
+                e.r_class_name,
+                prev.rust_type,
+                prev.class_system,
+                e.rust_type,
+                e.class_system,
+            );
         }
     }
     index
@@ -2501,10 +2517,11 @@ pub fn write_r_wrappers_to_file(path: &str) {
 
     // Detect collisions between separately-expanded wrapper definitions (#991).
     //
-    // Two top-level `name <- function` definitions of the same name silently
+    // Repeated top-level function or class/namespace definitions silently
     // clobber each other at load time (last write wins), dispatching calls to
-    // the wrong implementation. The compile-time `check_s7_shortcut_collisions`
-    // only sees a single impl block; collisions that span macro expansions --
+    // the wrong implementation or replacing the class object altogether.
+    // The compile-time `check_s7_shortcut_collisions` only sees one impl block;
+    // collisions that span macro expansions --
     // an S7 shortcut vs a `#[derive(ExternalPtr)]` sidecar accessor, or two S7
     // impl blocks on the same type -- are only visible here, where every name
     // set is assembled. We resolve the sidecar-accessor prefix through
@@ -2783,8 +2800,8 @@ fn sidecar_accessor_names(
     out
 }
 
-/// Detect a second top-level `name <- function` definition of any wrapper
-/// function in the assembled R wrapper text.
+/// Detect conflicting top-level function and class/namespace definitions in
+/// the assembled R wrapper text.
 ///
 /// This is the write-time counterpart to the compile-time
 /// `check_s7_shortcut_collisions` (in `miniextendr-macros`): it catches name
@@ -2806,76 +2823,187 @@ fn sidecar_accessor_names(
 /// its producing derive; when a duplicate matches one we name the derive in the
 /// message, otherwise we report the generic "defined more than once" form.
 ///
-/// Returns `Err(message)` naming the offending function on the first collision
-/// found; `Ok(())` when every top-level definition name is unique.
+/// Class and namespace bindings (`new.env`, `R6::R6Class`, `S7::new_class`)
+/// occupy the same namespace as functions. Include them so a free function
+/// cannot silently replace a class object (#1677). S4's `setClass()` is not a
+/// binding assignment: its same-named constructor function remains valid.
+/// Guarded S3/S4/S7 generic declarations may repeat across classes, but must
+/// not share their binding with an ordinary function or class object (#1677).
+/// A class object defined twice comes from two impl blocks of one type: each
+/// block generates the whole class (#1776), so the later one replaces the
+/// earlier one together with the methods bound to it.
+///
+/// Every message names both producers, read from the
+/// `# Generated from Rust …` header that opens each wrapper fragment.
+///
+/// Returns `Err(message)` naming the offending binding on the first collision
+/// found; `Ok(())` when names are unique apart from shared generic declarations.
 #[cfg(not(target_arch = "wasm32"))]
 fn detect_duplicate_wrapper_defs(
     content: &str,
     accessor_producers: &std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
-    use std::collections::HashSet;
+    use std::collections::HashMap;
 
-    let mut seen: HashSet<&str> = HashSet::new();
+    // Binding name -> (kind, producer) of its first definition.
+    let mut seen: HashMap<&str, (&str, String)> = HashMap::new();
+    let mut producer = String::from("an unattributed wrapper fragment");
 
-    for line in content.lines() {
-        // Only top-level definitions matter -- class-method assignments like
-        // `S7::method(generic, Class) <- function(...)` and indented closures
-        // (R6 methods, S7 getters) are not bare `name <- function` forms and
-        // must not trip the scan.
-        let Some(name) = parse_top_level_fn_def_name(line) else {
+    let mut lines = content.lines();
+    while let Some(line) = lines.next() {
+        if let Some(header) = line.strip_prefix("# Generated from ") {
+            producer = header.to_string();
             continue;
+        }
+        // A sidecar accessor's header gives only a source position; the line
+        // after it names the field and the Rust type.
+        if let Some(wraps) = line.strip_prefix("# Wraps ") {
+            let what = wraps.split_once(" via ").map_or(wraps, |(what, _)| what);
+            producer = format!("{what} ({producer})");
+            continue;
+        }
+        let (name, kind) = if let Some(name) = parse_guarded_generic(line, lines.clone()) {
+            (name, "guarded generic")
+        } else {
+            // Method assignments and indented closures are not bare top-level
+            // bindings. Only the known generic guards above expose nested defs.
+            let Some((name, rhs)) = parse_top_level_assignment(line) else {
+                continue;
+            };
+            let kind = if rhs.starts_with("function") {
+                "function"
+            } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
+                .iter()
+                .any(|prefix| rhs.starts_with(prefix))
+            {
+                "class/namespace object"
+            } else {
+                continue;
+            };
+            (name, kind)
         };
 
-        if !seen.insert(name) {
-            // Second definition of this name -> collision.
-            if let Some(producer) = accessor_producers.get(name) {
-                return Err(format!(
-                    "miniextendr: wrapper function `{name}` is defined more than once. \
-                     One definition comes from {producer}; the other from an S7 fast-path \
-                     shortcut or `#[miniextendr]` function of the same name. The second \
-                     definition silently overwrites the first at load time. Rename the \
-                     colliding S7 method (`#[miniextendr(s7(r_name = \"...\"))]`), opt it \
-                     out of the shortcut (`#[miniextendr(s7(no_shortcut))]`), or rename the \
-                     sidecar field."
-                ));
-            }
+        let Some((previous, first)) = seen.get(name) else {
+            seen.insert(name, (kind, producer.clone()));
+            continue;
+        };
+        let previous = *previous;
+        if previous == "guarded generic" && kind == "guarded generic" {
+            // Several classes intentionally dispatch through one generic.
+            continue;
+        }
+        let both = format!("{previous} from {first}, {kind} from {producer}");
+        if previous == "guarded generic" || kind == "guarded generic" {
             return Err(format!(
-                "miniextendr: wrapper function `{name}` is defined more than once in the \
-                 generated R wrappers. Two `#[miniextendr]`-generated top-level functions \
-                 emit the same name and the second silently overwrites the first at load \
-                 time. Common causes: two `#[miniextendr(s7)]` impl blocks (or an S7 \
-                 shortcut and another generated function) sharing a `<Class>_<method>` \
-                 name — rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or opt it out \
-                 of the shortcut (`#[miniextendr(s7(no_shortcut))]`); or two trait impls \
-                 whose generated standalone wrapper names are not class-qualified — rename \
-                 the colliding method (`#[miniextendr(<system>(r_name = \"...\"))]`)."
+                "miniextendr: wrapper name `{name}` is used by both a guarded generic \
+                 and another generated binding ({both}). Package load order would \
+                 replace one binding or prevent method dispatch. Rename the ordinary \
+                 function with `r_name = \"...\"`, the class with `class = \"...\"`, \
+                 or choose a distinct generic name."
             ));
         }
+        if previous != "function" && kind != "function" {
+            return Err(format!(
+                "miniextendr: class `{name}` is defined more than once ({both}). The \
+                 second definition replaces the first at load time, together with the \
+                 methods bound to it. Each `#[miniextendr]` impl block of a type defines \
+                 the whole class (#1776): keep the type's methods in one impl block. If \
+                 the blocks belong to different Rust types, give one a distinct \
+                 `class = \"...\"`."
+            ));
+        }
+        if previous != "function" || kind != "function" {
+            return Err(format!(
+                "miniextendr: wrapper name `{name}` is defined more than once ({both}). \
+                 The second definition overwrites the first at load time. Give the \
+                 class a distinct `class = \"...\"` name or rename the colliding \
+                 function with `r_name = \"...\"`."
+            ));
+        }
+        // Second function definition of this name -> collision.
+        if let Some(derive) = accessor_producers.get(name) {
+            return Err(format!(
+                "miniextendr: wrapper function `{name}` is defined more than once \
+                 ({both}). One definition comes from {derive}; the other from an S7 \
+                 fast-path shortcut or `#[miniextendr]` function of the same name. The \
+                 second definition silently overwrites the first at load time. Rename \
+                 the colliding S7 method (`#[miniextendr(s7(r_name = \"...\"))]`), opt \
+                 it out of the shortcut (`#[miniextendr(s7(no_shortcut))]`), or rename \
+                 the sidecar field."
+            ));
+        }
+        return Err(format!(
+            "miniextendr: wrapper function `{name}` is defined more than once in the \
+             generated R wrappers ({both}). Two `#[miniextendr]`-generated top-level \
+             functions emit the same name and the second silently overwrites the first \
+             at load time. Common causes: two `#[miniextendr(s7)]` impl blocks (or an S7 \
+             shortcut and another generated function) sharing a `<Class>_<method>` \
+             name — rename one (`#[miniextendr(s7(r_name = \"...\"))]`) or opt it out \
+             of the shortcut (`#[miniextendr(s7(no_shortcut))]`); or two trait impls \
+             whose generated standalone wrapper names are not class-qualified — rename \
+             the colliding method (`#[miniextendr(<system>(r_name = \"...\"))]`)."
+        ));
     }
 
     Ok(())
 }
 
-/// Parse the function name from a top-level `name <- function(...)` definition
-/// line, or return `None` when the line is not such a definition.
-///
-/// Recognises only **top-level** definitions: the line must start at column 0
-/// (no leading whitespace -- indented forms are R6/S7 closures, not standalone
-/// wrappers) and the left-hand side must be a single R name, either bare or
-/// backtick-quoted (`` `[.foo` <- function `` is how a non-syntactic S3 method
-/// is written, #1475; the name is returned without the backticks, escapes kept
-/// as the macro's name renderer emitted them). The closing backtick is found
-/// before the assignment arrow, so replacement methods such as `` `[<-.Foo` ``
-/// parse. Lines where the LHS is a call (e.g. `S7::method(...) <- function`)
-/// or contains `$` / `[[` / `::` are not bare definitions and are skipped.
+/// Recognize the generic guards emitted by `r_class_formatter` and the S4/S7
+/// inherent/trait generators. This is a scan of generated forms, not an R parser:
+/// the guard must start at column zero and its first statement must create a
+/// generic. Never scan arbitrary indented assignments inside function bodies.
+/// Documentation markers cannot stand in for this: `noexport` / `@noRd` classes
+/// and trait implementations still declare generics without generic-doc markers.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_guarded_generic<'a>(line: &'a str, mut following: std::str::Lines<'a>) -> Option<&'a str> {
+    if !(line.starts_with("if (!base::exists(\"")
+        || line.starts_with("if (!exists(\"")
+        || line.starts_with("if (!base::inherits(base::get0(\""))
+    {
+        return None;
+    }
+    // S4 emits its complete guard and setGeneric call on one line.
+    if let Some((_, call)) = line.split_once(")) methods::setGeneric(\"") {
+        return call.split_once("\", ").map(|(name, _)| name);
+    }
+    if !line.ends_with(" {") {
+        return None;
+    }
+    // S3 and S7 put the assignment first in the guarded block, optionally
+    // preceded by a generated comment. Their shadow-fallback branch need not
+    // be scanned: it defines the same binding as the first branch.
+    let body = following.find(|line| {
+        let line = line.trim();
+        !line.is_empty() && !line.starts_with('#')
+    })?;
+    let (name, rhs) = parse_top_level_assignment(body.strip_prefix("  ")?)?;
+    // The wrapper's shadowed-formal pass can qualify UseMethod with base::.
+    let s3 = rhs.strip_prefix("function(x, ...) ").is_some_and(|body| {
+        body.strip_prefix("base::").unwrap_or(body) == format!("UseMethod(\"{name}\")")
+    });
+    (s3 || rhs.starts_with("S7::new_generic(") || rhs.starts_with("S7::new_external_generic("))
+        .then_some(name)
+}
+
+/// Parse a top-level `name <- function(...)` definition. Used both by the
+/// duplicate scan and by standalone-function documentation grouping.
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
-    // Top-level only: reject any leading whitespace.
+    let (name, rhs) = parse_top_level_assignment(line)?;
+    rhs.starts_with("function").then_some(name)
+}
+
+/// Parse a bare top-level assignment, returning its name and trimmed RHS.
+///
+/// Ignore indented closures and targets containing `$`, `[[` or `::`, or a
+/// call such as `S7::method(...)`. Backtick-quoted names are returned without
+/// the quotes, with escapes kept as emitted. Find the closing backtick before
+/// the arrow so replacement names such as `` `[<-.Foo` `` parse correctly.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_top_level_assignment(line: &str) -> Option<(&str, &str)> {
     if line.starts_with([' ', '\t']) {
         return None;
     }
-    // Find the closing backtick before looking for the assignment: replacement
-    // methods such as `[<-.Foo` contain `<-` inside the symbol itself.
     if let Some(quoted) = line.strip_prefix('`') {
         let mut escaped = false;
         for (index, ch) in quoted.char_indices() {
@@ -2885,46 +3013,21 @@ fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
                 escaped = true;
             } else if ch == '`' {
                 let rhs = quoted[index + 1..].trim_start().strip_prefix("<-")?;
-                return (!quoted[..index].is_empty() && rhs.trim_start().starts_with("function"))
-                    .then_some(&quoted[..index]);
+                return (!quoted[..index].is_empty())
+                    .then_some((&quoted[..index], rhs.trim_start()));
             }
         }
         return None;
     }
     let (lhs, rhs) = line.split_once("<-")?;
-    // RHS must be (after trimming) the start of a `function` definition.
-    if !rhs.trim_start().starts_with("function") {
-        return None;
-    }
     let name = lhs.trim();
-    if name.is_empty() {
-        return None;
-    }
-    // Backtick-quoted name: anything goes inside, as long as the quotes close
-    // and the LHS is nothing but the quoted name.
-    if let Some(inner) = name
-        .strip_prefix('`')
-        .and_then(|rest| rest.strip_suffix('`'))
-    {
-        return (!inner.is_empty() && !inner.contains('`')).then_some(inner);
-    }
-    // Bare identifier only: R names may contain letters, digits, `.` and `_`,
-    // and must not start with a digit. Anything else (a call on the LHS, a `$`
-    // assignment or a `::`-qualified target) is not a standalone wrapper
-    // definition we own. Backtick-quoted names were handled above.
-    let mut chars = name.chars();
-    let first = chars.next()?;
+    let first = name.chars().next()?;
     if !(first.is_ascii_alphabetic() || first == '.') {
         return None;
     }
-    if name
-        .chars()
+    name.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
-    {
-        Some(name)
-    } else {
-        None
-    }
+        .then_some((name, rhs.trim_start()))
 }
 // endregion
 
@@ -2942,25 +3045,32 @@ fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
 /// `R/miniextendr-wrappers.R`. NAMESPACE generation is left to roxygen2
 /// (`devtools::document()`).
 ///
+/// A panic, such as a name collision found while assembling the wrappers, is
+/// raised as an R error, so the install stops with the message instead of
+/// aborting R at this non-unwinding boundary.
+///
 /// # Safety
 ///
 /// `path_sexp` must be a valid STRSXP of length >= 1.
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> crate::SEXP {
-    unsafe {
-        use crate::{SEXP, SexpExt};
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        || unsafe {
+            use crate::{SEXP, SexpExt};
 
-        let char_sexp = path_sexp.string_elt_unchecked(0);
-        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-        let path = c_str
-            .to_str()
-            .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let char_sexp = path_sexp.string_elt_unchecked(0);
+            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+            let path = c_str
+                .to_str()
+                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
 
-        write_r_wrappers_to_file(path);
+            write_r_wrappers_to_file(path);
 
-        SEXP::nil()
-    }
+            SEXP::nil()
+        },
+        None,
+    )
 }
 
 /// C-callable entry point for `wasm_registry.rs` generation.
@@ -2968,7 +3078,8 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
 /// Pairs with [`miniextendr_write_wrappers`]: same loaded object, separate `.Call`,
 /// independent output path. Host-only; the generated file itself is then
 /// consumed at compile time by the user crate's wasm32 build via
-/// `install_wasm_runtime_slices`.
+/// `install_wasm_runtime_slices`. A panic is raised as an R error, as in
+/// [`miniextendr_write_wrappers`].
 ///
 /// # Safety
 ///
@@ -2976,19 +3087,22 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP) -> crate::SEXP {
-    unsafe {
-        use crate::{SEXP, SexpExt};
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        || unsafe {
+            use crate::{SEXP, SexpExt};
 
-        let char_sexp = path_sexp.string_elt_unchecked(0);
-        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-        let path = c_str
-            .to_str()
-            .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let char_sexp = path_sexp.string_elt_unchecked(0);
+            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+            let path = c_str
+                .to_str()
+                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
 
-        crate::wasm_registry_writer::write_wasm_registry_to_file(path);
+            crate::wasm_registry_writer::write_wasm_registry_to_file(path);
 
-        SEXP::nil()
-    }
+            SEXP::nil()
+        },
+        None,
+    )
 }
 // endregion
 
@@ -3127,6 +3241,62 @@ mod tests {
             },
         ];
         let _ = build_class_name_index(entries.iter());
+    }
+
+    /// R class names belong to one Rust type, regardless of the selected
+    /// class systems or the order linkme supplies the registrations.
+    #[test]
+    fn class_name_index_rejects_shared_r_class_names() {
+        for class_system in ["env", "r6", "s3", "s4", "s7", "vctrs"] {
+            let entries = [
+                ClassNameEntry {
+                    rust_type: "First",
+                    r_class_name: "Shared",
+                    class_system: "env",
+                    field_syntax: false,
+                },
+                ClassNameEntry {
+                    rust_type: "Second",
+                    r_class_name: "Shared",
+                    class_system,
+                    field_syntax: true,
+                },
+            ];
+            for ordered in [[&entries[0], &entries[1]], [&entries[1], &entries[0]]] {
+                let error = std::panic::catch_unwind(|| build_class_name_index(ordered))
+                    .err()
+                    .expect("a shared R class would overwrite the other type's methods");
+                let message = error.downcast_ref::<String>().unwrap();
+                assert!(message.contains("R class `Shared`"), "{message}");
+                assert!(message.contains("`First` (env)"), "{message}");
+                assert!(
+                    message.contains(&format!("`Second` ({class_system})")),
+                    "{message}"
+                );
+                assert!(message.contains("class = \"...\""), "{message}");
+            }
+        }
+    }
+
+    #[test]
+    fn class_name_index_preserves_case_distinct_r_class_names() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "First",
+                r_class_name: "Widget",
+                class_system: "env",
+                field_syntax: false,
+            },
+            ClassNameEntry {
+                rust_type: "Second",
+                r_class_name: "widget",
+                class_system: "env",
+                field_syntax: false,
+            },
+        ];
+        let index = build_class_name_index(entries.iter());
+        assert_eq!(index["First"].r_class_name, "Widget");
+        assert_eq!(index["Second"].r_class_name, "widget");
     }
 
     /// A type's standalone sidecar accessors are written internal when one of
@@ -4676,6 +4846,221 @@ mod tests {
         let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
         assert!(err.contains("Shape_get_area"), "msg: {err}");
         assert!(err.contains("sidecar field `area`"), "msg: {err}");
+    }
+
+    #[test]
+    fn duplicate_class_and_function_bindings_fail_in_either_order() {
+        for class in [
+            "Widget <- new.env(parent = emptyenv())",
+            "Widget <- R6::R6Class(\"Widget\")",
+            "Widget <- S7::new_class(\"Widget\")",
+            "`Widget` <- new.env(parent = emptyenv())",
+        ] {
+            let class = format!("# Generated from Rust impl `Widget` (lib.rs:10:6)\n{class}\n");
+            let function = "# Generated from Rust fn `widget` (lib.rs:30:8)\n\
+                            Widget <- function() .Call(C_widget)\n";
+            for content in [format!("{class}{function}"), format!("{function}{class}")] {
+                let error =
+                    detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+                        .expect_err("a function must not replace a class or namespace object");
+                assert!(error.contains("`Widget`"), "{error}");
+                assert!(error.contains("class/namespace object"), "{error}");
+                assert!(error.contains("r_name"), "{error}");
+                assert!(
+                    error.contains("Rust impl `Widget` (lib.rs:10:6)"),
+                    "{error}"
+                );
+                assert!(error.contains("Rust fn `widget` (lib.rs:30:8)"), "{error}");
+            }
+        }
+    }
+
+    /// Two labeled impl blocks of one type each define the class (#1776): the
+    /// second would drop the first block's methods.
+    #[test]
+    fn duplicate_class_objects_name_both_impl_blocks() {
+        for class in [
+            "Widget <- new.env(parent = emptyenv())",
+            "Widget <- R6::R6Class(\"Widget\",",
+            "Widget <- S7::new_class(\"Widget\",",
+        ] {
+            let content = format!(
+                "# Generated from Rust impl `Widget` (lib.rs:10:6)\n{class}\n\
+                 Widget$new <- function() .Call(C_new)\n\
+                 # Generated from Rust impl `Widget` (lib.rs:40:6)\n{class}\n"
+            );
+            let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+                .expect_err("a second class object drops the first block's methods");
+            assert!(
+                error.contains("class `Widget` is defined more than once"),
+                "{error}"
+            );
+            assert!(error.contains("(lib.rs:10:6)"), "{error}");
+            assert!(error.contains("(lib.rs:40:6)"), "{error}");
+            assert!(error.contains("one impl block"), "{error}");
+            assert!(error.contains("#1776"), "{error}");
+        }
+    }
+
+    #[test]
+    fn duplicate_scan_keeps_class_members_and_s4_constructors_separate() {
+        let content = concat!(
+            "Widget <- new.env(parent = emptyenv())\n",
+            "Widget$new <- function() .Call(C_new)\n",
+            "Widget$get <- function() .Call(C_get)\n",
+            "methods::setClass(\"S4Widget\", slots = c(ptr = \"externalptr\"))\n",
+            "S4Widget <- function() .Call(C_new_s4)\n",
+            "R6Widget <- R6::R6Class(\"R6Widget\",\n",
+            "  public = list(\n",
+            "    initialize = function() {}\n",
+            "  )\n",
+            ")\n",
+            "S7Widget <- S7::new_class(\"S7Widget\",\n",
+            "  constructor = function() {}\n",
+            ")\n",
+            "if (!base::exists(\"shared\", mode = \"function\")) {\n",
+            "  shared <- function(x, ...) UseMethod(\"shared\")\n",
+            "}\n",
+            "if (!base::exists(\"shared\", mode = \"function\")) {\n",
+            "  shared <- function(x, ...) UseMethod(\"shared\")\n",
+            "}\n",
+        );
+        assert!(detect_duplicate_wrapper_defs(content, &std::collections::HashMap::new()).is_ok());
+    }
+
+    #[test]
+    fn guarded_generics_cannot_collide_with_plain_bindings() {
+        for generic in [
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- function(x, ...) UseMethod(\"probe\")\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- function(x, ...) base::UseMethod(\"probe\")\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!exists(\"probe\", where = topenv(environment()), inherits = FALSE)) ",
+                "methods::setGeneric(\"probe\", function(x, ...) standardGeneric(\"probe\"))\n",
+            ),
+            concat!(
+                "if (!base::exists(\"probe\", mode = \"function\")) {\n",
+                "  # No existing binding; define a plain package-local S7 generic.\n",
+                "  probe <- S7::new_generic(\"probe\", \"x\", function(x, ...) S7::S7_dispatch())\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!exists(\"probe\", mode = \"function\")) {\n",
+                "  probe <- S7::new_generic(\"probe\", \"x\", function(x, ...) S7::S7_dispatch())\n",
+                "}\n",
+            ),
+            concat!(
+                "if (!base::inherits(base::get0(\"probe\", inherits = FALSE), \"S7_external_generic\")) {\n",
+                "  probe <- S7::new_external_generic(\"pkg\", \"probe\", \"x\")\n",
+                "}\n",
+            ),
+        ] {
+            // The same generic may be emitted by many inherent/trait impls.
+            let repeated = format!("{generic}{generic}");
+            assert!(
+                detect_duplicate_wrapper_defs(&repeated, &std::collections::HashMap::new()).is_ok(),
+                "{repeated}"
+            );
+            let generic = format!("# Generated from Rust impl `Shape` (shape.rs:3:6)\n{generic}");
+            for binding in [
+                "# Generated from Rust fn `probe` (probe.rs:7:8)\n\
+                 probe <- function(x) .Call(C_probe, x)\n",
+                "# Generated from Rust impl `probe` (probe.rs:7:8)\n\
+                 probe <- new.env(parent = emptyenv())\n",
+            ] {
+                // Classes precede free functions; trait impls follow them.
+                for content in [format!("{generic}{binding}"), format!("{binding}{generic}")] {
+                    let error =
+                        detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+                            .expect_err("a generated binding must not mask a generic");
+                    assert!(error.contains("`probe`"), "{error}");
+                    assert!(error.contains("guarded generic"), "{error}");
+                    assert!(error.contains("r_name"), "{error}");
+                    assert!(error.contains("`Shape` (shape.rs:3:6)"), "{error}");
+                    assert!(error.contains("`probe` (probe.rs:7:8)"), "{error}");
+                }
+            }
+        }
+    }
+
+    /// A generic shared by several classes is reported with the class that
+    /// declared it first, and a sidecar accessor with its field and type.
+    #[test]
+    fn duplicate_scan_names_first_generic_and_sidecar_producers() {
+        let generic = "if (!base::exists(\"Shape_get_area\", mode = \"function\")) {\n  \
+                       Shape_get_area <- function(x, ...) UseMethod(\"Shape_get_area\")\n}\n";
+        let content = format!(
+            "# Generated from Rust source line 4:5\n\
+             # Wraps sidecar field `area` on Rust type `Shape` via `C_get` and `C_set`.\n\
+             Shape_get_area <- function(x) .Call(C_get, x)\n\
+             # Generated from Rust impl `Circle` (circle.rs:9:6)\n{generic}\
+             # Generated from Rust impl `Square` (square.rs:9:6)\n{generic}"
+        );
+        let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+            .expect_err("the generic would replace the sidecar accessor");
+        assert!(
+            error.contains(
+                "function from sidecar field `area` on Rust type `Shape` (Rust source line 4:5)"
+            ),
+            "{error}"
+        );
+        assert!(
+            error.contains("guarded generic from Rust impl `Circle` (circle.rs:9:6)"),
+            "{error}"
+        );
+        assert!(!error.contains("Square"), "{error}");
+
+        // Reported with the first declaration when the plain binding follows.
+        let content = format!(
+            "# Generated from Rust impl `Circle` (circle.rs:9:6)\n{generic}\
+             # Generated from Rust impl `Square` (square.rs:9:6)\n{generic}\
+             # Generated from Rust fn `Shape_get_area` (lib.rs:1:8)\n\
+             Shape_get_area <- function(x) .Call(C_area, x)\n"
+        );
+        let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+            .expect_err("the function would replace the generic");
+        assert!(error.contains("`Circle` (circle.rs:9:6)"), "{error}");
+        assert!(
+            error.contains("Rust fn `Shape_get_area` (lib.rs:1:8)"),
+            "{error}"
+        );
+        assert!(!error.contains("Square"), "{error}");
+    }
+
+    #[test]
+    fn guarded_generics_recognize_quoted_operator_names() {
+        let generic = concat!(
+            "if (!base::exists(\"%probe%\", mode = \"function\")) {\n",
+            "  `%probe%` <- function(x, ...) UseMethod(\"%probe%\")\n",
+            "}\n",
+        );
+        let content = format!("{generic}`%probe%` <- function(x, y) .Call(C_probe, x, y)\n");
+        let error = detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+            .expect_err("quoted assignment names must match the generic name");
+        assert!(error.contains("`%probe%`"), "{error}");
+    }
+
+    #[test]
+    fn duplicate_scan_ignores_local_and_non_generic_guards() {
+        let content = concat!(
+            "probe <- function(x) {\n",
+            "  if (!base::exists(\"probe\", mode = \"function\")) {\n",
+            "    probe <- function(x, ...) UseMethod(\"probe\")\n",
+            "  }\n",
+            "}\n",
+            "if (!base::exists(\"cached\", mode = \"function\")) {\n",
+            "  cached <- function(x) x\n",
+            "}\n",
+            "cached <- function(x) .Call(C_cached, x)\n",
+        );
+        assert!(detect_duplicate_wrapper_defs(content, &std::collections::HashMap::new()).is_ok());
     }
 
     #[test]

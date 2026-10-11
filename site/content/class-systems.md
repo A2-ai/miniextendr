@@ -145,12 +145,14 @@ Trait dispatch works cross-package: a consumer package can call trait methods re
 If a type has more than one `#[miniextendr]` impl block, add `#[miniextendr(label = "...")]` to disambiguate them. Without a label, the second block causes a lint error (MXL009).
 
 ```rust
-#[miniextendr(label = "counter_core")]
+#[miniextendr(s4, label = "counter_core")]
 impl Counter { /* ... */ }
 
-#[miniextendr(label = "counter_ext")]
+#[miniextendr(s4, label = "counter_ext")]
 impl Counter { /* additional methods */ }
 ```
+
+Each block still generates the whole R class. Env, R6 and S7 blocks (and some S3 blocks) each define the class object, and the wrapper writer stops the install when a second block would replace it; keep such a class in one impl block. S4 blocks pass that check, though no test covers yet whether they combine correctly at runtime. See [Multiple Impl Blocks](/manual/class-systems/#multiple-impl-blocks) in the manual.
 
 ## Full reference
 

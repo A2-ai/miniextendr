@@ -638,10 +638,14 @@ pub fn get(&self) -> i32 { ... }
 Shortcut names share one R namespace with the `<ClassName>_<static_method>`
 functions emitted for static methods. A collision inside one impl block
 (typically via an `r_name` alias) is a compile error suggesting a rename or
-`s7(no_shortcut)`. Collisions with `#[derive(ExternalPtr)]` sidecar accessors
-(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`) are not yet detected —
-avoid naming an instance method `get_<field>`/`set_<field>` for a sidecar
-field, or use `s7(no_shortcut)` (see #991).
+`s7(no_shortcut)`. The wrapper writer checks across separate expansions too,
+including `#[derive(ExternalPtr)]` sidecar accessors
+(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`), free functions and
+other class impl blocks. Rename the colliding method or field, or use
+`s7(no_shortcut)` (see #991).
+
+The writer's other name checks cover every class system; see
+[Names the wrapper writer rejects](#names-the-wrapper-writer-rejects).
 
 ### Which generic a method attaches to
 
@@ -995,23 +999,63 @@ paths.
 
 ## Multiple Impl Blocks
 
-You can have multiple impl blocks with labels:
+A type can have more than one `#[miniextendr]` impl block when every block has
+a distinct `label` (lint rules MXL009 and MXL010):
 
 ```rust
-#[miniextendr(s3, label = "core")]
+#[miniextendr(s4, label = "core")]
 impl MyType {
     pub fn new() -> Self { ... }
     pub fn value(&self) -> i32 { ... }
 }
 
-#[miniextendr(s3, label = "math")]
+#[miniextendr(s4, label = "math")]
 impl MyType {
     pub fn add(&mut self, x: i32) { ... }
     pub fn multiply(&mut self, x: i32) { ... }
 }
 ```
 
-Both blocks generate methods for the same type.
+The label keeps the generated Rust names of the blocks apart, but each block
+still generates the whole R class (#1776). Env, R6 and S7 blocks each define
+the class object (`MyType <- new.env(...)`, `R6::R6Class(...)`,
+`S7::new_class(...)`), and so does an S3 block that has the constructor or whose
+class is named after the type. A second definition would replace the first,
+together with the methods bound to it, so the wrapper writer stops the install
+with an error naming both blocks. Until the blocks are merged per type (#1776),
+keep such a class in one impl block. S4 declares its class with
+`methods::setClass()` and vctrs with functions only, so their blocks define no
+class object and pass this check; no test covers yet whether their blocks
+combine correctly at runtime (#1776).
+
+## Names the wrapper writer rejects
+
+Each class, generic and function the macros generate is bound by name in the
+package namespace, and a later binding of a name replaces an earlier one when
+the package loads. A collision between two macro expansions is only visible
+when the wrapper writer assembles `R/<pkg>-wrappers.R` during `R CMD INSTALL`,
+so the install stops there, with an error naming both producers (the Rust impl,
+function or sidecar field, with its source position):
+
+- **Two Rust types with one R class name**, through `class = "..."`. Their
+  class objects and methods would overwrite each other.
+- **A class object and a function of the same name**: the Env or S3 class
+  environment (`Type <- new.env(...)`), `R6::R6Class(...)` or
+  `S7::new_class(...)`, against a free `#[miniextendr]` function, an S7
+  shortcut or a sidecar accessor. S4's `methods::setClass()` binds no name, so
+  the S4 constructor function shares the class name as intended.
+- **A class object defined twice**, by two labelled impl blocks of one type
+  (see [Multiple Impl Blocks](#multiple-impl-blocks)).
+- **A generic and a plain binding of the same name.** The S3, S4 and S7
+  generics that methods attach to are created inside `if (...)` guards. Several
+  classes may declare the same generic so their methods share dispatch, but a
+  function or class object with the generic's name would replace it or be
+  replaced by it.
+- **Two functions of the same name**, such as an S7 shortcut and a sidecar
+  accessor or a free function (#991).
+
+Rename the function or method with `r_name = "..."`, or the class with
+`class = "..."`.
 
 ---
 
