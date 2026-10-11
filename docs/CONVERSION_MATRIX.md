@@ -130,9 +130,9 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 | `Vec<u64>` (strict) | INTSXP or REALSXP | Per-element checked coercion; RAWSXP/LGLSXP rejected |
 | `Vec<Option<i64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<i64>` (strict); NA -> None |
 | `Vec<Option<u64>>` (strict) | INTSXP or REALSXP | Same input-type gate as `Vec<u64>` (strict); NA -> None |
-| `(A, B, ...)` (arity 2-8) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
-| `Option<(A, B, ...)>` | Both | `None` ↔ NULL; `Some` uses the same positional list. |
-| `Vec<(A, B, ...)>`, `Vec<Option<(A, B, ...)>>` | Both | A list of positional lists; optional missing rows are NULL. Field and row errors are batched. `Box<[(A, B, ...)]>` and enclosing collections reuse these conversions. |
+| `(A, B, ...)` (arity 1–12) | VECSXP only | Positional (names ignored); exact length required; all failing elements reported in one batched error |
+| `Option<(A, B, ...)>` | VECSXP or NULL | `None` ↔ NULL; `Some` uses the same positional list. |
+| `Vec<(A, B, ...)>`, `Vec<Option<(A, B, ...)>>` | VECSXP only | A list of positional lists; optional missing rows are NULL. Field and row errors are batched. `Box<[(A, B, ...)]>` and enclosing collections reuse these conversions. |
 | `List` / `NamedList` / `ListMut` | VECSXP only | A view of the argument list, no copy. A pairlist (`formals(f)`, `pairlist(...)`) is refused with a type error, `got pairlist, convert it with as.list()`: R's `is.list()` is `TRUE` for it, but a coerced copy would be a new object nothing roots (#1866). Call `as.list()` on the R side |
 | `Option<List>` / `Option<NamedList>` | VECSXP or NULL | NULL -> None; anything else as for `List` |
 | `Vec<List>` | VECSXP only | Each element must be a list (VECSXP; a pairlist is refused, not coerced); all failing elements reported in one batched error |
@@ -357,9 +357,19 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<Vec<T>>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP); each row is exactly what `Vec<T>` produces |
 | `Vec<Box<[T]>>` / `Vec<[T; N]>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP), as `Vec<Vec<T>>` |
 | `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
-| `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
+| `(A, B, ...)` | Unnamed list (VECSXP), arity 1–12; round-trips via `TryFromSexp` (positional, names ignored) |
+| `Option<(A, B, ...)>` | The positional list for `Some`, NULL for `None` |
+| `Vec<(A, B, ...)>` / `Vec<Option<(A, B, ...)>>` | List of positional lists; missing optional rows are NULL |
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 | `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
+
+Tuples with 1–12 fields also implement `IntoList` and `TryFromList`, using
+these same positional conversions and batched field errors. Element-wise
+`Coerce` covers all twelve arities, including the singleton; the existing
+blanket supplies its infallible `TryCoerce`. `()` remains R NULL. Fields that
+implement `Into<RValue>` also give the tuple an owned unnamed-list conversion
+for condition data. Heterogeneous tuples have no single native atomic layout
+or missing-value sentinel, so they do not implement `RNativeType` or `IsNA`.
 
 #### `Vec<Option<C>>` for collection element types
 
@@ -441,7 +451,6 @@ not gaps:
 | `Option<u8>` / `Vec<Option<u8>>` | `TryFromSexp` only (no `IntoR`) | RAWSXP has no NA sentinel; `None` has no faithful R representation. Inbound, R raw vectors never contain NA so `Option<u8>` is always `Some`. Return `Vec<u8>` instead. |
 | `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
-| `(A, B, ...)` tuples (1–12 fields) | `IntoR`, `TryFromSexp`, `IntoList`, `TryFromList` | Positional VECSXP lists of exactly the tuple length; names are ignored. All failing fields are reported together. Element-wise `Coerce` covers the same arities (and supplies infallible `TryCoerce` through its blanket impl). `()` remains R NULL. Fields implementing `Into<RValue>` also give the tuple an owned unnamed-list `From` conversion for condition data. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
 because the R representation (a string) is faithful in both directions. The
