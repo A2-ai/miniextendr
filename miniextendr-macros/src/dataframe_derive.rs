@@ -4,7 +4,7 @@
 //! across variants with `Option<T>` fill for missing fields).
 
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use syn::{Data, DeriveInput, Fields};
 
 // region: Attribute parsing
@@ -1183,13 +1183,30 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 /// The expression that turns companion column `self.#name` into a column SEXP:
 /// `IntoR` for the whole `Vec`, or for an `as_list` struct field
 /// `into_list_column`, which stores each cell's list in the rooted column as
-/// it is built (#1748).
-fn column_sexp(name: &syn::Ident, needs_into_list: bool) -> TokenStream {
-    if needs_into_list {
-        quote! { ::miniextendr_api::list::into_list_column(self.#name) }
-    } else {
-        quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) }
+/// it is built (#1748). `list_elem_ty` is the field type when the column is
+/// built that way.
+fn column_sexp(name: &syn::Ident, list_elem_ty: Option<&syn::Type>) -> TokenStream {
+    match list_elem_ty {
+        Some(ty) => {
+            let into_list_column = list_column_fn(ty, false);
+            quote! { #into_list_column(self.#name) }
+        }
+        None => quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) },
     }
+}
+
+/// `into_list_column::<#ty>` (or `into_option_list_column::<#ty>`, for a column
+/// with absent rows), spanned at the field type: a type without `IntoList` is
+/// then reported at the field instead of at the derive.
+pub(super) fn list_column_fn(ty: &syn::Type, optional: bool) -> TokenStream {
+    let span = syn::spanned::Spanned::span(ty);
+    let name = if optional {
+        "into_option_list_column"
+    } else {
+        "into_list_column"
+    };
+    let func = syn::Ident::new(name, span);
+    quote_spanned! {span=> ::miniextendr_api::list::#func::<#ty> }
 }
 
 /// Generate `DataFrameRow` expansion for struct types.
@@ -1444,7 +1461,6 @@ fn derive_struct_dataframe(
     };
 
     let dataframe_struct = quote! {
-        #[derive(Debug, Clone)]
         #vis struct #df_name #impl_generics #where_clause {
             #tag_field_decl
             #len_field_decl
@@ -1485,7 +1501,7 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
-            let column = column_sexp(name, fc.needs_into_list);
+            let column = column_sexp(name, fc.needs_into_list.then_some(&fc.vec_elem_ty));
             quote! { (#name_str, __scope.protect_raw(#column)) }
         })
         .collect();
@@ -1540,7 +1556,7 @@ fn derive_struct_dataframe(
                 ResolvedField::Single(data) => {
                     let col_name = &data.col_name;
                     let col_name_str = &data.col_name_str;
-                    let column = column_sexp(col_name, data.needs_into_list);
+                    let column = column_sexp(col_name, data.needs_into_list.then_some(&data.ty));
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),

@@ -1145,7 +1145,7 @@ mod tests {
 // Struct-typed variant fields flatten into prefixed columns by default.
 // The inner struct must #[derive(DataFrameRow)].
 // Per-field #[dataframe(as_list)] keeps the struct as an opaque list-column
-// (inner must then implement IntoR, e.g. via #[derive(IntoList)]).
+// (inner must then implement IntoList, e.g. via #[derive(IntoList)]).
 
 /// A simple 2-column inner struct for testing struct-field flattening.
 #[derive(Clone, Debug, DataFrameRow, IntoList)]

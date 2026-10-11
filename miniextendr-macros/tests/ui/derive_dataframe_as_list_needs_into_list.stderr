@@ -1,0 +1,68 @@
+error[E0277]: the trait bound `Inner: IntoList` is not satisfied
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:20:12
+   |
+20 |     inner: Inner,
+   |            ^^^^^ unsatisfied trait bound
+   |
+help: the trait `IntoList` is not implemented for `Inner`
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:7:1
+   |
+ 7 | struct Inner {
+   | ^^^^^^^^^^^^
+   = help: the following other types implement trait `IntoList`:
+             BTreeMap<K, V>
+             BTreeSet<T>
+             HashMap<K, V>
+             HashSet<T>
+             Vec<T>
+note: required by a bound in `miniextendr_api::list::into_list_column`
+  --> $WORKSPACE/miniextendr-api/src/list.rs
+   |
+   | pub fn into_list_column<T: IntoList>(values: Vec<T>) -> SEXP {
+   |                            ^^^^^^^^ required by this bound in `into_list_column`
+
+error[E0277]: the trait bound `Dir: IntoList` is not satisfied
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:28:14
+   |
+28 |         dir: Dir,
+   |              ^^^ unsatisfied trait bound
+   |
+help: the trait `IntoList` is not implemented for `Dir`
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:11:1
+   |
+11 | enum Dir {
+   | ^^^^^^^^
+   = help: the following other types implement trait `IntoList`:
+             BTreeMap<K, V>
+             BTreeSet<T>
+             HashMap<K, V>
+             HashSet<T>
+             Vec<T>
+note: required by a bound in `miniextendr_api::list::into_option_list_column`
+  --> $WORKSPACE/miniextendr-api/src/list.rs
+   |
+   | pub fn into_option_list_column<T: IntoList>(values: Vec<Option<T>>) -> SEXP {
+   |                                   ^^^^^^^^ required by this bound in `into_option_list_column`
+
+error[E0277]: the trait bound `Dir: IntoList` is not satisfied
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:28:14
+   |
+28 |         dir: Dir,
+   |              ^^^ unsatisfied trait bound
+   |
+help: the trait `IntoList` is not implemented for `Dir`
+  --> tests/ui/derive_dataframe_as_list_needs_into_list.rs:11:1
+   |
+11 | enum Dir {
+   | ^^^^^^^^
+   = help: the following other types implement trait `IntoList`:
+             BTreeMap<K, V>
+             BTreeSet<T>
+             HashMap<K, V>
+             HashSet<T>
+             Vec<T>
+note: required by a bound in `miniextendr_api::list::into_list_column`
+  --> $WORKSPACE/miniextendr-api/src/list.rs
+   |
+   | pub fn into_list_column<T: IntoList>(values: Vec<T>) -> SEXP {
+   |                            ^^^^^^^^ required by this bound in `into_list_column`

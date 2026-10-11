@@ -268,7 +268,7 @@ struct Row {
 |-----------|--------|----------|
 | `skip` | Omit field from data frame | Any field |
 | `rename = "name"` | Custom column name | Any field |
-| `as_list` | Suppress expansion | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
+| `as_list` | Suppress expansion (keep one list-column) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]`, maps, wrapper types; a struct or enum type that implements `IntoList` |
 | `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`/`Box<[T]>`/`&[T]`) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
 | `unnest` | Alias for `expand` | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
 | `width = N` | Pin expansion width (truncates longer vecs/slices) | `Vec<T>`, `Box<[T]>`, `&[T]` |
@@ -371,7 +371,7 @@ struct Row {
 
 **Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`. See [#604](https://github.com/A2-ai/miniextendr/issues/604).
 
-Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field, or an import alias to a newtype wrapper, if a non-`DataFrameRow` stdlib type needs to be stored.
+Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. `#[dataframe(as_list)]` does not help there unless the type implements `IntoList` (see [List-columns of struct or enum values](#list-columns-of-struct-or-enum-values)), which `CString` doesn't: store a `String` instead, or wrap the value in a newtype that implements `IntoList`.
 
 ### Nested enum fields: flatten and opt-outs
 
@@ -424,7 +424,7 @@ Factor levels are the variant idents in declaration order. `is.factor(df$dir)` r
 
 #### `as_list` — opaque list-column
 
-Use `#[dataframe(as_list)]` to keep any inner enum as a single opaque VECSXP list-column. Each present row gets a list cell; absent-variant rows get `NULL`:
+Use `#[dataframe(as_list)]` to keep an inner enum as a single opaque VECSXP list-column. Each present row gets a list cell; absent-variant rows get `NULL`:
 
 ```rust
 enum Event {
@@ -434,7 +434,8 @@ enum Event {
 // R column: dir — list-column; Move rows have a list cell, Stop rows have NULL.
 ```
 
-`as_list` works for any inner type (unit-only or payload-bearing, with or without `DataFrameRow`).
+The cell is the value's `IntoList` list, so the inner type must implement
+`IntoList`; see [List-columns of struct or enum values](#list-columns-of-struct-or-enum-values).
 
 #### `<field>_variant` collision detection
 
@@ -559,13 +560,36 @@ struct Measurement { /* ... */ }
 
 ### Requirements
 
-A struct row needs no trait besides the derive: nothing it generates turns a
-single row into a list. Derive or write `IntoList` only if you also return one
-row to R as a list, and then any impl works, derived or hand-written.
+A row needs no trait besides the derive: nothing it generates turns a single
+row into a list, and the generated `{Row}DataFrame` companion derives nothing,
+so the field types need no `Debug` or `Clone` either. Derive or write
+`IntoList` only if you also return one row to R as a list, and then any impl
+works, derived or hand-written.
 
-A unit-only enum's derive also emits `IntoR` (a one-element factor) and
-`IntoList`, which the `as_list` path uses when the enum is a field of an
-outer row. Payload enums get neither.
+#### List-columns of struct or enum values
+
+A field whose type is a plain struct or enum path (`Point`, `geom::Point`,
+`Direction`) and carries `#[dataframe(as_list)]` becomes a list-column whose
+cells are the values' `IntoList` lists. That type must implement `IntoList`,
+and a missing impl is reported at the field's type:
+
+- a struct: `#[derive(IntoList)]`, or a hand-written impl;
+- a unit-only enum: its own `#[derive(DataFrameRow)]` also emits `IntoR`
+  (a one-element factor) and `IntoList`;
+- a payload enum: a hand-written `impl IntoList` (`#[derive(IntoList)]` takes
+  structs only).
+
+```rust
+#[derive(Clone, IntoList)]
+struct Point { x: f64, y: f64 }
+
+#[derive(Clone, DataFrameRow)]
+struct Row {
+    id: i32,
+    #[dataframe(as_list)]
+    origin: Point, // df$origin is list(list(x = 1, y = 2), ...)
+}
+```
 
 ## Reading data frames back (`FromDataFrame`)
 
@@ -946,7 +970,7 @@ naming convergence was completed in #783.
 ## Feature flags
 
 - **Base functionality**: no features required.
-- **`serde`**: enables `impl IntoList for T: Serialize`, the `SerdeRows<T>` wrapper, and `#[derive(Serialize, DataFrameRow)]`.
+- **`serde`**: enables `AsSerialize<T>` (any `Serialize` value to R data), the `SerdeRows<T>` wrapper, and `#[derive(Serialize, DataFrameRow)]`.
 - **`rayon`**: enables the `_par` verbs and parallelizes `DataFrame::builder`;
   the builder itself remains available without this feature.
 
