@@ -1808,6 +1808,24 @@ pub fn vec_complex_altrep(n: i32) -> Altrep<Vec<Rcomplex>> {
     )
 }
 
+/// A fixed-size integer array as ALTREP: R reads the `[i32; 3]` itself.
+#[miniextendr(noexport)]
+pub fn array_int_altrep() -> Altrep<[i32; 3]> {
+    Altrep([1, 2, 3])
+}
+
+/// A fixed-size string array as ALTREP.
+#[miniextendr(noexport)]
+pub fn array_string_altrep() -> Altrep<[String; 2]> {
+    Altrep([String::from("one"), String::from("two")])
+}
+
+/// A boxed unsized marker: R gets the boxed slice without a copy.
+#[miniextendr(noexport)]
+pub fn boxed_slice_marker_altrep() -> Box<Altrep<[f64]>> {
+    Box::new(Altrep([0.5, 1.5, 2.5]))
+}
+
 /// Create a Box<\[f64\]> ALTREP real vector.
 /// @rdname altrep_vec
 /// @param n Number of elements.
