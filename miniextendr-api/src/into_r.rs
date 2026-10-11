@@ -1946,7 +1946,7 @@ impl IntoR for Vec<Option<String>> {
 /// Macro to implement IntoR for tuples of various sizes.
 /// Converts Rust tuples to unnamed R lists (VECSXP).
 macro_rules! impl_tuple_into_r {
-    (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
         impl<$($T: IntoR),+> IntoR for ($($T,)+) {
             type Error = std::convert::Infallible;
             fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
@@ -1980,15 +1980,7 @@ macro_rules! impl_tuple_into_r {
     };
 }
 
-// Implement for tuples of sizes 1-8
-impl_tuple_into_r!((A), (0), 1);
-impl_tuple_into_r!((A, B), (0, 1), 2);
-impl_tuple_into_r!((A, B, C), (0, 1, 2), 3);
-impl_tuple_into_r!((A, B, C, D), (0, 1, 2, 3), 4);
-impl_tuple_into_r!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
-impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
-impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
-impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+crate::tuple_macros::for_each_tuple!(impl_tuple_into_r);
 // endregion
 
 // region: ALTREP zero-copy extension trait

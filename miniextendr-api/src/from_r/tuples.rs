@@ -1,7 +1,7 @@
 //! Tuple conversions: read an R list (VECSXP) positionally into `(A, B, ...)`.
 //!
 //! Inbound counterpart of the `IntoR` tuple family (`crate::into_r`, tuple to
-//! unnamed list region) — same arities (1 through 8), same VECSXP shape.
+//! unnamed list region) — same arities (1 through 12), same VECSXP shape.
 //!
 //! Semantics:
 //! - The input must be a list (VECSXP) of exactly N elements; names are
@@ -40,10 +40,10 @@ fn element_reason<E: Into<SexpError>>(e: E) -> String {
     Into::<SexpError>::into(e).r_reason(false)
 }
 
-/// Implement `TryFromSexp` for tuples of various sizes (1-8).
+/// Implement `TryFromSexp` for tuples of various sizes (1-12).
 /// Reads an unnamed R list (VECSXP) positionally; mirrors `impl_tuple_into_r!`.
 macro_rules! impl_tuple_try_from_sexp {
-    (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
         impl<$($T: TryFromSexp),+> TryFromSexp for ($($T,)+)
         where
             $(<$T as TryFromSexp>::Error: Into<SexpError>,)+
@@ -104,12 +104,4 @@ macro_rules! impl_tuple_try_from_sexp {
     };
 }
 
-// Implement for tuples of sizes 1-8, mirroring the IntoR tuple family.
-impl_tuple_try_from_sexp!((A), (0), 1);
-impl_tuple_try_from_sexp!((A, B), (0, 1), 2);
-impl_tuple_try_from_sexp!((A, B, C), (0, 1, 2), 3);
-impl_tuple_try_from_sexp!((A, B, C, D), (0, 1, 2, 3), 4);
-impl_tuple_try_from_sexp!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
-impl_tuple_try_from_sexp!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
-impl_tuple_try_from_sexp!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
-impl_tuple_try_from_sexp!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+crate::tuple_macros::for_each_tuple!(impl_tuple_try_from_sexp);

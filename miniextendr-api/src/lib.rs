@@ -437,6 +437,8 @@ pub fn set_altrep_dll_info(dll: *mut sys::DllInfo) {
     ALTREP_DLL_INFO.store(dll.cast(), Ordering::Release);
 }
 
+mod tuple_macros;
+
 pub mod from_r;
 pub mod into_r;
 pub mod into_r_error;
