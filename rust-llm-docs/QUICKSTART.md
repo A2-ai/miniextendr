@@ -48,7 +48,7 @@ Generate a single comprehensive markdown file:
 
 ```bash
 # First, generate rustdoc JSON from your crate
-RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo doc --no-deps
+RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo +nightly doc --no-deps
 
 # Then generate markdown
 python3 rustdoc_megadoc.py target/doc/<crate>.json
@@ -58,7 +58,7 @@ python3 rustdoc_megadoc.py target/doc/<crate>.json
 Generate split documentation with separate files:
 
 ```bash
-python3 rustdoc_split.py target/doc/<crate>/doc.json --output-dir ./docs
+python3 rustdoc_split.py target/doc/<crate>.json ./docs
 
 # Output:
 # docs/

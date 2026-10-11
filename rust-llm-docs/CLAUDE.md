@@ -14,9 +14,9 @@ The project provides two main conversion strategies:
 
 ### Generate JSON from a Rust crate
 ```bash
-RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo doc --no-deps
+RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo +nightly doc --no-deps
 ```
-This generates `target/doc/<crate>/doc.json` with the rustdoc JSON output.
+This generates `target/doc/<crate>.json` with the rustdoc JSON output.
 
 ### Generate comprehensive markdown from JSON
 ```bash
