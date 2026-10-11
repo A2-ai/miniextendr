@@ -146,6 +146,52 @@ pub trait RNativeType: Sized + Copy + 'static {
     fn elt(sexp: SEXP, i: isize) -> Self;
 }
 
+/// Native R elements with an actual NA representation.
+///
+/// This is the missing-value capability bound for native buffers. It excludes
+/// `u8`: R raw vectors have no NA, even though `RNativeType::R_NA` uses zero
+/// to fill absent raw positions. The existing `R_NA` constant constructs the
+/// sentinel; `is_na` recognizes it, including computed real NAs.
+///
+/// For floating point this follows R's `R_IsNA`, not R's `is.na()` or
+/// `anyNA()`: ordinary NaNs are not NA sentinels. In particular, ALTREP
+/// `no_na` hints must still reject ordinary NaNs too.
+///
+/// Rust values without native NA storage use `Option<T>` at conversion
+/// boundaries; no additional `NA<T>` wrapper is needed.
+pub trait IsNA: RNativeType {
+    /// Whether this element is R's NA sentinel.
+    fn is_na(&self) -> bool;
+}
+
+impl IsNA for i32 {
+    #[inline]
+    fn is_na(&self) -> bool {
+        *self == Self::R_NA
+    }
+}
+
+impl IsNA for f64 {
+    #[inline]
+    fn is_na(&self) -> bool {
+        crate::from_r::is_na_real(*self)
+    }
+}
+
+impl IsNA for RLogical {
+    #[inline]
+    fn is_na(&self) -> bool {
+        RLogical::is_na(*self)
+    }
+}
+
+impl IsNA for Rcomplex {
+    #[inline]
+    fn is_na(&self) -> bool {
+        self.r.is_na() || self.i.is_na()
+    }
+}
+
 /// R's logical element type (the contents of a `LGLSXP` vector).
 ///
 /// In R, logical vectors are stored as `int` with possible values:
