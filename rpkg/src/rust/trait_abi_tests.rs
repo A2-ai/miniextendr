@@ -359,5 +359,70 @@ impl R6TraitCounter {
 }
 // endregion
 
+// region: Self-reference arguments (#1990)
+
+/// Trait whose methods take another value of the implementing type.
+#[miniextendr]
+pub trait SelfArgs {
+    /// Copy this value into `other`.
+    fn copy_to(&self, other: &mut Self);
+
+    /// Swap values with `other`.
+    fn swap_with(&mut self, other: &mut Self);
+
+    /// This value minus `type`'s.
+    fn difference(&self, r#type: &Self) -> i32;
+
+    /// Swap the values of `left` and `right`.
+    fn exchange(left: &mut Self, right: &mut Self);
+}
+
+/// A counter whose trait methods take other counters.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct SelfArgCounter {
+    value: i32,
+}
+
+/// SelfArgs for SelfArgCounter: `&Self` / `&mut Self` arguments, one of
+/// them raw-named, through the generated C wrappers.
+#[miniextendr(env)]
+impl SelfArgs for SelfArgCounter {
+    /// @param other The counter to overwrite.
+    fn copy_to(&self, other: &mut Self) {
+        other.value = self.value;
+    }
+
+    /// @param other The counter to swap with.
+    fn swap_with(&mut self, other: &mut Self) {
+        std::mem::swap(&mut self.value, &mut other.value);
+    }
+
+    /// @param type The counter to subtract.
+    fn difference(&self, r#type: &Self) -> i32 {
+        self.value - r#type.value
+    }
+
+    /// @param left,right The counters to swap.
+    fn exchange(left: &mut Self, right: &mut Self) {
+        std::mem::swap(&mut left.value, &mut right.value);
+    }
+}
+
+/// SelfArgCounter inherent methods (constructor and getter).
+#[miniextendr(env)]
+impl SelfArgCounter {
+    /// Create a counter holding `value`.
+    /// @param value The initial value.
+    fn new_self_arg(value: i32) -> Self {
+        Self { value }
+    }
+
+    /// The counter's value.
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+// endregion
+
 // region: Module registration
 // endregion

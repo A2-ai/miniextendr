@@ -417,15 +417,8 @@ fn generate_concrete_vtable_shims(
                     };
                     let name_str = crate::naming::ident_name(&name);
 
-                    // Handle &Self params: extract ExternalPtr<ConcreteType>
-                    if is_self_ref_type(&pt.ty) {
-                        let extptr_name = format_ident!("__extptr_{}", crate::naming::unraw(&name));
-                        quote::quote! {
-                            let #extptr_name: ::miniextendr_api::ExternalPtr<#concrete_type> = unsafe {
-                                ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
-                            };
-                            let #name = &*#extptr_name;
-                        }
+                    if let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty) {
+                        crate::trait_self_ref::extract(&name, concrete_type, i, mutable)
                     } else {
                         let ty = &pt.ty;
                         quote::quote! {
@@ -456,6 +449,40 @@ fn generate_concrete_vtable_shims(
                 format_ident!("arg{}", i)
             })
             .collect();
+
+        let self_refs: Vec<_> = method
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| {
+                if let syn::FnArg::Typed(pt) = arg
+                    && let syn::Pat::Ident(pat) = pt.pat.as_ref()
+                    && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
+                {
+                    Some((&pat.ident, mutable))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let handles: Vec<_> = self_refs
+            .iter()
+            .map(|(name, mutable)| {
+                (
+                    crate::trait_self_ref::handle_ident(name),
+                    *mutable,
+                    crate::naming::ident_name(name),
+                )
+            })
+            .collect();
+        let alias_checks = crate::trait_self_ref::alias_checks(
+            concrete_type,
+            &handles,
+            Some((quote::quote!(data.cast_const()), method.is_mut)),
+        );
+        let self_borrows = self_refs
+            .iter()
+            .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
 
         // Generate method call using fully-qualified syntax to avoid ambiguity
         // with generic trait paths like `RExtend<i32>::method()` where `<` would
@@ -520,6 +547,8 @@ fn generate_concrete_vtable_shims(
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                     ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
                     #(#arg_extractions)*
+                    #alias_checks
+                    #(#self_borrows)*
                     let result = { #method_call };
                     #result_conversion
                 })
@@ -1073,21 +1102,6 @@ fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
         .collect()
 }
 
-/// Check if a type is `&Self` or `&mut Self`.
-///
-/// Used to detect trait method parameters that take another instance of the same type
-/// (e.g., `ROrd::cmp(&self, other: &Self)`) so we can generate `ExternalPtr<T>` extraction
-/// and dereference in the C wrapper.
-pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
-    if let syn::Type::Reference(r) = ty
-        && let syn::Type::Path(tp) = r.elem.as_ref()
-        && tp.path.is_ident("Self")
-    {
-        return true;
-    }
-    false
-}
-
 /// Generate a C wrapper function and `R_CallMethodDef` for a single trait method.
 ///
 /// Uses `CWrapperContext` builder to produce:
@@ -1098,8 +1112,8 @@ pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
 /// and call with fully-qualified trait syntax `<Type as Trait>::method(self_ref, ...)`.
 /// Static methods run on the worker thread when the `worker` flag is set.
 ///
-/// `&Self` parameters are rewritten to `ExternalPtr<Type>` for the C wrapper,
-/// then dereferenced to `&Type` when calling the actual trait method.
+/// `&Self` / `&mut Self` parameters are rewritten to `ExternalPtr<Type>` for the C wrapper,
+/// then borrowed with their declared mutability when calling the trait method.
 pub(super) fn generate_trait_method_c_wrapper(
     method: &TraitMethod,
     type_ident: &syn::Ident,
@@ -1143,7 +1157,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     // Filter inputs to exclude the receiver (builder handles self separately with has_self())
     // Also handle &Self params: replace with ExternalPtr<ConcreteType> so the builder
     // can auto-extract them, and track which params need dereferencing in the call.
-    let mut self_ref_params = std::collections::HashSet::new();
+    let mut self_ref_params = Vec::new();
     let filtered_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = method
         .sig
         .inputs
@@ -1151,11 +1165,11 @@ pub(super) fn generate_trait_method_c_wrapper(
         .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
         .map(|arg| {
             if let syn::FnArg::Typed(pt) = arg
-                && is_self_ref_type(&pt.ty)
+                && let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty)
             {
                 // Track this param for dereferencing in the call expression
                 if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    self_ref_params.insert(crate::naming::ident_name(&pat_ident.ident));
+                    self_ref_params.push((pat_ident.ident.clone(), mutable));
                 }
                 // Replace &Self with ExternalPtr<ConcreteType>
                 let pat = &pt.pat;
@@ -1169,8 +1183,9 @@ pub(super) fn generate_trait_method_c_wrapper(
     let call_args: Vec<proc_macro2::TokenStream> = rust_args
         .iter()
         .map(|arg| {
-            if self_ref_params.contains(&arg.to_string()) {
-                quote::quote! { &*#arg }
+            if let Some((_, mutable)) = self_ref_params.iter().find(|(name, _)| name == arg) {
+                let mutability = mutable.then(|| quote::quote!(mut));
+                quote::quote! { &#mutability *#arg }
             } else {
                 quote::quote! { #arg }
             }
@@ -1204,35 +1219,63 @@ pub(super) fn generate_trait_method_c_wrapper(
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);
 
+    let mut post_conversion = Vec::new();
+    for (name, mutable) in &self_ref_params {
+        if *mutable {
+            post_conversion.push(quote::quote! { let mut #name = #name; });
+        }
+    }
+    let handles: Vec<_> = self_ref_params
+        .iter()
+        .map(|(name, mutable)| (name.clone(), *mutable, crate::naming::ident_name(name)))
+        .collect();
+    let receiver = method
+        .has_self
+        .then(|| (quote::quote!(__miniextendr_receiver_addr), method.is_mut));
+    post_conversion.push(crate::trait_self_ref::alias_checks(
+        type_ident, &handles, receiver,
+    ));
+
     if method.has_self {
         // Instance method: generate self extraction and call with self_ref
         let trait_method_name = format!("{}::{}()", trait_name, method_ident);
-        let self_extraction = if method.is_mut {
-            quote::quote! {
-                let mut self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
-                };
-                let self_ref = match self_ptr.downcast_mut::<#type_ident>() {
-                    Some(self_ref) => self_ref,
-                    None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
-                        &self_ptr,
-                        #trait_method_name,
-                    ),
-                };
-            }
+        let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
+        let downcast = if method.is_mut {
+            quote::quote!(downcast_mut)
         } else {
+            quote::quote!(downcast_ref)
+        };
+        let self_borrow = quote::quote! {
+            let self_ref = match self_ptr.#downcast::<#type_ident>() {
+                ::core::option::Option::Some(value) => value,
+                ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                    &self_ptr, #trait_method_name,
+                ),
+            };
+        };
+        let self_setup = if self_ref_params.is_empty() {
+            self_borrow
+        } else {
+            // Delay the receiver borrow until the other handles have been
+            // extracted and checked. A shared pointer here is used only for
+            // comparison, never to obtain the mutable receiver.
+            post_conversion.push(self_borrow);
             quote::quote! {
-                let self_ptr = unsafe {
-                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
-                };
-                let self_ref = match self_ptr.downcast_ref::<#type_ident>() {
-                    Some(self_ref) => self_ref,
-                    None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
-                        &self_ptr,
-                        #trait_method_name,
+                let __miniextendr_receiver_addr = match self_ptr.downcast_ref::<#type_ident>() {
+                    ::core::option::Option::Some(value) => ::core::ptr::from_ref(value).cast::<::core::ffi::c_void>(),
+                    ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
+                        &self_ptr, #trait_method_name,
                     ),
                 };
             }
+        };
+        let self_extraction = quote::quote! {
+            let #receiver_mutability self_ptr = unsafe {
+                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
+                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp)
+                )
+            };
+            #self_setup
         };
 
         // Call expression with self_ref and dereferenced &Self params
@@ -1309,7 +1352,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     }
 
     // The builder generates both the C wrapper and the R_CallMethodDef
-    builder.build().generate()
+    builder.post_conversion(post_conversion).build().generate()
 }
 
 /// Generate a C wrapper function and `R_CallMethodDef` for a trait associated constant.
