@@ -2163,8 +2163,11 @@ const WRAPPER_RAISE_CONDITION_HELPER_FN: &str =
     raise_condition_helper_fn!(".miniextendr_frame_call");
 
 /// Shared method lookup for environment classes. Each returned closure gets
-/// its own receiver-binding frame; native symbols resolve through this helper's
-/// package namespace. Field lookup and its condition call stay in the S3 method.
+/// its own receiver-binding frame. An inherent method keeps its original
+/// enclosure behind that frame, so native symbols and author-supplied R code
+/// never resolve through the lookup helper's locals (#1677). Field lookup and
+/// its condition call stay in the S3 method. Flat trait lookup must find a
+/// unique method; inherent methods and explicit trait namespaces take priority.
 #[cfg(not(target_arch = "wasm32"))]
 const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class's methods to one receiver.
 # The class's `$` / `[[` methods handle fields before calling this lookup.
@@ -2187,22 +2190,32 @@ const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class'
     }
     bound
   } else if (is.null(obj)) {
+    matches <- list()
     for (ns_name in names(methods)) {
       ns <- methods[[ns_name]]
       if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
         method <- ns[[name]]
-        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
-          m <- method
-          s <- self
-          return(function(...) m(s, ...))
-        } else if (is.function(method)) {
-          return(method)
-        }
+        if (is.function(method)) matches[[ns_name]] <- method
       }
     }
-    NULL
+    if (!length(matches)) return(NULL)
+    if (length(matches) > 1L) {
+      traits <- sort(names(matches))
+      stop(errorCondition(
+        sprintf("Method '%s' is provided by multiple traits (%s). Use obj$Trait to select a trait explicitly.", name, paste(traits, collapse = ", ")),
+        class = "miniextendr_ambiguous_method", method = name, traits = traits,
+        call = .miniextendr_frame_call(parent.frame())
+      ))
+    }
+    m <- matches[[1L]]
+    if (isTRUE(attr(m, ".__mx_instance__"))) {
+      s <- self
+      function(...) m(s, ...)
+    } else {
+      m
+    }
   } else {
-    environment(obj) <- environment()
+    environment(obj) <- list2env(list(self = self), parent = environment(obj))
     obj
   }
 }

@@ -292,31 +292,25 @@ impl SimpleCounter {
 SimpleCounter <- new.env(parent = emptyenv())
 SimpleCounter$new <- function(initial) { ... }
 
-# Trait namespace
+# Trait namespace: instance methods take the object first
 SimpleCounter$Counter <- new.env(parent = emptyenv())
-SimpleCounter$Counter$value <- function() { ... }
-SimpleCounter$Counter$increment <- function() { ... }
+SimpleCounter$Counter$value <- function(x) { ... }
+attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
+SimpleCounter$Counter$increment <- function(x) { ... }
+attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 # $ dispatch handles both inherent methods and trait namespaces
 `$.SimpleCounter` <- function(self, name) {
-    obj <- SimpleCounter[[name]]
-    if (is.environment(obj)) {
-        # Trait namespace - bind self to all methods
-        bound <- new.env(parent = emptyenv())
-        for (method_name in names(obj)) {
-            method <- obj[[method_name]]
-            if (is.function(method)) {
-                environment(method) <- environment()
-                bound[[method_name]] <- method
-            }
-        }
-        bound
-    } else {
-        environment(obj) <- environment()
-        obj
-    }
+  .miniextendr_env_method(self, name, SimpleCounter)
 }
 ```
+
+`.miniextendr_env_method` is a helper in the package's generated wrapper
+file. For `counter$Counter` it returns the trait namespace with every
+instance method bound to `counter`. A name that only one trait provides also
+works directly (`counter$value()`). If several traits provide it, the lookup
+raises `miniextendr_ambiguous_method` and you select one with
+`counter$Counter$value()`. An inherent method of the same name wins.
 
 ### Package B: Consumer (uses producer's objects)
 
