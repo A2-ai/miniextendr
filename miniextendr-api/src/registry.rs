@@ -3045,25 +3045,32 @@ fn parse_top_level_assignment(line: &str) -> Option<(&str, &str)> {
 /// `R/miniextendr-wrappers.R`. NAMESPACE generation is left to roxygen2
 /// (`devtools::document()`).
 ///
+/// A panic, such as a name collision found while assembling the wrappers, is
+/// raised as an R error, so the install stops with the message instead of
+/// aborting R at this non-unwinding boundary.
+///
 /// # Safety
 ///
 /// `path_sexp` must be a valid STRSXP of length >= 1.
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> crate::SEXP {
-    unsafe {
-        use crate::{SEXP, SexpExt};
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        || unsafe {
+            use crate::{SEXP, SexpExt};
 
-        let char_sexp = path_sexp.string_elt_unchecked(0);
-        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-        let path = c_str
-            .to_str()
-            .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let char_sexp = path_sexp.string_elt_unchecked(0);
+            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+            let path = c_str
+                .to_str()
+                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
 
-        write_r_wrappers_to_file(path);
+            write_r_wrappers_to_file(path);
 
-        SEXP::nil()
-    }
+            SEXP::nil()
+        },
+        None,
+    )
 }
 
 /// C-callable entry point for `wasm_registry.rs` generation.
@@ -3071,7 +3078,8 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
 /// Pairs with [`miniextendr_write_wrappers`]: same loaded object, separate `.Call`,
 /// independent output path. Host-only; the generated file itself is then
 /// consumed at compile time by the user crate's wasm32 build via
-/// `install_wasm_runtime_slices`.
+/// `install_wasm_runtime_slices`. A panic is raised as an R error, as in
+/// [`miniextendr_write_wrappers`].
 ///
 /// # Safety
 ///
@@ -3079,19 +3087,22 @@ pub unsafe extern "C" fn miniextendr_write_wrappers(path_sexp: crate::SEXP) -> c
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_write_wasm_registry(path_sexp: crate::SEXP) -> crate::SEXP {
-    unsafe {
-        use crate::{SEXP, SexpExt};
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        || unsafe {
+            use crate::{SEXP, SexpExt};
 
-        let char_sexp = path_sexp.string_elt_unchecked(0);
-        let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
-        let path = c_str
-            .to_str()
-            .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
+            let char_sexp = path_sexp.string_elt_unchecked(0);
+            let c_str = std::ffi::CStr::from_ptr(char_sexp.r_char_unchecked());
+            let path = c_str
+                .to_str()
+                .unwrap_or_else(|e| panic!("invalid UTF-8 in path: {e}"));
 
-        crate::wasm_registry_writer::write_wasm_registry_to_file(path);
+            crate::wasm_registry_writer::write_wasm_registry_to_file(path);
 
-        SEXP::nil()
-    }
+            SEXP::nil()
+        },
+        None,
+    )
 }
 // endregion
 
