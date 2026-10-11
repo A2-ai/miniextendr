@@ -46,11 +46,14 @@
 //! - [`windowed`]: Sliding-window iterators (`WindowedIterState`)
 
 mod coerce;
+mod extension;
+mod macros;
 mod sparse;
 mod state;
 mod windowed;
 
 pub use coerce::*;
+pub use extension::*;
 pub use sparse::*;
 pub use state::*;
 pub use windowed::*;
