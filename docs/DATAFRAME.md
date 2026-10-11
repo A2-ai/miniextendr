@@ -7,6 +7,34 @@ frame from rows; the other reads an R-owned frame back into rows. Both verbs
 live on the data, errors are a single `DataFrameError`, and missing cells
 round-trip as nullable fields.
 
+## Owned named lists and mixed columns
+
+`NamedListBuilder` builds a named list from mixed Rust values and existing R
+values. Its growing R list owns one precious-list root (`R_PreserveObject`),
+so it can be moved, stored and dropped independently of other builders without
+holding protect-stack entries. Use it on R's main thread; it is `!Send + !Sync`.
+
+```rust
+use miniextendr_api::NamedListBuilder;
+
+let mut columns = NamedListBuilder::with_capacity(2);
+columns.push("id", vec![1, 2, 3]);
+columns.push("estimate", vec![0.5, 1.5, 2.5]);
+columns.rename(1, "slope"); // names_mut() also permits editing in place
+let frame = columns.into_data_frame()?; // owned BuiltDataFrame
+```
+
+Use `push_sexp(name, sexp)` for an existing R value: the builder roots it,
+keeping classes such as factor and Date intact. Values must be live when passed
+in, but need no separate root after the push. `len()` counts entries.
+
+Return the builder directly from a `#[miniextendr]` function for a named list
+via `IntoR`. There is no bare-`List` finish. Alternatively,
+`into_data_frame()` validates all column lengths against the first, reports
+every mismatch in one error, and sets compact row names. An empty builder
+produces `names = character(0)` for either finish; its zero-column frame is
+identical to `data.frame()`.
+
 ## The two verbs
 
 | Trait | Method | Direction | Scalar analogue |
@@ -590,11 +618,11 @@ let grouped = df.group_by("site")?;
 for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
 
 // per-group sub-frames — root each one as you go (push protects it)
-let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+let mut out = NamedListBuilder::with_capacity(grouped.len());
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), *sub);
+    out.push(key.label(), sub);
 }
-let named_list_of_frames = out.build();
+let named_list_of_frames = out; // rooted until IntoR hands it to R
 
 // or: one typed extraction, then an index move-partition (rayon-safe after)
 let by_group: Vec<(GroupKey, Vec<Measurement>)> = grouped.extract()?;
@@ -630,7 +658,7 @@ and errors as `group_by`):
 ```rust
 let grouped = df.group_by_multi(&["site", "day"])?;
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), *sub); // label(): "site.day", "." separator
+    out.push(key.label(), sub); // label(): "site.day", "." separator
 }
 ```
 
@@ -661,7 +689,7 @@ grouped (a `grouped_df`), `group_by_metadata()` reads that existing grouping —
 // df arrived as dplyr::group_by(data, site, day)
 let grouped = df.group_by_metadata()?;
 for (key, sub) in grouped.frames() {
-    out = out.push(key.label(), *sub); // one entry per dplyr group, in dplyr order
+    out.push(key.label(), sub); // one entry per dplyr group, in dplyr order
 }
 ```
 
@@ -865,7 +893,7 @@ A single error type covers every failure mode of both verbs:
 | `NotDataFrame` | The object does not inherit from `data.frame`. |
 | `NoNames` | The list has no `names` attribute (columns must be named). |
 | `BadRowNames(msg)` | Could not extract `nrow` from the `row.names` attribute. |
-| `UnequalLengths { expected, column, actual }` | Columns have unequal lengths. |
+| `UnequalLengths { expected, columns }` | Every mismatched column and its actual length, compared to the first column. |
 | `UnnamedColumns` | A row could not be turned into named columns. |
 | `NoSuchColumn(name)` | `group_by` referenced a column name that does not exist. |
 | `EmptyGroupColumns` | `group_by_multi` was called with an empty column slice. |

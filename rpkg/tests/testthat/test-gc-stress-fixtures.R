@@ -5,7 +5,46 @@
 #
 # See docs/GCTORTURE_TESTING.md for background on the harness pattern.
 
-# region: NamedDataFrameListBuilder -------------------------------------------
+# region: NamedListBuilder ---------------------------------------------------
+
+check_named_list_builder <- function(result) {
+  expect_named(result, c("values", "frame", "empty"))
+  expect_identical(names(result$values), c("first", paste0("v", 1:11)))
+  expect_identical(names(result$frame), c("first", paste0("c", 1:11)))
+  for (i in 0:11) {
+    expect_identical(result$values[[i + 1L]], rep(i, 4L))
+    expect_identical(result$frame[[i + 1L]], rep(as.double(i), 3L))
+  }
+  expect_s3_class(result$frame, "data.frame")
+  expect_identical(dim(result$frame), c(3L, 12L))
+  expect_identical(.row_names_info(result$frame, 0L), c(NA_integer_, -3L))
+  expect_identical(result$empty, data.frame())
+}
+
+test_that("NamedListBuilder finishes lists and rooted frames", {
+  check_named_list_builder(miniextendr:::gc_stress_named_list_builder())
+})
+
+test_that("NamedListBuilder holds both finishes across allocations under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  result <- miniextendr:::gc_stress_named_list_builder()
+  gctorture(FALSE)
+  check_named_list_builder(result)
+})
+
+test_that("serde dispatch holds its result across allocations under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  result <- miniextendr:::gc_stress_dispatch_to_dataframes()
+  gctorture(FALSE)
+  expect_named(result, c("ok", "err"))
+  expect_identical(result$ok$id, setdiff(0:29, seq.int(0L, 29L, by = 3L)))
+  expect_identical(result$err$id, seq.int(0L, 29L, by = 3L))
+  expect_identical(result$err$reason, paste0("skip_", result$err$id))
+})
 
 test_that("gc_stress_named_df_list_builder returns a valid named list under gctorture", {
   skip_gc_stress_if_disabled()

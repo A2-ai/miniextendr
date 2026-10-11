@@ -180,7 +180,7 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
 /// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
 /// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`). Arbitrary user `!Send` types can't be detected
+/// `DataFrameShape`, `NamedListBuilder`). Arbitrary user `!Send` types can't be detected
 /// syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
@@ -200,6 +200,7 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "RndMat",
     "ProtectedStrVec",
     "BuiltDataFrame",
+    "NamedListBuilder",
     "DataFrameShape",
 ];
 
@@ -820,6 +821,11 @@ mod tests {
             "miniextendr_api::dataframe::BuiltDataFrame"
         )));
         assert!(is_main_thread_bound_return(&ty("DataFrameShape")));
+        assert!(is_main_thread_bound_input(&ty("NamedListBuilder")));
+        assert!(is_main_thread_bound_return(&ty("NamedListBuilder")));
+        assert!(is_main_thread_bound_return(&ty(
+            "Result<miniextendr_api::NamedListBuilder, String>"
+        )));
         assert!(is_main_thread_bound_return(&ty("SEXP")));
         // Nested inside Result / Option / containers / tuples
         assert!(is_main_thread_bound_return(&ty(

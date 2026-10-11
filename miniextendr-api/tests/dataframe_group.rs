@@ -320,7 +320,7 @@ fn group_by_metadata_validates_groups_like_dplyr() {
         // A key column longer than `.rows`.
         assert!(matches!(
             metadata(GROUPED, &groups_frame("ID = 1:3, .rows = list(1:2, 3L)", 2)),
-            Err(DataFrameError::UnequalLengths { expected: 2, ref column, actual: 3 }) if column == "ID"
+            Err(DataFrameError::UnequalLengths { expected: 2, ref columns }) if columns == &[("ID".to_string(), 3)]
         ));
 
         // `.rows` is the last column: an earlier column of that name is not

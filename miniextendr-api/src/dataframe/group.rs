@@ -17,10 +17,10 @@
 //!    ```ignore
 //!    let grouped = df.group_by("site")?;
 //!    for (key, rows) in grouped.iter() { /* key: &GroupKey, rows: &[usize] */ }
-//!    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+//!    let mut out = NamedListBuilder::with_capacity(grouped.len());
 //!    for (key, sub) in grouped.frames() {
-//!        // `sub` is a rooted `BuiltDataFrame`; deref to the view for push.
-//!        out = out.push(key.label(), *sub);
+//!        // Transfer each rooted frame into the owned list.
+//!        out.push(key.label(), sub);
 //!    }
 //!    ```
 //!
@@ -357,10 +357,9 @@ impl GroupedDataFrame {
     ///
     /// Main thread only. Each yielded frame is an owned, GC-rooted
     /// [`BuiltDataFrame`](crate::dataframe::BuiltDataFrame) (#1247) — safe to
-    /// hold across later iterations' allocations. Deref (`*sub`) to pass the
-    /// view where a [`DataFrame`] is expected, e.g. to
-    /// [`NamedDataFrameListBuilder::push`](crate::dataframe::NamedDataFrameListBuilder::push)
-    /// (which protects on push, so the handle may drop right after).
+    /// hold across later iterations' allocations. Pass each handle directly to
+    /// [`NamedListBuilder::push`](crate::NamedListBuilder::push)
+    /// to collect the frames into an owned named list.
     pub fn frames(&self) -> impl Iterator<Item = (&GroupKey, crate::dataframe::BuiltDataFrame)> {
         self.groups
             .iter()
@@ -700,8 +699,7 @@ impl DataFrame {
             if keys.len() != n_groups {
                 return Err(DataFrameError::UnequalLengths {
                     expected: n_groups,
-                    column: name.clone(),
-                    actual: keys.len(),
+                    columns: vec![(name.clone(), keys.len())],
                 });
             }
             per_col_keys.push(keys);

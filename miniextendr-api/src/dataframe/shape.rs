@@ -12,7 +12,8 @@
 //! The type lives here rather than under `serde` because the derive split is
 //! not serde-gated.
 
-use super::{BuiltDataFrame, NamedDataFrameListBuilder};
+use super::BuiltDataFrame;
+use crate::NamedListBuilder;
 use crate::SEXP;
 use crate::into_r::IntoR;
 
@@ -147,38 +148,22 @@ impl IntoR for DataFrameShape {
         match self {
             DataFrameShape::Bare(df) => Ok(df.into_sexp()),
             DataFrameShape::Split { results, error } => {
-                // Protect both children via the NamedDataFrameListBuilder's
-                // scope so neither is reaped between the set_vector_elt /
-                // CHARSXP allocations in from_raw_pairs. Each owned handle
-                // stays alive until after its child is protected in the
-                // builder's scope, then drops alloc-free — the child is
-                // rooted at every instant.
-                let mut builder = NamedDataFrameListBuilder::with_capacity(2);
-                builder = match results {
-                    // `push` protects the view; the `df` handle's own root
-                    // releases at the end of this arm, after the protect.
-                    SplitResults::Some(df) => builder.push("results", *df),
+                let mut builder = NamedListBuilder::with_capacity(2);
+                match results {
+                    SplitResults::Some(df) => builder.push("results", df),
                     SplitResults::None(sentinel) => {
-                        // SAFETY: `sentinel` wraps a valid SEXP kept alive by
-                        // its own root; `push_raw` protects it in the
-                        // builder's scope before the handle drops at the end
-                        // of this arm.
-                        unsafe { builder.push_raw("results", sentinel.as_sexp()) }
+                        builder.push_sexp("results", sentinel.as_sexp());
                     }
-                };
-                // As above: `error`'s root holds until this arm ends, past
-                // the protect inside `push`.
-                builder = builder.push("error", *error);
-                Ok(builder.build().into_sexp())
+                }
+                builder.push("error", error);
+                Ok(builder.into_sexp())
             }
             DataFrameShape::PerVariantList(pairs) => {
-                let mut builder = NamedDataFrameListBuilder::with_capacity(pairs.len());
+                let mut builder = NamedListBuilder::with_capacity(pairs.len());
                 for (name, df) in pairs {
-                    // `push` protects the view; the `df` handle's own root
-                    // releases at the end of the iteration, after the protect.
-                    builder = builder.push(name, *df);
+                    builder.push(name, df);
                 }
-                Ok(builder.build().into_sexp())
+                Ok(builder.into_sexp())
             }
         }
     }

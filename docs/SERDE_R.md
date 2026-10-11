@@ -505,9 +505,11 @@ to hold across intervening R allocations; it is not a convert-immediately view.
 (re-exported at the crate root and in the prelude), not in `serde`.
 
 For streaming `Result<T, E>` rows, `dispatch_to_dataframes` incrementally fills
-two serde builders and always returns `list(ok = <df>, err = <df>)`; customize
-the names with `DispatchNames`. For enums, `vec_to_dataframe_split` selects a
-per-variant list or collated frame via `SplitShape`.
+two serde builders and returns an owned, rooted `NamedListBuilder`. Its
+`IntoR` conversion always gives `list(ok = <df>, err = <df>)`; customize
+the names with `DispatchNames`. Keep the returned builder across further R
+allocations and return it directly from a `#[miniextendr]` function. For enums,
+`vec_to_dataframe_split` selects a per-variant list or collated frame via `SplitShape`.
 
 ## Error Handling
 

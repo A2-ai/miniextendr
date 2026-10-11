@@ -15,7 +15,11 @@
 //! - [`List`] — owned handle to an R list (VECSXP)
 //! - [`ListMut`] — mutable view for in-place element replacement
 //! - [`ListBuilder`] — fixed-size batch construction
+//! - [`NamedListBuilder`] — owned, GC-rooted named lists and data frames
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
+
+mod named_builder;
+pub use named_builder::NamedListBuilder;
 
 use crate::SEXPTYPE::{NILSXP, STRSXP, VECSXP};
 use crate::from_r::{

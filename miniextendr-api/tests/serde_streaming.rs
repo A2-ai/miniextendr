@@ -341,6 +341,11 @@ fn dispatch_to_dataframes_mixed() {
         });
 
         let list = dispatch_to_dataframes(rows, Some(6), DispatchNames::default()).unwrap();
+        // The returned builder must survive allocations before IntoR (#1811).
+        for i in 0..16 {
+            let _ = vec![i; 64].into_sexp();
+        }
+        unsafe { miniextendr_api::sys::R_gc() };
         let sexp = list.into_sexp();
         let names_sexp = sexp.get_names();
         let names: Vec<String> = (0..names_sexp.xlength())
@@ -373,6 +378,11 @@ fn dispatch_to_dataframes_all_ok() {
             .collect();
 
         let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        // The returned builder must survive allocations before IntoR (#1811).
+        for i in 0..16 {
+            let _ = vec![i; 64].into_sexp();
+        }
+        unsafe { miniextendr_api::sys::R_gc() };
         let sexp = list.into_sexp();
         let ok_df = sexp.vector_elt(0);
         let err_df = sexp.vector_elt(1);
@@ -396,6 +406,11 @@ fn dispatch_to_dataframes_all_err() {
             .collect();
 
         let list = dispatch_to_dataframes(rows, None, DispatchNames::default()).unwrap();
+        // The returned builder must survive allocations before IntoR (#1811).
+        for i in 0..16 {
+            let _ = vec![i; 64].into_sexp();
+        }
+        unsafe { miniextendr_api::sys::R_gc() };
         let sexp = list.into_sexp();
         let ok_df = sexp.vector_elt(0);
         let err_df = sexp.vector_elt(1);
@@ -425,6 +440,11 @@ fn dispatch_to_dataframes_custom_names() {
             },
         )
         .unwrap();
+        // The returned builder must survive allocations before IntoR (#1811).
+        for i in 0..16 {
+            let _ = vec![i; 64].into_sexp();
+        }
+        unsafe { miniextendr_api::sys::R_gc() };
         let sexp = list.into_sexp();
         let names_sexp = sexp.get_names();
         let names: Vec<String> = (0..names_sexp.xlength())
