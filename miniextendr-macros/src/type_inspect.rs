@@ -1476,3 +1476,16 @@ pub(crate) fn classify_several_ok_container(
         _ => None,
     }
 }
+
+/// Whether a bare `&Self` / `&mut Self` parameter is mutable.
+/// `None` means this is not a Self-reference parameter.
+pub(crate) fn self_ref_mutability(ty: &syn::Type) -> Option<bool> {
+    if let syn::Type::Reference(reference) = ty
+        && let syn::Type::Path(path) = reference.elem.as_ref()
+        && path.path.is_ident("Self")
+    {
+        Some(reference.mutability.is_some())
+    } else {
+        None
+    }
+}

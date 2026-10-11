@@ -223,6 +223,8 @@ pub struct CWrapperContext {
     /// Statements emitted before the call expression. For instance methods, this
     /// includes extracting `self` from the `ExternalPtr` SEXP.
     pub pre_call: Vec<TokenStream>,
+    /// Statements after argument conversion, before the Rust call.
+    pub post_conversion: Vec<TokenStream>,
     /// The actual Rust call expression (e.g., `my_func(arg0, arg1)` or
     /// `self_ref.method(arg0)`). Inserted into the wrapper body after conversions.
     pub call_expr: TokenStream,
@@ -317,6 +319,7 @@ impl CWrapperContext {
             inputs: syn::punctuated::Punctuated::new(),
             output: syn::ReturnType::Default,
             pre_call: Vec::new(),
+            post_conversion: Vec::new(),
             call_expr: None,
             thread_strategy: None,
             return_handling: None,
@@ -555,6 +558,7 @@ impl CWrapperContext {
         let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
+        let post_conversion = &self.post_conversion;
         let call_expr = &self.call_expr;
 
         let pre_call_checks = if self.check_interrupt {
@@ -575,6 +579,7 @@ impl CWrapperContext {
             #pre_call_checks
             #(#pre_call)*
             #(#conversion_stmts)*
+            #(#post_conversion)*
             #return_handling
         });
 
@@ -653,6 +658,7 @@ impl CWrapperContext {
         let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let alias_guard = self.build_alias_guard(&sexp_idents);
         let pre_call = &self.pre_call;
+        let post_conversion = &self.post_conversion;
         let call_expr = &self.call_expr;
 
         // Compile-time check: worker dispatch requires the `worker-thread` feature.
@@ -694,6 +700,7 @@ impl CWrapperContext {
             match ::miniextendr_api::worker::run_on_worker(move || {
                 ::miniextendr_api::condition::catch_condition(move || {
                     #(#in_closure_stmts)*
+                    #(#post_conversion)*
                     #worker_body
                 })
             }) {
@@ -1405,6 +1412,8 @@ pub struct CWrapperContextBuilder {
     output: syn::ReturnType,
     /// Pre-call statements emitted before the call expression. Defaults to empty.
     pre_call: Vec<TokenStream>,
+    /// Statements after conversion in the execution closure.
+    post_conversion: Vec<TokenStream>,
     /// The Rust call expression. **Required.**
     call_expr: Option<TokenStream>,
     /// Thread strategy override. If `None`, defaults to [`ThreadStrategy::MainThread`].
@@ -1482,6 +1491,12 @@ impl CWrapperContextBuilder {
     /// Typically used for self-extraction in instance methods.
     pub fn pre_call(mut self, stmts: Vec<TokenStream>) -> Self {
         self.pre_call = stmts;
+        self
+    }
+
+    /// Statements that need converted arguments, without shortening their scope.
+    pub fn post_conversion(mut self, stmts: Vec<TokenStream>) -> Self {
+        self.post_conversion = stmts;
         self
     }
 
@@ -1699,6 +1714,7 @@ impl CWrapperContextBuilder {
             inputs: self.inputs,
             output: self.output,
             pre_call: self.pre_call,
+            post_conversion: self.post_conversion,
             call_expr,
             thread_strategy,
             return_handling,
