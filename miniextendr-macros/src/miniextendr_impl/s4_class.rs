@@ -9,7 +9,18 @@
 //! ecosystem is increasingly legacy. Pick S4 for Bioconductor interop;
 //! use S7 for new packages wanting similar formal semantics.
 
-use super::ParsedImpl;
+use super::{ParsedImpl, ParsedMethod};
+
+/// The S4 generic an instance method dispatches through: an explicit
+/// `s4(generic = "...")` verbatim, else `s4_<R method name>`, so `r_name`,
+/// `postfix` and raw identifiers follow the usual naming rules. Shared by the
+/// generator and `check_s4_generic_collisions`, so both agree on the names.
+pub(crate) fn s4_generic_name(method: &ParsedMethod) -> String {
+    match &method.method_attrs.generic {
+        Some(generic) => generic.clone(),
+        None => format!("s4_{}", method.r_method_name()),
+    }
+}
 
 /// Generates the complete R wrapper string for an S4-style class.
 ///
@@ -131,11 +142,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
         let start = method.ident.span().start();
-        let method_name = if let Some(ref generic) = method.method_attrs.generic {
-            generic.clone()
-        } else {
-            format!("s4_{}", method.ident)
-        };
+        let method_name = s4_generic_name(method);
 
         // Emit the generic-doc marker BEFORE the source comment so the write-time
         // pass can place the standalone Rd page before the method block.  This

@@ -4195,6 +4195,158 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// Env constructors, instance methods and static methods all occupy the same
+/// class environment. Check the emitted names before one overwrites another.
+fn check_env_member_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::Env {
+        return Ok(());
+    }
+    let mut seen = std::collections::HashMap::new();
+    if let Some(constructor) = parsed.constructor() {
+        seen.insert("new".to_owned(), constructor);
+    }
+    for method in parsed.instance_methods().chain(parsed.static_methods()) {
+        let name = method.r_method_name();
+        if let Some(previous) = seen.insert(name.clone(), method) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "Env member `{}${name}` is defined by both `{}` and `{}`. \
+                     Constructors always occupy `new`; instance and static methods \
+                     share the class environment. Rename a colliding method with \
+                     `#[miniextendr(r_name = \"...\")]`.",
+                    parsed.class_name(),
+                    previous.ident,
+                    method.ident,
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// R6 always has an `initialize` member, including classes without a Rust
+/// constructor. R6 requires public, private and active names to be distinct;
+/// reject collisions before the generated class fails during package loading.
+fn check_r6_initialize_collision(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::R6 {
+        return Ok(());
+    }
+    for method in parsed
+        .public_instance_methods()
+        .chain(parsed.private_instance_methods())
+        .chain(parsed.active_instance_methods())
+    {
+        let name = if method.is_active() {
+            method
+                .method_attrs
+                .r6
+                .prop
+                .clone()
+                .unwrap_or_else(|| method.r_method_name())
+        } else {
+            method.r_method_name()
+        };
+        if name == "initialize" {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                "R6 member `initialize` conflicts with the generated constructor. \
+                 Rename the method or use `#[miniextendr(r_name = \"...\")]`; \
+                 for an active binding, choose a different `r6(prop = \"...\")`.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The bindings of an `R6::R6Class()` generator object (R6 2.6). The R6
+/// generator assigns static methods onto that object (`Class$name <- function`),
+/// so a static method under one of these names silently replaces R6's own:
+/// `new` stops creating objects, `set` and `lock` are the generated `$set()` /
+/// `$lock()` calls, and `$new()` reads the data fields.
+const R6_GENERATOR_BINDINGS: &[&str] = &[
+    "active",
+    "class",
+    "classname",
+    "clone_method",
+    "cloneable",
+    "debug",
+    "debug_names",
+    "get_inherit",
+    "has_private",
+    "inherit",
+    "is_locked",
+    "lock",
+    "lock_class",
+    "lock_objects",
+    "new",
+    "parent_env",
+    "portable",
+    "private_fields",
+    "private_methods",
+    "public_fields",
+    "public_methods",
+    "self",
+    "set",
+    "undebug",
+    "unlock",
+];
+
+/// Reject an R6 static method whose R name is one of the generator object's
+/// own bindings ([`R6_GENERATOR_BINDINGS`]), which the static would replace
+/// without a warning when the package loads.
+fn check_r6_static_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::R6 {
+        return Ok(());
+    }
+    for method in parsed.static_methods() {
+        let name = method.r_method_name();
+        if R6_GENERATOR_BINDINGS.contains(&name.as_str()) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "R6 static method `{class}${name}` would replace the R6 generator's own \
+                     `{name}`: static methods are assigned onto the generator object. Rename \
+                     it with `#[miniextendr(r_name = \"...\")]`.",
+                    class = parsed.class_name(),
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Two instance methods of one S4 impl block that dispatch through the same
+/// generic emit two `setMethod("<generic>", "<Class>", ...)` calls with the
+/// same signature, and the second silently replaces the first. The default
+/// generic follows the R method name (`s4_<r_name>`), so `r_name = "x"` next to
+/// a method `x` is one way to get there; two equal `s4(generic = "...")`
+/// overrides are another.
+fn check_s4_generic_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::S4 {
+        return Ok(());
+    }
+    let mut seen = std::collections::HashMap::new();
+    for method in parsed.instance_methods() {
+        let generic = s4_class::s4_generic_name(method);
+        if let Some(previous) = seen.insert(generic.clone(), method) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "S4 generic `{generic}` gets a method for `{}` from both `{}` and `{}`; \
+                     the second `setMethod()` would replace the first. Rename one with \
+                     `#[miniextendr(r_name = \"...\")]` or give it another \
+                     `s4(generic = \"...\")`.",
+                    parsed.class_name(),
+                    previous.ident,
+                    method.ident,
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Check the R formals of every generated method
 /// ([`check_r_formals`](crate::r_wrapper_builder::check_r_formals)), reserving
 /// the names each class system's wrapper binds itself:
@@ -4515,6 +4667,18 @@ pub fn expand_impl(
     // Every R formal must parse, be distinct, and leave the names the class
     // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
     if let Err(e) = check_method_formals(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_env_member_collisions(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_r6_initialize_collision(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_r6_static_collisions(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_s4_generic_collisions(&parsed) {
         return e.into_compile_error().into();
     }
     // A replacement method (`s3(generic = "[[<-")`) takes `value` last.

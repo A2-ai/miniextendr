@@ -1567,6 +1567,172 @@ fn s4_wrapper_full_snapshot() {
 }
 
 #[test]
+fn s4_generic_names_follow_r_method_names() {
+    for (method, generic) in [
+        (
+            quote::quote! { pub fn r#type(&self) -> i32 { 0 } },
+            "s4_type",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "kind")]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "s4_kind",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(postfix = "_code")]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "s4_type_code",
+        ),
+        (
+            // `r_name` next to `generic` is a parse error, so the override
+            // stands alone and is used verbatim.
+            quote::quote! {
+                #[miniextendr(s4(generic = "category"))]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "category",
+        ),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::S4,
+            syn::parse_quote! { impl Counter { #method } },
+        );
+        let wrapper = generate_s4_r_wrapper(&parsed);
+        for expected in [
+            format!("methods::setGeneric(\"{generic}\", function(x, ...)"),
+            format!("standardGeneric(\"{generic}\")"),
+            format!("methods::setMethod(\"{generic}\", \"Counter\""),
+            format!("#' @exportMethod {generic}\n"),
+            format!("#' @aliases {generic},Counter-method\n"),
+        ] {
+            assert!(wrapper.contains(&expected), "missing {expected}: {wrapper}");
+        }
+        assert!(!wrapper.contains("s4_r#"), "{wrapper}");
+    }
+}
+
+#[test]
+fn s4_generic_collisions_are_rejected_within_one_block() {
+    for (members, generic, first, second) in [
+        (
+            quote::quote! {
+                pub fn kind(&self) -> i32 { 0 }
+                #[miniextendr(r_name = "kind")]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "s4_kind",
+            "kind",
+            "r#type",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "size")]
+                pub fn len(&self) -> i32 { 0 }
+                #[miniextendr(r_name = "size")]
+                pub fn count(&self) -> i32 { 0 }
+            },
+            "s4_size",
+            "len",
+            "count",
+        ),
+        // A postfix lands on another method's default generic.
+        (
+            quote::quote! {
+                pub fn value_code(&self) -> i32 { 0 }
+                #[miniextendr(postfix = "_code")]
+                pub fn value(&self) -> i32 { 0 }
+            },
+            "s4_value_code",
+            "value_code",
+            "value",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(s4(generic = "describe"))]
+                pub fn summary(&self) -> i32 { 0 }
+                #[miniextendr(s4(generic = "describe"))]
+                pub fn detail(&self) -> i32 { 0 }
+            },
+            "describe",
+            "summary",
+            "detail",
+        ),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::S4,
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        let message = check_s4_generic_collisions(&parsed)
+            .expect_err("two methods for one generic and class")
+            .to_string();
+        assert!(
+            message.contains(&format!(
+                "S4 generic `{generic}` gets a method for `Counter`"
+            )),
+            "{message}"
+        );
+        assert!(
+            message.contains(&format!("both `{first}` and `{second}`")),
+            "{message}"
+        );
+    }
+}
+
+#[test]
+fn s4_generic_collisions_allow_distinct_generics() {
+    for members in [
+        // The override replaces the default name, so `s4_kind` stays free.
+        quote::quote! {
+            pub fn kind(&self) -> i32 { 0 }
+            #[miniextendr(s4(generic = "category"))]
+            pub fn r#type(&self) -> i32 { 0 }
+        },
+        // An explicit generic `kind` is not the default `s4_kind`.
+        quote::quote! {
+            pub fn kind(&self) -> i32 { 0 }
+            #[miniextendr(s4(generic = "kind"))]
+            pub fn category(&self) -> i32 { 0 }
+        },
+        // Ignored and static methods emit no `setMethod()`.
+        quote::quote! {
+            pub fn kind(&self) -> i32 { 0 }
+            #[miniextendr(s4(ignore, generic = "s4_kind"))]
+            pub fn hidden(&self) -> i32 { 0 }
+            #[miniextendr(r_name = "kind")]
+            pub fn make() -> i32 { 0 }
+        },
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::S4,
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        check_s4_generic_collisions(&parsed).expect("one method per generic");
+    }
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::R6,
+        ClassSystem::S3,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter {
+                    pub fn kind(&self) -> i32 { 0 }
+                    #[miniextendr(r_name = "size")]
+                    pub fn len(&self) -> i32 { 0 }
+                }
+            },
+        );
+        check_s4_generic_collisions(&parsed).expect("only S4 emits setMethod()");
+    }
+}
+
+#[test]
 fn s4_wrapper_generic_override() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {
@@ -6839,6 +7005,346 @@ fn s3_operator_names_are_quoted_in_methods_and_generic_guards() {
         }
     }
 }
+
+// region: R6 constructor member collisions (#1677)
+
+#[test]
+fn r6_initialize_collision_uses_the_emitted_member_name() {
+    for method in [
+        quote::quote!(
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r_name = "initialize")]
+            pub fn reset(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active))]
+            pub fn initialize(&self) -> i32 {
+                0
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active, prop = "initialize"))]
+            pub fn state(&self) -> i32 {
+                0
+            }
+        ),
+    ] {
+        for constructor in [
+            quote::quote!(),
+            quote::quote!(
+                pub fn new() -> Self {
+                    unimplemented!()
+                }
+            ),
+        ] {
+            let parsed = parse_impl(
+                ClassSystem::R6,
+                syn::parse_quote! {
+                    impl Counter { #constructor #method }
+                },
+            );
+            let message = check_r6_initialize_collision(&parsed)
+                .expect_err("initialize is occupied even without a Rust constructor")
+                .to_string();
+            assert!(
+                message.contains("conflicts with the generated constructor"),
+                "{message}"
+            );
+            assert!(message.contains("r_name"), "{message}");
+            assert!(message.contains("r6(prop"), "{message}");
+        }
+    }
+}
+
+#[test]
+fn r6_initialize_collision_does_not_reserve_unrelated_rust_names() {
+    for method in [
+        quote::quote!(
+            pub fn initialize() -> i32 {
+                0
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(r6(constructor))]
+            pub fn initialize() -> Self {
+                unimplemented!()
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(r6(ignore))]
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r_name = "reset")]
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active, prop = "state"))]
+            pub fn initialize(&self) -> i32 {
+                0
+            }
+        ),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::R6,
+            syn::parse_quote! {
+                impl Counter { #method }
+            },
+        );
+        check_r6_initialize_collision(&parsed).expect("does not define the initialize member");
+    }
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter { pub fn initialize(&self) {} }
+            },
+        );
+        check_r6_initialize_collision(&parsed).expect("only R6 injects initialize");
+    }
+}
+
+#[test]
+fn r6_static_methods_cannot_replace_generator_bindings() {
+    for (method, name) in [
+        // Not the constructor: it does not return `Self`.
+        (
+            quote::quote!(
+                pub fn new() -> i32 {
+                    0
+                }
+            ),
+            "new",
+        ),
+        (
+            quote::quote!(
+                #[miniextendr(r_name = "set")]
+                pub fn configure() -> i32 {
+                    0
+                }
+            ),
+            "set",
+        ),
+        (
+            quote::quote!(
+                pub fn classname() -> String {
+                    String::new()
+                }
+            ),
+            "classname",
+        ),
+        (
+            quote::quote!(
+                #[miniextendr(postfix = "_class")]
+                pub fn lock() -> i32 {
+                    0
+                }
+            ),
+            "lock_class",
+        ),
+    ] {
+        for constructor in [
+            quote::quote!(),
+            quote::quote!(
+                #[miniextendr(r6(constructor))]
+                pub fn create() -> Self {
+                    unimplemented!()
+                }
+            ),
+        ] {
+            let parsed = parse_impl(
+                ClassSystem::R6,
+                syn::parse_quote! { impl Counter { #constructor #method } },
+            );
+            let message = check_r6_static_collisions(&parsed)
+                .expect_err("a static method must not replace an R6 generator binding")
+                .to_string();
+            assert!(
+                message.contains(&format!("R6 static method `Counter${name}`")),
+                "{message}"
+            );
+            assert!(message.contains("r_name"), "{message}");
+        }
+    }
+}
+
+#[test]
+fn r6_static_collisions_leave_constructors_and_members_alone() {
+    for members in [
+        // The constructor is `$new()` itself, not a static method.
+        quote::quote! { pub fn new() -> Self { unimplemented!() } },
+        // Instance methods and active bindings live on the object.
+        quote::quote! {
+            pub fn set(&mut self, value: i32) { let _ = value; }
+            pub fn lock(&self) -> i32 { 0 }
+            #[miniextendr(r6(active))]
+            pub fn classname(&self) -> i32 { 0 }
+        },
+        quote::quote! {
+            #[miniextendr(r6(ignore))]
+            pub fn new() -> i32 { 0 }
+            #[miniextendr(r_name = "configure")]
+            pub fn set() -> i32 { 0 }
+            pub fn initialize() -> i32 { 0 }
+            pub fn new_counter() -> i32 { 0 }
+        },
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::R6,
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        check_r6_static_collisions(&parsed).expect("no generator binding is replaced");
+    }
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! { impl Counter { pub fn lock() -> i32 { 0 } } },
+        );
+        check_r6_static_collisions(&parsed).expect("only R6 statics land on a generator");
+    }
+}
+
+// endregion
+
+// region: Env member names
+
+#[test]
+fn env_member_collisions_follow_emitted_names() {
+    for (members, name, first, second) in [
+        // A constructor under another Rust name still occupies `new`.
+        (
+            quote::quote! {
+                #[miniextendr(env(constructor))]
+                pub fn create() -> Self { unimplemented!() }
+                pub fn new() -> i32 { 0 }
+            },
+            "new",
+            "create",
+            "new",
+        ),
+        (
+            quote::quote! {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r_name = "new")]
+                pub fn reset(&self) {}
+            },
+            "new",
+            "new",
+            "reset",
+        ),
+        // Instance and static methods share the class environment.
+        (
+            quote::quote! {
+                pub fn value(&self) -> i32 { 0 }
+                #[miniextendr(env(r_name = "value"))]
+                pub fn initial() -> i32 { 0 }
+            },
+            "value",
+            "value",
+            "initial",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "[[")]
+                pub fn first(&self) -> i32 { 0 }
+                #[miniextendr(r_name = "[[")]
+                pub fn second(&self) -> i32 { 0 }
+            },
+            "[[",
+            "first",
+            "second",
+        ),
+    ] {
+        let parsed = parse_impl_with_class_name(
+            ClassSystem::Env,
+            "RenamedCounter",
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        let message = check_env_member_collisions(&parsed)
+            .expect_err("an Env member must not overwrite another")
+            .to_string();
+        assert!(
+            message.contains(&format!("RenamedCounter${name}")),
+            "{message}"
+        );
+        assert!(
+            message.contains(&format!("both `{first}` and `{second}`")),
+            "{message}"
+        );
+        assert!(message.contains("r_name"), "{message}");
+    }
+}
+
+#[test]
+fn env_member_collisions_only_reserve_members_that_are_emitted() {
+    for members in [
+        // No constructor: a static `new` is the only `new`.
+        quote::quote! {
+            pub fn new() -> i32 { 0 }
+        },
+        // An ignored constructor defines no `Class$new`.
+        quote::quote! {
+            #[miniextendr(env(ignore))]
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(r_name = "new")]
+            pub fn initial() -> i32 { 0 }
+        },
+        // An ignored method defines nothing.
+        quote::quote! {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(env(ignore, r_name = "new"))]
+            pub fn reset(&self) {}
+        },
+        // A renamed static `new` next to a constructor of another name.
+        quote::quote! {
+            #[miniextendr(env(constructor))]
+            pub fn create() -> Self { unimplemented!() }
+            #[miniextendr(r_name = "initial")]
+            pub fn new() -> i32 { 0 }
+        },
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::Env,
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        check_env_member_collisions(&parsed).expect("distinct emitted members");
+    }
+    for system in [
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::R6,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter {
+                    pub fn value(&self) -> i32 { 0 }
+                    #[miniextendr(r_name = "value")]
+                    pub fn initial() -> i32 { 0 }
+                }
+            },
+        );
+        check_env_member_collisions(&parsed).expect("other systems have separate namespaces");
+    }
+}
+
+// endregion
 
 // region: R formal names (receivers, R6 bindings, reserved words)
 

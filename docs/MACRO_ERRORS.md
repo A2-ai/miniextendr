@@ -248,6 +248,41 @@ writes its result back into the same R object, `-> Result<Self, E>` /
 `Clone`). Drop the attribute. See
 [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#consuming-receivers-self).
 
+### "Env member `Class$method` is defined by both ..."
+
+Env constructors, instance methods and static methods share the class
+namespace. A constructor always defines `Class$new`, even when its Rust name
+is `create`. Rename the other method with `#[miniextendr(r_name = "...")]`.
+A non-constructor `new` is allowed when the class has no constructor. The
+check sees one impl block: two labeled blocks of the same type are not
+compared (#1776).
+
+### "R6 member `initialize` conflicts with the generated constructor"
+
+Every generated R6 class has an `initialize` member, even without a Rust
+constructor. An instance method or active binding cannot reuse that name.
+Rename the method, set `#[miniextendr(r_name = "reset")]`, or choose another
+`r6(prop = "...")` for an active binding. A static method or a method marked
+`constructor` may still be named `initialize` in Rust.
+
+### "R6 static method `Class$new` would replace the R6 generator's own `new`"
+
+R6 static methods are assigned onto the generator object that
+`R6::R6Class()` returns, next to R6's own bindings (`new`, `set`, `lock`,
+`classname`, `public_methods`, ...). The assignment replaces R6's binding
+without a warning, so `Class$new()` would stop creating objects. Rename the
+static method with `#[miniextendr(r_name = "...")]`. A constructor named
+`new`, and instance methods or active bindings under these names, are fine.
+
+### "S4 generic `s4_x` gets a method for `Class` from both `a` and `b`"
+
+Each S4 instance method becomes a `setMethod()` on its generic for the class:
+`s4(generic = "...")` when given, else `s4_` followed by the R method name
+(`r_name`, `postfix`). Two methods of one impl block on the same generic would
+register the same signature twice, and the second would replace the first.
+Rename one with `#[miniextendr(r_name = "...")]`, or give it another
+`s4(generic = "...")`.
+
 ### "unsupported receiver type"
 
 The R handle stores the value itself, so a method can take `self`,
