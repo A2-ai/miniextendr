@@ -235,8 +235,9 @@ applies to any delegation wrapper: forward every optional method whose inner
 implementation is better than the default, or the derive quietly discards the
 optimization.
 
-Sparse iterators (`SparseIterIntData` / `SparseIterRealData`) inherit a
-`get_region` tuned for their skip-ahead storage — see
+Sparse iterators (`SparseIterIntData` / `SparseIterRealData`) fill a region
+one element at a time through `elt`, so a region read skips and caches exactly
+as the same `elt` calls would — see
 [SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md).
 
 ## `elt` vs `get_region` vs `dataptr`
