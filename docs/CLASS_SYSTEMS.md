@@ -131,11 +131,12 @@ returned by `.Call()`, sets its class attribute, and returns it. There is no
 list and no `.ptr` field. The methods live in the `Counter` environment and
 take no receiver formal; each body refers to a bare `self`. That name resolves
 through the `$.Counter` dispatcher: `c$value()` calls `$.Counter(c, "value")`,
-which delegates to the shared lookup helper in `miniextendr-api/src/registry.rs`.
-The helper fetches `Counter$value` and gives the returned closure a fresh
-frame containing only `self`. That frame's parent is the method's original
-environment, so package objects used by method bodies and parameter defaults
-keep resolving there. The method stored in `Counter` is unchanged, and each
+which calls `.miniextendr_env_method`, a helper the wrapper file defines (its
+source is in `miniextendr-api/src/registry.rs`). The helper fetches
+`Counter$value` and returns it with a new enclosing environment that holds
+only `self`. That environment's parent is the method's original environment,
+the package namespace, so package objects used by method bodies and parameter
+defaults keep resolving there. The method stored in `Counter` is unchanged, and each
 returned closure keeps its own receiver alive. `[[` is aliased to the same
 dispatcher. A `&mut self` method returns `self`, so calls
 chain. Errors raised from Rust come back as a tagged value and are re-raised by
@@ -145,7 +146,8 @@ chain. Errors raised from Rust come back as a tagged value and are re-raised by
 An Env object's flat trait lookup (`obj$method()`) requires one matching
 trait. If several traits provide the method, it raises
 `miniextendr_ambiguous_method` with the method name in `condition$method` and
-the matching trait names in `condition$traits`. Select the trait explicitly
+the matching trait names in `condition$traits`, reporting the call as written
+(`obj$method`). Select the trait explicitly
 with `obj$Trait$method()`. An inherent method of that name takes precedence.
 The same rule applies to trait static methods and associated constants.
 
