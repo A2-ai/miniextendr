@@ -1690,9 +1690,6 @@ pub(super) fn derive_enum_dataframe(
         }
     };
 
-    // No IntoList assertion for align enums — they go through the companion struct path,
-    // not the `DataFrame<T>` path, so IntoList is not required.
-
     // region: Generate the split representation (hidden to_dataframe_split + DataFrameRowSplit)
     let split_method = generate_split_method(
         row_name,

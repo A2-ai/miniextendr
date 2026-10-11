@@ -61,9 +61,9 @@ For the full design rationale and the orphan-rule mechanics behind the blanket i
 return `BuiltDataFrame` from a `#[miniextendr]` function.
 
 ```rust
-use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, IntoList, miniextendr};
+use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, miniextendr};
 
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Measurement {
     time: f64,
     value: f64,
@@ -189,7 +189,7 @@ column (#1702).
 The derive supports different types in different fields; each field keeps its R type:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Person {
     name: String,      // character in R
     age: i32,          // integer in R
@@ -308,7 +308,7 @@ value fits in R's integer range and a double vector otherwise, so one column can
 hold both, and an empty row is `integer(0)`:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Row {
     #[dataframe(as_list)]
     starts: Vec<usize>,
@@ -559,13 +559,13 @@ struct Measurement { /* ... */ }
 
 ### Requirements
 
-A struct row type must implement `IntoList`:
+A struct row needs no trait besides the derive: nothing it generates turns a
+single row into a list. Derive or write `IntoList` only if you also return one
+row to R as a list, and then any impl works, derived or hand-written.
 
-- Automatically via `#[derive(IntoList)]`.
-- Via `#[derive(Serialize)]` when the `serde` feature is enabled (`Serialize` implies `IntoList`).
-- Via a manual `impl IntoList` using `List::from_raw_pairs()` (for heterogeneous fields).
-
-Enum `DataFrameRow`s generate their own `IntoList`; you don't add it separately.
+A unit-only enum's derive also emits `IntoR` (a one-element factor) and
+`IntoList`, which the `as_list` path uses when the enum is a field of an
+outer row. Payload enums get neither.
 
 ## Reading data frames back (`FromDataFrame`)
 
@@ -865,7 +865,7 @@ Column types are inferred from serde field types:
 | `String` / `&str` | character |
 | `Option<T>` | same type, `NA` for `None` |
 
-This is useful when you already have serde-serializable types and don't want to add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`, which gives you a typed companion type and the reverse-direction reader.
+This is useful when you already have serde-serializable types and don't want to add a `DataFrameRow` derive. For new types, prefer `#[derive(DataFrameRow)]`, which gives you a typed companion type and the reverse-direction reader.
 
 Requires the `serde` feature.
 
@@ -877,7 +877,7 @@ as `None`; the column type is unchanged, so an all-`None` column is still a
 double / character / logical / integer vector:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Record {
     id: i32,
     value: Option<f64>,  // NA in R when None
