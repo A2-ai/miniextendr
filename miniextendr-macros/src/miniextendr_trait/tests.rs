@@ -288,8 +288,8 @@ fn generate_excludes_static_methods_from_vtable() {
 
     // vtable should contain `value` but not `create`
     // The shim function names can help us verify
-    assert!(output_str.contains("__factory_value_shim"));
-    assert!(!output_str.contains("__factory_create_shim"));
+    assert!(output_str.contains("__Factory_value_shim"));
+    assert!(!output_str.contains("__Factory_create_shim"));
 }
 
 #[test]

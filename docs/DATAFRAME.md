@@ -61,9 +61,9 @@ For the full design rationale and the orphan-rule mechanics behind the blanket i
 return `BuiltDataFrame` from a `#[miniextendr]` function.
 
 ```rust
-use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, IntoList, miniextendr};
+use miniextendr_api::{BuiltDataFrame, DataFrame, DataFrameRow, miniextendr};
 
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Measurement {
     time: f64,
     value: f64,
@@ -189,7 +189,7 @@ column (#1702).
 The derive supports different types in different fields; each field keeps its R type:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Person {
     name: String,      // character in R
     age: i32,          // integer in R
@@ -268,7 +268,7 @@ struct Row {
 |-----------|--------|----------|
 | `skip` | Omit field from data frame | Any field |
 | `rename = "name"` | Custom column name | Any field |
-| `as_list` | Suppress expansion | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
+| `as_list` | Suppress expansion (keep one list-column) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]`, maps, wrapper types; a struct or enum type that implements `IntoList` |
 | `expand` | Explicit expansion (default for `[T; N]`; auto-expand for `Vec<T>`/`Box<[T]>`/`&[T]`) | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
 | `unnest` | Alias for `expand` | `[T; N]`, `Vec<T>`, `Box<[T]>`, `&[T]` |
 | `width = N` | Pin expansion width (truncates longer vecs/slices) | `Vec<T>`, `Box<[T]>`, `&[T]` |
@@ -308,7 +308,7 @@ value fits in R's integer range and a double vector otherwise, so one column can
 hold both, and an empty row is `integer(0)`:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Row {
     #[dataframe(as_list)]
     starts: Vec<usize>,
@@ -371,7 +371,7 @@ struct Row {
 
 **Type aliases** are not automatically unwrapped — `type Counts = HashMap<String, i32>; field: Counts` has `Counts` as the last segment, so map expansion is not triggered. Use the concrete type directly (`field: HashMap<String, i32>`), or annotate with `#[dataframe(as_list)]`. See [#604](https://github.com/A2-ai/miniextendr/issues/604).
 
-Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. Use `#[dataframe(as_list)]` on the field, or an import alias to a newtype wrapper, if a non-`DataFrameRow` stdlib type needs to be stored.
+Multi-segment paths whose last segment does NOT implement `DataFrameRow` (e.g. `std::ffi::CString`) produce a clear compile-time error from the `_assert_inner_is_dataframe_row` assertion — this is intentional. `#[dataframe(as_list)]` does not help there unless the type implements `IntoList` (see [List-columns of struct or enum values](#list-columns-of-struct-or-enum-values)), which `CString` doesn't: store a `String` instead, or wrap the value in a newtype that implements `IntoList`.
 
 ### Nested enum fields: flatten and opt-outs
 
@@ -424,7 +424,7 @@ Factor levels are the variant idents in declaration order. `is.factor(df$dir)` r
 
 #### `as_list` — opaque list-column
 
-Use `#[dataframe(as_list)]` to keep any inner enum as a single opaque VECSXP list-column. Each present row gets a list cell; absent-variant rows get `NULL`:
+Use `#[dataframe(as_list)]` to keep an inner enum as a single opaque VECSXP list-column. Each present row gets a list cell; absent-variant rows get `NULL`:
 
 ```rust
 enum Event {
@@ -434,7 +434,8 @@ enum Event {
 // R column: dir — list-column; Move rows have a list cell, Stop rows have NULL.
 ```
 
-`as_list` works for any inner type (unit-only or payload-bearing, with or without `DataFrameRow`).
+The cell is the value's `IntoList` list, so the inner type must implement
+`IntoList`; see [List-columns of struct or enum values](#list-columns-of-struct-or-enum-values).
 
 #### `<field>_variant` collision detection
 
@@ -559,13 +560,36 @@ struct Measurement { /* ... */ }
 
 ### Requirements
 
-A struct row type must implement `IntoList`:
+A row needs no trait besides the derive: nothing it generates turns a single
+row into a list, and the generated `{Row}DataFrame` companion derives nothing,
+so the field types need no `Debug` or `Clone` either. Derive or write
+`IntoList` only if you also return one row to R as a list, and then any impl
+works, derived or hand-written.
 
-- Automatically via `#[derive(IntoList)]`.
-- Via `#[derive(Serialize)]` when the `serde` feature is enabled (`Serialize` implies `IntoList`).
-- Via a manual `impl IntoList` using `List::from_raw_pairs()` (for heterogeneous fields).
+#### List-columns of struct or enum values
 
-Enum `DataFrameRow`s generate their own `IntoList`; you don't add it separately.
+A field whose type is a plain struct or enum path (`Point`, `geom::Point`,
+`Direction`) and carries `#[dataframe(as_list)]` becomes a list-column whose
+cells are the values' `IntoList` lists. That type must implement `IntoList`,
+and a missing impl is reported at the field's type:
+
+- a struct: `#[derive(IntoList)]`, or a hand-written impl;
+- a unit-only enum: its own `#[derive(DataFrameRow)]` also emits `IntoR`
+  (a one-element factor) and `IntoList`;
+- a payload enum: a hand-written `impl IntoList` (`#[derive(IntoList)]` takes
+  structs only).
+
+```rust
+#[derive(Clone, IntoList)]
+struct Point { x: f64, y: f64 }
+
+#[derive(Clone, DataFrameRow)]
+struct Row {
+    id: i32,
+    #[dataframe(as_list)]
+    origin: Point, // df$origin is list(list(x = 1, y = 2), ...)
+}
+```
 
 ## Reading data frames back (`FromDataFrame`)
 
@@ -865,7 +889,7 @@ Column types are inferred from serde field types:
 | `String` / `&str` | character |
 | `Option<T>` | same type, `NA` for `None` |
 
-This is useful when you already have serde-serializable types and don't want to add `IntoList` + `DataFrameRow` derives. For new types, prefer `#[derive(DataFrameRow)]`, which gives you a typed companion type and the reverse-direction reader.
+This is useful when you already have serde-serializable types and don't want to add a `DataFrameRow` derive. For new types, prefer `#[derive(DataFrameRow)]`, which gives you a typed companion type and the reverse-direction reader.
 
 Requires the `serde` feature.
 
@@ -877,7 +901,7 @@ as `None`; the column type is unchanged, so an all-`None` column is still a
 double / character / logical / integer vector:
 
 ```rust
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 struct Record {
     id: i32,
     value: Option<f64>,  // NA in R when None
@@ -946,7 +970,7 @@ naming convergence was completed in #783.
 ## Feature flags
 
 - **Base functionality**: no features required.
-- **`serde`**: enables `impl IntoList for T: Serialize`, the `SerdeRows<T>` wrapper, and `#[derive(Serialize, DataFrameRow)]`.
+- **`serde`**: enables `AsSerialize<T>` (any `Serialize` value to R data), the `SerdeRows<T>` wrapper, and `#[derive(Serialize, DataFrameRow)]`.
 - **`rayon`**: enables the `_par` verbs and parallelizes `DataFrame::builder`;
   the builder itself remains available without this feature.
 

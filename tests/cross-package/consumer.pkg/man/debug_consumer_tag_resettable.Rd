@@ -7,5 +7,5 @@
 debug_consumer_tag_resettable()
 }
 \description{
-Debug: Get TAG_RESETTABLE as hex string
+Debug: Get TAG_Resettable as hex string
 }

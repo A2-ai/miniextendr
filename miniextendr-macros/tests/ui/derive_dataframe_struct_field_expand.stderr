@@ -3,27 +3,3 @@ error: `expand`/`unnest` is only valid on `[T; N]`, `Vec<T>`, `Box<[T]>`, or `&[
    |
 15 |     origin: Point,
    |             ^^^^^
-
-error[E0277]: the trait bound `Point: IntoList` is not satisfied
- --> tests/ui/derive_dataframe_struct_field_expand.rs:6:8
-  |
-6 | struct Point {
-  |        ^^^^^ unsatisfied trait bound
-  |
-help: the trait `IntoList` is not implemented for `Point`
- --> tests/ui/derive_dataframe_struct_field_expand.rs:6:1
-  |
-6 | struct Point {
-  | ^^^^^^^^^^^^
-  = help: the following other types implement trait `IntoList`:
-            BTreeMap<K, V>
-            BTreeSet<T>
-            HashMap<K, V>
-            HashSet<T>
-            Vec<T>
-note: required by a bound in `_check`
- --> tests/ui/derive_dataframe_struct_field_expand.rs:5:10
-  |
-5 | #[derive(DataFrameRow)]
-  |          ^^^^^^^^^^^^ required by this bound in `_check`
-  = note: this error originates in the derive macro `DataFrameRow` (in Nightly builds, run with -Z macro-backtrace for more info)

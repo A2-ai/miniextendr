@@ -4,7 +4,7 @@
 //! across variants with `Option<T>` fill for missing fields).
 
 use proc_macro2::{Span, TokenStream};
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, quote_spanned};
 use syn::{Data, DeriveInput, Fields};
 
 // region: Attribute parsing
@@ -1053,8 +1053,8 @@ fn resolve_struct_field(
 ///
 /// # Requirements
 ///
-/// For structs: the type must implement `IntoList`.
-/// For enums: all variants must have named fields.
+/// For enums: all variants must have named fields. A struct row needs no other
+/// trait; nothing generated converts a row to a list.
 ///
 /// # Generated Items
 ///
@@ -1183,13 +1183,30 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 /// The expression that turns companion column `self.#name` into a column SEXP:
 /// `IntoR` for the whole `Vec`, or for an `as_list` struct field
 /// `into_list_column`, which stores each cell's list in the rooted column as
-/// it is built (#1748).
-fn column_sexp(name: &syn::Ident, needs_into_list: bool) -> TokenStream {
-    if needs_into_list {
-        quote! { ::miniextendr_api::list::into_list_column(self.#name) }
-    } else {
-        quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) }
+/// it is built (#1748). `list_elem_ty` is the field type when the column is
+/// built that way.
+fn column_sexp(name: &syn::Ident, list_elem_ty: Option<&syn::Type>) -> TokenStream {
+    match list_elem_ty {
+        Some(ty) => {
+            let into_list_column = list_column_fn(ty, false);
+            quote! { #into_list_column(self.#name) }
+        }
+        None => quote! { ::miniextendr_api::IntoR::into_sexp(self.#name) },
     }
+}
+
+/// `into_list_column::<#ty>` (or `into_option_list_column::<#ty>`, for a column
+/// with absent rows), spanned at the field type: a type without `IntoList` is
+/// then reported at the field instead of at the derive.
+pub(super) fn list_column_fn(ty: &syn::Type, optional: bool) -> TokenStream {
+    let span = syn::spanned::Spanned::span(ty);
+    let name = if optional {
+        "into_option_list_column"
+    } else {
+        "into_list_column"
+    };
+    let func = syn::Ident::new(name, span);
+    quote_spanned! {span=> ::miniextendr_api::list::#func::<#ty> }
 }
 
 /// Generate `DataFrameRow` expansion for struct types.
@@ -1200,7 +1217,6 @@ fn column_sexp(name: &syn::Ident, needs_into_list: bool) -> TokenStream {
 /// - `impl From<Vec<{Name}>> for {Name}DataFrame`
 /// - `impl IntoIterator` (for named structs without expansion)
 /// - Associated methods: `to_dataframe`, `from_dataframe`, `from_rows`, `from_rows_par`
-/// - A compile-time `IntoList` assertion (for non-expanded named structs)
 ///
 /// Handles fixed-array expansion (`[T; N]`), pinned-width Vec expansion
 /// (`Vec<T>` + `width`), and auto-expand Vec (`Vec<T>` + `expand`).
@@ -1400,10 +1416,9 @@ fn derive_struct_dataframe(
 
     // Any `#[dataframe(as_list)]` on a struct-typed field (#485 opt-out) keeps
     // the struct in the companion and becomes a list-column only at frame
-    // assembly. The struct need not implement `Default` and the row need not
-    // implement `IntoList`, so several codegen branches special-case it:
-    // IntoIterator generation and the `IntoList` compile-time assertion are
-    // skipped, and `from_rows_par` fills the column in a sequential pre-pass.
+    // assembly. The struct need not implement `Default`, so several codegen
+    // branches special-case it: IntoIterator generation is skipped, and
+    // `from_rows_par` fills the column in a sequential pre-pass.
     let has_into_list_struct = resolved
         .iter()
         .any(|rf| matches!(rf, ResolvedField::Single(d) if d.needs_into_list));
@@ -1446,7 +1461,6 @@ fn derive_struct_dataframe(
     };
 
     let dataframe_struct = quote! {
-        #[derive(Debug, Clone)]
         #vis struct #df_name #impl_generics #where_clause {
             #tag_field_decl
             #len_field_decl
@@ -1487,7 +1501,7 @@ fn derive_struct_dataframe(
         .map(|fc| {
             let name = &fc.df_field;
             let name_str = &fc.col_name_str;
-            let column = column_sexp(name, fc.needs_into_list);
+            let column = column_sexp(name, fc.needs_into_list.then_some(&fc.vec_elem_ty));
             quote! { (#name_str, __scope.protect_raw(#column)) }
         })
         .collect();
@@ -1542,7 +1556,7 @@ fn derive_struct_dataframe(
                 ResolvedField::Single(data) => {
                     let col_name = &data.col_name;
                     let col_name_str = &data.col_name_str;
-                    let column = column_sexp(col_name, data.needs_into_list);
+                    let column = column_sexp(col_name, data.needs_into_list.then_some(&data.ty));
                     quote! {
                         __df_pairs.push((
                             #col_name_str.to_string(),
@@ -2829,27 +2843,6 @@ fn derive_struct_dataframe(
         }
     };
 
-    // Compile-time assertion: row type must implement IntoList
-    // Skip for unit/empty structs, tuple structs, structs with expansion,
-    // and structs that store `List`-converted struct fields (#485 as_list).
-    let trait_check = if !flat_cols.is_empty()
-        && !is_tuple_struct
-        && !is_unit_struct
-        && !has_expansion
-        && !has_into_list_struct
-    {
-        quote! {
-            const _: () = {
-                fn _assert_into_list #impl_generics () #where_clause {
-                    fn _check<T: ::miniextendr_api::list::IntoList>() {}
-                    _check::<#row_name #ty_generics>();
-                }
-            };
-        }
-    } else {
-        TokenStream::new()
-    };
-
     // Marker trait impl: struct type implements DataFrameRow via IntoDataFrame chain.
     let marker_impl = quote! {
         impl #impl_generics ::miniextendr_api::markers::DataFrameRow
@@ -3000,7 +2993,6 @@ fn derive_struct_dataframe(
         #df_methods
         #into_iterator_impl
         #row_methods
-        #trait_check
         #marker_impl
         #payload_fields_impl
         #datarow_convert_impl

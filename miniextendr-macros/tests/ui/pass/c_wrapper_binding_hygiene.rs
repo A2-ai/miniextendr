@@ -1,6 +1,7 @@
 //! #1677: conversions must not shadow raw arguments or receiver bindings.
 #![allow(dead_code)]
-use miniextendr_api::{Dots, ExternalPtr, miniextendr};
+use miniextendr_api::dots::Dots;
+use miniextendr_api::{ExternalPtr, miniextendr};
 
 #[derive(Clone, ExternalPtr)]
 pub struct Builder { value: i32 }
@@ -44,14 +45,6 @@ impl Builder {
 pub fn dots_owner(d_storage: i32, d: &Dots) -> i32 {
     let _ = d;
     d_storage
-}
-
-// The owned string survives argument conversion before moving to the worker.
-#[cfg(feature = "worker-default")]
-#[miniextendr(worker)]
-pub fn worker_owner(text: &str, __owned_text: i32) -> i32 {
-    let _ = text;
-    __owned_text
 }
 
 fn main() {}

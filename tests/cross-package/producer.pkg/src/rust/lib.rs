@@ -536,14 +536,14 @@ pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
 
 // region: Debug/utility functions
 
-/// Debug: Get TAG_COUNTER as hex string
+/// Debug: Get TAG_Counter as hex string
 /// @export
 #[miniextendr]
 pub fn debug_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_Counter.hi, TAG_Counter.lo)
 }
 
-/// Debug: Get TAG_RESETTABLE as hex string
+/// Debug: Get TAG_Resettable as hex string
 /// @export
 #[miniextendr]
 pub fn debug_tag_resettable() -> String {

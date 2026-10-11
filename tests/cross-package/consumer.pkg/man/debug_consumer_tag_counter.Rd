@@ -7,5 +7,5 @@
 debug_consumer_tag_counter()
 }
 \description{
-Debug: Get TAG_COUNTER as hex string
+Debug: Get TAG_Counter as hex string
 }

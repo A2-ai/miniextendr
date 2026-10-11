@@ -91,7 +91,7 @@ let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
 
 ### 4. Dispatch with `mx_query`
 
-When you want to call a trait method, `mx_query(sexp, TAG_TRAIT)` asks the object for the trait vtable:
+When you want to call a trait method, `mx_query(sexp, TAG_<Trait>)` asks the object for the trait vtable:
 
 ```rust
 // Get the Counter vtable for this object

@@ -426,3 +426,66 @@ impl SelfArgCounter {
 
 // region: Module registration
 // endregion
+
+// region: Trait names that differ only in case (#1778)
+
+/// A gauge read through two traits whose names differ only in case.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct CaseGauge {
+    value: i32,
+}
+
+/// CaseGauge inherent methods (constructor).
+#[miniextendr(env)]
+impl CaseGauge {
+    /// Create a gauge holding `value`.
+    /// @param value The reading.
+    fn new_case_gauge(value: i32) -> Self {
+        Self { value }
+    }
+}
+
+// `Gauge` and `gauge` sit in sibling modules, as two crates' traits would.
+// Their tags, vtable builders, `#[no_mangle]` vtable statics and
+// registrations keep the identifiers' case, so both impls link and dispatch.
+mod case_upper {
+    use super::CaseGauge;
+    use miniextendr_api::miniextendr;
+
+    /// Read a gauge.
+    #[miniextendr]
+    pub trait Gauge {
+        /// The reading.
+        fn reading(&self) -> i32;
+    }
+
+    /// Gauge for CaseGauge: the stored reading.
+    #[miniextendr(env)]
+    impl Gauge for CaseGauge {
+        fn reading(&self) -> i32 {
+            self.value
+        }
+    }
+}
+
+mod case_lower {
+    use super::CaseGauge;
+    use miniextendr_api::miniextendr;
+
+    /// Read a gauge, negated.
+    #[allow(non_camel_case_types)]
+    #[miniextendr]
+    pub trait gauge {
+        /// The negated reading.
+        fn reading(&self) -> i32;
+    }
+
+    /// gauge for CaseGauge: the reading negated.
+    #[miniextendr(env)]
+    impl gauge for CaseGauge {
+        fn reading(&self) -> i32 {
+            -self.value
+        }
+    }
+}
+// endregion

@@ -181,10 +181,10 @@ test_that("is_counter and is_resettable both TRUE for dual-trait types", {
 })
 
 # =============================================================================
-# TAG_RESETTABLE consistency across packages
+# TAG_Resettable consistency across packages
 # =============================================================================
 
-test_that("TAG_RESETTABLE is identical across producer and consumer", {
+test_that("TAG_Resettable is identical across producer and consumer", {
   skip_if_not_installed("producer.pkg")
   library(producer.pkg)
 
@@ -195,7 +195,7 @@ test_that("TAG_RESETTABLE is identical across producer and consumer", {
   expect_equal(nchar(producer_tag), 32L)
 })
 
-test_that("TAG_RESETTABLE differs from TAG_COUNTER", {
+test_that("TAG_Resettable differs from TAG_Counter", {
   skip_if_not_installed("producer.pkg")
   library(producer.pkg)
 

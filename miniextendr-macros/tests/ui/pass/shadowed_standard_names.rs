@@ -52,7 +52,7 @@ pub struct Record { pub value: i32 }
 pub enum Mode { Fast, Slow }
 #[derive(Clone, Copy, Debug, miniextendr_api::RFactor)]
 pub enum Level { Low, High }
-#[derive(Clone, miniextendr_api::IntoList, miniextendr_api::DataFrameRow)]
+#[derive(Clone, miniextendr_api::DataFrameRow)]
 pub struct Row { pub value: i32 }
 #[derive(Clone, miniextendr_api::DataFrameRow)]
 pub enum Event { Value { value: i32 }, Empty }
