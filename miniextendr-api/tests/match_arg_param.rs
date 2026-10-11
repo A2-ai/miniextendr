@@ -200,8 +200,9 @@ unsafe fn helpers_env() -> OwnedProtect {
     let env =
         unsafe { r_eval_str("new.env(parent = baseenv())", R_GlobalEnv) }.expect("an environment");
     let env = unsafe { OwnedProtect::new(env) };
-    unsafe { r_eval_str(ARG_CHECK_HELPERS, env.get()) }
-        .expect("the preamble helpers parse and evaluate");
+    for helper in ARG_CHECK_HELPERS {
+        unsafe { r_eval_str(helper, env.get()) }.expect("the preamble helpers parse and evaluate");
+    }
     unsafe { r_eval_str(".miniextendr_conversion_error_class <- NULL", env.get()) }.unwrap();
     env
 }
