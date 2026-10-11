@@ -522,17 +522,24 @@ fn refusal_message<T: TypedExternal>(receiver: SEXP, refused: Refused) -> String
 /// an environment, the shape an earlier release of a package may have
 /// written to disk, its restored classes
 /// ([`TypedExternal::RESTORED_ERROR_CLASS`]) in front of those: a package
-/// refuses such a save as it refuses a restored pointer. Another receiver
-/// (an atomic vector given the class) was never saved, so it gets no
-/// restored class (#1919).
+/// refuses such a save as it refuses a restored pointer, with its restored
+/// message ([`TypedExternal::RESTORED_ERROR_MESSAGE`]) when it sets one.
+/// Another receiver (an atomic vector given the class) was never saved, so
+/// it gets neither (#1919).
 #[cold]
 fn refuse_no_handle<T: TypedExternal>(receiver: SEXP) -> ! {
-    let restored = match receiver.type_of() {
-        SEXPTYPE::VECSXP | SEXPTYPE::ENVSXP => T::RESTORED_ERROR_CLASS,
-        _ => &[],
+    let saved_shape = matches!(receiver.type_of(), SEXPTYPE::VECSXP | SEXPTYPE::ENVSXP);
+    let restored = if saved_shape {
+        T::RESTORED_ERROR_CLASS
+    } else {
+        &[]
+    };
+    let message = match T::RESTORED_ERROR_MESSAGE {
+        Some(message) if saved_shape => message.to_owned(),
+        _ => refusal_message::<T>(receiver, Refused::NoPointer),
     };
     std::panic::panic_any(RCondition::Error {
-        message: refusal_message::<T>(receiver, Refused::NoPointer),
+        message,
         class: no_handle_classes(restored, T::FIELD_ERROR_CLASS),
         data: None,
         call: ConditionCall::Inherit,

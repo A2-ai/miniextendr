@@ -611,8 +611,9 @@ pub trait TypedExternal: 'static {
     /// The package's message for a pointer of this type restored from a saved
     /// session, replacing miniextendr's in both the no-value and the
     /// other-version case (the condition's `saved_version` /
-    /// `current_version` fields stay). A static string: one type is one R
-    /// class, so the package names it literally.
+    /// `current_version` fields stay), and for a list or environment of the
+    /// class that carries no pointer (a save in an older format). A static
+    /// string: one type is one R class, so the package names it literally.
     ///
     /// `#[derive(ExternalPtr)]` fills it from
     /// `#[externalptr(restored(message = "..."))]`; the default keeps

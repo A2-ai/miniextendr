@@ -403,7 +403,8 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
   in_front(e, "rust_error", "null pointer")
   expect_identical(conditionMessage(e), "this `handmade_rec` object holds a null pointer")
   # A receiver of the class with no pointer, e.g. an older list format: the
-  # restored classes too, the shared parent class after both specific ones.
+  # restored classes too, the shared parent class after both specific ones,
+  # and the package's restored message, as for a restored pointer.
   old <- structure(list(id = 1L), class = "handmade_rec")
   for (read in alist(old$id, old[["ids"]], old$label)) {
     e <- caught(eval(read))
@@ -414,12 +415,12 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
     )
     expect_identical(
       conditionMessage(e),
-      "this `handmade_rec` object holds no pointer",
+      "this handmade_rec was saved; build a new one with new_handmade_rec()",
       label = deparse(read)
     )
   }
-  # An atomic vector given the class was never saved: no restored class
-  # (#1919). Reads that never reach a field stay R's.
+  # An atomic vector given the class was never saved: no restored class or
+  # message (#1919). Reads that never reach a field stay R's.
   num <- structure(1, class = "handmade_rec")
   e <- caught(num$id)
   expect_identical(
@@ -427,6 +428,7 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
     c("handmade_error_field", "handmade_error", "miniextendr_no_handle")
   )
   expect_false(inherits(e, "handmade_error_saved"))
+  expect_identical(conditionMessage(e), "this `handmade_rec` object holds no pointer")
   expect_null(names(num))
   expect_identical(num[[1]], 1)
   # A type without the option keeps the plain errors, which name the class.
@@ -881,7 +883,11 @@ test_that("restored: under `refuse = \"every_read\"` a list or environment of th
   )) {
     e <- caught(eval(read))
     expect_identical(class(e)[1:4], classes, label = deparse(read))
-    expect_identical(conditionMessage(e), "this `handmade_rec` object holds no pointer", label = deparse(read))
+    expect_identical(
+      conditionMessage(e),
+      "this handmade_rec was saved; build a new one with new_handmade_rec()",
+      label = deparse(read)
+    )
     expect_equal(conditionCall(e), read, label = deparse(read))
   }
   # A list carrying a live pointer keeps its own elements; one carrying a
