@@ -1554,14 +1554,15 @@ receiver of the class that carries no pointer (`miniextendr_no_handle`). A
 list or environment without a pointer, e.g. an older format, also gets the
 `restored(class = ...)` classes first, then these, each class once at its
 last place, so a parent class both lists end in follows both specific
-classes; an atomic vector given the class was never saved, so it gets these
-alone.
+classes, and the `restored(message = ...)` text when the type sets one; an
+atomic vector given the class was never saved, so it gets these alone.
 
 The receiver refusals name the class the user sees: `this "engine" object
 holds a pointer of another type`, `... holds no pointer`, `... holds a null
 pointer` (the receiver's first class; a receiver without one is named by
 the Rust type). `field_error(message = "...")` replaces that text with the
-package's own, for both refusals:
+package's own, for every one of them except a list or environment without
+a pointer under a `restored(message = "...")`, which reads as a save:
 
 ```rust
 #[derive(ExternalPtr)]

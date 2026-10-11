@@ -665,10 +665,11 @@ fields included: a reloaded object is refused, not recovered
   `miniextendr_no_handle` (``this `myclass` object holds no pointer``)
   from every R accessor, and under `refuse = "every_read"` from every S3
   reader, behind the type's `field_error(class = ...)` classes. A list or
-  environment receiver also gets the `restored(class = ...)` classes, the
-  shape a save in an older format has; an atomic vector given the class
-  was never saved and does not. `field_error(message = "...")` replaces the
-  message of this refusal and of the two above.
+  environment receiver also gets the `restored(class = ...)` classes and
+  the `restored(message = ...)` text, the shape a save in an older format
+  has; an atomic vector given the class was never saved and gets neither.
+  Otherwise `field_error(message = "...")` replaces the message of this
+  refusal and of the two above.
 
 A live pointer is checked with `Any::downcast`; one without an address by
 the type ID in `prot[0]`.
