@@ -146,11 +146,11 @@ pub(crate) fn generate_direct_altrep_registration(
             type Error = ::core::convert::Infallible;
 
             fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                Ok(self.into_sexp())
+                ::core::result::Result::Ok(self.into_sexp())
             }
 
             unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                Ok(unsafe { self.into_sexp_unchecked() })
+                ::core::result::Result::Ok(unsafe { self.into_sexp_unchecked() })
             }
 
             fn into_sexp(self) -> ::miniextendr_api::SEXP {
@@ -201,15 +201,15 @@ pub(crate) fn generate_direct_altrep_registration(
                 use ::miniextendr_api::SEXPTYPE;
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
-                    return Err(::miniextendr_api::SexpTypeError {
+                    return ::core::result::Result::Err(::miniextendr_api::SexpTypeError {
                         expected: <#ident #ty_generics as ::miniextendr_api::altrep::AltrepClass>::BASE.sexptype(),
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }
 
                 match unsafe { ::miniextendr_api::altrep_data1_as::<#ident #ty_generics>(sexp) } {
-                    Some(ptr) => Ok(#ref_ident(ptr)),
-                    None => Err(::miniextendr_api::SexpTypeError {
+                    ::core::option::Option::Some(ptr) => ::core::result::Result::Ok(#ref_ident(ptr)),
+                    ::core::option::Option::None => ::core::result::Result::Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     }),
@@ -235,15 +235,15 @@ pub(crate) fn generate_direct_altrep_registration(
                 use ::miniextendr_api::SEXPTYPE;
 
                 if !::miniextendr_api::SexpExt::is_altrep(&sexp) {
-                    return Err(::miniextendr_api::SexpTypeError {
+                    return ::core::result::Result::Err(::miniextendr_api::SexpTypeError {
                         expected: <#ident #ty_generics as ::miniextendr_api::altrep::AltrepClass>::BASE.sexptype(),
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     });
                 }
 
                 match unsafe { ::miniextendr_api::altrep_data1_as::<#ident #ty_generics>(sexp) } {
-                    Some(ptr) => Ok(#mut_ident(ptr)),
-                    None => Err(::miniextendr_api::SexpTypeError {
+                    ::core::option::Option::Some(ptr) => ::core::result::Result::Ok(#mut_ident(ptr)),
+                    ::core::option::Option::None => ::core::result::Result::Err(::miniextendr_api::SexpTypeError {
                         expected: SEXPTYPE::EXTPTRSXP,
                         actual: ::miniextendr_api::SexpExt::type_of(&sexp),
                     }),

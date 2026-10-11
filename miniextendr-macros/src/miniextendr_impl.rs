@@ -3434,8 +3434,8 @@ pub fn generate_method_c_wrapper(
                         ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
                     let self_ref = match self_ptr.downcast_mut::<#type_ident>() {
-                        Some(r) => r,
-                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::Some(r) => r,
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
                     };
                 }
             }
@@ -3445,8 +3445,8 @@ pub fn generate_method_c_wrapper(
                         ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
                     let self_ref = match self_ptr.downcast_ref::<#type_ident>() {
-                        Some(r) => r,
-                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::Some(r) => r,
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
                     };
                 }
             }
@@ -3459,8 +3459,8 @@ pub fn generate_method_c_wrapper(
                         ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
                     let self_slot = match self_ptr.downcast_mut::<#type_ident>() {
-                        Some(r) => r,
-                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::Some(r) => r,
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
                     };
                 },
                 // `self -> Self` and terminal `self -> T`: move the value out,
@@ -3471,8 +3471,8 @@ pub fn generate_method_c_wrapper(
                         ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
                     };
                     let __mx_taken = match self_ptr.take_for_consuming::<#type_ident>() {
-                        Some(v) => v,
-                        None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::Some(v) => v,
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
                     };
                 },
             },

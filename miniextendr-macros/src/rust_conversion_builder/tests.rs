@@ -853,7 +853,7 @@ fn no_na_checks_the_converted_value() {
         assert!(s.contains(&check), "{src}: {s}");
         assert!(
             s.contains(&format!(
-                "arg_check_condition_value (\"{message}\" , \"x\" , & [] , Some (__miniextendr_call) ,)"
+                "arg_check_condition_value (\"{message}\" , \"x\" , & [] , :: core :: option :: Option :: Some (__miniextendr_call) ,)"
             )),
             "{src}: {s}"
         );
@@ -885,7 +885,7 @@ fn no_na_check_uses_the_custom_message_and_crate_class() {
     let s = conversion_text(&builder, "dose: AsNumeric");
     assert!(
         s.contains(
-            "arg_check_condition_value (\"need a dose\" , \"dose\" , & [\"pkg_error_argument\"] , Some (__miniextendr_call) ,)"
+            "arg_check_condition_value (\"need a dose\" , \"dose\" , & [\"pkg_error_argument\"] , :: core :: option :: Option :: Some (__miniextendr_call) ,)"
         ),
         "{s}"
     );
@@ -1013,7 +1013,7 @@ fn test_unevaluated_params_bind_from_the_wrapper_argument() {
         "{s}"
     );
     assert!(
-        s.contains("arg_check_condition_value (\"argument \\\"cond\\\" is missing, with no default\" , \"cond\" , & [] , Some (__miniextendr_call) ,)"),
+        s.contains("arg_check_condition_value (\"argument \\\"cond\\\" is missing, with no default\" , \"cond\" , & [] , :: core :: option :: Option :: Some (__miniextendr_call) ,)"),
         "{s}"
     );
     assert!(!s.contains("TryFromSexp"), "{s}");

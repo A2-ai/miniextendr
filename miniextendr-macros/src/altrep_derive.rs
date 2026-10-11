@@ -708,11 +708,11 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         quote! { ::miniextendr_api::altrep_data::AltStringData },
         |elt_field, elt_delegate| {
             if let Some(d) = elt_delegate {
-                quote! { fn elt(&self, i: usize) -> Option<&str> { self.#d.elt(i) } }
+                quote! { fn elt(&self, i: usize) -> ::core::option::Option<&str> { self.#d.elt(i) } }
             } else if let Some(f) = elt_field {
-                quote! { fn elt(&self, _i: usize) -> Option<&str> { Some(self.#f.as_ref()) } }
+                quote! { fn elt(&self, _i: usize) -> ::core::option::Option<&str> { ::core::option::Option::Some(self.#f.as_ref()) } }
             } else {
-                quote! { fn elt(&self, _i: usize) -> Option<&str> { None } }
+                quote! { fn elt(&self, _i: usize) -> ::core::option::Option<&str> { ::core::option::Option::None } }
             }
         },
         &AltrepFamilyConfig {

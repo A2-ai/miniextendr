@@ -39,6 +39,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 - `tests.rs` — UI tests in `tests/ui/*.stderr` snapshots; update when error messages change.
 
 ## Gotchas specific to this crate
+- **Generated standard-library references need absolute paths.** A consumer can shadow `Some`, `None`, `Ok`, `Err`, `Option`, `Result`, `Box` or `drop`. Qualify emitted references; leave interpolated user types/names intact. Keep `tests/ui/pass/shadowed_standard_names.rs` covering new emission paths.
 - **RNativeType requires `#[repr(transparent)]`.** Its pointer casts expose R's inner-type allocation as slices of the newtype. A one-field `repr(Rust)`, packed, or over-aligned struct does not establish that contract; reject it before generating the impl.
 - **Native NA capability is separate from storage.** `#[derive(IsNA)]` forwards through `newtype_derive`'s existing parser and preserves bounds; it requires both a native wrapper and an NA-capable inner field. Do not add an unconditional IsNA impl to RNativeType derive: raw `u8` and native wrappers around it have no NA.
 - **Native-borrow metadata follows the selected converter.** `Call`/`CallerCall` do not convert from SEXP; omit their metadata query so method rejection keeps its intended diagnostic. `CoercionMapping::Numeric` delegates to `TryFromSexp`, so preserve its `NATIVE_BORROW`; only coercion helpers that bypass that trait omit the query. Keep minimal-feature UI coverage alongside full-feature Clippy.

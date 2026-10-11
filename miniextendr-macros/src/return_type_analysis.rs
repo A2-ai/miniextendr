@@ -171,10 +171,10 @@ fn analyze_option_type(
         *ctx.is_invisible = true;
         quote::quote! {
             match #rust_result_ident {
-                Some(()) => ::miniextendr_api::SEXP::nil(),
+                ::core::option::Option::Some(()) => ::miniextendr_api::SEXP::nil(),
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
-                    #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, Some(__miniextendr_call),
+                ::core::option::Option::None => unsafe { ::miniextendr_api::error_value::make_rust_condition_value(
+                    #option_none_error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
                 ) },
             }
         }
@@ -184,8 +184,8 @@ fn analyze_option_type(
         *ctx.returns_sexp = true;
         quote::quote! {
             match #rust_result_ident {
-                Some(v) => v,
-                None => ::miniextendr_api::SEXP::nil(),
+                ::core::option::Option::Some(v) => v,
+                ::core::option::Option::None => ::miniextendr_api::SEXP::nil(),
             }
         }
     } else {
@@ -264,10 +264,10 @@ fn analyze_result_type(
         *ctx.is_invisible = true;
         quote::quote! {
             match #rust_result_ident {
-                Ok(()) => ::miniextendr_api::SEXP::nil(),
+                ::core::result::Result::Ok(()) => ::miniextendr_api::SEXP::nil(),
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, Some(__miniextendr_call),
+                ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
                         ) },
             }
         }
@@ -277,10 +277,10 @@ fn analyze_result_type(
         *ctx.returns_sexp = true;
         quote::quote! {
             match #rust_result_ident {
-                Ok(v) => v,
+                ::core::result::Result::Ok(v) => v,
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, Some(__miniextendr_call),
+                ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
                         ) },
             }
         }
@@ -289,10 +289,10 @@ fn analyze_result_type(
         *ctx.is_invisible = false;
         quote::quote! {
             match #rust_result_ident {
-                Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
+                ::core::result::Result::Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
                 // SAFETY: runs inside the wrapper's with_r_unwind_protect closure on the R main thread.
-                Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
-                            #err_parts, Some(__miniextendr_call),
+                ::core::result::Result::Err(e) => unsafe { ::miniextendr_api::error_value::result_err_condition_value(
+                            #err_parts, ::core::option::Option::Some(__miniextendr_call),
                         ) },
             }
         }
