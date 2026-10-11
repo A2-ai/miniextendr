@@ -107,16 +107,11 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             } else {
                 quote! { { #(#idents),*, .. } }
             };
-            // Use from_raw_pairs to allow heterogeneous field types.
-            // Each `into_sexp()` is wrapped in `__scope.protect_raw` so prior
-            // field SEXPs survive subsequent allocations — UAF otherwise
-            // (reviews/2026-05-07-gctorture-audit.md).
+            let n = idents.len();
             let construction = quote! {
-                // SAFETY: IntoList runs on the R main thread.
-                unsafe {
-                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                    ::miniextendr_api::list::List::from_raw_pairs(vec![ #( (#names, __scope.protect_raw(#idents.into_sexp())) ),* ])
-                }
+                let mut __builder = ::miniextendr_api::NamedListBuilder::with_capacity(#n);
+                #( __builder.push(#names, #idents); )*
+                __builder
             };
             (pat, construction)
         }
@@ -139,12 +134,11 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             }
 
             let pat = quote! { ( #(#pat_elems),* ) };
+            let n = value_idents.len();
             let construction = quote! {
-                // SAFETY: see above.
-                unsafe {
-                    let __scope = ::miniextendr_api::gc_protect::ProtectScope::new();
-                    ::miniextendr_api::list::List::from_raw_values(vec![ #( __scope.protect_raw(#value_idents.into_sexp()) ),* ])
-                }
+                let mut __builder = ::miniextendr_api::NamedListBuilder::with_capacity(#n);
+                #( __builder.push("", #value_idents); )*
+                __builder
             };
             (pat, construction)
         }
@@ -153,7 +147,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         Fields::Unit => {
             let pat = quote! {};
             let construction = quote! {
-                ::miniextendr_api::list::List::from_raw_values(vec![])
+                ::miniextendr_api::NamedListBuilder::new()
             };
             (pat, construction)
         }
@@ -168,12 +162,35 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         where_clause.predicates.push(b);
     }
 
+    // `into_list` still returns an unrooted `List` view (#509 / #510 track
+    // rooting it): `__root` keeps the finished list reachable until the
+    // return, across the names removal below.
+    let remove_names = if matches!(struct_data.fields, Fields::Named(_)) {
+        quote! {}
+    } else {
+        quote! {
+            // The builder names every element, `""` for a positional field.
+            // A tuple or unit struct's list has no names, so drop the
+            // attribute in place (`Rf_namesgets` may copy the list instead).
+            ::miniextendr_api::SexpExt::set_attr(
+                &__sexp,
+                unsafe { ::miniextendr_api::sys::R_NamesSymbol },
+                ::miniextendr_api::SEXP::nil()
+            );
+        }
+    };
+
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::list::IntoList for #name #ty_generics #where_clause {
             fn into_list(self) -> ::miniextendr_api::list::List {
-                use ::miniextendr_api::into_r::IntoR;
                 let Self #destructure_pat = self;
-                #list_construction
+                let __root = ::miniextendr_api::RootedSentinel::new({
+                    #list_construction
+                });
+                let __sexp = __root.as_sexp();
+                #remove_names
+                // SAFETY: the builder produced a VECSXP, rooted until return.
+                unsafe { ::miniextendr_api::list::List::from_raw(__sexp) }
             }
         }
     };

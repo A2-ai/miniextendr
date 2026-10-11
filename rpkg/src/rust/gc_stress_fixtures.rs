@@ -1555,19 +1555,57 @@ pub fn gc_stress_toml_array() {
     let _ = bool_arr.into_sexp();
 }
 
-/// Exercise `NamedDataFrameListBuilder` SEXP protection under GC pressure.
+/// Exercise owned named-list construction and all three finishes under GC pressure.
 ///
-/// Pushes two `DataFrame`s (synthesised internally via `vec_to_dataframe`) into
-/// a `NamedDataFrameListBuilder` and calls `build()`.  Each `push` stores the
-/// input SEXP in an internal `Vec<SEXP>` (protected by the builder's
-/// `ProtectScope`), making this the canonical gctorture coverage for the
-/// SEXP-storage-across-allocations path in the builder.
+/// Holds growing builders, a finished data frame and a classed `BuiltList`
+/// across further allocations and collections. No arguments, so the no-arg GC
+/// sweep exercises every path.
+#[miniextendr(noexport)]
+pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
+    use miniextendr_api::NamedListBuilder;
+
+    let mut values = NamedListBuilder::with_capacity(1);
+    let mut columns = NamedListBuilder::new();
+    for i in 0..12 {
+        values.push_sexp(format!("v{i}"), vec![i; 4].into_sexp());
+        columns.push(format!("c{i}"), vec![f64::from(i); 3]);
+        let _ = vec!["allocation"; 16].into_sexp();
+        unsafe { miniextendr_api::sys::R_gc() };
+    }
+    values.rename(0, "first");
+    columns.names_mut()[0] = "first".into();
+    let frame = columns.into_data_frame().unwrap();
+    let empty = NamedListBuilder::new().into_data_frame().unwrap();
+    let mut parts = NamedListBuilder::new();
+    parts.push("id", 7i32);
+    parts.push("label", "seven");
+    let classed = parts
+        .into_list()
+        .set_class(&["gc_stress_result", "list"])
+        .set_attr("note", vec!["kept"; 2]);
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
+
+    let mut out = NamedListBuilder::new();
+    out.push("values", values);
+    out.push("frame", frame);
+    out.push("empty", empty);
+    out.push("classed", classed);
+    unsafe { miniextendr_api::sys::R_gc() };
+    out
+}
+
+/// Exercise named lists of data frames under GC pressure.
+///
+/// Holds both serde-built frames in the preserved list across allocations.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn gc_stress_named_df_list_builder() -> SEXP {
-    use miniextendr_api::NamedDataFrameListBuilder;
+    use miniextendr_api::NamedListBuilder;
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::vec_to_dataframe;
 
@@ -1598,14 +1636,14 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
         })
         .collect();
 
-    // `vec_to_dataframe` now returns an owned `BuiltDataFrame`; deref to the view
-    // for `push` (each temporary handle lives to the end of the `.push(...)`
-    // statement, so its frame stays rooted until `push` re-roots it internally).
-    NamedDataFrameListBuilder::new()
-        .push("results", *vec_to_dataframe(&oks).unwrap())
-        .push("error", *vec_to_dataframe(&errs).unwrap())
-        .build()
-        .into_sexp()
+    let mut out = NamedListBuilder::new();
+    out.push("results", vec_to_dataframe(&oks).unwrap());
+    out.push("error", vec_to_dataframe(&errs).unwrap());
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
+    out.into_sexp()
 }
 
 /// Exercise `DataFrame::group_by` + `GroupedDataFrame::frames` SEXP handling
@@ -1614,14 +1652,14 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
 /// `GroupedDataFrame` holds the source frame's SEXP across the per-group
 /// `select_rows` allocations, and each yielded sub-frame is a rooted
 /// `BuiltDataFrame` (#1247) whose root must hold until the
-/// `NamedDataFrameListBuilder` push re-roots the view — the two
+/// `NamedListBuilder` push takes ownership of the frame — the two
 /// SEXP-across-allocations paths this fixture drives. Synthesizes a 60-row frame with a
 /// character key (incl. NAs) internally.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     let df = DataFrame::builder(60)
         .column::<i32>("v", |chunk, offset| {
@@ -1640,13 +1678,11 @@ pub fn gc_stress_group_by() -> SEXP {
     let grouped = df
         .group_by("g")
         .expect("gc_stress_group_by: group_by failed");
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Exercise `DataFrame::group_by_multi` (composite keys) + `GroupedDataFrame::frames`
@@ -1661,7 +1697,7 @@ pub fn gc_stress_group_by() -> SEXP {
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by_multi() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     let df = DataFrame::builder(60)
         .column::<i32>("v", |chunk, offset| {
@@ -1685,13 +1721,11 @@ pub fn gc_stress_group_by_multi() -> SEXP {
     let grouped = df
         .group_by_multi(&["g", "k"])
         .expect("gc_stress_group_by_multi: group_by_multi failed");
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Exercise double group keys (plain, `Date`, `POSIXct`) through
@@ -1707,8 +1741,8 @@ pub fn gc_stress_group_by_multi() -> SEXP {
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by_double() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
     use miniextendr_api::r_eval_str;
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     const INPUT: &str = r#"local({
         x <- rep(c(2.5, -0, 0, NaN, NA, -Inf, 1e5), length.out = 42)
@@ -1736,26 +1770,26 @@ pub fn gc_stress_group_by_double() -> SEXP {
     let df = DataFrame::from_sexp(input.get().vector_elt(0)).expect("df is a data.frame");
     let gdf = DataFrame::from_sexp(input.get().vector_elt(1)).expect("gdf is a data.frame");
 
-    let mut out = NamedDataFrameListBuilder::with_capacity(32);
+    let mut out = NamedListBuilder::with_capacity(32);
     let plain = df.group_by("x").expect("group_by(x) failed");
     for (key, sub) in plain.frames() {
-        out = out.push(format!("x={}", key.label()), *sub);
+        out.push(format!("x={}", key.label()), sub);
     }
     let dates = df.group_by("d").expect("group_by(d) failed");
     for (key, sub) in dates.frames() {
-        out = out.push(format!("d={}", key.label()), *sub);
+        out.push(format!("d={}", key.label()), sub);
     }
     let multi = df
         .group_by_multi(&["p", "x"])
         .expect("group_by_multi(p, x) failed");
     for (key, sub) in multi.frames() {
-        out = out.push(format!("px={}", key.label()), *sub);
+        out.push(format!("px={}", key.label()), sub);
     }
     let meta = gdf.group_by_metadata().expect("group_by_metadata failed");
     for (key, sub) in meta.frames() {
-        out = out.push(format!("meta={}", key.label()), *sub);
+        out.push(format!("meta={}", key.label()), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
@@ -1973,8 +2007,8 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
 ///
 /// Synthesises a mixed Result-iterator (every third row is an Err with a
 /// distinct payload shape) and runs it through the streaming two-builder
-/// path. Each builder's `ProtectScope` plus the assembling
-/// `NamedDataFrameListBuilder` need to keep every protected SEXP live.
+/// path. The returned named-list builder is held across further allocations
+/// and a full collection before it is returned to R.
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
@@ -2015,6 +2049,10 @@ pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
         DispatchNames::default(),
     )
     .expect("gc_stress_dispatch_to_dataframes: dispatch_to_dataframes failed");
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
     list.into_sexp()
 }
 
@@ -2526,7 +2564,7 @@ pub fn gc_stress_map_to_dataframe() -> SEXP {
 
 /// Exercise `result_to_dataframe(Auto)` under GC pressure with mixed Ok/Err
 /// rows. Exercises the split path (intermediate `DataFrame` pair +
-/// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
+/// `NamedListBuilder` assembly in `IntoR for DataFrameShape`).
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn gc_stress_result_to_dataframe_auto() -> SEXP {

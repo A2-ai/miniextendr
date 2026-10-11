@@ -668,8 +668,8 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 pub mod dataframe;
 pub use dataframe::{
     BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameShape, FromDataFrame,
-    GroupDeclaration, GroupKey, GroupedDataFrame, IntoDataFrame, IntoDataFrameSplit,
-    NamedDataFrameListBuilder, RealKey, RootedSentinel, SplitResults, group_rows,
+    GroupDeclaration, GroupKey, GroupedDataFrame, IntoDataFrame, IntoDataFrameSplit, RealKey,
+    RootedSentinel, SplitResults, group_rows,
 };
 
 // Closure-per-column DataFrame builder (parallel fill with `rayon`, serial
@@ -806,7 +806,8 @@ pub use convert::{
 pub use convert::{AsVctrs, AsVctrsExt};
 pub use into_r::Lazy;
 pub use list::{
-    IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,
+    BuiltList, IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, NamedListBuilder,
+    TryFromList, collect_list,
 };
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
