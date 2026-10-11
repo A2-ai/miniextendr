@@ -373,3 +373,21 @@ test_that("a payload deriving RCondition is signalled as the kind it declares", 
   expect_identical(w$n, 3L)
   expect_identical(conditionCall(w)[[1]], as.name("typed_condition_raise"))
 })
+
+test_that("a derived struct takes a class vector, a fixed entry and leaves out a NULL field", {
+  out <- collect_conditions(typed_condition_class_list(NULL))
+  expect_true(out$value)
+  expect_length(out$conditions, 1L)
+  w <- out$conditions[[1]]
+  expect_identical(
+    class(w)[1:3],
+    c("pkg_warning_argument_ignored", "pkg_warning", "rust_warning")
+  )
+  expect_identical(conditionMessage(w), "`unit_table` is ignored")
+  expect_identical(w$param, "unit_table")
+  expect_false("hint" %in% names(w))
+
+  w <- tryCatch(typed_condition_class_list("give it when grouping"), warning = identity)
+  expect_identical(w$hint, "give it when grouping")
+  expect_identical(w$param, "unit_table")
+})

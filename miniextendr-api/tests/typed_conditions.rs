@@ -25,6 +25,44 @@ enum Diagnostic {
 #[condition(message = "tick")]
 struct Tick;
 
+/// A struct's own class vector, a fixed `data` entry, and an optional field
+/// left out when it is `None`.
+#[derive(RCondition)]
+#[condition(
+    kind = warning,
+    class("pkg_warning_argument_ignored", "pkg_warning"),
+    message = "`{argument}` is ignored",
+    data(param = "unit_table")
+)]
+struct ArgumentIgnored {
+    #[condition(skip)]
+    argument: &'static str,
+    #[condition(skip_none)]
+    hint: Option<String>,
+}
+
+/// A borrowed payload: the lifetime reaches both impls, and the data entries
+/// are owned copies. A variant's class list replaces its member; the type's
+/// `data(...)` entry follows every variant's own.
+#[derive(RCondition)]
+#[condition(kind = warning, class = "pkg_warning", data(source = "engine"))]
+enum EngineNote<'a> {
+    #[condition(
+        class("pkg_warning_masked", "pkg_engine_warning"),
+        message = "rule `{rule}` is masked"
+    )]
+    Masked { rule: &'a str },
+    #[condition(message = "plain", data(step = 2i32))]
+    Plain,
+}
+
+fn character(value: &RValue) -> Vec<Option<String>> {
+    match value {
+        RValue::Character(values) => values.clone(),
+        _ => panic!("not a character value"),
+    }
+}
+
 #[test]
 fn warning_struct_keeps_classes_fields_and_call_policy() {
     let condition = RCondition::from(DroppedRows { n: 2 });
@@ -104,4 +142,56 @@ fn deferred_mixed_enum_keeps_kinds_and_queue_order() {
         .map(|condition| condition.into_parts().0)
         .collect();
     assert_eq!(kinds, ["warning", "message", "condition"]);
+}
+
+#[test]
+fn struct_class_vector_fixed_entry_and_skip_none() {
+    let (kind, parts) = RCondition::from(ArgumentIgnored {
+        argument: "unit_table",
+        hint: None,
+    })
+    .into_parts();
+    assert_eq!(kind, "warning");
+    assert_eq!(parts.message, "`unit_table` is ignored");
+    assert_eq!(parts.class, ["pkg_warning_argument_ignored", "pkg_warning"]);
+    let data = parts.data.expect("the fixed entry");
+    assert_eq!(data.len(), 1);
+    assert_eq!(data[0].0, "param");
+    assert_eq!(character(&data[0].1), [Some("unit_table".to_string())]);
+
+    let (_, parts) = RCondition::from(ArgumentIgnored {
+        argument: "unit_table",
+        hint: Some("give it when grouping".to_string()),
+    })
+    .into_parts();
+    let data = parts.data.expect("both entries");
+    let names: Vec<&str> = data.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["hint", "param"]);
+    assert_eq!(
+        character(&data[0].1),
+        [Some("give it when grouping".to_string())]
+    );
+}
+
+#[test]
+fn borrowed_enum_with_variant_class_list_and_data_entries() {
+    let rule = String::from("lambda_z");
+    let (kind, parts) = RCondition::from(EngineNote::Masked { rule: &rule }).into_parts();
+    assert_eq!(kind, "warning");
+    assert_eq!(parts.message, "rule `lambda_z` is masked");
+    assert_eq!(
+        parts.class,
+        ["pkg_warning_masked", "pkg_engine_warning", "pkg_warning"]
+    );
+    let data = parts.data.expect("field and type entries");
+    let names: Vec<&str> = data.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["rule", "source"]);
+    assert_eq!(character(&data[0].1), [Some("lambda_z".to_string())]);
+
+    let (_, parts) = RCondition::from(EngineNote::Plain).into_parts();
+    assert_eq!(parts.class, ["pkg_warning_plain", "pkg_warning"]);
+    let data = parts.data.expect("type and variant entries");
+    let names: Vec<&str> = data.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["source", "step"]);
+    assert!(matches!(&data[1].1, RValue::Integer(values) if values == &[Some(2)]));
 }

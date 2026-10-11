@@ -584,7 +584,18 @@ pub enum PkgError {
   type name in snake_case (`PkgError` → `pkg_error`). Each variant reports
   `c(<member>, <family>)`; the member is the same attribute on the variant,
   else `<family>_<variant in snake_case>` (`pkg_error_out_of_range`). A struct
-  reports `c(<family>)`.
+  reports `c(<family>)`. The list form, `#[condition(class("…", "…"))]`, most
+  specific first, is a struct's whole class vector, and on a variant it
+  replaces the member, with the family still last:
+
+  ```rust
+  #[derive(RCondition)]
+  #[condition(kind = message, class("pkg_message_selection_dropped", "pkg_message"))]
+  struct SelectionDropped { missing: Vec<String> }
+  // class: pkg_message_selection_dropped, pkg_message, rust_message, ...
+  ```
+
+  On an enum the type takes `class = "…"` only: it names the family.
 - **Message.** `#[condition(message = "…")]` on a struct or variant is a
   `format!` string with the fields in scope (tuple fields as `_0`, `_1`, …).
   Without it the message is the type's `Display` rendering, so a thiserror
@@ -594,9 +605,16 @@ pub enum PkgError {
   [supported value types](#supported-data-value-types)).
   `#[condition(rename = "…")]` changes the name, `#[condition(skip)]` leaves
   the field out, and `#[condition(debug)]` attaches the `Debug` rendering
-  (`RValue::debug`) for a type without an R mapping. Tuple fields need
-  `rename` or `skip`. The reserved slots `message`, `call` and `kind` are
-  compile errors, as are generic types.
+  (`RValue::debug`) for a type without an R mapping. `#[condition(skip_none)]`
+  on an `Option` field leaves its entry out when it is `None`, instead of a
+  typed `NA`. `#[condition(data(name = value, …))]` on the type or a variant
+  adds entries after the fields' (the type's, then the variant's), each
+  `RValue::from(value)`: `data(param = "unit_table")` gives every such
+  condition `e$param`. Tuple fields need `rename` or `skip`. The reserved
+  slots `message`, `call` and `kind` are compile errors, for fields and
+  `data(...)` entries alike, as are duplicate names and type or const
+  parameters. Lifetime parameters are fine: a payload can borrow, since
+  every entry is converted to an owned `RValue`.
 - **Call.** `#[condition(call = none)]` on the type (every variant) or on a
   variant raises the condition without a call
   ([Conditions without a call](#conditions-without-a-call)); the others keep

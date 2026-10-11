@@ -281,6 +281,35 @@ pub fn typed_condition_raise(n: i32) -> i32 {
     RCondition::from(PkgDiagnostic::Dropped { n }).raise()
 }
 
+/// A warning with a class vector of its own, a fixed `data` entry, and an
+/// optional field left out when it is `None`.
+#[derive(Debug, RCondition)]
+#[condition(
+    kind = warning,
+    class("pkg_warning_argument_ignored", "pkg_warning"),
+    message = "`{argument}` is ignored",
+    data(param = "unit_table")
+)]
+pub struct ArgumentIgnored {
+    #[condition(skip)]
+    argument: String,
+    #[condition(skip_none)]
+    hint: Option<String>,
+}
+
+/// Queues an `ArgumentIgnored` warning, with `hint` when it is not `NULL`,
+/// and returns `TRUE`.
+/// @param hint `NULL` or a hint.
+#[miniextendr(noexport)]
+pub fn typed_condition_class_list(hint: Option<String>) -> bool {
+    RCondition::from(ArgumentIgnored {
+        argument: "unit_table".to_string(),
+        hint,
+    })
+    .defer();
+    true
+}
+
 // endregion
 
 // region: Callback boundaries (#1518)
