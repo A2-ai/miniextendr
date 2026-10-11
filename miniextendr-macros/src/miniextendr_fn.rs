@@ -2687,7 +2687,7 @@ impl ROnExit {
 
 /// `#[miniextendr(serde_error)]`: derive the `Err` arm's condition class and
 /// data from the error type's `serde::Serialize` output instead of the
-/// `RConditionError`/`Debug` probe.
+/// `RConditionData`/`Debug` probe.
 ///
 /// The enum variant (external tagging, or the `tag` field of an internally
 /// tagged enum) becomes the member class `<prefix>_<variant>`; the payload

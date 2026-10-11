@@ -183,8 +183,8 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 /// Spellings: `call = none` first in [`crate::warning!`], [`crate::error!`],
 /// [`crate::condition!`] and the `defer_*!` macros;
 /// [`RError::without_call`]; `#[condition(call = none)]` on a
-/// `#[derive(RConditionError)]` type or variant; or an
-/// [`RConditionError::call`] impl.
+/// `#[derive(RCondition)]` type or variant; or an
+/// [`RConditionData::call`] impl.
 ///
 /// On the tagged condition value the choice is the `call` slot itself:
 /// `FALSE` for [`ConditionCall::None`], read back by the R helper (and by the
@@ -760,7 +760,7 @@ macro_rules! __mx_condition_parts {
 /// ```
 ///
 /// The same marker exists as [`RError::without_call`] for `Result` errors and
-/// as `#[condition(call = none)]` on a `#[derive(RConditionError)]` type or
+/// as `#[condition(call = none)]` on a `#[derive(RCondition)]` type or
 /// variant; see [`ConditionCall`].
 ///
 /// # See also
@@ -1323,7 +1323,7 @@ pub const fn is_reserved_condition_field(name: &str) -> bool {
 }
 
 /// Runtime half of the reserved-name check, for computed field names (the
-/// macros' `expr` path and [`RConditionError::data`] on user types). Panics
+/// macros' `expr` path and [`RConditionData::data`] on user types). Panics
 /// when `name` is reserved; the panic becomes a plain `rust_error` in R,
 /// replacing the former silent overwrite.
 #[track_caller]
@@ -1350,7 +1350,7 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 
 // endregion
 
-// region: Classed `Result` errors — RConditionError + RError
+// region: Classed `Result` errors — RConditionData + RError
 
 /// Give a `Result<T, E>` error type an R class vector and structured fields.
 ///
@@ -1368,7 +1368,7 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// `format!("{e:?}")`.
 ///
 /// ```ignore
-/// use miniextendr_api::condition::{ConditionData, RConditionError};
+/// use miniextendr_api::condition::{ConditionData, RConditionData};
 ///
 /// #[derive(Debug, thiserror::Error)]
 /// pub enum PkgError {
@@ -1378,7 +1378,7 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 ///     TooLarge { value: f64, max: f64 },
 /// }
 ///
-/// impl RConditionError for PkgError {
+/// impl RConditionData for PkgError {
 ///     fn message(&self) -> String { self.to_string() }
 ///     fn class(&self) -> Vec<String> {
 ///         let member = match self {
@@ -1405,7 +1405,7 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// ```
 ///
 /// Detection is by trait, not by attribute: the generated `Err` arm probes
-/// `E: RConditionError` first and falls back to the `Debug` rendering
+/// `E: RConditionData` first and falls back to the `Debug` rendering
 /// otherwise, so existing `Result<T, String>` / `Result<T, MyDebugError>`
 /// functions are unchanged. The condition's `kind` stays `"result_err"`.
 ///
@@ -1423,10 +1423,10 @@ pub fn check_condition_data(data: Option<ConditionData>) -> Option<ConditionData
 /// [`RESERVED_CONDITION_FIELDS`]); a reserved name raises a plain
 /// `rust_error` explaining the clash, so rename such a field at the source.
 ///
-/// [`call()`](RConditionError::call) returning [`ConditionCall::None`] drops
+/// [`call()`](RConditionData::call) returning [`ConditionCall::None`] drops
 /// the call (`conditionCall(e)` is `NULL`), for errors and warnings about the
 /// data rather than the call.
-pub trait RConditionError {
+pub trait RConditionData {
     /// The condition message (`conditionMessage(e)`).
     fn message(&self) -> String;
     /// User classes, most specific first; empty for none.
@@ -1468,22 +1468,18 @@ pub trait RConditionError {
     }
 }
 
-/// `#[derive(RConditionError)]`: the trait impl generated from a type's shape
-/// (`#[condition(class = "…")]`, `#[condition(message = "…")]`, and the
-/// `rename` / `skip` / `debug` field options). Re-exported here so one
-/// `use miniextendr_api::condition::RConditionError;` brings the trait and
-/// the derive together.
-#[doc(inline)]
-pub use miniextendr_macros::RConditionError;
-
-/// Derive a conversion into [`RCondition`](enum@RCondition) with a declared signal kind.
+/// `#[derive(RCondition)]`: [`RConditionData`] generated from a type's shape
+/// (`#[condition(class = "…")]`, `#[condition(message = "…")]`, the
+/// `rename` / `skip` / `debug` field options) and `From<T>` for
+/// [`RCondition`](enum@RCondition) with the declared kind
+/// (`#[condition(kind = …)]`, default `error`).
 #[doc(inline)]
 pub use miniextendr_macros::RCondition;
 
 /// A ready-made classed error value for `Result<T, RError>` returns.
 ///
 /// Carries a message, an optional class vector, structured fields and the
-/// call choice, and implements [`RConditionError`]. Any
+/// call choice, and implements [`RConditionData`]. Any
 /// `std::error::Error` converts into it with `?` / [`From`] (the message keeps
 /// the `caused by:` chain, like [`AsRError`]), after which the builder methods
 /// add the R-facing parts ([`RError::class`], [`RError::data`],
@@ -1558,7 +1554,7 @@ impl RError {
 
     /// The whole message of the argument error when this error refuses an
     /// argument, used as given instead of `'<p>' must be <expected>:
-    /// <message>`; see [`RConditionError::argument_message`]. `message` stays
+    /// <message>`; see [`RConditionData::argument_message`]. `message` stays
     /// the message everywhere else.
     ///
     /// ```ignore
@@ -1618,7 +1614,7 @@ impl std::fmt::Display for RError {
     }
 }
 
-impl RConditionError for RError {
+impl RConditionData for RError {
     fn message(&self) -> String {
         self.message.clone()
     }
@@ -1636,12 +1632,12 @@ impl RConditionError for RError {
     }
 }
 
-/// Any classed error (an [`RError`], a `#[derive(RConditionError)]` type)
+/// Any classed error (an [`RError`], a `#[derive(RCondition)]` type)
 /// converts into a [`SexpError::Condition`](crate::from_r::SexpError::Condition)
 /// with its message, classes, fields and call choice, so a newtype's
 /// [`check_sexp`](crate::TryFromSexpElement::check_sexp) can refuse with it
 /// and a conversion whose error converts into `SexpError` keeps its classes.
-impl<E: RConditionError> From<E> for crate::from_r::SexpError {
+impl<E: RConditionData> From<E> for crate::from_r::SexpError {
     fn from(e: E) -> Self {
         crate::from_r::SexpError::Condition(RError {
             message: e.message(),
@@ -1673,7 +1669,7 @@ impl<E: RConditionError> From<E> for crate::from_r::SexpError {
 /// }
 /// ```
 ///
-/// It does not implement [`RConditionError`]: returned as a body's `Err` it
+/// It does not implement [`RConditionData`]: returned as a body's `Err` it
 /// would take the `Result` path (`kind = "result_err"`), not the argument
 /// error's.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1736,13 +1732,13 @@ pub struct ErrParts {
     pub call: ConditionCall,
 }
 
-/// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionError`.
+/// Autoref-specialisation probe, first stage, preferred arm: `E: RConditionData`.
 ///
 /// The generated code calls `(&e).__mx_classed_parts()` with both first-stage
 /// traits in scope. Method resolution tries the receiver type `&E` by value
 /// first, which only this impl (on `E`, taking `&self`) satisfies; the
 /// [`ErrPartsUnclassed`] arm on `&E` needs one more auto-ref and is only
-/// reached when `E` does not implement [`RConditionError`]. It yields `None`,
+/// reached when `E` does not implement [`RConditionData`]. It yields `None`,
 /// and the second stage ([`ErrPartsSerde`] / [`ErrPartsDebug`]) decides.
 ///
 /// Two two-way probes rather than one three-way probe: the `Serialize` and
@@ -1754,7 +1750,7 @@ pub trait ErrPartsClassed {
     fn __mx_classed_parts(&self) -> Option<ErrParts>;
 }
 
-impl<E: RConditionError> ErrPartsClassed for E {
+impl<E: RConditionData> ErrPartsClassed for E {
     #[track_caller]
     fn __mx_classed_parts(&self) -> Option<ErrParts> {
         Some(ErrParts {
@@ -1766,7 +1762,7 @@ impl<E: RConditionError> ErrPartsClassed for E {
     }
 }
 
-/// First stage, fallback arm: no [`RConditionError`] impl.
+/// First stage, fallback arm: no [`RConditionData`] impl.
 #[doc(hidden)]
 pub trait ErrPartsUnclassed {
     fn __mx_classed_parts(&self) -> Option<ErrParts>;
@@ -1841,16 +1837,16 @@ macro_rules! __mx_result_err_parts {
 
 // region: Classed argument-conversion errors
 
-/// Conversion probe, preferred arm: `E: RConditionError`.
+/// Conversion probe, preferred arm: `E: RConditionData`.
 ///
 /// When an argument fails its `TryFromSexp` conversion, the generated wrapper
 /// calls `(&e).__mx_conversion_parts(expected_known)` with the three
 /// conversion-probe traits in scope (see [`crate::__mx_conversion_err_parts!`]).
 /// This impl, on `E` taking `&self`, matches the receiver `&E` by value, so a
-/// `TryFromSexp::Error` that implements [`RConditionError`] contributes its
+/// `TryFromSexp::Error` that implements [`RConditionData`] contributes its
 /// class vector, message and data. [`ConversionErrBuiltin`] matches at the
 /// same step for the built-in conversion errors, which never implement
-/// [`RConditionError`], so the two never compete. [`ConversionErrDisplay`]
+/// [`RConditionData`], so the two never compete. [`ConversionErrDisplay`]
 /// needs one more auto-ref and is only reached otherwise.
 ///
 /// Unlike the `Result` probe ([`crate::__mx_result_err_parts!`]) there is no
@@ -1862,7 +1858,7 @@ pub trait ConversionErrClassed {
     fn __mx_conversion_parts(&self, expected_known: bool) -> ErrParts;
 }
 
-impl<E: RConditionError> ConversionErrClassed for E {
+impl<E: RConditionData> ConversionErrClassed for E {
     #[track_caller]
     fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
         ErrParts {
@@ -2101,17 +2097,17 @@ impl ConversionArgMessageBuiltin for crate::from_r::SexpError {
     }
 }
 
-/// Whole-message probe, classed arm: any [`RConditionError`] answers with its
-/// [`argument_message`](RConditionError::argument_message), so a type's own
+/// Whole-message probe, classed arm: any [`RConditionData`] answers with its
+/// [`argument_message`](RConditionData::argument_message), so a type's own
 /// conversion error can word the whole argument error (#1833). Same autoref
 /// level as [`ConversionArgMessageBuiltin`], like [`ConversionErrClassed`]:
-/// no built-in error type implements [`RConditionError`].
+/// no built-in error type implements [`RConditionData`].
 #[doc(hidden)]
 pub trait ConversionArgMessageClassed {
     fn __mx_conversion_arg_message(&self, name: &str) -> Option<String>;
 }
 
-impl<E: RConditionError> ConversionArgMessageClassed for E {
+impl<E: RConditionData> ConversionArgMessageClassed for E {
     fn __mx_conversion_arg_message(&self, _name: &str) -> Option<String> {
         self.argument_message()
     }
@@ -2133,7 +2129,7 @@ impl<E> ConversionArgMessageNone for &E {
 /// Internal: the whole message of a failed argument conversion whose error
 /// words it itself (a `match_arg` choice error, see
 /// [`ConversionArgMessageBuiltin`], or an error with an
-/// [`argument_message`](RConditionError::argument_message), see
+/// [`argument_message`](RConditionData::argument_message), see
 /// [`ConversionArgMessageClassed`]), for the argument `$name`; `None`
 /// otherwise. [`crate::error_value::conversion_condition_value`] then uses it
 /// in place of `<prefix>: <reason>`. Not public API.
@@ -2182,7 +2178,7 @@ const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
 ///   integer`, `'dv' must be numeric`), `invalid '<p>' argument` otherwise.
 ///   A sidecar setter passes its own prefix. An error that words the whole
 ///   argument error itself, a `match_arg` choice error (#1767) or one with an
-///   [`argument_message`](RConditionError::argument_message) (#1833), gives
+///   [`argument_message`](RConditionData::argument_message) (#1833), gives
 ///   `arg_message` ([`crate::__mx_conversion_arg_message!`]), which is the
 ///   message instead.
 /// - The class vector is the error's own (empty for the built-in and
@@ -2197,7 +2193,7 @@ const CONVERSION_RUST_TYPE_FIELD: &str = "rust_type";
 ///   kept, since the framework never overwrites a field the type author
 ///   chose, and R's `e$name` reads only the first of two same-named fields.
 /// - The call is always the wrapper's ([`ConditionCall::Inherit`]), whatever
-///   the error type's [`RConditionError::call`] says: the R-side checks
+///   the error type's [`RConditionData::call`] says: the R-side checks
 ///   (`.miniextendr_arg_error`) raise the same condition with the call
 ///   (#1591), and an argument error must not differ by which side caught it.
 #[doc(hidden)]
@@ -2274,7 +2270,7 @@ pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrP
 /// Build the `Err`-arm parts from the error's serde shape.
 ///
 /// Reached two ways: automatically, for every `Result<T, E>` whose `E` is
-/// `Serialize + Display` without an [`RConditionError`] impl (the
+/// `Serialize + Display` without an [`RConditionData`] impl (the
 /// [`ErrPartsSerde`] probe arm, defaults only), or explicitly through
 /// `#[miniextendr(serde_error(tag = .., prefix = .., skip(..), rename(..)))]`,
 /// which carries the options and always takes this path.
@@ -3206,7 +3202,7 @@ mod condition_macro_tests {
         assert!(msg.contains("`kind`"), "got: {msg}");
     }
 
-    /// The probe's first stage: an `RConditionError` impl wins outright.
+    /// The probe's first stage: an `RConditionData` impl wins outright.
     #[test]
     fn err_parts_probe_prefers_rconditionerror() {
         use super::RError;
@@ -3219,7 +3215,7 @@ mod condition_macro_tests {
         assert_eq!(parts.data.expect("data")[0].0, "input");
     }
 
-    /// The probe's last resort: a type that is neither `RConditionError` nor
+    /// The probe's last resort: a type that is neither `RConditionData` nor
     /// `Serialize` renders with `Debug`, no class, no data.
     #[test]
     fn err_parts_probe_falls_back_to_debug() {
@@ -3232,7 +3228,7 @@ mod condition_macro_tests {
     }
 
     /// The conversion probe's built-in arm (#1591): the framework's own
-    /// conversion errors are not `RConditionError`, keep the plain class
+    /// conversion errors are not `RConditionData`, keep the plain class
     /// vector and no data, and read in R terms instead of their `Display`
     /// text. Other error types still render with `Display` (not `Debug`).
     #[test]
@@ -3655,7 +3651,7 @@ mod condition_macro_tests {
         assert_eq!(words(&plain, length()), None);
     }
 
-    /// The conversion probe's preferred arm: an `RConditionError` error type
+    /// The conversion probe's preferred arm: an `RConditionData` error type
     /// contributes its class vector, message and data.
     #[test]
     fn conversion_probe_prefers_rconditionerror() {
@@ -3993,7 +3989,7 @@ mod condition_macro_tests {
     /// `check_sexp`; without one, or inside an `Either`, it does not (#1833).
     #[test]
     fn conversion_arg_message_probe_takes_a_classed_errors_argument_message() {
-        use super::{ConditionCall, RConditionError, RError};
+        use super::{ConditionCall, RConditionData, RError};
         use crate::from_r::SexpError;
 
         let advice = "use model_from_df() for a data frame";
@@ -4022,7 +4018,7 @@ mod condition_macro_tests {
 
         // A hand-written impl answers through the trait method.
         struct ModelRefused;
-        impl RConditionError for ModelRefused {
+        impl RConditionData for ModelRefused {
             fn message(&self) -> String {
                 "got a data frame".into()
             }
@@ -4061,15 +4057,15 @@ mod condition_macro_tests {
 
     #[test]
     fn rerror_builder_and_from_error() {
-        use super::{RConditionError, RError};
+        use super::{RConditionData, RError};
         let e: RError = "x".parse::<i32>().unwrap_err().into();
         let e = e.class(["member", "family"]).data("input", "x");
         assert!(e.message_str().contains("invalid digit"));
-        assert_eq!(RConditionError::class(&e), vec!["member", "family"]);
-        let data = RConditionError::data(&e).expect("data");
+        assert_eq!(RConditionData::class(&e), vec!["member", "family"]);
+        let data = RConditionData::data(&e).expect("data");
         assert_eq!(data[0].0, "input");
 
-        assert!(RConditionError::data(&RError::new("m")).is_none());
+        assert!(RConditionData::data(&RError::new("m")).is_none());
         assert!(super::is_reserved_condition_field("call"));
         assert!(!super::is_reserved_condition_field("calls"));
     }
@@ -4289,12 +4285,12 @@ mod condition_macro_tests {
 
     #[test]
     fn rerror_without_call_reaches_the_err_parts() {
-        use super::{ConditionCall, RConditionError, RError};
+        use super::{ConditionCall, RConditionData, RError};
 
         let plain = RError::new("m").class("c");
-        assert_eq!(RConditionError::call(&plain), ConditionCall::Inherit);
+        assert_eq!(RConditionData::call(&plain), ConditionCall::Inherit);
         let callless = plain.clone().without_call();
-        assert_eq!(RConditionError::call(&callless), ConditionCall::None);
+        assert_eq!(RConditionData::call(&callless), ConditionCall::None);
         let parts = crate::__mx_result_err_parts!(callless, "pkg_error");
         assert_eq!(parts.call, ConditionCall::None);
         assert_eq!(parts.class, vec!["c"]);

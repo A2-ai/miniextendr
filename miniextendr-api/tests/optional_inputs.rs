@@ -22,7 +22,7 @@ fn eval(src: &str) -> OwnedProtect {
 }
 
 /// Both types convert with the inner type's error, so the generated
-/// wrapper's error probe sees the same error (and an `RConditionError`'s
+/// wrapper's error probe sees the same error (and an `RConditionData`'s
 /// classes) whatever the `Option` layer.
 fn same_error<A, B>()
 where

@@ -1,7 +1,7 @@
 //! Classed `Result` errors, class vectors and the reserved condition-data
 //! names (#1434, #1435, #1440).
 //!
-//! - `RConditionError` on a package error enum: every `Err` raised from a
+//! - `RConditionData` on a package error enum: every `Err` raised from a
 //!   `Result<T, PkgError>` return carries the member + family classes and the
 //!   variant's fields as `e$<name>`, while the Rust side keeps `?` composition.
 //! - `RError`: the ready-made classed value, built from a `std::error::Error`
@@ -12,10 +12,10 @@
 //!   `compile_fail` doctest on
 //!   `miniextendr_api::condition::is_reserved_condition_field`).
 
-use miniextendr_api::condition::{ConditionData, RConditionError, RError};
+use miniextendr_api::condition::{ConditionData, RCondition, RConditionData, RError};
 use miniextendr_api::{RValue, miniextendr, rust_condition, rust_error, warning};
 
-// region: RConditionError on a package error enum
+// region: RConditionData on a package error enum
 
 /// Stand-in for a downstream package's thiserror-style error enum.
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl std::fmt::Display for PkgError {
 
 impl std::error::Error for PkgError {}
 
-impl RConditionError for PkgError {
+impl RConditionData for PkgError {
     fn message(&self) -> String {
         self.to_string()
     }
@@ -211,13 +211,13 @@ pub fn reserved_data_macro_runtime(name: &str) {
 
 /// Named, non-negative hyperparameters from an R named numeric vector,
 /// `c(alpha = 1, beta = 0.5)`. Its `TryFromSexp::Error` implements
-/// `RConditionError` (via the derive), so an argument that fails to convert
+/// `RConditionData` (via the derive), so an argument that fails to convert
 /// raises the error's classes and fields, with the parameter context in the
 /// message and the parameter's R name as `e$param`.
 pub struct Hyperparams(std::collections::BTreeMap<String, f64>);
 
 /// Why an argument is not a valid [`Hyperparams`].
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "mx_fixture_error")]
 pub enum HyperparamError {
     /// Not a named numeric vector. The member class is the

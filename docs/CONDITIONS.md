@@ -21,8 +21,8 @@ optional `data = ...` argument to attach structured named fields readable as
 leading `call = none`, which raises the condition without a call, like R's
 `call. = FALSE` (see [Conditions without a call](#conditions-without-a-call)).
 `Result<T, E>` returns get the same treatment through the
-[`RConditionError`](#classed-result-errors-with-rconditionerror-and-rerror) trait
-(hand-written or [derived](#deriving-rconditionerror)), or, for error enums
+[`RConditionData`](#classed-result-errors-with-rconditiondata-and-rerror) trait
+(hand-written or [derived](#deriving-rcondition)), or, for error enums
 that already derive `serde::Serialize`, through
 [the serde shape](#deriving-the-classes-from-a-serde-error-type). An R error
 caught by `RCall::eval`, `r_eval_str` or `try_eval_with_handlers` (an
@@ -237,7 +237,7 @@ There is no escape hatch, deliberately: `message` and `call` are what R's
 `conditionMessage()` / `conditionCall()` read, and `kind` is the framework's
 transport tag, so a field with one of those names is a naming clash to fix
 where the payload is built (a different key, `#[serde(rename)]` on a derived
-struct, a rename in your `RConditionError::data()` impl). Renaming every field
+struct, a rename in your `RConditionData::data()` impl). Renaming every field
 with a prefix to rescue one would make `e$<name>` access inconsistent across
 conditions. When the payload is an error type's own serde shape that other
 consumers read, do the renaming at the condition boundary instead:
@@ -343,10 +343,10 @@ the call after the Rust body has returned, in queue order, and then hands the
 value to R:
 
 ```rust
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::RCondition;
 use miniextendr_api::{defer_warning, miniextendr};
 
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_warning")]
 pub enum PkgWarning {
     #[condition(message = "dropped {dropped} of {total} rows")]
@@ -391,8 +391,8 @@ calling handlers that muffle keep it.
 | `defer_message(payload)` | `defer_message!(…)` | `message()` |
 | `defer_condition(payload)` | `defer_condition!(…)` | `signalCondition()` |
 
-The functions take any `RConditionError` payload: a
-[derived](#deriving-rconditionerror) or hand-written type, or an `RError`
+The functions take any `RConditionData` payload: a
+[derived](#deriving-rcondition) or hand-written type, or an `RError`
 built on the spot. The macros take the `warning!` grammar (`call = none`,
 then `class = …`, then `data = …`, then the format message). `defer_message` honours the payload's
 classes, layered in front of `rust_message`, which the `message!` macro has
@@ -462,22 +462,22 @@ user-visible diagnostics before releasing an object. Raw unguarded FFI and
 `AltrepGuard::Unsafe` callbacks must not queue conditions; select a guarded
 callback when deferred signalling is needed.
 
-## Classed `Result` errors with `RConditionError` and `RError`
+## Classed `Result` errors with `RConditionData` and `RError`
 
 A `#[miniextendr]` function or method returning `Result<T, E>` raises `Err(e)`
 as an R error whose `kind` is `"result_err"`. The `Err` arm picks the class
 vector and data in three steps, the first that applies winning:
 
-1. `E` implements `miniextendr_api::condition::RConditionError` (this section).
+1. `E` implements `miniextendr_api::condition::RConditionData` (this section).
 2. The API crate's `serde` feature is on and `E: serde::Serialize + Display`
    ([derived from the serde shape](#deriving-the-classes-from-a-serde-error-type)).
 3. Otherwise a bare `rust_error` whose message is `format!("{e:?}")`.
 
 To give R handlers something to dispatch on without giving up `?` composition,
-implement `RConditionError` for the error type:
+implement `RConditionData` for the error type:
 
 ```rust
-use miniextendr_api::condition::{ConditionData, RConditionError};
+use miniextendr_api::condition::{ConditionData, RConditionData};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PkgError {
@@ -487,7 +487,7 @@ pub enum PkgError {
     OutOfRange { value: f64, max: f64 },
 }
 
-impl RConditionError for PkgError {
+impl RConditionData for PkgError {
     fn message(&self) -> String { self.to_string() }
     fn class(&self) -> Vec<String> {
         let member = match self {
@@ -529,13 +529,13 @@ the any-of default of `expect_s3_class()` cannot tell a dropped layer from a
 present one.
 
 Detection is by trait, not by attribute: the generated `Err` arm probes
-`E: RConditionError` first and falls back to the `Debug` rendering otherwise,
+`E: RConditionData` first and falls back to the `Debug` rendering otherwise,
 so existing `Result<T, String>` functions behave exactly as before. `kind`
 stays `"result_err"`. Field names follow the reserved-name rule above; a
 reserved name from `data()` raises a `rust_error` describing the clash.
 
 The same trait classes argument-conversion failures: when a parameter type's
-`TryFromSexp::Error` implements `RConditionError`, a failed conversion raises
+`TryFromSexp::Error` implements `RConditionData`, a failed conversion raises
 its classes and fields with `kind = "conversion"`, the parameter's name as
 `e$param` and its Rust type as `e$rust_type`. The R-side argument checks raise
 the same condition (#1591). See
@@ -562,14 +562,15 @@ The `.without_call()` builder raises the error with no call
 `Display` (the message) but not `std::error::Error`, which keeps the blanket
 `From<E: Error>` coherent; it works with `#[miniextendr(unwrap_in_r)]` too.
 
-### Deriving `RConditionError`
+### Deriving `RCondition`
 
-`#[derive(RConditionError)]` writes the impl above from the type's shape:
+`#[derive(RCondition)]` writes the impl above from the type's shape, and a
+conversion into an owned `RCondition` (below):
 
 ```rust
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::RCondition;
 
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_error")]
 pub enum PkgError {
     #[condition(message = "field `{field}` is missing")]
@@ -614,10 +615,10 @@ The same derive serves
 
 ### Typed warnings, messages and mixed condition enums
 
-`#[derive(RCondition)]` uses the same class, message, field and call attributes
-and adds a conversion into an owned `RCondition`. A `kind` on the type sets
-its default; an enum variant can override it. The choices are `warning`,
-`message`, `error` and `condition` (the default).
+The derive also converts the type into an owned `RCondition`. Its kind is
+`#[condition(kind = …)]`: on the type it sets the default, and an enum
+variant can override it. The choices are `error` (the default), `warning`,
+`message` and `condition`.
 
 ```rust
 use miniextendr_api::RCondition;
@@ -651,18 +652,18 @@ muffling a warning in R does not resume that body. Both routes preserve the
 classes, fields and call policy. Plain `panic_any(DroppedRows { n: 2 })`
 does not perform this conversion; convert into `RCondition` first.
 
-The derive also generates `RConditionError` metadata, so do not derive both.
-Existing `Result<T, E>` and `defer_warning` / `defer_message` /
-`defer_condition` functions still choose their own kind; use the explicit
-conversion when the payload's declared kind should decide. As with
-`RConditionError`, named, tuple and unit shapes are supported, and generic
-types are rejected.
+**The kind is read only through `RCondition::from`.** A value returned as
+`Err(x)` from a `Result<T, E>` is always an R error, whatever kind it
+declares: `Err(Diagnostic::Finished { n })` stops the call instead of printing
+a message. `defer_warning(x)` / `defer_message(x)` / `defer_condition(x)` also
+signal the kind they are named after. Convert with `RCondition::from(x)` when
+the declared kind should decide.
 
 ### Deriving the classes from a serde error type
 
 When the error type already derives `serde::Serialize` (for logging, JSON
 transport, or a downstream client), the same information drives the R
-condition without an `RConditionError` impl and without any attribute: with the
+condition without an `RConditionData` impl and without any attribute: with the
 API crate's `serde` feature enabled, every `Result<T, E>` whose
 `E: Serialize + Display` serializes the `Err` value. The enum variant becomes
 the member class `<prefix>_<variant>`, the variant's fields become `e$<name>`,
@@ -715,7 +716,7 @@ e$value; e$max
   non-empty homogeneous `Vec<T>` as atomic vectors, nested structs as named
   lists, `None` as `NULL`. An empty `Vec<T>` arrives as `list()`, since serde
   gives no element type for an empty sequence, so `e$columns` is `list()` when
-  empty and a character vector otherwise. Derive `RConditionError` (above)
+  empty and a character vector otherwise. Derive `RConditionData` (above)
   for fields that must keep their type when empty: it converts each field
   with `RValue::from`, and an empty `Vec<String>` becomes `character(0)`. The reserved names above apply to the payload fields; a
   clash raises a `rust_error` describing it, exactly as for `data()`, with
@@ -768,7 +769,7 @@ that lack it, so one attribute covers an enum whose variants differ. The macro
 cannot see the error type's fields at expansion time; only the option grammar
 is checked there. A field named `call` or `kind` has no equality rule and
 must be skipped or renamed.
-- Choose `RConditionError` when the message or class vector needs to differ
+- Choose `RConditionData` when the message or class vector needs to differ
   from the serde shape (it takes precedence); the serde path is the
   zero-boilerplate default for enums that are already serde-tagged.
 
@@ -856,18 +857,18 @@ noise. The same opt-out exists per condition:
 |---|---|
 | Macros | `error!(call = none, …)` / `rust_error!`, `warning!`, `condition!` / `rust_condition!`, `defer_warning!`, `defer_condition!` |
 | `RError` | `RError::new("…").without_call()` |
-| Derive | `#[condition(call = none)]` on a `#[derive(RConditionError)]` type (every variant) or on one variant |
-| Hand-written `RConditionError` | `fn call(&self) -> ConditionCall { ConditionCall::None }` |
+| Derive | `#[condition(call = none)]` on a `#[derive(RCondition)]` type (every variant) or on one variant |
+| Hand-written `RConditionData` | `fn call(&self) -> ConditionCall { ConditionCall::None }` |
 
 In the macros `call = none` comes first, before `class = …` and `data = …`.
 `none` is the only value: the default (the wrapper's call) needs no spelling,
 and any other value is a compile error, in the macros and in the derive.
 
 ```rust
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::RCondition;
 use miniextendr_api::{defer_warning, miniextendr};
 
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_override")]
 pub enum OverrideWarning {
     #[condition(call = none, message = "row {row} overrides an earlier row for profile {profile}")]
@@ -1041,7 +1042,7 @@ the body's alike.
   argument the body matches itself (`match_arg_param_with_default` for one
   forwarded from a `default = "..."` parameter)
   ([ENUMS_AND_FACTORS.md](ENUMS_AND_FACTORS.md#matching-a-raw-argument-in-the-body)).
-  `ArgError` is a plain value and does not implement `RConditionError`:
+  `ArgError` is a plain value and does not implement `RConditionData`:
   returned as a body's `Err` it takes the `Result` path
   (`kind = "result_err"`), so raise it with `.raise()`.
 - **Where it works**: immediate calls, `#[miniextendr(worker)]` bodies (the

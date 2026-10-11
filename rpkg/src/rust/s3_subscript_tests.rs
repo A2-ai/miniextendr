@@ -19,7 +19,7 @@
 //! The impl-block `[[` of `MxBagHandle` (`s3_nonsyntactic_tests.rs`) refuses
 //! `h[[i, ]]` the same way. Tests: `rpkg/tests/testthat/test-s3-subscript.R`.
 
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::condition::RCondition;
 use miniextendr_api::expression::RCall;
 use miniextendr_api::prelude::{ProtectScope, SexpExt};
 use miniextendr_api::{Missing, NArgs, SEXP, miniextendr};
@@ -27,7 +27,7 @@ use miniextendr_api::{Missing, NArgs, SEXP, miniextendr};
 // region: a method that refuses the two-subscript forms
 
 /// An `mx_vec1` subscript other than `x[i]` / `x[]`.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(
     class = "mx_vec1_subscript_error",
     message = "an mx_vec1 has one dimension: subset it as x[i], not with {subscripts} subscripts"

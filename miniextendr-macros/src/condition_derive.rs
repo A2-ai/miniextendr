@@ -1,8 +1,9 @@
-//! Shared code generation for `RConditionError` metadata and `RCondition` payloads.
+//! Code generation for `#[derive(RCondition)]`.
 //!
-//! Generates `impl miniextendr_api::condition::RConditionError` from the
-//! type's structure, so a package keeps one Rust type per condition family
-//! and gets the R side without hand-written glue:
+//! Generates `impl miniextendr_api::condition::RConditionData` from the
+//! type's structure, and `From<T> for miniextendr_api::condition::RCondition`,
+//! so a package keeps one Rust type per condition family and gets the R side
+//! without hand-written glue:
 //!
 //! - `class()`: `c(<member>, <family>)` for enum variants, `c(<family>)` for
 //!   structs. The family is `#[condition(class = "…")]` on the type, else the
@@ -26,6 +27,11 @@
 //!   struct or on a variant, a `format!` string like `message`. It is the
 //!   whole message when the error refuses an argument in a conversion
 //!   (#1833); a variant without it keeps the trait's default, `None`.
+//!
+//! - `From<T> for RCondition`: the kind is `#[condition(kind = …)]` on the
+//!   variant, else on the type, else `error`. Only `RCondition::from(x)`
+//!   (`.defer()` / `.raise()`) reads it: a returned `Err(x)` is always an R
+//!   error, and `defer_warning(x)` / `defer_message(x)` choose their own kind.
 //!
 //! The payload feeds `defer_warning` & co. (a condition accompanying a value)
 //! and `Result<T, E>` returns (a classed error): both go through the trait.
@@ -53,15 +59,12 @@ struct ContainerAttrs {
     argument_message: Option<syn::LitStr>,
     /// `call = none`: the condition carries no call.
     call_none: bool,
-    /// The transport kind, only accepted by the RCondition derive.
+    /// `kind = error | warning | message | condition`: the kind
+    /// `From<T> for RCondition` gives the value.
     kind: Option<syn::Ident>,
 }
 
-fn parse_container_attrs(
-    attrs: &[syn::Attribute],
-    on: &str,
-    typed: bool,
-) -> syn::Result<ContainerAttrs> {
+fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<ContainerAttrs> {
     let mut out = ContainerAttrs::default();
     for attr in attrs {
         if !attr.path().is_ident("condition") {
@@ -83,7 +86,7 @@ fn parse_container_attrs(
                     return Err(meta.error("`argument_message` is given twice"));
                 }
                 out.argument_message = Some(meta.value()?.parse()?);
-            } else if typed && meta.path.is_ident("kind") {
+            } else if meta.path.is_ident("kind") {
                 if out.kind.is_some() {
                     return Err(meta.error("`kind` is given twice"));
                 }
@@ -120,14 +123,10 @@ fn parse_container_attrs(
                 }
                 out.call_none = true;
             } else {
-                let kind_option = if typed {
-                    ", or `kind = warning` (error/message/condition also accepted)"
-                } else {
-                    ""
-                };
                 return Err(meta.error(format!(
                     "unknown `condition` option on {on}; expected `class = \"…\"`, \
-                     `message = \"…\"`, `argument_message = \"…\"` or `call = none`{kind_option}"
+                     `message = \"…\"`, `argument_message = \"…\"`, `call = none` or \
+                     `kind = warning` (error/message/condition also accepted)"
                 )));
             }
             Ok(())
@@ -343,47 +342,43 @@ impl Shape {
 
 // region: Entry point
 
-/// Main entry point for `#[derive(RConditionError)]`.
-pub fn derive_r_condition_error(input: DeriveInput) -> syn::Result<TokenStream> {
-    derive_condition(input, false)
-}
-
-/// Derive metadata and From<Payload> for the declared R condition kind.
+/// Main entry point for `#[derive(RCondition)]`: the `RConditionData`
+/// metadata and `From<T> for RCondition` with the declared kind.
 pub fn derive_r_condition(input: DeriveInput) -> syn::Result<TokenStream> {
-    derive_condition(input, true)
+    let name = &input.ident;
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new(
+            input.generics.span(),
+            "`#[derive(RCondition)]` does not support generic types",
+        ));
+    }
+    let container = parse_container_attrs(&input.attrs, "the type")?;
+    derive_condition(&input, name, container)
 }
 
+/// The `RCondition` variant for a declared kind; no kind is an error.
 fn condition_expr(kind: Option<&syn::Ident>) -> TokenStream {
     let variant = match kind.map(ToString::to_string).as_deref() {
-        Some("error") => quote! { Error },
+        Some("error") | None => quote! { Error },
         Some("warning") => quote! { Warning },
         Some("message") => quote! { Message },
-        Some("condition") | None => quote! { Condition },
+        Some("condition") => quote! { Condition },
         _ => unreachable!("kind was validated while parsing"),
     };
     quote! { Self::#variant { message, class, data, call } }
 }
 
-fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream> {
-    let name = &input.ident;
-    let derive_name = if typed {
-        "RCondition"
-    } else {
-        "RConditionError"
-    };
-    if !input.generics.params.is_empty() {
-        return Err(syn::Error::new(
-            input.generics.span(),
-            format!("`#[derive({derive_name})]` does not support generic types"),
-        ));
-    }
-    let container = parse_container_attrs(&input.attrs, "the type", typed)?;
+fn derive_condition(
+    input: &DeriveInput,
+    name: &syn::Ident,
+    container: ContainerAttrs,
+) -> syn::Result<TokenStream> {
     let family = container
         .class
         .as_ref()
         .map_or_else(|| to_snake_case(&ident_name(name)), syn::LitStr::value);
 
-    let mut condition_body = TokenStream::new();
+    let condition_body;
     let display = quote! { ::std::string::ToString::to_string(self) };
     let call_none = quote! { ::miniextendr_api::condition::ConditionCall::None };
 
@@ -394,9 +389,7 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
     {
         Data::Struct(data) => {
             let shape = Shape::from_fields(&data.fields, &format!("`{name}`"))?;
-            if typed {
-                condition_body = condition_expr(container.kind.as_ref());
-            }
+            condition_body = condition_expr(container.kind.as_ref());
             let self_path = quote! { Self };
             let message = match &container.message {
                 Some(fmt) => {
@@ -443,7 +436,7 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
             if data.variants.is_empty() {
                 return Err(syn::Error::new(
                     name.span(),
-                    format!("`#[derive({derive_name})]` needs at least one variant"),
+                    "`#[derive(RCondition)]` needs at least one variant",
                 ));
             }
             let variant_count = data.variants.len();
@@ -456,7 +449,7 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
             let mut needs_display = false;
             for variant in &data.variants {
                 let variant_ident = &variant.ident;
-                let attrs = parse_container_attrs(&variant.attrs, "a variant", typed)?;
+                let attrs = parse_container_attrs(&variant.attrs, "a variant")?;
                 let member = attrs.class.as_ref().map_or_else(
                     || format!("{family}_{}", to_snake_case(&ident_name(variant_ident))),
                     syn::LitStr::value,
@@ -465,11 +458,9 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
                     &variant.fields,
                     &format!("variant `{name}::{variant_ident}`"),
                 )?;
-                if typed {
-                    let pattern = shape.pattern_wild(&quote! { #name::#variant_ident });
-                    let expr = condition_expr(attrs.kind.as_ref().or(container.kind.as_ref()));
-                    condition_arms.push(quote! { #pattern => #expr, });
-                }
+                let pattern = shape.pattern_wild(&quote! { #name::#variant_ident });
+                let expr = condition_expr(attrs.kind.as_ref().or(container.kind.as_ref()));
+                condition_arms.push(quote! { #pattern => #expr, });
                 let path = quote! { Self::#variant_ident };
                 match &attrs.message {
                     Some(fmt) => {
@@ -502,9 +493,7 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
                     call_none_arms.push(wild);
                 }
             }
-            if typed {
-                condition_body = quote! { match value { #(#condition_arms)* } };
-            }
+            condition_body = quote! { match value { #(#condition_arms)* } };
             let message = if message_arms.is_empty() {
                 display
             } else if needs_display {
@@ -544,7 +533,7 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
         Data::Union(_) => {
             return Err(syn::Error::new(
                 name.span(),
-                format!("`#[derive({derive_name})]` supports structs and enums, not unions"),
+                "`#[derive(RCondition)]` supports structs and enums, not unions",
             ));
         }
     };
@@ -564,26 +553,20 @@ fn derive_condition(input: DeriveInput, typed: bool) -> syn::Result<TokenStream>
         }
     });
 
-    let conversion = typed.then(|| {
-        quote! {
-            #[automatically_derived]
-            impl ::core::convert::From<#name> for ::miniextendr_api::condition::RCondition {
-                fn from(value: #name) -> Self {
-                    let message = ::miniextendr_api::condition::RConditionError::message(&value);
-                    let class = ::miniextendr_api::condition::RConditionError::class(&value);
-                    let data = ::miniextendr_api::condition::RConditionError::data(&value);
-                    let call = ::miniextendr_api::condition::RConditionError::call(&value);
-                    #condition_body
-                }
+    Ok(quote! {
+        #[automatically_derived]
+        impl ::core::convert::From<#name> for ::miniextendr_api::condition::RCondition {
+            fn from(value: #name) -> Self {
+                let message = ::miniextendr_api::condition::RConditionData::message(&value);
+                let class = ::miniextendr_api::condition::RConditionData::class(&value);
+                let data = ::miniextendr_api::condition::RConditionData::data(&value);
+                let call = ::miniextendr_api::condition::RConditionData::call(&value);
+                #condition_body
             }
         }
-    });
-
-    Ok(quote! {
-        #conversion
 
         #[automatically_derived]
-        impl ::miniextendr_api::condition::RConditionError for #name {
+        impl ::miniextendr_api::condition::RConditionData for #name {
             fn message(&self) -> ::std::string::String {
                 #message_body
             }
@@ -614,15 +597,15 @@ mod tests {
     use super::*;
 
     fn derive(input: DeriveInput) -> String {
-        derive_r_condition_error(input).unwrap().to_string()
+        derive_r_condition(input).unwrap().to_string()
     }
 
     fn derive_err(input: DeriveInput) -> String {
-        derive_r_condition_error(input).unwrap_err().to_string()
+        derive_r_condition(input).unwrap_err().to_string()
     }
 
     #[test]
-    fn typed_condition_rejects_invalid_and_duplicate_kinds() {
+    fn condition_rejects_invalid_and_duplicate_kinds() {
         for input in [
             syn::parse_quote! {
                 #[condition(kind = panic)]
@@ -641,14 +624,27 @@ mod tests {
         ] {
             assert!(derive_r_condition(input).is_err());
         }
-        // The metadata-only derive must not silently ignore a declared kind.
-        assert!(
-            derive_r_condition_error(syn::parse_quote! {
-                #[condition(kind = warning)]
-                struct WrongDerive;
-            })
-            .is_err()
-        );
+    }
+
+    #[test]
+    fn kind_defaults_to_error_and_a_variant_overrides_the_type() {
+        let code = derive(syn::parse_quote! {
+            struct Plain;
+        });
+        assert!(code.contains("Self :: Error { message , class , data , call }"));
+        let code = derive(syn::parse_quote! {
+            #[condition(kind = warning)]
+            enum Mixed {
+                #[condition(kind = message)]
+                Note,
+                #[condition(kind = error)]
+                Fatal,
+                Drift,
+            }
+        });
+        assert!(code.contains("Mixed :: Note => Self :: Message"));
+        assert!(code.contains("Mixed :: Fatal => Self :: Error"));
+        assert!(code.contains("Mixed :: Drift => Self :: Warning"));
     }
 
     #[test]

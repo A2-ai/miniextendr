@@ -2,17 +2,16 @@
 //! message or condition *and* returns its value.
 //!
 //! - `defer_warning(payload)` / `defer_message` / `defer_condition` take any
-//!   `RConditionError` payload, here a `#[derive(RConditionError)]` enum and
+//!   `RConditionData` payload, here a `#[derive(RCondition)]` enum and
 //!   struct; the `defer_*!` macros take the `warning!` grammar.
 //! - Signalling happens when the wrapper returns, in queue order, before the
 //!   value (or the error) reaches R; `conditionCall()` is the wrapper's call.
 //! - The rng, worker-thread and s3-method fixtures exercise the other C
 //!   wrapper templates and the class-wrapping R side.
 
-use miniextendr_api::condition::{RConditionError, RError};
+use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
-    RCondition, TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr,
-    rust_error,
+    TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr, rust_error,
 };
 
 // region: Typed payloads
@@ -20,7 +19,7 @@ use miniextendr_api::{
 /// Warnings a package attaches to a result. `message` formats the fields, so
 /// no `Display` impl is needed; classes default to `pkg_warning_<variant>`
 /// plus the family `pkg_warning`.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_warning")]
 pub enum PkgWarning {
     #[condition(message = "dropped {dropped} of {total} rows")]
@@ -38,7 +37,7 @@ pub enum PkgWarning {
 
 /// A struct payload: the message comes from `Display`, `attempts` is renamed
 /// and `range` rides along as its `Debug` rendering.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 pub struct RetryNotice {
     #[condition(rename = "n_attempts")]
     attempts: i32,

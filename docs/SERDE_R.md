@@ -404,7 +404,7 @@ type. For the same reason an empty sequence becomes `list()`, not
 `character(0)` or `numeric(0)`: serde hands the serializer no element type
 when there are no elements. Where a field must keep its R type when empty, use
 the `IntoR` conversion (no `serialize`) or, for condition data,
-`#[derive(RConditionError)]`; both give `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
+`#[derive(RCondition)]`; both give `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
 enum into a classed R condition; see
 [CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
 

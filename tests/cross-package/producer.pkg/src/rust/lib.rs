@@ -730,14 +730,14 @@ pub fn producer_exported_attributed_probe(x: i32) -> Result<i32, String> {
 
 // region: crate-level conversion error class
 
-/// A positive count. Its `TryFromSexp::Error` implements `RConditionError`
+/// A positive count. Its `TryFromSexp::Error` implements `RConditionData`
 /// with classes of its own; `Cargo.toml` sets `conversion_error_class =
 /// ["producer_error_argument", "producer_error"]`, which follows them
 /// (without repeating `producer_error`).
 pub struct ProducerCount(i32);
 
 /// Why an argument is not a [`ProducerCount`].
-#[derive(Debug, miniextendr_api::condition::RConditionError)]
+#[derive(Debug, miniextendr_api::condition::RCondition)]
 #[condition(class = "producer_error")]
 pub enum ProducerCountError {
     /// Not an integer scalar.

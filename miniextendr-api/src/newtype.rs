@@ -179,7 +179,7 @@ pub trait TryFromSexpElement: Sized {
     /// anything is read from it.
     ///
     /// Return an [`RError`](crate::condition::RError), or any
-    /// [`RConditionError`](crate::condition::RConditionError) type, with `?`
+    /// [`RConditionData`](crate::condition::RConditionData) type, with `?`
     /// or `.into()` to give the refusal its own classes and fields
     /// ([`SexpError::Condition`]). As an
     /// argument error it keeps the wrapper's context: `'<p>' must be
