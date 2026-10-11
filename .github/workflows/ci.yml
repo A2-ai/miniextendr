@@ -234,6 +234,9 @@ jobs:
               - 'tests/cross-package/**'
               # The webR smoke's Rosetta rerun helper is tested in Sync Checks.
               - 'tests/webr-smoke*.sh'
+              # So is the recipes' Cargo.lock guard (#1992).
+              - 'scripts/with-rpkg-lock.sh'
+              - 'tests/lock-preservation.sh'
               - 'miniextendr-api/**'
               - 'miniextendr-macros/**'
               - 'miniextendr-engine/**'
@@ -375,6 +378,9 @@ jobs:
 
       - name: Merge driver for regenerated files
         run: just test-merge-drivers
+
+      - name: Recipes keep the starting Cargo.lock
+        run: just test-lock-preservation
 
       - name: webR smoke Rosetta rerun helper
         run: just test-webr-smoke-retry

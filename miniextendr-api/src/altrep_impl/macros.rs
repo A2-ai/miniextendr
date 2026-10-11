@@ -126,7 +126,7 @@ macro_rules! __impl_altrep_base {
                 $crate::altrep_traits::AltrepGuard::$guard;
 
             fn length(x: $crate::SEXP) -> $crate::R_xlen_t {
-                if let Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+                if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
                     return $crate::SexpExt::len(&data2) as $crate::R_xlen_t;
                 }
                 let data =
@@ -141,7 +141,7 @@ macro_rules! __impl_altrep_base {
                 $crate::altrep_traits::AltrepGuard::$guard;
 
             fn length(x: $crate::SEXP) -> $crate::R_xlen_t {
-                if let Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+                if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
                     return $crate::SexpExt::len(&data2) as $crate::R_xlen_t;
                 }
                 let data =
@@ -165,7 +165,7 @@ macro_rules! __impl_altrep_base {
             const HAS_UNSERIALIZE: bool = true;
 
             fn unserialize(class: $crate::SEXP, state: $crate::SEXP) -> $crate::SEXP {
-                let Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state)
+                let ::core::option::Option::Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state)
                 else {
                     panic!(
                         "ALTREP unserialize failed for {}",
@@ -228,7 +228,7 @@ macro_rules! __impl_altvec_dataptr {
             fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
                 // Check data2 cache first (materialized by a prior call).
                 unsafe {
-                    if let Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
+                    if let ::core::option::Option::Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
                         return $crate::sys::DATAPTR_RO(data2).cast_mut();
                     }
                 }
@@ -251,7 +251,7 @@ macro_rules! __impl_altvec_dataptr {
                         };
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(d)
                     };
-                    if let Some(p) = ro {
+                    if let ::core::option::Option::Some(p) = ro {
                         return p.cast_mut().cast::<core::ffi::c_void>();
                     }
                     // dataptr_or_null returned None — try mutable path.
@@ -262,7 +262,7 @@ macro_rules! __impl_altvec_dataptr {
                         .map(|p| p.cast::<core::ffi::c_void>())
                 };
 
-                if let Some(p) = direct {
+                if let ::core::option::Option::Some(p) = direct {
                     return p;
                 }
 
@@ -277,7 +277,7 @@ macro_rules! __impl_altvec_dataptr {
             fn dataptr_or_null(x: $crate::SEXP) -> *const core::ffi::c_void {
                 // Check data2 cache first (may have been materialized by a prior dataptr call)
                 unsafe {
-                    if let Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
+                    if let ::core::option::Option::Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
                         return $crate::sys::DATAPTR_RO(data2);
                     }
                 }
@@ -342,8 +342,8 @@ macro_rules! __impl_altvec_materializing_dataptr {
     // Generic form: `[$gen] $ty [$where], $elem`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}, $elem:ty) => {
         impl<$($gen)*> $crate::altrep_data::AltrepDataptr<$elem> for $ty where $($whr)* {
-            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
-                None
+            fn dataptr(&mut self, _writable: bool) -> ::core::option::Option<*mut $elem> {
+                ::core::option::Option::None
             }
         }
         $crate::__impl_altvec_dataptr!({$($gen)*} $ty {$($whr)*}, $elem);
@@ -457,7 +457,9 @@ macro_rules! __impl_alt_elt {
         const HAS_ELT: bool = true;
 
         fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $elem {
-            if let Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+            if let ::core::option::Option::Some(data2) =
+                unsafe { $crate::altrep_data::materialized_altrep_data2(x) }
+            {
                 return <$elem as $crate::RNativeType>::elt(data2, i.max(0));
             }
             let data =
@@ -486,7 +488,9 @@ macro_rules! __impl_alt_get_region {
             if start < 0 || len <= 0 {
                 return 0;
             }
-            if let Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+            if let ::core::option::Option::Some(data2) =
+                unsafe { $crate::altrep_data::materialized_altrep_data2(x) }
+            {
                 return unsafe {
                     $crate::altrep_data::materialized_altrep_region::<$buf_ty>(
                         data2,
@@ -742,14 +746,14 @@ macro_rules! __impl_altinteger_methods {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 match <$ty as $crate::altrep_data::AltIntegerData>::sum(data, narm) {
-                    Some(s) => {
+                    ::core::option::Option::Some(s) => {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                             $crate::SEXP::scalar_integer(s as i32)
                         } else {
                             $crate::SEXP::scalar_real(s as f64)
                         }
                     }
-                    None => $crate::SEXP::null(),
+                    ::core::option::Option::None => $crate::SEXP::null(),
                 }
             }
 
@@ -944,13 +948,13 @@ macro_rules! __impl_altlogical_methods {
             const HAS_ELT: bool = true;
 
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> i32 {
-                if let Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
+                if let ::core::option::Option::Some(data2) = unsafe { $crate::altrep_data::materialized_altrep_data2(x) } {
                     return <$crate::RLogical as $crate::RNativeType>::elt(data2, i.max(0)).to_i32();
                 }
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 let i = i.max(0) as usize;
-                if let Some(values) = <$ty as $crate::altrep_data::AltLogicalData>::as_r_slice(data) {
+                if let ::core::option::Option::Some(values) = <$ty as $crate::altrep_data::AltLogicalData>::as_r_slice(data) {
                     return values[i];
                 }
                 <$ty as $crate::altrep_data::AltLogicalData>::elt(data, i).to_r_int()
@@ -970,14 +974,14 @@ macro_rules! __impl_altlogical_methods {
                 let data =
                     unsafe { <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
                 match <$ty as $crate::altrep_data::AltLogicalData>::sum(data, narm) {
-                    Some(s) => {
+                    ::core::option::Option::Some(s) => {
                         if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
                             $crate::SEXP::scalar_integer(s as i32)
                         } else {
                             $crate::SEXP::scalar_real(s as f64)
                         }
                     }
-                    None => $crate::SEXP::null(),
+                    ::core::option::Option::None => $crate::SEXP::null(),
                 }
             }
         }

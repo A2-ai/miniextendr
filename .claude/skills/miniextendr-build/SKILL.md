@@ -297,10 +297,12 @@ Source mode (no tarball):
   which makes cargo *drop* the `source = "git+…#<sha>"` line for each workspace
   sibling (`miniextendr-{api,lint,macros}`). The committed lock must keep those
   lines — CRAN/tarball builds resolve `vendor/` against them. Each of those
-  recipes auto-chains `just cargo-lock-restore` (a `git restore --worktree` of
-  `rpkg/src/rust/Cargo.lock` from the index/HEAD) as its last line. If a recipe
-  aborts mid-way and leaves the lock drifted, run `just cargo-lock-restore`
-  manually (#709).
+  recipes runs under `scripts/with-rpkg-lock.sh`, which copies
+  `rpkg/src/rust/Cargo.lock` before the body and puts that exact file back on
+  exit, on success or failure, so unstaged lock edits survive (#1992). Only a
+  `kill -9` skips it: copy back `$TMPDIR/miniextendr-lock.*/Cargo.lock`, or run
+  `just cargo-lock-restore` (an explicit `git restore --worktree` from the
+  index) (#709).
 
 Tarball mode:
 - configure runs `tools/lock-shape-check.R` to verify framework crates carry

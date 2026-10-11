@@ -32,7 +32,7 @@
 //! (`HashMapArena`, `ThreadLocalHashArena`, `FastHashMapArena`,
 //! `ThreadLocalFastHashArena`) behind a generic `MapStorage` abstraction; they
 //! were removed for having zero production or test consumers (see
-//! <https://github.com/a2-ai/miniextendr/issues/ISSUE_NUMBER_PLACEHOLDER>).
+//! <https://github.com/a2-ai/miniextendr/issues/1138>).
 //! Re-add a flavor (and the generic `MapStorage` plumbing needed to support
 //! more than one map type again) when a real consumer appears.
 

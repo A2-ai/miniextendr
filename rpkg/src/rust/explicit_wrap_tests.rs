@@ -173,7 +173,6 @@ pub fn wrapped_board_worker() -> WrapAsR6<WrapBoard> {
 
 #[cfg(feature = "vctrs")]
 mod vctrs {
-    use miniextendr_api::vctrs::VctrsClass;
     use miniextendr_api::{PreferVctrs, Vctrs, WrapAsVctrs, miniextendr};
     /// A record whose vctrs class hierarchy must survive explicit wrapping.
     #[derive(Vctrs, PreferVctrs)]
