@@ -162,15 +162,16 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         where_clause.predicates.push(b);
     }
 
-    // IntoList retains its view-returning contract. Keep a root while removing
-    // names for positional/unit structs, then hand the view to its caller.
+    // `into_list` still returns an unrooted `List` view (#509 / #510 track
+    // rooting it): `__root` keeps the finished list reachable until the
+    // return, across the names removal below.
     let remove_names = if matches!(struct_data.fields, Fields::Named(_)) {
         quote! {}
     } else {
         quote! {
-            // This private list may still be referenced by a released
-            // precious-list cell. namesgets can copy it; setAttrib removes
-            // names in place while __root keeps it reachable.
+            // The builder names every element, `""` for a positional field.
+            // A tuple or unit struct's list has no names, so drop the
+            // attribute in place.
             ::miniextendr_api::SexpExt::set_attr(
                 &__sexp,
                 unsafe { ::miniextendr_api::sys::R_NamesSymbol },
