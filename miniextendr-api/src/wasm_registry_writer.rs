@@ -144,7 +144,9 @@ fn format_body(
     // deliberately NOT imported here: a minimal package with an empty dispatch
     // table would get `unused_imports` warnings on wasm32 (#1307). The
     // dispatch entries spell both fully qualified instead.
-    writeln!(&mut out, "use ::miniextendr_api::SEXP;").unwrap();
+    if !call_defs.is_empty() {
+        writeln!(&mut out, "use ::miniextendr_api::SEXP;").unwrap();
+    }
     writeln!(&mut out, "use ::miniextendr_api::sys::R_CallMethodDef;").unwrap();
     writeln!(
         &mut out,
@@ -486,7 +488,7 @@ mod tests {
     #[test]
     fn content_hash_changes_when_body_changes() {
         let (a, b, c) = sample_inputs();
-        let mut a2 = a.clone_into_unique();
+        let (mut a2, _, _) = sample_inputs();
         a2.push(CallDefRow {
             name: "different_fn".into(),
             num_args: 1,
@@ -638,6 +640,7 @@ mod tests {
     #[test]
     fn empty_inputs_produce_empty_slices() {
         let out = format_wasm_registry(&[], &[], &[], &[]);
+        assert!(!out.contains("use ::miniextendr_api::SEXP;"));
         assert!(out.contains("pub static MX_CALL_DEFS_WASM: &[R_CallMethodDef] = &[\n];"));
         assert!(
             out.contains("pub static MX_ALTREP_REGISTRATIONS_WASM: &[AltrepRegistration] = &[\n];")
@@ -668,22 +671,5 @@ mod tests {
             out.contains("unsafe extern \"C-unwind\" {\n    pub safe fn __mx_altrep_reg_MyType();"),
             "expected `safe extern C-unwind` to match AltrepRegistration.register; got:\n{out}"
         );
-    }
-
-    // Helper: clone a Vec<CallDefRow> by re-creating each row (CallDefRow
-    // doesn't impl Clone — keeping it minimal). Used only in
-    // `content_hash_changes_when_body_changes`.
-    trait CloneIntoUnique {
-        fn clone_into_unique(&self) -> Vec<CallDefRow>;
-    }
-    impl CloneIntoUnique for Vec<CallDefRow> {
-        fn clone_into_unique(&self) -> Vec<CallDefRow> {
-            self.iter()
-                .map(|r| CallDefRow {
-                    name: r.name.clone(),
-                    num_args: r.num_args,
-                })
-                .collect()
-        }
     }
 }
