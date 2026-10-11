@@ -2390,7 +2390,7 @@ pub fn r_ffi_checked(
 /// - Must be a newtype struct (exactly one field, tuple or named)
 /// - Must use `#[repr(transparent)]` so native R buffers have the same layout
 /// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
-/// - Should also derive `Copy` (required by `RNativeType: Copy`)
+/// - Must also be `Copy` (`RNativeType: Copy`): derive `Clone, Copy` with it
 #[proc_macro_derive(RNativeType)]
 pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2766,7 +2766,8 @@ pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 ///   struct could keep only one of the values; other names, repeated or not,
 ///   are ignored.
 /// - Tuple structs: extract by position (0, 1, 2, ...)
-/// - Fields annotated `#[into_list(ignore)]` are not read and are initialized with `Default::default()`
+/// - Fields annotated `#[into_list(ignore)]` are not read and are initialized with
+///   `Default::default()`, so their types must be `Default`
 #[proc_macro_derive(TryFromList, attributes(into_list))]
 pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2912,6 +2913,31 @@ pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// - `#[dataframe(expand)]` / `#[dataframe(unnest)]` — expand collection into suffixed columns
 /// - `#[dataframe(width = N)]` — pin expansion width (shorter rows get NA)
 ///
+/// # Requirements
+///
+/// Of each field type the derive asks only what turning that field into
+/// columns needs, and a missing impl is reported at the field:
+///
+/// - a scalar or opaque column: its column converts to R (`Vec<T>: IntoR`;
+///   in an enum, `Vec<Option<T>>`);
+/// - `[T; N]`, or `width` / `expand` over an owned `Vec<T>` / `Box<[T]>`:
+///   `T`'s columns convert to R; the elements are moved, so `T` needs no
+///   `Clone` or `Copy`. Over a borrowed `&[T; N]` / `&[T]`, `T` must also be
+///   `Clone`;
+/// - a flattened struct or nested enum, or an `as_factor` unit enum:
+///   `#[derive(DataFrameRow)]`;
+/// - `as_list`: `IntoList`;
+/// - `skip`: nothing.
+///
+/// Everything else is generated only where the field types allow it. The
+/// companion is `Debug` / `Clone` when every column type is. A struct
+/// companion iterates its rows when every `skip` field's type is `Default`
+/// (they are rebuilt with `Default::default()`). With `rayon`,
+/// `from_rows_par` fills the columns in parallel when the rows and column
+/// values are `Send`, placeholder-filled struct columns are `Default`, and
+/// flattened / `as_list` values are `Clone`; otherwise it fills them
+/// sequentially.
+///
 /// # Public surface (which verbs to call)
 ///
 /// Every capability the derive provides has a documented, trait-based (or `std`)
@@ -2964,6 +2990,11 @@ pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::Token
 ///
 /// - `#[r_factor(rename = "name")]` - Rename a variant's level string
 /// - `#[r_factor(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
+///
+/// # Requirements
+///
+/// The enum must be `Copy` (`RFactor` and its supertrait `MatchArg` require it):
+/// derive `Copy, Clone` with it.
 #[proc_macro_derive(RFactor, attributes(r_factor))]
 pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -2991,6 +3022,10 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// - `#[match_arg(rename = "name")]` - Rename a variant's choice string
 /// - `#[match_arg(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
 ///
+/// # Requirements
+///
+/// The enum must be `Copy` (`MatchArg: Copy`): derive `Copy, Clone` with it.
+///
 /// # Generated Implementations
 ///
 /// - `MatchArg` - Choice metadata and bidirectional conversion
@@ -3016,7 +3051,8 @@ pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 ///   string over the fields (tuple fields are `_0`, `_1`, …). Without it the
 ///   message is the type's `Display` rendering.
 /// - Every field becomes a `data` entry under its own name, converted with
-///   `RValue::from(field.clone())`. `#[condition(rename = "…")]`,
+///   `RValue::from(field.clone())`, so its type must be `Clone`.
+///   `#[condition(rename = "…")]`,
 ///   `#[condition(skip)]` and `#[condition(debug)]` (attach the `Debug`
 ///   rendering instead) adjust that; tuple fields need `rename` or `skip`. The
 ///   reserved slots `message`, `call` and `kind` are rejected at compile time.

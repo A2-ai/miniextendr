@@ -560,11 +560,37 @@ struct Measurement { /* ... */ }
 
 ### Requirements
 
-A row needs no trait besides the derive: nothing it generates turns a single
-row into a list, and the generated `{Row}DataFrame` companion derives nothing,
-so the field types need no `Debug` or `Clone` either. Derive or write
-`IntoList` only if you also return one row to R as a list, and then any impl
-works, derived or hand-written.
+A row needs no trait besides the derive. Of each field type the derive asks
+only what turning that field into columns needs, and a missing impl is
+reported at the field:
+
+| Field | What its type needs |
+|---|---|
+| scalar or opaque column (`i32`, `String`, `Vec<T>`, `HashMap<K, V>`, …) | its column converts to R (`Vec<T>: IntoR`; in an enum, `Vec<Option<T>>`) |
+| `[T; N]`, or `width` / `expand` over an owned `Vec<T>` / `Box<[T]>` | `T`'s columns convert to R; the elements are moved, so `T` needs no `Clone` or `Copy` |
+| the same over a borrowed `&[T; N]` / `&[T]` | also `T: Clone`: each element is cloned out of the borrow |
+| flattened struct, nested enum | `#[derive(DataFrameRow)]`; no `Clone`: values are moved into their columns, and out of them when an enum is read back |
+| `as_factor` | a unit-only enum with `#[derive(DataFrameRow)]`; no `Clone` or `Copy` |
+| `as_list` | `IntoList` (see below) |
+| `skip` | nothing |
+
+The rest of what the derive generates exists only where the field types allow
+it, so it never adds a requirement:
+
+- The `{Row}DataFrame` companion is `Debug` / `Clone` when every column type
+  is (for a `Vec<T>` column, when `T` is).
+- A named-field struct companion without expansion iterates its rows
+  (`IntoIterator`, `ColumnarFrame::into_rows`) when every `skip` field's type
+  is `Default`: the skipped fields are rebuilt with `Default::default()`.
+- With `rayon`, `from_rows_par` / `into_dataframe_par` fill the columns in
+  parallel when the row type is `Send` and so are the column values, a struct's
+  placeholder-filled columns (scalar and `[T; N]` columns) are `Default`, and
+  flattened struct and `as_list` values are `Clone` (they are copied out before
+  the rows move to other threads). Otherwise the same call fills the columns
+  sequentially.
+
+Derive or write `IntoList` for the row only if you also return one row to R as
+a list, and then any impl works, derived or hand-written.
 
 #### List-columns of struct or enum values
 
