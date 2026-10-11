@@ -16,12 +16,12 @@
 #![deny(unexpected_cfgs)]
 #![allow(dead_code)]
 
-use miniextendr_macros::{DataFrameRow, IntoList};
+use miniextendr_macros::DataFrameRow;
 
 /// Scalar struct — emits `from_rows`/`from_rows_par` (builder) and
-/// `try_from_dataframe`/`try_from_dataframe_par` (reader). Named structs also
-/// need `IntoList` (the derive asserts `Row: IntoList`).
-#[derive(IntoList, DataFrameRow)]
+/// `try_from_dataframe`/`try_from_dataframe_par` (reader). No `IntoList`:
+/// nothing the derive generates converts a row to a list.
+#[derive(DataFrameRow)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
