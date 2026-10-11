@@ -1866,9 +1866,6 @@ fn generate_sidecar_accessors(
         });
 
         // Generate R_CallMethodDef entries via distributed slice
-        let getter_c_name_cstr = format!("{}\0", getter_c_name);
-        let getter_cstr_lit =
-            syn::LitByteStr::new(getter_c_name_cstr.as_bytes(), Span::call_site());
         let getter_def_ident = Ident::new(
             &format!(
                 "__MX_CALL_DEF_RDATA_GET_{}_{}",
@@ -1877,15 +1874,11 @@ fn generate_sidecar_accessors(
             ),
             Span::call_site(),
         );
+        let getter_registration =
+            crate::call_method_def::call_method_def(&getter_def_ident, &getter_fn_name, 2);
         c_functions.push(quote::quote! {
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
-            static #getter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
-                ::miniextendr_api::sys::R_CallMethodDef {
-                    name: #getter_cstr_lit.as_ptr().cast(),
-                    fun: Some(unsafe { ::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
-                    numArgs: 2,
-                };
+            #getter_registration
         });
 
         // A computed field has no setter: no C function, no `CallDef`, no
@@ -1919,9 +1912,6 @@ fn generate_sidecar_accessors(
                 }
             });
 
-            let setter_c_name_cstr = format!("{}\0", setter_c_name);
-            let setter_cstr_lit =
-                syn::LitByteStr::new(setter_c_name_cstr.as_bytes(), Span::call_site());
             let setter_def_ident = Ident::new(
                 &format!(
                     "__MX_CALL_DEF_RDATA_SET_{}_{}",
@@ -1930,15 +1920,11 @@ fn generate_sidecar_accessors(
                 ),
                 Span::call_site(),
             );
+            let setter_registration =
+                crate::call_method_def::call_method_def(&setter_def_ident, &setter_fn_name, 3);
             c_functions.push(quote::quote! {
-                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
                 #[doc(hidden)]
-                static #setter_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
-                    ::miniextendr_api::sys::R_CallMethodDef {
-                        name: #setter_cstr_lit.as_ptr().cast(),
-                        fun: Some(unsafe { ::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _, _) -> _) }),
-                        numArgs: 3,
-                    };
+                #setter_registration
             });
         }
 
@@ -1987,12 +1973,12 @@ fn generate_sidecar_accessors(
             "Generated liveness check of the field methods of Rust type `{name_str}` \
              (`restored(refuse = \"every_read\")`)."
         );
-        let live_cstr_lit =
-            syn::LitByteStr::new(format!("{live_c_name}\0").as_bytes(), Span::call_site());
         let live_def_ident = Ident::new(
             &format!("__MX_CALL_DEF_RDATA_LIVE_{name_upper}"),
             Span::call_site(),
         );
+        let live_registration =
+            crate::call_method_def::call_method_def(&live_def_ident, &live_fn_name, 2);
         c_functions.push(quote::quote! {
             #[doc = #live_doc]
             #[doc(hidden)]
@@ -2021,14 +2007,8 @@ fn generate_sidecar_accessors(
                 }
             }
 
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
             #[doc(hidden)]
-            static #live_def_ident: ::miniextendr_api::sys::R_CallMethodDef =
-                ::miniextendr_api::sys::R_CallMethodDef {
-                    name: #live_cstr_lit.as_ptr().cast(),
-                    fun: Some(unsafe { ::std::mem::transmute(#live_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
-                    numArgs: 2,
-                };
+            #live_registration
         });
     }
 
