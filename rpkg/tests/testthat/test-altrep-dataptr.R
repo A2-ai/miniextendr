@@ -64,6 +64,15 @@ test_that("Vec<String> ALTREP supports DATAPTR operations", {
   expect_equal(paste(x, collapse = ","), "item_0,item_1,item_2")
 })
 
+test_that("Vec<String> ALTREP accepts in-place assignment, NA included", {
+  x <- iter_string_items(3L)
+  x[1] <- "a"
+  x[[2]] <- NA_character_
+  expect_identical(x, c("a", NA, "item_2"))
+  expect_identical(x[2:3], c(NA, "item_2"))
+  expect_identical(unserialize(serialize(x, NULL)), c("a", NA, "item_2"))
+})
+
 test_that("Vec<Rcomplex> ALTREP supports DATAPTR operations", {
   x <- vec_complex_altrep(3L)
   expect_dataptr_works(x)
