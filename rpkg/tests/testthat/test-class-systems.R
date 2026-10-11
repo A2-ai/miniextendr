@@ -41,6 +41,19 @@ test_that("S4Counter lifecycle works", {
   expect_equal(s4_value(S4Counter_default_counter()), 0L)
 })
 
+test_that("S4 default generics follow the R method name (#1677)", {
+  c <- S4Counter(5L)
+  ns <- asNamespace("miniextendr")
+  # `r_name = "current"` on the Rust method `peek` names the generic.
+  expect_equal(s4_current(c), 5L)
+  expect_true(methods::existsMethod("s4_current", "S4Counter", where = ns))
+  expect_false(exists("s4_peek", envir = ns, inherits = FALSE))
+  # The raw identifier `r#type` gives `s4_type`, not `s4_r#type`.
+  expect_equal(s4_type(c), "counter")
+  expect_true(methods::existsMethod("s4_type", "S4Counter", where = ns))
+  expect_false(exists("s4_r#type", envir = ns, inherits = FALSE))
+})
+
 test_that("S7Counter lifecycle works", {
   c <- S7Counter(3L)
   expect_equal(s7_value(c), 3L)

@@ -10,7 +10,7 @@ pub struct S4Counter {
 }
 
 /// S4 counter class with setMethod dispatches for constructor, accessor, and mutation.
-/// @aliases s4_add,S4Counter-method s4_get_value,S4Counter-method s4_inc,S4Counter-method s4_value,S4Counter-method
+/// @aliases s4_add,S4Counter-method s4_current,S4Counter-method s4_get_value,S4Counter-method s4_inc,S4Counter-method s4_type,S4Counter-method s4_value,S4Counter-method
 #[miniextendr(s4, internal)]
 impl S4Counter {
     /// Creates a new counter with the given initial value.
@@ -35,6 +35,19 @@ impl S4Counter {
     pub fn add(&mut self, amount: i32) -> i32 {
         self.value += amount;
         self.value
+    }
+
+    /// Returns the current value through the generic `s4_current`: the
+    /// default S4 generic follows the R method name (#1677).
+    #[miniextendr(r_name = "current")]
+    pub fn peek(&self) -> i32 {
+        self.value
+    }
+
+    /// Returns `"counter"` through the generic `s4_type`: a raw identifier
+    /// names the generic without its `r#`.
+    pub fn r#type(&self) -> String {
+        "counter".to_string()
     }
 
     /// A static method that returns a default counter (value = 0).
