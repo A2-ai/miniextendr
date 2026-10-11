@@ -48,3 +48,76 @@ fn infinite_size_hint_does_not_wrap_to_negative() {
     assert_eq!(upper, None);
     assert_eq!(iter.collect_n(3), [7, 7, 7]);
 }
+
+#[test]
+fn native_altrep_construction_is_lazy_and_reads_only_a_finite_prefix() {
+    use miniextendr_api::{AltIntegerData, AltrepIteratorExt, AltrepLen};
+    use std::cell::Cell;
+
+    let draws = Cell::new(0i32);
+    let data = std::iter::from_fn(|| {
+        let value = draws.get();
+        draws.set(value + 1);
+        Some(value)
+    })
+    .into_altrep_data(3);
+    assert_eq!(draws.get(), 0);
+    assert_eq!(data.len(), 3);
+    assert_eq!(data.elt(1), 1);
+    assert_eq!(data.elt(0), 0);
+    assert_eq!(draws.get(), 2);
+    assert_eq!(data.elt(2), 2);
+    assert_eq!(data.as_slice(), Some([0, 1, 2].as_slice()));
+    assert_eq!(draws.get(), 3);
+}
+
+#[test]
+fn native_altrep_accepts_composed_and_unknown_length_iterators() {
+    use miniextendr_api::{AltIntegerData, AltrepIteratorExt, AltrepLen};
+
+    let exact = [1i32, 2, 3, 4].into_iter().rev().map(|x| x * 2).take(3);
+    let data = exact.into_altrep_data_exact();
+    assert_eq!(data.len(), 3);
+    assert_eq!(data.elt(2), 4);
+
+    let filtered = (0..10i32).filter(|x| x % 2 == 0).into_altrep_data(5);
+    assert_eq!(filtered.elt(4), 8);
+    assert_eq!(filtered.elt(1), 2);
+}
+
+#[test]
+fn native_logical_iterator_retains_na_and_noncanonical_true_storage() {
+    use miniextendr_api::{AltLogicalData, AltrepIteratorExt, RLogical};
+
+    let data = [RLogical::FALSE, RLogical::from_i32(42), RLogical::NA]
+        .into_iter()
+        .into_altrep_data_exact();
+    let mut out = [0; 3];
+    assert_eq!(data.get_region(0, 3, &mut out), 3);
+    assert_eq!(out, [0, 42, i32::MIN]);
+    assert_eq!(data.as_r_slice(), Some(out.as_slice()));
+}
+
+#[test]
+fn a_local_element_type_can_choose_its_data_family() {
+    use miniextendr_api::coerce::Coerce;
+    use miniextendr_api::{
+        AltIntegerData, AltrepIteratorExt, AltrepIteratorItem, IterIntCoerceData,
+    };
+
+    #[derive(Clone, Copy)]
+    struct Small(u16);
+    impl Coerce<i32> for Small {
+        fn coerce(self) -> i32 {
+            i32::from(self.0)
+        }
+    }
+    impl AltrepIteratorItem for Small {
+        type Data<I: Iterator<Item = Self>> = IterIntCoerceData<I, Self>;
+        fn into_data<I: Iterator<Item = Self>>(iter: I, len: usize) -> Self::Data<I> {
+            IterIntCoerceData::from_iter(iter, len)
+        }
+    }
+    let data = [Small(3), Small(7)].into_iter().into_altrep_data_exact();
+    assert_eq!(data.elt(1), 7);
+}
