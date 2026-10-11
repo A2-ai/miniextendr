@@ -746,6 +746,12 @@ fn generate_method_shim(
     let method_name = &method.name;
     let shim_name = crate::naming::trait_method_shim_ident(trait_name, method_name);
     let impl_t = quote::format_ident!("__ImplT");
+    // User argument bindings keep their source spans. The shim's own
+    // bindings must remain distinct even when a parameter has the same name.
+    let data = syn::Ident::new("data", proc_macro2::Span::mixed_site());
+    let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
+    let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
+    let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
 
     let param_count = method.param_types.len();
     let expected_argc = param_count as i32;
@@ -760,11 +766,11 @@ fn generate_method_shim(
         .map(|(i, (name, ty))| {
             let name_str = crate::naming::ident_name(name);
             if let Some(mutable) = crate::type_inspect::self_ref_mutability(ty) {
-                crate::trait_self_ref::extract(name, &impl_t, i, mutable)
+                crate::trait_self_ref::extract(name, &impl_t, i, mutable, &argc, &argv)
             } else {
                 quote::quote! {
                     let #name: #ty = unsafe {
-                        ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                        ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
                     };
                 }
             }
@@ -792,7 +798,7 @@ fn generate_method_shim(
     let alias_checks = crate::trait_self_ref::alias_checks(
         &impl_t,
         &handles,
-        Some((quote::quote!(data.cast_const()), method.is_mut)),
+        Some((quote::quote!(#data.cast_const()), method.is_mut)),
     );
     let self_borrows = self_refs
         .iter()
@@ -802,13 +808,13 @@ fn generate_method_shim(
     let param_names = &method.param_names;
     let method_call = if method.is_mut {
         quote::quote! {
-            let self_ref = unsafe { &mut *data.cast::<#impl_t>() };
-            self_ref.#method_name(#(#param_names),*)
+            let #self_ref = unsafe { &mut *#data.cast::<#impl_t>() };
+            #self_ref.#method_name(#(#param_names),*)
         }
     } else {
         quote::quote! {
-            let self_ref = unsafe { &*data.cast::<#impl_t>().cast_const() };
-            self_ref.#method_name(#(#param_names),*)
+            let #self_ref = unsafe { &*#data.cast::<#impl_t>().cast_const() };
+            #self_ref.#method_name(#(#param_names),*)
         }
     };
 
@@ -855,9 +861,9 @@ fn generate_method_shim(
         #[doc(hidden)]
         #[allow(non_snake_case)]
         unsafe extern "C" fn #shim_name<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>(
-            data: *mut ::std::os::raw::c_void,
-            argc: i32,
-            argv: *const ::miniextendr_api::SEXP,
+            #data: *mut ::std::os::raw::c_void,
+            #argc: i32,
+            #argv: *const ::miniextendr_api::SEXP,
         ) -> ::miniextendr_api::SEXP
         #where_clause
         {
@@ -868,7 +874,7 @@ fn generate_method_shim(
             // `with_r_unwind_protect` guard to produce rust_* class layering
             // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
-                ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
+                ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
                 // Extract arguments
                 #(#arg_extractions)*
                 #alias_checks

@@ -4,7 +4,11 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
 pub(crate) fn handle_ident(name: &syn::Ident) -> syn::Ident {
-    format_ident!("__extptr_{}", crate::naming::unraw(name))
+    format_ident!(
+        "__extptr_{}",
+        crate::naming::unraw(name),
+        span = proc_macro2::Span::mixed_site()
+    )
 }
 
 /// Extract handles first; references are created only after alias checks.
@@ -13,13 +17,15 @@ pub(crate) fn extract(
     ty: &impl quote::ToTokens,
     index: usize,
     mutable: bool,
+    argc: &syn::Ident,
+    argv: &syn::Ident,
 ) -> TokenStream {
     let handle = handle_ident(name);
     let mutability = mutable.then(|| quote!(mut));
     let name_str = crate::naming::ident_name(name);
     quote! {
         let #mutability #handle: ::miniextendr_api::ExternalPtr<#ty> = unsafe {
-            ::miniextendr_api::trait_abi::extract_arg(argc, argv, #index, #name_str)
+            ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #index, #name_str)
         };
     }
 }

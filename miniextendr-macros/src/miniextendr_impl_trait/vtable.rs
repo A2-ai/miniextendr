@@ -384,6 +384,12 @@ fn generate_concrete_vtable_shims(
 
         let method_ident = &method.ident;
         let shim_name = crate::naming::vtshim_ident(type_ident, trait_name, method_ident);
+        // Match the declaration shim's hygiene: source argument names must
+        // not shadow ABI parameters or the generated receiver reference.
+        let data = syn::Ident::new("data", proc_macro2::Span::mixed_site());
+        let argc = syn::Ident::new("argc", proc_macro2::Span::mixed_site());
+        let argv = syn::Ident::new("argv", proc_macro2::Span::mixed_site());
+        let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
 
         // Count non-self parameters
         let param_count = method
@@ -411,12 +417,12 @@ fn generate_concrete_vtable_shims(
                     let name_str = crate::naming::ident_name(&name);
 
                     if let Some(mutable) = crate::type_inspect::self_ref_mutability(&pt.ty) {
-                        crate::trait_self_ref::extract(&name, concrete_type, i, mutable)
+                        crate::trait_self_ref::extract(&name, concrete_type, i, mutable, &argc, &argv)
                     } else {
                         let ty = &pt.ty;
                         quote::quote! {
                             let #name: #ty = unsafe {
-                                ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                                ::miniextendr_api::trait_abi::extract_arg(#argc, #argv, #i, #name_str)
                             };
                         }
                     }
@@ -471,7 +477,7 @@ fn generate_concrete_vtable_shims(
         let alias_checks = crate::trait_self_ref::alias_checks(
             concrete_type,
             &handles,
-            Some((quote::quote!(data.cast_const()), method.is_mut)),
+            Some((quote::quote!(#data.cast_const()), method.is_mut)),
         );
         let self_borrows = self_refs
             .iter()
@@ -492,16 +498,16 @@ fn generate_concrete_vtable_shims(
             }
         };
         let invocation = unwrap_marker(quote::quote! {
-            <#concrete_type as #trait_path>::#method_ident(self_ref, #(#param_names),*)
+            <#concrete_type as #trait_path>::#method_ident(#self_ref, #(#param_names),*)
         });
         let method_call = if method.is_mut {
             quote::quote! {
-                let self_ref = unsafe { &mut *data.cast::<#concrete_type>() };
+                let #self_ref = unsafe { &mut *#data.cast::<#concrete_type>() };
                 #invocation
             }
         } else {
             quote::quote! {
-                let self_ref = unsafe { &*data.cast::<#concrete_type>().cast_const() };
+                let #self_ref = unsafe { &*#data.cast::<#concrete_type>().cast_const() };
                 #invocation
             }
         };
@@ -530,15 +536,15 @@ fn generate_concrete_vtable_shims(
             #[doc(hidden)]
             #[allow(non_snake_case)]
             unsafe extern "C" fn #shim_name(
-                data: *mut ::std::os::raw::c_void,
-                argc: i32,
-                argv: *const ::miniextendr_api::SEXP,
+                #data: *mut ::std::os::raw::c_void,
+                #argc: i32,
+                #argv: *const ::miniextendr_api::SEXP,
             ) -> ::miniextendr_api::SEXP {
                 // with_r_unwind_protect_shim: returns tagged error SEXP on panic
                 // so the View method wrapper can re-panic via repanic_if_rust_error,
                 // allowing rust_* class layering (issue #345).
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
-                    ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
+                    ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
                     #(#arg_extractions)*
                     #alias_checks
                     #(#self_borrows)*
@@ -1229,6 +1235,8 @@ pub(super) fn generate_trait_method_c_wrapper(
     ));
 
     if method.has_self {
+        let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
+        let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
         // Instance method: generate self extraction and call with self_ref
         let trait_method_name = format!("{}::{}()", trait_name, method_ident);
         let receiver_mutability = method.is_mut.then(|| quote::quote!(mut));
@@ -1238,10 +1246,10 @@ pub(super) fn generate_trait_method_c_wrapper(
             quote::quote!(downcast_ref)
         };
         let self_borrow = quote::quote! {
-            let self_ref = match self_ptr.#downcast::<#type_ident>() {
+            let #self_ref = match #self_ptr.#downcast::<#type_ident>() {
                 ::core::option::Option::Some(value) => value,
                 ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
-                    &self_ptr, #trait_method_name,
+                    &#self_ptr, #trait_method_name,
                 ),
             };
         };
@@ -1253,16 +1261,16 @@ pub(super) fn generate_trait_method_c_wrapper(
             // comparison, never to obtain the mutable receiver.
             post_conversion.push(self_borrow);
             quote::quote! {
-                let __miniextendr_receiver_addr = match self_ptr.downcast_ref::<#type_ident>() {
+                let __miniextendr_receiver_addr = match #self_ptr.downcast_ref::<#type_ident>() {
                     ::core::option::Option::Some(value) => ::core::ptr::from_ref(value).cast::<::core::ffi::c_void>(),
                     ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed_in::<#type_ident>(
-                        &self_ptr, #trait_method_name,
+                        &#self_ptr, #trait_method_name,
                     ),
                 };
             }
         };
         let self_extraction = quote::quote! {
-            let #receiver_mutability self_ptr = unsafe {
+            let #receiver_mutability #self_ptr = unsafe {
                 ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
                     ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp)
                 )
@@ -1274,7 +1282,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         // Use fully-qualified syntax to avoid ambiguity with generic traits
         // (e.g., `RExtend<i32>::method()` is ambiguous — `<` parsed as comparison)
         let call_expr = quote::quote! {
-            <#type_ident as #trait_path>::#method_ident(self_ref, #(#call_args),*)
+            <#type_ident as #trait_path>::#method_ident(#self_ref, #(#call_args),*)
         };
         // Unwrap a visibility-marker newtype (#1213); the output type is peeled.
         let call_expr = crate::type_inspect::prepare_return_value(
