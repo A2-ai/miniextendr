@@ -421,13 +421,13 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         quote::quote! {}
     } else {
         quote::quote! {
-            #[doc = concat!(
+            #[doc = ::core::concat!(
                 "Runtime view for objects implementing `",
-                stringify!(#trait_name),
+                ::core::stringify!(#trait_name),
                 "`."
             )]
             #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             ///
             /// Combines a data pointer with a vtable pointer for method dispatch.
             /// Use `try_from_sexp` to create a view from an R external pointer.
@@ -480,7 +480,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
                 #[inline]
                 pub unsafe fn from_sexp(sexp: ::miniextendr_api::SEXP) -> Self {
                     Self::try_from_sexp(sexp)
-                        .expect(concat!("Object does not implement ", #trait_name_str, " trait"))
+                        .expect(::core::concat!("Object does not implement ", #trait_name_str, " trait"))
                 }
 
                 #(#view_methods)*
@@ -499,13 +499,13 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             // Method shims
             #(#shim_fns)*
 
-            #[doc = concat!(
+            #[doc = ::core::concat!(
                 "Build a vtable for a concrete type implementing `",
-                stringify!(#trait_name),
+                ::core::stringify!(#trait_name),
                 "`."
             )]
             #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
             #[allow(non_snake_case)]
             #vis const fn #build_vtable_fn<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>() -> #vtable_name
             #where_clause
@@ -572,20 +572,20 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         // Pass through the original trait (with #[miniextendr] attrs stripped from items)
         #clean_trait
 
-        #[doc = concat!(
+        #[doc = ::core::concat!(
             "Type tag for runtime identification of the `",
-            stringify!(#trait_name),
+            ::core::stringify!(#trait_name),
             "` trait."
         )]
         #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #[allow(non_upper_case_globals)]
         #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(#tag_path);
 
-        #[doc = concat!("Vtable for the `", stringify!(#trait_name), "` trait.")]
+        #[doc = ::core::concat!("Vtable for the `", ::core::stringify!(#trait_name), "` trait.")]
         #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         ///
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
@@ -708,7 +708,7 @@ fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
     };
 
     Some(quote::quote! {
-        #[doc = concat!("Call `", stringify!(#method_name), "` through the vtable.")]
+        #[doc = ::core::concat!("Call `", ::core::stringify!(#method_name), "` through the vtable.")]
         #[inline]
         pub fn #method_name(#self_param #(, #params)*) #return_sig {
             unsafe {
@@ -848,11 +848,11 @@ fn generate_method_shim(
     let method_name_str = format!("{}::{}", trait_name, method_name);
 
     quote::quote! {
-        #[doc = concat!(
+        #[doc = ::core::concat!(
             "Method shim for `",
-            stringify!(#trait_name),
+            ::core::stringify!(#trait_name),
             "::",
-            stringify!(#method_name),
+            ::core::stringify!(#method_name),
             "`."
         )]
         ///
@@ -1185,7 +1185,9 @@ fn compute_extra_bounds(
         impl_bounds.push(quote::quote! { ::miniextendr_api::IntoR });
     }
     if needs_typed_external {
-        impl_bounds.push(quote::quote! { ::miniextendr_api::TypedExternal + Send + 'static });
+        impl_bounds.push(
+            quote::quote! { ::miniextendr_api::TypedExternal + ::core::marker::Send + 'static },
+        );
     }
 
     // Add full return type bounds: RewrittenType: IntoR

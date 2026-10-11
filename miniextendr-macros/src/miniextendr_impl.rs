@@ -4624,7 +4624,7 @@ pub fn expand_impl(
         // Original impl block with doc link to R wrapper
         #[doc = #r_wrapper_doc]
         #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #original_impl
 
         // Warnings for @param tags on impl blocks
@@ -4638,25 +4638,25 @@ pub fn expand_impl(
 
         // R wrapper registration via distributed slice
         #(#cfg_attrs)*
-        #[doc = concat!(
+        #[doc = ::core::concat!(
             "R wrapper code for impl block on `",
-            stringify!(#type_ident),
+            ::core::stringify!(#type_ident),
             "`."
         )]
         #[doc = #source_loc_doc]
-        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[doc = ::core::concat!("Generated from source file `", ::core::file!(), "`.")]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
         #[allow(non_upper_case_globals, non_snake_case)]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Class,
-                source_file: file!(),
+                source_file: ::core::file!(),
                 source_line: #source_line_lit,
-                content: concat!(
+                content: ::core::concat!(
                     "# Generated from Rust impl `",
-                    stringify!(#type_ident),
+                    ::core::stringify!(#type_ident),
                     "` (",
-                    file!(),
+                    ::core::file!(),
                     ":",
                     #source_line_lit,
                     ":",
@@ -4674,7 +4674,7 @@ pub fn expand_impl(
         #[allow(non_snake_case)]
         static #class_names_const: ::miniextendr_api::registry::ClassNameEntry =
             ::miniextendr_api::registry::ClassNameEntry {
-                rust_type: stringify!(#type_ident),
+                rust_type: ::core::stringify!(#type_ident),
                 r_class_name: #r_class_name_str,
                 class_system: #class_system_str,
                 field_syntax: #field_syntax,
