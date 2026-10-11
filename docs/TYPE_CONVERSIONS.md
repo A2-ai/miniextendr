@@ -145,6 +145,11 @@ and `T::R_NA` to construct a missing value. Raw `u8` has no NA and
 does not implement it. Types without an in-band NA use `Option<T>` at
 conversion boundaries.
 
+For a transparent native newtype, derive `RNativeType` and `IsNA`
+together to forward its missing-value check. Generic wrappers get the
+`IsNA` implementation only where their field implements it; a raw-byte
+instantiation remains usable as native storage.
+
 `IsNA` follows `R_IsNA`. R's `is.na()` / `anyNA()` and ALTREP
 `no_na` hints also count ordinary NaNs; their real/complex checks must
 continue to use `is_nan()`.
