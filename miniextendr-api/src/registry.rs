@@ -1927,11 +1927,13 @@ const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks o
 }
 "#;
 
-/// R source of the argument-check helpers of the wrappers preamble,
+/// R source blocks for the argument-check helpers of the wrappers preamble,
 /// `.miniextendr_arg_error`, `.miniextendr_match_arg_several` and
 /// `.miniextendr_match_arg`, with their comment blocks, as written by
 /// [`write_r_wrappers_to_file`] (they read `.miniextendr_conversion_error_class`,
 /// bound after them, and `.miniextendr_frame_call`, bound before).
+/// Each block is emitted only when needed; this ordered array lets the
+/// equivalence tests evaluate the same source as the wrapper writer.
 ///
 /// `.miniextendr_match_arg`'s messages are the ones
 /// [`crate::match_arg::match_arg_param`] and the generated conversion of a
@@ -1948,8 +1950,11 @@ const FIELD_AT_HELPER: &str = r#"# Internal helper: the field a position picks o
 /// the `aliases` argument ([`match_arg_aliases_arg`]) is #1843.
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
-pub const ARG_CHECK_HELPERS: &str = concat!(
-    r#"# Internal helper: raise an argument error from an R-side check: a
+pub const ARG_CHECK_HELPERS: [&str; 3] =
+    [ARG_ERROR_HELPER, MATCH_ARG_SEVERAL_HELPER, MATCH_ARG_HELPER];
+
+#[cfg(not(target_arch = "wasm32"))]
+const ARG_ERROR_HELPER: &str = r#"# Internal helper: raise an argument error from an R-side check: a
 # type / length precondition, `no_na`, `inherits`, or a `match_arg` /
 # `choices` value. The condition is the one a failed Rust conversion raises:
 # the crate's `conversion_error_class` (`.miniextendr_conversion_error_class`,
@@ -1970,8 +1975,11 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
     class = c(.miniextendr_conversion_error_class, "rust_error", "simpleError", "error", "condition")
   ))
 }
+"#;
 
-# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
+#[cfg(not(target_arch = "wasm32"))]
+const MATCH_ARG_SEVERAL_HELPER: &str = concat!(
+    r#"# Internal helper: strict `match.arg(several.ok = TRUE)` for `several_ok` params.
 # Base R keeps only the elements that match as long as one of them does, so a
 # misspelled entry silently shortens the selection and the per-element check on
 # the Rust side never sees it. Here every element has to match a choice
@@ -2003,8 +2011,12 @@ pub const ARG_CHECK_HELPERS: &str = concat!(
   }
   choices[i]
 }
+"#
+);
 
-# Internal helper: scalar `match.arg()` for `match_arg` / `choices` params.
+#[cfg(not(target_arch = "wasm32"))]
+const MATCH_ARG_HELPER: &str = concat!(
+    r#"# Internal helper: scalar `match.arg()` for `match_arg` / `choices` params.
 # `base::match.arg()` says `'arg'` in its messages and reports its own frame;
 # this names the argument and raises an argument error
 # (`.miniextendr_arg_error`) attributed to `call`: by default the wrapper's own
@@ -2249,6 +2261,10 @@ const WRAPPERS_PREAMBLE_HEADER: &str =
 fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::Cow<'_, str>]) {
     let uses = |name: &str| fragments.iter().any(|fragment| fragment.contains(name));
     let caller = uses(".miniextendr_caller_call");
+    // Generated calls have no space before '('; include it to distinguish
+    // the scalar matcher from the several-choice matcher's name.
+    let scalar = uses(".miniextendr_match_arg(");
+    let several = uses(".miniextendr_match_arg_several(");
     for (needed, helper) in [
         (caller, CALLER_CALL_HELPER),
         (
@@ -2257,9 +2273,11 @@ fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::C
         ),
         (uses(".miniextendr_env_method"), ENV_METHOD_HELPER),
         (
-            caller || uses(".miniextendr_arg_error") || uses(".miniextendr_match_arg"),
-            ARG_CHECK_HELPERS,
+            caller || scalar || several || uses(".miniextendr_arg_error"),
+            ARG_ERROR_HELPER,
         ),
+        (several, MATCH_ARG_SEVERAL_HELPER),
+        (scalar, MATCH_ARG_HELPER),
     ] {
         if needed {
             content.push_str(helper);
@@ -2996,6 +3014,11 @@ mod tests {
         assert!(caller.contains(".miniextendr_arg_error <- function"));
         assert!(!caller.contains(".miniextendr_field_at <- function"));
         assert!(!caller.contains(".miniextendr_env_method <- function"));
+        assert!(!caller.contains(".miniextendr_match_arg"));
+
+        let check = render("f <- function(x) .miniextendr_arg_error('x', 'must be positive')");
+        assert!(check.contains(".miniextendr_arg_error <- function"));
+        assert!(!check.contains(".miniextendr_match_arg"));
 
         let field = render("f <- function(x) .miniextendr_field_at(fields, x, environment())");
         assert!(field.contains(".miniextendr_field_at <- function"));
@@ -3006,6 +3029,12 @@ mod tests {
         let choices = render("f <- function(x) .miniextendr_match_arg_several(x, choices, 'x')");
         assert!(choices.contains(".miniextendr_arg_error <- function"));
         assert!(choices.contains(".miniextendr_match_arg_several <- function"));
+        assert!(!choices.contains(".miniextendr_match_arg <- function"));
+
+        let scalar = render("f <- function(x) .miniextendr_match_arg(x, choices, 'x')");
+        assert!(scalar.contains(".miniextendr_arg_error <- function"));
+        assert!(scalar.contains(".miniextendr_match_arg <- function"));
+        assert!(!scalar.contains(".miniextendr_match_arg_several <- function"));
     }
 
     /// Run the class-ref placeholder resolver over `content` using `entries` as the registry.
@@ -4267,7 +4296,9 @@ mod tests {
             ("FRAME_CALL_HELPER", FRAME_CALL_HELPER),
             ("FIELD_AT_HELPER", FIELD_AT_HELPER),
             ("ENV_METHOD_HELPER", ENV_METHOD_HELPER),
-            ("ARG_CHECK_HELPERS", ARG_CHECK_HELPERS),
+            ("ARG_ERROR_HELPER", ARG_ERROR_HELPER),
+            ("MATCH_ARG_SEVERAL_HELPER", MATCH_ARG_SEVERAL_HELPER),
+            ("MATCH_ARG_HELPER", MATCH_ARG_HELPER),
             ("the conversion_error_class binding", binding.as_str()),
         ] {
             for line in text.lines() {
@@ -4336,7 +4367,7 @@ mod tests {
         assert!(fn_text.contains("generic <- env[[\".Generic\"]]"));
         assert!(fn_text.contains("call(\"<-\", call, quote(value))"));
         assert!(
-            ARG_CHECK_HELPERS
+            ARG_ERROR_HELPER
                 .contains("  if (is.environment(call)) call <- .miniextendr_frame_call(call)\n")
         );
     }
@@ -4549,7 +4580,8 @@ mod tests {
     #[test]
     fn arg_check_helpers_define_the_three_functions() {
         let defs: Vec<&str> = ARG_CHECK_HELPERS
-            .lines()
+            .iter()
+            .flat_map(|helper| helper.lines())
             .filter_map(parse_top_level_fn_def_name)
             .collect();
         assert_eq!(
@@ -4560,8 +4592,10 @@ mod tests {
                 ".miniextendr_match_arg"
             ]
         );
-        assert!(ARG_CHECK_HELPERS.starts_with("# Internal helper"));
-        assert!(ARG_CHECK_HELPERS.ends_with("}\n"));
+        for helper in ARG_CHECK_HELPERS {
+            assert!(helper.starts_with("# Internal helper"));
+            assert!(helper.ends_with("}\n"));
+        }
     }
 
     #[test]
