@@ -37,6 +37,12 @@ Rust-R interoperability framework for building R packages with Rust backends.
 
 Always use `just check/clippy/test/fmt/vendor/lint` — the recipes iterate every manifest in the multi-crate workspace (root, `rpkg/src/rust`, `tests/cross-package/*`) with the correct `[patch.crates-io]` overrides. Raw `cargo --workspace` only sees the top-level manifest. If a recipe doesn't exist, say so and fall back — don't invent shortcuts.
 
+Development recipes that can rewrite `rpkg/src/rust/Cargo.lock` use
+`[script("bash", "scripts/with-rpkg-lock.sh", "bash")]` to restore their exact
+starting file on exit. Never auto-call `cargo-lock-restore`: it is an explicit
+reset to the Git index and discards unstaged edits. Put lock-mutating dependency
+steps inside the guarded recipe body so its snapshot precedes them (#1992).
+
 **Interactive iteration**: prefer `cargo-limit` aliases (`cargo lcheck/lclippy/ltest/lbuild`) — they truncate output to the first few errors. Install with `just dev-tools-install`. CI and `just` recipes keep plain `cargo` (CI needs full output + `-D warnings`).
 
 ## Project Structure

@@ -197,59 +197,56 @@ update *cargo_flags:
     cargo revendor --manifest-path "$rust_dir/Cargo.toml" --stamp-lock -v
     just lock-shape-check
 
-# Restore rpkg/src/rust/Cargo.lock from the git index (preserves staged
-# changes — matters for the `just vendor` flow which stages a tarball-shape
-# lockfile before commit; if nothing is staged the index equals HEAD, so this
-# is effectively a HEAD-restore).
-#
-# `just check / clippy / build / test / doc / doc-check` invoke cargo with
-# `--config "patch.'https://github.com/A2-ai/miniextendr'.<crate>.path=…"`,
-# which causes cargo to drop the `source = "git+…#<sha>"` line for each
-# workspace sibling. The committed lockfile must keep those lines (CRAN/
-# tarball builds resolve `vendor/` against them). The drifting recipes
-# auto-chain this restore as their last line (`just test` runs it from an EXIT
-# trap so a failing leg cannot skip it); run it manually to clean up if a
-# recipe aborted mid-way.
+# Explicitly reset rpkg's worktree lockfile to the Git index. This discards
+# unstaged lock edits; ordinary development recipes never invoke it.
+# Those recipes use with-rpkg-lock.sh to restore their exact starting bytes,
+# including staged/unstaged differences, on success and failure.
 cargo-lock-restore:
     git restore --worktree -- rpkg/src/rust/Cargo.lock
 
+# Exercise lock preservation with fake commands; no cargo/R compilation.
+test-lock-preservation:
+    bash tests/lock-preservation.sh
+
 # Check all crates
 alias cargo-check := check
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 check *cargo_flags:
+    set -euo pipefail
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo check --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo check --benches --tests --examples --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
-    @just cargo-lock-restore
 
 # Build all crates
 alias cargo-build := build
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 build *cargo_flags:
+    set -euo pipefail
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && (cd "$root/rpkg/src/rust" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo build --benches --tests --examples --workspace --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
-    @just cargo-lock-restore
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 clippy *cargo_flags:
+    set -euo pipefail
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     just clippy-rpkg {{cargo_flags}}
     cargo clippy --benches --tests --examples --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
-    @just cargo-lock-restore
 
 # Run clippy on rpkg's standalone Rust workspace. Explicit patch overrides keep
-# this independent of configure-generated .cargo/config.toml, while the trap
-# preserves the committed tarball-shaped lockfile even when clippy fails.
-[script("bash")]
+# this independent of configure-generated .cargo/config.toml. The interpreter
+# restores the original lockfile even when clippy fails.
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 clippy-rpkg *cargo_flags:
     set -euo pipefail
     root="{{justfile_directory()}}"
-    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
     cd "$root/rpkg/src/rust"
     CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo clippy --all-targets --workspace \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
@@ -258,16 +255,15 @@ clippy-rpkg *cargo_flags:
         {{cargo_flags}}
 
 # Same explicit patch overrides as `clippy-rpkg`, so this needs neither
-# configure nor a generated .cargo/config.toml, and the trap restores the
-# tarball-shaped lockfile the overrides rewrite. `just test` runs this as its
+# configure nor a generated .cargo/config.toml. The interpreter restores the
+# original lockfile the overrides rewrite. `just test` runs this as its
 # rpkg leg and CI's rust-tests job calls it directly (#1474), so the two cannot
 # drift. No `--locked`: the path overrides change the lock on purpose.
 # Run the `#[cfg(test)]` modules of rpkg/src/rust (standalone workspace) with local framework patches
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 test-rpkg *cargo_flags:
     set -euo pipefail
     root="{{justfile_directory()}}"
-    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
     cd "$root/rpkg/src/rust"
     CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo test --workspace --no-fail-fast \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
@@ -280,11 +276,10 @@ test-rpkg *cargo_flags:
 # Lint output appears as cargo warnings. Errors indicate:
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 lint:
     set -euo pipefail
     root="$(pwd)"
-    trap 'git -C "$root" restore --worktree -- rpkg/src/rust/Cargo.lock' EXIT
     cd "$root/rpkg/src/rust"
     output=$(cargo check 2>&1) || {
         echo "$output"
@@ -303,23 +298,25 @@ lint:
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 doc-check *cargo_flags: configure-all
+    set -euo pipefail
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --no-deps --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
-    @just cargo-lock-restore
 
 # Build and open documentation
 alias cargo-doc := doc
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 doc *cargo_flags: configure-all
+    set -euo pipefail
     cargo doc --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     cargo doc --document-private-items --manifest-path cargo-revendor/Cargo.toml {{cargo_flags}}
-    @just cargo-lock-restore
     if command -v open >/dev/null 2>&1; then \
       open rpkg/rust-target/doc/rpkg/index.html >/dev/null 2>&1 || \
         echo "doc: unable to open generated docs (skipping)"; \
@@ -332,7 +329,7 @@ doc-r out="rpkg/rust-target/doc/r":
     Rscript rpkg/tools/build-html-reference.R "{{out}}"
 
 # One documentation tree for the site: nightly rustdoc for the workspace crates and the rpkg bridge crate with a crate index page, then the R manual registered on that index (needs `rustup toolchain install nightly`, rsync, R >= 4.4)
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 doc-all out="site/public/rustdoc": configure-all
     set -euo pipefail
     root="$(pwd)"
@@ -347,7 +344,6 @@ doc-all out="site/public/rustdoc": configure-all
     RUSTDOCFLAGS="$flags" cargo +nightly doc --workspace --no-deps --document-private-items
     tmp="$(mktemp -d)"
     (cd "$tmp" && RUSTDOCFLAGS="$flags" CARGO_TARGET_DIR="$target" cargo +nightly doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-lint.path=\"$root/miniextendr-lint\"")
-    just cargo-lock-restore
     mkdir -p "$out"
     rsync -a --delete --exclude=/r/ "$target/doc/" "$out/"
     Rscript rpkg/tools/build-html-reference.R "$out/r"
@@ -383,7 +379,7 @@ fmt *cargo_flags:
 # `&&`-chained lines that a failing leg skipped: the lock stayed dirty and the
 # UI snapshots went unchecked locally while CI ran them.)
 alias cargo-test := test
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 test *args:
     set -uo pipefail
     cargo_flags=""
@@ -394,7 +390,6 @@ test *args:
         if [ "$sep" = "0" ]; then cargo_flags="$cargo_flags $arg"; else test_args="$test_args $arg"; fi
     done
     root="$(pwd)"
-    trap 'just cargo-lock-restore' EXIT
 
     nfail=0
     failed=""
@@ -575,14 +570,10 @@ expand *cargo_flags:
 # Expand rpkg against this checkout, including feature-gated derive fixtures.
 # Match clippy-rpkg's Git-source overrides; restore the exact pre-run lockfile
 # so inspecting generated code preserves unstaged dependency changes too.
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 expand-rpkg *cargo_flags:
     set -euo pipefail
     root="{{justfile_directory()}}"
-    lock="$root/rpkg/src/rust/Cargo.lock"
-    lock_backup="$(mktemp)"
-    cp -p "$lock" "$lock_backup"
-    trap 'mv "$lock_backup" "$lock"' EXIT
     cd "$root/rpkg/src/rust"
     CARGO_TARGET_DIR="$root/rpkg/rust-target" cargo expand --lib \
         --config "patch.'https://github.com/A2-ai/miniextendr'.miniextendr-api.path=\"$root/miniextendr-api\"" \
@@ -846,13 +837,13 @@ test-bootstrap-vendor:
 # gctorture(TRUE)). Exits non-zero and lists the offending test files on failure.
 #
 # Full-suite gctorture2 sweep over rpkg tests (slow; nightly CI)
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 gctorture-full STEP="100": _assert-no-vendor-leak configure
     set -euo pipefail
     libdir="$(mktemp -d)"
     # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
     # it (and clean the temp lib) on every exit path, incl. a failed sweep. (#1052)
-    trap 'rm -rf "$libdir"; just cargo-lock-restore' EXIT
+    trap 'rm -rf "$libdir"' EXIT
     R CMD INSTALL --library="$libdir" rpkg
     # Hand the throwaway library to the sweep via env var — the script prepends
     # it to .libPaths() INSIDE the session. An R_LIBS_USER override here never
@@ -870,14 +861,12 @@ gctorture-full STEP="100": _assert-no-vendor-leak configure
 
 # Deliberate lock updates go through `just update` / `just vendor` (they re-stamp
 # tarball-shape); the R-side dev recipes below only DRIFT rpkg/src/rust/Cargo.lock
-# as a source-mode build side effect, so each auto-chains `just cargo-lock-restore`
-# to self-clean (matching check/build/clippy). devtools-test restores even on a red
-# test via a trap, so a failing suite never leaves the papercut behind. (#1052)
+# as a source-mode build side effect. Their script interpreter snapshots and
+# restores the exact starting lockfile, even after failure (#1992).
 # Load and test rpkg with devtools
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
-    trap 'just cargo-lock-restore' EXIT
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
     else
@@ -889,10 +878,9 @@ devtools-test FILTER="": _assert-no-vendor-leak devtools-document
 # Run this when a change adds a path holding SEXPs across allocations. FILTER
 # is positional: `just devtools-test-stress gc-stress-fixtures`.
 # Load and test rpkg with devtools, including the gctorture stress blocks
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
     set -euo pipefail
-    trap 'just cargo-lock-restore' EXIT
     export MINIEXTENDR_STRESS=true
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'
@@ -902,16 +890,18 @@ devtools-test-stress FILTER="": _assert-no-vendor-leak devtools-document
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-load: _assert-no-vendor-leak devtools-document
+    set -euo pipefail
     Rscript -e 'devtools::load_all("rpkg")'
-    @just cargo-lock-restore
 
 # Install rpkg with devtools::install, in place. build = FALSE keeps configure in
 # rpkg/, where it finds the workspace siblings; a built tarball installs from a
 # temporary copy that resolves the framework crates from git instead.
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-install: _assert-no-vendor-leak devtools-document
+    set -euo pipefail
     Rscript -e 'devtools::install("rpkg", build = FALSE)'
-    @just cargo-lock-restore
 
 # Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
 install_deps:
@@ -951,13 +941,16 @@ minirextendr-install-deps:
 # Depends on `vendor` for the same reason as r-cmd-build — devtools::build
 # wraps R CMD build, and the resulting tarball is meaningful only with
 # inst/vendor.tar.xz inside.
-# Cleanup: inst/vendor.tar.xz is removed and the committed Cargo.lock restored
+# Cleanup: inst/vendor.tar.xz is removed and the starting Cargo.lock restored
 # on exit, so the source tree is never left in tarball mode or with `vendor`'s
 # lock stamp after this recipe finishes (see r-cmd-build).
-[script("bash")]
-devtools-build: configure vendor
+# Run the dependencies inside the interpreter so its snapshot precedes vendor.
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
+devtools-build:
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
+    just configure
+    just vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check: the unvendored built-tarball path.
@@ -967,7 +960,9 @@ devtools-build: configure vendor
 # vendored crates, so _assert-no-vendor-leak refuses to run with one present.
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-check: _assert-no-vendor-leak devtools-document
+    set -euo pipefail
     Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document (roxygen2 → NAMESPACE + man pages).
@@ -983,16 +978,18 @@ devtools-check: _assert-no-vendor-leak devtools-document
 # then run devtools-document WITHOUT first running rcmdinstall, the skip fires
 # incorrectly. Rule: after any Rust/macro change, always run:
 #   just rcmdinstall && just force-document
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 devtools-document: configure-fast
+    set -euo pipefail
     Rscript -e 'if (roxygen2::needs_roxygenize("rpkg")) { devtools::document("rpkg") } else { cat("devtools-document: man/ up to date — skipping (use `just force-document` to override)\n") }'
-    @just cargo-lock-restore
 
 # Force-document rpkg unconditionally — bypasses the needs_roxygenize() check.
 # Use after Rust/macro changes where the mtime cache may not have caught up:
 #   just rcmdinstall && just force-document
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 force-document: configure-fast
+    set -euo pipefail
     Rscript -e 'devtools::document("rpkg")'
-    @just cargo-lock-restore
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
@@ -1004,11 +1001,12 @@ document-all: devtools-document minirextendr-document
 configure-all: configure cross-configure
 
 # The install resolves through the [patch] override, which drifts Cargo.lock;
-# restore the committed lock afterwards.
+# restore the exact starting lock afterwards.
 alias rcmdinstall := r-cmd-install
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 r-cmd-install *args: _assert-no-vendor-leak configure
+    set -euo pipefail
     R CMD INSTALL {{args}} rpkg
-    @just cargo-lock-restore
 
 # Build R package tarball
 # Depends on `r-cmd-install` so the host wrapper-gen pass regenerates the UNTRACKED
@@ -1032,13 +1030,15 @@ r-cmd-install *args: _assert-no-vendor-leak configure
 # which freezes out monorepo workspace-crate edits via `[patch."git+url"]`.
 # The same goes for the `source = "git+<url>#<current commit>"` lines `vendor`
 # stamps into rpkg/src/rust/Cargo.lock: the built tarball needs them, the tree
-# gets the committed lock back. `--log` writes rpkg-00build.log to the
+# gets its starting lock back. `--log` writes rpkg-00build.log to the
 # repository root, which .gitignore covers.
 alias rcmdbuild := r-cmd-build
-[script("bash")]
-r-cmd-build *args: r-cmd-install vendor
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
+r-cmd-build *args:
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
+    just r-cmd-install
+    just vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
@@ -1050,10 +1050,12 @@ r-cmd-build *args: r-cmd-install vendor
 #
 # Cleanup: same reason as r-cmd-build — see comment there.
 alias rcmdcheck := r-cmd-check
-[script("bash")]
-r-cmd-check *args: r-cmd-install vendor
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
+r-cmd-check *args:
     set -euo pipefail
-    trap 'rm -f rpkg/inst/vendor.tar.xz; just cargo-lock-restore' EXIT
+    just r-cmd-install
+    just vendor
+    trap 'rm -f rpkg/inst/vendor.tar.xz' EXIT
     ERROR_ON="warning"
     CHECK_DIR=""
     for arg in {{args}}; do
@@ -1620,13 +1622,13 @@ lint-sync-check:
 # and man/ are still committed (and derive from the freshly-regenerated wrappers.R),
 # so those are git-diffed. Catches the failure mode where a Rust-side edit ships
 # without the corresponding regenerated NAMESPACE / man/ (see #602).
-[script("bash")]
+[script("bash", "scripts/with-rpkg-lock.sh", "bash")]
 wrappers-sync-check: _assert-no-vendor-leak configure
     set -euo pipefail
     # The source-mode `R CMD INSTALL` below drifts rpkg/src/rust/Cargo.lock; restore
     # it on every exit path, incl. the exit-1 diff-failure branches. (#1052)
     install_log="$(mktemp)"
-    trap 'just cargo-lock-restore; rm -f "$install_log"' EXIT
+    trap 'rm -f "$install_log"' EXIT
 
     # Install regenerates R/miniextendr-wrappers.R + src/rust/wasm_registry.rs on disk.
     # Capture output (instead of >/dev/null) so the audit grep-gate below can scan
@@ -1734,7 +1736,7 @@ lock-shape-check:
         bad=1
     fi
     if [ $bad -eq 1 ]; then
-        echo "  Run: just cargo-lock-restore    # restore from HEAD" >&2
+        echo "  Run: just cargo-lock-restore    # discard unstaged edits, restore from index" >&2
         echo "    or just vendor                # regenerate canonical shape" >&2
         exit 1
     fi
