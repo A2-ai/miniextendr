@@ -1329,15 +1329,6 @@ impl CWrapperContext {
             let (c_params, _, _) = self.build_c_params();
             c_params.len()
         };
-        let num_args_lit = syn::LitInt::new(&num_args.to_string(), proc_macro2::Span::call_site());
-
-        let c_ident_name = syn::LitCStr::new(
-            std::ffi::CString::new(c_ident.to_string())
-                .expect("valid C string")
-                .as_c_str(),
-            c_ident.span(),
-        );
-
         // Use custom call_method_def_ident if set, otherwise use default naming
         let call_method_def_ident = self.call_method_def_ident.clone().unwrap_or_else(|| {
             if let Some(ref type_ident) = self.type_context {
@@ -1347,10 +1338,8 @@ impl CWrapperContext {
             }
         });
 
-        // Build func_ptr_def for transmute
-        let func_ptr_def: Vec<syn::Type> = (0..num_args)
-            .map(|_| syn::parse_quote!(::miniextendr_api::SEXP))
-            .collect();
+        let registration =
+            crate::call_method_def::call_method_def(&call_method_def_ident, c_ident, num_args);
 
         let item_label = if let Some(ref type_ident) = self.type_context {
             format!("`{}::{}`", type_ident, fn_ident)
@@ -1372,19 +1361,7 @@ impl CWrapperContext {
             #[doc = #doc_example]
             #[doc = #source_loc_doc]
             #[doc = concat!("Generated from source file `", file!(), "`.")]
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #call_method_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
-                ::miniextendr_api::sys::R_CallMethodDef {
-                    name: #c_ident_name.as_ptr(),
-                    fun: Some(std::mem::transmute::<
-                        unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::SEXP,
-                        unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void
-                    >(#c_ident)),
-                    numArgs: #num_args_lit,
-                }
-            };
+            #registration
         }
     }
 

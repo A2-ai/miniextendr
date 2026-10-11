@@ -158,6 +158,7 @@
 
 mod altrep;
 mod c_wrapper_builder;
+mod call_method_def;
 mod list_macro;
 mod match_arg_keys;
 mod miniextendr_fn;
