@@ -3387,16 +3387,16 @@ impl ParsedImpl {
             .find(|m| m.should_include() && m.is_finalizer())
     }
 
-    /// Module constant identifier for R wrapper parts.
+    /// Module-local registration identifier for R wrapper parts.
     ///
-    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
+    /// Format: `R_WRAPPERS_IMPL_{Type}` or `R_WRAPPERS_IMPL_{Type}_{label}`,
+    /// preserving both the type's and the label's case.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
-        let type_upper = self.type_ident.to_string().to_uppercase();
+        let type_name = crate::naming::unraw(&self.type_ident);
         if let Some(ref label) = self.label {
-            let label_upper = label.to_uppercase();
-            format_ident!("R_WRAPPERS_IMPL_{}_{}", type_upper, label_upper)
+            format_ident!("R_WRAPPERS_IMPL_{}_{}", type_name, label)
         } else {
-            format_ident!("R_WRAPPERS_IMPL_{}", type_upper)
+            format_ident!("R_WRAPPERS_IMPL_{}", type_name)
         }
     }
 
@@ -4595,7 +4595,7 @@ pub fn expand_impl(
     // this registers for one type are collapsed (identical) or rejected
     // (conflicting `class = "..."` overrides) by `build_class_name_index` in
     // miniextendr-api's registry. Unlabeled multi-blocks still collide — on
-    // `R_WRAPPERS_IMPL_<TYPE>` too — so no per-block counter is needed here.
+    // `R_WRAPPERS_IMPL_<Type>` too — so no per-block counter is needed here.
     let r_class_name_str = parsed.class_name();
     let class_system_str = parsed.class_system.to_ident().to_string();
     // `$` / `[[` field syntax (`s3/s4/env(r_data_accessors)`): the wrapper
@@ -4607,10 +4607,10 @@ pub fn expand_impl(
             ClassSystem::S3 | ClassSystem::S4 | ClassSystem::Env
         );
     let class_names_const = {
-        let type_lower = type_ident.to_string().to_lowercase();
+        let type_name = crate::naming::ident_name(type_ident);
         let name = match parsed.label() {
-            Some(label) => format!("__mx_class_name_entry_{type_lower}_{label}"),
-            None => format!("__mx_class_name_entry_{type_lower}"),
+            Some(label) => format!("__mx_class_name_entry_{type_name}_{label}"),
+            None => format!("__mx_class_name_entry_{type_name}"),
         };
         syn::Ident::new(&name, type_ident.span())
     };
@@ -4641,6 +4641,7 @@ pub fn expand_impl(
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals, non_snake_case)]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Class,
