@@ -356,17 +356,19 @@ impl RDataAccessors {
 }
 
 /// How the S3 readers of `s3(r_data_accessors)` look a field up on a bare
-/// pointer (`field_syntax.rs`): `s3(r_data_accessors, lookup = "strict")`.
+/// pointer (`field_syntax.rs`): `s3(r_data_accessors, lookup = "list")`.
+/// Neither lookup matches a prefix of a name (#1922).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FieldLookup {
-    /// A list's lookup (#1891): `$` takes a unique prefix, `[[` a logical or
-    /// fractional position, and an unknown name or `NA` reads `NULL`.
+    /// The default (#1921): exact names and whole-number positions only; an
+    /// unknown name raises `miniextendr_no_field` and any other index the
+    /// bad-index error.
     #[default]
-    List,
-    /// `lookup = "strict"` (#1921): exact names and whole-number positions
-    /// only; an unknown name raises `miniextendr_no_field` and any other
-    /// index the bad-index error.
     Strict,
+    /// `lookup = "list"` (#1891): a list's lenience without its prefix
+    /// match. An unknown name or `NA` reads `NULL`, and `[[` takes a logical
+    /// or a fractional position.
+    List,
 }
 
 /// Parses an `r_data_accessors` key inside `s3(...)` / `s4(...)` / `env(...)`
@@ -856,7 +858,7 @@ pub struct ParsedImpl {
     /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
     /// For S3, S4 and env: `$` / `[[` field methods (`field_syntax.rs`, #1848).
     pub r_data_accessors: RDataAccessors,
-    /// `s3(r_data_accessors, lookup = "strict")`: how the S3 readers look a
+    /// `s3(r_data_accessors, lookup = "list")`: how the S3 readers look a
     /// field up (see [`FieldLookup`]).
     pub field_lookup: FieldLookup,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
@@ -934,7 +936,7 @@ pub struct ImplAttrs {
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
     /// For S3, S4 and env: `$` / `[[` field methods (#1848).
     pub r_data_accessors: RDataAccessors,
-    /// How the S3 readers look a field up (`lookup = "strict"`, #1921).
+    /// How the S3 readers look a field up (`lookup = "list"`, #1921).
     pub field_lookup: FieldLookup,
     // endregion
     // region: Strict conversion mode
@@ -1328,8 +1330,8 @@ impl syn::parse::Parse for ImplAttrs {
                                         format!(
                                             "unknown `lookup` value \"{other}\"; expected \
                                              \"strict\" (exact names and whole-number \
-                                             positions) or \"list\" (a list's lookup, the \
-                                             default)"
+                                             positions, the default) or \"list\" (an unknown \
+                                             name or `NA` reads `NULL`)"
                                         ),
                                     ));
                                 }
@@ -1340,7 +1342,7 @@ impl syn::parse::Parse for ImplAttrs {
                                 parse_r_data_accessors_value(&content, &key, parsed_system)?;
                         } else {
                             let lookup = if parsed_system == ClassSystem::S3 {
-                                ", lookup = \"strict\""
+                                ", lookup = \"list\""
                             } else {
                                 ""
                             };

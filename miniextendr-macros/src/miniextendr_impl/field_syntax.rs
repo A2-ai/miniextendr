@@ -11,32 +11,35 @@
 //! fallback (`environment()`), which `.miniextendr_frame_call` turns into the
 //! generic's call: `x$keys`, `x$keys <- value` (#1851).
 //!
-//! On an S3 bare pointer the reads look the fields up as a list's `$` / `[[`
-//! do (#1891): `$` takes an exact name, else a unique prefix (with the
-//! `warnPartialMatchDollar` warning), else `NULL`; `[[` takes an exact name,
-//! else `NULL`, or a position in the field order (truncated like a list's,
-//! `subscriptOutOfBoundsError` past the last field, through the preamble's
-//! `.miniextendr_field_at`). `s3(r_data_accessors, lookup = "strict")`
-//! (#1921) takes exact names and whole-number positions only: an unknown
-//! name raises `miniextendr_no_field` there, as a write does. In both, a `[[`
+//! No reader matches a prefix of a name (#1922). On an S3 bare pointer `$`
+//! and `[[` take an exact field name, and `[[` also a whole-number position
+//! in the field order (`subscriptOutOfBoundsError` past the last field,
+//! through the preamble's `.miniextendr_field_at`); an unknown name raises
+//! `miniextendr_no_field` there, as a write does (#1921).
+//! `s3(r_data_accessors, lookup = "list")` keeps a list's other lenience
+//! (#1891): an unknown name or `NA` reads `NULL`, and `[[` takes a logical
+//! or a fractional position (truncated) as a list's does. In both, a `[[`
 //! index that is neither one name nor one position raises the preamble's
 //! `.miniextendr_field_index_error` (the type's `field_error` classes, then
 //! `notSubsettableError`, on the user's call) instead of reaching
 //! `[[.default` (#1920). The S3 class also gets `names()` (the field names),
 //! `as.list()` (every field, in order, `NULL` fields kept; #1890) and
 //! `.DollarNames()` (#1885), and S4 and env classes `.DollarNames()`. A name
-//! that is not a field falls through to R's own `$` / `[[` / `$<-` / `[[<-`
-//! (`NextMethod()`) on a list or an environment receiver, as do `names()` and
-//! `as.list()` there (`as.list.environment()` by name on an environment,
-//! whose class attribute would send `NextMethod()` to the default method,
-//! which can't coerce one), and the writes raise `miniextendr_no_field`, naming the
-//! R class and its fields, on a bare pointer (an S3 or env object), as `$`
-//! does on an S4 object, which have nothing to fall through to. A `[[<-`
-//! index that is not a name falls through. Under `restored(refuse =
-//! "every_read")` every S3 reader first checks a pointer, list or
-//! environment receiver (#1901, #1919): a restored pointer and a list or
-//! environment without one are refused before the index is looked at. Every
-//! replacement method puts `value` last and returns the object (#1853).
+//! that is not a field falls through on a list or an environment receiver,
+//! by the exact name: `$` reads a list's element with `.subset2()` (R's `$`
+//! on a list matches a prefix) and an environment's through `NextMethod()`,
+//! `[[` and the writes go to R's own `[[` (with `exact = TRUE`) / `$<-` /
+//! `[[<-`, as do `names()` and `as.list()` there (`as.list.environment()`
+//! by name on an environment, whose class attribute would send
+//! `NextMethod()` to the default method, which can't coerce one). The writes
+//! raise `miniextendr_no_field`, naming the R class and its fields, on a bare
+//! pointer (an S3 or env object), as `$` does on an S4 object, which have
+//! nothing to fall through to. A `[[<-` index that is not a name falls
+//! through. Under `restored(refuse = "every_read")` every S3 reader first
+//! checks a pointer, list or environment receiver (#1901, #1919): a restored
+//! pointer and a list or environment without one are refused before the
+//! index is looked at. Every replacement method puts `value` last and
+//! returns the object (#1853).
 //!
 //! `.DollarNames()` is registered with `@exportS3Method utils::.DollarNames`
 //! (`S3method(utils::.DollarNames, Class)`): the `@method` + `@export` pair
@@ -278,19 +281,6 @@ pub(super) fn s3_field_methods(
     // One text per name for the page: roxygen2 keeps the last `@param` of a
     // name on a page, so the reader's and the writer's blocks say the same.
     let (name, i) = match parsed_impl.field_lookup {
-        FieldLookup::List => (
-            (
-                "name",
-                "A field name; `$` on the pointer itself also takes a unique prefix of one, as \
-                 for a list.",
-            ),
-            (
-                "i",
-                "A field name; `[[` on the pointer itself also takes a position in the field \
-                 order. On a list or an environment carrying the pointer, any other index goes \
-                 to the object's own `[[` / `[[<-`.",
-            ),
-        ),
         FieldLookup::Strict => (
             (
                 "name",
@@ -300,62 +290,62 @@ pub(super) fn s3_field_methods(
                 "i",
                 "A field name, exactly; `[[` on the pointer itself also takes a whole-number \
                  position in the field order. On a list or an environment carrying the \
-                 pointer, any other index goes to the object's own `[[` / `[[<-`.",
+                 pointer, any other index goes to the object's own `[[` / `[[<-`, which \
+                 matches names exactly.",
+            ),
+        ),
+        FieldLookup::List => (
+            (
+                "name",
+                "A field name, exactly; on the pointer itself any other name reads `NULL`.",
+            ),
+            (
+                "i",
+                "A field name, exactly; `[[` on the pointer itself also takes a position in \
+                 the field order, as for a list. On a list or an environment carrying the \
+                 pointer, any other index goes to the object's own `[[` / `[[<-`, which \
+                 matches names exactly.",
             ),
         ),
     };
     let value = ("value", "The new value of the field.");
 
-    // `$`: on a bare pointer a list's lookup (`pmatch`: exact, then a unique
-    // prefix, else NULL), with R's partial-match warning on the generic's
-    // call, or under strict lookup an exact name, else `miniextendr_no_field`;
-    // on a list or environment receiver an exact field, else its own.
+    // `$`: an exact field name reads the field. On a bare pointer any other
+    // name raises `miniextendr_no_field`, or reads NULL under
+    // `lookup = "list"`; a list receiver reads its own element by the exact
+    // name (`.subset2()`: R's `$` on a list would match a prefix, #1922), an
+    // environment receiver through R's `$`, which is exact there.
     s3_method_doc(&mut lines, parsed_impl, "$", on_page, register, &[x, name]);
     lines.push(format!("{} <- function(x, name) {{", def("$")));
     lines.extend(h.every_read_check());
+    lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
     match parsed_impl.field_lookup {
+        FieldLookup::Strict => lines.push(format!(
+            "    if (typeof(x) == \"externalptr\") {}(name, environment(), {class_lit})",
+            h.no_field
+        )),
         FieldLookup::List => {
-            lines.push("  if (typeof(x) == \"externalptr\") {".to_string());
-            lines.push(format!("    i <- pmatch(name, {})", h.fields));
-            lines.push("    if (is.na(i)) return(NULL)".to_string());
-            lines.push(format!("    if ({}[[i]] != name) {{", h.fields));
-            lines.push(format!(
-                "      if (isTRUE(getOption(\"warnPartialMatchDollar\"))) warning(simpleWarning(sprintf(\"partial match of '%s' to '%s'\", name, {}[[i]]), .miniextendr_frame_call(environment())))",
-                h.fields
-            ));
-            lines.push(format!("      name <- {}[[i]]", h.fields));
-            lines.push("    }".to_string());
-            lines.push(format!(
-                "  }} else if (is.na(match(name, {}))) {{",
-                h.fields
-            ));
-            lines.push("    return(NextMethod())".to_string());
-            lines.push("  }".to_string());
-        }
-        FieldLookup::Strict => {
-            lines.push(format!("  if (is.na(match(name, {}))) {{", h.fields));
-            lines.push(format!(
-                "    if (typeof(x) == \"externalptr\") {}(name, environment(), {class_lit})",
-                h.no_field
-            ));
-            lines.push("    return(NextMethod())".to_string());
-            lines.push("  }".to_string());
+            lines.push("    if (typeof(x) == \"externalptr\") return(NULL)".to_string())
         }
     }
+    lines.push("    if (is.list(x)) return(.subset2(x, name))".to_string());
+    lines.push("    return(NextMethod())".to_string());
+    lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x, name)", h.get));
     lines.extend(guard("  "));
     lines.push("  .val".to_string());
     lines.push("}".to_string());
     lines.push(String::new());
 
-    // `[[`: on a bare pointer one name or one position. A list's lookup takes
-    // a number or a logical as a list's `[[` does (`NA` reads NULL, since a
-    // character vector's `[[NA]]` is `NA` where a list's is NULL; the rest
-    // through `.miniextendr_field_at`) and reads NULL for an unknown name;
-    // strict lookup takes a whole number only and refuses an unknown name
-    // with `miniextendr_no_field`. Any other index raises the bad-index error
-    // there (#1920). A list or environment receiver reaches its own `[[` for
-    // everything but an exact field.
+    // `[[`: on a bare pointer one exact name or one position. The default
+    // takes a whole number only and refuses an unknown name with
+    // `miniextendr_no_field`; `lookup = "list"` takes a number or a logical
+    // as a list's `[[` does (`NA` reads NULL, since a character vector's
+    // `[[NA]]` is `NA` where a list's is NULL; the rest through
+    // `.miniextendr_field_at`) and reads NULL for an unknown name. Any other
+    // index raises the bad-index error there (#1920). A list or environment
+    // receiver reaches its own `[[` for everything but an exact field, with
+    // `exact = TRUE` whatever the call passed (#1922).
     s3_method_doc(
         &mut lines,
         parsed_impl,
@@ -409,7 +399,7 @@ pub(super) fn s3_field_methods(
         "  }} else if ({}) {{",
         not_a_field_name("i", &h.fields)
     ));
-    lines.push("    return(NextMethod())".to_string());
+    lines.push("    return(NextMethod(exact = TRUE))".to_string());
     lines.push("  }".to_string());
     lines.push(format!("  .val <- {}(x, i)", h.get));
     lines.extend(guard("  "));

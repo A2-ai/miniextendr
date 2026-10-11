@@ -7359,12 +7359,14 @@ fn s3_field_methods() {
 /// "every_read")` (#1901, #1919), on a pointer, list or environment receiver.
 const S3_EVERY_READ_CHECK: &str = "  if (.rdata_every_read_Engine && typeof(x) %in% c(\"externalptr\", \"list\", \"environment\")) {\n    .val <- .rdata_live_Engine(x, TRUE)\n";
 
-/// The S3 readers of `s3(r_data_accessors)` (#1891): a list's lookup on the
-/// bare pointer (`pmatch` for `$`, `.miniextendr_field_at` for a `[[`
-/// position, NULL for an unknown name, the bad-index error for any other
-/// `[[` index), `names()`, `as.list()` and a `.DollarNames()` registered
-/// with `@exportS3Method utils::.DollarNames`, each reader starting with the
-/// `every_read` check.
+/// The S3 readers of `s3(r_data_accessors)` with the default lookup
+/// (#1921, #1922): on the bare pointer an exact name, else
+/// `miniextendr_no_field` naming the R class, and for `[[` a whole-number
+/// position (`.miniextendr_field_at`), else the strict bad-index error; a
+/// list receiver's own elements by the exact name (`.subset2()` for `$`,
+/// `exact = TRUE` for `[[`); `names()`, `as.list()` and a `.DollarNames()`
+/// registered with `@exportS3Method utils::.DollarNames`, each reader
+/// starting with the `every_read` check. Nothing matches a prefix.
 fn assert_s3_readers(wrapper: &str, class: &str) {
     let dollar = crate::naming::r_def_name(&format!("$.{class}"));
     let subset = crate::naming::r_def_name(&format!("[[.{class}"));
@@ -7375,11 +7377,7 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) return(NULL)\n"),
-        "{wrapper}"
-    );
-    assert!(
-        wrapper.contains("if (isTRUE(getOption(\"warnPartialMatchDollar\"))) warning(simpleWarning(sprintf(\"partial match of '%s' to '%s'\", name, .rdata_fields_Engine[[i]]), .miniextendr_frame_call(environment())))"),
+        wrapper.contains(&format!("  if (is.na(match(name, .rdata_fields_Engine))) {{\n    if (typeof(x) == \"externalptr\") .rdata_no_field_Engine(name, environment(), \"{class}\")\n    if (is.list(x)) return(.subset2(x, name))\n    return(NextMethod())\n  }}\n  .val <- .rdata_get_Engine(x, name)\n")),
         "{wrapper}"
     );
     assert!(
@@ -7390,14 +7388,21 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "  if (typeof(x) == \"externalptr\") {{\n    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) return(NULL)\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n      if (is.na(i)) return(NULL)\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"{class}\", environment(), .rdata_error_class_Engine)\n"
+            "  if (typeof(x) == \"externalptr\") {{\n    if (is.character(i) && length(i) == 1L && !is.na(i)) {{\n      if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), \"{class}\")\n    }} else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {{\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"{class}\", environment(), .rdata_error_class_Engine, strict = TRUE)\n  }} else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {{\n    return(NextMethod(exact = TRUE))\n  }}\n"
         )),
         "{wrapper}"
     );
-    // No `miniextendr_no_field` on a read under a list's lookup.
+    // No prefix match, no partial-match warning and no NULL for an unknown
+    // name on a read.
     let reads_end = wrapper.find("`$<-.").unwrap_or(wrapper.len());
+    for absent in ["pmatch(", "warnPartialMatchDollar", "return(NULL)"] {
+        assert!(
+            !wrapper[..reads_end].contains(absent),
+            "{absent}: {wrapper}"
+        );
+    }
     assert!(
-        !wrapper[..reads_end].contains(".rdata_no_field_Engine"),
+        wrapper.contains("#' @param name A field name, exactly; on the pointer itself any other name is an error."),
         "{wrapper}"
     );
     assert!(
@@ -7435,21 +7440,20 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
 }
 
-/// `lookup = "strict"` (#1921): on the bare pointer `$` and `[[` take an
-/// exact name, refusing any other with `miniextendr_no_field` naming the R
-/// class, and `[[` a whole-number position; every other index raises the
-/// strict bad-index error. A list or environment receiver keeps its own
-/// elements, and the rest of the readers are unchanged.
+/// `lookup = "list"` (#1891, #1922): on the bare pointer an unknown name
+/// or `NA` reads NULL and `[[` takes a logical or a fractional position, as
+/// for a list, but `$` takes an exact name only: no `pmatch()` and no
+/// partial-match warning. The rest of the readers are the default's.
 #[test]
-fn s3_field_methods_strict_lookup() {
+fn s3_field_methods_list_lookup() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Engine {}
     };
     let mut attrs: ImplAttrs =
-        syn::parse_str("s3(r_data_accessors = \"get\", lookup = \"strict\")").unwrap();
+        syn::parse_str("s3(r_data_accessors = \"get\", lookup = \"list\")").unwrap();
     attrs.class_name = Some("engine_rec".to_string());
     attrs.preconditions = Some(true);
-    assert_eq!(attrs.field_lookup, FieldLookup::Strict);
+    assert_eq!(attrs.field_lookup, FieldLookup::List);
     let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
     assert!(
         wrapper.contains(&format!(
@@ -7458,18 +7462,22 @@ fn s3_field_methods_strict_lookup() {
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  if (is.na(match(name, .rdata_fields_Engine))) {\n    if (typeof(x) == \"externalptr\") .rdata_no_field_Engine(name, environment(), \"engine_rec\")\n    return(NextMethod())\n  }\n  .val <- .rdata_get_Engine(x, name)\n"),
+        wrapper.contains("  if (is.na(match(name, .rdata_fields_Engine))) {\n    if (typeof(x) == \"externalptr\") return(NULL)\n    if (is.list(x)) return(.subset2(x, name))\n    return(NextMethod())\n  }\n  .val <- .rdata_get_Engine(x, name)\n"),
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    if (is.character(i) && length(i) == 1L && !is.na(i)) {\n      if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), \"engine_rec\")\n    } else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    } else .miniextendr_field_index_error(\"engine_rec\", environment(), .rdata_error_class_Engine, strict = TRUE)\n  } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {\n    return(NextMethod())\n  }\n"),
+        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    if (is.character(i) && length(i) == 1L) {\n      if (is.na(match(i, .rdata_fields_Engine))) return(NULL)\n    } else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {\n      if (is.na(i)) return(NULL)\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    } else .miniextendr_field_index_error(\"engine_rec\", environment(), .rdata_error_class_Engine)\n  } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {\n    return(NextMethod(exact = TRUE))\n  }\n"),
         "{wrapper}"
     );
-    // No prefix match and no NULL for an unknown name.
-    assert!(!wrapper.contains("pmatch("), "{wrapper}");
-    assert!(!wrapper.contains("return(NULL)"), "{wrapper}");
+    for absent in [
+        "pmatch(",
+        "warnPartialMatchDollar",
+        ".rdata_no_field_Engine",
+    ] {
+        assert!(!wrapper.contains(absent), "{absent}: {wrapper}");
+    }
     assert!(
-        wrapper.contains("#' @param name A field name, exactly;"),
+        wrapper.contains("#' @param name A field name, exactly; on the pointer itself any other name reads `NULL`."),
         "{wrapper}"
     );
 }
@@ -7481,7 +7489,7 @@ fn parse_lookup_option() {
     let attrs: ImplAttrs = syn::parse_str("s3(lookup = \"list\", r_data_accessors)").unwrap();
     assert_eq!(attrs.field_lookup, FieldLookup::List);
     let attrs: ImplAttrs = syn::parse_str("s3(r_data_accessors)").unwrap();
-    assert_eq!(attrs.field_lookup, FieldLookup::List);
+    assert_eq!(attrs.field_lookup, FieldLookup::Strict);
     for (attrs, expected) in [
         ("s3(lookup = \"strict\")", "add `r_data_accessors`"),
         (
@@ -7505,7 +7513,7 @@ fn parse_lookup_option() {
         assert!(err.contains(expected), "{attrs}: {err}");
     }
     // The S3 message names the option; the others don't offer it.
-    assert!(parse_attrs_err("s3(r_data_accesors)").contains("lookup = \"strict\""));
+    assert!(parse_attrs_err("s3(r_data_accesors)").contains("lookup = \"list\""));
     assert!(!parse_attrs_err("s4(r_data_accesors)").contains("lookup"));
 }
 

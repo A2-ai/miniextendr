@@ -201,11 +201,13 @@ pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
 }
 // endregion
 
-// region: S3, getters only: the class writes its fields with its own `$<-`
+// region: S3, getters only and a list's lookup: the class writes its fields with its own `$<-`
 
 /// An S3 class whose fields `$` / `[[` read (`s3(r_data_accessors = "get")`)
-/// and whose own `$<-` is copy-on-modify: it returns a new object, so a copy
-/// made before the assignment keeps its value.
+/// with a list's lenience (`lookup = "list"`): an unknown name or `NA` reads
+/// `NULL` and `[[` takes a logical or a fractional position, but a prefix of
+/// a name is no name (#1922). Its own `$<-` is copy-on-modify: it returns a
+/// new object, so a copy made before the assignment keeps its value.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(s3)]
 pub struct SidecarS3Get {
@@ -220,9 +222,9 @@ pub struct SidecarS3Get {
     pub notes: Sidecar<Vec<String>>,
 }
 
-/// S3 class registration for SidecarS3Get: generated getters, and a
-/// hand-written copy-on-modify `$<-`.
-#[miniextendr(s3(r_data_accessors = "get"))]
+/// S3 class registration for SidecarS3Get: generated getters with a list's
+/// lookup, and a hand-written copy-on-modify `$<-`.
+#[miniextendr(s3(r_data_accessors = "get", lookup = "list"))]
 impl SidecarS3Get {
     /// Create a SidecarS3Get with no notes.
     /// @param level Integer sidecar field.
@@ -412,14 +414,14 @@ pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
 }
 // endregion
 
-// region: S3, strict lookup (#1921)
+// region: S3, the type's own refusal message (#1920, #1921)
 
-/// A record whose readers look fields up strictly (`lookup = "strict"`,
-/// #1921): exact names and whole-number positions only, so `x$st` is an
-/// error rather than `x$steps`, and an unknown name raises
-/// `miniextendr_no_field` as it does on assignment. Its receiver refusals
-/// carry the package's own message (`field_error(message)`, #1920), and a
-/// saved copy is refused on every read.
+/// A record read with the default lookup (#1921): exact names and
+/// whole-number positions only, so `x$st` is an error rather than
+/// `x$steps`, and an unknown name raises `miniextendr_no_field` as it does
+/// on assignment. Its receiver refusals carry the package's own message
+/// (`field_error(message)`, #1920), and a saved copy is refused on every
+/// read.
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(
     s3,
@@ -443,8 +445,8 @@ pub struct SidecarStrict {
     pub r_steps: Sidecar<Vec<i32>>,
 }
 
-/// The strict readers of `strict_rec`.
-#[miniextendr(s3(r_data_accessors = "get", lookup = "strict"), class = "strict_rec")]
+/// The readers of `strict_rec`.
+#[miniextendr(s3(r_data_accessors = "get"), class = "strict_rec")]
 impl SidecarStrict {
     /// Create a `strict_rec` whose `steps` are `1:id`.
     /// @param id The id.
