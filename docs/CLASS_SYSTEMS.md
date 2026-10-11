@@ -121,10 +121,7 @@ Counter$inc <- function() {
 }
 
 `$.Counter` <- function(self, name) {
-  obj <- Counter[[name]]
-  # (trait namespaces and the not-found fallback elided)
-  environment(obj) <- environment()
-  obj
+  .miniextendr_env_method(self, name, Counter)
 }
 `[[.Counter` <- `$.Counter`
 ```
@@ -134,10 +131,13 @@ returned by `.Call()`, sets its class attribute, and returns it. There is no
 list and no `.ptr` field. The methods live in the `Counter` environment and
 take no receiver formal; each body refers to a bare `self`. That name resolves
 through the `$.Counter` dispatcher: `c$value()` calls `$.Counter(c, "value")`,
-which fetches `Counter$value` and re-parents the closure into the dispatcher's
-own frame, where `self` is bound to the object, before returning it to be
-called (`miniextendr-macros/src/miniextendr_impl/env_class.rs`). `[[` is
-aliased to the same dispatcher. A `&mut self` method returns `self`, so calls
+which delegates to the shared lookup helper in `miniextendr-api/src/registry.rs`.
+The helper fetches `Counter$value` and gives the returned closure a fresh
+frame containing only `self`. That frame's parent is the method's original
+environment, so package objects used by method bodies and parameter defaults
+keep resolving there. The method stored in `Counter` is unchanged, and each
+returned closure keeps its own receiver alive. `[[` is aliased to the same
+dispatcher. A `&mut self` method returns `self`, so calls
 chain. Errors raised from Rust come back as a tagged value and are re-raised by
 `.miniextendr_raise_condition` with the call attributed to the user's frame
 (see `docs/CALL_ATTRIBUTION.md`).
