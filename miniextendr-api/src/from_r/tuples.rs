@@ -49,6 +49,8 @@ macro_rules! impl_tuple_try_from_sexp {
             $(<$T as TryFromSexp>::Error: Into<SexpError>,)+
         {
             type Error = SexpError;
+            const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+                crate::from_r::NativeBorrow::tuple(&[$($T::NATIVE_BORROW,)+]);
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 check_list_shape(sexp, $n, sexp.len())?;
