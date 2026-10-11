@@ -948,11 +948,11 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<TraitMethod
                 // NOTE: `match_arg`/`match_arg_several_ok` (choices derived from a
                 // `#[derive(MatchArg)]` enum's `CHOICES` const) are intentionally NOT
                 // supported here yet. The inherent-impl path additionally emits a
-                // `__match_arg_choices__<param>` C helper + `MX_MATCH_ARG_CHOICES`
-                // registration (`generate_method_match_arg_helpers` in
+                // `MX_MATCH_ARG_CHOICES` registration
+                // (`generate_method_match_arg_entries` in
                 // `miniextendr_impl.rs`) that resolves the write-time placeholder
                 // formal default into the enum's literal choice list — trait methods
-                // have no equivalent C-wrapper generation yet, so accepting `match_arg`
+                // have no equivalent metadata registration yet, so accepting `match_arg`
                 // here would silently ship a formal default that never resolves
                 // (`object '.__MX_MATCH_ARG_CHOICES_...__' not found` at call time).
                 // `choices(...)` needs no such resolution (the literal list is baked in

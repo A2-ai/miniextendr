@@ -5100,14 +5100,29 @@ fn method_choice_params_emit_in_signature_order() {
         );
 
         let tokens = c_wrapper_tokens(&parsed, "pick");
-        let helpers: Vec<usize> = ["zeta", "alpha", "mid"]
+        let method = parsed
+            .methods
             .iter()
-            .map(|name| position(&tokens, &format!("__match_arg_choices__{name}")))
+            .find(|m| m.sig.ident == "pick")
+            .unwrap();
+        let c_ident = method
+            .c_wrapper_ident(&parsed.type_ident, parsed.label())
+            .to_string();
+        let entries: Vec<usize> = ["zeta", "alpha", "mid"]
+            .iter()
+            .map(|name| {
+                let placeholder = crate::match_arg_keys::choices_placeholder(&c_ident, name);
+                position(&tokens, &placeholder)
+            })
             .collect();
         assert!(
-            helpers.is_sorted(),
-            "match_arg helpers out of signature order:\n{tokens}"
+            entries.is_sorted(),
+            "match_arg entries out of signature order:\n{tokens}"
         );
+        assert!(!tokens.contains("__match_arg_choices__"));
+        assert!(!tokens.contains("choices_sexp"));
+        assert!(tokens.contains("MX_MATCH_ARG_CHOICES"));
+        assert!(tokens.contains("MX_MATCH_ARG_PARAM_DOCS"));
     }
 }
 

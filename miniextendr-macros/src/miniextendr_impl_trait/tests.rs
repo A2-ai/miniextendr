@@ -788,9 +788,9 @@ fn test_bug2_precondition_checks_emitted_for_trait_method() {
 /// `build_match_arg_prelude` primitive directly via `per_param` (bypassing
 /// attribute parsing) — `#[miniextendr(match_arg(...))]` itself is not yet
 /// exposed as a trait-method attribute because, unlike `choices(...)`, it
-/// needs an enum's derived `MatchArg::CHOICES` resolved through a C-wrapper
-/// helper the inherent-impl path has
-/// (`generate_method_match_arg_helpers` in `miniextendr_impl.rs`) and the
+/// needs an enum's derived `MatchArg::CHOICES` resolved through a write-time
+/// registration the inherent-impl path has
+/// (`generate_method_match_arg_entries` in `miniextendr_impl.rs`) and the
 /// trait path doesn't yet; see the tracked follow-up issue. `choices(...)`
 /// (no derivation needed) *is* exposed and covered by
 /// `test_bug2_choices_prelude_emitted_for_trait_method` below.
