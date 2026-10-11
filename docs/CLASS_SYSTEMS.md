@@ -638,10 +638,16 @@ pub fn get(&self) -> i32 { ... }
 Shortcut names share one R namespace with the `<ClassName>_<static_method>`
 functions emitted for static methods. A collision inside one impl block
 (typically via an `r_name` alias) is a compile error suggesting a rename or
-`s7(no_shortcut)`. Collisions with `#[derive(ExternalPtr)]` sidecar accessors
-(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`) are not yet detected —
-avoid naming an instance method `get_<field>`/`set_<field>` for a sidecar
-field, or use `s7(no_shortcut)` (see #991).
+`s7(no_shortcut)`. The wrapper writer checks across separate expansions too,
+including `#[derive(ExternalPtr)]` sidecar accessors
+(`<ClassName>_get_<field>` / `<ClassName>_set_<field>`), free functions and
+other class impl blocks. Rename the colliding method or field, or use
+`s7(no_shortcut)` (see #991).
+
+The writer also rejects ordinary functions or class objects that share a
+name with a generated generic. Several classes may declare the same guarded
+generic so their methods can share dispatch; an ordinary function cannot
+replace that generic (#1677).
 
 ### Which generic a method attaches to
 
