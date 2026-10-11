@@ -560,3 +560,13 @@ pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
     miniextendr_api::SEXP::scalar_integer(sum)
 }
 // endregion
+
+// region: Test 11: Parameter named like the owned-string temporary (#1677)
+
+/// A `&str` argument crosses to the worker as the owned `__owned_text`
+/// binding, which a parameter with that name must not replace.
+#[miniextendr(noexport, worker)]
+pub fn test_worker_owned_text_name(text: &str, __owned_text: i32) -> String {
+    format!("{text}:{__owned_text}")
+}
+// endregion

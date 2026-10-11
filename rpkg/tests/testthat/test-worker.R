@@ -100,6 +100,10 @@ test_that("String return from miniextendr function works", {
   expect_equal(result, "hello from worker")
 })
 
+test_that("a worker &str argument keeps its owned copy apart from its siblings (#1677)", {
+  expect_equal(miniextendr:::test_worker_owned_text_name("abc", 5L), "abc:5")
+})
+
 test_that("f64 return from miniextendr function works", {
   result <- miniextendr:::test_worker_return_f64()
   expect_equal(result, 2 * pi, tolerance = 0.001)
