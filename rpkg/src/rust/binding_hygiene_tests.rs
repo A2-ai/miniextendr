@@ -79,7 +79,7 @@ pub fn shim_names_through_view() -> Vec<i32> {
     // the whole View call.
     unsafe {
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
-            __mx_wrap_hygienehost(HygieneHost { value: 7 }),
+            __mx_wrap_HygieneHost(HygieneHost { value: 7 }),
         ));
         ShimNamesView::from_sexp(handle.get()).shim_args(1, 10, 100, 1000)
     }
