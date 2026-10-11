@@ -1258,7 +1258,7 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                     let require_live =
                         ::miniextendr_api::externalptr::sidecar_require_live(require_live);
                     ::miniextendr_api::externalptr::sidecar_r_check::<#struct_name>(x, require_live);
-                    if let Err(e) = <#value_ty as TryFromSexp>::try_from_sexp(value) {
+                    if let ::core::result::Result::Err(e) = <#value_ty as TryFromSexp>::try_from_sexp(value) {
                         return #err_value;
                     }
                     ::miniextendr_api::externalptr::sidecar_r_set::<#struct_name>(
@@ -1275,8 +1275,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_integer() {
-                        Some(v) => v,
-                        None => return #err_value,
+                        ::core::option::Option::Some(v) => v,
+                        ::core::option::Option::None => return #err_value,
                     };
                     x
                 }
@@ -1289,8 +1289,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_real() {
-                        Some(v) => v,
-                        None => return #err_value,
+                        ::core::option::Option::Some(v) => v,
+                        ::core::option::Option::None => return #err_value,
                     };
                     x
                 }
@@ -1303,8 +1303,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 unsafe {
                     #extract_mut
                     data.#field_name = match value.as_logical() {
-                        Some(v) => v,
-                        None => return #err_value,
+                        ::core::option::Option::Some(v) => v,
+                        ::core::option::Option::None => return #err_value,
                     };
                     x
                 }
@@ -1333,8 +1333,8 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 unsafe {
                     #extract_mut
                     data.#field_name = match <#ty as TryFromSexp>::try_from_sexp(value) {
-                        Ok(val) => val,
-                        Err(e) => return #err_value,
+                        ::core::result::Result::Ok(val) => val,
+                        ::core::result::Result::Err(e) => return #err_value,
                     };
                     x
                 }
@@ -2446,7 +2446,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
             // A panicking Drop impl must not unwind across the C-ABI boundary.
             // `drop_catching_panic` catches any panic and aborts instead.
             ::miniextendr_api::externalptr::drop_catching_panic(|| {
-                unsafe { drop(Box::from_raw(wrapper)); }
+                unsafe { ::core::mem::drop(::std::boxed::Box::from_raw(wrapper)); }
             });
         }
 
@@ -2461,13 +2461,13 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
 
         #[doc(hidden)]
         fn #wrap_fn_name(data: #type_ident) -> *mut ::miniextendr_api::abi::mx_erased {
-            let wrapper = Box::new(#wrapper_name {
+            let wrapper = ::std::boxed::Box::new(#wrapper_name {
                 erased: ::miniextendr_api::abi::mx_erased {
                     base: &#base_vtable_name,
                 },
                 data,
             });
-            Box::into_raw(wrapper).cast::<::miniextendr_api::abi::mx_erased>()
+            ::std::boxed::Box::into_raw(wrapper).cast::<::miniextendr_api::abi::mx_erased>()
         }
     }
 }

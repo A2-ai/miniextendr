@@ -740,14 +740,14 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let ty = &col.ty;
-            quote! { pub #name: Vec<Option<#ty>> }
+            quote! { pub #name: Vec<::core::option::Option<#ty>> }
         })
         .collect();
     // Auto-expand fields: Vec<Option<ContainerType>>
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
-        df_fields.push(quote! { pub #name: Vec<Option<#cty>> });
+        df_fields.push(quote! { pub #name: Vec<::core::option::Option<#cty>> });
     }
 
     // When the companion struct would otherwise have no fields (unit-only enum,
@@ -930,7 +930,7 @@ pub(super) fn derive_enum_dataframe(
                             .map(|v| v.len())
                             .max()
                             .unwrap_or(0);
-                        let mut __cols: Vec<Vec<Option<#elem_ty>>> = (0..__max)
+                        let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                             .map(|_| Vec::with_capacity(_n_rows))
                             .collect();
                         for __opt_vec in &__auto {
@@ -968,7 +968,7 @@ pub(super) fn derive_enum_dataframe(
                         let mut __present_idx: Vec<usize> = Vec::new();
                         let mut __inner_rows: Vec<#inner_ty> = Vec::new();
                         for (__row_i, __opt) in self.#df_field.into_iter().enumerate() {
-                            if let Some(__inner) = __opt {
+                            if let ::core::option::Option::Some(__inner) = __opt {
                                 __present_idx.push(__row_i);
                                 __inner_rows.push(__inner);
                             }
@@ -1144,13 +1144,15 @@ pub(super) fn derive_enum_dataframe(
         .map(|col| {
             let name = &col.col_name;
             let ty = &col.ty;
-            quote! { let mut #name: Vec<Option<#ty>> = Vec::with_capacity(len); }
+            quote! { let mut #name: Vec<::core::option::Option<#ty>> = Vec::with_capacity(len); }
         })
         .collect();
     for ac in &auto_expand_cols {
         let name = &ac.df_field;
         let cty = &ac.container_ty;
-        col_vec_inits.push(quote! { let mut #name: Vec<Option<#cty>> = Vec::with_capacity(len); });
+        col_vec_inits.push(
+            quote! { let mut #name: Vec<::core::option::Option<#cty>> = Vec::with_capacity(len); },
+        );
     }
 
     let tag_init = if has_tag {
@@ -1192,9 +1194,9 @@ pub(super) fn derive_enum_dataframe(
                                 {
                                     let binding = &data.binding;
                                     if col.string_coerced {
-                                        return quote! { #col_name.push(Some(ToString::to_string(&#binding))); };
+                                        return quote! { #col_name.push(::core::option::Option::Some(ToString::to_string(&#binding))); };
                                     } else {
-                                        return quote! { #col_name.push(Some(#binding)); };
+                                        return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
                                     }
                                 }
                                 EnumResolvedField::ExpandedFixed(data) => {
@@ -1203,7 +1205,7 @@ pub(super) fn derive_enum_dataframe(
                                         if expanded_name == col_name_str {
                                             let binding = &data.binding;
                                             let idx = syn::Index::from(i - 1);
-                                            return quote! { #col_name.push(Some(#binding[#idx])); };
+                                            return quote! { #col_name.push(::core::option::Option::Some(#binding[#idx])); };
                                         }
                                     }
                                 }
@@ -1228,8 +1230,8 @@ pub(super) fn derive_enum_dataframe(
                                         let vals_col = format_ident!("{}", vals_name);
                                         return quote! {
                                             let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
-                                            #col_name.push(Some(__mx_keys));
-                                            #vals_col.push(Some(__mx_vals));
+                                            #col_name.push(::core::option::Option::Some(__mx_keys));
+                                            #vals_col.push(::core::option::Option::Some(__mx_vals));
                                         };
                                     }
                                     if col_name_str == vals_name {
@@ -1242,15 +1244,15 @@ pub(super) fn derive_enum_dataframe(
                                     if data.base_name == col_name_str =>
                                 {
                                     let binding = &data.binding;
-                                    return quote! { #col_name.push(Some(#binding)); };
+                                    return quote! { #col_name.push(::core::option::Option::Some(#binding)); };
                                 }
                                 // AutoExpandVec doesn't contribute to static columns
                                 _ => {}
                             }
                         }
-                        quote! { #col_name.push(None); }
+                        quote! { #col_name.push(::core::option::Option::None); }
                     } else {
-                        quote! { #col_name.push(None); }
+                        quote! { #col_name.push(::core::option::Option::None); }
                     }
                 })
                 .collect();
@@ -1267,13 +1269,13 @@ pub(super) fn derive_enum_dataframe(
                                 && data.base_name == ac.base_name
                             {
                                 let binding = &data.binding;
-                                return quote! { #ac_field.push(Some(#binding)); };
+                                return quote! { #ac_field.push(::core::option::Option::Some(#binding)); };
                             }
                         }
                         // shouldn't reach here
-                        quote! { #ac_field.push(None); }
+                        quote! { #ac_field.push(::core::option::Option::None); }
                     } else {
-                        quote! { #ac_field.push(None); }
+                        quote! { #ac_field.push(::core::option::Option::None); }
                     }
                 })
                 .collect();
@@ -1395,14 +1397,14 @@ pub(super) fn derive_enum_dataframe(
             let name = &col.col_name;
             let ty = &col.ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<Option<#ty>> = vec![None; len];
+                let mut #name: Vec<::core::option::Option<#ty>> = vec![::core::option::Option::None; len];
             });
         }
         for ac in &auto_expand_cols {
             let name = &ac.df_field;
             let cty = &ac.container_ty;
             par_col_decls.push(quote! {
-                let mut #name: Vec<Option<#cty>> = vec![None; len];
+                let mut #name: Vec<::core::option::Option<#cty>> = vec![::core::option::Option::None; len];
             });
         }
 
@@ -1463,9 +1465,9 @@ pub(super) fn derive_enum_dataframe(
                                     {
                                         let binding = &data.binding;
                                         if col.string_coerced {
-                                            return quote! { #w_name.write(__i, Some(ToString::to_string(&#binding))); };
+                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(ToString::to_string(&#binding))); };
                                         } else {
-                                            return quote! { #w_name.write(__i, Some(#binding)); };
+                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
                                         }
                                     }
                                     EnumResolvedField::ExpandedFixed(data) => {
@@ -1474,7 +1476,7 @@ pub(super) fn derive_enum_dataframe(
                                             if expanded_name == col_name_str {
                                                 let binding = &data.binding;
                                                 let idx = syn::Index::from(i - 1);
-                                                return quote! { #w_name.write(__i, Some(#binding[#idx])); };
+                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding[#idx])); };
                                             }
                                         }
                                     }
@@ -1499,8 +1501,8 @@ pub(super) fn derive_enum_dataframe(
                                             let w_vals = format_ident!("__w_{}", vals_col);
                                             return quote! {
                                                 let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, Vec<_>, Vec<_>>();
-                                                #w_name.write(__i, Some(__mx_keys));
-                                                #w_vals.write(__i, Some(__mx_vals));
+                                                #w_name.write(__i, ::core::option::Option::Some(__mx_keys));
+                                                #w_vals.write(__i, ::core::option::Option::Some(__mx_vals));
                                             };
                                         }
                                         if col_name_str == vals_name {
@@ -1513,14 +1515,14 @@ pub(super) fn derive_enum_dataframe(
                                         if data.base_name == col_name_str =>
                                     {
                                         let binding = &data.binding;
-                                        return quote! { #w_name.write(__i, Some(#binding)); };
+                                        return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
                                     }
                                     _ => {}
                                 }
                             }
-                            quote! { #w_name.write(__i, None); }
+                            quote! { #w_name.write(__i, ::core::option::Option::None); }
                         } else {
-                            quote! { #w_name.write(__i, None); }
+                            quote! { #w_name.write(__i, ::core::option::Option::None); }
                         }
                     })
                     .collect();
@@ -1536,12 +1538,12 @@ pub(super) fn derive_enum_dataframe(
                                     && data.base_name == ac.base_name
                                 {
                                     let binding = &data.binding;
-                                    return quote! { #w_name.write(__i, Some(#binding)); };
+                                    return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
                                 }
                             }
-                            quote! { #w_name.write(__i, None); }
+                            quote! { #w_name.write(__i, ::core::option::Option::None); }
                         } else {
-                            quote! { #w_name.write(__i, None); }
+                            quote! { #w_name.write(__i, ::core::option::Option::None); }
                         }
                     })
                     .collect();
@@ -2117,7 +2119,7 @@ fn generate_split_method(
                                 let buf = format_ident!("__s_{}_{}_{}", snake, data.base_name, i);
                                 let elem_ty = &data.elem_ty;
                                 buf_decls.push(quote! {
-                                    let mut #buf: Vec<Option<#elem_ty>> = Vec::new();
+                                    let mut #buf: Vec<::core::option::Option<#elem_ty>> = Vec::new();
                                 });
                             }
                         }
@@ -2389,7 +2391,7 @@ fn generate_split_method(
                                     {
                                         let __auto = #buf;
                                         let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                                        let mut __auto_cols: Vec<Vec<Option<#elem_ty>>> = (0..__max)
+                                        let mut __auto_cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                                             .map(|_| Vec::with_capacity(#n_var))
                                             .collect();
                                         for __row_vec in &__auto {
