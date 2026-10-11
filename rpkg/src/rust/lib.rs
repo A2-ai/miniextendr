@@ -130,6 +130,7 @@ mod adapter_traits_tests;
 mod aho_corasick_adapter_tests;
 mod alias_fixtures;
 mod altrep_condition_tests;
+mod altrep_container_tests;
 mod altrep_manual_fixture;
 mod altrep_no_lowlevel_fixture;
 mod altrep_sexp_tests;
