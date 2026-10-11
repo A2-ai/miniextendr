@@ -6840,6 +6840,116 @@ fn s3_operator_names_are_quoted_in_methods_and_generic_guards() {
     }
 }
 
+// region: R6 constructor member collisions (#1677)
+
+#[test]
+fn r6_initialize_collision_uses_the_emitted_member_name() {
+    for method in [
+        quote::quote!(
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r_name = "initialize")]
+            pub fn reset(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active))]
+            pub fn initialize(&self) -> i32 {
+                0
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active, prop = "initialize"))]
+            pub fn state(&self) -> i32 {
+                0
+            }
+        ),
+    ] {
+        for constructor in [
+            quote::quote!(),
+            quote::quote!(
+                pub fn new() -> Self {
+                    unimplemented!()
+                }
+            ),
+        ] {
+            let parsed = parse_impl(
+                ClassSystem::R6,
+                syn::parse_quote! {
+                    impl Counter { #constructor #method }
+                },
+            );
+            let message = check_r6_initialize_collision(&parsed)
+                .expect_err("initialize is occupied even without a Rust constructor")
+                .to_string();
+            assert!(
+                message.contains("conflicts with the generated constructor"),
+                "{message}"
+            );
+            assert!(message.contains("r_name"), "{message}");
+            assert!(message.contains("r6(prop"), "{message}");
+        }
+    }
+}
+
+#[test]
+fn r6_initialize_collision_does_not_reserve_unrelated_rust_names() {
+    for method in [
+        quote::quote!(
+            pub fn initialize() -> i32 {
+                0
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(constructor)]
+            pub fn initialize() -> Self {
+                unimplemented!()
+            }
+        ),
+        quote::quote!(
+            #[miniextendr(ignore)]
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r_name = "reset")]
+            pub fn initialize(&self) {}
+        ),
+        quote::quote!(
+            #[miniextendr(r6(active, prop = "state"))]
+            pub fn initialize(&self) -> i32 {
+                0
+            }
+        ),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::R6,
+            syn::parse_quote! {
+                impl Counter { #method }
+            },
+        );
+        check_r6_initialize_collision(&parsed).expect("does not define the initialize member");
+    }
+    for system in [
+        ClassSystem::Env,
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter { pub fn initialize(&self) {} }
+            },
+        );
+        check_r6_initialize_collision(&parsed).expect("only R6 injects initialize");
+    }
+}
+
+// endregion
+
 // region: R formal names (receivers, R6 bindings, reserved words)
 
 /// A method parameter must not take the R argument name the class system's
