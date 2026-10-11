@@ -346,7 +346,7 @@ pub(crate) fn shortcut_advisory_lines(method_name: &str, class_name: &str) -> Ve
 /// | `Vec<f64>` | `class_double` |
 /// | `Vec<bool>` | `class_logical` |
 /// | `Vec<String>` | `class_character` |
-/// | `Option<T>` | `NULL | class_T` (union) |
+/// | `Option<T>` | `NULL \| class_T` (union) |
 /// | `SomeUserType` (bare ident) | `.__MX_CLASS_REF_SomeUserType__` |
 ///
 /// For bare user-defined path types the macro emits the same

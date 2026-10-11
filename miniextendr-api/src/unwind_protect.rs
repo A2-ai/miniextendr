@@ -190,7 +190,7 @@ pub(crate) struct PreLocatedPanic(pub(crate) String);
 /// Extract a message from a panic payload.
 ///
 /// Handles `&str`, `String`, `&String`, `PreLocatedPanic` and
-/// [`RCondition`](crate::condition::RCondition) payloads (the condition's
+/// [`RCondition`](enum@crate::condition::RCondition) payloads (the condition's
 /// message) consistently. The borrowed variants are returned as
 /// `Cow::Borrowed`, so the common `panic!("literal")` case avoids the heap
 /// allocation that a `String` return would force. Unrecognised payload types
@@ -839,7 +839,7 @@ where
 /// shim functions that have no R wrapper of their own. The tagged SEXP is
 /// returned to the View method wrapper, which calls
 /// [`crate::condition::repanic_if_rust_error`] to re-panic with the
-/// reconstructed [`crate::condition::RCondition`]. The outer
+/// reconstructed [`enum@crate::condition::RCondition`]. The outer
 /// `with_r_unwind_protect` in the consumer's C entry point then catches the
 /// re-panic and builds the final tagged SEXP for the consumer's R wrapper.
 ///
@@ -908,7 +908,7 @@ where
 /// which raises a proper R condition past the Rust boundary, with `rust_*`
 /// class layering.
 ///
-/// Recognises [`crate::condition::RCondition`] payloads (from `error!()`,
+/// Recognises [`enum@crate::condition::RCondition`] payloads (from `error!()`,
 /// `warning!()`, `message!()`, `condition!()`) before falling through to the
 /// generic panic→string path.
 ///

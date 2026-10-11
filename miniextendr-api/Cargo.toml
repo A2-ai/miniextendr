@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Runtime library for miniextendr - safe Rust-R interop with worker threads, ALTREP, and type conversions"

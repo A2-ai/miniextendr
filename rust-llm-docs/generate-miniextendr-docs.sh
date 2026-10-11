@@ -2,14 +2,14 @@
 # Regenerate the LLM-parseable doc corpus for every root-workspace crate plus
 # the standalone cargo-revendor utility.
 #
-#   rust-llm-docs/generate-miniextendr-docs.sh
+#   rust-llm-docs/generate-miniextendr-docs.sh [nightly-toolchain]
 #
 # Outputs to rust-llm-docs/generated/ (gitignored; see rust-llm-docs/README.md):
 #   <crate>.md                     — single-file API digest (rustdoc_megadoc.py)
 #   <crate>-impl-inventory.md      — every trait impl grouped by trait + span
 #   conversion-impl-inventory.md   — conversion traits only, the dedup-audit view
 #
-# Requires a nightly-capable rustc (we use RUSTC_BOOTSTRAP=1 on stable) and
+# Requires an installed nightly toolchain (nightly by default) and
 # python3 (no third-party deps for the local-crate path). R-package and
 # cross-package crates are fixture surfaces rather than framework API crates.
 set -euo pipefail
@@ -19,7 +19,7 @@ ROOT="$(cd "$HERE/.." && pwd)"
 GEN="$HERE/generated"
 mkdir -p "$GEN"
 
-export RUSTC_BOOTSTRAP=1
+DOC_TOOLCHAIN="${1:-nightly}"
 export RUSTDOCFLAGS="-D warnings -Z unstable-options --output-format json"
 DOC_FLAGS=(--no-deps --document-private-items)
 
@@ -29,7 +29,7 @@ cd "$ROOT"
 # `CARGO_TARGET_DIR`. Resolve them from the same working directory as each
 # `cargo doc` invocation so the renderer reads the JSON Cargo actually wrote.
 cargo_target_dir() {
-  cargo metadata --format-version 1 --no-deps \
+  cargo "+$DOC_TOOLCHAIN" metadata --format-version 1 --no-deps \
     | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])'
 }
 
@@ -37,17 +37,17 @@ ROOT_TARGET="$(cargo_target_dir)"
 REVENDOR_TARGET="$(cd "$ROOT/cargo-revendor" && cargo_target_dir)"
 
 echo ">> cargo doc (api, full features)"
-cargo doc "${DOC_FLAGS[@]}" -p miniextendr-api --features full
+cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}" -p miniextendr-api --features full
 
 echo ">> cargo doc (macros, engine, lint, cli)"
-cargo doc "${DOC_FLAGS[@]}" \
+cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}" \
   -p miniextendr-macros -p miniextendr-engine -p miniextendr-lint -p miniextendr-cli
 
 echo ">> cargo doc (bench, all features)"
-cargo doc "${DOC_FLAGS[@]}" -p miniextendr-bench --all-features
+cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}" -p miniextendr-bench --all-features
 
 echo ">> cargo doc (cargo-revendor — standalone workspace)"
-(cd "$ROOT/cargo-revendor" && cargo doc "${DOC_FLAGS[@]}")
+(cd "$ROOT/cargo-revendor" && cargo "+$DOC_TOOLCHAIN" doc "${DOC_FLAGS[@]}")
 
 # json basename -> output basename  (cli's lib crate is named `miniextendr`)
 gen() {

@@ -2,7 +2,7 @@
 //!
 //! This module provides two things:
 //!
-//! 1. **[`RCondition`] enum** — the internal panic payload used by `error!()`,
+//! 1. **[`enum@RCondition`] enum** — the internal panic payload used by `error!()`,
 //!    `warning!()`, `message!()`, and `condition!()` macros. Caught by
 //!    [`crate::unwind_protect::with_r_unwind_protect`] before the generic
 //!    panic→error path, then forwarded to R as a structured condition with
@@ -2600,7 +2600,7 @@ fn is_no_call_marker(call: crate::SEXP) -> bool {
 }
 
 /// Inspect a SEXP returned by a trait-ABI vtable shim and, if it is a tagged
-/// error value, re-panic with the reconstructed [`RCondition`].
+/// error value, re-panic with the reconstructed [`enum@RCondition`].
 ///
 /// This is the "re-panic at the View boundary" step of Approach 1 from the
 /// issue-345 plan. The caller (a generated View method wrapper) does:

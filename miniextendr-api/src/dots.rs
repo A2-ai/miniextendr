@@ -1,6 +1,6 @@
 //! R's `...` (variadic arguments) support.
 //!
-//! Provides [`Dots`](crate::dots::Dots), the Rust representation of R's `...` parameter. The generated
+//! Provides [`Dots`], the Rust representation of R's `...` parameter. The generated
 //! R wrapper captures `...` as `list(...)` and passes it to Rust.
 //!
 //! # Usage

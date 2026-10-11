@@ -1833,16 +1833,16 @@ bindgen-corpus-remove-packages:
 
 # Regenerate the LLM-ready Rust API corpus from rustdoc JSON into
 # rust-llm-docs/generated/ (gitignored, regenerated on demand).
-llm-docs:
-    bash rust-llm-docs/generate-miniextendr-docs.sh
+llm-docs toolchain="nightly":
+    bash rust-llm-docs/generate-miniextendr-docs.sh "{{toolchain}}"
 
 # Test the renderer, then regenerate the corpus. The regeneration fails on any
 # rustdoc item kind the renderer does not cover (rustdoc_megadoc.py).
 [script("bash")]
-llm-docs-check:
+llm-docs-check toolchain="nightly":
     set -euo pipefail
     python3 -m unittest discover -s rust-llm-docs -p 'test_*.py'
-    just llm-docs
+    just llm-docs "{{toolchain}}"
 
 # Regenerate site/content/manual/ from docs/.
 # Run before site-build or site-serve when previewing doc changes locally.
