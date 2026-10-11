@@ -777,6 +777,16 @@ fn generate_method_shim(
         })
         .collect();
 
+    let native_borrow_checks = crate::trait_self_ref::native_borrow_checks(
+        method
+            .param_names
+            .iter()
+            .zip(&method.param_types)
+            .enumerate()
+            .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+        &argv,
+    );
+
     let self_refs: Vec<_> = method
         .param_names
         .iter()
@@ -875,6 +885,7 @@ fn generate_method_shim(
             // (issue #345). R-origin longjmps still propagate via R_ContinueUnwind.
             ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                 ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
+                #native_borrow_checks
                 // Extract arguments
                 #(#arg_extractions)*
                 #alias_checks
