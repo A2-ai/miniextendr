@@ -64,12 +64,13 @@ pub(crate) fn generate_direct_altrep_registration(
     // For non-generic types, emit a registration fn + a distributed_slice
     // entry pairing the fn pointer with its `#[no_mangle]` symbol name.
     //
-    // The function is `pub extern "C"` with `#[unsafe(no_mangle)]` so that a separate
-    // compilation unit (the WASM snapshot codegen path) can reference it by name via
-    // an `extern { fn __mx_altrep_reg_<crate>_<Ident>(); }` declaration (crate-prefixed
-    // for webR cross-package symbol uniqueness — #1273). The entry static
-    // carries the symbol string for the host-time snapshot writer (so it doesn't have
-    // to recover the name from a fn pointer).
+    // The function is `pub extern "C-unwind"` with `#[unsafe(no_mangle)]` so that a
+    // separate compilation unit (the WASM snapshot codegen path) can reference it
+    // through a matching extern declaration. The unwind ABI lets registration
+    // panics reach package initialization's guard instead of aborting at this shim.
+    // The symbol is crate-prefixed for webR cross-package uniqueness (#1273).
+    // The entry static carries the symbol string for the host-time snapshot
+    // writer, so it does not have to recover the name from a fn pointer.
     //
     // The ident is used verbatim (no `.to_lowercase()`) to avoid case-collision footguns:
     // `MyType` vs `MYType` would both produce the same symbol name if lowercased.

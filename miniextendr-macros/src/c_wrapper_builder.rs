@@ -554,10 +554,11 @@ impl CWrapperContext {
 
     /// Generates an `extern "C-unwind"` wrapper that runs entirely on the R main thread.
     ///
-    /// The wrapper body is enclosed in `with_r_unwind_protect`, which catches both Rust
-    /// panics and R longjmps and returns a tagged-condition SEXP on failure (the R-side
-    /// wrapper raises a structured condition). When `rng` is enabled, the call is
-    /// additionally wrapped in `catch_unwind` so that `PutRNGstate()` runs even on panic.
+    /// The wrapper body is enclosed in `with_r_unwind_protect`: Rust panics become
+    /// tagged conditions for the R wrapper to raise, while R exits resume after Rust
+    /// cleanup. With `rng`, an outer R unwind guard also covers loading and saving
+    /// state. The inner guard converts Rust panics to values so `PutRNGstate()` still
+    /// runs; the result stays rooted while that call may allocate.
     fn generate_main_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let vis = &self.vis;
