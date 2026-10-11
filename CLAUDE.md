@@ -384,8 +384,10 @@ leg; its root-workspace leg sets `MINIEXTENDR_SKIP_UI=1` so they don't also run
 on the active — possibly `rust-src` — toolchain. Every leg of `just test` runs
 even when an earlier one fails (CI's `--no-fail-fast`, across suites), the
 failed legs are listed at the end, and the recipe exits non-zero; the rpkg leg
-rewrites `rpkg/src/rust/Cargo.lock` under the path overrides, which an exit trap
-restores (`just cargo-lock-restore` by hand after a killed run). `just test-ui`
+rewrites `rpkg/src/rust/Cargo.lock` under the path overrides, and the recipe's
+lock guard puts back the file it started with. A `kill -9` skips the guard: copy
+the snapshot back from `$TMPDIR/miniextendr-lock.*/Cargo.lock`, or reset to the
+index with `just cargo-lock-restore`. `just test-ui`
 auto-detects `rust-src` and, when present, reruns the UI suite under a
 **version-named minimal-profile toolchain** (a separate rustup toolchain from
 `stable` even at the same version,

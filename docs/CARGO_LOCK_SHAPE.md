@@ -150,16 +150,18 @@ those are now harmless — `just vendor` will put them back in sync.
 The pre-commit hook will block the `path+` drift. Re-run the canonical
 regen (`just vendor` or `just update`) before staging.
 
-**The `just` recipes now self-clean.** Every drifting maintainer recipe
-auto-chains `just cargo-lock-restore` as its final step — the Rust-side
-`check` / `build` / `clippy` / `test` and the R-side `rcmdinstall` /
-`devtools-document` / `force-document` / `devtools-test` / `devtools-install` /
-`devtools-load` / `gctorture-full` / `wrappers-sync-check`. `devtools-test`,
-`gctorture-full`, and `wrappers-sync-check` restore even on a red test /
-check (via an `EXIT` trap), so a failing suite never leaves the papercut behind. So after any of
-these `just` recipes, `git status` shows the lock clean with no manual
-`git checkout` needed; deliberate lock updates still go through `just update` /
-`just vendor`, which re-stamp tarball-shape. Raw `R CMD INSTALL` (no `just`)
+**The `just` recipes put the lock back.** Every maintainer recipe that can
+drift the lock runs under `scripts/with-rpkg-lock.sh` (the
+`[script("bash", "scripts/with-rpkg-lock.sh", "bash")]` interpreter).
+`grep -A1 with-rpkg-lock justfile` lists them: the cargo recipes (`check`,
+`clippy`, `test`, `doc`, …) and the R-side ones (`rcmdinstall`, the
+`devtools-*` recipes, `force-document`, `r-cmd-build`, `r-cmd-check`, …). The
+script copies the lock before the recipe body runs and puts
+that exact file back on exit, whether the recipe passes or fails. Unstaged lock
+edits made before the recipe survive it. `just cargo-lock-restore` is the
+explicit reset to the Git index, and no recipe calls it automatically (#1992).
+Deliberate lock updates still go through `just update` / `just vendor`, which
+re-stamp tarball-shape. Raw `R CMD INSTALL` (no `just`)
 still drifts and relies on the pre-commit hook + `lock-shape-check` (#1052).
 
 The *committed* lock is gated remotely too: CI's Rust lint job runs
