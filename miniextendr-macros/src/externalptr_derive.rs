@@ -225,8 +225,8 @@
 //!     ptr: *mut mx_erased,
 //!     trait_tag: mx_tag,
 //! ) -> *const c_void {
-//!     if trait_tag == TAG_COUNTER {
-//!         return std::ptr::from_ref(&__VTABLE_MYPKG_COUNTER_FOR_MYCOUNTER).cast::<c_void>();
+//!     if trait_tag == TAG_Counter {
+//!         return std::ptr::from_ref(&__VTABLE_mypkg_Counter_FOR_MyCounter).cast::<c_void>();
 //!     }
 //!     std::ptr::null()
 //! }

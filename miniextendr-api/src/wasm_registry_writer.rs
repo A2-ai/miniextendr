@@ -36,7 +36,8 @@ use std::fmt::Write as _;
 // 2: `MX_CONVERSION_ERROR_CLASS_WASM`, which `miniextendr_init!` passes to
 //    `install_wasm_runtime_slices` (#1768).
 // 3: ALTREP registration function pointers use the C-unwind ABI.
-const GENERATOR_VERSION: u32 = 3;
+// 4: Trait vtable symbols preserve crate, trait and type spelling (#1778).
+const GENERATOR_VERSION: u32 = 4;
 
 /// Pre-extracted, host-side view of one `R_CallMethodDef`.
 ///
@@ -193,6 +194,7 @@ fn format_extern_registration_block(
     // need the address. Declaring as `u8` is the convention used in the
     // plan sketch and keeps the file independent of trait-specific types.
     for row in trait_dispatches {
+        writeln!(out, "    #[allow(non_upper_case_globals)]").unwrap();
         writeln!(out, "    pub static {}: u8;", row.vtable_symbol).unwrap();
     }
     writeln!(out, "}}").unwrap();
@@ -313,7 +315,7 @@ fn sexp_type_list(num_args: i32) -> String {
 }
 
 /// FNV-1a 64-bit hash. Matches the implementation in
-/// `miniextendr-macros/src/miniextendr_impl_trait.rs::type_to_uppercase_name`
+/// `miniextendr-macros/src/miniextendr_impl_trait.rs::type_to_symbol_name`
 /// so a future build.rs check can recompute it portably.
 fn fnv1a_64(data: &[u8]) -> u64 {
     const OFFSET_BASIS: u64 = 0xcbf29ce484222325;
@@ -425,9 +427,33 @@ mod tests {
         let trait_dispatches = vec![TraitDispatchRow {
             concrete_tag: mx_tag::new(0xdead_beef_dead_beef, 0x1234_5678_1234_5678),
             trait_tag: mx_tag::new(0xcafe_babe_cafe_babe, 0xfeed_face_feed_face),
-            vtable_symbol: "__VTABLE_COUNTER_FOR_MYTYPE".into(),
+            vtable_symbol: "__VTABLE_mypkg_Counter_FOR_MyType".into(),
         }];
         (call_defs, altrep_regs, trait_dispatches)
+    }
+
+    #[test]
+    fn case_distinct_vtables_keep_separate_externs_and_dispatch_rows() {
+        let upper = TraitDispatchRow {
+            concrete_tag: mx_tag::new(1, 2),
+            trait_tag: mx_tag::new(3, 4),
+            vtable_symbol: "__VTABLE_mypkg_Counter_FOR_Foo".into(),
+        };
+        let lower = TraitDispatchRow {
+            concrete_tag: upper.concrete_tag,
+            trait_tag: mx_tag::new(5, 6),
+            vtable_symbol: "__VTABLE_mypkg_counter_FOR_Foo".into(),
+        };
+        let out = format_wasm_registry(&[], &[], &[upper, lower], &[]);
+        for symbol in [
+            "__VTABLE_mypkg_Counter_FOR_Foo",
+            "__VTABLE_mypkg_counter_FOR_Foo",
+        ] {
+            assert!(out.contains(&format!(
+                "#[allow(non_upper_case_globals)]\n    pub static {symbol}: u8;"
+            )));
+            assert!(out.contains(&format!("from_ref(&{symbol})")));
+        }
     }
 
     #[test]
@@ -509,7 +535,7 @@ mod tests {
         assert!(out.contains("pub fn miniextendr_other(_: SEXP, _: SEXP, _: SEXP) -> SEXP;"));
         // ALTREP registrations + vtables in the registration block
         assert!(out.contains("pub safe fn __mx_altrep_reg_MyType();"));
-        assert!(out.contains("pub static __VTABLE_COUNTER_FOR_MYTYPE: u8;"));
+        assert!(out.contains("pub static __VTABLE_mypkg_Counter_FOR_MyType: u8;"));
     }
 
     #[test]

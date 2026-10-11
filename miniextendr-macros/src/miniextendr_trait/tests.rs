@@ -217,7 +217,7 @@ fn generate_produces_tag_constant() {
     let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
-    assert!(output_str.contains("TAG_COUNTER"));
+    assert!(output_str.contains("TAG_Counter"));
     assert!(output_str.contains("mx_tag"));
 }
 
@@ -270,7 +270,7 @@ fn generate_produces_vtable_builder() {
     let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
-    assert!(output_str.contains("__counter_build_vtable"));
+    assert!(output_str.contains("__Counter_build_vtable"));
 }
 
 #[test]

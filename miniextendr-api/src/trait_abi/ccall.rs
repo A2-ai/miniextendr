@@ -125,7 +125,7 @@ pub unsafe fn mx_get(sexp: SEXP) -> *mut mx_erased {
 /// # Example
 ///
 /// ```ignore
-/// let vtable = unsafe { mx_query(obj, TAG_FOO) };
+/// let vtable = unsafe { mx_query(obj, TAG_Foo) };
 /// if !vtable.is_null() {
 ///     let foo_vtable = vtable.cast::<FooVTable>();
 ///     // Call method through vtable...
@@ -165,7 +165,7 @@ pub unsafe fn mx_query(sexp: SEXP, tag: mx_tag) -> *const c_void {
 /// # Example
 ///
 /// ```ignore
-/// if let Some(view) = unsafe { mx_query_as::<FooView>(obj, TAG_FOO) } {
+/// if let Some(view) = unsafe { mx_query_as::<FooView>(obj, TAG_Foo) } {
 ///     let result = view.some_method(args);
 /// } else {
 ///     panic!("object does not implement Foo");

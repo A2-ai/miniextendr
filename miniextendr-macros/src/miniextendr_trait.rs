@@ -35,7 +35,7 @@
 //! }
 //!
 //! // Type tag for runtime identification
-//! pub const TAG_COUNTER: mx_tag = mx_tag::new(0x..., 0x...);
+//! pub const TAG_Counter: mx_tag = mx_tag::new(0x..., 0x...);
 //!
 //! // Vtable with one entry per method
 //! #[repr(C)]
@@ -53,7 +53,7 @@
 //! }
 //!
 //! // Shim for each method
-//! unsafe extern "C" fn __counter_value_shim<T: Counter>(
+//! unsafe extern "C" fn __Counter_value_shim<T: Counter>(
 //!     data: *mut c_void, argc: i32, argv: *const SEXP
 //! ) -> SEXP {
 //!     // 1. Check arity
@@ -64,10 +64,10 @@
 //! }
 //!
 //! // Builder to create vtable for a concrete type
-//! pub const fn __counter_build_vtable<T: Counter>() -> CounterVTable {
+//! pub const fn __Counter_build_vtable<T: Counter>() -> CounterVTable {
 //!     CounterVTable {
-//!         value: __counter_value_shim::<T>,
-//!         increment: __counter_increment_shim::<T>,
+//!         value: __Counter_value_shim::<T>,
+//!         increment: __Counter_increment_shim::<T>,
 //!         add: __counter_add_shim::<T>,
 //!     }
 //! }
@@ -274,11 +274,10 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let vis = &trait_item.vis;
 
     // Generate names for generated items
-    let tag_name = quote::format_ident!("TAG_{}", trait_name.to_string().to_uppercase());
+    let tag_name = crate::naming::trait_tag_ident(trait_name);
     let vtable_name = quote::format_ident!("{}VTable", trait_name);
     let view_name = quote::format_ident!("{}View", trait_name);
-    let build_vtable_fn =
-        quote::format_ident!("__{}_build_vtable", trait_name.to_string().to_lowercase());
+    let build_vtable_fn = crate::naming::trait_vtable_builder_ident(trait_name);
 
     // Collect trait-level generic type parameters
     let trait_type_params: Vec<&syn::GenericParam> = trait_item.generics.params.iter().collect();
@@ -387,11 +386,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .iter()
         .map(|m| {
             let name = &m.name;
-            let shim_name = quote::format_ident!(
-                "__{}_{}_shim",
-                trait_name.to_string().to_lowercase(),
-                crate::naming::unraw(name)
-            );
+            let shim_name = crate::naming::trait_method_shim_ident(trait_name, name);
             quote::quote! {
                 #name: #shim_name::<#(#trait_param_idents,)* #impl_t>
             }
@@ -437,6 +432,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             /// Combines a data pointer with a vtable pointer for method dispatch.
             /// Use `try_from_sexp` to create a view from an R external pointer.
             #[repr(C)]
+            #[allow(non_camel_case_types)]
             #vis struct #view_name {
                 /// Pointer to the concrete object data.
                 pub data: *mut ::std::os::raw::c_void,
@@ -510,6 +506,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             )]
             #[doc = #source_loc_doc]
             #[doc = concat!("Generated from source file `", file!(), "`.")]
+            #[allow(non_snake_case)]
             #vis const fn #build_vtable_fn<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>() -> #vtable_name
             #where_clause
             {
@@ -582,6 +579,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         )]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
+        #[allow(non_upper_case_globals)]
         #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(#tag_path);
 
@@ -592,6 +590,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
         #[doc(hidden)]
+        #[allow(non_camel_case_types)]
         #vis struct #vtable_name {
             #(#vtable_fields),*
         }
@@ -745,11 +744,7 @@ fn generate_method_shim(
     trait_where_clause: &Option<syn::WhereClause>,
 ) -> TokenStream {
     let method_name = &method.name;
-    let shim_name = quote::format_ident!(
-        "__{}_{}_shim",
-        trait_name.to_string().to_lowercase(),
-        method_name
-    );
+    let shim_name = crate::naming::trait_method_shim_ident(trait_name, method_name);
     let impl_t = quote::format_ident!("__ImplT");
 
     let param_count = method.param_types.len();
@@ -858,6 +853,7 @@ fn generate_method_shim(
         /// Converts SEXP arguments, calls the method, and returns SEXP result.
         /// Both Rust panics and R longjmps are caught via `with_r_unwind_protect`.
         #[doc(hidden)]
+        #[allow(non_snake_case)]
         unsafe extern "C" fn #shim_name<#(#trait_type_params,)* #impl_t: #trait_bound #(+ #impl_bounds)*>(
             data: *mut ::std::os::raw::c_void,
             argc: i32,

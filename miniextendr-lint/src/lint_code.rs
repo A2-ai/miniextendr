@@ -47,11 +47,6 @@ pub enum LintCode {
     MXL301,
     /// `into_sexp()` call inside a `vec!`/array literal — unprotected SEXP across allocations (UAF).
     MXL302,
-    /// Two `#[miniextendr]` trait impls collapse to the same vtable symbol
-    /// (`__VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}`; the crate prefix is constant
-    /// within one crate, so the rule compares the crate-invariant suffix)
-    /// after the macro's case-folding.
-    MXL303,
     /// Call to, or declaration of, R's non-API `ATTRIB` / `SET_ATTRIB`.
     MXL304,
     // endregion
@@ -78,10 +73,6 @@ impl LintCode {
             // Runtime-breaking: vctrs constructors returning Self produce EXTPTRSXP
             // which vctrs::new_vctr() rejects; instance-method receivers panic at runtime.
             Self::MXL120 => Severity::Error,
-
-            // Build-breaking: colliding trait impls emit duplicate `#[no_mangle]`
-            // vtable statics → cryptic linker error divorced from the source.
-            Self::MXL303 => Severity::Error,
 
             // Everything else is a warning.
             Self::MXL106

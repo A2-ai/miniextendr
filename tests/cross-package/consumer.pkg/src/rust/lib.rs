@@ -11,11 +11,11 @@ use miniextendr_api::{ExternalPtr, SEXP, SexpExt, miniextendr, trait_abi::ccall}
 miniextendr_api::miniextendr_init!();
 
 // Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
+pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
 
 // Import the shared Resettable trait and its generated ABI types
 pub use shared_traits::{
-    __resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
+    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
 };
 
 // region: Cross-package ExternalPtr pass-through utilities
@@ -294,7 +294,7 @@ pub fn get_reset_get(sexp: SEXP) -> i32 {
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_resettable() -> String {
-    format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
+    format!("{:016x}{:016x}", TAG_Resettable.hi, TAG_Resettable.lo)
 }
 // endregion
 
@@ -457,6 +457,6 @@ pub fn consumer_magic_number() -> i32 {
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_counter() -> String {
-    format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
+    format!("{:016x}{:016x}", TAG_Counter.hi, TAG_Counter.lo)
 }
 // endregion

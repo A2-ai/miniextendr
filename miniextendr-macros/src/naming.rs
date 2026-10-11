@@ -212,14 +212,48 @@ pub(crate) fn altrep_reg_fn_ident(ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("__mx_altrep_reg_{prefix}_{ident}")
 }
 
-/// `__VTABLE_<CRATE>_<TRAIT>_FOR_<TYPE>` — trait-impl vtable static.
-///
-/// `trait_name_upper` / `type_name_str` are already uppercased by the
-/// caller (matching the pre-existing convention); the crate prefix is
-/// uppercased here to match.
-pub(crate) fn vtable_static_ident(trait_name_upper: &str, type_name_str: &str) -> syn::Ident {
-    let crate_upper = crate_prefix().to_uppercase();
-    quote::format_ident!("__VTABLE_{crate_upper}_{trait_name_upper}_FOR_{type_name_str}")
+/// `__VTABLE_<crate>_<Trait>_FOR_<Type>` — trait-impl vtable static.
+/// Preserve spelling: Rust distinguishes `Counter` from `counter`, as must
+/// both the Rust identifier and the exported linker symbol. `type_name` may
+/// carry the existing generic-argument hash suffix.
+pub(crate) fn vtable_static_ident(trait_name: &syn::Ident, type_name: &str) -> syn::Ident {
+    let prefix = crate_prefix();
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("__VTABLE_{prefix}_{trait_name}_FOR_{type_name}")
+}
+
+/// Trait tag, shared by the declaration and both impl expansion paths.
+pub(crate) fn trait_tag_ident(trait_name: &syn::Ident) -> syn::Ident {
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("TAG_{trait_name}")
+}
+
+/// Trait vtable builder, defined beside the trait and called from its impls.
+pub(crate) fn trait_vtable_builder_ident(trait_name: &syn::Ident) -> syn::Ident {
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("__{trait_name}_build_vtable")
+}
+
+/// Generic shim defined beside a non-generic trait.
+pub(crate) fn trait_method_shim_ident(
+    trait_name: &syn::Ident,
+    method_name: &syn::Ident,
+) -> syn::Ident {
+    let trait_name = unraw(trait_name);
+    let method_name = unraw(method_name);
+    quote::format_ident!("__{trait_name}_{method_name}_shim")
+}
+
+/// Wrapper fragment registered by either trait impl expansion path.
+pub(crate) fn trait_impl_wrappers_ident(type_name: &str, trait_name: &syn::Ident) -> syn::Ident {
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("R_WRAPPERS_{type_name}_{trait_name}_IMPL")
+}
+
+/// Trait dispatch registration; uses the same type suffix as its vtable.
+pub(crate) fn trait_dispatch_ident(trait_name: &syn::Ident, type_name: &str) -> syn::Ident {
+    let trait_name = unraw(trait_name);
+    quote::format_ident!("__MX_DISPATCH_{trait_name}_FOR_{type_name}")
 }
 
 /// `__vtshim_<crate>_<Type>__<Trait>__<method>` — trait-impl vtable shim fn.
@@ -446,12 +480,51 @@ mod tests {
             "__mx_altrep_reg_miniextendr_macros_Counter"
         );
         assert_eq!(
-            vtable_static_ident("RESETTABLE", "COUNTER").to_string(),
-            "__VTABLE_MINIEXTENDR_MACROS_RESETTABLE_FOR_COUNTER"
+            vtable_static_ident(&tr, "Counter").to_string(),
+            "__VTABLE_miniextendr_macros_Resettable_FOR_Counter"
         );
         assert_eq!(
             vtshim_ident(&ty, &tr, &m).to_string(),
             "__vtshim_miniextendr_macros_Counter__Resettable__reset"
+        );
+    }
+
+    #[test]
+    fn trait_symbols_preserve_case_and_strip_raw_prefixes() {
+        let upper = quote::format_ident!("Counter");
+        let lower = quote::format_ident!("counter");
+        let method = quote::format_ident!("value");
+        assert_ne!(
+            vtable_static_ident(&upper, "Foo"),
+            vtable_static_ident(&lower, "Foo")
+        );
+        assert_ne!(
+            vtable_static_ident(&upper, "Foo"),
+            vtable_static_ident(&upper, "foo")
+        );
+        assert_ne!(trait_tag_ident(&upper), trait_tag_ident(&lower));
+        assert_ne!(
+            trait_vtable_builder_ident(&upper),
+            trait_vtable_builder_ident(&lower)
+        );
+        assert_ne!(
+            trait_method_shim_ident(&upper, &method),
+            trait_method_shim_ident(&lower, &method)
+        );
+        assert_ne!(
+            trait_impl_wrappers_ident("Foo", &upper),
+            trait_impl_wrappers_ident("Foo", &lower)
+        );
+        assert_ne!(
+            trait_dispatch_ident(&upper, "Foo"),
+            trait_dispatch_ident(&lower, "Foo")
+        );
+        let raw: syn::Ident = syn::parse_quote!(r#match);
+        assert_eq!(trait_tag_ident(&raw), "TAG_match");
+        assert_eq!(trait_vtable_builder_ident(&raw), "__match_build_vtable");
+        assert_eq!(
+            trait_method_shim_ident(&upper, &raw),
+            "__Counter_match_shim"
         );
     }
 

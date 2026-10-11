@@ -1411,7 +1411,7 @@ pub trait Counter {
 ```
 
 Generates cross-package ABI:
-- `TAG_COUNTER`: type tag constant
+- `TAG_Counter`: type tag constant
 - `CounterVTable`: function pointer table
 - Method shims: `extern "C"` trampolines with `with_r_unwind_protect`
 - `CounterView`: runtime dispatch wrapper

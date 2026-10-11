@@ -100,7 +100,7 @@ mod tests {
         assert_eq!(value, 99);
 
         // Verify vtable query succeeds (non-null = trait is implemented)
-        let vtable = unsafe { ((*base).query)(wrapped, TAG_COVTRAIT) };
+        let vtable = unsafe { ((*base).query)(wrapped, TAG_CovTrait) };
         assert!(!vtable.is_null());
 
         unsafe {

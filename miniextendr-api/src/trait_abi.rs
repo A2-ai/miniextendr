@@ -113,11 +113,11 @@
 //!
 //! ```ignore
 //! // In package "geometry" (depends on "shapes")
-//! use shapes::{TAG_SHAPE, ShapeView};
+//! use shapes::{TAG_Shape, ShapeView};
 //!
 //! fn calculate_area(obj: SEXP) -> f64 {
 //!     unsafe {
-//!         let view = mx_query_as::<ShapeView>(obj, TAG_SHAPE)
+//!         let view = mx_query_as::<ShapeView>(obj, TAG_Shape)
 //!             .expect("object does not implement Shape");
 //!         // Call method through vtable
 //!         view.area()
@@ -171,7 +171,7 @@ use std::os::raw::c_void;
 /// The macro generates `CounterView` that implements `TraitView`:
 /// ```ignore
 /// impl TraitView for CounterView {
-///     const TAG: mx_tag = TAG_COUNTER;
+///     const TAG: mx_tag = TAG_Counter;
 ///
 ///     unsafe fn from_raw_parts(data: *mut c_void, vtable: *const c_void) -> Self {
 ///         Self {

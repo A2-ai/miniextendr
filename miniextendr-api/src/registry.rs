@@ -466,7 +466,7 @@ pub struct TraitDispatchEntry {
     /// Pointer to the trait's vtable (cast from `&'static SomeVTable`).
     pub vtable: *const c_void,
     /// Symbol name of the `#[no_mangle]` vtable static
-    /// (e.g. `"__VTABLE_COUNTER_FOR_MYTYPE"`). Consumed by the host-time WASM
+    /// (e.g. `"__VTABLE_mypkg_Counter_FOR_MyType"`). Consumed by the host-time WASM
     /// snapshot writer to emit `extern "C" { static <symbol>: u8; }`
     /// declarations in `wasm_registry.rs`.
     pub vtable_symbol: &'static str,
