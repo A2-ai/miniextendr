@@ -6,7 +6,9 @@
 //! without hand-written glue:
 //!
 //! - `class()`: `c(<member>, <family>)` for enum variants, `c(<family>)` for
-//!   structs. The family is `#[condition(class = "…")]` on the type, else the
+//!   structs. `#[condition(class("…", "…"))]` on a struct is its whole class
+//!   vector, and on a variant it replaces the member. The family is
+//!   `#[condition(class = "…")]` on the type, else the
 //!   type name in snake_case; the member is the same attribute on the
 //!   variant, else `<family>_<variant in snake_case>`.
 //! - `message()`: `#[condition(message = "…")]` on the struct or on a variant
@@ -17,8 +19,11 @@
 //!   name, `#[condition(skip)]` drops the field, `#[condition(debug)]`
 //!   attaches the `Debug` rendering (`RValue::debug`) instead of a
 //!   conversion. Tuple fields need `rename` or `skip`; the condition's own
-//!   slots (`message`, `call`, `kind`) are rejected; a unit shape gives
-//!   `None`.
+//!   slots (`message`, `call`, `kind`) are rejected.
+//!   `#[condition(skip_none)]` on an `Option` field leaves its entry out when
+//!   it is `None`. `#[condition(data(name = value, …))]` on the type or a
+//!   variant adds entries after the fields', each `RValue::from(value)`. With
+//!   no entries, `data()` is `None`.
 //! - `call()`: `#[condition(call = none)]` on the type (every variant) or on
 //!   one variant raises that condition without a call (`conditionCall()` is
 //!   `NULL`, R's `call. = FALSE`). Without it the method keeps the trait's
@@ -39,6 +44,7 @@
 
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Fields};
 
@@ -50,10 +56,26 @@ const RESERVED_FIELDS: [&str; 3] = ["message", "call", "kind"];
 
 // region: Attribute parsing
 
+/// `class = "…"` or `class("…", "…")`.
+enum ClassSpec {
+    /// A struct's only class, an enum's family, or a variant's member.
+    One(syn::LitStr),
+    /// A struct's whole class vector, or a variant's classes before the
+    /// family; most specific first.
+    List(Vec<syn::LitStr>, Span),
+}
+
+/// One `data(name = value)` entry.
+struct DataEntry {
+    name: String,
+    value: syn::Expr,
+    span: Span,
+}
+
 /// `#[condition(...)]` options on the type or on one variant.
 #[derive(Default)]
 struct ContainerAttrs {
-    class: Option<syn::LitStr>,
+    class: Option<ClassSpec>,
     message: Option<syn::LitStr>,
     /// `argument_message = "…"`: the whole message of an argument error.
     argument_message: Option<syn::LitStr>,
@@ -62,6 +84,8 @@ struct ContainerAttrs {
     /// `kind = error | warning | message | condition`: the kind
     /// `From<T> for RCondition` gives the value.
     kind: Option<syn::Ident>,
+    /// `data(name = value, …)`: entries after the fields'.
+    data: Vec<DataEntry>,
 }
 
 fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<ContainerAttrs> {
@@ -75,7 +99,34 @@ fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<Cont
                 if out.class.is_some() {
                     return Err(meta.error("`class` is given twice"));
                 }
-                out.class = Some(meta.value()?.parse()?);
+                out.class = Some(if meta.input.peek(syn::token::Paren) {
+                    let span = meta.path.span();
+                    let content;
+                    syn::parenthesized!(content in meta.input);
+                    let list =
+                        Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated(&content)?;
+                    if list.is_empty() {
+                        return Err(meta.error("`class(...)` needs at least one class"));
+                    }
+                    ClassSpec::List(list.into_iter().collect(), span)
+                } else {
+                    ClassSpec::One(meta.value()?.parse()?)
+                });
+            } else if meta.path.is_ident("data") {
+                meta.parse_nested_meta(|entry| {
+                    let ident = entry
+                        .path
+                        .get_ident()
+                        .ok_or_else(|| entry.error("a `data` entry is `name = value`"))?
+                        .clone();
+                    let value: syn::Expr = entry.value()?.parse()?;
+                    out.data.push(DataEntry {
+                        name: ident_name(&ident),
+                        value,
+                        span: ident.span(),
+                    });
+                    Ok(())
+                })?;
             } else if meta.path.is_ident("message") {
                 if out.message.is_some() {
                     return Err(meta.error("`message` is given twice"));
@@ -125,8 +176,9 @@ fn parse_container_attrs(attrs: &[syn::Attribute], on: &str) -> syn::Result<Cont
             } else {
                 return Err(meta.error(format!(
                     "unknown `condition` option on {on}; expected `class = \"…\"`, \
-                     `message = \"…\"`, `argument_message = \"…\"`, `call = none` or \
-                     `kind = warning` (error/message/condition also accepted)"
+                     `class(\"…\", \"…\")`, `message = \"…\"`, `argument_message = \"…\"`, \
+                     `data(name = value)`, `call = none` or `kind = warning` \
+                     (error/message/condition also accepted)"
                 )));
             }
             Ok(())
@@ -141,6 +193,8 @@ struct FieldAttrs {
     skip: bool,
     rename: Option<syn::LitStr>,
     debug: bool,
+    /// Leave the entry out when the `Option` field is `None`.
+    skip_none: bool,
 }
 
 fn parse_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
@@ -154,6 +208,8 @@ fn parse_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
                 out.skip = true;
             } else if meta.path.is_ident("debug") {
                 out.debug = true;
+            } else if meta.path.is_ident("skip_none") {
+                out.skip_none = true;
             } else if meta.path.is_ident("rename") {
                 if out.rename.is_some() {
                     return Err(meta.error("`rename` is given twice"));
@@ -161,19 +217,20 @@ fn parse_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<FieldAttrs> {
                 out.rename = Some(meta.value()?.parse()?);
             } else {
                 return Err(meta.error(
-                    "unknown `condition` option on a field; expected `skip`, `debug` or `rename = \"…\"`",
+                    "unknown `condition` option on a field; expected `skip`, `skip_none`, `debug` \
+                     or `rename = \"…\"`",
                 ));
             }
             Ok(())
         })?;
     }
-    if out.skip && (out.rename.is_some() || out.debug) {
+    if out.skip && (out.rename.is_some() || out.debug || out.skip_none) {
         return Err(syn::Error::new(
             attrs
                 .iter()
                 .find(|a| a.path().is_ident("condition"))
                 .map_or_else(Span::call_site, Spanned::span),
-            "`skip` cannot be combined with `rename` or `debug`",
+            "`skip` cannot be combined with `rename`, `debug` or `skip_none`",
         ));
     }
     Ok(out)
@@ -192,6 +249,34 @@ struct FieldInfo {
     data_name: Option<String>,
     /// Attach `RValue::debug(field)` instead of `RValue::from(field.clone())`.
     debug: bool,
+    /// An `Option` field whose entry is left out when it is `None`.
+    skip_none: bool,
+}
+
+/// Whether `ty` is written as `Option<_>` (any path ending in `Option`).
+fn is_option(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(path) if path.qself.is_none()
+        && path.path.segments.last().is_some_and(|segment| segment.ident == "Option"))
+}
+
+/// Refuse a name the condition object owns, or one already in `seen`.
+fn check_data_name(name: &str, seen: &[String], span: Span, context: &str) -> syn::Result<()> {
+    if RESERVED_FIELDS.contains(&name) {
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "`{name}` is one of the condition's own slots (`message`, `call`, `kind`); \
+                 rename the field with `#[condition(rename = \"…\")]` or exclude it with `#[condition(skip)]`"
+            ),
+        ));
+    }
+    if seen.iter().any(|s| s == name) {
+        return Err(syn::Error::new(
+            span,
+            format!("duplicate `data` field name `{name}` in {context}"),
+        ));
+    }
+    Ok(())
 }
 
 enum Style {
@@ -200,14 +285,20 @@ enum Style {
     Unit,
 }
 
-/// The fields of a struct or of one enum variant, validated.
-struct Shape {
+/// The fields of a struct or of one enum variant, validated, with the
+/// `data(...)` entries that follow them.
+struct Shape<'a> {
     style: Style,
     fields: Vec<FieldInfo>,
+    extra: Vec<&'a DataEntry>,
 }
 
-impl Shape {
-    fn from_fields(fields: &Fields, context: &str) -> syn::Result<Shape> {
+impl<'a> Shape<'a> {
+    fn from_fields(
+        fields: &Fields,
+        extra: Vec<&'a DataEntry>,
+        context: &str,
+    ) -> syn::Result<Shape<'a>> {
         let (style, iter): (Style, Vec<&syn::Field>) = match fields {
             Fields::Named(named) => (Style::Named, named.named.iter().collect()),
             Fields::Unnamed(unnamed) => (Style::Tuple, unnamed.unnamed.iter().collect()),
@@ -237,33 +328,31 @@ impl Shape {
                         ));
                     }
                 };
-                if RESERVED_FIELDS.contains(&name.as_str()) {
-                    return Err(syn::Error::new(
-                        field.span(),
-                        format!(
-                            "`{name}` is one of the condition's own slots (`message`, `call`, `kind`); \
-                             rename the field with `#[condition(rename = \"…\")]` or exclude it with `#[condition(skip)]`"
-                        ),
-                    ));
-                }
-                if seen.contains(&name) {
-                    return Err(syn::Error::new(
-                        field.span(),
-                        format!("duplicate `data` field name `{name}` in {context}"),
-                    ));
-                }
+                check_data_name(&name, &seen, field.span(), context)?;
                 seen.push(name.clone());
                 Some(name)
             };
+            if attrs.skip_none && !is_option(&field.ty) {
+                return Err(syn::Error::new(
+                    field.ty.span(),
+                    "`skip_none` needs an `Option<_>` field: it leaves the entry out when the field is `None`",
+                ));
+            }
             infos.push(FieldInfo {
                 binding,
                 data_name,
                 debug: attrs.debug,
+                skip_none: attrs.skip_none,
             });
+        }
+        for entry in &extra {
+            check_data_name(&entry.name, &seen, entry.span, context)?;
+            seen.push(entry.name.clone());
         }
         Ok(Shape {
             style,
             fields: infos,
+            extra,
         })
     }
 
@@ -312,29 +401,66 @@ impl Shape {
     }
 
     /// The `Option<ConditionData>` expression over the bindings of
-    /// [`Self::pattern_data`].
+    /// [`Self::pattern_data`]: the fields' entries, then the `data(...)` ones.
     fn data_expr(&self) -> TokenStream {
-        let entries: Vec<TokenStream> = self
+        let value = |f: &FieldInfo, binding: TokenStream| {
+            if f.debug {
+                quote! { ::miniextendr_api::RValue::debug(#binding) }
+            } else {
+                quote! { ::miniextendr_api::RValue::from(::core::clone::Clone::clone(#binding)) }
+            }
+        };
+        let extra = self.extra.iter().map(|entry| {
+            let name = &entry.name;
+            let expr = &entry.value;
+            quote! { (::std::string::String::from(#name), ::miniextendr_api::RValue::from(#expr)) }
+        });
+        if !self
             .fields
             .iter()
-            .filter_map(|f| {
-                let name = f.data_name.as_ref()?;
-                let binding = &f.binding;
-                let value = if f.debug {
-                    quote! { ::miniextendr_api::RValue::debug(#binding) }
-                } else {
-                    quote! {
-                        ::miniextendr_api::RValue::from(::core::clone::Clone::clone(#binding))
-                    }
-                };
-                Some(quote! { (::std::string::String::from(#name), #value) })
-            })
-            .collect();
-        if entries.is_empty() {
-            quote! { ::core::option::Option::None }
-        } else {
-            quote! { ::core::option::Option::Some(::std::vec![#(#entries),*]) }
+            .any(|f| f.skip_none && f.data_name.is_some())
+        {
+            let entries: Vec<TokenStream> = self
+                .fields
+                .iter()
+                .filter_map(|f| {
+                    let name = f.data_name.as_ref()?;
+                    let binding = &f.binding;
+                    let value = value(f, quote! { #binding });
+                    Some(quote! { (::std::string::String::from(#name), #value) })
+                })
+                .chain(extra)
+                .collect();
+            return if entries.is_empty() {
+                quote! { ::core::option::Option::None }
+            } else {
+                quote! { ::core::option::Option::Some(::std::vec![#(#entries),*]) }
+            };
         }
+        // A `None` in a `skip_none` field leaves its entry out, so the
+        // entries are pushed one by one, and none at all is `None`.
+        let pushes = self.fields.iter().filter_map(|f| {
+            let name = f.data_name.as_ref()?;
+            let binding = &f.binding;
+            Some(if f.skip_none {
+                let value = value(f, quote! { __value });
+                quote! {
+                    if let ::core::option::Option::Some(__value) = #binding {
+                        __data.push((::std::string::String::from(#name), #value));
+                    }
+                }
+            } else {
+                let value = value(f, quote! { #binding });
+                quote! { __data.push((::std::string::String::from(#name), #value)); }
+            })
+        });
+        let extra = extra.map(|entry| quote! { __data.push(#entry); });
+        quote! {{
+            let mut __data: ::miniextendr_api::condition::ConditionData = ::std::vec::Vec::new();
+            #(#pushes)*
+            #(#extra)*
+            (!__data.is_empty()).then_some(__data)
+        }}
     }
 }
 
@@ -346,10 +472,16 @@ impl Shape {
 /// metadata and `From<T> for RCondition` with the declared kind.
 pub fn derive_r_condition(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
-    if !input.generics.params.is_empty() {
+    if let Some(param) = input
+        .generics
+        .params
+        .iter()
+        .find(|param| !matches!(param, syn::GenericParam::Lifetime(_)))
+    {
         return Err(syn::Error::new(
-            input.generics.span(),
-            "`#[derive(RCondition)]` does not support generic types",
+            param.span(),
+            "`#[derive(RCondition)]` does not support type or const parameters; \
+             lifetime parameters are fine",
         ));
     }
     let container = parse_container_attrs(&input.attrs, "the type")?;
@@ -373,10 +505,7 @@ fn derive_condition(
     name: &syn::Ident,
     container: ContainerAttrs,
 ) -> syn::Result<TokenStream> {
-    let family = container
-        .class
-        .as_ref()
-        .map_or_else(|| to_snake_case(&ident_name(name)), syn::LitStr::value);
+    let default_family = || to_snake_case(&ident_name(name));
 
     let condition_body;
     let display = quote! { ::std::string::ToString::to_string(self) };
@@ -388,7 +517,11 @@ fn derive_condition(
     let (message_body, class_body, data_body, call_body, argument_message_body) = match &input.data
     {
         Data::Struct(data) => {
-            let shape = Shape::from_fields(&data.fields, &format!("`{name}`"))?;
+            let shape = Shape::from_fields(
+                &data.fields,
+                container.data.iter().collect(),
+                &format!("`{name}`"),
+            )?;
             condition_body = condition_expr(container.kind.as_ref());
             let self_path = quote! { Self };
             let message = match &container.message {
@@ -402,7 +535,12 @@ fn derive_condition(
                 }
                 None => display.clone(),
             };
-            let class = quote! { ::std::vec![::std::string::String::from(#family)] };
+            let classes: Vec<String> = match &container.class {
+                Some(ClassSpec::One(lit)) => vec![lit.value()],
+                Some(ClassSpec::List(list, _)) => list.iter().map(syn::LitStr::value).collect(),
+                None => vec![default_family()],
+            };
+            let class = quote! { ::std::vec![#(::std::string::String::from(#classes)),*] };
             let pattern = shape.pattern_data(&self_path);
             let data_expr = shape.data_expr();
             let data = quote! {
@@ -439,6 +577,17 @@ fn derive_condition(
                     "`#[derive(RCondition)]` needs at least one variant",
                 ));
             }
+            let family = match &container.class {
+                Some(ClassSpec::One(lit)) => lit.value(),
+                Some(ClassSpec::List(_, span)) => {
+                    return Err(syn::Error::new(
+                        *span,
+                        "on an enum, `class(...)` goes on a variant; the enum's \
+                         `class = \"…\"` names the family every variant ends with",
+                    ));
+                }
+                None => default_family(),
+            };
             let variant_count = data.variants.len();
             let mut condition_arms = Vec::new();
             let mut message_arms = Vec::new();
@@ -450,12 +599,17 @@ fn derive_condition(
             for variant in &data.variants {
                 let variant_ident = &variant.ident;
                 let attrs = parse_container_attrs(&variant.attrs, "a variant")?;
-                let member = attrs.class.as_ref().map_or_else(
-                    || format!("{family}_{}", to_snake_case(&ident_name(variant_ident))),
-                    syn::LitStr::value,
-                );
+                let members: Vec<String> = match &attrs.class {
+                    Some(ClassSpec::One(lit)) => vec![lit.value()],
+                    Some(ClassSpec::List(list, _)) => list.iter().map(syn::LitStr::value).collect(),
+                    None => vec![format!(
+                        "{family}_{}",
+                        to_snake_case(&ident_name(variant_ident))
+                    )],
+                };
                 let shape = Shape::from_fields(
                     &variant.fields,
+                    container.data.iter().chain(&attrs.data).collect(),
                     &format!("variant `{name}::{variant_ident}`"),
                 )?;
                 let pattern = shape.pattern_wild(&quote! { #name::#variant_ident });
@@ -475,7 +629,7 @@ fn derive_condition(
                 let wild = shape.pattern_wild(&path);
                 class_arms.push(quote! {
                     #wild => ::std::vec![
-                        ::std::string::String::from(#member),
+                        #(::std::string::String::from(#members),)*
                         ::std::string::String::from(#family),
                     ],
                 });
@@ -553,10 +707,13 @@ fn derive_condition(
         }
     });
 
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         #[automatically_derived]
-        impl ::core::convert::From<#name> for ::miniextendr_api::condition::RCondition {
-            fn from(value: #name) -> Self {
+        impl #impl_generics ::core::convert::From<#name #ty_generics>
+            for ::miniextendr_api::condition::RCondition #where_clause
+        {
+            fn from(value: #name #ty_generics) -> Self {
                 let message = ::miniextendr_api::condition::RConditionData::message(&value);
                 let class = ::miniextendr_api::condition::RConditionData::class(&value);
                 let data = ::miniextendr_api::condition::RConditionData::data(&value);
@@ -566,7 +723,9 @@ fn derive_condition(
         }
 
         #[automatically_derived]
-        impl ::miniextendr_api::condition::RConditionData for #name {
+        impl #impl_generics ::miniextendr_api::condition::RConditionData
+            for #name #ty_generics #where_clause
+        {
             fn message(&self) -> ::std::string::String {
                 #message_body
             }
@@ -808,13 +967,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_generic_types_and_unions() {
+    fn rejects_type_and_const_parameters_and_unions() {
         let err = derive_err(syn::parse_quote! {
             struct Generic<T> {
                 value: T,
             }
         });
-        assert!(err.contains("generic"));
+        assert!(err.contains("type or const parameters"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            struct Sized<'a, const N: usize> {
+                value: &'a [i32; N],
+            }
+        });
+        assert!(err.contains("type or const parameters"), "{err}");
 
         let err = derive_err(syn::parse_quote! {
             union U {
@@ -950,6 +1116,189 @@ mod tests {
             struct Plain;
         });
         assert!(!code.contains("fn argument_message"), "{code}");
+    }
+
+    #[test]
+    fn lifetime_parameters_reach_both_impls() {
+        let code = derive(syn::parse_quote! {
+            #[condition(class = "pkg_engine_warning")]
+            struct EngineWarning<'a>(#[condition(skip)] &'a str);
+        });
+        assert!(
+            code.contains("impl < 'a > :: core :: convert :: From < EngineWarning < 'a > >"),
+            "{code}"
+        );
+        assert!(
+            code.contains("fn from (value : EngineWarning < 'a >)"),
+            "{code}"
+        );
+        assert!(
+            code.contains("RConditionData for EngineWarning < 'a >"),
+            "{code}"
+        );
+    }
+
+    #[test]
+    fn class_list_on_a_struct_is_its_whole_class_vector() {
+        let code = derive(syn::parse_quote! {
+            #[condition(class("pkg_message_selection_dropped", "pkg_message"))]
+            struct SelectionDropped {
+                missing: Vec<String>,
+            }
+        });
+        assert!(
+            code.contains(
+                r#"vec ! [:: std :: string :: String :: from ("pkg_message_selection_dropped") , :: std :: string :: String :: from ("pkg_message")]"#
+            ),
+            "{code}"
+        );
+    }
+
+    #[test]
+    fn class_list_on_a_variant_replaces_the_member() {
+        let code = derive(syn::parse_quote! {
+            #[condition(class = "pkg_warning")]
+            enum PkgWarning {
+                #[condition(class("pkg_warning_engine_masked", "pkg_engine_warning"))]
+                Masked,
+                Plain,
+            }
+        });
+        assert!(
+            code.contains(
+                r#"Self :: Masked => :: std :: vec ! [:: std :: string :: String :: from ("pkg_warning_engine_masked") , :: std :: string :: String :: from ("pkg_engine_warning") , :: std :: string :: String :: from ("pkg_warning") ,]"#
+            ),
+            "{code}"
+        );
+        assert!(code.contains(r#""pkg_warning_plain""#), "{code}");
+    }
+
+    #[test]
+    fn class_list_errors() {
+        let err = derive_err(syn::parse_quote! {
+            #[condition(class("a", "b"))]
+            enum E {
+                One,
+            }
+        });
+        assert!(
+            err.contains("on an enum, `class(...)` goes on a variant"),
+            "{err}"
+        );
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(class())]
+            struct S;
+        });
+        assert!(err.contains("needs at least one class"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(class = "a", class("b"))]
+            struct S;
+        });
+        assert!(err.contains("`class` is given twice"), "{err}");
+    }
+
+    #[test]
+    fn data_entries_follow_the_fields() {
+        let code = derive(syn::parse_quote! {
+            #[condition(class = "pkg_warning", data(param = "unit_table"))]
+            struct UnitTableIgnored;
+        });
+        assert!(
+            code.contains(
+                r#"Some (:: std :: vec ! [(:: std :: string :: String :: from ("param") , :: miniextendr_api :: RValue :: from ("unit_table"))])"#
+            ),
+            "{code}"
+        );
+
+        // On an enum: the fields' entries, then the type's, then the variant's.
+        let code = derive(syn::parse_quote! {
+            #[condition(data(source = "engine"))]
+            enum E {
+                #[condition(data(r#type = 2i32))]
+                One { n: i32 },
+            }
+        });
+        let n = code.find(r#""n""#).expect("field entry");
+        let source = code.find(r#""source""#).expect("type entry");
+        let ty = code.find(r#""type""#).expect("variant entry");
+        assert!(n < source && source < ty, "{code}");
+    }
+
+    #[test]
+    fn data_entry_names_are_checked_like_fields() {
+        let err = derive_err(syn::parse_quote! {
+            #[condition(data(kind = "x"))]
+            struct S;
+        });
+        assert!(
+            err.contains("`kind` is one of the condition's own slots"),
+            "{err}"
+        );
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(data(n = 1i32))]
+            struct S {
+                n: i32,
+            }
+        });
+        assert!(err.contains("duplicate `data` field name `n`"), "{err}");
+
+        let err = derive_err(syn::parse_quote! {
+            #[condition(data(a::b = 1i32))]
+            struct S;
+        });
+        assert!(err.contains("a `data` entry is `name = value`"), "{err}");
+    }
+
+    #[test]
+    fn skip_none_leaves_a_none_entry_out() {
+        let code = derive(syn::parse_quote! {
+            struct Masked {
+                verb: String,
+                #[condition(skip_none)]
+                given_to: Option<String>,
+            }
+        });
+        assert!(
+            code.contains("if let :: core :: option :: Option :: Some (__value) = given_to"),
+            "{code}"
+        );
+        assert!(
+            code.contains("(! __data . is_empty ()) . then_some (__data)"),
+            "{code}"
+        );
+        // The plain field is pushed whatever its value.
+        assert!(
+            code.contains(r#"__data . push ((:: std :: string :: String :: from ("verb")"#),
+            "{code}"
+        );
+    }
+
+    #[test]
+    fn skip_none_errors() {
+        let err = derive_err(syn::parse_quote! {
+            struct S {
+                #[condition(skip_none)]
+                n: i32,
+            }
+        });
+        assert!(
+            err.contains("`skip_none` needs an `Option<_>` field"),
+            "{err}"
+        );
+
+        let err = derive_err(syn::parse_quote! {
+            struct S {
+                #[condition(skip, skip_none)]
+                n: Option<i32>,
+            }
+        });
+        assert!(
+            err.contains("`skip` cannot be combined with `rename`, `debug` or `skip_none`"),
+            "{err}"
+        );
     }
 }
 
