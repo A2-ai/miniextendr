@@ -237,10 +237,10 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             const ALIASES: &'static [(&'static str, &'static str)] =
                 &[#((#alias_strs, #alias_targets)),*];
 
-            fn from_choice(choice: &str) -> Option<Self> {
+            fn from_choice(choice: &str) -> ::core::option::Option<Self> {
                 match choice {
-                    #(#choice_strs => Some(Self::#variant_idents),)*
-                    _ => None,
+                    #(#choice_strs => ::core::option::Option::Some(Self::#variant_idents),)*
+                    _ => ::core::option::Option::None,
                 }
             }
 
@@ -255,7 +255,7 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = ::miniextendr_api::SexpError;
             const CHARACTER_ONLY: bool = true;
 
-            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> Result<Self, ::miniextendr_api::SexpError> {
+            fn try_from_sexp(sexp: ::miniextendr_api::SEXP) -> ::core::result::Result<Self, ::miniextendr_api::SexpError> {
                 ::miniextendr_api::match_arg_from_sexp(sexp).map_err(Into::into)
             }
         }
@@ -263,11 +263,11 @@ pub fn derive_match_arg(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
             type Error = ::core::convert::Infallible;
 
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                Ok(self.into_sexp())
+            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
+                ::core::result::Result::Ok(self.into_sexp())
             }
 
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
+            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 

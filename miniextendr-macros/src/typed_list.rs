@@ -238,15 +238,27 @@ pub fn expand_typed_list(input: TypedListInput) -> TokenStream {
 fn type_spec_from_string(s: &str) -> TokenStream {
     // Check for known base types first
     match s.to_lowercase().as_str() {
-        "numeric" | "double" => quote! { ::miniextendr_api::typed_list::TypeSpec::Numeric(None) },
-        "integer" | "int" => quote! { ::miniextendr_api::typed_list::TypeSpec::Integer(None) },
-        "logical" | "bool" => quote! { ::miniextendr_api::typed_list::TypeSpec::Logical(None) },
-        "character" | "string" => {
-            quote! { ::miniextendr_api::typed_list::TypeSpec::Character(None) }
+        "numeric" | "double" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Numeric(::core::option::Option::None) }
         }
-        "raw" => quote! { ::miniextendr_api::typed_list::TypeSpec::Raw(None) },
-        "complex" => quote! { ::miniextendr_api::typed_list::TypeSpec::Complex(None) },
-        "list" => quote! { ::miniextendr_api::typed_list::TypeSpec::List(None) },
+        "integer" | "int" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Integer(::core::option::Option::None) }
+        }
+        "logical" | "bool" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Logical(::core::option::Option::None) }
+        }
+        "character" | "string" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Character(::core::option::Option::None) }
+        }
+        "raw" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Raw(::core::option::Option::None) }
+        }
+        "complex" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::Complex(::core::option::Option::None) }
+        }
+        "list" => {
+            quote! { ::miniextendr_api::typed_list::TypeSpec::List(::core::option::Option::None) }
+        }
         "data.frame" | "dataframe" | "data_frame" => {
             quote! { ::miniextendr_api::typed_list::TypeSpec::DataFrame }
         }
@@ -271,8 +283,8 @@ fn type_spec_from_string(s: &str) -> TokenStream {
 /// a numeric vector of exactly length 4).
 fn type_spec_from_call(name: &str, len: Option<usize>) -> TokenStream {
     let len_tokens = match len {
-        None => quote! { None },
-        Some(n) => quote! { Some(#n) },
+        None => quote! { ::core::option::Option::None },
+        Some(n) => quote! { ::core::option::Option::Some(#n) },
     };
 
     match name {

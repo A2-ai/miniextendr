@@ -1155,12 +1155,12 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             type Error = ::core::convert::Infallible;
 
             #[inline]
-            fn try_into_sexp(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
-                Ok(self.into_sexp())
+            fn try_into_sexp(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
+                ::core::result::Result::Ok(self.into_sexp())
             }
 
             #[inline]
-            unsafe fn try_into_sexp_unchecked(self) -> Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
+            unsafe fn try_into_sexp_unchecked(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::core::convert::Infallible> {
                 self.try_into_sexp()
             }
 
@@ -1588,7 +1588,7 @@ fn derive_struct_dataframe(
                         {
                             let __auto = self.#col_name;
                             let __max = __auto.iter().map(|v| v.len()).max().unwrap_or(0);
-                            let mut __cols: Vec<Vec<Option<#elem_ty>>> = (0..__max)
+                            let mut __cols: Vec<Vec<::core::option::Option<#elem_ty>>> = (0..__max)
                                 .map(|_| Vec::with_capacity(_n_rows))
                                 .collect();
                             for __row_vec in &__auto {
@@ -2275,8 +2275,8 @@ fn derive_struct_dataframe(
             impl #impl_generics Iterator for #iterator_name #ty_generics #where_clause {
                 type Item = #row_name #ty_generics;
 
-                fn next(&mut self) -> Option<Self::Item> {
-                    Some(#row_name {
+                fn next(&mut self) -> ::core::option::Option<Self::Item> {
+                    ::core::option::Option::Some(#row_name {
                         #next_struct_tokens
                         #(#skip_defaults)*
                     })

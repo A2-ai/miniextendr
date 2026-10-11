@@ -327,7 +327,7 @@ impl RustConversionBuilder {
                             #message,
                             #r_name,
                             &[#(#crate_class),*],
-                            Some(__miniextendr_call),
+                            ::core::option::Option::Some(__miniextendr_call),
                         )
                     };
                 }
@@ -359,7 +359,7 @@ impl RustConversionBuilder {
         let err_arm = conversion_err_arm(ctx, &self.conversion_error_class, span);
         quote_spanned! {span=>
             let #ident: #ty = match #try_expr {
-                Ok(v) => v,
+                ::core::result::Result::Ok(v) => v,
                 #err_arm
             };
         }
@@ -564,7 +564,7 @@ impl RustConversionBuilder {
                         let err_arm = conversion_err_arm(&ctx, &self.conversion_error_class, span);
                         quote_spanned! {span=>
                             let mut #storage_ident: #vec_ty = match #try_expr {
-                                Ok(v) => v,
+                                ::core::result::Result::Ok(v) => v,
                                 #err_arm
                             };
                         }
@@ -739,7 +739,7 @@ impl RustConversionBuilder {
                                 let #ident: #ty = match <[#inner_ty; #n]>::try_from(#vec_ident)
                                     .map_err(|v| ::std::format!("got length {}", v.len()))
                                 {
-                                    Ok(v) => v,
+                                    ::core::result::Result::Ok(v) => v,
                                     #len_arm
                                 };
                             };
@@ -1280,13 +1280,13 @@ fn conversion_err_arm(
             rust_type,
         },
         crate_class,
-        &quote! { Some(__miniextendr_call) },
+        &quote! { ::core::option::Option::Some(__miniextendr_call) },
         span,
     );
     // SAFETY (of the emitted `unsafe`): the arm runs inside the wrapper's
     // with_r_unwind_protect closure, on the R main thread.
     quote_spanned! {span=>
-        Err(e) => return unsafe { #value },
+        ::core::result::Result::Err(e) => return unsafe { #value },
     }
 }
 
@@ -1328,7 +1328,7 @@ fn no_na_value_stmt(
                     #message,
                     #r_name,
                     &[#(#crate_class),*],
-                    Some(__miniextendr_call),
+                    ::core::option::Option::Some(__miniextendr_call),
                 )
             };
         }

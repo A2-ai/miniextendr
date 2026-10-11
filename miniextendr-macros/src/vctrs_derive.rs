@@ -1026,8 +1026,8 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
     // Get abbreviation
     let abbr = match &attrs.abbr {
-        Some(a) => quote! { Some(#a) },
-        None => quote! { None },
+        Some(a) => quote! { ::core::option::Option::Some(#a) },
+        None => quote! { ::core::option::Option::None },
     };
 
     // `extends = "parent"` parents become the type's additional classes, sitting
@@ -1050,9 +1050,9 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::vctrs::VctrsClass for #name #ty_generics #where_clause {
             const CLASS_NAME: &'static str = #class_name;
             const KIND: ::miniextendr_api::vctrs::VctrsKind = #kind;
-            const BASE_TYPE: Option<::miniextendr_api::SEXPTYPE> = Some(#sexptype);
+            const BASE_TYPE: ::core::option::Option<::miniextendr_api::SEXPTYPE> = ::core::option::Option::Some(#sexptype);
             const INHERIT_BASE_TYPE: bool = #inherit_base;
-            const ABBR: Option<&'static str> = #abbr;
+            const ABBR: ::core::option::Option<&'static str> = #abbr;
             #additional_classes_impl
         }
     };
@@ -1101,7 +1101,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
 
                 quote! {
                     impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
-                        fn into_vctrs(self) -> Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                        fn into_vctrs(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
 
                             // Get attrs before moving fields out of self
@@ -1139,7 +1139,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                 // new_list_of requires: List, Option<SEXP> ptype, Option<i32> size, &[&str] class, &[(&str, SEXP)] attrs
                 quote! {
                     impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
-                        fn into_vctrs(self) -> Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                        fn into_vctrs(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
                             use ::miniextendr_api::list::List;
 
@@ -1151,12 +1151,12 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             let data_sexp = self.#data_ident.into_sexp();
                             let list = unsafe { List::from_raw(data_sexp) };
                             // For list_of, we pass size = list length, ptype = None (handled in R wrapper)
-                            let size = Some(
+                            let size = ::core::option::Option::Some(
                                 i32::try_from(list.len()).expect("list_of length exceeds i32::MAX"),
                             );
                             ::miniextendr_api::vctrs::new_list_of(
                                 list,
-                                None,  // ptype - handled in R wrapper via attribute
+                                ::core::option::Option::None,  // ptype - handled in R wrapper via attribute
                                 size,
                                 #class_slice_expr,
                                 &attrs,
@@ -1169,7 +1169,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                 // For simple vctrs (double, integer, etc.)
                 quote! {
                     impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
-                        fn into_vctrs(self) -> Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                        fn into_vctrs(self) -> ::core::result::Result<::miniextendr_api::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
 
                             // Get attrs before moving data out of self
@@ -1181,7 +1181,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                                 data,
                                 #class_slice_expr,
                                 &attrs,
-                                Some(<Self as ::miniextendr_api::vctrs::VctrsClass>::INHERIT_BASE_TYPE),
+                                ::core::option::Option::Some(<Self as ::miniextendr_api::vctrs::VctrsClass>::INHERIT_BASE_TYPE),
                             )
                         }
                     }
