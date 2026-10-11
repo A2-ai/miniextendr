@@ -52,7 +52,7 @@ use crate::altrep_data::{
 /// let data = SparseIterIntData::from_iter((0..).map(|x| x * 2), 1_000_000);
 ///
 /// // Access only element 999_999 - skips directly there
-/// let last = data.elt(999_999);  // Only this element is generated
+/// let last = data.elt(999_999);  // Only this element is cached
 ///
 /// // Element 0 was skipped and is now inaccessible
 /// let first = data.elt(0);  // Returns NA_INTEGER
