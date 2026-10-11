@@ -11,7 +11,8 @@
 
 use miniextendr_api::condition::{RConditionError, RError};
 use miniextendr_api::{
-    TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr, rust_error,
+    RCondition, TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr,
+    rust_error,
 };
 
 // region: Typed payloads
@@ -241,6 +242,44 @@ impl DeferredCounter {
         defer_message!("forked");
         DeferredCounter { count: self.count }
     }
+}
+
+// endregion
+
+// region: Payloads that declare their kind (`#[derive(RCondition)]`)
+
+/// A diagnostic family whose variants declare their own signal: a warning by
+/// default, a message for `Finished`, an error for `Empty`.
+#[derive(Debug, RCondition)]
+#[condition(kind = warning, class = "pkg_diagnostic")]
+pub enum PkgDiagnostic {
+    #[condition(message = "dropped {n} rows")]
+    Dropped { n: i32 },
+    #[condition(kind = message, message = "finished {n} rows")]
+    Finished { n: i32 },
+    #[condition(kind = error, message = "input is empty", call = none)]
+    Empty,
+}
+
+/// Queues a warning and a message, each of the kind its variant declares,
+/// and returns `n - 1`.
+/// @param n Row count.
+#[miniextendr]
+pub fn typed_condition_defer(n: i32) -> i32 {
+    RCondition::from(PkgDiagnostic::Dropped { n: 1 }).defer();
+    RCondition::from(PkgDiagnostic::Finished { n }).defer();
+    n - 1
+}
+
+/// Raises the variant's declared kind: an error for `n == 0`, else a warning,
+/// which leaves Rust as `warning!()` does.
+/// @param n Row count.
+#[miniextendr]
+pub fn typed_condition_raise(n: i32) -> i32 {
+    if n == 0 {
+        RCondition::from(PkgDiagnostic::Empty).raise();
+    }
+    RCondition::from(PkgDiagnostic::Dropped { n }).raise()
 }
 
 // endregion
