@@ -236,6 +236,7 @@ each field name once, from the first refusal that has it.
 | `String` / `&str` | STRSXP | UTF-8 encoding via `Rf_mkCharLenCE` |
 | `char` | STRSXP | Single UTF-8 character as string |
 | `()` | NILSXP | Returns R NULL |
+| `PathBuf` / `OsString` | STRSXP | Lossy UTF-8 conversion (`to_string_lossy`) |
 
 ### Widening Scalar Types
 
@@ -355,7 +356,7 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<Vec<T>>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP); each row is exactly what `Vec<T>` produces |
 | `Vec<Box<[T]>>` / `Vec<[T; N]>` (any `T` with `Vec<T>: IntoR`) | List of vectors (VECSXP), as `Vec<Vec<T>>` |
 | `Vec<&[T]>` (any `T` with `&[T]: IntoR`) | List of vectors (VECSXP), borrowed slices copied into fresh vectors |
-| `(A, B, ...)` | Unnamed list (VECSXP), arity 2-8; round-trips via `TryFromSexp` (positional, names ignored) |
+| `(A, B, ...)` | Unnamed list (VECSXP), arity 1-8; round-trips via `TryFromSexp` (positional, names ignored) |
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 | `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
 
@@ -375,8 +376,6 @@ stay integer, and an empty row is `integer(0)`.
 | `Vec<Option<&[T]>>` (any `T` with `&[T]: IntoR`) | VECSXP of the vectors `&[T]` produces | NULL |
 | `Vec<Option<Vec<K>>>` (keys column) | VECSXP of typed vectors | NULL |
 | `Vec<Option<Vec<V>>>` (V: IntoR, values column) | VECSXP | NULL |
-| `PathBuf` | STRSXP (lossy UTF-8 conversion) |
-| `OsString` | STRSXP (lossy UTF-8 conversion) |
 
 > The `Vec<Option<Vec<K>>>` and `Vec<Option<Vec<V>>>` types appear as the companion-struct
 > column types for `HashMap<K,V>` / `BTreeMap<K,V>` enum variant fields, expanded to
@@ -385,7 +384,7 @@ stay integer, and an empty row is `integer(0)`.
 
 #### Nested `DataFrameRow` enum fields
 
-When an enum variant field is itself a `DataFrameRow` enum, it flattens into prefixed columns at `into_data_frame()` time. The companion struct holds `Vec<Option<Inner>>` and calls `Inner::to_dataframe(dense_rows)` → `into_named_columns()` → scatter to full-length column via `scatter_column`.
+When an enum variant field is itself a `DataFrameRow` enum, it flattens into prefixed columns at `into_dataframe()` time. The companion struct holds `Vec<Option<Inner>>` and calls `Inner::to_dataframe(dense_rows)` → `into_named_columns()` → scatter to full-length column via `scatter_column`.
 
 | Mode | Rust field annotation | Companion struct type | R column(s) | NA behavior |
 |------|-----------------------|-----------------------|-------------|-------------|
@@ -396,8 +395,8 @@ When an enum variant field is itself a `DataFrameRow` enum, it flattens into pre
 Notes:
 - **Factor levels**: emitted in enum variant declaration order; `levels(df$field)` returns all variants regardless of which appear in the data.
 - **Inner tag**: use `#[dataframe(tag = "variant")]` on the inner enum so the discriminant column is `<outer_field>_variant` (single underscore). A leading underscore on the inner tag (e.g. `tag = "_variant"`) produces a double underscore in the outer column name.
-- **Auto-emit `UnitEnumFactor`**: `#[derive(DataFrameRow)]` on a unit-only enum also emits `UnitEnumFactor` + `IntoR` (factor SEXP) automatically. Generic unit enums (with type parameters) are excluded from auto-emission; implement `UnitEnumFactor` manually if needed.
-- **Struct fields**: the same flatten / `as_factor` / `as_list` modes apply to struct-typed variant fields that implement `DataFrameRow`.
+- **Auto-emit `UnitEnumFactor`**: `#[derive(DataFrameRow)]` on a unit-only enum also emits `UnitEnumFactor` + `IntoR` (factor SEXP) automatically. The derive rejects enums with type or const parameters, so a generic unit enum must implement `UnitEnumFactor` by hand if needed.
+- **Struct fields**: struct-typed variant fields that implement `DataFrameRow` flatten the same way. `as_list` keeps one as a list-column, which needs the struct to derive `IntoList` too; `as_factor` applies only to unit-only enums.
 
 ### Result and Error Types
 
@@ -439,7 +438,6 @@ not gaps:
 | `Option<u8>` / `Vec<Option<u8>>` | `TryFromSexp` only (no `IntoR`) | RAWSXP has no NA sentinel; `None` has no faithful R representation. Inbound, R raw vectors never contain NA so `Option<u8>` is always `Some`. Return `Vec<u8>` instead. |
 | `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
-| `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
 because the R representation (a string) is faithful in both directions. The
@@ -601,9 +599,11 @@ fn try_parse(s: String) -> Result<i32, ()> {
 
 ### "I have a struct and want to pass it to R and back"
 
-Use `#[miniextendr]` on an impl block. The struct is wrapped in an ExternalPtr:
+Derive `ExternalPtr` on the struct and put `#[miniextendr]` on its impl block.
+The struct is wrapped in an ExternalPtr:
 
 ```rust
+#[derive(ExternalPtr)]
 struct Counter { n: i32 }
 
 #[miniextendr]
@@ -620,7 +620,7 @@ Take one `&Dots` parameter, at any position (one per function). A formal after i
 
 ```rust
 #[miniextendr]
-fn count_all(x: f64, rest: &Dots, #[miniextendr(default = "FALSE")] verbose: bool) -> usize {
+fn count_all(x: f64, rest: &Dots, #[miniextendr(default = "FALSE")] verbose: bool) -> isize {
     // R: count_all(x, ..., verbose = FALSE); `rest` holds the extras as a list
     rest.len()
 }

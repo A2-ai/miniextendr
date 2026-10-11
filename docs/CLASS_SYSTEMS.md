@@ -539,6 +539,8 @@ Modern OOP system (successor to S3/S4).
 ### Rust Code
 
 ```rust
+use miniextendr_api::ExternalPtr;
+
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct Point {
     x: f64,
@@ -559,7 +561,7 @@ impl Point {
         self.y
     }
 
-    pub fn distance(&self, other: &Point) -> f64 {
+    pub fn distance(&self, other: ExternalPtr<Point>) -> f64 {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
@@ -768,7 +770,7 @@ operand, which must be named `e2` (`y`):
 impl Money {
     /// `a + b`
     #[miniextendr(s7(generic = "+"))]
-    pub fn add(&self, e2: &Money) -> Self { ... }
+    pub fn add(&self, e2: ExternalPtr<Money>) -> Self { ... }
 
     /// `a * k`
     #[miniextendr(r_name = "*")]
@@ -1362,7 +1364,7 @@ impl MyConfig {
     }
 
     pub fn has_table(self: &ExternalPtr<Self>) -> bool {
-        !Self::r_table(self).is_null()
+        !Self::r_table(self).is_nil()
     }
 }
 ```

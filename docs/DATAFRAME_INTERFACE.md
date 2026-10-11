@@ -24,9 +24,9 @@ constructor instead returns `BuiltDataFrame`, which roots the frame with
 
 ```rust
 use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
-use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
+use miniextendr_api::{DataFrameRow, miniextendr};
 
-#[derive(Clone, IntoList, DataFrameRow)]
+#[derive(Clone, DataFrameRow)]
 pub struct Point { pub x: f64, pub y: f64, pub label: String }
 
 // Rust → R: build a data.frame from a row vector.
@@ -79,6 +79,7 @@ verbs — the indirection is invisible.
 `FromDataFrame` is emitted for every **struct** row shape: simple scalar fields,
 column expansion (`[T; N]`, `Vec<T>` + `width`, `Vec<T>`/`Box<[T]>` + `expand`),
 struct-flatten (nested `DataFrameRow` fields, including several levels of nesting),
+map fields (`HashMap`/`BTreeMap`, one list-of-named-lists column read back whole),
 and opaque list-columns (un-annotated `Vec<scalar>` / `Box<[scalar]>` fields stored
 as VECSXP list-columns — each row's element is deserialized via `Vec<elem>:
 TryFromSexp` and `.into()`-converted to the field container type). Each reader is the
@@ -103,7 +104,7 @@ A few shapes still have no reader and return a clear `DataFrameError` from
 `from_dataframe` (rather than failing to compile): borrowed fields (`&[T]` /
 `&str` — owned R data can't produce a borrow), `#[dataframe(skip)]` fields (the
 column was never written), `#[dataframe(as_list)]` and opaque non-scalar collection
-columns (`HashMap`, `HashSet`, `Vec<Option<T>>` list-columns), `#[dataframe(tag)]`
+columns (`HashSet`, `Vec<Option<T>>` list-columns), `#[dataframe(tag)]`
 structs, `#[dataframe(conflicts = "string")]` enums, and tagless or `skip`-field
 enums.
 

@@ -13,7 +13,7 @@ Complete reference for `#[miniextendr]` on every Rust item type.
 | `impl Trait for Type` | Trait ABI shims | `#[miniextendr(s3)] impl Display for Counter { ... }` |
 | `trait` | Vtable + ABI generation | `#[miniextendr] pub trait Counter { ... }` |
 | `struct` (any field count) | ExternalPtr | `#[miniextendr] struct Point { x: f64, y: f64 }` |
-| fieldless `enum` | RFactor | `#[miniextendr] enum Color { Red, Green, Blue }` |
+| fieldless `enum` | RFactor | `#[miniextendr] #[derive(Copy, Clone)] enum Color { Red, Green, Blue }` |
 
 ---
 
@@ -1500,12 +1500,13 @@ pub struct Wrapper(Vec<i32>);   // List conversion instead of ExternalPtr
 
 ### Struct Mode Overrides
 
-`prefer = "..."` is not always marker-only. When no explicit mode attribute
-(`list` / `dataframe` / `externalptr`) is also present, `prefer = "list"` and
-`prefer = "dataframe"` resolve to the **same full mode** as their explicit
-counterparts — not a lightweight ExternalPtr-plus-marker combination. Only
-`prefer = "native"` has no explicit-mode counterpart, so it stays
-ExternalPtr plus a marker derive. See `expand_struct` in
+When no explicit mode attribute (`list` / `dataframe` / `externalptr`) is also
+present, `prefer = "list"` and `prefer = "dataframe"` resolve to the **same full
+mode** as their explicit counterparts. Only `prefer = "native"` has no
+explicit-mode counterpart: it generates `ExternalPtr` plus the
+`PreferRNativeType` derive, whose `IntoR` needs the struct to implement
+`RNativeType` (a `#[repr(transparent)]` newtype with
+`#[derive(Clone, Copy, RNativeType)]`). See `expand_struct` in
 `miniextendr-macros/src/struct_enum_dispatch.rs` for the resolution logic.
 
 | Syntax | Result |
@@ -1514,10 +1515,10 @@ ExternalPtr plus a marker derive. See `expand_struct` in
 | `#[miniextendr(list)]` | `IntoList` + `TryFromList` + `PreferList` |
 | `#[miniextendr(dataframe)]` | `IntoList` + `DataFrameRow` + companion type |
 | `#[miniextendr(externalptr)]` | `ExternalPtr` + `TypedExternal` |
-| `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`), not just a marker |
-| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type), not just a marker |
+| `#[miniextendr(prefer = "list")]` | Same as `#[miniextendr(list)]` — full list mode (`IntoList` + `TryFromList` + `PreferList`) |
+| `#[miniextendr(prefer = "dataframe")]` | Same as `#[miniextendr(dataframe)]` — full dataframe mode (`IntoList` + `DataFrameRow` + companion type) |
 | `#[miniextendr(prefer = "externalptr")]` | ExternalPtr (explicit; identical to the no-mode-attr default) |
-| `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` marker (the only `prefer` value that stays marker-only) |
+| `#[miniextendr(prefer = "native")]` | `ExternalPtr` + `PreferRNativeType` (needs `RNativeType`) |
 
 To keep the `PreferRNativeType` derive's concrete `IntoR` (which routes through
 `AsRNative`) from colliding with the blanket `impl<T: IntoExternalPtr> IntoR`
@@ -1534,7 +1535,7 @@ to three derives:
 |--------|-----------|------|
 | `IntoList` | Rust → R | `struct` → R list (one element per field) |
 | `TryFromList` | R → Rust | R list → `struct` (one field per element) |
-| `PreferList` | Rust → R | marker so the struct can be **returned directly** from a `#[miniextendr]` fn — `IntoR` routes through `IntoList` |
+| `PreferList` | Rust → R | writes the `IntoR` impl so the struct can be **returned directly** from a `#[miniextendr]` fn — it routes through `IntoList` |
 
 ```rust
 #[miniextendr(list)]
@@ -1562,7 +1563,8 @@ pub fn make_record() -> Record {
 `IntoR` (for `IntoList`) and `TryFromSexp` (for `TryFromList`). Heterogeneous
 fields are fine — the list holds each element at its natural R type. This
 includes scalars (`i32`, `f64`, `String`, `bool`), vectors (`Vec<f64>`,
-`Vec<i32>`, `Vec<String>`), and `Option<T>` (→ `NULL` when `None`):
+`Vec<i32>`, `Vec<String>`), and `Option<T>` (`None` → `NA` for a scalar `T`,
+`NULL` for a vector):
 
 ```rust
 #[miniextendr(list)]
@@ -1574,10 +1576,12 @@ pub struct FitResult {
 
 **Skipping fields.** `#[into_list(ignore)]` drops a field from the list. On the
 way back (`TryFromList`) an ignored field is filled with `Default::default()`,
-so its type must implement `Default`:
+so its type must implement `Default`. The attribute form `#[miniextendr(list)]`
+does not register `into_list` as a field attribute ("cannot find attribute
+`into_list`"), so spell list mode as its three derives:
 
 ```rust
-#[miniextendr(list)]
+#[derive(IntoList, TryFromList, PreferList)]
 pub struct Cfg {
     pub label: String,
     #[into_list(ignore)]
@@ -1625,6 +1629,11 @@ pub fn make_obs() -> ObsDataFrame {  // companion type
 // R: data.frame(id = c(1L, 2L), score = c(0.5, 0.8))
 ```
 
+As in list mode, the attribute form does not register the derive's helper
+attribute, so `#[dataframe(...)]` options (on the struct or its fields) need
+`#[derive(DataFrameRow)]` instead of `#[miniextendr(dataframe)]`. See
+[DATAFRAME.md](DATAFRAME.md) for the derive.
+
 ---
 
 ## Enums (Fieldless)
@@ -1668,6 +1677,7 @@ maps to a character scalar in R, validated against the allowed choices.
 
 ```rust
 #[miniextendr(factor)]  // same as default, but explicit
+#[derive(Copy, Clone)]
 pub enum Color { Red, Green, Blue }
 ```
 
@@ -1694,14 +1704,17 @@ These are separate from `#[miniextendr]` but complementary:
 | `RFactor` | Enum ↔ R factor |
 | `MatchArg` | Enum ↔ R character with `match.arg()` |
 | `RNativeType` | Newtype for native R types |
-| `PreferList` | Marker: route `IntoR` through list |
-| `PreferDataFrame` | Marker: route `IntoR` through data.frame |
-| `PreferExternalPtr` | Marker: route `IntoR` through ExternalPtr |
-| `PreferRNativeType` | Marker: route `IntoR` through native SEXP |
+| `PreferList` | `IntoR` through list |
+| `PreferDataFrame` | `IntoR` through the companion's data.frame engine (internal; see [PREFER_DERIVES.md](PREFER_DERIVES.md)) |
+| `PreferExternalPtr` | `IntoR` through ExternalPtr, for a hand-written `TypedExternal` |
+| `PreferRNativeType` | `IntoR` through native SEXP |
 | `Vctrs` | vctrs-compatible S3 class (feature-gated) |
+| `PreferVctrs` | `IntoR` through `Vctrs` (feature-gated) |
 
 The `#[miniextendr]` attribute on structs/enums is a convenience that calls the
-appropriate derives internally. Both paths produce identical code.
+appropriate derives internally. It generates the same impls as the derives, but
+it does not register their helper attributes (`#[into_list(...)]`,
+`#[dataframe(...)]`), so use the derives when you need those.
 
 ## See Also
 
