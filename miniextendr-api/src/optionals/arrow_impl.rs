@@ -463,31 +463,17 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
 
 use crate::altrep_traits::{NA_INTEGER, NA_REAL};
 
-/// Scan an R integer vector for `NA_integer_` and build an Arrow NullBuffer.
+/// Build an Arrow null bitmap from native R NA sentinels.
 ///
-/// Returns `None` if no NAs found (all values valid).
-fn build_i32_null_buffer(slice: &[i32]) -> Option<arrow_buffer::NullBuffer> {
+/// Returns `None` when all elements are valid. Real NaNs stay valid;
+/// only R's NA payload becomes null. Raw values have no `IsNA` impl.
+fn build_null_buffer<T: IsNA>(slice: &[T]) -> Option<arrow_buffer::NullBuffer> {
     if !slice.iter().any(IsNA::is_na) {
         return None;
     }
     let mut builder = arrow_buffer::BooleanBufferBuilder::new(slice.len());
-    for &v in slice {
-        builder.append(!v.is_na());
-    }
-    Some(arrow_buffer::NullBuffer::new(builder.finish()))
-}
-
-/// Scan an R real vector for `NA_real_` and build an Arrow NullBuffer.
-///
-/// Returns `None` if no NAs found (all values valid).
-fn build_f64_null_buffer(slice: &[f64]) -> Option<arrow_buffer::NullBuffer> {
-    let has_any_na = slice.iter().any(IsNA::is_na);
-    if !has_any_na {
-        return None;
-    }
-    let mut builder = arrow_buffer::BooleanBufferBuilder::new(slice.len());
-    for &v in slice {
-        builder.append(!v.is_na());
+    for value in slice {
+        builder.append(!value.is_na());
     }
     Some(arrow_buffer::NullBuffer::new(builder.finish()))
 }
@@ -522,7 +508,7 @@ impl TryFromSexp for Float64Array {
 
             // Scan for NAs to build null bitmap (data stays untouched)
             let slice: &[f64] = unsafe { sexp.as_slice() };
-            let null_buffer = build_f64_null_buffer(slice);
+            let null_buffer = build_null_buffer(slice);
 
             return Ok(Float64Array::new(scalar_buffer, null_buffer));
         }
@@ -566,7 +552,7 @@ impl TryFromSexp for Int32Array {
             let scalar_buffer = arrow_buffer::ScalarBuffer::<i32>::from(buffer);
 
             let slice: &[i32] = unsafe { sexp.as_slice() };
-            let null_buffer = build_i32_null_buffer(slice);
+            let null_buffer = build_null_buffer(slice);
 
             return Ok(Int32Array::new(scalar_buffer, null_buffer));
         }
@@ -2115,12 +2101,12 @@ mod tests {
 
     #[test]
     fn f64_null_buffer_follows_r_is_na() {
-        let nulls = build_f64_null_buffer(&[1.0, COMPUTED_NA, f64::NAN, NA_REAL])
+        let nulls = build_null_buffer(&[1.0, COMPUTED_NA, f64::NAN, NA_REAL])
             .expect("the NAs need a null buffer");
         // Only the two NAs are null; the plain NaN stays a valid value.
         assert_eq!(nulls.null_count(), 2);
         assert!(nulls.is_valid(0) && nulls.is_null(1) && nulls.is_valid(2) && nulls.is_null(3));
-        assert!(build_f64_null_buffer(&[1.0, f64::NAN]).is_none());
+        assert!(build_null_buffer(&[1.0, f64::NAN]).is_none());
     }
 
     #[test]
