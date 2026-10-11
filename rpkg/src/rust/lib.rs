@@ -35,6 +35,7 @@
 //! - [`dots_tests`]: R dots (`...`) handling tests
 //! - [`dots_position_tests`]: a `&Dots` parameter at any position (formals after `...`)
 //! - [`default_tests`]: Default parameter value tests
+//! - [`binding_hygiene_tests`]: Parameters named like generated wrapper and trait-shim bindings (#1677)
 //! - [`externalptr_tests`]: ExternalPtr functionality tests
 //! - [`externalptr_identity_tests`]: ExternalPtr identity preservation tests
 //! - [`visibility_tests`]: R return value visibility tests
@@ -145,6 +146,7 @@ mod as_character_tests;
 mod backtrace_tests;
 #[cfg(feature = "num-bigint")]
 mod bigint_adapter_tests;
+mod binding_hygiene_tests;
 #[cfg(feature = "bitflags")]
 mod bitflags_adapter_tests;
 #[cfg(feature = "bitvec")]
