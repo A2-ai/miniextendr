@@ -248,6 +248,13 @@ writes its result back into the same R object, `-> Result<Self, E>` /
 `Clone`). Drop the attribute. See
 [CLASS_SYSTEMS.md](CLASS_SYSTEMS.md#consuming-receivers-self).
 
+### "Env member `Class$method` is defined by both ..."
+
+Env constructors, instance methods and static methods share the class
+namespace. A constructor always defines `Class$new`, even when its Rust name
+is `create`. Rename the other method with `#[miniextendr(r_name = "...")]`.
+A non-constructor `new` is allowed when the class has no constructor.
+
 ### "R6 member `initialize` conflicts with the generated constructor"
 
 Every generated R6 class has an `initialize` member, even without a Rust

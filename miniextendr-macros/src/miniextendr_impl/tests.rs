@@ -6950,6 +6950,113 @@ fn r6_initialize_collision_does_not_reserve_unrelated_rust_names() {
 
 // endregion
 
+// region: Env member names
+
+#[test]
+fn env_member_collisions_follow_emitted_names() {
+    for (members, name) in [
+        (
+            quote::quote! {
+                #[miniextendr(constructor)]
+                pub fn create() -> Self { unimplemented!() }
+                pub fn new() -> i32 { 0 }
+            },
+            "new",
+        ),
+        (
+            quote::quote! {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r_name = "new")]
+                pub fn reset(&self) {}
+            },
+            "new",
+        ),
+        (
+            quote::quote! {
+                pub fn value(&self) -> i32 { 0 }
+                #[miniextendr(env(r_name = "value"))]
+                pub fn initial() -> i32 { 0 }
+            },
+            "value",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "[[")]
+                pub fn first(&self) -> i32 { 0 }
+                #[miniextendr(r_name = "[[")]
+                pub fn second(&self) -> i32 { 0 }
+            },
+            "[[",
+        ),
+    ] {
+        let parsed = parse_impl_with_class_name(
+            ClassSystem::Env,
+            "RenamedCounter",
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        let message = check_env_member_collisions(&parsed)
+            .expect_err("an Env member must not overwrite another")
+            .to_string();
+        assert!(
+            message.contains(&format!("RenamedCounter${name}")),
+            "{message}"
+        );
+        assert!(message.contains("r_name"), "{message}");
+    }
+}
+
+#[test]
+fn env_member_collisions_only_reserve_members_that_are_emitted() {
+    for members in [
+        quote::quote! {
+            pub fn new() -> i32 { 0 }
+        },
+        quote::quote! {
+            #[miniextendr(ignore)]
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(r_name = "new")]
+            pub fn initial() -> i32 { 0 }
+        },
+        quote::quote! {
+            pub fn new() -> Self { unimplemented!() }
+            #[miniextendr(ignore, r_name = "new")]
+            pub fn reset(&self) {}
+        },
+        quote::quote! {
+            #[miniextendr(constructor)]
+            pub fn create() -> Self { unimplemented!() }
+            #[miniextendr(r_name = "initial")]
+            pub fn new() -> i32 { 0 }
+        },
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::Env,
+            syn::parse_quote! { impl Counter { #members } },
+        );
+        check_env_member_collisions(&parsed).expect("distinct emitted members");
+    }
+    for system in [
+        ClassSystem::S3,
+        ClassSystem::S4,
+        ClassSystem::S7,
+        ClassSystem::R6,
+    ] {
+        let parsed = parse_impl(
+            system,
+            syn::parse_quote! {
+                impl Counter {
+                    pub fn value(&self) -> i32 { 0 }
+                    #[miniextendr(r_name = "value")]
+                    pub fn initial() -> i32 { 0 }
+                }
+            },
+        );
+        check_env_member_collisions(&parsed).expect("other systems have separate namespaces");
+    }
+}
+
+// endregion
+
 // region: R formal names (receivers, R6 bindings, reserved words)
 
 /// A method parameter must not take the R argument name the class system's
