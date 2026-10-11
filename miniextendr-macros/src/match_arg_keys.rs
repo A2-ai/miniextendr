@@ -12,9 +12,8 @@
 //! the user gets partial matching, R-visible defaults, and `@param` doc
 //! lines for free, without ever stringifying the variant list in source.
 //!
-//! All five shapes (`choices_placeholder`, `aliases_placeholder`,
-//! `param_doc_placeholder`, `choices_helper_c_name`,
-//! `choices_helper_def_ident`) share the same
+//! All three placeholders (`choices_placeholder`, `aliases_placeholder`,
+//! `param_doc_placeholder`) share the same
 //! `{c_ident_without_prefix}_{r_param}` stem so the wrapper writer's pass
 //! can correlate them. Keep them together so the shape can't drift.
 //!
@@ -22,7 +21,7 @@
 //! already, e.g. `MyType__method`). Callers that have a full `c_ident` should
 //! pass `c_ident.trim_start_matches("C_")`.
 //!
-//! All five helpers call `c_stem(...)` internally so callers may also pass a
+//! All three helpers call `c_stem(...)` internally so callers may also pass a
 //! full `c_ident` (e.g. `"C_my_fn"`) — the `C_` prefix is normalized away.
 
 fn c_stem(c_ident: &str) -> &str {
@@ -69,20 +68,6 @@ pub(crate) fn param_doc_placeholder(c_ident: &str, r_param: &str) -> String {
         ".__MX_MATCH_ARG_PARAM_DOC_{}_{}__",
         c_stem(c_ident),
         r_param
-    )
-}
-
-/// C symbol name for the helper fn that returns the enum's choices SEXP,
-/// called from the R wrapper's match.arg prelude.
-pub(crate) fn choices_helper_c_name(c_ident: &str, r_param: &str) -> String {
-    format!("C_{}__match_arg_choices__{}", c_stem(c_ident), r_param)
-}
-
-/// Rust ident holding the `R_CallMethodDef` for the match_arg choices helper.
-pub(crate) fn choices_helper_def_ident(c_ident: &str, r_param: &str) -> syn::Ident {
-    quote::format_ident!(
-        "call_method_def_{}",
-        choices_helper_c_name(c_ident, r_param)
     )
 }
 
