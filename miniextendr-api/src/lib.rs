@@ -806,7 +806,7 @@ pub use convert::{
 pub use convert::{AsVctrs, AsVctrsExt};
 pub use into_r::Lazy;
 pub use list::{
-    IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, NamedListBuilder,
+    BuiltList, IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, NamedListBuilder,
     TryFromList, collect_list,
 };
 pub use missing::{Missing, is_missing_arg};

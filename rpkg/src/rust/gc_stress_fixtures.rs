@@ -1555,10 +1555,11 @@ pub fn gc_stress_toml_array() {
     let _ = bool_arr.into_sexp();
 }
 
-/// Exercise owned named-list construction and both finishes under GC pressure.
+/// Exercise owned named-list construction and all three finishes under GC pressure.
 ///
-/// Holds growing builders and a finished data frame across further allocations
-/// and collections. No arguments, so the no-arg GC sweep exercises both paths.
+/// Holds growing builders, a finished data frame and a classed `BuiltList`
+/// across further allocations and collections. No arguments, so the no-arg GC
+/// sweep exercises every path.
 #[miniextendr(noexport)]
 pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
     use miniextendr_api::NamedListBuilder;
@@ -1575,6 +1576,13 @@ pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
     columns.names_mut()[0] = "first".into();
     let frame = columns.into_data_frame().unwrap();
     let empty = NamedListBuilder::new().into_data_frame().unwrap();
+    let mut parts = NamedListBuilder::new();
+    parts.push("id", 7i32);
+    parts.push("label", "seven");
+    let classed = parts
+        .into_list()
+        .set_class(&["gc_stress_result", "list"])
+        .set_attr("note", vec!["kept"; 2]);
     for i in 0..32 {
         let _ = vec![i; 16].into_sexp();
     }
@@ -1584,6 +1592,7 @@ pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
     out.push("values", values);
     out.push("frame", frame);
     out.push("empty", empty);
+    out.push("classed", classed);
     unsafe { miniextendr_api::sys::R_gc() };
     out
 }

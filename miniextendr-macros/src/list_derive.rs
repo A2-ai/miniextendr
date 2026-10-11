@@ -171,7 +171,7 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
         quote! {
             // The builder names every element, `""` for a positional field.
             // A tuple or unit struct's list has no names, so drop the
-            // attribute in place.
+            // attribute in place (`Rf_namesgets` may copy the list instead).
             ::miniextendr_api::SexpExt::set_attr(
                 &__sexp,
                 unsafe { ::miniextendr_api::sys::R_NamesSymbol },

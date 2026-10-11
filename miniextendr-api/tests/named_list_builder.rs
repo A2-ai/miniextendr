@@ -77,6 +77,32 @@ fn mixed_values_raw_sexps_names_and_list_finish() {
 }
 
 #[test]
+fn list_finish_stays_rooted_while_attributes_are_set() {
+    r_test_utils::with_r_thread(|| {
+        with_gctorture(|| {
+            let mut list = NamedListBuilder::new();
+            list.push("a", vec![1, 2]);
+            list.push_sexp("b", unsafe { r_eval_str_global("list(x = 'y')").unwrap() });
+            let built = list.into_list();
+            allocation_burst();
+            // Each link allocates (the class vector, the symbol, the value)
+            // while the handle keeps the list rooted.
+            let built = built
+                .set_class(&["my_result", "list"])
+                .set_attr("note", vec!["kept"; 3]);
+            allocation_burst();
+            assert_eq!(built.as_sexp().xlength(), 2);
+            let value = RootedSentinel::new(built);
+            assert_r_identical(
+                value.as_sexp(),
+                "structure(list(a = 1:2, b = list(x = 'y')), \
+                 class = c('my_result', 'list'), note = rep('kept', 3))",
+            );
+        });
+    });
+}
+
+#[test]
 fn data_frame_finish_stays_rooted_and_has_compact_row_names() {
     r_test_utils::with_r_thread(|| {
         with_gctorture(|| {

@@ -29,11 +29,20 @@ keeping classes such as factor and Date intact. Values must be live when passed
 in, but need no separate root after the push. `len()` counts entries.
 
 Return the builder directly from a `#[miniextendr]` function for a named list
-via `IntoR`. There is no bare-`List` finish. Alternatively,
-`into_data_frame()` validates all column lengths against the first, reports
-every mismatch in one error, and sets compact row names. An empty builder
-produces `names = character(0)` for either finish; its zero-column frame is
-identical to `data.frame()`.
+via `IntoR`. To keep working with the list before returning it, finish with
+`into_list()`: the `BuiltList` holds its own root like `BuiltDataFrame`,
+dereferences to the `List` view, and its `set_class(&[..])` / `set_attr(name,
+value)` allocate while the list stays rooted, so it can be classed, passed to R
+code and read back first:
+
+```rust
+let out = columns.into_list().set_class(&["my_result", "list"]);
+```
+
+There is no bare-`List` finish. `into_data_frame()` validates all column
+lengths against the first, reports every mismatch in one error, and sets
+compact row names. An empty builder produces `names = character(0)` for every
+finish; its zero-column frame is identical to `data.frame()`.
 
 ## The two verbs
 

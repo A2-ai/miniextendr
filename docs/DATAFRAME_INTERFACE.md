@@ -144,5 +144,6 @@ with `SerdeRows`). Two builders remain distinct from
 assembled into one rooted frame, and `NamedListBuilder` (core, in
 `list` and re-exported at the crate root) for a rooted named list of mixed
 values, including frames from `group_by(...).frames()`. The latter implements
-`IntoR` for a list return and `into_data_frame()` for mixed columns with
-equal-length validation. Neither finish hands back an unrooted `List` view.
+`IntoR` for a list return, `into_list()` for a rooted `BuiltList` to class or
+pass to R first, and `into_data_frame()` for mixed columns with equal-length
+validation. No finish hands back an unrooted `List` view.

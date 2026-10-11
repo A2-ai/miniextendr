@@ -10,10 +10,13 @@ use crate::{IntoR, SEXP, SexpExt, sys};
 /// are held by the builder, regardless of the number of values pushed.
 /// Construction, use and drop must take place on R's main thread (`!Send + !Sync`).
 ///
-/// Return the builder from a `#[miniextendr]` function to return a named list,
-/// or consume it with [`into_data_frame`](Self::into_data_frame) for a rooted
-/// data frame. Empty results have `names = character(0)`. There is no bare
-/// [`List`](super::List) finish; keep the builder until handing it to R.
+/// Return the builder from a `#[miniextendr]` function to return a named list.
+/// To keep working with the finished value while R allocates (set a class,
+/// pass it to R code, read it back), consume it with
+/// [`into_list`](Self::into_list) for a rooted [`BuiltList`], or with
+/// [`into_data_frame`](Self::into_data_frame) for a rooted data frame. Empty
+/// results have `names = character(0)`. There is no bare [`List`](super::List)
+/// finish.
 ///
 /// ```ignore
 /// let mut columns = NamedListBuilder::with_capacity(2);
@@ -105,6 +108,18 @@ impl NamedListBuilder {
         self.names.is_empty()
     }
 
+    /// Finish as an owned, GC-rooted named list.
+    ///
+    /// The [`BuiltList`] keeps the list reachable while it lives, so its
+    /// attributes can be set and it can be handed to R code before it is
+    /// returned.
+    pub fn into_list(mut self) -> BuiltList {
+        self.finish();
+        // SAFETY: R main thread (`!Send`); `self.values` is a VECSXP that
+        // `self` keeps rooted until BuiltList has added its own root.
+        unsafe { BuiltList::adopt_sexp(self.values) }
+    }
+
     /// Finish as an owned, GC-rooted data frame with compact `row.names`.
     ///
     /// Returns [`DataFrameError::UnequalLengths`] naming every column whose
@@ -181,5 +196,114 @@ impl IntoR for NamedListBuilder {
 
     unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
         self.try_into_sexp()
+    }
+}
+
+/// An owned, GC-rooted R list: the plain-list finish of [`NamedListBuilder`].
+///
+/// The list analogue of [`BuiltDataFrame`]: it holds an `R_PreserveObject`
+/// root for as long as it lives (`!Send + !Sync`), dereferences to the
+/// [`List`](super::List) view for reads, and returns to R through [`IntoR`].
+/// [`set_class`](Self::set_class) and [`set_attr`](Self::set_attr) allocate
+/// while the list stays rooted, and return the handle, so a chain is rooted at
+/// every link:
+///
+/// ```ignore
+/// let out = columns.into_list().set_class(&["my_result", "list"]);
+/// call_r_helper(out.as_sexp()); // `out` keeps the list alive across the call
+/// out
+/// ```
+///
+/// A `List` copied out of the handle (`*out`) is an unrooted view: it stays
+/// valid only while the handle lives.
+pub struct BuiltList {
+    view: super::List,
+    _not_send: std::marker::PhantomData<*mut ()>,
+}
+
+impl BuiltList {
+    /// Root an existing list and take ownership of that root.
+    ///
+    /// # Safety
+    ///
+    /// R main thread; `sexp` is a live VECSXP.
+    unsafe fn adopt_sexp(sexp: SEXP) -> Self {
+        // SAFETY: caller contract. R_PreserveObject keeps `sexp` reachable
+        // across its own allocation; precious-list entries stack, so a
+        // builder releasing its own root afterwards leaves this one.
+        unsafe { sys::R_PreserveObject(sexp) };
+        Self {
+            // SAFETY: caller guarantees a VECSXP.
+            view: unsafe { super::List::from_raw(sexp) },
+            _not_send: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the `class` attribute.
+    pub fn set_class(self, classes: &[&str]) -> Self {
+        let class = RootedSentinel::new(classes);
+        self.view.as_sexp().set_class(class.as_sexp());
+        self
+    }
+
+    /// Set the attribute `name` to `value`.
+    pub fn set_attr(self, name: &str, value: impl IntoR) -> Self {
+        let value = RootedSentinel::new(value);
+        // Symbols are never collected.
+        let symbol = SEXP::symbol(name);
+        self.view.as_sexp().set_attr(symbol, value.as_sexp());
+        self
+    }
+
+    fn release_into_sexp(self) -> SEXP {
+        let sexp = self.view.as_sexp();
+        // SAFETY: `!Send` keeps us on the R main thread; release the root
+        // added in `adopt_sexp`, and skip Drop so it isn't released twice.
+        unsafe { sys::R_ReleaseObject(sexp) };
+        std::mem::forget(self);
+        sexp
+    }
+}
+
+impl std::ops::Deref for BuiltList {
+    type Target = super::List;
+    #[inline]
+    fn deref(&self) -> &super::List {
+        &self.view
+    }
+}
+
+impl Drop for BuiltList {
+    fn drop(&mut self) {
+        // SAFETY: `!Send` keeps drop on the R main thread. Release is
+        // allocation-free and removes exactly the root added in `adopt_sexp`.
+        unsafe { sys::R_ReleaseObject(self.view.as_sexp()) };
+    }
+}
+
+impl IntoR for BuiltList {
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        // As with BuiltDataFrame, the IntoR caller takes responsibility for
+        // the returned SEXP.
+        Ok(self.release_into_sexp())
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        Ok(self.release_into_sexp())
+    }
+
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.release_into_sexp()
+    }
+}
+
+impl std::fmt::Debug for BuiltList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BuiltList")
+            .field("len", &self.view.as_sexp().xlength())
+            .finish()
     }
 }

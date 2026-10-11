@@ -180,7 +180,7 @@ pub(crate) fn is_sexp_type(ty: &syn::Type) -> bool {
 /// even under `worker-default`. Covers the raw `SEXP`, `AltrepSexp`, the
 /// zero-copy R-backed views (`RDVector`, `RDMatrix`, `RndVec`, `RndMat`,
 /// `ProtectedStrVec`), and the owned GC-rooted handles (`BuiltDataFrame`,
-/// `DataFrameShape`, `NamedListBuilder`). Arbitrary user `!Send` types can't be detected
+/// `DataFrameShape`, `NamedListBuilder`, `BuiltList`). Arbitrary user `!Send` types can't be detected
 /// syntactically — those need an explicit `no_worker`.
 const MAIN_THREAD_BOUND: &[&str] = &[
     "SEXP",
@@ -201,6 +201,7 @@ const MAIN_THREAD_BOUND: &[&str] = &[
     "ProtectedStrVec",
     "BuiltDataFrame",
     "NamedListBuilder",
+    "BuiltList",
     "DataFrameShape",
 ];
 

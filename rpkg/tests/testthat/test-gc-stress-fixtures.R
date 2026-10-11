@@ -8,7 +8,7 @@
 # region: NamedListBuilder ---------------------------------------------------
 
 check_named_list_builder <- function(result) {
-  expect_named(result, c("values", "frame", "empty"))
+  expect_named(result, c("values", "frame", "empty", "classed"))
   expect_identical(names(result$values), c("first", paste0("v", 1:11)))
   expect_identical(names(result$frame), c("first", paste0("c", 1:11)))
   for (i in 0:11) {
@@ -19,13 +19,17 @@ check_named_list_builder <- function(result) {
   expect_identical(dim(result$frame), c(3L, 12L))
   expect_identical(.row_names_info(result$frame, 0L), c(NA_integer_, -3L))
   expect_identical(result$empty, data.frame())
+  expect_identical(
+    result$classed,
+    structure(list(id = 7L, label = "seven"), class = c("gc_stress_result", "list"), note = c("kept", "kept"))
+  )
 }
 
-test_that("NamedListBuilder finishes lists and rooted frames", {
+test_that("NamedListBuilder finishes lists, rooted lists and rooted frames", {
   check_named_list_builder(miniextendr:::gc_stress_named_list_builder())
 })
 
-test_that("NamedListBuilder holds both finishes across allocations under gctorture", {
+test_that("NamedListBuilder holds every finish across allocations under gctorture", {
   skip_gc_stress_if_disabled()
   gctorture(TRUE)
   on.exit(gctorture(FALSE), add = TRUE)

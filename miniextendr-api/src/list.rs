@@ -16,10 +16,11 @@
 //! - [`ListMut`] — mutable view for in-place element replacement
 //! - [`ListBuilder`] — fixed-size batch construction
 //! - [`NamedListBuilder`] — owned, GC-rooted named lists and data frames
+//! - [`BuiltList`] — the builder's rooted plain-list finish
 //! - [`IntoList`] / [`TryFromList`] — conversion traits
 
 mod named_builder;
-pub use named_builder::NamedListBuilder;
+pub use named_builder::{BuiltList, NamedListBuilder};
 
 use crate::SEXPTYPE::{NILSXP, STRSXP, VECSXP};
 use crate::from_r::{
