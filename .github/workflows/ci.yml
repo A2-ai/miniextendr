@@ -533,10 +533,12 @@ jobs:
       # `--workspace` invocations above reach its fixture crate. The dedicated
       # recipe supplies local framework patches without requiring configure or
       # a real R installation, and restores the tarball-shaped lockfile.
+      # `full` leaves out the non-API features, so they are listed here too:
+      # every install compiles the `connections` fixtures.
       - name: Clippy (rpkg, full features)
         id: clippy_rpkg
         continue-on-error: true
-        run: just clippy-rpkg --features full -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_rpkg.log"
+        run: just clippy-rpkg --features full,nonapi,connections,indicatif -- -D warnings 2>&1 | tee "$RUNNER_TEMP/clippy_rpkg.log"
         shell: bash
 
       # cargo-revendor is a standalone workspace excluded from the root

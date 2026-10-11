@@ -1334,6 +1334,27 @@ fn test_has_roxygen_tag_single_word() {
 }
 
 #[test]
+fn test_has_export_tag_counts_export_s3_method() {
+    // #1944: a delayed registration is the author's export; a bare `@export`
+    // next to it would register the method eagerly as well.
+    for tag in [
+        "@export",
+        "@export as_tibble.cls",
+        "@exportS3Method",
+        "@exportS3Method tibble::as_tibble",
+    ] {
+        assert!(has_export_tag(&[tag.to_string()]), "{tag}");
+    }
+    for tag in [
+        "@exportPattern ^mx_",
+        "@rawNamespace export(f)",
+        "@keywords internal",
+    ] {
+        assert!(!has_export_tag(&[tag.to_string()]), "{tag}");
+    }
+}
+
+#[test]
 fn test_has_roxygen_tag_keywords_internal() {
     let tags = vec!["@keywords internal".to_string()];
     assert!(has_roxygen_tag(&tags, "keywords internal"));

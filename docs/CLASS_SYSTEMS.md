@@ -1462,7 +1462,14 @@ own `$<-` takes `r_data_accessors = "get"`, which generates the readers
 only. The impl block needs no constructor: a package that builds its
 objects itself (`structure(make_engine(), class = "engine")`) writes
 `#[miniextendr(s3(r_data_accessors = "get"), class = "engine")] impl Engine
-{}` and gets the readers for the pointer it classes by hand.
+{}` and gets the readers for the pointer it classes by hand. Such an impl
+emits no class environment (`engine <- new.env(...)`), so the package's own
+constructor can be named `engine()` without a second binding. The environment
+exists only when it can hold something: `Class$new()` for an impl with a
+constructor, or a trait's `Type$Trait` namespace for a class named as its
+Rust type. The readers are documented on the class's topic (or the impl's
+`@rdname`) under `#[miniextendr(internal)]` too, which only drops the exports
+(#1918).
 
 #### A restored pointer
 

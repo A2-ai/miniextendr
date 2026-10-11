@@ -71,3 +71,17 @@ test_that("c_symbol custom C symbol still dispatches from R", {
 
 # Panic source-location surfacing (formerly the track_caller fixtures, dropped
 # in #1121) now lives in test-panic-location.R.
+
+test_that("@exportS3Method registers a delayed method without exporting it (#1944)", {
+  expect_false("as_tibble.mx_delayed_rows" %in% getNamespaceExports("miniextendr"))
+  skip_if_not_installed("callr")
+  # Loading the package must neither need nor load tibble (only in Suggests).
+  loaded <- callr::r(function() {
+    library(miniextendr)
+    "tibble" %in% loadedNamespaces()
+  }, libpath = .libPaths())
+  expect_false(loaded)
+  skip_if_not_installed("tibble")
+  x <- structure(list(a = 1:2, b = c("u", "v")), class = "mx_delayed_rows")
+  expect_equal(tibble::as_tibble(x), data.frame(a = 1:2, b = c("u", "v")))
+})

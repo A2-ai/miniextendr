@@ -35,7 +35,7 @@ use crate::altrep_data::{
 /// - **Lazy:** Elements generated on-demand via `elt(i)`
 /// - **Cached:** Once generated, elements stored in cache for repeat access
 /// - **Materializable:** Can be fully materialized for `Dataptr` or serialization
-/// - **Borrow-checked:** Uses `RefCell` for interior mutability on the R thread
+/// - **Safe:** Uses `RefCell` for interior mutability, protected by R's GC
 pub struct IterState<I, T> {
     /// Vector length (from `ExactSizeIterator::len()` or explicit)
     len: usize,
@@ -104,13 +104,16 @@ where
 
         // Need to advance iterator to index i
         let mut iter_opt = self.iter.borrow_mut();
-        {
-            let iter = iter_opt.as_mut()?;
-
-            // Fill cache up to and including index i. `?` returns None if the
-            // iterator is exhausted before reaching the expected length.
-            while cache.len() <= i {
-                cache.push(iter.next()?);
+        // Fill cache up to and including index i. A source that ends early is
+        // dropped at once: a non-fused iterator could otherwise yield again on
+        // a later call, giving an index that read as missing a value.
+        while cache.len() <= i {
+            match iter_opt.as_mut()?.next() {
+                Some(value) => cache.push(value),
+                None => {
+                    iter_opt.take();
+                    return None;
+                }
             }
         }
 
@@ -427,6 +430,27 @@ mod tests {
         let state = IterState::new(source, 4);
         assert_eq!(state.get_element(1), Some(1));
         assert_eq!(state.materialize_all(), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn an_exhausted_source_is_never_polled_again() {
+        // Yields 0, then None, then 1 if polled again (not fused).
+        struct Flaky(u8);
+        impl Iterator for Flaky {
+            type Item = i32;
+            fn next(&mut self) -> Option<i32> {
+                self.0 += 1;
+                match self.0 {
+                    1 => Some(0),
+                    3 => Some(1),
+                    _ => None,
+                }
+            }
+        }
+        let state = IterState::new(Flaky(0), 2);
+        assert_eq!(state.get_element(1), None);
+        assert_eq!(state.get_element(1), None);
+        assert_eq!(state.get_element(0), Some(0));
     }
 
     #[test]

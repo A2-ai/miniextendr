@@ -2556,13 +2556,21 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 
 // region: Finalizer
 
-/// Guard that aborts the process if dropped while a panic is in progress.
+/// Guard that aborts the process if a panic starts while it is alive.
 ///
 /// Used by [`drop_catching_panic`] to implement panic-safe destructor calls
 /// without `catch_unwind`. When `f()` completes normally, the guard is
-/// dropped with `std::thread::panicking() == false` and becomes a no-op.
+/// dropped with `std::thread::panicking()` unchanged and becomes a no-op.
 /// If `f()` panics, the guard's destructor runs during stack unwinding
-/// (when `std::thread::panicking() == true`) and calls `process::abort()`.
+/// (when `std::thread::panicking()` has become `true`) and calls
+/// `process::abort()`.
+///
+/// A destructor can also run *because* of an unrelated panic: a handle that
+/// goes out of scope in a panicking `#[miniextendr]` fn is dropped by that
+/// unwind, with `panicking()` already `true`. That is not a panic in the
+/// destructor, so the guard records the state it started in and aborts only
+/// on a change. (A panic in `f()` while already unwinding is a double panic,
+/// which the Rust runtime aborts on by itself.)
 ///
 /// This approach avoids `catch_unwind`, which registers LLVM unwind landing
 /// pads. Inside R's GC finalizer walk, any interaction with the unwinding
@@ -2570,12 +2578,24 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 /// handling state — can trigger an allocator call that re-enters R's GC and
 /// produces a "recursive gc invocation" hard crash.
 #[must_use]
-struct AbortIfUnwinding;
+struct AbortIfUnwinding {
+    /// `std::thread::panicking()` when the guard was created.
+    already_unwinding: bool,
+}
+
+impl AbortIfUnwinding {
+    #[inline]
+    fn new() -> Self {
+        AbortIfUnwinding {
+            already_unwinding: std::thread::panicking(),
+        }
+    }
+}
 
 impl Drop for AbortIfUnwinding {
     #[cold]
     fn drop(&mut self) {
-        if std::thread::panicking() {
+        if !self.already_unwinding && std::thread::panicking() {
             // A panic propagated through a finalizer — abort immediately.
             // The value being dropped is in an indeterminate state; continuing
             // is not safe.
@@ -2599,8 +2619,13 @@ impl Drop for AbortIfUnwinding {
 /// call from within R's GC finalizer, `catch_unwind` may lazily initialise
 /// LLVM exception-handling state, which can allocate. Any allocation during a
 /// GC finalizer re-enters the GC and triggers the fatal "recursive gc
-/// invocation" crash. Instead, this function uses a drop-guard whose `Drop`
-/// impl calls `std::thread::panicking()` — a cheap, allocation-free TLS read.
+/// invocation" crash. Instead, this function uses a drop-guard that compares
+/// `std::thread::panicking()` — a cheap, allocation-free TLS read — on entry
+/// and on exit.
+///
+/// Called from a `Drop` that an unrelated panic's unwind is running, it runs
+/// `f()` and returns: the unwind continues and reaches its `catch_unwind`
+/// boundary (for a `#[miniextendr]` fn, the R error it becomes).
 ///
 /// Deferred conditions queued by this destructor (including nested guards)
 /// are suppressed on this thread. Finalization has no caller handlers to
@@ -2611,10 +2636,10 @@ impl Drop for AbortIfUnwinding {
 #[doc(hidden)]
 #[inline]
 pub fn drop_catching_panic<F: FnOnce()>(f: F) {
-    let _guard = AbortIfUnwinding;
+    let _guard = AbortIfUnwinding::new();
     let _conditions = crate::deferred_condition::Suppress::new();
     f();
-    // guard dropped here with panicking() == false → no-op
+    // guard dropped here with panicking() unchanged → no-op
 }
 
 /// Non-generic C finalizer called by R's garbage collector.
@@ -2781,6 +2806,37 @@ mod tests {
         assert!(
             dropped.load(Ordering::SeqCst),
             "inner value should have been dropped"
+        );
+    }
+
+    #[test]
+    fn drop_catching_panic_in_a_drop_run_by_an_unwind_does_not_abort() {
+        // A guarded `Drop` that runs because an unrelated panic is unwinding
+        // (a handle going out of scope in a panicking `#[miniextendr]` fn) is
+        // not a panic in the destructor: the unwind must continue to its
+        // `catch_unwind`. Before #1917 this aborted the test process.
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct GuardedDrop(Arc<AtomicBool>);
+        impl Drop for GuardedDrop {
+            fn drop(&mut self) {
+                let ran = self.0.clone();
+                drop_catching_panic(move || ran.store(true, Ordering::SeqCst));
+            }
+        }
+
+        let ran = Arc::new(AtomicBool::new(false));
+        let handle = GuardedDrop(ran.clone());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let _handle = handle;
+            panic!("unrelated panic");
+        }));
+
+        assert!(result.is_err(), "the unrelated panic should propagate");
+        assert!(
+            ran.load(Ordering::SeqCst),
+            "the guarded destructor should have run during the unwind"
         );
     }
 }

@@ -2623,9 +2623,10 @@ mod connections_from_r {
     /// Accepts any open, write-capable connection — not just the null device.
     ///
     /// This is intentional: validating against `description == "/dev/null"` /
-    /// `"NUL"` is brittle across platforms, and the type's value comes from the
-    /// RAII close-on-drop, not the specific target. Substituting a `file()`
-    /// connection for `RNullConnection` is supported.
+    /// `"NUL"` is brittle across platforms, and the type is a write target, not
+    /// a specific device. Substituting a `file()` connection for
+    /// `RNullConnection` is supported. The handle borrows the connection: the
+    /// R caller owns it, and dropping the handle leaves it open.
     impl TryFromSexp for RNullConnection {
         type Error = SexpError;
 
@@ -2663,6 +2664,8 @@ mod txt_progress_bar_from_r {
     use crate::txt_progress_bar::RTxtProgressBar;
     use crate::{SEXP, SexpExt};
 
+    /// The handle borrows the bar: the R caller owns it, and dropping the
+    /// handle leaves it open.
     impl TryFromSexp for RTxtProgressBar {
         type Error = SexpError;
 
