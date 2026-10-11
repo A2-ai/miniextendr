@@ -37,8 +37,9 @@ impl S4Counter {
         self.value
     }
 
+    // #1677: the default S4 generic follows the R method name.
     /// Returns the current value through the generic `s4_current`: the
-    /// default S4 generic follows the R method name (#1677).
+    /// default S4 generic follows the R method name.
     #[miniextendr(r_name = "current")]
     pub fn peek(&self) -> i32 {
         self.value
