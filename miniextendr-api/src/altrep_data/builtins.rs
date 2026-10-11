@@ -1122,6 +1122,65 @@ impl<const N: usize> AltComplexData for [Rcomplex; N] {
 }
 // endregion
 
+// region: Shared slices
+
+// A unique owner may already have supplied a pointer to R. Shared owners have
+// not: Dataptr_or_null refuses them, and Dataptr detaches before exposing one.
+// The duplicate callback uses the same rule, so it never re-shares exposed data.
+macro_rules! impl_shared_slice_data {
+    ($owner:ident) => {
+        impl<T> AltrepLen for $owner<[T]> {
+            fn len(&self) -> usize {
+                <[T]>::len(self)
+            }
+        }
+        impl_altinteger_slice!($owner<[i32]>);
+        impl_altreal_slice!($owner<[f64]>);
+        impl_altraw_slice!($owner<[u8]>);
+        impl_altcomplex_slice!($owner<[Rcomplex]>);
+        impl_altlogical_native_slice!($owner<[RLogical]>);
+        impl_altlogical_slice!($owner<[bool]>);
+        impl AltStringData for $owner<[String]> {
+            fn elt(&self, i: usize) -> Option<&str> {
+                Some(&self[i])
+            }
+            fn no_na(&self) -> Option<bool> {
+                Some(true)
+            }
+        }
+    };
+}
+macro_rules! impl_shared_slice_dataptr {
+    ($owner:ident, $elem:ty, $storage:ty) => {
+        impl AltrepDataptr<$storage> for $owner<[$elem]> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $storage> {
+                // Even a read-only pointer request detaches shared storage.
+                // This keeps that pointer valid if a later write requests COW.
+                Some($owner::make_mut(self).as_mut_ptr().cast())
+            }
+            fn dataptr_or_null(&self) -> Option<*const $storage> {
+                ($owner::strong_count(self) == 1 && $owner::weak_count(self) == 0)
+                    .then(|| self.as_ptr().cast())
+            }
+        }
+    };
+}
+use std::rc::Rc;
+use std::sync::Arc;
+impl_shared_slice_data!(Rc);
+impl_shared_slice_data!(Arc);
+impl_shared_slice_dataptr!(Rc, i32, i32);
+impl_shared_slice_dataptr!(Rc, f64, f64);
+impl_shared_slice_dataptr!(Rc, u8, u8);
+impl_shared_slice_dataptr!(Rc, Rcomplex, Rcomplex);
+impl_shared_slice_dataptr!(Rc, RLogical, i32);
+impl_shared_slice_dataptr!(Arc, i32, i32);
+impl_shared_slice_dataptr!(Arc, f64, f64);
+impl_shared_slice_dataptr!(Arc, u8, u8);
+impl_shared_slice_dataptr!(Arc, Rcomplex, Rcomplex);
+impl_shared_slice_dataptr!(Arc, RLogical, i32);
+// endregion
+
 // region: Built-in implementations for Cow<'static, [T]>
 //
 // Cow<'static, [T]> enables zero-copy borrows from R vectors while retaining

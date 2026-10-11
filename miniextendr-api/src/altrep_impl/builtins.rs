@@ -571,6 +571,8 @@ macro_rules! impl_register_altrep_builtin {
     };
 }
 
+pub(super) use impl_register_altrep_builtin;
+
 // Vec types - RegisterAltrep only (IntoR exists elsewhere, copies data)
 impl_register_altrep_builtin!(Vec<i32>, "Vec_i32");
 impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");

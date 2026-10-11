@@ -1498,6 +1498,53 @@ pub fn gc_stress_native_sexp_altrep() {
     let _ptr = unsafe { miniextendr_api::sys::DATAPTR_RO(sexp) };
 }
 
+/// Exercise `Rc<[T]>` / `Arc<[T]>` ALTREP duplication under GC pressure.
+///
+/// A native `Arc<[i32]>` hands out a writable pointer, is written through it and
+/// duplicated: the copy must keep the value at duplication time. An
+/// `Rc<[String]>` reads one element and has another written through `Set_elt`,
+/// leaving a partial cache (empty slots beside cached and written ones) that
+/// `Duplicate` copies slot by slot. Each step allocates, so `gctorture(TRUE)`
+/// catches a CHARSXP or cache that is not reachable from its vector.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_shared_slices() {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    use miniextendr_api::{Altrep, TryFromSexp};
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    unsafe {
+        let native = OwnedProtect::new(Altrep(Arc::<[i32]>::from([10, 20])).into_sexp());
+        let pointer = <Arc<[i32]> as AltVec>::dataptr(native.get(), true).cast::<i32>();
+        *pointer = 77;
+        let native_copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(native.get()));
+        *pointer = 99;
+        assert_eq!(
+            Vec::<i32>::try_from_sexp(native_copy.get()).unwrap(),
+            [77, 20]
+        );
+
+        let strings = OwnedProtect::new(
+            Altrep(Rc::<[String]>::from([
+                "one".into(),
+                "two".into(),
+                "three".into(),
+            ]))
+            .into_sexp(),
+        );
+        let _ = <Rc<[String]> as AltString>::elt(strings.get(), 2);
+        <Rc<[String]> as AltString>::set_elt(strings.get(), 0, SEXP::na_string());
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(strings.get()));
+        assert!(copy.get().is_altrep());
+        assert_eq!(
+            Vec::<Option<String>>::try_from_sexp(copy.get()).unwrap(),
+            [None, Some("two".into()), Some("three".into())]
+        );
+    }
+}
+
 /// Exercise `JiffZonedVec` ALTREP construction and element access under GC pressure.
 ///
 /// Constructs a single-timezone `JiffZonedVec` with several `America/New_York`

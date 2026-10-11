@@ -854,6 +854,43 @@ pub fn simple_vec_int(values: Vec<i32>) -> SEXP {
 }
 ```
 
+### Shared slices: `Rc<[T]>` and `Arc<[T]>`
+
+`Altrep(Rc::<[i32]>::from(vec![1, 2, 3]))` and its `Arc` equivalent keep
+the shared owner in the R vector. Supported elements are `i32`, `f64`, `u8`,
+`Rcomplex`, `RLogical`, `bool` and `String`.
+
+Element and region reads use the shared allocation. A pointer to the whole
+buffer is different, because R may write through it:
+
+- `Dataptr_or_null` returns the buffer only when the vector owns it alone (one
+  strong reference, no weak ones). Otherwise R falls back to element and region
+  reads.
+- `Dataptr`, read-only included, calls `make_mut` first. If other `Rc`/`Arc`
+  handles share the allocation, **this copies the whole buffer**: any C code
+  that calls `DATAPTR_RO()`, `INTEGER()` or `REAL()` on the vector makes R's
+  copy, and the other handles keep the old allocation and never see R's writes.
+  A unique owner is used in place. The copy happens once; the read-only case
+  copies too, so that a pointer R already holds stays valid if R later asks to
+  write.
+- `Duplicate` shares an owner that is still shared, since no pointer to it has
+  been handed out. It copies a unique owner, which may have handed one out.
+  That also copies a unique owner that never did; no extra state is kept.
+
+`bool` and `String` vectors keep R's values in data2 (a logical vector, or the
+string element cache). `Duplicate` copies data2's current values, NA included;
+a string cache is copied slot by slot, and the copy computes the slots not yet
+read from its own owner. Native owners serialize their values and come back as
+the same class; once R has written to a `bool` or `String` vector, it is saved
+as an ordinary vector.
+
+The owner is only safe to share while R can't write through it. Don't clone or
+downgrade it through unsafe extraction (`altrep_extract_ref` /
+`altrep_extract_mut`) once R may hold its buffer: the Rust clone would see R's
+writes, and `Duplicate`, finding a shared owner, would give the new R vector
+the same buffer, so a write to one vector changes the other. An `Arc` doesn't
+make writing to that buffer from another thread safe either.
+
 ### `Box<[T]>` (Immutable Owned Slice)
 
 ```rust

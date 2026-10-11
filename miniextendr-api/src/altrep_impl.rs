@@ -62,13 +62,24 @@ unsafe fn altstring_cache(x: crate::SEXP, n: crate::R_xlen_t) -> crate::SEXP {
     if !data2.is_null_ptr() && data2.type_of() == crate::SEXPTYPE::STRSXP {
         return data2;
     }
+    unsafe {
+        let cache = new_altstring_cache(n);
+        // Attaching the cache allocates nothing, so it needs no protection.
+        AltrepSexpExt::set_altrep_data2(&x, cache);
+        cache
+    }
+}
+
+/// Allocate a string cache of length `n` with every slot empty (C `NULL`).
+///
+/// # Safety
+///
+/// On R's main thread. The result is unprotected.
+unsafe fn new_altstring_cache(n: crate::R_xlen_t) -> crate::SEXP {
     // Inside ALTREP dispatch — _unchecked variants skip the redundant
     // with_r_thread check/route (MXL301 permits).
     unsafe {
-        let cache = crate::sys::Rf_protect_unchecked(crate::sys::Rf_allocVector_unchecked(
-            crate::SEXPTYPE::STRSXP,
-            n,
-        ));
+        let cache = crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::STRSXP, n);
         if n > 0 {
             // A fresh STRSXP holds only R_BlankString, so clearing its slots
             // drops no reference the write barrier tracks.
@@ -78,9 +89,42 @@ unsafe fn altstring_cache(x: crate::SEXP, n: crate::R_xlen_t) -> crate::SEXP {
             let len = usize::try_from(n).expect("R vector length is non-negative");
             std::ptr::write_bytes(slots, 0, len);
         }
-        AltrepSexpExt::set_altrep_data2(&x, cache);
-        crate::sys::Rf_unprotect_unchecked(1);
         cache
+    }
+}
+
+/// Copy a bridge ALTREP's data2 for a `Duplicate` callback.
+///
+/// A string cache can hold C `NULL` slots, which `Rf_duplicate` can't copy:
+/// it stores every slot with `SET_STRING_ELT`. Its copy keeps those slots
+/// empty, so the new vector computes them from its own Rust data, and keeps
+/// the written mark. Any other data2 (a materialized vector) goes through
+/// `Rf_duplicate`.
+///
+/// # Safety
+///
+/// `data2` is a live ALTREP's data2, kept reachable by the caller, on R's
+/// main thread. The result is unprotected.
+#[doc(hidden)]
+pub unsafe fn duplicate_altrep_data2(data2: crate::SEXP) -> crate::SEXP {
+    use crate::SexpExt;
+
+    if data2.type_of() != crate::SEXPTYPE::STRSXP {
+        return unsafe { crate::sys::Rf_duplicate_unchecked(data2) };
+    }
+    unsafe {
+        let n = data2.xlength();
+        let copy = crate::OwnedProtect::new(new_altstring_cache(n));
+        for i in 0..n {
+            let value = data2.string_elt(i);
+            if !value.is_null_ptr() {
+                copy.get().set_string_elt(i, value);
+            }
+        }
+        if altstring_cache_written(data2) {
+            mark_altstring_written(copy.get());
+        }
+        copy.get()
     }
 }
 
@@ -250,4 +294,5 @@ pub mod macros;
 
 pub mod arrays;
 pub mod builtins;
+pub mod shared_slices;
 pub mod static_slices;
