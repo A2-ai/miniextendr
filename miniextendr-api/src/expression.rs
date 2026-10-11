@@ -1008,7 +1008,7 @@ const EXIT_MESSAGE: &str =
 ///
 /// A `#[miniextendr]` function returning `Result<T, REvalError>` raises the
 /// caught message with the caught [specific classes](Self::specific_classes)
-/// (`REvalError` implements [`RConditionError`](crate::condition::RConditionError)).
+/// (`REvalError` implements [`RConditionData`](crate::condition::RConditionData)).
 /// For a `Result<T, condition::RError>` return, `RError::from(e)` takes the
 /// message (it is a `std::error::Error`) and `.class(...)` adds the classes.
 ///
@@ -1211,7 +1211,7 @@ impl std::error::Error for REvalError {}
 /// Returned as a `#[miniextendr]` function's `Err`, the caught error is raised
 /// again with its message and its [specific classes](REvalError::specific_classes),
 /// ahead of the `rust_error` layers; the call is the function's own.
-impl crate::condition::RConditionError for REvalError {
+impl crate::condition::RConditionData for REvalError {
     fn message(&self) -> String {
         self.message.clone()
     }

@@ -63,7 +63,7 @@ test_that("a hand-written conversion's RError gives its argument message too", {
   expect_identical(argument_message_hand(mx_model()), 2L)
 })
 
-test_that("a derived RConditionError gives the variant's argument message", {
+test_that("a derived RConditionData gives the variant's argument message", {
   e <- catch_error(argument_message_derived(data.frame(a = 1)))
   expect_s3_class(e, "mx_model_error_data_frame")
   expect_s3_class(e, "mx_model_error")

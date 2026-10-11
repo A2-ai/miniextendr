@@ -138,7 +138,7 @@ pub enum ReturnHandling {
 /// (message, class vector, structured data).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrPartsMode {
-    /// Autoref-specialisation probe (`__mx_result_err_parts!`): `RConditionError`
+    /// Autoref-specialisation probe (`__mx_result_err_parts!`): `RConditionData`
     /// when the error type implements it; else, under the API crate's `serde`
     /// feature, the serde shape for an `E: Serialize + Display` with `prefix`
     /// (`<crate>_error`) as the family class; `Debug` otherwise.
@@ -1580,7 +1580,7 @@ impl CWrapperContextBuilder {
     }
 
     /// Choose how `Err` values become condition parts (default: the
-    /// `RConditionError`/`Debug` probe). See [`ErrPartsMode`].
+    /// `RConditionData`/`Debug` probe). See [`ErrPartsMode`].
     pub fn err_parts(mut self, mode: ErrPartsMode) -> Self {
         self.err_parts = mode;
         self

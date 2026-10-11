@@ -248,7 +248,7 @@ pub(crate) unsafe fn condition_parts_value(
 /// generated wrapper probed off `e` (see
 /// [`crate::__mx_result_err_parts!`]): `kind = "result_err"`, the error's
 /// class vector (empty for the plain `Debug` fallback), its structured
-/// fields, and no call when its [`RConditionError::call`](crate::condition::RConditionError::call)
+/// fields, and no call when its [`RConditionData::call`](crate::condition::RConditionData::call)
 /// is [`ConditionCall::None`] (an [`RError::without_call`](crate::condition::RError::without_call)).
 ///
 /// # Safety
@@ -264,7 +264,7 @@ pub unsafe fn result_err_condition_value(parts: ErrParts, call: Option<SEXP>) ->
 /// Build the tagged value for an argument that failed its Rust-side
 /// conversion: `kind = "conversion"`, the parts probed off the error by
 /// [`crate::__mx_conversion_err_parts!`] (class, message and data from an
-/// [`RConditionError`](crate::condition::RConditionError) impl, the R-worded
+/// [`RConditionData`](crate::condition::RConditionData) impl, the R-worded
 /// reason for a built-in conversion error, else the `Display` text), with
 /// `prefix` before the message (`'x' must be a single integer`, or
 /// `invalid 'x' argument` when the macro has no R-facing expectation for the

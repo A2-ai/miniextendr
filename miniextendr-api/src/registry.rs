@@ -2088,7 +2088,7 @@ macro_rules! raise_condition_helper_fn {
   # `keep.null = TRUE`: a field the Rust side set to `RValue::Null` is a
   # present field whose value is NULL, and must stay in `names(e)`; the
   # default would silently drop it (found downstream via a
-  # `RConditionError::data()` returning an explicit NULL entry).
+  # `RConditionData::data()` returning an explicit NULL entry).
   .data <- .val$data
   .cond_fields <- function(base) {
     if (is.null(.data) || !is.list(.data) || is.null(names(.data))) {
@@ -2109,7 +2109,7 @@ macro_rules! raise_condition_helper_fn {
     panic = stop(structure(list(message = .msg, call = .call, kind = "panic"),
       class = c("rust_error", "simpleError", "error", "condition"))),
     # result_err / none_err / conversion / other: an error whose class vector and
-    # data (if any) come from the Rust side, e.g. a `Result<T, E: RConditionError>`.
+    # data (if any) come from the Rust side, e.g. a `Result<T, E: RConditionData>`.
     stop(structure(.cond_fields(list(message = .msg, call = .call, kind = .val$kind)),
       class = c(.class, "rust_error", "simpleError", "error", "condition")))
   )

@@ -31,7 +31,7 @@
 //! `#[derive(TryFromSexp)]` takes one attribute, on the struct:
 //! `#[try_from_sexp(validate = path::to::check)]`, with `check` a
 //! `fn(SEXP) -> Result<(), E>` and `E: Into<SexpError>` (an `RError` or any
-//! `RConditionError` type for a classed refusal). It becomes
+//! `RConditionData` type for a classed refusal). It becomes
 //! `TryFromSexpElement::check_sexp`, which the
 //! scalar impl and every container run on the R value before the inner type
 //! reads it (#1815). The scalar impl's error is then `SexpError`, so the inner

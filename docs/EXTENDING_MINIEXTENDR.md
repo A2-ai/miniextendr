@@ -257,7 +257,7 @@ case: a list of such objects keeps each object's class on the element, so its
 `Vec` checks each element (see [A list of objects](#a-list-of-objects)).
 
 It is a `fn(SEXP) -> Result<(), E>` with `E: Into<SexpError>`. Return an
-`RError`, or any `RConditionError` type such as a `#[derive(RConditionError)]`
+`RError`, or any `RConditionData` type such as a `#[derive(RCondition)]`
 enum, for a refusal with its own classes and fields, or a plain `SexpError`
 (`SexpError::InvalidValue(...)`) for one without. A classed refusal is the
 argument error, with the parameter context around it:
@@ -281,7 +281,7 @@ whenever the other arm refused the kind of value: an `Either<Option<Elapsed>,
 DataFrame>` given a `difftime` raises the check's condition.
 
 **The whole message.** A refusal can word the whole argument error instead,
-with `RError::argument_message(...)` (or `RConditionError::argument_message`,
+with `RError::argument_message(...)` (or `RConditionData::argument_message`,
 or `#[condition(argument_message = "...")]` on a derived type): its text is
 the message as given, with no prefix. That is how a type declares a check
 once for every parameter of that type, the way
@@ -365,7 +365,7 @@ Fixtures: `rpkg/src/rust/list_newtype_vec_tests.rs`.
 
 With `validate`, the newtype's scalar error is `SexpError` (every container's
 already is), so the inner type's error must convert into it, as every built-in
-conversion's does and every `RConditionError` type's does (its classes kept).
+conversion's does and every `RConditionData` type's does (its classes kept).
 The attribute goes on the struct, and `validate` is its only key.
 
 A hand-written `TryFromSexpElement` gets the same hook by overriding

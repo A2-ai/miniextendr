@@ -699,7 +699,7 @@ failing element at once, by reason and 1-based position
 R-side precondition first, which raises the same condition with its own
 message (`'x' must have length 1`); the examples below use `no_preconditions`
 (or, per argument, `Unchecked<T>`) so the value reaches Rust. An argument type whose error implements
-`RConditionError` contributes its own classes and fields; see
+`RConditionData` contributes its own classes and fields; see
 [ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors) for the wording
 table and [classed conversion errors](ERROR_HANDLING.md#classed-conversion-errors).
 

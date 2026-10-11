@@ -3075,27 +3075,9 @@ pub fn derive_match_arg(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         .into()
 }
 
-/// Derive a typed R condition payload for a struct or enum.
-///
-/// Generates the same metadata as `RConditionError` plus `From<Self>` for
-/// `miniextendr_api::RCondition`. Use `#[condition(kind = warning)]` on a
-/// struct or enum, and override the kind on individual variants. The kinds
-/// are `error`, `warning`, `message` and `condition` (the default).
-///
-/// Convert with `RCondition::from(payload)`, then `.defer()` to keep computing
-/// or `.raise()` to leave the current Rust body. Classes, message, fields and
-/// call policy use the same attributes as `RConditionError`. Do not derive
-/// both: this derive already generates that metadata implementation.
-#[proc_macro_derive(RCondition, attributes(condition))]
-pub fn derive_r_condition(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    condition_derive::derive_r_condition(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
-}
-
-/// Derive `RConditionError` for an error or warning payload type: the R class
-/// vector, the message and the `data` fields handlers read as `e$<name>`.
+/// Derive an R condition type for a struct or enum: `RConditionData` (the R
+/// class vector, the message and the `data` fields handlers read as
+/// `e$<name>`) and `From<Self>` for `miniextendr_api::RCondition`.
 ///
 /// - `#[condition(class = "…")]` on the type sets the family class (default:
 ///   the type name in snake_case); on an enum variant it sets the member class
@@ -3109,14 +3091,19 @@ pub fn derive_r_condition(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 ///   `#[condition(skip)]` and `#[condition(debug)]` (attach the `Debug`
 ///   rendering instead) adjust that; tuple fields need `rename` or `skip`. The
 ///   reserved slots `message`, `call` and `kind` are rejected at compile time.
+/// - `#[condition(kind = error | warning | message | condition)]` on the type
+///   or a variant (the variant wins) is the kind `RCondition::from(value)`
+///   gives it; the default is `error`. Then `.defer()` signals it after the
+///   function returns its value, and `.raise()` signals it now.
 ///
-/// Works with [`defer_warning`](https://docs.rs/miniextendr-api) & co. for
-/// conditions that accompany a value and with `Result<T, E>` returns for
-/// classed errors. Generic types are not supported.
-#[proc_macro_derive(RConditionError, attributes(condition))]
-pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// The kind is read only through `RCondition::from`. Returned as `Err(value)`
+/// from a `Result<T, E>`, the value is always an R error, and
+/// [`defer_warning`](https://docs.rs/miniextendr-api) / `defer_message` signal
+/// the kind they are named after. Generic types are not supported.
+#[proc_macro_derive(RCondition, attributes(condition))]
+pub fn derive_r_condition(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    condition_derive::derive_r_condition_error(input)
+    condition_derive::derive_r_condition(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -3175,12 +3162,12 @@ pub fn derive_r_condition_error(input: proc_macro::TokenStream) -> proc_macro::T
 /// struct Duration(f64);
 /// ```
 ///
-/// An `RError` refusal (or one of any `RConditionError` type) keeps its classes
+/// An `RError` refusal (or one of any `RConditionData` type) keeps its classes
 /// and fields on the argument error, before the crate's
 /// `conversion_error_class`, with `e$param` and the message
 /// `'<p>' must be <expected>: <message>`. With `validate`, the newtype's
 /// scalar error is `SexpError`, so the inner type's error must convert into it,
-/// as every built-in conversion error and every `RConditionError` type does.
+/// as every built-in conversion error and every `RConditionData` type does.
 /// `validate` is the only key, and the attribute goes on the struct.
 #[proc_macro_derive(TryFromSexp, attributes(try_from_sexp))]
 pub fn derive_try_from_sexp(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

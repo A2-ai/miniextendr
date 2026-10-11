@@ -1247,7 +1247,7 @@ impl ArgContext {
 
 /// The `Err(e)` arm of a conversion binding: return the tagged
 /// `kind = "conversion"` value. `__mx_conversion_err_parts!` takes the class
-/// vector, message and data from an `RConditionError` error type, the
+/// vector, message and data from an `RConditionData` error type, the
 /// R-worded reason from a built-in conversion error and the `Display` text
 /// otherwise; `conversion_condition_value` puts the context's prefix before
 /// it, appends the crate's `conversion_error_class` and adds `e$param` and

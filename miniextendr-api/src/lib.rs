@@ -257,13 +257,13 @@ pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 // The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
 // the `IntoR` / `TryFromSexp` traits — `#[derive(IntoR)]` (macro namespace) and the trait
-// (type namespace) coexist, exactly like serde's `Serialize`. `RConditionError` follows
-// suit (trait in `condition`, derive re-exported here and in `condition`).
+// (type namespace) coexist, exactly like serde's `Serialize`. `RCondition` follows
+// suit: the enum and the derive are re-exported together from `condition`.
 #[doc(inline)]
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
     AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferDataFrame, PreferExternalPtr,
-    PreferList, PreferRNativeType, RConditionError, RFactor, TryFromList, TryFromSexp,
+    PreferList, PreferRNativeType, RFactor, TryFromList, TryFromSexp,
 };
 
 pub mod altrep;

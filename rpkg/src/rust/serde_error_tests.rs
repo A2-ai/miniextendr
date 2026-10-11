@@ -1,7 +1,7 @@
 //! Classed `Result` errors derived from the error type's serde output (#1449).
 //!
 //! Automatic under the `serde` feature: a `Result<T, E>` whose `E` is
-//! `Serialize + Display` and has no `RConditionError` impl needs no attribute.
+//! `Serialize + Display` and has no `RConditionData` impl needs no attribute.
 //! The enum variant becomes the member class `<prefix>_<variant>`, the
 //! variant's fields become `e$<name>`, and the message comes from `Display`.
 //! Internally tagged enums (`#[serde(tag = "kind")]`) have the tag consumed as

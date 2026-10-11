@@ -8,11 +8,11 @@
 //! message, classes, `kind`, `e$param` and call; the conversion adds
 //! `e$rust_type`, as for any conversion error. `HandModel` is the same check
 //! in a hand-written `TryFromSexp`, `DerivedModel` the same with a
-//! `#[derive(RConditionError)]` error (`#[condition(argument_message = ...)]`),
+//! `#[derive(RCondition)]` error (`#[condition(argument_message = ...)]`),
 //! and `Spacing` a scalar-backed type whose check also runs once on a whole
 //! `Vec`.
 
-use miniextendr_api::condition::{RConditionError, RError};
+use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{List, SEXP, SexpExt, TryFromSexp, miniextendr};
 
 /// The model check: an `mx_model` object, and advice for a data frame.
@@ -103,8 +103,8 @@ pub fn argument_message_hand(fit: HandModel) -> i32 {
 }
 
 /// The refusals of `DerivedModel`: `argument_message` on one variant of a
-/// derived `RConditionError`, none on the other.
-#[derive(RConditionError)]
+/// derived `RConditionData`, none on the other.
+#[derive(RCondition)]
 #[condition(class = "mx_model_error")]
 pub enum ModelRefusal {
     #[condition(
@@ -135,7 +135,7 @@ impl TryFromSexp for DerivedModel {
     }
 }
 
-/// A model through a conversion whose error is a derived `RConditionError`.
+/// A model through a conversion whose error is a derived `RConditionData`.
 /// @param fit A model object.
 #[miniextendr(noexport)]
 pub fn argument_message_derived(fit: DerivedModel) -> i32 {

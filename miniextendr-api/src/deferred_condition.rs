@@ -11,9 +11,9 @@
 //!
 //! ```ignore
 //! use miniextendr_api::{defer_warning, miniextendr};
-//! use miniextendr_api::condition::RConditionError;
+//! use miniextendr_api::RCondition;
 //!
-//! #[derive(Debug, RConditionError)]
+//! #[derive(Debug, RCondition)]
 //! #[condition(class = "pkg_warning")]
 //! enum PkgWarning {
 //!     #[condition(message = "dropped {dropped} of {total} rows")]
@@ -85,7 +85,7 @@
 //! # Payloads
 //!
 //! [`defer_warning()`], [`defer_message()`] and [`defer_condition()`] take any
-//! [`RConditionError`] value: a `#[derive(RConditionError)]` enum or struct
+//! [`RConditionData`] value: a `#[derive(RCondition)]` enum or struct
 //! (class from the type and variant names, message from a `format!` string or
 //! `Display`, fields as `data`), or a hand-built [`crate::condition::RError`].
 //! The [`defer_warning!`](crate::defer_warning!) /
@@ -113,7 +113,7 @@
 use std::sync::{Mutex, MutexGuard, OnceLock, PoisonError};
 
 use crate::SEXP;
-use crate::condition::{RCondition, RConditionError};
+use crate::condition::{RCondition, RConditionData};
 
 // region: Queue
 
@@ -144,7 +144,7 @@ fn pending() -> MutexGuard<'static, Vec<RCondition>> {
 ///
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,
 /// queue after the last fallible step; see [warning placement](self#warning-placement).
-pub fn defer_warning(payload: impl RConditionError) {
+pub fn defer_warning(payload: impl RConditionData) {
     defer(RCondition::Warning {
         message: payload.message(),
         class: payload.class(),
@@ -158,7 +158,7 @@ pub fn defer_warning(payload: impl RConditionError) {
 ///
 /// Unlike [`crate::message!`], the payload's classes are honoured: they are
 /// layered in front of `rust_message` so handlers can dispatch on them.
-pub fn defer_message(payload: impl RConditionError) {
+pub fn defer_message(payload: impl RConditionData) {
     defer(RCondition::Message {
         message: payload.message(),
         class: payload.class(),
@@ -169,7 +169,7 @@ pub fn defer_message(payload: impl RConditionError) {
 
 /// Queue a plain condition (`signalCondition()`: silent without a handler)
 /// to be signalled when the current guarded call or callback returns.
-pub fn defer_condition(payload: impl RConditionError) {
+pub fn defer_condition(payload: impl RConditionData) {
     defer(RCondition::Condition {
         message: payload.message(),
         class: payload.class(),
@@ -358,7 +358,7 @@ pub(crate) fn raise_condition_helper() -> SEXP {
 /// vector, most specific first), optional `data = …` (a pair, a bracketed
 /// list of pairs, or `{ name = value }` sugar), then the `format!` message.
 /// For a typed payload use [`crate::defer_warning()`] with a
-/// `#[derive(RConditionError)]` type (`#[condition(call = none)]` on the type
+/// `#[derive(RCondition)]` type (`#[condition(call = none)]` on the type
 /// or a variant drops the call there).
 ///
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,

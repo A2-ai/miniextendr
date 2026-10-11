@@ -74,7 +74,7 @@ pub(crate) struct CrateConfig {
     pub(crate) call_attribution: Option<CallAttribution>,
     /// `conversion_error_class = "..." | ["...", ...]`: classes added to every
     /// argument-conversion condition of the crate, after the error type's own
-    /// `RConditionError` classes (duplicates skipped) and before the
+    /// `RConditionData` classes (duplicates skipped) and before the
     /// `rust_error` layering. Empty when unset.
     pub(crate) conversion_error_class: Vec<String>,
     /// `preconditions = true | false`: whether the generated R wrappers of

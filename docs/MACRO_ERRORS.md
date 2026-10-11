@@ -442,7 +442,7 @@ nothing itself, `preconditions = true` keeps them even under the
 ### "`serde_error` is not a switch"
 
 Under the API crate's `serde` feature every `Result<T, E>` whose
-`E: serde::Serialize + Display` (and without an `RConditionError` impl) is
+`E: serde::Serialize + Display` (and without an `RConditionData` impl) is
 already classed from its serde shape, so the bare `#[miniextendr(serde_error)]`
 flag, `serde_error = true`, `serde_error = false` and an empty `serde_error()`
 would switch nothing on or off. The attribute only carries options: write
@@ -484,15 +484,15 @@ one place.
 
 ### "tuple field 0 of variant `E::Raw` needs a `data` name"
 
-`#[derive(RConditionError)]` turns every field into a `data` entry named after
+`#[derive(RCondition)]` turns every field into a `data` entry named after
 the field, and a tuple field has no name. Give it one with
 `#[condition(rename = "name")]`, or drop it from the payload with
 `#[condition(skip)]`. Named fields never hit this. See
-[CONDITIONS.md](CONDITIONS.md#deriving-rconditionerror).
+[CONDITIONS.md](CONDITIONS.md#deriving-rcondition).
 
 ### "`kind` is one of the condition's own slots (`message`, `call`, `kind`)"
 
-A `#[derive(RConditionError)]` field (or its `rename` target) may not be
+A `#[derive(RCondition)]` field (or its `rename` target) may not be
 called `message`, `call` or `kind`: the R condition object owns those slots.
 Rename the field with `#[condition(rename = "…")]` or exclude it with
 `#[condition(skip)]`. The same derive also rejects duplicate `data` names,

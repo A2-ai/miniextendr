@@ -61,7 +61,8 @@ fn enum_variants_inherit_or_override_the_signal_kind() {
         RCondition::from(Diagnostic::Progress).into_parts().0,
         "condition"
     );
-    assert_eq!(RCondition::from(Tick).into_parts().0, "condition");
+    // No `kind` anywhere: an error.
+    assert_eq!(RCondition::from(Tick).into_parts().0, "error");
 }
 
 #[test]
