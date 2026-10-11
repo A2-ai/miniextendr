@@ -122,8 +122,11 @@ The deserialization path is `RDeserializer::from_sexp_to(sexp)` in
 and reads R SEXPs through serde's visitor protocol.
 
 The `columnar` submodule (`miniextendr-api/src/serde/columnar.rs`) provides
-`ColumnarDataFrame`, `vec_to_dataframe`, and `vec_to_dataframe_split` for
-converting a `Vec<T: Serialize>` to an R data frame in columnar layout.
+`vec_to_dataframe`, `vec_to_dataframe_split` and `SerdeRowBuilder` for
+converting `T: Serialize` rows to an R data frame in columnar layout; they
+return the rooted `BuiltDataFrame` (there is no separate columnar frame type).
+`SerdeRows(rows).into_dataframe()` is the same path through the
+`IntoDataFrame` verb.
 
 ## Decision trees
 
@@ -161,17 +164,17 @@ Use hand-rolled `TryFromSexp` / `IntoR` when:
   smart Vec dispatch explanation, NA roundtrip, remote derive examples, and the
   native-vs-json comparison. Re-exports: `RSerializer`, `RDeserializer`,
   `RSerdeError`, `RSerializeNative`, `RDeserializeNative`, `to_r`, `from_r`,
-  `AsSerialize`, `ColumnarDataFrame`.
+  `AsSerialize`, `SerdeRows`, `vec_to_dataframe` and the other columnar helpers.
 - `miniextendr-api/src/serde/traits.rs` — `RSerializeNative`,
   `RDeserializeNative`, `to_r`, `from_r`, and `AsSerialize<T>`.
 - `miniextendr-api/src/serde/ser.rs` — `RSerializer` (serde Serializer impl).
 - `miniextendr-api/src/serde/de.rs` — `RDeserializer` (serde Deserializer impl).
-- `miniextendr-api/src/serde/columnar.rs` — `ColumnarDataFrame`,
-  `vec_to_dataframe`, `vec_to_dataframe_split`.
+- `miniextendr-api/src/serde/columnar.rs` — `vec_to_dataframe`,
+  `vec_to_dataframe_split`, `SerdeRowBuilder`.
 
 ## Common pitfalls
 
-- **All-None columns land as LGLSXP**: in `ColumnarDataFrame::from_rows`,
+- **All-None columns land as LGLSXP**: in the serde columnar path (`vec_to_dataframe`, `SerdeRows`),
   columns where every row's `Option<T>` was `None` are stored as a logical NA
   column (`LGLSXP`), not `list(NULL, NULL, ...)`. R coerces logical NA to the
   surrounding type on first use (`c(NA, 1L)` → integer vector). Mixed
