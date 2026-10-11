@@ -319,9 +319,9 @@ pub(crate) fn test_large_sum_overflow() {
 
 #[test]
 pub(crate) fn test_iter_int_basic() {
-    // Use from_iter with explicit length since Map doesn't preserve ExactSizeIterator
+    // Map retains the range's ExactSizeIterator implementation.
     let iter = (1..=5).map(|x| x * 2);
-    let data = IterIntData::from_iter(iter, 5);
+    let data = IterIntData::from_exact_iter(iter);
 
     assert_eq!(AltrepLen::len(&data), 5);
     assert_eq!(AltIntegerData::elt(&data, 0), 2);

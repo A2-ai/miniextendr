@@ -1947,6 +1947,44 @@ arbitrary growth or ring rearrangement.
 
 ## Iterator-Backed ALTREP
 
+`AltrepIteratorExt` is blanket-implemented for every `Iterator`. Its
+`into_altrep_data_exact()` constructor uses `ExactSizeIterator::len()`;
+`into_altrep_data(n)` declares a finite prefix without consuming the source.
+`AltrepIteratorItem` selects the data family for `i32`, `f64`, `u8`,
+`Rcomplex`, `RLogical`, `bool` and `String`. Local element types can select
+an existing coercing adapter or their own data adapter by implementing that trait.
+
+```rust
+use miniextendr_api::{AltrepIteratorExt, AltIntegerData};
+
+let data = (0..20).map(|x| x * 2).into_altrep_data_exact();
+assert_eq!(data.elt(3), 6);
+```
+
+Coverage follows capabilities rather than a list of iterator type names:
+
+| Iterator source or adapter | Construction |
+|---|---|
+| Exact-size collection iterators, arrays, supported finite ranges, and adapters retaining `ExactSizeIterator` | `into_altrep_data_exact()` |
+| `filter`, `filter_map`, `flat_map`, `flatten`, `scan`, `take_while`, `chain`, other unknown-size sources | `into_altrep_data(n)` with a known output prefix length |
+| `repeat`, `repeat_with`, `cycle`, `from_fn`, `successors`, random-distribution samples | Declare a finite prefix; construction never counts an unbounded source |
+| `itertools` adapters | The same bounds apply; miniextendr needs no `itertools` feature or dependency |
+| Borrowing or draining iterators | Usable locally; an R-owned class still needs an owned, `'static` source |
+| Tuples, chunks, results and custom items | Map to a supported item, supply an item data-family implementation, or consume via `RIterator for RefCell<I>` |
+
+`take(n)` alone does not make every source implement `ExactSizeIterator`.
+`DoubleEndedIterator` does not imply cheap random access, and `Clone` does
+not promise an independently replayable source. Construction does not infer
+either property. The standard full-cache adapter treats the first `None` as
+permanent exhaustion. A prefix longer than the source retains the documented
+missing-element/full-materialization error behavior.
+
+String data still materializes all strings on the first element lookup to
+provide stable borrowed `&str` storage. Native numeric/logical data caches
+only the prefix reached so far. None of these constructors registers an R class
+or supplies a source-restoration policy.
+
+
 The iterator data adaptors retain the concrete iterator type. A registered
 class can use its capabilities and choose its own duplication and serialization
 policy. Keep that type when operations such as cloning, skipping or restoring

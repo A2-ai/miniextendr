@@ -13,11 +13,12 @@
 //! `#[derive(Altrep*)]` + `#[altrep(manual)]` struct to back a live ALTREP
 //! vector.
 
+use super::macros::define_iter_data;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use crate::altrep_data::{
-    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltrepLen, Logical, fill_region,
+    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltrepLen, Logical,
 };
 
 /// Core state for iterator-backed ALTREP vectors.
@@ -35,7 +36,7 @@ use crate::altrep_data::{
 /// - **Lazy:** Elements generated on-demand via `elt(i)`
 /// - **Cached:** Once generated, elements stored in cache for repeat access
 /// - **Materializable:** Can be fully materialized for `Dataptr` or serialization
-/// - **Safe:** Uses `RefCell` for interior mutability, protected by R's GC
+/// - **Borrow-checked:** Uses `RefCell` for interior mutability on the R thread
 pub struct IterState<I, T> {
     /// Vector length (from `ExactSizeIterator::len()` or explicit)
     len: usize,
@@ -204,6 +205,7 @@ where
     }
 }
 
+define_iter_data! {
 /// Iterator-backed integer vector data adaptor.
 ///
 /// Wraps an iterator producing `i32` values and implements the data-level
@@ -219,32 +221,7 @@ where
 /// // Create from an iterator
 /// let data = IterIntData::from_iter((1..=10).map(|x| x * 2), 10);
 /// ```
-pub struct IterIntData<I: Iterator<Item = i32>> {
-    state: IterState<I, i32>,
-}
-
-impl<I: Iterator<Item = i32>> IterIntData<I> {
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I: ExactSizeIterator<Item = i32>> IterIntData<I> {
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I: Iterator<Item = i32>> AltrepLen for IterIntData<I> {
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterIntData, i32
 }
 
 impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
@@ -257,44 +234,16 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
     fn as_slice(&self) -> Option<&[i32]> {
         self.state.as_materialized()
     }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
-    }
 }
 
+define_iter_data! {
 /// Iterator-backed real (f64) vector data adaptor.
 ///
 /// Wraps an iterator producing `f64` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltRealData`]) for backing an ALTREP real vector.
 /// To expose it to R, wrap it in a `#[derive(AltrepReal)]` +
 /// `#[altrep(manual)]` struct (see the iterator module documentation).
-pub struct IterRealData<I: Iterator<Item = f64>> {
-    state: IterState<I, f64>,
-}
-
-impl<I: Iterator<Item = f64>> IterRealData<I> {
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I: ExactSizeIterator<Item = f64>> IterRealData<I> {
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I: Iterator<Item = f64>> AltrepLen for IterRealData<I> {
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterRealData, f64
 }
 
 impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
@@ -305,44 +254,16 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
     fn as_slice(&self) -> Option<&[f64]> {
         self.state.as_materialized()
     }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
-    }
 }
 
+define_iter_data! {
 /// Iterator-backed logical vector data adaptor.
 ///
 /// Wraps an iterator producing `bool` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltLogicalData`]) for backing an ALTREP logical
 /// vector. To expose it to R, wrap it in a `#[derive(AltrepLogical)]` +
 /// `#[altrep(manual)]` struct (see the iterator module documentation).
-pub struct IterLogicalData<I: Iterator<Item = bool>> {
-    state: IterState<I, bool>,
-}
-
-impl<I: Iterator<Item = bool>> IterLogicalData<I> {
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I: ExactSizeIterator<Item = bool>> IterLogicalData<I> {
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I: Iterator<Item = bool>> AltrepLen for IterLogicalData<I> {
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterLogicalData, bool
 }
 
 impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
@@ -352,44 +273,16 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
             .map(Logical::from_bool)
             .unwrap_or(Logical::Na)
     }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx).to_r_int())
-    }
 }
 
+define_iter_data! {
 /// Iterator-backed raw (u8) vector data adaptor.
 ///
 /// Wraps an iterator producing `u8` values and implements the data-level
 /// traits ([`AltrepLen`] + [`AltRawData`]) for backing an ALTREP raw vector.
 /// To expose it to R, wrap it in a `#[derive(AltrepRaw)]` +
 /// `#[altrep(manual)]` struct (see the iterator module documentation).
-pub struct IterRawData<I: Iterator<Item = u8>> {
-    state: IterState<I, u8>,
-}
-
-impl<I: Iterator<Item = u8>> IterRawData<I> {
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I: ExactSizeIterator<Item = u8>> IterRawData<I> {
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I: Iterator<Item = u8>> AltrepLen for IterRawData<I> {
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterRawData, u8
 }
 
 impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
@@ -400,9 +293,34 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
     fn as_slice(&self) -> Option<&[u8]> {
         self.state.as_materialized()
     }
+}
 
-    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
+define_iter_data! {
+/// Iterator-backed logical data retaining R's native logical bit patterns.
+IterRLogicalData, crate::RLogical
+}
+
+impl<I: Iterator<Item = crate::RLogical>> AltLogicalData for IterRLogicalData<I> {
+    fn elt(&self, i: usize) -> Logical {
+        self.state
+            .get_element(i)
+            .map(Logical::from)
+            .unwrap_or(Logical::Na)
+    }
+
+    fn as_r_slice(&self) -> Option<&[i32]> {
+        let values = self.state.as_materialized()?;
+        // RLogical is transparent over i32 and accepts every bit pattern.
+        Some(unsafe { std::slice::from_raw_parts(values.as_ptr().cast(), values.len()) })
+    }
+
+    fn get_region(&self, start: usize, len: usize, out: &mut [i32]) -> usize {
+        crate::altrep_data::fill_region(start, len, self.len(), out, |i| {
+            self.state
+                .get_element(i)
+                .unwrap_or(crate::RLogical::NA)
+                .to_i32()
+        })
     }
 }
 

@@ -11,9 +11,10 @@
 //! struct).
 
 use super::IterState;
+use super::macros::define_iter_data;
 use crate::SEXP;
 use crate::altrep_data::{
-    AltComplexData, AltIntegerData, AltListData, AltRealData, AltStringData, AltrepLen, fill_region,
+    AltComplexData, AltIntegerData, AltListData, AltRealData, AltStringData, AltrepLen,
 };
 
 /// Iterator-backed integer vector data adaptor with coercion from any integer-like type.
@@ -88,16 +89,6 @@ where
             .map(|val| val.coerce())
             .unwrap_or(crate::altrep_traits::NA_INTEGER)
     }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        // Can't return slice of i32 when cached values are type T
-        // Would need a separate coerced cache
-        None
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
-    }
 }
 
 /// Iterator-backed real vector data adaptor with coercion from any float-like type.
@@ -169,59 +160,14 @@ where
             .map(|val| val.coerce())
             .unwrap_or(f64::NAN)
     }
-
-    fn as_slice(&self) -> Option<&[f64]> {
-        // Can't return slice of f64 when cached values are type T
-        None
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
-    }
 }
 
+define_iter_data! {
 /// Iterator-backed integer vector data adaptor with coercion from bool.
 ///
 /// Wraps an iterator producing `bool` values that coerce to `i32`.
 /// Useful for converting boolean iterators to integer vectors.
-pub struct IterIntFromBoolData<I>
-where
-    I: Iterator<Item = bool>,
-{
-    state: IterState<I, bool>,
-}
-
-impl<I> IterIntFromBoolData<I>
-where
-    I: Iterator<Item = bool>,
-{
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I> IterIntFromBoolData<I>
-where
-    I: ExactSizeIterator<Item = bool>,
-{
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I> AltrepLen for IterIntFromBoolData<I>
-where
-    I: Iterator<Item = bool>,
-{
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterIntFromBoolData, bool
 }
 
 impl<I> AltIntegerData for IterIntFromBoolData<I>
@@ -235,16 +181,9 @@ where
             .map(|val| val.coerce())
             .unwrap_or(crate::altrep_traits::NA_INTEGER)
     }
-
-    fn as_slice(&self) -> Option<&[i32]> {
-        None
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
-    }
 }
 
+define_iter_data! {
 /// Iterator-backed string vector data adaptor.
 ///
 /// Wraps an iterator producing `String` values and implements the data-level
@@ -277,44 +216,7 @@ where
 /// let data = IterStringData::from_iter(iter, 5);
 /// // First access to ANY element will materialize all 5 strings
 /// ```
-pub struct IterStringData<I>
-where
-    I: Iterator<Item = String>,
-{
-    state: IterState<I, String>,
-}
-
-impl<I> IterStringData<I>
-where
-    I: Iterator<Item = String>,
-{
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I> IterStringData<I>
-where
-    I: ExactSizeIterator<Item = String>,
-{
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I> AltrepLen for IterStringData<I>
-where
-    I: Iterator<Item = String>,
-{
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterStringData, String
 }
 
 impl<I> AltStringData for IterStringData<I>
@@ -408,6 +310,7 @@ where
     }
 }
 
+define_iter_data! {
 /// Iterator-backed complex number vector data adaptor.
 ///
 /// Wraps an iterator producing `Rcomplex` values and implements the data-level
@@ -424,44 +327,7 @@ where
 /// let iter = (0..5).map(|x| Rcomplex { r: x as f64, i: (x * 2) as f64 });
 /// let data = IterComplexData::from_iter(iter, 5);
 /// ```
-pub struct IterComplexData<I>
-where
-    I: Iterator<Item = crate::Rcomplex>,
-{
-    state: IterState<I, crate::Rcomplex>,
-}
-
-impl<I> IterComplexData<I>
-where
-    I: Iterator<Item = crate::Rcomplex>,
-{
-    /// Create from an iterator with explicit length.
-    pub fn from_iter(iter: I, len: usize) -> Self {
-        Self {
-            state: IterState::new(iter, len),
-        }
-    }
-}
-
-impl<I> IterComplexData<I>
-where
-    I: ExactSizeIterator<Item = crate::Rcomplex>,
-{
-    /// Create from an ExactSizeIterator (length auto-detected).
-    pub fn from_exact_iter(iter: I) -> Self {
-        Self {
-            state: IterState::from_exact_size(iter),
-        }
-    }
-}
-
-impl<I> AltrepLen for IterComplexData<I>
-where
-    I: Iterator<Item = crate::Rcomplex>,
-{
-    fn len(&self) -> usize {
-        self.state.len()
-    }
+IterComplexData, crate::Rcomplex
 }
 
 impl<I> AltComplexData for IterComplexData<I>
@@ -477,9 +343,5 @@ where
 
     fn as_slice(&self) -> Option<&[crate::Rcomplex]> {
         self.state.as_materialized()
-    }
-
-    fn get_region(&self, start: usize, len: usize, buf: &mut [crate::Rcomplex]) -> usize {
-        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
