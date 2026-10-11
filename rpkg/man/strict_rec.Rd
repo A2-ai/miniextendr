@@ -31,14 +31,14 @@ strict_rec
 
 \item{name}{A field name, exactly; on the pointer itself any other name is an error.}
 
-\item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}.}
+\item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
 \item{...}{Additional arguments.}
 
 \item{pattern}{A regular expression; the names matching it are the completions.}
 }
 \description{
-The strict readers of \code{strict_rec}.
+The readers of \code{strict_rec}.
 
 Create a \code{strict_rec} whose \code{steps} are \code{1:id}.
 }

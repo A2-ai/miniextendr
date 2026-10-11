@@ -1398,46 +1398,44 @@ conversion raises the setter's argument error with the call as written
   semantics of an R6 or env object, not of a list. A class that needs a
   copy-on-modify `$<-` takes `r_data_accessors = "get"` and writes its own
   `$<-` method that returns a new object.
-- **An S3 bare pointer reads like the list it stands for.** `x$tags` takes
-  an exact field name and `x$ta` a unique prefix of one (`pmatch`, as R's
-  `$` on a list, with the same warning under
-  `options(warnPartialMatchDollar = TRUE)`); an unknown name, `""`, `NA` and
-  an ambiguous prefix are `NULL`. `x[["tags"]]`
-  takes an exact name, else `NULL`; `x[[2]]` takes a position in the field
-  order, as a list's `[[` does (`2.9` is the second field, a logical is a
-  position too, `NA` is `NULL`, `x[[9]]` past the last field raises
+- **No read matches a prefix of a name.** `x$ta` never reads `x$tags`, on
+  any class system and on any receiver: a pointer is not a list, and a
+  prefix match hides a typo (#1922).
+- **An S3 bare pointer refuses a name that is not a field.** `x$tags` and
+  `x[["tags"]]` take an exact field name; `x$nope`, `x$ta` and
+  `x[["nope"]]` raise `miniextendr_no_field`, naming the R class and its
+  fields, as a write does. `x[[2]]` takes a whole-number position in the
+  field order; `x[[9]]` past the last field raises
   `subscriptOutOfBoundsError` with the call `x[[9]]`, and so do `0` and a
   negative position, which on a list would raise R's own `get1index` error
-  or drop an element). Any other index (a vector of another
-  length, a list) raises `notSubsettableError` from the class's own `[[`,
-  on the call as written (`x[[1:2]]`), with the type's
-  `field_error(class = ...)` in front. The writes take an exact name only:
-  `x$nope <- v` and `x[["nope"]] <- v` raise `miniextendr_no_field`, naming
-  the R class and its fields, and a position goes to R's own `[[<-`.
-- **Strict lookup is opt-in per class.** `s3(r_data_accessors = "get",
-  lookup = "strict")` (or with the setters) makes the bare pointer's reads as
-  strict as its writes: `$` and `[[` take an exact field name, and `x$nope`,
-  `x$ta` (no prefix match) and `x[["nope"]]` raise `miniextendr_no_field`;
-  `[[` takes a whole-number position in range. `x[[TRUE]]`, `x[[NA]]`,
-  `x[[1.5]]` and an index of another length or type raise
-  `notSubsettableError`, and a position out of range
-  `subscriptOutOfBoundsError`, all behind the type's `field_error` classes.
-  A list or environment receiver keeps its own elements for other names.
-  `lookup = "list"` is the default spelled out.
-- **A name that is not a field** goes to R's own `$` / `[[` / `$<-` / `[[<-`
-  when the object is a list or an environment (an S3 list carrying the
-  handle in `.ptr` keeps its other elements, partial matching included), and
-  on an S4 object raises `miniextendr_no_field`. On an env class, `$` looks
-  the name up among the fields first, then among the methods, and gives
-  `NULL` for neither.
+  or drop an element. `x[[TRUE]]`, `x[[NA]]`, `x[[1.5]]` and any other
+  index (a vector of another length, a list) raise `notSubsettableError`
+  from the class's own `[[`, on the call as written (`x[[1:2]]`). All of
+  these carry the type's `field_error(class = ...)` in front. The writes
+  take an exact name only, and a position goes to R's own `[[<-`.
+- **`lookup = "list"` keeps a list's other lenience.** With
+  `s3(r_data_accessors, lookup = "list")` (or `= "get"`) the bare pointer
+  reads `NULL` for an unknown name, `""` and `NA`, and `[[` takes a
+  position as a list's does (`2.9` is the second field, a logical is a
+  position, `NA` is `NULL`; out of range is still
+  `subscriptOutOfBoundsError`). Names are still matched exactly.
+  `lookup = "strict"` is the default spelled out.
+- **A name that is not a field** goes to the object's own elements when it
+  is a list or an environment carrying the handle in `.ptr`, by the exact
+  name: `$` reads a list's element with `.subset2()` (R's own `$` on a list
+  would match a prefix) and an environment's binding with R's `$`, and `[[`
+  goes to R's own `[[` with `exact = TRUE` whatever the call passed. On an
+  S4 object it raises `miniextendr_no_field`. On an env class, `$` looks the
+  name up among the fields first, then among the methods, and gives `NULL`
+  for neither.
 
 The rule for each receiver:
 
 | Receiver | `$` | `[[` by name | `[[` by position | `$<-` / `[[<-`, unknown name |
 |---|---|---|---|---|
-| S3 bare pointer | exact, then a unique prefix, else `NULL` | exact, else `NULL` | field order; a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
-| S3 bare pointer, `lookup = "strict"` | exact, else `miniextendr_no_field` | exact, else `miniextendr_no_field` | a whole number in range; out of range, `subscriptOutOfBoundsError`; a logical, `NA` or fraction, `notSubsettableError` | `miniextendr_no_field` |
-| S3 list or environment carrying `.ptr` | an exact field, else the object's own `$`, which matches prefixes of its own names | an exact field, else its own `[[` | its own `[[` | its own |
+| S3 bare pointer | exact, else `miniextendr_no_field` | exact, else `miniextendr_no_field` | a whole number in range; out of range, `subscriptOutOfBoundsError`; a logical, `NA` or fraction, `notSubsettableError` | `miniextendr_no_field` |
+| S3 bare pointer, `lookup = "list"` | exact, else `NULL` | exact, else `NULL` | field order, as a list's (truncated, a logical too, `NA` is `NULL`); a position that picks no field, `subscriptOutOfBoundsError` | `miniextendr_no_field` |
+| S3 list or environment carrying `.ptr` | an exact field, else its own element by the exact name | an exact field, else its own `[[` with `exact = TRUE` | its own `[[` | its own |
 | env class | a field, then a method, else `NULL` | the same | none | `miniextendr_no_field` |
 | S4 | an exact field, else `miniextendr_no_field` | none | none | `miniextendr_no_field` |
 
@@ -1580,8 +1578,8 @@ pub struct Engine { /* ... */ }
 | `[[` with a position that picks no field (past the last, `0`, negative) | `subscriptOutOfBoundsError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
 | a pointer of another type under the class | `rust_error`, behind the type's `field_error(class = ...)` | every accessor |
 | a receiver of the class with no pointer | `miniextendr_no_handle`, behind the type's `field_error(class = ...)`, and `restored(class = ...)` for a list or environment | every accessor; every S3 reader under `refuse = "every_read"` |
-| `[[` with an index that is neither a name nor a position (under strict lookup also a logical, `NA` or fraction) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
-| no such field | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$<-` / `[[<-` on a bare pointer; `$` / `[[` there under `lookup = "strict"` (the list lookup reads `NULL`) |
+| `[[` with an index that is neither a name nor a whole-number position (under `lookup = "list"`, a logical or a fraction is a position) | `notSubsettableError` (R's own class), behind the type's `field_error(class = ...)` | an S3 bare pointer |
+| no such field | `miniextendr_no_field`, behind the type's `field_error(class = ...)` | S4 `$`; `$`, `[[`, `$<-` and `[[<-` on an S3 bare pointer (`lookup = "list"` reads `NULL` instead) |
 | an assignment to a computed field | `miniextendr_read_only_field` | `$<-` / `[[<-` in the get/set form |
 | a failed conversion | `rust_error` plus the crate's `conversion_error_class` | the setters, with `'name' must be ...` and `e$param == "value"` |
 | a computed field's getter | whatever the getter raises (`rust_error!(class = ...)`) | the computed field's reads |

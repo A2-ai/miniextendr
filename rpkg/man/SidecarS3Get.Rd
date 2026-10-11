@@ -34,7 +34,7 @@ SidecarS3Get
 
 \item{name}{A field name; \verb{$<-} sets only \code{level}.}
 
-\item{i}{A field name; \code{[[} on the pointer itself also takes a position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}.}
+\item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a position in the field order, as for a list. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
 \item{...}{Additional arguments.}
 
@@ -43,8 +43,8 @@ SidecarS3Get
 \item{value}{The new value of the field.}
 }
 \description{
-S3 class registration for SidecarS3Get: generated getters, and a
-hand-written copy-on-modify \verb{$<-}.
+S3 class registration for SidecarS3Get: generated getters with a list's
+lookup, and a hand-written copy-on-modify \verb{$<-}.
 
 Create a SidecarS3Get with no notes.
 

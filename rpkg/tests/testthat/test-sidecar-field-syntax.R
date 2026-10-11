@@ -394,8 +394,11 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
   in_front(e, "rust_error", "type mismatch")
   expect_identical(conditionMessage(e), "this `handmade_rec` object holds a pointer of another type")
   expect_equal(conditionCall(e), quote(other$id))
-  # A pointer without an address that no `SidecarHandmade` left behind.
-  null <- structure(methods::new("externalptr"), class = "handmade_rec")
+  # A pointer without an address that no `SidecarHandmade` left behind. A
+  # fresh one: `new("externalptr")` is R's shared prototype, which setting a
+  # class on would change for every later caller.
+  null <- unserialize(serialize(methods::new("externalptr"), NULL))
+  class(null) <- "handmade_rec"
   e <- caught(null$id)
   in_front(e, "rust_error", "null pointer")
   expect_identical(conditionMessage(e), "this `handmade_rec` object holds a null pointer")
@@ -1011,7 +1014,7 @@ test_that("strict_rec: any other index is refused, not read as a list would", {
 })
 
 test_that("strict_rec: a list carrying the pointer keeps its own elements, by the exact name", {
-  l <- structure(list(.ptr = unclass(new_strict_rec(2L)), note = "n"), class = "strict_rec")
+  l <- structure(list(.ptr = new_strict_rec(2L), note = "n"), class = "strict_rec")
   expect_identical(l$steps, 1:2)
   expect_identical(l$note, "n")
   expect_null(l$nope)
