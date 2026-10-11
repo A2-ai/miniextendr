@@ -2059,6 +2059,8 @@ let first = data.elt(0);  // Returns NA_INTEGER
 - Cache is sparse `BTreeMap<usize, T>`
 - Only accessed elements are cached
 - Skipped elements return NA/default forever
+- The first `None` permanently ends the source, even if it is not fused
+- Completing the declared prefix drops the source without an extra poll
 - `as_slice()` always returns `None`
 - Memory usage: O(num_accessed)
 
