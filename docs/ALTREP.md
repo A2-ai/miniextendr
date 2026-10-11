@@ -903,6 +903,50 @@ writes, and `Duplicate`, finding a shared owner, would give the new R vector
 the same buffer, so a write to one vector changes the other. An `Arc` doesn't
 make writing to that buffer from another thread safe either.
 
+### `[T; N]` (Owned Fixed-Size Array)
+
+`Altrep([1_i32, 2, 3])` retains the array itself in an external pointer.
+Arrays of `i32`, `f64`, `u8`, `Rcomplex`, `RLogical`, `bool` and
+`String` work for any length, including zero. Native layouts expose that
+array's buffer; bool and string arrays materialize R storage when needed,
+and subsequent callbacks read the materialized values, including R-written NA.
+
+Each element type and length gets a separate class on first conversion.
+These classes use R's default duplicate and serialization behaviour: an
+ordinary R vector with the current values. Serialized data therefore does not
+depend on registering a particular array length in a fresh session.
+
+`Altrep<T>` also allows `T: ?Sized` for borrowed views such as
+`&Altrep<[i32]>`. Returning a value to R still requires an owned backing
+type; both `Altrep<Box<[i32]>>` and `Box<Altrep<[i32]>>` transfer the
+boxed slice without copying its allocation. The latter can be obtained by
+unsizing `Box::new(Altrep([1_i32, 2, 3]))`.
+
+`Altrep::into_boxed_inner` keeps the metadata of a custom trailing DST or a
+trait object too. Such an owner still needs its own ALTREP class and data
+traits. `AltrepExtract` accepts an unsized view. `AltrepSerialize` needs a
+sized type with a working `unserialize`, because a class that saves its state
+must be able to load it again. A type that can't rebuild itself leaves
+serialization to R, which saves an ordinary vector.
+
+A custom trailing DST works the same way:
+
+```rust
+struct Tagged<T: ?Sized> {
+    tag: u32,
+    values: T,
+}
+
+let value: Box<Altrep<Tagged<[i32]>>> =
+    Box::new(Altrep(Tagged { tag: 7, values: [1, 2, 3] }));
+```
+
+The sized `Box<Tagged<[i32]>>` is the owner: it implements `TypedExternal`,
+the data traits and `RegisterAltrep`. An `AltrepExtract` impl on
+`Tagged<[i32]>` gives the callbacks the unsized view, which is valid only
+while the R vector is. `miniextendr-api/tests/altrep_unsized.rs` has the
+whole example.
+
 ### `Box<[T]>` (Immutable Owned Slice)
 
 ```rust

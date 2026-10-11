@@ -23,6 +23,10 @@ use crate::into_r::IntoR;
 /// Marker type to opt-in to ALTREP representation for types that have both
 /// eager-copy and ALTREP implementations.
 ///
+/// The marker supports unsized views such as `&Altrep<[i32]>`. Converting a
+/// value into R still requires a sized owner with registered callbacks; use
+/// `Altrep<Box<[i32]>>` or `Box<Altrep<[i32]>>` for an owned slice.
+///
 /// # Motivation
 ///
 /// Types like `Vec<i32>` have two possible conversions to R:
@@ -61,6 +65,7 @@ use crate::into_r::IntoR;
 /// - `Box<[i32]>`, `Box<[f64]>`, `Box<[bool]>`, `Box<[u8]>`, `Box<[String]>`
 /// - `VecDeque<i32>`, `VecDeque<f64>`, `VecDeque<u8>`, `VecDeque<Rcomplex>`
 /// - `Rc<[T]>` / `Arc<[T]>` for `i32`, `f64`, `u8`, `Rcomplex`, `RLogical`, `bool`, `String`
+/// - `[T; N]` for `i32`, `f64`, `u8`, `Rcomplex`, `RLogical`, `bool`, `String`
 /// - `Range<i32>`, `Range<i64>`, `Range<f64>`
 /// - `Vec<RLogical>`, `Box<[RLogical]>`, `Cow<'static, [RLogical]>`
 /// - `Vec<Box<str>>` / `Vec<Rc<str>>` / `Vec<Arc<str>>`, also with optional elements
@@ -91,7 +96,7 @@ pub type Lazy<T> = Altrep<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
-pub struct Altrep<T>(pub T);
+pub struct Altrep<T: ?Sized>(pub T);
 
 impl<T> Altrep<T> {
     /// Create a new ALTREP marker wrapper.
@@ -126,6 +131,35 @@ impl<T> Altrep<T> {
     }
 }
 
+impl<T: ?Sized> Altrep<T> {
+    /// Remove a boxed marker without copying or reallocating its contents.
+    ///
+    /// Slice lengths and trait-object metadata are preserved.
+    pub fn into_boxed_inner(self: Box<Self>) -> Box<T> {
+        let raw = Box::into_raw(self);
+        // SAFETY: Altrep is repr(transparent) with exactly one field. The field
+        // has the same allocation layout and metadata as the wrapper. Project
+        // the raw pointer to preserve mutable provenance; transfer ownership once.
+        unsafe { Box::from_raw(core::ptr::addr_of_mut!((*raw).0)) }
+    }
+}
+
+/// A boxed unsized marker uses the same owned backend as `Altrep<Box<T>>`.
+impl<T: ?Sized> IntoR for Box<Altrep<T>>
+where
+    Box<T>: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
+{
+    type Error = std::convert::Infallible;
+
+    fn try_into_sexp(self) -> Result<crate::SEXP, Self::Error> {
+        Altrep(self.into_boxed_inner()).try_into_sexp()
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<crate::SEXP, Self::Error> {
+        unsafe { Altrep(self.into_boxed_inner()).try_into_sexp_unchecked() }
+    }
+}
+
 impl<T> From<T> for Altrep<T> {
     #[inline]
     fn from(value: T) -> Self {
@@ -133,7 +167,7 @@ impl<T> From<T> for Altrep<T> {
     }
 }
 
-impl<T> std::ops::Deref for Altrep<T> {
+impl<T: ?Sized> std::ops::Deref for Altrep<T> {
     type Target = T;
 
     #[inline]
@@ -142,7 +176,7 @@ impl<T> std::ops::Deref for Altrep<T> {
     }
 }
 
-impl<T> std::ops::DerefMut for Altrep<T> {
+impl<T: ?Sized> std::ops::DerefMut for Altrep<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -207,3 +241,17 @@ impl IntoR for crate::altrep_sexp::AltrepSexp {
     }
 }
 // endregion
+
+#[cfg(test)]
+mod tests {
+    use super::Altrep;
+
+    #[test]
+    fn array_marker_coerces_to_mutable_slice_view() {
+        let mut array = Altrep([1, 2, 3]);
+        let slice: &mut Altrep<[i32]> = &mut array;
+        slice[1] = 9;
+        assert_eq!(&**slice, &[1, 9, 3]);
+        assert_eq!(array.into_inner(), [1, 9, 3]);
+    }
+}

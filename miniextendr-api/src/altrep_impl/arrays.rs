@@ -1,256 +1,71 @@
-//! ALTREP impls for const-generic arrays `[T; N]`.
+//! ALTREP for owned const-generic arrays.
 //!
-//! Arrays use const generics (`impl<const N: usize>`), so they can't ride the
-//! `impl_alt*_from_data!` macro path (which uses `$ty:ty` and needs a concrete
-//! type to delegate through). Numeric families share enough structure to be
-//! covered by the local `impl_altrep_array_numeric!` helper macro defined
-//! below; bool and String arrays differ structurally and are hand-written.
+//! The shared family generators keep native pointers and materialized data2
+//! behaviour consistent with Vec/Box. Each element family caches a separate
+//! class per N: a static inside a generic function alone would be shared by
+//! every N and install callbacks for whichever length registered first.
+//!
+//! Classes register on first conversion. Duplication and serialization keep
+//! R's default ordinary-vector fallback, so restoring a value never depends
+//! on having instantiated its array length in the receiving R session.
 
-// region: Array implementations (const generics)
-//
-// Macro-generated for numeric families (i32, f64, u8, Rcomplex) that share
-// the same pattern: Altrep + AltVec with dataptr + family trait + InferBase.
-// Bool and String arrays are hand-written because they differ structurally
-// (bool has no direct dataptr; String elt returns SEXP).
+crate::impl_altinteger_from_data_generic!({const N: usize} [i32; N] {}, dataptr);
+crate::impl_altreal_from_data_generic!({const N: usize} [f64; N] {}, dataptr);
+crate::impl_altraw_from_data_generic!({const N: usize} [u8; N] {}, dataptr);
+crate::impl_altcomplex_from_data_generic!({const N: usize} [crate::Rcomplex; N] {}, dataptr);
+crate::impl_altlogical_from_data_generic!({const N: usize} [crate::RLogical; N] {}, dataptr);
+crate::impl_altlogical_from_data_generic!({const N: usize} [bool; N] {});
+crate::impl_altstring_from_data_generic!({const N: usize} [String; N] {});
 
-/// Generate all ALTREP trait impls + InferBase for a numeric [T; N] array family.
-/// Pass optional extra items via `extra { ... }` to include in the family trait impl.
-macro_rules! impl_altrep_array_numeric {
-    (
-        elem = $elem:ty,
-        data_trait = $data_trait:path,
-        alt_trait = $alt_trait:path,
-        rbase = $rbase:expr,
-        make_class_fn = $make_class_fn:path,
-        install_family_fn = $install_family_fn:ident
-        $(, extra { $($extra:tt)* } )?
-        $(,)?
-    ) => {
-        impl<const N: usize> crate::altrep_traits::Altrep for [$elem; N] {
-            fn length(x: crate::SEXP) -> crate::R_xlen_t {
-                let data = unsafe {
-                    <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
-                };
-                crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
-            }
-        }
+macro_rules! register_array_family {
+    ($elem:ty, $name:literal) => {
+        impl<const N: usize> crate::altrep::RegisterAltrep for [$elem; N] {
+            fn get_or_init_class() -> crate::sys::altrep::R_altrep_class_t {
+                use std::collections::BTreeMap;
+                use std::ffi::CString;
+                use std::sync::Mutex;
 
-        impl<const N: usize> crate::altrep_traits::AltVec for [$elem; N] {
-            const HAS_DATAPTR: bool = true;
+                static CLASSES: Mutex<BTreeMap<usize, crate::sys::altrep::R_altrep_class_t>> =
+                    Mutex::new(BTreeMap::new());
 
-            fn dataptr(x: crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                let data = unsafe {
-                    <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_mut(x)
-                };
-                data.as_mut_ptr().cast::<core::ffi::c_void>()
-            }
-        }
+                crate::worker::with_r_thread(|| {
+                    let cached = CLASSES
+                        .lock()
+                        .expect("array ALTREP class cache poisoned")
+                        .get(&N)
+                        .copied();
+                    if let Some(class) = cached {
+                        return class;
+                    }
 
-        impl<const N: usize> $alt_trait for [$elem; N] {
-            const HAS_ELT: bool = true;
-
-            fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> $elem {
-                let data = unsafe {
-                    <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
-                };
-                <[$elem; N] as $data_trait>::elt(data, i.max(0) as usize)
-            }
-
-            const HAS_GET_REGION: bool = true;
-
-            fn get_region(
-                x: crate::SEXP,
-                start: crate::R_xlen_t,
-                len: crate::R_xlen_t,
-                buf: &mut [$elem],
-            ) -> crate::R_xlen_t {
-                if start < 0 || len <= 0 {
-                    return 0;
-                }
-                let data = unsafe {
-                    <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
-                };
-                <[$elem; N] as $data_trait>::get_region(data, start as usize, len as usize, buf)
-                    as crate::R_xlen_t
-            }
-
-            $($($extra)*)?
-        }
-
-        impl<const N: usize> crate::altrep_data::InferBase for [$elem; N] {
-            const BASE: crate::altrep::RBase = $rbase;
-
-            unsafe fn make_class(
-                class_name: *const ::core::ffi::c_char,
-                pkg_name: *const ::core::ffi::c_char,
-            ) -> crate::sys::altrep::R_altrep_class_t {
-                let cls = unsafe { $make_class_fn(class_name, pkg_name, crate::altrep_dll_info()) };
-                let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
-                crate::altrep::validate_altrep_class(cls, name, Self::BASE)
-            }
-
-            unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-                unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-                unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-                unsafe { crate::altrep_bridge::$install_family_fn::<Self>(cls) };
+                    // R copies/interns these bytes. Do not hold the cache lock
+                    // across R allocation or callback installation.
+                    let name = CString::new(format!("{}_{}", $name, N))
+                        .expect("array class name contains no NUL");
+                    let class = unsafe {
+                        <Self as crate::altrep_data::InferBase>::make_class(
+                            name.as_ptr(),
+                            crate::AltrepPkgName::as_ptr(),
+                        )
+                    };
+                    unsafe {
+                        <Self as crate::altrep_data::InferBase>::install_methods(class);
+                    }
+                    CLASSES
+                        .lock()
+                        .expect("array ALTREP class cache poisoned")
+                        .insert(N, class);
+                    class
+                })
             }
         }
     };
 }
 
-/// no_na fragment for families that support it (Integer, Real).
-macro_rules! altrep_array_no_na {
-    ($elem:ty, $data_trait:path) => {
-        const HAS_NO_NA: bool = true;
-
-        fn no_na(x: crate::SEXP) -> i32 {
-            let data =
-                unsafe { <[$elem; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-            <[$elem; N] as $data_trait>::no_na(data)
-                .map(i32::from)
-                .unwrap_or(0)
-        }
-    };
-}
-
-impl_altrep_array_numeric!(
-    elem = i32,
-    data_trait = crate::altrep_data::AltIntegerData,
-    alt_trait = crate::altrep_traits::AltInteger,
-    rbase = crate::altrep::RBase::Int,
-    make_class_fn = crate::sys::altrep::R_make_altinteger_class,
-    install_family_fn = install_int,
-    extra { altrep_array_no_na!(i32, crate::altrep_data::AltIntegerData); },
-);
-impl_altrep_array_numeric!(
-    elem = f64,
-    data_trait = crate::altrep_data::AltRealData,
-    alt_trait = crate::altrep_traits::AltReal,
-    rbase = crate::altrep::RBase::Real,
-    make_class_fn = crate::sys::altrep::R_make_altreal_class,
-    install_family_fn = install_real,
-    extra { altrep_array_no_na!(f64, crate::altrep_data::AltRealData); },
-);
-impl_altrep_array_numeric!(
-    elem = u8,
-    data_trait = crate::altrep_data::AltRawData,
-    alt_trait = crate::altrep_traits::AltRaw,
-    rbase = crate::altrep::RBase::Raw,
-    make_class_fn = crate::sys::altrep::R_make_altraw_class,
-    install_family_fn = install_raw,
-);
-impl_altrep_array_numeric!(
-    elem = crate::Rcomplex,
-    data_trait = crate::altrep_data::AltComplexData,
-    alt_trait = crate::altrep_traits::AltComplex,
-    rbase = crate::altrep::RBase::Complex,
-    make_class_fn = crate::sys::altrep::R_make_altcomplex_class,
-    install_family_fn = install_cplx,
-);
-
-// Logical arrays — bool != i32, no direct dataptr, elt returns i32 via to_r_int()
-impl<const N: usize> crate::altrep_traits::Altrep for [bool; N] {
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data =
-            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
-    }
-}
-
-impl<const N: usize> crate::altrep_traits::AltVec for [bool; N] {}
-
-impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
-    const HAS_ELT: bool = true;
-
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> i32 {
-        let data =
-            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        <[bool; N] as crate::altrep_data::AltLogicalData>::elt(data, i.max(0) as usize).to_r_int()
-    }
-
-    const HAS_NO_NA: bool = true;
-
-    fn no_na(x: crate::SEXP) -> i32 {
-        let data =
-            unsafe { <[bool; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        <[bool; N] as crate::altrep_data::AltLogicalData>::no_na(data)
-            .map(i32::from)
-            .unwrap_or(0)
-    }
-}
-
-impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::Logical;
-
-    unsafe fn make_class(
-        class_name: *const ::core::ffi::c_char,
-        pkg_name: *const ::core::ffi::c_char,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        let cls = unsafe {
-            crate::sys::altrep::R_make_altlogical_class(
-                class_name,
-                pkg_name,
-                crate::altrep_dll_info(),
-            )
-        };
-        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
-        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_lgl::<Self>(cls) };
-    }
-}
-
-// String arrays — no dataptr, elt returns SEXP via checked_mkchar
-impl<const N: usize> crate::altrep_traits::Altrep for [String; N] {
-    const GUARD: crate::altrep_traits::AltrepGuard = crate::altrep_traits::AltrepGuard::RUnwind;
-
-    fn length(x: crate::SEXP) -> crate::R_xlen_t {
-        let data =
-            unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        crate::altrep_data::AltrepLen::len(data) as crate::R_xlen_t
-    }
-}
-
-impl<const N: usize> crate::altrep_traits::AltVec for [String; N] {}
-
-impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
-    fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP {
-        unsafe { super::altstring_elt::<[String; N]>(x, i) }
-    }
-
-    const HAS_SET_ELT: bool = true;
-
-    fn set_elt(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP) {
-        unsafe { super::altstring_set_elt::<[String; N]>(x, i, v) }
-    }
-}
-
-impl<const N: usize> crate::altrep_data::InferBase for [String; N] {
-    const BASE: crate::altrep::RBase = crate::altrep::RBase::String;
-
-    unsafe fn make_class(
-        class_name: *const ::core::ffi::c_char,
-        pkg_name: *const ::core::ffi::c_char,
-    ) -> crate::sys::altrep::R_altrep_class_t {
-        let cls = unsafe {
-            crate::sys::altrep::R_make_altstring_class(
-                class_name,
-                pkg_name,
-                crate::altrep_dll_info(),
-            )
-        };
-        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
-        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
-    }
-
-    unsafe fn install_methods(cls: crate::sys::altrep::R_altrep_class_t) {
-        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
-        unsafe { crate::altrep_bridge::install_str::<Self>(cls) };
-    }
-}
-// endregion
+register_array_family!(i32, "Array_i32");
+register_array_family!(f64, "Array_f64");
+register_array_family!(u8, "Array_u8");
+register_array_family!(crate::Rcomplex, "Array_Rcomplex");
+register_array_family!(crate::RLogical, "Array_RLogical");
+register_array_family!(bool, "Array_bool");
+register_array_family!(String, "Array_String");
