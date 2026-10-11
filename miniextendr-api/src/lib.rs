@@ -312,11 +312,6 @@ pub use sexp_types::{
     cetype_t,
 };
 
-/// Automatic registration internals.
-///
-/// Items annotated with `#[miniextendr]` self-register at link time.
-/// The C entrypoint calls [`registry::miniextendr_register_routines`] to
-/// finalize registration with R. Users don't interact with this module.
 pub mod registry;
 
 /// Host-time generator of `wasm_registry.rs` — the WASM-side replacement for
@@ -760,11 +755,9 @@ pub use r_coerce::{
 
 pub mod condition;
 pub use condition::{ArgError, AsRError, RCondition};
-/// Conditions that accompany a returned value (`defer_warning` & co.).
 pub mod deferred_condition;
 pub use deferred_condition::{defer_condition, defer_message, defer_warning};
 pub mod convert;
-/// Support for R `...` arguments represented as a validated list.
 pub mod dots;
 pub mod list;
 pub mod missing;
@@ -780,7 +773,6 @@ pub use nargs::NArgs;
 /// Unevaluated-argument markers (`Quoted` / `Quosure`) for `#[miniextendr]` parameters.
 pub mod quoted;
 pub use quoted::{Quosure, Quoted};
-/// The dots left unforced (`LazyDots`), a `#[miniextendr]` parameter type for `...`.
 pub mod lazy_dots;
 pub use lazy_dots::LazyDots;
 /// Precondition markers (`Checked<T>` / `Unchecked<T>`) for `#[miniextendr]` parameters.
@@ -889,9 +881,6 @@ pub mod abi;
 /// loaded by consumer packages via `R_GetCCallable`.
 pub mod mx_abi;
 
-/// Package initialization (`miniextendr_init!` support).
-///
-/// Consolidates all init steps into [`init::package_init`].
 pub mod init;
 
 /// Runtime support for trait ABI operations.

@@ -128,11 +128,6 @@ pub use rand_distr;
 
 // region: Either - Sum type
 
-/// Integration with the `either` crate.
-///
-/// Provides [`TryFromSexp`](crate::TryFromSexp) and [`IntoR`](crate::IntoR) for [`Either<L, R>`][either::Either].
-///
-/// Enable with `features = ["either"]`.
 #[cfg(feature = "either")]
 pub mod either_impl;
 #[cfg(feature = "either")]
@@ -141,12 +136,6 @@ pub use either_impl::{Either, Left, Right};
 
 // region: Ndarray - N-dimensional arrays
 
-/// Integration with the `ndarray` crate.
-///
-/// Provides conversions between R vectors/matrices and ndarray types
-/// (`Array1`, `Array2`, `ArrayView1`, `ArrayView2`).
-///
-/// Enable with `features = ["ndarray"]`.
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
@@ -509,13 +498,6 @@ pub use tabled_impl::{
 
 // region: TinyVec - Small vector optimization
 
-/// Integration with the `tinyvec` crate for small-vector optimization.
-///
-/// Provides conversions for `TinyVec<[T; N]>` and `ArrayVec<[T; N]>`:
-/// - `TinyVec`: Growable, stores inline up to N elements, then spills to heap
-/// - `ArrayVec`: Fixed capacity N, never allocates, errors if exceeded
-///
-/// Enable with `features = ["tinyvec"]`.
 #[cfg(feature = "tinyvec")]
 pub mod tinyvec_impl;
 #[cfg(feature = "tinyvec")]
