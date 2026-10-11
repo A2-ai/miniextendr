@@ -1580,7 +1580,11 @@ so its type must implement `Default`. The attribute form `#[miniextendr(list)]`
 does not register `into_list` as a field attribute ("cannot find attribute
 `into_list`"), so spell list mode as its three derives:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{IntoList, PreferList, TryFromList};
+use std::cell::RefCell;
+
 #[derive(IntoList, TryFromList, PreferList)]
 pub struct Cfg {
     pub label: String,

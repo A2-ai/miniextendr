@@ -602,7 +602,10 @@ fn try_parse(s: String) -> Result<i32, ()> {
 Derive `ExternalPtr` on the struct and put `#[miniextendr]` on its impl block.
 The struct is wrapped in an ExternalPtr:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{ExternalPtr, miniextendr};
+
 #[derive(ExternalPtr)]
 struct Counter { n: i32 }
 

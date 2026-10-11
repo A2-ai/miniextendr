@@ -22,6 +22,7 @@ constructor instead returns `BuiltDataFrame`, which roots the frame with
 `R_PreserveObject` and releases that root on drop. The handle dereferences to
 `DataFrame` for reads and edits and implements `IntoR` for handoff to R:
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::{DataFrameRow, miniextendr};

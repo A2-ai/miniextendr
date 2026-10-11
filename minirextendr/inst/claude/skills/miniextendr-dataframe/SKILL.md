@@ -21,6 +21,7 @@ NA contract for struct row types.
 
 ## The 90% case: derive a row type
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, FromDataFrame, IntoDataFrame};
 use miniextendr_api::{miniextendr, DataFrameRow};

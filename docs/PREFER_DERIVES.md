@@ -46,7 +46,10 @@ the derive wrote.
 
 Return struct as an R named list:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{IntoList, PreferList, TryFromList, miniextendr};
+
 #[derive(IntoList, TryFromList, PreferList)]
 pub struct Config {
     pub name: String,
@@ -72,6 +75,7 @@ implement, and those companions already convert to a data.frame. Deriving it on
 your own row struct fails with "`ColumnSource` is not implemented". To return a
 data.frame, return a `BuiltDataFrame` or wrap the rows in `AsDataFrame`:
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::{AsDataFrame, BuiltDataFrame, DataFrameRow, IntoDataFrame, miniextendr};
 
@@ -101,6 +105,7 @@ pointer, so it needs no `PreferExternalPtr` (adding one is a conflicting-impl
 error). `PreferExternalPtr` is for a type whose `TypedExternal` impl you write
 by hand:
 
+<!-- docs-examples-check -->
 ```rust
 use miniextendr_api::externalptr::TypedExternal;
 use miniextendr_api::{PreferExternalPtr, miniextendr};
@@ -128,7 +133,10 @@ pub fn create_engine() -> Engine {
 Return struct as a native R scalar (for newtype wrappers; `RNativeType`
 requires `Copy`):
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{PreferRNativeType, RNativeType, miniextendr};
+
 #[repr(transparent)]
 #[derive(Clone, Copy, RNativeType, PreferRNativeType)]
 pub struct Meters(f64);
@@ -144,7 +152,10 @@ pub fn distance() -> Meters {
 
 Instead of deriving a Prefer* on the type, you can override per-function:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{ExternalPtr, IntoList, miniextendr};
+
 #[derive(IntoList, ExternalPtr)]
 pub struct Point { x: f64, y: f64 }
 
@@ -188,7 +199,10 @@ On a struct, `prefer = "..."` selects what `#[miniextendr]` generates:
 `prefer = "native"` still needs `RNativeType`, so it only fits a
 `#[repr(transparent)]` newtype over a native type:
 
+<!-- docs-examples-check -->
 ```rust
+use miniextendr_api::{RNativeType, miniextendr};
+
 #[miniextendr(prefer = "list")]
 pub struct Config { pub name: String, pub value: f64 }
 // Generates: IntoList + TryFromList + PreferList

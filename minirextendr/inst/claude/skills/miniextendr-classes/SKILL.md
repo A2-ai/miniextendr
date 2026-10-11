@@ -37,6 +37,7 @@ package already has an `.onLoad()`; `minirextendr::miniextendr_doctor()` warns w
 
 ## A complete R6 example
 
+<!-- docs-examples-check: counter -->
 ```rust
 use miniextendr_api::{miniextendr, ExternalPtr};
 
@@ -127,13 +128,14 @@ duplicate class definitions.
 
 Annotate the trait and each impl:
 
+<!-- docs-examples-check: counter -->
 ```rust
 #[miniextendr]
 pub trait Describe {
     fn describe(&self) -> String;
 }
 
-#[miniextendr]
+#[miniextendr(r6)]
 impl Describe for Counter {
     fn describe(&self) -> String {
         format!("Counter at {}", self.value)
@@ -141,7 +143,11 @@ impl Describe for Counter {
 }
 ```
 
-R gets dual calling forms: `Counter$Describe$describe(obj)` and
+A trait impl does not inherit the type's class system: a bare
+`#[miniextendr]` is env, so name the system of the type's own impl block
+(`r6` for the `Counter` above), or use `s3`, which works with every class
+system. A mismatch stops the build with lint MXL008. For an env class, R gets
+dual calling forms: `Counter$Describe$describe(obj)` and
 `obj$Describe$describe()`. This is how you share one method surface across
 several Rust types.
 

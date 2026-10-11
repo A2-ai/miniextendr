@@ -60,6 +60,7 @@ For the full design rationale and the orphan-rule mechanics behind the blanket i
 `#[derive(DataFrameRow)]` is the primary path: derive it on a row struct, then
 return `BuiltDataFrame` from a `#[miniextendr]` function.
 
+<!-- docs-examples-check: quickstart -->
 ```rust
 use miniextendr_api::{
     BuiltDataFrame, DataFrame, DataFrameRow, FromDataFrame, IntoDataFrame, miniextendr,
@@ -85,6 +86,7 @@ fn get_measurements() -> BuiltDataFrame {
 
 The reverse direction reads a `DataFrame` argument back into rows:
 
+<!-- docs-examples-check: quickstart -->
 ```rust
 #[miniextendr]
 fn round_trip(df: DataFrame) -> BuiltDataFrame {
