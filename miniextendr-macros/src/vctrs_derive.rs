@@ -1105,7 +1105,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             use ::miniextendr_api::IntoR;
 
                             // Get attrs before moving fields out of self
-                            let attrs = self.attrs();
+                            let attrs = <Self as ::miniextendr_api::vctrs::VctrsClass>::attrs(&self);
                             #class_slice_binding
 
                             // Build the fields list from pairs.
@@ -1144,7 +1144,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             use ::miniextendr_api::list::List;
 
                             // Get attrs before moving data out of self
-                            let attrs = self.attrs();
+                            let attrs = <Self as ::miniextendr_api::vctrs::VctrsClass>::attrs(&self);
                             #class_slice_binding
                             // Convert data to List type - safe because into_sexp() for Vec<Vec<T>> produces VECSXP.
                             // `new_list_of` roots the list on entry; nothing allocates in between (#1759).
@@ -1173,7 +1173,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                             use ::miniextendr_api::IntoR;
 
                             // Get attrs before moving data out of self
-                            let attrs = self.attrs();
+                            let attrs = <Self as ::miniextendr_api::vctrs::VctrsClass>::attrs(&self);
                             #class_slice_binding
                             // `new_vctr` roots `data` on entry; nothing allocates in between (#1759).
                             let data = self.#data_ident.into_sexp();

@@ -571,11 +571,6 @@ pub fn get_r_class(x: SEXP) -> SEXP {
 
 // region: Cross-package vctrs type export (producer_temp)
 
-// VctrsClass must be in scope for the `#[derive(Vctrs)]`-generated
-// `attrs()` / `CLASS_NAME` references to resolve.
-#[cfg(feature = "vctrs")]
-use miniextendr_api::vctrs::VctrsClass;
-
 // A vctrs vector type the consumer package constructs and dispatches on.
 //
 // vctrs types are pure-R-attribute objects (class vector + data), and their
