@@ -457,7 +457,6 @@ use r_wrappers::TraitWrapperOpts;
 use r_wrappers::generate_trait_r_wrapper;
 use vtable::generate_trait_method_c_wrapper;
 use vtable::generate_vtable_static;
-use vtable::is_self_ref_type;
 
 /// Generate R function body lines that capture the `.Call()` result in `.val`,
 /// check for a tagged `rust_condition_value`, and return `.val`.
@@ -736,7 +735,7 @@ impl syn::parse::Parse for TpieMethod {
 /// Rewrite `Self` → concrete type in a method signature's parameters.
 ///
 /// `&Self` params are left as-is because `generate_trait_method_c_wrapper`
-/// detects them via `is_self_ref_type` and generates `ExternalPtr<T>` extraction.
+/// detects them via `type_inspect::self_ref_mutability` and generates `ExternalPtr<T>` extraction.
 ///
 /// The return type keeps `Self`, as in a trait impl with method bodies: the
 /// C wrapper hands a `Self` / `Option<Self>` / `Result<Self, E>` back as an
@@ -747,7 +746,7 @@ fn rewrite_self_in_params(sig: &mut syn::Signature, concrete_type: &syn::Type) {
     for input in &mut sig.inputs {
         if let syn::FnArg::Typed(pt) = input {
             // Don't rewrite &Self — C wrapper generator handles it specially
-            if is_self_ref_type(&pt.ty) {
+            if crate::type_inspect::self_ref_mutability(&pt.ty).is_some() {
                 continue;
             }
             let rewritten = rewrite_self_type(&pt.ty, concrete_type);

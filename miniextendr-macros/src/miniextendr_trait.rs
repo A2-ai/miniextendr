@@ -764,24 +764,8 @@ fn generate_method_shim(
         .enumerate()
         .map(|(i, (name, ty))| {
             let name_str = crate::naming::ident_name(name);
-            let (is_self_ref, is_mut) = param_is_self_ref(ty);
-            if is_self_ref {
-                let extptr_name = quote::format_ident!("__extptr_{}", crate::naming::unraw(name));
-                if is_mut {
-                    quote::quote! {
-                        let mut #extptr_name: ::miniextendr_api::ExternalPtr<#impl_t> = unsafe {
-                            ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
-                        };
-                        let #name: &mut #impl_t = &mut *#extptr_name;
-                    }
-                } else {
-                    quote::quote! {
-                        let #extptr_name: ::miniextendr_api::ExternalPtr<#impl_t> = unsafe {
-                            ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
-                        };
-                        let #name: &#impl_t = &*#extptr_name;
-                    }
-                }
+            if let Some(mutable) = crate::type_inspect::self_ref_mutability(ty) {
+                crate::trait_self_ref::extract(name, &impl_t, i, mutable)
             } else {
                 quote::quote! {
                     let #name: #ty = unsafe {
@@ -791,6 +775,33 @@ fn generate_method_shim(
             }
         })
         .collect();
+
+    let self_refs: Vec<_> = method
+        .param_names
+        .iter()
+        .zip(&method.param_types)
+        .filter_map(|(name, ty)| {
+            crate::type_inspect::self_ref_mutability(ty).map(|mutable| (name, mutable))
+        })
+        .collect();
+    let handles: Vec<_> = self_refs
+        .iter()
+        .map(|(name, mutable)| {
+            (
+                crate::trait_self_ref::handle_ident(name),
+                *mutable,
+                crate::naming::ident_name(name),
+            )
+        })
+        .collect();
+    let alias_checks = crate::trait_self_ref::alias_checks(
+        &impl_t,
+        &handles,
+        Some((quote::quote!(data.cast_const()), method.is_mut)),
+    );
+    let self_borrows = self_refs
+        .iter()
+        .map(|(name, mutable)| crate::trait_self_ref::borrow(name, *mutable));
 
     // Generate method call (uses __ImplT)
     let param_names = &method.param_names;
@@ -864,6 +875,8 @@ fn generate_method_shim(
                 ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
                 // Extract arguments
                 #(#arg_extractions)*
+                #alias_checks
+                #(#self_borrows)*
 
                 // Call method
                 let result = { #method_call };
@@ -933,21 +946,6 @@ fn type_contains_self(ty: &syn::Type) -> bool {
         syn::Type::Paren(p) => type_contains_self(&p.elem),
         _ => false,
     }
-}
-
-/// Check if a parameter type is `&Self` or `&mut Self`.
-///
-/// Returns `(is_self_ref, is_mut)`. When true, the generated shim extracts
-/// an `ExternalPtr<T>` from the SEXP and borrows from it instead of trying
-/// to extract `&T` directly (which doesn't implement `TryFromSexp`).
-fn param_is_self_ref(ty: &syn::Type) -> (bool, bool) {
-    if let syn::Type::Reference(r) = ty
-        && let syn::Type::Path(tp) = r.elem.as_ref()
-        && tp.path.is_ident("Self")
-    {
-        return (true, r.mutability.is_some());
-    }
-    (false, false)
 }
 
 /// Check if a type syntactically contains `Self::AssocType` for a given associated type name.
@@ -1140,7 +1138,11 @@ fn compute_extra_bounds(
             needs_into_r = true;
         }
         // &Self in params → __ImplT: TypedExternal + 'static
-        if method.param_types.iter().any(|ty| param_is_self_ref(ty).0) {
+        if method
+            .param_types
+            .iter()
+            .any(|ty| crate::type_inspect::self_ref_mutability(ty).is_some())
+        {
             needs_typed_external = true;
         }
 
@@ -1165,7 +1167,7 @@ fn compute_extra_bounds(
         // Full param type bounds for trait type params.
         // Instead of bare `T: TryFromSexp`, we add `Vec<T>: TryFromSexp` etc.
         for param_ty in &method.param_types {
-            if !param_is_self_ref(param_ty).0 {
+            if crate::type_inspect::self_ref_mutability(param_ty).is_none() {
                 let has_param = trait_param_idents
                     .iter()
                     .any(|p| type_contains_ident(param_ty, p));
