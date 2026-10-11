@@ -449,6 +449,18 @@ fn generate_concrete_vtable_shims(
             })
             .collect();
 
+        let native_borrow_checks = crate::trait_self_ref::native_borrow_checks(
+            param_names
+                .iter()
+                .zip(method.sig.inputs.iter().filter_map(|arg| match arg {
+                    syn::FnArg::Typed(pt) => Some(pt.ty.as_ref()),
+                    syn::FnArg::Receiver(_) => None,
+                }))
+                .enumerate()
+                .map(|(index, (name, ty))| (index, crate::naming::ident_name(name), ty)),
+            &argv,
+        );
+
         let self_refs: Vec<_> = method
             .sig
             .inputs
@@ -545,6 +557,7 @@ fn generate_concrete_vtable_shims(
                 // allowing rust_* class layering (issue #345).
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect_shim(|| {
                     ::miniextendr_api::trait_abi::check_arity(#argc, #expected_argc, #method_name_str);
+                    #native_borrow_checks
                     #(#arg_extractions)*
                     #alias_checks
                     #(#self_borrows)*
