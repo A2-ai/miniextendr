@@ -1588,8 +1588,10 @@ fn s4_generic_names_follow_r_method_names() {
             "s4_type_code",
         ),
         (
+            // `r_name` next to `generic` is a parse error, so the override
+            // stands alone and is used verbatim.
             quote::quote! {
-                #[miniextendr(r_name = "kind", s4(generic = "category"))]
+                #[miniextendr(s4(generic = "category"))]
                 pub fn r#type(&self) -> i32 { 0 }
             },
             "category",
@@ -6951,13 +6953,13 @@ fn r6_initialize_collision_does_not_reserve_unrelated_rust_names() {
             }
         ),
         quote::quote!(
-            #[miniextendr(constructor)]
+            #[miniextendr(r6(constructor))]
             pub fn initialize() -> Self {
                 unimplemented!()
             }
         ),
         quote::quote!(
-            #[miniextendr(ignore)]
+            #[miniextendr(r6(ignore))]
             pub fn initialize(&self) {}
         ),
         quote::quote!(
@@ -7001,13 +7003,16 @@ fn r6_initialize_collision_does_not_reserve_unrelated_rust_names() {
 
 #[test]
 fn env_member_collisions_follow_emitted_names() {
-    for (members, name) in [
+    for (members, name, first, second) in [
+        // A constructor under another Rust name still occupies `new`.
         (
             quote::quote! {
-                #[miniextendr(constructor)]
+                #[miniextendr(env(constructor))]
                 pub fn create() -> Self { unimplemented!() }
                 pub fn new() -> i32 { 0 }
             },
+            "new",
+            "create",
             "new",
         ),
         (
@@ -7017,7 +7022,10 @@ fn env_member_collisions_follow_emitted_names() {
                 pub fn reset(&self) {}
             },
             "new",
+            "new",
+            "reset",
         ),
+        // Instance and static methods share the class environment.
         (
             quote::quote! {
                 pub fn value(&self) -> i32 { 0 }
@@ -7025,6 +7033,8 @@ fn env_member_collisions_follow_emitted_names() {
                 pub fn initial() -> i32 { 0 }
             },
             "value",
+            "value",
+            "initial",
         ),
         (
             quote::quote! {
@@ -7034,6 +7044,8 @@ fn env_member_collisions_follow_emitted_names() {
                 pub fn second(&self) -> i32 { 0 }
             },
             "[[",
+            "first",
+            "second",
         ),
     ] {
         let parsed = parse_impl_with_class_name(
@@ -7048,6 +7060,10 @@ fn env_member_collisions_follow_emitted_names() {
             message.contains(&format!("RenamedCounter${name}")),
             "{message}"
         );
+        assert!(
+            message.contains(&format!("both `{first}` and `{second}`")),
+            "{message}"
+        );
         assert!(message.contains("r_name"), "{message}");
     }
 }
@@ -7055,22 +7071,26 @@ fn env_member_collisions_follow_emitted_names() {
 #[test]
 fn env_member_collisions_only_reserve_members_that_are_emitted() {
     for members in [
+        // No constructor: a static `new` is the only `new`.
         quote::quote! {
             pub fn new() -> i32 { 0 }
         },
+        // An ignored constructor defines no `Class$new`.
         quote::quote! {
-            #[miniextendr(ignore)]
+            #[miniextendr(env(ignore))]
             pub fn new() -> Self { unimplemented!() }
             #[miniextendr(r_name = "new")]
             pub fn initial() -> i32 { 0 }
         },
+        // An ignored method defines nothing.
         quote::quote! {
             pub fn new() -> Self { unimplemented!() }
-            #[miniextendr(ignore, r_name = "new")]
+            #[miniextendr(env(ignore, r_name = "new"))]
             pub fn reset(&self) {}
         },
+        // A renamed static `new` next to a constructor of another name.
         quote::quote! {
-            #[miniextendr(constructor)]
+            #[miniextendr(env(constructor))]
             pub fn create() -> Self { unimplemented!() }
             #[miniextendr(r_name = "initial")]
             pub fn new() -> i32 { 0 }
