@@ -1,0 +1,5 @@
+error: R6 member `initialize` conflicts with the generated constructor. Rename the method or use `#[miniextendr(r_name = "...")]`; for an active binding, choose a different `r6(prop = "...")`.
+  --> tests/ui/impl_r6_initialize_collision.rs:18:12
+   |
+18 |     pub fn reset(&self) {}
+   |            ^^^^^

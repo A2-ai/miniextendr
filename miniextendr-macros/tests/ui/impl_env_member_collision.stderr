@@ -1,0 +1,5 @@
+error: Env member `Counter$value` is defined by both `value` and `initial`. Constructors always occupy `new`; instance and static methods share the class environment. Rename a colliding method with `#[miniextendr(r_name = "...")]`.
+  --> tests/ui/impl_env_member_collision.rs:22:12
+   |
+22 |     pub fn initial() -> i32 {
+   |            ^^^^^^^
