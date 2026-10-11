@@ -2517,10 +2517,11 @@ pub fn write_r_wrappers_to_file(path: &str) {
 
     // Detect collisions between separately-expanded wrapper definitions (#991).
     //
-    // Two top-level `name <- function` definitions of the same name silently
+    // Repeated top-level function or class/namespace definitions silently
     // clobber each other at load time (last write wins), dispatching calls to
-    // the wrong implementation. The compile-time `check_s7_shortcut_collisions`
-    // only sees a single impl block; collisions that span macro expansions --
+    // the wrong implementation or replacing the class object altogether.
+    // The compile-time `check_s7_shortcut_collisions` only sees one impl block;
+    // collisions that span macro expansions --
     // an S7 shortcut vs a `#[derive(ExternalPtr)]` sidecar accessor, or two S7
     // impl blocks on the same type -- are only visible here, where every name
     // set is assembled. We resolve the sidecar-accessor prefix through
@@ -2799,8 +2800,8 @@ fn sidecar_accessor_names(
     out
 }
 
-/// Detect a second top-level `name <- function` definition of any wrapper
-/// function in the assembled R wrapper text.
+/// Detect conflicting top-level function and class/namespace definitions in
+/// the assembled R wrapper text.
 ///
 /// This is the write-time counterpart to the compile-time
 /// `check_s7_shortcut_collisions` (in `miniextendr-macros`): it catches name
@@ -2822,28 +2823,50 @@ fn sidecar_accessor_names(
 /// its producing derive; when a duplicate matches one we name the derive in the
 /// message, otherwise we report the generic "defined more than once" form.
 ///
-/// Returns `Err(message)` naming the offending function on the first collision
-/// found; `Ok(())` when every top-level definition name is unique.
+/// Class and namespace bindings (`new.env`, `R6::R6Class`, `S7::new_class`)
+/// occupy the same namespace as functions. Include them so a free function
+/// cannot silently replace a class object (#1677). S4's `setClass()` is not a
+/// binding assignment: its same-named constructor function remains valid.
+///
+/// Returns `Err(message)` naming the offending binding on the first collision
+/// found; `Ok(())` when every recognized top-level definition name is unique.
 #[cfg(not(target_arch = "wasm32"))]
 fn detect_duplicate_wrapper_defs(
     content: &str,
     accessor_producers: &std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
-    use std::collections::HashSet;
+    use std::collections::HashMap;
 
-    let mut seen: HashSet<&str> = HashSet::new();
+    let mut seen: HashMap<&str, &str> = HashMap::new();
 
     for line in content.lines() {
-        // Only top-level definitions matter -- class-method assignments like
-        // `S7::method(generic, Class) <- function(...)` and indented closures
-        // (R6 methods, S7 getters) are not bare `name <- function` forms and
-        // must not trip the scan.
-        let Some(name) = parse_top_level_fn_def_name(line) else {
+        // Method assignments and indented closures are not bare top-level
+        // bindings. Repeated guarded generic declarations stay outside this
+        // scan: several classes may intentionally share one generic.
+        let Some((name, rhs)) = parse_top_level_assignment(line) else {
+            continue;
+        };
+        let kind = if rhs.starts_with("function") {
+            "function"
+        } else if ["new.env(", "R6::R6Class(", "S7::new_class("]
+            .iter()
+            .any(|prefix| rhs.starts_with(prefix))
+        {
+            "class/namespace object"
+        } else {
             continue;
         };
 
-        if !seen.insert(name) {
-            // Second definition of this name -> collision.
+        if let Some(previous) = seen.insert(name, kind) {
+            if previous != "function" || kind != "function" {
+                return Err(format!(
+                    "miniextendr: wrapper name `{name}` is defined more than once \
+                     ({previous} and {kind}). The second definition overwrites the first \
+                     at load time. Give the class a distinct `class = \"...\"` name or \
+                     rename the colliding function with `r_name = \"...\"`."
+                ));
+            }
+            // Second function definition of this name -> collision.
             if let Some(producer) = accessor_producers.get(name) {
                 return Err(format!(
                     "miniextendr: wrapper function `{name}` is defined more than once. \
@@ -2872,26 +2895,25 @@ fn detect_duplicate_wrapper_defs(
     Ok(())
 }
 
-/// Parse the function name from a top-level `name <- function(...)` definition
-/// line, or return `None` when the line is not such a definition.
-///
-/// Recognises only **top-level** definitions: the line must start at column 0
-/// (no leading whitespace -- indented forms are R6/S7 closures, not standalone
-/// wrappers) and the left-hand side must be a single R name, either bare or
-/// backtick-quoted (`` `[.foo` <- function `` is how a non-syntactic S3 method
-/// is written, #1475; the name is returned without the backticks, escapes kept
-/// as the macro's name renderer emitted them). The closing backtick is found
-/// before the assignment arrow, so replacement methods such as `` `[<-.Foo` ``
-/// parse. Lines where the LHS is a call (e.g. `S7::method(...) <- function`)
-/// or contains `$` / `[[` / `::` are not bare definitions and are skipped.
+/// Parse a top-level `name <- function(...)` definition. Used both by the
+/// duplicate scan and by standalone-function documentation grouping.
 #[cfg(not(target_arch = "wasm32"))]
 fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
-    // Top-level only: reject any leading whitespace.
+    let (name, rhs) = parse_top_level_assignment(line)?;
+    rhs.starts_with("function").then_some(name)
+}
+
+/// Parse a bare top-level assignment, returning its name and trimmed RHS.
+///
+/// Ignore indented closures and targets containing `$`, `[[` or `::`, or a
+/// call such as `S7::method(...)`. Backtick-quoted names are returned without
+/// the quotes, with escapes kept as emitted. Find the closing backtick before
+/// the arrow so replacement names such as `` `[<-.Foo` `` parse correctly.
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_top_level_assignment(line: &str) -> Option<(&str, &str)> {
     if line.starts_with([' ', '\t']) {
         return None;
     }
-    // Find the closing backtick before looking for the assignment: replacement
-    // methods such as `[<-.Foo` contain `<-` inside the symbol itself.
     if let Some(quoted) = line.strip_prefix('`') {
         let mut escaped = false;
         for (index, ch) in quoted.char_indices() {
@@ -2901,46 +2923,21 @@ fn parse_top_level_fn_def_name(line: &str) -> Option<&str> {
                 escaped = true;
             } else if ch == '`' {
                 let rhs = quoted[index + 1..].trim_start().strip_prefix("<-")?;
-                return (!quoted[..index].is_empty() && rhs.trim_start().starts_with("function"))
-                    .then_some(&quoted[..index]);
+                return (!quoted[..index].is_empty())
+                    .then_some((&quoted[..index], rhs.trim_start()));
             }
         }
         return None;
     }
     let (lhs, rhs) = line.split_once("<-")?;
-    // RHS must be (after trimming) the start of a `function` definition.
-    if !rhs.trim_start().starts_with("function") {
-        return None;
-    }
     let name = lhs.trim();
-    if name.is_empty() {
-        return None;
-    }
-    // Backtick-quoted name: anything goes inside, as long as the quotes close
-    // and the LHS is nothing but the quoted name.
-    if let Some(inner) = name
-        .strip_prefix('`')
-        .and_then(|rest| rest.strip_suffix('`'))
-    {
-        return (!inner.is_empty() && !inner.contains('`')).then_some(inner);
-    }
-    // Bare identifier only: R names may contain letters, digits, `.` and `_`,
-    // and must not start with a digit. Anything else (a call on the LHS, a `$`
-    // assignment or a `::`-qualified target) is not a standalone wrapper
-    // definition we own. Backtick-quoted names were handled above.
-    let mut chars = name.chars();
-    let first = chars.next()?;
+    let first = name.chars().next()?;
     if !(first.is_ascii_alphabetic() || first == '.') {
         return None;
     }
-    if name
-        .chars()
+    name.chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')
-    {
-        Some(name)
-    } else {
-        None
-    }
+        .then_some((name, rhs.trim_start()))
 }
 // endregion
 
@@ -4748,6 +4745,59 @@ mod tests {
         let err = detect_duplicate_wrapper_defs(content, &map).unwrap_err();
         assert!(err.contains("Shape_get_area"), "msg: {err}");
         assert!(err.contains("sidecar field `area`"), "msg: {err}");
+    }
+
+    #[test]
+    fn duplicate_class_and_function_bindings_fail_in_either_order() {
+        for class in [
+            "Widget <- new.env(parent = emptyenv())",
+            "Widget <- R6::R6Class(\"Widget\")",
+            "Widget <- S7::new_class(\"Widget\")",
+            "`Widget` <- new.env(parent = emptyenv())",
+        ] {
+            let function = "Widget <- function() .Call(C_widget)";
+            for content in [
+                format!("{class}\n{function}\n"),
+                format!("{function}\n{class}\n"),
+            ] {
+                let error =
+                    detect_duplicate_wrapper_defs(&content, &std::collections::HashMap::new())
+                        .expect_err("a function must not replace a class or namespace object");
+                assert!(error.contains("`Widget`"), "{error}");
+                assert!(error.contains("class/namespace object"), "{error}");
+                assert!(error.contains("r_name"), "{error}");
+            }
+        }
+        let repeated = "Widget <- new.env()\nWidget <- new.env()\n";
+        assert!(
+            detect_duplicate_wrapper_defs(repeated, &std::collections::HashMap::new()).is_err()
+        );
+    }
+
+    #[test]
+    fn duplicate_scan_keeps_class_members_and_s4_constructors_separate() {
+        let content = concat!(
+            "Widget <- new.env(parent = emptyenv())\n",
+            "Widget$new <- function() .Call(C_new)\n",
+            "Widget$get <- function() .Call(C_get)\n",
+            "methods::setClass(\"S4Widget\", slots = c(ptr = \"externalptr\"))\n",
+            "S4Widget <- function() .Call(C_new_s4)\n",
+            "R6Widget <- R6::R6Class(\"R6Widget\",\n",
+            "  public = list(\n",
+            "    initialize = function() {}\n",
+            "  )\n",
+            ")\n",
+            "S7Widget <- S7::new_class(\"S7Widget\",\n",
+            "  constructor = function() {}\n",
+            ")\n",
+            "if (!exists(\"shared\")) {\n",
+            "  shared <- function(x) UseMethod(\"shared\")\n",
+            "}\n",
+            "if (!exists(\"shared\")) {\n",
+            "  shared <- function(x) UseMethod(\"shared\")\n",
+            "}\n",
+        );
+        assert!(detect_duplicate_wrapper_defs(content, &std::collections::HashMap::new()).is_ok());
     }
 
     #[test]
