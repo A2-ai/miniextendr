@@ -1567,6 +1567,53 @@ fn s4_wrapper_full_snapshot() {
 }
 
 #[test]
+fn s4_generic_names_follow_r_method_names() {
+    for (method, generic) in [
+        (
+            quote::quote! { pub fn r#type(&self) -> i32 { 0 } },
+            "s4_type",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "kind")]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "s4_kind",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(postfix = "_code")]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "s4_type_code",
+        ),
+        (
+            quote::quote! {
+                #[miniextendr(r_name = "kind", s4(generic = "category"))]
+                pub fn r#type(&self) -> i32 { 0 }
+            },
+            "category",
+        ),
+    ] {
+        let parsed = parse_impl(
+            ClassSystem::S4,
+            syn::parse_quote! { impl Counter { #method } },
+        );
+        let wrapper = generate_s4_r_wrapper(&parsed);
+        for expected in [
+            format!("methods::setGeneric(\"{generic}\", function(x, ...)"),
+            format!("standardGeneric(\"{generic}\")"),
+            format!("methods::setMethod(\"{generic}\", \"Counter\""),
+            format!("#' @exportMethod {generic}\n"),
+            format!("#' @aliases {generic},Counter-method\n"),
+        ] {
+            assert!(wrapper.contains(&expected), "missing {expected}: {wrapper}");
+        }
+        assert!(!wrapper.contains("s4_r#"), "{wrapper}");
+    }
+}
+
+#[test]
 fn s4_wrapper_generic_override() {
     let item_impl: syn::ItemImpl = syn::parse_quote! {
         impl Counter {
