@@ -1091,7 +1091,7 @@ pub(super) fn is_self_ref_type(ty: &syn::Type) -> bool {
 /// Generate a C wrapper function and `R_CallMethodDef` for a single trait method.
 ///
 /// Uses `CWrapperContext` builder to produce:
-/// - An `extern "C"` function callable from R via `.Call()`
+/// - An `extern "C-unwind"` function callable from R via `.Call()`
 /// - A `R_CallMethodDef` constant for symbol registration
 ///
 /// Instance methods (`has_self`) extract the object via `ErasedExternalPtr::from_sexp`
@@ -1178,7 +1178,9 @@ pub(super) fn generate_trait_method_c_wrapper(
         .collect();
 
     // Determine return handling
-    let return_handling = if method.unwrap_in_r && output_is_result(&method.sig.output) {
+    let return_handling = if method.unwrap_in_r
+        && crate::return_type_analysis::output_is_result(&method.sig.output)
+    {
         ReturnHandling::IntoR
     } else {
         crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
@@ -1310,28 +1312,9 @@ pub(super) fn generate_trait_method_c_wrapper(
     builder.build().generate()
 }
 
-/// Returns true when the return type is syntactically `Result<_, _>`.
-///
-/// Used to determine whether `unwrap_in_r` mode should use `ReturnHandling::IntoR`
-/// (passing the Result through to R) instead of the default return handling.
-fn output_is_result(output: &syn::ReturnType) -> bool {
-    match output {
-        syn::ReturnType::Type(_, ty) => matches!(
-            ty.as_ref(),
-            syn::Type::Path(p)
-                if p.path
-                    .segments
-                    .last()
-                    .map(|s| s.ident == "Result")
-                    .unwrap_or(false)
-        ),
-        syn::ReturnType::Default => false,
-    }
-}
-
 /// Generate a C wrapper function and `R_CallMethodDef` for a trait associated constant.
 ///
-/// The generated wrapper takes no arguments and returns the constant value
+/// The generated wrapper takes only the call-attribution slot and returns the constant value
 /// converted to SEXP. Uses fully-qualified syntax `<Type as Trait>::CONST`
 /// to access the value. Always runs on the main thread.
 pub(super) fn generate_trait_const_c_wrapper(

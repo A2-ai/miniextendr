@@ -3036,7 +3036,7 @@ impl ParsedImpl {
                     fn_item.sig.ident.span(),
                 )?;
                 if method.method_attrs.serde_error.is_some()
-                    && !output_is_result(&fn_item.sig.output)
+                    && !crate::return_type_analysis::output_is_result(&fn_item.sig.output)
                 {
                     return Err(syn::Error::new(
                         fn_item.sig.ident.span(),
@@ -3408,7 +3408,7 @@ impl ParsedImpl {
 
 /// Generate a C-callable wrapper function for a single method in an impl block.
 ///
-/// Produces a `#[no_mangle] extern "C"` function named `C_{crate}_{Type}__{method}` that:
+/// Produces a `#[no_mangle] extern "C-unwind"` function named `C_{crate}_{Type}__{method}` that:
 /// 1. Accepts SEXP arguments (including `self_sexp` for instance methods)
 /// 2. Extracts `&self` / `&mut self` from an `ErasedExternalPtr` for instance methods
 /// 3. Converts SEXP arguments to Rust types
@@ -3416,8 +3416,9 @@ impl ParsedImpl {
 /// 5. Converts the return value back to SEXP
 ///
 /// Thread strategy is determined automatically: instance methods always run on the main
-/// thread (because `self_ref` is a non-Send borrow), while static methods use the worker
-/// thread unless `unsafe(main_thread)` is specified.
+/// thread (because `self_ref` is a non-Send borrow), as do methods taking `...`. Other
+/// static methods use the main thread unless `worker` or `worker-default` selects
+/// worker dispatch; `unsafe(main_thread)` keeps one on main regardless.
 ///
 /// Also emits an `R_CallMethodDef` constant for R routine registration, and appends
 /// generated R wrapper code fragments to the `r_wrappers_const` string constant.
@@ -3654,7 +3655,9 @@ pub fn generate_method_c_wrapper(
         // back the same ExternalPtr handle (`self_sexp`) so chaining preserves
         // identity with no clone. See `ReturnHandling::SelfHandle`.
         ReturnHandling::SelfHandle
-    } else if method.method_attrs.unwrap_in_r && output_is_result(&method.sig.output) {
+    } else if method.method_attrs.unwrap_in_r
+        && crate::return_type_analysis::output_is_result(&method.sig.output)
+    {
         ReturnHandling::IntoR
     } else {
         crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
@@ -3833,26 +3836,6 @@ fn find_param_type<'a>(
         }
     }
     None
-}
-
-/// Check whether a function's return type is syntactically `Result<_, _>`.
-///
-/// This performs a shallow name check on the last path segment -- it does not resolve
-/// type aliases. Used to decide whether `unwrap_in_r` should strip the `Result` wrapper
-/// before converting to SEXP.
-fn output_is_result(output: &syn::ReturnType) -> bool {
-    match output {
-        syn::ReturnType::Type(_, ty) => matches!(
-            ty.as_ref(),
-            syn::Type::Path(p)
-                if p.path
-                    .segments
-                    .last()
-                    .map(|s| s.ident == "Result")
-                    .unwrap_or(false)
-        ),
-        syn::ReturnType::Default => false,
-    }
 }
 
 /// Returns true if a vctrs constructor's return type is `Self`, `&Self`, `&mut Self`,
