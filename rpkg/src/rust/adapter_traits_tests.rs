@@ -233,7 +233,6 @@ impl miniextendr_api::adapter_traits::RIterator for IntVecIter {
         self.0.borrow_mut().next()
     }
 
-    #[miniextendr(skip)]
     fn size_hint(&self) -> (i64, Option<i64>) {
         let (lo, hi) = self.0.borrow().size_hint();
         (lo as i64, hi.map(|h| h as i64))
@@ -433,7 +432,6 @@ impl miniextendr_api::adapter_traits::RIterator for IterableVecIter {
         unreachable!()
     }
 
-    #[miniextendr(skip)]
     fn size_hint(&self) -> (i64, Option<i64>) {
         unreachable!()
     }

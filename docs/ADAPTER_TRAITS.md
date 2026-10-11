@@ -98,7 +98,7 @@ concrete vtable shim generation at the impl site:
 
 | Trait | Wraps | Methods | Notes |
 |-------|-------|---------|-------|
-| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `count()`, `collect_n()`, `skip()`, `nth()` | `next` renamed to `next_item` via `r_name`; `size_hint` skipped |
+| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `size_hint()`, `count()`, `collect_n()`, `skip()`, `nth()` | `next` renamed to `next_item` via `r_name`; `size_hint` returns `list(lower, upper)` (NA upper bound when unknown) |
 | `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | `extend_from_slice` skipped |
 | `RFromIter<T>` | `FromIterator` | `from_vec(items) -> Self` | |
 | `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | |

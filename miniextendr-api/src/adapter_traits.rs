@@ -496,7 +496,7 @@ impl<T: Copy> RCopy for T {
 /// # Methods
 ///
 /// - `next()` - Get the next element, or None if exhausted
-/// - `size_hint()` - Get estimated remaining elements as `c(lower, upper)`
+/// - `size_hint()` - Get estimated remaining elements as `list(lower, upper)`
 /// - `count()` - Consume and count remaining elements
 /// - `collect_n(n)` - Collect up to n elements into a vector
 /// - `skip(n)` - Skip n elements
@@ -538,9 +538,9 @@ impl<T: Copy> RCopy for T {
 /// it <- MyIter$new(c(1L, 2L, 3L))
 /// it$next_item()   # 1L
 /// it$next_item()   # 2L
-/// it$size_hint()   # c(1, 1) - one element remaining
+/// it$size_hint()   # list(1L, 1L) - one element remaining
 /// it$next_item()   # 3L
-/// it$next_item()   # NULL (exhausted)
+/// it$next_item()   # error: returned no value (exhausted)
 /// ```
 ///
 /// # Design Note
@@ -561,18 +561,14 @@ pub trait RIterator {
     /// Get the next element from the iterator.
     ///
     /// Returns `Some(item)` if there are more elements, `None` if exhausted.
-    /// None maps to NULL in R.
+    /// Generated R method wrappers report a missing-return error on exhaustion.
     #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<Self::Item>;
 
     /// Get the estimated number of remaining elements.
     ///
     /// Returns `(lower_bound, upper_bound)` where upper_bound is None if unknown.
-    /// In R, this becomes `c(lower, upper)` where upper is NA if unknown.
-    ///
-    /// Skipped from trait ABI because tuples don't have R conversions.
-    /// Expose via manual forwarding or custom wrapper methods.
-    #[miniextendr(skip)]
+    /// In R, this becomes `list(lower, upper)` where upper is NA if unknown.
     fn size_hint(&self) -> (i64, Option<i64>);
 
     /// Consume the iterator and count remaining elements.
