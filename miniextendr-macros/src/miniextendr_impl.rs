@@ -4195,6 +4195,36 @@ fn check_s7_shortcut_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
     Ok(())
 }
 
+/// Env constructors, instance methods and static methods all occupy the same
+/// class environment. Check the emitted names before one overwrites another.
+fn check_env_member_collisions(parsed: &ParsedImpl) -> syn::Result<()> {
+    if parsed.class_system != ClassSystem::Env {
+        return Ok(());
+    }
+    let mut seen = std::collections::HashMap::new();
+    if let Some(constructor) = parsed.constructor() {
+        seen.insert("new".to_owned(), constructor);
+    }
+    for method in parsed.instance_methods().chain(parsed.static_methods()) {
+        let name = method.r_method_name();
+        if let Some(previous) = seen.insert(name.clone(), method) {
+            return Err(syn::Error::new_spanned(
+                &method.ident,
+                format!(
+                    "Env member `{}${name}` is defined by both `{}` and `{}`. \
+                     Constructors always occupy `new`; instance and static methods \
+                     share the class environment. Rename a colliding method with \
+                     `#[miniextendr(r_name = \"...\")]`.",
+                    parsed.class_name(),
+                    previous.ident,
+                    method.ident,
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// R6 always has an `initialize` member, including classes without a Rust
 /// constructor. R6 requires public, private and active names to be distinct;
 /// reject collisions before the generated class fails during package loading.
@@ -4549,6 +4579,9 @@ pub fn expand_impl(
     // Every R formal must parse, be distinct, and leave the names the class
     // system's wrapper binds itself (receiver, R6 `self` / `private`) alone.
     if let Err(e) = check_method_formals(&parsed) {
+        return e.into_compile_error().into();
+    }
+    if let Err(e) = check_env_member_collisions(&parsed) {
         return e.into_compile_error().into();
     }
     if let Err(e) = check_r6_initialize_collision(&parsed) {
