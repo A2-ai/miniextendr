@@ -3637,23 +3637,38 @@ pub fn miniextendr_init(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         pub unsafe extern "C-unwind" fn #fn_name(
             dll: *mut ::miniextendr_api::sys::DllInfo,
         ) {
-            // wasm32: install the pre-generated runtime tables before
-            // package_init runs. linkme didn't gather anything (the slices
-            // are OnceLock-backed on wasm32), so register_routines /
-            // universal_query would otherwise see empty slices, and the
-            // raising guards no crate conversion classes (#1768).
-            #[cfg(target_arch = "wasm32")]
-            ::miniextendr_api::registry::install_wasm_runtime_slices(
-                __miniextendr_wasm_registry::MX_CALL_DEFS_WASM,
-                __miniextendr_wasm_registry::MX_ALTREP_REGISTRATIONS_WASM,
-                __miniextendr_wasm_registry::MX_TRAIT_DISPATCH_WASM,
-                __miniextendr_wasm_registry::MX_CONVERSION_ERROR_CLASS_WASM,
-            );
+            let __miniextendr_init_result = ::std::panic::catch_unwind(
+                ::std::panic::AssertUnwindSafe(|| {
+                    // wasm32: install the pre-generated runtime tables before
+                    // package_init runs. linkme didn't gather anything (the slices
+                    // are OnceLock-backed on wasm32), so register_routines /
+                    // universal_query would otherwise see empty slices, and the
+                    // raising guards no crate conversion classes (#1768).
+                    #[cfg(target_arch = "wasm32")]
+                    ::miniextendr_api::registry::install_wasm_runtime_slices(
+                        __miniextendr_wasm_registry::MX_CALL_DEFS_WASM,
+                        __miniextendr_wasm_registry::MX_ALTREP_REGISTRATIONS_WASM,
+                        __miniextendr_wasm_registry::MX_TRAIT_DISPATCH_WASM,
+                        __miniextendr_wasm_registry::MX_CONVERSION_ERROR_CLASS_WASM,
+                    );
 
-            unsafe {
-                // SAFETY: byte literal is a valid NUL-terminated string produced by the macro.
-                let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
-                ::miniextendr_api::init::package_init(dll, pkg_name);
+                    unsafe {
+                        // SAFETY: byte literal is a valid NUL-terminated string produced by the macro.
+                        let pkg_name = ::std::ffi::CStr::from_bytes_with_nul_unchecked(#byte_lit);
+                        ::miniextendr_api::init::package_init(dll, pkg_name);
+                    }
+                }),
+            );
+            if let ::core::result::Result::Err(payload) = __miniextendr_init_result {
+                // package_init normally raises through its R guard. This is
+                // the last-resort boundary for runtime/guard initialization:
+                // no Rust-owned message or payload may survive Rf_error.
+                ::core::mem::drop(payload);
+                unsafe {
+                    ::miniextendr_api::sys::Rf_error_unchecked(
+                        c"miniextendr package initialization panicked before completing".as_ptr(),
+                    );
+                }
             }
         }
 

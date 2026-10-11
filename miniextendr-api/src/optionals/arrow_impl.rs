@@ -2014,7 +2014,7 @@ impl RegisterAltrep for StringArray {
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn __mx_altrep_reg_builtin_arrow_Float64Array() {
+pub extern "C-unwind" fn __mx_altrep_reg_builtin_arrow_Float64Array() {
     Float64Array::get_or_init_class();
 }
 
@@ -2033,7 +2033,7 @@ static __MX_ALTREP_REG_ENTRY_builtin_arrow_Float64Array: crate::registry::Altrep
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn __mx_altrep_reg_builtin_arrow_Int32Array() {
+pub extern "C-unwind" fn __mx_altrep_reg_builtin_arrow_Int32Array() {
     Int32Array::get_or_init_class();
 }
 
@@ -2052,7 +2052,7 @@ static __MX_ALTREP_REG_ENTRY_builtin_arrow_Int32Array: crate::registry::AltrepRe
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn __mx_altrep_reg_builtin_arrow_UInt8Array() {
+pub extern "C-unwind" fn __mx_altrep_reg_builtin_arrow_UInt8Array() {
     UInt8Array::get_or_init_class();
 }
 
@@ -2071,7 +2071,7 @@ static __MX_ALTREP_REG_ENTRY_builtin_arrow_UInt8Array: crate::registry::AltrepRe
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn __mx_altrep_reg_builtin_arrow_BooleanArray() {
+pub extern "C-unwind" fn __mx_altrep_reg_builtin_arrow_BooleanArray() {
     BooleanArray::get_or_init_class();
 }
 
@@ -2090,7 +2090,7 @@ static __MX_ALTREP_REG_ENTRY_builtin_arrow_BooleanArray: crate::registry::Altrep
 
 #[doc(hidden)]
 #[unsafe(no_mangle)]
-pub extern "C" fn __mx_altrep_reg_builtin_arrow_StringArray() {
+pub extern "C-unwind" fn __mx_altrep_reg_builtin_arrow_StringArray() {
     StringArray::get_or_init_class();
 }
 

@@ -48,8 +48,8 @@ pub(crate) fn wrapper_gen_mode() -> bool {
 ///
 /// This performs all initialization steps in the correct order:
 ///
-/// 1. Install panic hook for better error messages
-/// 2. Record main thread ID (and optionally spawn worker thread)
+/// 1. Record main thread ID (and optionally spawn worker thread)
+/// 2. Enter R unwind protection and install the panic hook
 /// 3. Assert UTF-8 locale
 /// 4. Set ALTREP package name
 /// 5. Register mx_abi C-callables for cross-package trait dispatch
@@ -63,45 +63,48 @@ pub(crate) fn wrapper_gen_mode() -> bool {
 /// `pkg_name` must be a valid null-terminated C string that lives for the
 /// duration of the R session (typically a string literal).
 pub unsafe fn package_init(dll: *mut DllInfo, pkg_name: &CStr) {
-    unsafe {
-        // When loaded purely for wrapper generation (Makevars dyn.load()s the
-        // installed .so/.dll, which runs this init), skip full init. Only routine
-        // registration is needed so .Call(miniextendr_write_wrappers) works.
-        // See WRAPPER_GEN_ENV. The env var is set by Makevars before dyn.load().
-        let wrapper_gen = wrapper_gen_mode();
+    // The guard's checked R calls need the runtime's main-thread identity.
+    // Runtime initialization is pure Rust; the generated R_init entry point
+    // catches a panic here before it can escape into R.
+    crate::worker::miniextendr_runtime_init();
 
-        // 1. Record main thread ID (and optionally spawn worker thread)
-        // Always needed: checked FFI variants (R_useDynamicSymbols, etc.)
-        // route through with_r_thread() which requires runtime_init.
-        crate::worker::miniextendr_runtime_init();
+    crate::unwind_protect::with_r_unwind_protect_or_raise(
+        || unsafe {
+            // When loaded purely for wrapper generation (Makevars dyn.load()s the
+            // installed .so/.dll, which runs this init), skip full init. Only routine
+            // registration is needed so .Call(miniextendr_write_wrappers) works.
+            // See WRAPPER_GEN_ENV. The env var is set by Makevars before dyn.load().
+            let wrapper_gen = wrapper_gen_mode();
 
-        if !wrapper_gen {
-            // 2. Install panic hook for better error messages
-            // Skipped during wrapper-gen: on Windows, set_hook during DLL init
-            // can fail with "failed to initiate panic, error 5" because the
-            // panic infrastructure isn't fully available during DLL loading.
-            crate::backtrace::miniextendr_panic_hook();
+            if !wrapper_gen {
+                // 2. Install panic hook for better error messages
+                // Skipped during wrapper-gen: on Windows, set_hook during DLL init
+                // can fail with "failed to initiate panic, error 5" because the
+                // panic infrastructure isn't fully available during DLL loading.
+                crate::backtrace::miniextendr_panic_hook();
 
-            // 3. Assert UTF-8 locale
-            crate::encoding::miniextendr_assert_utf8_locale();
+                // 3. Assert UTF-8 locale
+                crate::encoding::miniextendr_assert_utf8_locale();
 
-            // 3b. Install R console logger (if log feature enabled)
-            #[cfg(feature = "log")]
-            crate::optionals::log_impl::install_r_logger();
+                // 3b. Install R console logger (if log feature enabled)
+                #[cfg(feature = "log")]
+                crate::optionals::log_impl::install_r_logger();
 
-            // 4. Set ALTREP package name and DllInfo
-            crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
-            crate::set_altrep_dll_info(dll);
+                // 4. Set ALTREP package name and DllInfo
+                crate::miniextendr_set_altrep_pkg_name(pkg_name.as_ptr());
+                crate::set_altrep_dll_info(dll);
 
-            // 5. Register mx_abi C-callables
-            crate::mx_abi::mx_abi_register(pkg_name);
-        }
+                // 5. Register mx_abi C-callables
+                crate::mx_abi::mx_abi_register(pkg_name);
+            }
 
-        // 6. Register .Call routines (and ALTREP classes, unless wrapper-gen)
-        crate::registry::miniextendr_register_routines(dll);
+            // 6. Register .Call routines (and ALTREP classes, unless wrapper-gen)
+            crate::registry::miniextendr_register_routines(dll);
 
-        // 7. Lock down dynamic symbols
-        R_useDynamicSymbols(dll, Rboolean::FALSE);
-        R_forceSymbols(dll, Rboolean::TRUE);
-    }
+            // 7. Lock down dynamic symbols
+            R_useDynamicSymbols(dll, Rboolean::FALSE);
+            R_forceSymbols(dll, Rboolean::TRUE);
+        },
+        None,
+    );
 }
