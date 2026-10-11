@@ -519,6 +519,21 @@ test_that("lookup = \"list\": an unknown name reads NULL, and a prefix is no nam
   # No prefix match, and so no partial-match warning either.
   expect_no_warning(expect_null(x$lev))
   expect_null(x[["lev"]])
+  # A list's lookup is still exact on a list or environment receiver: R's `$`
+  # on the list would match `lev` to `levels_seen`.
+  l <- structure(list(.ptr = new_sidecars3get(2L), levels_seen = 3L), class = "SidecarS3Get")
+  expect_identical(l$level, 2L)
+  expect_identical(l$levels_seen, 3L)
+  expect_no_warning(expect_null(l$lev))
+  expect_null(l[["lev"]])
+  expect_null(l[["lev", exact = FALSE]])
+  e <- new.env()
+  e$.ptr <- new_sidecars3get(2L)
+  e$levels_seen <- 3L
+  class(e) <- "SidecarS3Get"
+  expect_identical(e$level, 2L)
+  expect_null(e$lev)
+  expect_null(e[["lev", exact = FALSE]])
 })
 
 test_that("lookup = \"list\": `[[` takes a position as a list's does", {
