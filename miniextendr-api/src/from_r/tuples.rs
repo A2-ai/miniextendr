@@ -40,6 +40,59 @@ fn element_reason<E: Into<SexpError>>(e: E) -> String {
     Into::<SexpError>::into(e).r_reason(false)
 }
 
+/// Tuple rows keep their own R object/class, as `Vec<List>` does. Validators
+/// therefore run per row; nullable rows skip the validator for NULL.
+macro_rules! impl_tuple_vec_try_from_sexp {
+    (($($T:ident),+), $row:ty, $nullable:literal) => {
+        impl<$($T: TryFromSexp),+> TryFromSexp for Vec<$row>
+        where
+            $($T::Error: Into<SexpError>,)+
+        {
+            type Error = SexpError;
+            const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+                crate::from_r::NativeBorrow::in_list(<$row>::NATIVE_BORROW);
+
+            fn __mx_has_na(&self) -> bool {
+                self.iter().any(<$row>::__mx_has_na)
+            }
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::__mx_try_from_sexp_with_check(sexp, &crate::from_r::no_element_check)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                unsafe {
+                    Self::__mx_try_from_sexp_unchecked_with_check(sexp, &crate::from_r::no_element_check)
+                }
+            }
+
+            fn __mx_try_from_sexp_with_check(
+                sexp: SEXP,
+                check: &crate::from_r::ElementCheck<'_>,
+            ) -> Result<Self, SexpError> {
+                crate::from_r::map_vecsxp_batched(sexp, |row| {
+                    if !$nullable || row.type_of() != SEXPTYPE::NILSXP {
+                        check(row)?;
+                    }
+                    <$row>::try_from_sexp(row)
+                })
+            }
+
+            unsafe fn __mx_try_from_sexp_unchecked_with_check(
+                sexp: SEXP,
+                check: &crate::from_r::ElementCheck<'_>,
+            ) -> Result<Self, SexpError> {
+                crate::from_r::map_vecsxp_batched(sexp, |row| {
+                    if !$nullable || row.type_of() != SEXPTYPE::NILSXP {
+                        check(row)?;
+                    }
+                    unsafe { <$row>::try_from_sexp_unchecked(row) }
+                })
+            }
+        }
+    };
+}
+
 /// Implement `TryFromSexp` for tuples of various sizes (1-12).
 /// Reads an unnamed R list (VECSXP) positionally; mirrors `impl_tuple_into_r!`.
 macro_rules! impl_tuple_try_from_sexp {
@@ -51,6 +104,10 @@ macro_rules! impl_tuple_try_from_sexp {
             type Error = SexpError;
             const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
                 crate::from_r::NativeBorrow::tuple(&[$($T::NATIVE_BORROW,)+]);
+
+            fn __mx_has_na(&self) -> bool {
+                $(self.$idx.__mx_has_na())||+
+            }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 check_list_shape(sexp, $n, sexp.len())?;
@@ -101,6 +158,38 @@ macro_rules! impl_tuple_try_from_sexp {
                 Ok(($(partial.$idx.unwrap(),)+))
             }
         }
+
+        impl<$($T: TryFromSexp),+> TryFromSexp for Option<($($T,)+)>
+        where
+            $($T::Error: Into<SexpError>,)+
+        {
+            type Error = SexpError;
+            const NATIVE_BORROW: Option<crate::from_r::NativeBorrow> =
+                <($($T,)+)>::NATIVE_BORROW;
+
+            fn __mx_has_na(&self) -> bool {
+                self.as_ref().is_some_and(<($($T,)+)>::__mx_has_na)
+            }
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    Ok(None)
+                } else {
+                    <($($T,)+)>::try_from_sexp(sexp).map(Some)
+                }
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    Ok(None)
+                } else {
+                    unsafe { <($($T,)+)>::try_from_sexp_unchecked(sexp).map(Some) }
+                }
+            }
+        }
+
+        impl_tuple_vec_try_from_sexp!(($($T),+), ($($T,)+), false);
+        impl_tuple_vec_try_from_sexp!(($($T),+), Option<($($T,)+)>, true);
     };
 }
 

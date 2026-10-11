@@ -961,3 +961,24 @@ test_that("tuple argument batches all element errors", {
     "element 1.*element 2"
   )
 })
+
+
+test_that("tuple containers keep positional rows and NULL values", {
+  rows <- list(list(1L, "one"), NULL, list(3L, "three"))
+  expect_identical(miniextendr:::conv_tuple_rows_roundtrip(rows), rows)
+  expect_identical(miniextendr:::conv_tuple_rows_roundtrip(list()), list())
+  expect_null(miniextendr:::conv_tuple_option_roundtrip(NULL))
+  expect_identical(miniextendr:::conv_tuple_option_roundtrip(list(1L, "one")), list(1L, "one"))
+  expect_error(miniextendr:::conv_tuple_rows_roundtrip(list(list("bad", 2), NULL, list("bad", 2))),
+               "elements 1, 3")
+})
+
+test_that("tuple borrows reject aliases before converting fields", {
+  x <- 7L
+  expect_error(miniextendr:::conv_tuple_borrow_pair(list(x, x)), "aliasing native arguments")
+  expect_identical(miniextendr:::conv_tuple_borrow_pair(list(7L, 8L)), 15L)
+  expect_error(miniextendr:::conv_tuple_borrow_cross(list(x, "tag"), x), "aliasing native arguments")
+  if (exists("conv_tuple_borrow_worker", envir = asNamespace("miniextendr"), inherits = FALSE)) {
+    expect_error(miniextendr:::conv_tuple_borrow_worker(list(x, x)), "aliasing native arguments")
+  }
+})

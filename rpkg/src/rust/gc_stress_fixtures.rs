@@ -5640,3 +5640,16 @@ pub fn gc_stress_env_bindings() -> SEXP {
 }
 
 // endregion
+/// Exercise tuple rows, optional NULL rows, and nested allocations under GC.
+#[miniextendr(noexport)]
+pub fn gc_stress_tuple_containers() -> Vec<Option<(i32, String, Vec<i32>)>> {
+    (0..16)
+        .map(|index| {
+            if index % 4 == 0 {
+                None
+            } else {
+                Some((index, format!("row-{index}"), vec![index, index + 1]))
+            }
+        })
+        .collect()
+}

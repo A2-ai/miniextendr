@@ -46,6 +46,13 @@ fn tuple_preflight_finds_internal_nested_and_cross_argument_aliases() {
 
         let nested = list(&scope, &[pair]);
         assert!(rejects([(nested, "nested")], [<(Pair,)>::NATIVE_BORROW]));
+        let rows = list(&scope, &[distinct, distinct]);
+        assert!(rejects([(rows, "rows")], [<Vec<Pair>>::NATIVE_BORROW]));
+        let optional_rows = list(&scope, &[SEXP::nil(), distinct, distinct]);
+        assert!(rejects(
+            [(optional_rows, "rows")],
+            [<Vec<Option<Pair>>>::NATIVE_BORROW]
+        ));
         let tag = scope.protect("tag".into_sexp()).get();
         let tagged = list(&scope, &[v, tag]);
         assert!(rejects(
