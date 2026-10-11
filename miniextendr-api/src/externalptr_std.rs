@@ -223,18 +223,13 @@ impl_te_generic!(<T> std::num::Saturating<T>, "Saturating");
 
 // region: Tuples (1-12 elements)
 
-impl_te_generic!(<A> (A,), "Tuple1");
-impl_te_generic!(<A, B> (A, B), "Tuple2");
-impl_te_generic!(<A, B, C> (A, B, C), "Tuple3");
-impl_te_generic!(<A, B, C, D> (A, B, C, D), "Tuple4");
-impl_te_generic!(<A, B, C, D, E> (A, B, C, D, E), "Tuple5");
-impl_te_generic!(<A, B, C, D, E, F> (A, B, C, D, E, F), "Tuple6");
-impl_te_generic!(<A, B, C, D, E, F, G> (A, B, C, D, E, F, G), "Tuple7");
-impl_te_generic!(<A, B, C, D, E, F, G, H> (A, B, C, D, E, F, G, H), "Tuple8");
-impl_te_generic!(<A, B, C, D, E, F, G, H, I> (A, B, C, D, E, F, G, H, I), "Tuple9");
-impl_te_generic!(<A, B, C, D, E, F, G, H, I, J> (A, B, C, D, E, F, G, H, I, J), "Tuple10");
-impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K> (A, B, C, D, E, F, G, H, I, J, K), "Tuple11");
-impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K, L> (A, B, C, D, E, F, G, H, I, J, K, L), "Tuple12");
+macro_rules! impl_tuple_typed_external {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
+        impl_te_generic!(<$($T),+> ($($T,)+), $name);
+    };
+}
+
+crate::tuple_macros::for_each_tuple!(impl_tuple_typed_external);
 // endregion
 
 // region: Arrays (const generic)

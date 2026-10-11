@@ -439,7 +439,7 @@ not gaps:
 | `Option<u8>` / `Vec<Option<u8>>` | `TryFromSexp` only (no `IntoR`) | RAWSXP has no NA sentinel; `None` has no faithful R representation. Inbound, R raw vectors never contain NA so `Option<u8>` is always `Some`. Return `Vec<u8>` instead. |
 | `Regex` (regex feature) | `TryFromSexp` only | Accept a pattern string from R as a compiled regex argument. A compiled regex has no useful R value; return the pattern `String` if needed. |
 | `AhoCorasick` (aho-corasick feature) | `TryFromSexp` only | Same shape: built from an R character vector of patterns; no meaningful outbound form. |
-| `(A, B, ...)` tuples (arity ≤ 8) | `IntoR` only | Returned as an unnamed VECSXP list. Inbound support (R list → tuple arguments) is tracked in #976. |
+| `(A, B, ...)` tuples (1–12 fields) | `IntoR`, `TryFromSexp`, `IntoList`, `TryFromList` | Positional VECSXP lists of exactly the tuple length; names are ignored. All failing fields are reported together. Element-wise `Coerce` covers the same arities (and supplies infallible `TryCoerce` through its blanket impl). `()` remains R NULL. |
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
 because the R representation (a string) is faithful in both directions. The

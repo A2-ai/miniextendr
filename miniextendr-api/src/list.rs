@@ -792,6 +792,31 @@ pub trait TryFromList: Sized {
     fn try_from_list(list: List) -> Result<Self, Self::Error>;
 }
 
+// Tuple lists use the same positional representation and batched diagnostics
+// as IntoR/TryFromSexp; no second conversion implementation is needed here.
+macro_rules! impl_tuple_list {
+    ($n:literal, $name:literal; $($T:ident $R:ident $idx:tt),+) => {
+        impl<$($T: IntoR),+> IntoList for ($($T,)+) {
+            fn into_list(self) -> List {
+                List(self.into_sexp())
+            }
+        }
+
+        impl<$($T: TryFromSexp),+> TryFromList for ($($T,)+)
+        where
+            $($T::Error: Into<SexpError>,)+
+        {
+            type Error = SexpError;
+
+            fn try_from_list(list: List) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(list.0)
+            }
+        }
+    };
+}
+
+crate::tuple_macros::for_each_tuple!(impl_tuple_list);
+
 impl<T: IntoR> IntoList for Vec<T> {
     fn into_list(self) -> List {
         // Allocate + protect the parent first, then call `into_sexp()` per
