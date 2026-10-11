@@ -1322,6 +1322,11 @@ impl Person {
 | `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
 | `preconditions(p, q)` / `no_preconditions(p)` | The same for the named parameters only, over the method's own |
 
+An S4 instance method uses `s4_<R method name>` as its default generic:
+`r#type` becomes `s4_type`, `r_name = "kind"` gives `s4_kind`, and
+`postfix = "_code"` gives `s4_type_code`. An explicit `generic = "category"`
+uses exactly `category`, without the prefix.
+
 Valid `as = "..."` targets: `data.frame`, `list`, `character`, `numeric`, `double`,
 `integer`, `logical`, `matrix`, `vector`, `factor`, `Date`, `POSIXct`, `complex`,
 `raw`, `environment`, `function`.

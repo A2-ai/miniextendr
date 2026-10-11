@@ -134,7 +134,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = if let Some(ref generic) = method.method_attrs.generic {
             generic.clone()
         } else {
-            format!("s4_{}", method.ident)
+            format!("s4_{}", method.r_method_name())
         };
 
         // Emit the generic-doc marker BEFORE the source comment so the write-time
