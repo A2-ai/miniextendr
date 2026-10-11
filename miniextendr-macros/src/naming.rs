@@ -40,12 +40,12 @@ pub(crate) fn name_ident(name: &str) -> syn::Ident {
 }
 // endregion
 
-/// Identifier for the generated `const &str` holding the R wrapper source.
+/// Identifier for the registration entry holding the R wrapper source.
 ///
-/// Returns `R_WRAPPER_{RUST_IDENT}` (uppercased).
+/// Returns `R_WRAPPER_{rust_ident}`, preserving case.
 pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let upper = ident_name(rust_ident).to_uppercase();
-    quote::format_ident!("R_WRAPPER_{upper}")
+    let name = unraw(rust_ident);
+    quote::format_ident!("R_WRAPPER_{name}")
 }
 
 // region: crate-prefixed C symbol naming (#1273)
@@ -547,7 +547,7 @@ mod tests {
         );
         assert_eq!(
             r_wrapper_const_ident_for(&syn::parse_quote!(r#match)).to_string(),
-            "R_WRAPPER_MATCH"
+            "R_WRAPPER_match"
         );
         let ty: syn::Ident = syn::parse_quote!(Row);
         assert_eq!(

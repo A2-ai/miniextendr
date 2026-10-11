@@ -38,7 +38,7 @@
 //! │  2. Analyze return type (Result<T>, Option<T>, raw SEXP, etc.)           │
 //! │  3. Generate:                                                            │
 //! │     ├── C wrapper: extern "C-unwind" fn C_<crate>_<name>(...) → SEXP     │
-//! │     ├── R wrapper: const R_WRAPPER_<NAME>: &str = "..."                  │
+//! │     ├── R wrapper: static R_WRAPPER_<name>: RWrapperEntry                  │
 //! │     └── Registration: const call_method_def_<name>: R_CallMethodDef      │
 //! │  4. Original function preserved (with added attributes)                  │
 //! └──────────────────────────────────────────────────────────────────────────┘
@@ -108,7 +108,7 @@
 //! can't collide on a C symbol (#1273; helpers in `naming.rs`). For a
 //! function `my_func` in a crate `mypkg`:
 //! - C wrapper: `C_mypkg_my_func`
-//! - R wrapper const: `R_WRAPPER_MY_FUNC`
+//! - R wrapper registration: `R_WRAPPER_my_func`
 //! - Registration: `call_method_def_my_func`
 //!
 //! For a type `MyType` with trait `Counter` in a crate `mypkg`:
