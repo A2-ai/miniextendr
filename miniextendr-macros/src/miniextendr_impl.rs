@@ -3438,6 +3438,12 @@ pub fn generate_method_c_wrapper(
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
     let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
+    let self_sexp = crate::naming::self_sexp_ident();
+    let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
+    let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
+    let self_slot = syn::Ident::new("self_slot", proc_macro2::Span::mixed_site());
+    let external_ptr = syn::Ident::new("__self_ptr", proc_macro2::Span::mixed_site());
+    let taken = syn::Ident::new("__mx_taken", proc_macro2::Span::mixed_site());
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
@@ -3492,23 +3498,23 @@ pub fn generate_method_c_wrapper(
         let self_extraction = match method.env {
             ReceiverKind::RefMut => {
                 quote! {
-                    let mut self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    let mut #self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
                     };
-                    let self_ref = match self_ptr.downcast_mut::<#type_ident>() {
+                    let #self_ref = match #self_ptr.downcast_mut::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
                     };
                 }
             }
             ReceiverKind::Ref => {
                 quote! {
-                    let self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    let #self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
                     };
-                    let self_ref = match self_ptr.downcast_ref::<#type_ident>() {
+                    let #self_ref = match #self_ptr.downcast_ref::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
                     };
                 }
             }
@@ -3517,24 +3523,24 @@ pub fn generate_method_c_wrapper(
                 // value; the call runs on a clone and the slot is overwritten
                 // only on success (`T: Clone`, see `ConsumingFallible`).
                 ValueMode::Fallible => quote! {
-                    let mut self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    let mut #self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
                     };
-                    let self_slot = match self_ptr.downcast_mut::<#type_ident>() {
+                    let #self_slot = match #self_ptr.downcast_mut::<#type_ident>() {
                         ::core::option::Option::Some(r) => r,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
                     };
                 },
                 // `self -> Self` and terminal `self -> T`: move the value out,
                 // leaving the `ConsumedSlot` marker until (and unless) the
                 // result is written back.
                 ValueMode::WriteBack | ValueMode::Terminal => quote! {
-                    let mut self_ptr = unsafe {
-                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp))
+                    let mut #self_ptr = unsafe {
+                        ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp))
                     };
-                    let __mx_taken = match self_ptr.take_for_consuming::<#type_ident>() {
+                    let #taken = match #self_ptr.take_for_consuming::<#type_ident>() {
                         ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&self_ptr),
+                        ::core::option::Option::None => ::miniextendr_api::externalptr::handle_downcast_failed::<#type_ident>(&#self_ptr),
                     };
                 },
             },
@@ -3543,20 +3549,20 @@ pub fn generate_method_c_wrapper(
             // type mismatch, #1872).
             ReceiverKind::ExternalPtrRef => {
                 quote! {
-                    let __self_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
+                    let #external_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
                 }
             }
             ReceiverKind::ExternalPtrRefMut => {
                 quote! {
-                    let mut __self_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
+                    let mut #external_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
                 }
             }
             ReceiverKind::ExternalPtrValue => {
                 quote! {
-                    let __self_ptr =
-                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(self_sexp);
+                    let #external_ptr =
+                        ::miniextendr_api::externalptr::wrap_receiver::<#type_ident>(#self_sexp);
                 }
             }
             _ => unreachable!(),
@@ -3590,43 +3596,42 @@ pub fn generate_method_c_wrapper(
     };
     let call_expr = match method.env {
         ReceiverKind::Ref | ReceiverKind::RefMut if fallible_self_ref => {
-            let call = unwrap_marker(quote! { self_ref.#method_ident(#(#rust_args),*) });
+            let call = unwrap_marker(quote! { #self_ref.#method_ident(#(#rust_args),*) });
             quote! { #call.map(|_| ()) }
         }
         ReceiverKind::Ref | ReceiverKind::RefMut => {
-            unwrap_marker(quote! { self_ref.#method_ident(#(#rust_args),*) })
+            unwrap_marker(quote! { #self_ref.#method_ident(#(#rust_args),*) })
         }
         ReceiverKind::Value => match value_mode {
             ValueMode::WriteBack => {
-                let call = unwrap_marker(
-                    quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) },
-                );
+                let call =
+                    unwrap_marker(quote! { #type_ident::#method_ident(#taken, #(#rust_args),*) });
                 quote! {{
                     let __mx_out = #call;
-                    self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
+                    #self_ptr.restore_after_consuming::<#type_ident>(__mx_out);
                 }}
             }
             ValueMode::Fallible => {
                 let call = unwrap_marker(quote! {
                     #type_ident::#method_ident(
-                        ::miniextendr_api::externalptr::clone_for_consuming::<#type_ident>(&*self_slot),
+                        ::miniextendr_api::externalptr::clone_for_consuming::<#type_ident>(&*#self_slot),
                         #(#rust_args),*
                     )
                 });
-                quote! { #call.map(|__mx_v| { *self_slot = __mx_v; }) }
+                quote! { #call.map(|__mx_v| { *#self_slot = __mx_v; }) }
             }
             ValueMode::Terminal => {
-                unwrap_marker(quote! { #type_ident::#method_ident(__mx_taken, #(#rust_args),*) })
+                unwrap_marker(quote! { #type_ident::#method_ident(#taken, #(#rust_args),*) })
             }
         },
         ReceiverKind::ExternalPtrRef => {
-            unwrap_marker(quote! { #type_ident::#method_ident(&__self_ptr, #(#rust_args),*) })
+            unwrap_marker(quote! { #type_ident::#method_ident(&#external_ptr, #(#rust_args),*) })
         }
-        ReceiverKind::ExternalPtrRefMut => {
-            unwrap_marker(quote! { #type_ident::#method_ident(&mut __self_ptr, #(#rust_args),*) })
-        }
+        ReceiverKind::ExternalPtrRefMut => unwrap_marker(
+            quote! { #type_ident::#method_ident(&mut #external_ptr, #(#rust_args),*) },
+        ),
         ReceiverKind::ExternalPtrValue => {
-            unwrap_marker(quote! { #type_ident::#method_ident(__self_ptr, #(#rust_args),*) })
+            unwrap_marker(quote! { #type_ident::#method_ident(#external_ptr, #(#rust_args),*) })
         }
         ReceiverKind::None => unwrap_marker(quote! { #type_ident::#method_ident(#(#rust_args),*) }),
     };

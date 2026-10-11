@@ -48,6 +48,13 @@ pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("R_WRAPPER_{name}")
 }
 
+/// The C wrapper's receiver slot, shared with method extraction and return
+/// handling. Its mixed-site span keeps a user parameter named `self_sexp`
+/// from replacing the original R handle after conversion.
+pub(crate) fn self_sexp_ident() -> syn::Ident {
+    syn::Ident::new("self_sexp", proc_macro2::Span::mixed_site())
+}
+
 // region: crate-prefixed C symbol naming (#1273)
 //
 // Every `#[miniextendr]`-emitted `#[no_mangle]` C symbol is prefixed with the

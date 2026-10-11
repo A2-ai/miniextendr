@@ -1235,6 +1235,7 @@ pub(super) fn generate_trait_method_c_wrapper(
     ));
 
     if method.has_self {
+        let self_sexp = crate::naming::self_sexp_ident();
         let self_ptr = syn::Ident::new("self_ptr", proc_macro2::Span::mixed_site());
         let self_ref = syn::Ident::new("self_ref", proc_macro2::Span::mixed_site());
         // Instance method: generate self extraction and call with self_ref
@@ -1272,7 +1273,7 @@ pub(super) fn generate_trait_method_c_wrapper(
         let self_extraction = quote::quote! {
             let #receiver_mutability #self_ptr = unsafe {
                 ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(
-                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(self_sexp)
+                    ::miniextendr_api::externalptr::resolve_receiver::<#type_ident>(#self_sexp)
                 )
             };
             #self_setup

@@ -455,6 +455,10 @@ impl RustConversionBuilder {
         let ident = &pat_ident.ident;
         // `r#`-free spelling for synthesized bindings (`__storage_where`).
         let plain = crate::naming::unraw(ident);
+        // These temporaries survive other argument conversions (and, for
+        // worker borrows, cross into another closure). Source parameters may
+        // use the same spelling, so keep every temporary hygienic.
+        let binding_span = proc_macro2::Span::mixed_site();
         let ty = pat_type.ty.as_ref();
         // The R formal's name (`_x` → `x`, `r#type` → `type`): what a
         // conversion condition names in its message and in `e$param`.
@@ -551,7 +555,8 @@ impl RustConversionBuilder {
                         crate::classify_several_ok_container(ty)
                 {
                     let is_mut = r.mutability.is_some();
-                    let storage_ident = quote::format_ident!("__storage_{}", plain);
+                    let storage_ident =
+                        quote::format_ident!("__storage_{}", plain, span = binding_span);
                     let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                     let span = ty.span();
                     let try_expr = quote_spanned! {span=>
@@ -585,7 +590,8 @@ impl RustConversionBuilder {
 
                 if is_dots {
                     // &Dots: create wrapper with storage (main thread only - requires SEXP)
-                    let storage_ident = quote::format_ident!("{}_storage", plain);
+                    let storage_ident =
+                        quote::format_ident!("{}_storage", plain, span = binding_span);
                     let stmt = quote! {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #sexp_ident };
                         let #ident = &#storage_ident;
@@ -622,7 +628,8 @@ impl RustConversionBuilder {
                         // Worker path: convert to owned String, then borrow using the
                         // Borrow trait. The String moves into the worker closure (it is
                         // Send); a borrowed view over R's CHARSXP pool is not.
-                        let owned_ident = quote::format_ident!("__owned_{}", plain);
+                        let owned_ident =
+                            quote::format_ident!("__owned_{}", plain, span = binding_span);
                         // Owned conversion: SEXP -> String
                         let string_ty: syn::Type = syn::parse_quote!(String);
                         let try_expr = quote_spanned! {span=>
@@ -722,7 +729,8 @@ impl RustConversionBuilder {
                             // conversion, whose only failure is the selection length:
                             // an argument error like any other (#1591).
                             let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
-                            let vec_ident = quote::format_ident!("__vec_{}", plain);
+                            let vec_ident =
+                                quote::format_ident!("__vec_{}", plain, span = binding_span);
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
                             };
@@ -746,7 +754,8 @@ impl RustConversionBuilder {
                             return (vec![vec_stmt, arr_stmt], vec![]);
                         }
                         crate::SeveralOkContainer::BorrowedSlice => {
-                            let storage_ident = quote::format_ident!("__storage_{}", plain);
+                            let storage_ident =
+                                quote::format_ident!("__storage_{}", plain, span = binding_span);
                             let vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#inner_ty>);
                             let try_expr = quote_spanned! {span=>
                                 ::miniextendr_api::match_arg_vec_from_sexp::<#inner_ty>(#sexp_ident)
@@ -823,7 +832,11 @@ impl RustConversionBuilder {
                             // first, since the conversion binding may shadow
                             // it (a C wrapper can keep the parameter's name).
                             if crate::r_preconditions::no_na_checked_after_conversion(ty) {
-                                let input = quote::format_ident!("__no_na_input_{}", plain);
+                                let input = quote::format_ident!(
+                                    "__no_na_input_{}",
+                                    plain,
+                                    span = binding_span
+                                );
                                 let bind = quote_spanned! {span=>
                                     let #input = #sexp_ident;
                                 };

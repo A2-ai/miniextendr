@@ -399,7 +399,8 @@ impl CWrapperContext {
 
         // For instance methods, add self_sexp parameter
         if self.has_self {
-            c_params.push(quote!(self_sexp: ::miniextendr_api::SEXP));
+            let self_sexp = crate::naming::self_sexp_ident();
+            c_params.push(quote!(#self_sexp: ::miniextendr_api::SEXP));
         }
 
         // Add regular parameters
@@ -410,11 +411,15 @@ impl CWrapperContext {
                 let ident = &pat_ident.ident;
                 // When preserve_param_names is set, use the original parameter name
                 // (visible in rustdoc). Otherwise use arg_N for predictable mangling.
-                let param_ident = if self.preserve_param_names {
+                let mut param_ident = if self.preserve_param_names {
                     ident.clone()
                 } else {
                     format_ident!("arg_{}", idx)
                 };
+                // Conversion binds the user's identifiers in order. Keep all
+                // raw slots separate so an earlier `arg_1` cannot replace the
+                // next SEXP, including when rustdoc preserves parameter names.
+                param_ident.set_span(proc_macro2::Span::mixed_site());
 
                 c_params.push(quote!(#param_ident: ::miniextendr_api::SEXP));
                 rust_args.push(ident.clone());
@@ -750,6 +755,7 @@ impl CWrapperContext {
     fn generate_return_handling(&self, call_expr: &TokenStream) -> TokenStream {
         let fn_ident = &self.fn_ident;
         let err_parts = self.err_parts.expr();
+        let self_sexp = crate::naming::self_sexp_ident();
 
         match &self.return_handling {
             ReturnHandling::Unit => {
@@ -779,7 +785,7 @@ impl CWrapperContext {
                 // back the SAME ExternalPtr handle. No clone, no rewrap.
                 quote! {
                     let _ = #call_expr;
-                    self_sexp
+                    #self_sexp
                 }
             }
             ReturnHandling::SelfHandleResult => {
@@ -790,7 +796,7 @@ impl CWrapperContext {
                             #err_parts, ::core::option::Option::Some(__miniextendr_call),
                         ) };
                     }
-                    self_sexp
+                    #self_sexp
                 }
             }
             ReturnHandling::SelfHandleOption => {
@@ -802,7 +808,7 @@ impl CWrapperContext {
                             #error_msg, ::miniextendr_api::error_value::kind::NONE_ERR, ::core::option::Option::None, ::core::option::Option::Some(__miniextendr_call),
                         ) };
                     }
-                    self_sexp
+                    #self_sexp
                 }
             }
             ReturnHandling::IntoR => {
