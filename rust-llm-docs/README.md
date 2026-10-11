@@ -44,11 +44,17 @@ its rustdoc surface is intentionally thin.
 just llm-docs
 ```
 
-Requires a `rustc` with `RUSTC_BOOTSTRAP=1` support (stable is fine) and Python 3.
-The recipe runs `cargo doc --no-deps --document-private-items` for each crate,
+Requires an installed nightly toolchain (`rustup toolchain install nightly`)
+and Python 3. JSON output requires unstable rustdoc options; the recipe uses
+`cargo +nightly` rather than enabling unstable behavior in the stable compiler.
+Pass another installed nightly explicitly with `just llm-docs nightly-YYYY-MM-DD`
+(or `just llm-docs-check nightly-YYYY-MM-DD`). Metadata and documentation use
+the same selected toolchain.
+
+The recipe runs `cargo +nightly doc --no-deps --document-private-items` for each crate,
 using `miniextendr-api`'s maintained `full` feature aggregate and all benchmark
 features, then renders markdown into `generated/`. The output is deterministic:
-the same sources render byte-identical files. `just llm-docs-check` runs the
+the same sources and rustdoc JSON render byte-identical files. `just llm-docs-check` runs the
 renderer tests, then regenerates the corpus; the regeneration fails on any
 rustdoc item kind the renderer does not cover.
 
@@ -86,7 +92,7 @@ uv run rustdoc_public.py axum --version 0.7.0 --output-dir ./my-docs
 
 ```bash
 # 1. Generate the JSON
-RUSTC_BOOTSTRAP=1 RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo doc --no-deps
+RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo +nightly doc --no-deps
 
 # 2. Single-file digest
 python3 rustdoc_megadoc.py target/doc/<crate>.json output.md
