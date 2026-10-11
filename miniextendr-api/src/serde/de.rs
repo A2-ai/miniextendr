@@ -10,6 +10,11 @@ use serde::de::{self, Deserialize, DeserializeSeed, Deserializer, MapAccess, Seq
 
 /// Deserializer that converts R SEXP to Rust values.
 ///
+/// Native `IntoR` / `TryFromSexp` also support positional tuples with
+/// 1–12 fields, `Option<tuple>`, `Vec<tuple>` and `Vec<Option<tuple>>`
+/// without serde. Their representation is a list per tuple, with NULL
+/// for a missing tuple; use this adapter when serde's data model is needed.
+///
 /// # Type Mappings
 ///
 /// | R Type | Rust Type |

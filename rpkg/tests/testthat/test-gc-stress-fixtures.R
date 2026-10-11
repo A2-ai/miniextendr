@@ -653,3 +653,15 @@ test_that("gc_stress_trait_view_args keeps View arguments rooted under gctorture
 })
 
 # endregion
+
+
+test_that("tuple container rows retain all children under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  rows <- miniextendr:::gc_stress_tuple_containers()
+  expected <- lapply(0:15, function(i) {
+    if (i %% 4L == 0L) NULL else list(i, paste0("row-", i), c(i, i + 1L))
+  })
+  expect_identical(rows, expected)
+})

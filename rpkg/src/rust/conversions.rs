@@ -1707,3 +1707,32 @@ pub fn conv_tuple3_sum(triple: (f64, bool, Vec<i32>)) -> f64 {
     x + (flag as i32 as f64) + v.iter().map(|&i| i as f64).sum::<f64>()
 }
 // endregion
+
+// region: Tuple containers and nested borrow preflight
+
+#[miniextendr(noexport)]
+pub fn conv_tuple_rows_roundtrip(rows: Vec<Option<(i32, String)>>) -> Vec<Option<(i32, String)>> {
+    rows
+}
+
+#[miniextendr(noexport)]
+pub fn conv_tuple_option_roundtrip(value: Option<(i32, String)>) -> SEXP {
+    value.into_sexp()
+}
+
+#[miniextendr(noexport)]
+pub fn conv_tuple_borrow_pair(pair: (&mut i32, &i32)) -> i32 {
+    *pair.0 + *pair.1
+}
+
+#[miniextendr(noexport)]
+pub fn conv_tuple_borrow_cross(pair: (&mut [i32], String), other: &[i32]) -> usize {
+    pair.0.len() + other.len()
+}
+
+#[cfg(feature = "worker-thread")]
+#[miniextendr(worker, noexport)]
+pub fn conv_tuple_borrow_worker(pair: (&mut i32, &i32)) -> i32 {
+    *pair.0 + *pair.1
+}
+// endregion

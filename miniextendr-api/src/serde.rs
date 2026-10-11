@@ -3,6 +3,11 @@
 //! This module provides efficient type-preserving conversions between Rust types
 //! and native R objects using serde's `Serialize` and `Deserialize` traits.
 //!
+//! Native `IntoR` / `TryFromSexp` also support positional tuples with
+//! 1–12 fields, `Option<tuple>`, `Vec<tuple>` and `Vec<Option<tuple>>`
+//! without serde. Their representation is a list per tuple, with NULL
+//! for a missing tuple; use this adapter when serde's data model is needed.
+//!
 //! # Features
 //!
 //! Enable this module with the `serde` feature:
