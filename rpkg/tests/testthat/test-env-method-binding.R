@@ -55,3 +55,42 @@ test_that("env method bodies and defaults keep their lexical environment", {
   expect_identical(environment(methods$read), lexical)
   expect_identical(parent.env(environment(bound)), lexical)
 })
+
+test_that("flat env trait lookup refuses ambiguity and preserves explicit lookup", {
+  lookup <- getFromNamespace(".miniextendr_env_method", "miniextendr")
+  methods <- new.env(parent = emptyenv())
+  methods$Alpha <- new.env(parent = emptyenv())
+  methods$Beta <- new.env(parent = emptyenv())
+  methods$Alpha$value <- structure(function(x) list("Alpha", x), .__mx_instance__ = TRUE)
+  methods$Beta$value <- structure(function(x) list("Beta", x), .__mx_instance__ = TRUE)
+  methods$Alpha$limit <- function() 10L
+  methods$Beta$limit <- function() 20L
+  # An inherited function and a non-function member are not candidates.
+  methods$Inherited <- new.env(parent = methods$Alpha)
+  methods$Data <- list2env(list(value = 42L), parent = emptyenv())
+  `$.AuditEnv` <- function(self, name) lookup(self, name, methods)
+  receiver <- structure(list(), class = "AuditEnv")
+
+  error <- tryCatch(receiver$value, error = identity)
+  expect_s3_class(error, "miniextendr_ambiguous_method")
+  expect_identical(error$method, "value")
+  expect_identical(error$traits, c("Alpha", "Beta"))
+  expect_match(conditionMessage(error), "obj$Trait", fixed = TRUE)
+  expect_identical(conditionCall(error), quote(receiver$value))
+  expect_error(receiver$limit, class = "miniextendr_ambiguous_method")
+  expect_identical(receiver$Alpha$value(), list("Alpha", receiver))
+  expect_identical(receiver$Beta$value(), list("Beta", receiver))
+  expect_identical(receiver$Alpha$limit(), 10L)
+  expect_identical(receiver$Beta$limit(), 20L)
+
+  # An inherent method wins over both traits.
+  methods$value <- function() "inherent"
+  expect_identical(receiver$value(), "inherent")
+  # With one candidate left, both instance and static flat lookup still work.
+  methods$value <- NULL
+  methods$Beta$value <- NULL
+  methods$Beta$limit <- NULL
+  expect_identical(receiver$value(), list("Alpha", receiver))
+  expect_identical(receiver$limit(), 10L)
+  expect_null(receiver$missing)
+})

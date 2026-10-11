@@ -142,6 +142,13 @@ chain. Errors raised from Rust come back as a tagged value and are re-raised by
 `.miniextendr_raise_condition` with the call attributed to the user's frame
 (see `docs/CALL_ATTRIBUTION.md`).
 
+An Env object's flat trait lookup (`obj$method()`) requires one matching
+trait. If several traits provide the method, it raises
+`miniextendr_ambiguous_method` with the method name in `condition$method` and
+the matching trait names in `condition$traits`. Select the trait explicitly
+with `obj$Trait$method()`. An inherent method of that name takes precedence.
+The same rule applies to trait static methods and associated constants.
+
 ### Usage
 
 ```r
