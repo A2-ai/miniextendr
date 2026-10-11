@@ -1180,7 +1180,7 @@ impl Counter {
 | Attribute | Applies To | Effect |
 |-----------|-----------|--------|
 | `class = "..."` | All systems | Custom R class name |
-| `label = "..."` | All systems | Distinguish multiple impl blocks on same type |
+| `label = "..."` | All systems | Distinguish multiple impl blocks on same type (each block still defines the whole class, #1776) |
 | `strict` / `no_strict` | All systems | Strict type conversion for all methods |
 | `internal` | All systems | `@keywords internal` on class |
 | `noexport` | All systems | Suppress `@export` on class |
@@ -1189,12 +1189,17 @@ impl Counter {
 
 ```rust
 // Two impl blocks need labels
-#[miniextendr(s3, label = "core")]
+#[miniextendr(s4, label = "core")]
 impl Counter { /* constructors + getters */ }
 
-#[miniextendr(s3, label = "mutations")]
+#[miniextendr(s4, label = "mutations")]
 impl Counter { /* mutating methods */ }
 ```
+
+Env, R6 and S7 blocks (and S3 blocks with the constructor or a class named
+after the type) each define the class object, so the wrapper writer rejects a
+second block of such a class at install time; see
+[Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
 
 ### R6-Specific Options
 
