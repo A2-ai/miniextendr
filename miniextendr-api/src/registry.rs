@@ -402,7 +402,9 @@ unsafe impl Sync for SidecarAccessorsEntry {}
 /// blocks with disagreeing `class = "..."` overrides) panic: silently keeping
 /// whichever entry linkme ordered last would resolve `.__MX_CLASS_REF_*__`
 /// placeholders nondeterministically. `field_syntax` may differ between the
-/// blocks ([`sidecar_accessor_fragments`] reads every entry).
+/// blocks ([`sidecar_accessor_fragments`] reads every entry). Distinct Rust
+/// types must also have distinct R class names: otherwise their class bindings
+/// and generated methods overwrite each other when the package loads (#1677).
 ///
 /// Host-only like `MX_CLASS_NAMES` itself — the consumers all live in the
 /// wrapper-writing path, which never runs on wasm32.
@@ -412,6 +414,7 @@ fn build_class_name_index<'a>(
 ) -> std::collections::HashMap<&'a str, &'a ClassNameEntry> {
     use std::collections::hash_map::Entry;
     let mut index = std::collections::HashMap::new();
+    let mut r_class_names = std::collections::HashMap::new();
     for e in entries {
         match index.entry(e.rust_type) {
             Entry::Vacant(slot) => {
@@ -433,6 +436,19 @@ fn build_class_name_index<'a>(
                     );
                 }
             }
+        }
+        if let Some(prev) = r_class_names.insert(e.r_class_name, e) {
+            assert!(
+                prev.rust_type == e.rust_type,
+                "R class `{}` is registered for both Rust type `{}` ({}) and `{}` ({}). \
+                 Distinct Rust types must use distinct R class names; change one \
+                 `class = \"...\"` override to avoid overwriting its class and methods.",
+                e.r_class_name,
+                prev.rust_type,
+                prev.class_system,
+                e.rust_type,
+                e.class_system,
+            );
         }
     }
     index
@@ -3127,6 +3143,62 @@ mod tests {
             },
         ];
         let _ = build_class_name_index(entries.iter());
+    }
+
+    /// R class names belong to one Rust type, regardless of the selected
+    /// class systems or the order linkme supplies the registrations.
+    #[test]
+    fn class_name_index_rejects_shared_r_class_names() {
+        for class_system in ["env", "r6", "s3", "s4", "s7", "vctrs"] {
+            let entries = [
+                ClassNameEntry {
+                    rust_type: "First",
+                    r_class_name: "Shared",
+                    class_system: "env",
+                    field_syntax: false,
+                },
+                ClassNameEntry {
+                    rust_type: "Second",
+                    r_class_name: "Shared",
+                    class_system,
+                    field_syntax: true,
+                },
+            ];
+            for ordered in [[&entries[0], &entries[1]], [&entries[1], &entries[0]]] {
+                let error = std::panic::catch_unwind(|| build_class_name_index(ordered))
+                    .err()
+                    .expect("a shared R class would overwrite the other type's methods");
+                let message = error.downcast_ref::<String>().unwrap();
+                assert!(message.contains("R class `Shared`"), "{message}");
+                assert!(message.contains("`First` (env)"), "{message}");
+                assert!(
+                    message.contains(&format!("`Second` ({class_system})")),
+                    "{message}"
+                );
+                assert!(message.contains("class = \"...\""), "{message}");
+            }
+        }
+    }
+
+    #[test]
+    fn class_name_index_preserves_case_distinct_r_class_names() {
+        let entries = [
+            ClassNameEntry {
+                rust_type: "First",
+                r_class_name: "Widget",
+                class_system: "env",
+                field_syntax: false,
+            },
+            ClassNameEntry {
+                rust_type: "Second",
+                r_class_name: "widget",
+                class_system: "env",
+                field_syntax: false,
+            },
+        ];
+        let index = build_class_name_index(entries.iter());
+        assert_eq!(index["First"].r_class_name, "Widget");
+        assert_eq!(index["Second"].r_class_name, "widget");
     }
 
     /// A type's standalone sidecar accessors are written internal when one of
