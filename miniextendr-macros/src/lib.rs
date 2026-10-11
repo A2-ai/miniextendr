@@ -419,67 +419,6 @@ pub(crate) fn build_dots_validation_stmt(
     }
 }
 
-/// Emit the `extern "C-unwind"` helper + `R_CallMethodDef` registration for
-/// each standalone-fn `match_arg` param.
-///
-/// Each helper returns the enum's `CHOICES` wrapped in a STRSXP so the R
-/// wrapper's prelude can call `match.arg(x, .Call(helper, ...))`. Factored
-/// out of the `miniextendr` fn body so the entry point doesn't own the
-/// `quote!` scaffolding.
-fn build_match_arg_helpers(
-    match_arg_param_info: &[(String, String, &syn::Type)],
-    parsed: &miniextendr_fn::MiniextendrFunctionParsed,
-    c_ident_str: &str,
-    cfg_attrs: &[syn::Attribute],
-) -> Vec<proc_macro2::TokenStream> {
-    match_arg_param_info
-        .iter()
-        .map(|(r_param, rust_name, param_ty)| {
-            // several_ok containers and the `Option<T>` scalar form both wrap the
-            // `MatchArg` type; resolve it the same way the impl path does.
-            let choices_ty: &syn::Type =
-                match_arg_choices_ty(param_ty, parsed.has_several_ok(rust_name));
-            let helper_fn_name = crate::match_arg_keys::choices_helper_c_name(c_ident_str, r_param);
-            let helper_fn_ident = syn::Ident::new(&helper_fn_name, proc_macro2::Span::call_site());
-            let helper_def_ident =
-                crate::match_arg_keys::choices_helper_def_ident(c_ident_str, r_param);
-            let helper_c_name = syn::LitCStr::new(
-                std::ffi::CString::new(helper_fn_name.clone())
-                    .expect("valid C string")
-                    .as_c_str(),
-                proc_macro2::Span::call_site(),
-            );
-            quote::quote! {
-                #(#cfg_attrs)*
-                #[allow(non_snake_case)]
-                #[unsafe(no_mangle)]
-                pub extern "C-unwind" fn #helper_fn_ident(
-                    __miniextendr_call: ::miniextendr_api::SEXP,
-                ) -> ::miniextendr_api::SEXP {
-                    ::miniextendr_api::choices_sexp::<#choices_ty>()
-                }
-
-                #(#cfg_attrs)*
-                #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
-                #[allow(non_upper_case_globals)]
-                #[allow(non_snake_case)]
-                static #helper_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
-                    ::miniextendr_api::sys::R_CallMethodDef {
-                        name: #helper_c_name.as_ptr(),
-                        fun: Some(std::mem::transmute::<
-                            unsafe extern "C-unwind" fn(
-                                ::miniextendr_api::SEXP,
-                            ) -> ::miniextendr_api::SEXP,
-                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
-                        >(#helper_fn_ident)),
-                        numArgs: 1i32,
-                    }
-                };
-            }
-        })
-        .collect()
-}
-
 /// Export Rust items to R.
 ///
 /// `#[miniextendr]` can be applied to:
@@ -1981,14 +1920,6 @@ pub fn miniextendr(
 
     let original_item = original_item;
 
-    // Generate match_arg choices helper C wrappers and R_CallMethodDef entries
-    let match_arg_helpers = build_match_arg_helpers(
-        &match_arg_param_info,
-        &parsed,
-        &c_ident.to_string(),
-        &cfg_attrs,
-    );
-
     // Generate MX_MATCH_ARG_CHOICES entries for placeholder → choices replacement
     // Resolve the `MatchArg`-bound type used in the choices_str closure: for
     // `several_ok` params that's the inner element of the container, otherwise
@@ -2094,10 +2025,6 @@ pub fn miniextendr(
                     #r_wrapper_str
                 ),
             };
-
-        // match_arg choices helpers (C wrappers + R_CallMethodDef entries)
-        // Each helper's call_method_def self-registers via distributed_slice
-        #(#match_arg_helpers)*
 
         // match_arg choices entries for R wrapper default replacement
         #(#match_arg_choices_entries)*

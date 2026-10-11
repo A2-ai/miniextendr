@@ -3722,35 +3722,21 @@ pub fn generate_method_c_wrapper(
 
     let c_wrapper_and_def = builder.build().generate();
 
-    // Emit one `__match_arg_choices__<param>` helper fn + linkme registrations for each
-    // match_arg-annotated parameter so the R wrapper can look up the enum's
-    // `MatchArg::CHOICES` at call time (C extern) and the package-load write step can
-    // substitute the placeholder default with the literal choices (distributed_slice).
-    let match_arg_helpers = generate_method_match_arg_helpers(parsed_impl, method);
+    let match_arg_entries = generate_method_match_arg_entries(parsed_impl, method);
 
     quote! {
         #c_wrapper_and_def
-        #match_arg_helpers
+        #match_arg_entries
     }
 }
 
-/// Generate `__match_arg_choices__<param>` helper C wrappers plus the two linkme
-/// registrations (`MX_CALL_DEFS` and `MX_MATCH_ARG_CHOICES`) per match_arg parameter.
-///
-/// Mirrors the standalone-fn emission in `lib.rs` so both surfaces resolve through the
-/// same runtime paths — `C_*__match_arg_choices__*` is called from R's prelude, and
-/// `MX_MATCH_ARG_CHOICES` drives write-time placeholder substitution when the wrapper
-/// writer emits the final R wrapper file.
-fn generate_method_match_arg_helpers(
+/// Register enum choices, aliases, defaults and parameter documentation for
+/// write-time placeholder substitution. R calls no choice-lookup C helper.
+fn generate_method_match_arg_entries(
     parsed_impl: &ParsedImpl,
     method: &ParsedMethod,
 ) -> TokenStream {
-    if !method
-        .method_attrs
-        .per_param
-        .values()
-        .any(|a| a.match_arg || a.choices.is_some())
-    {
+    if !method.method_attrs.per_param.values().any(|a| a.match_arg) {
         return TokenStream::new();
     }
 
@@ -3774,24 +3760,12 @@ fn generate_method_match_arg_helpers(
             continue;
         };
         // several_ok containers (Vec<Mode>, Box<[Mode]>, [Mode; N], &[Mode]) and the
-        // `Option<Mode>` scalar form both wrap the enum; the helper must return the
-        // enum's CHOICES, not the wrapper's.
+        // `Option<Mode>` scalar form both wrap the enum; register the enum's
+        // CHOICES, not the wrapper's.
         let several_ok = attrs.several_ok;
         let choices_ty = crate::match_arg_choices_ty(param_ty, several_ok).clone();
 
         let r_name = crate::r_wrapper_builder::normalize_r_arg_string(rust_name);
-
-        // C helper fn that R calls via .__mx_choices_<param> <- .Call(C_...)
-        let helper_c_name_str = crate::match_arg_keys::choices_helper_c_name(&c_ident_str, &r_name);
-        let helper_fn_ident = syn::Ident::new(&helper_c_name_str, proc_macro2::Span::call_site());
-        let helper_def_ident =
-            crate::match_arg_keys::choices_helper_def_ident(&c_ident_str, &r_name);
-        let helper_c_name = syn::LitCStr::new(
-            std::ffi::CString::new(helper_c_name_str.clone())
-                .expect("valid C string")
-                .as_c_str(),
-            proc_macro2::Span::call_site(),
-        );
 
         // Placeholder that the write-time substitution pass replaces with the
         // literal `c("a", "b", ...)` default. Shape matches the standalone-fn convention.
@@ -3837,32 +3811,6 @@ fn generate_method_match_arg_helpers(
         );
 
         out.extend(quote! {
-            #(#cfg_attrs)*
-            #[allow(non_snake_case)]
-            #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #helper_fn_ident(
-                __miniextendr_call: ::miniextendr_api::SEXP,
-            ) -> ::miniextendr_api::SEXP {
-                ::miniextendr_api::choices_sexp::<#choices_ty>()
-            }
-
-            #(#cfg_attrs)*
-            #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_CALL_DEFS), linkme(crate = ::miniextendr_api::linkme))]
-            #[allow(non_upper_case_globals)]
-            #[allow(non_snake_case)]
-            static #helper_def_ident: ::miniextendr_api::sys::R_CallMethodDef = unsafe {
-                ::miniextendr_api::sys::R_CallMethodDef {
-                    name: #helper_c_name.as_ptr(),
-                    fun: Some(::std::mem::transmute::<
-                        unsafe extern "C-unwind" fn(
-                            ::miniextendr_api::SEXP,
-                        ) -> ::miniextendr_api::SEXP,
-                        unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void,
-                    >(#helper_fn_ident)),
-                    numArgs: 1i32,
-                }
-            };
-
             #choices_entry_tokens
             #param_doc_entry_tokens
         });
