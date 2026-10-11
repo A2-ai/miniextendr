@@ -545,10 +545,14 @@ impl<T: Copy> RCopy for T {
 ///
 /// # Design Note
 ///
-/// Unlike other adapter traits, `RIterator` does NOT have a blanket impl
-/// because iterators require `&mut self` for `next()`, but R's ExternalPtr
-/// pattern typically provides `&self`. Users must implement this trait
-/// manually using interior mutability (RefCell, Mutex, etc.).
+/// Every `RefCell<I>` with `I: Iterator` implements this trait. The cell
+/// supplies mutable access without erasing the iterator or restricting its item
+/// type. A concrete ExternalPtr class can delegate to its cell. This also covers
+/// standard-library adapters, `itertools` adapters and distribution iterators.
+///
+/// The blanket implementation forwards `nth` to the iterator, retaining its
+/// specialized implementation. It follows the source's
+/// exhaustion behavior; use `Iterator::fuse` when `None` must be permanent.
 #[miniextendr]
 pub trait RIterator {
     /// The type of elements yielded by this iterator.
@@ -625,8 +629,44 @@ pub trait RIterator {
     }
 }
 
-// Note: No blanket impl because Iterator::next() requires &mut self,
-// but ExternalPtr methods receive &self. Users must use interior mutability.
+impl<I: Iterator> RIterator for std::cell::RefCell<I> {
+    type Item = I::Item;
+
+    fn next(&self) -> Option<Self::Item> {
+        self.borrow_mut().next()
+    }
+
+    fn size_hint(&self) -> (i64, Option<i64>) {
+        let (lower, upper) = self.borrow().size_hint();
+        // An unbounded iterator may report usize::MAX as its lower bound.
+        // Saturating the lower bound and omitting an unrepresentable upper
+        // bound keeps both valid in this trait's signed representation.
+        (
+            i64::try_from(lower).unwrap_or(i64::MAX),
+            upper.and_then(|value| i64::try_from(value).ok()),
+        )
+    }
+
+    fn count(&self) -> i64 {
+        i64::try_from(self.borrow_mut().by_ref().count()).expect("iterator count exceeds i64::MAX")
+    }
+
+    fn collect_n(&self, n: i32) -> Vec<Self::Item> {
+        let n = usize::try_from(n.max(0)).expect("nonnegative i32 fits usize");
+        self.borrow_mut().by_ref().take(n).collect()
+    }
+
+    fn skip(&self, n: i32) -> i32 {
+        let n = usize::try_from(n.max(0)).expect("nonnegative i32 fits usize");
+        i32::try_from(self.borrow_mut().by_ref().take(n).count())
+            .expect("skipped count is bounded by n")
+    }
+
+    fn nth(&self, n: i32) -> Option<Self::Item> {
+        let n = usize::try_from(n).ok()?;
+        self.borrow_mut().nth(n)
+    }
+}
 
 /// Adapter trait for [`std::iter::Extend`].
 ///
