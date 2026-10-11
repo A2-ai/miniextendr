@@ -193,15 +193,11 @@ struct __MxWrapperSimpleCounter {
     data: SimpleCounter,
 }
 
-static __MX_BASE_VTABLE_SIMPLECOUNTER: mx_base_vtable = ...;
+static __MX_BASE_VTABLE_SimpleCounter: mx_base_vtable = ...;
 static __VTABLE_producer_pkg_Counter_FOR_SimpleCounter: CounterVTable =
     __Counter_build_vtable::<SimpleCounter>();
 
-#[no_mangle]
-extern "C-unwind" fn __mx_wrap_simplecounter(data: *mut SimpleCounter) -> *mut mx_erased;
-
-#[no_mangle]
-extern "C-unwind" fn __mx_query_counter_simplecounter(ptr: *const mx_erased) -> i32;
+fn __mx_wrap_SimpleCounter(data: SimpleCounter) -> *mut mx_erased { ... }
 ```
 
 ### Consumer

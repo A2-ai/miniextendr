@@ -507,7 +507,7 @@ impl Resettable for StatefulCounter {
 #[miniextendr]
 pub fn new_stateful_counter(initial: i32) -> SEXP {
     let counter = StatefulCounter::create(initial);
-    let erased = __mx_wrap_statefulcounter(counter);
+    let erased = __mx_wrap_StatefulCounter(counter);
     unsafe { ccall::mx_wrap(erased) }
 }
 
@@ -518,7 +518,7 @@ pub fn new_stateful_counter(initial: i32) -> SEXP {
 #[miniextendr]
 pub fn new_counter(initial: i32) -> SEXP {
     let counter = SimpleCounter::create(initial);
-    let erased = __mx_wrap_simplecounter(counter);
+    let erased = __mx_wrap_SimpleCounter(counter);
     unsafe { ccall::mx_wrap(erased) }
 }
 

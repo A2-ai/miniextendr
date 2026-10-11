@@ -78,8 +78,8 @@
 //! │  2. Generate:                                                            │
 //! │     ├── Vtable instance: static __VTABLE_<crate>_<Trait>_FOR_<Type>     │
 //! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
-//! │     ├── Query function: fn __mx_query_<type>(tag) → vtable ptr           │
-//! │     └── Base vtable: static __MX_BASE_VTABLE_<TYPE>: ...                 │
+//! │     ├── Shared query: registry::universal_query                        │
+//! │     └── Base vtable: static __MX_BASE_VTABLE_<Type>: ...                 │
 //! │  3. Original impl preserved                                              │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //!
@@ -2557,8 +2557,8 @@ pub fn derive_is_na(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// This generates additional infrastructure for type-erased trait dispatch:
 /// - `__MxWrapperMyCounter` - Type-erased wrapper struct
-/// - `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
-/// - `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
+/// - `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
+/// - `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 ///
 /// # Generated Code (Basic)
 ///
