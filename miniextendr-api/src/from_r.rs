@@ -3061,7 +3061,7 @@ impl ElementErrors {
     }
 
     /// The values read, or the one error for every failure recorded.
-    pub(crate) fn into_result<U>(self, values: Vec<U>) -> Result<Vec<U>, SexpError> {
+    pub(crate) fn into_result<T>(self, values: T) -> Result<T, SexpError> {
         if self.batch.is_empty() {
             return Ok(values);
         }

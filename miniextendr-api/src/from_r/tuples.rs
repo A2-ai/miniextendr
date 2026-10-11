@@ -33,13 +33,6 @@ fn check_list_shape(sexp: SEXP, expected_len: usize, len: usize) -> Result<(), S
     Ok(())
 }
 
-/// The reason one list element failed with, in R terms: nothing before it
-/// says what that element should have been, so it names the expectation
-/// (`expected integer, got character`).
-fn element_reason<E: Into<SexpError>>(e: E) -> String {
-    Into::<SexpError>::into(e).r_reason(false)
-}
-
 /// Tuple rows keep their own R object/class, as `Vec<List>` does. Validators
 /// therefore run per row; nullable rows skip the validator for NULL.
 macro_rules! impl_tuple_vec_try_from_sexp {
@@ -112,7 +105,7 @@ macro_rules! impl_tuple_try_from_sexp {
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
                 check_list_shape(sexp, $n, sexp.len())?;
 
-                let mut errors = crate::from_r::BatchedErrors::default();
+                let mut errors = crate::from_r::ElementErrors::default();
                 let partial = (
                     $(
                         match <$T as TryFromSexp>::try_from_sexp(
@@ -120,15 +113,13 @@ macro_rules! impl_tuple_try_from_sexp {
                         ) {
                             Ok(v) => Some(v),
                             Err(e) => {
-                                errors.push($idx, || element_reason(e));
+                                errors.push($idx, e.into());
                                 None
                             }
                         },
                     )+
                 );
-                if !errors.is_empty() {
-                    return Err(errors.into_element_error());
-                }
+                let partial = errors.into_result(partial)?;
                 // Every slot is Some: no error was recorded.
                 Ok(($(partial.$idx.unwrap(),)+))
             }
@@ -136,7 +127,7 @@ macro_rules! impl_tuple_try_from_sexp {
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
                 check_list_shape(sexp, $n, unsafe { sexp.len_unchecked() })?;
 
-                let mut errors = crate::from_r::BatchedErrors::default();
+                let mut errors = crate::from_r::ElementErrors::default();
                 let partial = (
                     $(
                         match unsafe {
@@ -146,15 +137,13 @@ macro_rules! impl_tuple_try_from_sexp {
                         } {
                             Ok(v) => Some(v),
                             Err(e) => {
-                                errors.push($idx, || element_reason(e));
+                                errors.push($idx, e.into());
                                 None
                             }
                         },
                     )+
                 );
-                if !errors.is_empty() {
-                    return Err(errors.into_element_error());
-                }
+                let partial = errors.into_result(partial)?;
                 Ok(($(partial.$idx.unwrap(),)+))
             }
         }
