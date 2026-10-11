@@ -1124,13 +1124,18 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
             }
         }
         SlotKind::Conversion => {
-            // Use IntoR trait for conversion (e.g., String -> character)
+            // Use IntoR trait for conversion (e.g., String -> character). The
+            // getter reads the field through a shared borrow, so converting it
+            // needs a clone; spanned at the field type, so a type without
+            // `Clone` is reported at the field.
             let ty = &slot.ty;
+            let span = syn::spanned::Spanned::span(ty);
+            let clone = quote::quote_spanned! {span=> <#ty as ::core::clone::Clone>::clone };
             quote::quote! {
                 use ::miniextendr_api::into_r::IntoR;
                 unsafe {
                     #extract_ref
-                    let val: #ty = data.#field_name.clone();
+                    let val: #ty = #clone(&data.#field_name);
                     <#ty as IntoR>::into_sexp(val)
                 }
             }
