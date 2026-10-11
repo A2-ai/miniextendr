@@ -1198,8 +1198,9 @@ impl Counter { /* mutating methods */ }
 
 Env, R6 and S7 blocks (and S3 blocks with the constructor or a class named
 after the type) each define the class object, so the wrapper writer rejects a
-second block of such a class at install time; see
-[Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
+second block of such a class at install time. S4 and vctrs blocks pass that
+check, but no test covers yet whether they combine correctly at runtime
+(#1776); see [Multiple Impl Blocks](CLASS_SYSTEMS.md#multiple-impl-blocks).
 
 ### R6-Specific Options
 

@@ -152,7 +152,7 @@ impl Counter { /* ... */ }
 impl Counter { /* additional methods */ }
 ```
 
-Each block still generates the whole R class. Env, R6 and S7 blocks (and some S3 blocks) each define the class object, and the wrapper writer stops the install when a second block would replace it; keep such a class in one impl block. See [Multiple Impl Blocks](/manual/class-systems/#multiple-impl-blocks) in the manual.
+Each block still generates the whole R class. Env, R6 and S7 blocks (and some S3 blocks) each define the class object, and the wrapper writer stops the install when a second block would replace it; keep such a class in one impl block. S4 blocks pass that check, though no test covers yet whether they combine correctly at runtime. See [Multiple Impl Blocks](/manual/class-systems/#multiple-impl-blocks) in the manual.
 
 ## Full reference
 

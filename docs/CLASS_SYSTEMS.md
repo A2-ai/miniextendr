@@ -1025,7 +1025,8 @@ together with the methods bound to it, so the wrapper writer stops the install
 with an error naming both blocks. Until the blocks are merged per type (#1776),
 keep such a class in one impl block. S4 declares its class with
 `methods::setClass()` and vctrs with functions only, so their blocks define no
-class object and pass this check.
+class object and pass this check; no test covers yet whether their blocks
+combine correctly at runtime (#1776).
 
 ## Names the wrapper writer rejects
 
