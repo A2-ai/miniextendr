@@ -168,7 +168,7 @@ test_that("is_external_ptr works correctly", {
 # TAG consistency across packages (critical ABI invariant)
 # =============================================================================
 
-test_that("TAG_COUNTER is identical across producer and consumer", {
+test_that("TAG_Counter is identical across producer and consumer", {
   skip_if_not_installed("producer.pkg")
   library(producer.pkg)
 

@@ -47,7 +47,6 @@ The trait ABI enables:
 | Future Lints | Purpose |
 |--------------|---------|
 | `missing_vtable` | `impl Trait for Type` without `#[miniextendr]` on the impl |
-| `tag_collision` (MXL303) | Duplicate vtable symbols across trait impls (case-fold collapse) |
 | `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 
 ### C (example package)
@@ -71,10 +70,10 @@ pub trait Counter {
 
 Generates:
 
-- `TAG_COUNTER: mx_tag` - Trait identifier
+- `TAG_Counter: mx_tag` - Trait identifier
 - `CounterVTable` - Function pointer table
 - `CounterView` - Runtime wrapper (data + vtable)
-- `__counter_build_vtable::<T>()` - Vtable builder
+- `__Counter_build_vtable::<T>()` - Vtable builder
 
 ### 2. Implement the Trait
 
@@ -90,7 +89,7 @@ impl Counter for MyCounter {
 
 Generates:
 
-- `__VTABLE_COUNTER_FOR_MYCOUNTER: CounterVTable`
+- `__VTABLE_mypkg_Counter_FOR_MyCounter: CounterVTable`
 
 ### 3. Registration (Automatic)
 
@@ -107,11 +106,11 @@ impl MyCounter {
 // Registration is automatic via #[miniextendr].
 ```
 
-The trait impl registration generates:
+The `ExternalPtr` derive generates:
 
 - `__MxWrapperMyCounter` - Type-erased wrapper struct
-- `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
-- `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
+- `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
+- `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 
 ## ABI Types (Frozen)
 
@@ -169,7 +168,6 @@ pub struct mx_erased {
 - [x] Documentation (TRAIT_AS_R.md updated with usage examples)
 - [x] Error diagnostics (improved runtime error messages for type mismatches)
 - [x] miniextendr-lint: missing `impl Trait for Type;` registration detection
-- [x] miniextendr-lint: tag collision detection (MXL303 — vtable-symbol case-fold collision across trait impls)
 - [x] R tests for trait method `.Call` wrappers (`rpkg/tests/testthat/test-trait-abi.R`)
 
 ## Design Decisions
@@ -379,7 +377,7 @@ For true cross-package dispatch where consumer doesn't know the concrete type:
 # Future: consumer receives any object implementing Counter
 increment_any_counter <- function(obj) {
   # Query for Counter vtable at runtime
-  vtable <- mx_query(obj, TAG_COUNTER)
+  vtable <- mx_query(obj, TAG_Counter)
   if (!is.null(vtable)) {
     vtable$increment(obj)
   }

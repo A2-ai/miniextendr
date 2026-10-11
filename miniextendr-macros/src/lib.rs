@@ -38,7 +38,7 @@
 //! │  2. Analyze return type (Result<T>, Option<T>, raw SEXP, etc.)           │
 //! │  3. Generate:                                                            │
 //! │     ├── C wrapper: extern "C-unwind" fn C_<crate>_<name>(...) → SEXP     │
-//! │     ├── R wrapper: const R_WRAPPER_<NAME>: &str = "..."                  │
+//! │     ├── R wrapper: static R_WRAPPER_<name>: RWrapperEntry                  │
 //! │     └── Registration: const call_method_def_<name>: R_CallMethodDef      │
 //! │  4. Original function preserved (with added attributes)                  │
 //! └──────────────────────────────────────────────────────────────────────────┘
@@ -76,10 +76,10 @@
 //! │                                                                          │
 //! │  1. Parse: syn::ItemImpl (trait impl)                                    │
 //! │  2. Generate:                                                            │
-//! │     ├── Vtable instance: static __VTABLE_<CRATE>_<TRAIT>_FOR_<TYPE>     │
+//! │     ├── Vtable instance: static __VTABLE_<crate>_<Trait>_FOR_<Type>     │
 //! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
-//! │     ├── Query function: fn __mx_query_<type>(tag) → vtable ptr           │
-//! │     └── Base vtable: static __MX_BASE_VTABLE_<TYPE>: ...                 │
+//! │     ├── Shared query: registry::universal_query                        │
+//! │     └── Base vtable: static __MX_BASE_VTABLE_<Type>: ...                 │
 //! │  3. Original impl preserved                                              │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //!
@@ -108,11 +108,11 @@
 //! can't collide on a C symbol (#1273; helpers in `naming.rs`). For a
 //! function `my_func` in a crate `mypkg`:
 //! - C wrapper: `C_mypkg_my_func`
-//! - R wrapper const: `R_WRAPPER_MY_FUNC`
+//! - R wrapper registration: `R_WRAPPER_my_func`
 //! - Registration: `call_method_def_my_func`
 //!
 //! For a type `MyType` with trait `Counter` in a crate `mypkg`:
-//! - Vtable: `__VTABLE_MYPKG_COUNTER_FOR_MYTYPE`
+//! - Vtable: `__VTABLE_mypkg_Counter_FOR_MyType`
 //! - Wrapper: `__MxWrapperMyType`
 //! - Query: `__mx_query_mytype`
 //!
@@ -2557,8 +2557,8 @@ pub fn derive_is_na(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 ///
 /// This generates additional infrastructure for type-erased trait dispatch:
 /// - `__MxWrapperMyCounter` - Type-erased wrapper struct
-/// - `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
-/// - `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
+/// - `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
+/// - `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 ///
 /// # Generated Code (Basic)
 ///

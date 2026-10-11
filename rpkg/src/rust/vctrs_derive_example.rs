@@ -303,5 +303,41 @@ impl DerivedCurrency {
 }
 // endregion
 
-// region: Module registration
+// region: Case-distinct type names (#1778)
+
+/// A vctrs class whose Rust name differs from [`Casepct`]'s only in case.
+/// Their wrapper and class-name registrations keep the spelling, so both
+/// compile in one module.
+#[derive(Vctrs)]
+#[vctrs(class = "case_pct_upper", base = "double")]
+pub struct CasePct {
+    #[vctrs(data)]
+    values: Vec<f64>,
+}
+
+/// The lower-case counterpart of [`CasePct`].
+#[derive(Vctrs)]
+#[vctrs(class = "case_pct_lower", base = "double")]
+pub struct Casepct {
+    #[vctrs(data)]
+    values: Vec<f64>,
+}
+
+/// Create a case_pct_upper vector (the [`CasePct`] class).
+///
+/// @param x Numeric values.
+/// @return A case_pct_upper vector.
+#[miniextendr]
+pub fn new_case_pct_upper(x: Vec<f64>) -> AsVctrs<CasePct> {
+    AsVctrs(CasePct { values: x })
+}
+
+/// Create a case_pct_lower vector (the [`Casepct`] class).
+///
+/// @param x Numeric values.
+/// @return A case_pct_lower vector.
+#[miniextendr]
+pub fn new_case_pct_lower(x: Vec<f64>) -> AsVctrs<Casepct> {
+    AsVctrs(Casepct { values: x })
+}
 // endregion

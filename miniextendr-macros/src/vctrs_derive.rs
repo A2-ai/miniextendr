@@ -949,7 +949,7 @@ fn base_to_r_as_func(base: &str) -> &'static str {
 /// - `impl IntoVctrs` -- if a `#[vctrs(data)]` field is present
 /// - `impl VctrsRecord` -- if base is `"record"` (provides field names)
 /// - `impl VctrsListOf` -- if base is `"list"` with a `ptype`
-/// - `R_WRAPPERS_VCTRS_{TYPE}` const -- R S3 method wrapper code
+/// - `R_WRAPPERS_VCTRS_{Type}` static -- R S3 method wrapper registration
 pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -1258,10 +1258,10 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let source_line_lit = syn::LitInt::new(&type_start.line.to_string(), name.span());
     let source_col_lit = syn::LitInt::new(&(type_start.column + 1).to_string(), name.span());
 
-    // Generate the R_WRAPPERS_VCTRS_{TYPE} const
-    let name_upper = name.to_string().to_uppercase();
+    // Preserve the Rust type spelling in the wrapper registration name.
+    let type_name = crate::naming::ident_name(name);
     let r_wrappers_const_ident = Ident::new(
-        &format!("R_WRAPPERS_VCTRS_{}", name_upper),
+        &format!("R_WRAPPERS_VCTRS_{}", type_name),
         Span::call_site(),
     );
     let source_location_doc = crate::source_location_doc(name.span());
@@ -1277,6 +1277,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals, non_snake_case)]
         static #r_wrappers_const_ident: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Vctrs,
@@ -1510,8 +1511,8 @@ mod tests {
         let result = derive_vctrs(input).unwrap();
         let code = result.to_string();
 
-        // Should generate the R_WRAPPERS_VCTRS_PERCENT distributed-slice entry
-        assert!(code.contains("static R_WRAPPERS_VCTRS_PERCENT"));
+        // Should generate the R_WRAPPERS_VCTRS_Percent distributed-slice entry
+        assert!(code.contains("static R_WRAPPERS_VCTRS_Percent"));
     }
 
     #[test]

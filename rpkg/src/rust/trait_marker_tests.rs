@@ -125,7 +125,7 @@ pub fn marker_args_through_view() -> Vec<String> {
     let localhost: IpAddr = "127.0.0.1".parse().expect("an IPv4 address");
     let loopback6: IpAddr = "::1".parse().expect("an IPv6 address");
     unsafe {
-        let erased = __mx_wrap_markerreader(MarkerReader);
+        let erased = __mx_wrap_MarkerReader(MarkerReader);
         let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
             miniextendr_api::trait_abi::ccall::mx_wrap(erased),
         );

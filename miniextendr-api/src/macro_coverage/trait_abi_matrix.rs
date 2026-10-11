@@ -76,7 +76,7 @@ mod tests {
     /// was used directly (which is 8 on 64-bit, but the data field starts at 32).
     #[test]
     fn test_data_offset_align32() {
-        let wrapped = __mx_wrap_aligned32counter(Aligned32Counter { value: 99 });
+        let wrapped = __mx_wrap_Aligned32Counter(Aligned32Counter { value: 99 });
         let base = unsafe { (*wrapped).base };
         let data_offset = unsafe { (*base).data_offset };
 
@@ -100,7 +100,7 @@ mod tests {
         assert_eq!(value, 99);
 
         // Verify vtable query succeeds (non-null = trait is implemented)
-        let vtable = unsafe { ((*base).query)(wrapped, TAG_COVTRAIT) };
+        let vtable = unsafe { ((*base).query)(wrapped, TAG_CovTrait) };
         assert!(!vtable.is_null());
 
         unsafe {
@@ -113,7 +113,7 @@ mod tests {
     /// a 64-byte-aligned type.
     #[test]
     fn test_data_offset_align64() {
-        let wrapped = __mx_wrap_aligned64counter(Aligned64Counter { value: 77 });
+        let wrapped = __mx_wrap_Aligned64Counter(Aligned64Counter { value: 77 });
         let base = unsafe { (*wrapped).base };
         let data_offset = unsafe { (*base).data_offset };
 

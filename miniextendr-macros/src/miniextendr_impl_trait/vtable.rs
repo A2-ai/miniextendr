@@ -9,7 +9,7 @@ use quote::format_ident;
 use syn::ItemImpl;
 
 use super::r_wrappers::{TraitWrapperOpts, generate_trait_r_wrapper};
-use super::{TraitConst, TraitMethod, type_to_uppercase_name};
+use super::{TraitConst, TraitMethod, type_to_symbol_name};
 use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 
 /// Generate the vtable static, C wrappers, R wrappers, and call defs for a trait implementation.
@@ -18,7 +18,7 @@ use crate::miniextendr_impl::{ClassSystem, ImplAttrs};
 /// `impl Trait for Type { ... }` block, it produces:
 ///
 /// - The cleaned original impl block (with `#[miniextendr]` attrs stripped from methods)
-/// - A `static __VTABLE_{CRATE}_{TRAIT}_FOR_{TYPE}: {Trait}VTable` constant
+/// - A `static __VTABLE_{crate}_{Trait}_FOR_{Type}: {Trait}VTable` constant
 /// - C wrapper functions and `R_CallMethodDef` entries for each method and const
 /// - R wrapper code string (class-system specific)
 /// - Two `const` items: `{TYPE}_{TRAIT}_CALL_DEFS` and `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
@@ -86,22 +86,20 @@ pub(super) fn generate_vtable_static(
     };
 
     // Extract type name for naming (simplified - handles Path types)
-    let type_name_str = type_to_uppercase_name(concrete_type);
-    let trait_name_upper = trait_name.to_string().to_uppercase();
-    let trait_name_lower = trait_name.to_string().to_lowercase();
+    let type_name_str = type_to_symbol_name(concrete_type);
 
     // Generate names (crate-prefixed vtable static — #1273 — routed through the
     // shared naming.rs helper so this can't drift from the other two
     // reconstruction sites in `miniextendr_impl_trait.rs`)
-    let vtable_static_name = crate::naming::vtable_static_ident(&trait_name_upper, &type_name_str);
+    let vtable_static_name = crate::naming::vtable_static_ident(trait_name, &type_name_str);
     let vtable_type_name = format_ident!("{}VTable", trait_name);
 
     // Build path to vtable builder function
-    // If trait is `foo::Counter`, builder is `foo::__counter_build_vtable`
+    // If trait is `foo::Counter`, builder is `foo::__Counter_build_vtable`
     // Strip type args from the path (builder uses turbofish instead)
     let mut builder_path = trait_path.clone();
     if let Some(last) = builder_path.segments.last_mut() {
-        last.ident = format_ident!("__{}_build_vtable", trait_name_lower);
+        last.ident = crate::naming::trait_vtable_builder_ident(trait_name);
         last.arguments = syn::PathArguments::None;
     }
 
@@ -179,24 +177,15 @@ pub(super) fn generate_vtable_static(
     };
 
     // Generate constant name for R wrapper registration
-    let r_wrappers_const = format_ident!(
-        "R_WRAPPERS_{}_{}_IMPL",
-        type_ident.to_string().to_uppercase(),
-        trait_name_upper
-    );
+    let r_wrappers_const = crate::naming::trait_impl_wrappers_ident(&type_name_str, trait_name);
 
     // Generate trait dispatch entry name
-    let dispatch_entry_name = format_ident!(
-        "__MX_DISPATCH_{}_{}_FOR_{}",
-        trait_name_upper,
-        type_ident.to_string().to_uppercase(),
-        type_name_str
-    );
+    let dispatch_entry_name = crate::naming::trait_dispatch_ident(trait_name, &type_name_str);
 
-    // Build TAG path for the trait (same module as trait, e.g. counter::TAG_COUNTER)
+    // Build TAG path for the trait (same module as trait, e.g. counter::TAG_Counter)
     let mut trait_tag_path = trait_path.clone();
     if let Some(last) = trait_tag_path.segments.last_mut() {
-        last.ident = format_ident!("TAG_{}", trait_name_upper);
+        last.ident = crate::naming::trait_tag_ident(trait_name);
         last.arguments = syn::PathArguments::None;
     }
 
@@ -242,6 +231,7 @@ pub(super) fn generate_vtable_static(
         // Non-generic: use the builder function generated at the trait definition site
         quote::quote! {
             #[unsafe(no_mangle)]
+            #[allow(non_upper_case_globals)]
             pub static #vtable_static_name: #vtable_type_path =
                 #builder_path::<#concrete_type>();
         }
@@ -268,6 +258,7 @@ pub(super) fn generate_vtable_static(
         quote::quote! {
             #concrete_shims
             #[unsafe(no_mangle)]
+            #[allow(non_upper_case_globals)]
             pub static #vtable_static_name: #vtable_type_path = #vtable_type_path {
                 #(#vtable_inits),*
             };
@@ -310,6 +301,7 @@ pub(super) fn generate_vtable_static(
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals)]
         static #r_wrappers_const: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::TraitImpl,
@@ -343,6 +335,7 @@ pub(super) fn generate_vtable_static(
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_TRAIT_DISPATCH), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals)]
         static #dispatch_entry_name: ::miniextendr_api::registry::TraitDispatchEntry =
             ::miniextendr_api::registry::TraitDispatchEntry {
                 concrete_tag: ::miniextendr_api::abi::mx_tag_from_path(
@@ -1202,10 +1195,9 @@ pub(super) fn generate_trait_method_c_wrapper(
     };
 
     // Generate R wrapper const name (not actually used but needed by builder)
-    let r_wrappers_const = format_ident!(
-        "R_WRAPPERS_{}_{}_IMPL",
-        type_ident.to_string().to_uppercase(),
-        trait_name.to_string().to_uppercase()
+    let r_wrappers_const = crate::naming::trait_impl_wrappers_ident(
+        &crate::naming::ident_name(type_ident),
+        trait_name,
     );
 
     // Build the wrapper using the builder infrastructure
@@ -1374,10 +1366,9 @@ pub(super) fn generate_trait_const_c_wrapper(
     let const_ty = &trait_const.ty;
 
     // Generate R wrapper const name
-    let r_wrappers_const = format_ident!(
-        "R_WRAPPERS_{}_{}_IMPL",
-        type_ident.to_string().to_uppercase(),
-        trait_name.to_string().to_uppercase()
+    let r_wrappers_const = crate::naming::trait_impl_wrappers_ident(
+        &crate::naming::ident_name(type_ident),
+        trait_name,
     );
 
     // Build the call expression to access the const

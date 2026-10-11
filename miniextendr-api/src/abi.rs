@@ -40,7 +40,7 @@
 //! ## Example
 //!
 //! ```ignore
-//! // Define trait (generates TAG_FOO, FooVTable, FooView)
+//! // Define trait (generates TAG_Foo, FooVTable, FooView)
 //! #[miniextendr]
 //! trait Foo {
 //!     fn len(&self) -> usize;

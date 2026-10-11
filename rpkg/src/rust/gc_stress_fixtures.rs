@@ -5115,7 +5115,7 @@ pub fn gc_stress_trait_view_args() -> String {
     // the whole View call.
     let joined = unsafe {
         let handle = OwnedProtect::new(miniextendr_api::trait_abi::ccall::mx_wrap(
-            __mx_wrap_viewarghost(host),
+            __mx_wrap_ViewArgHost(host),
         ));
         ViewArgProbeView::from_sexp(handle.get()).join_args(
             "first".to_string(),

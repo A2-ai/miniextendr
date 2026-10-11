@@ -217,7 +217,7 @@ fn generate_produces_tag_constant() {
     let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
-    assert!(output_str.contains("TAG_COUNTER"));
+    assert!(output_str.contains("TAG_Counter"));
     assert!(output_str.contains("mx_tag"));
 }
 
@@ -270,7 +270,7 @@ fn generate_produces_vtable_builder() {
     let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
-    assert!(output_str.contains("__counter_build_vtable"));
+    assert!(output_str.contains("__Counter_build_vtable"));
 }
 
 #[test]
@@ -288,8 +288,8 @@ fn generate_excludes_static_methods_from_vtable() {
 
     // vtable should contain `value` but not `create`
     // The shim function names can help us verify
-    assert!(output_str.contains("__factory_value_shim"));
-    assert!(!output_str.contains("__factory_create_shim"));
+    assert!(output_str.contains("__Factory_value_shim"));
+    assert!(!output_str.contains("__Factory_create_shim"));
 }
 
 #[test]

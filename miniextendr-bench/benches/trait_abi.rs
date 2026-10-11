@@ -48,14 +48,14 @@ const NONEXISTENT_TAG: miniextendr_api::abi::mx_tag = mx_tag_from_path("bench::N
 
 impl ErasedCounter {
     fn new(start: i32) -> Self {
-        let ptr = __mx_wrap_simplecounter(SimpleCounter { value: start });
+        let ptr = __mx_wrap_SimpleCounter(SimpleCounter { value: start });
         Self { ptr }
     }
 
     #[inline(always)]
     unsafe fn query_counter_vtable(&self) -> *const c_void {
         let base = unsafe { (*self.ptr).base };
-        unsafe { ((*base).query)(self.ptr, TAG_COUNTER) }
+        unsafe { ((*base).query)(self.ptr, TAG_Counter) }
     }
 
     /// Query with a non-matching tag; returns null.
@@ -256,7 +256,7 @@ impl OwnedMathOpsView {
         let erased = ErasedCounter::new(start);
         let vtable = unsafe {
             let base = (*erased.ptr).base;
-            ((*base).query)(erased.ptr, TAG_MATHOPS)
+            ((*base).query)(erased.ptr, TAG_MathOps)
         };
         let data = unsafe { erased.data_ptr() };
         let view = unsafe { <MathOpsView as TraitView>::from_raw_parts(data, vtable) };
@@ -274,7 +274,7 @@ fn mx_query_multi_method_vtable(bencher: divan::Bencher) {
         .with_inputs(|| ErasedCounter::new(1))
         .bench_local_refs(|erased| unsafe {
             let base = (*erased.ptr).base;
-            let vtable = ((*base).query)(erased.ptr, TAG_MATHOPS);
+            let vtable = ((*base).query)(erased.ptr, TAG_MathOps);
             divan::black_box(vtable);
         });
 }

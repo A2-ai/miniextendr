@@ -10,7 +10,7 @@ A 128-bit identifier for a trait or concrete type, generated from the fully-qual
 
 ```rust
 // Generated at compile time from "crate::Counter"
-const TAG_COUNTER: mx_tag = mx_tag_from_path("crate::Counter");
+const TAG_Counter: mx_tag = mx_tag_from_path("crate::Counter");
 ```
 
 ### Erased Header (`mx_erased`)
@@ -51,7 +51,7 @@ typedef SEXP (*mx_meth)(void *data, int argc, const SEXP *argv);
 ### 1. Compile Time
 
 The `#[miniextendr]` macro on a trait generates:
-- Tag constant (`TAG_COUNTER`)
+- Tag constant (`TAG_Counter`)
 - Vtable struct (`CounterVTable`)
 - View struct (`CounterView`) for calling methods
 - Method shims that convert between R and Rust types
@@ -83,7 +83,7 @@ struct __MxWrapperMyCounter {
 ```rust
 // In a constructor
 let wrapper = Box::new(__MxWrapperMyCounter {
-    erased: mx_erased { base: &__MX_BASE_VTABLE_MYCOUNTER },
+    erased: mx_erased { base: &__MX_BASE_VTABLE_MyCounter },
     data: my_counter,
 });
 let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
@@ -91,11 +91,11 @@ let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };
 
 ### 4. Dispatch with `mx_query`
 
-When you want to call a trait method, `mx_query(sexp, TAG_TRAIT)` asks the object for the trait vtable:
+When you want to call a trait method, `mx_query(sexp, TAG_<Trait>)` asks the object for the trait vtable:
 
 ```rust
 // Get the Counter vtable for this object
-let vtable = mx_query(sexp, TAG_COUNTER);
+let vtable = mx_query(sexp, TAG_Counter);
 if vtable.is_null() {
     // Object doesn't implement Counter
 }
@@ -162,11 +162,11 @@ unsafe extern "C" fn __mx_query_mycounter(
     _ptr: *mut mx_erased,
     trait_tag: mx_tag,
 ) -> *const c_void {
-    if trait_tag == TAG_COUNTER {
-        return &__VTABLE_COUNTER_FOR_MYCOUNTER as *const _;
+    if trait_tag == TAG_Counter {
+        return &__VTABLE_mypkg_Counter_FOR_MyCounter as *const _;
     }
-    if trait_tag == TAG_RESETTABLE {
-        return &__VTABLE_RESETTABLE_FOR_MYCOUNTER as *const _;
+    if trait_tag == TAG_Resettable {
+        return &__VTABLE_mypkg_Resettable_FOR_MyCounter as *const _;
     }
     std::ptr::null()
 }

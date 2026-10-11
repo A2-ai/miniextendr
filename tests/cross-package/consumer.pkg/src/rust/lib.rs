@@ -11,11 +11,11 @@ use miniextendr_api::{ExternalPtr, SEXP, SexpExt, miniextendr, trait_abi::ccall}
 miniextendr_api::miniextendr_init!();
 
 // Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
+pub use shared_traits::{__Counter_build_vtable, Counter, CounterVTable, CounterView, TAG_Counter};
 
 // Import the shared Resettable trait and its generated ABI types
 pub use shared_traits::{
-    __resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_RESETTABLE,
+    __Resettable_build_vtable, Resettable, ResettableVTable, ResettableView, TAG_Resettable,
 };
 
 // region: Cross-package ExternalPtr pass-through utilities
@@ -168,7 +168,7 @@ impl Counter for DoubleCounter {
 #[miniextendr]
 pub fn new_double_counter(initial: i32) -> SEXP {
     let counter = DoubleCounter::create(initial);
-    let erased = __mx_wrap_doublecounter(counter);
+    let erased = __mx_wrap_DoubleCounter(counter);
     unsafe { ccall::mx_wrap(erased) }
 }
 // endregion
@@ -290,11 +290,11 @@ pub fn get_reset_get(sexp: SEXP) -> i32 {
     counter.value()
 }
 
-/// Debug: Get TAG_RESETTABLE as hex string
+/// Debug: Get TAG_Resettable as hex string
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_resettable() -> String {
-    format!("{:016x}{:016x}", TAG_RESETTABLE.hi, TAG_RESETTABLE.lo)
+    format!("{:016x}{:016x}", TAG_Resettable.hi, TAG_Resettable.lo)
 }
 // endregion
 
@@ -453,10 +453,10 @@ pub fn consumer_magic_number() -> i32 {
     42
 }
 
-/// Debug: Get TAG_COUNTER as hex string
+/// Debug: Get TAG_Counter as hex string
 /// @export
 #[miniextendr]
 pub fn debug_consumer_tag_counter() -> String {
-    format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
+    format!("{:016x}{:016x}", TAG_Counter.hi, TAG_Counter.lo)
 }
 // endregion

@@ -123,9 +123,9 @@ impl Counter for SimpleCounter {
 
 Generated infrastructure includes:
 
-- `TAG_COUNTER` - 128-bit type tag for runtime identification
+- `TAG_Counter` - 128-bit type tag for runtime identification
 - `CounterVTable` - function pointer table for trait methods
-- `__VTABLE_COUNTER_FOR_SIMPLECOUNTER` - concrete vtable for `SimpleCounter`
+- `__VTABLE_producer_pkg_Counter_FOR_SimpleCounter` - concrete vtable for `SimpleCounter`
 - `__MxWrapperSimpleCounter` - type-erased wrapper with `mx_erased` header
 
 ### 2. Consumer package (`consumer/lib.rs`)
@@ -179,7 +179,7 @@ counter$get_value()  # 17
 For cross-package trait dispatch to work:
 
 1. Both packages must use the same trait definition.
-2. `TAG_COUNTER` must hash to the same value.
+2. `TAG_Counter` must hash to the same value.
 3. Method signatures and method order must match.
 4. The producer side must register `#[miniextendr]` on `impl Trait for Type`.
 
@@ -193,15 +193,11 @@ struct __MxWrapperSimpleCounter {
     data: SimpleCounter,
 }
 
-static __MX_BASE_VTABLE_SIMPLECOUNTER: mx_base_vtable = ...;
-static __VTABLE_COUNTER_FOR_SIMPLECOUNTER: CounterVTable =
-    __counter_build_vtable::<SimpleCounter>();
+static __MX_BASE_VTABLE_SimpleCounter: mx_base_vtable = ...;
+static __VTABLE_producer_pkg_Counter_FOR_SimpleCounter: CounterVTable =
+    __Counter_build_vtable::<SimpleCounter>();
 
-#[no_mangle]
-extern "C-unwind" fn __mx_wrap_simplecounter(data: *mut SimpleCounter) -> *mut mx_erased;
-
-#[no_mangle]
-extern "C-unwind" fn __mx_query_counter_simplecounter(ptr: *const mx_erased) -> i32;
+fn __mx_wrap_SimpleCounter(data: SimpleCounter) -> *mut mx_erased { ... }
 ```
 
 ### Consumer
@@ -209,7 +205,7 @@ extern "C-unwind" fn __mx_query_counter_simplecounter(ptr: *const mx_erased) -> 
 Consumer only needs the trait interface. At runtime it:
 
 1. reads the `mx_erased` header with `ErasedExternalPtr::from_sexp()`
-2. checks the tag against `TAG_COUNTER`
+2. checks the tag against `TAG_Counter`
 3. casts the vtable pointer to `*const CounterVTable`
 4. calls methods through the function pointers
 
