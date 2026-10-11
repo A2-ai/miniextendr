@@ -275,6 +275,23 @@ let conn = RCustomConnection::new()
     .build(adapter);
 ```
 
+### Boxed I/O trait objects
+
+The existing adapters accept owned trait objects directly:
+
+```rust
+use miniextendr_api::connection::RConnectionIo;
+use std::io::{Cursor, Read};
+
+let reader: Box<dyn Read> = Box::new(Cursor::new(vec![1_u8, 2, 3]));
+let connection = RConnectionIo::new(reader).mode("rb").build_read();
+// R now owns the reader; close(connection) releases it.
+```
+
+`Box<dyn BufRead>` goes with `build_bufread()`, and `Box<dyn Write>` with
+`build_write()`. The stream must own what it reads from or writes to (or borrow
+only `'static` data), because the connection can outlive the call that made it.
+
 ## Safety & Version Checking
 
 R's connection C API is explicitly unstable. From R's `R_ext/Connections.h`:
