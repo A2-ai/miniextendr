@@ -160,3 +160,48 @@ fn boxed_writer_receives_bytes_flush_and_one_drop() {
     });
 }
 // endregion
+
+// region: Byte iterators as readers
+
+#[cfg(feature = "rand_distr")]
+#[test]
+fn distribution_iterator_is_readable_as_r_doubles() {
+    use miniextendr_api::connection::IteratorReader;
+    use miniextendr_api::rand::{SeedableRng, rngs::StdRng};
+    use miniextendr_api::rand_distr::{Distribution, Normal};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let distribution = Normal::new(0.0_f64, 1.0).unwrap();
+        let expected: Vec<_> = distribution
+            .sample_iter(StdRng::seed_from_u64(17))
+            .take(4)
+            .collect();
+        let samples = distribution.sample_iter(StdRng::seed_from_u64(17)).take(4);
+        let conn = OwnedProtect::new(
+            RConnectionIo::new(IteratorReader::new(samples.flat_map(f64::to_le_bytes)))
+                .build_read(),
+        );
+        let what = OwnedProtect::new("double".into_sexp());
+        let n = OwnedProtect::new(2_i32.into_sexp());
+        let size = OwnedProtect::new(8_i32.into_sexp());
+        let endian = OwnedProtect::new("little".into_sexp());
+        let read = || {
+            let value = OwnedProtect::new(
+                RCall::new("readBin")
+                    .arg(conn.get())
+                    .arg(what.get())
+                    .arg(n.get())
+                    .arg(size.get())
+                    .named_arg("endian", endian.get())
+                    .eval_base()
+                    .unwrap(),
+            );
+            Vec::<f64>::try_from_sexp(value.get()).unwrap()
+        };
+        assert_eq!(read(), expected[..2]);
+        assert_eq!(read(), expected[2..]);
+        assert!(read().is_empty());
+        RCall::new("close").arg(conn.get()).eval_base().unwrap();
+    });
+}
+// endregion
