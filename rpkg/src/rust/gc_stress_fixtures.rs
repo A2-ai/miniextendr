@@ -249,6 +249,32 @@ pub fn gc_stress_vec_option_borrowed() {
     let _ = str_slice_opt.into_sexp();
 }
 
+/// Exercise the string ALTREP element cache (data2) under GC pressure.
+///
+/// Fills the cache one slot at a time through `Elt`, writes a value and an NA
+/// through `Set_elt`, then fills the rest through `Dataptr`. Every CHARSXP the
+/// cache hands out must stay reachable from the vector across the allocations
+/// in between. Returns the vector: `"written"`, `NA`, then `cache-<i>` for
+/// `i` in `2..24`, with `NA` where `i % 5 == 0`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_string_cache() -> SEXP {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    type Data = Vec<Option<String>>;
+
+    let values: Data = (0..24)
+        .map(|i| (i % 5 != 0).then(|| format!("cache-{i}")))
+        .collect();
+    let x = unsafe { OwnedProtect::new(miniextendr_api::Altrep(values).into_sexp()) };
+    for i in (0..24).step_by(3) {
+        let _ = <Data as AltString>::elt(x.get(), i);
+    }
+    let written = unsafe { OwnedProtect::new(SEXP::charsxp("written")) };
+    <Data as AltString>::set_elt(x.get(), 0, written.get());
+    <Data as AltString>::set_elt(x.get(), 1, SEXP::na_string());
+    let _ = <Data as AltVec>::dataptr(x.get(), false);
+    x.get()
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both

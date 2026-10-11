@@ -45,6 +45,29 @@ test_that("gc_stress_named_df_list_builder returns correct structure", {
 
 # endregion
 
+# region: string ALTREP element cache -----------------------------------------
+
+test_that("gc_stress_altrep_string_cache keeps cached strings under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  x <- miniextendr:::gc_stress_altrep_string_cache()
+  x[3] <- "assigned"
+  y <- x[c(1:4, 11L)]
+  gctorture(FALSE)
+  expect_identical(y, c("written", NA, "assigned", "cache-3", NA))
+})
+
+test_that("gc_stress_altrep_string_cache returns the written values", {
+  x <- miniextendr:::gc_stress_altrep_string_cache()
+  expected <- sprintf("cache-%d", 0:23)
+  expected[0:23 %% 5 == 0] <- NA
+  expected[1:2] <- c("written", NA)
+  expect_identical(x, expected)
+})
+
+# endregion
+
 # region: ListAccumulator (#1907) ---------------------------------------------
 
 test_that("gc_stress_list_accumulator keeps every pushed value under gctorture", {

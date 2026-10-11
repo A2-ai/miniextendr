@@ -310,55 +310,17 @@ macro_rules! __impl_altvec_string_dataptr {
 
             fn dataptr(x: $crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
                 unsafe {
-                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-
-                    // Get or allocate the data2 cache STRSXP
-                    let mut data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    let fresh_alloc = data2.is_null_ptr()
-                        || $crate::SexpExt::type_of(&data2) != $crate::SEXPTYPE::STRSXP;
-                    if fresh_alloc {
-                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
-                        // (garbage SEXP pointers). Must fill with R_NaString sentinel
-                        // so cache lookups work. This is O(n) but unavoidable.
-                        //
-                        // Inside ALTREP dispatch — _unchecked variants skip the
-                        // redundant with_r_thread check/route (MXL301 permits).
-                        data2 = $crate::sys::Rf_protect_unchecked(
-                            $crate::sys::Rf_allocVector_unchecked($crate::SEXPTYPE::STRSXP, n),
-                        );
-                        for j in 0..n {
-                            $crate::SexpExt::set_string_elt(&data2, j, $crate::SEXP::na_string());
-                        }
-                        $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, data2);
-                        $crate::sys::Rf_unprotect_unchecked(1);
-                    }
-
-                    // Fill uncached elements only — elements already cached by Elt
-                    // are non-NA CHARSXPs and are skipped. NA elements are re-probed
-                    // from Rust (O(1)) to handle mixed cached/uncached NA slots.
-                    for i in 0..n {
-                        let cached = $crate::SexpExt::string_elt(&data2, i);
-                        if cached != $crate::SEXP::na_string() {
-                            continue; // already cached by a prior Elt call
-                        }
-                        // Compute from Rust and store
-                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
-                        $crate::SexpExt::set_string_elt(&data2, i, elt);
-                    }
-
-                    $crate::sys::DATAPTR_RO(data2).cast_mut()
+                    let cache = $crate::altrep_impl::altstring_fill::<$ty>(x);
+                    $crate::sys::DATAPTR_RO(cache).cast_mut()
                 }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
             fn dataptr_or_null(x: $crate::SEXP) -> *const core::ffi::c_void {
-                // Always return null. The data2 STRSXP may be partially cached
-                // (Elt filled some slots, others are R_NaString sentinels).
-                // Returning a pointer to a partial cache would expose sentinel
-                // R_NaString as actual NAs. Returning null tells R to use
-                // Elt-based access, which correctly handles the per-element cache.
-                // Dataptr (not dataptr_or_null) is the full-materialization path.
+                // Always return null. The data2 cache may still hold unfilled
+                // (C NULL) slots, which R must never read; null makes R go
+                // through Elt. Dataptr fills every slot before exposing it.
                 let _ = x;
                 core::ptr::null()
             }
@@ -459,6 +421,12 @@ macro_rules! __impl_altvec_extract_subset {
                 // Return C NULL (not R_NilValue) to signal R to use default
                 // subsetting if not — R checks `!= NULL` here.
                 if $crate::SexpExt::type_of(&indx) != $crate::SEXPTYPE::INTSXP {
+                    return $crate::SEXP::null();
+                }
+
+                // Once data2 exists R may have written to it (#1928), so the
+                // Rust data can be stale: let R subset the current vector.
+                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
                     return $crate::SEXP::null();
                 }
 
@@ -1135,63 +1103,16 @@ macro_rules! __impl_altstring_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltString for $ty where $($whr)* {
-            // String elt with lazy per-element caching in data2 STRSXP.
-            //
-            // On first access, allocates a STRSXP in data2 (initialized to R_NaString).
-            // Each element is computed from Rust on first access and cached. Subsequent
-            // accesses return the cached CHARSXP directly.
-            //
-            // For NA elements (Rust elt returns None), data2[i] stays R_NaString — we
-            // re-probe Rust each time (O(1) index, returns None immediately). This is
-            // simpler than a separate materialization bitmap and the cost is negligible.
+            // Each element is computed once into the data2 cache; see
+            // `altrep_impl::altstring_elt` for the cache convention.
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $crate::SEXP {
-                unsafe {
-                    let idx = i.max(0) as usize;
+                unsafe { $crate::altrep_impl::altstring_elt::<$ty>(x, i) }
+            }
 
-                    // Get or allocate the data2 cache STRSXP
-                    let mut data2 = $crate::altrep_ext::AltrepSexpExt::altrep_data2_raw(&x);
-                    if data2.is_null_ptr()
-                        || $crate::SexpExt::type_of(&data2) != $crate::SEXPTYPE::STRSXP
-                    {
-                        let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                        // Rf_allocVector(STRSXP, n) leaves elements UNINITIALIZED
-                        // (garbage SEXP pointers). Must fill with R_NaString sentinel.
-                        //
-                        // Inside ALTREP dispatch — _unchecked variants skip the
-                        // redundant with_r_thread check/route (MXL301 permits).
-                        data2 = $crate::sys::Rf_protect_unchecked(
-                            $crate::sys::Rf_allocVector_unchecked($crate::SEXPTYPE::STRSXP, n),
-                        );
-                        for j in 0..n {
-                            $crate::SexpExt::set_string_elt(&data2, j, $crate::SEXP::na_string());
-                        }
-                        $crate::altrep_ext::AltrepSexpExt::set_altrep_data2(&x, data2);
-                        $crate::sys::Rf_unprotect_unchecked(1);
-                    }
+            const HAS_SET_ELT: bool = true;
 
-                    // Check cache: non-NA means already materialized.
-                    //
-                    // Must use the clamped `idx`, not the raw `i` — `data2` is a
-                    // plain (non-ALTREP) STRSXP, so `string_elt`/`set_string_elt`
-                    // go through R's own bounds-checked STRING_ELT/SET_STRING_ELT
-                    // and would themselves error on a negative index instead of
-                    // falling through to the clamp below (#1190).
-                    let cached = $crate::SexpExt::string_elt(&data2, idx as $crate::R_xlen_t);
-                    if cached != $crate::SEXP::na_string() {
-                        return cached;
-                    }
-
-                    // Cache miss (or genuine NA) — probe Rust source
-                    let data = <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x);
-                    match <$ty as $crate::altrep_data::AltStringData>::elt(data, idx) {
-                        Some(s) => {
-                            let charsxp = $crate::altrep_impl::checked_mkchar(s);
-                            $crate::SexpExt::set_string_elt(&data2, idx as $crate::R_xlen_t, charsxp);
-                            charsxp
-                        }
-                        None => $crate::SEXP::na_string(),
-                    }
-                }
+            fn set_elt(x: $crate::SEXP, i: $crate::R_xlen_t, v: $crate::SEXP) {
+                unsafe { $crate::altrep_impl::altstring_set_elt::<$ty>(x, i, v) }
             }
 
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltStringData);

@@ -362,18 +362,22 @@ impl crate::altrep_traits::AltVec for &'static [String] {}
 
 impl crate::altrep_traits::AltString for &'static [String] {
     fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP {
-        let data = unsafe {
-            <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
-        };
-        match crate::altrep_data::AltStringData::elt(data, i.max(0) as usize) {
-            Some(s) => unsafe { super::checked_mkchar(s) },
-            None => crate::SEXP::na_string(),
-        }
+        unsafe { super::altstring_elt::<&'static [String]>(x, i) }
+    }
+
+    const HAS_SET_ELT: bool = true;
+
+    fn set_elt(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP) {
+        unsafe { super::altstring_set_elt::<&'static [String]>(x, i, v) }
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::SEXP) -> i32 {
+        // R may have written NA into the cache.
+        if unsafe { crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            return 0;
+        }
         let data = unsafe {
             <&'static [String] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
         };
@@ -402,18 +406,22 @@ impl crate::altrep_traits::AltVec for &'static [&'static str] {}
 
 impl crate::altrep_traits::AltString for &'static [&'static str] {
     fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP {
-        let data = unsafe {
-            <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
-        };
-        match crate::altrep_data::AltStringData::elt(data, i.max(0) as usize) {
-            Some(s) => unsafe { super::checked_mkchar(s) },
-            None => crate::SEXP::na_string(),
-        }
+        unsafe { super::altstring_elt::<&'static [&'static str]>(x, i) }
+    }
+
+    const HAS_SET_ELT: bool = true;
+
+    fn set_elt(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP) {
+        unsafe { super::altstring_set_elt::<&'static [&'static str]>(x, i, v) }
     }
 
     const HAS_NO_NA: bool = true;
 
     fn no_na(x: crate::SEXP) -> i32 {
+        // R may have written NA into the cache.
+        if unsafe { crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            return 0;
+        }
         let data = unsafe {
             <&'static [&'static str] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x)
         };

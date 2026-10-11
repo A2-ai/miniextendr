@@ -219,12 +219,13 @@ impl<const N: usize> crate::altrep_traits::AltVec for [String; N] {}
 
 impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
     fn elt(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP {
-        let data =
-            unsafe { <[String; N] as crate::altrep_data::AltrepExtract>::altrep_extract_ref(x) };
-        match <[String; N] as crate::altrep_data::AltStringData>::elt(data, i.max(0) as usize) {
-            Some(s) => unsafe { super::checked_mkchar(s) },
-            None => crate::SEXP::na_string(),
-        }
+        unsafe { super::altstring_elt::<[String; N]>(x, i) }
+    }
+
+    const HAS_SET_ELT: bool = true;
+
+    fn set_elt(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP) {
+        unsafe { super::altstring_set_elt::<[String; N]>(x, i, v) }
     }
 }
 
