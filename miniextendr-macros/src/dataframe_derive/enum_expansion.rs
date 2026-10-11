@@ -11,7 +11,8 @@ use super::{
     ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, VariantInfo, VariantShape,
-    classify_field_type, is_bare_reader_scalar_ty, is_reader_scalar_ty, parse_field_attrs,
+    classify_field_type, is_bare_reader_scalar_ty, is_reader_scalar_ty, list_column_fn,
+    parse_field_attrs,
 };
 use crate::naming;
 use std::collections::HashMap;
@@ -769,7 +770,6 @@ pub(super) fn derive_enum_dataframe(
     };
 
     let dataframe_struct = quote! {
-        #[derive(Debug, Clone)]
         pub struct #df_name #impl_generics #where_clause {
             #tag_field
             #(#df_fields),*
@@ -887,10 +887,11 @@ pub(super) fn derive_enum_dataframe(
             .map(|col| {
                 let name = &col.col_name;
                 let name_str = name.to_string();
+                let into_option_list_column = list_column_fn(&col.ty, true);
                 quote! {
                     __df_pairs.push((
                         #name_str.to_string(),
-                        __scope.protect_raw(::miniextendr_api::list::into_option_list_column(self.#name)),
+                        __scope.protect_raw(#into_option_list_column(self.#name)),
                     ));
                 }
             })
@@ -2325,10 +2326,11 @@ fn generate_split_method(
                                 let ty = &data.ty;
                                 if data.needs_into_list {
                                     // Each cell's list goes straight into the rooted column.
+                                    let into_list_column = list_column_fn(ty, false);
                                     vec![quote! {
                                         #pairs_var.push((
                                             #col_str.to_string(),
-                                            __scope.protect_raw(::miniextendr_api::list::into_list_column(#buf)),
+                                            __scope.protect_raw(#into_list_column(#buf)),
                                         ));
                                     }]
                                 } else if data.is_factor {
@@ -2523,8 +2525,9 @@ fn generate_split_method(
                                 if data.needs_into_list {
                                     // Convert Vec<T> → list-column at split time; each cell's
                                     // list goes straight into the rooted column.
+                                    let into_list_column = list_column_fn(ty, false);
                                     vec![quote! {
-                                        (#col_str, __scope.protect_raw(::miniextendr_api::list::into_list_column(#buf)))
+                                        (#col_str, __scope.protect_raw(#into_list_column(#buf)))
                                     }]
                                 } else if data.is_factor {
                                     // Factor: convert Vec<T> → FactorOptionVec<T> (all present).
