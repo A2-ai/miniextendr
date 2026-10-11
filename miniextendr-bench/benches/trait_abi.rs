@@ -48,7 +48,7 @@ const NONEXISTENT_TAG: miniextendr_api::abi::mx_tag = mx_tag_from_path("bench::N
 
 impl ErasedCounter {
     fn new(start: i32) -> Self {
-        let ptr = __mx_wrap_simplecounter(SimpleCounter { value: start });
+        let ptr = __mx_wrap_SimpleCounter(SimpleCounter { value: start });
         Self { ptr }
     }
 

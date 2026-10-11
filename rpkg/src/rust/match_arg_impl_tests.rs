@@ -474,7 +474,7 @@ impl OmitGrade for OmitPickS3 {
 #[miniextendr(no_worker)]
 pub fn omit_grade_through_view() -> Vec<String> {
     unsafe {
-        let erased = __mx_wrap_omitpicks3(OmitPickS3);
+        let erased = __mx_wrap_OmitPickS3(OmitPickS3);
         let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
             miniextendr_api::trait_abi::ccall::mx_wrap(erased),
         );

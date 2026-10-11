@@ -190,7 +190,7 @@ impl SerializeValues for SerializeHost {
 #[miniextendr(no_worker)]
 pub fn serialized_trait_view(value: i32) -> Vec<i32> {
     unsafe {
-        let erased = __mx_wrap_serializehost(SerializeHost { value });
+        let erased = __mx_wrap_SerializeHost(SerializeHost { value });
         let sexp = miniextendr_api::gc_protect::OwnedProtect::new(
             miniextendr_api::trait_abi::ccall::mx_wrap(erased),
         );

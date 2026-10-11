@@ -168,7 +168,7 @@ impl Counter for DoubleCounter {
 #[miniextendr]
 pub fn new_double_counter(initial: i32) -> SEXP {
     let counter = DoubleCounter::create(initial);
-    let erased = __mx_wrap_doublecounter(counter);
+    let erased = __mx_wrap_DoubleCounter(counter);
     unsafe { ccall::mx_wrap(erased) }
 }
 // endregion

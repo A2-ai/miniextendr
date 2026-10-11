@@ -128,7 +128,7 @@ mod tests {
     /// the default-aligned CovEnv type.
     #[test]
     fn test_data_offset_default_aligned() {
-        let wrapped = __mx_wrap_covenv(CovEnv { v: 42 });
+        let wrapped = __mx_wrap_CovEnv(CovEnv { v: 42 });
         let base = unsafe { (*wrapped).base };
         let data_offset = unsafe { (*base).data_offset };
 

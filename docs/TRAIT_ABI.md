@@ -83,7 +83,7 @@ struct __MxWrapperMyCounter {
 ```rust
 // In a constructor
 let wrapper = Box::new(__MxWrapperMyCounter {
-    erased: mx_erased { base: &__MX_BASE_VTABLE_MYCOUNTER },
+    erased: mx_erased { base: &__MX_BASE_VTABLE_MyCounter },
     data: my_counter,
 });
 let sexp = unsafe { mx_wrap(Box::into_raw(wrapper) as *mut mx_erased) };

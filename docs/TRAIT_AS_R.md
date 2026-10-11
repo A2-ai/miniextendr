@@ -106,11 +106,11 @@ impl MyCounter {
 // Registration is automatic via #[miniextendr].
 ```
 
-The trait impl registration generates:
+The `ExternalPtr` derive generates:
 
 - `__MxWrapperMyCounter` - Type-erased wrapper struct
-- `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
-- `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
+- `__MX_BASE_VTABLE_MyCounter` - Base vtable with drop/query
+- `__mx_wrap_MyCounter()` - Constructor returning `*mut mx_erased`
 
 ## ABI Types (Frozen)
 

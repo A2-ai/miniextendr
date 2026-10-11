@@ -194,7 +194,7 @@
 //! impl Counter for MyCounter { /* ... */ }
 //! ```
 //!
-//! ## Generated Types (trait impls)
+//! ## Generated Types
 //!
 //! ### Wrapper Struct
 //!
@@ -209,28 +209,17 @@
 //! ### Base Vtable
 //!
 //! ```ignore
-//! static __MX_BASE_VTABLE_MYCOUNTER: mx_base_vtable = mx_base_vtable {
-//!     drop: __mx_drop_mycounter,
-//!     concrete_tag: TAG_MYCOUNTER,
-//!     query: __mx_query_mycounter,
+//! static __MX_BASE_VTABLE_MyCounter: mx_base_vtable = mx_base_vtable {
+//!     drop: __mx_drop_MyCounter,
+//!     concrete_tag: __MX_TAG_MyCounter,
+//!     query: miniextendr_api::registry::universal_query,
+//!     data_offset: std::mem::offset_of!(__MxWrapperMyCounter, data),
 //! };
 //! ```
 //!
-//! ### Query Function
-//!
-//! The query function maps trait tags to vtable pointers:
-//!
-//! ```ignore
-//! unsafe extern "C" fn __mx_query_mycounter(
-//!     ptr: *mut mx_erased,
-//!     trait_tag: mx_tag,
-//! ) -> *const c_void {
-//!     if trait_tag == TAG_Counter {
-//!         return std::ptr::from_ref(&__VTABLE_mypkg_Counter_FOR_MyCounter).cast::<c_void>();
-//!     }
-//!     std::ptr::null()
-//! }
-//! ```
+//! Trait implementations register their vtables with the dispatch registry.
+//! The shared `registry::universal_query` looks them up by concrete type tag
+//! and trait tag; the derive emits no per-type query function.
 
 use proc_macro2::{Span, TokenStream};
 use syn::{DeriveInput, Field, Ident, Visibility};
@@ -1736,8 +1725,8 @@ fn generate_field_syntax_helpers(
 ///
 /// The generated statics are:
 /// - `__MX_CALL_DEF_RDATA_*`: the `R_CallMethodDef` entries
-/// - `R_WRAPPERS_RDATA_{TYPE}`: the R6 / S7 integration, when present
-/// - `R_SIDECAR_ACCESSORS_{TYPE}`: the standalone accessors, exported and
+/// - `R_WRAPPERS_RDATA_{Type}`: the R6 / S7 integration, when present
+/// - `R_SIDECAR_ACCESSORS_{Type}`: the standalone accessors, exported and
 ///   internal, which the wrapper writer picks between by the class's field
 ///   syntax (`registry::SidecarAccessorsEntry`, #1900). Only the internal
 ///   rendering includes the field-syntax helpers.
@@ -1767,7 +1756,7 @@ fn generate_sidecar_accessors(
 
     let name = &input.ident;
     let name_str = name.to_string();
-    let name_upper = name_str.to_uppercase();
+    let name_symbol = crate::naming::ident_name(name);
 
     // Generate getter/setter functions and R wrappers for each pub slot
     let mut c_functions = vec![];
@@ -1846,6 +1835,7 @@ fn generate_sidecar_accessors(
             #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
+            #[allow(non_snake_case)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
                 x: ::miniextendr_api::SEXP,
                 #require_live: ::miniextendr_api::SEXP,
@@ -1867,11 +1857,7 @@ fn generate_sidecar_accessors(
 
         // Generate R_CallMethodDef entries via distributed slice
         let getter_def_ident = Ident::new(
-            &format!(
-                "__MX_CALL_DEF_RDATA_GET_{}_{}",
-                name_upper,
-                field_name_str.to_uppercase()
-            ),
+            &format!("__MX_CALL_DEF_RDATA_GET_{}_{}", name_symbol, field_name_str),
             Span::call_site(),
         );
         let getter_registration =
@@ -1892,6 +1878,7 @@ fn generate_sidecar_accessors(
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[doc(hidden)]
                 #[unsafe(no_mangle)]
+                #[allow(non_snake_case)]
                 pub unsafe extern "C-unwind" fn #setter_fn_name(
                     x: ::miniextendr_api::SEXP,
                     value: ::miniextendr_api::SEXP,
@@ -1913,11 +1900,7 @@ fn generate_sidecar_accessors(
             });
 
             let setter_def_ident = Ident::new(
-                &format!(
-                    "__MX_CALL_DEF_RDATA_SET_{}_{}",
-                    name_upper,
-                    field_name_str.to_uppercase()
-                ),
+                &format!("__MX_CALL_DEF_RDATA_SET_{}_{}", name_symbol, field_name_str),
                 Span::call_site(),
             );
             let setter_registration =
@@ -1974,7 +1957,7 @@ fn generate_sidecar_accessors(
              (`restored(refuse = \"every_read\")`)."
         );
         let live_def_ident = Ident::new(
-            &format!("__MX_CALL_DEF_RDATA_LIVE_{name_upper}"),
+            &format!("__MX_CALL_DEF_RDATA_LIVE_{name_symbol}"),
             Span::call_site(),
         );
         let live_registration =
@@ -1983,6 +1966,7 @@ fn generate_sidecar_accessors(
             #[doc = #live_doc]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
+            #[allow(non_snake_case)]
             pub unsafe extern "C-unwind" fn #live_fn_name(
                 x: ::miniextendr_api::SEXP,
                 raise: ::miniextendr_api::SEXP,
@@ -2024,11 +2008,11 @@ fn generate_sidecar_accessors(
     ));
 
     let const_name_wrappers = Ident::new(
-        &format!("R_WRAPPERS_RDATA_{}", name_upper),
+        &format!("R_WRAPPERS_RDATA_{}", name_symbol),
         Span::call_site(),
     );
     let const_name_accessors = Ident::new(
-        &format!("R_SIDECAR_ACCESSORS_{}", name_upper),
+        &format!("R_SIDECAR_ACCESSORS_{}", name_symbol),
         Span::call_site(),
     );
     let source_location_doc = crate::source_location_doc(name.span());
@@ -2052,14 +2036,15 @@ fn generate_sidecar_accessors(
                 let entry_ident = Ident::new(
                     &format!(
                         "__MX_S7_SIDECAR_PROP_{}_{}",
-                        name_upper,
-                        crate::naming::ident_name(&slot.name).to_uppercase()
+                        name_symbol,
+                        crate::naming::ident_name(&slot.name)
                     ),
                     Span::call_site(),
                 );
                 quote::quote! {
                     #[doc(hidden)]
                     #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_S7_SIDECAR_PROPS), linkme(crate = ::miniextendr_api::linkme))]
+                    #[allow(non_upper_case_globals)]
                     static #entry_ident: ::miniextendr_api::registry::SidecarPropEntry =
                         ::miniextendr_api::registry::SidecarPropEntry {
                             rust_type: #name_str,
@@ -2080,6 +2065,7 @@ fn generate_sidecar_accessors(
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_R_WRAPPERS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals)]
         static #const_name_wrappers: ::miniextendr_api::registry::RWrapperEntry =
             ::miniextendr_api::registry::RWrapperEntry {
                 priority: ::miniextendr_api::registry::RWrapperPriority::Sidecar,
@@ -2099,6 +2085,7 @@ fn generate_sidecar_accessors(
         #[doc = #source_location_doc]
         #[doc(hidden)]
         #[cfg_attr(not(target_arch = "wasm32"), ::miniextendr_api::linkme::distributed_slice(::miniextendr_api::registry::MX_SIDECAR_ACCESSORS), linkme(crate = ::miniextendr_api::linkme))]
+        #[allow(non_upper_case_globals)]
         static #const_name_accessors: ::miniextendr_api::registry::SidecarAccessorsEntry =
             ::miniextendr_api::registry::SidecarAccessorsEntry {
                 rust_type: #name_str,
@@ -2394,10 +2381,10 @@ pub fn derive_external_ptr(
 ///
 /// For `#[derive(ExternalPtr)] struct MyCounter { ... }` generates:
 /// - `__MxWrapperMyCounter` - repr(C) wrapper with mx_erased header + data
-/// - `__MX_TAG_MYCOUNTER` - concrete type tag (FNV-1a hash of module_path + type)
-/// - `__mx_drop_mycounter` - destructor for R GC
-/// - `__MX_BASE_VTABLE_MYCOUNTER` - base vtable with universal_query
-/// - `__mx_wrap_mycounter` - constructor returning `*mut mx_erased`
+/// - `__MX_TAG_MyCounter` - concrete type tag (FNV-1a hash of module_path + type)
+/// - `__mx_drop_MyCounter` - destructor for R GC
+/// - `__MX_BASE_VTABLE_MyCounter` - base vtable with universal_query
+/// - `__mx_wrap_MyCounter` - constructor returning `*mut mx_erased`
 fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
     let type_ident = &input.ident;
 
@@ -2406,14 +2393,14 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
         return quote::quote! {};
     }
 
-    let type_upper = type_ident.to_string().to_uppercase();
-    let type_lower = type_ident.to_string().to_lowercase();
+    // Preserve case: distinct Rust types need distinct module-local helpers.
+    let type_name = crate::naming::unraw(type_ident);
 
-    let wrapper_name = quote::format_ident!("__MxWrapper{}", type_ident);
-    let base_vtable_name = quote::format_ident!("__MX_BASE_VTABLE_{}", type_upper);
-    let concrete_tag_name = quote::format_ident!("__MX_TAG_{}", type_upper);
-    let drop_fn_name = quote::format_ident!("__mx_drop_{}", type_lower);
-    let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_lower);
+    let wrapper_name = quote::format_ident!("__MxWrapper{}", type_name);
+    let base_vtable_name = quote::format_ident!("__MX_BASE_VTABLE_{}", type_name);
+    let concrete_tag_name = quote::format_ident!("__MX_TAG_{}", type_name);
+    let drop_fn_name = quote::format_ident!("__mx_drop_{}", type_name);
+    let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_name);
     let source_loc_doc = crate::source_location_doc(type_ident.span());
     let tag_path = format!("::{}", type_ident);
 
@@ -2428,16 +2415,19 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[repr(C)]
         #[doc(hidden)]
+        #[allow(non_camel_case_types)]
         struct #wrapper_name {
             pub erased: ::miniextendr_api::abi::mx_erased,
             pub data: #type_ident,
         }
 
         #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
         const #concrete_tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
 
         #[doc(hidden)]
+        #[allow(non_snake_case)]
         unsafe extern "C" fn #drop_fn_name(ptr: *mut ::miniextendr_api::abi::mx_erased) {
             if ptr.is_null() {
                 return;
@@ -2451,6 +2441,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
         }
 
         #[doc(hidden)]
+        #[allow(non_upper_case_globals)]
         static #base_vtable_name: ::miniextendr_api::abi::mx_base_vtable =
             ::miniextendr_api::abi::mx_base_vtable {
                 drop: #drop_fn_name,
@@ -2460,6 +2451,7 @@ fn generate_erased_wrapper(input: &DeriveInput) -> TokenStream {
             };
 
         #[doc(hidden)]
+        #[allow(non_snake_case)]
         fn #wrap_fn_name(data: #type_ident) -> *mut ::miniextendr_api::abi::mx_erased {
             let wrapper = ::std::boxed::Box::new(#wrapper_name {
                 erased: ::miniextendr_api::abi::mx_erased {
@@ -2695,11 +2687,11 @@ mod tests {
         assert!(!out.contains("Engine_get_r_keys"), "{out}");
         assert!(out.contains(&getter), "{out}");
         assert!(
-            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_R_KEYS"),
+            out.contains("__MX_CALL_DEF_RDATA_GET_Engine_r_keys"),
             "{out}"
         );
         assert!(
-            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_N_ROWS"),
+            out.contains("__MX_CALL_DEF_RDATA_GET_Engine_n_rows"),
             "{out}"
         );
         // The Rust accessors and the visitor hook keep the Rust name.
@@ -2819,11 +2811,11 @@ mod tests {
         assert!(out.contains("Engine_get_group_by <- function(x)"), "{out}");
         assert!(!out.contains("Engine_set_group_by"), "{out}");
         assert!(
-            out.contains("__MX_CALL_DEF_RDATA_GET_ENGINE_GROUP_BY"),
+            out.contains("__MX_CALL_DEF_RDATA_GET_Engine_group_by"),
             "{out}"
         );
         assert!(
-            !out.contains("__MX_CALL_DEF_RDATA_SET_ENGINE_GROUP_BY"),
+            !out.contains("__MX_CALL_DEF_RDATA_SET_Engine_group_by"),
             "{out}"
         );
         assert!(
