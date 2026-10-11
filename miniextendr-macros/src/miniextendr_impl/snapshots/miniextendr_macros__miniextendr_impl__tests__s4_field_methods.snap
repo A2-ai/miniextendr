@@ -35,7 +35,7 @@ methods::setMethod("$", "Engine", function(x, name) {
       .val <- .rdata_live_Engine(x@ptr, TRUE)
       if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
     }
-    .rdata_no_field_Engine(name, environment())
+    .rdata_no_field_Engine(name, environment(), "Engine")
   }
   .val <- .rdata_get_Engine(x@ptr, name)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
@@ -57,7 +57,7 @@ methods::setMethod("$", "Engine", function(x, name) {
 #' @param value The new value of the field.
 #' @exportMethod $<-
 methods::setMethod("$<-", "Engine", function(x, name, value) {
-  if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment())
+  if (is.na(match(name, .rdata_fields_Engine))) .rdata_no_field_Engine(name, environment(), "Engine")
   .val <- .rdata_set_Engine(x@ptr, name, value)
   if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, environment()))
   x

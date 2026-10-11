@@ -10,11 +10,15 @@
 # last also on S4 and env classes. A name that is not a field falls through
 # to R's own `$` / `[[` on a list or an environment receiver; a write to one
 # raises `miniextendr_no_field` on a bare pointer, as `$` does on an S4
-# object. A condition reports the call as written: `x$data <- value`.
+# object. `lookup = "strict"` (#1921) takes exact names and whole-number
+# positions only. A `[[` index that is neither one name nor one position is
+# refused by the generated `[[` itself (#1920). A condition reports the call
+# as written: `x$data <- value`.
 #
 # Fixtures: `SidecarS3`, `SidecarS3Get`, `SidecarComputed`, `SidecarHandmade`
-# (classed by `new_handmade_rec()` in `R/sidecar_handmade.R`), `SidecarS4`
-# and `SidecarEnv` in `src/rust/rdata_sidecar_tests.rs`.
+# (classed by `new_handmade_rec()` in `R/sidecar_handmade.R`), `SidecarStrict`
+# (`strict_rec`), `SidecarS4` and `SidecarEnv` in
+# `src/rust/rdata_sidecar_tests.rs`.
 
 caught <- function(expr) tryCatch(expr, error = identity)
 
@@ -368,11 +372,18 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
     in_front(e, "subscriptOutOfBoundsError", deparse(read))
     expect_equal(conditionCall(e), read)
   }
-  # A pointer of another type under the class.
+  # A pointer of another type under the class: the message names the R
+  # class the user sees, not the Rust type (#1920).
   other <- structure(rdata_sidecar_s3_new(1.5), class = "handmade_rec")
   e <- caught(other$id)
   in_front(e, "rust_error", "type mismatch")
-  expect_match(conditionMessage(e), "SidecarHandmade", fixed = TRUE)
+  expect_identical(conditionMessage(e), "this `handmade_rec` object holds a pointer of another type")
+  expect_equal(conditionCall(e), quote(other$id))
+  # A pointer without an address that no `SidecarHandmade` left behind.
+  null <- structure(methods::new("externalptr"), class = "handmade_rec")
+  e <- caught(null$id)
+  in_front(e, "rust_error", "null pointer")
+  expect_identical(conditionMessage(e), "this `handmade_rec` object holds a null pointer")
   # A receiver of the class with no pointer, e.g. an older list format: the
   # restored classes too, the shared parent class after both specific ones.
   old <- structure(list(id = 1L), class = "handmade_rec")
@@ -385,15 +396,51 @@ test_that("the readers' own errors carry the type's `field_error` classes in fro
     )
     expect_identical(
       conditionMessage(e),
-      "expected ExternalPtr<SidecarHandmade>, got a non-external-pointer object",
+      "this `handmade_rec` object holds no pointer",
       label = deparse(read)
     )
   }
-  # A type without the option keeps the plain errors.
+  # An atomic vector given the class was never saved: no restored class
+  # (#1919). Reads that never reach a field stay R's.
+  num <- structure(1, class = "handmade_rec")
+  e <- caught(num$id)
+  expect_identical(
+    class(e)[1:3],
+    c("handmade_error_field", "handmade_error", "miniextendr_no_handle")
+  )
+  expect_false(inherits(e, "handmade_error_saved"))
+  expect_null(names(num))
+  expect_identical(num[[1]], 1)
+  # A type without the option keeps the plain errors, which name the class.
   e <- caught(new_sidecars3(1.5)[[9]])
   expect_identical(class(e)[1], "subscriptOutOfBoundsError")
   e <- caught(structure(list(data = 1), class = "SidecarS3")$data)
   expect_identical(class(e)[1], "miniextendr_no_handle")
+  expect_identical(conditionMessage(e), "this `SidecarS3` object holds no pointer")
+})
+
+test_that("a `[[` index that is neither one name nor one position is refused by the class's own `[[` (#1920)", {
+  h <- new_handmade_rec(2L)
+  classes <- c("handmade_error_field", "handmade_error", "notSubsettableError")
+  for (read in alist(h[[1:2]], h[[c("id", "ids")]], h[[list(1)]], h[[character()]], h[[NULL]])) {
+    e <- caught(eval(read))
+    expect_identical(class(e)[1:3], classes, label = deparse(read))
+    expect_identical(
+      conditionMessage(e),
+      "`[[` on a `handmade_rec` object takes one field name or one position",
+      label = deparse(read)
+    )
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+  # A type without `field_error` gets R's class alone, on the user's call.
+  x <- new_sidecars3(1.5)
+  e <- caught(x[[1:2]])
+  expect_identical(class(e)[1], "notSubsettableError")
+  expect_identical(conditionMessage(e), "`[[` on a `SidecarS3` object takes one field name or one position")
+  expect_equal(conditionCall(e), quote(x[[1:2]]))
+  # A list carrying the pointer keeps its own `[[` for such an index.
+  l <- new_s3_list()
+  expect_identical(l[[c(2, 1)]], 1:3)
 })
 
 test_that("a class with field syntax keeps its standalone accessors internal (#1900)", {
@@ -727,6 +774,54 @@ test_that("restored: under `refuse = \"every_read\"` names(), an unknown name an
   expect_identical(utils::.DollarNames(h, "^i"), c("id", "ids"))
 })
 
+test_that("restored: under `refuse = \"every_read\"` the pointer is checked before the index (#1919)", {
+  back <- reload(new_handmade_rec(2L))
+  classes <- c(
+    "handmade_error_saved", "handmade_error",
+    "miniextendr_restored_no_value", "miniextendr_restored"
+  )
+  # A position past the last field and an index that is no name or
+  # position: the saved pointer is refused first.
+  for (read in alist(back[[9]], back[[0]], back[[1:2]], back[[list(1)]])) {
+    e <- caught(eval(read))
+    expect_restored_classes(e, classes, deparse(read))
+    expect_equal(conditionCall(e), read)
+  }
+})
+
+test_that("restored: under `refuse = \"every_read\"` a list or environment of the class without a pointer refuses every read (#1919)", {
+  classes <- c("handmade_error_saved", "handmade_error_field", "handmade_error", "miniextendr_no_handle")
+  # The shape an earlier release may have saved: a list of the class with
+  # a pointer element of another name.
+  old <- structure(list(ptr = methods::new("externalptr"), table = data.frame()), class = "handmade_rec")
+  env <- structure(new.env(), class = "handmade_rec")
+  for (read in alist(
+    names(old), as.list(old), old$nope, old$table, old$id, old[[1]], old[["table"]], old[[1:2]],
+    names(env), as.list(env), env$nope, env[["id"]]
+  )) {
+    e <- caught(eval(read))
+    expect_identical(class(e)[1:4], classes, label = deparse(read))
+    expect_identical(conditionMessage(e), "this `handmade_rec` object holds no pointer", label = deparse(read))
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+  # A list carrying a live pointer keeps its own elements; one carrying a
+  # saved pointer is refused like the pointer.
+  live <- structure(list(.ptr = rdata_sidecar_handmade_new(2L), note = "n"), class = "handmade_rec")
+  expect_identical(live$note, "n")
+  expect_identical(live$id, 2L)
+  expect_identical(names(live), c(".ptr", "note"))
+  expect_identical(live[[2]], "n")
+  saved <- reload(live)
+  for (read in alist(names(saved), saved$note, saved[[2]], as.list(saved))) {
+    e <- caught(eval(read))
+    expect_restored_classes(
+      e,
+      c("handmade_error_saved", "handmade_error", "miniextendr_restored_no_value"),
+      deparse(read)
+    )
+  }
+})
+
 test_that("restored: the S4 and env field methods refuse too", {
   o <- SidecarS4(1L, 2.5, "s")
   o$history <- c(1, 2)
@@ -799,6 +894,98 @@ test_that("another version's save keeps the package's classes and message, with 
     expect_restored_classes(e, classes, deparse(expr))
     expect_identical(e$saved_version, "0.0.1", label = deparse(expr))
     expect_identical(e$current_version, current, label = deparse(expr))
+  }
+})
+
+# endregion
+
+# region: S3, strict lookup (#1921)
+
+test_that("strict lookup: exact names and whole-number positions read their field", {
+  s <- new_strict_rec(3L)
+  expect_identical(s$id, 3L)
+  expect_identical(s$steps, 1:3)
+  expect_identical(s[["steps"]], 1:3)
+  expect_identical(s[[1]], 3L)
+  expect_identical(s[[2L]], 1:3)
+  expect_identical(s[[2.0]], 1:3)
+  expect_identical(names(s), c("id", "steps"))
+  expect_identical(as.list(s), list(id = 3L, steps = 1:3))
+})
+
+test_that("strict lookup: an unknown name refuses on read as on assignment, with no partial match", {
+  s <- new_strict_rec(3L)
+  classes <- c("strict_error_field", "strict_error", "miniextendr_no_field")
+  withr::local_options(warnPartialMatchDollar = TRUE)
+  for (read in alist(s$st, s$nope, s[["st"]], s[["nope"]])) {
+    e <- caught(eval(read))
+    expect_identical(class(e)[1:3], classes, label = deparse(read))
+    expect_match(
+      conditionMessage(e),
+      "is not a field of `strict_rec`; its fields are `id`, `steps`",
+      fixed = TRUE,
+      label = deparse(read)
+    )
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+})
+
+test_that("strict lookup: any other index is refused, not read as a list would", {
+  s <- new_strict_rec(3L)
+  bad <- c("strict_error_field", "strict_error", "notSubsettableError")
+  for (read in alist(
+    s[[TRUE]], s[[FALSE]], s[[NA]], s[[NA_real_]], s[[NA_character_]], s[[1.5]],
+    s[[1:2]], s[[list(1)]], s[[character()]]
+  )) {
+    e <- caught(eval(read))
+    expect_identical(class(e)[1:3], bad, label = deparse(read))
+    expect_identical(
+      conditionMessage(e),
+      "`[[` on a `strict_rec` object takes one field name or one whole-number position",
+      label = deparse(read)
+    )
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+  oob <- c("strict_error_field", "strict_error", "subscriptOutOfBoundsError")
+  for (read in alist(s[[0]], s[[-1]], s[[3]])) {
+    e <- caught(eval(read))
+    expect_identical(class(e)[1:3], oob, label = deparse(read))
+    expect_equal(conditionCall(e), read, label = deparse(read))
+  }
+})
+
+test_that("strict lookup: a list carrying the pointer keeps its own elements", {
+  l <- structure(list(.ptr = unclass(new_strict_rec(2L)), note = "n"), class = "strict_rec")
+  expect_identical(l$steps, 1:2)
+  expect_identical(l$note, "n")
+  expect_null(l$nope)
+  expect_identical(l[[2]], "n")
+})
+
+test_that("strict lookup: the type's own message replaces the receiver refusals (#1920)", {
+  message <- "not a strict_rec; build one with new_strict_rec()"
+  other <- structure(rdata_sidecar_s3_new(1.5), class = "strict_rec")
+  e <- caught(other$id)
+  expect_identical(conditionMessage(e), message)
+  expect_identical(class(e)[1:2], c("strict_error_field", "strict_error"))
+  old <- structure(list(id = 1L), class = "strict_rec")
+  e <- caught(names(old))
+  expect_identical(conditionMessage(e), message)
+  expect_identical(
+    class(e)[1:4],
+    c("strict_error_saved", "strict_error_field", "strict_error", "miniextendr_no_handle")
+  )
+})
+
+test_that("strict lookup: a saved copy is refused before the name or index is looked at", {
+  back <- reload(new_strict_rec(2L))
+  for (read in alist(back$st, back$steps, back[[TRUE]], back[[9]], names(back))) {
+    e <- caught(eval(read))
+    expect_restored_classes(
+      e,
+      c("strict_error_saved", "strict_error", "miniextendr_restored_no_value"),
+      deparse(read)
+    )
   }
 })
 

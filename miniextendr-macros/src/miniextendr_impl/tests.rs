@@ -16,6 +16,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_parent: None,
         s7_abstract: false,
         r_data_accessors: RDataAccessors::Off,
+        field_lookup: FieldLookup::default(),
         strict: false,
         // The impl keeps the checks, whatever the `no-preconditions-default`
         // feature of this build says, so the snapshots are the same under both.
@@ -7338,7 +7339,7 @@ fn s3_field_methods() {
     assert_eq!(s3_method_formals(&wrapper, "as.list.Engine"), "x, ...");
     // Conditions report the generic's call: the method frame is the fallback,
     // in `$`, `[[`, `as.list`, the two setters, the instance method `size`,
-    // and the liveness checks of `$`, `[[` (two) and `names` (#1901).
+    // and the liveness check the four readers start with (#1901, #1919).
     assert_eq!(
         wrapper
             .matches(".miniextendr_raise_condition(.val, environment())")
@@ -7354,16 +7355,27 @@ fn s3_field_methods() {
     insta::assert_snapshot!(wrapper);
 }
 
+/// The liveness check every S3 reader starts with under `restored(refuse =
+/// "every_read")` (#1901, #1919), on a pointer, list or environment receiver.
+const S3_EVERY_READ_CHECK: &str = "  if (.rdata_every_read_Engine && typeof(x) %in% c(\"externalptr\", \"list\", \"environment\")) {\n    .val <- .rdata_live_Engine(x, TRUE)\n";
+
 /// The S3 readers of `s3(r_data_accessors)` (#1891): a list's lookup on the
 /// bare pointer (`pmatch` for `$`, `.miniextendr_field_at` for a `[[`
-/// position, NULL for an unknown name), `names()`, `as.list()` and a
-/// `.DollarNames()` registered with `@exportS3Method utils::.DollarNames`.
+/// position, NULL for an unknown name, the bad-index error for any other
+/// `[[` index), `names()`, `as.list()` and a `.DollarNames()` registered
+/// with `@exportS3Method utils::.DollarNames`, each reader starting with the
+/// `every_read` check.
 fn assert_s3_readers(wrapper: &str, class: &str) {
     let dollar = crate::naming::r_def_name(&format!("$.{class}"));
+    let subset = crate::naming::r_def_name(&format!("[[.{class}"));
     assert!(
         wrapper.contains(&format!(
-            "{dollar} <- function(x, name) {{\n  if (typeof(x) == \"externalptr\") {{\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) {{\n      if (.rdata_every_read_Engine) {{\n        .val <- .rdata_live_Engine(x, TRUE)\n"
+            "{dollar} <- function(x, name) {{\n{S3_EVERY_READ_CHECK}"
         )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    i <- pmatch(name, .rdata_fields_Engine)\n    if (is.na(i)) return(NULL)\n"),
         "{wrapper}"
     );
     assert!(
@@ -7371,15 +7383,18 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
         "{wrapper}"
     );
     assert!(
-        wrapper
-            .contains("    i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n"),
+        wrapper.contains(&format!(
+            "{subset} <- function(x, i, ...) {{\n{S3_EVERY_READ_CHECK}"
+        )),
         "{wrapper}"
     );
     assert!(
-        wrapper.contains("    if (typeof(x) == \"externalptr\" && is.character(i) && length(i) == 1L) {\n      if (.rdata_every_read_Engine) {\n"),
+        wrapper.contains(&format!(
+            "  if (typeof(x) == \"externalptr\") {{\n    if (is.character(i) && length(i) == 1L) {{\n      if (is.na(match(i, .rdata_fields_Engine))) return(NULL)\n    }} else if (length(i) == 1L && (is.numeric(i) || is.logical(i))) {{\n      if (is.na(i)) return(NULL)\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    }} else .miniextendr_field_index_error(\"{class}\", environment(), .rdata_error_class_Engine)\n"
+        )),
         "{wrapper}"
     );
-    // No `miniextendr_no_field` on a read any more.
+    // No `miniextendr_no_field` on a read under a list's lookup.
     let reads_end = wrapper.find("`$<-.").unwrap_or(wrapper.len());
     assert!(
         !wrapper[..reads_end].contains(".rdata_no_field_Engine"),
@@ -7387,14 +7402,22 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     );
     assert!(
         wrapper.contains(&format!(
-            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) {{\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  if (.rdata_every_read_Engine) {{\n    .val <- .rdata_live_Engine(x, TRUE)\n"
+            "#' @method names {class}\n#' @export\nnames.{class} <- function(x) {{\n{S3_EVERY_READ_CHECK}"
         )),
         "{wrapper}"
     );
     assert!(
+        wrapper.contains("  }\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  .rdata_fields_Engine\n}\n"),
+        "{wrapper}"
+    );
+    assert!(
         wrapper.contains(&format!(
-            "as.list.{class} <- function(x, ...) {{\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {{\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"
+            "as.list.{class} <- function(x, ...) {{\n{S3_EVERY_READ_CHECK}"
         )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("  }\n  if (is.environment(x)) return(as.list.environment(x, ...))\n  if (typeof(x) != \"externalptr\") return(NextMethod())\n  .out <- vector(\"list\", length(.rdata_fields_Engine))\n  names(.out) <- .rdata_fields_Engine\n  for (.k in seq_along(.rdata_fields_Engine)) {\n    .val <- .rdata_get_Engine(x, .rdata_fields_Engine[[.k]])\n"),
         "{wrapper}"
     );
     assert!(
@@ -7410,6 +7433,80 @@ fn assert_s3_readers(wrapper: &str, class: &str) {
     // Never the `@method` + `@export` pair, whose unqualified
     // `S3method(.DollarNames, Class)` fails to load with only base attached.
     assert!(!wrapper.contains("@method .DollarNames"), "{wrapper}");
+}
+
+/// `lookup = "strict"` (#1921): on the bare pointer `$` and `[[` take an
+/// exact name, refusing any other with `miniextendr_no_field` naming the R
+/// class, and `[[` a whole-number position; every other index raises the
+/// strict bad-index error. A list or environment receiver keeps its own
+/// elements, and the rest of the readers are unchanged.
+#[test]
+fn s3_field_methods_strict_lookup() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Engine {}
+    };
+    let mut attrs: ImplAttrs =
+        syn::parse_str("s3(r_data_accessors = \"get\", lookup = \"strict\")").unwrap();
+    attrs.class_name = Some("engine_rec".to_string());
+    attrs.preconditions = Some(true);
+    assert_eq!(attrs.field_lookup, FieldLookup::Strict);
+    let wrapper = generate_s3_r_wrapper(&ParsedImpl::parse(attrs, item_impl).unwrap());
+    assert!(
+        wrapper.contains(&format!(
+            "`$.engine_rec` <- function(x, name) {{\n{S3_EVERY_READ_CHECK}"
+        )),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("  if (is.na(match(name, .rdata_fields_Engine))) {\n    if (typeof(x) == \"externalptr\") .rdata_no_field_Engine(name, environment(), \"engine_rec\")\n    return(NextMethod())\n  }\n  .val <- .rdata_get_Engine(x, name)\n"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains("  if (typeof(x) == \"externalptr\") {\n    if (is.character(i) && length(i) == 1L && !is.na(i)) {\n      if (is.na(match(i, .rdata_fields_Engine))) .rdata_no_field_Engine(i, environment(), \"engine_rec\")\n    } else if (is.numeric(i) && length(i) == 1L && !is.na(i) && i == trunc(i)) {\n      i <- .miniextendr_field_at(.rdata_fields_Engine, i, environment(), .rdata_error_class_Engine)\n    } else .miniextendr_field_index_error(\"engine_rec\", environment(), .rdata_error_class_Engine, strict = TRUE)\n  } else if (!is.character(i) || length(i) != 1L || is.na(match(i, .rdata_fields_Engine))) {\n    return(NextMethod())\n  }\n"),
+        "{wrapper}"
+    );
+    // No prefix match and no NULL for an unknown name.
+    assert!(!wrapper.contains("pmatch("), "{wrapper}");
+    assert!(!wrapper.contains("return(NULL)"), "{wrapper}");
+    assert!(
+        wrapper.contains("#' @param name A field name, exactly;"),
+        "{wrapper}"
+    );
+}
+
+#[test]
+fn parse_lookup_option() {
+    let attrs: ImplAttrs = syn::parse_str("s3(r_data_accessors, lookup = \"strict\")").unwrap();
+    assert_eq!(attrs.field_lookup, FieldLookup::Strict);
+    let attrs: ImplAttrs = syn::parse_str("s3(lookup = \"list\", r_data_accessors)").unwrap();
+    assert_eq!(attrs.field_lookup, FieldLookup::List);
+    let attrs: ImplAttrs = syn::parse_str("s3(r_data_accessors)").unwrap();
+    assert_eq!(attrs.field_lookup, FieldLookup::List);
+    for (attrs, expected) in [
+        ("s3(lookup = \"strict\")", "add `r_data_accessors`"),
+        (
+            "s3(r_data_accessors, lookup = \"exact\")",
+            "unknown `lookup` value \"exact\"",
+        ),
+        (
+            "s3(r_data_accessors, lookup = \"strict\", lookup = \"strict\")",
+            "`lookup` is given twice",
+        ),
+        (
+            "s4(r_data_accessors, lookup = \"strict\")",
+            "unknown s4 option: lookup",
+        ),
+        (
+            "env(r_data_accessors, lookup = \"strict\")",
+            "unknown env option: lookup",
+        ),
+    ] {
+        let err = parse_attrs_err(attrs);
+        assert!(err.contains(expected), "{attrs}: {err}");
+    }
+    // The S3 message names the option; the others don't offer it.
+    assert!(parse_attrs_err("s3(r_data_accesors)").contains("lookup = \"strict\""));
+    assert!(!parse_attrs_err("s4(r_data_accesors)").contains("lookup"));
 }
 
 /// The getters-only form generates the readers (`$`, `[[`, `names`,

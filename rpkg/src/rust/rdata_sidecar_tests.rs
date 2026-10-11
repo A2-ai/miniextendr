@@ -412,6 +412,52 @@ pub fn rdata_sidecar_handmade_new(id: i32) -> ExternalPtr<SidecarHandmade> {
 }
 // endregion
 
+// region: S3, strict lookup (#1921)
+
+/// A record whose readers look fields up strictly (`lookup = "strict"`,
+/// #1921): exact names and whole-number positions only, so `x$st` is an
+/// error rather than `x$steps`, and an unknown name raises
+/// `miniextendr_no_field` as it does on assignment. Its receiver refusals
+/// carry the package's own message (`field_error(message)`, #1920), and a
+/// saved copy is refused on every read.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(
+    s3,
+    field_error(
+        class = ["strict_error_field", "strict_error"],
+        message = "not a strict_rec; build one with new_strict_rec()"
+    ),
+    restored(class = ["strict_error_saved", "strict_error"], refuse = "every_read")
+)]
+pub struct SidecarStrict {
+    #[r_data]
+    _r: RSidecar,
+
+    /// The id, a struct field.
+    #[r_data]
+    pub id: i32,
+
+    /// `1:id`, kept in the pointer's protection list; `steps` in R, which
+    /// `st` is a prefix of.
+    #[r_data(name = "steps")]
+    pub r_steps: Sidecar<Vec<i32>>,
+}
+
+/// The strict readers of `strict_rec`.
+#[miniextendr(s3(r_data_accessors = "get", lookup = "strict"), class = "strict_rec")]
+impl SidecarStrict {
+    /// Create a `strict_rec` whose `steps` are `1:id`.
+    /// @param id The id.
+    pub fn new(id: i32) -> Self {
+        SidecarStrict {
+            _r: RSidecar,
+            id,
+            r_steps: Sidecar::new((1..=id).collect()),
+        }
+    }
+}
+// endregion
+
 // region: S4 - standalone accessors: SidecarS4_get_slot_int(x), ...
 
 /// Demonstrates S4 class system.

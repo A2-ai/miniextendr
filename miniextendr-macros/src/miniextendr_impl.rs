@@ -355,6 +355,20 @@ impl RDataAccessors {
     }
 }
 
+/// How the S3 readers of `s3(r_data_accessors)` look a field up on a bare
+/// pointer (`field_syntax.rs`): `s3(r_data_accessors, lookup = "strict")`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FieldLookup {
+    /// A list's lookup (#1891): `$` takes a unique prefix, `[[` a logical or
+    /// fractional position, and an unknown name or `NA` reads `NULL`.
+    #[default]
+    List,
+    /// `lookup = "strict"` (#1921): exact names and whole-number positions
+    /// only; an unknown name raises `miniextendr_no_field` and any other
+    /// index the bad-index error.
+    Strict,
+}
+
 /// Parses an `r_data_accessors` key inside `s3(...)` / `s4(...)` / `env(...)`
 /// / `r6(...)` / `s7(...)`, after the key: nothing, or `= "get"` (S3, S4 and
 /// env only).
@@ -842,6 +856,9 @@ pub struct ParsedImpl {
     /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
     /// For S3, S4 and env: `$` / `[[` field methods (`field_syntax.rs`, #1848).
     pub r_data_accessors: RDataAccessors,
+    /// `s3(r_data_accessors, lookup = "strict")`: how the S3 readers look a
+    /// field up (see [`FieldLookup`]).
+    pub field_lookup: FieldLookup,
     /// Strict conversion mode: methods returning lossy types use checked conversions.
     pub strict: bool,
     /// The impl block's `preconditions` / `no_preconditions`, inherited by
@@ -917,6 +934,8 @@ pub struct ImplAttrs {
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
     /// For S3, S4 and env: `$` / `[[` field methods (#1848).
     pub r_data_accessors: RDataAccessors,
+    /// How the S3 readers look a field up (`lookup = "strict"`, #1921).
+    pub field_lookup: FieldLookup,
     // endregion
     // region: Strict conversion mode
     /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
@@ -975,6 +994,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_parent = None;
         let mut s7_abstract = false;
         let mut r_data_accessors = RDataAccessors::Off;
+        let mut field_lookup: Option<(FieldLookup, proc_macro2::Span)> = None;
         let mut strict: Option<bool> = None;
         let mut preconditions: Option<bool> = None;
         let mut internal = false;
@@ -1293,21 +1313,58 @@ impl syn::parse::Parse for ImplAttrs {
                     syn::parenthesized!(content in input);
                     while !content.is_empty() {
                         let key: syn::Ident = content.parse()?;
-                        if key != "r_data_accessors" {
+                        if key == "lookup" && parsed_system == ClassSystem::S3 {
+                            if field_lookup.is_some() {
+                                return Err(syn::Error::new(key.span(), "`lookup` is given twice"));
+                            }
+                            let _: syn::Token![=] = content.parse()?;
+                            let value: syn::LitStr = content.parse()?;
+                            let lookup = match value.value().as_str() {
+                                "strict" => FieldLookup::Strict,
+                                "list" => FieldLookup::List,
+                                other => {
+                                    return Err(syn::Error::new(
+                                        value.span(),
+                                        format!(
+                                            "unknown `lookup` value \"{other}\"; expected \
+                                             \"strict\" (exact names and whole-number \
+                                             positions) or \"list\" (a list's lookup, the \
+                                             default)"
+                                        ),
+                                    ));
+                                }
+                            };
+                            field_lookup = Some((lookup, key.span()));
+                        } else if key == "r_data_accessors" {
+                            r_data_accessors =
+                                parse_r_data_accessors_value(&content, &key, parsed_system)?;
+                        } else {
+                            let lookup = if parsed_system == ClassSystem::S3 {
+                                ", lookup = \"strict\""
+                            } else {
+                                ""
+                            };
                             return Err(syn::Error::new(
                                 key.span(),
                                 format!(
                                     "unknown {ident_str} option: {key} (expected \
                                      r_data_accessors, or r_data_accessors = \"get\" for \
-                                     getters only)"
+                                     getters only{lookup})"
                                 ),
                             ));
                         }
-                        r_data_accessors =
-                            parse_r_data_accessors_value(&content, &key, parsed_system)?;
                         if content.peek(syn::Token![,]) {
                             let _: syn::Token![,] = content.parse()?;
                         }
+                    }
+                    if let Some((_, span)) = field_lookup
+                        && !r_data_accessors.enabled()
+                    {
+                        return Err(syn::Error::new(
+                            span,
+                            "`lookup` sets how the readers of `s3(r_data_accessors)` look a \
+                             field up; add `r_data_accessors` (or `r_data_accessors = \"get\"`)",
+                        ));
                     }
                 }
             }
@@ -1331,6 +1388,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
+            field_lookup: field_lookup.map(|(lookup, _)| lookup).unwrap_or_default(),
             strict: strict.unwrap_or(cfg!(feature = "strict-default")),
             preconditions,
             internal,
@@ -3116,6 +3174,7 @@ impl ParsedImpl {
             s7_parent: attrs.s7_parent,
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
+            field_lookup: attrs.field_lookup,
             strict: attrs.strict,
             preconditions: attrs.preconditions,
             internal: attrs.internal,

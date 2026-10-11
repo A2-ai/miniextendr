@@ -70,7 +70,7 @@ if (!is.character(get0(".rdata_fields_Engine", envir = topenv(environment()), in
 #' @export
 `$<-.Engine` <- function(x, name, value) {
   if (!is.character(name) || length(name) != 1L || is.na(match(name, .rdata_fields_Engine))) {
-    if (typeof(x) == "externalptr" && is.character(name) && length(name) == 1L) .rdata_no_field_Engine(name, environment())
+    if (typeof(x) == "externalptr" && is.character(name) && length(name) == 1L) .rdata_no_field_Engine(name, environment(), "Engine")
     return(NextMethod())
   }
   .val <- .rdata_set_Engine(x, name, value)

@@ -473,25 +473,71 @@ unsafe fn sidecar_receiver<T: TypedExternal>(x: SEXP) -> SEXP {
     }
     match unsafe { unwrap_class_handle(x) } {
         Some(ptr) => ptr,
-        None => refuse_no_handle::<T>(),
+        None => refuse_no_handle::<T>(x),
+    }
+}
+
+/// What an R accessor's receiver holds instead of a live `T` (#1920).
+#[derive(Clone, Copy)]
+enum Refused {
+    /// No external pointer at all ([`refuse_no_handle`]).
+    NoPointer,
+    /// A pointer without an address that `T` did not build.
+    NullPointer,
+    /// A live pointer to another type.
+    OtherType,
+}
+
+/// The message of a receiver refusal (#1920): the type's own
+/// ([`TypedExternal::FIELD_ERROR_MESSAGE`]), else one naming `receiver`'s R
+/// class, which is what the user sees (the field methods dispatched on it),
+/// else, for a receiver without a class, one naming the Rust type.
+fn refusal_message<T: TypedExternal>(receiver: SEXP, refused: Refused) -> String {
+    if let Some(message) = T::FIELD_ERROR_MESSAGE {
+        return message.to_owned();
+    }
+    let class = receiver.get_class();
+    let class = (class.type_of() == SEXPTYPE::STRSXP && class.len() > 0)
+        .then(|| class.string_elt_str(0))
+        .flatten();
+    match (class, refused) {
+        (Some(class), Refused::NoPointer) => format!("this `{class}` object holds no pointer"),
+        (Some(class), Refused::NullPointer) => {
+            format!("this `{class}` object holds a null pointer")
+        }
+        (Some(class), Refused::OtherType) => {
+            format!("this `{class}` object holds a pointer of another type")
+        }
+        (None, Refused::NoPointer) => format!(
+            "expected ExternalPtr<{}>, got a non-external-pointer object",
+            T::TYPE_NAME
+        ),
+        (None, Refused::NullPointer) => format!(
+            "expected ExternalPtr<{}>, got a null external pointer",
+            T::TYPE_NAME
+        ),
+        (None, Refused::OtherType) => format!("expected ExternalPtr<{}>", T::TYPE_NAME),
     }
 }
 
 /// Raises the error for a receiver that carries no external pointer (#1901):
-/// [`NO_HANDLE_CLASS`], with the type's restored classes
-/// ([`TypedExternal::RESTORED_ERROR_CLASS`]) and field-error classes
-/// ([`TypedExternal::FIELD_ERROR_CLASS`], #1899) in front. Such a receiver is
-/// often an object of the class an earlier release wrote to disk, which a
-/// package refuses as it refuses a restored pointer.
+/// [`NO_HANDLE_CLASS`], with the type's field-error classes
+/// ([`TypedExternal::FIELD_ERROR_CLASS`], #1899) in front, and for a list or
+/// an environment, the shape an earlier release of a package may have
+/// written to disk, its restored classes
+/// ([`TypedExternal::RESTORED_ERROR_CLASS`]) in front of those: a package
+/// refuses such a save as it refuses a restored pointer. Another receiver
+/// (an atomic vector given the class) was never saved, so it gets no
+/// restored class (#1919).
 #[cold]
-fn refuse_no_handle<T: TypedExternal>() -> ! {
-    let class = no_handle_classes(T::RESTORED_ERROR_CLASS, T::FIELD_ERROR_CLASS);
+fn refuse_no_handle<T: TypedExternal>(receiver: SEXP) -> ! {
+    let restored = match receiver.type_of() {
+        SEXPTYPE::VECSXP | SEXPTYPE::ENVSXP => T::RESTORED_ERROR_CLASS,
+        _ => &[],
+    };
     std::panic::panic_any(RCondition::Error {
-        message: format!(
-            "expected ExternalPtr<{}>, got a non-external-pointer object",
-            T::TYPE_NAME
-        ),
-        class,
+        message: refusal_message::<T>(receiver, Refused::NoPointer),
+        class: no_handle_classes(restored, T::FIELD_ERROR_CLASS),
         data: None,
         call: ConditionCall::Inherit,
     })
@@ -517,12 +563,13 @@ fn no_handle_classes(restored: &[&str], field_error: &[&str]) -> Vec<String> {
 }
 
 /// Raises the error for a receiver whose pointer is not a `T` (a pointer of
-/// another type, or one without an address that `T` did not build):
-/// `message`, with the type's field-error classes
+/// another type, or one without an address that `T` did not build), worded
+/// by [`refusal_message`], with the type's field-error classes
 /// ([`TypedExternal::FIELD_ERROR_CLASS`], #1899) in front. A type without
 /// them gets the plain panic.
 #[cold]
-fn refuse_other_type<T: TypedExternal>(message: String) -> ! {
+fn refuse_other_type<T: TypedExternal>(receiver: SEXP, refused: Refused) -> ! {
+    let message = refusal_message::<T>(receiver, refused);
     if T::FIELD_ERROR_CLASS.is_empty() {
         panic!("{message}");
     }
@@ -570,8 +617,11 @@ pub fn sidecar_require_live(flag: SEXP) -> bool {
 /// # Safety
 ///
 /// Must be called from R's main thread with a valid `x`.
-unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP, require_live: bool) -> (SEXP, Option<&'a T>) {
-    let x = unsafe { sidecar_receiver::<T>(x) };
+unsafe fn checked_prot<'a, T: TypedExternal>(
+    receiver: SEXP,
+    require_live: bool,
+) -> (SEXP, Option<&'a T>) {
+    let x = unsafe { sidecar_receiver::<T>(receiver) };
     let prot = unsafe { R_ExternalPtrProtected(x) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     let live = if any_raw.is_null() {
@@ -583,13 +633,13 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP, require_live: bool) -> (SE
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
             unsafe { refuse_restored::<T>(x) };
-            refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME));
+            refuse_other_type::<T>(receiver, Refused::NullPointer);
         }
         None
     } else {
         match unsafe { &*any_raw }.downcast_ref::<T>() {
             Some(value) => Some(value),
-            None => refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME)),
+            None => refuse_other_type::<T>(receiver, Refused::OtherType),
         }
     };
     if !usize::try_from(prot_index(T::R_SLOT_COUNT)).is_ok_and(|len| len <= prot.len()) {
@@ -602,10 +652,10 @@ unsafe fn checked_prot<'a, T: TypedExternal>(x: SEXP, require_live: bool) -> (SE
 }
 
 /// The live `T` of the external pointer `x` carries ([`sidecar_receiver`]),
-/// for the R getters of a struct field (a field that is not a `Sidecar`). A pointer without an address is
-/// refused: with the classed restored-object errors when `T` built it
-/// ([`refuse_restored`]), else with `expected ExternalPtr<T>, got a null
-/// external pointer`.
+/// for the R getters of a struct field (a field that is not a `Sidecar`). A
+/// pointer without an address is refused: with the classed restored-object
+/// errors when `T` built it ([`refuse_restored`]), else as a null pointer
+/// ([`refusal_message`]).
 ///
 /// # Panics
 ///
@@ -645,21 +695,18 @@ pub unsafe fn sidecar_r_struct_mut<'a, T: TypedExternal>(x: SEXP) -> &'a mut T {
 /// The body of [`sidecar_r_struct`] and [`sidecar_r_struct_mut`]: the
 /// address of the struct behind the pointer `x` carries
 /// ([`sidecar_receiver`]), with mutable provenance.
-unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(x: SEXP) -> *mut T {
-    let x = unsafe { sidecar_receiver::<T>(x) };
+unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(receiver: SEXP) -> *mut T {
+    let x = unsafe { sidecar_receiver::<T>(receiver) };
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
         unsafe { refuse_restored::<T>(x) };
-        refuse_other_type::<T>(format!(
-            "expected ExternalPtr<{}>, got a null external pointer",
-            T::TYPE_NAME
-        ));
+        refuse_other_type::<T>(receiver, Refused::NullPointer);
     }
     let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
     match any_box.downcast_mut::<T>() {
         Some(value) => std::ptr::from_mut(value),
-        None => refuse_other_type::<T>(format!("expected ExternalPtr<{}>", T::TYPE_NAME)),
+        None => refuse_other_type::<T>(receiver, Refused::OtherType),
     }
 }
 

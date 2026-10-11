@@ -619,6 +619,14 @@ pub trait TypedExternal: 'static {
     /// the default adds nothing.
     const FIELD_ERROR_CLASS: &'static [&'static str] = &[];
 
+    /// The package's message for the R accessors' refusal of a receiver
+    /// whose pointer is not a `T` or that carries no pointer (#1920),
+    /// replacing miniextendr's, which names the receiver's R class.
+    ///
+    /// `#[derive(ExternalPtr)]` fills it from
+    /// `#[externalptr(field_error(message = "..."))]`.
+    const FIELD_ERROR_MESSAGE: Option<&'static str> = None;
+
     /// Visits every [`Sidecar<T>`] field of `self` with its slot index and
     /// name, so the handle can flush the field's pending value into its slot
     /// or load the slot back into the field.
