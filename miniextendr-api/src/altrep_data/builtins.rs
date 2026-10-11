@@ -1029,7 +1029,7 @@ impl<const N: usize> AltLogicalData for [RLogical; N] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(IsNA::is_na))
+        Some(!self.contains(&RLogical::NA))
     }
 }
 

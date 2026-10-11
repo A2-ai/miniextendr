@@ -177,6 +177,12 @@ cached_symbol!(
 );
 
 cached_symbol!(
+    /// Cached `miniextendr_written` symbol: the attribute a string ALTREP's
+    /// data2 cache carries once R has stored a value into it.
+    pub(crate) fn altstring_written_symbol() = c"miniextendr_written"
+);
+
+cached_symbol!(
     /// Cached `mx_raw_type` symbol (for raw conversion type tags).
     #[cfg(feature = "raw_conversions")]
     pub(crate) fn mx_raw_type_symbol() = c"mx_raw_type"

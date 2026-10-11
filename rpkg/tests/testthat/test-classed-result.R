@@ -1,7 +1,7 @@
-# Classed Result errors (RConditionError / RError), class vectors and the
+# Classed Result errors (RConditionData / RError), class vectors and the
 # reserved condition-data names (#1434, #1435, #1440).
 
-test_that("Result<T, E: RConditionError> raises member + family classes with data", {
+test_that("Result<T, E: RConditionData> raises member + family classes with data", {
   e <- tryCatch(classed_result_missing(""), error = function(e) e)
   expect_equal(class(e), c("pkg_error_missing_field", "pkg_error", "rust_error",
                            "simpleError", "error", "condition"))
@@ -89,7 +89,7 @@ test_that("macro class vectors layer member before family", {
 })
 
 # Argument-conversion errors: a `TryFromSexp::Error` implementing
-# `RConditionError` classes the conversion condition; `kind` stays
+# `RConditionData` classes the conversion condition; `kind` stays
 # "conversion", the message keeps the parameter context (`invalid '<p>'
 # argument` for a type without an R-facing expectation, #1591), `e$param`
 # names the R parameter and `e$rust_type` the Rust type.

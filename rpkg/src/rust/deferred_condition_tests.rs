@@ -2,14 +2,14 @@
 //! message or condition *and* returns its value.
 //!
 //! - `defer_warning(payload)` / `defer_message` / `defer_condition` take any
-//!   `RConditionError` payload, here a `#[derive(RConditionError)]` enum and
+//!   `RConditionData` payload, here a `#[derive(RCondition)]` enum and
 //!   struct; the `defer_*!` macros take the `warning!` grammar.
 //! - Signalling happens when the wrapper returns, in queue order, before the
 //!   value (or the error) reaches R; `conditionCall()` is the wrapper's call.
 //! - The rng, worker-thread and s3-method fixtures exercise the other C
 //!   wrapper templates and the class-wrapping R side.
 
-use miniextendr_api::condition::{RConditionError, RError};
+use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
     TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr, rust_error,
 };
@@ -19,7 +19,7 @@ use miniextendr_api::{
 /// Warnings a package attaches to a result. `message` formats the fields, so
 /// no `Display` impl is needed; classes default to `pkg_warning_<variant>`
 /// plus the family `pkg_warning`.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_warning")]
 pub enum PkgWarning {
     #[condition(message = "dropped {dropped} of {total} rows")]
@@ -37,7 +37,7 @@ pub enum PkgWarning {
 
 /// A struct payload: the message comes from `Display`, `attempts` is renamed
 /// and `range` rides along as its `Debug` rendering.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 pub struct RetryNotice {
     #[condition(rename = "n_attempts")]
     attempts: i32,
@@ -241,6 +241,73 @@ impl DeferredCounter {
         defer_message!("forked");
         DeferredCounter { count: self.count }
     }
+}
+
+// endregion
+
+// region: Payloads that declare their kind (`#[derive(RCondition)]`)
+
+/// A diagnostic family whose variants declare their own signal: a warning by
+/// default, a message for `Finished`, an error for `Empty`.
+#[derive(Debug, RCondition)]
+#[condition(kind = warning, class = "pkg_diagnostic")]
+pub enum PkgDiagnostic {
+    #[condition(message = "dropped {n} rows")]
+    Dropped { n: i32 },
+    #[condition(kind = message, message = "finished {n} rows")]
+    Finished { n: i32 },
+    #[condition(kind = error, message = "input is empty", call = none)]
+    Empty,
+}
+
+/// Queues a warning and a message, each of the kind its variant declares,
+/// and returns `n - 1`.
+/// @param n Row count.
+#[miniextendr]
+pub fn typed_condition_defer(n: i32) -> i32 {
+    RCondition::from(PkgDiagnostic::Dropped { n: 1 }).defer();
+    RCondition::from(PkgDiagnostic::Finished { n }).defer();
+    n - 1
+}
+
+/// Raises the variant's declared kind: an error for `n == 0`, else a warning,
+/// which leaves Rust as `warning!()` does.
+/// @param n Row count.
+#[miniextendr]
+pub fn typed_condition_raise(n: i32) -> i32 {
+    if n == 0 {
+        RCondition::from(PkgDiagnostic::Empty).raise();
+    }
+    RCondition::from(PkgDiagnostic::Dropped { n }).raise()
+}
+
+/// A warning with a class vector of its own, a fixed `data` entry, and an
+/// optional field left out when it is `None`.
+#[derive(Debug, RCondition)]
+#[condition(
+    kind = warning,
+    class("pkg_warning_argument_ignored", "pkg_warning"),
+    message = "`{argument}` is ignored",
+    data(param = "unit_table")
+)]
+pub struct ArgumentIgnored {
+    #[condition(skip)]
+    argument: String,
+    #[condition(skip_none)]
+    hint: Option<String>,
+}
+
+/// Queues an `ArgumentIgnored` warning, with `hint` when it is not `NULL`,
+/// and returns `TRUE`.
+/// @param hint `NULL` or a hint.
+#[miniextendr(noexport)]
+pub fn typed_condition_class_list(hint: Option<String>) -> bool {
+    RCondition::from(ArgumentIgnored {
+        argument: "unit_table".to_string(),
+        hint,
+    })
+    .defer();
+    true
 }
 
 // endregion

@@ -9,13 +9,12 @@
 //! (e.g., `metadata_size`). `#[serde(flatten)]` and `#[serde(skip_serializing_if)]`
 //! are handled correctly.
 
+use crate::NamedListBuilder;
 use std::collections::HashMap;
 
 use super::error::RSerdeError;
 use crate::altrep_traits::{NA_LOGICAL, NA_REAL};
-use crate::dataframe::{
-    BuiltDataFrame, DataFrameShape, NamedDataFrameListBuilder, RootedSentinel, SplitResults,
-};
+use crate::dataframe::{BuiltDataFrame, DataFrameShape, RootedSentinel, SplitResults};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 use serde::ser::{self, Serialize};
 
@@ -861,6 +860,10 @@ impl TypeSpec {
 /// calls, this preserves the streaming property — rows are dispatched as they
 /// arrive, no double-materialisation.
 ///
+/// The returned [`NamedListBuilder`] owns the list's GC root. It can be
+/// held across further R allocations; return it directly from a
+/// `#[miniextendr]` function or convert it with [`IntoR`](crate::IntoR).
+///
 /// # Empty sides
 ///
 /// A side that received zero rows produces a 0-row, 0-column data.frame in
@@ -901,7 +904,7 @@ pub fn dispatch_to_dataframes<O, E, I>(
     iter: I,
     nrow_hint: Option<usize>,
     names: DispatchNames,
-) -> Result<crate::list::List, RSerdeError>
+) -> Result<NamedListBuilder, RSerdeError>
 where
     O: Serialize,
     E: Serialize,
@@ -917,19 +920,12 @@ where
         }
     }
 
-    // Both finishes return an owned, GC-rooted `BuiltDataFrame`: `ok_df` stays
-    // rooted (by its own handle) across `err_builder.finish()`'s allocation, so
-    // the manual `OwnedProtect` guards this used to need are gone (#1128). The
-    // `*` derefs each handle to its `DataFrame` view for `push` (which re-roots
-    // it in the builder's own scope); the handles live to the end of the
-    // statement, so they remain rooted across the whole assembly.
-    let ok_df = ok_builder.finish()?;
-    let err_df = err_builder.finish()?;
-
-    Ok(NamedDataFrameListBuilder::with_capacity(2)
-        .push(names.ok, *ok_df)
-        .push(names.err, *err_df)
-        .build())
+    // Consume each rooted frame into the preserved list. The returned builder
+    // remains rooted while the caller does more R work before IntoR (#1811).
+    let mut out = NamedListBuilder::with_capacity(2);
+    out.push(names.ok, ok_builder.finish()?);
+    out.push(names.err, err_builder.finish()?);
+    Ok(out)
 }
 
 /// Custom slot names for [`dispatch_to_dataframes`]'s output list.
@@ -3229,8 +3225,8 @@ pub fn vec_to_dataframe_split<T: Serialize>(
                 _ => None,
             };
 
-            // Build per-partition data.frames. We don't use NamedDataFrameListBuilder
-            // here because we want to return owned frames, not a List.
+            // Build per-partition data.frames. We don't use NamedListBuilder
+            // here because the return shape exposes individual owned frames.
             // Single-variant short-circuit needs to inspect the count below.
             //
             // Each partition rides in an owned, GC-rooted `BuiltDataFrame`

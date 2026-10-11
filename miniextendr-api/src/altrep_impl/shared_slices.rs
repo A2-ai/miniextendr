@@ -5,14 +5,16 @@
 //! unique, duplication copies the allocation instead of re-sharing it, preserving
 //! exposed pointers. This conservatively copies even an unexposed unique owner.
 //!
-//! bool and String use the normal authoritative R data2 cache. Duplication copies
-//! that cache when present; serialization then uses R's ordinary-vector fallback.
+//! bool and String keep R's values in data2 (a logical vector or the string
+//! element cache). Duplication copies data2 when present, through
+//! `duplicate_altrep_data2`, and serialization falls back to an ordinary vector
+//! once R has written to it.
 
 use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::altrep::RegisterAltrep;
-use crate::altrep_data::{AltrepExtract, materialized_altrep_data2};
+use crate::altrep_data::{AltrepExtract, altrep_values_written, materialized_altrep_data2};
 use crate::altrep_ext::AltrepSexpExt;
 use crate::altrep_traits::Altrep;
 use crate::{IntoR, OwnedProtect, SEXP, SexpExt, TryFromSexp};
@@ -43,18 +45,20 @@ macro_rules! impl_shared_slice {
                     $owner::clone(data)
                 };
                 let out = unsafe { OwnedProtect::new(crate::Altrep(owner).into_sexp()) };
-                if let Some(cache) = unsafe { materialized_altrep_data2(x) } {
-                    // A buffer may have been written through a previously exposed
-                    // pointer. Copy its current values, never reconstruct from data1.
-                    let copy = unsafe { crate::sys::Rf_duplicate_unchecked(cache) };
-                    unsafe { AltrepSexpExt::set_altrep_data2(&out.get(), copy) };
+                if let Some(data2) = unsafe { materialized_altrep_data2(x) } {
+                    // R may have written into data2: copy its current values
+                    // rather than rebuild them from data1.
+                    unsafe {
+                        let copy = super::duplicate_altrep_data2(data2);
+                        AltrepSexpExt::set_altrep_data2(&out.get(), copy);
+                    }
                 }
                 out.get()
             }
 
             const HAS_SERIALIZED_STATE: bool = true;
             fn serialized_state(x: SEXP) -> SEXP {
-                if unsafe { materialized_altrep_data2(x) }.is_some() {
+                if unsafe { altrep_values_written(x) } {
                     return SEXP::null();
                 }
                 unsafe { Self::altrep_extract_ref(x) }.to_vec().into_sexp()

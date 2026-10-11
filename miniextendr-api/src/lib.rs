@@ -257,13 +257,13 @@ pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // but they're in different namespaces (derive macros vs types/traits), same as RFactor.
 // The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
 // the `IntoR` / `TryFromSexp` traits — `#[derive(IntoR)]` (macro namespace) and the trait
-// (type namespace) coexist, exactly like serde's `Serialize`. `RConditionError` follows
-// suit (trait in `condition`, derive re-exported here and in `condition`).
+// (type namespace) coexist, exactly like serde's `Serialize`. `RCondition` follows
+// suit: the enum and the derive are re-exported together from `condition`.
 #[doc(inline)]
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
     AltrepString, DataFrameRow, IntoList, IntoR, MatchArg, PreferDataFrame, PreferExternalPtr,
-    PreferList, PreferRNativeType, RConditionError, RFactor, TryFromList, TryFromSexp,
+    PreferList, PreferRNativeType, RFactor, TryFromList, TryFromSexp,
 };
 
 pub mod altrep;
@@ -312,11 +312,6 @@ pub use sexp_types::{
     cetype_t,
 };
 
-/// Automatic registration internals.
-///
-/// Items annotated with `#[miniextendr]` self-register at link time.
-/// The C entrypoint calls [`registry::miniextendr_register_routines`] to
-/// finalize registration with R. Users don't interact with this module.
 pub mod registry;
 
 /// Host-time generator of `wasm_registry.rs` — the WASM-side replacement for
@@ -672,8 +667,8 @@ pub use ffi_guard::{GuardMode, guarded_ffi_call, guarded_ffi_call_with_fallback}
 pub mod dataframe;
 pub use dataframe::{
     BuiltDataFrame, ColumnarFrame, DataFrame, DataFrameError, DataFrameShape, FromDataFrame,
-    GroupDeclaration, GroupKey, GroupedDataFrame, IntoDataFrame, IntoDataFrameSplit,
-    NamedDataFrameListBuilder, RealKey, RootedSentinel, SplitResults, group_rows,
+    GroupDeclaration, GroupKey, GroupedDataFrame, IntoDataFrame, IntoDataFrameSplit, RealKey,
+    RootedSentinel, SplitResults, group_rows,
 };
 
 // Closure-per-column DataFrame builder (parallel fill with `rayon`, serial
@@ -760,11 +755,9 @@ pub use r_coerce::{
 
 pub mod condition;
 pub use condition::{ArgError, AsRError, RCondition};
-/// Conditions that accompany a returned value (`defer_warning` & co.).
 pub mod deferred_condition;
 pub use deferred_condition::{defer_condition, defer_message, defer_warning};
 pub mod convert;
-/// Support for R `...` arguments represented as a validated list.
 pub mod dots;
 pub mod list;
 pub mod missing;
@@ -780,7 +773,6 @@ pub use nargs::NArgs;
 /// Unevaluated-argument markers (`Quoted` / `Quosure`) for `#[miniextendr]` parameters.
 pub mod quoted;
 pub use quoted::{Quosure, Quoted};
-/// The dots left unforced (`LazyDots`), a `#[miniextendr]` parameter type for `...`.
 pub mod lazy_dots;
 pub use lazy_dots::LazyDots;
 /// Precondition markers (`Checked<T>` / `Unchecked<T>`) for `#[miniextendr]` parameters.
@@ -808,7 +800,8 @@ pub use convert::{
 pub use convert::{AsVctrs, AsVctrsExt};
 pub use into_r::Lazy;
 pub use list::{
-    IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, TryFromList, collect_list,
+    BuiltList, IntoList, List, ListAccumulator, ListBuilder, ListMut, NamedList, NamedListBuilder,
+    TryFromList, collect_list,
 };
 pub use missing::{Missing, is_missing_arg};
 pub use named_vector::{AtomicElement, NamedVector};
@@ -888,9 +881,6 @@ pub mod abi;
 /// loaded by consumer packages via `R_GetCCallable`.
 pub mod mx_abi;
 
-/// Package initialization (`miniextendr_init!` support).
-///
-/// Consolidates all init steps into [`init::package_init`].
 pub mod init;
 
 /// Runtime support for trait ABI operations.

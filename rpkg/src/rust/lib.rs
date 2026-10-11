@@ -134,6 +134,7 @@ mod altrep_container_tests;
 mod altrep_manual_fixture;
 mod altrep_no_lowlevel_fixture;
 mod altrep_sexp_tests;
+mod altrep_shared_slice_tests;
 mod argument_error_tests;
 mod argument_message_tests;
 #[cfg(feature = "arrow")]
@@ -275,6 +276,7 @@ mod optional_input_tests;
 #[cfg(feature = "ordered-float")]
 mod ordered_float_adapter_tests;
 mod own_page_docs;
+mod owned_str_tests;
 #[cfg(feature = "worker-thread")]
 mod panic_location_tests;
 mod panic_telemetry_tests;
@@ -1805,6 +1807,24 @@ pub fn vec_complex_altrep(n: i32) -> Altrep<Vec<Rcomplex>> {
             })
             .collect(),
     )
+}
+
+/// A fixed-size integer array as ALTREP: R reads the `[i32; 3]` itself.
+#[miniextendr(noexport)]
+pub fn array_int_altrep() -> Altrep<[i32; 3]> {
+    Altrep([1, 2, 3])
+}
+
+/// A fixed-size string array as ALTREP.
+#[miniextendr(noexport)]
+pub fn array_string_altrep() -> Altrep<[String; 2]> {
+    Altrep([String::from("one"), String::from("two")])
+}
+
+/// A boxed unsized marker: R gets the boxed slice without a copy.
+#[miniextendr(noexport)]
+pub fn boxed_slice_marker_altrep() -> Box<Altrep<[f64]>> {
+    Box::new(Altrep([0.5, 1.5, 2.5]))
 }
 
 /// Create a Box<\[f64\]> ALTREP real vector.

@@ -1,4 +1,4 @@
-//! Integration tests for `NamedDataFrameListBuilder` and `vec_to_dataframe_split`.
+//! Integration tests for `NamedListBuilder` and `vec_to_dataframe_split`.
 //!
 //! These tests require R to be initialized and run on the R main thread.
 
@@ -6,7 +6,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::NamedDataFrameListBuilder;
+use miniextendr_api::NamedListBuilder;
 use miniextendr_api::dataframe::{DataFrameShape, SplitResults};
 use miniextendr_api::gc_protect::ProtectScope;
 use miniextendr_api::into_r::IntoR as _;
@@ -19,13 +19,13 @@ use miniextendr_api::serde::{
 };
 use serde::{Deserialize, Serialize};
 
-// region: NamedDataFrameListBuilder
+// region: NamedListBuilder
 
-/// build() on a new() builder returns a 0-element named list.
+/// IntoR on a new() builder returns a 0-element named list.
 #[test]
-fn builder_empty_build_yields_empty_list() {
+fn builder_empty_into_r_yields_empty_list() {
     r_test_utils::with_r_thread(|| {
-        let list = NamedDataFrameListBuilder::new().build();
+        let list = NamedListBuilder::new();
         let sexp = list.into_sexp();
         assert_eq!(sexp.xlength(), 0, "expected 0-element list");
     });
@@ -50,10 +50,10 @@ fn builder_push_protects_input() {
             .collect();
         let errs: Vec<Row> = (0..5).map(|i| Row { id: i, val: -1.0 }).collect();
 
-        let list = NamedDataFrameListBuilder::new()
-            .push("results", *vec_to_dataframe(&oks).unwrap())
-            .push("error", *vec_to_dataframe(&errs).unwrap())
-            .build();
+        let mut list = NamedListBuilder::new();
+        list.push("results", vec_to_dataframe(&oks).unwrap());
+        list.push("error", vec_to_dataframe(&errs).unwrap());
+        unsafe { miniextendr_api::sys::R_gc() };
 
         let sexp = list.into_sexp();
         assert_eq!(sexp.xlength(), 2, "expected 2 entries");
@@ -66,7 +66,7 @@ fn builder_push_protects_input() {
     });
 }
 
-/// Dropping the builder without calling build() does not leave dangling
+/// Dropping the builder without finishing does not leave dangling
 /// protections — the scope count returns to baseline.
 #[test]
 fn builder_drop_without_build() {
@@ -82,9 +82,9 @@ fn builder_drop_without_build() {
 
         {
             let rows: Vec<Row> = (0..3).map(|i| Row { x: i }).collect();
-            let _builder =
-                NamedDataFrameListBuilder::new().push("a", *vec_to_dataframe(&rows).unwrap());
-            // _builder drops here, unprotecting via its internal scope
+            let mut builder = NamedListBuilder::new();
+            builder.push("a", vec_to_dataframe(&rows).unwrap());
+            // builder drops here, releasing its precious-list root
         }
 
         // Outer scope unaffected
@@ -108,11 +108,10 @@ fn builder_with_capacity_preserves_order() {
 
     r_test_utils::with_r_thread(|| {
         let rows: Vec<Row> = vec![Row { v: 1 }];
-        let list = NamedDataFrameListBuilder::with_capacity(3)
-            .push("a", *vec_to_dataframe(&rows).unwrap())
-            .push("b", *vec_to_dataframe(&rows).unwrap())
-            .push("c", *vec_to_dataframe(&rows).unwrap())
-            .build();
+        let mut list = NamedListBuilder::with_capacity(3);
+        list.push("a", vec_to_dataframe(&rows).unwrap());
+        list.push("b", vec_to_dataframe(&rows).unwrap());
+        list.push("c", vec_to_dataframe(&rows).unwrap());
 
         let sexp = list.into_sexp();
         assert_eq!(sexp.xlength(), 3, "expected 3 entries");

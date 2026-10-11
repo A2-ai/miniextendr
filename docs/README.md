@@ -43,7 +43,7 @@ framework.
   system, `NamedList`, `RValue`
 - **[Conditions](CONDITIONS.md)** -- Structured `error!`, `warning!`,
   `message!`, and `condition!` signals with typed data payloads; deferred
-  conditions that accompany a returned value; `#[derive(RConditionError)]`
+  conditions that accompany a returned value; `#[derive(RCondition)]`
 - **[Expression Evaluation](EXPRESSION_EVAL.md)** -- `RSymbol`, `RCall`,
   `REnv` for calling R from Rust
 - **[Unevaluated Arguments](QUOTED_ARGUMENTS.md)** -- `Quoted` / `Quosure`

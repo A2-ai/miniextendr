@@ -141,6 +141,9 @@ no separate columnar frame type, and all serde column helpers return
 `BuiltDataFrame`. The streaming serde-row builder is `SerdeRowBuilder` (paired
 with `SerdeRows`). Two builders remain distinct from
 `DataFrame::builder`: `SerdeRowBuilder<T>` (serde feature) for incremental serde rows
-assembled into one rooted frame, and `NamedDataFrameListBuilder` (core, in
-`dataframe` — no serde needed; also the output shape for `group_by(...).frames()`)
-for a named list of frames.
+assembled into one rooted frame, and `NamedListBuilder` (core, in
+`list` and re-exported at the crate root) for a rooted named list of mixed
+values, including frames from `group_by(...).frames()`. The latter implements
+`IntoR` for a list return, `into_list()` for a rooted `BuiltList` to class or
+pass to R first, and `into_data_frame()` for mixed columns with equal-length
+validation. No finish hands back an unrooted `List` view.

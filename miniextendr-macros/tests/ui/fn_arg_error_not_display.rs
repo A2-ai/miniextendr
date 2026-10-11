@@ -1,8 +1,8 @@
 //! Test: an argument type whose `TryFromSexp::Error` is neither
-//! `RConditionError` nor `Display` is rejected.
+//! `RConditionData` nor `Display` is rejected.
 //!
 //! A failed conversion becomes an R condition built from the error: its
-//! `RConditionError` class, message and data when it has the impl, its
+//! `RConditionData` class, message and data when it has the impl, its
 //! `Display` text otherwise. With neither, the generated `Err` arm's probe
 //! (`__mx_conversion_err_parts!`) finds no method and names both bounds.
 

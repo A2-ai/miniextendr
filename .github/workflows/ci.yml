@@ -558,6 +558,18 @@ jobs:
         run: cargo doc --no-deps --document-private-items --manifest-path cargo-revendor/Cargo.toml --locked 2>&1 | tee "$RUNNER_TEMP/doc_revendor.log"
         shell: bash
 
+      # Intra-doc links in the workspace crates: an ambiguous name (an enum and
+      # a derive both called `RCondition`) or a link that only resolves in one
+      # scope otherwise reaches main unnoticed. Default features, so the
+      # dependencies' metadata from `clippy_default` is reused.
+      - name: Rustdoc (workspace)
+        id: doc_workspace
+        continue-on-error: true
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps --document-private-items --locked 2>&1 | tee "$RUNNER_TEMP/doc_workspace.log"
+        shell: bash
+
       - name: Fail if any Rust check failed
         if: always()
         shell: bash
@@ -574,6 +586,7 @@ jobs:
           clippy_rpkg="${{ steps.clippy_rpkg.outcome }}"
           clippy_revendor="${{ steps.clippy_revendor.outcome }}"
           doc_revendor="${{ steps.doc_revendor.outcome }}"
+          doc_workspace="${{ steps.doc_workspace.outcome }}"
 
           echo "lock_shape:       $lock_shape"
           echo "rustfmt:          $rustfmt"
@@ -584,6 +597,7 @@ jobs:
           echo "clippy_rpkg:      $clippy_rpkg"
           echo "clippy_revendor:  $clippy_revendor"
           echo "doc_revendor:     $doc_revendor"
+          echo "doc_workspace:    $doc_workspace"
           echo
 
           dump_failed() {
@@ -609,6 +623,7 @@ jobs:
           dump_failed clippy_rpkg      "$clippy_rpkg"
           dump_failed clippy_revendor  "$clippy_revendor"
           dump_failed doc_revendor     "$doc_revendor"
+          dump_failed doc_workspace    "$doc_workspace"
 
           if [[ "$failed" -ne 0 ]]; then
             echo "::error::One or more Rust checks failed (output dumped above)"

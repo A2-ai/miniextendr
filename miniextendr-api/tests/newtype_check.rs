@@ -189,14 +189,14 @@ fn argument_error_carries_the_refusal() {
     });
 }
 
-/// A check can refuse with any `RConditionError` type, such as a
-/// `#[derive(RConditionError)]` enum: it converts into
+/// A check can refuse with any `RConditionData` type, such as a
+/// `#[derive(RCondition)]` enum: it converts into
 /// `SexpError::Condition` with its classes and fields.
 #[test]
 fn derived_condition_refusal_keeps_its_classes() {
-    use miniextendr_api::condition::RConditionError;
+    use miniextendr_api::condition::RCondition;
 
-    #[derive(Debug, RConditionError)]
+    #[derive(Debug, RCondition)]
     #[condition(class = "test_family")]
     enum UnitError {
         #[condition(class = "test_bad_unit", message = "a {unit} is not a level")]

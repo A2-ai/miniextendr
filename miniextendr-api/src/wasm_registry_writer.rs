@@ -144,7 +144,8 @@ fn format_body(
     // `mx_tag` and `c_void` are referenced only by trait-dispatch entries and
     // deliberately NOT imported here: a minimal package with an empty dispatch
     // table would get `unused_imports` warnings on wasm32 (#1307). The
-    // dispatch entries spell both fully qualified instead.
+    // dispatch entries spell both fully qualified instead. `SEXP` appears only
+    // in the call-table entries, so it is imported only when there are some.
     if !call_defs.is_empty() {
         writeln!(&mut out, "use ::miniextendr_api::SEXP;").unwrap();
     }

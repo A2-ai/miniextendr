@@ -1,5 +1,5 @@
 //! Built-in ALTREP class instantiations for `Vec<T>`, `Box<[T]>`, `Cow<T>`,
-//! `Range<T>` and `VecDeque<T>`.
+//! and `Range<T>`.
 //!
 //! This file contains two crate-private declarative macros that are *not*
 //! `#[macro_export]`ed: `impl_builtin_altrep_family!` (emits the family impl
@@ -655,6 +655,8 @@ impl_register_altrep_builtin!(
 
 // endregion
 
+// region: Vectors of owned unsized strings
+
 impl_builtin_altrep_family!(
     Vec<Box<str>>,
     string,
@@ -708,3 +710,4 @@ impl_builtin_altrep_family!(
     __MX_ALTREP_REG_ENTRY_builtin_Vec_Option_Arc_str
 );
 impl_register_altrep_builtin!(Vec<Option<std::sync::Arc<str>>>, "Vec_Option_Arc_str");
+// endregion

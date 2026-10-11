@@ -7,7 +7,7 @@
 //! a call that is missing for another reason. Tests live in
 //! `rpkg/tests/testthat/test-callless-conditions.R`.
 
-use miniextendr_api::condition::{RConditionError, RError};
+use miniextendr_api::condition::{RCondition, RError};
 use miniextendr_api::{
     Call, defer_condition, defer_message, defer_warning, miniextendr, rust_condition, rust_error,
     warning,
@@ -17,7 +17,7 @@ use miniextendr_api::{
 
 /// Warnings about a table of user overrides: `Overridden` is about the rows,
 /// not the call, so it carries none; `Settled` keeps the call.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_override")]
 pub enum OverrideWarning {
     #[condition(
@@ -30,14 +30,14 @@ pub enum OverrideWarning {
 }
 
 /// A notice that is call-less for the whole type.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_notice", call = none, message = "settled {n} rows")]
 pub struct SettledNotice {
     n: i32,
 }
 
 /// Row errors: `Malformed` is call-less, `Missing` keeps the call.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_row_error")]
 pub enum RowError {
     #[condition(call = none, message = "row {row} is malformed")]

@@ -3,7 +3,7 @@
 # producer.pkg's Cargo.toml sets `[package.metadata.miniextendr]
 # conversion_error_class = ["producer_error_argument", "producer_error"]`.
 # Every argument-conversion condition of the crate carries those classes: after
-# the error type's own `RConditionError` classes (duplicates skipped), and on
+# the error type's own `RConditionData` classes (duplicates skipped), and on
 # their own for a plain `SexpError`. `kind` stays "conversion". The R-side
 # argument checks (type / length, `no_na`, `inherits`, choices) raise the same
 # condition (#1591), so one handler catches every argument error.

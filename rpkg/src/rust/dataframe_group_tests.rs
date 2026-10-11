@@ -5,10 +5,10 @@
 //! Parity target: R `split()` + `lapply()` — with the documented deviation
 //! that NA keys form one trailing group instead of being dropped.
 
-use miniextendr_api::dataframe::{
-    BuiltDataFrame, DataFrame, IntoDataFrame, NamedDataFrameListBuilder,
+use miniextendr_api::dataframe::{BuiltDataFrame, DataFrame, IntoDataFrame};
+use miniextendr_api::{
+    DataFrameRow, IntoList, IntoR, NamedListBuilder, SEXP, group_rows, miniextendr,
 };
-use miniextendr_api::{DataFrameRow, IntoList, IntoR, SEXP, group_rows, miniextendr};
 
 // region: row types
 
@@ -96,16 +96,14 @@ pub fn group_by_multi_sizes(df: DataFrame, cols: Vec<String>) -> Vec<i32> {
 /// @param df A data.frame.
 /// @param cols The key column names.
 #[miniextendr]
-pub fn group_by_multi_frames(df: DataFrame, cols: Vec<String>) -> SEXP {
+pub fn group_by_multi_frames(df: DataFrame, cols: Vec<String>) -> NamedListBuilder {
     let refs: Vec<&str> = cols.iter().map(String::as_str).collect();
     let grouped = df.group_by_multi(&refs).unwrap_or_else(|e| panic!("{}", e));
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out
 }
 // endregion
 
@@ -116,15 +114,13 @@ pub fn group_by_multi_frames(df: DataFrame, cols: Vec<String>) -> SEXP {
 /// @param df A data.frame.
 /// @param col The key column name.
 #[miniextendr]
-pub fn group_by_frames(df: DataFrame, col: &str) -> SEXP {
+pub fn group_by_frames(df: DataFrame, col: &str) -> NamedListBuilder {
     let grouped = df.group_by(col).unwrap_or_else(|e| panic!("{}", e));
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out
 }
 // endregion
 
@@ -156,15 +152,13 @@ pub fn group_metadata_sizes(df: DataFrame) -> Vec<i32> {
 /// content (each sub-frame holds exactly the caller's grouped rows).
 /// @param df A dplyr `grouped_df`.
 #[miniextendr]
-pub fn group_metadata_frames(df: DataFrame) -> SEXP {
+pub fn group_metadata_frames(df: DataFrame) -> NamedListBuilder {
     let grouped = df.group_by_metadata().unwrap_or_else(|e| panic!("{}", e));
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out
 }
 
 /// The grouping declaration of a dplyr-grouped frame — `list(vars, drop)`, as

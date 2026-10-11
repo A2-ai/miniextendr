@@ -54,7 +54,7 @@ fn native_altrep_construction_is_lazy_and_reads_only_a_finite_prefix() {
     use miniextendr_api::{AltIntegerData, AltrepIteratorExt, AltrepLen};
     use std::cell::Cell;
 
-    let draws = Cell::new(0);
+    let draws = Cell::new(0i32);
     let data = std::iter::from_fn(|| {
         let value = draws.get();
         draws.set(value + 1);
@@ -75,12 +75,12 @@ fn native_altrep_construction_is_lazy_and_reads_only_a_finite_prefix() {
 fn native_altrep_accepts_composed_and_unknown_length_iterators() {
     use miniextendr_api::{AltIntegerData, AltrepIteratorExt, AltrepLen};
 
-    let exact = [1, 2, 3, 4].into_iter().rev().map(|x| x * 2).take(3);
+    let exact = [1i32, 2, 3, 4].into_iter().rev().map(|x| x * 2).take(3);
     let data = exact.into_altrep_data_exact();
     assert_eq!(data.len(), 3);
     assert_eq!(data.elt(2), 4);
 
-    let filtered = (0..10).filter(|x| x % 2 == 0).into_altrep_data(5);
+    let filtered = (0..10i32).filter(|x| x % 2 == 0).into_altrep_data(5);
     assert_eq!(filtered.elt(4), 8);
     assert_eq!(filtered.elt(1), 2);
 }

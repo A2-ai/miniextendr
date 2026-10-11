@@ -172,7 +172,8 @@ pub(crate) enum RDataHelper {
     Get,
     /// `.rdata_set_<Type>(x, name, value)`: the field's setter `.Call()`.
     Set,
-    /// `.rdata_no_field_<Type>(name, env)`: the `miniextendr_no_field` error.
+    /// `.rdata_no_field_<Type>(name, env, cls)`: the `miniextendr_no_field`
+    /// error, naming the R class `cls` the method serves.
     NoField,
     /// `.rdata_error_class_<Type>`: the classes the field methods put in
     /// front of their own errors, `#[externalptr(field_error(class = ...))]`

@@ -38,9 +38,9 @@ SidecarComputed
 
 \item{x}{An object.}
 
-\item{name}{A field name; \code{$} on the pointer itself also takes a unique prefix of one, as for a list.}
+\item{name}{A field name, exactly; on the pointer itself any other name is an error.}
 
-\item{i}{A field name; \code{[[} on the pointer itself also takes a position in the field order. Any other index goes to the object's own \code{[[} / \verb{[[<-}.}
+\item{i}{A field name, exactly; \code{[[} on the pointer itself also takes a whole-number position in the field order. On a list or an environment carrying the pointer, any other index goes to the object's own \code{[[} / \verb{[[<-}, which matches names exactly.}
 
 \item{...}{Additional arguments.}
 

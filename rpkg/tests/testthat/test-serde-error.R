@@ -1,5 +1,5 @@
 # `#[miniextendr(serde_error)]`: classed Result errors derived from the error
-# type's serde output (#1449). No RConditionError impl on the Rust side.
+# type's serde output (#1449). No RConditionData impl on the Rust side.
 
 skip_if_not(exists("serde_err_missing"), "rpkg built without the `serde` feature")
 

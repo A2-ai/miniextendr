@@ -5,7 +5,50 @@
 #
 # See docs/GCTORTURE_TESTING.md for background on the harness pattern.
 
-# region: NamedDataFrameListBuilder -------------------------------------------
+# region: NamedListBuilder ---------------------------------------------------
+
+check_named_list_builder <- function(result) {
+  expect_named(result, c("values", "frame", "empty", "classed"))
+  expect_identical(names(result$values), c("first", paste0("v", 1:11)))
+  expect_identical(names(result$frame), c("first", paste0("c", 1:11)))
+  for (i in 0:11) {
+    expect_identical(result$values[[i + 1L]], rep(i, 4L))
+    expect_identical(result$frame[[i + 1L]], rep(as.double(i), 3L))
+  }
+  expect_s3_class(result$frame, "data.frame")
+  expect_identical(dim(result$frame), c(3L, 12L))
+  expect_identical(.row_names_info(result$frame, 0L), c(NA_integer_, -3L))
+  expect_identical(result$empty, data.frame())
+  expect_identical(
+    result$classed,
+    structure(list(id = 7L, label = "seven"), class = c("gc_stress_result", "list"), note = c("kept", "kept"))
+  )
+}
+
+test_that("NamedListBuilder finishes lists, rooted lists and rooted frames", {
+  check_named_list_builder(miniextendr:::gc_stress_named_list_builder())
+})
+
+test_that("NamedListBuilder holds every finish across allocations under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  result <- miniextendr:::gc_stress_named_list_builder()
+  gctorture(FALSE)
+  check_named_list_builder(result)
+})
+
+test_that("serde dispatch holds its result across allocations under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  result <- miniextendr:::gc_stress_dispatch_to_dataframes()
+  gctorture(FALSE)
+  expect_named(result, c("ok", "err"))
+  expect_identical(result$ok$id, setdiff(0:29, seq.int(0L, 29L, by = 3L)))
+  expect_identical(result$err$id, seq.int(0L, 29L, by = 3L))
+  expect_identical(result$err$reason, paste0("skip_", result$err$id))
+})
 
 test_that("gc_stress_named_df_list_builder returns a valid named list under gctorture", {
   skip_gc_stress_if_disabled()
@@ -41,6 +84,29 @@ test_that("gc_stress_named_df_list_builder returns correct structure", {
   expect_equal(nrow(result[["error"]]), 20L)
   expect_identical(colnames(result[["results"]]), c("id", "value"))
   expect_identical(colnames(result[["error"]]), c("id", "msg"))
+})
+
+# endregion
+
+# region: string ALTREP element cache -----------------------------------------
+
+test_that("gc_stress_altrep_string_cache keeps cached strings under gctorture", {
+  skip_gc_stress_if_disabled()
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  x <- miniextendr:::gc_stress_altrep_string_cache()
+  x[3] <- "assigned"
+  y <- x[c(1:4, 11L)]
+  gctorture(FALSE)
+  expect_identical(y, c("written", NA, "assigned", "cache-3", NA))
+})
+
+test_that("gc_stress_altrep_string_cache returns the written values", {
+  x <- miniextendr:::gc_stress_altrep_string_cache()
+  expected <- sprintf("cache-%d", 0:23)
+  expected[0:23 %% 5 == 0] <- NA
+  expected[1:2] <- c("written", NA)
+  expect_identical(x, expected)
 })
 
 # endregion

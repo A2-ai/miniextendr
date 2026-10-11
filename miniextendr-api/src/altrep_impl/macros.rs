@@ -154,7 +154,7 @@ macro_rules! __impl_altrep_base {
             fn serialized_state(x: $crate::SEXP) -> $crate::SEXP {
                 // data1 can be stale after writes to the R cache. C NULL asks R
                 // to serialize the current vector through its ordinary path.
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -308,22 +308,18 @@ macro_rules! __impl_altvec_string_dataptr {
         impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
-            fn dataptr(x: $crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let data2 = $crate::altrep_impl::materialize_altstring_data2::<Self>(x);
-                    $crate::sys::DATAPTR_RO_unchecked(data2).cast_mut()
-                }
+            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
+                unsafe { $crate::altrep_impl::altstring_dataptr::<$ty>(x, writable) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
 
             fn dataptr_or_null(x: $crate::SEXP) -> *const core::ffi::c_void {
-                unsafe {
-                    match $crate::altrep_data::materialized_altrep_data2(x) {
-                        Some(data2) => $crate::sys::DATAPTR_RO_unchecked(data2),
-                        None => core::ptr::null(),
-                    }
-                }
+                // Always return null. The data2 cache may still hold unfilled
+                // (C NULL) slots, which R must never read; null makes R go
+                // through Elt. Dataptr fills every slot before exposing it.
+                let _ = x;
+                core::ptr::null()
             }
         }
     };
@@ -425,6 +421,12 @@ macro_rules! __impl_altvec_extract_subset {
                     return $crate::SEXP::null();
                 }
 
+                // Once data2 exists R may have written to it (#1928), so the
+                // Rust data can be stale: let R subset the current vector.
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
+                    return $crate::SEXP::null();
+                }
+
                 // Convert indx SEXP to slice using SexpExt (avoids raw-ptr-deref lint)
                 let indices = unsafe { $crate::SexpExt::as_slice::<i32>(&indx) };
 
@@ -513,7 +515,7 @@ macro_rules! __impl_alt_is_sorted {
         const HAS_IS_SORTED: bool = true;
 
         fn is_sorted(x: $crate::SEXP) -> i32 {
-            if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                 return $crate::altrep_traits::UNKNOWN_SORTEDNESS;
             }
             let data =
@@ -536,7 +538,7 @@ macro_rules! __impl_alt_no_na {
         const HAS_NO_NA: bool = true;
 
         fn no_na(x: $crate::SEXP) -> i32 {
-            if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                 return 0;
             }
             let data =
@@ -734,7 +736,7 @@ macro_rules! __impl_altinteger_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -754,7 +756,7 @@ macro_rules! __impl_altinteger_methods {
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -767,7 +769,7 @@ macro_rules! __impl_altinteger_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -843,7 +845,7 @@ macro_rules! __impl_altreal_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -856,7 +858,7 @@ macro_rules! __impl_altreal_methods {
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -869,7 +871,7 @@ macro_rules! __impl_altreal_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -962,7 +964,7 @@ macro_rules! __impl_altlogical_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -1098,30 +1100,16 @@ macro_rules! __impl_altstring_methods {
     // Generic form: `[$gen] $ty [$where]`.
     ({$($gen:tt)*} $ty:ty {$($whr:tt)*}) => {
         impl<$($gen)*> $crate::altrep_traits::AltString for $ty where $($whr)* {
+            // Each element is computed once into the data2 cache; see
+            // `altrep_impl::altstring_elt` for the cache convention.
             fn elt(x: $crate::SEXP, i: $crate::R_xlen_t) -> $crate::SEXP {
-                unsafe {
-                    // data2 is published only after full materialization. Its NA
-                    // values are authoritative, including values written by R.
-                    if let Some(data2) = $crate::altrep_data::materialized_altrep_data2(x) {
-                        return $crate::SexpExt::string_elt(&data2, i.max(0));
-                    }
-                    let data = <$ty as $crate::altrep_data::AltrepExtract>::altrep_extract_ref(x);
-                    match <$ty as $crate::altrep_data::AltStringData>::elt(data, i.max(0) as usize) {
-                        Some(s) => $crate::altrep_impl::checked_mkchar(s),
-                        None => $crate::SEXP::na_string(),
-                    }
-                }
+                unsafe { $crate::altrep_impl::altstring_elt::<$ty>(x, i) }
             }
 
             const HAS_SET_ELT: bool = true;
 
-            fn set_elt(x: $crate::SEXP, i: $crate::R_xlen_t, value: $crate::SEXP) {
-                unsafe {
-                    // Materialization allocates; keep the incoming CHARSXP live.
-                    let value = $crate::OwnedProtect::new(value);
-                    let data2 = $crate::altrep_impl::materialize_altstring_data2::<Self>(x);
-                    $crate::SexpExt::set_string_elt(&data2, i, value.get());
-                }
+            fn set_elt(x: $crate::SEXP, i: $crate::R_xlen_t, v: $crate::SEXP) {
+                unsafe { $crate::altrep_impl::altstring_set_elt::<$ty>(x, i, v) }
             }
 
             $crate::__impl_alt_is_sorted!($ty, $crate::altrep_data::AltStringData);

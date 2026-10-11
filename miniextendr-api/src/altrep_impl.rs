@@ -41,44 +41,229 @@ pub unsafe fn checked_mkchar(s: &str) -> crate::SEXP {
 }
 // endregion
 
-// region: String ALTREP materialization
+// region: String ALTREP element cache
 
-/// Publish a complete STRSXP as a bridge-generated string ALTREP's data2.
+/// Return a bridge string ALTREP's data2 element cache, allocating it on first use.
 ///
-/// Element reads stay lazy until a pointer or setter needs writable storage.
-/// A partial buffer is never published: NA cannot double as a cache-miss marker,
-/// because R can write NA after materialization.
+/// Slots not computed yet hold C `NULL`, as in R's own deferred string class
+/// (`altclasses.c`). `NA_character_` is therefore an ordinary cached value, so
+/// an NA that R writes through `Set_elt` or `Dataptr` stays NA. Every CHARSXP
+/// handed to R stays reachable from `x`, as R code expects of `STRING_ELT`.
 ///
 /// # Safety
 ///
-/// `x` must be a rooted, live ALTSTRING using the bridge's data2 convention.
-/// Must run on R's main thread inside the class's unwind guard.
-#[doc(hidden)]
-pub unsafe fn materialize_altstring_data2<T: crate::altrep_traits::AltString>(
-    x: crate::SEXP,
-) -> crate::SEXP {
+/// `x` must be a live ALTSTRING using the bridge's data2 convention, on R's
+/// main thread.
+unsafe fn altstring_cache(x: crate::SEXP, n: crate::R_xlen_t) -> crate::SEXP {
     use crate::SexpExt;
     use crate::altrep_ext::AltrepSexpExt;
 
-    if let Some(data2) = unsafe { crate::altrep_data::materialized_altrep_data2(x) } {
+    let data2 = unsafe { AltrepSexpExt::altrep_data2_raw(&x) };
+    if !data2.is_null_ptr() && data2.type_of() == crate::SEXPTYPE::STRSXP {
         return data2;
     }
-
-    let n = T::length(x);
-    let buffer = unsafe {
-        crate::OwnedProtect::new(crate::sys::Rf_allocVector_unchecked(
-            crate::SEXPTYPE::STRSXP,
-            n,
-        ))
-    };
-    // R initializes STRSXP slots to R_BlankString, so the protected vector is
-    // safe for GC while later CHARSXPs are allocated. Keep data2 absent until done.
-    for i in 0..n {
-        let value = T::elt(x, i);
-        buffer.get().set_string_elt(i, value);
+    unsafe {
+        let cache = new_altstring_cache(n);
+        // Attaching the cache allocates nothing, so it needs no protection.
+        AltrepSexpExt::set_altrep_data2(&x, cache);
+        cache
     }
-    unsafe { AltrepSexpExt::set_altrep_data2(&x, buffer.get()) };
-    buffer.get()
+}
+
+/// Allocate a string cache of length `n` with every slot empty (C `NULL`).
+///
+/// # Safety
+///
+/// On R's main thread. The result is unprotected.
+unsafe fn new_altstring_cache(n: crate::R_xlen_t) -> crate::SEXP {
+    // Inside ALTREP dispatch — _unchecked variants skip the redundant
+    // with_r_thread check/route (MXL301 permits).
+    unsafe {
+        let cache = crate::sys::Rf_allocVector_unchecked(crate::SEXPTYPE::STRSXP, n);
+        if n > 0 {
+            // A fresh STRSXP holds only R_BlankString, so clearing its slots
+            // drops no reference the write barrier tracks.
+            let slots = crate::sys::DATAPTR_RO_unchecked(cache)
+                .cast_mut()
+                .cast::<crate::SEXP>();
+            let len = usize::try_from(n).expect("R vector length is non-negative");
+            std::ptr::write_bytes(slots, 0, len);
+        }
+        cache
+    }
+}
+
+/// Copy a bridge ALTREP's data2 for a `Duplicate` callback.
+///
+/// A string cache can hold C `NULL` slots, which `Rf_duplicate` can't copy:
+/// it stores every slot with `SET_STRING_ELT`. Its copy keeps those slots
+/// empty, so the new vector computes them from its own Rust data, and keeps
+/// the written mark. Any other data2 (a materialized vector) goes through
+/// `Rf_duplicate`.
+///
+/// # Safety
+///
+/// `data2` is a live ALTREP's data2, kept reachable by the caller, on R's
+/// main thread. The result is unprotected.
+#[doc(hidden)]
+pub unsafe fn duplicate_altrep_data2(data2: crate::SEXP) -> crate::SEXP {
+    use crate::SexpExt;
+
+    if data2.type_of() != crate::SEXPTYPE::STRSXP {
+        return unsafe { crate::sys::Rf_duplicate_unchecked(data2) };
+    }
+    unsafe {
+        let n = data2.xlength();
+        let copy = crate::OwnedProtect::new(new_altstring_cache(n));
+        for i in 0..n {
+            let value = data2.string_elt(i);
+            if !value.is_null_ptr() {
+                copy.get().set_string_elt(i, value);
+            }
+        }
+        if altstring_cache_written(data2) {
+            mark_altstring_written(copy.get());
+        }
+        copy.get()
+    }
+}
+
+/// Read cache slot `i`, computing it from the Rust data on first use.
+///
+/// # Safety
+///
+/// As for [`altstring_cache`]; `cache` is `x`'s cache and `0 <= i < length`.
+unsafe fn altstring_cached_elt<T>(
+    x: crate::SEXP,
+    cache: crate::SEXP,
+    i: crate::R_xlen_t,
+) -> crate::SEXP
+where
+    T: crate::altrep_data::AltrepExtract + crate::altrep_data::AltStringData + 'static,
+{
+    use crate::SexpExt;
+
+    let cached = cache.string_elt(i);
+    if !cached.is_null_ptr() {
+        return cached;
+    }
+    let data = unsafe { T::altrep_extract_ref(x) };
+    let index = usize::try_from(i).expect("ALTREP element index is non-negative");
+    let value = match data.elt(index) {
+        Some(s) => unsafe { checked_mkchar(s) },
+        None => crate::SEXP::na_string(),
+    };
+    cache.set_string_elt(i, value);
+    value
+}
+
+/// `Elt` for bridge-generated string ALTREPs: each element is computed once.
+///
+/// # Safety
+///
+/// `x` must be a live ALTSTRING using the bridge's data2 convention, on R's
+/// main thread.
+#[doc(hidden)]
+pub unsafe fn altstring_elt<T>(x: crate::SEXP, i: crate::R_xlen_t) -> crate::SEXP
+where
+    T: crate::altrep_traits::Altrep
+        + crate::altrep_data::AltrepExtract
+        + crate::altrep_data::AltStringData
+        + 'static,
+{
+    // Clamp before touching data2: it is a plain STRSXP, so STRING_ELT would
+    // error on a negative index instead of using the clamped one (#1190).
+    let i = i.max(0);
+    unsafe {
+        let cache = altstring_cache(x, T::length(x));
+        altstring_cached_elt::<T>(x, cache, i)
+    }
+}
+
+/// `Dataptr` for bridge-generated string ALTREPs: fill every cache slot and
+/// return the cache's pointer. A writable request marks the cache written
+/// first (see [`altstring_cache_written`]), since R writes through it.
+///
+/// A panic part-way leaves the filled slots cached; a retry fills the rest.
+///
+/// # Safety
+///
+/// As for [`altstring_elt`].
+#[doc(hidden)]
+pub unsafe fn altstring_dataptr<T>(x: crate::SEXP, writable: bool) -> *mut core::ffi::c_void
+where
+    T: crate::altrep_traits::Altrep
+        + crate::altrep_data::AltrepExtract
+        + crate::altrep_data::AltStringData
+        + 'static,
+{
+    unsafe {
+        let n = T::length(x);
+        let cache = altstring_cache(x, n);
+        for i in 0..n {
+            altstring_cached_elt::<T>(x, cache, i);
+        }
+        if writable {
+            mark_altstring_written(cache);
+        }
+        crate::sys::DATAPTR_RO_unchecked(cache).cast_mut()
+    }
+}
+
+/// `Set_elt` for bridge-generated string ALTREPs; R's default raises an error.
+///
+/// # Safety
+///
+/// As for [`altstring_elt`]; `v` is a CHARSXP and `0 <= i < length`.
+#[doc(hidden)]
+pub unsafe fn altstring_set_elt<T>(x: crate::SEXP, i: crate::R_xlen_t, v: crate::SEXP)
+where
+    T: crate::altrep_traits::Altrep,
+{
+    use crate::SexpExt;
+
+    unsafe {
+        // R disables GC around Set_elt, but a direct caller may not: keep `v`
+        // live across the cache allocation.
+        let v = crate::OwnedProtect::new(v);
+        let cache = altstring_cache(x, T::length(x));
+        mark_altstring_written(cache);
+        cache.set_string_elt(i, v.get());
+    }
+}
+
+/// Whether R has stored a value into a string ALTREP's cache.
+///
+/// Reads fill the cache too, with values computed from the Rust data, so a
+/// cache alone doesn't mean the Rust data is stale. `Set_elt` and a writable
+/// `Dataptr` mark it before R can store into it, so the mark errs towards
+/// written.
+///
+/// # Safety
+///
+/// `cache` is a string ALTREP's data2 cache, on R's main thread.
+pub(crate) unsafe fn altstring_cache_written(cache: crate::SEXP) -> bool {
+    use crate::SexpExt;
+
+    !unsafe { cache.get_attr_unchecked(crate::cached_class::altstring_written_symbol()) }.is_nil()
+}
+
+/// Mark a string ALTREP's cache written; see [`altstring_cache_written`].
+///
+/// # Safety
+///
+/// As for [`altstring_cache_written`].
+unsafe fn mark_altstring_written(cache: crate::SEXP) {
+    use crate::SexpExt;
+
+    unsafe {
+        if !altstring_cache_written(cache) {
+            // The symbol is its own value: a symbol is never collected, so
+            // setting it allocates nothing but the attribute's cell.
+            let symbol = crate::cached_class::altstring_written_symbol();
+            cache.set_attr_unchecked(symbol, symbol);
+        }
+    }
 }
 // endregion
 

@@ -27,7 +27,9 @@
 //! ```
 
 use crate::condition::ConditionClass;
+use crate::from_r::TryFromSexp;
 use crate::gc_protect::{OwnedProtect, ProtectScope};
+use crate::into_r::IntoR;
 use crate::protect_pool::ProtectPool;
 use crate::sexp_ext::PairListExt;
 use crate::sys::{
@@ -366,6 +368,33 @@ impl RCall {
         self
     }
 
+    /// Convert a Rust value and add it as a positional argument.
+    ///
+    /// The converted value is rooted before anything else allocates, so a
+    /// value made only for this call needs no root of its own. Write
+    /// `RCall::new("qt").arg_value(p).arg_value(df)`, not
+    /// `p.into_sexp()` and `df.into_sexp()` first: the second conversion, and
+    /// [`new`](Self::new), allocate while the first value is not rooted.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the conversion fails, as [`IntoR::into_sexp`] does.
+    #[inline]
+    pub fn arg_value(self, value: impl IntoR) -> Self {
+        self.arg(value.into_sexp())
+    }
+
+    /// Convert a Rust value and add it as a named argument. See
+    /// [`arg_value`](Self::arg_value).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte, or if the conversion fails.
+    #[inline]
+    pub fn named_value(self, name: &str, value: impl IntoR) -> Self {
+        self.named_arg(name, value.into_sexp())
+    }
+
     /// Add a positional argument passed as is: `quote(<value>)`.
     ///
     /// The call evaluates its arguments, so a symbol, a call or a quosure
@@ -470,6 +499,53 @@ impl RCall {
     #[inline]
     pub unsafe fn eval_base(&self) -> Result<SEXP, REvalError> {
         unsafe { self.eval(R_BaseEnv) }
+    }
+
+    /// Evaluate the call in `env`, as [`eval`](Self::eval) does, and read the
+    /// result as `T`.
+    ///
+    /// The result stays rooted while it is converted, so the caller never
+    /// holds it unrooted:
+    ///
+    /// ```ignore
+    /// let q: Vec<Option<f64>> = RCall::new("qt")
+    ///     .arg_value(p)
+    ///     .arg_value(df)
+    ///     .eval_as(stats.as_sexp())?;
+    /// ```
+    ///
+    /// A result that `T` can't read is an `Err` too: a `simpleError`
+    /// whose message is the conversion's, with no call. A `T` that only
+    /// views the value (`SEXP`, `List`, `DataFrame`) comes back unrooted, as
+    /// from [`eval`](Self::eval); read into an owned type (`Vec<T>`,
+    /// `String`, a struct) or protect it.
+    ///
+    /// # Safety
+    ///
+    /// As [`eval`](Self::eval).
+    pub unsafe fn eval_as<T>(&self, env: SEXP) -> Result<T, REvalError>
+    where
+        T: TryFromSexp,
+        T::Error: std::fmt::Display,
+    {
+        unsafe {
+            let value = OwnedProtect::new(self.eval(env)?);
+            T::try_from_sexp(value.get()).map_err(|e| REvalError::simple_error(&e.to_string()))
+        }
+    }
+
+    /// [`eval_as`](Self::eval_as) in `R_BaseEnv`.
+    ///
+    /// # Safety
+    ///
+    /// As [`eval`](Self::eval).
+    #[inline]
+    pub unsafe fn eval_base_as<T>(&self) -> Result<T, REvalError>
+    where
+        T: TryFromSexp,
+        T::Error: std::fmt::Display,
+    {
+        unsafe { self.eval_as(R_BaseEnv) }
     }
 
     /// Evaluate the call in `env` in the caller's R context, keeping R's
@@ -932,7 +1008,7 @@ const EXIT_MESSAGE: &str =
 ///
 /// A `#[miniextendr]` function returning `Result<T, REvalError>` raises the
 /// caught message with the caught [specific classes](Self::specific_classes)
-/// (`REvalError` implements [`RConditionError`](crate::condition::RConditionError)).
+/// (`REvalError` implements [`RConditionData`](crate::condition::RConditionData)).
 /// For a `Result<T, condition::RError>` return, `RError::from(e)` takes the
 /// message (it is a `std::error::Error`) and `.class(...)` adds the classes.
 ///
@@ -1052,7 +1128,8 @@ impl REvalError {
     }
 
     /// A `simpleError` with `message` and no call, for a failure that raised
-    /// no R condition (a parse failure, a jump to the top level).
+    /// no R condition (a parse failure, a jump to the top level, a result
+    /// [`RCall::eval_as`] can't read).
     ///
     /// # Safety
     ///
@@ -1134,7 +1211,7 @@ impl std::error::Error for REvalError {}
 /// Returned as a `#[miniextendr]` function's `Err`, the caught error is raised
 /// again with its message and its [specific classes](REvalError::specific_classes),
 /// ahead of the `rust_error` layers; the call is the function's own.
-impl crate::condition::RConditionError for REvalError {
+impl crate::condition::RConditionData for REvalError {
     fn message(&self) -> String {
         self.message.clone()
     }

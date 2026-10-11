@@ -95,10 +95,10 @@ parse_number("abc")   # Error: Parse error: invalid digit found in string
 ### Classed errors for R handlers
 
 By default an `Err` is a bare `rust_error` whose message is the error's
-`Debug` rendering. Implement `RConditionError` on the error type (or return
+`Debug` rendering. Implement `RConditionData` on the error type (or return
 `RError`) to raise a custom class vector plus structured fields (`e$value`)
 that `tryCatch()` can dispatch on, while keeping `?` composition in Rust. See
-[CONDITIONS.md](CONDITIONS.md#classed-result-errors-with-rconditionerror-and-rerror).
+[CONDITIONS.md](CONDITIONS.md#classed-result-errors-with-rconditiondata-and-rerror).
 
 ### Custom Error Types
 
@@ -584,7 +584,7 @@ Both places raise the same error condition (#1591):
 - the class vector `c("rust_error", "simpleError", "error", "condition")`,
   preceded by the crate's `conversion_error_class` when set
   ([below](#a-crate-level-class-for-every-conversion-error)), and, for a
-  conversion whose error type implements `RConditionError`, by that type's
+  conversion whose error type implements `RConditionData`, by that type's
   own classes first ([below](#classed-conversion-errors));
 - `e$kind == "conversion"`;
 - `e$param`, the R name of the failing parameter;
@@ -782,7 +782,7 @@ message's: `either_route_or_number("zzz")` reads `'x' must be one of "oral",
 
 `invalid '<p>' argument` is left for a type whose expectation neither the
 macro nor the error knows, such as an opaque custom type, with the error's own
-message (its `Display` text, or its `RConditionError` message) as the reason.
+message (its `Display` text, or its `RConditionData` message) as the reason.
 
 ### NA Handling
 
@@ -822,22 +822,22 @@ needs_int(1e20)  # Error: 'x' must be a single whole number: value out of range
 ### Classed conversion errors
 
 When the `TryFromSexp::Error` of an argument type implements
-[`RConditionError`](CONDITIONS.md#classed-result-errors-with-rconditionerror-and-rerror),
+[`RConditionData`](CONDITIONS.md#classed-result-errors-with-rconditiondata-and-rerror),
 a failed conversion takes that error's class vector, message and data, the
-same way a `Result<T, E: RConditionError>` return does. `kind` stays
+same way a `Result<T, E: RConditionData>` return does. `kind` stays
 `"conversion"`, the message keeps the parameter context, and `e$param` and
 `e$rust_type` are added, so a package can put the conversion failures of its
 own argument types in its condition family:
 
 ```rust
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::RCondition;
 use miniextendr_api::named_vector::NamedVector;
 use miniextendr_api::{SEXP, TryFromSexp};
 use std::collections::BTreeMap;
 
 pub struct Hyperparams(BTreeMap<String, f64>);
 
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(class = "pkg_error")]
 pub enum HyperparamError {
     #[condition(class = "pkg_error_bad_arg", message = "expected a named numeric vector ({reason})")]
@@ -894,20 +894,20 @@ Rules:
 - **Fallback.** An error type without the impl keeps the plain class vector.
   The built-in `SexpError` family and `MatchArgError` are reworded as in the
   table above; any other type is rendered with `Display`. The error type
-  must implement `RConditionError` or `Display`.
+  must implement `RConditionData` or `Display`.
 - **A newtype's refusal.** The `Option` / `Vec` / `Vec<Option>` conversions of
   a `#[derive(TryFromSexp)]` newtype never call its own `try_from_sexp`, so a
   refusal written there would not hold for them. A newtype refuses values its
   inner type accepts with `#[try_from_sexp(validate = path)]`, a check on the
   R value that every shape runs. It returns an `RError` (or any
-  `RConditionError` type), which becomes `SexpError::Condition`: the
+  `RConditionData` type), which becomes `SexpError::Condition`: the
   `SexpError` arm above then carries its classes and fields, with its message
   as the reason after the prefix, also from an `Either` arm whose other arm
   refused the kind of value. For a `Vec` of a newtype over `List` (a list of
   R objects) the check runs on each element, and the error reports every
   refused element with its position, `(element 2)`, with the classes of
   every refusal.
-- **The whole message.** An error whose `RConditionError::argument_message`
+- **The whole message.** An error whose `RConditionData::argument_message`
   is `Some` (`RError::argument_message(...)`,
   `#[condition(argument_message = "…")]`) gives the argument error's whole
   message, as an `inherits(..., message = )` guard does: no prefix, the
@@ -942,7 +942,7 @@ Rules:
 ### A crate-level class for every conversion error
 
 To put every argument error of a package in its condition family without an
-`RConditionError` impl on each type, name the classes once in the crate's
+`RConditionData` impl on each type, name the classes once in the crate's
 `Cargo.toml`:
 
 ```toml
@@ -954,7 +954,7 @@ Every argument error of the crate then carries those classes before the
 `rust_error` layering: the Rust conversions (free functions, methods, trait
 methods and sidecar setters) and the R-side checks alike, so a package can
 document one argument-error class for its users. An error type with its own
-`RConditionError` classes keeps them first; the crate classes follow,
+`RConditionData` classes keeps them first; the crate classes follow,
 skipping any the error already names:
 
 ```r

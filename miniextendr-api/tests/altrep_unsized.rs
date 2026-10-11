@@ -1,6 +1,6 @@
-//! Unsized ALTREP views retain metadata and use only receiver-level operations.
+//! Unsized ALTREP views keep their metadata; ownership stays with a sized owner.
 use miniextendr_api::SEXP;
-use miniextendr_api::altrep_data::{AltrepExtract, AltrepLen, AltrepSerialize};
+use miniextendr_api::altrep_data::{AltrepExtract, AltrepLen};
 
 // A custom trailing DST, not just the built-in slice type.
 struct Tagged<T: ?Sized> {
@@ -14,23 +14,14 @@ impl AltrepLen for Tagged<[i32]> {
     }
 }
 
-impl AltrepSerialize for Tagged<[i32]> {
-    fn serialized_state(&self) -> SEXP {
-        use miniextendr_api::IntoR;
-        (&self.values).into_sexp()
-    }
-}
-
 // Custom storage can extract a DST without erasing its slice metadata.
 impl AltrepExtract for Tagged<[i32]> {
     unsafe fn altrep_extract_ref(x: SEXP) -> &'static Self {
-        let owner = unsafe { <Box<Tagged<[i32]>> as AltrepExtract>::altrep_extract_ref(x) };
-        owner
+        unsafe { <Box<Tagged<[i32]>> as AltrepExtract>::altrep_extract_ref(x) }
     }
 
     unsafe fn altrep_extract_mut(x: SEXP) -> &'static mut Self {
-        let owner = unsafe { <Box<Tagged<[i32]>> as AltrepExtract>::altrep_extract_mut(x) };
-        owner
+        unsafe { <Box<Tagged<[i32]>> as AltrepExtract>::altrep_extract_mut(x) }
     }
 }
 
@@ -41,15 +32,13 @@ impl miniextendr_api::externalptr::TypedExternal for Box<Tagged<[i32]>> {
 }
 
 #[test]
-fn trailing_dst_supports_length_and_save_side_without_an_owned_factory() {
+fn trailing_dst_implements_length_and_extraction_as_a_view() {
     let owner: Box<Tagged<[i32]>> = Box::new(Tagged {
         tag: 7,
         values: [1, 2, 3],
     });
     assert_eq!(owner.tag, 7);
     assert_eq!(AltrepLen::len(&*owner), 3);
-    fn accepts_serialization_view<T: AltrepSerialize + ?Sized>(_: &T) {}
-    accepts_serialization_view(&*owner);
     fn accepts_extraction_view<T: AltrepExtract + ?Sized>() {}
     accepts_extraction_view::<Tagged<[i32]>>();
 }
@@ -160,12 +149,6 @@ fn custom_dst_owner_reaches_r_and_extracts_a_view_with_metadata() {
         assert_eq!(view.values.len(), 3);
         Tagged::<[i32]>::altrep_extract_mut(x.get()).values[1] = 77;
         assert_eq!(<Box<Tagged<[i32]>> as AltInteger>::elt(x.get(), 1), 77);
-
-        let saved =
-            OwnedProtect::new(Tagged::<[i32]>::altrep_extract_ref(x.get()).serialized_state());
-        assert_eq!(
-            Vec::<i32>::try_from_sexp(saved.get()).unwrap(),
-            [10, 77, 30]
-        );
+        assert_eq!(Vec::<i32>::try_from_sexp(x.get()).unwrap(), [10, 77, 30]);
     });
 }

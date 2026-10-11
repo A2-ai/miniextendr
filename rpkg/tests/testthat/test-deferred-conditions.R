@@ -350,3 +350,44 @@ test_that("deferred conditions preserve an ALTREP C NULL fallback result", {
   expect_true(any(vapply(out$conditions, inherits, FALSE, what = "guard_warning")))
   expect_identical(deferred_pending_count(), 0L)
 })
+
+test_that("a payload deriving RCondition is signalled as the kind it declares", {
+  out <- collect_conditions(typed_condition_defer(5L))
+  expect_identical(out$value, 4L)
+  expect_length(out$conditions, 2L)
+  w <- out$conditions[[1]]
+  expect_s3_class(w, c("pkg_diagnostic_dropped", "pkg_diagnostic", "rust_warning", "warning"))
+  expect_identical(conditionMessage(w), "dropped 1 rows")
+  expect_identical(w$n, 1L)
+  m <- out$conditions[[2]]
+  expect_s3_class(m, c("pkg_diagnostic_finished", "pkg_diagnostic", "rust_message", "message"))
+  expect_match(conditionMessage(m), "finished 5 rows")
+
+  e <- tryCatch(typed_condition_raise(0L), error = identity)
+  expect_s3_class(e, c("pkg_diagnostic_empty", "pkg_diagnostic", "rust_error"))
+  expect_identical(conditionMessage(e), "input is empty")
+  expect_null(conditionCall(e))
+
+  w <- tryCatch(typed_condition_raise(3L), warning = identity)
+  expect_s3_class(w, c("pkg_diagnostic_dropped", "pkg_diagnostic", "rust_warning"))
+  expect_identical(w$n, 3L)
+  expect_identical(conditionCall(w)[[1]], as.name("typed_condition_raise"))
+})
+
+test_that("a derived struct takes a class vector, a fixed entry and leaves out a NULL field", {
+  out <- collect_conditions(typed_condition_class_list(NULL))
+  expect_true(out$value)
+  expect_length(out$conditions, 1L)
+  w <- out$conditions[[1]]
+  expect_identical(
+    class(w)[1:3],
+    c("pkg_warning_argument_ignored", "pkg_warning", "rust_warning")
+  )
+  expect_identical(conditionMessage(w), "`unit_table` is ignored")
+  expect_identical(w$param, "unit_table")
+  expect_false("hint" %in% names(w))
+
+  w <- tryCatch(typed_condition_class_list("give it when grouping"), warning = identity)
+  expect_identical(w$hint, "give it when grouping")
+  expect_identical(w$param, "unit_table")
+})

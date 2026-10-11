@@ -288,11 +288,9 @@ let connection = RConnectionIo::new(reader).mode("rb").build_read();
 // R now owns the reader; close(connection) releases it.
 ```
 
-Use `Box<dyn BufRead>` with `build_bufread()` and `Box<dyn Write>` with
-`build_write()`. The box retains the stream's vtable and provides the sized owner
-stored behind R's connection pointer. No new connection wrapper or unsized state
-is required. The stream must own its dependencies or borrow only `'static` data:
-an R connection may outlive the Rust call that created it.
+`Box<dyn BufRead>` goes with `build_bufread()`, and `Box<dyn Write>` with
+`build_write()`. The stream must own what it reads from or writes to (or borrow
+only `'static` data), because the connection can outlive the call that made it.
 
 ## Safety & Version Checking
 
@@ -763,27 +761,14 @@ process's standard input, open R's `file("stdin")` and read that connection.
 locked on this thread"), including a read through another `RStdin` handle
 while a lock is held.
 
-## Limitations
-
-- **Experimental API.** R may change the connection ABI in any release. The compile-time version check catches this, but you may need to update miniextendr when upgrading R.
-- **No `vfprintf` by default.** The `vfprintf` callback receives raw C varargs (`va_list`), which are not portable in Rust. The default returns -1. R rarely calls this -- it prefers the `write` callback.
-- **Not `Send`/`Sync`.** Connections run on the main R thread. Your `RConnectionImpl` type does not need to be thread-safe.
-- **GC protection.** The SEXP returned by `build()` must be protected from R's garbage collector if you store it. Returning it directly from a `#[miniextendr]` function handles this automatically.
-- **No stat support.** R's connection C API does not include a `stat` callback (file size, modification time, etc.). If you need stat-like information, track it in your `RConnectionImpl` type or query it through a separate `#[miniextendr]` function.
-
-## See Also
-
-- [FEATURES.md](FEATURES.md) -- Feature flags reference (`connections`)
-- [THREADS.md](THREADS.md) -- Thread safety and the worker thread model
-- [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling across the FFI boundary
-- Test fixtures: `rpkg/src/rust/connection_tests.rs`
-
 ## Iterator and random streams
 
 `IteratorReader<I>` adapts any `Iterator<Item = u8>` to `std::io::Read`.
 It works with the existing `RConnectionIo` builder. Construction and empty
 reads consume nothing; EOF is permanent. A connection reads sequentially, so it
-does not need ALTREP's finite vector length or cache for repeated indexing.
+does not need ALTREP's finite vector length or cache for repeated indexing. For
+a vector R can index, build ALTREP data from the iterator instead:
+[ALTREP.md](ALTREP.md#constructing-from-any-iterator).
 
 For raw RNG bytes, `rand` already provides the adapter:
 
@@ -827,7 +812,17 @@ cover reads performed later. A custom `RConnectionImpl::read` using `RRng`
 must acquire and release R's RNG state inside each guarded read callback.
 Never retain an RNG-state guard for the connection's entire lifetime.
 
-The same distribution iterator can back finite ALTREP data with
-`samples.into_altrep_data(n)`. Its cache gives repeated indices stable values;
-the connection advances on every read. Neither approach needs another
-distribution-specific container or an `itertools` feature.
+## Limitations
+
+- **Experimental API.** R may change the connection ABI in any release. The compile-time version check catches this, but you may need to update miniextendr when upgrading R.
+- **No `vfprintf` by default.** The `vfprintf` callback receives raw C varargs (`va_list`), which are not portable in Rust. The default returns -1. R rarely calls this -- it prefers the `write` callback.
+- **Not `Send`/`Sync`.** Connections run on the main R thread. Your `RConnectionImpl` type does not need to be thread-safe.
+- **GC protection.** The SEXP returned by `build()` must be protected from R's garbage collector if you store it. Returning it directly from a `#[miniextendr]` function handles this automatically.
+- **No stat support.** R's connection C API does not include a `stat` callback (file size, modification time, etc.). If you need stat-like information, track it in your `RConnectionImpl` type or query it through a separate `#[miniextendr]` function.
+
+## See Also
+
+- [FEATURES.md](FEATURES.md) -- Feature flags reference (`connections`)
+- [THREADS.md](THREADS.md) -- Thread safety and the worker thread model
+- [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling across the FFI boundary
+- Test fixtures: `rpkg/src/rust/connection_tests.rs`

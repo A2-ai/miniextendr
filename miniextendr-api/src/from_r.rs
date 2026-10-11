@@ -329,8 +329,8 @@ pub enum SexpError {
     /// A value a check refused with its own message, classes and fields,
     /// typically a [`TryFromSexpElement::check_sexp`](crate::TryFromSexpElement::check_sexp)
     /// (`#[try_from_sexp(validate = ...)]`). Any
-    /// [`RConditionError`](crate::condition::RConditionError) type, an
-    /// [`RError`](crate::condition::RError) or a `#[derive(RConditionError)]`
+    /// [`RConditionData`](crate::condition::RConditionData) type, an
+    /// [`RError`](crate::condition::RError) or a `#[derive(RCondition)]`
     /// type, converts into it with `?`.
     ///
     /// As an argument error it keeps the parameter context: the message is

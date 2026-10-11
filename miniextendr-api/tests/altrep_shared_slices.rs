@@ -135,6 +135,51 @@ macro_rules! shared_owner_tests {
             }
 
             #[test]
+            fn read_only_strings_keep_the_class_through_duplicate_and_serialize() {
+                r_test_utils::with_r_thread(|| unsafe {
+                    use miniextendr_api::altrep_traits::Altrep as AltrepClass;
+
+                    let x = OwnedProtect::new(
+                        Altrep(Owner::<[String]>::from([
+                            "a".into(),
+                            "b".into(),
+                            "c".into(),
+                        ]))
+                        .into_sexp(),
+                    );
+                    // One slot read: a partial cache, with NULL in the others.
+                    assert_eq!(
+                        <Owner<[String]> as AltString>::elt(x.get(), 1).r_char_str(),
+                        Some("b")
+                    );
+                    let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
+                    assert!(copy.get().is_altrep());
+                    assert!(
+                        !<Owner<[String]> as AltrepClass>::serialized_state(copy.get())
+                            .is_null_ptr()
+                    );
+                    let restored = roundtrip(copy.get());
+                    assert!(restored.get().is_altrep());
+                    assert_eq!(
+                        Vec::<String>::try_from_sexp(restored.get()).unwrap(),
+                        ["a", "b", "c"]
+                    );
+
+                    // A copy of a written cache is written too.
+                    <Owner<[String]> as AltString>::set_elt(x.get(), 2, SEXP::na_string());
+                    let written = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(x.get()));
+                    assert!(
+                        <Owner<[String]> as AltrepClass>::serialized_state(written.get())
+                            .is_null_ptr()
+                    );
+                    assert_eq!(
+                        Vec::<Option<String>>::try_from_sexp(written.get()).unwrap(),
+                        [Some("a".into()), Some("b".into()), None]
+                    );
+                });
+            }
+
+            #[test]
             fn all_native_families_and_empty_slices_keep_their_owned_allocation() {
                 r_test_utils::with_r_thread(|| unsafe {
                     macro_rules! check {

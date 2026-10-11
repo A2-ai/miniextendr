@@ -244,9 +244,9 @@ pub trait AltrepDataptr<T> {
 /// Return the bridge's R vector cache, if materialization has started.
 ///
 /// Bridge-generated classes reserve data2 for a vector of the ALTREP's type.
-/// Once present, it is authoritative: R may have written through DATAPTR.
-/// String buffers are published only after every element has been filled;
-/// NA entries are values, never cache-miss markers.
+/// Once present, its values are the vector's: read them, not the Rust data.
+/// A string cache can be partial: slots not computed yet are C `NULL`, so
+/// read it through the string Elt callback, never directly.
 ///
 /// # Safety
 /// `x` must be a live ALTREP using the bridge's data2 convention, on R's thread.
@@ -257,6 +257,30 @@ pub unsafe fn materialized_altrep_data2(x: SEXP) -> Option<SEXP> {
 
     let data2 = unsafe { AltrepSexpExt::altrep_data2_raw(&x) };
     (!data2.is_null_ptr() && data2.type_of() == x.type_of()).then_some(data2)
+}
+
+/// Whether R may have changed the vector's values since it was built.
+///
+/// Until then the Rust data is current, so a class may answer from it:
+/// serialize its state, subset it, report its sortedness, NAs, sum or range.
+/// A numeric cache exists only once `Dataptr` handed R a pointer it may
+/// write through, so for those families that is until data2 exists. A string
+/// cache also fills on reads, so a string ALTREP counts as written only once
+/// `Set_elt` or a writable `Dataptr` has marked its cache.
+///
+/// # Safety
+/// As for [`materialized_altrep_data2`].
+#[doc(hidden)]
+pub unsafe fn altrep_values_written(x: SEXP) -> bool {
+    use crate::SexpExt;
+
+    match unsafe { materialized_altrep_data2(x) } {
+        None => false,
+        Some(cache) if cache.type_of() == crate::SEXPTYPE::STRSXP => unsafe {
+            crate::altrep_impl::altstring_cache_written(cache)
+        },
+        Some(_) => true,
+    }
 }
 
 /// Read a region from a materialized atomic vector, without consulting data1.
@@ -309,22 +333,21 @@ pub unsafe fn materialize_altrep_data2<T: crate::RNativeType>(x: SEXP) -> *mut c
 }
 
 /// Trait for ALTREP types that support serialization.
-pub trait AltrepSerialize {
+///
+/// Saving and loading come as a pair: a class that writes its own state must
+/// be able to rebuild itself from it, or `readRDS()` of a saved vector fails.
+/// That is why the trait needs `Sized` (and `unserialize` has no default),
+/// although [`AltrepExtract`] accepts unsized views. A type that can't rebuild
+/// itself, such as a custom DST of runtime length, leaves serialization to R,
+/// which saves an ordinary vector.
+pub trait AltrepSerialize: Sized {
     /// Convert the ALTREP data to a serializable R object.
     fn serialized_state(&self) -> SEXP;
 
     /// Reconstruct the ALTREP data from a serialized state.
     ///
     /// Return `None` if the state is invalid or cannot be deserialized.
-    /// The default declines reconstruction, allowing unsized views to implement
-    /// the save side alone. Owned backends enabling the ALTREP unserialize
-    /// callback should override this method.
-    fn unserialize(_state: SEXP) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
-    }
+    fn unserialize(state: SEXP) -> Option<Self>;
 }
 
 /// Trait for ALTREP types that can provide optimized subsetting.
@@ -343,9 +366,10 @@ pub trait AltrepExtractSubset {
 ///
 /// The default implementation (for types that implement `TypedExternal`) extracts
 /// via `ExternalPtr<T>` downcast from data1. Power users who want native SEXP
-/// storage can implement this trait manually, including unsized views. Only
-/// the default ExternalPtr storage requires a sized owner; reference extraction
-/// itself does not.
+/// storage can implement this trait manually, including for an unsized view
+/// that projects through a sized owner (`[T]` through `Box<[T]>`, a custom
+/// DST through its `Box`). Only the default `ExternalPtr` storage needs a
+/// sized type.
 ///
 /// # Safety
 ///

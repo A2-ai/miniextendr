@@ -249,6 +249,32 @@ pub fn gc_stress_vec_option_borrowed() {
     let _ = str_slice_opt.into_sexp();
 }
 
+/// Exercise the string ALTREP element cache (data2) under GC pressure.
+///
+/// Fills the cache one slot at a time through `Elt`, writes a value and an NA
+/// through `Set_elt`, then fills the rest through `Dataptr`. Every CHARSXP the
+/// cache hands out must stay reachable from the vector across the allocations
+/// in between. Returns the vector: `"written"`, `NA`, then `cache-<i>` for
+/// `i` in `2..24`, with `NA` where `i % 5 == 0`.
+#[miniextendr(noexport)]
+pub fn gc_stress_altrep_string_cache() -> SEXP {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    type Data = Vec<Option<String>>;
+
+    let values: Data = (0..24)
+        .map(|i| (i % 5 != 0).then(|| format!("cache-{i}")))
+        .collect();
+    let x = unsafe { OwnedProtect::new(miniextendr_api::Altrep(values).into_sexp()) };
+    for i in (0..24).step_by(3) {
+        let _ = <Data as AltString>::elt(x.get(), i);
+    }
+    let written = unsafe { OwnedProtect::new(SEXP::charsxp("written")) };
+    <Data as AltString>::set_elt(x.get(), 0, written.get());
+    <Data as AltString>::set_elt(x.get(), 1, SEXP::na_string());
+    let _ = <Data as AltVec>::dataptr(x.get(), false);
+    x.get()
+}
+
 /// Exercise map-field `Vec<Vec<K>>` / `Vec<Vec<V>>` column codegen under GC pressure.
 ///
 /// Synthesizes realistic `HashMapEvent` and `BTreeMapEvent` rows and drives both
@@ -1470,12 +1496,65 @@ pub fn gc_stress_native_sexp_altrep() {
 
     // Force the Dataptr path (exercises `AltVec::dataptr`).
     let _ptr = unsafe { miniextendr_api::sys::DATAPTR_RO(sexp) };
-    gc_stress_shared_slices();
-    gc_stress_owned_str();
 }
 
-// Scalar and lazy character conversions also run in the existing ALTREP sweep.
-fn gc_stress_owned_str() {
+/// Exercise `Rc<[T]>` / `Arc<[T]>` ALTREP duplication under GC pressure.
+///
+/// A native `Arc<[i32]>` hands out a writable pointer, is written through it and
+/// duplicated: the copy must keep the value at duplication time. An
+/// `Rc<[String]>` reads one element and has another written through `Set_elt`,
+/// leaving a partial cache (empty slots beside cached and written ones) that
+/// `Duplicate` copies slot by slot. Each step allocates, so `gctorture(TRUE)`
+/// catches a CHARSXP or cache that is not reachable from its vector.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_shared_slices() {
+    use miniextendr_api::altrep_traits::{AltString, AltVec};
+    use miniextendr_api::{Altrep, TryFromSexp};
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    unsafe {
+        let native = OwnedProtect::new(Altrep(Arc::<[i32]>::from([10, 20])).into_sexp());
+        let pointer = <Arc<[i32]> as AltVec>::dataptr(native.get(), true).cast::<i32>();
+        *pointer = 77;
+        let native_copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(native.get()));
+        *pointer = 99;
+        assert_eq!(
+            Vec::<i32>::try_from_sexp(native_copy.get()).unwrap(),
+            [77, 20]
+        );
+
+        let strings = OwnedProtect::new(
+            Altrep(Rc::<[String]>::from([
+                "one".into(),
+                "two".into(),
+                "three".into(),
+            ]))
+            .into_sexp(),
+        );
+        let _ = <Rc<[String]> as AltString>::elt(strings.get(), 2);
+        <Rc<[String]> as AltString>::set_elt(strings.get(), 0, SEXP::na_string());
+        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(strings.get()));
+        assert!(copy.get().is_altrep());
+        assert_eq!(
+            Vec::<Option<String>>::try_from_sexp(copy.get()).unwrap(),
+            [None, Some("two".into()), Some("three".into())]
+        );
+    }
+}
+
+/// Exercise `Box<str>` / `Rc<str>` / `Arc<str>` conversions under GC pressure.
+///
+/// Each owner converts a `Vec<Option<_>>` to an ordinary character vector and
+/// to a string ALTREP, which then takes an `NA` through `Set_elt`. Reading
+/// either back allocates CHARSXPs, so `gctorture(TRUE)` catches one that is
+/// not reachable from its vector or the ALTREP element cache.
+///
+/// No arguments — suitable for the fast gctorture no-arg fixture sweep.
+#[miniextendr(noexport)]
+pub fn gc_stress_owned_str() {
     use miniextendr_api::altrep_traits::AltString;
     use miniextendr_api::{Altrep, IntoR, OwnedProtect, SEXP, TryFromSexp};
     use std::rc::Rc;
@@ -1500,37 +1579,6 @@ fn gc_stress_owned_str() {
     check!(Box);
     check!(Rc);
     check!(Arc);
-}
-
-// Reached by the existing no-arg ALTREP fixture sweep, avoiding a second export.
-fn gc_stress_shared_slices() {
-    use miniextendr_api::altrep_traits::{AltString, AltVec};
-    use miniextendr_api::{Altrep, IntoR, OwnedProtect, SexpExt, TryFromSexp};
-    use std::rc::Rc;
-    use std::sync::Arc;
-
-    unsafe {
-        let native = OwnedProtect::new(Altrep(Arc::<[i32]>::from([10, 20])).into_sexp());
-        let pointer = <Arc<[i32]> as AltVec>::dataptr(native.get(), true).cast::<i32>();
-        *pointer = 77;
-        let native_copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(native.get()));
-        *pointer = 99;
-        assert_eq!(
-            Vec::<i32>::try_from_sexp(native_copy.get()).unwrap(),
-            [77, 20]
-        );
-
-        let strings = OwnedProtect::new(
-            Altrep(Rc::<[String]>::from(["one".into(), "two".into()])).into_sexp(),
-        );
-        <Rc<[String]> as AltString>::set_elt(strings.get(), 0, miniextendr_api::SEXP::na_string());
-        let copy = OwnedProtect::new(miniextendr_api::sys::Rf_duplicate(strings.get()));
-        assert!(copy.get().is_altrep());
-        assert_eq!(
-            Vec::<Option<String>>::try_from_sexp(copy.get()).unwrap(),
-            [None, Some("two".into())]
-        );
-    }
 }
 
 /// Exercise `JiffZonedVec` ALTREP construction and element access under GC pressure.
@@ -1616,19 +1664,57 @@ pub fn gc_stress_toml_array() {
     let _ = bool_arr.into_sexp();
 }
 
-/// Exercise `NamedDataFrameListBuilder` SEXP protection under GC pressure.
+/// Exercise owned named-list construction and all three finishes under GC pressure.
 ///
-/// Pushes two `DataFrame`s (synthesised internally via `vec_to_dataframe`) into
-/// a `NamedDataFrameListBuilder` and calls `build()`.  Each `push` stores the
-/// input SEXP in an internal `Vec<SEXP>` (protected by the builder's
-/// `ProtectScope`), making this the canonical gctorture coverage for the
-/// SEXP-storage-across-allocations path in the builder.
+/// Holds growing builders, a finished data frame and a classed `BuiltList`
+/// across further allocations and collections. No arguments, so the no-arg GC
+/// sweep exercises every path.
+#[miniextendr(noexport)]
+pub fn gc_stress_named_list_builder() -> miniextendr_api::NamedListBuilder {
+    use miniextendr_api::NamedListBuilder;
+
+    let mut values = NamedListBuilder::with_capacity(1);
+    let mut columns = NamedListBuilder::new();
+    for i in 0..12 {
+        values.push_sexp(format!("v{i}"), vec![i; 4].into_sexp());
+        columns.push(format!("c{i}"), vec![f64::from(i); 3]);
+        let _ = vec!["allocation"; 16].into_sexp();
+        unsafe { miniextendr_api::sys::R_gc() };
+    }
+    values.rename(0, "first");
+    columns.names_mut()[0] = "first".into();
+    let frame = columns.into_data_frame().unwrap();
+    let empty = NamedListBuilder::new().into_data_frame().unwrap();
+    let mut parts = NamedListBuilder::new();
+    parts.push("id", 7i32);
+    parts.push("label", "seven");
+    let classed = parts
+        .into_list()
+        .set_class(&["gc_stress_result", "list"])
+        .set_attr("note", vec!["kept"; 2]);
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
+
+    let mut out = NamedListBuilder::new();
+    out.push("values", values);
+    out.push("frame", frame);
+    out.push("empty", empty);
+    out.push("classed", classed);
+    unsafe { miniextendr_api::sys::R_gc() };
+    out
+}
+
+/// Exercise named lists of data frames under GC pressure.
+///
+/// Holds both serde-built frames in the preserved list across allocations.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn gc_stress_named_df_list_builder() -> SEXP {
-    use miniextendr_api::NamedDataFrameListBuilder;
+    use miniextendr_api::NamedListBuilder;
     use miniextendr_api::into_r::IntoR as _;
     use miniextendr_api::serde::vec_to_dataframe;
 
@@ -1659,14 +1745,14 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
         })
         .collect();
 
-    // `vec_to_dataframe` now returns an owned `BuiltDataFrame`; deref to the view
-    // for `push` (each temporary handle lives to the end of the `.push(...)`
-    // statement, so its frame stays rooted until `push` re-roots it internally).
-    NamedDataFrameListBuilder::new()
-        .push("results", *vec_to_dataframe(&oks).unwrap())
-        .push("error", *vec_to_dataframe(&errs).unwrap())
-        .build()
-        .into_sexp()
+    let mut out = NamedListBuilder::new();
+    out.push("results", vec_to_dataframe(&oks).unwrap());
+    out.push("error", vec_to_dataframe(&errs).unwrap());
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
+    out.into_sexp()
 }
 
 /// Exercise `DataFrame::group_by` + `GroupedDataFrame::frames` SEXP handling
@@ -1675,14 +1761,14 @@ pub fn gc_stress_named_df_list_builder() -> SEXP {
 /// `GroupedDataFrame` holds the source frame's SEXP across the per-group
 /// `select_rows` allocations, and each yielded sub-frame is a rooted
 /// `BuiltDataFrame` (#1247) whose root must hold until the
-/// `NamedDataFrameListBuilder` push re-roots the view — the two
+/// `NamedListBuilder` push takes ownership of the frame — the two
 /// SEXP-across-allocations paths this fixture drives. Synthesizes a 60-row frame with a
 /// character key (incl. NAs) internally.
 ///
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     let df = DataFrame::builder(60)
         .column::<i32>("v", |chunk, offset| {
@@ -1701,13 +1787,11 @@ pub fn gc_stress_group_by() -> SEXP {
     let grouped = df
         .group_by("g")
         .expect("gc_stress_group_by: group_by failed");
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Exercise `DataFrame::group_by_multi` (composite keys) + `GroupedDataFrame::frames`
@@ -1722,7 +1806,7 @@ pub fn gc_stress_group_by() -> SEXP {
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by_multi() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     let df = DataFrame::builder(60)
         .column::<i32>("v", |chunk, offset| {
@@ -1746,13 +1830,11 @@ pub fn gc_stress_group_by_multi() -> SEXP {
     let grouped = df
         .group_by_multi(&["g", "k"])
         .expect("gc_stress_group_by_multi: group_by_multi failed");
-    let mut out = NamedDataFrameListBuilder::with_capacity(grouped.len());
+    let mut out = NamedListBuilder::with_capacity(grouped.len());
     for (key, sub) in grouped.frames() {
-        // `sub` is a rooted `BuiltDataFrame` (#1247); deref to the view for
-        // push, which protects it in the builder's scope before `sub` drops.
-        out = out.push(key.label(), *sub);
+        out.push(key.label(), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Exercise double group keys (plain, `Date`, `POSIXct`) through
@@ -1768,8 +1850,8 @@ pub fn gc_stress_group_by_multi() -> SEXP {
 /// No arguments — suitable for the fast gctorture no-arg fixture sweep.
 #[miniextendr(noexport)]
 pub fn gc_stress_group_by_double() -> SEXP {
-    use miniextendr_api::dataframe::{DataFrame, NamedDataFrameListBuilder};
     use miniextendr_api::r_eval_str;
+    use miniextendr_api::{DataFrame, NamedListBuilder};
 
     const INPUT: &str = r#"local({
         x <- rep(c(2.5, -0, 0, NaN, NA, -Inf, 1e5), length.out = 42)
@@ -1797,26 +1879,26 @@ pub fn gc_stress_group_by_double() -> SEXP {
     let df = DataFrame::from_sexp(input.get().vector_elt(0)).expect("df is a data.frame");
     let gdf = DataFrame::from_sexp(input.get().vector_elt(1)).expect("gdf is a data.frame");
 
-    let mut out = NamedDataFrameListBuilder::with_capacity(32);
+    let mut out = NamedListBuilder::with_capacity(32);
     let plain = df.group_by("x").expect("group_by(x) failed");
     for (key, sub) in plain.frames() {
-        out = out.push(format!("x={}", key.label()), *sub);
+        out.push(format!("x={}", key.label()), sub);
     }
     let dates = df.group_by("d").expect("group_by(d) failed");
     for (key, sub) in dates.frames() {
-        out = out.push(format!("d={}", key.label()), *sub);
+        out.push(format!("d={}", key.label()), sub);
     }
     let multi = df
         .group_by_multi(&["p", "x"])
         .expect("group_by_multi(p, x) failed");
     for (key, sub) in multi.frames() {
-        out = out.push(format!("px={}", key.label()), *sub);
+        out.push(format!("px={}", key.label()), sub);
     }
     let meta = gdf.group_by_metadata().expect("group_by_metadata failed");
     for (key, sub) in meta.frames() {
-        out = out.push(format!("meta={}", key.label()), *sub);
+        out.push(format!("meta={}", key.label()), sub);
     }
-    out.build().into_sexp()
+    out.into_sexp()
 }
 
 /// Convert an R vector to an ALTREP-backed vector by materializing then re-wrapping.
@@ -2034,8 +2116,8 @@ pub fn gc_stress_iter_to_dataframe() -> SEXP {
 ///
 /// Synthesises a mixed Result-iterator (every third row is an Err with a
 /// distinct payload shape) and runs it through the streaming two-builder
-/// path. Each builder's `ProtectScope` plus the assembling
-/// `NamedDataFrameListBuilder` need to keep every protected SEXP live.
+/// path. The returned named-list builder is held across further allocations
+/// and a full collection before it is returned to R.
 ///
 /// No arguments — suitable for the fast gctorture no-arg sweep.
 #[cfg(feature = "serde")]
@@ -2076,6 +2158,10 @@ pub fn gc_stress_dispatch_to_dataframes() -> SEXP {
         DispatchNames::default(),
     )
     .expect("gc_stress_dispatch_to_dataframes: dispatch_to_dataframes failed");
+    for i in 0..32 {
+        let _ = vec![i; 16].into_sexp();
+    }
+    unsafe { miniextendr_api::sys::R_gc() };
     list.into_sexp()
 }
 
@@ -2587,7 +2673,7 @@ pub fn gc_stress_map_to_dataframe() -> SEXP {
 
 /// Exercise `result_to_dataframe(Auto)` under GC pressure with mixed Ok/Err
 /// rows. Exercises the split path (intermediate `DataFrame` pair +
-/// `NamedDataFrameListBuilder` assembly in `IntoR for DataFrameShape`).
+/// `NamedListBuilder` assembly in `IntoR for DataFrameShape`).
 #[cfg(feature = "serde")]
 #[miniextendr(noexport)]
 pub fn gc_stress_result_to_dataframe_auto() -> SEXP {

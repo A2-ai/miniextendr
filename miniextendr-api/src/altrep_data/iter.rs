@@ -21,7 +21,7 @@
 //! #[derive(miniextendr_api::AltrepInteger)]
 //! #[altrep(class = "MyLazyInts", manual)]
 //! struct MyLazyInts {
-//!     inner: IterIntData<std::ops::Range<i32>>,
+//!     inner: IterIntData<Box<dyn Iterator<Item = i32>>>,
 //! }
 //!
 //! impl AltrepLen for MyLazyInts {
@@ -36,11 +36,6 @@
 //!     }
 //! }
 //! ```
-//!
-//! Keep the concrete iterator type when its specialized operations or state
-//! matter to the class. The class chooses duplication and serialization policy:
-//! serializing cached values restores a snapshot, while restoring a lazy source
-//! requires a representation of that source's state.
 //!
 //! ## Submodules
 //!

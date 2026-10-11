@@ -161,6 +161,82 @@ fn r_eval_error_suite() {
     });
 }
 
+#[test]
+fn r_call_value_suite() {
+    r_test_utils::with_r_thread(|| {
+        test_arg_value_and_named_value();
+        test_arg_value_rooted_under_gctorture();
+        test_eval_as_in_env();
+        test_eval_as_r_error();
+        test_eval_as_unreadable_result();
+    });
+}
+
+/// `arg_value` / `named_value` convert Rust values in place, and
+/// `eval_base_as` reads the result back.
+fn test_arg_value_and_named_value() {
+    let pasted: Vec<String> = unsafe {
+        RCall::new("paste")
+            .arg_value("a")
+            .arg_value(vec![1i32, 2])
+            .named_value("sep", "-")
+            .eval_base_as()
+    }
+    .expect("paste() evaluates");
+    assert_eq!(pasted, ["a-1", "a-2"]);
+}
+
+/// Every converted argument stays rooted while later ones allocate, with a
+/// collection at every allocation.
+fn test_arg_value_rooted_under_gctorture() {
+    r_str!("gctorture(TRUE)").expect("gctorture(TRUE)");
+    let joined: Result<Vec<String>, _> = unsafe {
+        RCall::new("paste")
+            .arg_value(vec!["x".to_string(), "y".to_string()])
+            .arg_value(vec![1.5f64, 2.5])
+            .arg_value(vec![Some(3i32), None])
+            .named_value("sep", ":")
+            .eval_base_as()
+    };
+    r_str!("gctorture(FALSE)").expect("gctorture(FALSE)");
+    assert_eq!(joined.expect("paste() evaluates"), ["x:1.5:3", "y:2.5:NA"]);
+}
+
+/// `eval_as` evaluates in the environment given.
+fn test_eval_as_in_env() {
+    let env = fresh_env();
+    r_str!("twice <- function(x) x * 2", env = env.get()).expect("defining twice() works");
+    let doubled: Vec<f64> = unsafe {
+        RCall::new("twice")
+            .arg_value(vec![1.0f64, 21.0])
+            .eval_as(env.get())
+    }
+    .expect("twice() evaluates");
+    assert_eq!(doubled, [2.0, 42.0]);
+}
+
+/// An R error comes back as the caught condition, as from `eval`.
+fn test_eval_as_r_error() {
+    let err = unsafe { RCall::new("stop").arg_value("boom").eval_base_as::<i32>() }
+        .expect_err("stop() raises");
+    assert_eq!(err.message(), "boom");
+    assert!(err.inherits("simpleError"));
+}
+
+/// A result `T` can't read is a `simpleError` with the conversion's message
+/// and no call.
+fn test_eval_as_unreadable_result() {
+    let err = unsafe {
+        RCall::new("list")
+            .arg_value(1i32)
+            .eval_base_as::<Vec<f64>>()
+    }
+    .expect_err("a list is not a double vector");
+    assert!(!err.message().is_empty());
+    assert_eq!(err.classes(), ["simpleError", "error", "condition"]);
+    assert!(err.call().is_none());
+}
+
 /// A fresh child of the global environment, rooted for the caller.
 fn fresh_env() -> miniextendr_api::OwnedProtect {
     let env = r_str!("new.env()").expect("new.env() evaluates");

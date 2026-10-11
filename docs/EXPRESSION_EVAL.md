@@ -70,6 +70,30 @@ unsafe {
 }
 ```
 
+### Rust values as arguments, and reading the result
+
+`arg_value(value)` / `named_value(name, value)` convert a Rust value with
+`IntoR` and add it, and `eval_as::<T>(env)` / `eval_base_as::<T>()` evaluate
+and read the result with `TryFromSexp`:
+
+```rust
+let q: Vec<Option<f64>> = unsafe {
+    RCall::new("qt")
+        .arg_value(p)
+        .arg_value(df.to_vec())
+        .eval_as(stats.as_sexp())?
+};
+```
+
+Each converted value is rooted as it is added, and the result stays rooted
+while it is converted, so no SEXP is ever held unrooted in between. Converting
+the values first (`let p = p.into_sexp(); let df = df.into_sexp();`) would
+leave `p` unrooted while `df`, and `RCall::new`, allocate. Reading a result
+into an owned Rust value (`Vec<T>`, `String`, a struct) needs no root
+afterwards; a view type (`SEXP`, `List`, `DataFrame`) comes back unrooted, as
+from `eval()`. A result `T` can't read is an `Err` like an R error: a
+`simpleError` with the conversion's message and no call.
+
 ### Error Handling
 
 `eval()` returns `Result<SEXP, REvalError>`. An R error comes back as
@@ -134,7 +158,8 @@ is evaluated before the function sees it. `quoted_arg(value)` /
 ### GC Protection
 
 `RCall` roots the callable and every positional or named argument for the
-builder's lifetime, including freshly allocated inline arguments. Symbols are
+builder's lifetime, including freshly allocated inline arguments
+(`.arg(x.into_sexp())`, `.arg_value(x)`). Symbols are
 the exception: R never frees a symbol (`install()` links it into the symbol
 table, which the collector marks on every collection), so a symbol callable or
 argument takes no root. It also

@@ -19,7 +19,7 @@
 
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use miniextendr_api::condition::RConditionError;
+use miniextendr_api::condition::RCondition;
 use miniextendr_api::expression::RCall;
 use miniextendr_api::prelude::{List, OwnedProtect, SEXP, SexpExt};
 use miniextendr_api::{
@@ -214,7 +214,7 @@ pub fn lazy_dots_try_force(rest: LazyDots) -> SEXP {
 
 /// Extra arguments refused by an `mx_lazy` method, before they are
 /// evaluated.
-#[derive(Debug, RConditionError)]
+#[derive(Debug, RCondition)]
 #[condition(
     class = "mx_lazy_unsupported_args",
     message = "{generic}() on an mx_lazy takes no further arguments, got: {args}"

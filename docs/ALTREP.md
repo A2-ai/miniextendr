@@ -854,6 +854,55 @@ pub fn simple_vec_int(values: Vec<i32>) -> SEXP {
 }
 ```
 
+### Owned unsized strings
+
+`Box<str>`, `Rc<str>` and `Arc<str>` convert to/from character scalars.
+Their `Option` and `Vec<Option<...>>` forms preserve NA; the plain forms
+follow `String` and map incoming NA to an empty string. `Cow<str>` keeps its
+existing scalar conversion.
+
+`Altrep<Vec<Box<str>>>`, `Altrep<Vec<Rc<str>>>` and `Altrep<Vec<Arc<str>>>`,
+including optional elements, retain their string owners and create CHARSXPs on
+demand. R writes materialize the authoritative STRSXP cache. The UTF-8 bytes of a
+single `str` are not exposed as a mutable R character-vector buffer.
+
+### Shared slices: `Rc<[T]>` and `Arc<[T]>`
+
+`Altrep(Rc::<[i32]>::from(vec![1, 2, 3]))` and its `Arc` equivalent keep
+the shared owner in the R vector. Supported elements are `i32`, `f64`, `u8`,
+`Rcomplex`, `RLogical`, `bool` and `String`.
+
+Element and region reads use the shared allocation. A pointer to the whole
+buffer is different, because R may write through it:
+
+- `Dataptr_or_null` returns the buffer only when the vector owns it alone (one
+  strong reference, no weak ones). Otherwise R falls back to element and region
+  reads.
+- `Dataptr`, read-only included, calls `make_mut` first. If other `Rc`/`Arc`
+  handles share the allocation, **this copies the whole buffer**: any C code
+  that calls `DATAPTR_RO()`, `INTEGER()` or `REAL()` on the vector makes R's
+  copy, and the other handles keep the old allocation and never see R's writes.
+  A unique owner is used in place. The copy happens once; the read-only case
+  copies too, so that a pointer R already holds stays valid if R later asks to
+  write.
+- `Duplicate` shares an owner that is still shared, since no pointer to it has
+  been handed out. It copies a unique owner, which may have handed one out.
+  That also copies a unique owner that never did; no extra state is kept.
+
+`bool` and `String` vectors keep R's values in data2 (a logical vector, or the
+string element cache). `Duplicate` copies data2's current values, NA included;
+a string cache is copied slot by slot, and the copy computes the slots not yet
+read from its own owner. Native owners serialize their values and come back as
+the same class; once R has written to a `bool` or `String` vector, it is saved
+as an ordinary vector.
+
+The owner is only safe to share while R can't write through it. Don't clone or
+downgrade it through unsafe extraction (`altrep_extract_ref` /
+`altrep_extract_mut`) once R may hold its buffer: the Rust clone would see R's
+writes, and `Duplicate`, finding a shared owner, would give the new R vector
+the same buffer, so a write to one vector changes the other. An `Arc` doesn't
+make writing to that buffer from another thread safe either.
+
 ### `[T; N]` (Owned Fixed-Size Array)
 
 `Altrep([1_i32, 2, 3])` retains the array itself in an external pointer.
@@ -873,13 +922,14 @@ type; both `Altrep<Box<[i32]>>` and `Box<Altrep<[i32]>>` transfer the
 boxed slice without copying its allocation. The latter can be obtained by
 unsizing `Box::new(Altrep([1_i32, 2, 3]))`.
 
-`Altrep::into_boxed_inner` also preserves metadata for custom trailing DSTs
-and trait objects. Custom owners still supply their own ALTREP class and
-data traits; removing the marker does not erase their concrete storage policy.
-`AltrepExtract` permits an unsized view, while `AltrepSerialize` requires
-`Sized` only for its reconstruction method.
+`Altrep::into_boxed_inner` keeps the metadata of a custom trailing DST or a
+trait object too. Such an owner still needs its own ALTREP class and data
+traits. `AltrepExtract` accepts an unsized view. `AltrepSerialize` needs a
+sized type with a working `unserialize`, because a class that saves its state
+must be able to load it again. A type that can't rebuild itself leaves
+serialization to R, which saves an ordinary vector.
 
-A custom trailing DST can follow the same ownership split:
+A custom trailing DST works the same way:
 
 ```rust
 struct Tagged<T: ?Sized> {
@@ -891,49 +941,11 @@ let value: Box<Altrep<Tagged<[i32]>>> =
     Box::new(Altrep(Tagged { tag: 7, values: [1, 2, 3] }));
 ```
 
-Implement `TypedExternal`, the data traits and `RegisterAltrep` for
-`Box<Tagged<[i32]>>`. Its callbacks can delegate to the unsized view; an
-`AltrepExtract` implementation on `Tagged<[i32]>` can project through that
-boxed owner. The view must stay within the callback's rooted lifetime.
-See `miniextendr-api/tests/altrep_unsized.rs` for the complete example.
-
-### Owned unsized strings
-
-`Box<str>`, `Rc<str>` and `Arc<str>` convert to/from character scalars.
-Their `Option` and `Vec<Option<...>>` forms preserve NA; the plain forms
-follow `String` and map incoming NA to an empty string. `Cow<str>` keeps its
-existing scalar conversion.
-
-`Altrep<Vec<Box<str>>>`, `Altrep<Vec<Rc<str>>>` and `Altrep<Vec<Arc<str>>>`,
-including optional elements, retain their string owners and create CHARSXPs on
-demand. R writes materialize the authoritative STRSXP cache. The UTF-8 bytes of a
-single `str` are not exposed as a mutable R character-vector buffer.
-
-### Shared slices: `Rc<[T]>` and `Arc<[T]>`
-
-`Altrep(Rc::<[i32]>::from(vec![1, 2, 3]))` and its `Arc` equivalent
-retain the concrete shared owner. Supported elements are `i32`, `f64`,
-`u8`, `Rcomplex`, `RLogical`, `bool` and `String`.
-
-Element and region reads can share the original allocation. For native layouts,
-`Dataptr_or_null` only exposes an owner with one strong reference and no weak
-references. A full pointer request calls `make_mut`, even for read-only access:
-once published, the pointer must survive a later writable request. This detaches
-shared owners and disassociates weak handles before publishing any pointer.
-
-`Duplicate` shares owners that are still shared, and copies unique owners that
-might already have exposed a pointer. This deliberately also copies a unique
-owner that has not exposed a pointer; no extra exposure state is kept. R's default
-`DuplicateEX` handles attributes. Native writes update the retained Rust owner.
-
-`bool` and `String` use the regular R data2 buffer when materialized. Duplication
-copies that buffer's current values, including NA, rather than the original Rust
-values. Native owners serialize and restore their registered shared-slice class;
-a materialized R buffer uses ordinary-vector serialization, as other built-ins do.
-
-Unsafe extraction of a shared owner must not create new aliases or weak handles
-after publishing its buffer to R. In particular, an `Arc` does not make concurrent
-mutation of an R-exposed buffer safe.
+The sized `Box<Tagged<[i32]>>` is the owner: it implements `TypedExternal`,
+the data traits and `RegisterAltrep`. An `AltrepExtract` impl on
+`Tagged<[i32]>` gives the callbacks the unsized view, which is valid only
+while the R vector is. `miniextendr-api/tests/altrep_unsized.rs` has the
+whole example.
 
 ### `Box<[T]>` (Immutable Owned Slice)
 
@@ -1881,19 +1893,6 @@ impl OptionallyMaterialized {
 
 ---
 
-## String materialization and replacement
-
-For classes generated by `impl_altstring_from_data!` (including `Vec<String>`
-and `Vec<Option<String>>`), element reads consult Rust until full materialization.
-They do not allocate a vector-sized partial cache; repeated reads perform the
-string lookup again.
-
-A pointer request or `Set_elt` materializes the complete STRSXP into `data2`.
-That R buffer then supplies every read, including `NA_character_` replacements.
-`Dataptr_or_null` returns null before materialization and the existing pointer
-afterward. Serialization follows R's ordinary vector path once the R buffer is
-authoritative, preserving replacements instead of reading stale Rust strings.
-
 ## Native logical containers
 
 `Altrep<Vec<RLogical>>`, `Altrep<Box<[RLogical]>>` and
@@ -1947,6 +1946,18 @@ arbitrary growth or ring rearrangement.
 
 ## Iterator-Backed ALTREP
 
+miniextendr provides two iterator-backed ALTREP variants.
+
+The `*Data` types below are **data adaptors**: they implement only the
+data-level traits (`AltrepLen` + the matching `Alt*Data` trait) and cannot back
+a live R vector by themselves (they do not implement `RegisterAltrep`). To
+expose one to R, wrap it in a concrete struct deriving the matching
+`#[derive(Altrep*)]` with `#[altrep(manual)]` and delegate the data-trait
+methods to the inner adaptor — see the wrapper walkthrough in
+[SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md) for a complete example.
+
+### Constructing from any iterator
+
 `AltrepIteratorExt` is blanket-implemented for every `Iterator`. Its
 `into_altrep_data_exact()` constructor uses `ExactSizeIterator::len()`;
 `into_altrep_data(n)` declares a finite prefix without consuming the source.
@@ -1956,11 +1967,13 @@ arbitrary growth or ring rearrangement.
 includes integer, real, native logical and complex items, and excludes raw bytes.
 Local element types can select
 an existing coercing adapter or their own data adapter by implementing that trait.
+Because the item type picks the family, integer literals need a suffix
+(`0..20i32`).
 
 ```rust
 use miniextendr_api::{AltrepIteratorExt, AltIntegerData};
 
-let data = (0..20).map(|x| x * 2).into_altrep_data_exact();
+let data = (0..20i32).map(|x| x * 2).into_altrep_data_exact();
 assert_eq!(data.elt(3), 6);
 ```
 
@@ -1987,6 +2000,11 @@ provide stable borrowed `&str` storage. Native numeric/logical data caches
 only the prefix reached so far. None of these constructors registers an R class
 or supplies a source-restoration policy.
 
+A `rand_distr` sample iterator works the same way:
+`Normal::new(0.0, 1.0)?.sample_iter(rng).into_altrep_data(n)`. Its cache
+gives repeated reads of an index the same value. To stream samples with no
+fixed length instead, read them through a connection:
+[CONNECTIONS.md](CONNECTIONS.md#iterator-and-random-streams).
 
 The iterator data adaptors retain the concrete iterator type. A registered
 class can use its capabilities and choose its own duplication and serialization
@@ -1996,14 +2014,6 @@ the source depend on it.
 Serializing a fully evaluated prefix preserves values, but restoring those
 values does not reconstruct a lazy iterator. A class that needs to stay lazy
 across serialization must encode enough source state to reconstruct it.
-
-The `*Data` types below are **data adaptors**: they implement only the
-data-level traits (`AltrepLen` + the matching `Alt*Data` trait) and cannot back
-a live R vector by themselves (they do not implement `RegisterAltrep`). To
-expose one to R, wrap it in a concrete struct deriving the matching
-`#[derive(Altrep*)]` with `#[altrep(manual)]` and delegate the data-trait
-methods to the inner adaptor — see the wrapper walkthrough in
-[SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md) for a complete example.
 
 ### `IterState` (Prefix Caching)
 

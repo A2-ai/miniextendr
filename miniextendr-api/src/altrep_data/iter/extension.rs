@@ -29,9 +29,12 @@ pub trait AltrepIteratorItem: Sized {
 /// Borrowed iterators can be used as data adapters, but an R-owned class must own
 /// its source for the whole R lifetime.
 ///
+/// The item type picks the data family, so an unsuffixed integer literal can't
+/// fall back to `i32` here: write `0..6i32`, not `0..6`.
+///
 /// ```
 /// use miniextendr_api::{AltrepIteratorExt, AltIntegerData, AltrepLen};
-/// let data = (0..6).map(|x| x * 2).into_altrep_data_exact();
+/// let data = (0..6i32).map(|x| x * 2).into_altrep_data_exact();
 /// assert_eq!(data.len(), 6);
 /// assert_eq!(data.elt(2), 4);
 /// ```

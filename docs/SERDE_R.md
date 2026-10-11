@@ -404,7 +404,7 @@ type. For the same reason an empty sequence becomes `list()`, not
 `character(0)` or `numeric(0)`: serde hands the serializer no element type
 when there are no elements. Where a field must keep its R type when empty, use
 the `IntoR` conversion (no `serialize`) or, for condition data,
-`#[derive(RConditionError)]`; both give `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
+`#[derive(RCondition)]`; both give `Vec<String>` → `character(0)`. The `Err` arm of a `Result<T, E>` uses this to turn a serde-tagged error
 enum into a classed R condition; see
 [CONDITIONS.md](CONDITIONS.md#deriving-the-classes-from-a-serde-error-type).
 
@@ -505,9 +505,11 @@ to hold across intervening R allocations; it is not a convert-immediately view.
 (re-exported at the crate root and in the prelude), not in `serde`.
 
 For streaming `Result<T, E>` rows, `dispatch_to_dataframes` incrementally fills
-two serde builders and always returns `list(ok = <df>, err = <df>)`; customize
-the names with `DispatchNames`. For enums, `vec_to_dataframe_split` selects a
-per-variant list or collated frame via `SplitShape`.
+two serde builders and returns an owned, rooted `NamedListBuilder`. Its
+`IntoR` conversion always gives `list(ok = <df>, err = <df>)`; customize
+the names with `DispatchNames`. Keep the returned builder across further R
+allocations and return it directly from a `#[miniextendr]` function. For enums,
+`vec_to_dataframe_split` selects a per-variant list or collated frame via `SplitShape`.
 
 ## Error Handling
 
