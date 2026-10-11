@@ -2408,7 +2408,8 @@ pub fn r_ffi_checked(
 ///
 /// This allows newtype wrappers around R native types to work with `Vec<T>`,
 /// `&[T]` conversions and the `Coerce<R>` traits.
-/// The inner type must implement `RNativeType`.
+/// The inner type must implement `RNativeType`. Add `#[derive(IsNA)]`
+/// to forward missing-value detection when the inner type supports NA.
 ///
 /// # Supported Struct Forms
 ///
@@ -2547,6 +2548,45 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     expanded.into()
+}
+
+/// Derive `IsNA` for a native newtype by forwarding to its single field.
+///
+/// Supports tuple, named and generic newtypes that also implement
+/// `RNativeType`. The inner field must implement `IsNA`; existing where
+/// clauses are preserved. This derive is separate from `RNativeType`
+/// because raw `u8` storage has no NA representation.
+///
+/// ```
+/// use miniextendr_api::{IsNA, RNativeType};
+///
+/// #[repr(transparent)]
+/// #[derive(Clone, Copy, RNativeType, IsNA)]
+/// struct Temperature { celsius: f64 }
+///
+/// assert!(Temperature::R_NA.is_na());
+/// assert!(!Temperature { celsius: f64::NAN }.is_na());
+/// ```
+///
+/// A generic native wrapper supports raw bytes too, but its `IsNA` impl is
+/// available only when the inner type has NA:
+///
+/// ```compile_fail
+/// use miniextendr_api::{IsNA, RNativeType};
+///
+/// #[repr(transparent)]
+/// #[derive(Clone, Copy, RNativeType, IsNA)]
+/// struct Native<T: RNativeType>(T);
+///
+/// fn requires_na<T: IsNA>() {}
+/// requires_na::<Native<u8>>();
+/// ```
+#[proc_macro_derive(IsNA)]
+pub fn derive_is_na(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    newtype_derive::derive_is_na(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
 }
 
 /// Derive macro for implementing `TypedExternal` on a type.

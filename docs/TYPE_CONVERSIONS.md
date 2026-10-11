@@ -121,18 +121,14 @@ R's `NA_real_` is an IEEE 754 NaN whose low 32-bit word is 1954.
 **Critical:** This is different from regular `f64::NAN`:
 
 ```rust
-// These are DIFFERENT values
-let na = NA_REAL;           // R's NA
-let nan = f64::NAN;         // Regular IEEE NaN
+use miniextendr_api::{IsNA, RNativeType};
 
-// Inbound conversions detect NA the way R's `R_IsNA` does:
-// a NaN whose low word is 1954.
-fn is_na_real(value: f64) -> bool {
-    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == 1954
-}
+let na = f64::R_NA;
+let nan = f64::NAN;
 
-// Regular NaN check does NOT tell them apart
-value.is_nan()  // Returns true for both NA and NaN
+assert!(na.is_na());
+assert!(!nan.is_na());
+assert!(na.is_nan() && nan.is_nan());
 ```
 
 Only the low word is compared because arithmetic on `NA_real_` quiets the NaN:
@@ -142,6 +138,21 @@ reports it as `NA`. A bit-exact comparison against `NA_REAL` would read it as a
 plain NaN.
 
 **Implication:** When working with `f64` vectors, regular NaN values pass through unchanged. Only values R considers `NA` are treated as NA.
+
+`IsNA` is the native missing-value capability bound for `i32`, `f64`,
+`RLogical` and `Rcomplex`. Use `T: IsNA` for generic native NA handling
+and `T::R_NA` to construct a missing value. Raw `u8` has no NA and
+does not implement it. Types without an in-band NA use `Option<T>` at
+conversion boundaries.
+
+For a transparent native newtype, derive `RNativeType` and `IsNA`
+together to forward its missing-value check. Generic wrappers get the
+`IsNA` implementation only where their field implements it; a raw-byte
+instantiation remains usable as native storage.
+
+`IsNA` follows `R_IsNA`. R's `is.na()` / `anyNA()` and ALTREP
+`no_na` hints also count ordinary NaNs; their real/complex checks must
+continue to use `is_nan()`.
 
 ### String NA
 

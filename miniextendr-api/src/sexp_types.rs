@@ -1,6 +1,6 @@
 //! Core type vocabulary for R values: `SEXPTYPE`, `R_xlen_t`, `Rbyte`,
 //! `Rcomplex`, `RLogical`, `Rboolean`, `cetype_t`, `R_CFinalizer_t`, and
-//! the `RNativeType` marker trait + impls.
+//! the `RNativeType` and `IsNA` traits + impls.
 //!
 //! These types are the bridge between raw R FFI (in `crate::sys`) and the
 //! safe Rust API on `SEXP` (in `crate::sexp` and `crate::sexp_ext`).
@@ -146,6 +146,56 @@ pub trait RNativeType: Sized + Copy + 'static {
     fn elt(sexp: SEXP, i: isize) -> Self;
 }
 
+/// Native R elements with an actual NA representation.
+///
+/// This is the missing-value capability bound for native buffers. It excludes
+/// `u8`: R raw vectors have no NA, even though `RNativeType::R_NA` uses zero
+/// to fill absent raw positions. The existing `R_NA` constant constructs the
+/// sentinel; `is_na` recognizes it, including computed real NAs.
+///
+/// For floating point this follows R's `R_IsNA`, not R's `is.na()` or
+/// `anyNA()`: ordinary NaNs are not NA sentinels. In particular, ALTREP
+/// `no_na` hints must still reject ordinary NaNs too.
+///
+/// Rust values without native NA storage use `Option<T>` at conversion
+/// boundaries; no additional `NA<T>` wrapper is needed. Native newtypes
+/// can use `#[derive(IsNA)]` to forward this check to their single field.
+pub trait IsNA: RNativeType {
+    /// Whether this element is R's NA sentinel.
+    fn is_na(&self) -> bool;
+}
+
+impl IsNA for i32 {
+    #[inline]
+    fn is_na(&self) -> bool {
+        *self == Self::R_NA
+    }
+}
+
+impl IsNA for f64 {
+    #[inline]
+    fn is_na(&self) -> bool {
+        // R_IsNA compares only the low word of a NaN (1954). Arithmetic
+        // quiets NA_REAL from 0x7FF0_0000_0000_07A2 to 0x7FF8_0000_0000_07A2,
+        // which must still be NA; ordinary NaNs remain valid values.
+        self.is_nan() && (self.to_bits() & 0xFFFF_FFFF) == (Self::R_NA.to_bits() & 0xFFFF_FFFF)
+    }
+}
+
+impl IsNA for RLogical {
+    #[inline]
+    fn is_na(&self) -> bool {
+        RLogical::is_na(*self)
+    }
+}
+
+impl IsNA for Rcomplex {
+    #[inline]
+    fn is_na(&self) -> bool {
+        self.r.is_na() || self.i.is_na()
+    }
+}
+
 /// R's logical element type (the contents of a `LGLSXP` vector).
 ///
 /// In R, logical vectors are stored as `int` with possible values:
@@ -191,10 +241,10 @@ impl RLogical {
     /// Convert to Rust `Option<bool>` (`None` for `NA`).
     #[inline]
     pub const fn to_option_bool(self) -> Option<bool> {
-        match self.0 {
-            0 => Some(false),
-            i32::MIN => None,
-            _ => Some(true),
+        if self.is_na() {
+            None
+        } else {
+            Some(self.0 != 0)
         }
     }
 }

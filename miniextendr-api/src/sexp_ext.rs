@@ -4,9 +4,9 @@
 //! API surface most callers reach for; it's re-exported from
 //! [`crate::prelude`].
 
-use crate::SEXP;
 use crate::gc_protect::ProtectScope;
 use crate::sexp_types::{R_xlen_t, RNativeType, Rboolean, Rcomplex, SEXPTYPE};
+use crate::{IsNA, SEXP};
 // Pull in everything raw from sys. Type re-exports (SEXP, SEXPTYPE, etc.)
 // that `sys` itself promotes are identical items, so glob import is safe;
 // we still bring SEXP/SEXPTYPE in via crate root above so the file reads
@@ -776,32 +776,20 @@ impl SexpExt for SEXP {
     #[inline]
     fn as_logical(&self) -> Option<bool> {
         let v = unsafe { Rf_asLogical(*self) };
-        if v == crate::altrep_traits::NA_LOGICAL {
-            None
-        } else {
-            Some(v != 0)
-        }
+        if v.is_na() { None } else { Some(v != 0) }
     }
 
     #[inline]
     fn as_integer(&self) -> Option<i32> {
         let v = unsafe { Rf_asInteger(*self) };
-        if v == crate::altrep_traits::NA_INTEGER {
-            None
-        } else {
-            Some(v)
-        }
+        if v.is_na() { None } else { Some(v) }
     }
 
     #[inline]
     fn as_real(&self) -> Option<f64> {
         let v = unsafe { Rf_asReal(*self) };
         // `R_IsNA`: a computed NA is `None` too; any other NaN is a value.
-        if crate::from_r::is_na_real(v) {
-            None
-        } else {
-            Some(v)
-        }
+        if v.is_na() { None } else { Some(v) }
     }
 
     #[inline]

@@ -233,8 +233,6 @@ pub use miniextendr_macros::__mx_trait_impl_expand;
 #[doc(inline)]
 pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]
-pub use miniextendr_macros::RNativeType;
-#[doc(inline)]
 pub use miniextendr_macros::impl_typed_external;
 #[doc(inline)]
 pub use miniextendr_macros::list;
@@ -248,6 +246,8 @@ pub use miniextendr_macros::r_ffi_checked;
 pub use miniextendr_macros::typed_dataframe;
 #[doc(inline)]
 pub use miniextendr_macros::typed_list;
+#[doc(inline)]
+pub use miniextendr_macros::{IsNA, RNativeType};
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
 #[cfg(feature = "vctrs")]
@@ -308,7 +308,8 @@ pub mod sys;
 pub use sexp::{SEXP, SEXPREC};
 pub use sexp_ext::SexpExt;
 pub use sexp_types::{
-    R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE, cetype_t,
+    IsNA, R_CFinalizer_t, R_xlen_t, RLogical, RNativeType, Rboolean, Rbyte, Rcomplex, SEXPTYPE,
+    cetype_t,
 };
 
 /// Automatic registration internals.
@@ -716,8 +717,6 @@ pub use expression::{RCall, REnv, REvalError, RSymbol, r_eval_str, r_eval_str_gl
 
 // S4 slot access and class checking helpers
 pub mod s4_helpers;
-
-// Note: RNativeType is pub(crate), imported directly in modules that need it
 
 pub mod backtrace;
 

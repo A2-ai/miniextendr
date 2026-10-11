@@ -9,12 +9,12 @@
 //! - [`Logical`] — three-valued logical (TRUE/FALSE/NA)
 //! - [`fill_region`] — helper for `get_region` implementations
 
-use crate::SEXP;
 use crate::altrep_traits::{
     KNOWN_UNSORTED, SORTED_DECR, SORTED_DECR_NA_1ST, SORTED_INCR, SORTED_INCR_NA_1ST,
     UNKNOWN_SORTEDNESS,
 };
 use crate::sys::{self};
+use crate::{IsNA, SEXP};
 
 /// Helper for ALTREP `get_region` implementations.
 ///
@@ -97,7 +97,7 @@ impl From<i32> for Logical {
     fn from(i: i32) -> Self {
         match i {
             0 => Logical::False,
-            i32::MIN => Logical::Na,
+            v if v.is_na() => Logical::Na,
             _ => Logical::True,
         }
     }

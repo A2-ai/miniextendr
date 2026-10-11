@@ -95,9 +95,9 @@
 //! - [`misc_tests`]: Miscellaneous test functions
 
 use miniextendr_api::Altrep;
-use miniextendr_api::IntoR;
 use miniextendr_api::miniextendr;
 use miniextendr_api::prelude::SEXP;
+use miniextendr_api::{IntoR, IsNA};
 
 // Package initialization — generates R_init_miniextendr() entry point.
 // Replaces the previous entrypoint.c with a pure-Rust implementation.
@@ -406,11 +406,11 @@ impl AltIntegerData for ConstantIntData {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(self.value != i32::MIN) // NA is i32::MIN
+        Some(!self.value.is_na())
     }
 
     fn sum(&self, _na_rm: bool) -> Option<i64> {
-        if self.value == i32::MIN {
+        if self.value.is_na() {
             // All elements are NA
             if _na_rm {
                 Some(0) // sum of empty set after removing NAs
@@ -587,7 +587,7 @@ impl AltIntegerData for LazyIntSeqData {
         // 2. Saturating underflow produces i32::MIN
         //
         // Check first element
-        if self.start == i32::MIN {
+        if self.start.is_na() {
             return Some(false);
         }
 
@@ -597,7 +597,7 @@ impl AltIntegerData for LazyIntSeqData {
 
         // Check last element (computed via elt to catch saturation)
         let last = self.elt(self.len - 1);
-        if last == i32::MIN {
+        if last.is_na() {
             return Some(false);
         }
 
@@ -1094,14 +1094,13 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
     }
 
     fn unserialize(state: SEXP) -> Option<Self> {
-        const NA_LOGICAL: i32 = i32::MIN;
         {
             use miniextendr_api::prelude::SexpExt;
             let n = state.len();
             let mut data = Vec::with_capacity(n);
             for i in 0..n {
                 let raw = state.logical_elt(i as isize);
-                let v = if raw == NA_LOGICAL {
+                let v = if raw.is_na() {
                     Logical::Na
                 } else if raw != 0 {
                     Logical::True

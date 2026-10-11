@@ -1906,7 +1906,10 @@ methods to the inner adaptor — see the wrapper walkthrough in
 `into_altrep_data_exact()` constructor uses `ExactSizeIterator::len()`;
 `into_altrep_data(n)` declares a finite prefix without consuming the source.
 `AltrepIteratorItem` selects the data family for `i32`, `f64`, `u8`,
-`Rcomplex`, `RLogical`, `bool` and `String`. Local element types can select
+`Rcomplex`, `RLogical`, `bool` and `String`. `Option<T>` also works when
+`T: IsNA + AltrepIteratorItem`: missing items become `T::R_NA` lazily. This
+includes integer, real, native logical and complex items, and excludes raw bytes.
+Local element types can select
 an existing coercing adapter or their own data adapter by implementing that trait.
 Because the item type picks the family, integer literals need a suffix
 (`0..20i32`).

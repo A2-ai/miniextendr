@@ -1,19 +1,19 @@
 //! Tests for [`Coerce`], [`TryCoerce`], and [`RNativeType`] traits.
 
-use miniextendr_api::{Coerce, CoerceError, RNativeType, TryCoerce, miniextendr};
+use miniextendr_api::{Coerce, CoerceError, IsNA, RNativeType, TryCoerce, miniextendr};
 
 // Test 6: `RNativeType` derive macro - newtype wrappers (both tuple and named field)
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType)]
+#[derive(Clone, Copy, RNativeType, IsNA)]
 struct UserId(i32); // Tuple struct
 
 #[allow(dead_code)] // Demonstrates RNativeType derive on pub tuple struct
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType)]
+#[derive(Clone, Copy, RNativeType, IsNA)]
 pub struct Score(pub f64); // Tuple struct
 
 #[repr(transparent)]
-#[derive(Clone, Copy, RNativeType)]
+#[derive(Clone, Copy, RNativeType, IsNA)]
 struct Temperature {
     celsius: f64,
 } // Named single-field struct

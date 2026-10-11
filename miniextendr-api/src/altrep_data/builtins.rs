@@ -12,8 +12,7 @@
 use std::borrow::Cow;
 use std::ops::Range;
 
-use crate::from_r::is_na_real;
-use crate::{RLogical, Rcomplex, SEXP};
+use crate::{IsNA, RLogical, Rcomplex, SEXP};
 
 use super::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
@@ -173,14 +172,14 @@ macro_rules! impl_altinteger_slice {
 
             fn no_na(&self) -> Option<bool> {
                 let s: &[i32] = self;
-                Some(!s.contains(&i32::MIN))
+                Some(!s.iter().any(IsNA::is_na))
             }
 
             fn sum(&self, na_rm: bool) -> Option<i64> {
                 let s: &[i32] = self;
                 let mut sum: i64 = 0;
                 for &x in s.iter() {
-                    if x == i32::MIN {
+                    if x.is_na() {
                         if !na_rm {
                             return None; // NA propagates
                         }
@@ -196,7 +195,7 @@ macro_rules! impl_altinteger_slice {
                 let mut min = i32::MAX;
                 let mut found = false;
                 for &x in s.iter() {
-                    if x == i32::MIN {
+                    if x.is_na() {
                         if !na_rm {
                             return None;
                         }
@@ -213,7 +212,7 @@ macro_rules! impl_altinteger_slice {
                 let mut max = i32::MIN + 1; // i32::MIN is the NA sentinel
                 let mut found = false;
                 for &x in s.iter() {
-                    if x == i32::MIN {
+                    if x.is_na() {
                         if !na_rm {
                             return None;
                         }
@@ -255,7 +254,7 @@ fn real_slice_sum(s: &[f64], na_rm: bool) -> f64 {
             if na_rm {
                 continue;
             }
-            if is_na_real(x) {
+            if x.is_na() {
                 return x;
             }
             nan = true;
@@ -281,7 +280,7 @@ fn real_slice_extreme(s: &[f64], na_rm: bool, pick: fn(f64, f64) -> f64) -> Opti
             if na_rm {
                 continue;
             }
-            if is_na_real(x) {
+            if x.is_na() {
                 return Some(x);
             }
             nan = true;
@@ -432,7 +431,7 @@ macro_rules! impl_altlogical_native_slice {
 
             fn no_na(&self) -> Option<bool> {
                 let values: &[RLogical] = self;
-                Some(!values.contains(&RLogical::NA))
+                Some(!values.iter().any(IsNA::is_na))
             }
         }
     };
@@ -677,7 +676,7 @@ impl AltIntegerData for Range<i32> {
         // i32::MIN is NA_INTEGER in R. Check if the range contains it.
         // Range is [start, end), so i32::MIN is included iff start <= i32::MIN < end
         // Since start is the smallest value, we just check if start == i32::MIN
-        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        let contains_na = self.start.is_na() && self.end > i32::MIN;
         Some(!contains_na)
     }
 
@@ -688,7 +687,7 @@ impl AltIntegerData for Range<i32> {
         }
 
         // Check if range contains NA (i32::MIN)
-        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        let contains_na = self.start.is_na() && self.end > i32::MIN;
         if contains_na && !na_rm {
             return None; // NA propagates
         }
@@ -717,7 +716,7 @@ impl AltIntegerData for Range<i32> {
         }
 
         // Check if first element is NA
-        if self.start == i32::MIN {
+        if self.start.is_na() {
             if na_rm {
                 // Skip NA, return second element if it exists
                 if self.end > self.start + 1 {
@@ -740,7 +739,7 @@ impl AltIntegerData for Range<i32> {
 
         // For increasing range, max is end-1 (last element)
         // Check if range contains NA (first element)
-        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        let contains_na = self.start.is_na() && self.end > i32::MIN;
         if contains_na && !na_rm {
             return None; // NA propagates
         }
@@ -1013,7 +1012,7 @@ impl<const N: usize> AltIntegerData for [i32; N] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.contains(&i32::MIN))
+        Some(!self.iter().any(IsNA::is_na))
     }
 }
 
@@ -1378,7 +1377,7 @@ mod tests {
     fn vec_f64_sum_computed_na() {
         let v: Vec<f64> = vec![1.0, COMPUTED_NA, 3.0];
         let na = AltRealData::sum(&v, false).expect("sum is always computed");
-        assert!(is_na_real(na), "{:#x}", na.to_bits());
+        assert!(na.is_na(), "{:#x}", na.to_bits());
         assert_eq!(AltRealData::sum(&v, true), Some(4.0));
     }
 
@@ -1396,14 +1395,14 @@ mod tests {
                 AltRealData::sum(&v, false),
             ] {
                 let value = extreme.expect("missing values give a result");
-                assert!(is_na_real(value), "{v:?} gave {:#x}", value.to_bits());
+                assert!(value.is_na(), "{v:?} gave {:#x}", value.to_bits());
             }
             assert_eq!(AltRealData::min(&v, true), Some(1.0));
             assert_eq!(AltRealData::max(&v, true), Some(1.0));
         }
         let nan_only = vec![3.0, f64::NAN, 1.0];
         let min = AltRealData::min(&nan_only, false).expect("NaN gives a result");
-        assert!(min.is_nan() && !is_na_real(min));
+        assert!(min.is_nan() && !min.is_na());
         assert_eq!(AltRealData::min(&nan_only, true), Some(1.0));
         assert_eq!(AltRealData::max(&nan_only, true), Some(3.0));
         let all_missing = vec![NA_REAL, f64::NAN];

@@ -79,3 +79,13 @@ iterator_item!(crate::Rcomplex => IterComplexData);
 iterator_item!(crate::RLogical => IterRLogicalData);
 iterator_item!(bool => IterLogicalData);
 iterator_item!(String => IterStringData);
+
+// IsNA excludes raw bytes: None must not silently become a real zero byte.
+impl<T: crate::IsNA + AltrepIteratorItem> AltrepIteratorItem for Option<T> {
+    type Data<I: Iterator<Item = Self>> = T::Data<std::iter::Map<I, fn(Option<T>) -> T>>;
+
+    fn into_data<I: Iterator<Item = Self>>(iter: I, len: usize) -> Self::Data<I> {
+        let native: fn(Option<T>) -> T = |value| value.unwrap_or(T::R_NA);
+        T::into_data(iter.map(native), len)
+    }
+}

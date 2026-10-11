@@ -65,7 +65,7 @@ pub use bitflags::Flags;
 use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 use std::fmt;
 use std::ops::{BitAnd, BitOr, BitXor, Deref, Not};
 
@@ -199,7 +199,7 @@ where
         }
 
         let int_val = sexp.integer_elt(0);
-        if int_val == NA_INTEGER {
+        if int_val.is_na() {
             return Err(SexpError::InvalidValue(
                 "NA not allowed for bitflags".to_string(),
             ));
@@ -247,7 +247,7 @@ where
         }
 
         let int_val = sexp.integer_elt(0);
-        if int_val == NA_INTEGER {
+        if int_val.is_na() {
             return Ok(None);
         }
 
@@ -312,7 +312,7 @@ where
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         read_flags(sexp, |int_val| {
-            if int_val == NA_INTEGER {
+            if int_val.is_na() {
                 return Err("NA is not allowed".to_string());
             }
             flags_elt(int_val)
@@ -329,7 +329,7 @@ where
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         read_flags(sexp, |int_val| {
-            if int_val == NA_INTEGER {
+            if int_val.is_na() {
                 return Ok(None);
             }
             flags_elt(int_val).map(Some)

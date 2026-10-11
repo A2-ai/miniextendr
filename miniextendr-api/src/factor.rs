@@ -34,7 +34,7 @@ use crate::from_r::{
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use crate::sys::Rf_allocVector;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 
 // region: Cached "factor" class STRSXP
 
@@ -150,9 +150,10 @@ pub fn build_factor_with_levels(indices: &[i32], level_names: &[&str]) -> SEXP {
 /// # Example
 ///
 /// ```ignore
+/// use miniextendr_api::IsNA;
 /// let factor = Factor::try_new(sexp)?;
 /// for &idx in factor.iter() {
-///     if idx == NA_INTEGER {
+///     if idx.is_na() {
 ///         println!("NA");
 ///     } else {
 ///         println!("level index: {}", idx);
@@ -420,7 +421,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
     }
 
     let idx = sexp.integer_elt(0);
-    if idx == NA_INTEGER {
+    if idx.is_na() {
         return Err(SexpNaError {
             sexp_type: SEXPTYPE::INTSXP,
         }
@@ -436,7 +437,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
     read_factor_codes(sexp, |idx| {
-        if idx == NA_INTEGER {
+        if idx.is_na() {
             return Err("NA is not allowed".to_string());
         }
         T::from_level_index(idx).ok_or_else(|| code_not_a_level(idx))
@@ -450,7 +451,7 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 ) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::CHOICES)?;
     read_factor_codes(sexp, |idx| {
-        if idx == NA_INTEGER {
+        if idx.is_na() {
             return Ok(None);
         }
         T::from_level_index(idx)
@@ -471,7 +472,7 @@ pub fn unit_factor_option_vec_from_sexp<T: UnitEnumFactor>(
 ) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::FACTOR_LEVELS)?;
     read_factor_codes(sexp, |idx| {
-        if idx == NA_INTEGER {
+        if idx.is_na() {
             return Ok(None);
         }
         T::from_factor_index(idx)

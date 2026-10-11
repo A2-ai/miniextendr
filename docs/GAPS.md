@@ -527,7 +527,7 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#coercion-system) for the user-faci
 
 ### 5.2 NA Value Handling
 
-**Location:** `miniextendr-api/src/from_r.rs:28-36`
+**Location:** `IsNA` in `miniextendr-api/src/sexp_types.rs`
 
 **NA constants:**
 | Type | NA Value | Notes |
@@ -538,14 +538,10 @@ See [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md#coercion-system) for the user-faci
 
 **Critical distinction - NA_REAL vs NaN:**
 ```rust
-// These are DIFFERENT values
-let na = NA_REAL;           // R's NA (NaN with low word 1954)
-let nan = f64::NAN;         // Regular IEEE NaN
+use miniextendr_api::{IsNA, RNativeType};
 
-// Inbound conversions detect NA as R's `R_IsNA` does
-fn is_na_real(value: f64) -> bool {
-    value.is_nan() && (value.to_bits() & 0xFFFF_FFFF) == 1954
-}
+assert!(f64::R_NA.is_na());
+assert!(!f64::NAN.is_na());
 ```
 
 Regular `f64::NAN` values are preserved as valid data. Only values R considers NA are treated as NA, including computed ones: `NA_real_ * 1` has bits `0x7FF80000000007A2` (the NaN is quieted) and still reads as NA.
