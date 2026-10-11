@@ -2020,6 +2020,53 @@ pub fn sparse_iter_int_squares(n: i32) -> SEXP {
     data.into_sexp()
 }
 
+/// Create a sparse integer iterator ALTREP whose source ends early.
+///
+/// The source yields `1..=produced` but the vector declares `len` elements,
+/// so the elements past the source's end read as NA.
+/// @rdname sparse_altrep
+/// @param produced Number of values the source yields before it ends.
+/// @param len Declared vector length.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn sparse_iter_int_short(produced: i32, len: i32) -> SEXP {
+    let iter: BoxedIntIter = Box::new(1..=produced);
+    let data = SparseIntIterData {
+        inner: SparseIterIntData::from_iter(iter, usize::try_from(len).unwrap_or(0)),
+    };
+    data.into_sexp()
+}
+
+/// Create a sparse integer iterator ALTREP over a source that is not fused.
+///
+/// The source yields `1..=produced`, then ends once, then yields 100, 101, ...
+/// forever. The vector treats the first end as final, so it never reads the
+/// values after it.
+/// @rdname sparse_altrep
+/// @param produced Number of values the source yields before it ends.
+/// @param len Declared vector length.
+/// @return An ALTREP integer vector.
+/// @export
+#[miniextendr]
+pub fn sparse_iter_int_resuming(produced: i32, len: i32) -> SEXP {
+    let mut next = 1;
+    let mut ended = false;
+    let iter: BoxedIntIter = Box::new(std::iter::from_fn(move || {
+        if next > produced && !ended {
+            ended = true;
+            next = 100;
+            return None;
+        }
+        next += 1;
+        Some(next - 1)
+    }));
+    let data = SparseIntIterData {
+        inner: SparseIterIntData::from_iter(iter, usize::try_from(len).unwrap_or(0)),
+    };
+    data.into_sexp()
+}
+
 /// Type alias for boxed iterator producing f64
 type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
 
