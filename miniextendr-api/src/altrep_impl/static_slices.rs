@@ -375,7 +375,7 @@ impl crate::altrep_traits::AltString for &'static [String] {
 
     fn no_na(x: crate::SEXP) -> i32 {
         // R may have written NA into the cache.
-        if unsafe { crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+        if unsafe { crate::altrep_data::altrep_values_written(x) } {
             return 0;
         }
         let data = unsafe {
@@ -419,7 +419,7 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
 
     fn no_na(x: crate::SEXP) -> i32 {
         // R may have written NA into the cache.
-        if unsafe { crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+        if unsafe { crate::altrep_data::altrep_values_written(x) } {
             return 0;
         }
         let data = unsafe {

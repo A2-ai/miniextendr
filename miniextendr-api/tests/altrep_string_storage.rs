@@ -4,7 +4,8 @@ mod r_test_utils;
 use std::cell::Cell;
 
 use miniextendr_api::altrep_data::{
-    AltStringData, AltrepExtract, AltrepExtractSubset, AltrepLen, materialized_altrep_data2,
+    AltStringData, AltrepExtract, AltrepExtractSubset, AltrepLen, altrep_values_written,
+    materialized_altrep_data2,
 };
 use miniextendr_api::altrep_traits::{AltString, AltVec, Altrep};
 use miniextendr_api::{IntoR, OwnedProtect, SEXP, SexpExt, TryFromSexp};
@@ -159,55 +160,114 @@ fn string_replacement_preserves_na_and_serializes_current_values() {
     });
 }
 
+#[test]
+fn reads_keep_the_rust_answers_until_a_write() {
+    r_test_utils::with_r_thread(|| {
+        type Data = Vec<Option<String>>;
+        let x = unsafe {
+            OwnedProtect::new(
+                miniextendr_api::Altrep(vec![Some("a".to_owned()), Some("b".to_owned())])
+                    .into_sexp(),
+            )
+        };
+
+        // Reads fill the cache, but its values are still the Rust data's.
+        let _ = <Data as AltString>::elt(x.get(), 0);
+        let _ = <Data as AltVec>::dataptr(x.get(), false);
+        assert!(unsafe { materialized_altrep_data2(x.get()) }.is_some());
+        assert!(!unsafe { altrep_values_written(x.get()) });
+        assert_eq!(<Data as AltString>::no_na(x.get()), 1);
+        assert!(!<Data as Altrep>::serialized_state(x.get()).is_null_ptr());
+
+        // A writable Dataptr hands R a pointer it may store through.
+        let _ = <Data as AltVec>::dataptr(x.get(), true);
+        assert!(unsafe { altrep_values_written(x.get()) });
+        assert_eq!(<Data as AltString>::no_na(x.get()), 0);
+        assert!(<Data as Altrep>::serialized_state(x.get()).is_null_ptr());
+    });
+}
+
 #[derive(miniextendr_api::AltrepString)]
 #[altrep(manual, subset, class = "StringSubsetAudit")]
-pub struct SubsetStrings(Vec<String>);
+pub struct SubsetStrings {
+    values: Vec<String>,
+    subsets: Cell<usize>,
+}
 
 impl AltrepLen for SubsetStrings {
     fn len(&self) -> usize {
-        self.0.len()
+        self.values.len()
     }
 }
 
 impl AltStringData for SubsetStrings {
     fn elt(&self, i: usize) -> Option<&str> {
-        Some(&self.0[i])
+        Some(&self.values[i])
     }
 }
 
 impl AltrepExtractSubset for SubsetStrings {
     fn extract_subset(&self, indices: &[i32]) -> Option<SEXP> {
+        self.subsets.set(self.subsets.get() + 1);
         let picked: Vec<String> = indices
             .iter()
-            .map(|&i| self.0[usize::try_from(i - 1).unwrap()].clone())
+            .map(|&i| self.values[usize::try_from(i - 1).unwrap()].clone())
             .collect();
         Some(picked.into_sexp())
     }
 }
 
+fn subset_strings(values: &[&str]) -> OwnedProtect {
+    unsafe {
+        OwnedProtect::new(
+            SubsetStrings {
+                values: values.iter().map(|&v| v.to_owned()).collect(),
+                subsets: Cell::new(0),
+            }
+            .into_sexp(),
+        )
+    }
+}
+
+fn subset(x: SEXP, indices: Vec<i32>) -> Vec<String> {
+    use miniextendr_api::expression::RCall;
+    let indices = unsafe { OwnedProtect::new(indices.into_sexp()) };
+    let result = unsafe {
+        OwnedProtect::new(
+            RCall::new("[")
+                .arg(x)
+                .arg(indices.get())
+                .eval_base()
+                .unwrap(),
+        )
+    };
+    Vec::<String>::try_from_sexp(result.get()).unwrap()
+}
+
+#[test]
+fn a_read_only_vector_keeps_its_own_subset() {
+    r_test_utils::with_r_thread(|| {
+        let x = subset_strings(&["a", "b"]);
+        let data = unsafe { <SubsetStrings as AltrepExtract>::altrep_extract_ref(x.get()) };
+        // A read fills the cache; the Rust data is still current.
+        let _ = <SubsetStrings as AltString>::elt(x.get(), 0);
+        assert!(unsafe { materialized_altrep_data2(x.get()) }.is_some());
+
+        assert_eq!(subset(x.get(), vec![2, 1]), ["b", "a"]);
+        assert_eq!(data.subsets.get(), 1);
+    });
+}
+
 #[test]
 fn a_subset_after_a_write_reads_the_written_value() {
     r_test_utils::with_r_thread(|| {
-        let x = unsafe {
-            OwnedProtect::new(SubsetStrings(vec!["a".to_owned(), "b".to_owned()]).into_sexp())
-        };
+        let x = subset_strings(&["a", "b"]);
+        let data = unsafe { <SubsetStrings as AltrepExtract>::altrep_extract_ref(x.get()) };
         let replacement = unsafe { OwnedProtect::new(SEXP::charsxp("z")) };
         <SubsetStrings as AltString>::set_elt(x.get(), 0, replacement.get());
 
-        use miniextendr_api::expression::RCall;
-        let indices = unsafe { OwnedProtect::new(vec![1i32, 2].into_sexp()) };
-        let result = unsafe {
-            OwnedProtect::new(
-                RCall::new("[")
-                    .arg(x.get())
-                    .arg(indices.get())
-                    .eval_base()
-                    .unwrap(),
-            )
-        };
-        assert_eq!(
-            Vec::<String>::try_from_sexp(result.get()).unwrap(),
-            ["z", "b"]
-        );
+        // The class's own subset would read the stale Rust value; R subsets.
+        assert_eq!(subset(x.get(), vec![1, 2]), ["z", "b"]);
+        assert_eq!(data.subsets.get(), 0);
     });
 }

@@ -136,7 +136,9 @@ where
     }
 }
 
-/// Fill every cache slot and return the cache, for `Dataptr`.
+/// `Dataptr` for bridge-generated string ALTREPs: fill every cache slot and
+/// return the cache's pointer. A writable request marks the cache written
+/// first (see [`altstring_cache_written`]), since R writes through it.
 ///
 /// A panic part-way leaves the filled slots cached; a retry fills the rest.
 ///
@@ -144,7 +146,7 @@ where
 ///
 /// As for [`altstring_elt`].
 #[doc(hidden)]
-pub unsafe fn altstring_fill<T>(x: crate::SEXP) -> crate::SEXP
+pub unsafe fn altstring_dataptr<T>(x: crate::SEXP, writable: bool) -> *mut core::ffi::c_void
 where
     T: crate::altrep_traits::Altrep
         + crate::altrep_data::AltrepExtract
@@ -157,7 +159,10 @@ where
         for i in 0..n {
             altstring_cached_elt::<T>(x, cache, i);
         }
-        cache
+        if writable {
+            mark_altstring_written(cache);
+        }
+        crate::sys::DATAPTR_RO_unchecked(cache).cast_mut()
     }
 }
 
@@ -178,7 +183,42 @@ where
         // live across the cache allocation.
         let v = crate::OwnedProtect::new(v);
         let cache = altstring_cache(x, T::length(x));
+        mark_altstring_written(cache);
         cache.set_string_elt(i, v.get());
+    }
+}
+
+/// Whether R has stored a value into a string ALTREP's cache.
+///
+/// Reads fill the cache too, with values computed from the Rust data, so a
+/// cache alone doesn't mean the Rust data is stale. `Set_elt` and a writable
+/// `Dataptr` mark it before R can store into it, so the mark errs towards
+/// written.
+///
+/// # Safety
+///
+/// `cache` is a string ALTREP's data2 cache, on R's main thread.
+pub(crate) unsafe fn altstring_cache_written(cache: crate::SEXP) -> bool {
+    use crate::SexpExt;
+
+    !unsafe { cache.get_attr_unchecked(crate::cached_class::altstring_written_symbol()) }.is_nil()
+}
+
+/// Mark a string ALTREP's cache written; see [`altstring_cache_written`].
+///
+/// # Safety
+///
+/// As for [`altstring_cache_written`].
+unsafe fn mark_altstring_written(cache: crate::SEXP) {
+    use crate::SexpExt;
+
+    unsafe {
+        if !altstring_cache_written(cache) {
+            // The symbol is its own value: a symbol is never collected, so
+            // setting it allocates nothing but the attribute's cell.
+            let symbol = crate::cached_class::altstring_written_symbol();
+            cache.set_attr_unchecked(symbol, symbol);
+        }
     }
 }
 // endregion

@@ -244,7 +244,7 @@ pub trait AltrepDataptr<T> {
 /// Return the bridge's R vector cache, if materialization has started.
 ///
 /// Bridge-generated classes reserve data2 for a vector of the ALTREP's type.
-/// Once present, it is authoritative: R may have written through DATAPTR.
+/// Once present, its values are the vector's: read them, not the Rust data.
 /// A string cache can be partial: slots not computed yet are C `NULL`, so
 /// read it through the string Elt callback, never directly.
 ///
@@ -257,6 +257,30 @@ pub unsafe fn materialized_altrep_data2(x: SEXP) -> Option<SEXP> {
 
     let data2 = unsafe { AltrepSexpExt::altrep_data2_raw(&x) };
     (!data2.is_null_ptr() && data2.type_of() == x.type_of()).then_some(data2)
+}
+
+/// Whether R may have changed the vector's values since it was built.
+///
+/// Until then the Rust data is current, so a class may answer from it:
+/// serialize its state, subset it, report its sortedness, NAs, sum or range.
+/// A numeric cache exists only once `Dataptr` handed R a pointer it may
+/// write through, so for those families that is until data2 exists. A string
+/// cache also fills on reads, so a string ALTREP counts as written only once
+/// `Set_elt` or a writable `Dataptr` has marked its cache.
+///
+/// # Safety
+/// As for [`materialized_altrep_data2`].
+#[doc(hidden)]
+pub unsafe fn altrep_values_written(x: SEXP) -> bool {
+    use crate::SexpExt;
+
+    match unsafe { materialized_altrep_data2(x) } {
+        None => false,
+        Some(cache) if cache.type_of() == crate::SEXPTYPE::STRSXP => unsafe {
+            crate::altrep_impl::altstring_cache_written(cache)
+        },
+        Some(_) => true,
+    }
 }
 
 /// Read a region from a materialized atomic vector, without consulting data1.

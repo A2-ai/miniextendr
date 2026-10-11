@@ -154,7 +154,7 @@ macro_rules! __impl_altrep_base {
             fn serialized_state(x: $crate::SEXP) -> $crate::SEXP {
                 // data1 can be stale after writes to the R cache. C NULL asks R
                 // to serialize the current vector through its ordinary path.
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -308,11 +308,8 @@ macro_rules! __impl_altvec_string_dataptr {
         impl<$($gen)*> $crate::altrep_traits::AltVec for $ty where $($whr)* {
             const HAS_DATAPTR: bool = true;
 
-            fn dataptr(x: $crate::SEXP, _writable: bool) -> *mut core::ffi::c_void {
-                unsafe {
-                    let cache = $crate::altrep_impl::altstring_fill::<$ty>(x);
-                    $crate::sys::DATAPTR_RO(cache).cast_mut()
-                }
+            fn dataptr(x: $crate::SEXP, writable: bool) -> *mut core::ffi::c_void {
+                unsafe { $crate::altrep_impl::altstring_dataptr::<$ty>(x, writable) }
             }
 
             const HAS_DATAPTR_OR_NULL: bool = true;
@@ -426,7 +423,7 @@ macro_rules! __impl_altvec_extract_subset {
 
                 // Once data2 exists R may have written to it (#1928), so the
                 // Rust data can be stale: let R subset the current vector.
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
 
@@ -518,7 +515,7 @@ macro_rules! __impl_alt_is_sorted {
         const HAS_IS_SORTED: bool = true;
 
         fn is_sorted(x: $crate::SEXP) -> i32 {
-            if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                 return $crate::altrep_traits::UNKNOWN_SORTEDNESS;
             }
             let data =
@@ -541,7 +538,7 @@ macro_rules! __impl_alt_no_na {
         const HAS_NO_NA: bool = true;
 
         fn no_na(x: $crate::SEXP) -> i32 {
-            if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+            if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                 return 0;
             }
             let data =
@@ -739,7 +736,7 @@ macro_rules! __impl_altinteger_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -759,7 +756,7 @@ macro_rules! __impl_altinteger_methods {
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -772,7 +769,7 @@ macro_rules! __impl_altinteger_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -848,7 +845,7 @@ macro_rules! __impl_altreal_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -861,7 +858,7 @@ macro_rules! __impl_altreal_methods {
             const HAS_MIN: bool = true;
 
             fn min(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -874,7 +871,7 @@ macro_rules! __impl_altreal_methods {
             const HAS_MAX: bool = true;
 
             fn max(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
@@ -967,7 +964,7 @@ macro_rules! __impl_altlogical_methods {
 
             // ALTREP protocol: return C NULL (not R_NilValue) to signal "can't compute"
             fn sum(x: $crate::SEXP, narm: bool) -> $crate::SEXP {
-                if unsafe { $crate::altrep_data::materialized_altrep_data2(x) }.is_some() {
+                if unsafe { $crate::altrep_data::altrep_values_written(x) } {
                     return $crate::SEXP::null();
                 }
                 let data =
