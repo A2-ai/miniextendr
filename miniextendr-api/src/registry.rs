@@ -2163,8 +2163,10 @@ const WRAPPER_RAISE_CONDITION_HELPER_FN: &str =
     raise_condition_helper_fn!(".miniextendr_frame_call");
 
 /// Shared method lookup for environment classes. Each returned closure gets
-/// its own receiver-binding frame; native symbols resolve through this helper's
-/// package namespace. Field lookup and its condition call stay in the S3 method.
+/// its own receiver-binding frame. An inherent method keeps its original
+/// enclosure behind that frame, so native symbols and author-supplied R code
+/// never resolve through the lookup helper's locals (#1677). Field lookup and
+/// its condition call stay in the S3 method.
 #[cfg(not(target_arch = "wasm32"))]
 const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class's methods to one receiver.
 # The class's `$` / `[[` methods handle fields before calling this lookup.
@@ -2202,7 +2204,7 @@ const ENV_METHOD_HELPER: &str = r#"# Internal helper: bind an environment class'
     }
     NULL
   } else {
-    environment(obj) <- environment()
+    environment(obj) <- list2env(list(self = self), parent = environment(obj))
     obj
   }
 }

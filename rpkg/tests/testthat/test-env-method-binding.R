@@ -33,3 +33,25 @@ test_that("env method lookup preserves statics, indexing and missing names", {
   expect_null(a$no_such_method)
   expect_null(a[["no_such_method"]])
 })
+
+test_that("env method bodies and defaults keep their lexical environment", {
+  lookup <- getFromNamespace(".miniextendr_env_method", "miniextendr")
+  lexical <- list2env(
+    list(name = "package name", obj = "package object", methods = "package methods"),
+    parent = baseenv()
+  )
+  methods <- new.env(parent = emptyenv())
+  methods$read <- eval(quote(function(value = name) {
+    list(receiver = self, value = value, obj = obj, methods = methods)
+  }), lexical)
+  receiver <- new.env(parent = emptyenv())
+
+  bound <- lookup(receiver, "read", methods)
+  expect_identical(bound(), list(
+    receiver = receiver, value = "package name",
+    obj = "package object", methods = "package methods"
+  ))
+  expect_identical(bound("explicit")$value, "explicit")
+  expect_identical(environment(methods$read), lexical)
+  expect_identical(parent.env(environment(bound)), lexical)
+})
