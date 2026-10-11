@@ -766,7 +766,9 @@ while a lock is held.
 `IteratorReader<I>` adapts any `Iterator<Item = u8>` to `std::io::Read`.
 It works with the existing `RConnectionIo` builder. Construction and empty
 reads consume nothing; EOF is permanent. A connection reads sequentially, so it
-does not need ALTREP's finite vector length or cache for repeated indexing.
+does not need ALTREP's finite vector length or cache for repeated indexing. For
+a vector R can index, build ALTREP data from the iterator instead:
+[ALTREP.md](ALTREP.md#constructing-from-any-iterator).
 
 For raw RNG bytes, `rand` already provides the adapter:
 

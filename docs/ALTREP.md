@@ -1906,7 +1906,9 @@ or supplies a source-restoration policy.
 
 A `rand_distr` sample iterator works the same way:
 `Normal::new(0.0, 1.0)?.sample_iter(rng).into_altrep_data(n)`. Its cache
-gives repeated reads of an index the same value.
+gives repeated reads of an index the same value. To stream samples with no
+fixed length instead, read them through a connection:
+[CONNECTIONS.md](CONNECTIONS.md#iterator-and-random-streams).
 
 The iterator data adaptors retain the concrete iterator type. A registered
 class can use its capabilities and choose its own duplication and serialization
