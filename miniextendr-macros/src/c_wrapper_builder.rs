@@ -411,15 +411,18 @@ impl CWrapperContext {
                 let ident = &pat_ident.ident;
                 // When preserve_param_names is set, use the original parameter name
                 // (visible in rustdoc). Otherwise use arg_N for predictable mangling.
-                let mut param_ident = if self.preserve_param_names {
+                let param_ident = if self.preserve_param_names {
+                    // Keep the user's span: the names are distinct, so no
+                    // conversion rebinds another slot, and a mixed-site span
+                    // would take this crate's edition (`gen` is a keyword in
+                    // 2024 but a plain parameter name in a 2021 crate).
                     ident.clone()
                 } else {
-                    format_ident!("arg_{}", idx)
+                    // Conversion binds the user's identifiers in order. A
+                    // mixed-site slot keeps a parameter named `arg_1` from
+                    // replacing the next argument's SEXP.
+                    format_ident!("arg_{}", idx, span = proc_macro2::Span::mixed_site())
                 };
-                // Conversion binds the user's identifiers in order. Keep all
-                // raw slots separate so an earlier `arg_1` cannot replace the
-                // next SEXP, including when rustdoc preserves parameter names.
-                param_ident.set_span(proc_macro2::Span::mixed_site());
 
                 c_params.push(quote!(#param_ident: ::miniextendr_api::SEXP));
                 rust_args.push(ident.clone());
