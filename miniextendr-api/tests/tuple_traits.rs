@@ -238,3 +238,45 @@ fn tuple_fields_preserve_classed_refusals_and_payloads_when_batched() {
         }
     });
 }
+
+// Length can execute user code. A tuple type mismatch must not consult an
+// integer ALTREP's length, even though ordinary integer vectors are harmless.
+static TUPLE_INPUT_LENGTH_CALLS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[derive(miniextendr_api::AltrepInteger)]
+#[altrep(manual, class = "TupleInputLengthProbe")]
+pub struct TupleInputLengthProbe(i32);
+
+impl miniextendr_api::altrep_data::AltrepLen for TupleInputLengthProbe {
+    fn len(&self) -> usize {
+        TUPLE_INPUT_LENGTH_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        1
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for TupleInputLengthProbe {
+    fn elt(&self, _: usize) -> i32 {
+        self.0
+    }
+}
+
+#[test]
+fn tuple_shape_validation_rejects_wrong_altrep_type_without_calling_length() {
+    r_test_utils::with_r_thread(|| unsafe {
+        use std::sync::atomic::Ordering;
+        let scope = ProtectScope::new();
+        let input = scope.protect(TupleInputLengthProbe(42).into_sexp()).get();
+        TUPLE_INPUT_LENGTH_CALLS.store(0, Ordering::SeqCst);
+        for error in [
+            <(i32,)>::try_from_sexp(input).unwrap_err(),
+            <(i32,)>::try_from_sexp_unchecked(input).unwrap_err(),
+            Option::<(i32,)>::try_from_sexp(input).unwrap_err(),
+            Option::<(i32,)>::try_from_sexp_unchecked(input).unwrap_err(),
+        ] {
+            assert!(matches!(error, SexpError::Type(error)
+                if error.expected == SEXPTYPE::VECSXP && error.actual == SEXPTYPE::INTSXP));
+        }
+        assert_eq!(TUPLE_INPUT_LENGTH_CALLS.load(Ordering::SeqCst), 0);
+    });
+}

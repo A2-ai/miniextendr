@@ -14,7 +14,11 @@
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::{SEXP, SEXPTYPE, SexpExt};
 
-fn check_list_shape(sexp: SEXP, expected_len: usize, len: usize) -> Result<(), SexpError> {
+fn check_list_shape(
+    sexp: SEXP,
+    expected_len: usize,
+    len: impl FnOnce() -> usize,
+) -> Result<(), SexpError> {
     let actual = sexp.type_of();
     if actual != SEXPTYPE::VECSXP {
         return Err(SexpTypeError {
@@ -23,6 +27,8 @@ fn check_list_shape(sexp: SEXP, expected_len: usize, len: usize) -> Result<(), S
         }
         .into());
     }
+    // A rejected ALTREP of another vector type must not run its Length callback.
+    let len = len();
     if len != expected_len {
         return Err(SexpLengthError {
             expected: expected_len,
@@ -103,7 +109,7 @@ macro_rules! impl_tuple_try_from_sexp {
             }
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                check_list_shape(sexp, $n, sexp.len())?;
+                check_list_shape(sexp, $n, || sexp.len())?;
 
                 let mut errors = crate::from_r::ElementErrors::default();
                 let partial = (
@@ -125,7 +131,7 @@ macro_rules! impl_tuple_try_from_sexp {
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                check_list_shape(sexp, $n, unsafe { sexp.len_unchecked() })?;
+                check_list_shape(sexp, $n, || unsafe { sexp.len_unchecked() })?;
 
                 let mut errors = crate::from_r::ElementErrors::default();
                 let partial = (
