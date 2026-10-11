@@ -38,7 +38,7 @@ use crate::from_r::{SexpClassError, SexpError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::list::{List, NamedList};
 use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list};
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 use std::ffi::CStr;
 
 pub mod group;
@@ -1769,7 +1769,7 @@ fn extract_nrow(sexp: SEXP) -> Result<usize, DataFrameError> {
 
     if rn_type == SEXPTYPE::INTSXP && rn_len == 2 {
         let rn: &[i32] = unsafe { row_names.as_slice() };
-        if rn[0] == i32::MIN && rn[1] < 0 {
+        if rn[0].is_na() && rn[1] < 0 {
             return Ok((-rn[1]) as usize);
         }
     }

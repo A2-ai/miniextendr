@@ -25,10 +25,9 @@
 //! `crate::into_r::large_integers` (lax, default) and [`crate::strict`]
 //! (`#[miniextendr(strict)]` opt-in).
 
-use crate::altrep_traits::NA_INTEGER;
 use crate::coerce::TryCoerce;
-use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
-use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
+use crate::{IsNA, RLogical, SEXP, SEXPTYPE, SexpExt};
 
 /// The type error of a coerced numeric scalar given something that is not
 /// integer, double, logical or raw: worded in R terms by the argument error
@@ -78,7 +77,7 @@ where
     <f64 as TryCoerce<T>>::Error: std::fmt::Display,
 {
     coerce_value(value).map_err(|e| {
-        if is_na_real(value) {
+        if value.is_na() {
             SexpNaError {
                 sexp_type: SEXPTYPE::REALSXP,
             }
@@ -194,7 +193,7 @@ where
                         actual: 0,
                     })
                 })?;
-            if value == NA_INTEGER {
+            if value.is_na() {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)
@@ -202,7 +201,7 @@ where
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-            if is_na_real(value) {
+            if value.is_na() {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)
@@ -259,7 +258,7 @@ where
                         actual: 0,
                     })
                 })?;
-            if value == NA_INTEGER {
+            if value.is_na() {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)
@@ -267,7 +266,7 @@ where
         }
         SEXPTYPE::REALSXP => {
             let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-            if is_na_real(value) {
+            if value.is_na() {
                 Ok(None)
             } else {
                 coerce_value(value).map(Some)

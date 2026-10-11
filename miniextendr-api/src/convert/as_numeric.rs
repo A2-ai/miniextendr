@@ -2,13 +2,12 @@
 //! `as.numeric()` reads it, from numbers, text, or factor labels. The reading
 //! rules are documented on [`AsNumericVec`].
 
-use crate::altrep_traits::NA_INTEGER;
 use crate::from_r::{
     BatchedErrors, SexpError, SexpLengthError, SexpTypeError, TryFromSexp, charsxp_to_str,
-    impl_option_try_from_sexp, is_na_real, map_strsxp_with,
+    impl_option_try_from_sexp, map_strsxp_with,
 };
 use crate::into_r::IntoR;
-use crate::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, RLogical, SEXP, SEXPTYPE, SexpExt};
 
 // region: Marker types
 
@@ -247,17 +246,14 @@ fn read_numeric(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
     match actual {
         SEXPTYPE::REALSXP => {
             let values: &[f64] = unsafe { sexp.as_slice() };
-            Ok(values
-                .iter()
-                .map(|&v| (!is_na_real(v)).then_some(v))
-                .collect())
+            Ok(values.iter().map(|&v| (!v.is_na()).then_some(v)).collect())
         }
         SEXPTYPE::INTSXP if sexp.is_factor() => read_factor_labels(sexp),
         SEXPTYPE::INTSXP => {
             let values: &[i32] = unsafe { sexp.as_slice() };
             Ok(values
                 .iter()
-                .map(|&v| (v != NA_INTEGER).then(|| f64::from(v)))
+                .map(|&v| (!v.is_na()).then(|| f64::from(v)))
                 .collect())
         }
         SEXPTYPE::LGLSXP => {
@@ -298,7 +294,7 @@ fn read_factor_labels(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
     let mut values = Vec::with_capacity(codes.len());
     let mut rejected = Rejected::default();
     for (i, &code) in codes.iter().enumerate() {
-        if code == NA_INTEGER {
+        if code.is_na() {
             values.push(None);
             continue;
         }

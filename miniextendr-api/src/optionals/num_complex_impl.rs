@@ -45,7 +45,7 @@ pub use num_complex::Complex;
 use crate::altrep_traits::NA_REAL;
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::into_r_infallible;
-use crate::{Rcomplex, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, Rcomplex, SEXP, SEXPTYPE, SexpExt};
 
 // region: Helper functions
 
@@ -70,19 +70,10 @@ pub fn na_rcomplex() -> Rcomplex {
     }
 }
 
-/// Check if an `Rcomplex` value is NA.
-///
-/// A complex is NA if either the real or imaginary part is R's NA by the
-/// `R_IsNA` rule (see the module docs); a plain NaN part is not NA.
-#[inline]
-pub fn is_na_rcomplex(r: &Rcomplex) -> bool {
-    crate::from_r::is_na_real(r.r) || crate::from_r::is_na_real(r.i)
-}
-
 /// Check if a `Complex<f64>` value is NA (either part is R's NA, by `R_IsNA`).
 #[inline]
 pub fn is_na_complex(c: &Complex<f64>) -> bool {
-    crate::from_r::is_na_real(c.re) || crate::from_r::is_na_real(c.im)
+    c.re.is_na() || c.im.is_na()
 }
 // endregion
 
@@ -110,7 +101,7 @@ impl TryFromSexp for Complex<f64> {
         }
 
         let rcomplex = sexp.complex_elt(0);
-        if is_na_rcomplex(&rcomplex) {
+        if IsNA::is_na(&rcomplex) {
             return Err(SexpError::Na(SexpNaError {
                 sexp_type: SEXPTYPE::CPLXSXP,
             }));
@@ -151,7 +142,7 @@ impl TryFromSexp for Option<Complex<f64>> {
         }
 
         let rcomplex = sexp.complex_elt(0);
-        if is_na_rcomplex(&rcomplex) {
+        if IsNA::is_na(&rcomplex) {
             Ok(None)
         } else {
             Ok(Some(from_rcomplex(rcomplex)))
@@ -185,7 +176,7 @@ impl TryFromSexp for Vec<Complex<f64>> {
         let mut errors = crate::from_r::BatchedErrors::default();
 
         for (i, rcomplex) in slice.iter().enumerate() {
-            if is_na_rcomplex(rcomplex) {
+            if IsNA::is_na(rcomplex) {
                 errors.push(i, || "NA is not allowed".to_string());
                 continue;
             }
@@ -233,7 +224,7 @@ impl TryFromSexp for Vec<Option<Complex<f64>>> {
         let result = slice
             .iter()
             .map(|rcomplex| {
-                if is_na_rcomplex(rcomplex) {
+                if IsNA::is_na(rcomplex) {
                     None
                 } else {
                     Some(from_rcomplex(*rcomplex))
@@ -395,18 +386,18 @@ mod tests {
     #[test]
     fn test_na_rcomplex() {
         let na = na_rcomplex();
-        assert!(is_na_rcomplex(&na));
+        assert!(IsNA::is_na(&na));
 
         let normal = Rcomplex { r: 1.0, i: 2.0 };
-        assert!(!is_na_rcomplex(&normal));
+        assert!(!IsNA::is_na(&normal));
 
         // NA in real part only
         let partial_na = Rcomplex { r: NA_REAL, i: 2.0 };
-        assert!(is_na_rcomplex(&partial_na));
+        assert!(IsNA::is_na(&partial_na));
 
         // NA in imaginary part only
         let partial_na2 = Rcomplex { r: 1.0, i: NA_REAL };
-        assert!(is_na_rcomplex(&partial_na2));
+        assert!(IsNA::is_na(&partial_na2));
     }
 
     #[test]
@@ -420,7 +411,7 @@ mod tests {
         // Regular NaN is NOT NA
         let nan = Complex::new(f64::NAN, 0.0);
         assert!(!is_na_complex(&nan));
-        assert!(!is_na_rcomplex(&Rcomplex {
+        assert!(!IsNA::is_na(&Rcomplex {
             r: 0.0,
             i: f64::NAN
         }));
@@ -429,7 +420,7 @@ mod tests {
         let computed = f64::from_bits(0x7FF8_0000_0000_07A2);
         assert!(is_na_complex(&Complex::new(computed, 1.0)));
         assert!(is_na_complex(&Complex::new(1.0, computed)));
-        assert!(is_na_rcomplex(&Rcomplex {
+        assert!(IsNA::is_na(&Rcomplex {
             r: computed,
             i: 2.0
         }));

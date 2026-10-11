@@ -1,6 +1,6 @@
 //! Core type vocabulary for R values: `SEXPTYPE`, `R_xlen_t`, `Rbyte`,
 //! `Rcomplex`, `RLogical`, `Rboolean`, `cetype_t`, `R_CFinalizer_t`, and
-//! the `RNativeType` marker trait + impls.
+//! the `RNativeType` and `IsNA` traits + impls.
 //!
 //! These types are the bridge between raw R FFI (in `crate::sys`) and the
 //! safe Rust API on `SEXP` (in `crate::sexp` and `crate::sexp_ext`).
@@ -174,7 +174,10 @@ impl IsNA for i32 {
 impl IsNA for f64 {
     #[inline]
     fn is_na(&self) -> bool {
-        crate::from_r::is_na_real(*self)
+        // R_IsNA compares only the low word of a NaN (1954). Arithmetic
+        // quiets NA_REAL from 0x7FF0_0000_0000_07A2 to 0x7FF8_0000_0000_07A2,
+        // which must still be NA; ordinary NaNs remain valid values.
+        self.is_nan() && (self.to_bits() & 0xFFFF_FFFF) == (Self::R_NA.to_bits() & 0xFFFF_FFFF)
     }
 }
 
@@ -237,10 +240,10 @@ impl RLogical {
     /// Convert to Rust `Option<bool>` (`None` for `NA`).
     #[inline]
     pub const fn to_option_bool(self) -> Option<bool> {
-        match self.0 {
-            0 => Some(false),
-            i32::MIN => None,
-            _ => Some(true),
+        if self.is_na() {
+            None
+        } else {
+            Some(self.0 != 0)
         }
     }
 }

@@ -26,9 +26,9 @@
 use crate::coerce::TryCoerce;
 use crate::from_r::{
     SexpError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str, coerce_value,
-    from_numeric_vec_with, is_na_real, map_strsxp_with, r_slice,
+    from_numeric_vec_with, map_strsxp_with, r_slice,
 };
-use crate::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
@@ -52,13 +52,7 @@ macro_rules! impl_vec_option_try_from_sexp {
 
                 Ok(slice
                     .iter()
-                    .map(|&v| {
-                        if crate::IsNA::is_na(&v) {
-                            None
-                        } else {
-                            Some(v)
-                        }
-                    })
+                    .map(|&v| if v.is_na() { None } else { Some(v) })
                     .collect())
             }
         }
@@ -261,14 +255,14 @@ where
     from_numeric_vec_with(
         sexp,
         |v: i32| {
-            if v == crate::altrep_traits::NA_INTEGER {
+            if v.is_na() {
                 Ok(None)
             } else {
                 coerce_value(v).map(Some)
             }
         },
         |v: f64| {
-            if is_na_real(v) {
+            if v.is_na() {
                 Ok(None)
             } else {
                 coerce_value(v).map(Some)

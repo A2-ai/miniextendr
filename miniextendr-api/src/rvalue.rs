@@ -18,11 +18,11 @@
 //! modelled as their plain `Integer`/`Double` storage in v1 — richer handling is
 //! deferred until a consumer needs it.
 
-use crate::SEXP;
 use crate::SexpExt;
 use crate::from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::sexp_types::{Rcomplex, SEXPTYPE};
+use crate::{IsNA, SEXP};
 
 /// An owned, `Send`, R-native value tree. See the [module docs](self).
 #[derive(Debug, Clone)]
@@ -108,8 +108,6 @@ impl TryFromSexp for RValue {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
-
         let n = sexp.len();
         match sexp.type_of() {
             SEXPTYPE::NILSXP => Ok(RValue::Null),
@@ -117,7 +115,7 @@ impl TryFromSexp for RValue {
                 (0..n as isize)
                     .map(|i| {
                         let x = sexp.logical_elt(i);
-                        (x != NA_LOGICAL).then_some(x != 0)
+                        (!x.is_na()).then_some(x != 0)
                     })
                     .collect(),
             )),
@@ -125,7 +123,7 @@ impl TryFromSexp for RValue {
                 (0..n as isize)
                     .map(|i| {
                         let x = sexp.integer_elt(i);
-                        (x != NA_INTEGER).then_some(x)
+                        (!x.is_na()).then_some(x)
                     })
                     .collect(),
             )),
@@ -301,7 +299,7 @@ impl From<Vec<Option<&str>>> for RValue {
 impl From<i64> for RValue {
     fn from(v: i64) -> Self {
         match i32::try_from(v) {
-            Ok(n) if n != i32::MIN => RValue::Integer(vec![Some(n)]),
+            Ok(n) if !n.is_na() => RValue::Integer(vec![Some(n)]),
             // Out of `i32` range (or exactly `NA_integer_`) — promote to double.
             // `i64 → f64` is lossy past 2^53, matching R's own integer overflow.
             _ => RValue::Double(vec![v as f64]),
@@ -374,7 +372,7 @@ impl RValue {
         match self {
             RValue::Double(v) if v.len() == 1 => {
                 let x = v[0];
-                (!crate::from_r::is_na_real(x)).then_some(x)
+                (!x.is_na()).then_some(x)
             }
             _ => None,
         }
@@ -452,7 +450,7 @@ impl TryFrom<RValue> for f64 {
                 }
                 let x = xs[0];
                 // `R_IsNA`: a computed NA is an NA error too; other NaNs pass.
-                if crate::from_r::is_na_real(x) {
+                if x.is_na() {
                     Err(SexpError::Na(SexpNaError {
                         sexp_type: SEXPTYPE::REALSXP,
                     }))

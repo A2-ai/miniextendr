@@ -51,7 +51,7 @@ use arrow_array::types::ArrowPrimitiveType;
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use crate::sys;
-use crate::{R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, R_xlen_t, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: RSourced trait — R buffer provenance for Arrow types
 
@@ -462,20 +462,17 @@ pub unsafe fn alloc_r_backed_buffer<T: RNativeType>(len: usize) -> (arrow_buffer
 // region: NA bitmap construction
 
 use crate::altrep_traits::{NA_INTEGER, NA_REAL};
-// R's `R_IsNA` rule (low word 1954), so a computed NA such as `NA_real_ * 1`
-// becomes an Arrow null too; a plain NaN stays a valid value.
-use crate::from_r::is_na_real;
 
 /// Scan an R integer vector for `NA_integer_` and build an Arrow NullBuffer.
 ///
 /// Returns `None` if no NAs found (all values valid).
 fn build_i32_null_buffer(slice: &[i32]) -> Option<arrow_buffer::NullBuffer> {
-    if !slice.contains(&NA_INTEGER) {
+    if !slice.iter().any(IsNA::is_na) {
         return None;
     }
     let mut builder = arrow_buffer::BooleanBufferBuilder::new(slice.len());
     for &v in slice {
-        builder.append(v != NA_INTEGER);
+        builder.append(!v.is_na());
     }
     Some(arrow_buffer::NullBuffer::new(builder.finish()))
 }
@@ -484,13 +481,13 @@ fn build_i32_null_buffer(slice: &[i32]) -> Option<arrow_buffer::NullBuffer> {
 ///
 /// Returns `None` if no NAs found (all values valid).
 fn build_f64_null_buffer(slice: &[f64]) -> Option<arrow_buffer::NullBuffer> {
-    let has_any_na = slice.iter().any(|&v| is_na_real(v));
+    let has_any_na = slice.iter().any(IsNA::is_na);
     if !has_any_na {
         return None;
     }
     let mut builder = arrow_buffer::BooleanBufferBuilder::new(slice.len());
     for &v in slice {
-        builder.append(!is_na_real(v));
+        builder.append(!v.is_na());
     }
     Some(arrow_buffer::NullBuffer::new(builder.finish()))
 }
@@ -535,7 +532,7 @@ impl TryFromSexp for Float64Array {
         let values: Vec<Option<f64>> = (0..len)
             .map(|i| {
                 let v = f64::elt(sexp, i as R_xlen_t);
-                if is_na_real(v) { None } else { Some(v) }
+                if v.is_na() { None } else { Some(v) }
             })
             .collect();
         Ok(Float64Array::from(values))
@@ -579,7 +576,7 @@ impl TryFromSexp for Int32Array {
         let values: Vec<Option<i32>> = (0..len)
             .map(|i| {
                 let v = i32::elt(sexp, i as R_xlen_t);
-                if v == NA_INTEGER { None } else { Some(v) }
+                if v.is_na() { None } else { Some(v) }
             })
             .collect();
         Ok(Int32Array::from(values))
@@ -759,7 +756,7 @@ impl TryFromSexp for StringDictionaryArray {
         let slice: &[i32] = unsafe { sexp.as_slice() };
         let mut keys_builder = arrow_array::builder::Int32Builder::with_capacity(n);
         for &v in slice {
-            if v == NA_INTEGER {
+            if v.is_na() {
                 keys_builder.append_null();
             } else {
                 keys_builder.append_value(v - 1); // R is 1-based, Arrow is 0-based
@@ -1183,7 +1180,7 @@ impl IntoR for Float64Array {
     fn into_sexp(self) -> SEXP {
         // Zero-copy: hand back the source R vector when the buffer is one
         // registered over a whole R vector and its nulls are already NA.
-        if let Some(sexp) = try_recover_r_backed_array(&self, is_na_real) {
+        if let Some(sexp) = try_recover_r_backed_array(&self, |v| v.is_na()) {
             return sexp;
         }
 
@@ -1215,7 +1212,7 @@ impl IntoR for Int32Array {
 
     fn into_sexp(self) -> SEXP {
         // Zero-copy for a registered R-backed buffer whose nulls are already NA.
-        if let Some(sexp) = try_recover_r_backed_array(&self, |v| v == NA_INTEGER) {
+        if let Some(sexp) = try_recover_r_backed_array(&self, |v| v.is_na()) {
             return sexp;
         }
 

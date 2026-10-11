@@ -32,6 +32,7 @@
 //! [`RSerializer::to_sexp`]: super::ser::RSerializer::to_sexp
 
 use super::error::RSerdeError;
+use crate::IsNA;
 use crate::rvalue::RValue;
 use serde::ser::{self, Serialize};
 
@@ -79,7 +80,7 @@ impl RValue {
 /// itself is).
 fn int_or_double(v: i64) -> RValue {
     match i32::try_from(v) {
-        Ok(i) if i != i32::MIN => RValue::Integer(vec![Some(i)]),
+        Ok(i) if !i.is_na() => RValue::Integer(vec![Some(i)]),
         // Deliberate widening: R has no 64-bit integer; this mirrors the
         // REALSXP fallback of `i64::into_sexp`.
         _ => RValue::Double(vec![v as f64]),

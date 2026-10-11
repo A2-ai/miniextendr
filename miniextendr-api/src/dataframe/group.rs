@@ -56,9 +56,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{DataFrame, DataFrameError, FromDataFrame};
-use crate::from_r::is_na_real;
 use crate::into_r::IntoR;
-use crate::{SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, SEXP, SEXPTYPE, SexpExt};
 
 // region: group_rows — typed-rows grouping helper (rung 1)
 
@@ -892,7 +891,7 @@ fn factor_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     let mut buckets: Vec<Vec<usize>> = vec![Vec::new(); n_levels];
     let mut na_bucket: Vec<usize> = Vec::new();
     for (row, &code) in codes.iter().enumerate() {
-        if code == i32::MIN {
+        if code.is_na() {
             na_bucket.push(row);
         } else {
             buckets[(code - 1) as usize].push(row);
@@ -941,7 +940,7 @@ fn integer_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     let mut map: BTreeMap<i32, Vec<usize>> = BTreeMap::new();
     let mut na_bucket: Vec<usize> = Vec::new();
     for (row, &v) in values.iter().enumerate() {
-        if v == i32::MIN {
+        if v.is_na() {
             na_bucket.push(row);
         } else {
             map.entry(v).or_default().push(row);
@@ -967,7 +966,7 @@ fn logical_groups(column: SEXP) -> Vec<(GroupKey, Vec<usize>)> {
     for i in 0..n {
         match column.logical_elt(i) {
             0 => false_bucket.push(i as usize),
-            v if v == i32::MIN => na_bucket.push(i as usize),
+            v if v.is_na() => na_bucket.push(i as usize),
             _ => true_bucket.push(i as usize),
         }
     }
@@ -994,7 +993,7 @@ fn real_groups(column: SEXP, col: &str) -> Result<Vec<(GroupKey, Vec<usize>)>, D
     let mut buckets: HashMap<u64, Vec<usize>> = HashMap::new();
     let mut na_bucket: Vec<usize> = Vec::new();
     for (row, &v) in values.iter().enumerate() {
-        if is_na_real(v) {
+        if v.is_na() {
             na_bucket.push(row);
         } else {
             buckets
@@ -1122,7 +1121,7 @@ mod tests {
         assert_eq!(nan, neg_nan);
         assert_eq!(hash_of(&nan), hash_of(&neg_nan));
         assert_eq!(neg_nan.value().to_bits(), CANONICAL_NAN_BITS);
-        assert!(!is_na_real(nan.value()));
+        assert!(!nan.value().is_na());
 
         // The label plays no part in equality; distinct values differ.
         assert_eq!(RealKey::new(1.5, "x"), RealKey::new(1.5, "y"));

@@ -63,12 +63,9 @@
 //! [issue #689]: https://github.com/A2-ai/miniextendr/issues/689
 
 use super::error::RSerdeError;
-use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL};
-// Doubles are NA by R's `R_IsNA` rule, so a computed NA reads as missing too.
 use crate::dataframe::DataFrame;
 use crate::from_r::charsxp_to_str;
-use crate::from_r::is_na_real;
-use crate::{OwnedProtect, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, OwnedProtect, SEXP, SEXPTYPE, SexpExt};
 use serde::de::{
     self, DeserializeSeed, Deserializer, EnumAccess, MapAccess, SeqAccess, VariantAccess, Visitor,
 };
@@ -1063,7 +1060,7 @@ unsafe fn factor_label<'sexp>(
     col_name: &str,
 ) -> Result<Option<&'sexp str>, RSerdeError> {
     let code = col.integer_elt(row);
-    if code == NA_INTEGER {
+    if code.is_na() {
         return Ok(None);
     }
     let levels = col.get_levels();
@@ -1093,7 +1090,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         match self.sexp_type() {
             SEXPTYPE::LGLSXP => {
                 let v = self.col.logical_elt(i);
-                if v == NA_LOGICAL {
+                if v.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_bool(v != 0)
@@ -1115,7 +1112,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
                     }
                 } else {
                     let v = self.col.integer_elt(i);
-                    if v == NA_INTEGER {
+                    if v.is_na() {
                         visitor.visit_none()
                     } else {
                         visitor.visit_i32(v)
@@ -1124,7 +1121,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(i);
-                if is_na_real(v) {
+                if v.is_na() {
                     visitor.visit_none()
                 } else {
                     visitor.visit_f64(v)
@@ -1153,7 +1150,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             return Err(self.type_mismatch("logical"));
         }
         let v = self.col.logical_elt(self.row_isize());
-        if v == NA_LOGICAL {
+        if v.is_na() {
             return Err(RSerdeError::UnexpectedNa);
         }
         visitor.visit_bool(v != 0)
@@ -1190,14 +1187,14 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         match self.sexp_type() {
             SEXPTYPE::INTSXP => {
                 let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 visitor.visit_i64(v as i64)
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if is_na_real(v) {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < i64::MIN as f64 || v > i64::MAX as f64 {
@@ -1238,7 +1235,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         match self.sexp_type() {
             SEXPTYPE::INTSXP => {
                 let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if v < 0 {
@@ -1251,7 +1248,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if is_na_real(v) {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u32::MAX as f64 {
@@ -1270,7 +1267,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
         match self.sexp_type() {
             SEXPTYPE::INTSXP => {
                 let v = self.col.integer_elt(self.row_isize());
-                if v == NA_INTEGER {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if v < 0 {
@@ -1283,7 +1280,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
             }
             SEXPTYPE::REALSXP => {
                 let v = self.col.real_elt(self.row_isize());
-                if is_na_real(v) {
+                if v.is_na() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
                 if !v.is_finite() || v != v.trunc() || v < 0.0 || v > u64::MAX as f64 {
@@ -1370,9 +1367,9 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
     fn deserialize_option<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Self::Error> {
         let i = self.row_isize();
         let is_na = match self.sexp_type() {
-            SEXPTYPE::LGLSXP => self.col.logical_elt(i) == NA_LOGICAL,
-            SEXPTYPE::INTSXP => self.col.integer_elt(i) == NA_INTEGER,
-            SEXPTYPE::REALSXP => is_na_real(self.col.real_elt(i)),
+            SEXPTYPE::LGLSXP => self.col.logical_elt(i).is_na(),
+            SEXPTYPE::INTSXP => self.col.integer_elt(i).is_na(),
+            SEXPTYPE::REALSXP => self.col.real_elt(i).is_na(),
             SEXPTYPE::STRSXP => self.col.string_elt(i) == SEXP::na_string(),
             _ => false,
         };
@@ -1461,7 +1458,7 @@ fn variant_tag_is_na(col: SEXP, row: usize) -> bool {
     let i = row as isize;
     match col.type_of() {
         SEXPTYPE::STRSXP => col.string_elt(i) == SEXP::na_string(),
-        SEXPTYPE::INTSXP => col.integer_elt(i) == NA_INTEGER,
+        SEXPTYPE::INTSXP => col.integer_elt(i).is_na(),
         _ => false,
     }
 }
@@ -1661,7 +1658,7 @@ fn deserialize_integer_cell(de: &CellDeserializer<'_, '_>) -> Result<i32, RSerde
         return Err(de.type_mismatch("integer"));
     }
     let v = de.col.integer_elt(de.row_isize());
-    if v == NA_INTEGER {
+    if v.is_na() {
         return Err(RSerdeError::UnexpectedNa);
     }
     Ok(v)
@@ -1672,14 +1669,14 @@ fn deserialize_real_cell(de: &CellDeserializer<'_, '_>) -> Result<f64, RSerdeErr
     match de.sexp_type() {
         SEXPTYPE::REALSXP => {
             let v = de.col.real_elt(de.row_isize());
-            if is_na_real(v) {
+            if v.is_na() {
                 return Err(RSerdeError::UnexpectedNa);
             }
             Ok(v)
         }
         SEXPTYPE::INTSXP => {
             let v = de.col.integer_elt(de.row_isize());
-            if v == NA_INTEGER {
+            if v.is_na() {
                 return Err(RSerdeError::UnexpectedNa);
             }
             Ok(v as f64)

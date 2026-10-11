@@ -26,8 +26,8 @@
 //! Outbound counterpart: `bool` / `Option<bool>` impls in
 //! [`crate::into_r`].
 
-use crate::from_r::{SexpError, SexpNaError, TryFromSexp, is_na_real};
-use crate::{RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
+use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
+use crate::{IsNA, RLogical, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 impl TryFromSexp for Rboolean {
     type Error = SexpError;
@@ -203,7 +203,7 @@ impl TryFromSexp for Option<f64> {
             return Ok(None);
         }
         let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-        if is_na_real(value) {
+        if value.is_na() {
             Ok(None)
         } else {
             Ok(Some(value))
@@ -217,7 +217,7 @@ impl TryFromSexp for Option<f64> {
             return Ok(None);
         }
         let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        if is_na_real(value) {
+        if value.is_na() {
             Ok(None)
         } else {
             Ok(Some(value))
@@ -257,7 +257,7 @@ impl TryFromSexp for Option<crate::Rcomplex> {
         }
         let value: crate::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
         // R's complex `NA` check: either part is `NA_real_` (`R_IsNA`).
-        if crate::IsNA::is_na(&value) {
+        if value.is_na() {
             Ok(None)
         } else {
             Ok(Some(value))
@@ -270,7 +270,7 @@ impl TryFromSexp for Option<crate::Rcomplex> {
             return Ok(None);
         }
         let value: crate::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        if crate::IsNA::is_na(&value) {
+        if value.is_na() {
             Ok(None)
         } else {
             Ok(Some(value))

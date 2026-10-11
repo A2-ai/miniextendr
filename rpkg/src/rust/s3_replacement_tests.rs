@@ -15,7 +15,7 @@
 use miniextendr_api::dots::Dots;
 use miniextendr_api::into_r::IntoR;
 use miniextendr_api::prelude::{ProtectScope, SexpExt};
-use miniextendr_api::{List, SEXP, miniextendr};
+use miniextendr_api::{IsNA, List, SEXP, miniextendr};
 
 // region: field lookup
 
@@ -52,7 +52,7 @@ fn field_positions(x: List, i: SEXP) -> Result<Vec<isize>, String> {
     } else if i.is_integer() {
         (0..n)
             .map(|k| match i.integer_elt(k) {
-                i32::MIN => Err("a field position can't be NA".to_string()),
+                p if p.is_na() => Err("a field position can't be NA".to_string()),
                 p => position_at(x, f64::from(p)),
             })
             .collect()

@@ -114,7 +114,7 @@ use crate::coerce::TryCoerce;
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
-use crate::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::{IsNA, RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 
 // region: Blanket implementations for ndarray types where T: RNativeType
 
@@ -3815,7 +3815,7 @@ impl AltIntegerData for Array1<i32> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|&x| x == crate::altrep_traits::NA_INTEGER))
+        Some(!self.iter().any(IsNA::is_na))
     }
 }
 
