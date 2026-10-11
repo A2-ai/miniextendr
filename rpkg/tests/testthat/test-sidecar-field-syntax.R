@@ -715,6 +715,12 @@ test_that("assigning a computed field raises miniextendr_read_only_field with th
   e <- caught(x[["nothing"]] <- 1L)
   expect_s3_class(e, "miniextendr_read_only_field")
   expect_equal(conditionCall(e), quote(x[["nothing"]] <- value))
+  # The message names the receiver's R class (#1920).
+  sub <- structure(list(.ptr = new_sidecarcomputed(4L)), class = c("computed_sub", "SidecarComputed"))
+  expect_identical(
+    conditionMessage(caught(sub$doubled <- 1L)),
+    "`doubled` of `computed_sub` is computed from the Rust value and can't be assigned"
+  )
   expect_identical(x$doubled, 8L)
 })
 
@@ -870,7 +876,13 @@ test_that("restored: under `refuse = \"every_read\"` a list or environment of th
   expect_identical(live$id, 2L)
   expect_identical(names(live), c(".ptr", "note"))
   expect_identical(live[[2]], "n")
+  # The completions never raise: a receiver the readers refuse completes to
+  # nothing, a live one to the fields and its own names.
+  expect_identical(utils::.DollarNames(old), character(0))
+  expect_identical(utils::.DollarNames(env), character(0))
+  expect_identical(utils::.DollarNames(live, "^[in]"), c("id", "ids", "note"))
   saved <- reload(live)
+  expect_identical(utils::.DollarNames(saved), character(0))
   for (read in alist(names(saved), saved$note, saved[[2]], as.list(saved))) {
     e <- caught(eval(read))
     expect_restored_classes(
@@ -1039,6 +1051,11 @@ test_that("strict_rec: the type's own message replaces the receiver refusals (#1
 
 test_that("strict_rec: a saved copy is refused before the name or index is looked at", {
   back <- reload(new_strict_rec(2L))
+  # The default message names the R class, not the Rust type (#1920).
+  expect_identical(
+    conditionMessage(caught(back$id)),
+    "this `strict_rec` object was restored from a saved session and has no Rust value; re-create it"
+  )
   for (read in alist(back$st, back$steps, back[[TRUE]], back[[9]], names(back))) {
     e <- caught(eval(read))
     expect_restored_classes(

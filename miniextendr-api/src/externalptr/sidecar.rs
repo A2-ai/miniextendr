@@ -19,8 +19,8 @@ use std::cell::RefCell;
 use std::fmt;
 
 use super::{
-    ExternalPtr, NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, refuse_restored,
-    unwrap_class_handle,
+    ExternalPtr, NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
+    refuse_restored, unwrap_class_handle,
 };
 use crate::condition::{ConditionCall, RCondition};
 use crate::from_r::TryFromSexp;
@@ -496,11 +496,7 @@ fn refusal_message<T: TypedExternal>(receiver: SEXP, refused: Refused) -> String
     if let Some(message) = T::FIELD_ERROR_MESSAGE {
         return message.to_owned();
     }
-    let class = receiver.get_class();
-    let class = (class.type_of() == SEXPTYPE::STRSXP && class.len() > 0)
-        .then(|| class.string_elt_str(0))
-        .flatten();
-    match (class, refused) {
+    match (receiver_class(receiver), refused) {
         (Some(class), Refused::NoPointer) => format!("this `{class}` object holds no pointer"),
         (Some(class), Refused::NullPointer) => {
             format!("this `{class}` object holds a null pointer")
@@ -632,7 +628,7 @@ unsafe fn checked_prot<'a, T: TypedExternal>(
         {
             // A save by this version (`require_live`) or by another version
             // raises its own error here.
-            unsafe { refuse_restored::<T>(x) };
+            unsafe { refuse_restored::<T>(x, receiver) };
             refuse_other_type::<T>(receiver, Refused::NullPointer);
         }
         None
@@ -700,7 +696,7 @@ unsafe fn sidecar_r_struct_ptr<T: TypedExternal>(receiver: SEXP) -> *mut T {
     let any_raw = unsafe { R_ExternalPtrAddr(x) }.cast::<Box<dyn Any>>();
     if any_raw.is_null() {
         // A save by this or another version raises its own error here.
-        unsafe { refuse_restored::<T>(x) };
+        unsafe { refuse_restored::<T>(x, receiver) };
         refuse_other_type::<T>(receiver, Refused::NullPointer);
     }
     let any_box: &mut Box<dyn Any> = unsafe { &mut *any_raw };
@@ -726,16 +722,19 @@ pub unsafe fn sidecar_r_check<T: TypedExternal>(x: SEXP, require_live: bool) {
     let _ = unsafe { checked_prot::<T>(x, require_live) };
 }
 
-/// Whether the bare pointer `x` still has its Rust value, for the field
-/// methods of a type with `#[externalptr(restored(refuse = "every_read"))]`
-/// (#1901), which ask before a read that never reaches an accessor
-/// (`names()`, a name that is not a field).
+/// Whether the receiver `x` (a pointer, or an object carrying one) still has
+/// its Rust value, for the field methods of a type with
+/// `#[externalptr(restored(refuse = "every_read"))]` (#1901), which ask
+/// before a read that never reaches an accessor (`names()`, a name that is
+/// not a field).
 ///
-/// With `raise`, a pointer without one is refused as the accessors refuse it
-/// ([`checked_prot`] with `require_live`: the type's restored error, or the
-/// other-type error) and a live pointer of another type is refused too, so
-/// the result is always `true`. Without it (`.DollarNames()`, which serves
-/// completion and never raises) the answer is whether `x` has an address.
+/// With `raise`, a receiver without one is refused as the accessors refuse
+/// it ([`checked_prot`] with `require_live`: the type's restored error, the
+/// no-pointer error, or the other-type error) and a live pointer of another
+/// type is refused too, so the result is always `true`. Without it
+/// (`.DollarNames()`, which serves completion and never raises) the answer
+/// is whether `x` carries a pointer with an address: a list or an
+/// environment without one, or an atomic vector, has none.
 ///
 /// # Safety
 ///
@@ -746,7 +745,12 @@ pub unsafe fn sidecar_r_live<T: TypedExternal>(x: SEXP, raise: bool) -> bool {
         let _ = unsafe { checked_prot::<T>(x, true) };
         return true;
     }
-    x.type_of() == SEXPTYPE::EXTPTRSXP && !unsafe { R_ExternalPtrAddr(x) }.is_null()
+    let ptr = if x.type_of() == SEXPTYPE::EXTPTRSXP {
+        Some(x)
+    } else {
+        unsafe { unwrap_class_handle(x) }
+    };
+    ptr.is_some_and(|ptr| !unsafe { R_ExternalPtrAddr(ptr) }.is_null())
 }
 
 /// Reads `T`'s `Sidecar` field `index` from the external pointer `x` carries

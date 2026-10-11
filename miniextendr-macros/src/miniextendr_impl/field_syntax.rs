@@ -111,12 +111,14 @@ impl Helpers {
         lines
     }
 
-    /// The `.DollarNames()` guard: under `restored(refuse = "every_read")`
-    /// a bare pointer without its Rust value completes to nothing (#1901).
-    /// `.DollarNames()` serves completion, so it never raises.
+    /// The `.DollarNames()` guard: under `restored(refuse = "every_read")` a
+    /// receiver without a live Rust value completes to nothing (#1901): a
+    /// restored pointer, a list or environment carrying one or none (#1919),
+    /// whose `names()` would refuse. `.DollarNames()` serves completion, so
+    /// it never raises.
     fn dollar_names_guard(&self, receiver: &str) -> String {
         format!(
-            "  if (typeof({receiver}) == \"externalptr\" && {every_read} && !{live}({receiver}, FALSE)) return(character(0))",
+            "  if ({every_read} && !{live}({receiver}, FALSE)) return(character(0))",
             every_read = self.every_read,
             live = self.live
         )

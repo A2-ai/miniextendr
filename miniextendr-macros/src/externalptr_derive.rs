@@ -1649,9 +1649,12 @@ fn generate_field_syntax_helpers(
             .map(|slot| {
                 let rust_field = crate::naming::ident_name(&slot.name);
                 let call = match (&slot.kind, setter) {
+                    // The message names the receiver's R class (#1920), else
+                    // the Rust type.
                     (SlotKind::Computed(_), true) => format!(
-                        "stop(errorCondition(\"`{field}` of `{type_name}` is computed from the Rust \
-                         value and can't be assigned\", class = c({error_class_var}, \"miniextendr_read_only_field\"), \
+                        "stop(errorCondition(sprintf(\"`{field}` of `%s` is computed from the Rust \
+                         value and can't be assigned\", if (is.null(oldClass(x))) \"{type_name}\" else oldClass(x)[[1L]]), \
+                         class = c({error_class_var}, \"miniextendr_read_only_field\"), \
                          call = .miniextendr_frame_call(parent.frame())))",
                         field = slot.r_name,
                     ),
@@ -2819,8 +2822,9 @@ mod tests {
         );
         assert!(
             helpers.contains(
-                "  group_by = stop(errorCondition(\"`group_by` of `Engine` is computed from the Rust \
-                 value and can't be assigned\", class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
+                "  group_by = stop(errorCondition(sprintf(\"`group_by` of `%s` is computed from the Rust \
+                 value and can't be assigned\", if (is.null(oldClass(x))) \"Engine\" else oldClass(x)[[1L]]), \
+                 class = c(.rdata_error_class_Engine, \"miniextendr_read_only_field\"), \
                  call = .miniextendr_frame_call(parent.frame()))),"
             ),
             "{helpers}"

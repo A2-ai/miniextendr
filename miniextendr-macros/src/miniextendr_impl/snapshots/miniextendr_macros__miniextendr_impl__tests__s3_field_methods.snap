@@ -104,7 +104,7 @@ as.list.Engine <- function(x, ...) {
 #' @param pattern A regular expression; the names matching it are the completions.
 #' @exportS3Method utils::.DollarNames
 .DollarNames.Engine <- function(x, pattern = "") {
-  if (typeof(x) == "externalptr" && .rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))
+  if (.rdata_every_read_Engine && !.rdata_live_Engine(x, FALSE)) return(character(0))
   grep(pattern, c(.rdata_fields_Engine, if (typeof(x) != "externalptr") names(x)), value = TRUE)
 }
 

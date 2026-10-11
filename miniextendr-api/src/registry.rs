@@ -4294,19 +4294,30 @@ mod tests {
         );
     }
 
-    /// The preamble's field-position helper (#1891) is the one definition in
-    /// its block. A position is truncated as `[[` truncates it on a list; one
-    /// that picks no field (past the last, `0`, negative) raises R's own
+    /// The preamble's field-position helper (#1891) and the bad-index error
+    /// (#1920) are the two definitions in their block. A position is
+    /// truncated as `[[` truncates it on a list; one that picks no field
+    /// (past the last, `0`, negative) raises R's own
     /// `subscriptOutOfBoundsError` with the type's `field_error` classes in
     /// front (#1899), reporting the generic's call resolved from the method's
-    /// frame.
+    /// frame. An index that is no name or position raises the `field_error`
+    /// classes, then `notSubsettableError`, on that call.
     #[test]
     fn field_at_helper_picks_a_field_as_a_list_does() {
         let defs: Vec<&str> = FIELD_AT_HELPER
             .lines()
             .filter_map(parse_top_level_fn_def_name)
             .collect();
-        assert_eq!(defs, [".miniextendr_field_at"]);
+        assert_eq!(
+            defs,
+            [".miniextendr_field_at", ".miniextendr_field_index_error"]
+        );
+        assert!(FIELD_AT_HELPER.contains(
+            ".miniextendr_field_index_error <- function(cls, env, class = NULL, strict = FALSE) {"
+        ));
+        assert!(FIELD_AT_HELPER.contains(
+            "class = c(class, \"notSubsettableError\"), call = .miniextendr_frame_call(env)))"
+        ));
         assert!(
             FIELD_AT_HELPER
                 .contains(".miniextendr_field_at <- function(fields, i, env, class = NULL) {")

@@ -1270,6 +1270,7 @@ the class system.
 use miniextendr_api::externalptr::{Computed, RSidecar, Sidecar};
 
 #[derive(ExternalPtr)]
+#[externalptr(s3)]
 pub struct MyConfig {
     // Rust-only internal state
     cache: Vec<u8>,
@@ -1294,7 +1295,7 @@ impl MyConfig {
     }
 }
 
-#[miniextendr(r6(r_data_accessors))]
+#[miniextendr(s3(r_data_accessors))]
 impl MyConfig {
     pub fn new(name: String, score: f64) -> Self {
         MyConfig {
@@ -1348,11 +1349,12 @@ declared place: the standalone `MyConfig_get_cache_size(x)`, and `x$cache_size`
 / `x[["cache_size"]]` on S3, S4 and env classes with `r_data_accessors`. They
 have no setter: no `MyConfig_set_cache_size()`, and under the get/set form
 `x$cache_size <- v` raises `miniextendr_read_only_field` (`` `cache_size` of
-`MyConfig` is computed from the Rust value and can't be assigned ``). A
+`MyConfig` is computed from the Rust value and can't be assigned ``, naming
+the object's R class). A
 computed field exists only for R, so it must be `pub`; and it can't be an R6
 active binding or an S7 property, which need a setter (#1888), so it is
-refused under `#[externalptr(r6)]` / `#[externalptr(s7)]` (the example above
-would use S3, S4 or env). The getter's errors are its own: a
+refused under `#[externalptr(r6)]` / `#[externalptr(s7)]`; the example above
+is an S3 class for that reason. The getter's errors are its own: a
 `rust_error!(class = "pkg_error", "...")` in it reaches R with that class and
 the call as written (`x$cache_size`). It takes `&Self`, so it can't read
 `Sidecar` values, which are R fields already; it returns a value, not a
