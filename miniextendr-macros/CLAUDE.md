@@ -38,6 +38,7 @@ Proc-macro crate — `#[miniextendr]`, `#[miniextendr_init]`, derives (`External
 
 ## Gotchas specific to this crate
 - **RNativeType requires `#[repr(transparent)]`.** Its pointer casts expose R's inner-type allocation as slices of the newtype. A one-field `repr(Rust)`, packed, or over-aligned struct does not establish that contract; reject it before generating the impl.
+- **Native NA capability is separate from storage.** `#[derive(IsNA)]` forwards through `newtype_derive`'s existing parser and preserves bounds; it requires both a native wrapper and an NA-capable inner field. Do not add an unconditional IsNA impl to RNativeType derive: raw `u8` and native wrappers around it have no NA.
 - **Native-borrow metadata follows the selected converter.** `Call`/`CallerCall` do not convert from SEXP; omit their metadata query so method rejection keeps its intended diagnostic. `CoercionMapping::Numeric` delegates to `TryFromSexp`, so preserve its `NATIVE_BORROW`; only coercion helpers that bypass that trait omit the query. Keep minimal-feature UI coverage alongside full-feature Clippy.
 - **Two C-wrapper codegen paths with different signatures.** `c_wrapper_builder.rs` prepends `__miniextendr_call: SEXP` for all `#[miniextendr]` fns/methods; `externalptr_derive.rs` does NOT for sidecar accessors. Don't unify R-side emission without unifying C-side first (#348).
 - **`#[miniextendr]` on 1-field structs is removed.** Use ALTREP derives instead.

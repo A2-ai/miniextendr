@@ -158,7 +158,8 @@ pub trait RNativeType: Sized + Copy + 'static {
 /// `no_na` hints must still reject ordinary NaNs too.
 ///
 /// Rust values without native NA storage use `Option<T>` at conversion
-/// boundaries; no additional `NA<T>` wrapper is needed.
+/// boundaries; no additional `NA<T>` wrapper is needed. Native newtypes
+/// can use `#[derive(IsNA)]` to forward this check to their single field.
 pub trait IsNA: RNativeType {
     /// Whether this element is R's NA sentinel.
     fn is_na(&self) -> bool;

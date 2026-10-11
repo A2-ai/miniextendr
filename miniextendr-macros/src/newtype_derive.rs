@@ -1,5 +1,6 @@
 //! `#[derive(TryFromSexp)]` / `#[derive(IntoR)]` — forward R↔Rust conversions
-//! from a single-field newtype to its inner type.
+//! from a single-field newtype to its inner type. `#[derive(IsNA)]` uses
+//! the same parser to forward native missing-value detection.
 //!
 //! For a newtype `struct UserId(Uuid)` (or `struct UserId { inner: Uuid }`):
 //!
@@ -279,6 +280,32 @@ fn expectation_const(inner: &Type) -> TokenStream {
         Some(expected) => quote! { ::core::option::Option::Some(#expected) },
         None => quote! { <#inner as ::miniextendr_api::TryFromSexp>::__MX_EXPECTATION },
     }
+}
+
+/// `#[derive(IsNA)]`: delegate native missing-value detection to the field.
+pub fn derive_is_na(input: DeriveInput) -> syn::Result<TokenStream> {
+    let nt = parse_newtype(&input)?;
+    let inner = &nt.inner;
+    let name = &input.ident;
+    let (impl_generics, ty_generics, _) = input.generics.split_for_impl();
+    let is_na_where = where_with(
+        &input.generics.where_clause,
+        &[
+            quote! { #inner: ::miniextendr_api::IsNA },
+            quote! { Self: ::miniextendr_api::RNativeType },
+        ],
+    );
+    let value = nt.unwrap(&quote! { self });
+
+    Ok(quote! {
+        #[automatically_derived]
+        impl #impl_generics ::miniextendr_api::IsNA for #name #ty_generics #is_na_where {
+            #[inline]
+            fn is_na(&self) -> bool {
+                <#inner as ::miniextendr_api::IsNA>::is_na(&#value)
+            }
+        }
+    })
 }
 
 /// `#[derive(IntoR)]`: scalar forwarding `IntoR` + `IntoRNewtype` marker (for
