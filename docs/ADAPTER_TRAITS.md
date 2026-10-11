@@ -116,13 +116,13 @@ concrete vtable shim generation at the impl site:
 
 | Trait | Wraps | R methods | Notes |
 |-------|-------|-----------|-------|
-| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `count()`, `collect_n()`, `skip()`, `nth()` | Rust `next` is `next_item` in R via `r_name`; `size_hint` skipped |
+| `RIterator` | `Iterator` (associated type `Item`) | `next_item()`, `size_hint()`, `count()`, `collect_n()`, `skip()`, `nth()` | Rust `next` is `next_item` in R via `r_name`; `size_hint` returns `list(lower, upper)` (NA upper bound when unknown) |
 | `RExtend<T>` | `Extend` | `extend_from_vec()`, `len()`, `is_empty()` | Rust `r_len` / `r_is_empty`; `extend_from_slice` skipped |
 | `RFromIter<T>` | `FromIterator` | `from_vec(items)` | |
 | `RToVec<T>` | (iterable collections) | `to_vec()`, `len()`, `is_empty()` | Rust `r_to_vec` / `r_len` / `r_is_empty` |
 | `RMakeIter<T, I>` | (iterator factory) | `make_iter()` | `I` must implement `RIterator` |
 
-`RIterator` keeps the names `count`, `skip` and `nth`: its only blanket impl is
+`RIterator` keeps the names `size_hint`, `count`, `skip` and `nth`: its only blanket impl is
 on `RefCell<I>`, which has no such methods and is not an iterator, so an import
 leaves `Iterator`'s methods alone.
 
@@ -190,14 +190,13 @@ struct CountUp {
 }
 
 // RIterator has an associated type Item, resolved to i32 here. An impl with
-// a body repeats the trait's `r_name` and `skip` attributes.
+// a body repeats the trait's `r_name` attribute.
 #[miniextendr]
 impl miniextendr_api::adapter_traits::RIterator for CountUp {
     type Item = i32;
 
     #[miniextendr(r_name = "next_item")]
     fn next(&self) -> Option<i32> { /* ... */ }
-    #[miniextendr(skip)]
     fn size_hint(&self) -> (i64, Option<i64>) { /* ... */ }
     fn count(&self) -> i64 { /* ... */ }
     fn collect_n(&self, n: i32) -> Vec<i32> { /* ... */ }
@@ -207,7 +206,7 @@ impl miniextendr_api::adapter_traits::RIterator for CountUp {
 ```
 
 In R, the method is called `next_item()` (not `next()`, which would shadow
-R's built-in), and `size_hint()` isn't exported.
+R's built-in), and `size_hint()` returns `list(lower, upper)`.
 
 ## Alternative: Newtype Wrapper
 

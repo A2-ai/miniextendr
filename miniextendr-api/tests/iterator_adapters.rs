@@ -1,3 +1,5 @@
+mod r_test_utils;
+
 use miniextendr_api::adapter_traits::RIterator;
 use std::cell::RefCell;
 
@@ -120,4 +122,45 @@ fn a_local_element_type_can_choose_its_data_family() {
     }
     let data = [Small(3), Small(7)].into_iter().into_altrep_data_exact();
     assert_eq!(data.elt(1), 7);
+}
+
+#[test]
+fn tuple_iterator_results_cross_the_trait_abi_conversion_layer() {
+    use miniextendr_api::from_r::TryFromSexp;
+    use miniextendr_api::gc_protect::ProtectScope;
+    use miniextendr_api::trait_abi::conv::to_sexp;
+    use miniextendr_api::{SEXPTYPE, SexpExt};
+
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+        let iter = RefCell::new(
+            ["a".to_owned(), "b".to_owned(), "c".to_owned()]
+                .into_iter()
+                .enumerate(),
+        );
+        let hint = scope.protect(to_sexp(iter.size_hint())).get();
+        assert_eq!(
+            <(i64, Option<i64>)>::try_from_sexp(hint).unwrap(),
+            (3, Some(3))
+        );
+        let first = scope.protect(to_sexp(iter.next())).get();
+        assert_eq!(
+            Option::<(usize, String)>::try_from_sexp(first).unwrap(),
+            Some((0, "a".into()))
+        );
+        let rest = scope.protect(to_sexp(iter.collect_n(10))).get();
+        assert_eq!(
+            Vec::<(usize, String)>::try_from_sexp(rest).unwrap(),
+            vec![(1, "b".into()), (2, "c".into())]
+        );
+        let done = scope.protect(to_sexp(iter.next())).get();
+        assert_eq!(done.type_of(), SEXPTYPE::NILSXP);
+
+        let unknown = RefCell::new(std::iter::from_fn(|| Some((7i32, "x".to_string()))));
+        let hint = scope.protect(to_sexp(unknown.size_hint())).get();
+        assert_eq!(
+            <(i64, Option<i64>)>::try_from_sexp(hint).unwrap(),
+            (0, None)
+        );
+    });
 }
