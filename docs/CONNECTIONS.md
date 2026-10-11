@@ -288,11 +288,9 @@ let connection = RConnectionIo::new(reader).mode("rb").build_read();
 // R now owns the reader; close(connection) releases it.
 ```
 
-Use `Box<dyn BufRead>` with `build_bufread()` and `Box<dyn Write>` with
-`build_write()`. The box retains the stream's vtable and provides the sized owner
-stored behind R's connection pointer. No new connection wrapper or unsized state
-is required. The stream must own its dependencies or borrow only `'static` data:
-an R connection may outlive the Rust call that created it.
+`Box<dyn BufRead>` goes with `build_bufread()`, and `Box<dyn Write>` with
+`build_write()`. The stream must own what it reads from or writes to (or borrow
+only `'static` data), because the connection can outlive the call that made it.
 
 ## Safety & Version Checking
 

@@ -1,9 +1,16 @@
 #![cfg(feature = "connections")]
 
+mod r_test_utils;
+
 use miniextendr_api::connection::{
-    EXPECTED_CONNECTIONS_VERSION, RCustomConnection, check_connections_version,
+    EXPECTED_CONNECTIONS_VERSION, RConnectionIo, RCustomConnection, check_connections_version,
 };
+use miniextendr_api::expression::RCall;
 use miniextendr_api::sys::R_CONNECTIONS_VERSION;
+use miniextendr_api::{IntoR, OwnedProtect, TryFromSexp};
+use std::cell::{Cell, RefCell};
+use std::io::{BufRead, Cursor, Read, Write};
+use std::rc::Rc;
 
 #[test]
 fn connections_version_constant_matches() {
@@ -19,17 +26,11 @@ fn mode_panics_when_too_long() {
     assert!(result.is_err(), "mode longer than 4 chars should panic");
 }
 
-// The existing generic adapters own a sized Box while dynamic dispatch retains
-// the concrete stream's vtable. Exercise R's callbacks and destruction, not only
-// Rust's trait bounds.
-mod r_test_utils;
-
-use miniextendr_api::connection::RConnectionIo;
-use miniextendr_api::expression::RCall;
-use miniextendr_api::{IntoR, OwnedProtect, TryFromSexp};
-use std::cell::{Cell, RefCell};
-use std::io::{BufRead, Cursor, Read, Write};
-use std::rc::Rc;
+// region: Boxed trait-object streams
+//
+// `RConnectionIo<Box<dyn Read>>` and friends: the Box is the sized owner R's
+// connection holds, and calls go through the stream's vtable. These run R's
+// own readBin / readLines / writeBin / close on the connection.
 
 struct Tracked<T> {
     inner: T,
@@ -158,3 +159,4 @@ fn boxed_writer_receives_bytes_flush_and_one_drop() {
         assert_eq!(drops.get(), 1);
     });
 }
+// endregion
