@@ -364,6 +364,12 @@ stay integer, and an empty row is `integer(0)`.
 | `Option<List>` / `Option<ListMut>` | `Some(list)` → the list (VECSXP), `None` → NULL; the inverse of their `TryFromSexp` impls |
 | `Vec<List>` / `Vec<Option<List>>` | List of the lists (VECSXP), `None` → NULL; the lists must be rooted by the caller (arguments are), since the result is allocated first. A `#[derive(IntoR)]` newtype over `List` returns its `Vec` / `Vec<Option>` the same way |
 
+Tuple `try_into_sexp` conversions return `IntoRError::Inner` when fields fail,
+with all failing field positions collected in one diagnostic. `Option<Tuple>`,
+`Vec<Tuple>`, `Vec<Option<Tuple>>` and boxed tuple rows preserve these errors;
+row containers also collect failures across rows. Successful fields and rows
+enter the protected list before the next conversion runs.
+
 Tuples with 1–12 fields also implement `IntoList` and `TryFromList`, using
 these same positional conversions and batched field errors. Element-wise
 `Coerce` covers all twelve arities, including the singleton; the existing
